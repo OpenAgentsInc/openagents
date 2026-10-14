@@ -745,6 +745,9 @@ pub enum Call {
     Invitation(String),
     /// `POST /v1/projects/invitations/accept` `{code}`.
     Accept(String),
+    /// `GET /v1/projects/{id}/access` (#11587): whether the caller's own
+    /// GitHub access reaches each of the project's repositories.
+    Access(String),
 }
 
 /// Answer `call` for `account` with the OAuth App only (see
@@ -830,8 +833,15 @@ pub async fn answer_with(
                 seconds,
             } => match via_app {
                 // The App, when the account installed it: tokens for one
-                // repository from its installation.
-                Some(_) => broker::ticket(dir, true, account, &repository, seconds)?,
+                // repository from its installation. In a project shared
+                // with the account, its own user token must push there
+                // first (#11587).
+                Some(app) => {
+                    if !broker::owns_repository(dir, account, &repository)? {
+                        installed::can_push(dir, app, account, &repository).await?;
+                    }
+                    broker::ticket(dir, true, account, &repository, seconds)?
+                }
                 // Otherwise the person's own OAuth token (#11572): it must
                 // reach private repositories (`repo`) and push to this one.
                 None => {
@@ -856,6 +866,29 @@ pub async fn answer_with(
             }
             Call::Invitation(code) => members::preview(dir, account, &code)?,
             Call::Accept(code) => members::accept(dir, account, &code)?,
+            Call::Access(id) => {
+                let held = members::held(dir, &id)?.ok_or(RepoError::NotFound)?;
+                if held.role_of(account).is_none() {
+                    return Err(RepoError::NotFound);
+                }
+                let mut rows = Vec::with_capacity(held.project.repositories.len());
+                for repository in &held.project.repositories {
+                    // The caller's own token or App grant, never the
+                    // project owner's.
+                    let reached =
+                        look_up(dir, oauth, via_app, account, &repository.repository).await;
+                    rows.push(match reached {
+                        Ok(_) => json!({"repository": repository.repository, "access": true}),
+                        Err(error) => json!({
+                            "repository": repository.repository,
+                            "access": false,
+                            "code": error.code(),
+                            "message": no_access_message(error),
+                        }),
+                    });
+                }
+                json!({"repositories": rows})
+            }
         })
     }
     .await;
@@ -865,6 +898,17 @@ pub async fn answer_with(
             error.status(),
             json!({"error": {"code": error.code(), "message": error.to_string()}}),
         ),
+    }
+}
+
+/// What a member is told about a repository their own GitHub access
+/// doesn't reach (#11587).
+fn no_access_message(error: RepoError) -> String {
+    match error {
+        RepoError::NotFound | RepoError::NotInstalled | RepoError::Forbidden => {
+            "You don't have access to this repository on GitHub.".into()
+        }
+        other => other.to_string(),
     }
 }
 
@@ -1219,10 +1263,16 @@ fn follow(
         {
             continue;
         }
-        members::edit(dir, account, &held.project.id, false, |project| {
-            follow_into(project, found, installation);
-            Ok(())
-        })?;
+        members::edit(
+            dir,
+            account,
+            &held.project.id,
+            |_| false,
+            |project| {
+                follow_into(project, found, installation);
+                Ok(())
+            },
+        )?;
     }
     Ok(())
 }
@@ -1334,7 +1384,8 @@ pub fn edit_project(
     }
     forget(dir, account);
     // Renaming is the owner's; instructions and repositories an editor's.
-    let edited = members::edit(dir, account, id, name.is_some(), |project| {
+    let renaming = |kept: &Project| name.as_ref().is_some_and(|name| *name != kept.name);
+    let edited = members::edit(dir, account, id, renaming, |project| {
         if let Some(name) = &name {
             project.name.clone_from(name);
         }

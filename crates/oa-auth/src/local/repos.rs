@@ -26,6 +26,7 @@ pub(super) fn router(service: LocalService) -> Router {
             axum::routing::patch(set_role).delete(remove_member),
         )
         .route("/v1/projects/{id}/leave", post(leave))
+        .route("/v1/projects/{id}/access", get(access))
         .route("/v1/projects/{id}/invitations", post(invite))
         .route("/v1/projects/invitations/preview", post(preview))
         .route("/v1/projects/invitations/accept", post(accept))
@@ -187,6 +188,14 @@ async fn remove_member(
     UrlPath((id, member)): UrlPath<(String, String)>,
 ) -> Response {
     run(&state, &headers, Call::RemoveMember { id, member }).await
+}
+
+async fn access(
+    State(state): State<LocalService>,
+    headers: HeaderMap,
+    UrlPath(id): UrlPath<String>,
+) -> Response {
+    run(&state, &headers, Call::Access(id)).await
 }
 
 async fn leave(

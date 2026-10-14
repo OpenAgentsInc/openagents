@@ -386,6 +386,19 @@ impl CloudSession {
         self.account_call_as(token, method, path, None, body).await
     }
 
+    /// [`Self::project_call_as`] under the browser's session cookie.
+    pub(crate) async fn project_call(
+        &self,
+        headers: &HeaderMap,
+        method: Method,
+        path: &str,
+        body: Option<Value>,
+    ) -> Result<Value> {
+        self.request_host(headers)?;
+        let token = value(headers, SESSION_COOKIE)?.ok_or(SessionError::Unauthenticated)?;
+        self.project_call_as(&token, method, path, body).await
+    }
+
     /// One account-service call under the request's session cookie.
     async fn account_call(
         &self,

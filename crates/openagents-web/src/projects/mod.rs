@@ -507,31 +507,39 @@ pub(crate) fn view_with(
                 (MarkdownRoot::new(html! { h2 #projects-yours { "Your projects" } }))
                 ul.oa-chat-archive-list role="list" {
                     @for project in &state.projects {
+                        @let role = api::role_of(project);
+                        @let home = project.sharing.as_ref().is_none_or(|s| s.home.is_none());
                         li.oa-chat-archive-row {
                             span {
                                 a href=(page::href(&project.id)) { strong { (project.name) } }
                                 " · " (page::repositories_line(project))
                                 @if project.primary().is_some_and(|r| r.private) { " " (Badge::new("Private")) }
+                                @if api::shared(project) { " " (Badge::new(page::shared_label(role))) }
                             }
                             span.oa-page-actions {
-                                (ButtonLink::new("New chat", format!("/?project={}", project.id))
-                                    .size(ControlSize::Sm)
-                                    .variant(ButtonVariant::Soft)
-                                    .color(Color::Secondary))
+                                @if role.edits() {
+                                    (ButtonLink::new("New chat", format!("/?project={}", project.id))
+                                        .size(ControlSize::Sm)
+                                        .variant(ButtonVariant::Soft)
+                                        .color(Color::Secondary))
+                                }
                                 (ButtonLink::new("Open", page::href(&project.id))
                                     .size(ControlSize::Sm)
                                     .variant(ButtonVariant::Ghost)
                                     .color(Color::Secondary))
-                                @if sources {
+                                @if sources && home {
                                     (ButtonLink::new("Sources", crate::connections::sources::href(&project.id))
                                         .size(ControlSize::Sm)
                                         .variant(ButtonVariant::Ghost)
                                         .color(Color::Secondary))
                                 }
-                                (ButtonLink::new("Vault", crate::vault::project_href(&project.id))
-                                    .size(ControlSize::Sm)
-                                    .variant(ButtonVariant::Ghost)
-                                    .color(Color::Secondary))
+                                @if home {
+                                    (ButtonLink::new("Vault", crate::vault::project_href(&project.id))
+                                        .size(ControlSize::Sm)
+                                        .variant(ButtonVariant::Ghost)
+                                        .color(Color::Secondary))
+                                }
+                                @if role.owns() {
                                 form method="post" action=(format!("/projects/{}/remove", project.id)) {
                                     input type="hidden" name="csrf" value=(csrf);
                                     (Button::new("Remove")
@@ -539,6 +547,7 @@ pub(crate) fn view_with(
                                         .size(ControlSize::Sm)
                                         .variant(ButtonVariant::Ghost)
                                         .color(Color::Secondary))
+                                }
                                 }
                             }
                         }

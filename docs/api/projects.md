@@ -218,6 +218,7 @@ Anyone can share a project they own, and anyone can be invited.
 | `POST /v1/projects/invitations/preview` `{"code"}` | Anyone signed in | `{project: {id, name}, role, invited_by, expires_at, member}` without using it. `code` may be the whole link |
 | `POST /v1/projects/invitations/accept` `{"code"}` | Anyone signed in | The Project, with your role. Someone already in keeps their role. A used or expired link: `404 invitation_not_found` |
 | `POST /v1/projects/{id}/leave` | Any member but the owner | `{id, object: "project.left"}`; the owner gets `409 owner_stays` |
+| `GET /v1/projects/{id}/access` | Any member | `{data: [{repository, access, message?}]}`: whether your own GitHub access reaches each repository ([#11587](https://github.com/OpenAgentsInc/openagents/issues/11587)) |
 
 `Member` is `{account, object: "project.member", name, login, role,
 joined_at, you}`. The Project object gains `role` (yours), `members` (how
@@ -244,6 +245,23 @@ many people are in it), and `shared`.
   sender's own allowance. A chat already in the project when someone
   joins moves in with it; a chat outside any project stays private.
   Viewers read only (`403 project_role`).
+- Repositories ([#11587](https://github.com/OpenAgentsInc/openagents/issues/11587)):
+  a shared project's repository never gives a member more than their own
+  GitHub access. Work that needs it (Claude Code, Solver, a computer, a
+  broker ticket for Git) checks the member's own token or App grant
+  first and doesn't start without it, saying "You don't have access to
+  this repository on GitHub." The owner's token and the project's App
+  installation are never used for another member. Adding a repository
+  checks the person adding it.
+- On the website ([#11589](https://github.com/OpenAgentsInc/openagents/issues/11589)):
+  `/projects/{id}` has a Members section (roles; the owner's Make
+  editor/viewer/owner, Remove, and Invite an editor or a viewer, which
+  shows the link once with Copy; Leave for everyone else), and shows a
+  viewer no controls they can't use. An invitation link opens
+  `/projects/join/{code}`: the project, who invited you, and the role,
+  with Join and Decline (signed out, through sign-in and back). Shared
+  projects list in the left panel with the rest, marked "Shared", and
+  each chat someone else started says who.
 
 Storage: `identity.projects` and `identity.project_members`
 ([schema](../data/schema.md)); migration 3 copied every project the

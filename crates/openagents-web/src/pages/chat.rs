@@ -311,6 +311,14 @@ async fn start(State(app): State<App>, headers: HeaderMap, Form(prompt): Form<Pr
         Err(message) => return refusal(StatusCode::CONFLICT, message),
     };
     let project = picked.project.as_ref().map(|project| project.id.clone());
+    // Work in a shared project's repository uses the sender's own GitHub
+    // access, never the owner's (#11587).
+    if picked.target != crate::composer_row::Target::Chat
+        && let Some(shared) = picked.project.as_ref()
+        && let Some(why) = crate::projects::members::primary_refusal(&app, &headers, shared).await
+    {
+        return refusal(StatusCode::CONFLICT, &why);
+    }
     match &picked.target {
         crate::composer_row::Target::Chat => {}
         crate::composer_row::Target::Coder(_) if !files.is_empty() => {
@@ -1641,6 +1649,12 @@ async fn follow(
     // for a new chat only, never by moving this one to another chat.
     if matches!(picked.target, crate::composer_row::Target::Coder(_)) {
         return refusal(StatusCode::CONFLICT, crate::composer_row::CODER_NEW_CHAT);
+    }
+    if picked.target != crate::composer_row::Target::Chat
+        && let Some(shared) = picked.project.as_ref()
+        && let Some(why) = crate::projects::members::primary_refusal(&app, &headers, shared).await
+    {
+        return refusal(StatusCode::CONFLICT, &why);
     }
     if picked.target == crate::composer_row::Target::Solver {
         return follow_solver(

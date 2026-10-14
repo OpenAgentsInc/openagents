@@ -592,16 +592,18 @@ pub(crate) fn create(dir: &Path, account: &str, project: Project) -> Result<Proj
 }
 
 /// Change a project's own record as `account`: the owner only when
-/// `owner_only`, else an editor or the owner.
+/// `owner_only` says so of the project as kept, else an editor or the
+/// owner.
 pub(crate) fn edit(
     dir: &Path,
     account: &str,
     id: &str,
-    owner_only: bool,
+    owner_only: impl FnOnce(&Project) -> bool,
     apply: impl FnOnce(&mut Project) -> Result<(), RepoError>,
 ) -> Result<Project, RepoError> {
     change(dir, id, |current| {
         let mut held = current.ok_or(RepoError::NotFound)?;
+        let owner_only = owner_only(&held.project);
         held.require(account, |role| {
             if owner_only {
                 role.owns()

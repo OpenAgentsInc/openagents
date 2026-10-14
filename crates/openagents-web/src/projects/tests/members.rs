@@ -235,6 +235,30 @@ async fn an_invited_member_works_by_role_and_loses_access_when_removed() {
         assert_eq!(body["error"]["code"], "project_role", "{body}");
     }
 
+    // ...nor a file (#11588).
+    let (status, bytes) = other
+        .raw(
+            &world,
+            "POST",
+            "/v1/files?purpose=project&filename=mine.txt",
+            Body::from("mine"),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let mine = serde_json::from_slice::<Value>(&bytes).unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let (status, body) = other
+        .json(
+            &world,
+            "POST",
+            &format!("/v1/projects/{id}/attachments"),
+            json!({"file": mine}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+
     // An editor adds notes and changes instructions, but doesn't rename.
     let (status, body) = owner
         .json(
@@ -747,4 +771,110 @@ async fn members_see_the_projects_chats_and_each_sender_pays() {
         )
         .await;
     assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+/// #11589: the owner makes a link from the project's Members section; the
+/// link opens a page naming the project, who invited, and the role, with
+/// Join and Decline; signed out it goes through sign-in and back; a
+/// viewer's project page has no controls they can't use, and Leave; the
+/// pages read in plain words.
+#[tokio::test]
+async fn sharing_on_the_website() {
+    let world = world().await;
+    let mut owner = Browser::default();
+    owner.sign_in(&world, "octo-local").await;
+    let mut other = Browser::default();
+    other.sign_in(&world, "quiet-local").await;
+    let api = Api::of(&owner);
+    let (_, made) = api
+        .json(
+            &world,
+            "POST",
+            "/v1/projects",
+            json!({"name": "garden", "instructions": "Water on Sundays."}),
+        )
+        .await;
+    let id = made["id"].as_str().unwrap().to_owned();
+    let page = owner.get(&world, &format!("/projects/{id}")).await;
+    assert_eq!(page.status, StatusCode::OK);
+    assert!(page.body.contains("Members"), "{}", page.body);
+    assert!(page.body.contains("Invite a viewer"));
+    crate::copy_guard::assert_plain(&format!("/projects/{id}"), &page.body);
+    let csrf = hidden(
+        &page.body,
+        &format!("action=\"/projects/{id}/invite\""),
+        "csrf",
+    );
+    let made = owner
+        .post(
+            &world,
+            &format!("/projects/{id}/invite"),
+            &[("csrf", &csrf), ("role", "viewer")],
+        )
+        .await;
+    assert_eq!(made.status, StatusCode::OK, "{}", made.body);
+    assert!(made.body.contains("It's shown only now."), "{}", made.body);
+    let at = made.body.find("/projects/join/prjinv_").unwrap();
+    let link: String = made.body[at..]
+        .chars()
+        .take_while(|c| c.is_ascii_alphanumeric() || matches!(c, '/' | '_'))
+        .collect();
+
+    // Signed out: sign in first, then back here.
+    let mut stranger = Browser::default();
+    let away = stranger.get(&world, &link).await;
+    assert!(away.status.is_redirection(), "{}", away.status);
+    assert!(away.location().contains("return_to"), "{}", away.location());
+
+    let invite = other.get(&world, &link).await;
+    assert_eq!(invite.status, StatusCode::OK, "{}", invite.body);
+    assert!(invite.body.contains("garden"));
+    assert!(invite.body.contains("as a viewer"));
+    assert!(invite.body.contains("Decline"));
+    crate::copy_guard::assert_plain(&link, &invite.body);
+    let csrf = hidden(&invite.body, &format!("action=\"{link}\""), "csrf");
+    let joined = other.post(&world, &link, &[("csrf", &csrf)]).await;
+    assert!(joined.status.is_redirection(), "{}", joined.body);
+    assert_eq!(joined.location(), format!("/projects/{id}"));
+
+    // The viewer's page: instructions to read, no forms but Leave.
+    let theirs = other.get(&world, &format!("/projects/{id}")).await;
+    assert_eq!(theirs.status, StatusCode::OK);
+    assert!(theirs.body.contains("Water on Sundays."));
+    assert!(theirs.body.contains("Shared · viewer"));
+    assert!(theirs.body.contains("Leave this project"));
+    for absent in [
+        format!("/projects/{id}/edit"),
+        format!("/?project={id}"),
+        "Invite a".to_owned(),
+        "Make primary".to_owned(),
+        "Add a repository".to_owned(),
+        "Make owner".to_owned(),
+    ] {
+        assert!(!theirs.body.contains(&absent), "a viewer sees {absent}");
+    }
+    crate::copy_guard::assert_plain(&format!("/projects/{id}"), &theirs.body);
+    // The left panel lists it, marked.
+    let home = other.get(&world, "/").await;
+    assert!(
+        home.body.contains("garden") && home.body.contains("Shared · viewer"),
+        "{}",
+        home.body
+    );
+    // A used link says so.
+    let again = other.get(&world, &link).await;
+    assert_eq!(again.status, StatusCode::NOT_FOUND);
+    assert!(again.body.contains("Ask for a new one."));
+    // Leave.
+    let csrf = hidden(
+        &theirs.body,
+        &format!("action=\"/projects/{id}/leave\""),
+        "csrf",
+    );
+    let left = other
+        .post(&world, &format!("/projects/{id}/leave"), &[("csrf", &csrf)])
+        .await;
+    assert!(left.status.is_redirection(), "{}", left.body);
+    let gone = other.get(&world, &format!("/projects/{id}")).await;
+    assert_eq!(gone.status, StatusCode::NOT_FOUND);
 }

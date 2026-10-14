@@ -153,6 +153,7 @@ pub const ROUTES: &[Route] = &[
     route("/v1/projects/{id}/members", FirstParty, "Projects", &[op("get", "listProjectMembers", "List the people in a project and their roles.")]),
     route("/v1/projects/{id}/members/{member}", FirstParty, "Projects", &[op("patch", "changeProjectMember", "Change a member's role, or give them the project."), op("delete", "removeProjectMember", "Remove a member from a project.")]),
     route("/v1/projects/{id}/leave", FirstParty, "Projects", &[op("post", "leaveProject", "Leave a project shared with you.")]),
+    route("/v1/projects/{id}/access", FirstParty, "Projects", &[op("get", "projectRepositoryAccess", "Whether your own GitHub access reaches each of a project's repositories.")]),
     route("/v1/projects/{id}/invitations", FirstParty, "Projects", &[op("post", "inviteToProject", "Make a single-use invitation link for an editor or a viewer.")]),
     route("/v1/projects/invitations/preview", FirstParty, "Projects", &[op("post", "previewProjectInvitation", "See which project an invitation link is for.")]),
     route("/v1/projects/invitations/accept", FirstParty, "Projects", &[op("post", "acceptProjectInvitation", "Join a project with an invitation link.")]),

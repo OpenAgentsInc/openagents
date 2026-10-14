@@ -97,12 +97,14 @@ pub(super) fn ticket(
     secret.fill(0);
     let now = now();
     let expires_unix = now + seconds;
-    // Only a project the account owns (#11585): a shared project's
-    // repository goes through each member's own access (#11587).
-    let repository_id = owned_repository(dir, account, |r| {
+    // A project the account owns, or one shared with it where it may
+    // edit; a shared project's repository goes through the member's own
+    // access (#11587), checked before the ticket is made.
+    let repository_id = usable_repository(dir, account, |r| {
         r.repository.eq_ignore_ascii_case(repository)
     })?
     .ok_or(RepoError::NotFound)?
+    .0
     .repository_id;
     mutate(dir, account, |record| {
         let revoked = if app {
@@ -231,7 +233,7 @@ async fn answer(
     if held.expires_unix <= now() {
         return Err(Refused::Ticket);
     }
-    let project = owned_repository(dir, &record.account, |r| {
+    let (project, owns) = usable_repository(dir, &record.account, |r| {
         r.repository_id == held.repository_id
     })?
     .ok_or(Refused::Repository)?;
@@ -258,8 +260,11 @@ async fn answer(
         .repository
         .split_once('/')
         .map_or("", |(owner, _)| owner);
+    // The project's own installation only for the project's owner; a
+    // member uses an installation their own grant reaches (#11587).
     let installation = project
         .installation_id
+        .filter(|_| owns)
         .or_else(|| grant.installation_of(owner).map(|i| i.id))
         .ok_or(RepoError::NotInstalled)?;
     let minted = app
@@ -272,15 +277,35 @@ async fn answer(
     ))
 }
 
-/// The first repository `pick` chooses among the projects `account` owns.
-fn owned_repository(
+/// The first repository `pick` chooses among the projects `account` may
+/// change (owner or editor), its own projects first, and whether the
+/// account owns that project.
+fn usable_repository(
     dir: &Path,
     account: &str,
     pick: impl Fn(&super::ProjectRepository) -> bool,
-) -> Result<Option<super::ProjectRepository>, RepoError> {
-    Ok(super::members::held_by(dir, account)?
-        .into_iter()
-        .filter(|held| held.role_of(account) == Some(super::Role::Owner))
-        .flat_map(|held| held.project.repositories)
-        .find(|r| pick(r)))
+) -> Result<Option<(super::ProjectRepository, bool)>, RepoError> {
+    let mut held = super::members::held_by(dir, account)?;
+    held.retain(|h| h.role_of(account).is_some_and(super::Role::edits));
+    held.sort_by_key(|h| h.role_of(account) != Some(super::Role::Owner));
+    Ok(held.into_iter().find_map(|h| {
+        let owns = h.role_of(account) == Some(super::Role::Owner);
+        h.project
+            .repositories
+            .into_iter()
+            .find(|r| pick(r))
+            .map(|r| (r, owns))
+    }))
+}
+
+/// Whether `repository` is in a project `account` owns.
+pub(super) fn owns_repository(
+    dir: &Path,
+    account: &str,
+    repository: &str,
+) -> Result<bool, RepoError> {
+    Ok(usable_repository(dir, account, |r| {
+        r.repository.eq_ignore_ascii_case(repository)
+    })?
+    .is_some_and(|(_, owns)| owns))
 }

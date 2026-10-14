@@ -184,7 +184,12 @@ pub(crate) fn build(list: ChatList, rows: &[Conversation], csrf: &str, view: Vie
             let mut group = ChatGroup::new(
                 project.id.clone(),
                 project.name.clone(),
-                format!("/?project={}", project.id),
+                // A viewer starts no chat there: the group opens the project.
+                if crate::projects::api::role_of(project).edits() {
+                    format!("/?project={}", project.id)
+                } else {
+                    crate::projects::page::href(&project.id)
+                },
             );
             if let Some(primary) = project.primary() {
                 group =
@@ -202,6 +207,12 @@ pub(crate) fn build(list: ChatList, rows: &[Conversation], csrf: &str, view: Vie
                 );
             if sidebar.reconnect() {
                 group = group.note("Reconnect GitHub", crate::projects::PAGE);
+            } else if crate::projects::api::shared(project) {
+                // Shared projects list with the rest, marked (#11589).
+                group = group.note(
+                    crate::projects::page::shared_label(crate::projects::api::role_of(project)),
+                    format!("{}#members", crate::projects::page::href(&project.id)),
+                );
             }
             list = list.project(group);
         }

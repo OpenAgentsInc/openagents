@@ -842,3 +842,101 @@ async fn the_broker_hands_out_the_persons_own_token_only_with_private_access() {
         (404, json!("repository_not_found"))
     );
 }
+
+/// A shared project's repository never gives a member more than their
+/// own GitHub access (#11587): a member whose own token doesn't reach it
+/// is told so and gets no broker ticket, and nothing is asked of GitHub
+/// with the owner's token on their behalf (the owner's token is revoked
+/// first, so a call made with it would mark the owner's access ended).
+#[tokio::test]
+async fn a_member_works_in_a_shared_repository_only_with_their_own_access() {
+    let world = world().await;
+    let owner = sign_in(&world, "octo-local").await;
+    let member = sign_in(&world, "quiet-local").await;
+    assert_eq!(grant(&world, &owner, true, "octo-local").await.0, 200);
+    assert_eq!(grant(&world, &member, true, "quiet-local").await.0, 200);
+    let (status, made) = call(
+        &world,
+        "POST",
+        &owner,
+        "/v1/projects",
+        json!({"name": "plans", "repositories": ["octo-local/secret-plans"]}),
+    )
+    .await;
+    assert_eq!(status, 200, "{made}");
+    let id = made["project"]["id"].as_str().unwrap().to_string();
+    let (status, reach) = call(
+        &world,
+        "GET",
+        &owner,
+        &format!("/v1/projects/{id}/access"),
+        Value::Null,
+    )
+    .await;
+    assert_eq!(status, 200, "{reach}");
+    assert_eq!(reach["repositories"][0]["access"], true);
+    let (_, invited) = call(
+        &world,
+        "POST",
+        &owner,
+        &format!("/v1/projects/{id}/invitations"),
+        json!({"role": "editor"}),
+    )
+    .await;
+    let code = invited["code"].as_str().unwrap().to_string();
+    let (status, joined) = call(
+        &world,
+        "POST",
+        &member,
+        "/v1/projects/invitations/accept",
+        json!({"code": code}),
+    )
+    .await;
+    assert_eq!(status, 200, "{joined}");
+
+    world.fake.revoke("octo-local");
+    // The member sees the repository listed, and that their access doesn't reach it.
+    let (status, reach) = call(
+        &world,
+        "GET",
+        &member,
+        &format!("/v1/projects/{id}/access"),
+        Value::Null,
+    )
+    .await;
+    assert_eq!(status, 200, "{reach}");
+    assert_eq!(
+        reach["repositories"][0]["repository"],
+        "octo-local/secret-plans"
+    );
+    assert_eq!(reach["repositories"][0]["access"], false);
+    assert_eq!(
+        reach["repositories"][0]["message"],
+        "You don't have access to this repository on GitHub."
+    );
+    // No ticket for it: refused with their own token's answer.
+    let (status, body) = call(
+        &world,
+        "POST",
+        &member,
+        "/v1/account/github/broker",
+        json!({"repository": "octo-local/secret-plans", "seconds": 600}),
+    )
+    .await;
+    assert_ne!(status, 200, "{body}");
+    assert_eq!(body["error"]["code"], "repository_not_found", "{body}");
+    // The owner's access was never used: GitHub would have refused the
+    // revoked token and the owner's status would say to reconnect.
+    let (_, status_body) = call(&world, "GET", &owner, "/v1/account/github", Value::Null).await;
+    assert_eq!(status_body["github"]["state"], "connected", "{status_body}");
+    // An outsider can't even ask.
+    let (status, _) = call(
+        &world,
+        "GET",
+        &member,
+        "/v1/projects/prj_00000000000000ff/access",
+        Value::Null,
+    )
+    .await;
+    assert_eq!(status, 404);
+}

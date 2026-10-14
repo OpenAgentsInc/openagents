@@ -303,6 +303,32 @@ pub(super) async fn look_up(
     Ok((found, Some(installation.id)))
 }
 
+/// The person's own App user token can push to `repository` (#11587):
+/// a shared project's member never gets more from the App than their own
+/// GitHub access allows.
+pub(super) async fn can_push(
+    dir: &Path,
+    app: &AppClient,
+    account: &str,
+    repository: &str,
+) -> Result<(), RepoError> {
+    if !full_name(repository) {
+        return Err(RepoError::Invalid);
+    }
+    let answer = user_api(dir, app, account, &format!("/repos/{repository}")).await?;
+    if answer.status == 404 {
+        return Err(RepoError::NotFound);
+    }
+    let body = answered(answer)?.body;
+    if body["archived"].as_bool() == Some(true)
+        || body["disabled"].as_bool() == Some(true)
+        || body["permissions"]["push"].as_bool() != Some(true)
+    {
+        return Err(RepoError::CannotPush);
+    }
+    Ok(())
+}
+
 fn installation_for(
     dir: &Path,
     account: &str,

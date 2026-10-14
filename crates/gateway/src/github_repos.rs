@@ -31,6 +31,7 @@ pub(crate) fn routes() -> Vec<(&'static str, MethodRouter<Arc<ServeState>>)> {
             axum::routing::patch(set_role).delete(remove_member),
         ),
         ("/v1/projects/{id}/leave", post(leave)),
+        ("/v1/projects/{id}/access", get(access)),
         ("/v1/projects/{id}/invitations", post(invite)),
         ("/v1/projects/invitations/preview", post(preview)),
         ("/v1/projects/invitations/accept", post(accept)),
@@ -218,6 +219,14 @@ async fn remove_member(
     run(&state, &headers, Call::RemoveMember { id, member }).await
 }
 
+async fn access(
+    State(state): State<Arc<ServeState>>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Response {
+    run(&state, &headers, Call::Access(id)).await
+}
+
 async fn leave(
     State(state): State<Arc<ServeState>>,
     headers: HeaderMap,
@@ -335,6 +344,7 @@ mod tests {
                 "/v1/projects/{id}/members",
                 "/v1/projects/{id}/members/{member}",
                 "/v1/projects/{id}/leave",
+                "/v1/projects/{id}/access",
                 "/v1/projects/{id}/invitations",
                 "/v1/projects/invitations/preview",
                 "/v1/projects/invitations/accept",

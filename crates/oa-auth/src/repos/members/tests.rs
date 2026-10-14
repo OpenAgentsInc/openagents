@@ -157,6 +157,8 @@ fn each_role_does_what_it_may_and_nothing_more() {
             Some("Keep receipts")
         );
         assert_eq!(rename(dir, B, "mine").unwrap_err(), RepoError::NotAllowed);
+        // Sending the name it already has (a form that sends both) is fine.
+        assert_eq!(rename(dir, B, "budget").unwrap().name, "budget");
         assert_eq!(
             invite(dir, B, P, Role::Viewer, 0).unwrap_err(),
             RepoError::NotAllowed

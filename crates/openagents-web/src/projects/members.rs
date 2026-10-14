@@ -44,6 +44,7 @@ pub(crate) fn routes() -> Router<App> {
         )
         .route("/v1/projects/{id}/invitations", post(invite))
         .route("/v1/projects/{id}/leave", post(leave))
+        .route("/v1/projects/{id}/access", get(repository_access))
         .route("/v1/projects/invitations/preview", post(preview))
         .route("/v1/projects/invitations/accept", post(accept))
 }
@@ -235,6 +236,60 @@ async fn left(app: &App, token: &str, found: &Access) -> Response {
         ),
         Err(response) => response,
     }
+}
+
+/// `GET /v1/projects/{id}/access` (#11587): whether your own GitHub
+/// access reaches each of the project's repositories:
+/// `{data: [{repository, access, message?}]}`.
+async fn repository_access(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Response {
+    let (token, found) = match reach(&app, &headers, &id).await {
+        Ok(found) => found,
+        Err(response) => return response,
+    };
+    let path = format!("/v1/projects/{}/access", found.project.id);
+    match call(&app, &token, Method::GET, &path, None).await {
+        Ok(body) => answer(
+            StatusCode::OK,
+            json!({"data": body["repositories"].as_array().cloned().unwrap_or_default().iter().map(|row| json!({
+                "repository": row["repository"],
+                "access": row["access"],
+                "message": row["message"],
+            })).collect::<Vec<_>>()}),
+        ),
+        Err(response) => response,
+    }
+}
+
+/// Why a member's work in a shared project's primary repository doesn't
+/// start (#11587): `None` when their own GitHub access reaches it, or the
+/// project is theirs, or it has no repository.
+pub(crate) async fn primary_refusal(
+    app: &App,
+    headers: &HeaderMap,
+    project: &oa_auth::repos::Project,
+) -> Option<String> {
+    let primary = project.primary()?;
+    // A project only its owner is in works as it always has.
+    if super::api::role_of(project).owns() && !super::api::shared(project) {
+        return None;
+    }
+    let token = super::shared_chats::token(headers)?;
+    let path = format!("/v1/projects/{}/access", project.id);
+    let body = call(app, &token, Method::GET, &path, None).await.ok()?;
+    let row = body["repositories"]
+        .as_array()?
+        .iter()
+        .find(|row| row["repository"] == primary.repository.as_str())?;
+    (row["access"] != true).then(|| {
+        row["message"]
+            .as_str()
+            .unwrap_or("You don't have access to this repository on GitHub.")
+            .to_owned()
+    })
 }
 
 /// `POST /v1/projects/{id}/leave`.
