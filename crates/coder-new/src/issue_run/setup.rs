@@ -376,7 +376,40 @@ async fn make_worktree(repo: &Path, path: &Path, base: &str) -> Result<(), Strin
         repo,
     )
     .await?;
+    exclude_bytecode(path).await;
     Ok(())
+}
+
+/// Python's bytecode caches, which a check or the agent's own runs leave
+/// in the working copy, never join the change (#11562): they go in the
+/// repository's local exclude list (`info/exclude`, never committed).
+const BYTECODE: [&str; 2] = ["__pycache__/", "*.py[cod]"];
+
+async fn exclude_bytecode(worktree: &Path) {
+    let Ok(common) = output("git", &["rev-parse", "--git-common-dir"], worktree).await else {
+        return;
+    };
+    let common = worktree.join(common.trim());
+    let file = common.join("info/exclude");
+    let have = std::fs::read_to_string(&file).unwrap_or_default();
+    let missing: Vec<&str> = BYTECODE
+        .iter()
+        .copied()
+        .filter(|line| !have.lines().any(|seen| seen.trim() == *line))
+        .collect();
+    if missing.is_empty() {
+        return;
+    }
+    let mut text = have;
+    if !text.is_empty() && !text.ends_with('\n') {
+        text.push('\n');
+    }
+    for line in missing {
+        text.push_str(line);
+        text.push('\n');
+    }
+    let _ = std::fs::create_dir_all(common.join("info"));
+    let _ = std::fs::write(&file, text);
 }
 
 /// The marker `scripts/bench/traces` writes into a run folder once its
