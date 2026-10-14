@@ -678,6 +678,28 @@ def sound_slots(cut):
     return out
 
 
+def mean_db(path, start=None, dur=None, stream="0:a:0"):
+    """The mean loudness of a file's sound (or a stretch of it), in dB."""
+    cmd = ["ffmpeg", "-v", "info"] + (["-ss", str(start)] if start is not None else []) + \
+          (["-t", str(dur)] if dur is not None else []) + ["-i", str(path), "-map", stream, "-af", "volumedetect",
+                                                          "-f", "null", "-"]
+    m = re.search(r"mean_volume: (-?[\d.]+) dB", subprocess.run(cmd, capture_output=True, text=True).stderr)
+    return float(m[1]) if m else None
+
+
+def level_db(shot, music, cut):
+    """How much to lift a shot's own speech so it sits a little above the music
+    around it: phone sound is far quieter than a mastered score. Applied after a
+    gentle compressor, so loud words don't jump out."""
+    speech = mean_db(expand(shot["src"]), shot.get("in", 0.0), shot["dur"])
+    bed = mean_db(music, stream="0:a:0")
+    if speech is None or bed is None:
+        return 0.0
+    bed += 20 * math.log10(max(cut.get("music_gain", 1.0), 1e-6))
+    # The compressor takes about 3 dB off speech; aim 3 dB over the music.
+    return max(-6.0, min(24.0, bed + 3.0 - speech + 3.0))
+
+
 def duck_expr(slots, level, ramp=0.35):
     """An ffmpeg volume expression: 1 outside the slots, `level` inside them,
     easing down over `ramp` seconds before each and back up after it."""
@@ -760,6 +782,8 @@ def assemble(cut, segs, w, h, out, master):
         f = min(0.05, dur / 4)
         audio.append(f"[{nxt}:a:0]aresample=48000,aformat=channel_layouts=stereo,atrim=end={dur:.3f},"
                      f"asetpts=PTS-STARTPTS,afade=t=in:d={f},afade=t=out:st={dur - f:.3f}:d={f},"
+                     f"acompressor=threshold=-26dB:ratio=3:attack=5:release=150,"
+                     f"volume={level_db(shot, music, cut):.1f}dB,"
                      f"volume={shot['sound'].get('gain', 1.0)},adelay={ms}|{ms}[sp{j}]")
         beds.append(f"[sp{j}]")
         nxt += 1
