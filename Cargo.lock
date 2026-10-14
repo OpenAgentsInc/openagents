@@ -10511,6 +10511,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "oa-computers"
+version = "1.0.0-rc.13"
+dependencies = [
+ "axum 0.8.9",
+ "boat",
+ "coder-environment",
+ "coder-working-computer",
+ "computer-driver",
+ "getrandom 0.4.3",
+ "oa-boat",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "tokio",
+ "tokio-postgres",
+]
+
+[[package]]
 name = "oa-connections"
 version = "1.0.0-rc.13"
 dependencies = [

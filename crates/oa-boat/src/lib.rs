@@ -11,6 +11,7 @@ pub mod gce;
 pub mod remote;
 pub mod service;
 pub mod sizes;
+pub mod testing;
 pub mod time;
 
 pub use service::{Config, Service};

@@ -1,0 +1,232 @@
+//! The reconcile loop: read desired state, claim one computer with a row
+//! lease, call the driver through the lifecycle core, persist every
+//! observation, repeat, and recover after any crash.
+//!
+//! Each visit claims a due computer (`FOR UPDATE SKIP LOCKED`), runs one
+//! settle of `coder_working_computer` (decide → one driver effect →
+//! retain the observation → decide again) toward its desired state, and
+//! gives the lease back with when to look again: soon after a failure
+//! (with backoff), on a slow revisit otherwise (idle and absolute bounds,
+//! silent turns). Every observation is retained before the next decision,
+//! so a process killed mid-provision resumes from the last retained fact:
+//! a create whose reply was lost repeats the same operation identity and
+//! finds the same computer, never a second one.
+//!
+//! The loop runs on a `LocalSet` (driver futures need not be `Send`).
+
+use crate::store::{Desired, Entry, PgLease, Store};
+use coder_working_computer::driver::{self, Settled};
+use coder_working_computer::on_driver::OnDriver;
+use coder_working_computer::{Phase, StopReason, Trigger};
+use computer_driver::Driver;
+use std::cell::Cell;
+use std::rc::Rc;
+use std::time::Duration;
+
+#[derive(Clone, Debug)]
+pub struct Settings {
+    /// Unique per process; names the lease holder.
+    pub holder: String,
+    pub lease: Duration,
+    /// How often an idle reconciler looks for due work.
+    pub poll: Duration,
+    /// When to revisit a settled live computer.
+    pub revisit: Duration,
+    /// First retry delay; doubles per failed attempt, capped.
+    pub backoff: Duration,
+    pub backoff_cap: Duration,
+    pub parallel: usize,
+    /// The lifecycle's wait between observations and its deadline for a
+    /// boot or a stop.
+    pub driver_poll: Duration,
+    pub driver_deadline: Duration,
+}
+impl Settings {
+    pub fn new(holder: impl Into<String>) -> Self {
+        Self {
+            holder: holder.into(),
+            lease: Duration::from_secs(60),
+            poll: Duration::from_secs(1),
+            revisit: Duration::from_secs(30),
+            backoff: Duration::from_secs(5),
+            backoff_cap: Duration::from_secs(300),
+            parallel: 16,
+            driver_poll: Duration::from_secs(3),
+            driver_deadline: Duration::from_secs(900),
+        }
+    }
+}
+
+pub fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+/// Phases a "running" intent wakes from (create, restore, or finish one).
+fn wakes_from(p: &Phase) -> bool {
+    matches!(
+        p,
+        Phase::New
+            | Phase::Creating
+            | Phase::Booting
+            | Phase::Stopped
+            | Phase::Unknown { .. }
+            | Phase::Failed { .. }
+    )
+}
+
+pub struct Reconciler<D> {
+    pub store: Store,
+    pub driver: D,
+    pub settings: Settings,
+}
+
+impl<D: Driver + Clone + 'static> Reconciler<D> {
+    fn provider(&self, e: &Entry) -> OnDriver<D> {
+        let mut p = OnDriver::new(self.driver.clone(), e.image.clone());
+        p.poll = self.settings.driver_poll;
+        p.deadline = self.settings.driver_deadline;
+        p
+    }
+
+    fn backoff(&self, attempts: i32) -> Duration {
+        let factor = 1u32 << attempts.clamp(0, 10);
+        (self.settings.backoff * factor).min(self.settings.backoff_cap)
+    }
+
+    /// Run forever: claim due computers and visit them, a bounded number at
+    /// once. Call inside a `LocalSet`.
+    pub async fn run(self: Rc<Self>) {
+        let busy = Rc::new(Cell::new(0usize));
+        loop {
+            let mut claimed = false;
+            while busy.get() < self.settings.parallel {
+                match self
+                    .store
+                    .claim(&self.settings.holder, self.settings.lease)
+                    .await
+                {
+                    Ok(Some(e)) => {
+                        claimed = true;
+                        busy.set(busy.get() + 1);
+                        let me = self.clone();
+                        let b = busy.clone();
+                        tokio::task::spawn_local(async move {
+                            me.visit(e).await;
+                            b.set(b.get() - 1);
+                        });
+                    }
+                    Ok(None) => break,
+                    Err(err) => {
+                        eprintln!("oa-computers: claim: {err}");
+                        break;
+                    }
+                }
+            }
+            if !claimed {
+                tokio::time::sleep(self.settings.poll).await;
+            } else {
+                tokio::task::yield_now().await;
+            }
+        }
+    }
+
+    /// One visit to one claimed computer.
+    pub async fn visit(self: &Rc<Self>, e: Entry) {
+        let lease = PgLease {
+            store: self.store.clone(),
+            id: e.id.clone(),
+            holder: self.settings.holder.clone(),
+            lease: self.settings.lease,
+        };
+        let renewer = {
+            let store = self.store.clone();
+            let id = e.id.clone();
+            let holder = self.settings.holder.clone();
+            let every = self.settings.lease / 3;
+            let lease = self.settings.lease;
+            tokio::task::spawn_local(async move {
+                loop {
+                    tokio::time::sleep(every).await;
+                    if !store.renew(&id, &holder, lease).await.unwrap_or(false) {
+                        break;
+                    }
+                }
+            })
+        };
+        let p = self.provider(&e);
+        let now = now_ms();
+        let woke = e.desired == Desired::Running && wakes_from(&e.record.phase);
+        let result = match e.desired {
+            Desired::Deleted => driver::delete(&p, &lease, now).await,
+            Desired::Stopped => driver::stop(&p, &lease, now).await,
+            Desired::Running if woke => driver::settle(&p, &lease, Trigger::Wake, now).await,
+            Desired::Running => driver::tick(&p, &lease, false, now).await,
+        };
+        renewer.abort();
+        let (attempts, error, again, done) = match &result {
+            Ok(s) => {
+                let c = s.computer();
+                let done = e.desired == Desired::Deleted && c.phase == Phase::Deleted;
+                if e.desired == Desired::Running
+                    && c.phase == Phase::Stopped
+                    && !woke
+                    && c.boot().and_then(|b| b.stop_reason) != Some(StopReason::Checkpoint)
+                {
+                    // A lifecycle bound stopped it (idle, absolute, silent
+                    // turn): the intent follows, so it is not woken again.
+                    let _ = self
+                        .store
+                        .settle_desired(&e.id, Desired::Running, Desired::Stopped)
+                        .await;
+                }
+                match s {
+                    Settled::Stuck(d, _) => (
+                        e.attempts + 1,
+                        Some(format!("no progress on {d:?}")),
+                        self.backoff(e.attempts),
+                        false,
+                    ),
+                    Settled::BootFailed(c) => (
+                        e.attempts + 1,
+                        Some(match &c.phase {
+                            Phase::Failed { reason } => format!("boot failed: {reason}"),
+                            _ => "boot failed".into(),
+                        }),
+                        self.backoff(e.attempts),
+                        false,
+                    ),
+                    Settled::Refused(m, _) => (
+                        e.attempts + 1,
+                        Some(m.clone()),
+                        self.backoff(e.attempts),
+                        done,
+                    ),
+                    _ => (0, None, self.settings.revisit, done),
+                }
+            }
+            Err(err) => (
+                e.attempts + 1,
+                Some(err.to_string()),
+                self.backoff(e.attempts),
+                false,
+            ),
+        };
+        if let Err(err) = self
+            .store
+            .release(
+                &e.id,
+                &self.settings.holder,
+                again,
+                attempts,
+                error.as_deref(),
+                done,
+            )
+            .await
+        {
+            eprintln!("oa-computers: release {}: {err}", e.id);
+        }
+    }
+}

@@ -20,6 +20,11 @@ use std::time::Duration;
 /// What the lifecycle needs from a driver.
 pub const NEEDS: [Profile; 2] = [Profile::Core, Profile::Suspend];
 
+/// Whether a driver with these capabilities can run a chat computer.
+pub fn check(caps: &computer_driver::Capabilities) -> Result<(), Unsupported> {
+    admit(caps, &NEEDS)
+}
+
 pub struct OnDriver<D> {
     pub driver: D,
     /// The immutable image a new computer starts from (an Environment
@@ -41,7 +46,7 @@ impl<D: Driver> OnDriver<D> {
     }
     /// Refuse a driver that cannot run a chat computer, before any write.
     pub fn admit(driver: &D) -> Result<(), Unsupported> {
-        admit(&driver.capabilities(), &NEEDS)
+        check(&driver.capabilities())
     }
 
     /// Wait for `want`; `Failed` if the computer failed or vanished,
