@@ -1251,7 +1251,7 @@ TOOLS = {
                  {"document": "string", "version": "string?"}),
     "lab_show": (tool_show, "Show a time range of a document in the chat: which shots and captions are there, a "
                             "strip of frames, and the preview video starting there. Times are m:ss or seconds.",
-                 {"document": "string", "from": "string?", "to": "string?", "version": "string?"}),
+                 {"document": "string", "from": "string?", "to": "string?", "at": "string?", "version": "string?"}),
     "lab_frame": (tool_frame, "One still at a time (or several times as a strip), for looking closely.",
                   {"document": "string", "at": "string", "version": "string?"}),
     "lab_edit": (tool_edit, "Change a document by a JSON Patch (RFC 6902) on its JSON, making a new version. "
@@ -1297,10 +1297,19 @@ PARAM_DOCS = {
 }
 
 
+EXTRA = {"author", "render", "ripple_captions", "quality"}  # settings the callers pass, not the model
+
+
 def call(name: str, args: dict) -> dict:
     if name not in TOOLS:
         raise Refused(f"there's no tool {name}")
-    return TOOLS[name][0](args or {})
+    args = {k: v for k, v in (args or {}).items() if v is not None}
+    takes = set(TOOLS[name][2])
+    unknown = sorted(set(args) - takes - EXTRA)
+    if unknown:
+        raise Refused(f"{name} doesn't take {', '.join(unknown)}; it takes "
+                      + ", ".join(f"{k}{'' if not t.endswith('?') else ' (optional)'}" for k, t in TOOLS[name][2].items()))
+    return TOOLS[name][0](args)
 
 
 # ---- import ----------------------------------------------------------------------
