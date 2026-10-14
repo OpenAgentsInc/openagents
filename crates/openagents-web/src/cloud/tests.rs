@@ -579,7 +579,11 @@ async fn cross_origin_malformed_and_unauthenticated_forms_create_no_native_sessi
         .await;
         assert_eq!(absent.status, StatusCode::SEE_OTHER, "{path}");
         private(&absent);
-        assert_eq!(absent.headers[header::LOCATION], "/sign-in");
+        // Sign in, then back to the page (crate::link_preview).
+        assert_eq!(
+            absent.headers[header::LOCATION],
+            crate::auth::login_href(path, false).as_str()
+        );
     }
     let absent = request(
         &fixture.site,
@@ -623,7 +627,10 @@ async fn revoked_sessions_and_removed_memberships_see_no_account() {
     )
     .await;
     assert_eq!(revoked.status, StatusCode::SEE_OTHER);
-    assert_eq!(revoked.headers[header::LOCATION], "/sign-in");
+    assert_eq!(
+        revoked.headers[header::LOCATION],
+        "/login?return_to=%2Fsettings"
+    );
     private(&revoked);
     assert!(!revoked.body.contains("native-session-alice"));
 }

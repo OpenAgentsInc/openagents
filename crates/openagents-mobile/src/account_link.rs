@@ -1199,6 +1199,19 @@ impl Link {
         self.lock().signed()
     }
 
+    /// The title of the signed-in account's own chat that `link` opens on
+    /// the website (`{origin}/chat/{id}`), for its link card: the website
+    /// shows a signed-out reader only "A chat on OpenAgents", but this
+    /// phone may name the person's own chats to them.
+    #[must_use]
+    pub fn own_chat_title(&self, link: &str) -> Option<String> {
+        let state = self.lock();
+        if !state.signed() {
+            return None;
+        }
+        own_chat_title(&state.origin, &state.threads, link)
+    }
+
     /// Whether this phone's chats go to the account.
     #[must_use]
     pub fn syncs(&self) -> bool {
@@ -3462,6 +3475,55 @@ fn drawer_rows(state: &State) -> Vec<DrawerRow> {
             detail: detail(state, t),
         })
         .collect()
+}
+
+/// [`Link::own_chat_title`]: `link` is `{origin}/chat/{id}` (or a page
+/// under it) and `id` is one of `threads`.
+fn own_chat_title(origin: &str, threads: &[Thread], link: &str) -> Option<String> {
+    let site = url::Url::parse(origin).ok()?;
+    let link = url::Url::parse(link).ok()?;
+    if link.scheme() != site.scheme() || link.host_str()? != site.host_str()? {
+        return None;
+    }
+    let id = link.path().strip_prefix("/chat/")?.split('/').next()?;
+    threads
+        .iter()
+        .find(|thread| !id.is_empty() && thread.id == id)
+        .map(|thread| thread.title.trim().to_owned())
+        .filter(|title| !title.is_empty())
+}
+
+#[cfg(test)]
+mod own_chat_title_tests {
+    use super::*;
+
+    #[test]
+    fn only_the_accounts_own_chats_on_its_site_are_named() {
+        let threads = vec![Thread {
+            id: "3f2b8c1e-1a2b-4c3d-8e9f-0123456789ab".into(),
+            title: "Plan the launch email".into(),
+            ..Thread::default()
+        }];
+        let title = |link: &str| own_chat_title("https://openagents.com", &threads, link);
+        assert_eq!(
+            title("https://openagents.com/chat/3f2b8c1e-1a2b-4c3d-8e9f-0123456789ab").as_deref(),
+            Some("Plan the launch email")
+        );
+        assert_eq!(
+            title("https://openagents.com/chat/3f2b8c1e-1a2b-4c3d-8e9f-0123456789ab/github")
+                .as_deref(),
+            Some("Plan the launch email")
+        );
+        assert_eq!(
+            title("https://openagents.com/chat/00000000-1a2b-4c3d-8e9f-0123456789ab"),
+            None
+        );
+        assert_eq!(
+            title("https://example.com/chat/3f2b8c1e-1a2b-4c3d-8e9f-0123456789ab"),
+            None
+        );
+        assert_eq!(title("https://openagents.com/projects"), None);
+    }
 }
 
 /// A chat's row's second line: its project, when it is filed under one

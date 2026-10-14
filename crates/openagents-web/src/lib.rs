@@ -47,6 +47,7 @@ pub use environments::push::StandIn as StagingPush;
 mod github_refs;
 mod github_tools;
 mod layout;
+mod link_preview;
 pub mod mac_jobs;
 mod mac_jobs_actor;
 mod mac_jobs_page;
@@ -517,6 +518,7 @@ pub fn router(config: Config) -> Router {
         .merge(environments::routes(&app))
         .merge(cloud::routes())
         .merge(auth::routes())
+        .merge(link_preview::routes())
         .merge(device::routes())
         .merge(coder_sync::routes())
         .merge(phone_api::routes())

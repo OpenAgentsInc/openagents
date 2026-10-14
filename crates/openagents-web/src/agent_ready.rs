@@ -954,17 +954,26 @@ async fn webmcp() -> Response {
 pub(crate) fn head(title: &str, description: Option<&str>, path: Option<&str>) -> String {
     let description = description.unwrap_or(DESCRIPTION);
     let escape = crate::layout::escape;
+    let image = crate::link_preview::image(path);
     let mut out = format!(
         "<meta name=\"description\" content=\"{d}\">\
 <meta property=\"og:title\" content=\"{t}\">\
 <meta property=\"og:description\" content=\"{d}\">\
 <meta property=\"og:type\" content=\"website\">\
 <meta property=\"og:site_name\" content=\"OpenAgents\">\
-<meta name=\"twitter:card\" content=\"summary\">\
+<meta property=\"og:image\" content=\"{i}\">\
+<meta property=\"og:image:type\" content=\"image/png\">\
+<meta property=\"og:image:width\" content=\"1200\">\
+<meta property=\"og:image:height\" content=\"630\">\
+<meta property=\"og:image:alt\" content=\"{a}\">\
+<meta name=\"twitter:card\" content=\"summary_large_image\">\
+<meta name=\"twitter:image\" content=\"{i}\">\
 <link rel=\"ai-catalog\" href=\"/.well-known/ai-catalog.json\">\
 <link rel=\"help\" type=\"text/plain\" href=\"/llms.txt\">",
         d = escape(description),
         t = escape(title),
+        i = escape(&image.url),
+        a = escape(&image.alt),
     );
     if let Some(path) = path {
         out.push_str(&format!(

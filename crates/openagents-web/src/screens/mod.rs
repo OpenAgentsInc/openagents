@@ -89,6 +89,7 @@ pub(crate) struct Screen {
 #[cfg_attr(not(test), allow(dead_code))]
 pub(crate) const NOT_SCREENS: &[(&str, &str)] = &[
     ("/static/*", "files"),
+    ("/og/*", "link preview pictures"),
     ("/.well-known/*", "files for programs"),
     ("/v1/*", "the API"),
     ("/api/*", "the API"),

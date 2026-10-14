@@ -21,9 +21,7 @@ use crate::account::Account;
 use crate::cloud::byo::{self, Computers, Owner};
 use crate::cloud::custody::{CustodyError, Key, Material};
 use crate::cloud::session::{CloudSession, SessionError, Viewer, now};
-use crate::cloud::{
-    SIGN_IN, default_workspace, default_workspace_cookies, protect, refused, service,
-};
+use crate::cloud::{default_workspace, default_workspace_cookies, protect, refused, service};
 use crate::ui_page::{UiPage, action_link};
 
 pub(crate) mod subscription;
@@ -70,7 +68,11 @@ pub(crate) async fn viewer<'a>(
     let viewer = match service.authenticate(headers).await {
         Ok(viewer) => viewer,
         Err(SessionError::Unauthenticated) => {
-            return Err(protect(Redirect::to(SIGN_IN).into_response()));
+            // Sign in, then come back here (`/login` sends servers without
+            // GitHub sign-in on to the account-key form).
+            return Err(protect(
+                Redirect::to(&crate::auth::login_href(back, false)).into_response(),
+            ));
         }
         Err(error) => return Err(refused(error)),
     };

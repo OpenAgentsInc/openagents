@@ -2245,7 +2245,12 @@ impl App {
         let coder = self.coder.render(self.computers.as_ref(), &mut self.chats);
         let shell = self.coder.shell_view(self.computers.as_ref(), &self.chats);
         let previews = self.coder.link_previews();
-        crate::link_fetch::fetch_wanted(&previews, self.runtime.handle(), &self.link_reads);
+        crate::link_fetch::fetch_wanted(
+            &previews,
+            self.runtime.handle(),
+            &self.link_reads,
+            |url| self.link.own_chat_title(url),
+        );
         let links = previews.shown();
         let gym = self.coder.gym_view();
         for code in self.coder.gym.take_logged() {

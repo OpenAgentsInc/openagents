@@ -262,6 +262,68 @@ async fn signed_out_header_offers_log_in_and_sign_up_and_login_offers_github() {
     assert_eq!(old.location(), "/login");
 }
 
+/// A link to a page only signed-in people open, read signed out (as
+/// iMessage, Slack, or the phone app's link cards read it), goes to the
+/// sign-in page, which previews the page by its kind and never as "Log in"
+/// (crate::link_preview).
+#[tokio::test]
+async fn signed_out_links_preview_the_page_they_open_not_the_sign_in_page() {
+    let world = world(true).await;
+    let og = |body: &str, name: &str| {
+        let tag = format!("<meta property=\"{name}\" content=\"");
+        let at = body
+            .find(&tag)
+            .unwrap_or_else(|| panic!("{name} in {body}"))
+            + tag.len();
+        body[at..at + body[at..].find('"').unwrap()].to_owned()
+    };
+    let id = "3f2b8c1e-1a2b-4c3d-8e9f-0123456789ab";
+    for (path, title, kind) in [
+        (format!("/chat/{id}"), "A chat on OpenAgents", "chat"),
+        (
+            "/settings".to_owned(),
+            "Your settings on OpenAgents",
+            "settings",
+        ),
+        (
+            "/projects".to_owned(),
+            "Your projects on OpenAgents",
+            "projects",
+        ),
+    ] {
+        let mut browser = Browser::default();
+        let first = browser.get(&world, &path).await;
+        assert_eq!(first.status, StatusCode::SEE_OTHER, "{path}");
+        assert_eq!(
+            first.location(),
+            crate::auth::login_href(&path, false),
+            "{path}"
+        );
+        let login = browser.get(&world, &first.location()).await;
+        assert_eq!(login.status, StatusCode::OK, "{path}");
+        assert!(login.body.contains("Log in to OpenAgents"), "{path}");
+        assert_eq!(og(&login.body, "og:title"), title);
+        assert_eq!(
+            og(&login.body, "og:url"),
+            format!("https://openagents.com{path}")
+        );
+        assert!(og(&login.body, "og:image").ends_with(&format!("/og/{kind}.png?v=1")));
+        assert!(login.body.contains("content=\"summary_large_image\""));
+    }
+    // A plain sign-in link keeps the sign-in page's own preview.
+    let plain = Browser::default().get(&world, "/login").await;
+    assert_eq!(og(&plain.body, "og:title"), "Log in");
+    // An unknown picture is not found (the pictures themselves draw in
+    // crate::link_preview's tests).
+    assert_eq!(
+        Browser::default()
+            .get(&world, "/og/nothing.png")
+            .await
+            .status,
+        StatusCode::NOT_FOUND
+    );
+}
+
 #[tokio::test]
 async fn without_github_log_in_is_the_key_form() {
     let world = world(false).await;

@@ -130,13 +130,17 @@ pub(crate) fn sign_in_page(
         }
     })
     .centered();
-    protect(
-        UiPage::new(title)
-            .path(path)
-            .account(Account::Unknown)
-            .content(content)
-            .respond(headers),
-    )
+    let mut page = UiPage::new(title)
+        .path(path)
+        .account(Account::Unknown)
+        .content(content);
+    // A link to a page only signed-in people open lands here when a link
+    // reader fetches it: its preview names that page's kind, never "Log in"
+    // (crate::link_preview).
+    if let Some(preview) = crate::link_preview::signed_out(return_to) {
+        page = page.link_preview(preview);
+    }
+    protect(page.respond(headers))
 }
 
 async fn start(State(app): State<App>, headers: HeaderMap, Query(back): Query<Back>) -> Response {

@@ -228,6 +228,7 @@ pub(crate) fn stats_page(
 ) -> Response {
     let mut response = UiPage::new("Stats")
         .path("/stats")
+        .description("What OpenAgents has received for plugin calls and paid out to plugin authors, from the payment ledger.")
         .scriptless()
         .content(body(stats, snapshot))
         .respond(headers);

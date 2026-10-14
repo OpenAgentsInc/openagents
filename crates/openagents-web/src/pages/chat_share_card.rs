@@ -388,6 +388,80 @@ pub(crate) fn svg(card: &Card, avatar: Option<&[u8]>) -> String {
     out
 }
 
+/// A page's preview picture (`og:image`) for a page that has no picture of
+/// its own ([`crate::link_preview`]): the same canvas and Grid floor, the
+/// OpenAgents mark, an optional small `label` above, the page's `heading`,
+/// and one or two lines of `line` under it.
+pub(crate) fn page_svg(label: Option<&str>, heading: &str, line: &str) -> String {
+    const LEFT: f32 = 72.0;
+    let max = WIDTH as f32 - 2.0 * LEFT;
+    let mut out = format!(
+        r##"<svg xmlns="http://www.w3.org/2000/svg" width="{WIDTH}" height="{HEIGHT}" viewBox="0 0 {WIDTH} {HEIGHT}">
+<rect width="{WIDTH}" height="{HEIGHT}" fill="#0a0a0a"/>
+{}
+<text x="{LEFT}" y="100" font-family="Geist" font-weight="600" font-size="34" letter-spacing="-0.4" fill="#ededed">OpenAgents</text>
+"##,
+        grid(486.0)
+    );
+    let site = "openagents.com";
+    let site_x = WIDTH as f32 - LEFT - width(MONO, 20.0, site);
+    let _ = write!(
+        out,
+        r##"<text x="{site_x:.1}" y="98" font-family="Geist Mono" font-size="20" fill="#7a7a7a">{site}</text>
+"##
+    );
+    let heading = wrap(SEMIBOLD, 72.0, heading, max, 2);
+    let mut y = if heading.len() > 1 { 228.0 } else { 270.0 };
+    if let Some(label) = label {
+        let _ = write!(
+            out,
+            r##"<text x="{LEFT}" y="{}" font-family="Geist Mono" font-size="22" letter-spacing="1.5" fill="#8a8a8a">{}</text>
+"##,
+            y - 92.0,
+            escape(&label.to_uppercase())
+        );
+    }
+    for text in &heading {
+        let _ = write!(
+            out,
+            r##"<text x="{LEFT}" y="{y}" font-family="Geist" font-weight="600" font-size="72" letter-spacing="-1.6" fill="#fafafa">{}</text>
+"##,
+            escape(text)
+        );
+        y += 82.0;
+    }
+    y += 4.0;
+    for text in wrap(REGULAR, 30.0, line, max, 2) {
+        let _ = write!(
+            out,
+            r##"<text x="{LEFT}" y="{y}" font-family="Geist" font-size="30" fill="#a3a3a3">{}</text>
+"##,
+            escape(&text)
+        );
+        y += 42.0;
+    }
+    out.push_str("</svg>\n");
+    out
+}
+
+/// [`page_svg`] as PNG.
+pub(crate) fn render_page(
+    label: Option<&str>,
+    heading: &str,
+    line: &str,
+) -> Result<Vec<u8>, String> {
+    let options = usvg::Options {
+        fontdb: fonts(),
+        font_family: "Geist".into(),
+        ..usvg::Options::default()
+    };
+    let tree = usvg::Tree::from_str(&page_svg(label, heading, line), &options)
+        .map_err(|e| e.to_string())?;
+    let mut pixmap = tiny_skia::Pixmap::new(WIDTH, HEIGHT).ok_or_else(|| "no pixmap".to_owned())?;
+    resvg::render(&tree, tiny_skia::Transform::default(), &mut pixmap.as_mut());
+    pixmap.encode_png().map_err(|e| e.to_string())
+}
+
 fn fonts() -> Arc<usvg::fontdb::Database> {
     static FONTS: OnceLock<Arc<usvg::fontdb::Database>> = OnceLock::new();
     FONTS

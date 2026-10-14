@@ -95,6 +95,7 @@ pub struct UiPage {
     head: Option<Markup>,
     description: Option<String>,
     canonical: Option<String>,
+    preview: Option<crate::link_preview::SignedOut>,
     scripts: bool,
     toggle: bool,
     boost: bool,
@@ -119,6 +120,7 @@ impl UiPage {
             head: None,
             description: None,
             canonical: None,
+            preview: None,
             scripts: true,
             toggle: true,
             boost: false,
@@ -191,6 +193,14 @@ impl UiPage {
     /// (`<meta name="description">`); the site's own line without it.
     pub fn description(mut self, description: impl Into<String>) -> Self {
         self.description = Some(description.into());
+        self
+    }
+
+    /// The link preview (Open Graph title, description, address and
+    /// picture) of the page this one stands in for: the sign-in page
+    /// describes the page it returns to ([`crate::link_preview`]).
+    pub(crate) fn link_preview(mut self, preview: crate::link_preview::SignedOut) -> Self {
+        self.preview = Some(preview);
         self
     }
 
@@ -395,8 +405,14 @@ impl UiPage {
             .canonical
             .as_deref()
             .map(|path| path.split('?').next().unwrap_or(path));
-        let metadata =
-            crate::agent_ready::head(&self.title, self.description.as_deref(), canonical);
+        let metadata = match &self.preview {
+            Some(preview) => crate::agent_ready::head(
+                preview.title,
+                Some(preview.description),
+                Some(&preview.path),
+            ),
+            None => crate::agent_ready::head(&self.title, self.description.as_deref(), canonical),
+        };
         Document::new(self.title)
             .theme(theme::from_headers(headers))
             .boost(self.boost && scripts)

@@ -1020,7 +1020,25 @@ async fn load_owned(app: &App, owner: &str, id: &str) -> Result<Loaded, Response
 }
 
 async fn show(State(app): State<App>, headers: HeaderMap, Path(id): Path<String>) -> Response {
-    show_page(&app, &headers, &id, None).await
+    let response = show_page(&app, &headers, &id, None).await;
+    // Signed out, a chat this browser doesn't hold may be the person's own
+    // chat on their account: sign in, then come back to it. A link reader
+    // (iMessage, Slack, our phone app) lands on the sign-in page, which
+    // previews it as "A chat on OpenAgents" (crate::link_preview), never
+    // naming whether such a chat exists.
+    if response.status() == StatusCode::NOT_FOUND
+        && valid_id(&id)
+        && app.config.github.is_some()
+        && app.config.cloud.is_some()
+        && matches!(
+            crate::chat_owner::who(&app, &headers).await,
+            crate::chat_owner::Who::Browser(_) | crate::chat_owner::Who::Nobody
+        )
+    {
+        let back = crate::auth::login_href(&format!("/chat/{id}"), false);
+        return crate::chat_html::protect(Redirect::to(&back).into_response());
+    }
+    response
 }
 
 /// The chat's page; with `notice`, a refused message shown in the composer

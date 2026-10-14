@@ -1861,6 +1861,7 @@ pub(crate) fn public_response(
 ) -> Response {
     let mut response = UiPage::new(title.to_owned())
         .path(path)
+        .description("An agent's work, step by step, shared from OpenAgents.")
         .scriptless()
         .content(PageColumn::new(body))
         .respond(headers);

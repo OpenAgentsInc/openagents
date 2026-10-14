@@ -199,6 +199,7 @@ pub(crate) fn download_page(headers: &HeaderMap, desktop: bool) -> Response {
     let mut response = UiPage::new("Download OpenAgents")
         .section("/download")
         .path("/download")
+        .description("Coder runs on macOS, Linux, and Windows. One command installs it, and the same command updates it.")
         .scriptless()
         .head(html! { script src=(crate::analytics::SCRIPT) defer {} })
         .content(page(desktop))

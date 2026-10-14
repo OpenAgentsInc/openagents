@@ -19,18 +19,41 @@ const PAGE_TIMEOUT: Duration = Duration::from_secs(6);
 const IMAGE_TIMEOUT: Duration = Duration::from_secs(8);
 const MAX_REDIRECTS: usize = 3;
 
-/// Start reading each page the cards newly asked for.
-pub(crate) fn fetch_wanted(previews: &LinkPreviews, runtime: &Handle, gate: &Arc<Semaphore>) {
+/// Start reading each page the cards newly asked for. `own` names a link
+/// to the signed-in person's own chat on the website: the page, read
+/// signed out, says only "A chat on OpenAgents", so the card takes that
+/// chat's real title from here (it is shown only on this phone).
+pub(crate) fn fetch_wanted(
+    previews: &LinkPreviews,
+    runtime: &Handle,
+    gate: &Arc<Semaphore>,
+    own: impl Fn(&str) -> Option<String>,
+) {
     for url in previews.take_wanted() {
         let previews = previews.clone();
         let gate = gate.clone();
+        let own = own(&url);
         runtime.spawn(async move {
             let _permit = gate.acquire_owned().await;
-            let preview = read(&url).await;
+            let preview = named(read(&url).await, own);
             previews.finish(&url, preview);
             crate::wake::ring();
         });
     }
+}
+
+/// A page's preview with the person's own title for it, when there is one.
+fn named(preview: Option<Preview>, own: Option<String>) -> Option<Preview> {
+    let Some(title) = own else {
+        return preview;
+    };
+    let mut preview = preview.unwrap_or(Preview {
+        title: None,
+        site: Some("OpenAgents".to_owned()),
+        image: None,
+    });
+    preview.title = Some(title);
+    Some(preview)
 }
 
 /// Whether `url` may be read: `https`, a named public host, no credentials.
@@ -178,6 +201,31 @@ mod tests {
         assert!(!ok("https://intranet/"));
         assert!(!ok("https://user:pass@example.com/"));
         assert!(!ok("file:///etc/passwd"));
+    }
+
+    #[test]
+    fn the_persons_own_title_names_their_chat() {
+        let read = Preview {
+            title: Some("A chat on OpenAgents".into()),
+            site: Some("OpenAgents".into()),
+            image: None,
+        };
+        let named_title = |preview, own: Option<&str>| {
+            named(preview, own.map(str::to_owned)).and_then(|p| p.title)
+        };
+        assert_eq!(
+            named_title(Some(read.clone()), Some("Plan the launch")).as_deref(),
+            Some("Plan the launch")
+        );
+        assert_eq!(
+            named_title(Some(read), None).as_deref(),
+            Some("A chat on OpenAgents")
+        );
+        assert_eq!(
+            named_title(None, Some("Plan the launch")).as_deref(),
+            Some("Plan the launch")
+        );
+        assert_eq!(named_title(None, None), None);
     }
 
     /// Reads a real page: `cargo test ... link_fetch -- --ignored`.

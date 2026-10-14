@@ -44,7 +44,7 @@ use serde_json::{Value, json};
 
 use super::{csrf, missing, reader, valid_id, validate_form};
 #[path = "chat_share_card.rs"]
-mod card;
+pub(crate) mod card;
 use crate::App;
 use crate::chat_store::{Conversation, Error, Store, is_account_owner};
 
