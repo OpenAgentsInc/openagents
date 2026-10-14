@@ -1262,7 +1262,7 @@ async fn a_coder_chat_shows_its_steps_and_thinking_as_rows() {
             message("user", "Look at my projects.", None),
             message(
                 "thinking",
-                "I'll glance at the finance threads first.",
+                "**Finding the finances**\n\nI'll glance at the finance threads first.",
                 None,
             ),
             message(
@@ -1302,12 +1302,33 @@ async fn a_coder_chat_shows_its_steps_and_thinking_as_rows() {
     assert_eq!(status, StatusCode::OK, "{body}");
     assert!(!body.contains("claude:thinking"), "{body}");
     assert!(body.contains(r#"data-role="thinking""#), "{body}");
+    // Thinking reads as Markdown, through the answers' renderer (#11639):
+    // bold, never its asterisks, and its line names it plainly.
     assert!(
-        body.contains(
-            r#"<p class="oa-message-thinking">I'll glance at the finance threads first.</p>"#
-        ) || body.contains("I&#39;ll glance at the finance threads first."),
+        body.contains(r#"<div class="oa-message-thinking" data-markdown>"#),
         "{body}"
     );
+    assert!(
+        body.contains("<strong>Finding the finances</strong>"),
+        "{body}"
+    );
+    assert!(!body.contains("**Finding"), "{body}");
+    assert!(
+        body.contains(r#"<span class="oa-trace-step__description">Finding the finances</span>"#),
+        "{body}"
+    );
+    assert!(
+        body.contains("I'll glance at the finance threads first.")
+            || body.contains("I&#39;ll glance at the finance threads first."),
+        "{body}"
+    );
+    // The transcript is a following Message Scroller (#11639), so a synced
+    // chat with no composer opens at its last answer and its Copy action.
+    assert!(
+        body.contains(r#"role="log" aria-label="Messages" aria-live="off" data-oa-message-scroller data-follow"#),
+        "{body}"
+    );
+    assert!(body.contains(r#"aria-label="Copy the answer""#), "{body}");
     // Each step is a trace line (#11621) that opens to its input and output.
     assert!(
         body.contains(r#"OpenAgents CLI</span> <code class="oa-trace-step__detail">projects show finances</code>"#),
@@ -1452,6 +1473,57 @@ async fn a_long_finished_task_says_done_until_the_chat_is_opened() {
         .request(Method::GET, &format!("/chat/{CHAT}"), OWNER, &[])
         .await;
     assert_eq!(fixture.read().await.generation, before);
+}
+
+/// "Read earlier messages" loads a window that still holds the messages
+/// shown, with the earlier ones above them, so the Message Scroller keeps
+/// the reader on the message they were reading (#11639).
+#[test]
+fn reading_earlier_messages_keeps_the_ones_shown() {
+    let messages_in = (0..30)
+        .map(|n| Message {
+            role: if n % 2 == 0 {
+                Role::User
+            } else {
+                Role::Assistant
+            },
+            text: format!("message {n}"),
+            request_id: None,
+        })
+        .collect::<Vec<_>>();
+    let chat = Conversation {
+        id: CHAT.into(),
+        owner: OWNER.into(),
+        revision: 2,
+        title: "Long".into(),
+        messages: messages_in,
+        pending: None,
+        requests: Vec::new(),
+        selection: None,
+        updated_unix: 1,
+        pinned_unix: None,
+        archived_unix: None,
+        project: None,
+        terminal: None,
+        environment: None,
+        tasks: Vec::new(),
+        opened_unix: None,
+        branch: None,
+        filed: false,
+    };
+    let latest = messages(&chat, None, false).into_string();
+    assert!(latest.contains("Showing messages 7–30 of 30."), "{latest}");
+    assert!(
+        latest.contains(&format!(r#"hx-get="/chat/{CHAT}/transcript?from=0""#)),
+        "{latest}"
+    );
+    assert!(!latest.contains(r#"id="chat-message-5""#), "{latest}");
+    let earlier = messages_from(&chat, Some(0), None, false).into_string();
+    for kept in ["chat-message-0", "chat-message-6", "chat-message-29"] {
+        assert!(earlier.contains(&format!(r#"id="{kept}""#)), "{kept}");
+    }
+    assert!(earlier.contains(r#"value="latest""#), "{earlier}");
+    assert!(!earlier.contains("Read earlier messages"), "{earlier}");
 }
 
 /// An answered reply sits between hidden markers that name how it was

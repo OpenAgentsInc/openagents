@@ -131,14 +131,42 @@ impl Message {
     #[must_use]
     pub fn thinking(text: impl AsRef<str>, detail_id: &str) -> Self {
         let text = text.as_ref();
+        Self::thinking_with(text, html! { p.oa-message-thinking { (text) } }, detail_id)
+    }
+
+    /// The model's thinking with its words already rendered as Markdown
+    /// (`rendered`, trusted markup from the same safe renderer as answers),
+    /// so `**Finding the test**` reads as bold, not with its asterisks.
+    /// `text` is the source, for the line's one-line description.
+    #[must_use]
+    pub fn thinking_markdown(
+        text: impl AsRef<str>,
+        rendered: impl Render,
+        detail_id: &str,
+    ) -> Self {
+        let body = html! {
+            div.oa-message-thinking data-markdown {
+                (crate::content::MarkdownRoot::new(rendered).size(crate::content::MarkdownSize::Sm))
+            }
+        };
+        Self::thinking_with(text.as_ref(), body, detail_id)
+    }
+
+    fn thinking_with(text: &str, body: Markup, detail_id: &str) -> Self {
         let first = text
             .lines()
-            .map(|l| l.trim().trim_matches('*').trim())
+            .map(|l| {
+                l.trim()
+                    .trim_start_matches('#')
+                    .trim()
+                    .trim_matches(|c| matches!(c, '*' | '_' | '`'))
+                    .trim()
+            })
             .find(|l| !l.is_empty())
             .unwrap_or_default();
         let line = TraceStep::new(TraceKind::Reasoning, "Thinking")
             .description(first.chars().take(140).collect::<String>())
-            .body(html! { p.oa-message-thinking { (text) } })
+            .body(body)
             .id(detail_id.to_owned());
         Self::with(
             MessageRole::Thinking,

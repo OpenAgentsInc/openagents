@@ -15,7 +15,6 @@ use zeroize::{Zeroize, Zeroizing};
 
 const MAX_CHATS: usize = 256;
 const MAX_DRAFT_BYTES: usize = 64 * 1024;
-const BOTTOM_MARGIN: i32 = 80;
 type Listener = (EventTarget, &'static str, bool, Closure<dyn FnMut(Event)>);
 type Frame = Closure<dyn FnMut(f64)>;
 
@@ -30,8 +29,6 @@ struct Draft {
     end: u32,
     direction: String,
     input_top: i32,
-    thread_top: i32,
-    following: bool,
 }
 
 impl Default for Draft {
@@ -42,8 +39,6 @@ impl Default for Draft {
             end: 0,
             direction: "none".into(),
             input_top: 0,
-            thread_top: 0,
-            following: true,
         }
     }
 }
@@ -174,15 +169,9 @@ pub fn start() -> Result<(), JsValue> {
     });
     *runtime.selected.borrow_mut() = runtime.selected_key();
     runtime.sync_route();
-    if let Some(thread) = runtime.thread() {
-        thread.set_scroll_top(
-            if thread.get_attribute("data-chat-scroll").as_deref() == Some("start") {
-                0
-            } else {
-                thread.scroll_height()
-            },
-        );
-    }
+    // The thread's scroll belongs to its Message Scroller
+    // (openagents-ui `message-scroller.js`, #11639): it opens at the
+    // newest message and follows a reply while the reader is at the end.
     runtime.save();
     for name in [
         "keydown",
@@ -451,13 +440,6 @@ impl Runtime {
             .flatten()
             .unwrap_or_else(|| "none".into());
         saved.input_top = self.input.scroll_top();
-        if !self.swapping.get()
-            && let Some(thread) = self.thread()
-        {
-            saved.thread_top = thread.scroll_top();
-            saved.following = thread.scroll_height() - thread.client_height() - thread.scroll_top()
-                <= BOTTOM_MARGIN;
-        }
     }
 
     fn listen(
@@ -664,12 +646,10 @@ impl Runtime {
                 if !control.has_attribute("hx-get") {
                     event.prevent_default();
                 }
+                // At the end, the Message Scroller follows the newest
+                // messages once they load.
                 thread.set_scroll_top(if start { 0 } else { thread.scroll_height() });
                 self.save();
-                if let Some(saved) = self.drafts.borrow_mut().get_mut(&*self.selected.borrow()) {
-                    saved.thread_top = thread.scroll_top();
-                    saved.following = !start;
-                }
             }
             return;
         }
@@ -847,17 +827,7 @@ impl Runtime {
         }
         let next = self.selected_key();
         let changed = next != *self.selected.borrow();
-        let saved = self
-            .drafts
-            .borrow()
-            .get(&next)
-            .cloned()
-            .unwrap_or_else(|| Draft {
-                following: self.thread().is_none_or(|thread| {
-                    thread.get_attribute("data-chat-scroll").as_deref() != Some("start")
-                }),
-                ..Draft::default()
-            });
+        let saved = self.drafts.borrow().get(&next).cloned().unwrap_or_default();
         if changed {
             self.presentation_deferred.borrow_mut().take();
             *self.selected.borrow_mut() = next;
@@ -874,15 +844,6 @@ impl Runtime {
                 &saved.direction,
             );
             self.input.set_scroll_top(saved.input_top);
-        }
-        if !self.selecting_transcript()
-            && let Some(thread) = self.thread()
-        {
-            thread.set_scroll_top(if saved.following {
-                thread.scroll_height()
-            } else {
-                saved.thread_top
-            });
         }
         self.swapping.set(false);
         self.save();

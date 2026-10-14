@@ -479,7 +479,12 @@ fn messages_escape_text_and_keep_authors_for_screen_readers() {
         .id("m-0")
         .render()
         .into_string();
-    assert!(user.contains(r#"<article class="oa-message oa-turn" data-role="user" data-from="person" id="m-0">"#), "{user}");
+    assert!(
+        user.contains(
+            r#"<article class="oa-message oa-turn" data-role="user" data-from="person" id="m-0">"#
+        ),
+        "{user}"
+    );
     assert!(user.contains(r#"<h2 class="oa-message-author oa-visually-hidden">You</h2>"#));
     assert!(user.contains("&lt;script&gt;x&lt;/script&gt;\nline"));
     let assistant = Message::assistant(maud::PreEscaped("<p>ok</p>"))
@@ -489,7 +494,10 @@ fn messages_escape_text_and_keep_authors_for_screen_readers() {
     assert!(assistant.contains(r#"data-role="assistant""#));
     // A turn's header names its author once; an answer that continues the
     // turn keeps the name for screen readers only.
-    assert!(assistant.contains(r#"<h2 class="oa-message-author oa-turn__author">OpenAgents</h2>"#), "{assistant}");
+    assert!(
+        assistant.contains(r#"<h2 class="oa-message-author oa-turn__author">OpenAgents</h2>"#),
+        "{assistant}"
+    );
     assert!(assistant.contains(r#"<div class="oa-message-content oa-turn__body"><p>ok</p></div>"#));
     let continued = Message::assistant(maud::PreEscaped("<p>ok</p>"))
         .author("OpenAgents")
@@ -498,8 +506,14 @@ fn messages_escape_text_and_keep_authors_for_screen_readers() {
         .render()
         .into_string();
     assert!(!continued.contains("oa-turn__header"), "{continued}");
-    assert!(continued.contains(r#"oa-visually-hidden">OpenAgents</h2>"#), "{continued}");
-    assert!(continued.contains(r#"<footer class="oa-turn__footer">"#), "{continued}");
+    assert!(
+        continued.contains(r#"oa-visually-hidden">OpenAgents</h2>"#),
+        "{continued}"
+    );
+    assert!(
+        continued.contains(r#"<footer class="oa-turn__footer">"#),
+        "{continued}"
+    );
     let status = Message::status("Failed").render().into_string();
     assert!(status.contains(r#"<h2 class="oa-message-author">Status</h2>"#));
     assert_eq!(Message::status("x").role(), MessageRole::Status);
@@ -510,8 +524,28 @@ fn messages_escape_text_and_keep_authors_for_screen_readers() {
         .into_string();
     assert!(thinking.contains(r#"data-role="thinking""#));
     assert!(thinking.contains(r#"oa-visually-hidden">Thinking</h2>"#));
-    assert!(thinking.contains(r#"<li class="oa-trace-step" id="t-9" data-kind="reasoning""#), "{thinking}");
-    assert!(thinking.contains(r#"<p class="oa-message-thinking">I'll look"#), "{thinking}");
+    assert!(
+        thinking.contains(r#"<li class="oa-trace-step" id="t-9" data-kind="reasoning""#),
+        "{thinking}"
+    );
+    assert!(
+        thinking.contains(r#"<p class="oa-message-thinking">I'll look"#),
+        "{thinking}"
+    );
+    // Thinking already rendered as Markdown (#11639): the markup as given,
+    // and its line without the emphasis marks.
+    let thinking = Message::thinking_markdown(
+        "**Finding the test**\n\nIt moved.",
+        maud::PreEscaped("<p><strong>Finding the test</strong></p><p>It moved.</p>"),
+        "t-10",
+    )
+    .render()
+    .into_string();
+    assert!(thinking.contains(r#"<div class="oa-message-thinking" data-markdown><div class="oa-markdown" data-size="sm"><p><strong>Finding the test</strong></p>"#), "{thinking}");
+    assert!(
+        thinking.contains(r#"<span class="oa-trace-step__description">Finding the test</span>"#),
+        "{thinking}"
+    );
     // A tool step: a trace line with its name, line and status, opening
     // to its input and output with a copy action; a failed one says so.
     let step = Message::step(&Step {

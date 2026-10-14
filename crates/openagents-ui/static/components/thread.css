@@ -68,6 +68,20 @@
   font-style: italic;
   white-space: pre-wrap;
 }
+/* Thinking rendered as Markdown: the renderer's paragraphs and lists keep
+   their own spacing, in the same dim, slanted words. */
+.oa-message-thinking[data-markdown] {
+  white-space: normal;
+}
+.oa-message-thinking[data-markdown] .oa-markdown {
+  color: inherit;
+}
+.oa-message-thinking[data-markdown] .oa-markdown > :first-child {
+  margin-top: 0;
+}
+.oa-message-thinking[data-markdown] .oa-markdown > :last-child {
+  margin-bottom: 0;
+}
 
 /* Tool steps and thinking (#11543, #11621): each is one trace line
    (trace.css), close together, and a run of them joins into one trace with

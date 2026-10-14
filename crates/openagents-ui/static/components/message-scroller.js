@@ -1,51 +1,109 @@
 // MessageScroller hook for openagents-ui (content::MessageScroller,
-// #11621). CSP-safe: no inline handlers, no eval. For each
+// #11621, #11639). CSP-safe: no inline handlers, no eval. For each
 // [data-oa-message-scroller]:
-//  - with data-follow, keeps the view at the newest words while they stream
-//    in, but only while the reader is already at the bottom;
-//  - when earlier turns load above the first one, keeps the view still.
-// The scroll container is the scroller itself when it scrolls, else the
-// page.
+//  - with data-follow, it opens at the newest turn and keeps the view
+//    there while words stream in, a turn is redrawn, or the region
+//    resizes (a phone's toolbar or keyboard), but only while the reader is
+//    at the bottom; scrolling up stops following, and coming back to the
+//    end starts it again;
+//  - otherwise (the reader scrolled up, or earlier turns loaded above),
+//    it keeps the turn the reader was looking at where it was, even when
+//    the turns are redrawn from scratch.
+// The scroll container is the nearest scrolling ancestor (the scroller
+// itself when it scrolls), else the page.
 (() => {
   "use strict";
 
   const NEAR_PX = 64;
+  // Turns the view anchors to: anything in the scroller with an id that
+  // stays the same across redraws (`#chat-message-3`).
+  const TURNS = "article[id], .oa-turn[id], .oa-marker[id]";
 
   const scrollerOf = (root) => {
-    const style = getComputedStyle(root);
-    const scrolls = /(auto|scroll)/.test(style.overflowY) && root.scrollHeight > root.clientHeight;
-    return scrolls ? root : document.scrollingElement || document.documentElement;
+    for (let node = root; node && node !== document.body && node !== document.documentElement; node = node.parentElement) {
+      if (/(auto|scroll)/.test(getComputedStyle(node).overflowY)) return node;
+    }
+    return document.scrollingElement || document.documentElement;
   };
 
+  const page = (box) => box === document.scrollingElement || box === document.documentElement;
   const atBottom = (box) => box.scrollHeight - box.scrollTop - box.clientHeight < NEAR_PX;
+  const boxTop = (box) => (page(box) ? 0 : box.getBoundingClientRect().top);
 
   const watch = (root) => {
     if (root.dataset.oaMessageScrollerBound) return;
-    root.dataset.oaMessageScrollerBound = "1";
     const turns = root.querySelector(".oa-message-scroller__turns");
     if (!turns) return;
-    let box = scrollerOf(root);
-    let following = atBottom(box);
-    let first = turns.firstElementChild;
-    let height = box.scrollHeight;
-    const remember = () => {
-      box = scrollerOf(root);
-      following = atBottom(box);
-      height = box.scrollHeight;
+    root.dataset.oaMessageScrollerBound = "1";
+    const follows = root.hasAttribute("data-follow");
+    const box = scrollerOf(root);
+    // A link to one turn (#chat-message-3) opens there, not at the end.
+    const linked = location.hash.length > 1 && root.querySelector("#" + CSS.escape(location.hash.slice(1)));
+    let following = follows && !linked;
+    let anchor = null; // { id, top }: the first turn in view
+    let first = null; // the first turn's id
+    let opened = false; // the reader opened or closed a line
+
+    const firstTurn = () => {
+      const head = turns.querySelector(TURNS);
+      return head ? head.id : null;
     };
-    (box === root ? root : window).addEventListener("scroll", remember, { passive: true });
-    new MutationObserver(() => {
-      const grew = box.scrollHeight - height;
-      const head = turns.firstElementChild;
-      if (head !== first && first && first.isConnected && grew > 0) {
-        // Earlier turns arrived above: stay on what the reader was reading.
-        box.scrollTop += grew;
-      } else if (root.hasAttribute("data-follow") && following) {
-        box.scrollTop = box.scrollHeight;
+    const pick = () => {
+      const top = boxTop(box);
+      for (const turn of turns.querySelectorAll(TURNS)) {
+        const rect = turn.getBoundingClientRect();
+        if (rect.bottom > top + 1) return { id: turn.id, top: rect.top - top };
       }
-      first = head;
-      height = box.scrollHeight;
-    }).observe(turns, { childList: true, subtree: true, characterData: true });
+      return null;
+    };
+    const toEnd = () => {
+      box.scrollTop = box.scrollHeight;
+    };
+    const remember = () => {
+      anchor = pick();
+      first = firstTurn();
+    };
+    const settle = () => {
+      if (!root.isConnected) return;
+      const head = firstTurn();
+      // Earlier turns arrived above the ones shown: stay on what the
+      // reader was reading, even at the end.
+      const earlier = first && head !== first && turns.querySelector("#" + CSS.escape(first)) && head;
+      // A line the reader opened grows in place; the view doesn't run
+      // to the end of it.
+      const still = earlier || opened;
+      opened = false;
+      if (following && !still) {
+        toEnd();
+      } else if (anchor) {
+        const turn = turns.querySelector("#" + CSS.escape(anchor.id));
+        if (turn) {
+          const moved = turn.getBoundingClientRect().top - boxTop(box) - anchor.top;
+          if (Math.abs(moved) > 0.5) box.scrollTop += moved;
+        }
+      }
+      if (still && follows) following = atBottom(box);
+      remember();
+    };
+
+    (page(box) ? window : box).addEventListener("scroll", () => {
+      if (follows) following = atBottom(box);
+      remember();
+    }, { passive: true });
+    turns.addEventListener("click", (event) => {
+      if (!(event.target instanceof Element) || !event.target.closest("summary")) return;
+      opened = true;
+      // Only for the resize that opening causes.
+      requestAnimationFrame(() => requestAnimationFrame(() => { opened = false; }));
+    }, true);
+    new MutationObserver(settle).observe(turns, { childList: true, subtree: true, characterData: true });
+    if ("ResizeObserver" in window) {
+      const resized = new ResizeObserver(settle);
+      resized.observe(turns);
+      if (!page(box)) resized.observe(box);
+    }
+    if (following) toEnd();
+    remember();
   };
 
   const start = () => document.querySelectorAll("[data-oa-message-scroller]").forEach(watch);
@@ -55,6 +113,7 @@
     start();
   }
   document.addEventListener("htmx:afterSettle", start);
+  document.addEventListener("htmx:load", start);
 
   // A redrawn thread keeps the lines the reader opened: a live chat
   // redraws its turns as they change, and a line someone opened (or

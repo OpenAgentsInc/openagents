@@ -108,6 +108,8 @@ struct Removal {
 #[derive(Default, Deserialize)]
 struct Window {
     before: Option<usize>,
+    /// The first message of a transcript window ([`messages_from`]).
+    from: Option<usize>,
     after: Option<u64>,
     offset: Option<usize>,
 }
@@ -2723,10 +2725,22 @@ pub(crate) fn content(
     chips: Markup,
     links: bool,
 ) -> Markup {
+    // The transcript sits in a Message Scroller (#11639): it opens at the
+    // newest message, follows a reply while it streams as long as the
+    // reader is at the bottom, stops following once they scroll up, and
+    // holds still when earlier messages load above. Each update redraws
+    // every turn, so the live status line announces, not the scroller.
+    let transcript = html! {
+        div #chat-transcript sse-swap="transcript,retired" hx-swap="innerHTML" { (messages(chat,before,links)) (chips) }
+    };
     html! {
         section #chat-thread.oa-thread aria-label="Chat" {
             div.oa-thread-column hx-ext="sse" sse-connect=(format!("/chat/{}/events?after={}",chat.id,chat.revision)) sse-close="retired" {
-                div #chat-transcript sse-swap="transcript,retired" hx-swap="innerHTML" { (messages(chat,before,links)) (chips) }
+                (openagents_ui::content::MessageScroller::new()
+                    .label("Messages")
+                    .follow(true)
+                    .announce(false)
+                    .turn(transcript))
             }
         }
         (ScrollToBottom::new("#chat-thread"))
@@ -2815,7 +2829,19 @@ fn turn(
         },
         // The model's thinking (#11543): a "Thinking" row that opens to
         // its words, dim and slanted, as Coder's terminal shows them.
-        Role::Thinking => ThreadMessage::thinking(&message.text, &format!("chat-step-{index}")),
+        // Its words go through the same safe Markdown renderer as answers,
+        // so `**Finding the test**` reads as bold (#11639).
+        Role::Thinking => ThreadMessage::thinking_markdown(
+            &message.text,
+            PreEscaped(crate::markdown::render_reply_for(
+                &message.text,
+                &crate::markdown::Reader {
+                    signed_in: Some(signed_in),
+                    id: format!("chat-thinking-{index}"),
+                },
+            )),
+            &format!("chat-step-{index}"),
+        ),
     }
     .id(format!("chat-message-{index}"))
 }
@@ -2852,13 +2878,36 @@ fn streaming(chat: &Conversation, message: &Message) -> bool {
 /// The messages in the window, each followed by the tasks started after it
 /// ([`work::rows`]).
 fn messages(chat: &Conversation, before: Option<usize>, links: bool) -> Markup {
+    messages_from(chat, None, before, links)
+}
+
+/// The address that loads the window `from`..`before` (the newest when
+/// `before` is `None`).
+fn window_href(chat: &Conversation, from: usize, before: Option<usize>) -> String {
+    match before {
+        Some(before) => format!("/chat/{}/transcript?before={before}&from={from}", chat.id),
+        None => format!("/chat/{}/transcript?from={from}", chat.id),
+    }
+}
+
+/// [`messages`] from message `from` on (`None`: the last [`WINDOW`]).
+/// "Read earlier messages" loads a window that still holds the messages
+/// shown, with earlier ones above them, so the Message Scroller keeps the
+/// reader on the message they were reading (#11639).
+fn messages_from(
+    chat: &Conversation,
+    from: Option<usize>,
+    before: Option<usize>,
+    links: bool,
+) -> Markup {
     let end = before
         .unwrap_or(chat.messages.len())
         .min(chat.messages.len());
-    let start = end.saturating_sub(WINDOW);
+    let start = from.map_or_else(|| end.saturating_sub(WINDOW), |from| from.min(end));
+    let earlier = window_href(chat, start.saturating_sub(WINDOW), before);
     html! {
         input type="hidden" id="chat-history-window" value=(if before.is_some() {"older"}else{"latest"});
-        @if start>0 {p.oa-thread-notice {"Showing messages " (start+1) "–" (end) " of " (chat.messages.len()) ". " a href=(format!("/chat/{}/transcript?before={start}",chat.id)) hx-get=(format!("/chat/{}/transcript?before={start}",chat.id)) hx-target="#chat-transcript" {"Read earlier messages"}}}
+        @if start>0 {p.oa-thread-notice {"Showing messages " (start+1) "–" (end) " of " (chat.messages.len()) ". " a href=(earlier) hx-get=(earlier) hx-target="#chat-transcript" {"Read earlier messages"}}}
         @if before.is_some() && end<chat.messages.len() {
             p.oa-thread-notice {a href=(format!("/chat/{}/transcript?before={}",chat.id,(end+WINDOW).min(chat.messages.len()))) hx-get=(format!("/chat/{}/transcript?before={}",chat.id,(end+WINDOW).min(chat.messages.len()))) hx-target="#chat-transcript" {"Read newer messages"}}
             // The newest messages are not loaded: the scroll-to-bottom
@@ -2959,7 +3008,7 @@ async fn transcript(
             };
             let links = work::links(&app, &headers).await;
             crate::chat_html::protect(
-                html! { (messages(&v.conversation, window.before, links)) (chips) }.into_response(),
+                html! { (messages_from(&v.conversation, window.from, window.before, links)) (chips) }.into_response(),
             )
         }
         Err(r) => r,

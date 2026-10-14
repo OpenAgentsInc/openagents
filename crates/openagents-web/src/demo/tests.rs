@@ -59,7 +59,9 @@ async fn demo_is_public_in_the_shared_shell_and_never_reaches_the_task_store() {
         "href=\"/demo/environment\" hx-get=\"/demo/environment/thread\"",
         "aria-current=\"page\"",
         "class=\"oa-thread-view\"",
-        "class=\"oa-tool-group\"",
+        // Its tool groups are trace lines (#11639).
+        "class=\"oa-trace\" aria-label=\"What the agent did\"",
+        "data-kind=\"summary\"",
         "class=\"oa-result-card\"",
         "class=\"oa-steps\"",
         "id=\"demo-composer\"",
@@ -77,6 +79,8 @@ async fn demo_is_public_in_the_shared_shell_and_never_reaches_the_task_store() {
         );
     }
     for gone in [
+        "oa-tool-group",
+        "oa-tool-call",
         "chat-start.js",
         "htmx-sse.js",
         "demo-html.css",

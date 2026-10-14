@@ -13,8 +13,8 @@ use openagents_ui::actions::{
     Badge, Busy, Button, ButtonLink, ButtonType, ButtonVariant, Color, ControlSize, EmptyMessage,
 };
 use openagents_ui::content::{
-    ActivityStatus, CodeBlock, MarkdownRoot, MarkdownSize, PageColumn, ResultCard, Step, Steps,
-    Table, ToolCall, ToolGroup,
+    ActivityStatus, CodeBlock, CodeSize, MarkdownRoot, MarkdownSize, PageColumn, ResultCard, Step,
+    Steps, Table, Trace, TraceKind, TraceStatus, TraceStep,
 };
 use openagents_ui::forms::{Field, FieldAria, Input, Select, Textarea};
 use openagents_ui::icons::Icon;
@@ -309,8 +309,18 @@ fn acts(content: impl Render) -> Message {
     Message::assistant(content).author(AUTHOR)
 }
 
+/// What a step printed, in a small code block.
 fn output(text: &str) -> CodeBlock {
-    CodeBlock::new(text).copyable(false)
+    CodeBlock::new(text)
+        .title("Output")
+        .size(CodeSize::Sm)
+        .wrap_toggle(true)
+}
+
+/// An activity row in an answer: one trace line (#11639), as a live
+/// chat's steps and the trace pages draw them.
+fn line(step: TraceStep) -> Trace {
+    Trace::new([step]).label("What the agent did")
 }
 
 fn exit_label(exit: Option<i64>) -> String {
@@ -321,12 +331,12 @@ fn exit_label(exit: Option<i64>) -> String {
     }
 }
 
-fn ran(command: &str, exit: Option<i64>, text: &str) -> ToolCall {
-    let mut call = ToolCall::new(Icon::Terminal, "Ran")
+fn ran(command: &str, exit: Option<i64>, text: &str) -> TraceStep {
+    let mut call = TraceStep::new(TraceKind::Command, "Ran")
         .detail(first_line(command))
-        .status_label(exit_label(exit));
+        .meta(exit_label(exit));
     if exit != Some(0) {
-        call = call.status(ActivityStatus::Failed);
+        call = call.status(TraceStatus::Error);
     }
     if !text.trim().is_empty() {
         call = call.body(output(text.trim_end()));
@@ -435,15 +445,16 @@ pub(crate) fn transcript(view: &View, claude: Claude, notice: Option<&str>) -> M
                 revision,
                 output: text,
             } => {
-                let mut call = ToolCall::new(Icon::Folder, "Checked out the repository")
+                let mut call = TraceStep::new(TraceKind::Tool, "Checked out the repository")
+                    .icon(Icon::Folder)
                     .detail(short(revision).to_owned());
                 if !ok {
                     call = call
-                        .status(ActivityStatus::Failed)
+                        .status(TraceStatus::Error)
                         .open(true)
                         .body(output(text));
                 }
-                turns.push(acts(call).render());
+                turns.push(acts(line(call)).render());
             }
             Entry::Explored { .. } => {
                 let start = i;
@@ -452,7 +463,7 @@ pub(crate) fn transcript(view: &View, claude: Claude, notice: Option<&str>) -> M
                 {
                     i += 1;
                 }
-                let calls: Vec<ToolCall> = records[start..=i]
+                let calls: Vec<TraceStep> = records[start..=i]
                     .iter()
                     .filter_map(|r| match &r.entry {
                         Entry::Explored {
@@ -465,15 +476,15 @@ pub(crate) fn transcript(view: &View, claude: Claude, notice: Option<&str>) -> M
                     .collect();
                 let n = calls.len();
                 turns.push(
-                    acts(
-                        ToolGroup::new("Explored the repository")
+                    acts(line(
+                        TraceStep::new(TraceKind::Summary, "Explored the repository")
                             .meta(if n == 1 {
                                 "1 command".to_owned()
                             } else {
                                 format!("{n} commands")
                             })
-                            .calls(calls),
-                    )
+                            .children(calls),
+                    ))
                     .render(),
                 );
             }
@@ -483,32 +494,45 @@ pub(crate) fn transcript(view: &View, claude: Claude, notice: Option<&str>) -> M
                 previous,
             } => {
                 let call = match previous {
-                    None => ToolCall::new(Icon::Pencil, "Wrote the install recipe")
+                    None => TraceStep::new(TraceKind::Edit, "Wrote the install recipe")
                         .detail(format!("Revision {revision}"))
                         .open(true)
-                        .body(CodeBlock::new(script.clone()).language("sh")),
-                    Some(before) => ToolCall::new(Icon::Pencil, "Edited the install recipe")
+                        .body(
+                            CodeBlock::new(script.clone())
+                                .title("Recipe")
+                                .language("sh")
+                                .size(CodeSize::Sm)
+                                .wrap_toggle(true),
+                        ),
+                    Some(before) => TraceStep::new(TraceKind::Edit, "Edited the install recipe")
                         .detail(format!("Revision {revision}"))
                         .open(true)
-                        .body(CodeBlock::new(diff(before, script)).language("diff")),
+                        .body(
+                            CodeBlock::new(diff(before, script))
+                                .title("Change")
+                                .language("diff")
+                                .diff(true)
+                                .size(CodeSize::Sm)
+                                .wrap_toggle(true),
+                        ),
                 };
-                turns.push(acts(call).render());
+                turns.push(acts(line(call)).render());
             }
             Entry::Install {
                 revision,
                 exit,
                 output: text,
             } => {
-                let mut call = ToolCall::new(Icon::Terminal, "Ran the install")
+                let mut call = TraceStep::new(TraceKind::Command, "Ran the install")
                     .detail(format!("Revision {revision}"))
-                    .status_label(exit_label(*exit));
+                    .meta(exit_label(*exit));
                 if *exit != Some(0) {
-                    call = call.status(ActivityStatus::Failed).open(true);
+                    call = call.status(TraceStatus::Error).open(true);
                 }
                 if !text.trim().is_empty() {
                     call = call.body(output(text.trim_end()));
                 }
-                turns.push(acts(call).render());
+                turns.push(acts(line(call)).render());
             }
             Entry::Checks { checks } => {
                 let list: String = checks
@@ -516,15 +540,16 @@ pub(crate) fn transcript(view: &View, claude: Claude, notice: Option<&str>) -> M
                     .map(|c| format!("{}: {}\n", c.name, c.command))
                     .collect();
                 turns.push(
-                    acts(
-                        ToolCall::new(Icon::CheckCircle, "Chose the checks")
+                    acts(line(
+                        TraceStep::new(TraceKind::Plan, "Chose the checks")
+                            .icon(Icon::CheckCircle)
                             .detail(if checks.len() == 1 {
                                 "1 check".to_owned()
                             } else {
                                 format!("{} checks", checks.len())
                             })
-                            .body(output(list.trim_end())),
-                    )
+                            .body(output(list.trim_end()).title("Checks")),
+                    ))
                     .render(),
                 );
             }
@@ -537,14 +562,14 @@ pub(crate) fn transcript(view: &View, claude: Claude, notice: Option<&str>) -> M
                 let mut body = format!("$ {command}\n");
                 body.push_str(text.trim_end());
                 turns.push(
-                    acts(
-                        ToolCall::new(Icon::Terminal, "Failed on the fresh computer")
+                    acts(line(
+                        TraceStep::new(TraceKind::Command, "Failed on the fresh computer")
                             .detail(name.clone())
-                            .status(ActivityStatus::Failed)
-                            .status_label(exit_label(*exit))
+                            .status(TraceStatus::Error)
+                            .meta(exit_label(*exit))
                             .open(true)
                             .body(output(&body)),
-                    )
+                    ))
                     .render(),
                 );
             }
@@ -570,10 +595,11 @@ pub(crate) fn transcript(view: &View, claude: Claude, notice: Option<&str>) -> M
             }
             Entry::Saved { number } => {
                 turns.push(
-                    acts(
-                        ToolCall::new(Icon::CheckCircle, "Saved environment")
+                    acts(line(
+                        TraceStep::new(TraceKind::Tool, "Saved environment")
+                            .icon(Icon::CheckCircle)
                             .detail(format!("Version {number}")),
-                    )
+                    ))
                     .render(),
                 );
                 turns.push(
@@ -839,11 +865,11 @@ pub(crate) fn run_transcript_with(run: &Run, offered: &[PauseChoice]) -> Markup 
             claude::Step::Said(text) => turns.push(says(&text).render()),
             claude::Step::Asked(text) => turns.push(Message::user(&text).render()),
             claude::Step::Tool { title, detail } => {
-                let mut call = ToolCall::new(Icon::Terminal, title);
+                let mut call = TraceStep::new(TraceKind::Command, title);
                 if !detail.is_empty() {
                     call = call.detail(first_line(&detail));
                 }
-                turns.push(acts(call).render());
+                turns.push(acts(line(call)).render());
             }
         }
     }

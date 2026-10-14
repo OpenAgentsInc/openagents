@@ -35,6 +35,7 @@ pub struct MessageScroller {
     label: Option<String>,
     earlier: Option<(String, String)>,
     follow: bool,
+    announce: Option<bool>,
 }
 
 impl MessageScroller {
@@ -82,13 +83,23 @@ impl MessageScroller {
         self.follow = follow;
         self
     }
+
+    /// Whether screen readers hear new turns as they arrive (`aria-live`).
+    /// By default a following scroller announces and a still one doesn't.
+    /// A page that redraws every turn on each update turns this off and
+    /// announces through its own status line, so a redraw isn't read again.
+    #[must_use]
+    pub fn announce(mut self, announce: bool) -> Self {
+        self.announce = Some(announce);
+        self
+    }
 }
 
 impl Render for MessageScroller {
     fn render(&self) -> Markup {
         html! {
             div.oa-message-scroller role="log" aria-label=[self.label.as_deref()]
-                aria-live=(if self.follow { "polite" } else { "off" })
+                aria-live=(if self.announce.unwrap_or(self.follow) { "polite" } else { "off" })
                 data-oa-message-scroller data-follow[self.follow] {
                 @if let Some((label, href)) = &self.earlier {
                     a.oa-message-scroller__earlier href=(href) { (label) }
@@ -868,6 +879,16 @@ mod tests {
         assert!(
             html.contains("<span class=\"oa-turn__meta\">3s</span>"),
             "{html}"
+        );
+        // A page that redraws every turn announces elsewhere (#11639).
+        let quiet = MessageScroller::new()
+            .follow(true)
+            .announce(false)
+            .render()
+            .into_string();
+        assert!(
+            quiet.contains("aria-live=\"off\" data-oa-message-scroller data-follow"),
+            "{quiet}"
         );
         let still = MessageScroller::new().render().into_string();
         assert!(still.contains("aria-live=\"off\""), "{still}");
