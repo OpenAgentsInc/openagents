@@ -44,9 +44,9 @@ irm https://openagents.com/cli/install.ps1 | iex
 - **Use Coder free each day:** when you're signed in, Coder's own loop on
   `auto` is free up to about $1 of model use a day. It starts again at
   midnight UTC. See [Pricing](/docs/pricing).
-- **Undo a turn:** `/rewind` puts back the files a turn changed.
+- **Undo a turn** (in the next release): `/rewind` puts back the files a turn changed.
 - **Solve an issue:** ask Coder to solve `owner/repo#42`, or run
-  `coder solver 42 --github owner/repo`. See [Solve an issue](/docs/coder-solver).
+  `coder solver 42 --github owner/repo`, in the next release. See [Solve an issue](/docs/coder-solver).
 - **See what each model call cost:** Coder records the tokens, cost, and
   time of every call. Save them with the chat using `/export`.
 - **Scroll a command's output** on the left edge of its box. Scroll

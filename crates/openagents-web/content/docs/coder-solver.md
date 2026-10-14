@@ -4,6 +4,8 @@ Solver takes a GitHub issue to a pull request. It works in its own fresh
 copy of your project, so your checkout isn't touched, and it opens the
 pull request only when the checks pass.
 
+Solver comes in the next Coder release.
+
 ## Before you start
 
 On the computer that runs it you need:
@@ -75,7 +77,7 @@ Merging stays with you.
 | `--no-gate` | Work the issue even if it looks already done. |
 | `--plain`, `--json` | Print the run as text, or as one JSON line per event. |
 
-`coder solver --help` lists every option. Each run keeps its record and
+In the next release, `coder solver --help` lists every option. Each run keeps its record and
 its copy of the project under `~/.openagents/coder/solver-runs/`.
 
 Next: [Safety](/docs/coder-safety).

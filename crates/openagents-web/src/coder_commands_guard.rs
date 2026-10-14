@@ -5,6 +5,9 @@
 //! `coder_release_commands.txt` lists that release's commands, generated
 //! from its commit by `scripts/release/coder-commands.sh`. 1.0.0-rc.5 was
 //! published without `coder login` while every page said to run it.
+//! A line may name a command the published release lacks when it says the
+//! command comes "in the next release"; the guard fails once that release
+//! is published with it and the note is stale.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -105,6 +108,12 @@ fn named_commands(line: &str, slash: &BTreeSet<String>) -> Vec<String> {
     named
 }
 
+/// The line says what it names comes in the next release ("in the next
+/// release", "Comes in the next release").
+fn says_next_release(line: &str) -> bool {
+    line.to_ascii_lowercase().contains("in the next release")
+}
+
 #[test]
 fn every_coder_command_the_site_names_is_in_the_published_release() {
     let crate_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -137,6 +146,7 @@ fn every_coder_command_the_site_names_is_in_the_published_release() {
 
     let this_file = crate_dir.join("src/coder_commands_guard.rs");
     let mut missing = Vec::new();
+    let mut stale = Vec::new();
     for path in paths {
         if path == this_file {
             continue;
@@ -147,23 +157,43 @@ fn every_coder_command_the_site_names_is_in_the_published_release() {
             if line.trim_start().starts_with("//") {
                 continue;
             }
-            for command in named_commands(line, &slash) {
+            let named = named_commands(line, &slash);
+            let at = || {
+                format!(
+                    "{}:{}",
+                    path.strip_prefix(&root).unwrap_or(&path).display(),
+                    index + 1
+                )
+            };
+            // A line that says its command comes in the next release may
+            // name one the published release lacks; once the release has
+            // them all, that note is stale.
+            if says_next_release(line) {
+                if !named.is_empty() && named.iter().all(|c| commands.contains(c)) {
+                    stale.push(format!("{}: {}", at(), named.join(", ")));
+                }
+                continue;
+            }
+            for command in named {
                 if !commands.contains(&command) {
-                    missing.push(format!(
-                        "{}:{}: {command}",
-                        path.strip_prefix(&root).unwrap_or(&path).display(),
-                        index + 1
-                    ));
+                    missing.push(format!("{}: {command}", at()));
                 }
             }
         }
     }
     assert!(
+        stale.is_empty(),
+        "these lines say their Coder commands come in the next release, but the \
+         published release {CODER_VERSION} has them; drop the note:\n{}",
+        stale.join("\n")
+    );
+    assert!(
         missing.is_empty(),
         "these lines tell people to run Coder commands that the published release \
          {CODER_VERSION} doesn't have. Publish a release that has them \
          (scripts/release/coder.sh), then set CODER_VERSION and regenerate \
-         coder_release_commands.txt; or fix the copy:\n{}",
+         coder_release_commands.txt; or fix the copy, or say on that line that it comes \
+         \"in the next release\":\n{}",
         missing.join("\n")
     );
 }
@@ -186,4 +216,9 @@ fn the_guard_reads_commands_from_copy() {
         named_commands("\"coder trace upload\"", &slash),
         ["coder trace"]
     );
+    assert!(says_next_release(
+        "type `/rewind` (in the next release), pick"
+    ));
+    assert!(says_next_release("Send it now. Comes in the next release."));
+    assert!(!says_next_release("run `coder login`"));
 }

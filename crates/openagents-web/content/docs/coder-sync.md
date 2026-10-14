@@ -28,7 +28,7 @@ the terminal or on the website. Change it any time:
 | `/sync on` | Save every chat on this computer to your account, earlier ones too, and keep saving. Memory notes sync too. |
 | `/sync off` | Stop saving. Chats already on your account stay there. |
 | `/sync delete` | Remove this computer's chats from your account. |
-| `coder sync` | Send every chat here now, background agents' chats included (sync must be on). |
+| `coder sync` | Send every chat here now, background agents' chats included (sync must be on). Comes in the next release. |
 
 Sync is off until you choose it. A Coder run with its own folder
 (`--state DIR`) doesn't sync until you turn sync on for that folder. Messages that look like they hold a
