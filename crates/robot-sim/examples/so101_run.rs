@@ -125,6 +125,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut moved = joints.clone();
     moved.insert("shoulder_pan".into(), 0.2);
     let controller = Scripted::new(vec![joints, moved], 15)?;
+    controller.save(&store)?;
     let experiment = Experiment {
         scene: scene_ref,
         task: CubeTask {

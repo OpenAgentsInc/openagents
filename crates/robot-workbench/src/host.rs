@@ -17,9 +17,22 @@ pub struct Host {
     pub catalog: PathBuf,
     pub base: String,
     pub author: String,
+    pub runs: Option<std::sync::Arc<crate::runs::Runs>>,
 }
 
 impl Host {
+    pub fn definitions(&self) -> Value {
+        let mut value = definitions();
+        if self.runs.is_none() {
+            value["tools"].as_array_mut().unwrap().retain(|tool| {
+                !matches!(
+                    tool["name"].as_str(),
+                    Some("robot_experiment" | "robot_run" | "robot_run_control")
+                )
+            });
+        }
+        value
+    }
     pub fn open(store: Store, catalog: &Path, base: &str) -> Result<Self, String> {
         if !(base.starts_with("http://127.0.0.1:") || base.starts_with("http://localhost:"))
             || base.trim_end_matches('/').contains(['?', '#', '\n'])
@@ -32,6 +45,7 @@ impl Host {
             catalog: catalog.to_path_buf(),
             base: base.trim_end_matches('/').into(),
             author: "Local user".into(),
+            runs: None,
         })
     }
 
@@ -141,6 +155,65 @@ impl Host {
             .map_err(|e| format!("Check this tool's arguments: {e}"))?;
         let reference = |document: String, version: String| Reference { document, version };
         let result = match tool {
+            Tool::Run {
+                experiment,
+                version,
+                seed,
+                job,
+                batch,
+            } => {
+                let runs = self
+                    .runs
+                    .as_ref()
+                    .ok_or("Configure a simulator before starting a run")?;
+                return runs.start(
+                    self.clone(),
+                    reference(experiment, version),
+                    seed,
+                    job,
+                    batch,
+                );
+            }
+            Tool::RunStatus { job } => return crate::runs::Runs::inspect(self, &job),
+            Tool::RunControl { job, command_json } => {
+                let runs = self
+                    .runs
+                    .as_ref()
+                    .ok_or("Configure a simulator before controlling a run")?;
+                let action = serde_json::from_str(&command_json)
+                    .map_err(|_| "Choose pause, resume, step, stop, or reset for this run")?;
+                return runs.control(&job, action);
+            }
+            Tool::Experiment {
+                scene,
+                version,
+                document,
+                seeds,
+                max_steps,
+                policy,
+                frames_json,
+                hold,
+            } => {
+                let config = &self
+                    .runs
+                    .as_ref()
+                    .ok_or("Configure a simulator before creating an experiment")?
+                    .config;
+                let scene = reference(scene, version);
+                let saved = if policy {
+                    crate::experiments::policy_experiment(
+                        self, &scene, seeds, max_steps, config, &document,
+                    )?
+                } else {
+                    let frames = serde_json::from_str(&frames_json).map_err(
+                        |_| "Use a list of named joint poses for the scripted experiment",
+                    )?;
+                    crate::experiments::scripted_experiment(
+                        self, &scene, seeds, max_steps, frames, hold, config, &document,
+                    )?
+                };
+                return Ok(json!({"experiment":saved,"summary":"Experiment saved"}));
+            }
             Tool::List => return self.documents(),
             Tool::Import {
                 document,

@@ -99,3 +99,26 @@ The Hub repository must already exist. Public destinations also require
 and uses a commit bound to the reviewed parent. It supports regular, basic LFS,
 and multipart LFS uploads. Credentials go to the Hub API and its own verification
 endpoint; storage uploads use the supplied signed addresses.
+
+Execute a saved scripted or ACT experiment with `robot-workbench execute`.
+Choose `--experiment DOCUMENT@VERSION`, `--job NAME`, and `--seed N`, plus
+the same private store and MuJoCo library options as the recorder. ACT adds
+`--policy /private/checkpoint --policy-sha SHA256`. Saved scripted sequences
+reopen by their build hash. Jobs checkpoint physical steps and save stopped
+or interrupted attempts for replay.
+
+The `gym_robot_study` example prepares separate seed sets and runs ten paired
+validation cases. It pins each cube placement before executing either
+controller. Its arguments are `STORE PROJECT SCENE@VERSION STUDY LIBRARY
+LIBRARY_SHA POLICY_FOLDER POLICY_SHA NEW_OUTPUT_FOLDER`. Results remain
+private until an explicit Gym publication command.
+
+Pass `--execution /private/runner.json` to `serve` to enable the experiment
+and run tools. The file is a `experiments::Config` JSON value with a pinned
+MuJoCo `library` and optional pinned `policy`. `robot_experiment` saves the
+settings; `robot_run` starts them explicitly; `robot_run_status` reads progress;
+`robot_run_control` pauses, resumes, steps, resets, or stops. At most two runs
+execute here. Interactive attempts start paused and save partial work after
+60 seconds without a control command. Batch runs continue when a view closes.
+Run `robot-workbench recover --root FOLDER --project PROJECT --job NAME` after
+a process interruption to save its last completed step without restarting it.

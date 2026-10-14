@@ -154,7 +154,7 @@ fn native_controls_have_valid_accessible_copy_and_bound_callbacks() {
     );
     let tools = definitions();
     let declared = tools["tools"].as_array().unwrap();
-    assert_eq!(declared.len(), 13);
+    assert_eq!(declared.len(), 17);
     assert!(
         declared
             .iter()
@@ -188,5 +188,88 @@ fn in_memory_description_uses_verified_assets_without_filesystem_access() {
             .unwrap()
             .iter()
             .all(|m| m.is_finite())
+    );
+}
+
+#[test]
+fn execution_tools_require_explicit_configuration_and_reject_unknown_actions() {
+    let (_root, host) = host();
+    let tools = host.definitions();
+    assert!(
+        !tools["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|t| t["name"] == "robot_run")
+    );
+    assert!(host.execute("robot_run",json!({"experiment":"experiment","version":"a".repeat(64),"seed":7,"job":"attempt","batch":true}),1).is_err());
+    assert!(
+        serde_json::from_value::<robot_workbench::runs::Action>(
+            json!({"action":"shell","command":"anything"})
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn native_run_controls_step_reset_and_stop_preserve_both_attempts() {
+    let Some(library) = std::env::var_os("ROBOT_LAB_MUJOCO_LIBRARY") else {
+        return;
+    };
+    let (_root, mut host) = host();
+    let scene = imported(&host);
+    let config = robot_workbench::experiments::Config {
+        library: robot_sim::mujoco::LibraryPin {
+            path: library.into(),
+            sha256: std::env::var("ROBOT_LAB_MUJOCO_SHA256").unwrap(),
+        },
+        policy: None,
+    };
+    let home = host.bundle(&scene).unwrap().scene.robots[0].joints.clone();
+    let experiment = robot_workbench::experiments::scripted_experiment(
+        &host,
+        &scene,
+        vec![7, 8],
+        241,
+        vec![home],
+        1,
+        &config,
+        "experiment",
+    )
+    .unwrap();
+    host.runs = Some(std::sync::Arc::new(robot_workbench::runs::Runs::new(
+        config,
+    )));
+    let runs = host.runs.as_ref().unwrap();
+    let started = runs
+        .start(host.clone(), experiment, 7, "controls-one".into(), false)
+        .unwrap();
+    assert_eq!(started["step"], 0);
+    let stepped = runs
+        .control("controls-one", robot_workbench::runs::Action::Step)
+        .unwrap();
+    assert_eq!(stepped["step"], 1);
+    let reset = runs
+        .control(
+            "controls-one",
+            robot_workbench::runs::Action::Reset {
+                next_job: "controls-two".into(),
+                seed: 8,
+            },
+        )
+        .unwrap();
+    assert_eq!(reset["step"], 0);
+    let first = robot_workbench::runs::Runs::inspect(&host, "controls-one").unwrap();
+    assert!(!first["episode"].is_null());
+    let stopped = runs
+        .control("controls-one", robot_workbench::runs::Action::Stop)
+        .unwrap();
+    assert!(!stopped["episode"].is_null());
+    let first: Reference = serde_json::from_value(first["episode"].clone()).unwrap();
+    let second: Reference = serde_json::from_value(stopped["episode"].clone()).unwrap();
+    assert_eq!(host.bundle(&first).unwrap().episode.unwrap().steps.len(), 2);
+    assert_eq!(
+        host.bundle(&second).unwrap().episode.unwrap().steps.len(),
+        1
     );
 }

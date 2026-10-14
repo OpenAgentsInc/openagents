@@ -215,6 +215,18 @@ impl Store {
         Ok(bytes)
     }
 
+    /// Read a content-addressed controller sequence whose experiment pins
+    /// the content hash directly, without inventing a file length or MIME type.
+    pub fn asset_contents(&self, sha256: &str, max_bytes: usize) -> Result<Vec<u8>> {
+        hash(sha256)?;
+        let bytes = read_bounded(&self.root.join("assets").join(sha256), max_bytes)?;
+        require(
+            digest(&bytes) == sha256,
+            "The saved file changed. Restore the pinned version.",
+        )?;
+        Ok(bytes)
+    }
+
     pub fn get(&self, reference: &Reference) -> Result<Version> {
         reference.validate()?;
         let path = self

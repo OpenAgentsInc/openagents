@@ -6,6 +6,41 @@ use serde_json::{Value, json};
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
 #[serde(tag = "tool", deny_unknown_fields)]
 pub enum Tool {
+    #[serde(rename = "robot_experiment")]
+    #[schemars(
+        description = "Save an experiment for this exact scene. Choose the configured policy, or provide frames_json as a list of joint-name/position maps and hold control intervals. This does not start execution."
+    )]
+    Experiment {
+        scene: String,
+        version: String,
+        document: String,
+        seeds: Vec<u64>,
+        max_steps: u32,
+        policy: bool,
+        frames_json: String,
+        hold: u32,
+    },
+    #[serde(rename = "robot_run")]
+    #[schemars(
+        description = "Explicitly start a saved experiment. batch continues while views close; interactive starts paused. Use a new job name and a declared experiment seed."
+    )]
+    Run {
+        experiment: String,
+        version: String,
+        seed: u64,
+        job: String,
+        batch: bool,
+    },
+    #[serde(rename = "robot_run_status")]
+    #[schemars(
+        description = "Read run progress and its saved attempt, without starting or resuming execution."
+    )]
+    RunStatus { job: String },
+    #[serde(rename = "robot_run_control")]
+    #[schemars(
+        description = "Control an explicitly started run. command_json is {\"action\":\"pause|resume|step|stop\"} or {\"action\":\"reset\",\"next_job\":\"NEW_NAME\",\"seed\":N}. Reset saves the previous attempt; stop saves partial work."
+    )]
+    RunControl { job: String, command_json: String },
     #[serde(rename = "robot_list")]
     #[schemars(description = "List this project's robot scenes and saved attempts.")]
     List,

@@ -565,3 +565,18 @@ fn backend_failure_keeps_previous_steps_and_a_saved_failure_event() {
     ));
     runner.recording().episode.validate().unwrap();
 }
+
+#[test]
+fn scripted_sequences_reopen_by_their_exact_saved_build_and_reject_changed_bytes() {
+    use robot_sim::runner::Scripted;
+    let root = tempfile::tempdir().unwrap();
+    let store = robot_lab::Store::open(root.path(), "scripted-tests").unwrap();
+    let controller = Scripted::new(vec![BTreeMap::from([("joint".into(), 0.2)])], 3).unwrap();
+    let asset = controller.save(&store).unwrap();
+    assert_eq!(asset.sha256, controller.build().sha256);
+    let mut restored = Scripted::open(&store, &controller.build()).unwrap();
+    assert_eq!(restored.build(), controller.build());
+    restored.reset(9).unwrap();
+    std::fs::write(store.root().join("assets").join(asset.sha256), b"changed").unwrap();
+    assert!(Scripted::open(&store, &controller.build()).is_err());
+}

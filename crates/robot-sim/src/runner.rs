@@ -622,6 +622,25 @@ pub struct Scripted {
 }
 
 impl Scripted {
+    pub fn save(&self, store: &robot_lab::Store) -> Result<robot_lab::document::Asset> {
+        let bytes = serde_json::to_vec(&(&self.frames, self.hold_control_intervals))?;
+        let asset = store.put_asset(std::io::Cursor::new(bytes), "application/json", 2 << 20)?;
+        require(
+            asset.sha256 == self.build.sha256,
+            "The scripted controller changed before it was saved.",
+        )?;
+        Ok(asset)
+    }
+    pub fn open(store: &robot_lab::Store, build: &Build) -> Result<Self> {
+        let bytes = store.asset_contents(&build.sha256, 2 << 20)?;
+        let (frames, hold): (Vec<BTreeMap<String, f64>>, u32) = serde_json::from_slice(&bytes)?;
+        let controller = Self::new(frames, hold)?;
+        require(
+            controller.build == *build,
+            "Use the exact scripted controller saved with this experiment.",
+        )?;
+        Ok(controller)
+    }
     pub fn new(frames: Vec<BTreeMap<String, f64>>, hold_control_intervals: u32) -> Result<Self> {
         require(
             !frames.is_empty() && frames.len() <= 1_024 && hold_control_intervals > 0,

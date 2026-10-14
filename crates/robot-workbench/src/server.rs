@@ -32,10 +32,7 @@ impl Server {
     pub fn router(self: Arc<Self>) -> Router {
         Router::new()
             .route("/healthz", get(|| async { "ok" }))
-            .route(
-                "/api/tools",
-                get(|| async { Json(crate::host::definitions()) }),
-            )
+            .route("/api/tools", get(tool_definitions))
             .route("/api/docs", get(documents))
             .route("/api/tool/{name}", post(tool))
             .route("/api/view", get(view))
@@ -240,6 +237,9 @@ async fn documents(State(server): State<Arc<Server>>) -> Response {
         Ok(value) => Json(value).into_response(),
         Err(e) => failure(e),
     }
+}
+async fn tool_definitions(State(server): State<Arc<Server>>) -> Json<Value> {
+    Json(server.host.definitions())
 }
 async fn view(State(server): State<Arc<Server>>, Query(subject): Query<Subject>) -> Response {
     match server.host.bundle(&subject.reference()) {

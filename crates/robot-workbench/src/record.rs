@@ -79,15 +79,7 @@ impl<B: Backend> Cameras<B> {
                 "Choose 1 to 4 recording cameras, at most 2048 pixels per side",
             ));
         }
-        let build = Build {
-            name: "robot-verse-camera-v1".into(),
-            sha256: robot_lab::store::digest(&serde_json::to_vec(&(
-                inner.build(),
-                &scene,
-                env!("ROBOT_RENDER_BUILD_SHA"),
-                "colored-triangles-v1",
-            ))?),
-        };
+        let build = camera_build(inner.build(), &scene)?;
         let mut renderers = BTreeMap::new();
         for camera in &scene.cameras {
             let renderer = verse::render::Offscreen::new(
@@ -109,6 +101,17 @@ impl<B: Backend> Cameras<B> {
             renderers,
         })
     }
+}
+pub fn camera_build(inner: Build, scene: &Scene) -> robot_sim::Result<Build> {
+    Ok(Build {
+        name: "robot-verse-camera-v1".into(),
+        sha256: robot_lab::store::digest(&serde_json::to_vec(&(
+            inner,
+            scene,
+            env!("ROBOT_RENDER_BUILD_SHA"),
+            "colored-triangles-v1",
+        ))?),
+    })
 }
 impl<B: Backend> Backend for Cameras<B> {
     fn build(&self) -> Build {

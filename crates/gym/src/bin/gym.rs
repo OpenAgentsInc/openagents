@@ -184,6 +184,16 @@ struct Options {
 fn main() {
     let mut args = std::env::args().skip(1);
     let command = args.next().unwrap_or_default();
+    if command == "robot" {
+        match gym::robot_cli::command(&args.collect::<Vec<_>>(), &mut std::io::stdout().lock()) {
+            Ok(()) => (),
+            Err(error) => {
+                eprintln!("{error}");
+                std::process::exit(2);
+            }
+        }
+        return;
+    }
     if command == "sales-evidence" {
         run(gym::sales_evidence::command(&args.collect::<Vec<_>>()));
         return;

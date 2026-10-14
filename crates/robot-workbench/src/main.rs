@@ -4,6 +4,12 @@
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = std::env::args().skip(1);
     let command = args.next();
+    if command.as_deref() == Some("recover") {
+        return robot_workbench::experiments::recover_cli(args.collect());
+    }
+    if command.as_deref() == Some("execute") {
+        return robot_workbench::experiments::cli(args.collect());
+    }
     if command.as_deref() == Some("publish") {
         return robot_workbench::record::publish_cli(args.collect()).await;
     }
@@ -19,6 +25,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut root = None;
     let mut project = None;
     let mut build = None;
+    let mut execution = None;
     let mut port = 8794_u16;
     let mut catalog = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../robot-description/assets/so101");
@@ -30,6 +37,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "--build" => build = Some(std::path::PathBuf::from(value)),
             "--port" => port = value.parse()?,
             "--catalog" => catalog = value.into(),
+            "--execution" => execution = Some(std::path::PathBuf::from(value)),
             _ => return Err("Choose a supported Robot Lab option".into()),
         }
     }
@@ -39,7 +47,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     )?;
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", port)).await?;
     let base = format!("http://127.0.0.1:{}", listener.local_addr()?.port());
-    let host = robot_workbench::host::Host::open(store, &catalog, &base)?;
+    let mut host = robot_workbench::host::Host::open(store, &catalog, &base)?;
+    if let Some(path) = execution {
+        let metadata = std::fs::symlink_metadata(&path)?;
+        if !metadata.is_file() || metadata.len() > 65536 {
+            return Err("Choose a small simulator configuration file".into());
+        }
+        let config = serde_json::from_slice(&std::fs::read(path)?)?;
+        host.runs = Some(std::sync::Arc::new(robot_workbench::runs::Runs::new(
+            config,
+        )));
+    }
     let server = std::sync::Arc::new(robot_workbench::server::Server::new(
         host,
         &build.ok_or("Choose --build for the player files")?,

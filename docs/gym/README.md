@@ -6,6 +6,32 @@ comparison gates. Its terminal also reads Coder and Terminal-Bench evidence,
 including saved head-to-head replay. The Terminal-Bench runner has its own
 [status](../terminal-bench/README.md) and [runbook](../terminal-bench/runbook.md).
 
+## Inspect robot experiments
+
+`gym robot record`, `report`, `compare`, and `replay` read saved Robot Lab
+physics episodes. Suites pin per-seed scenes, simulator and scoring builds,
+control and camera rates, and separate training, validation, and held-out
+cases. Reports recompute each result from its recording and check the result
+file's receipt chain. Missing attempts stay missing; complete sets report
+sample counts and Wilson 95% intervals.
+
+```sh
+gym robot report --lab-root /private/robot-files --project PROJECT \
+  --suite /private/study/suite.json --results /private/study/results.jsonl \
+  --partition validation --player http://127.0.0.1:8794
+gym robot compare --lab-root /private/robot-files --project PROJECT \
+  --suite /private/study/suite.json --results /private/study/results.jsonl \
+  --controller SCRIPTED_BUILD_SHA --other-controller POLICY_BUILD_SHA --json
+```
+
+Failed attempts include replay links. Scoring needs every corner of the cube
+inside the target (with a pinned 0.1-mm contact tolerance), no robot contact,
+and bounded speeds for the declared stable duration. Demonstration replay
+cannot count as task success. `gym robot publish` uses the same options plus
+`--output /private/new-results.json` to prepare a bounded shareable file of
+one partition's metrics and saved-version references. It includes no images
+or recordings and performs no upload.
+
 ## Inspect coding runs
 
 | Need | Guide |

@@ -81,6 +81,7 @@ use std::path::{Path, PathBuf};
 /// here keeps one declaration of the string while leaving the allowlist a
 /// list of names.
 pub const KNOWN_ROW_SCHEMAS: &[&str] = &[
+    crate::robot::ROW_SCHEMA,
     crate::row::LEGACY_SCHEMA,
     crate::row::PREVIOUS_SCHEMA,
     crate::row::SCHEMA,
@@ -562,6 +563,20 @@ pub fn receipt_of(row: &Value) -> String {
 /// them is a trial of nothing in particular, and only one of those fits in a
 /// store.
 pub fn perturbation_key(row: &Value) -> String {
+    if row.get("schema").and_then(Value::as_str) == Some(crate::robot::ROW_SCHEMA) {
+        let values = crate::robot::TRIAL_FIELDS
+            .iter()
+            .map(|field| canonical(row.get(*field).unwrap_or(&Value::Null)))
+            .collect::<Vec<_>>();
+        return format!(
+            "robot-trial:{}",
+            hex_digest(
+                serde_json::to_string(&values)
+                    .unwrap_or_default()
+                    .as_bytes()
+            )
+        );
+    }
     let values: Vec<Value> = PERTURBATION_KEY_FIELDS
         .iter()
         .map(|field| canonical(row.get(*field).unwrap_or(&Value::Null)))
@@ -1308,6 +1323,7 @@ mod tests {
         assert_eq!(
             KNOWN_ROW_SCHEMAS,
             &[
+                crate::robot::ROW_SCHEMA,
                 crate::row::LEGACY_SCHEMA,
                 crate::row::PREVIOUS_SCHEMA,
                 crate::row::SCHEMA,

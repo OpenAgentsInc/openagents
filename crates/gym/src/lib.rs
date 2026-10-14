@@ -88,6 +88,8 @@ pub mod interview;
 pub mod jobs;
 pub mod questions;
 pub mod regress;
+pub mod robot;
+pub mod robot_cli;
 pub mod row;
 pub mod runs;
 pub mod runs_analysis;

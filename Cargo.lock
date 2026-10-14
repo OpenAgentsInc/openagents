@@ -7190,6 +7190,7 @@ dependencies = [
  "atif",
  "coder-terminal",
  "crossterm",
+ "glam",
  "indexmap 2.14.2",
  "jev",
  "jev-hosted",
@@ -7198,6 +7199,7 @@ dependencies = [
  "pay-ledger",
  "ratatui",
  "receipts",
+ "robot-lab",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -7205,6 +7207,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.20",
  "tokio",
+ "url",
  "user-home",
 ]
 
@@ -14025,6 +14028,7 @@ version = "1.0.0-rc.13"
 dependencies = [
  "axum 0.8.9",
  "glam",
+ "gym",
  "oa-copy",
  "png",
  "robot-data",
