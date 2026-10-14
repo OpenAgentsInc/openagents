@@ -63,11 +63,13 @@ fn angles(name: &str) -> (f64, f64) {
 #[must_use]
 pub fn bounds(built: &Built, focus: &[String]) -> Aabb3 {
     let mut b = Aabb3::default();
-    for solid in built
-        .solids
-        .iter()
-        .filter(|s| focus.is_empty() || focus.contains(&s.instance))
-    {
+    for solid in built.solids.iter().filter(|s| {
+        // A group (a placed subassembly) frames everything inside it.
+        focus.is_empty()
+            || focus
+                .iter()
+                .any(|f| *f == s.instance || s.instance.starts_with(&format!("{f}.")))
+    }) {
         for p in &solid.mesh.positions {
             b.add(*p);
         }

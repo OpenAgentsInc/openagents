@@ -72,11 +72,29 @@ Z up.
   the colour of the solid they copy, even when it is coloured later (the
   kernel names copies anew, so each is matched to its source by name, by
   the order the kernel replays the sources in, or by volume).
-- **`assembly.v1`** holds `parts` (by id), `instances` that place them
-  (`at`, `rotate`, relative to a `parent` instance), `joints` (fastened,
-  revolute, slider and cylindrical move today; planar, spherical and gear are
-  declared in the schema and refused plainly until built) with values and
-  limits, and `contacts`: pairs of instances meant to touch.
+- **`assembly.v1`** holds `parts` (part templates, by id), `assemblies`
+  (subassembly templates: instances, joints and contacts of their own),
+  `instances` that place them (`at`, `rotate`, relative to a `parent`
+  instance), `joints` with values and limits, and `contacts`: pairs of
+  instances meant to touch.
+  - **Joints:** `fastened`; `revolute` (degrees about `axis` through
+    `origin`); `slider` (mm along `axis`); `cylindrical` (`[degrees, mm]`);
+    `planar` (`[u mm, v mm, degrees]`: slides in the plane normal to `axis`,
+    `u` along `x_dir`, and turns about `axis`); `spherical` (`[rx, ry, rz]`
+    degrees about `origin`, X then Y then Z); `gear` (no value: turns about
+    its own `axis` by `ratio` times its `driver` joint's angle, negative for
+    meshing gears, or `ratio` degrees per mm of a slider driver, a rack and
+    pinion). Gears may drive gears; a loop is refused.
+  - **Subassemblies:** an instance with `assembly: "bogie"` instead of a
+    `part` places a copy of that template. It becomes a group (a frame with
+    no solid) and the template's instances, joints and contacts are copied
+    under it, named by path (`bogie_l.wheel`, `bogie_l.spin`), to any depth.
+    Outer joints and contacts reach inner instances by path; a contact or
+    joint naming a group covers everything inside it.
+  - **Templates from other documents:** `cad_from_json` and `cad_assemble`
+    take `{"from": {"doc": "wheel", "version": 3, "part": "wheel"}}` for a
+    part or subassembly template; it's copied in at that version and keeps a
+    `source` saying where it came from.
 
 Every change makes a new **version**: the document, a one-line summary, who
 made it, a digest, and its check report. Versions live privately under the
@@ -130,7 +148,8 @@ message (workspace rule: no keyword routing).
 | `cad_add_feature(doc, part, features, after?)` | More of a part's history |
 | `cad_edit_feature(doc, part, feature, params? / op? / suppressed? / remove?)` | Change one feature; later ones rebuild from it |
 | `cad_set_part(doc, part, title? / material? / color? / finish? / remove?)` | A part's properties, or remove it and its instances |
-| `cad_assemble(doc, instances?, joints?, contacts?, remove?)` | Place, move or remove instances; add or move joints; declare contacts |
+| `cad_assemble(doc, instances?, joints?, contacts?, templates?, remove?)` | Place, move or remove instances of parts or subassemblies; add or move joints; define subassembly templates; declare contacts |
+| `cad_from_json(doc, document)` | A whole document at once (assembly from JSON), templates copied from other documents' versions |
 | `cad_check(doc, version?)` | Rebuild and check a version again |
 | `cad_versions(doc)` | Each version's summary, author, mass and parts |
 | `cad_compare(doc, a?, b?)` | What changed: parts, features, instances, joints, mass and centre of mass |

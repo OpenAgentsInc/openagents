@@ -257,6 +257,128 @@ mod tests {
         );
     }
 
+    fn com(eval: &Evaluation, id: &str) -> [f64; 3] {
+        let i = eval.report["instances"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|i| i["id"] == id)
+            .unwrap_or_else(|| panic!("no instance {id}: {}", eval.report["instances"]));
+        let c = &i["center_of_mass_mm"];
+        [0, 1, 2].map(|k| c[k].as_f64().unwrap())
+    }
+
+    fn near(a: [f64; 3], b: [f64; 3]) -> bool {
+        a.iter().zip(b).all(|(x, y)| (x - y).abs() < 0.5)
+    }
+
+    /// A 10 mm cube centred on (x, 0, 5).
+    fn cubes() -> Value {
+        let mut a = doc::new_assembly("joints", "Joints");
+        a["parts"]["cube"] = doc::new_part("cube", "Cube", "Steel", None);
+        a["parts"]["cube"]["features"] = json!([{"id": "b", "op": "solid.box", "params": {"length": 10, "width": 10, "height": 10, "center": [0, 0, 5]}}]);
+        a
+    }
+
+    #[test]
+    fn planar_spherical_and_gear_joints_move_their_children() {
+        let mut a = cubes();
+        a["instances"] = json!([
+            {"id": "base", "part": "cube"},
+            {"id": "puck", "part": "cube", "parent": "base", "at": [40, 0, 0]},
+            {"id": "ball", "part": "cube", "parent": "base", "at": [0, 40, 0]},
+            {"id": "wheel", "part": "cube", "parent": "base", "at": [-40, 0, 0]},
+            {"id": "pinion", "part": "cube", "parent": "base", "at": [0, -40, 0]}
+        ]);
+        a["joints"] = json!([
+            // Slides 10 along X, 5 along Y and turns 90° about Z through (0, 0, 0).
+            {"id": "table", "type": "planar", "parent": "base", "child": "puck",
+             "origin": [0, 0, 0], "axis": [0, 0, 1], "x_dir": [1, 0, 0], "value": [10, 5, 90],
+             "limits": [[-50, 50], [-50, 50], [-180, 180]]},
+            // Turns 90° about Z through the base.s origin.
+            {"id": "socket", "type": "spherical", "parent": "base", "child": "ball",
+             "origin": [0, 0, 0], "value": [0, 0, 90]},
+            {"id": "spin", "type": "revolute", "parent": "base", "child": "wheel",
+             "origin": [0, 0, 0], "axis": [0, 0, 1], "value": 30},
+            // Half as fast the other way: −15° about Z through the origin.
+            {"id": "mesh", "type": "gear", "parent": "base", "child": "pinion",
+             "origin": [0, 0, 0], "axis": [0, 0, 1], "driver": "spin", "ratio": -0.5}
+        ]);
+        let eval = evaluate(&a).unwrap_or_else(|p| panic!("{p:?}"));
+        // (40, 0, 5) turned 90° about Z → (0, 40, 5), then moved (10, 5, 0).
+        assert!(
+            near(com(&eval, "puck"), [10.0, 45.0, 5.0]),
+            "{:?}",
+            com(&eval, "puck")
+        );
+        // (0, 40, 5) turned 90° about Z → (−40, 0, 5).
+        assert!(
+            near(com(&eval, "ball"), [-40.0, 0.0, 5.0]),
+            "{:?}",
+            com(&eval, "ball")
+        );
+        let r = |deg: f64, p: [f64; 2]| {
+            let (s, c) = deg.to_radians().sin_cos();
+            [c * p[0] - s * p[1], s * p[0] + c * p[1], 5.0]
+        };
+        assert!(near(com(&eval, "wheel"), r(30.0, [-40.0, 0.0])));
+        assert!(
+            near(com(&eval, "pinion"), r(-15.0, [0.0, -40.0])),
+            "{:?}",
+            com(&eval, "pinion")
+        );
+        // A gear without a driver, or driving itself, is refused plainly.
+        a["joints"][3]["driver"] = json!("mesh");
+        let why = evaluate(&a).err().unwrap().join(" ");
+        assert!(why.contains("loop of gears"), "{why}");
+        a["joints"][3]["driver"] = json!("socket");
+        let why = evaluate(&a).err().unwrap().join(" ");
+        assert!(why.contains("is spherical"), "{why}");
+    }
+
+    #[test]
+    fn subassembly_templates_place_copies_with_their_own_joints() {
+        let mut a = cubes();
+        // A hinge: a cube with a lid cube on it, opened by a revolute.
+        a["assemblies"] = json!({"hinge": {
+            "title": "Hinge",
+            "instances": [{"id": "frame", "part": "cube"},
+                          {"id": "lid", "part": "cube", "parent": "frame", "at": [0, 0, 10]}],
+            "joints": [{"id": "pin", "type": "revolute", "parent": "frame", "child": "lid",
+                        "origin": [5, 0, 10], "axis": [0, 1, 0], "value": 0}]
+        }});
+        a["instances"] = json!([
+            {"id": "left", "assembly": "hinge", "at": [0, 50, 0]},
+            {"id": "right", "assembly": "hinge", "at": [0, -50, 0]}
+        ]);
+        // The outer assembly opens the right lid by its path.
+        a["joints"] =
+            json!([{"id": "open", "type": "fastened", "parent": "left", "child": "left.frame"}]);
+        let mut opened = a.clone();
+        let eval = evaluate(&a).unwrap_or_else(|p| panic!("{p:?}"));
+        assert_eq!(eval.report["instances"].as_array().unwrap().len(), 4);
+        assert!(near(com(&eval, "left.lid"), [0.0, 50.0, 15.0]));
+        assert!(near(com(&eval, "right.lid"), [0.0, -50.0, 15.0]));
+        opened["assemblies"]["hinge"]["joints"][0]["value"] = json!(90);
+        let eval = evaluate(&opened).unwrap_or_else(|p| panic!("{p:?}"));
+        // Turned 90° about its edge at x = 5, z = 10: it flips over onto x 5..15.
+        assert!(
+            near(com(&eval, "right.lid"), [10.0, -50.0, 15.0]),
+            "{:?}",
+            com(&eval, "right.lid")
+        );
+        // Unknown and self-containing templates are refused plainly.
+        a["instances"][0]["assembly"] = json!("nope");
+        assert!(doc::check_assembly(&a).join(" ").contains("doesn't have"));
+        a["instances"][0]["assembly"] = json!("hinge");
+        a["assemblies"]["hinge"]["instances"][1] = json!({"id": "again", "assembly": "hinge"});
+        assert!(
+            doc::check_assembly(&a)
+                .join(" ")
+                .contains("contains itself")
+        );
+    }
+
     #[test]
     fn overlaps_are_refused_unless_declared_and_joints_move_children() {
         let mut a = doc::new_assembly("pair", "Pair");

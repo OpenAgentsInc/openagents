@@ -62,9 +62,10 @@ version.
 
 ## Gaps, largest first
 
-1. **Joints that don't move yet:** planar, spherical and gear joints are in
-   the schema and refused plainly; no joint solver (closed loops, drive by
-   constraint). Instances are placed by their parents' frames.
+1. **No joint solver:** every joint kind moves (fastened, revolute, slider,
+   cylindrical, planar, spherical, gear; #11628), but instances are placed
+   by their parents' frames, so closed loops and driving by constraint are
+   not solved.
 2. **Stable references:** fillets, chamfers and shells pick edges and faces
    by a point in the part's frame; a change that moves the edge can make a
    pick miss. The kernel has persistent face and edge history; the document

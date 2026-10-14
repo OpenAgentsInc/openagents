@@ -134,6 +134,10 @@
       },
       "type": "array"
     },
+    "source": {
+      "description": "the document and version this part template was copied from",
+      "type": "object"
+    },
     "title": {
       "type": "string"
     }

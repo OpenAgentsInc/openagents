@@ -262,6 +262,7 @@ impl Lab {
             "cad_compare" => self.compare(args),
             "cad_export" => self.export(args),
             "cad_render" => self.render(args),
+            "cad_from_json" => self.from_json(args),
             other => Err(format!("{other} isn't a CAD Lab tool.")),
         };
         result.unwrap_or_else(|why| json!({"error": why}))
@@ -556,11 +557,40 @@ impl Lab {
             .iter()
             .filter_map(|v| v.as_str().map(str::to_owned))
             .collect();
-        if instances.is_empty() && joints.is_empty() && contacts.is_empty() && remove.is_empty() {
-            return Err("Give instances, joints, contacts or remove.".into());
+        let templates = match arg_json(args, "templates")? {
+            None => Map::new(),
+            Some(Value::Object(m)) => m,
+            Some(other) => {
+                return Err(format!(
+                    "templates is an object of subassemblies by id (got {other})."
+                ));
+            }
+        };
+        if instances.is_empty()
+            && joints.is_empty()
+            && contacts.is_empty()
+            && remove.is_empty()
+            && templates.is_empty()
+        {
+            return Err("Give instances, joints, contacts, templates or remove.".into());
         }
         self.change(args, |document| {
             let mut said = Vec::new();
+            for (key, template) in templates {
+                if template.is_null() {
+                    if let Some(m) = document["assemblies"].as_object_mut() {
+                        m.remove(&key);
+                    }
+                    said.push(format!("removed subassembly {key}"));
+                } else {
+                    if !document["assemblies"].is_object() {
+                        document["assemblies"] = json!({});
+                    }
+                    document["assemblies"][&key] = template;
+                    said.push(format!("subassembly {key}"));
+                }
+            }
+            self.resolve_templates(document)?;
             for instance in instances {
                 let id = instance["id"]
                     .as_str()
@@ -730,6 +760,138 @@ impl Lab {
         let mut card = self.card(&id, n, None)?;
         card["render"] = json!({"view": name, "focus": focus, "file": file});
         Ok(json!({"doc": id, "version": n, "path": dir.join(&file), "card": card}))
+    }
+
+    /// A whole document from JSON: an `assembly.v1` (or `part.v1`), saved as
+    /// the next version of `doc` (or its first). Part and subassembly
+    /// templates may come from other documents' versions
+    /// (`{"from": {"doc": "wheel", "version": 3, "part": "wheel"}}`); they
+    /// are copied in and remember where they came from (`source`).
+    fn from_json(&self, args: &Value) -> Result<Value, String> {
+        let id = arg_str(args, "doc").ok_or("Name the document (doc), e.g. \"rover\".")?;
+        if slug(id) != id {
+            return Err(format!(
+                "A document id is lowercase letters, digits and -, like {}.",
+                slug(id)
+            ));
+        }
+        let mut document = arg_json(args, "document")?
+            .ok_or("Give the document: a whole assembly.v1 (or part.v1) as JSON.")?;
+        if !document.is_object() {
+            return Err("The document must be a JSON object.".into());
+        }
+        if document["kind"] == doc::PART {
+            document["id"] = json!(id);
+        } else {
+            if document["kind"].is_null() {
+                document["kind"] = json!(doc::ASSEMBLY);
+            }
+            if document["id"].is_null() {
+                document["id"] = json!(id);
+            }
+            if document["parts"].is_null() {
+                document["parts"] = json!({});
+            }
+            if document["instances"].is_null() {
+                document["instances"] = json!([]);
+            }
+            self.resolve_templates(&mut document)?;
+        }
+        let summary = arg_str(args, "summary").map_or_else(
+            || format!("From JSON: {}", document["title"].as_str().unwrap_or(id)),
+            str::to_owned,
+        );
+        let base = self.latest(id);
+        let (n, record) = self.save(id, &document, &summary, &Self::author(args), base)?;
+        self.saved(id, n, &record)
+    }
+
+    /// Part and subassembly templates that point at another document's
+    /// version, copied in.
+    fn resolve_templates(&self, document: &mut Value) -> Result<(), String> {
+        let source = |from: &Value, key: &str| -> Result<(String, u64, Value), String> {
+            let doc_id = from["doc"]
+                .as_str()
+                .ok_or_else(|| format!("{key}'s from needs a doc."))?;
+            let n = match arg_u64(from, "version") {
+                Some(n) => n,
+                None => self
+                    .latest(doc_id)
+                    .ok_or_else(|| format!("There's no CAD document called {doc_id}."))?,
+            };
+            let (found, _) = self
+                .load(doc_id, n)
+                .ok_or_else(|| format!("{doc_id} has no version {n}."))?;
+            Ok((doc_id.to_owned(), n, found))
+        };
+        let mut extra_parts: Vec<(String, Value)> = Vec::new();
+        let keys: Vec<String> = document["parts"]
+            .as_object()
+            .map(|m| m.keys().cloned().collect())
+            .unwrap_or_default();
+        for key in keys {
+            let from = document["parts"][&key]["from"].clone();
+            if !from.is_object() {
+                continue;
+            }
+            let (doc_id, n, found) = source(&from, &key)?;
+            let name = from["part"].as_str().unwrap_or(&key).to_owned();
+            let mut part = if found["kind"] == doc::PART {
+                found
+            } else {
+                found["parts"]
+                    .get(&name)
+                    .cloned()
+                    .ok_or_else(|| format!("{doc_id} v{n} has no part {name}."))?
+            };
+            part["id"] = json!(key);
+            part["source"] = json!({"doc": doc_id, "version": n, "part": name});
+            document["parts"][&key] = part;
+        }
+        let keys: Vec<String> = document["assemblies"]
+            .as_object()
+            .map(|m| m.keys().cloned().collect())
+            .unwrap_or_default();
+        for key in keys {
+            let from = document["assemblies"][&key]["from"].clone();
+            if !from.is_object() {
+                continue;
+            }
+            let (doc_id, n, found) = source(&from, &key)?;
+            if found["kind"] != doc::ASSEMBLY {
+                return Err(format!(
+                    "{doc_id} is a single part; place it as a part template instead."
+                ));
+            }
+            let mut template = json!({"title": found["title"], "instances": found["instances"],
+                "source": {"doc": doc_id, "version": n}});
+            for field in ["joints", "contacts"] {
+                if found[field].as_array().is_some_and(|a| !a.is_empty()) {
+                    template[field] = found[field].clone();
+                }
+            }
+            document["assemblies"][&key] = template;
+            for (name, part) in found["parts"].as_object().into_iter().flatten() {
+                extra_parts.push((name.clone(), part.clone()));
+            }
+            for (name, inner) in found["assemblies"].as_object().into_iter().flatten() {
+                if document["assemblies"].get(name).is_none() {
+                    document["assemblies"][name] = inner.clone();
+                }
+            }
+        }
+        for (name, part) in extra_parts {
+            match document["parts"].get(&name) {
+                None => document["parts"][&name] = part,
+                Some(existing) if *existing == part => {}
+                Some(_) => {
+                    return Err(format!(
+                        "Two different parts are called {name}; rename one before bringing them together."
+                    ));
+                }
+            }
+        }
+        Ok(())
     }
 
     // ---- cards --------------------------------------------------------------
@@ -994,10 +1156,12 @@ fn takes(name: &str) -> &'static [&'static str] {
             "instances",
             "joints",
             "contacts",
+            "templates",
             "remove",
             "summary",
             "author",
         ],
+        "cad_from_json" => &["doc", "document", "summary", "author"],
         "cad_versions" => &["doc"],
         "cad_compare" => &["doc", "a", "b"],
         "cad_export" => &["doc", "version", "formats"],
@@ -1082,13 +1246,19 @@ pub fn tools() -> Value {
             "remove": {"type": "boolean"},
             "from_version": {"type": "integer", "description": "bring the part back to how it was in this version"},
             "summary": summary}}},
-        {"name": "cad_assemble", "description": "Place, move or remove instances of parts, add or set joints (revolute, slider, cylindrical, fastened; a joint's value opens a lid or turns a wheel), and declare contacts between instances that are meant to touch. Instances and joints with an existing id are updated (only the fields given). Checked like every edit: overlaps between instances that aren't declared contacts or joined by a joint are refused.",
+        {"name": "cad_assemble", "description": "Place, move or remove instances of parts or subassemblies, add or set joints (fastened, revolute, slider, cylindrical, planar, spherical, gear; a joint's value opens a lid or turns a wheel), define subassembly templates, and declare contacts between instances that are meant to touch. Instances and joints with an existing id are updated (only the fields given). Checked like every edit: overlaps between instances that aren't declared contacts or joined by a joint are refused.",
          "parameters": {"type": "object", "required": ["doc", "summary"], "properties": {
             "doc": doc,
-            "instances": {"type": "string", "description": "a JSON array: [{\"id\":\"wheel_lf\",\"part\":\"wheel\",\"parent\":\"bogie_l\",\"at\":[x,y,z],\"rotate\":[rx,ry,rz]}]"},
-            "joints": {"type": "string", "description": "a JSON array: [{\"id\":\"lid_hinge\",\"type\":\"revolute\",\"parent\":\"bay\",\"child\":\"lid\",\"origin\":[x,y,z],\"axis\":[x,y,z],\"value\":0,\"limits\":[[0,110]]}] (origin and axis in the parent's frame; parent must be the child's parent instance)"},
+            "instances": {"type": "string", "description": "a JSON array: [{\"id\":\"wheel_lf\",\"part\":\"wheel\",\"parent\":\"bogie_l\",\"at\":[x,y,z],\"rotate\":[rx,ry,rz]}]; {\"assembly\":\"bogie\"} instead of part places a copy of a subassembly template, whose instances are then named by path (bogie_l.wheel)"},
+            "joints": {"type": "string", "description": "a JSON array: [{\"id\":\"lid_hinge\",\"type\":\"revolute\",\"parent\":\"bay\",\"child\":\"lid\",\"origin\":[x,y,z],\"axis\":[x,y,z],\"value\":0,\"limits\":[[0,110]]}] (origin and axis in the parent's frame; parent must be the child's parent instance). slider: value mm along axis; cylindrical: [deg, mm]; planar: [u mm, v mm, deg] in the plane normal to axis (u along x_dir); spherical: [rx, ry, rz] deg about origin (no axis); gear: no value, follows driver (a joint id) times ratio (negative for meshing gears; degrees per mm when the driver is a slider)"},
+            "templates": {"type": "string", "description": "a JSON object of subassembly templates by id: {\"bogie\":{\"instances\":[...],\"joints\":[...],\"contacts\":[...]}} (their instances place this document's parts), or {\"bogie\":{\"from\":{\"doc\":\"bogie\",\"version\":2}}} to copy another document in; null removes one"},
             "contacts": {"type": "string", "description": "a JSON array of instance pairs meant to touch: [[\"a\",\"b\"]]"},
             "remove": {"type": "string", "description": "a JSON array of instance ids to remove"},
+            "summary": summary}}},
+        {"name": "cad_from_json", "description": "Make or replace a whole CAD document from JSON in one step: an assembly.v1 with its part templates (parts), subassembly templates (assemblies), instances, joints and contacts, or a single part.v1. A part or subassembly template may be {\"from\":{\"doc\":\"wheel\",\"version\":3,\"part\":\"wheel\"}} to copy it from another document's version. Checked like every edit and saved as the next version.",
+         "parameters": {"type": "object", "required": ["doc", "document", "summary"], "properties": {
+            "doc": doc,
+            "document": {"type": "string", "description": "the whole document as JSON"},
             "summary": summary}}},
         {"name": "cad_check", "description": "Run the checks on a version again: every feature rebuilds, every solid is closed, no undeclared overlaps; with its mass, centre of mass and inertia.",
          "parameters": {"type": "object", "required": ["doc"], "properties": {"doc": doc, "version": version}}},
@@ -1211,6 +1381,57 @@ mod tests {
             .cloned()
             .unwrap();
         assert_eq!(placed["parent"], "w1");
+    }
+
+    #[test]
+    fn assemblies_come_from_json_with_templates_from_other_documents() {
+        let (_dir, lab) = lab();
+        let cube = json!({"kind": "part.v1", "id": "cube", "title": "Cube", "material": "Steel",
+            "features": [{"id": "b", "op": "solid.box", "params": {"length": 10, "width": 10, "height": 10, "center": [0, 0, 5]}}]});
+        let made = lab.run(
+            "cad_from_json",
+            &json!({"doc": "cube", "document": cube, "summary": "A cube"}),
+        );
+        assert_eq!(made["saved"], true, "{made}");
+        // A hinge subassembly made of that cube, then two copies of it.
+        let hinge = json!({"title": "Hinge", "parts": {"cube": {"from": {"doc": "cube"}}},
+            "instances": [{"id": "frame", "part": "cube"}, {"id": "lid", "part": "cube", "parent": "frame", "at": [0, 0, 10]}],
+            "joints": [{"id": "pin", "type": "revolute", "parent": "frame", "child": "lid", "origin": [5, 0, 10], "axis": [0, 1, 0], "value": 0}]});
+        let made = lab.run(
+            "cad_from_json",
+            &json!({"doc": "hinge", "document": hinge.to_string(), "summary": "A hinge"}),
+        );
+        assert_eq!(made["saved"], true, "{made}");
+        let (saved, _) = lab.load("hinge", 1).unwrap();
+        assert_eq!(saved["parts"]["cube"]["source"]["doc"], "cube");
+        assert_eq!(saved["parts"]["cube"]["source"]["version"], 1);
+        let pair = json!({"title": "Pair", "assemblies": {"hinge": {"from": {"doc": "hinge", "version": 1}}},
+            "instances": [{"id": "left", "assembly": "hinge", "at": [0, 40, 0]}, {"id": "right", "assembly": "hinge", "at": [0, -40, 0]}]});
+        let made = lab.run(
+            "cad_from_json",
+            &json!({"doc": "pair", "document": pair, "summary": "Two hinges"}),
+        );
+        assert_eq!(made["saved"], true, "{made}");
+        assert_eq!(made["instances"], 4, "{made}");
+        // Opening the right lid through the template's joint, by a new template.
+        let (mut doc1, _) = lab.load("pair", 1).unwrap();
+        doc1["assemblies"]["hinge"]["joints"][0]["value"] = json!(45);
+        let opened = lab.run(
+            "cad_assemble",
+            &json!({"doc": "pair", "summary": "Lids open",
+            "templates": {"hinge": doc1["assemblies"]["hinge"]}}),
+        );
+        assert_eq!(opened["version"], 2, "{opened}");
+        // A subassembly that isn't there is refused.
+        let bad = lab.run(
+            "cad_assemble",
+            &json!({"doc": "pair", "summary": "x",
+            "instances": [{"id": "third", "assembly": "nope"}]}),
+        );
+        assert!(
+            bad["error"].as_str().unwrap_or_default().contains("nope"),
+            "{bad}"
+        );
     }
 
     #[test]

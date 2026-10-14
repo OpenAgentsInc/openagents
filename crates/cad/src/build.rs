@@ -327,10 +327,9 @@ pub fn placements(assembly: &Value) -> BTreeMap<String, Xf> {
         .into_iter()
         .flatten()
         .collect();
-    let joints: BTreeMap<String, &Value> = assembly["joints"]
-        .as_array()
-        .into_iter()
-        .flatten()
+    let all_joints: Vec<Value> = assembly["joints"].as_array().cloned().unwrap_or_default();
+    let joints: BTreeMap<String, &Value> = all_joints
+        .iter()
         .filter_map(|j| Some((j["child"].as_str()?.to_owned(), j)))
         .collect();
     let mut out: BTreeMap<String, Xf> = BTreeMap::new();
@@ -348,7 +347,9 @@ pub fn placements(assembly: &Value) -> BTreeMap<String, Xf> {
                 },
                 None => Xf::IDENTITY,
             };
-            let motion = joints.get(id).map_or(Xf::IDENTITY, |j| joint_motion(j));
+            let motion = joints
+                .get(id)
+                .map_or(Xf::IDENTITY, |j| joint_motion_in(&all_joints, j));
             let (at, rotate) = doc::placement(instance);
             let local = Xf::translate(at).mul(&Xf::rotate_xyz(rotate));
             out.insert(id.to_owned(), parent.mul(&motion).mul(&local));
@@ -378,8 +379,63 @@ pub fn joint_motion(joint: &Value) -> Xf {
         "slider" => slide(values.first().copied().unwrap_or(0.0)),
         "cylindrical" => slide(values.get(1).copied().unwrap_or(0.0))
             .mul(&turn(values.first().copied().unwrap_or(0.0))),
+        "planar" => {
+            let (u, v) = planar_axes(unit, doc::triple(&joint["x_dir"]));
+            let a = values.first().copied().unwrap_or(0.0);
+            let b = values.get(1).copied().unwrap_or(0.0);
+            Xf::translate([
+                u[0] * a + v[0] * b,
+                u[1] * a + v[1] * b,
+                u[2] * a + v[2] * b,
+            ])
+            .mul(&turn(values.get(2).copied().unwrap_or(0.0)))
+        }
+        "spherical" => {
+            let mut degrees = [0.0; 3];
+            for (d, v) in degrees.iter_mut().zip(&values) {
+                *d = *v;
+            }
+            Xf::translate(origin)
+                .mul(&Xf::rotate_xyz(degrees))
+                .mul(&Xf::translate([-origin[0], -origin[1], -origin[2]]))
+        }
         _ => Xf::IDENTITY,
     }
+}
+
+/// A joint's motion with a gear's angle taken from its driver (the other
+/// joints of the assembly): a gear turns about its own axis by its ratio
+/// times its driver's angle, or its ratio in degrees per mm of a slider.
+#[must_use]
+pub fn joint_motion_in(joints: &[Value], joint: &Value) -> Xf {
+    if joint["type"] != "gear" {
+        return joint_motion(joint);
+    }
+    let mut turned = joint.clone();
+    turned["type"] = json!("revolute");
+    turned["value"] = json!(doc::driven_value(joints, joint));
+    joint_motion(&turned)
+}
+
+/// The planar joint's two in-plane directions: `u` along `x_dir` (made
+/// perpendicular to the normal) or a fixed perpendicular, `v = n × u`.
+fn planar_axes(n: [f64; 3], x_dir: Option<[f64; 3]>) -> ([f64; 3], [f64; 3]) {
+    let dot = |a: [f64; 3], b: [f64; 3]| a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    let seed = x_dir.unwrap_or(if n[0].abs() < 0.9 {
+        [1.0, 0.0, 0.0]
+    } else {
+        [0.0, 1.0, 0.0]
+    });
+    let d = dot(seed, n);
+    let u = [seed[0] - d * n[0], seed[1] - d * n[1], seed[2] - d * n[2]];
+    let len = dot(u, u).sqrt().max(1e-12);
+    let u = [u[0] / len, u[1] / len, u[2] / len];
+    let v = [
+        n[1] * u[2] - n[2] * u[1],
+        n[2] * u[0] - n[0] * u[2],
+        n[0] * u[1] - n[1] * u[0],
+    ];
+    (u, v)
 }
 
 /// Where built parts are kept between builds: `$CAD_PART_CACHE`, else a
@@ -577,10 +633,12 @@ pub fn build_with(document: &Value, cache: &Path) -> Result<Built, Vec<String>> 
     for part in parts.values() {
         parameters.extend(part["parameters"].as_array().cloned().unwrap_or_default());
     }
+    // Groups (subassembly frames) place no solid of their own.
     let instances: Vec<&Value> = assembly["instances"]
         .as_array()
         .into_iter()
         .flatten()
+        .filter(|i| i["part"].is_string())
         .collect();
     // Every part builds (or comes from the cache), each in a session of
     // its own, side by side; only placed ones go into the assembly.
@@ -813,11 +871,37 @@ pub fn interference(built: &mut Built, assembly: &Value) -> (Vec<String>, Vec<Va
             allowed.push((a.to_owned(), b.to_owned()));
         }
     }
+    // A contact or joint naming a group (a placed subassembly) covers every
+    // instance inside it.
+    let mut parent_of: BTreeMap<String, String> = BTreeMap::new();
+    let mut groups = std::collections::BTreeSet::new();
+    for instance in assembly["instances"].as_array().into_iter().flatten() {
+        let id = instance["id"].as_str().unwrap_or_default().to_owned();
+        if instance["group"].is_string() {
+            groups.insert(id.clone());
+        }
+        if let Some(p) = instance["parent"].as_str() {
+            parent_of.insert(id, p.to_owned());
+        }
+    }
+    let names = |a: &str| -> Vec<String> {
+        let mut out = vec![a.to_owned()];
+        let mut at = a.to_owned();
+        for _ in 0..=parent_of.len() {
+            let Some(p) = parent_of.get(&at) else { break };
+            if groups.contains(p) {
+                out.push(p.clone());
+            }
+            at = p.clone();
+        }
+        out
+    };
     let ok = |a: &str, b: &str| {
+        let (na, nb) = (names(a), names(b));
         a == b
-            || allowed
-                .iter()
-                .any(|(x, y)| (x == a && y == b) || (x == b && y == a))
+            || allowed.iter().any(|(x, y)| {
+                (na.contains(x) && nb.contains(y)) || (na.contains(y) && nb.contains(x))
+            })
     };
     let mut contacts = Vec::new();
     // Every pair of solids of different instances whose boxes meet,

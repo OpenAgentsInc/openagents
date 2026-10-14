@@ -137,9 +137,26 @@ pub const JOINTS: [(&str, usize); 7] = [
     ("gear", 0),
 ];
 
-/// Joint kinds this build moves (the rest are declared and checked, and
-/// say so plainly when used).
-pub const JOINTS_BUILT: [&str; 4] = ["fastened", "revolute", "slider", "cylindrical"];
+/// Joint kinds this build moves: all of them.
+///
+/// - `planar`: the child slides in the plane through `origin` normal to
+///   `axis` and turns about `axis`; values `[u mm, v mm, degrees]`, where
+///   `u` runs along `x_dir` (or a fixed perpendicular to the axis) and `v`
+///   along `axis × u`.
+/// - `spherical`: the child turns about `origin`; values `[rx, ry, rz]`
+///   degrees about the parent's X, then Y, then Z.
+/// - `gear`: the child turns about `axis` through `origin` by `ratio` times
+///   its `driver` joint's angle (a revolute, cylindrical or gear joint), or
+///   by `ratio` degrees per mm of a slider (a rack and pinion).
+pub const JOINTS_BUILT: [&str; 7] = [
+    "fastened",
+    "revolute",
+    "slider",
+    "cylindrical",
+    "planar",
+    "spherical",
+    "gear",
+];
 
 /// The views a render can take.
 pub const VIEWS: [&str; 8] = [
@@ -218,7 +235,8 @@ pub fn new_part(id: &str, title: &str, material: &str, color: Option<&str>) -> V
 }
 
 /// A standalone part document as an assembly with one instance of it, so
-/// one build path serves both kinds.
+/// one build path serves both kinds; an assembly with subassembly
+/// templates comes back [`flatten`]ed.
 #[must_use]
 pub fn as_assembly(doc: &Value) -> Value {
     if doc["kind"] == PART {
@@ -229,8 +247,191 @@ pub fn as_assembly(doc: &Value) -> Value {
             json!([{"id": id, "part": id, "at": [0, 0, 0], "rotate": [0, 0, 0]}]);
         assembly
     } else {
-        doc.clone()
+        flatten(doc).unwrap_or_else(|_| doc.clone())
     }
+}
+
+/// Fields a subassembly template may have.
+const TEMPLATE_FIELDS: [&str; 6] = ["title", "instances", "joints", "contacts", "source", "note"];
+
+/// An assembly with its subassembly templates (`assemblies`) expanded.
+///
+/// Parts are part templates and `assemblies` are subassembly templates:
+/// each a set of instances, joints and contacts of its own, which may place
+/// parts and other subassemblies. An instance with `assembly: "bogie"`
+/// places one copy of that template: it becomes a **group** (a frame with
+/// no solid of its own, `group: "bogie"`) and the template's instances
+/// become its children, named by path (`bogie_l.wheel`). The template's
+/// top-level instances hang from the group, its joints and contacts are
+/// renamed the same way, and a joint of the outer assembly can reach any
+/// of them by path. Nested templates expand the same way, to any depth.
+///
+/// # Errors
+/// A template that doesn't exist, isn't well formed, or contains itself.
+pub fn flatten(doc: &Value) -> Result<Value, Vec<String>> {
+    let templates = doc["assemblies"].as_object();
+    let mut out = doc.clone();
+    if let Some(o) = out.as_object_mut() {
+        o.remove("assemblies");
+    }
+    let mut problems = Vec::new();
+    for (key, template) in templates.into_iter().flatten() {
+        if !is_id(key) {
+            problems.push(format!(
+                "A subassembly id must be lowercase letters, digits, - and _ (got \"{key}\")."
+            ));
+        }
+        match template.as_object() {
+            Some(fields) => {
+                for field in fields.keys() {
+                    if !TEMPLATE_FIELDS.contains(&field.as_str()) {
+                        problems.push(format!("Subassembly {key} has an unknown field {field}."));
+                    }
+                }
+                if !template["instances"].is_array() {
+                    problems.push(format!("Subassembly {key} needs a list of instances."));
+                }
+            }
+            None => problems.push(format!("Subassembly {key} isn't an object.")),
+        }
+    }
+    if !problems.is_empty() {
+        return Err(problems);
+    }
+    let mut instances = Vec::new();
+    let mut joints = doc["joints"].as_array().cloned().unwrap_or_default();
+    let mut contacts = doc["contacts"].as_array().cloned().unwrap_or_default();
+    let empty = Map::new();
+    let templates = templates.unwrap_or(&empty);
+    for instance in doc["instances"].as_array().into_iter().flatten() {
+        expand(
+            instance,
+            "",
+            None,
+            templates,
+            &mut Vec::new(),
+            &mut instances,
+            &mut joints,
+            &mut contacts,
+            &mut problems,
+        );
+    }
+    if !problems.is_empty() {
+        return Err(problems);
+    }
+    out["instances"] = Value::Array(instances);
+    if doc.get("joints").is_some() || !joints.is_empty() {
+        out["joints"] = Value::Array(joints);
+    }
+    if doc.get("contacts").is_some() || !contacts.is_empty() {
+        out["contacts"] = Value::Array(contacts);
+    }
+    Ok(out)
+}
+
+/// One instance of a template (or the outer assembly) into the flat list,
+/// under `prefix` (`"bogie_l."`), its parent defaulting to `group`.
+#[allow(clippy::too_many_arguments)]
+fn expand(
+    instance: &Value,
+    prefix: &str,
+    group: Option<&str>,
+    templates: &Map<String, Value>,
+    stack: &mut Vec<String>,
+    instances: &mut Vec<Value>,
+    joints: &mut Vec<Value>,
+    contacts: &mut Vec<Value>,
+    problems: &mut Vec<String>,
+) {
+    let path = |id: &str| format!("{prefix}{id}");
+    let mut flat = instance.clone();
+    let id = instance["id"].as_str().unwrap_or_default();
+    flat["id"] = json!(path(id));
+    match instance["parent"].as_str() {
+        Some(parent) => flat["parent"] = json!(path(parent)),
+        None => {
+            if let Some(group) = group {
+                flat["parent"] = json!(group);
+            }
+        }
+    }
+    let Some(template_id) = instance["assembly"].as_str() else {
+        instances.push(flat);
+        return;
+    };
+    let Some(template) = templates.get(template_id) else {
+        problems.push(format!(
+            "Instance {} places subassembly \"{template_id}\", which the assembly doesn't have.",
+            path(id)
+        ));
+        return;
+    };
+    if stack.iter().any(|t| t == template_id) {
+        problems.push(format!(
+            "Subassembly {template_id} contains itself ({} → {template_id}).",
+            stack.join(" → ")
+        ));
+        return;
+    }
+    if instance.get("part").is_some() {
+        problems.push(format!(
+            "Instance {} places both a part and a subassembly; give one.",
+            path(id)
+        ));
+    }
+    if let Some(o) = flat.as_object_mut() {
+        o.remove("assembly");
+    }
+    flat["group"] = json!(template_id);
+    let me = path(id);
+    instances.push(flat);
+    stack.push(template_id.to_owned());
+    let inner = format!("{me}.");
+    for child in template["instances"].as_array().into_iter().flatten() {
+        expand(
+            child,
+            &inner,
+            Some(&me),
+            templates,
+            stack,
+            instances,
+            joints,
+            contacts,
+            problems,
+        );
+    }
+    for joint in template["joints"].as_array().into_iter().flatten() {
+        let mut j = joint.clone();
+        for key in ["id", "child", "driver"] {
+            if let Some(s) = joint[key].as_str() {
+                j[key] = json!(format!("{inner}{s}"));
+            }
+        }
+        j["parent"] = match joint["parent"].as_str() {
+            Some(p) => json!(format!("{inner}{p}")),
+            None => json!(me),
+        };
+        joints.push(j);
+    }
+    for pair in template["contacts"].as_array().into_iter().flatten() {
+        let mapped: Vec<Value> = pair
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|x| {
+                x.as_str()
+                    .map_or(x.clone(), |s| json!(format!("{inner}{s}")))
+            })
+            .collect();
+        contacts.push(Value::Array(mapped));
+    }
+    stack.pop();
+}
+
+/// An instance or joint id: an id, or a path of ids through subassemblies
+/// (`bogie_l.wheel`).
+fn is_path(s: &str) -> bool {
+    s.len() <= 200 && s.split('.').all(is_id)
 }
 
 /// Everything wrong with a feature, in plain words.
@@ -342,6 +543,7 @@ pub fn part_problems(key: &str, part: &Value) -> Vec<String> {
                     | "finish"
                     | "parameters"
                     | "features"
+                    | "source"
                     | "note"
             ) {
                 out.push(format!("Part {key} has an unknown field {field}."));
@@ -424,6 +626,11 @@ pub fn check_assembly(doc: &Value) -> Vec<String> {
     if doc["kind"] != ASSEMBLY {
         return vec![format!("The document must have kind \"{ASSEMBLY}\".")];
     }
+    let flat = match flatten(doc) {
+        Ok(flat) => flat,
+        Err(problems) => return problems,
+    };
+    let doc = &flat;
     if let Some(object) = doc.as_object() {
         for field in object.keys() {
             if !matches!(
@@ -437,6 +644,7 @@ pub fn check_assembly(doc: &Value) -> Vec<String> {
                     | "instances"
                     | "joints"
                     | "contacts"
+                    | "assemblies"
                     | "note"
             ) {
                 out.push(format!("The assembly has an unknown field {field}."));
@@ -465,7 +673,7 @@ pub fn check_assembly(doc: &Value) -> Vec<String> {
     let mut instances: BTreeMap<String, Option<String>> = BTreeMap::new();
     for instance in doc["instances"].as_array().into_iter().flatten() {
         let id = instance["id"].as_str().unwrap_or_default();
-        if !is_id(id) {
+        if !is_path(id) {
             out.push(format!(
                 "An instance needs an id of lowercase letters, digits, - and _ (got \"{id}\")."
             ));
@@ -478,14 +686,20 @@ pub fn check_assembly(doc: &Value) -> Vec<String> {
             for field in object.keys() {
                 if !matches!(
                     field.as_str(),
-                    "id" | "part" | "parent" | "at" | "rotate" | "note"
+                    "id" | "part" | "group" | "parent" | "at" | "rotate" | "note"
                 ) {
                     out.push(format!("Instance {id} has an unknown field {field}."));
                 }
             }
         }
         let part = instance["part"].as_str().unwrap_or_default();
-        if !parts.contains_key(part) {
+        if instance.get("group").is_some() {
+            if instance.get("part").is_some() {
+                out.push(format!(
+                    "Instance {id} is a group (a frame for other instances); it places no part."
+                ));
+            }
+        } else if !parts.contains_key(part) {
             out.push(format!(
                 "Instance {id} places part \"{part}\", which the assembly doesn't have."
             ));
@@ -527,7 +741,7 @@ pub fn check_assembly(doc: &Value) -> Vec<String> {
     let mut moved = BTreeSet::new();
     for joint in doc["joints"].as_array().into_iter().flatten() {
         let id = joint["id"].as_str().unwrap_or_default();
-        if !is_id(id) || !joint_ids.insert(id.to_owned()) {
+        if !is_path(id) || !joint_ids.insert(id.to_owned()) {
             out.push(format!(
                 "Each joint needs its own id of lowercase letters, digits, - and _ (got \"{id}\")."
             ));
@@ -540,11 +754,6 @@ pub fn check_assembly(doc: &Value) -> Vec<String> {
             ));
             continue;
         };
-        if !JOINTS_BUILT.contains(&kind) {
-            out.push(format!(
-                "Joint {id} is {kind}; this CAD Lab moves fastened, revolute, slider and cylindrical joints so far."
-            ));
-        }
         let child = joint["child"].as_str().unwrap_or_default();
         match instances.get(child) {
             None => out.push(format!(
@@ -562,7 +771,13 @@ pub fn check_assembly(doc: &Value) -> Vec<String> {
         if !moved.insert(child.to_owned()) {
             out.push(format!("{child} is the child of two joints."));
         }
-        if *values > 0 {
+        if kind == "spherical" {
+            if vec3(&joint["origin"]).is_none() {
+                out.push(format!(
+                    "Joint {id} needs an origin: the ball's centre, three numbers in its parent's frame."
+                ));
+            }
+        } else if *values > 0 || kind == "gear" {
             if vec3(&joint["origin"]).is_none() || vec3(&joint["axis"]).is_none() {
                 out.push(format!(
                     "Joint {id} needs an origin and an axis, each three numbers in its parent's frame."
@@ -570,6 +785,34 @@ pub fn check_assembly(doc: &Value) -> Vec<String> {
             }
             if vec3(&joint["axis"]).is_some_and(|a| a.iter().map(|x| x * x).sum::<f64>() < 1e-12) {
                 out.push(format!("Joint {id}'s axis can't be zero."));
+            }
+        }
+        if kind == "planar"
+            && !joint["x_dir"].is_null()
+            && vec3(&joint["x_dir"]).is_none_or(|x| {
+                let a = vec3(&joint["axis"]).unwrap_or([0.0, 0.0, 1.0]);
+                let n = (a[0] * a[0] + a[1] * a[1] + a[2] * a[2]).sqrt().max(1e-12);
+                let along = (x[0] * a[0] + x[1] * a[1] + x[2] * a[2]) / n;
+                x.iter().map(|c| c * c).sum::<f64>() - along * along < 1e-12
+            })
+        {
+            out.push(format!(
+                "Joint {id}'s x_dir must be three numbers not along its axis."
+            ));
+        }
+        if kind == "gear" {
+            if !joint["ratio"]
+                .as_f64()
+                .is_some_and(|r| r.is_finite() && r != 0.0)
+            {
+                out.push(format!(
+                    "Joint {id} (gear) needs a ratio: turns of the child per turn of its driver (negative for meshing gears), or degrees per mm of a slider."
+                ));
+            }
+            if !joint_values(joint).is_empty() {
+                out.push(format!(
+                    "Joint {id} (gear) takes no value; it follows its driver."
+                ));
             }
         }
         let value_list: Vec<f64> = match &joint["value"] {
@@ -604,6 +847,7 @@ pub fn check_assembly(doc: &Value) -> Vec<String> {
             }
         }
     }
+    out.extend(gear_problems(doc));
     for pair in doc["contacts"].as_array().into_iter().flatten() {
         let ok = pair.as_array().is_some_and(|p| {
             p.len() == 2
@@ -617,6 +861,77 @@ pub fn check_assembly(doc: &Value) -> Vec<String> {
         }
     }
     out
+}
+
+/// What's wrong with the gear joints' drivers: each names another joint
+/// that turns or slides, and no gear drives itself round a loop.
+fn gear_problems(doc: &Value) -> Vec<String> {
+    let joints: BTreeMap<&str, &Value> = doc["joints"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|j| Some((j["id"].as_str()?, j)))
+        .collect();
+    let mut out = Vec::new();
+    for (id, joint) in &joints {
+        if joint["type"] != "gear" {
+            continue;
+        }
+        let mut at = *id;
+        for step in 0..=joints.len() {
+            let Some(driver) = joints[at]["driver"].as_str() else {
+                out.push(format!(
+                    "Joint {at} (gear) needs a driver: the id of the joint that turns it."
+                ));
+                break;
+            };
+            let Some(next) = joints.get(driver) else {
+                out.push(format!(
+                    "Joint {at}'s driver {driver} isn't a joint of the assembly."
+                ));
+                break;
+            };
+            match next["type"].as_str().unwrap_or_default() {
+                "gear" if driver == *id || step == joints.len() => {
+                    out.push(format!("Joint {id} drives itself through a loop of gears."));
+                    break;
+                }
+                "gear" => at = driver,
+                "revolute" | "cylindrical" | "slider" => break,
+                other => {
+                    out.push(format!(
+                        "Joint {at}'s driver {driver} is {other}; a gear follows a revolute, cylindrical, slider or gear joint."
+                    ));
+                    break;
+                }
+            }
+        }
+    }
+    out.sort();
+    out.dedup();
+    out
+}
+
+/// A joint's angle in degrees (or, for a slider, its travel in mm), with a
+/// gear's derived from its driver: what turns a gear it drives.
+#[must_use]
+pub fn driven_value(joints: &[Value], joint: &Value) -> f64 {
+    let mut at = joint;
+    let mut ratio = 1.0;
+    for _ in 0..=joints.len() {
+        if at["type"] != "gear" {
+            return ratio * joint_values(at).first().copied().unwrap_or(0.0);
+        }
+        ratio *= at["ratio"].as_f64().unwrap_or(1.0);
+        let Some(next) = at["driver"]
+            .as_str()
+            .and_then(|d| joints.iter().find(|j| j["id"] == d))
+        else {
+            return 0.0;
+        };
+        at = next;
+    }
+    0.0
 }
 
 /// The joint values as a list (a single number is one value).
@@ -650,6 +965,8 @@ pub fn triple(v: &Value) -> Option<[f64; 3]> {
 pub fn schema() -> Value {
     let vec3 = json!({"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3});
     let id = json!({"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,47}$"});
+    let path =
+        json!({"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,47}(\\.[a-z][a-z0-9_-]{0,47})*$"});
     let parameters = json!({"type": "array", "items": {"type": "object", "required": ["name", "expression"],
         "properties": {"name": {"type": "string"}, "expression": {"type": ["string", "number"]}, "description": {"type": "string"}}}});
     let mut ops: Vec<&str> = vec!["sketch", "block"];
@@ -667,7 +984,7 @@ pub fn schema() -> Value {
             "material": {"enum": MATERIALS.map(|(n, _)| n)},
             "color": {"type": "string", "pattern": "^#[0-9a-fA-F]{6}$"},
             "finish": {"enum": FINISHES.map(|(n, _)| n)},
-            "note": {"type": "string"},
+            "note": {"type": "string"}, "source": {"type": "object", "description": "the document and version this part template was copied from"},
             "parameters": parameters,
             "features": {"type": "array", "items": {
                 "type": "object", "required": ["id", "op"], "additionalProperties": false,
@@ -695,24 +1012,28 @@ pub fn schema() -> Value {
             "note": {"type": "string"},
             "parameters": parameters,
             "parts": {"type": "object", "additionalProperties": {"$ref": "part.v1.json"}},
+            "assemblies": {"type": "object", "description": "subassembly templates by id; an instance with assembly places a copy, its instances named by path (copy.inner)",
+                "additionalProperties": {"type": "object", "required": ["instances"], "additionalProperties": false, "properties": {
+                    "title": {"type": "string"}, "note": {"type": "string"}, "source": {"type": "object"},
+                    "instances": {"type": "array"}, "joints": {"type": "array"}, "contacts": {"type": "array"}}}},
             "instances": {"type": "array", "items": {
-                "type": "object", "required": ["id", "part"], "additionalProperties": false,
-                "properties": {"id": id, "part": id, "parent": id, "at": vec3, "rotate": vec3, "note": {"type": "string"}}
+                "type": "object", "required": ["id"], "additionalProperties": false,
+                "properties": {"id": path, "part": id, "assembly": id, "group": id, "parent": path, "at": vec3, "rotate": vec3, "note": {"type": "string"}}
             }},
             "joints": {"type": "array", "items": {
                 "type": "object", "required": ["id", "type", "child"],
                 "properties": {
-                    "id": id,
+                    "id": path,
                     "type": {"enum": JOINTS.map(|(k, _)| k)},
-                    "parent": id, "child": id,
-                    "origin": vec3, "axis": vec3,
+                    "parent": path, "child": path,
+                    "origin": vec3, "axis": vec3, "x_dir": vec3,
                     "value": {"type": ["number", "array"]},
                     "limits": {"type": "array", "items": {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2}},
                     "ratio": {"type": "number", "description": "gear: turns of the child per turn of the driver"},
-                    "driver": id
+                    "driver": path
                 }
             }},
-            "contacts": {"type": "array", "items": {"type": "array", "items": id, "minItems": 2, "maxItems": 2}}
+            "contacts": {"type": "array", "items": {"type": "array", "items": path, "minItems": 2, "maxItems": 2}}
         }
     });
     json!({"part.v1": part, "assembly.v1": assembly})

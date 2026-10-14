@@ -2,10 +2,41 @@
   "$id": "https://openagents.com/schemas/cad/assembly.v1.json",
   "additionalProperties": false,
   "properties": {
+    "assemblies": {
+      "additionalProperties": {
+        "additionalProperties": false,
+        "properties": {
+          "contacts": {
+            "type": "array"
+          },
+          "instances": {
+            "type": "array"
+          },
+          "joints": {
+            "type": "array"
+          },
+          "note": {
+            "type": "string"
+          },
+          "source": {
+            "type": "object"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "instances"
+        ],
+        "type": "object"
+      },
+      "description": "subassembly templates by id; an instance with assembly places a copy, its instances named by path (copy.inner)",
+      "type": "object"
+    },
     "contacts": {
       "items": {
         "items": {
-          "pattern": "^[a-z][a-z0-9_-]{0,47}$",
+          "pattern": "^[a-z][a-z0-9_-]{0,47}(\\.[a-z][a-z0-9_-]{0,47})*$",
           "type": "string"
         },
         "maxItems": 2,
@@ -22,6 +53,10 @@
       "items": {
         "additionalProperties": false,
         "properties": {
+          "assembly": {
+            "pattern": "^[a-z][a-z0-9_-]{0,47}$",
+            "type": "string"
+          },
           "at": {
             "items": {
               "type": "number"
@@ -30,15 +65,19 @@
             "minItems": 3,
             "type": "array"
           },
-          "id": {
+          "group": {
             "pattern": "^[a-z][a-z0-9_-]{0,47}$",
+            "type": "string"
+          },
+          "id": {
+            "pattern": "^[a-z][a-z0-9_-]{0,47}(\\.[a-z][a-z0-9_-]{0,47})*$",
             "type": "string"
           },
           "note": {
             "type": "string"
           },
           "parent": {
-            "pattern": "^[a-z][a-z0-9_-]{0,47}$",
+            "pattern": "^[a-z][a-z0-9_-]{0,47}(\\.[a-z][a-z0-9_-]{0,47})*$",
             "type": "string"
           },
           "part": {
@@ -55,8 +94,7 @@
           }
         },
         "required": [
-          "id",
-          "part"
+          "id"
         ],
         "type": "object"
       },
@@ -74,15 +112,15 @@
             "type": "array"
           },
           "child": {
-            "pattern": "^[a-z][a-z0-9_-]{0,47}$",
+            "pattern": "^[a-z][a-z0-9_-]{0,47}(\\.[a-z][a-z0-9_-]{0,47})*$",
             "type": "string"
           },
           "driver": {
-            "pattern": "^[a-z][a-z0-9_-]{0,47}$",
+            "pattern": "^[a-z][a-z0-9_-]{0,47}(\\.[a-z][a-z0-9_-]{0,47})*$",
             "type": "string"
           },
           "id": {
-            "pattern": "^[a-z][a-z0-9_-]{0,47}$",
+            "pattern": "^[a-z][a-z0-9_-]{0,47}(\\.[a-z][a-z0-9_-]{0,47})*$",
             "type": "string"
           },
           "limits": {
@@ -105,7 +143,7 @@
             "type": "array"
           },
           "parent": {
-            "pattern": "^[a-z][a-z0-9_-]{0,47}$",
+            "pattern": "^[a-z][a-z0-9_-]{0,47}(\\.[a-z][a-z0-9_-]{0,47})*$",
             "type": "string"
           },
           "ratio": {
@@ -128,6 +166,14 @@
               "number",
               "array"
             ]
+          },
+          "x_dir": {
+            "items": {
+              "type": "number"
+            },
+            "maxItems": 3,
+            "minItems": 3,
+            "type": "array"
           }
         },
         "required": [
