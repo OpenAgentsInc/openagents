@@ -77,7 +77,7 @@ Merging stays with you.
 | `--no-gate` | Work the issue even if it looks already done. |
 | `--plain`, `--json` | Print the run as text, or as one JSON line per event. |
 
-In the next release, `coder solver --help` lists every option. Each run keeps its record and
+`coder solver --help` lists every option. Each run keeps its record and
 its copy of the project under `~/.openagents/coder/solver-runs/`.
 
 Next: [Safety](/docs/coder-safety).

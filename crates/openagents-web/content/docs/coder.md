@@ -85,7 +85,7 @@ Each step shows as a line: files read, searches, edits with their diff,
 and commands with their output. Press `Ctrl+O` to show each step in
 full. Press `Esc` to stop a reply.
 
-If you don't like a change, type `/rewind` (in the next release), pick the message, and Coder
+If you don't like a change, type `/rewind`, pick the message, and Coder
 puts the files back as they were before it.
 
 ## 5. Keep going
