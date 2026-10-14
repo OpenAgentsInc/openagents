@@ -432,6 +432,8 @@ pub struct Renderer {
     /// Bone palettes the application poses itself, by model
     /// ([`Renderer::set_pose_override`]).
     pose_overrides: HashMap<String, Vec<Mat4>>,
+    /// Hair coverage scales by model ([`Renderer::set_hair_fade`]).
+    hair_fades: HashMap<String, f32>,
     pub animation_diagnostics: Vec<verse_engine::locomotion::Diagnostic>,
     grounding: HashMap<(Option<verse_engine::core::LifeId>, String), Grounding>,
     bounds: HashMap<String, Option<culling::BoneBounds>>,
@@ -679,6 +681,25 @@ impl Renderer {
             return Err("A posed palette holds at most 256 finite matrices".into());
         }
         self.pose_overrides.insert(model.into(), bones);
+        Ok(())
+    }
+    /// Scales the coverage of `model`'s hair-shaded surfaces by `fade`
+    /// (0 to 1] when [`Self::hair_coverage`] is on, so a hair level of
+    /// detail can dissolve in or out over a distance band instead of
+    /// popping; `None` restores full coverage.
+    ///
+    /// # Errors
+    /// `fade` is outside (0, 1].
+    pub fn set_hair_fade(&mut self, model: &str, fade: Option<f32>) -> Result<(), String> {
+        match fade {
+            None => {
+                self.hair_fades.remove(model);
+            }
+            Some(f) if f > 0.0 && f <= 1.0 => {
+                self.hair_fades.insert(model.into(), f);
+            }
+            Some(_) => return Err("A hair fade is in (0, 1]".into()),
+        }
         Ok(())
     }
     /// Consumes this frame's presentation events; these grant no gameplay authority.
@@ -1481,6 +1502,7 @@ impl Renderer {
             evaluated_poses: Vec::new(),
             animation_controllers: HashMap::new(),
             pose_overrides: HashMap::new(),
+            hair_fades: HashMap::new(),
             animation_diagnostics: Vec::new(),
             grounding: HashMap::new(),
             bounds,
@@ -1990,6 +2012,12 @@ impl Renderer {
                 for (dst, bone) in palette.bones.iter_mut().zip(bones) {
                     *dst = bone.to_cols_array_2d();
                 }
+            }
+            if instance.actor.is_none()
+                && palette.params[0] == 0.0
+                && let Some(&fade) = self.hair_fades.get(&instance.model)
+            {
+                palette.params[1] = fade;
             }
             if let Some(id) = instance.actor {
                 let (bones, events) = if let Some(graph) = self.graphs.get(&instance.model) {

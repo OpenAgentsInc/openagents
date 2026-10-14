@@ -18,7 +18,7 @@
 //!
 //! Usage: `draconia_world [--model GLB] [--lower GLB] [--textures 2048]
 //! [--size WxH] [--capture DIR] [--walk OUT.mp4] [--benchmark SECONDS]
-//! [--check-walk] [--no-draconia]`
+//! [--lod-sheet OUT.png] [--check-walk] [--no-draconia]`
 //!
 //! Window keys: click to look with the mouse, W A S D to walk, Shift to
 //! run, Space to jump, F12 for a screenshot in ~/Downloads, Escape to free
@@ -41,9 +41,23 @@ use verse_imported::imported::{
 };
 
 /// Bump when the cached pack's layout or the rig's weights change.
-const CACHE_VERSION: u32 = 4;
+const CACHE_VERSION: u32 = 10;
 const DRACONIA: &str = "draconia";
-const DRACONIA_FAR: &str = "draconia-far";
+/// Her strand groom's levels of detail, all cut from the one groom: level 0
+/// is every clump; each further level keeps one clump in `THIN[level]`,
+/// widened as many times, so the hairstyle keeps its outline, volume, color
+/// and shading while each clump stays wider than a pixel (a 3.5 mm clump is
+/// a third of a pixel at 10 m, and only sparkles). The flyaways (0.1 mm)
+/// leave after level 0.
+const STRANDS: [&str; 3] = [
+    "draconia-strands",
+    "draconia-strands-1",
+    "draconia-strands-2",
+];
+const THIN: [usize; 3] = [1, 3, 8];
+/// Where each level takes over from the one before, metres from her face:
+/// the two dissolve into each other (alpha to coverage) across the band.
+const BANDS: [(f32, f32); 2] = [(2.2, 3.2), (5.2, 6.8)];
 
 /// Where she stands and which way she faces (+Z, toward the entrance).
 const HER_AT: Vec3 = Vec3::new(0.0, 0.0, -2.5);
@@ -80,6 +94,7 @@ struct Args {
     size: [u32; 2],
     capture: Option<PathBuf>,
     walk: Option<PathBuf>,
+    lod_sheet: Option<PathBuf>,
     benchmark: Option<f32>,
     no_draconia: bool,
     check_walk: bool,
@@ -94,6 +109,7 @@ fn args() -> Result<Args, String> {
         size: [1920, 1080],
         capture: None,
         walk: None,
+        lod_sheet: None,
         benchmark: None,
         no_draconia: false,
         check_walk: false,
@@ -115,6 +131,7 @@ fn args() -> Result<Args, String> {
             }
             "--capture" => a.capture = Some(value()?.into()),
             "--walk" => a.walk = Some(value()?.into()),
+            "--lod-sheet" => a.lod_sheet = Some(value()?.into()),
             "--benchmark" => a.benchmark = Some(value()?.parse().map_err(|_| "bad seconds")?),
             "--no-draconia" => a.no_draconia = true,
             "--check-walk" => a.check_walk = true,
@@ -159,7 +176,8 @@ const CLASS: &[(&str, f32, f32, f32, f32)] = &[
     ("candelabrum_short", -0.5, 0.86, -4.5, 0.0),
     ("cauldron_green", -1.75, 0.0, -3.4, 0.4),
     ("cauldron_amber", 1.8, 0.0, -3.6, -0.5),
-    ("candelabrum_tall", -1.25, 0.0, -1.0, 0.3),
+    // Her key's candles: a tall candelabrum at her front-right.
+    ("candelabrum_tall", -1.15, 0.0, -1.35, 0.3),
     ("candelabrum_tall", 1.5, 0.0, -1.6, -0.2),
     // Two more benches down the nave, as a classroom.
     ("cauldron_red", -2.6, 0.0, 2.8, 0.9),
@@ -281,7 +299,12 @@ fn lighting(layout: &[(&str, f32, f32, f32, f32)], t: f32) -> Lighting {
     // the landing), so her far cheek falls into shadow and the skin's
     // highlight sits off the nose; a cool soft fill from the other side; a
     // teal rim from the green cauldron behind her.
-    lights.push((face + Vec3::new(-1.3, 0.85, 0.75), warm, 6.5, 6.0, true));
+    // Her key sits on that candelabrum's flames (`CLASS`), a little above
+    // her eyes; strong enough that she reads from across the hall.
+    lights.push((Vec3::new(-1.15, 1.98, -1.35), warm, 8.5, 7.0, true));
+    // A soft wash from above and in front: the candles' glow off the vault,
+    // so her face and hair stay readable from the entrance.
+    lights.push((face + Vec3::new(0.0, 1.5, 1.6), warm, 2.2, 7.0, false));
     lights.push((
         face + Vec3::new(1.4, 0.2, 1.6),
         Vec3::new(0.8, 0.74, 0.68),
@@ -348,14 +371,14 @@ fn lighting(layout: &[(&str, f32, f32, f32, f32)], t: f32) -> Lighting {
         ambient: Vec3::new(0.012, 0.010, 0.013),
         exposure: 1.0,
         fog: Vec3::new(0.011, 0.008, 0.012),
-        density: 0.008,
+        density: 0.005,
         // A fixed clock: hair coverage is dithered by it, and a still
         // pattern reads as hair where a changing one fizzes. Flames flicker
         // below instead.
         time: 0.0,
         shadowed: 4,
         height_fog: Some(verse_engine::lighting::HeightFog {
-            density: 0.05,
+            density: 0.035,
             base: 0.0,
             falloff: 0.5,
             start: 3.0,
@@ -524,6 +547,194 @@ fn rig(model: &mut Model) -> Result<Landmarks, String> {
         bones: vec![],
     }];
     Ok(marks)
+}
+
+/// Splits her strand groom (every hair-shaded surface on the strand
+/// texture: the body, the flyaways, the face-framing locks) into its own
+/// model, which fades with distance, and makes the rest of her hair agree
+/// with it:
+///
+/// - the hair cards are tinted so their mean color (by coverage) is the
+///   strands', so the hairstyle keeps its color when the strands dissolve;
+/// - the brows and lashes are lightened and thinned a little: dark,
+///   full-opacity cards read heavy under candlelight.
+fn groom(her: &mut Model, pack: &Pack, dir: &Path) -> Result<Model, String> {
+    let hair = Shading::Hair as u8;
+    let strand_texture = her
+        .surfaces
+        .iter()
+        .filter(|s| s.material.shading == hair)
+        .max_by_key(|s| s.vertices.len())
+        .map(|s| s.texture)
+        .ok_or("Draconia has no hair")?;
+    let mut strands = her.clone();
+    strands
+        .surfaces
+        .retain(|s| s.material.shading == hair && s.texture == strand_texture);
+    for s in &mut strands.surfaces {
+        s.tint = (Vec3::from(s.tint) * HAIR_GRADE).to_array();
+    }
+    her.surfaces
+        .retain(|s| !(s.material.shading == hair && s.texture == strand_texture));
+    let strand_color = mean_color(pack, dir, strand_texture)?;
+    let marks = landmarks(her)?;
+    let eyes_y = (marks.eyes[0].y + marks.eyes[1].y) * 0.5;
+    for s in &mut her.surfaces {
+        if s.material.shading != hair || s.vertices.is_empty() {
+            continue;
+        }
+        let (min, max) = bounds(s.vertices.iter().map(|v| to_body(v.position)));
+        if max.y - min.y > 0.15 {
+            // The cards: the strands' color, card for strand.
+            let card = mean_color(pack, dir, s.texture)?;
+            let ratio = (strand_color / card.max(Vec3::splat(1e-3)))
+                .clamp(Vec3::splat(0.5), Vec3::splat(1.6));
+            s.tint = (Vec3::from(s.tint) * ratio * HAIR_GRADE).to_array();
+        } else if s.texture == 0 {
+            // The painted brow (a solid brow-shaped shell, no map): a soft
+            // fair tone under the brow hairs, not a dark block.
+            s.tint = (Vec3::from(s.tint) * 1.4).min(Vec3::ONE).to_array();
+            s.material.opacity *= 0.35;
+        } else {
+            // Brow hairs and lashes: their cards' own hard cutout (alpha to
+            // coverage turns a lash card's soft alpha into a smudge), the
+            // brows a lighter brown.
+            s.material.shading = Shading::Standard as u8;
+            if (min.y + max.y) * 0.5 > eyes_y + 0.012 {
+                s.tint = (Vec3::from(s.tint) * 1.5).min(Vec3::ONE).to_array();
+            }
+        }
+    }
+    eprintln!("draconia-world: strand color {strand_color:.3}");
+    Ok(strands)
+}
+
+/// A level of detail of the strand groom: one clump in `k` (a hashed
+/// choice, so no pattern shows), each widened `k` times about its centre
+/// line, so the hair's coverage stays what it was. The groom is ribbons:
+/// vertices in left/right pairs, quads joining each pair to the next along
+/// a clump. Surfaces of hair finer than 0.2 mm (the flyaways) are left out.
+fn thinned(strands: &Model, k: usize) -> Result<Model, String> {
+    let mut out = strands.clone();
+    out.surfaces.clear();
+    for s in &strands.surfaces {
+        let v = &s.vertices;
+        if v.len() % 2 != 0 || v.is_empty() {
+            return Err("The strand groom is not left/right ribbon pairs".into());
+        }
+        let pairs = v.len() / 2;
+        let width =
+            |p: usize| Vec3::from(v[2 * p].position).distance(Vec3::from(v[2 * p + 1].position));
+        let mut widths: Vec<f32> = (0..pairs).step_by(97).map(width).collect();
+        widths.sort_by(f32::total_cmp);
+        // Model units are yards (`basis`); 0.2 mm.
+        if widths[widths.len() / 2] < 0.0002 / 0.9144 {
+            continue;
+        }
+        let mut link = vec![false; pairs];
+        let mut odd = 0usize;
+        for t in s.indices.chunks_exact(3) {
+            let ps = [t[0] as usize / 2, t[1] as usize / 2, t[2] as usize / 2];
+            let lo = *ps.iter().min().unwrap_or(&0);
+            let hi = *ps.iter().max().unwrap_or(&0);
+            if hi == lo + 1 {
+                link[lo] = true;
+            } else if hi != lo {
+                odd += 1;
+            }
+        }
+        if odd * 20 > s.indices.len() / 3 {
+            return Err("The strand groom's triangles do not join ribbon pairs".into());
+        }
+        let mut keep = vec![false; pairs];
+        let mut strand = 0u32;
+        for p in 0..pairs {
+            if p > 0 && !link[p - 1] {
+                strand += 1;
+            }
+            let hash = strand.wrapping_mul(2_654_435_761) >> 7;
+            keep[p] = hash as usize % k == 0;
+        }
+        let mut map = vec![u32::MAX; pairs];
+        let mut vertices = Vec::new();
+        for p in 0..pairs {
+            if !keep[p] {
+                continue;
+            }
+            map[p] = (vertices.len() / 2) as u32;
+            let (l, r) = (
+                Vec3::from(v[2 * p].position),
+                Vec3::from(v[2 * p + 1].position),
+            );
+            let (c, half) = ((l + r) * 0.5, (r - l) * 0.5 * k as f32);
+            let mut a = v[2 * p].clone();
+            let mut b = v[2 * p + 1].clone();
+            a.position = (c - half).to_array();
+            b.position = (c + half).to_array();
+            vertices.push(a);
+            vertices.push(b);
+        }
+        let mut indices = Vec::new();
+        for t in s.indices.chunks_exact(3) {
+            if t.iter().all(|&i| keep[i as usize / 2]) {
+                indices.extend(t.iter().map(|&i| map[i as usize / 2] * 2 + i % 2));
+            }
+        }
+        let mut surface = s.clone();
+        surface.vertices = vertices;
+        surface.indices = indices;
+        out.surfaces.push(surface);
+    }
+    Ok(out)
+}
+
+/// How much of each strand level to draw `distance` metres from her face:
+/// weights that sum to one, crossing over in the `BANDS`.
+fn strand_levels(distance: f32) -> [f32; 3] {
+    let a = smooth(BANDS[0].0, BANDS[0].1, distance);
+    let b = smooth(BANDS[1].0, BANDS[1].1, distance);
+    [1.0 - a, a * (1.0 - b), b]
+}
+
+/// Her platinum under candlelight: the film renders' key is a broad soft
+/// source well to the side, the world's are candles close above, which
+/// light the crown of the updo near white; the world grades the hair down.
+const HAIR_GRADE: f32 = 0.72;
+
+/// A texture's mean linear color, weighted by its alpha.
+fn mean_color(pack: &Pack, dir: &Path, texture: usize) -> Result<Vec3, String> {
+    let file = &pack.textures.get(texture).ok_or("No such texture")?.file;
+    let path = dir.join(file);
+    let decoder = png::Decoder::new(std::io::BufReader::new(
+        std::fs::File::open(&path).map_err(|e| format!("{}: {e}", path.display()))?,
+    ));
+    let mut reader = decoder.read_info().map_err(|e| e.to_string())?;
+    let mut buf = vec![0; reader.output_buffer_size().ok_or("PNG too large")?];
+    let info = reader.next_frame(&mut buf).map_err(|e| e.to_string())?;
+    let channels = info.color_type.samples();
+    if info.bit_depth != png::BitDepth::Eight || channels < 3 {
+        return Err(format!("{}: expected 8-bit RGB(A)", path.display()));
+    }
+    let linear = |c: u8| {
+        let c = f32::from(c) / 255.0;
+        if c <= 0.04045 {
+            c / 12.92
+        } else {
+            ((c + 0.055) / 1.055).powf(2.4)
+        }
+    };
+    let mut sum = Vec3::ZERO;
+    let mut weight = 0.0;
+    for px in buf[..info.buffer_size()].chunks_exact(channels).step_by(7) {
+        let a = if channels == 4 {
+            f32::from(px[3]) / 255.0
+        } else {
+            1.0
+        };
+        sum += Vec3::new(linear(px[0]), linear(px[1]), linear(px[2])) * a;
+        weight += a;
+    }
+    Ok(sum / weight.max(1e-6))
 }
 
 /// Her idle: breathing, a weight shift, blinks, and her gaze.
@@ -698,13 +909,16 @@ fn content(a: &Args, dir: &Path) -> Result<(Pack, Option<Landmarks>), String> {
         let lower = characters::import_with(&mut pack, dir, &a.lower, options)?;
         her.surfaces.extend(lower.surfaces);
         marks = Some(rig(&mut her)?);
-        // Far away, the strand groom (a million and more triangles) gives
-        // way to the hair cards under it.
-        let mut far = her.clone();
-        far.surfaces
-            .retain(|s| !(s.material.shading == Shading::Hair as u8 && s.vertices.len() > 400_000));
+        let strands = groom(&mut her, &pack, dir)?;
+        for (level, name) in STRANDS.iter().enumerate() {
+            let model = if level == 0 {
+                strands.clone()
+            } else {
+                thinned(&strands, THIN[level])?
+            };
+            pack.models.insert((*name).into(), model);
+        }
         pack.models.insert(DRACONIA.into(), her);
-        pack.models.insert(DRACONIA_FAR.into(), far);
     }
     pack.validate()?;
     write_pack(dir, &pack)?;
@@ -937,21 +1151,33 @@ impl World {
         if let Some(marks) = self.marks {
             let viewer = placed().inverse().transform_point3(eye);
             let palette = self.idle.pose(&marks, t, dt, viewer);
-            let near = eye.distance(HER_AT + Vec3::Y * 1.2) < 7.0;
-            let model = if near { DRACONIA } else { DRACONIA_FAR };
-            if std::env::var_os("DRACONIA_WORLD_REST").is_none() {
-                self.renderer.set_pose_override(model, Some(palette))?;
+            // Neighbouring strand levels dissolve into each other over a
+            // band of distance (alpha to coverage), never a switch.
+            let distance = eye.distance(HER_AT + Vec3::Y * 1.6);
+            let mut models = vec![DRACONIA];
+            for (level, weight) in strand_levels(distance).into_iter().enumerate() {
+                if weight > 0.01 {
+                    models.push(STRANDS[level]);
+                    self.renderer
+                        .set_hair_fade(STRANDS[level], Some(weight.min(1.0)))?;
+                }
             }
-            instances.push(Instance {
-                mount: None,
-                actor: None,
-                model: model.into(),
-                transform: placed() * verse_content::basis(),
-                animation: 0.into(),
-                time: 0.0,
-                animation_epoch: None,
-                emission: Vec3::ONE,
-            });
+            for model in models {
+                if std::env::var_os("DRACONIA_WORLD_REST").is_none() {
+                    self.renderer
+                        .set_pose_override(model, Some(palette.clone()))?;
+                }
+                instances.push(Instance {
+                    mount: None,
+                    actor: None,
+                    model: model.into(),
+                    transform: placed() * verse_content::basis(),
+                    animation: 0.into(),
+                    time: 0.0,
+                    animation_epoch: None,
+                    emission: Vec3::ONE,
+                });
+            }
         }
         let ui = UiBatch::default();
         let light = lighting(&self.layout, t);
@@ -1097,6 +1323,58 @@ fn capture(a: &Args, dir: &Path) -> Result<(), String> {
     let rgba = world.frame(eye, target, 1.0 / 60.0, false)?;
     write_png(&dir.join("check-blink.png"), w, h, &rgba)?;
     Ok(())
+}
+
+/// Her hair at every distance: from 1 m to 15 m in 1 m steps, each frame
+/// rendered as the player sees it (1920x1080, the walking lens), cropped
+/// round her head and scaled to one tile, in a 5x3 sheet read row by row.
+fn lod_sheet(a: &Args, out: &Path) -> Result<(), String> {
+    let [w, h] = a.size;
+    let mut world = World::load(a, w, h)?;
+    let face = HER_AT + Vec3::new(0.0, 1.62, 0.0);
+    let tile = 360usize;
+    let (cols, rows) = (5usize, 3usize);
+    let mut sheet = vec![0u8; cols * tile * rows * tile * 4];
+    for i in 0..15 {
+        let d = (i + 1) as f32;
+        let dir = Vec3::new(0.3, 0.0, 1.0).normalize();
+        let eye = face + dir * d + Vec3::Y * 0.04;
+        for _ in 0..40 {
+            world.frame(eye, face, 1.0 / 60.0, true)?;
+        }
+        let rgba = world.frame(eye, face, 1.0 / 60.0, false)?;
+        // Her head is about 0.55 m of crop at every distance.
+        let half_fov = 27.5f32.to_radians();
+        let px_per_m = h as f32 / (2.0 * d * half_fov.tan());
+        let side = (0.55 * px_per_m).clamp(24.0, h as f32);
+        let (cx, cy) = (w as f32 * 0.5, h as f32 * 0.5);
+        let (x0, y0) = (cx - side * 0.5, cy - side * 0.5);
+        let (tx, ty) = ((i % cols) * tile, (i / cols) * tile);
+        for y in 0..tile {
+            for x in 0..tile {
+                // Bilinear sample of the crop.
+                let sx =
+                    (x0 + (x as f32 + 0.5) / tile as f32 * side - 0.5).clamp(0.0, w as f32 - 2.0);
+                let sy =
+                    (y0 + (y as f32 + 0.5) / tile as f32 * side - 0.5).clamp(0.0, h as f32 - 2.0);
+                let (ix, iy) = (sx as usize, sy as usize);
+                let (fx, fy) = (sx - ix as f32, sy - iy as f32);
+                let at =
+                    |x: usize, y: usize, c: usize| f32::from(rgba[(y * w as usize + x) * 4 + c]);
+                let o = ((ty + y) * cols * tile + tx + x) * 4;
+                for c in 0..3 {
+                    let v = at(ix, iy, c) * (1.0 - fx) * (1.0 - fy)
+                        + at(ix + 1, iy, c) * fx * (1.0 - fy)
+                        + at(ix, iy + 1, c) * (1.0 - fx) * fy
+                        + at(ix + 1, iy + 1, c) * fx * fy;
+                    sheet[o + c] = v.round() as u8;
+                }
+                sheet[o + 3] = 255;
+            }
+        }
+        eprintln!("lod sheet: {d} m");
+    }
+    write_png(out, (cols * tile) as u32, (rows * tile) as u32, &sheet)
 }
 
 /// The walk-around clip, 60 frames a second, through ffmpeg.
@@ -1450,6 +1728,8 @@ fn main() {
     let result = args().and_then(|a| {
         if a.check_walk {
             check_walk()
+        } else if let Some(out) = a.lod_sheet.clone() {
+            lod_sheet(&a, &out)
         } else if let Some(dir) = a.capture.clone() {
             capture(&a, &dir)
         } else if let Some(out) = a.walk.clone() {

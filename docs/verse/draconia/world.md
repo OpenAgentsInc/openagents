@@ -148,13 +148,28 @@ scripts/verse/draconia-world.sh
     2.5–6 s.
   - Within 5.5 m and in front of her, her head turns to you (up to 34°)
     and her eyes follow.
-- **Detail:**
-  - Within 7 m she draws at full detail: the strand groom over the hair
-    cards, and 2048-pixel maps (`--textures 4096` for the full maps).
-  - Further away, the strands drop and the cards remain.
+- **Her hair at every distance:** one hairstyle at every range, cut from
+  the one strand groom.
+  - Level 0 is every clump. Levels 1 and 2 keep one clump in 3 and in 8,
+    widened as many times, so each stays wider than a pixel and the
+    outline, volume, color and shading hold. The flyaways leave after
+    level 0.
+  - Neighbouring levels dissolve into each other across 2.2–3.2 m and
+    5.2–6.8 m (`Renderer::set_hair_fade`); nothing switches.
+  - The MetaHuman hair cards underneath are always drawn, tinted to the
+    strands' mean color.
   - Hair is drawn with alpha to coverage on the 4x multisampled target
     (`Renderer::hair_coverage`). The film path's stochastic cutoff needs
     averaged sub-frames, and in one frame it fizzes.
+  - The brow and lash cards keep their hard cutout, and the painted brow
+    is lighter and mostly transparent, so they don't read heavy under
+    candlelight.
+  - The hair is graded to 72% (`HAIR_GRADE`): the candles close above
+    light the crown near white.
+  - `--lod-sheet OUT.png` renders her at 1–15 m in 1 m steps, cropped
+    round her head, to check that it stays one hairstyle.
+- **Her key:** a tall candelabrum at her front-right carries her key light,
+  with a soft wash from above, so she reads from the entrance.
 
 ### Evidence and measures
 
@@ -164,8 +179,8 @@ scripts/verse/draconia-world.sh
   the landing to her face and round her.
 - **Frame rate:** `--benchmark 20` flies that walk in the window at 1080p
   and prints the frame rate.
-  - Measured on the owner's Mac, 2026-10-14, round 21: 95.8 fps average
-    and 82.7 fps within 3 m of her face.
-  - Frame time: median 8.4 ms, 95th percentile 16.8 ms.
+  - Measured on the owner's Mac, 2026-10-14, round 21, with the hair
+    levels: 92.4 fps average and 71.0 fps within 3 m of her face.
+  - Frame time: median 8.4 ms, 95th percentile 17.1 ms.
 - **Collisions:** `--check-walk` walks into her and into a wall and prints
   where the walker stopped.

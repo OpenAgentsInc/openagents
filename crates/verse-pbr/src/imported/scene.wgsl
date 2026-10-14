@@ -307,9 +307,13 @@ fn portal(v:Out,t:f32,x_axis:vec3<f32>,z_axis:vec3<f32>,center:vec3<f32>)->vec4<
  // each strand its true soft coverage instead of a hard edge.
  var cutoff=material.channels.w;
  // In real time (options.x) a strand's coverage is its alpha, through
- // alpha to coverage on the multisampled target.
+ // alpha to coverage on the multisampled target; the faint fringe of a
+ // card's alpha (below 0.12) is cut, so brows and lashes keep no halo.
  let hair_coverage=model==4u && frame.options.x>0.5;
- if model==4u {cutoff=select(max(stochastic(v.clip.xy,frame.settings.y*60.0),0.04),0.03,hair_coverage);}
+ // An instance's hair fade (pose.params.y on a plain model; 0 is unset)
+ // scales its strands' coverage, so a level of detail fades in or out.
+ let hair_fade=select(1.0,pose.params.y,pose.params.x<0.5 && pose.params.y>0.0);
+ if model==4u {cutoff=select(max(stochastic(v.clip.xy,frame.settings.y*60.0),0.04),0.12,hair_coverage);}
  if material.params.y==1.0 && alpha<cutoff{discard;}
  let albedo=tex.rgb*v.tint;
  var lit=albedo*(1.0-metallic)*frame.ambient.rgb*ao;
@@ -354,7 +358,7 @@ fn portal(v:Out,t:f32,x_axis:vec3<f32>,z_axis:vec3<f32>,center:vec3<f32>)->vec4<
  // output pass (pbr/post.wgsl) adds bloom, grades, and tone-maps it, as it
  // does for the physical path; the cap keeps half floats finite.
  let fog=fog_amount(v.pos);let color=min(mix(lit,frame.fog.rgb,fog)*frame.ambient.w,vec3(60000.0));
- return vec4(color,select(verse_coverage(alpha,material.params.y),clamp(alpha*1.25,0.0,1.0),hair_coverage));
+ return vec4(color,select(verse_coverage(alpha,material.params.y),clamp((alpha-0.12)*1.6*hair_fade,0.0,1.0),hair_coverage));
 }
 // The water pass (`verse_pbr::water`): vs_water, fs_water_transmit, and fs_water.
 // VERSE_WATER_IMPORTED
