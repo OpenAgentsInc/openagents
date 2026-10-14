@@ -14,7 +14,7 @@ pub const GM_SUN: f64 = 1.327_124_400_18e20;
 /// Earth gravitational parameter, m^3/s^2 (WGS 84).
 pub const GM_EARTH: f64 = 3.986_004_418e14;
 /// Moon gravitational parameter, m^3/s^2 (DE440).
-pub const GM_MOON: f64 = 4.904_869_5e12;
+pub const GM_MOON: f64 = 4.902_800_118e12;
 /// Astronomical unit, m. The CR3BP treats it as the circular separation.
 pub const AU: f64 = 1.495_978_707e11;
 /// Mean Earth radius, m.
