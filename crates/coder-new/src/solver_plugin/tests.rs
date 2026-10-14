@@ -9,7 +9,7 @@ use crate::plugin_tools::ExecutionSettings;
 
 thread_local! {
     /// The recording a test's run plays instead of starting one.
-    pub(super) static REPLAY: RefCell<Option<PathBuf>> = const { RefCell::new(None) };
+    pub(crate) static REPLAY: RefCell<Option<PathBuf>> = const { RefCell::new(None) };
 }
 
 /// A recorded solver run: issue 11338, a one-line docs fix that passed and

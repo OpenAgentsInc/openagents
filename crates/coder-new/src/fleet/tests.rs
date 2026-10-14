@@ -712,3 +712,50 @@ fn with_the_claude_plugin_off_no_background_agent_runs_claude() {
     assert!(!defs.to_string().contains("claude-code"), "{defs}");
     crate::harness_plugin::sign_in_claude(false);
 }
+
+/// Solver runs on the tray (#11596): the call returns at once, so the chat
+/// can keep talking, and the run's report arrives as one notice.
+#[tokio::test]
+async fn solver_runs_in_the_background_and_reports_back() {
+    let mut f = fixture(ANSWER);
+    f.execution.solver = true;
+    f.execution.memory = None;
+    let recording =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/solver-run-11338.jsonl");
+    crate::solver_plugin::tests::REPLAY.with(|replay| *replay.borrow_mut() = Some(recording));
+    let result = f
+        .execution
+        .execute(
+            crate::solver_plugin::TOOL,
+            json!({"issue": "acme/app#11338", "no_pr": true}),
+            None,
+            &std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            &mut |_| {},
+        )
+        .await;
+    crate::solver_plugin::tests::REPLAY.with(|replay| *replay.borrow_mut() = None);
+    let result = result.unwrap();
+    assert_eq!(result["status"], "running", "{result}");
+    assert_eq!(result["note"], crate::solver_plugin::STARTED);
+    let row = f.host.fleet.get(result["agent"].as_str().unwrap()).unwrap();
+    assert_eq!(row.engine, "solver");
+    assert!(row.worktree.is_none(), "Solver makes its own");
+    let notices = wait_notices(&f.host.fleet, 1);
+    assert_eq!(notices[0].status, agent_fleet::Status::Done, "{notices:?}");
+    let report = notices[0].report.as_deref().unwrap();
+    assert!(
+        report.starts_with("Solver passed on issue #11338."),
+        "{report}"
+    );
+    assert!(
+        crate::fleet::execute(
+            &f.host,
+            &f.execution,
+            "agent_message",
+            json!({"agent": row.id, "message": "and another"}),
+            None,
+        )
+        .unwrap_err()
+        .contains("takes no messages")
+    );
+}

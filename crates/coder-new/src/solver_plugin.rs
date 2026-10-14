@@ -45,7 +45,10 @@ pub const REPLAY_ENV: &str = "CODER_SOLVER_REPLAY";
 /// delegation returns.
 const STOP_GRACE: Duration = Duration::from_secs(20);
 
-const DESCRIPTION: &str = "Hand one GitHub issue to Solver, which takes it to a pull request: it reads the issue, works out what the change should be, writes the code, runs the checks, and opens the pull request. Use it when the person asks to solve, fix, or implement an issue by its number. `issue` is N, #N, or owner/repo#N; without a repository it is an issue of the repository the chat's folder is in (its GitHub remote); when that folder has none, ask the person which repository in one line. Set `no_pr` to true to stop after the checks without opening a pull request. A run takes minutes. It returns the outcome, the pull request link, the cost, and the folder with the run's files.";
+const DESCRIPTION: &str = "Hand one GitHub issue to Solver, which takes it to a pull request: it reads the issue, works out what the change should be, writes the code, runs the checks, and opens the pull request. Use it when the person asks to solve, fix, or implement an issue by its number. `issue` is N, #N, or owner/repo#N; without a repository it is an issue of the repository the chat's folder is in (its GitHub remote); when that folder has none, ask the person which repository in one line. Set `no_pr` to true to stop after the checks without opening a pull request. A run takes minutes and works in the background: the call returns at once, you keep talking with the person and may start more runs, and its outcome, pull request link, cost, and run folder arrive as a new message when it ends. Do not wait or poll for it.";
+
+/// What the call answers when the run starts in the background (#11596).
+pub const STARTED: &str = "Solver is working on it in the background. Its outcome arrives as a new message when it ends; do not wait or poll for it. Keep talking with the person.";
 
 /// The tool's definition, in the chat-completions function shape.
 #[must_use]
@@ -74,7 +77,7 @@ pub fn schema() -> Value {
 /// What the model is told about the tool.
 #[must_use]
 pub const fn instructions() -> &'static str {
-    "Solver takes one GitHub issue to a pull request in its own run (reading the issue, planning the change, coding, checking). When the person asks to solve, fix, or implement an issue by number, call the solver tool with that issue rather than doing the work yourself; pass no_pr true when they ask for no pull request. Report its outcome, pull request link, cost, and run folder in a sentence or two.\n"
+    "Solver takes one GitHub issue to a pull request in its own run (reading the issue, planning the change, coding, checking). When the person asks to solve, fix, or implement an issue by number, call the solver tool with that issue rather than doing the work yourself; pass no_pr true when they ask for no pull request. It runs in the background, so keep answering the person meanwhile. When its result arrives, report its outcome, pull request link, cost, and run folder in a sentence or two.\n"
 }
 
 /// The issue a call names: `(repository, number)`.
@@ -498,4 +501,4 @@ pub fn is_mcp_tool(name: &str) -> bool {
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

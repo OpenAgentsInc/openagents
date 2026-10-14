@@ -991,7 +991,21 @@ impl ExecutionSettings {
                 .await
             }
             crate::solver_plugin::TOOL if self.registered(ToolBinding::Solver) => {
-                crate::solver_plugin::execute(&arguments, self, cancel, &mut emit).await
+                // With an agent tray the run works in the background, so
+                // the chat never waits minutes on it (#11596).
+                match &self.fleet {
+                    Some(host) => crate::fleet::start_solver(host, self, arguments).map(|row| {
+                        json!({
+                            "agent": row.id,
+                            "name": row.name,
+                            "status": "running",
+                            "note": crate::solver_plugin::STARTED,
+                        })
+                    }),
+                    None => {
+                        crate::solver_plugin::execute(&arguments, self, cancel, &mut emit).await
+                    }
+                }
             }
             crate::comms::TOOL if self.registered(ToolBinding::Comms) => {
                 let channel = self.channel.as_ref().ok_or(crate::comms::NO_SESSION)?;

@@ -30,7 +30,7 @@ static NEXT_ID: AtomicU64 = AtomicU64::new(1);
 
 /// The rule the model gets while the Solver plugin is on: an issue the
 /// person asks to have done goes to Solver, every time.
-pub const SOLVER_RULE: &str = "When the person asks you to do, solve, fix, implement, build, or work on a GitHub issue (a number like #123, owner/repo#123, or an issue link), call the `solver` tool with that issue right away instead of doing the work yourself in this turn. Turn on `no_pr` only when they ask for no pull request. Do not read the issue, plan, or search the code first: Solver does all of that. Afterwards, report its outcome, pull request link, and cost in a sentence or two. When they ask for several issues at once, use `solver_swarm` if it is offered.\n";
+pub const SOLVER_RULE: &str = "When the person asks you to do, solve, fix, implement, build, or work on a GitHub issue (a number like #123, owner/repo#123, or an issue link), call the `solver` tool with that issue right away instead of doing the work yourself in this turn. Turn on `no_pr` only when they ask for no pull request. Do not read the issue, plan, or search the code first: Solver does all of that. Solver works in the background, so keep answering the person while it runs; when its result arrives, report its outcome, pull request link, and cost in a sentence or two. When they ask for several issues at once, use `solver_swarm` if it is offered.\n";
 
 /// The Coder tools one claude chat offers, from the chat's plugin
 /// settings. Two are equal when they offer the same tools, so a chat's

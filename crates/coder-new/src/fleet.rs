@@ -320,6 +320,9 @@ pub(crate) fn choose(
         checkout,
         history: vec![format!("Your task was: {}", row.task)],
         turn,
+        arguments: None,
+        #[cfg(test)]
+        replay: None,
     };
     launch(control, run)?;
     Ok(if handed {
@@ -358,6 +361,9 @@ pub fn engine_call(
 ) -> Result<(String, Value), String> {
     if engine == OPENAGENTS_ENGINE {
         return Ok((OPENAGENTS_ENGINE.into(), json!({"task":task})));
+    }
+    if engine == crate::solver_plugin::TOOL {
+        return Err("A Solver run takes no messages. Start another with the solver tool.".into());
     }
     if engine == "microcoder" {
         return if execution.microcoder {
@@ -495,6 +501,54 @@ pub(crate) fn start(
         checkout: None,
         history: Vec::new(),
         turn: None,
+        arguments: None,
+        #[cfg(test)]
+        replay: None,
+    };
+    launch(control, run)?;
+    Ok(row)
+}
+
+/// Starts a Solver run on the agent tray and returns its row at once
+/// (#11596), so the chat keeps talking while it works and can start
+/// another. Its report arrives as a notice like any background agent's.
+/// Solver makes its own worktree, so the run gets none here.
+///
+/// # Errors
+/// The arguments are invalid, the issue's repository is unknown, or the
+/// run could not be registered.
+pub(crate) fn start_solver(
+    host: &Host,
+    execution: &ExecutionSettings,
+    arguments: Value,
+) -> Result<agent_fleet::AgentRow, String> {
+    crate::solver_plugin::options(&arguments, &execution.cwd)?;
+    let task = crate::solver_plugin::task(&arguments).unwrap_or_else(|| "Solve an issue.".into());
+    let spec = Spec {
+        name: None,
+        engine: crate::solver_plugin::TOOL.into(),
+        task: task.clone(),
+        place: String::new(),
+        parent_session: host.parent_session.clone(),
+        worktree: None,
+        branch: None,
+    };
+    let control = host.fleet.start(spec)?;
+    let row = control.row().ok_or("The run could not be registered.")?;
+    let run = Run {
+        host: host.clone(),
+        execution: execution.clone(),
+        engine: crate::solver_plugin::TOOL.into(),
+        tool: crate::solver_plugin::TOOL.into(),
+        task,
+        provider: None,
+        worktree: false,
+        checkout: None,
+        history: Vec::new(),
+        turn: None,
+        arguments: Some(arguments),
+        #[cfg(test)]
+        replay: crate::solver_plugin::tests::REPLAY.with(|replay| replay.borrow().clone()),
     };
     launch(control, run)?;
     Ok(row)
@@ -543,6 +597,9 @@ pub(crate) fn resume(
         checkout,
         history,
         turn: None,
+        arguments: None,
+        #[cfg(test)]
+        replay: None,
     };
     launch(control, run)
 }
@@ -559,6 +616,12 @@ struct Run {
     history: Vec<String>,
     /// How its first Claude Code turn goes, after a usage limit (#11295).
     turn: Option<crate::bundled_runtime::claude_print::Turn>,
+    /// The tool's own arguments, for a run that is one tool call rather
+    /// than an agent given a task (Solver, #11596).
+    arguments: Option<Value>,
+    /// The recording a test's Solver run plays, carried to the run's thread.
+    #[cfg(test)]
+    replay: Option<PathBuf>,
 }
 
 fn launch(control: agent_fleet::Control<RuntimeEvent>, run: Run) -> Result<(), String> {
@@ -617,12 +680,16 @@ impl Run {
             chat.entries.push(Entry::User(line.clone()));
         }
         let cancel = control.cancel_flag();
+        #[cfg(test)]
+        crate::solver_plugin::tests::REPLAY
+            .with(|replay| replay.borrow_mut().clone_from(&self.replay));
         let mut task = self.task.clone();
         let outcome = loop {
             chat.entries.push(Entry::User(task.clone()));
-            let arguments = match self.tool.as_str() {
-                "microcoder" | OPENAGENTS_ENGINE => json!({"task":task}),
-                _ => json!({"agent":self.engine,"task":task}),
+            let arguments = match (&self.arguments, self.tool.as_str()) {
+                (Some(arguments), _) => arguments.clone(),
+                (None, "microcoder" | OPENAGENTS_ENGINE) => json!({"task":task}),
+                (None, _) => json!({"agent":self.engine,"task":task}),
             };
             if let Some(turn) = self.turn.take() {
                 crate::bundled_runtime::claude_print::set_next_turn(turn);
@@ -699,7 +766,8 @@ impl Run {
             // Messages sent while it worked: one more step with them, so
             // a steer is never lost and one finished agent sends one notice.
             let messages = control.take_messages();
-            if messages.is_empty() {
+            // A Solver run takes no messages; it ends with its one report.
+            if messages.is_empty() || self.arguments.is_some() {
                 break Outcome::Done(report);
             }
             task = format!(
