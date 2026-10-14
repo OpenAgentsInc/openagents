@@ -78,6 +78,42 @@ Source-by-source notes, with links, are in [evidence.md](evidence.md).
   - We pay sats from real customer revenue to a Lightning address, and the
     contributor sees their pylon and its gold receipts in the Verse.
 
+## REAX's code, read in depth, and what we built from it (2026-10-14)
+
+We read REAX's three public repositories at pinned commits: the subnet
+(MIT), the engine (Apache-2.0) and the miner kit (MIT). The full notes are
+in [reax.md](reax.md); the calibration we then ran on Clef-Flash is in
+[calibration.md](calibration.md).
+
+- **Their approach.**
+  - **The subnet.** A validator recomputes fresh synthetic decisions on
+    its own copy of the pinned model and compares in centred-log space.
+    Limits come from GPU calibration, and a big miss is a strike.
+  - **The engine.** A prefill-only server for a 27B decision model, about
+    3x the reference: packed varlen batches, FP8 with fused activation
+    quantisation, last-layer pruning, and warm-up before health.
+  - **The miner kit.** A stdlib-only, agent-first CLI: a doctor whose
+    blocks carry fixes, pinned digests, a self-check against shipped
+    reference answers, and updates that never silently change the served
+    model.
+- **What we adapted and shipped**, in the `openagents` CLI:
+  - the distance and round rule, with limits measured on Metal, CPU and
+    CUDA fixtures (#11632);
+  - `pylon check decide`: fresh items, a verified subset drawn after the
+    answers arrive, and NIP-32 verdicts (#11633);
+  - `pylon selfcheck`, enforced by `serve --decide` (#11634);
+  - `pylon doctor`, `setup`, `start` and `update` (#11635);
+  - the anti-gaming rules in NIP-PYLON's abuse table (#11637).
+
+  Engine ideas for Psionic's Clef lane are in #11636.
+- **What we reject.** Token emissions and an owner cut, registration
+  burns, coldkeys, inbound port 8091, Docker as a requirement, and pay
+  that is not from revenue.
+- **Build order.** Steps 1–3 below are built, and a step 3b (one-command
+  setup) is added and built. That makes step 5 (the Desktop Earn switch) a
+  thin UI over `pylon doctor`, `setup` and `start`. Step 4 (price and
+  mainnet pay) is still the next owner decision.
+
 ## Their technology: verified versus inferred
 
 | Claim | Status | Evidence |
