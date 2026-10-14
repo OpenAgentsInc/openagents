@@ -526,6 +526,10 @@ pub(crate) enum TaskKind {
     /// An issue solved by Solver in the cloud on a computer of its own
     /// (#11561, `crate::work_runs`): the task's id is the work run's.
     Solver,
+    /// Claude Code on the chat's own cloud computer (#11624,
+    /// `crate::computers`): the task's id is `{computer}.{turn}` as
+    /// oa-computers knows them.
+    Computer,
 }
 
 /// A task's last known state, as the run reports it.

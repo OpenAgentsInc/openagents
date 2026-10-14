@@ -294,6 +294,39 @@ fn spawn_sweeper(studio: std::sync::Weak<Studio>) {
 pub type Transports<T> = Arc<dyn Fn(&str) -> Result<T, String> + Send + Sync>;
 
 /// The Environments service the web holds.
+/// A Claude Code turn on a chat's own computer ([`Studio::chat_turn`]).
+/// `env` holds secret values; they never print and are zeroed on drop.
+pub struct ChatTurn {
+    pub environment: String,
+    pub version: u64,
+    pub version_id: String,
+    /// The saved version's image (a Boat named snapshot).
+    pub image: String,
+    pub size: String,
+    /// The turn's shell command; it holds no secret.
+    pub command: String,
+    pub env: Vec<(String, String)>,
+}
+
+impl Drop for ChatTurn {
+    fn drop(&mut self) {
+        for (_, value) in &mut self.env {
+            let mut bytes = std::mem::take(value).into_bytes();
+            bytes.fill(0);
+        }
+    }
+}
+
+impl std::fmt::Debug for ChatTurn {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ChatTurn")
+            .field("environment", &self.environment)
+            .field("version", &self.version)
+            .field("image", &self.image)
+            .finish_non_exhaustive()
+    }
+}
+
 pub struct Studio {
     config: Config,
     layout: crate::Layout,
@@ -917,6 +950,109 @@ impl Studio {
                 push,
             )
             .map_err(|e| plain(&e, "Claude Code didn't start. Try again."))
+    }
+
+    /// A Claude Code turn on a chat's own computer (#11624): the saved
+    /// version's image the computer starts from, the command the turn runs
+    /// there, and its per-turn environment. The environment holds the
+    /// task, the Claude credential (the person's own released for this
+    /// turn, else this server's key) and the GitHub broker ticket; it is
+    /// handed to the computer for this one command, in memory, never
+    /// written anywhere. Files sent with a message are not carried yet.
+    pub fn chat_turn(
+        &self,
+        id: &str,
+        prompt: &str,
+        own: Option<claude::Key>,
+        push: Option<push::Push>,
+        session: &str,
+    ) -> Result<ChatTurn, String> {
+        let env = self.envs().read(id).map_err(|e| e.to_string())?;
+        if env.project.workspace != self.config.owner.workspace {
+            return Err("That environment isn't yours.".into());
+        }
+        let pin = env
+            .pin()
+            .ok_or("Save the environment before running Claude Code on it.")?;
+        let prompt = prompt.trim();
+        if prompt.is_empty() || prompt.len() > claude::MAX_PROMPT {
+            return Err("Write what Claude Code should do, up to 16 KB.".into());
+        }
+        let push = push.filter(|push| {
+            env.source
+                .repository
+                .as_deref()
+                .is_some_and(|repo| repo.eq_ignore_ascii_case(push.repository()))
+        });
+        let key = match own {
+            Some(key) => key,
+            None => Config::secret(&self.config.claude_key)
+                .and_then(|value| {
+                    let name = coder_cloud::claude::detect(&value)
+                        .map_or(coder_cloud::claude::API_KEY, |class| class.name());
+                    claude::Key::new(name, value).ok()
+                })
+                .ok_or("Add your Claude key in Settings to run Claude Code here.")?,
+        };
+        if key.name() == coder_cloud::claude::VERTEX {
+            return Err("A Vertex credential can't run on a chat's computer yet; add an Anthropic key or Claude token in Settings.".into());
+        }
+        let workdir = self.config.machines.workdir.clone();
+        let mut task = claude::task(prompt, &workdir);
+        task.push_str(&push::task_note(push.as_ref()));
+        let mut names = vec![key.name().to_owned()];
+        let mut values = vec![
+            ("OA_TURN_TASK".to_owned(), task),
+            (key.name().to_owned(), key.expose().to_owned()),
+        ];
+        let setup = match &push {
+            Some(push) => {
+                names.push(push.name().to_owned());
+                values.push((push.name().to_owned(), push.value()));
+                format!(
+                    "( {} ) >/dev/null || {{ echo 'GitHub access could not be set up.' >&2; exit 1; }}\n",
+                    push::setup_script(push, &workdir, push::GITHUB_API)
+                )
+            }
+            None => String::new(),
+        };
+        let q = boat::shell_quote;
+        let session: String = session
+            .chars()
+            .map(|c| {
+                if c.is_ascii_alphanumeric() || c == '-' {
+                    c
+                } else {
+                    '-'
+                }
+            })
+            .take(96)
+            .collect();
+        let command = format!(
+            r#"set -u
+umask 077
+export PATH="$HOME/.local/bin:$HOME/.cargo/bin:/usr/local/bin:$PATH"
+p=$(command -v coder-cloud-runtime || command -v openagents || true)
+[ -n "$p" ] || {{ echo 'This computer has no Coder runtime.' >&2; exit 1; }}
+s="$HOME/.oa-chat/state"
+mkdir -p "$s"
+{setup}export OA_CODER_CLOUD_CREDENTIAL_NAMES={names}
+export OA_ENGINE_NOTICE_DIR="$HOME/.openagents/engine"
+"$p" --json coder --in {workdir} --state "$s" delegate claude --task "$OA_TURN_TASK" --session {session}
+"#,
+            names = q(&names.join(",")),
+            workdir = q(&workdir),
+            session = q(&format!("chat-{session}")),
+        );
+        Ok(ChatTurn {
+            environment: env.id.clone(),
+            version: pin.number,
+            version_id: pin.version_id.clone(),
+            image: pin.image.image_id.clone(),
+            size: self.config.size(),
+            command,
+            env: values,
+        })
     }
 
     /// The environment's computer signed in to Claude for its selected

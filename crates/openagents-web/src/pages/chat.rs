@@ -700,6 +700,8 @@ async fn start_claude(
         match work::begin(
             app,
             headers,
+            owner,
+            id,
             &env,
             picked.branch.as_deref(),
             &[],
@@ -2023,6 +2025,8 @@ async fn follow_claude(
         match work::begin(
             app,
             headers,
+            &chat.owner,
+            &chat.id,
             &env,
             picked.branch.as_deref(),
             &chat.messages,

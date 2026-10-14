@@ -11,6 +11,7 @@ pub mod api;
 pub mod db;
 pub mod reconcile;
 pub mod store;
+pub mod turns;
 
 pub use db::Db;
 pub use store::Store;
@@ -25,6 +26,7 @@ pub fn spawn_reconciler<D>(
     dsn: String,
     driver: D,
     settings: reconcile::Settings,
+    turns: turns::Secrets,
 ) -> std::thread::JoinHandle<()>
 where
     D: Driver + Clone + Send + 'static,
@@ -51,6 +53,7 @@ where
                     store: Store::new(db),
                     driver,
                     settings,
+                    turns,
                 });
                 r.run().await;
             });
@@ -59,10 +62,16 @@ where
 }
 
 /// The API router over `store`, for a driver declaring `caps`.
-pub fn app(store: Store, caps: computer_driver::Capabilities, token: &str) -> axum::Router {
+pub fn app(
+    store: Store,
+    caps: computer_driver::Capabilities,
+    token: &str,
+    turns: turns::Secrets,
+) -> axum::Router {
     api::router(Arc::new(api::Api {
         store,
         caps,
         token: api::Api::token_digest(token),
+        turns,
     }))
 }

@@ -38,6 +38,7 @@ mod coder_sync;
 mod components;
 mod composer;
 mod composer_row;
+pub mod computers;
 pub mod connections;
 mod demo;
 mod device;

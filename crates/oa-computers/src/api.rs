@@ -46,6 +46,8 @@ pub struct Api {
     pub caps: Capabilities,
     /// SHA-256 of the service bearer token.
     pub token: [u8; 32],
+    /// Turn credentials waiting in memory (shared with the reconciler).
+    pub turns: crate::turns::Secrets,
 }
 
 fn sha(s: &str) -> [u8; 32] {
@@ -386,6 +388,7 @@ pub fn router(api: Arc<Api>) -> Router {
         .route("/v1/computers/{id}", get(get_one).delete(delete))
         .route("/v1/computers/{id}/stop", post(stop))
         .route("/v1/computers/{id}/wake", post(wake))
+        .merge(crate::turns::routes())
         .layer(middleware::from_fn_with_state(api.clone(), auth))
         .with_state(api)
 }

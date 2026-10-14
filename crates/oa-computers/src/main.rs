@@ -8,6 +8,8 @@
 //!   or `fake` (`OA_COMPUTERS_FAKE_DIR`, local development only).
 //! - `OA_COMPUTERS_LISTEN` (default `0.0.0.0:$PORT`, else `127.0.0.1:8790`).
 //! - `OA_COMPUTERS_RECONCILE=0` serves the API without a reconciler.
+//! - `OA_COMPUTERS_KEEP_STOPPED_DAYS` (7): a computer stopped this long
+//!   with nothing asked of it is deleted.
 //! - `OA_COMPUTERS_LEASE_SECONDS` (60), `OA_COMPUTERS_REVISIT_SECONDS` (30),
 //!   `OA_COMPUTERS_BACKOFF_MS` (5000), `OA_COMPUTERS_DRIVER_POLL_MS` (3000).
 //!
@@ -41,6 +43,8 @@ fn settings() -> Settings {
     s.backoff = Duration::from_millis(number("OA_COMPUTERS_BACKOFF_MS", 5000));
     s.poll = Duration::from_millis(number("OA_COMPUTERS_POLL_MS", 1000));
     s.driver_poll = Duration::from_millis(number("OA_COMPUTERS_DRIVER_POLL_MS", 3000));
+    s.heartbeat = Duration::from_millis(number("OA_COMPUTERS_HEARTBEAT_MS", 30_000));
+    s.keep_stopped = Duration::from_secs(number("OA_COMPUTERS_KEEP_STOPPED_DAYS", 7) * 86_400);
     s
 }
 
@@ -57,10 +61,11 @@ async fn serve<D: Driver + Clone + Send + 'static>(driver: D, dsn: String, token
             std::process::exit(1);
         }
     };
+    let turns = oa_computers::turns::Secrets::default();
     if env("OA_COMPUTERS_RECONCILE").as_deref() != Some("0") {
-        oa_computers::spawn_reconciler(dsn, driver, settings());
+        oa_computers::spawn_reconciler(dsn, driver, settings(), turns.clone());
     }
-    let app = oa_computers::app(Store::new(db), caps.clone(), &token);
+    let app = oa_computers::app(Store::new(db), caps.clone(), &token, turns);
     let listen = env("OA_COMPUTERS_LISTEN").unwrap_or_else(|| match env("PORT") {
         Some(port) => format!("0.0.0.0:{port}"),
         None => "127.0.0.1:8790".into(),

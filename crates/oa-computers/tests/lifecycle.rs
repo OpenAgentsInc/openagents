@@ -13,6 +13,7 @@
 use computer_driver::fake::FakeDriver;
 use computer_driver::{Capabilities, Driver, Profile};
 use oa_computers::reconcile::{Reconciler, Settings};
+use oa_computers::turns::Secrets;
 use oa_computers::{Db, Store};
 use serde_json::{Value, json};
 use std::rc::Rc;
@@ -26,7 +27,11 @@ fn admin() -> Option<String> {
 }
 
 async fn api(store: Store, caps: Capabilities) -> String {
-    let app = oa_computers::app(store, caps, TOKEN);
+    api_with(store, caps, Secrets::default()).await
+}
+
+async fn api_with(store: Store, caps: Capabilities, turns: Secrets) -> String {
+    let app = oa_computers::app(store, caps, TOKEN, turns);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
@@ -64,6 +69,7 @@ fn fast(holder: &str) -> Settings {
     s.backoff = Duration::from_millis(100);
     s.driver_poll = Duration::from_millis(20);
     s.driver_deadline = Duration::from_secs(20);
+    s.heartbeat = Duration::from_millis(100);
     s
 }
 
@@ -233,6 +239,7 @@ async fn the_reconciler_brings_a_computer_up_and_deletes_it() {
         store: store.clone(),
         driver: fake.clone(),
         settings: fast("t1"),
+        turns: Secrets::default(),
     });
     let local = tokio::task::LocalSet::new();
     local.spawn_local(r.run());
@@ -419,4 +426,255 @@ async fn a_process_killed_mid_provision_finishes_the_same_computer_after_restart
     assert!(left.sandboxes.is_empty(), "sandbox left behind");
     second.kill().unwrap();
     second.wait().unwrap();
+}
+
+/// A chat's turns run on its own computer: the first turn's files are there
+/// for the second, each turn's credential reaches its own command only and
+/// is never stored, the computer stops with its disk after each turn, and a
+/// turn whose credential did not survive a restart fails instead of running
+/// without it.
+#[tokio::test(flavor = "multi_thread")]
+async fn turns_run_on_the_chats_computer_with_credentials_in_memory_only() {
+    let Some(admin) = admin() else {
+        eprintln!("skipping: OA_COMPUTERS_TEST_DATABASE_URL is unset");
+        return;
+    };
+    let (db, _) = Db::scratch(&admin).await.unwrap();
+    let store = Store::new(db.clone());
+    let dir = tempfile::tempdir().unwrap();
+    let fake = FakeDriver::new(dir.path());
+    let secrets = Secrets::default();
+    let base = api_with(store.clone(), fake.capabilities(), secrets.clone()).await;
+    let r = Rc::new(Reconciler {
+        store: store.clone(),
+        driver: fake.clone(),
+        settings: fast("t-turns"),
+        turns: secrets.clone(),
+    });
+    let local = tokio::task::LocalSet::new();
+    local.spawn_local(r.run());
+    let secret = "sk-ant-oat01-turn-secret-value";
+    local
+        .run_until(async {
+            let (_, made) = call(
+                reqwest::Method::POST,
+                format!("{base}/v1/computers"),
+                "acct-t",
+                Some(json!({"chat": "chat-t"})),
+            )
+            .await;
+            let id = made["id"].as_str().unwrap().to_owned();
+            let turn = |command: &str, env: Value| {
+                let base = base.clone();
+                let id = id.clone();
+                let command = command.to_owned();
+                async move {
+                    let (status, t) = call(
+                        reqwest::Method::POST,
+                        format!("{base}/v1/computers/{id}/turns"),
+                        "acct-t",
+                        Some(json!({"command": command, "env": env})),
+                    )
+                    .await;
+                    assert_eq!(status, 202, "{t}");
+                    let tid = t["id"].as_str().unwrap().to_owned();
+                    let until = Instant::now() + Duration::from_secs(30);
+                    loop {
+                        let (_, v) = call(
+                            reqwest::Method::GET,
+                            format!("{base}/v1/computers/{id}/turns/{tid}"),
+                            "acct-t",
+                            None,
+                        )
+                        .await;
+                        if v["state"] == "done" || v["state"] == "failed" {
+                            return v;
+                        }
+                        assert!(Instant::now() < until, "turn never finished: {v}");
+                        tokio::time::sleep(Duration::from_millis(50)).await;
+                    }
+                }
+            };
+            let one = turn(
+                "echo first > notes.txt; printf %s \"$CLAUDE_CODE_OAUTH_TOKEN\" | wc -c",
+                json!({"CLAUDE_CODE_OAUTH_TOKEN": secret}),
+            )
+            .await;
+            assert_eq!(one["state"], "done", "{one}");
+            assert_eq!(one["exit_code"], 0);
+            assert_eq!(
+                one["stdout"].as_str().unwrap().trim(),
+                secret.len().to_string()
+            );
+            assert_eq!(one["env_names"], json!(["CLAUDE_CODE_OAUTH_TOKEN"]));
+            // The computer checkpointed by stopping, and is not woken again.
+            let stopped = wait_for(&base, "acct-t", &id, |v| v["state"] == "stopped").await;
+            assert_eq!(stopped["desired"], "stopped");
+            assert_eq!(stopped["turns"], 1);
+
+            let two = turn(
+                "cat notes.txt; echo \"[${CLAUDE_CODE_OAUTH_TOKEN:-}]\"",
+                json!({}),
+            )
+            .await;
+            assert_eq!(two["state"], "done", "{two}");
+            assert_eq!(two["stdout"], "first\n[]\n");
+            assert_eq!(fake.live().len(), 1, "one machine for the chat");
+
+            // Nothing in the database holds the secret.
+            let c = db.client().await.unwrap();
+            for table in ["computers.computers", "computers.turns"] {
+                let rows = c
+                    .query(&format!("SELECT t::text FROM {table} t"), &[])
+                    .await
+                    .unwrap();
+                for row in rows {
+                    let text: String = row.get(0);
+                    assert!(!text.contains(secret), "{table} holds the secret");
+                }
+            }
+
+            // Stop ends a running turn's command.
+            let (_, t) = call(
+                reqwest::Method::POST,
+                format!("{base}/v1/computers/{id}/turns"),
+                "acct-t",
+                Some(json!({"command": "sleep 30"})),
+            )
+            .await;
+            let tid = t["id"].as_str().unwrap().to_owned();
+            let until = Instant::now() + Duration::from_secs(30);
+            loop {
+                let (_, v) = call(
+                    reqwest::Method::GET,
+                    format!("{base}/v1/computers/{id}/turns/{tid}"),
+                    "acct-t",
+                    None,
+                )
+                .await;
+                if v["state"] == "running" {
+                    break;
+                }
+                assert!(Instant::now() < until, "never ran: {v}");
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+            let started = Instant::now();
+            let (status, _) = call(
+                reqwest::Method::POST,
+                format!("{base}/v1/computers/{id}/turns/{tid}/stop"),
+                "acct-t",
+                None,
+            )
+            .await;
+            assert_eq!(status, 202);
+            let stopped = loop {
+                let (_, v) = call(
+                    reqwest::Method::GET,
+                    format!("{base}/v1/computers/{id}/turns/{tid}"),
+                    "acct-t",
+                    None,
+                )
+                .await;
+                if v["state"] == "failed" {
+                    break v;
+                }
+                assert!(
+                    started.elapsed() < Duration::from_secs(15),
+                    "stop did not end it: {v}"
+                );
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            };
+            assert_eq!(stopped["error"], "Stopped.");
+
+            // A restart forgets waiting credentials: the turn fails rather
+            // than running without them.
+            let (status, t) = call(
+                reqwest::Method::POST,
+                format!("{base}/v1/computers/{id}/turns"),
+                "acct-t",
+                Some(json!({"command": "true", "env": {"ANTHROPIC_API_KEY": "sk-ant-api-x"}})),
+            )
+            .await;
+            assert_eq!(status, 202);
+            let tid = t["id"].as_str().unwrap().to_owned();
+            secrets.take(&tid);
+            let until = Instant::now() + Duration::from_secs(30);
+            let lost = loop {
+                let (_, v) = call(
+                    reqwest::Method::GET,
+                    format!("{base}/v1/computers/{id}/turns/{tid}"),
+                    "acct-t",
+                    None,
+                )
+                .await;
+                if v["state"] == "failed" || v["state"] == "done" {
+                    break v;
+                }
+                assert!(Instant::now() < until);
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            };
+            assert_eq!(lost["state"], "failed");
+            assert!(lost["error"].as_str().unwrap().contains("Send it again"));
+
+            call(
+                reqwest::Method::DELETE,
+                format!("{base}/v1/computers/{id}"),
+                "acct-t",
+                None,
+            )
+            .await;
+            let until = Instant::now() + Duration::from_secs(20);
+            while !store.list("acct-t").await.unwrap().is_empty() {
+                assert!(Instant::now() < until, "never deleted");
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+            assert!(fake.live().is_empty());
+        })
+        .await;
+}
+
+/// A computer left stopped past the keep period is deleted by itself.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_computer_left_stopped_is_deleted_after_the_keep_period() {
+    let Some(admin) = admin() else {
+        eprintln!("skipping: OA_COMPUTERS_TEST_DATABASE_URL is unset");
+        return;
+    };
+    let (db, _) = Db::scratch(&admin).await.unwrap();
+    let store = Store::new(db);
+    let dir = tempfile::tempdir().unwrap();
+    let fake = FakeDriver::new(dir.path());
+    let base = api(store.clone(), fake.capabilities()).await;
+    let mut settings = fast("t-keep");
+    settings.keep_stopped = Duration::from_millis(500);
+    let r = Rc::new(Reconciler {
+        store: store.clone(),
+        driver: fake.clone(),
+        settings,
+        turns: Secrets::default(),
+    });
+    let local = tokio::task::LocalSet::new();
+    local.spawn_local(r.run());
+    local
+        .run_until(async {
+            let (_, made) = call(
+                reqwest::Method::POST,
+                format!("{base}/v1/computers"),
+                "acct-k",
+                Some(json!({"chat": "k1"})),
+            )
+            .await;
+            let id = made["id"].as_str().unwrap().to_owned();
+            wait_for(&base, "acct-k", &id, |v| v["state"] == "awake").await;
+            call(
+                reqwest::Method::POST,
+                format!("{base}/v1/computers/{id}/stop"),
+                "acct-k",
+                None,
+            )
+            .await;
+            wait_for(&base, "acct-k", &id, |v| v["state"] == "deleted").await;
+            assert!(fake.live().is_empty());
+        })
+        .await;
 }

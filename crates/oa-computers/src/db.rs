@@ -6,7 +6,10 @@ use tokio::sync::RwLock;
 use tokio_postgres::{Client, Config, NoTls};
 
 /// Migrations, applied in order, each once, under an advisory lock.
-const MIGRATIONS: &[(i32, &str)] = &[(1, include_str!("../migrations/0001_computers.sql"))];
+const MIGRATIONS: &[(i32, &str)] = &[
+    (1, include_str!("../migrations/0001_computers.sql")),
+    (2, include_str!("../migrations/0002_turns.sql")),
+];
 
 #[derive(Debug)]
 pub struct DbError(pub String);

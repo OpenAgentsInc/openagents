@@ -26,11 +26,8 @@
 //! model call.
 
 use super::custody::{self, CustodyError, Key, Material, Scope, Status, Vault};
-use super::hosts::Binding;
 use super::session::{SessionError, Viewer, now};
 use crate::App;
-use coder_access::cloud;
-use coder_access::protocol::{Operation, Outcome};
 use coder_cloud::claude::{self, OwnCredential, SignIn};
 use coder_cloud::runtime::Credentials;
 use sha2::{Digest, Sha256};
@@ -368,106 +365,22 @@ impl Computers {
     }
 }
 
-/// The Cloud job and admission whose next turn `action` starts, if any.
-fn turn_of(request: &str, action: &Operation) -> Option<(cloud::Admission, String)> {
-    let job = match action {
-        Operation::CloudSubmit { .. } => request.to_owned(),
-        Operation::CloudContinue { intent } => intent.scope.job.clone(),
-        Operation::CloudFollow { intent } => intent.scope.job.clone(),
-        _ => return None,
-    };
-    Some((cloud::Admission::for_operation(action)?, job))
-}
-
-/// Release the binding account's own Claude credential to the resident for
-/// the one turn `action` starts (BYO-05), immediately before the effect is
-/// sent. Only a Claude Code profile that names no own credential takes it;
-/// the credential comes from the account, workspace, and membership epoch of
-/// both the signed-in viewer and the binding. With no credential stored,
-/// nothing is released and the turn runs on the plan login inside the
-/// computer, which the resident admits one turn at a time. The released
-/// value is never staged, retained, or shown.
-pub async fn release_turn(
+/// Release the signed-in person's own Claude credential for one turn on
+/// their chat's own computer (BYO-05, #11624, `crate::computers`): read
+/// from custody and decrypted only in memory, for the account, workspace,
+/// and membership epoch of the viewer, at the moment the turn is queued.
+/// The caller hands it to oa-computers in that one turn's request; the
+/// computer gets it as that one command's environment over its SSH
+/// channel, never as a file, and it is zeroed when the key drops. Removing
+/// it in Settings stops the next turn from getting it, on a live computer
+/// too. `None` when the viewer saved none (the studio then uses this
+/// server's key, as the fresh-computer runs do).
+pub(crate) async fn release_turn(
     app: &App,
-    binding: &Binding,
-    viewer: &Viewer,
-    request: &str,
-    action: &Operation,
-) -> Result<(), SessionError> {
-    let Some(computers) = app.config.cloud_byo.as_deref() else {
-        return Ok(());
-    };
-    let Some((admission, job)) = turn_of(request, action) else {
-        return Ok(());
-    };
-    let owner = Owner {
-        account: binding.account().to_owned(),
-        workspace: binding.account_workspace().to_owned(),
-        members_epoch: binding.members_epoch(),
-    };
-    if Owner::from_viewer(viewer)? != owner {
-        return Err(SessionError::Forbidden);
-    }
-    let query = Operation::CloudCatalog {
-        query: cloud::CatalogQuery {
-            workspace: admission.workspace.clone(),
-            project: admission.project.clone(),
-        },
-    };
-    let outcome = binding.read(viewer, query.clone()).await?;
-    if outcome.validate().is_err() || !outcome.answers(&query) {
-        return Err(SessionError::Conflict);
-    }
-    let Outcome::CloudCatalog { catalog } = outcome else {
-        return Err(SessionError::Conflict);
-    };
-    let profile = catalog
-        .profiles
-        .iter()
-        .find(|p| p.name == admission.profile && p.revision == admission.profile_revision)
-        .ok_or(SessionError::Forbidden)?;
-    if profile.executor != claude::ENGINE
-        || profile.mode != "coder"
-        || claude::sign_in(profile.credential_names.iter().map(String::as_str)) != SignIn::PlanLogin
-    {
-        return Ok(());
-    }
-    let Some((class, value)) = computers
-        .release(&owner, now())
-        .map_err(|_| SessionError::Unavailable)?
-    else {
-        return Ok(());
-    };
-    let operation = Operation::CloudRelease {
-        intent: cloud::Release {
-            workspace: admission.workspace,
-            project: admission.project,
-            profile: admission.profile,
-            profile_revision: admission.profile_revision,
-            source_digest: admission.source_digest,
-            job,
-            owner: coder_cloud::release::owner_digest(
-                &owner.account,
-                &owner.workspace,
-                owner.members_epoch,
-            ),
-            name: class.name().to_owned(),
-            value,
-        },
-    };
-    let outcome = binding.release(viewer, operation.clone()).await;
-    let answered = outcome
-        .as_ref()
-        .is_ok_and(|o| o.validate().is_ok() && o.answers(&operation));
-    // Zero this copy; the resident holds the only other one now.
-    if let Operation::CloudRelease { intent } = operation {
-        let mut bytes = intent.value.into_bytes();
-        bytes.fill(0);
-    }
-    outcome?;
-    // An owner whose credential could not be released must not run on the
-    // plan login instead without knowing: the effect is refused.
-    answered.then_some(()).ok_or(SessionError::Unavailable)
+    headers: &axum::http::HeaderMap,
+) -> Option<coder_environment_operator::studio::claude::Key> {
+    let (computers, owner) = viewer_owner(app, headers).await?;
+    computers.run_key(&owner, now())
 }
 
 /// The signed-in viewer's owner, when this server keeps Claude credentials.

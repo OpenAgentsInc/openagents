@@ -52,6 +52,52 @@ sees only its own computers.
 | `GET /v1/computers`, `GET /v1/computers/{id}` | the account's computers: `id`, `chat`, `driver`, `image`, `size`, `desired`, `state` (lifecycle phase), `resource`, `turns`, `attempts`, `last_error`, times |
 | `DELETE /v1/computers/{id}`, `POST …/stop`, `POST …/wake` | change intent, `202` |
 | `GET /v1/capabilities` | the driver's declaration |
+| `POST /v1/computers/{id}/turns` `{command, cwd?, timeout_seconds?, env?}` | queue a turn (`202` with its id); `env`'s values stay in memory only |
+| `GET /v1/computers/{id}/turns/{turn}`, `POST …/turns/{turn}/stop` | read a turn (`state` queued/running/done/failed, `exit_code`, `stdout`, `stderr`, `error`); stop it |
+
+### Turns
+
+A turn is one command on a computer for a chat. The API records it
+(command and env *names* only) and keeps the env *values* in the process's
+memory. Once the computer is awake the reconciler dispatches a turn
+generation through the lifecycle core, takes the values out of memory, and
+runs the command with them as that one process's environment (on oa-boat:
+the command request's `env`, carried over the SSH channel's standard input
+and exported for that process only). The turn's owner heartbeats while it
+runs; when it ends, its output is kept (256 KB a stream), the turn's
+checkpoint stops the computer with its disk, and its intent moves to
+`stopped` until the next turn. A restart of the service before a queued
+turn starts forgets its values: that turn fails asking to be sent again,
+and nothing runs without the credentials it was sent with. Stop ends a
+queued turn at once and abandons a running one's command.
+
+A computer stopped for `OA_COMPUTERS_KEEP_STOPPED_DAYS` (7) with nothing
+asked of it is deleted (its disk bills while stopped: about $0.027 an hour
+for a 200 GB `oa-coder-host` disk).
+
+## Chats on their own computers (web)
+
+With `OPENAGENTS_WEB_COMPUTERS_URL` (or `--computers-url`) and the service
+token (`OPENAGENTS_WEB_COMPUTERS_TOKEN`, or `--computers-token FILE`), a
+"Claude Code in {repo}" message in a web chat runs on the chat's own
+computer (`chat_work::begin` → `crate::computers`):
+
+1. `Studio::chat_turn` builds the turn: the saved version's image, the
+   Coder runtime command (`coder --json … delegate claude --session
+   chat-{chat}`), and the per-turn env: the task, the person's own Claude
+   credential (`cloud::byo::release_turn`, else this server's key) and the
+   GitHub broker ticket for pushing.
+2. `POST /v1/computers` with the chat and image makes the chat's computer
+   the first time and wants it running every later time.
+3. `POST …/turns` queues the turn; the chat records a task of kind
+   `computer` whose id is `{computer}.{turn}` and follows it like any run;
+   the reply joins the chat when it is done.
+
+Messages with files still run on a fresh computer through the studio.
+Cloud computers stay behind the agent-work gate (site admins and named
+agent accounts); `GET /v1/computers` adds the account's cloud computers
+(`kind: "cloud"`) to its own for those accounts. oa-computers knows an
+account only by the chat store's opaque owner key, never its id or email.
 
 ### Running it
 
@@ -76,6 +122,28 @@ OA_COMPUTERS_TEST_DATABASE_URL='host=127.0.0.1 port=55432 user=postgres' cargo t
 ```
 
 Without the variable those tests print a skip line and pass.
+
+## Deployment
+
+Cloud Run service `oa-computers` (project `openagentsgemini`, us-central1),
+one instance always on (`--min-instances 1 --max-instances 1
+--no-cpu-throttling --cpu 1 --memory 512Mi`), built by
+`deploy/oa-computers/cloudbuild.yaml`. Its tables are in the `computers`
+schema of the production account database (`openagents-production-pg`,
+DSN secret `openagents-production-pg-dsn`); `OA_COMPUTERS_TOKEN` is the
+secret `oa-computers-token`, `BOAT_API_KEY` the secret `oa-boat-api-key`,
+`BOAT_API_BASE` oa-boat's `/api/v1`.
+
+```sh
+export CLOUDSDK_CONFIG=/Users/christopherdavid/work/.secrets/gcloud-sa-config
+C=$(git rev-parse origin/main)
+gcloud builds submit --no-source --config deploy/oa-computers/cloudbuild.yaml --substitutions _COMMIT=$C \
+  --project openagentsgemini --region us-central1 \
+  --service-account projects/openagentsgemini/serviceAccounts/oa-mvp-automation@openagentsgemini.iam.gserviceaccount.com \
+  --gcs-log-dir gs://openagentsgemini-oa-mvp-cloud-build-logs/oa-computers
+gcloud run deploy oa-computers --project openagentsgemini --region us-central1 \
+  --image us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/oa-computers:$C
+```
 
 ## Not yet
 

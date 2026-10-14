@@ -294,6 +294,7 @@ fn task_label(kind: TaskKind) -> &'static str {
         TaskKind::Work => "Briefed agent",
         TaskKind::OpenAgents => "OpenAgents",
         TaskKind::Solver => crate::work_runs::SOLVER,
+        TaskKind::Computer => "Claude Code on the chat's computer",
     }
 }
 
@@ -317,7 +318,7 @@ pub(super) fn rows(chat: &Conversation, at: usize, links: bool) -> Markup {
             @let row = TaskRow::new(task_label(task.kind), status(task.state))
                 .detail(task.title.clone())
                 .id(format!("chat-task-{}", task.id));
-            @if links && !gone(task) {
+            @if links && !gone(task) && task.kind != TaskKind::Computer {
                 (row.href(format!("/environments/{}/runs/{}", task.environment, task.id)))
             } @else {
                 (row)
@@ -448,6 +449,23 @@ pub(super) async fn sync(app: &App, loaded: Loaded) -> Loaded {
                 .await
         {
             worked.insert(task.id.clone(), work_seen(&run));
+        }
+    }
+    // Turns on the chat's own computer (#11624) are read from oa-computers.
+    if let Some(client) = crate::computers::client() {
+        for task in loaded
+            .conversation
+            .tasks
+            .iter()
+            .filter(|task| task.kind == TaskKind::Computer && !task.state.finished())
+        {
+            if let Some((computer, turn)) = crate::computers::split_task_id(&task.id)
+                && let Ok(Some(read)) =
+                    crate::computers::read_turn(client, &loaded.conversation.owner, computer, turn)
+                        .await
+            {
+                worked.insert(task.id.clone(), computer_seen(&read));
+            }
         }
     }
     let studio = studio(app);
@@ -720,9 +738,19 @@ pub(super) fn record(chat: &mut Conversation, environment: ChatEnvironment, mut 
 /// `prior` is the chat so far, carried into the prompt; `branch` is the
 /// branch the person picked, named in the prompt when it isn't the one the
 /// environment was set up on.
+///
+/// With chats on their own computers set up (`crate::computers`, #11624)
+/// and no files sent, the turn runs on the chat's own cloud computer
+/// (`owner`'s, for `chat`): made from the environment's saved image the
+/// first time, woken with its disk on later messages, the person's own
+/// Claude credential released for that one turn in memory
+/// ([`crate::cloud::byo::release_turn`]).
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn begin(
     app: &App,
     headers: &HeaderMap,
+    owner: &str,
+    chat: &str,
     env: &crate::composer_row::Environment,
     branch: Option<&str>,
     prior: &[Message],
@@ -733,6 +761,15 @@ pub(super) async fn begin(
         .cloned()
         .ok_or_else(|| "Claude Code can't run on this server.".to_owned())?;
     let prompt = composer_prompt(env, branch, prior, text);
+    if let Some(client) = crate::computers::client()
+        && files.is_empty()
+        && crate::agent_work::scope(app, headers).await.is_some()
+    {
+        return begin_on_computer(
+            app, headers, client, &studio, owner, chat, env, &prompt, text,
+        )
+        .await;
+    }
     let own = crate::cloud::byo::run_key(app, headers).await;
     // The files sent with the message go in the computer's working
     // directory, named in the task (#11174).
@@ -763,6 +800,88 @@ pub(super) async fn begin(
             steps: Vec::new(),
         },
     ))
+}
+
+/// [`begin`] on the chat's own computer: ensure the computer (it answers
+/// at once and comes up in the background), then queue the turn on it.
+#[allow(clippy::too_many_arguments)]
+async fn begin_on_computer(
+    app: &App,
+    headers: &HeaderMap,
+    client: &crate::computers::Client,
+    studio: &Arc<Studio>,
+    owner: &str,
+    chat: &str,
+    env: &crate::composer_row::Environment,
+    prompt: &str,
+    text: &str,
+) -> Result<(ChatEnvironment, ChatTask), String> {
+    let own = crate::cloud::byo::release_turn(app, headers).await;
+    let push = crate::environments::push::access(app, headers, studio, &env.id).await;
+    let turn = studio.chat_turn(&env.id, prompt, own, push, chat)?;
+    let computer = crate::computers::ensure(
+        client,
+        owner,
+        chat,
+        &turn.image,
+        &turn.environment,
+        &turn.version_id,
+        &turn.size,
+    )
+    .await?;
+    let queued =
+        crate::computers::turn(client, owner, &computer.id, &turn.command, &turn.env).await?;
+    let version = Some(turn.version);
+    drop(turn);
+    Ok((
+        ChatEnvironment {
+            id: env.id.clone(),
+            repository: env.repository.clone(),
+            version,
+            removed: false,
+        },
+        ChatTask {
+            id: crate::computers::task_id(&computer.id, &queued),
+            kind: TaskKind::Computer,
+            environment: env.id.clone(),
+            title: title(text),
+            state: TaskState::Working,
+            started_unix: now(),
+            after_message: 0,
+            version,
+            finished_unix: None,
+            agent: None,
+            steps: Vec::new(),
+        },
+    ))
+}
+
+/// A turn on a chat's own computer as the chat reads it.
+pub(super) fn computer_seen(turn: &crate::computers::Turn) -> Seen {
+    let state = match turn.state.as_str() {
+        "done" if turn.exit_code == Some(0) => TaskState::Done,
+        "done" | "failed" => TaskState::Failed,
+        _ => TaskState::Working,
+    };
+    let finished = state.finished();
+    let mut steps = Vec::new();
+    if turn.state == "queued" {
+        steps.push("Starting the chat's computer".to_owned());
+    }
+    Seen {
+        state,
+        version: None,
+        reply: if state == TaskState::Done {
+            crate::computers::answer(turn)
+        } else if finished {
+            Some(crate::computers::why(turn))
+        } else {
+            None
+        },
+        error: (state == TaskState::Failed).then(|| crate::computers::why(turn)),
+        cost_usd: None,
+        steps: Some(steps),
+    }
 }
 
 /// Asks a run that was started but couldn't be recorded on its chat to
@@ -1164,6 +1283,60 @@ async fn run_agents(
 mod tests {
     use super::*;
     use coder_environment_operator::studio::Status;
+
+    #[test]
+    fn a_turn_on_the_chats_computer_reads_as_a_task() {
+        let turn = |state: &str, code: Option<i64>, stdout: &str, error: Option<&str>| {
+            crate::computers::Turn {
+                state: state.into(),
+                exit_code: code,
+                stdout: stdout.into(),
+                stderr: "boom\n".into(),
+                error: error.map(str::to_owned),
+            }
+        };
+        let queued = computer_seen(&turn("queued", None, "", None));
+        assert_eq!(queued.state, TaskState::Working);
+        assert_eq!(
+            queued.steps,
+            Some(vec!["Starting the chat's computer".to_owned()])
+        );
+        let done = computer_seen(&turn("done", Some(0), "{\"reply\":\"Fixed.\"}\n", None));
+        assert_eq!(done.state, TaskState::Done);
+        assert_eq!(done.reply.as_deref(), Some("Fixed."));
+        let failed = computer_seen(&turn("done", Some(2), "", None));
+        assert_eq!(failed.state, TaskState::Failed);
+        assert_eq!(
+            failed.error.as_deref(),
+            Some("Claude Code stopped with exit code 2: boom")
+        );
+        let lost = computer_seen(&turn("failed", None, "", Some("Stopped.")));
+        assert_eq!(lost.state, TaskState::Failed);
+        assert_eq!(lost.error.as_deref(), Some("Stopped."));
+        // Its row has no run page (there is none for a turn).
+        let mut chat = chat();
+        chat.tasks.clear();
+        chat.tasks.push(ChatTask {
+            id: crate::computers::task_id("cmp_1", "trn_1"),
+            kind: TaskKind::Computer,
+            environment: "env-1".into(),
+            title: "Fix it".into(),
+            state: TaskState::Working,
+            started_unix: 1,
+            after_message: 0,
+            version: Some(1),
+            finished_unix: None,
+            agent: None,
+            steps: Vec::new(),
+        });
+        let html = rows(&chat, 0, true).into_string();
+        assert!(
+            html.contains("Claude Code on the chat&#39;s computer")
+                || html.contains("Claude Code on the chat's computer"),
+            "{html}"
+        );
+        assert!(!html.contains("/runs/"), "{html}");
+    }
 
     fn summary(id: &str, repository: &str, saved: Option<u64>) -> Summary {
         Summary {

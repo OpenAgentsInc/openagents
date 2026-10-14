@@ -434,6 +434,7 @@ pub(super) fn run_rows(
                 TaskKind::Work => "Briefed agent".to_owned(),
                 TaskKind::OpenAgents => "OpenAgents".to_owned(),
                 TaskKind::Solver => crate::work_runs::SOLVER.to_owned(),
+                TaskKind::Computer => ENGINE.to_owned(),
             },
             standing: standing(task.state, live.paused_until),
             elapsed_seconds,
@@ -443,7 +444,8 @@ pub(super) fn run_rows(
             transcript: if matches!(task.kind, TaskKind::Work | TaskKind::Solver) {
                 Some(format!("{}/{}", crate::work_runs::PAGE, task.id))
             } else {
-                (links && !gone)
+                // A turn on the chat's own computer has no run page.
+                (links && !gone && task.kind != TaskKind::Computer)
                     .then(|| format!("/environments/{}/runs/{}", task.environment, task.id))
             },
             choices: if links && !gone && task.state == TaskState::Paused {
@@ -854,6 +856,21 @@ async fn stop_run(app: &App, headers: &HeaderMap, owner: &str, id: &str, run: &s
             }
             Ok(None) => "That run isn't there anymore.".to_owned(),
             Err(_) => "That didn't go through. Try again.".to_owned(),
+        };
+    }
+    // A turn on the chat's own computer stops through oa-computers (#11624).
+    if let Some((computer, turn)) = crate::computers::split_task_id(run)
+        && let Some(client) = crate::computers::client()
+        && super::work::links(app, headers).await
+    {
+        return match crate::computers::stop_turn(client, owner, computer, turn).await {
+            Ok(()) => {
+                if let Ok(loaded) = load_owned(app, owner, id).await {
+                    let _ = super::work::sync(app, loaded).await;
+                }
+                "Stopping it. Its result joins the chat when it has stopped.".to_owned()
+            }
+            Err(message) => message,
         };
     }
     let (Some(studio), true) = (

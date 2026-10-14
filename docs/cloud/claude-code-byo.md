@@ -230,6 +230,16 @@ directory (a disk snapshot, a backup, a stolen volume) holds only ciphertext.
 
 ## Implemented (BYO-05, #11012)
 
+> Since 2026-10-14 (#11624) the resident/`cloud.release` path below has no
+> caller (it went with the Cloud web reset). Its successor is a chat's own
+> computer: `cloud::byo::release_turn` reads the person's credential for one
+> Claude Code turn, the web hands it to `oa-computers` in that one turn's
+> request, and `oa-computers` keeps it in memory until the turn's single
+> command starts on the computer, passing it as that process's environment
+> over oa-boat's SSH channel (never a file, never Postgres, never the
+> per-boot env). See [computers.md](computers.md), "Turns". The history
+> below is kept for reference.
+
 - The web server releases the stored credential itself. When a confirmed
   Cloud submit, continue, or follow starts a turn on a Claude Code profile
   that names no credential of its own, `cloud::byo::release_turn` reads the

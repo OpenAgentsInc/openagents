@@ -116,6 +116,12 @@ impl Key {
     pub fn name(&self) -> &str {
         &self.name
     }
+
+    /// The value, for handing to one turn's process in memory
+    /// ([`super::Studio::chat_turn`]).
+    pub(crate) fn expose(&self) -> &str {
+        &self.value
+    }
 }
 
 impl Drop for Key {
@@ -1747,7 +1753,9 @@ mod tests {
         assert_eq!(ended.cost_usd, Some(0.02), "only the time it ran");
         assert!(oa_copy::violations(RESTARTED, &[]).is_empty());
         assert_eq!(
-            restarted.message("env-1", "claude-env-1-2", "Go on.").unwrap(),
+            restarted
+                .message("env-1", "claude-env-1-2", "Go on.")
+                .unwrap(),
             Sent::Ended
         );
         assert!(restarted.waiting("env-1", "claude-env-1-2").is_empty());

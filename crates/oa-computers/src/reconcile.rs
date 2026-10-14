@@ -36,6 +36,11 @@ pub struct Settings {
     pub backoff: Duration,
     pub backoff_cap: Duration,
     pub parallel: usize,
+    /// How often a running turn's owner says it is alive.
+    pub heartbeat: Duration,
+    /// A computer stopped this long with nothing asked of it is deleted
+    /// (its disk is billed while stopped).
+    pub keep_stopped: Duration,
     /// The lifecycle's wait between observations and its deadline for a
     /// boot or a stop.
     pub driver_poll: Duration,
@@ -51,6 +56,8 @@ impl Settings {
             backoff: Duration::from_secs(5),
             backoff_cap: Duration::from_secs(300),
             parallel: 16,
+            heartbeat: Duration::from_millis(coder_working_computer::HEARTBEAT_EVERY_MS),
+            keep_stopped: Duration::from_secs(7 * 24 * 3600),
             driver_poll: Duration::from_secs(3),
             driver_deadline: Duration::from_secs(900),
         }
@@ -81,6 +88,8 @@ pub struct Reconciler<D> {
     pub store: Store,
     pub driver: D,
     pub settings: Settings,
+    /// Turn credentials waiting in memory (shared with the API).
+    pub turns: crate::turns::Secrets,
 }
 
 impl<D: Driver + Clone + 'static> Reconciler<D> {
@@ -158,6 +167,20 @@ impl<D: Driver + Clone + 'static> Reconciler<D> {
         };
         let p = self.provider(&e);
         let now = now_ms();
+        // Kept long enough: a stopped computer nobody asked for goes.
+        let mut e = e;
+        if e.desired == Desired::Stopped
+            && e.record.phase == Phase::Stopped
+            && now.saturating_sub(e.record.updated_ms)
+                >= self.settings.keep_stopped.as_millis() as u64
+            && self
+                .store
+                .settle_desired(&e.id, Desired::Stopped, Desired::Deleted)
+                .await
+                .is_ok()
+        {
+            e.desired = Desired::Deleted;
+        }
         let woke = e.desired == Desired::Running && wakes_from(&e.record.phase);
         let result = match e.desired {
             Desired::Deleted => driver::delete(&p, &lease, now).await,
@@ -165,11 +188,33 @@ impl<D: Driver + Clone + 'static> Reconciler<D> {
             Desired::Running if woke => driver::settle(&p, &lease, Trigger::Wake, now).await,
             Desired::Running => driver::tick(&p, &lease, false, now).await,
         };
+        // A waiting turn runs once the computer is awake.
+        let result = match result {
+            Ok(Settled::Idle(c)) if e.desired == Desired::Running && c.phase == Phase::Awake => {
+                crate::turns::run_next(
+                    &self.store,
+                    &self.turns,
+                    &p,
+                    &lease,
+                    &e,
+                    c,
+                    self.settings.heartbeat,
+                )
+                .await
+            }
+            other => other,
+        };
         renewer.abort();
         let (attempts, error, again, done) = match &result {
             Ok(s) => {
                 let c = s.computer();
                 let done = e.desired == Desired::Deleted && c.phase == Phase::Deleted;
+                if done {
+                    let _ = self
+                        .store
+                        .end_turns(&e.id, "The computer was deleted.")
+                        .await;
+                }
                 if e.desired == Desired::Running
                     && c.phase == Phase::Stopped
                     && !woke

@@ -6,7 +6,8 @@ const USAGE: &str = "usage: openagents-web [--store DIRECTORY] [--customer DIREC
 [--chat-store DIRECTORY | --chat-bucket BUCKET] [--vault-bucket BUCKET] [--chat-retention-days DAYS] [--chat-build DIRECTORY] [--everglade DIRECTORY] [--bunny DIRECTORY] [--icecream DIRECTORY] [--att DIRECTORY] [--components-build DIRECTORY] [--cloud-build DIRECTORY] \
 [--cloud-config PRIVATE_JSON] [--cloud-hosts PRIVATE_JSON] [--cloud-byo PRIVATE_DIR [--cloud-byo-keys PRIVATE_JSON]] [--pilot-config PRIVATE_JSON] \
 [--environments PRIVATE_JSON] [--github-oauth PRIVATE_JSON] [--github-app PRIVATE_JSON] [--github-redirect URL] \
-[--plan-meter PRIVATE_FILE] [--plan-checkout PLAN] [--own-runs-token PRIVATE_FILE] [--local-downloads ~/Downloads]";
+[--plan-meter PRIVATE_FILE] [--plan-checkout PLAN] [--own-runs-token PRIVATE_FILE] [--local-downloads ~/Downloads] \
+[--computers-url URL [--computers-token PRIVATE_FILE]]";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -27,6 +28,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut cloud_byo_keys: Option<PathBuf> = None;
     let mut plan_meter: Option<PathBuf> = None;
     let mut plan_checkout: Option<String> = None;
+    // Chats on their own computers (#11624): the oa-computers service and
+    // its token (a private file, or OPENAGENTS_WEB_COMPUTERS_TOKEN).
+    let mut computers_url = std::env::var("OPENAGENTS_WEB_COMPUTERS_URL")
+        .ok()
+        .filter(|v| !v.trim().is_empty());
+    let mut computers_token: Option<PathBuf> = None;
     let mut arguments = std::env::args().skip(1);
     while let Some(option) = arguments.next() {
         let value = arguments.next().ok_or(USAGE)?;
@@ -85,6 +92,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // account service), when checkout is set up.
             "--plan-meter" => plan_meter = Some(PathBuf::from(value)),
             "--plan-checkout" => plan_checkout = Some(value),
+            "--computers-url" => computers_url = Some(value),
+            "--computers-token" => computers_token = Some(PathBuf::from(value)),
             // The inference gateway's token for starting coding runs on a
             // person's own linked computers (#11080); read when asked, so
             // the gateway may write it after this server starts.
@@ -137,6 +146,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             _ => return Err(USAGE.into()),
         }
+    }
+    if let Some(url) = computers_url {
+        let token = match computers_token {
+            Some(path) => openagents_web::computers::Token::File(path),
+            None => openagents_web::computers::Token::Value(
+                std::env::var("OPENAGENTS_WEB_COMPUTERS_TOKEN").map_err(
+                    |_| "--computers-url needs --computers-token or OPENAGENTS_WEB_COMPUTERS_TOKEN",
+                )?,
+            ),
+        };
+        openagents_web::computers::configure(&url, token);
+        println!("Chats run on their own computers through {url}");
     }
     // The Ice Cream Man's build ships at /srv/icecream in the image; the
     // live revision's arguments, which production copies, name no flag.

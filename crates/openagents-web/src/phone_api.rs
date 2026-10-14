@@ -14,7 +14,7 @@
 //! | `POST /v1/threads/{id}/files?name=` (the file's bytes) | Add an image, PDF, or text file to a web chat for the next reply (`201 {id, name, kind, size, url}`; #11174, [`crate::chat_files`]) |
 //! | `GET`/`DELETE /v1/threads/{id}/files/{file}` | A file of the chat; remove one not sent yet (`204`) |
 //! | `DELETE /v1/threads/{id}` | Delete the chat for good, as the web's Delete does (`204`; `404 not_found`; `409 busy` while an answer is being written, `409 changed`) (#11601) |
-//! | `GET /v1/computers` | `{computers: [Computer]}` |
+//! | `GET /v1/computers` | `{computers: [Computer]}`: the account's own computers, then (for accounts cloud computers are open to, #11624) its cloud computers with `kind: "cloud"`, `id`, `chat`, `state` |
 //! | `DELETE /v1/computers/{name}` | Remove the computer from the account: its check-ins, sync choice, waiting replies, and running work (`204`; `404 not_found`). Its synced chats stay; delete them one by one (#11601) |
 //! | `GET`/`PUT /v1/computers/{name}/sync` `{choice}` | The computer's (or phone's) sync choice, as `/coder/sync` |
 //! | `POST /v1/computers/{name}/activity` `{items: [Item]}` | Coder's running work on the computer; answers `{commands: [Command]}`, each handed out once. With `?kind=landing` (#11250), the landing queue's entries on the integrator computer (kind `landing`): they replace only that computer's landing items, keep its other items, and take no commands |
@@ -764,13 +764,20 @@ async fn computers_route(State(app): State<App>, headers: HeaderMap) -> Response
         Ok(owner) => owner,
         Err(response) => return response,
     };
-    match app.config.chat_store.computers(&owner).await {
-        Ok(computers) => answer(
-            StatusCode::OK,
-            json!({"computers": computer_rows(&computers)}),
-        ),
-        Err(error) => stored(&error),
+    let computers = match app.config.chat_store.computers(&owner).await {
+        Ok(computers) => computers,
+        Err(error) => return stored(&error),
+    };
+    let mut rows = computer_rows(&computers);
+    // The account's cloud computers, one list with its own (#11624), for
+    // the accounts cloud computers are open to.
+    if let Some(client) = crate::computers::client()
+        && crate::computers::app_allowed(&app, &headers).await
+        && let Ok(cloud) = crate::computers::list(client, &owner).await
+    {
+        rows.extend(crate::computers::rows(&cloud));
     }
+    answer(StatusCode::OK, json!({"computers": rows}))
 }
 
 async fn sync_get(
