@@ -172,6 +172,13 @@ fn route(state: &Shared, method: &str, path: &str, body: Value) -> (&'static str
             }
             ("200 OK", changed)
         }
+        ("DELETE", p) if p == format!("/v1/projects/{ONLY_ME}") => {
+            state.projects.retain(|p| p["id"] != ONLY_ME);
+            (
+                "200 OK",
+                json!({"id": ONLY_ME, "object": "project.deleted"}),
+            )
+        }
         ("DELETE", p) if p.starts_with(&format!("/v1/projects/{OWNED}/members/")) => {
             let account = p.rsplit('/').next().unwrap_or_default().to_owned();
             state.members.retain(|m| m["account"] != account.as_str());
@@ -511,6 +518,46 @@ fn remove_takes_a_member_out_and_leave_leaves() {
     );
     // The project itself is still there.
     assert_eq!(state.lock().unwrap().projects.len(), 4);
+
+    // Forgetting the account deletes nothing and says how to (#11623).
+    let writes = state.lock().unwrap().writes.len();
+    for args in [
+        &["projects", "remove", "diary"][..],
+        &["projects", "remove", "diary", "--detach-threads"],
+    ] {
+        let refused = openagents(home.path(), &origin, args);
+        let said = failed(&refused);
+        assert_eq!(refused.status.code(), Some(64), "{said}");
+        assert_eq!(said.trim_end().lines().count(), 1, "{said}");
+        assert!(said.contains("openagents projects delete diary"), "{said}");
+    }
+    // delete without --yes asks for the name, and with no terminal to
+    // type it at, deletes nothing.
+    let unconfirmed = failed(&openagents(
+        home.path(),
+        &origin,
+        &["projects", "delete", "diary"],
+    ));
+    assert!(unconfirmed.contains("or --yes"), "{unconfirmed}");
+    assert_eq!(state.lock().unwrap().writes.len(), writes);
+    assert_eq!(state.lock().unwrap().projects.len(), 4);
+    let deleted = text(&openagents(
+        home.path(),
+        &origin,
+        &["projects", "delete", "diary", "--yes"],
+    ));
+    assert_eq!(deleted.trim_end(), "Deleted diary.");
+    let (method, path, _) = last_write(&state);
+    assert_eq!(
+        (method.as_str(), path.as_str()),
+        ("DELETE", "/v1/projects/prj_cccccccccccccccc")
+    );
+    assert_eq!(state.lock().unwrap().projects.len(), 3);
+    state
+        .lock()
+        .unwrap()
+        .projects
+        .push(project(ONLY_ME, "diary", "owner", 1));
 
     let left = text(&openagents(
         home.path(),

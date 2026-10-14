@@ -221,7 +221,7 @@ Coder:
                claim, release, and pick up (the claim record every agent and
                Coder share).
   projects     Your openagents.com projects (the Projects list on the
-               website): list, show one with its chats, add, remove,
+               website): list, show one with its chats, add, delete,
                private files, and sharing with other people.
   connections  Services connected to your openagents.com account: connect
                Google, browse Drive, search Gmail, and see your calendar.

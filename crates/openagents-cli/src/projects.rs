@@ -69,9 +69,10 @@ pub(crate) const USAGE: &str = "usage: openagents projects COMMAND [--account-di
               prefix, or its title; PROJECT its name, repository, or id.
   move CHAT --none
               Take a chat out of its project.
-  remove PROJECT [--detach-threads]
-              Remove a project. With chats in it, --detach-threads keeps them,
-              outside any project.
+  delete PROJECT [--yes] [--detach-threads]
+              Delete a project for good. It asks you to type the project's
+              name first; --yes skips that. With chats in it,
+              --detach-threads keeps them, outside any project.
   members PROJECT
               Who is in the project and what each can do. The owner also
               sees the invitations nobody has used yet.
@@ -90,7 +91,8 @@ pub(crate) const USAGE: &str = "usage: openagents projects COMMAND [--account-di
               shows it. owner gives them the project, and you become an
               editor.
   remove PROJECT ACCOUNT
-              Take a member out of the project.
+              Take a member out of the project. Without ACCOUNT it does
+              nothing; delete removes the whole project.
   leave PROJECT
               Leave a project someone shared with you.
   files list PROJECT
@@ -140,7 +142,7 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("repo remove", Effect::Publishes),
     Declared::computer("repo primary", Effect::Publishes),
     Declared::computer("move", Effect::Publishes),
-    Declared::computer("remove", Effect::Publishes),
+    Declared::computer("delete", Effect::Publishes),
     // Sharing changes who may open the project. These are `Publishes`,
     // not `Grants`: on the phone a grant opens the computers screen,
     // which has nothing to do with projects.
@@ -148,6 +150,7 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("invite", Effect::Publishes),
     Declared::computer("join", Effect::Publishes),
     Declared::computer("role", Effect::Publishes),
+    Declared::computer("remove", Effect::Publishes),
     Declared::computer("leave", Effect::Publishes),
     Declared::computer("files list", Effect::ReadOnly),
     Declared::computer("files add", Effect::Publishes),
@@ -173,7 +176,7 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
             0
         };
     }
-    let args = match Args::parse(words, &["detach-threads", "none", "primary"]) {
+    let args = match Args::parse(words, &["detach-threads", "none", "primary", "yes"]) {
         Ok(args) => args,
         Err(message) => return output.usage("projects", &message, USAGE),
     };
@@ -210,8 +213,13 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         "repo remove" | "repo primary" => (&["account-dir"], 2, 2),
         "move" if args.switch("none") => (&["account-dir", "none"], 1, 1),
         "move" => (&["account-dir"], 2, 2),
-        "remove" if positional.len() > 2 => (&["account-dir"], 2, 2),
-        "remove" => (&["account-dir", "detach-threads"], 1, 1),
+        "remove" if positional.len() == 2 => {
+            // `remove PROJECT` once deleted the whole project; forgetting
+            // the member's account must never do that (#11623).
+            return output.refuse("projects", &remove_hint(&positional[1]));
+        }
+        "remove" => (&["account-dir"], 2, 2),
+        "delete" => (&["account-dir", "detach-threads", "yes"], 1, 1),
         "members" | "leave" => (&["account-dir"], 1, 1),
         "invite" => (&["account-dir", "role", "ttl"], 1, 1),
         "join" => (&["account-dir"], 1, 1),
@@ -424,34 +432,39 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
             .map(|(changed, member)| {
                 output.emit(&changed, |value| role_text(value, &member, &rest[2]));
             }),
-        "remove" if rest.len() == 2 => {
-            projects
-                .remove_member(target, &rest[1])
-                .map(|(removed, member, project)| {
-                    output.emit(&removed, |_| {
-                        format!(
-                            "Took {} out of {}.",
-                            member_name(&member),
-                            project["name"].as_str().unwrap_or(target)
-                        )
-                    });
-                })
-        }
+        "remove" => projects
+            .remove_member(target, &rest[1])
+            .map(|(removed, member, project)| {
+                output.emit(&removed, |_| {
+                    format!(
+                        "Took {} out of {}.",
+                        member_name(&member),
+                        project["name"].as_str().unwrap_or(target)
+                    )
+                });
+            }),
         "leave" => projects.leave(target).map(|(left, project)| {
             output.emit(&left, |_| {
                 format!("You left {}.", project["name"].as_str().unwrap_or(target))
             });
         }),
-        "remove" => {
+        "delete" => {
+            let yes = args.switch("yes");
             projects
-                .remove(target, args.switch("detach-threads"))
+                .find(target)
+                .and_then(|project| {
+                    if !yes {
+                        confirm_delete(&project)?;
+                    }
+                    projects.delete(project, args.switch("detach-threads"))
+                })
                 .map(|(removed, project)| {
                     output.emit(&removed, |_| {
                         let name = project["name"].as_str().unwrap_or_default();
                         if project["counts"]["threads"].as_u64().unwrap_or(0) > 0 {
-                            format!("Removed {name}. Its chats are still in your chat list.")
+                            format!("Deleted {name}. Its chats are still in your chat list.")
                         } else {
-                            format!("Removed {name}.")
+                            format!("Deleted {name}.")
                         }
                     });
                 })
@@ -816,8 +829,8 @@ impl Projects<'_> {
         Ok(json!({"thread": moved, "project": project}))
     }
 
-    fn remove(&self, target: &str, detach: bool) -> Result<(Value, Value), String> {
-        let project = self.find(target)?;
+    /// Delete `project` (as [`Projects::find`] answered it) for good.
+    fn delete(&self, project: Value, detach: bool) -> Result<(Value, Value), String> {
         let site = self.0;
         let query = if detach { "?detach_threads=true" } else { "" };
         let removed = Site::answer(
@@ -1852,6 +1865,44 @@ fn count_word(n: usize) -> String {
     }
 }
 
+/// What `remove PROJECT` without a member's account says: it deletes
+/// nothing (#11623).
+fn remove_hint(project: &str) -> String {
+    let project = if project.is_empty() || project.contains(char::is_whitespace) {
+        format!("\"{project}\"")
+    } else {
+        project.to_owned()
+    };
+    format!(
+        "remove takes a member's account and changed nothing: openagents projects remove {project} ACCOUNT takes a member out; openagents projects delete {project} deletes the project."
+    )
+}
+
+/// Whether `typed` is the project's name, as `delete` asks for it.
+fn names_project(project: &Value, typed: &str) -> bool {
+    let name = project["name"].as_str().unwrap_or_default();
+    !name.is_empty() && typed.trim() == name
+}
+
+/// Ask for the project's name before `delete` deletes it. Nothing can be
+/// typed when stdin isn't a terminal, so then it takes `--yes`.
+fn confirm_delete(project: &Value) -> Result<(), String> {
+    use std::io::{BufRead, IsTerminal, Write};
+    let name = project["name"].as_str().unwrap_or_default();
+    if !std::io::stdin().is_terminal() {
+        return Err(format!(
+            "Deleting {name} needs its name typed at a terminal, or --yes. Nothing was deleted."
+        ));
+    }
+    eprint!("This deletes the project {name} for good. Type its name to confirm: ");
+    let _ = std::io::stderr().flush();
+    let mut typed = String::new();
+    if std::io::stdin().lock().read_line(&mut typed).is_err() || !names_project(project, &typed) {
+        return Err(format!("That isn't {name}. Nothing was deleted."));
+    }
+    Ok(())
+}
+
 /// The project `target` names: its id, its name, or one of its
 /// repositories (`owner/name`); names and repositories match without
 /// regard to case. Names can repeat and a repository can be in several
@@ -2048,6 +2099,24 @@ mod tests {
             json!({"id": "prj_aaaaaaaaaaaaaaaa", "name": "finances", "repository": "chris/finances", "counts": {"threads": 2, "sources": 0}, "updated_at": "2026-10-09T12:00:00Z"}),
             json!({"id": "prj_bbbbbbbbbbbbbbbb", "name": "openagents", "repository": "OpenAgentsInc/openagents", "counts": {"threads": 1}, "updated_at": "2026-10-12T08:00:00Z"}),
         ]
+    }
+
+    #[test]
+    fn delete_needs_the_exact_name_and_remove_alone_points_at_it() {
+        let project = &projects()[0];
+        assert!(names_project(project, "finances\n"));
+        assert!(!names_project(project, "Finances"));
+        assert!(!names_project(project, "fin"));
+        assert!(!names_project(project, ""));
+        assert!(!names_project(&json!({"id": "prj_x"}), ""));
+        let hint = remove_hint("finances");
+        assert!(!hint.contains('\n'), "{hint}");
+        assert!(hint.contains("changed nothing"), "{hint}");
+        assert!(
+            hint.contains("openagents projects delete finances"),
+            "{hint}"
+        );
+        assert!(remove_hint("my notes").contains("delete \"my notes\""));
     }
 
     #[test]

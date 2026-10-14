@@ -7334,7 +7334,7 @@
     },
     {
       "name": "projects",
-      "summary": "Your openagents.com projects (the Projects list on the website): list, show one with its chats, add, remove, private files, and sharing with other people.",
+      "summary": "Your openagents.com projects (the Projects list on the website): list, show one with its chats, add, delete, private files, and sharing with other people.",
       "children": [
         {
           "name": "list",
@@ -7774,22 +7774,21 @@
           }
         },
         {
-          "name": "remove",
+          "name": "delete",
           "leaf": {
             "path": [
               "projects",
-              "remove"
+              "delete"
             ],
             "usage": [
-              "remove PROJECT [--detach-threads]",
-              "remove PROJECT ACCOUNT"
+              "delete PROJECT [--yes] [--detach-threads]"
             ],
             "forms": [
               {
                 "tokens": [
                   {
                     "kind": "literal",
-                    "word": "remove"
+                    "word": "delete"
                   },
                   {
                     "kind": "positional",
@@ -7797,29 +7796,18 @@
                   },
                   {
                     "kind": "option",
+                    "name": "yes",
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
                     "name": "detach-threads",
                     "optional": true
                   }
                 ]
-              },
-              {
-                "tokens": [
-                  {
-                    "kind": "literal",
-                    "word": "remove"
-                  },
-                  {
-                    "kind": "positional",
-                    "name": "PROJECT"
-                  },
-                  {
-                    "kind": "positional",
-                    "name": "ACCOUNT"
-                  }
-                ]
               }
             ],
-            "summary": "Remove a project. With chats in it, --detach-threads keeps them, outside any project.",
+            "summary": "Delete a project for good. It asks you to type the project's name first; --yes skips that. With chats in it, --detach-threads keeps them, outside any project.",
             "effect": "publishes",
             "runs_on": "connected_computer"
           }
@@ -7961,6 +7949,39 @@
               }
             ],
             "summary": "Change what a member can do: ROLE is editor, viewer, or owner. ACCOUNT is their account id, or their login or name as members shows it. owner gives them the project, and you become an editor.",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "remove",
+          "leaf": {
+            "path": [
+              "projects",
+              "remove"
+            ],
+            "usage": [
+              "remove PROJECT ACCOUNT"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "remove"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "PROJECT"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "ACCOUNT"
+                  }
+                ]
+              }
+            ],
+            "summary": "Take a member out of the project. Without ACCOUNT it does nothing; delete removes the whole project.",
             "effect": "publishes",
             "runs_on": "connected_computer"
           }
@@ -8393,6 +8414,12 @@
         {
           "kind": "option",
           "name": "none",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "yes",
           "optional": true,
           "repeated": true
         },

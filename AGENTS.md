@@ -47,8 +47,8 @@ must set `OPENAGENTS_TEST_RUN=1` (Coder, `openagents`, and the phone app then
 send `X-OpenAgents-Test: 1`) or send that header itself, so the site lists
 nothing it makes, records no computer, and deletes its chats within an
 hour; and it deletes what it made before it ends (`openagents chats delete
-ID...`, `openagents computers remove NAME`, `openagents projects remove
-ID`). A leftover is a bug to fix in the same session (#11601).
+ID...`, `openagents computers remove NAME`, `openagents projects delete
+ID --yes`). A leftover is a bug to fix in the same session (#11601).
 
 ## User-facing copy (owner, 2026-10-08)
 

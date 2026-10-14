@@ -495,7 +495,7 @@ openagents projects list [--json]
 openagents projects show NAME|ID [--json]
 openagents projects threads NAME|ID [--json]
 openagents projects create NAME [--repo OWNER/REPO]... [--instructions TEXT]
-openagents projects remove NAME|ID [--detach-threads]
+openagents projects delete NAME|ID [--yes] [--detach-threads]
 openagents projects files list NAME|ID
 openagents projects files add NAME|ID PATH...
 openagents projects files get NAME|ID FILE --output PATH
@@ -516,7 +516,7 @@ openagents projects repo remove PROJECT OWNER/REPO
 openagents projects repo primary PROJECT OWNER/REPO
 openagents projects edit PROJECT [--name NAME] [--instructions TEXT] [--protection standard|only_me]
 openagents projects move CHAT PROJECT | move CHAT --none
-openagents projects remove PROJECT [--detach-threads]
+openagents projects delete PROJECT [--yes] [--detach-threads]
 openagents projects files list PROJECT
 openagents projects files add PROJECT PATH... [--protection standard|only_me]
 openagents projects files get PROJECT FILE [--output PATH]
@@ -537,9 +537,13 @@ uses the [members and invitations](#members-and-invitations) routes.
 `invite` prints the link once (`--ttl` becomes `expires_in`); `join`
 previews the link, then accepts it, and says who invited you. ACCOUNT is a
 member's account id, or their login or name as `members` prints it; a login
-or name two members share is refused with both named. `remove` with one
-argument removes the project; with a member's account it takes that member
-out. `list` marks shared projects with your role, and `show` prints your
+or name two members share is refused with both named. `remove PROJECT
+ACCOUNT` takes that member out; `remove PROJECT` without an account
+changes nothing and answers, in one line, with both forms
+([#11623](https://github.com/OpenAgentsInc/openagents/issues/11623)).
+Deleting the project is its own command, `delete PROJECT`, which asks for
+the project's name typed back at a terminal; `--yes` skips that, and
+without a terminal it needs `--yes`. `list` marks shared projects with your role, and `show` prints your
 role. With `--json`, `members`, `invite`, `role`, `remove PROJECT ACCOUNT`,
 and `leave` print the website's answer (`members` with every page's
 members in `data` and the `project` beside them, `invite` with
