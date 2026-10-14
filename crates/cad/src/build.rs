@@ -167,6 +167,16 @@ fn feature(s: &mut Session, part: &str, f: &Value) -> Result<Value, String> {
             for (i, step) in params["draw"].as_array().into_iter().flatten().enumerate() {
                 let sop = step["op"].as_str().unwrap_or_default().to_owned();
                 let sparams = step.get("params").cloned().unwrap_or(json!({}));
+                if sop == "sketch.polyline" {
+                    // Our own step: lines and arcs for the kernel.
+                    let parts = crate::dxf::polyline_steps(&sparams).map_err(|e| {
+                        fail(format!("drawing step {} (sketch.polyline): {e}", i + 1))
+                    })?;
+                    for (op, p) in parts {
+                        steps.push((format!("drawing step {} (polyline)", i + 1), op, p));
+                    }
+                    continue;
+                }
                 steps.push((format!("drawing step {}", i + 1), sop, sparams));
             }
             for (i, c) in params["constraints"]
@@ -673,6 +683,44 @@ fn build_part(
 /// # Errors
 /// The document or the part doesn't build, or has no such part or feature.
 pub fn faces_of(document: &Value, key: &str, upto: Option<&str>) -> Result<Value, Vec<String>> {
+    let mut s = replay(document, key, upto)?;
+    let mut out = crate::refs::list(&mut s, key);
+    out["part"] = json!(key);
+    out["after"] = json!(upto.unwrap_or("the last feature"));
+    Ok(out)
+}
+
+/// A sketch of a part as an ASCII DXF drawing (in the sketch's own plane),
+/// with its entity count.
+///
+/// # Errors
+/// The part doesn't build that far, or `sketch` isn't one of its sketches.
+pub fn sketch_dxf(document: &Value, key: &str, sketch: &str) -> Result<(String, u64), Vec<String>> {
+    let assembly = doc::as_assembly(document);
+    let is_sketch = assembly["parts"][key]["features"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .any(|f| f["id"] == sketch && f["op"] == "sketch");
+    if !is_sketch {
+        return Err(vec![format!("{key} has no sketch {sketch}.")]);
+    }
+    let mut s = replay(document, key, Some(sketch))?;
+    let out = run(
+        &mut s,
+        "sketch.export_dxf",
+        &json!({"sketch": scoped(key, sketch)}),
+    )
+    .map_err(|e| vec![format!("{key}.{sketch} couldn't be drawn as DXF: {e}")])?;
+    Ok((
+        out["dxf"].as_str().unwrap_or_default().to_owned(),
+        out["entities"].as_u64().unwrap_or(0),
+    ))
+}
+
+/// A part's history replayed in a session of its own, up to and including
+/// the feature `upto` (all of it when `None`).
+fn replay(document: &Value, key: &str, upto: Option<&str>) -> Result<Session, Vec<String>> {
     let assembly = doc::as_assembly(document);
     let problems = doc::check_assembly(&assembly);
     if !problems.is_empty() {
@@ -703,10 +751,7 @@ pub fn faces_of(document: &Value, key: &str, upto: Option<&str>) -> Result<Value
             break;
         }
     }
-    let mut out = crate::refs::list(&mut s, key);
-    out["part"] = json!(key);
-    out["after"] = json!(upto.unwrap_or("the last feature"));
-    Ok(out)
+    Ok(s)
 }
 
 /// Builds a document (a part or an assembly), keeping built parts in the

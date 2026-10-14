@@ -61,7 +61,9 @@ Z up.
   `{id, op, params}`, replayed from the top on every build. A feature is a
   **sketch** (`op: "sketch"`, a plane and drawing steps such as
   `sketch.rectangle.center`, `sketch.slot.center_to_center`,
-  `sketch.text`, then optional `constraints` such as
+  `sketch.text`, or our own `sketch.polyline` (`points` as `[x, y]` or
+  `[x, y, bulge]`, the bulge making that segment a circular arc as DXF's
+  polylines do, and `closed`), then optional `constraints` such as
   `{"type": "tangent", "a": "l1", "b": "a1"}` and `dimensions` such as
   `{"entities": ["l1"], "value": "width"}`, which the kernel's solver holds
   the drawing to; each sketch's remaining degrees of freedom are in the
@@ -187,6 +189,8 @@ message (workspace rule: no keyword routing).
 | `cad_compare(doc, a?, b?)` | What changed: parts, features, instances, joints, mass and centre of mass |
 | `cad_export(doc, version?, formats?)` | glTF binary (`.glb`, for the web and Verse), 3MF, STEP (exact solids) and STL |
 | `cad_solid(ops, sketches?, material?, formats?)` | Direct operations with no document: mass, size and checks, and files if asked; nothing saved |
+| `cad_import_dxf(doc, part, feature, dxf, plane?, offset?, scale?, at?)` | A DXF drawing as a new sketch: touching lines and arcs become polylines (JSON the part keeps), with circles, splines and text |
+| `cad_export_dxf(doc, version?, part?, sketch?, plane?, at?)` | A sketch as DXF, or the whole model cut by a plane |
 | `cad_faces(doc, part, after?)` | A part's faces and edges by the names features pick them with |
 | `cad_render(doc, version?, view, focus?, yaw?, pitch?)` | A picture: hero, rear, plan, front, side, iso, under or detail, framing some instances; yaw and pitch turn and raise the camera to match a photograph |
 

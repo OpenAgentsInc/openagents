@@ -16,6 +16,7 @@
 
 pub mod build;
 pub mod doc;
+pub mod dxf;
 pub mod export;
 pub mod mass;
 pub mod overlap;
@@ -381,6 +382,48 @@ mod tests {
             {"id": "twin", "op": "solid.mirror", "params": {"bodies": ["b"], "plane": "YZ"}}
         ]));
         assert!((pair - 2000.0).abs() < 1.0, "mirror {pair}");
+    }
+
+    #[test]
+    fn polylines_and_dxf_drawings_make_solids_and_go_back_out() {
+        let pi = std::f64::consts::PI;
+        let slot = 40.0 * 10.0 + pi * 25.0;
+        let with_draw = |draw: Value| {
+            let mut part = doc::new_part("plate", "Plate", "Aluminum", None);
+            part["features"] = json!([
+                {"id": "outline", "op": "sketch", "params": {"plane": "XY", "draw": draw}},
+                // The region round (5, 5): the slot, with any island inside it a hole.
+                {"id": "body", "op": "solid.extrude", "params": {"sketch": "outline", "distance": 4,
+                    "profiles": [{"point": [5, 5]}]}}
+            ]);
+            part
+        };
+        // A slot as one bulged polyline.
+        let part = with_draw(json!([{"op": "sketch.polyline", "params": {"closed": true,
+            "points": [[0, 0], [40, 0, 1], [40, 10], [0, 10, 1]]}}]));
+        let eval = evaluate(&part).unwrap_or_else(|p| panic!("{p:?}"));
+        let v = eval.report["mass"]["volume_cm3"].as_f64().unwrap() * 1000.0;
+        assert!((v - slot * 4.0).abs() / v < 0.005, "polyline {v}");
+        // The same slot drawn in DXF, with a hole: imported as JSON steps.
+        let drawing = "0\nSECTION\n2\nENTITIES\n\
+            0\nLWPOLYLINE\n8\n0\n90\n4\n70\n1\n10\n0\n20\n0\n10\n40\n20\n0\n42\n1\n10\n40\n20\n10\n10\n0\n20\n10\n42\n1\n\
+            0\nCIRCLE\n8\n0\n10\n20\n20\n5\n40\n2\n\
+            0\nENDSEC\n0\nEOF\n";
+        let steps = dxf::import(drawing, 1.0, [0.0, 0.0]).unwrap();
+        let eval = evaluate(&with_draw(json!(steps))).unwrap_or_else(|p| panic!("{p:?}"));
+        let v = eval.report["mass"]["volume_cm3"].as_f64().unwrap() * 1000.0;
+        let expected = (slot - pi * 4.0) * 4.0;
+        assert!((v - expected).abs() / v < 0.005, "dxf {v} vs {expected}");
+        // Out again: the sketch as DXF, and a section of the solid.
+        let (text, entities) = build::sketch_dxf(&with_draw(json!(steps)), "plate", "outline")
+            .unwrap_or_else(|p| panic!("{p:?}"));
+        assert!(
+            entities >= 5 && text.contains("ARC") && text.contains("CIRCLE"),
+            "{entities} {text:.300}"
+        );
+        let (cut, lines) = dxf::section(&eval.built, "XY", 2.0).unwrap();
+        assert!(lines > 20 && cut.contains("LINE"), "{lines}");
+        assert!(dxf::section(&eval.built, "XY", 50.0).is_err());
     }
 
     #[test]

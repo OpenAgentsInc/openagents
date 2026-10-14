@@ -265,6 +265,8 @@ impl Lab {
             "cad_from_json" => self.from_json(args),
             "cad_faces" => self.faces(args),
             "cad_solid" => self.solid(args),
+            "cad_import_dxf" => self.import_dxf(args),
+            "cad_export_dxf" => self.export_dxf(args),
             other => Err(format!("{other} isn't a CAD Lab tool.")),
         };
         result.unwrap_or_else(|why| json!({"error": why}))
@@ -858,6 +860,87 @@ impl Lab {
         }))
     }
 
+    /// A DXF drawing (its text) as a new sketch feature of a part: lines and
+    /// arcs that touch become polylines, so the document holds small JSON.
+    fn import_dxf(&self, args: &Value) -> Result<Value, String> {
+        let text = arg_str(args, "dxf").ok_or("Give the drawing's DXF text (dxf).")?;
+        let feature = arg_str(args, "feature")
+            .ok_or("Name the new sketch (feature), e.g. \"profile\".")?
+            .to_owned();
+        let scale = args["scale"].as_f64().unwrap_or(1.0);
+        let at = match arg_json(args, "at")? {
+            Some(v) => {
+                let a = v.as_array().filter(|a| a.len() == 2);
+                match a.and_then(|a| Some([a[0].as_f64()?, a[1].as_f64()?])) {
+                    Some(p) => p,
+                    None => return Err("at is [x, y] in mm.".into()),
+                }
+            }
+            None => [0.0, 0.0],
+        };
+        let draw = cad::dxf::import(text, scale, at)?;
+        let count = draw.len();
+        let plane = match &args["plane"] {
+            Value::String(s) if s.trim_start().starts_with('{') => arg_json(args, "plane")?,
+            Value::String(s) if !s.trim().is_empty() => Some(json!(s.trim())),
+            Value::Object(_) => Some(args["plane"].clone()),
+            _ => None,
+        };
+        let mut params = json!({"plane": plane.unwrap_or(json!("XY")), "draw": draw});
+        if let Some(offset) = args.get("offset").filter(|v| !v.is_null()) {
+            params["offset"] = offset.clone();
+        }
+        let after = arg_str(args, "after").map(str::to_owned);
+        let mut out = self.change(args, |document| {
+            let (part, found) = Self::part_of(document, args)?;
+            let list = found["features"].as_array_mut().ok_or("bad part")?;
+            if list.iter().any(|f| f["id"] == feature.as_str()) {
+                return Err(format!("{part} already has a feature {feature}."));
+            }
+            let at = match &after {
+                Some(id) => list
+                    .iter()
+                    .position(|f| f["id"] == id.as_str())
+                    .map(|i| i + 1)
+                    .ok_or_else(|| format!("{part} has no feature {id}."))?,
+                None => list.len(),
+            };
+            list.insert(at, json!({"id": feature, "op": "sketch", "params": params}));
+            Ok(format!("{part}: sketch {feature} from DXF"))
+        })?;
+        out["steps"] = json!(count);
+        Ok(out)
+    }
+
+    /// DXF out: a sketch of a part, or the whole version cut by a plane.
+    fn export_dxf(&self, args: &Value) -> Result<Value, String> {
+        let (id, n, document, _) = self.pick(args)?;
+        let (text, entities, name) = match arg_str(args, "sketch") {
+            Some(sketch) => {
+                let part = arg_str(args, "part").ok_or("Name the part (part) the sketch is in.")?;
+                let (text, entities) =
+                    cad::build::sketch_dxf(&document, part, sketch).map_err(|p| p.join(" "))?;
+                (text, entities, format!("{part}-{sketch}"))
+            }
+            None => {
+                let plane = arg_str(args, "plane").unwrap_or("XY").to_uppercase();
+                let at = args["at"].as_f64().unwrap_or(0.0);
+                let eval = cad::evaluate_with(&document, &self.root.join(".parts"))
+                    .map_err(|p| p.join(" "))?;
+                let (text, lines) = cad::dxf::section(&eval.built, &plane, at)?;
+                (text, lines as u64, format!("section-{plane}-{at}"))
+            }
+        };
+        let file = format!("{id}-v{n}-{name}.dxf");
+        let dir = self.version_dir(&id, n).join("out");
+        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+        std::fs::write(dir.join(&file), &text).map_err(|e| e.to_string())?;
+        Ok(
+            json!({"doc": id, "version": n, "path": dir.join(&file), "entities": entities, "bytes": text.len(),
+                  "url": format!("{}/api/out?doc={id}&v={n}&name={file}", self.base)}),
+        )
+    }
+
     /// A part's faces and edges by the names features can use for them.
     fn faces(&self, args: &Value) -> Result<Value, String> {
         let (id, n, document, _) = self.pick(args)?;
@@ -1230,6 +1313,11 @@ fn takes(name: &str) -> &'static [&'static str] {
         "cad_from_json" => &["doc", "document", "summary", "author"],
         "cad_faces" => &["doc", "version", "part", "after"],
         "cad_solid" => &["ops", "sketches", "material", "formats"],
+        "cad_import_dxf" => &[
+            "doc", "part", "feature", "dxf", "plane", "offset", "scale", "at", "after", "summary",
+            "author",
+        ],
+        "cad_export_dxf" => &["doc", "version", "part", "sketch", "plane", "at"],
         "cad_versions" => &["doc"],
         "cad_compare" => &["doc", "a", "b"],
         "cad_export" => &["doc", "version", "formats"],
@@ -1337,6 +1425,22 @@ pub fn tools() -> Value {
             "sketches": {"type": "string", "description": "a JSON array of sketch features the steps extrude or revolve"},
             "material": {"type": "string", "description": materials},
             "formats": {"type": "string", "description": "a JSON array of files to write: step, 3mf, glb, stl"}}}},
+        {"name": "cad_import_dxf", "description": "Bring a 2D DXF drawing into a part as a new sketch feature: its lines and arcs become polylines (bulged points for arcs), with its circles, splines and text, as plain JSON the part keeps; extrude or revolve it next. Checked and saved like every edit.",
+         "parameters": {"type": "object", "required": ["doc", "part", "feature", "dxf", "summary"], "properties": {
+            "doc": doc, "part": part,
+            "feature": {"type": "string", "description": "the new sketch's id, e.g. profile"},
+            "dxf": {"type": "string", "description": "the drawing's ASCII DXF text"},
+            "plane": {"type": "string", "description": "XY (default), YZ, or a frame {origin, x_dir, y_dir} as JSON"},
+            "offset": {"type": "number", "description": "mm along the plane's normal"},
+            "scale": {"type": "number", "description": "multiply the drawing by this (default 1)"},
+            "at": {"type": "string", "description": "move the drawing by [x, y] mm, as JSON"},
+            "after": {"type": "string", "description": "insert after this feature id"},
+            "summary": summary}}},
+        {"name": "cad_export_dxf", "description": "A 2D DXF drawing out of a version: one sketch of a part (part and sketch), or the whole model cut by a plane (plane XY, XZ or YZ at a distance in mm), for laser cutting, CNC or another CAD's 2D tools.",
+         "parameters": {"type": "object", "required": ["doc"], "properties": {"doc": doc, "version": version,
+            "part": part, "sketch": {"type": "string", "description": "the sketch feature's id"},
+            "plane": {"type": "string", "description": "XY (at a height), XZ (at a y) or YZ (at an x)"},
+            "at": {"type": "number", "description": "where the plane cuts, mm"}}}},
         {"name": "cad_check", "description": "Run the checks on a version again: every feature rebuilds, every solid is closed, no undeclared overlaps; with its mass, centre of mass and inertia.",
          "parameters": {"type": "object", "required": ["doc"], "properties": {"doc": doc, "version": version}}},
         {"name": "cad_versions", "description": "The versions of a CAD document: each one's summary, author, mass and part count.",
@@ -1527,6 +1631,45 @@ mod tests {
             bad["error"].as_str().unwrap_or_default().contains("nope"),
             "{bad}"
         );
+    }
+
+    #[test]
+    fn dxf_drawings_come_in_as_sketches_and_go_out_as_sections() {
+        let (_dir, lab) = lab();
+        let made = lab.run("cad_new_part", &json!({"doc": "gasket", "part": "gasket", "summary": "A gasket",
+            "features": [{"id": "stub", "op": "solid.box", "params": {"length": 1, "width": 1, "height": 1, "center": [100, 100, 0.5]}}]}));
+        assert_eq!(made["saved"], true, "{made}");
+        let drawing = "0\nSECTION\n2\nENTITIES\n\
+            0\nLINE\n8\n0\n10\n0\n20\n0\n11\n30\n21\n0\n\
+            0\nLINE\n8\n0\n10\n30\n20\n0\n11\n30\n21\n20\n\
+            0\nLINE\n8\n0\n10\n30\n20\n20\n11\n0\n21\n20\n\
+            0\nLINE\n8\n0\n10\n0\n20\n20\n11\n0\n21\n0\n\
+            0\nENDSEC\n0\nEOF\n";
+        let imported = lab.run(
+            "cad_import_dxf",
+            &json!({"doc": "gasket", "part": "gasket", "feature": "outline",
+            "dxf": drawing, "plane": "XY", "summary": "Outline from DXF"}),
+        );
+        assert_eq!(imported["version"], 2, "{imported}");
+        let (doc2, _) = lab.load("gasket", 2).unwrap();
+        let draw = &doc2["parts"]["gasket"]["features"][1]["params"]["draw"];
+        assert_eq!(draw[0]["op"], "sketch.polyline", "{draw}");
+        assert_eq!(draw[0]["params"]["closed"], true, "{draw}");
+        let extruded = lab.run("cad_add_feature", &json!({"doc": "gasket", "part": "gasket", "summary": "Plate",
+            "features": [{"id": "plate", "op": "solid.extrude", "params": {"sketch": "outline", "distance": 2, "operation": "new"}}]}));
+        assert_eq!(extruded["version"], 3, "{extruded}");
+        let sketch = lab.run(
+            "cad_export_dxf",
+            &json!({"doc": "gasket", "part": "gasket", "sketch": "outline"}),
+        );
+        assert!(sketch["entities"].as_u64().unwrap_or(0) >= 4, "{sketch}");
+        let cut = lab.run(
+            "cad_export_dxf",
+            &json!({"doc": "gasket", "plane": "XY", "at": 0.25}),
+        );
+        assert!(cut["entities"].as_u64().unwrap_or(0) >= 4, "{cut}");
+        let text = std::fs::read_to_string(cut["path"].as_str().unwrap()).unwrap();
+        assert!(text.contains("ENTITIES"));
     }
 
     #[test]
