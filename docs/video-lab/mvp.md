@@ -37,7 +37,7 @@ starts reuse that build. Add `--no-build` to skip it.
 
 - **The Lab service** on http://127.0.0.1:8792 (`scripts/film/lab.py serve`).
   Its log is `~/.openagents/full-local/logs/lab.log`.
-- **The chat's Lab tools.** Gemini on Vertex calls them. Its credential is
+- **The chat's Lab tools.** Gemini 4 Argon on Vertex (global) calls them. Its credential is
   `$GOOGLE_APPLICATION_CREDENTIALS`, or else
   `~/work/.secrets/gcp-mvp-automation.json`.
 - **The gateway on 8790**, because the film review page holds 8791. Your

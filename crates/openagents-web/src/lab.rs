@@ -3,7 +3,7 @@
 //! When this server is told where a Video Lab runs (`OPENAGENTS_VIDEO_LAB`,
 //! a loopback URL: the Lab renders with private assets and never leaves
 //! the Mac it runs on), a signed-in owner's message goes to [`LabDoor`]:
-//! Gemini with the Lab's tools declared as typed functions (`lab_open`,
+//! Gemini 4 Argon (Vertex, global) with the Lab's tools declared as typed functions (`lab_open`,
 //! `lab_show`, `lab_frame`, `lab_edit`, `lab_render`, `lab_compare`,
 //! `lab_notes`, ...; the Lab serves their declarations at `/api/tools`) and
 //! one more, `general_chat`. The model's typed function choice is the
@@ -27,6 +27,7 @@ use axum::extract::{Form, Path, Query, State};
 use axum::http::HeaderMap;
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
+use inference::upstream::vertex;
 use maud::{Markup, html};
 use openagents_chat::basic_coder::{self, Door, Failure, Reply, Role as TurnRole, Turn};
 use openagents_chat::router::Context;
@@ -34,7 +35,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::App;
-use crate::chat_vision::{GEMINI, Gemini, gemini_text};
+use crate::chat_vision::{Gemini, gemini_text};
 use crate::connections::chat::{HANDOFF, gemini_call};
 
 /// The most model steps (tool rounds) one answer takes.
@@ -115,9 +116,11 @@ pub(crate) struct LabDoor {
 /// has Gemini. A Lab is only ever configured on the computer it runs on
 /// (loopback, [`lab_url`]), so whoever uses this site there is its owner,
 /// signed in or not: the person at the Mac.
-pub(crate) async fn door(app: &App, _owner: &str) -> Option<LabDoor> {
+pub(crate) async fn door(_app: &App, _owner: &str) -> Option<LabDoor> {
     let lab = lab_url()?;
-    let gemini = crate::chat_vision::doors(app).and_then(|doors| doors.gemini)?;
+    // Video Lab's turns run on Gemini 4 Argon (Vertex, global), the Labs' model
+    // (Game Lab's door does the same); the chat's image path keeps its own.
+    let gemini = Gemini::from_env_for(vertex::ARGON)?;
     let (tools, documents) = match manifest(&lab).await {
         Ok(found) => found,
         Err(why) => {
@@ -198,7 +201,7 @@ fn request(instructions: &str, turns: &[Turn], tools: &[Value]) -> Value {
         })
         .collect();
     json!({
-        "model": GEMINI,
+        "model": vertex::ARGON,
         "instructions": instructions,
         "input": input,
         "tools": declarations(tools),
