@@ -148,7 +148,12 @@ def cloud(c, sub):
         rig = unreal.MetaHumanCharacterAutoRiggingRequestParams()
         rig.blocking = True
         rig.report_progress = False
-        rig.rig_type = unreal.MetaHumanRigType.JOINTS_AND_BLENDSHAPES
+        # The full rig (joints and blend shapes) when this engine's Python
+        # names it; UE 5.7 and 5.8 expose only JOINTS_ONLY to Python.
+        kinds = [k for k in dir(unreal.MetaHumanRigType) if k.isupper()]
+        full = [k for k in kinds if "BLEND" in k]
+        rig.rig_type = getattr(unreal.MetaHumanRigType, full[0] if full else "JOINTS_ONLY")
+        log(f"rig types {kinds}; requesting {full[0] if full else 'JOINTS_ONLY'}")
         sub.request_auto_rigging(c, rig)
         log("auto-rig requested")
     except Exception as e:
@@ -165,6 +170,28 @@ def cloud(c, sub):
 
 def export(c, sub):
     os.makedirs(EXPORT, exist_ok=True)
+    lib = getattr(unreal, "MetaHumanCharacterExportBlueprintLibrary", None)
+    if lib is not None:
+        # UE 5.8: the export library. DNA files (head and body) first, so
+        # the rig is out even where the full DCC bundle is refused.
+        try:
+            d = unreal.MetaHumanDNAExportParams()
+            d.external_path = os.path.join(EXPORT, "dna")
+            d.dna_head = True
+            d.dna_body = True
+            lib.export_dna(c, d)
+            log(f"DNA export to {d.external_path}")
+        except Exception:
+            log("DNA export failed: " + traceback.format_exc().replace("\n", " | "))
+        p = unreal.MetaHumanDCCExportParams()
+        p.external_path = EXPORT
+        p.bake_make_up = True
+        p.compress_in_zip_file = False
+        p.archive_name = "Draconia"
+        lib.export_dcc(c, p)
+        log(f"DCC export to {EXPORT}")
+        return
+    # UE 5.7: the build pipeline's DCC type.
     p = unreal.MetaHumanCharacterEditorBuildParameters()
     p.pipeline_type = unreal.MetaHumanDefaultPipelineType.DCC
     p.absolute_build_path = EXPORT

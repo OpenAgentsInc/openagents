@@ -46,4 +46,19 @@ if [ ! -f "$project" ]; then
 JSON
 fi
 echo "UE $version: $editor" >&2
+if [ -n "${DRACONIA_UE_KEEP:-}" ]; then
+  # A script that keeps working on later ticks (render_reference.py) and
+  # quits the editor itself: -ExecutePythonScript closes the editor as soon
+  # as the script returns, so run it as the project's startup script for
+  # this one launch instead.
+  ini="$(dirname "$project")/Config/DefaultEngine.ini"
+  mkdir -p "$(dirname "$ini")"
+  touch "$ini"
+  cp "$ini" "$ini.draconia-bak"
+  printf '\n[/Script/PythonScriptPlugin.PythonScriptPluginSettings]\n+StartupScripts=%s\n' "$script" >> "$ini"
+  status=0
+  DRACONIA_ARGS="$*" "$editor" "$project" -nosplash -stdout -AllowStdOutLogVerbosity || status=$?
+  mv "$ini.draconia-bak" "$ini"
+  exit $status
+fi
 DRACONIA_ARGS="$*" exec "$editor" "$project" -ExecutePythonScript="$script" -unattended -nosplash -stdout -AllowStdOutLogVerbosity

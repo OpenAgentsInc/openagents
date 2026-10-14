@@ -608,7 +608,7 @@ def brows(skin, marks, eyes, count=650, rest=None):
     uvl = bm.loops.layers.uv.new("UVMap")
     for side, sign in (("l", 1), ("r", -1)):
         e = eyes[side][2]
-        inner = e + Vector((-sign * 0.016, -0.02, 0.016))
+        inner = e + Vector((-sign * 0.016, -0.02, 0.016 + draconia_paint.BROW_DZ))
         for n in range(count):
             s = rng.random() ** 0.9
             bx = inner.x + sign * 0.044 * s

@@ -290,19 +290,19 @@ def grow(skin, marks, seed=7, style="updo"):
         cands = [fr for fr in front_roots if fr[0].x * side > 0.012]
         # Many loose locks: the reference's updo lets strands fall from the
         # temples and the front hairline past the cheeks to the jaw.
-        for k in range(9):
+        for k in range(LOCKS_PER_SIDE):
             if not cands:
                 break
             root, rn = cands[k * 7 % len(cands)]
             clumps.append((root, rn, side))
     joints = []
     for c, (root, rn, side) in enumerate(clumps):
-        length = rng.uniform(0.08, 0.2)
+        length = rng.uniform(*LOCK_LENGTH)
         links = [f"hair_{c}_{k}" for k in range(5)]
         chain_made = False
         sway = rng.uniform(0.6, 1.4)
         phase = rng.uniform(0, 6.28)
-        n_hairs = rng.randint(3, 8)
+        n_hairs = rng.randint(*LOCK_HAIRS)
         spread = rng.uniform(0.001, 0.003)
         for h in range(n_hairs):
             off = Vector((rng.gauss(0, spread), rng.gauss(0, spread * 0.5), rng.gauss(0, spread * 0.5)))
@@ -592,6 +592,18 @@ def grow_long(skin, marks, seed=7, guides=18, links=6):
     return [cap, body], joints
 
 
+# The strand colours (linear): ash roots, pale platinum lengths, lighter
+# tips. A caller may set them, and the strip texture's path, before growing.
+HAIR_ROOT = (0.36, 0.30, 0.21)
+HAIR_MID = (0.66, 0.60, 0.47)
+HAIR_TIP = (0.80, 0.76, 0.64)
+STRIPS_PATH = os.path.expanduser("~/work/film-out/draconia/build/textures/draconia_hair.png")
+# Face-framing locks: per side, hairs per lock, and length range (m).
+LOCKS_PER_SIDE = 9
+LOCK_HAIRS = (3, 8)
+LOCK_LENGTH = (0.08, 0.2)
+
+
 def paint_strips(w, h):
     """Eight strand variants side by side, each a band of u: a few hairs per
     band with alpha gaps between them, root (v=0, image top) ash-beige,
@@ -601,9 +613,9 @@ def paint_strips(w, h):
     v = (np.arange(h) + 0.5) / h
     img = np.zeros((h, w, 4), np.float32)
     band = w // VARIANTS
-    root = np.array([0.36, 0.30, 0.21])
-    mid = np.array([0.66, 0.60, 0.47])
-    tip = np.array([0.80, 0.76, 0.64])
+    root = np.array(HAIR_ROOT)
+    mid = np.array(HAIR_MID)
+    tip = np.array(HAIR_TIP)
     vv = v[:, None]
     grad = np.where(vv < 0.15, root + (mid - root) * (vv / 0.15), mid + (tip - mid) * np.clip((vv - 0.15) / 0.85, 0, 1) ** 1.5)
     for k in range(VARIANTS):
@@ -632,7 +644,7 @@ def paint_strips(w, h):
     out = np.concatenate([srgb, img[..., 3:4]], 2)
     im = bpy.data.images.new("draconia_hair", w, h, alpha=True)
     im.pixels.foreach_set(np.ascontiguousarray(out[::-1]).astype(np.float32).ravel())
-    path = os.path.join(os.path.expanduser("~/work/film-out/draconia/build/textures"), "draconia_hair.png")
+    path = STRIPS_PATH
     os.makedirs(os.path.dirname(path), exist_ok=True)
     im.filepath_raw = path
     im.file_format = "PNG"

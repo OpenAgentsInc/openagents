@@ -48,6 +48,8 @@ sys.path.insert(0, os.path.dirname(__file__))
 import draconia  # noqa: E402
 import draconia_paint  # noqa: E402
 
+HAIR_STYLE = os.environ.get("MH_HAIR", "updo")
+
 ROLES = {
     "head": "skin",
     "teeth": "standard",
@@ -108,7 +110,7 @@ def sample(img, u, v):
     return img[y, x]
 
 
-def compose_eye(tex_dir, out_dir, size=2048, iris_r=0.163, tint=(0.42, 0.55, 0.45)):
+def compose_eye(tex_dir, out_dir, size=2048, iris_r=0.163, tint=(0.5, 0.62, 0.56)):
     """The eye's albedo on MetaHuman's eye UV, as MetaHuman's eye material
     composes it: the sclera map (veins, the pink back) across the ball, the
     iris photo scaled into the iris disc and turned grey-green (luminance
@@ -120,21 +122,34 @@ def compose_eye(tex_dir, out_dir, size=2048, iris_r=0.163, tint=(0.42, 0.55, 0.4
     u = (xx + 0.5) / size
     v = 1 - (yy + 0.5) / size
     r = np.sqrt((u - 0.5) ** 2 + (v - 0.5) ** 2)
-    col = sample(sclera, u, v)
+    # The sclera a touch brighter and cooler than the map: a living eye's
+    # white reads white-pink under warm light.
+    col = np.clip(sample(sclera, u, v) * np.array([1.08, 1.1, 1.14], np.float32), 0, 1)
     k = 0.48 / iris_r
     iu, iv = 0.5 + (u - 0.5) * k, 0.5 + (v - 0.5) * k
     ic = sample(iris, iu, iv)
     lum = ic.mean(-1, keepdims=True)
-    green = np.clip(lum * np.array(tint, np.float32) * 2.6, 0, 1)
+    green = np.clip(lum * np.array(tint, np.float32) * 3.1, 0, 1)
     # Keep the pupil black and the fibres' contrast.
     green = np.where(lum < 0.08, ic, green)
     t = np.clip(r / iris_r, 0, 2)[..., None]
     limbal = np.clip((t - 0.82) / 0.16, 0, 1)
-    green = green * (1 - 0.75 * limbal)
+    green = green * (1 - 0.65 * limbal)
     blend = np.clip((r - iris_r) / 0.006, 0, 1)[..., None]
     col = green * (1 - blend) + col * blend
     rgba = np.concatenate([col, np.ones((size, size, 1), np.float32)], -1)
     return draconia_paint.save("mh_eye_base", rgba, out_dir)
+
+
+def teeth_rgba(tex_dir, out_dir):
+    """The teeth map a little darker and less yellow: inside the mouth they
+    sit in the cavity's shade (MetaHuman's teeth material darkens them by
+    the mouth's occlusion), and under a warm key the raw map reads gold."""
+    t = load_px(os.path.join(tex_dir, "T_Teeth_BaseColor.tga"))
+    rgb = t[..., :3]
+    lum = rgb.mean(-1, keepdims=True)
+    rgb = (lum + (rgb - lum) * 0.55) * 0.8
+    return draconia_paint.save("mh_teeth", np.concatenate([rgb, np.ones_like(lum)], -1), out_dir)
 
 
 def lash_rgba(tex_dir, out_dir):
@@ -163,8 +178,12 @@ class Marks:
         self.eye_l, self.eye_r = eyes
         self.eye_radius = 0.012
         self.mouth = Vector()
-        self.chest = (self.eye_l + self.eye_r) / 2 + Vector((0, 0.03, -0.42))
-        self.neck = (self.eye_l + self.eye_r) / 2 + Vector((0, 0.02, -0.17))
+        # The neck and the chest where the uniform's cut expects them,
+        # measured on the MetaHuman archetype body (1.60 m; its mesh stops
+        # at the shoulders, 1.29-1.31 m, under eyes at 1.49 m): the collar
+        # sits at the neck's base 0.185 m under the eyes, the chest 0.33 m.
+        self.chest = (self.eye_l + self.eye_r) / 2 + Vector((0, 0.035, -0.33))
+        self.neck = (self.eye_l + self.eye_r) / 2 + Vector((0, 0.03, -0.165))
 
     def as_dict(self):
         return {k: list(v) if isinstance(v, Vector) else v for k, v in self.__dict__.items()}
@@ -190,16 +209,36 @@ def main():
     # DNA "left" is the character's left (+X): eye_l is her left eye.
     marks = Marks(eye_c)
     head = objs["head"]
+    # Landmarks and the skin's paint come from the neutral head when this
+    # is a posed expression (MH_NEUTRAL_DIR): the UVs are the same, and
+    # painting the posed mesh would put the lips' colour where the lips
+    # were not at rest.
+    neutral_dir = os.environ.get("MH_NEUTRAL_DIR")
+    rest = head
+    if neutral_dir and os.path.abspath(neutral_dir) != os.path.abspath(mesh_dir):
+        rest = read_obj(os.path.join(neutral_dir, "head_lod0_mesh.obj"), "head_rest")
     marks.profile = draconia.Landmarks.profile.__get__(marks)
-    marks.profile(head)
+    marks.profile(rest)
     t = lambda n: os.path.join(tex_dir, n)  # noqa: E731
     draconia_paint.DETAIL_TILE = (t("T_SkinMicro3_N.tga"), 48, 0.6) if os.path.exists(t("T_SkinMicro3_N.tga")) else None
+    draconia_paint.CAVITY_TILE = (t("T_skinMicro3_CAV.tga"), 48) if os.path.exists(t("T_skinMicro3_CAV.tga")) else None
+    draconia_paint.BROW_DZ = -0.006
+    # The reference's brows are natural and soft-edged, not a drawn band.
+    draconia_paint.BROW_FILL = 0.22
+    draconia_paint.BROW_STRENGTH = 0.5
+    draconia_paint.SKIN_BASE = (0.66, 0.56, 0.54)
     out_dir = os.path.dirname(out)
-    maps = draconia_paint.paint_skin(head, marks, size, out_dir)
+    if rest is not head:
+        # Bake on the rest head alone: the posed one would occlude it.
+        bpy.context.collection.objects.unlink(head)
+    maps = draconia_paint.paint_skin(rest, marks, size, out_dir)
+    if rest is not head:
+        bpy.data.objects.remove(rest)
+        bpy.context.collection.objects.link(head)
     m = draconia.material("draconia_skin", "skin", images=maps)
     head.data.materials.append(m)
 
-    teeth = draconia.material("mh_teeth", "standard", rough=0.35, images={"base": image(t("T_Teeth_BaseColor.tga")), "normal": image(t("T_Teeth_Normal.tga"), "Non-Color")})
+    teeth = draconia.material("mh_teeth", "standard", rough=0.35, images={"base": teeth_rgba(tex_dir, out_dir), "normal": image(t("T_Teeth_Normal.tga"), "Non-Color")})
     objs["teeth"].data.materials.append(teeth)
     eye = draconia.material("mh_eye", "eye", rough=0.15, images={"base": compose_eye(tex_dir, out_dir), "normal": image(t("T_Eye_N.tga"), "Non-Color")}, extras={"verse_shading_params": [0.0, 0.163, 0.0, 0.0]})
     for n in ("eyeLeft", "eyeRight"):
@@ -212,7 +251,29 @@ def main():
     if "eyelashes" in objs:
         objs["eyelashes"].data.materials.append(lash)
 
-    parts = list(objs.values())
+    # Hair: the parity updo grown on this head; the uniform cut over the
+    # MetaHuman body (from the body DNA's meshes, when present).
+    import draconia_cloth
+    import draconia_hair
+
+    # The reference's hair is platinum, near white in the light, with ash
+    # roots; and its face-framing locks are thick, falling to the jaw.
+    draconia_hair.HAIR_ROOT = (0.40, 0.37, 0.30)
+    draconia_hair.HAIR_MID = (0.74, 0.71, 0.62)
+    draconia_hair.HAIR_TIP = (0.86, 0.84, 0.78)
+    draconia_hair.STRIPS_PATH = os.path.join(out_dir, "mh_hair.png")
+    draconia_hair.LOCKS_PER_SIDE = 10
+    draconia_hair.LOCK_HAIRS = (10, 24)
+    draconia_hair.LOCK_LENGTH = (0.1, 0.2)
+    hair, _ = draconia_hair.grow(head, marks, seed=7, style=HAIR_STYLE)
+    extra = list(hair)
+    body_dir = os.environ.get("MH_BODY_DIR")
+    if body_dir and os.path.exists(os.path.join(body_dir, "body_lod0_mesh.obj")):
+        body = read_obj(os.path.join(body_dir, "body_lod0_mesh.obj"), "body_fit")
+        extra += draconia_cloth.build(body, marks)
+        bpy.data.objects.remove(body)
+    extra += draconia.brows(head, marks, {"l": (None, None, marks.eye_l), "r": (None, None, marks.eye_r)})
+    parts = list(objs.values()) + extra
     draconia.export(out, parts)
     d = {k: (list(v) if isinstance(v, Vector) else v) for k, v in marks.__dict__.items() if not callable(v)}
     with open(os.path.join(out_dir, "draconia.landmarks.json"), "w") as f:

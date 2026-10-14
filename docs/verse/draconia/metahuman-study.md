@@ -26,6 +26,40 @@ Findings from the first headless run on this Mac (UE 5.7):
   (`request_texture_sources`) are Epic cloud services; skin synthesis,
   sculpting by landmarks, eyes and the DCC export run locally.
 
+UE 5.8 (installed 2026-10-13; `run_ue.sh` now picks it), API differences
+found headless:
+- The full rig's enum is `MetaHumanRigType.JOINTS_AND_BLEND_SHAPES` (5.7's
+  Python had no such member; `draconia_metahuman.py` now picks whichever
+  member names blend shapes).
+- `MetaHumanDefaultPipelineType.DCC` is gone. Export goes through the new
+  `MetaHumanCharacterExportBlueprintLibrary`: `export_dna`
+  (`MetaHumanDNAExportParams`: head and body `.dna` files),
+  `export_dcc`, `export_geometry`, `export_materials`. Unrigged, it exports
+  the body DNA only ("Character does not have face DNA. Create a rig
+  before exporting head DNA"; the DCC bundle also wants the downloaded
+  textures).
+- Signing in: an auto-rig request without stored credentials starts
+  Epic's device-code sign-in and opens the account page in the default
+  browser, then polls (`authorization_pending`) until it times out with
+  "Login Failed". The owner signing in on that page once is the whole
+  remaining gate for the face rig and the textures.
+- Still missing without the Optional Content: grooms, clothing and texture
+  synthesis ("Texture synthesis data directory ... does not contain valid
+  data").
+- New and local, worth using next: `fit_state_to_target_vertices`
+  (a head in MetaHuman topology fitted into MetaHuman's identity space)
+  and `conform_to_target_meshes` with face-landmark tracking on a portrait
+  (Mesh to MetaHuman in Python). Both let an original Draconia head we
+  sculpt become a real MetaHuman face.
+- `-ExecutePythonScript` closes the editor when the script returns, and a
+  background editor throttles its ticks; `render_reference.py` therefore
+  runs as a one-launch startup script (`DRACONIA_UE_KEEP=1`), turns the
+  throttle off, and renders through a scene capture.
+- RigLogic's joint outputs (OpenRigLogic, as `dna_dump` reads them) are
+  deltas from the neutral joint attributes: translation in cm, Euler
+  rotation in degrees, scale with 0 meaning unchanged. Treating them as
+  absolute transforms collapses every vertex to the origin (scale 0).
+
 ## 1. Licences
 
 ### Summary

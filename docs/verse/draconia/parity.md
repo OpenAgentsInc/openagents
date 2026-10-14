@@ -24,6 +24,7 @@ every Universal clip plays on her, and it carries extra joints: `eye_l`,
 | Long, loose, waist-length hair, glare, gold hoops (peacock look) | `~/work/film-out/draconia/build-long/draconia-long.glare.glb` | `--hair long --earrings --expr glare`; 18 hanging chains plus fringe and temple locks on the head |
 | Long hair, battle decals, lips parted (D1 shot 1) | `~/work/film-out/draconia/build-battle/draconia-long.parted.glb` | `--hair long --earrings --battle --expr parted` |
 | The parity updo (the classroom reference) | `~/work/film-out/draconia/build-updo/draconia.neutral.glb` | Updo; temple locks on chains |
+| MetaHuman archetype, neutral / smile / speaking (round 4; private MetaHuman asset, never for AI training) | `~/work/film-out/draconia/metahuman/build-{neutral,smile,speak}/mh.<expr>.glb` | Static (not on the Universal rig yet): `draconia_portrait --static`; close-ups only |
 
 **Through the zone renderer (`Beast`, the peacock scene):** see
 `crates/verse/examples/draconia_form.rs`, which does exactly this:
@@ -55,7 +56,7 @@ with 4096-pixel maps, `Prepared::load` with a raised `Budget`, then
 
 | Area | State | Gap |
 | --- | --- | --- |
-| Face shape | Realistic proportions (CC0 base, our face weights) | Reads young and soft, a long lower face; the reference's face is fuller in the cheeks with a stronger brow and heavier lids |
+| Face shape | MetaHuman archetype head (round 4, private), posed by RigLogic | Generic, wider jaw, reads older than the reference; Draconia's own face as a MetaHuman is next |
 | Skin | Wrapped red-shifted diffuse, two lobes, pores and fine lines in a 4K normal map | Still smooth and waxy at close range; no cavity or micro-normal detail, too even in tone |
 | Freckles | A light dusting over nose and cheeks | Present; reads as dots, needs softer, varied, clustered freckles |
 | Eyes | Separate eyeballs, a refracting iris under an additive cornea, limbal ring | The lids sit too open and the sclera shows a hard white wedge at the corners; no caruncle, tear line or wet rim |
@@ -63,8 +64,8 @@ with 4096-pixel maps, `Prepared::load` with a raised `Budget`, then
 | Lips | Analytic vermilion, rose, glossier | Shape fine; colour too orange-pink and edge too crisp |
 | Hair (updo, strands) | 10,700 strand ribbons over a cap, a knot, locks at the temples, flyaways | Reads as a tight helmet with a visible cap; no volume, no messy loops at the sides, no root-to-tip shading |
 | Uniform | Shirt collar, striped tie, V-neck sweater with trim, open robe with green facing | Blocky shells with hard cuts; no folds, no wool or knit texture, no hood drape |
-| Lighting response | Teal rims and jar glow, a soft key, true depth of field | Background bokeh is blocky; jars are plain glowing cylinders; the face lacks the reference's soft wrap and deep shadow side |
-| Expressions | Five FACS-unit presets (neutral, speak, surprise, closed, smile) at build time | Built per expression; no runtime blend shapes or rig yet |
+| Lighting response | Measured against 0:54: warm key screen left, warm fill, short teal rim, near-black background, soft shadows from moving area lights | Jars still read as soft squares; no Unreal-grade skin shadowing (screen-space scattering) |
+| Expressions | MetaHuman's rig controls through OpenRigLogic (smile, speaking, neutral; joints only, the archetype has no blend shapes) | Built per expression; the full rig with blend shapes and wrinkle maps waits on the owner's Epic sign-in |
 
 ## How it's built
 
@@ -118,7 +119,27 @@ $B -b --factory-startup --python scripts/blender/draconia_set.py
 cargo build --release -p verse --example draconia_portrait
 draconia_portrait OUT.png --shot closeup|eyes|medium|three|side|back [--subframes 48]
 python3 scripts/verse/draconia_parity.py sbs REF.jpg OUT.png "Verse round N" SBS.png
+python3 scripts/verse/draconia_parity.py columns GRID.png "reference,Unreal 5.8,Verse" REF UE OURS ...
 ```
+
+The MetaHuman path (round 4 on; private, never committed, never used to
+train AI models):
+
+```sh
+sh scripts/unreal/build_dna_dump.sh       # OpenRigLogic (MIT) and dna_dump
+DNA="/Users/Shared/Epic Games/UE_5.8/Engine/Plugins/MetaHuman/MetaHumanCoreTechLib/Content/ArchetypeDNA/SKM_Face.dna"
+dna_dump "$DNA" MH/archetype                                  # rest
+dna_dump "$DNA" MH/archetype-smile --controls scripts/unreal/expressions/smile.txt
+MH_NEUTRAL_DIR=MH/archetype MH_BODY_DIR=MH/archetype-body \
+  $B -b --factory-startup --python scripts/blender/metahuman_import.py -- \
+  MH/archetype-smile MH/textures MH/build-smile/mh.smile.glb
+draconia_portrait OUT.png --model MH/build-smile/mh.smile.glb --static --shot fullface --light ref
+DRACONIA_UE_KEEP=1 scripts/unreal/run_ue.sh scripts/unreal/render_reference.py   # Unreal's column
+```
+
+`MH` is `~/work/film-out/draconia/metahuman`; the textures come from
+`scripts/unreal/export_textures.py`, the body meshes from `dna_dump` on
+`SKM_Body.dna`.
 
 ## Rounds
 
@@ -230,6 +251,59 @@ python3 scripts/verse/draconia_parity.py sbs REF.jpg OUT.png "Verse round N" SBS
 - **Next.** A mouth interior (cavity, teeth, gums), thinner lips and a
   symmetric smile; skin texture and sheen; a softer, messier updo; a
   darker, softer background.
+
+### Round 4, 2026-10-13: the MetaHuman archetype in Verse, posed by RigLogic
+
+- **Direction.** The owner: adapt MetaHuman's stack specifically; use a
+  real MetaHuman through the private asset pipeline; show the photoreal
+  video, Unreal and Verse side by side. The coordinator's review of MH v1
+  set the order: sclera, skin albedo, light and grade, hair and clothes,
+  brows.
+- **What changed.**
+  - Expressions from MetaHuman's own rig: `dna_dump` now poses the
+    archetype face with OpenRigLogic. Its joint outputs are deltas from the
+    neutral joint attributes (the bug that zeroed every posed vertex was
+    reading them as absolute: scale 0). Smile, speaking and neutral are
+    control files in `scripts/unreal/expressions/`; a posed head is painted
+    from the rest head so the lips' colour stays on the lips.
+  - Light, after measuring the 0:54 frame: the key really is on screen left
+    now. Round 3's note was wrong: the camera looks along +Z, so screen
+    left is world +X, and the key, candle and rims were mirrored. The fill
+    is warm-neutral and brighter (the reference's shadow cheek reads
+    97,75,66 to the lit cheek's 124,112,107); the teal rim is short-ranged
+    so it edges her without lighting the shelves; the jars' glow is cut to
+    0.2 for the full face (`--set-glow`); the background now reads near
+    black (1,8,6 against the reference's 6,9,7).
+  - Soft area lights: a soft source is a few points that move over its
+    disc from subframe to subframe, so the strongest get the four shadow
+    maps and the accumulated frame has soft shadows.
+  - Renderer (general): a shadow's normal offset now scales with the
+    receiver's distance from the light (two texels of a 512 cube face,
+    capped at the old 2.5 cm), so a light near a face casts the nose's and
+    cheek's shadows. That removed a teal streak down her nose from an
+    unshadowed rim.
+  - Hair: platinum strands (ash roots), ten thick face-framing locks a
+    side; the uniform's collar and robe placed on the MetaHuman body's
+    real neck height (its mesh stops at the shoulders, 1.29-1.31 m).
+  - Brows softer (less painted fill), a lighter grey-green iris, teeth
+    less yellow.
+  - Unreal: UE 5.8 is in use; `render_reference.py` renders the archetype
+    in Unreal for the grid's middle column; API changes are in
+    `metahuman-study.md`.
+- **Artifacts.** `~/Downloads/draconia-fullface-mh-v2.png` (rows: 0:54
+  smile, 0:24 neutral, 0:29 speaking, 1:22 eyes; columns: reference,
+  Unreal 5.8, Verse), `~/Downloads/draconia-parity-round-04.png`, the
+  progress sheet; `~/work/film-out/draconia/parity/round-04/`.
+- **Honest state.** The face is still MetaHuman's generic archetype, not
+  Draconia: wider jaw, older and heavier than the reference's young face,
+  with our procedural skin paint. Unreal's column is the same archetype
+  in its untextured identity material, because the face rig and the
+  textures wait on the owner signing in to Epic. The brows read as a
+  drawn band at eye-ECU range; the hair's top is a thin fuzz.
+- **Next.** An original Draconia face as a real MetaHuman: our sculpted
+  head fitted into MetaHuman's identity space (`fit_state_to_target_vertices`,
+  local in 5.8), then rigged and textured once the owner signs in; skin
+  from MetaHuman's texture sources; strand brows.
 
 ## Peacock scene
 

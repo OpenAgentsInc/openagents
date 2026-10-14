@@ -1,0 +1,12 @@
+# A gentle closed-mouth smile (the reference at 0:54): corners drawn up and
+# back, cheeks raised so the lower lids lift, dimples, lips pressed together.
+CTRL_expressions.mouthCornerPullL 0.55
+CTRL_expressions.mouthCornerPullR 0.5
+CTRL_expressions.eyeCheekRaiseL 0.35
+CTRL_expressions.eyeCheekRaiseR 0.3
+CTRL_expressions.mouthDimpleL 0.3
+CTRL_expressions.mouthDimpleR 0.3
+CTRL_expressions.mouthLipsPressL 0.15
+CTRL_expressions.mouthLipsPressR 0.15
+CTRL_expressions.eyeSquintInnerL 0.15
+CTRL_expressions.eyeSquintInnerR 0.15

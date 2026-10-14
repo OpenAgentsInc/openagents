@@ -38,6 +38,16 @@ BROWS = "natural"
 EXPRESSION = "neutral"
 # (path, repeats over the map, strength): a tiled micro-normal to blend in.
 DETAIL_TILE = None
+# Brow height relative to the eye centres (m), for heads whose brow ridge
+# sits lower than the CC0 base's (MetaHuman: -0.006).
+BROW_DZ = 0.0
+# The painted brow's soft fill under its strands and its overall strength
+# (natural brows); a head with its own brow shape wants less of both.
+BROW_FILL = 0.55
+BROW_STRENGTH = 0.62
+# Skin base albedo (linear) and an optional cavity tile (path, repeats).
+SKIN_BASE = (0.64, 0.53, 0.50)
+CAVITY_TILE = None
 
 # ------------------------------------------------------------------ noise ---
 
@@ -260,7 +270,7 @@ def paint_skin(skin, marks, size, out):
     cheek_r = mid + np.array([-0.042, -0.01, -0.03], np.float32)
 
     # Base: fair skin, linear albedo; low-frequency mottling in hue/value.
-    base = np.array([0.64, 0.53, 0.50], np.float32)
+    base = np.array(SKIN_BASE, np.float32)
     mott = fbm(P, 0.03, 4, seed=1) - 0.5
     mott2 = fbm(P, 0.006, 3, seed=2) - 0.5
     mott3 = fbm(P, 0.0035, 3, seed=3) - 0.5
@@ -347,8 +357,8 @@ def paint_skin(skin, marks, size, out):
     brow = np.zeros(len(P), np.float32)
     rng = np.random.default_rng(11)
     for e, sign in ((el, 1.0), (er, -1.0)):
-        inner = e + np.array([-sign * 0.016, -0.012, 0.016], np.float32)
-        sel = np.where((np.abs(P[:, 0] - (e[0] + sign * 0.002)) < 0.034) & (np.abs(P[:, 2] - (e[2] + 0.018)) < 0.016) & (P[:, 1] < e[1]))[0]
+        inner = e + np.array([-sign * 0.016, -0.012, 0.016 + BROW_DZ], np.float32)
+        sel = np.where((np.abs(P[:, 0] - (e[0] + sign * 0.002)) < 0.034) & (np.abs(P[:, 2] - (e[2] + 0.018 + BROW_DZ)) < 0.016) & (P[:, 1] < e[1]))[0]
         if len(sel) == 0:
             continue
         Q = P[sel]
@@ -372,9 +382,9 @@ def paint_skin(skin, marks, size, out):
             fill = np.maximum(fill, np.exp(-((Q[:, 0] - bx) ** 2 + (Q[:, 2] - bz) ** 2) / (2 * (thick * 0.6) ** 2)) * 0.5)
             acc = np.maximum(acc, smooth(w * 1.8, w * 0.5, dist) * rng.uniform(0.55, 1.0))
         # A soft fill under the strands: skin seen through a full brow.
-        brow[sel] = np.maximum(brow[sel], np.maximum(acc, fill * 0.55))
+        brow[sel] = np.maximum(brow[sel], np.maximum(acc, fill * BROW_FILL))
     brow_c = np.array([0.30, 0.26, 0.19], np.float32) if BROWS == "pale" else np.array([0.17, 0.13, 0.09], np.float32)
-    col = mix(col, brow_c, np.clip(brow, 0, 1) * (0.55 if BROWS == "pale" else 0.62))
+    col = mix(col, brow_c, np.clip(brow, 0, 1) * (0.55 if BROWS == "pale" else BROW_STRENGTH))
 
     # Battle decals (character.md): soot smudged over the cheeks and jaw,
     # and a thin line of blood from the corner of the mouth.
@@ -480,6 +490,18 @@ def paint_skin(skin, marks, size, out):
         nrm = np.stack([nrm[..., 0] + d[..., 0], nrm[..., 1] + d[..., 1], nrm[..., 2] * np.clip(d[..., 2], 0.2, 1)], axis=2)
         nrm /= np.linalg.norm(nrm, axis=2, keepdims=True)
     nrm_img = np.concatenate([nrm * 0.5 + 0.5, np.ones((size, size, 1), np.float32)], axis=2)
+    if CAVITY_TILE:
+        # MetaHuman's cavity tile darkens pores and fine creases in the
+        # albedo, as its skin material multiplies cavity in.
+        cpath, crep = CAVITY_TILE
+        cimg = bpy.data.images.load(cpath)
+        cw, ch = cimg.size
+        cav = np.array(cimg.pixels[:], np.float32).reshape(ch, cw, cimg.channels)[::-1][:, :, 0]
+        bpy.data.images.remove(cimg)
+        ys = (np.arange(size) * crep * ch // size) % ch
+        xs = (np.arange(size) * crep * cw // size) % cw
+        c = cav[ys][:, xs]
+        col_img = col_img * (0.72 + 0.28 * c)[..., None]
     base_img = np.concatenate([to_srgb(col_img), np.ones((size, size, 1), np.float32)], axis=2)
     ao_img = _bake_ao(skin, size)
     (ao_img,) = _dilate([ao_img], ao_img > 0.0, 6)

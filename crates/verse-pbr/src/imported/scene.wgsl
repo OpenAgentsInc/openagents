@@ -53,7 +53,12 @@ fn occlusion(index:u32,p:vec3<f32>,normal:vec3<f32>)->f32{
  if index>=u32(frame.settings.z){return 1.0;}
  let d=p-frame.lights[index*2u].xyz;let a=abs(d);var face=0u;
  if a.x>=a.y && a.x>=a.z {face=select(1u,0u,d.x>=0.0);}else if a.y>=a.z{face=select(3u,2u,d.y>=0.0);}else{face=select(5u,4u,d.z>=0.0);}
- let layer=index*6u+face;let q=frame.shadow[layer]*vec4(p+normal*0.025,1.0);let ndc=q.xyz/q.w;let uv=ndc.xy*vec2(0.5,-0.5)+vec2(0.5);
+ // The normal offset is about two shadow texels at the receiver's distance
+ // from the light (a 512 cube face spans 2d over 512 texels), capped at
+ // 2.5 cm: lights far off keep the old offset, and a light near a face
+ // still casts the nose's and the cheek's shadows.
+ let offset=min(0.025,0.008*length(d));
+ let layer=index*6u+face;let q=frame.shadow[layer]*vec4(p+normal*offset,1.0);let ndc=q.xyz/q.w;let uv=ndc.xy*vec2(0.5,-0.5)+vec2(0.5);
  if ndc.z>1.0||ndc.z<0.0{return 1.0;}
  var visibility=0.0;
  for(var y=-1;y<=1;y++){for(var x=-1;x<=1;x++){visibility+=textureSampleCompareLevel(shadows,shadow_sampler,uv+vec2(f32(x),f32(y))/512.0,i32(layer),ndc.z-0.001);}}

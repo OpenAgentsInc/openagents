@@ -1,0 +1,3 @@
+# Neutral, relaxed: the upper lids rest a touch lower.
+CTRL_expressions.eyeRelaxL 0.25
+CTRL_expressions.eyeRelaxR 0.25

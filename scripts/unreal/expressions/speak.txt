@@ -1,0 +1,9 @@
+# Speaking, lips just parted (the reference at 0:29): the jaw a little
+# open, the upper lip lifted a touch, inner brows slightly up.
+CTRL_expressions.jawOpen 0.2
+CTRL_expressions.mouthUpperLipRaiseL 0.12
+CTRL_expressions.mouthUpperLipRaiseR 0.12
+CTRL_expressions.mouthLowerLipDepressL 0.08
+CTRL_expressions.mouthLowerLipDepressR 0.08
+CTRL_expressions.browRaiseInL 0.12
+CTRL_expressions.browRaiseInR 0.12

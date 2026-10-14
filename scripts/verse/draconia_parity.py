@@ -5,8 +5,11 @@
     draconia_parity.py row ROUND OUT_ROW.png SBS1.png [SBS2.png ...]
     draconia_parity.py sheet OUT.png ROW1.png [ROW2.png ...]
     draconia_parity.py grid OUT.png LABEL REF1 OURS1 [REF2 OURS2 ...]
+    draconia_parity.py columns OUT.png LABEL1,LABEL2,... A1 B1 ... [A2 B2 ...]
 
-`sbs` puts the reference still on the left ("reference") and our render on
+`columns` is the grid with any number of labelled columns (the owner's
+three: the photoreal reference, Unreal's render, Verse's); a path of `-`
+is an empty panel marked "pending". `sbs` puts the reference still on the left ("reference") and our render on
 the right (LABEL, such as "Verse round 3"), each 1280x720. `row` makes one
 round's row of the progress sheet from its side-by-sides, and `sheet`
 stacks the rows. Reference stills never enter the repository; outputs go
@@ -110,6 +113,25 @@ def grid(out, text, pairs):
     print("wrote", out)
 
 
+def columns(out, labels, paths):
+    """Rows of labelled panels, len(labels) to a row."""
+    n = len(labels)
+    rows = [paths[i : i + n] for i in range(0, len(paths), n)]
+    im = Image.new("RGB", (n * W + (n - 1) * 8, len(rows) * (H + 8)), (0, 0, 0))
+    for r, row in enumerate(rows):
+        for c, path in enumerate(row):
+            if path == "-":
+                panel = Image.new("RGB", (W, H), (12, 12, 12))
+                d = ImageDraw.Draw(panel)
+                d.text((W // 2 - 70, H // 2 - 20), "pending", font=font(40), fill=(120, 120, 120))
+            else:
+                panel = fit(path)
+            label(panel, labels[c])
+            im.paste(panel, (c * (W + 8), r * (H + 8)))
+    im.save(out)
+    print("wrote", out)
+
+
 if __name__ == "__main__":
     cmd = sys.argv[1]
     if cmd == "sbs":
@@ -118,6 +140,8 @@ if __name__ == "__main__":
         row(sys.argv[2], sys.argv[3], sys.argv[4:])
     elif cmd == "grid":
         grid(sys.argv[2], sys.argv[3], sys.argv[4:])
+    elif cmd == "columns":
+        columns(sys.argv[2], sys.argv[3].split(","), sys.argv[4:])
     elif cmd == "sheet":
         sheet(sys.argv[2], sys.argv[3:])
     else:

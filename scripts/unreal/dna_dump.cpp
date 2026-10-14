@@ -2,7 +2,7 @@
 // RigLogic, for Draconia's private import into Verse
 // (docs/verse/draconia/metahuman-study.md).
 //
-//   dna_dump HEAD.dna OUT_DIR [--lod N] [--controls CONTROLS.txt]
+//   dna_dump HEAD.dna OUT_DIR [--lod N] [--controls CONTROLS.txt] [--list-controls]
 //
 // Writes OUT_DIR/<mesh>.obj for every mesh in the level of detail (default
 // 0), with positions (centimetres, as the DNA stores them), texture
@@ -108,6 +108,11 @@ int main(int argc, char** argv) {
         return 1;
     }
     const auto* r = reader.get();
+    for (int i = 3; i < argc; ++i)
+        if (std::string(argv[i]) == "--list-controls") {
+            for (std::uint16_t c = 0; c < r->getRawControlCount(); ++c) printf("%s\n", r->getRawControlName(c).c_str());
+            return 0;
+        }
     const std::uint16_t joints = r->getJointCount();
     // Neutral joint transforms.
     auto tx = r->getNeutralJointTranslationXs(), ty = r->getNeutralJointTranslationYs(), tz = r->getNeutralJointTranslationZs();
@@ -135,7 +140,7 @@ int main(int argc, char** argv) {
             std::istringstream s(line);
             std::string name;
             float v;
-            if (!(s >> name >> v)) continue;
+            if (line.empty() || line[0] == '#' || !(s >> name >> v)) continue;
             auto it = raw.find(name);
             if (it == raw.end()) {
                 fprintf(stderr, "unknown raw control %s\n", name.c_str());
@@ -152,15 +157,17 @@ int main(int argc, char** argv) {
         jointOut.assign(jo.begin(), jo.end());
         fprintf(stderr, "riglogic: %zu blend shape outputs, %zu joint values\n", bs.size(), jo.size());
     }
-    // Joint world matrices, neutral and posed (RigLogic outputs are absolute
-    // local transforms per joint: 9 values, translation, rotation, scale).
+    // Joint world matrices, neutral and posed. RigLogic's joint outputs are
+    // deltas from the neutral pose, 9 values per joint: translation (cm),
+    // Euler rotation (degrees) and scale (0 = unchanged), as the Maya and
+    // Unreal rigs add them to the joint's neutral attributes.
     const std::size_t stride = jointOut.empty() ? 9 : jointOut.size() / joints;
     for (std::uint16_t j = 0; j < joints; ++j) {
         M4 l = trs(tx[j], ty[j], tz[j], rx[j], ry[j], rz[j]);
         M4 lp = l;
         if (!jointOut.empty() && stride >= 9) {
             const float* o = &jointOut[j * stride];
-            lp = trs(o[0], o[1], o[2], o[3], o[4], o[5], o[6], o[7], o[8]);
+            lp = trs(tx[j] + o[0], ty[j] + o[1], tz[j] + o[2], rx[j] + o[3], ry[j] + o[4], rz[j] + o[5], 1 + o[6], 1 + o[7], 1 + o[8]);
         }
         neutral[j] = parent[j] < 0 ? l : mul(neutral[parent[j]], l);
         posed[j] = parent[j] < 0 ? lp : mul(posed[parent[j]], lp);

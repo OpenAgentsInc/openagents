@@ -7,7 +7,7 @@
 //! [--subframes N] [--fstop F] [--yaw DEGREES] [--turntable FRAMES]
 //! [--light key|ref] [--exposure X] [--head YAW,PITCH] [--wind X,Y,Z]
 //! [--video --seconds S] [--time T] [--stiffness K] [--gust T] [--gaze]
-//! [--push SHARE] [--shot peacock_open] [--light peacock]
+//! [--push SHARE] [--shot peacock_open] [--light peacock] [--set-glow X]
 //!
 //! The model and set default to `~/work/film-out/draconia/build/`
 //! (`draconia.neutral.glb`, `draconia_set.glb`, built by
@@ -141,13 +141,17 @@ fn shot(
 
 /// The reference's light: teal from the jars behind her, a warm candle
 /// below-left in front, a soft cool fill from front-right, low teal
-/// ambient. Point lights only; a cluster stands in for a soft source.
-fn lighting(face: Vec3, kind: &str) -> Lighting {
+/// ambient. Point lights only. A soft source is `n` points that move over
+/// its disc from subframe to subframe (`sub` of `subs`), so the
+/// accumulated frame has an area light's soft shadows while each subframe
+/// keeps few lights, and the strongest of them get the shadow maps.
+fn lighting(face: Vec3, kind: &str, glow: f32, sub: usize, subs: usize) -> Lighting {
     let mut lights = vec![];
+    let subs = subs.max(1);
     let soft =
         |lights: &mut Vec<Light>, at: Vec3, color: Vec3, intensity: f32, spread: f32, n: usize| {
             for i in 0..n {
-                let s = lens_sample(i, n, 0.3) * spread;
+                let s = lens_sample(sub * n + i, subs * n, 0.3) * spread;
                 lights.push(Light {
                     position: at + Vec3::new(s.x, s.y, s.x * 0.3),
                     color,
@@ -223,57 +227,61 @@ fn lighting(face: Vec3, kind: &str) -> Lighting {
             );
         }
         _ => {
-            // Key: a soft, warm source high to screen left (world -X: the
-            // camera looks along +Z, so +X is screen right), as the
-            // reference's face light.
+            // Key: a soft, warm source high to screen left, as the
+            // reference's face light at 0:54. The camera looks along +Z
+            // with Y up, so its right is -X: screen left is world +X.
             soft(
                 &mut lights,
-                face + Vec3::new(-0.95, 0.4, -0.6),
-                Vec3::new(1.0, 0.93, 0.86),
+                face + Vec3::new(0.95, 0.4, -0.6),
+                Vec3::new(1.0, 0.95, 0.9),
                 2.0,
                 0.35,
-                6,
+                2,
             );
-            // Fill: cool and dim from screen right.
+            // Fill: soft and warm-neutral from screen right, a stop and a
+            // half under the key (the reference's shadow side keeps its
+            // warmth: its far cheek reads 97,75,66 to the lit cheek's
+            // 124,112,107).
             soft(
                 &mut lights,
-                face + Vec3::new(0.9, 0.1, -1.0),
-                Vec3::new(0.62, 0.82, 0.86),
-                0.08,
+                face + Vec3::new(-0.9, 0.1, -1.0),
+                Vec3::new(0.95, 0.8, 0.7),
                 0.4,
-                3,
+                0.4,
+                1,
             );
             // The candle on the table, low and warm.
             lights.push(Light {
                 position: Vec3::new(0.55, 1.0, -0.95),
-                color: Vec3::new(1.0, 0.55, 0.22),
-                intensity: 0.5,
+                color: Vec3::new(1.0, 0.6, 0.3),
+                intensity: 0.2,
                 range: 6.0,
             });
-            // Teal rims from the jars behind, both sides, and the shelves'
-            // glow.
+            // Teal rims from the jars behind: strong behind screen right
+            // (the reference's glow edges her jaw and hair there), faint
+            // behind screen left; and the shelves' glow.
+            // Close to her and short-ranged, so it edges her without
+            // lighting the shelves behind (the reference's wall is dark).
+            lights.push(Light {
+                position: face + Vec3::new(-0.45, 0.18, 0.55),
+                color: Vec3::new(0.35, 0.95, 0.85),
+                intensity: 0.55,
+                range: 1.1,
+            });
             soft(
                 &mut lights,
-                face + Vec3::new(0.7, 0.25, 0.9),
+                face + Vec3::new(0.75, 0.1, 0.9),
                 Vec3::new(0.35, 0.95, 0.85),
-                1.1,
+                0.08,
                 0.3,
-                3,
-            );
-            soft(
-                &mut lights,
-                face + Vec3::new(-0.75, 0.1, 0.9),
-                Vec3::new(0.35, 0.95, 0.85),
-                0.4,
-                0.3,
-                3,
+                1,
             );
             for x in [-0.8f32, 0.0, 0.8, 1.6] {
                 for y in [0.85f32, 1.3, 1.75] {
                     lights.push(Light {
                         position: Vec3::new(-x + 0.4, y + 0.1, 2.1),
                         color: Vec3::new(0.3, 0.95, 0.82),
-                        intensity: 0.025,
+                        intensity: 0.025 * glow,
                         range: 3.0,
                     });
                 }
@@ -341,6 +349,17 @@ struct Args {
     gaze: bool,
     /// The share of the camera's distance it pushes in over a video.
     push: f32,
+    /// The set's glow (the jars' emission) as a share of its authored
+    /// strength; by default 0.2 for the full-face shot (the reference's
+    /// background at 0:54 is near black), else 1.
+    set_glow: Option<f32>,
+}
+
+impl Args {
+    fn set_glow(&self) -> f32 {
+        self.set_glow
+            .unwrap_or(if self.shot == "fullface" { 0.2 } else { 1.0 })
+    }
 }
 
 fn args() -> Result<Args, String> {
@@ -373,6 +392,7 @@ fn args() -> Result<Args, String> {
         static_model: false,
         gaze: false,
         push: 0.0,
+        set_glow: None,
     };
     while let Some(flag) = it.next() {
         let mut value = || it.next().ok_or(format!("{flag} takes a value"));
@@ -419,6 +439,7 @@ fn args() -> Result<Args, String> {
             "--no-grade" => a.grade = false,
             "--static" => a.static_model = true,
             "--push" => a.push = value()?.parse().map_err(|_| "bad push")?,
+            "--set-glow" => a.set_glow = Some(value()?.parse().map_err(|_| "bad set glow")?),
             other => return Err(format!("Unknown argument {other}")),
         }
     }
@@ -527,6 +548,15 @@ fn turn_head(
     Ok(())
 }
 
+/// Scales the set's glow (the jars' emission) for the shot.
+fn glow(room: &mut verse_engine::assets::Model, k: f32) {
+    for surface in &mut room.surfaces {
+        for c in &mut surface.material.emissive_factor {
+            *c *= k;
+        }
+    }
+}
+
 fn pack(
     dir: &Path,
     model: &Path,
@@ -562,7 +592,8 @@ fn pack(
         }
         pack.models.insert("draconia".into(), draconia.clone());
         if let Some(set) = set {
-            let room = characters::import_with(&mut pack, dir, set, options)?;
+            let mut room = characters::import_with(&mut pack, dir, set, options)?;
+            glow(&mut room, a.set_glow());
             pack.models.insert("draconia-set".into(), room);
         }
         pack.validate()?;
@@ -651,7 +682,8 @@ fn pack(
     }
     pack.models.insert("draconia".into(), draconia.clone());
     if let Some(set) = set {
-        let room = characters::import_with(&mut pack, dir, set, options)?;
+        let mut room = characters::import_with(&mut pack, dir, set, options)?;
+        glow(&mut room, a.set_glow());
         pack.models.insert("draconia-set".into(), room);
     }
     pack.validate()?;
@@ -746,6 +778,7 @@ fn main() -> Result<(), String> {
     } else {
         None
     };
+    let set_glow = a.set_glow();
     for frame in 0..frames {
         let spin = if a.turntable > 0 {
             frame as f32 / frames as f32 * std::f32::consts::TAU
@@ -783,7 +816,7 @@ fn main() -> Result<(), String> {
             let jitter = Vec2::new(halton(k + 1, 2) - 0.5, halton(k + 1, 3) - 0.5)
                 * Vec2::new(2.0 / a.width as f32, 2.0 / a.height as f32);
             let view_proj = Mat4::from_translation(jitter.extend(0.0)) * view_proj;
-            let mut light = lighting(face, &a.light);
+            let mut light = lighting(face, &a.light, set_glow, k, n);
             light.time = 3.0 + k as f32 * 1.37 + frame as f32 * 0.04;
             light.exposure = a.exposure;
             let pixels = renderer.draw(View { view_proj, eye }, &instances, &ui, &light)?;
