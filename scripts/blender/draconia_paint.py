@@ -45,6 +45,9 @@ BROW_DZ = 0.0
 # (natural brows); a head with its own brow shape wants less of both.
 BROW_FILL = 0.55
 LAST_BROW = None
+# The under-eye region's mask (as LAST_BROW), for lifting another albedo's
+# dark under-eye band.
+LAST_UNDER = None
 # The painted nasolabial folds' depth (a head whose mesh has its own folds
 # wants none: painted on top they age the face).
 FOLD_DEPTH = 1.2
@@ -311,6 +314,9 @@ def paint_skin(skin, marks, size, out):
     # Under-eye: a faint blue-purple, slightly darker.
     under = sum(gauss(P, e + np.array([0, -0.004, -0.012], np.float32), (0.013, 0.02, 0.006)) for e in (el, er))
     col = mix(col, col * np.array([0.92, 0.89, 0.92], np.float32), np.clip(under, 0, 1) * UNDER_EYE)
+    global LAST_UNDER
+    LAST_UNDER = np.zeros((size, size), np.float32)
+    LAST_UNDER[cover] = np.clip(under, 0, 1)
     # Eyelid crease and lid: slightly darker, warmer.
     lid = sum(gauss(P, e + np.array([0, 0.0, 0.009], np.float32), (0.013, 0.02, 0.004)) for e in (el, er))
     col = mix(col, col * np.array([0.94, 0.92, 0.92], np.float32), np.clip(lid, 0, 1) * 0.35)

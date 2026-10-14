@@ -256,7 +256,10 @@ fn lighting(face: Vec3, kind: &str, glow: f32, sub: usize, subs: usize) -> Light
                 face + Vec3::new(1.1, 0.38, -0.45),
                 Vec3::new(1.0, 0.9, 0.8),
                 2.2,
-                0.45,
+                // Round 10: a broader source (0.9 m across), so the nose's
+                // and the hair's shadows on the far cheek are soft and
+                // gradual, as the reference's, not a hard diagonal edge.
+                0.9,
                 2,
             );
             // No flat frontal fill (round 6): the shadow side is lit only

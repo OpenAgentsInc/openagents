@@ -526,13 +526,24 @@ def dcc_skin(dcc, maps, out_dir, size):
         # (the groom's brow cards alone read almost invisible). Strands
         # thick at the inner head, the arch defined; MH_PAINTED_BROW is its
         # strength (0 leaves the albedo's own).
-        bs = float(os.environ.get("MH_PAINTED_BROW", "0.72"))
+        # Round 10: the dark band under the lower lids lifted 18% toward the
+        # cheek's tone (the reference's lower lids are clean).
+        if draconia_paint.LAST_UNDER is not None:
+            lu = draconia_paint.LAST_UNDER
+            h, w = rgb.shape[:2]
+            mu = lu[np.arange(h) * lu.shape[0] // h][:, np.arange(w) * lu.shape[1] // w][..., None]
+            rgb = np.clip(rgb * (1 + 0.18 * np.clip(mu, 0, 1)), 0, 1)
+        bs = float(os.environ.get("MH_PAINTED_BROW", "0.5"))
         if bs > 0 and draconia_paint.LAST_BROW is not None:
             lb = draconia_paint.LAST_BROW
             h, w = rgb.shape[:2]
             # (Both images are top row first.)
             m = lb[np.arange(h) * lb.shape[0] // h][:, np.arange(w) * lb.shape[1] // w][..., None]
-            brow_srgb = np.array([0.30, 0.24, 0.19], np.float32)
+            # Round 10: lighter ash-brown, the mask feathered (blurred) so
+            # the base has no hard edge or square tail.
+            brow_srgb = np.array([0.34, 0.27, 0.22], np.float32)
+            for _ in range(4):
+                m = (np.roll(m, 3, 0) + np.roll(m, -3, 0) + np.roll(m, 3, 1) + np.roll(m, -3, 1) + m) / 5
             rgb = rgb * (1 - np.clip(m, 0, 1) * bs) + brow_srgb * np.clip(m, 0, 1) * bs
         base = draconia_paint.save("mh_skin_base", np.concatenate([rgb, np.ones_like(lum)], -1), out_dir)
     n = load_px(os.path.join(dcc, "Maps", "Head_Normal.png"))[..., :3] * 2 - 1
@@ -555,7 +566,7 @@ def dcc_skin(dcc, maps, out_dir, size):
     # Our baked occlusion at half strength: at full strength it dug a dark
     # ring into the lids and sockets (round 7), where the reference's lids
     # are clean.
-    ao = 1 - (1 - orm_old[ys][:, xs][..., 0]) * 0.5
+    ao = 1 - (1 - orm_old[ys][:, xs][..., 0]) * 0.25
     rough = srmf[..., 1]
     if rough.max() < 0.01:
         # The UE 5.8 DCC export's SRMF came out empty (all zero); keep the
@@ -803,7 +814,12 @@ def main():
         # straight, falling past the jaw in the cards' warm blonde.
         # Round 9: our combed body under the cards too (warm, like them),
         # for the reference's loose, full crown over the tight buns groom.
-        draconia_hair.PARTS = tuple(os.environ.get("MH_GROW_PARTS", "body locks").split())
+        # Round 10: flyaways too, and more baby hairs and wisps along an
+        # irregular hairline that comes down over the temples.
+        draconia_hair.PARTS = tuple(os.environ.get("MH_GROW_PARTS", "body locks fly").split())
+        draconia_hair.FLY_COUNT = 320
+        draconia_hair.WISPS = 900
+        draconia_hair.HAIRLINE_DROP = (0.08, 0.36)
         draconia_hair.LOCK_WAVE = 0.25
         draconia_hair.LOCK_CURL = 0.0
         # Round 9: more of them, some from the front of the hairline, not
@@ -811,7 +827,8 @@ def main():
         # cards so the crown has depth.
         draconia_hair.LOCKS_PER_SIDE = 8
         draconia_hair.LOCK_HAIRS = (3, 7)
-        draconia_hair.LOCK_AZ = (0.4, 1.35)
+        # In front of the ears, not across the eyes.
+        draconia_hair.LOCK_AZ = (0.7, 1.3)
         draconia_hair.HAIR_ROOT, draconia_hair.HAIR_MID, draconia_hair.HAIR_TIP = (tuple(c * 0.85 for c in col) for col in hair_cols)
         hair = groom_objs + draconia_hair.grow(head, marks, seed=7, style=HAIR_STYLE)[0]
     else:
@@ -845,8 +862,10 @@ def main():
         bpy.data.objects.remove(body)
     # Fewer strands than the CC0 head: the reference's brows are soft, and
     # 650 read as a dark slab at the eye close-up.
-    if not fast and not any(g.startswith("Eyebrows") for g in grooms):
-        extra += draconia.brows(head, marks, {"l": (None, None, marks.eye_l), "r": (None, None, marks.eye_r)}, count=400)
+    # Round 10: our brow strands again, over MetaHuman's brow cards and a
+    # light painted base, so the brows read hair-like, not painted on.
+    if not fast:
+        extra += draconia.brows(head, marks, {"l": (None, None, marks.eye_l), "r": (None, None, marks.eye_r)}, count=700)
     parts = list(objs.values()) + extra
     draconia.export(out, parts)
     d = {k: (list(v) if isinstance(v, Vector) else v) for k, v in marks.__dict__.items() if not callable(v)}

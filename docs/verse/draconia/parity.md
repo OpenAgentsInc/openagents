@@ -626,6 +626,50 @@ $B -b --factory-startup --python scripts/blender/draconia_set.py -- ~/work/film-
   kept in it, so its regression stays visible);
   `~/work/film-out/draconia/parity/round-09/`.
 
+### Round 10, 2026-10-14: hair-like brows, a soft shadow side
+
+- **Direction.** The coordinator's read of round 9 (better than round 7):
+  the brows read painted-on (hard edges, a uniform fill, a square tail); a
+  hard diagonal shadow across the far cheek and nose; the crown a smooth
+  helmet with a hard hairline; the dark band under the lower lids; the
+  upper lip tall when speaking.
+- **What changed.**
+  - Brows: our painted base at 50% (from 72), feathered (the mask blurred,
+    so no edge or square tail), a lighter ash-brown; our strand brows back
+    on top (700 strands, tapering, thicker at the inner head) over
+    MetaHuman's brow cards.
+  - Shadow side: the key light 0.9 m across (from 0.45), so the nose's and
+    the hair's shadows on the far cheek fall off softly.
+  - Hair: flyaways at the crown and bun again; 900 baby hairs and short
+    wisps along the hairline; the hairline lower over the temples; the
+    face-framing locks rooted in front of the ears.
+  - Lower lids: the under-eye region of MetaHuman's albedo lifted 18% toward
+    the cheek's tone (`draconia_paint.LAST_UNDER`), and our baked occlusion
+    at a quarter strength.
+  - Speaking: the upper-lip raise eased (0.12 to 0.03).
+- **Measured** (MetaHuman's tracker; ours against the reference):
+
+  | Feature (over eye spacing) | 0:54 smile | 0:24 neutral | 0:29 speaking |
+  | --- | --- | --- | --- |
+  | Eye width | -3.5% | -3.7% | -3.4% |
+  | Eye opening | +3.8% | -4.0% | +0.1% |
+  | Eye line to nose base (midface) | +1.5% | -3.0% | -1.0% |
+  | Nose base to upper lip | +2.3% | +5.4% | +3.0% |
+  | Upper lip height | +5.9% | +13.4% | +19.9% |
+  | Lower lip height | -5.0% | -4.3% | +8.5% |
+  | Mouth width | +3.7% | +3.9% | -4.9% |
+
+  The upper lip's height when speaking didn't move with the control: it
+  is the blended face's own full upper lip, so it needs a shape change
+  (Creator), not an expression.
+- **Artifacts.** `~/Downloads/draconia-fullface-mh-v8.png` (reference |
+  round 9 | round 10), `~/Downloads/draconia-parity-round-10.png` and
+  `.mp4`, the progress sheet; `~/work/film-out/draconia/parity/round-10/`.
+- **Honest state.** Softer, more natural brows and a gentler shadow side
+  than round 9. Still off: the crown still reads smooth and the front
+  hairline high; the upper lip is full and tall; the lower lids keep a
+  faint band; the collar and robe are shells.
+
 ## Peacock scene
 
 The peacock guardian (reference 113.0–118.0 s, [shots.md](shots.md)),

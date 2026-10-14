@@ -346,7 +346,7 @@ def grow(skin, marks, seed=7, style="updo"):
                     joints.append((name, "Head" if k == 0 else links[k - 1], at.copy()))
             locks.add(pts, None, rng.uniform(0.00025, 0.0006), rng.randrange(VARIANTS), taper=0.75, free=Vector((0, -1, 0)), skin=chain_skin(links) if chain_made else None)
     # Wisps at the temples and hairline: short curls of a few hairs.
-    for k in range(320):
+    for k in range(WISPS):
         root, rn = front_roots[k % len(front_roots)]
         pts = []
         p = root.copy()
@@ -670,6 +670,8 @@ LOCK_WAVE = 1.0
 # Where the locks root, as azimuth from the front (radians): the temples by
 # default; lower bounds near 0.4 bring strands to the front of the face.
 LOCK_AZ = (0.7, 1.35)
+# Short wisps and baby hairs along the hairline (from the locks' roots).
+WISPS = 320
 # The updo's body: how far the outer layers stand off the scalp (m), how
 # much the strands puff mid-path and wander (frizz), the hairline's drop
 # (radians, lower is further down the forehead and temples), extra roots
