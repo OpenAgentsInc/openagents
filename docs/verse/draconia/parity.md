@@ -56,15 +56,15 @@ with 4096-pixel maps, `Prepared::load` with a raised `Budget`, then
 
 | Area | State | Gap |
 | --- | --- | --- |
-| Face shape | MetaHuman archetype head (round 4, private), posed by RigLogic | Generic, wider jaw, reads older than the reference; Draconia's own face as a MetaHuman is next |
+| Face shape | Draconia's own edits fitted into MetaHuman's identity space (round 5), posed by RigLogic | Younger and narrower than the archetype; still reads older and harder than the reference (under-eye hollows, long nose) |
 | Skin | Wrapped red-shifted diffuse, two lobes, pores and fine lines in a 4K normal map | Still smooth and waxy at close range; no cavity or micro-normal detail, too even in tone |
 | Freckles | A light dusting over nose and cheeks | Present; reads as dots, needs softer, varied, clustered freckles |
 | Eyes | Separate eyeballs, a refracting iris under an additive cornea, limbal ring | The lids sit too open and the sclera shows a hard white wedge at the corners; no caruncle, tear line or wet rim |
 | Brows | Painted strands | Too thin and drawn-on; the reference's brows are fuller, natural |
 | Lips | Analytic vermilion, rose, glossier | Shape fine; colour too orange-pink and edge too crisp |
-| Hair (updo, strands) | 10,700 strand ribbons over a cap, a knot, locks at the temples, flyaways | Reads as a tight helmet with a visible cap; no volume, no messy loops at the sides, no root-to-tip shading |
+| Hair (updo, strands) | Round 5: 18,700 strand ribbons lying close and gathered into a bun, a lowered hairline, ten face-framing locks a side, 260 falling flyaways | Grainy at the crown; no Marschner multiple scattering yet |
 | Uniform | Shirt collar, striped tie, V-neck sweater with trim, open robe with green facing | Blocky shells with hard cuts; no folds, no wool or knit texture, no hood drape |
-| Lighting response | Measured against 0:54: warm key screen left, warm fill, short teal rim, near-black background, soft shadows from moving area lights | Jars still read as soft squares; no Unreal-grade skin shadowing (screen-space scattering) |
+| Lighting response | Measured against 0:54: warm key screen left, warm fill, short teal rim, near-black background, soft shadows from moving area lights; f/2 bokeh of glowing jars | No Unreal-grade skin shadowing (screen-space scattering) |
 | Expressions | MetaHuman's rig controls through OpenRigLogic (smile, speaking, neutral; joints only, the archetype has no blend shapes) | Built per expression; the full rig with blend shapes and wrinkle maps waits on the owner's Epic sign-in |
 
 ## How it's built
@@ -135,6 +135,11 @@ MH_NEUTRAL_DIR=MH/archetype MH_BODY_DIR=MH/archetype-body \
   MH/archetype-smile MH/textures MH/build-smile/mh.smile.glb
 draconia_portrait OUT.png --model MH/build-smile/mh.smile.glb --static --shot fullface --light ref
 DRACONIA_UE_KEEP=1 scripts/unreal/run_ue.sh scripts/unreal/render_reference.py   # Unreal's column
+# Round 5: Draconia's shape, fitted by MetaHuman Creator, on every expression
+MH_SHAPE_OUT=MH/draconia_shape_head.txt MH_NEUTRAL_DIR=MH/archetype ... metahuman_import.py ...  # writes the target
+scripts/unreal/run_ue.sh scripts/unreal/fit_face.py           # MH/export/fit/Draconia_Head.fbx
+MH_SHAPE=fit MH_FIT_FBX=MH/export/fit/Draconia_Head.fbx MH_NEUTRAL_DIR=MH/archetype ... metahuman_import.py ...
+$B -b --factory-startup --python scripts/blender/draconia_set.py -- ~/work/film-out/draconia/build/draconia_set_parity.glb --soft-jars
 ```
 
 `MH` is `~/work/film-out/draconia/metahuman`; the textures come from
@@ -304,6 +309,65 @@ DRACONIA_UE_KEEP=1 scripts/unreal/run_ue.sh scripts/unreal/render_reference.py  
   head fitted into MetaHuman's identity space (`fit_state_to_target_vertices`,
   local in 5.8), then rigged and textured once the owner signs in; skin
   from MetaHuman's texture sources; strand brows.
+
+### Round 5, 2026-10-13: Draconia's own face as a MetaHuman, a soft updo, soft bokeh
+
+- **Direction.** The coordinator's read of round 4 ("the first version that
+  reads as a real person"): fix the bare, static-shock crown first; then
+  the face fit (younger, narrower jaw, fuller lips, higher cheekbones);
+  a lighter grey-green iris and a pinkish sclera; soft bokeh instead of
+  flat squares.
+- **What changed.**
+  - Face: our own edits to the archetype's rest head (`draconia_shape` in
+    `metahuman_import.py`: lower face up to 11% narrower at the jaw line,
+    chin 5 mm higher, lips 2.2 mm fuller forward, cheekbones 3 mm higher
+    and 2.5 mm forward, all fading out before the neck seam, the ears and
+    the skull), then **fitted into MetaHuman's identity space** by
+    MetaHuman Creator in UE 5.8 (`scripts/unreal/fit_face.py`:
+    `fit_state_to_target_vertices` with rigid alignment and scale and no
+    high-frequency residual; local, no Epic sign-in). The fit's head comes
+    out as geometry (`export_geometry`, then FBX); `metahuman_import.py`
+    (`MH_SHAPE=fit`) matches it to the DNA's vertices by texture
+    coordinate, aligns it by a similarity transform (median 1.4 mm off our
+    edit), and adds the offsets to every expression the rig poses. The
+    painted nasolabial folds are off for MetaHuman heads (the mesh has its
+    own; painted on top they aged her).
+  - Two traps found on the way, now in the scripts' comments: the target
+    head must be given in Unreal's own DNA axes (x, z, y), or the fit
+    pitches the face back over the neck; and the skeletal mesh holds every
+    face part with overlapping UVs, so only the head section is matched.
+  - Hair: a soft updo instead of a frizzed helmet. The strands lie close
+    (lift 7 mm, not 17), wander less, and gather into the bun; the
+    hairline comes 0.06 rad lower at the front and 0.26 at the temples,
+    with 5,000 extra fine roots along it; the cap under the strands reaches
+    the hairline in the hair's own shade, its edge cut on a subdivided
+    scalp so it no longer steps; 260 flyaways that fall instead of 900
+    that stand up. All are `draconia_hair` settings, the CC0 builds'
+    defaults unchanged.
+  - Eyes: the iris's fibre pattern pushed up and mostly grey with a green
+    cast; the sclera faintly pink; softer brows (400 strands, less painted
+    fill).
+  - Background: jars glow along their height with a meniscus line and
+    cloudy variation (`draconia_set.py --soft-jars`, written to
+    `build/draconia_set_parity.glb`, the shared set untouched); the
+    full-face shot opens to f/2 with 40 sub-frames and the jars at 0.35,
+    so they melt into soft round shapes.
+- **Artifacts.** `~/Downloads/draconia-fullface-mh-v3.png` (reference |
+  Unreal 5.8 | Verse; rows 0:54 smile, 0:24 neutral, 0:29 speaking, 1:22
+  eyes), `~/Downloads/draconia-parity-round-05.png`, the progress sheet,
+  `~/Downloads/draconia-parity-round-05.mp4` (the rounds so far);
+  `~/work/film-out/draconia/parity/round-05/`.
+- **Honest state.** Better, still not there. The fitted face is younger
+  and narrower but still reads older and harder than the reference's
+  (under-eye hollows, a long nose); skin is our procedural paint, not
+  MetaHuman's texture sources; the updo's strands read grainy at the
+  crown; the shoulders show no robe in this frame. Unreal's column shows
+  the fitted head in the plain identity material: no rig, no textures
+  until the Epic sign-in.
+- **Next.** MetaHuman's own skin (texture sources once signed in, else a
+  synthesized albedo from the plugin's skin-tone data); smoother strand
+  shading at the crown; under-eye and nose edits through the fit; the
+  robe and sweater in frame.
 
 ## Peacock scene
 

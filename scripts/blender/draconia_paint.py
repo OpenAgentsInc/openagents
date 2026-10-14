@@ -44,6 +44,9 @@ BROW_DZ = 0.0
 # The painted brow's soft fill under its strands and its overall strength
 # (natural brows); a head with its own brow shape wants less of both.
 BROW_FILL = 0.55
+# The painted nasolabial folds' depth (a head whose mesh has its own folds
+# wants none: painted on top they age the face).
+FOLD_DEPTH = 1.2
 BROW_STRENGTH = 0.62
 # Skin base albedo (linear) and an optional cavity tile (path, repeats).
 SKIN_BASE = (0.64, 0.53, 0.50)
@@ -443,7 +446,7 @@ def paint_skin(skin, marks, size, out):
         t = np.clip((nose_tip[2] - 0.005 - P[:, 2]) / 0.035, 0, 1)
         line_x = nx + sgn * (0.008 * t)
         fold = np.exp(-((P[:, 0] - line_x) / 0.0018) ** 2) * (t > 0) * (t < 1) * front
-        height -= 1.2 * fold
+        height -= FOLD_DEPTH * fold
     height *= 0.00009  # metres: pores ~0.08 mm deep
     rough = 0.58 + 0.12 * (fbm(P, 0.006, 3, seed=51) - 0.5)
     tzone = np.clip(gauss(P, mid + np.array([0, -0.02, 0.045], np.float32), (0.03, 0.05, 0.03)) + gauss(P, nose_tip, (0.012, 0.04, 0.03)), 0, 1)

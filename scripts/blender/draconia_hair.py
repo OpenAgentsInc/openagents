@@ -52,8 +52,17 @@ def _hairline_el(az):
     for (a0, e0), (a1, e1) in zip(pts, pts[1:]):
         if a <= a1:
             t = (a - a0) / (a1 - a0)
-            return e0 + (e1 - e0) * t
-    return pts[-1][1]
+            return e0 + (e1 - e0) * t - _drop(a)
+    return pts[-1][1] - _drop(a)
+
+
+def _drop(a):
+    """HAIRLINE_DROP at azimuth a: one value, or (front, temples and
+    sides), blended over the first radian from the front."""
+    if isinstance(HAIRLINE_DROP, tuple):
+        f, sd = HAIRLINE_DROP
+        return f + (sd - f) * min(1.0, a / 1.0)
+    return HAIRLINE_DROP
 
 
 def _angles(p, centre):
@@ -220,7 +229,7 @@ def grow(skin, marks, seed=7, style="updo"):
             # crown (most at mid-path, over the ears), and each strand
             # waves along its own clump's offset.
             along = min(1.0, k * step / max(dist + k * step, 1e-3))
-            puff = (0.006 + 0.012 * max(0.0, 1.0 - abs(loc.z - (centre.z - 0.01)) / 0.08)) * math.sin(math.pi * min(along * 1.4, 1.0))
+            puff = PUFF * (0.006 + 0.012 * max(0.0, 1.0 - abs(loc.z - (centre.z - 0.01)) / 0.08)) * math.sin(math.pi * min(along * 1.4, 1.0))
             h = 0.0004 + lift * min(1.0, k * step / 0.03) ** 0.7 + puff * (0.3 + 0.7 * mess / 1.8) + max(0.0, off.dot(nrm)) * 0.006
             q = loc + nrm * h + (off - nrm * off.dot(nrm)) * 0.008
             pts.append(q)
@@ -257,13 +266,13 @@ def grow(skin, marks, seed=7, style="updo"):
     roots = _sample_surface(me, scalp, 14000, rng)
     # Extra roots along the hairline, so the edge is dense and soft.
     edge = [f for f in scalp if _angles(me.polygons[f].center, centre)[1] < _hairline_el(_angles(me.polygons[f].center, centre)[0]) + 0.12]
-    roots += _sample_surface(me, edge, 1600, rng)
+    roots += _sample_surface(me, edge, EDGE_ROOTS, rng)
     for idx, (root, rn) in enumerate(roots):
         layer = rng.random()
         # A loose updo: the outer layers ride well off the scalp (up to
         # 2 cm over the sides), the inner ones close.
-        lift = 0.0015 + 0.017 * layer**1.4
-        pts, nrms = comb(root, rn, lift, mess=0.4 + 1.4 * layer**2, wander=wander)
+        lift = 0.0015 + LIFT * layer**1.4
+        pts, nrms = comb(root, rn, lift, mess=MESS[0] + MESS[1] * layer**2, wander=wander)
         if len(pts) < 2:
             continue
         loops = wrap(pts[-1], rng.uniform(0.6, 1.8), knot_r * rng.uniform(0.6, 1.25), rng)
@@ -348,14 +357,14 @@ def grow(skin, marks, seed=7, style="updo"):
 
     # Flyaways: single hairs arcing off the top and sides.
     fly = Ribbons()
-    for root, rn in _sample_surface(me, scalp, 900, rng):
+    for root, rn in _sample_surface(me, scalp, FLY_COUNT, rng):
         pts = []
         loc, nrm = surface(root)
         p = loc + nrm * 0.008
         d = (nrm * rng.uniform(0.3, 1.0) + (knot - loc).normalized() * rng.uniform(-0.6, 0.6) + Vector((rng.uniform(-0.5, 0.5), rng.uniform(-0.5, 0.5), rng.uniform(-0.2, 0.5)))).normalized()
-        L = rng.uniform(0.02, 0.08)
+        L = rng.uniform(*FLY_LENGTH)
         for s in range(int(L / 0.003)):
-            d = (d + Vector((0, 0, -0.06)) + Vector((rng.uniform(-0.12, 0.12), rng.uniform(-0.12, 0.12), rng.uniform(-0.12, 0.12)))).normalized()
+            d = (d + Vector((0, 0, -FLY_DROOP)) + Vector((rng.uniform(-0.12, 0.12), rng.uniform(-0.12, 0.12), rng.uniform(-0.12, 0.12)))).normalized()
             p = p + d * 0.003
             pts.append(p.copy())
         fly.add(pts, None, rng.uniform(0.00008, 0.00016), rng.randrange(VARIANTS), taper=0.5)
@@ -363,8 +372,20 @@ def grow(skin, marks, seed=7, style="updo"):
     # The cap: the scalp offset by 1.5 mm, in the hair's root colour.
     bm = bmesh.new()
     bm.from_mesh(me)
-    keep = {f for f in scalp if _angles(me.polygons[f].center, centre)[1] > _hairline_el(_angles(me.polygons[f].center, centre)[0]) + 0.07}
-    bmesh.ops.delete(bm, geom=[f for f in bm.faces if f.index not in keep], context="FACES")
+    # Cut the scalp's faces finer first, so the cap's edge follows the
+    # hairline instead of stepping along big polygons.
+    scalp_set = set(scalp)
+    near = [f for f in bm.faces if f.index in scalp_set or _angles(f.calc_center_median(), centre)[1] > _hairline_el(_angles(f.calc_center_median(), centre)[0]) - 0.1]
+    edges = list({e for f in near for e in f.edges})
+    bmesh.ops.subdivide_edges(bm, edges=edges, cuts=2, use_grid_fill=True)
+    bm.faces.ensure_lookup_table()
+    drop = []
+    for f in bm.faces:
+        c = f.calc_center_median()
+        az, el = _angles(c, centre)
+        if el <= _hairline_el(az) + CAP_INSET:
+            drop.append(f)
+    bmesh.ops.delete(bm, geom=drop, context="FACES")
     for v in bm.verts:
         v.co += v.normal * 0.0012
     cap_me = bpy.data.meshes.new("hair_cap")
@@ -381,7 +402,7 @@ def grow(skin, marks, seed=7, style="updo"):
     mat = hair_material(img)
     cap_mat = bpy.data.materials.new("draconia_hair_cap")
     cap_mat.use_nodes = True
-    cap_mat.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = (0.30, 0.26, 0.19, 1)
+    cap_mat.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = (*(c * 0.8 for c in HAIR_ROOT), 1) if CAP_FROM_MID is None else (*(c * CAP_FROM_MID for c in HAIR_MID), 1)
     cap_mat.node_tree.nodes["Principled BSDF"].inputs["Roughness"].default_value = 0.95
     cap_mat["verse_shading"] = "standard"
     cap.data.materials.append(cap_mat)
@@ -569,8 +590,20 @@ def grow_long(skin, marks, seed=7, guides=18, links=6):
     # The cap under it.
     bm = bmesh.new()
     bm.from_mesh(me)
-    keep = {f for f in scalp if _angles(me.polygons[f].center, centre)[1] > _hairline_el(_angles(me.polygons[f].center, centre)[0]) + 0.07}
-    bmesh.ops.delete(bm, geom=[f for f in bm.faces if f.index not in keep], context="FACES")
+    # Cut the scalp's faces finer first, so the cap's edge follows the
+    # hairline instead of stepping along big polygons.
+    scalp_set = set(scalp)
+    near = [f for f in bm.faces if f.index in scalp_set or _angles(f.calc_center_median(), centre)[1] > _hairline_el(_angles(f.calc_center_median(), centre)[0]) - 0.1]
+    edges = list({e for f in near for e in f.edges})
+    bmesh.ops.subdivide_edges(bm, edges=edges, cuts=2, use_grid_fill=True)
+    bm.faces.ensure_lookup_table()
+    drop = []
+    for f in bm.faces:
+        c = f.calc_center_median()
+        az, el = _angles(c, centre)
+        if el <= _hairline_el(az) + CAP_INSET:
+            drop.append(f)
+    bmesh.ops.delete(bm, geom=drop, context="FACES")
     for v in bm.verts:
         v.co += v.normal * 0.0012
     cap_me = bpy.data.meshes.new("hair_cap")
@@ -602,6 +635,23 @@ STRIPS_PATH = os.path.expanduser("~/work/film-out/draconia/build/textures/dracon
 LOCKS_PER_SIDE = 9
 LOCK_HAIRS = (3, 8)
 LOCK_LENGTH = (0.08, 0.2)
+# The updo's body: how far the outer layers stand off the scalp (m), how
+# much the strands puff mid-path and wander (frizz), the hairline's drop
+# (radians, lower is further down the forehead and temples), extra roots
+# along the hairline, and the flyaways' count and droop.
+LIFT = 0.017
+PUFF = 1.0
+MESS = (0.4, 1.4)
+HAIRLINE_DROP = 0.0
+EDGE_ROOTS = 1600
+FLY_COUNT = 900
+FLY_DROOP = 0.06
+FLY_LENGTH = (0.02, 0.08)
+# The cap under the strands: how far behind the hairline it starts
+# (radians) and its colour as a share of the roots' (None) or the
+# lengths' colour.
+CAP_INSET = 0.07
+CAP_FROM_MID = None
 
 
 def paint_strips(w, h):

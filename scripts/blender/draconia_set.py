@@ -67,6 +67,32 @@ def cylinder(name, r, h, loc, material, verts=32):
     return o
 
 
+def glow_image(name, seed, tint):
+    """A jar's glow along its height (v up): dim at the base, brightest a
+    little above the middle, a bright meniscus line near the top, and
+    cloudy variation, so a jar out of focus reads as a soft lit body of
+    liquid instead of a flat lit rectangle."""
+    import numpy as np
+
+    rng = np.random.default_rng(seed)
+    w, h = 64, 256
+    v = (np.arange(h)[::-1] + 0.5) / h  # row 0 is the top
+    body = 0.25 + 0.75 * np.sin(np.pi * np.clip(v * 0.95, 0, 1)) ** 0.7
+    meniscus = np.exp(-((v - 0.93) / 0.012) ** 2) * 0.8
+    col = np.clip(body + meniscus, 0, 1)[:, None] * np.ones((h, w))
+    cloud = rng.random((h // 16, w // 16))
+    cloud = np.kron(cloud, np.ones((16, 16)))
+    col = col * (0.7 + 0.3 * cloud)
+    img = bpy.data.images.new(name, w, h)
+    rgba = np.stack([col * tint[0], col * tint[1], col * tint[2], np.ones_like(col)], -1)[::-1]
+    img.pixels.foreach_set(np.ascontiguousarray(rgba).astype(np.float32).ravel())
+    img.pack()
+    return img
+
+
+SOFT_JARS = False
+
+
 def build():
     rng = random.Random(3)
     stones = [mat(f"stone_{k}", (0.055 + 0.02 * k, 0.065 + 0.018 * k, 0.062 + 0.016 * k, 1), rough=0.92) for k in range(4)]
@@ -75,6 +101,14 @@ def build():
     wood2 = mat("wood_shelf", (0.06, 0.04, 0.026, 1), rough=0.65)
     glass = mat("jar_glass", (0.5, 0.6, 0.58, 1), rough=0.08)
     liquids = [mat(f"jar_liquid_{k}", (0.1, 0.4, 0.35, 1), rough=0.3, emit=(0.25 + 0.05 * k, 0.95, 0.8 - 0.05 * k, 1), strength=0.05 + 0.03 * k) for k in range(3)]
+    if SOFT_JARS:
+        # The glow varies along each jar (`glow_image`, its tint baked in).
+        for k, m in enumerate(liquids):
+            nt = m.node_tree
+            b = nt.nodes["Principled BSDF"]
+            tex = nt.nodes.new("ShaderNodeTexImage")
+            tex.image = glow_image(f"jar_glow_{k}", k, b.inputs["Emission Color"].default_value)
+            nt.links.new(tex.outputs["Color"], b.inputs["Emission Color"])
     murk = mat("jar_specimen", (0.05, 0.04, 0.025, 1), rough=0.7)
     lid = mat("jar_lid", (0.08, 0.07, 0.06, 1), rough=0.4, metal=0.6)
     paper = mat("paper", (0.55, 0.5, 0.4, 1), rough=0.9)
@@ -161,7 +195,9 @@ def glow():
 def main():
     argv = sys.argv[sys.argv.index("--") + 1 :] if "--" in sys.argv else []
     glow_only = "--glow" in argv
-    argv = [a for a in argv if a != "--glow"]
+    global SOFT_JARS
+    SOFT_JARS = "--soft-jars" in argv
+    argv = [a for a in argv if a not in ("--glow", "--soft-jars")]
     out = argv[0] if argv else (OUT if not glow_only else OUT.replace("draconia_set", "draconia_glow"))
     bpy.ops.wm.read_factory_settings(use_empty=True)
     objs = glow() if glow_only else build()

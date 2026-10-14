@@ -7,8 +7,8 @@ Run with scripts/unreal/run_ue.sh:
 
 It makes an empty level, places the MetaHuman Creator plugin's archetype
 face and body (`/MetaHumanCharacter/Face/SKM_Face`, `.../SKM_Body`) with
-their own MetaHuman materials, or Draconia's exported meshes once they
-exist, lights them as the reference frame at 0:54 (a warm soft key high to
+their own MetaHuman materials, or Draconia's fitted head
+(DRACONIA_UE_FACE=/Game/Draconia/Fit/Draconia_Head, from fit_face.py), lights them as the reference frame at 0:54 (a warm soft key high to
 screen left, a dim warm fill, a teal rim behind screen right, a black room)
 and frames the full-face shot with a scene capture (Verse's 85 mm framing,
 f/3.2). Unreal renders it with Lumen and Unreal's skin, eye and hair
@@ -60,6 +60,8 @@ def setup():
         a.skeletal_mesh_component.set_skinned_asset_and_update(mesh)
         meshes.append(a)
         log(f"placed {path}")
+    if not meshes:
+        raise RuntimeError(f"no face mesh at {FACE}")
     face = meshes[0]
     origin, extent = face.get_actor_bounds(False)
     log(f"face bounds origin {origin} extent {extent}")
@@ -124,7 +126,12 @@ def main():
     os.makedirs(OUT, exist_ok=True)
     # Keep the editor rendering at full rate in the background.
     unreal.SystemLibrary.execute_console_command(None, "t.IdleWhenNotForeground 0")
-    sc, rt = setup()
+    try:
+        sc, rt = setup()
+    except Exception as e:
+        log(f"setup failed: {e}")
+        unreal.SystemLibrary.quit_editor()
+        return
     world = unreal.EditorLevelLibrary.get_editor_world()
     start = time.time()
     pending = list(SHOTS)

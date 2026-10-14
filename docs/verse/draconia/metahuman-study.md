@@ -46,11 +46,16 @@ found headless:
 - Still missing without the Optional Content: grooms, clothing and texture
   synthesis ("Texture synthesis data directory ... does not contain valid
   data").
-- New and local, worth using next: `fit_state_to_target_vertices`
-  (a head in MetaHuman topology fitted into MetaHuman's identity space)
-  and `conform_to_target_meshes` with face-landmark tracking on a portrait
-  (Mesh to MetaHuman in Python). Both let an original Draconia head we
-  sculpt become a real MetaHuman face.
+- New and local: `fit_state_to_target_vertices` (a head in MetaHuman
+  topology fitted into MetaHuman's identity space; 1,397 identity
+  coefficients) and `conform_to_target_meshes` with face-landmark
+  tracking on a portrait (Mesh to MetaHuman in Python). Round 5 uses the
+  first (`scripts/unreal/fit_face.py`): give the target in Unreal's DNA
+  axes (x, z, y) or the alignment pitches the face over the neck. With no
+  rig, the fitted face leaves Unreal only as geometry: `export_geometry`
+  to the project, then FBX (`export_posed_dna` wants a conform's posed
+  state; `export_dna` wants a rig). The FBX head is one skeletal mesh
+  with every face part in material sections and overlapping UVs.
 - `-ExecutePythonScript` closes the editor when the script returns, and a
   background editor throttles its ticks; `render_reference.py` therefore
   runs as a one-launch startup script (`DRACONIA_UE_KEEP=1`), turns the

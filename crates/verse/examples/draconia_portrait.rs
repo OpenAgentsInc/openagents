@@ -100,7 +100,9 @@ fn shot(
             eye: face + Vec3::new(0.06, 0.0, -0.74),
             target: eyes + Vec3::new(0.022, -0.048, 0.0),
             focal_mm: 85.0,
-            fstop: 3.2,
+            // Wide open, as the reference: the jars and shelves behind her
+            // melt into soft round shapes (with 32 sub-frames or more).
+            fstop: 2.0,
         },
         // The peacock guardian's opening (P3, ~114.5 s of the Draconia
         // film): an extreme close-up from the brows to the upper lip, ear to
@@ -350,7 +352,7 @@ struct Args {
     /// The share of the camera's distance it pushes in over a video.
     push: f32,
     /// The set's glow (the jars' emission) as a share of its authored
-    /// strength; by default 0.2 for the full-face shot (the reference's
+    /// strength; by default 0.35 for the full-face shot (the reference's
     /// background at 0:54 is near black), else 1.
     set_glow: Option<f32>,
 }
@@ -358,7 +360,7 @@ struct Args {
 impl Args {
     fn set_glow(&self) -> f32 {
         self.set_glow
-            .unwrap_or(if self.shot == "fullface" { 0.2 } else { 1.0 })
+            .unwrap_or(if self.shot == "fullface" { 0.35 } else { 1.0 })
     }
 }
 
