@@ -25,13 +25,19 @@ use boat::models::{
 use boat::{CommandFrame, Nullable, WaitOptions, shell_quote};
 use serde_json::{Value, json};
 
-/// The solver container, built by `deploy/solver-box/cloudbuild.yaml`.
-pub const IMAGE: &str =
-    "us-central1-docker.pkg.dev/openagentsgemini/openagents/oa-solver-box:latest";
+/// The solver container, built by `deploy/solver-box/cloudbuild.yaml` and
+/// named by its commit (the repository's tags are immutable). A newer build
+/// is used by setting [`IMAGE_ENV`] (or `--image`) until this is moved.
+pub const IMAGE: &str = "us-central1-docker.pkg.dev/openagentsgemini/openagents/oa-solver-box:41b28a8fb74dea19e6e78e13fb32f0516324b871";
+/// Names the solver container instead of [`IMAGE`].
+pub const IMAGE_ENV: &str = "OA_SOLVER_IMAGE";
 /// Every hand's model unless the run names another.
 pub const DEFAULT_MODEL: &str = "google/gemini-4-argon";
-/// The box size: n2d-standard-8, 32 GB (`crates/oa-boat/src/sizes.rs`).
-pub const SIZE: &str = "large";
+/// The box sizes tried in turn (`crates/oa-boat/src/sizes.rs`): `large`
+/// (n2d-standard-8, 32 GB), then `xlarge` (n2d-standard-16), then
+/// `default` (e2-standard-4, 16 GB) when Google has no n2d capacity in any
+/// zone (seen 2026-10-14).
+pub const SIZES: [&str; 3] = ["large", "xlarge", "default"];
 /// The box's TTL: a work run is cancelled after 6 hours anyway.
 pub const TTL_SECONDS: i64 = 6 * 3600;
 /// How often the Vertex AI token on the box is rewritten (a token lives an
@@ -64,7 +70,11 @@ impl Run {
             repo: repo.to_owned(),
             issue,
             model: DEFAULT_MODEL.to_owned(),
-            image: IMAGE.to_owned(),
+            image: std::env::var(IMAGE_ENV)
+                .ok()
+                .map(|image| image.trim().to_owned())
+                .filter(|image| !image.is_empty())
+                .unwrap_or_else(|| IMAGE.to_owned()),
             git_name: None,
             git_email: None,
         }
@@ -497,39 +507,34 @@ pub async fn run(
 ) -> Value {
     let started = Instant::now();
     on(&Progress::new("box", "Asking for a computer"));
-    let nonce = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_nanos());
-    let mut extra = BTreeMap::new();
-    extra.insert("idleStopSeconds".to_owned(), json!(1800));
-    let created = client
-        .create(&CreateParams {
-            idempotency_key: Some(format!("oa-solver-box-{}-{nonce}", run.issue)),
-            body: Some(CreateSandboxRequest {
-                type_: Some(SIZE.into()),
-                ttl_seconds: Nullable::Value(TTL_SECONDS),
-                no_env: Some(true),
-                extra,
-                ..Default::default()
-            }),
-            ..Default::default()
-        })
-        .await;
-    let id = match created {
-        Ok(created) => created.sandbox.id,
-        Err(e) => {
-            let usage = BoxUsage::default();
-            return result(
-                None,
-                Some(format!("No computer was free: {}", why(&e))),
-                &usage,
-                started.elapsed().as_secs_f64(),
-            );
+    let mut last = String::new();
+    let mut up = None;
+    for size in SIZES {
+        match start_box(client, run.issue, size).await {
+            Ok(id) => {
+                up = Some(id);
+                break;
+            }
+            Err(why) => {
+                on(&Progress::new(
+                    "box",
+                    format!("No {size} computer was free: {why}"),
+                ));
+                last = why;
+            }
         }
+    }
+    let Some(id) = up else {
+        return result(
+            None,
+            Some(format!("No computer was free: {last}")),
+            &BoxUsage::default(),
+            started.elapsed().as_secs_f64(),
+        );
     };
     on(&Progress {
         data: json!({"sandbox": id}),
-        ..Progress::new("box", format!("Got computer {id}"))
+        ..Progress::new("box", format!("Computer {id} is up"))
     });
     let (summary, error) = match on_box(client, &id, run, credentials, google, &mut on).await {
         Ok(summary) => (summary, None),
@@ -558,6 +563,52 @@ pub async fn run(
     )
 }
 
+/// Makes a box of `size` and waits until it runs commands; a box that
+/// never does (no capacity in any zone, say) is deleted.
+async fn start_box(client: &boat::Client, issue: u64, size: &str) -> Result<String, String> {
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos());
+    let mut extra = BTreeMap::new();
+    extra.insert("idleStopSeconds".to_owned(), json!(1800));
+    let id = client
+        .create(&CreateParams {
+            idempotency_key: Some(format!("oa-solver-box-{issue}-{nonce}")),
+            body: Some(CreateSandboxRequest {
+                type_: Some(size.into()),
+                ttl_seconds: Nullable::Value(TTL_SECONDS),
+                no_env: Some(true),
+                extra,
+                ..Default::default()
+            }),
+            ..Default::default()
+        })
+        .await
+        .map_err(|e| why(&e))?
+        .sandbox
+        .id;
+    let wait = WaitOptions {
+        timeout: Duration::from_secs(900),
+        interval: Duration::from_secs(3),
+        ..Default::default()
+    };
+    let ready = match client.wait_until_ready(&id, &wait).await {
+        Ok(_) => reachable(client, &id).await,
+        Err(e) => Err(why(&e)),
+    };
+    if let Err(why_not) = ready {
+        let _ = client
+            .delete_sandbox(&DeleteSandboxParams {
+                sandbox_id: id.clone(),
+                x_ascii_confirm_delete: id.clone(),
+                ..Default::default()
+            })
+            .await;
+        return Err(format!("{id}: {why_not}"));
+    }
+    Ok(id)
+}
+
 async fn usage(client: &boat::Client, id: &str) -> BoxUsage {
     let read = client
         .usage(&UsageParams {
@@ -583,19 +634,6 @@ async fn on_box(
     google: &GoogleToken,
     on: &mut impl FnMut(&Progress),
 ) -> Result<Option<Value>, String> {
-    let wait = WaitOptions {
-        timeout: Duration::from_secs(900),
-        interval: Duration::from_secs(3),
-        ..Default::default()
-    };
-    client
-        .wait_until_ready(id, &wait)
-        .await
-        .map_err(|e| format!("The computer did not start: {}", why(&e)))?;
-    reachable(client, id)
-        .await
-        .map_err(|e| format!("The computer did not start: {e}"))?;
-    on(&Progress::new("box", "The computer is up"));
     let dirs =
         format!("sudo -n install -d -m 0700 -o \"$(id -u)\" -g \"$(id -g)\" {RUN_DIR} {HOST_DIR}");
     match sh(client, id, &dirs).await {

@@ -19,8 +19,9 @@ steps:
         rm -rf .git
   - name: gcr.io/cloud-builders/docker
     dir: src
-    args: [build, -f, deploy/solver-box/Dockerfile, --build-arg, 'CODER_BUILD_COMMIT=${_COMMIT}', -t, '${_IMAGE}:${_COMMIT}', -t, '${_IMAGE}:latest', .]
-images: ['${_IMAGE}:${_COMMIT}', '${_IMAGE}:latest']
+    args: [build, -f, deploy/solver-box/Dockerfile, --build-arg, 'CODER_BUILD_COMMIT=${_COMMIT}', -t, '${_IMAGE}:${_COMMIT}', .]
+# The repository's tags are immutable: each image is named by its commit only.
+images: ['${_IMAGE}:${_COMMIT}']
 options:
   machineType: E2_HIGHCPU_32
   diskSizeGb: 200

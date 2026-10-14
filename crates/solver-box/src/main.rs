@@ -10,7 +10,7 @@ const USAGE: &str = "Usage: oa-solver-box --local-issue OWNER/NAME#N [--model MO
 
 Runs Solver on the issue in the solver container on a box of its own from our
 Box service, prints each progress line and the result as JSON, and deletes the
-box. Reads BOAT_API_KEY (and BOAT_API_BASE), the GitHub token from
+box. The image is OA_SOLVER_IMAGE when set. Reads BOAT_API_KEY (and BOAT_API_BASE), the GitHub token from
 OA_SOLVER_GH_TOKEN or `gh auth token`, and OPENAGENTS_TOKEN when set. Google
 access tokens come from gcloud, or the metadata server with --metadata-token.";
 

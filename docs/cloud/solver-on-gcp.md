@@ -27,7 +27,8 @@ and the box is deleted. Nothing runs on the person's computer.
 3. **Box.** The box dispatcher (`oa-solver-box`) takes solver runs only
    (`POST /v1/work-hosts/{name}/claim` `{engines: ["solver"]}`) and asks the
    Box SDK (`crates/boat`, against our own [oa-boat](oa-boat.md) on GCE; never
-   hosted boat.dev) for a box: a `large` on-demand sandbox from the
+   hosted boat.dev) for a box: a `large` on-demand (then `xlarge`, then
+   `default` when Google has no capacity for the size) sandbox from the
    `oa-coder-host` image, its env holding no credential.
 4. **Repository.** The dispatcher writes the run's credentials to the box
    through the files API (mode 600, outside snapshots, deleted by the run's

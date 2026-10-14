@@ -10,7 +10,9 @@ with every solver hand on `google/gemini-4-argon` through Vertex AI.
 ## The image
 
 `us-central1-docker.pkg.dev/openagentsgemini/openagents/oa-solver-box:<commit>`
-(and `:latest`), built by [`cloudbuild.yaml`](cloudbuild.yaml) from a pushed
+(the repository's tags are immutable, so there is no moving `:latest`; the first
+build, `193aedc`, kept a `:latest` tag that can be neither moved nor removed,
+and its gh is too old for the solver: never use it), built by [`cloudbuild.yaml`](cloudbuild.yaml) from a pushed
 commit:
 
 ```sh
@@ -59,7 +61,8 @@ one, 2 when it never reached the solver.
 ## The box runner
 
 `oa-solver-box` ([`crates/solver-box`](../../crates/solver-box)) runs one
-issue: it asks our Box service for a `large` box (on demand, TTL 6 h, idle
+issue: it asks our Box service for a `large` box (then `xlarge`, then
+`default`, when Google has no capacity for the size; on demand, TTL 6 h, idle
 stop 30 min, no env), makes `/run/oa-solver` and `/run/oa-solver-host` on
 the box's tmpfs (mode 700), writes the env file, the Vertex AI token and an
 Artifact Registry token there through the files API (mode 600), and starts
@@ -83,7 +86,8 @@ set -a; . ~/work/.secrets/coder-gate-signin.env; set +a   # OPENAGENTS_TOKEN
 cargo run -p solver-box -- --local-issue AtlantisPleb/coder-one-sandbox#1 --result /tmp/solver-result.json
 ```
 
-The GitHub token is `OA_SOLVER_GH_TOKEN`, else `gh auth token`. Google
+The image is `crates/solver-box`'s `IMAGE` (a commit tag), or
+`OA_SOLVER_IMAGE`, or `--image`. The GitHub token is `OA_SOLVER_GH_TOKEN`, else `gh auth token`. Google
 access tokens come from `gcloud auth print-access-token`, or the metadata
 server with `--metadata-token` (when the runner itself runs on Google
 Cloud). Claiming solver work runs from the website and reporting each
