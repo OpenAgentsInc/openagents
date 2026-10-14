@@ -962,8 +962,33 @@ fn every_screen_validates() {
     state.project_list = vec![crate::account_link::Project {
         id: "prj_0123456789abcdef".into(),
         name: "taxes".into(),
+        role: "viewer".into(),
+        members: 2,
+        shared: true,
         ..Default::default()
     }];
+    state.project_open = Some("prj_0123456789abcdef".into());
+    state.project_chats_read = true;
+    state.project_chats = vec![crate::account_link::Thread {
+        id: "t1".into(),
+        title: "Receipts".into(),
+        surface: "web".into(),
+        started_by: Some(crate::account_link::StartedBy {
+            name: "Grace".into(),
+            you: false,
+        }),
+        ..Default::default()
+    }];
+    state.invite = Some(crate::account_link::Invite {
+        code: "prjinv_x".into(),
+        phase: crate::account_link::InvitePhase::Ready {
+            project: "prj_1111111111111111".into(),
+            name: "Band".into(),
+            role: "editor".into(),
+            invited_by: Some("Ada".into()),
+            member: false,
+        },
+    });
     for screen in [
         Screen::Account,
         Screen::Chats,
@@ -972,6 +997,7 @@ fn every_screen_validates() {
         Screen::Schedules,
         Screen::NewSchedule,
         Screen::Projects,
+        Screen::Project,
     ] {
         state.screen = screen.clone();
         let root = crate::link_view::root(&state, 0);
@@ -1885,4 +1911,372 @@ fn a_tap_on_the_view_before_the_newest_still_counts() {
         node: "link-open-running".into(),
     });
     assert_eq!(f.link.lock().screen, Screen::Projects);
+}
+
+/// The owned and the shared projects the fake website lists (#11591): one
+/// only the person is in, one they edit with others, one they only read.
+fn shared_projects(f: &Fixture) {
+    f.site.answer(
+        "GET /v1/projects?limit=200",
+        200,
+        json!({"data": [
+            {"id": "prj_0123456789abcdef", "object": "project", "name": "openagents",
+             "repositories": [{"repository": "OpenAgentsInc/openagents", "primary": true}],
+             "counts": {"threads": 1}, "role": "owner", "members": 1, "shared": false},
+            {"id": "prj_aaaaaaaaaaaaaaaa", "object": "project", "name": "Garden",
+             "repositories": [], "counts": {"threads": 2},
+             "role": "editor", "members": 3, "shared": true},
+            {"id": "prj_bbbbbbbbbbbbbbbb", "object": "project", "name": "Taxes",
+             "repositories": [], "counts": {"threads": 1},
+             "role": "viewer", "members": 2, "shared": true},
+        ], "next": null}),
+    );
+    f.site.answer(
+        "GET /v1/threads?project=prj_aaaaaaaaaaaaaaaa&limit=200",
+        200,
+        json!({"data": [
+            {"id": "11111111-1111-4111-8111-111111111111", "object": "thread",
+             "title": "Where do the tomatoes go?", "project": "prj_aaaaaaaaaaaaaaaa",
+             "surface": "web", "computer": null, "updated_at": "2026-10-14T10:00:00Z",
+             "messages": 2, "pinned": false, "archived": false,
+             "started_by": {"name": "Ada", "you": false}},
+            {"id": "22222222-2222-4222-8222-222222222222", "object": "thread",
+             "title": "Watering plan", "project": "prj_aaaaaaaaaaaaaaaa",
+             "surface": "web", "computer": null, "updated_at": "2026-10-14T11:00:00Z",
+             "messages": 2, "pinned": false, "archived": false,
+             "started_by": {"name": "You", "you": true}},
+        ], "next": null}),
+    );
+    f.site.answer(
+        "GET /v1/threads?project=prj_bbbbbbbbbbbbbbbb&limit=200",
+        200,
+        json!({"data": [
+            {"id": "33333333-3333-4333-8333-333333333333", "object": "thread",
+             "title": "Receipts", "project": "prj_bbbbbbbbbbbbbbbb",
+             "surface": "web", "computer": null, "updated_at": "2026-10-14T09:00:00Z",
+             "messages": 4, "pinned": false, "archived": false,
+             "started_by": {"name": "Grace", "you": false}},
+        ], "next": null}),
+    );
+    for (id, title, project) in [
+        (
+            "11111111-1111-4111-8111-111111111111",
+            "Where do the tomatoes go?",
+            "prj_aaaaaaaaaaaaaaaa",
+        ),
+        (
+            "33333333-3333-4333-8333-333333333333",
+            "Receipts",
+            "prj_bbbbbbbbbbbbbbbb",
+        ),
+    ] {
+        f.site.answer(
+            &format!("GET /v1/threads/{id}"),
+            200,
+            json!({"thread": {"id": id, "title": title, "surface": "web", "updated_unix": 5,
+                              "online": true, "can_reply": true, "project": project},
+                   "messages": [{"role": "user", "text": "Hello"},
+                                {"role": "assistant", "text": "Hi."}],
+                   "earlier": 0, "waiting": 0}),
+        );
+    }
+}
+
+fn words(f: &mut Fixture) -> Vec<String> {
+    let mut words = vec![];
+    texts(f.link.packet().view.as_ref().unwrap(), &mut words);
+    words
+}
+
+fn keys(f: &mut Fixture) -> Vec<String> {
+    let mut found = vec![];
+    find_keys(f.link.packet().view.as_ref().unwrap(), &mut found);
+    found.into_iter().map(|(key, _)| key).collect()
+}
+
+/// #11591: shared projects list with the person's role, their chats file
+/// under them (every member's), each naming who started it, and a chat
+/// someone else started takes words only.
+#[test]
+fn shared_projects_list_with_your_role_and_every_members_chats() {
+    let mut f = fixture();
+    shared_projects(&f);
+    signed(&mut f);
+    f.link.act(Action::Show {
+        screen: Screen::Projects,
+        id: None,
+    });
+    until(|| f.link.lock().projects_read);
+    let shown = words(&mut f);
+    for (title, detail) in [
+        ("openagents", "OpenAgentsInc/openagents · 1 chat"),
+        ("Garden", "Shared · editor · No repository · 2 chats"),
+        ("Taxes", "Shared · viewer · No repository · 1 chat"),
+    ] {
+        assert!(
+            shown.windows(2).any(|w| w[0] == title && w[1] == detail),
+            "{title}: {shown:?}"
+        );
+    }
+    // A project opens its chats, every member's, newest first.
+    f.link.tap(Intent::OpenProject {
+        id: "prj_aaaaaaaaaaaaaaaa".into(),
+    });
+    until(|| f.link.lock().project_chats_read);
+    assert_eq!(f.link.lock().screen, Screen::Project);
+    let shown = words(&mut f);
+    assert!(shown.iter().any(|w| w == "Garden"), "{shown:?}");
+    assert!(shown.iter().any(|w| w == "Shared · editor"), "{shown:?}");
+    let at = |w: &str| shown.iter().position(|s| s == w).unwrap();
+    assert!(at("Watering plan") < at("Where do the tomatoes go?"));
+    assert!(
+        shown
+            .windows(2)
+            .any(|w| w[0] == "Where do the tomatoes go?" && w[1] == "Started by Ada"),
+        "{shown:?}"
+    );
+    // Nothing extra on the person's own chat.
+    assert!(
+        shown
+            .windows(2)
+            .any(|w| w[0] == "Watering plan" && w[1] == "openagents.com"),
+        "{shown:?}"
+    );
+    assert!(!shown.iter().any(|w| w.contains("Started by You")));
+    assert!(keys(&mut f).iter().any(|k| k == "link-project-new-chat"));
+    // Someone else's chat: read, replied to in words, no photos.
+    f.link.tap(Intent::Open {
+        id: "11111111-1111-4111-8111-111111111111".into(),
+    });
+    until(|| f.link.lock().open.as_ref().is_some_and(|o| o.loaded));
+    let shown = words(&mut f);
+    assert!(shown.iter().any(|w| w == "Started by Ada"), "{shown:?}");
+    assert!(shown.iter().any(|w| w == "Reply"), "{shown:?}");
+    assert!(!f.link.takes_attachments());
+    f.site.answer(
+        "POST /v1/threads/11111111-1111-4111-8111-111111111111/messages",
+        202,
+        json!({"queued": true}),
+    );
+    let token = format!(
+        "link-reply-11111111-1111-4111-8111-111111111111-{}",
+        f.link.composer
+    );
+    f.link.input(&token, "Next to the fence.");
+    until(|| {
+        !f.site
+            .calls("POST /v1/threads/11111111-1111-4111-8111-111111111111/messages")
+            .is_empty()
+    });
+    // Back returns to the project's chats, then to the projects.
+    f.link.tap(Intent::Back);
+    assert_eq!(f.link.lock().screen, Screen::Project);
+    f.link.tap(Intent::Back);
+    assert_eq!(f.link.lock().screen, Screen::Projects);
+    // A new chat in a shared project the person edits starts inside it.
+    f.link.tap(Intent::ProjectChat {
+        id: "prj_aaaaaaaaaaaaaaaa".into(),
+    });
+    assert_eq!(
+        f.link.lock().open.as_ref().and_then(|o| o.project.clone()),
+        Some("prj_aaaaaaaaaaaaaaaa".into())
+    );
+}
+
+/// #11591: a viewer reads a shared project's chats and is offered no
+/// control that sends.
+#[test]
+fn a_viewer_reads_a_shared_project_and_sends_nothing() {
+    let mut f = fixture();
+    shared_projects(&f);
+    signed(&mut f);
+    f.link.act(Action::Show {
+        screen: Screen::Projects,
+        id: None,
+    });
+    until(|| f.link.lock().projects_read);
+    f.link.tap(Intent::OpenProject {
+        id: "prj_bbbbbbbbbbbbbbbb".into(),
+    });
+    until(|| f.link.lock().project_chats_read);
+    let shown = words(&mut f);
+    assert!(
+        shown
+            .windows(2)
+            .any(|w| w[0] == "Receipts" && w[1] == "Started by Grace"),
+        "{shown:?}"
+    );
+    assert!(!keys(&mut f).iter().any(|k| k == "link-project-new-chat"));
+    assert!(
+        shown
+            .iter()
+            .any(|w| w.starts_with("You can read this project"))
+    );
+    // No new chat in it, even from a stale tap.
+    f.link.tap(Intent::ProjectChat {
+        id: "prj_bbbbbbbbbbbbbbbb".into(),
+    });
+    assert!(f.link.lock().open.is_none());
+    f.link.tap(Intent::Open {
+        id: "33333333-3333-4333-8333-333333333333".into(),
+    });
+    until(|| f.link.lock().open.as_ref().is_some_and(|o| o.loaded));
+    let view = f.link.packet().view.unwrap();
+    let mut found = vec![];
+    find_keys(&view, &mut found);
+    let composer = &found
+        .iter()
+        .find(|(key, _)| key == "link-composer")
+        .expect("a composer")
+        .1;
+    assert_eq!(
+        composer["element"]["props"]["enabled"],
+        json!(false),
+        "{composer}"
+    );
+    assert_eq!(
+        composer["element"]["props"]["placeholder"],
+        json!("Only the owner and editors can reply here")
+    );
+    assert!(!f.link.takes_attachments());
+}
+
+/// #11591: an invitation link opened on the phone shows on Projects, read
+/// first, then joined (or declined); a used link says so.
+#[test]
+fn an_invitation_link_previews_then_joins_or_declines() {
+    let mut f = fixture();
+    shared_projects(&f);
+    f.site.answer(
+        "POST /v1/projects/invitations/preview",
+        200,
+        json!({"project": {"id": "prj_cccccccccccccccc", "name": "Band"},
+               "role": "editor", "invited_by": "Ada",
+               "expires_at": "2026-10-21T00:00:00Z", "member": false}),
+    );
+    f.site.answer(
+        "POST /v1/projects/invitations/accept",
+        200,
+        json!({"id": "prj_cccccccccccccccc", "object": "project", "name": "Band",
+               "repositories": [], "counts": {"threads": 0},
+               "role": "editor", "members": 2, "shared": true}),
+    );
+    f.site.answer(
+        "GET /v1/threads?project=prj_cccccccccccccccc&limit=200",
+        200,
+        json!({"data": [], "next": null}),
+    );
+    signed(&mut f);
+    // Not an invitation: left to pairing.
+    assert!(!f.link.open_link("https://openagents.com/connect#abc"));
+    assert!(
+        f.link
+            .open_link(&format!("{SITE}/projects/join/prjinv_0123456789abcdef"))
+    );
+    let packet = f.link.packet();
+    assert_eq!(packet.show, Some(Screen::Projects));
+    assert_eq!(f.link.packet().show, None, "sent once");
+    f.link.act(Action::Show {
+        screen: Screen::Projects,
+        id: None,
+    });
+    until(|| {
+        f.link
+            .lock()
+            .invite
+            .as_ref()
+            .is_some_and(|i| matches!(i.phase, crate::account_link::InvitePhase::Ready { .. }))
+    });
+    assert_eq!(
+        f.site.calls("POST /v1/projects/invitations/preview")[0].body,
+        Some(json!({"code": "prjinv_0123456789abcdef"}))
+    );
+    let shown = words(&mut f);
+    assert!(
+        shown.iter().any(|w| w == "Ada invited you to Band"),
+        "{shown:?}"
+    );
+    assert!(shown.iter().any(|w| w == "Join"), "{shown:?}");
+    assert!(shown.iter().any(|w| w == "Decline"), "{shown:?}");
+    for word in &shown {
+        assert!(oa_copy::violations(word, &[]).is_empty(), "{word}");
+    }
+    f.link.tap(Intent::JoinProject);
+    until(|| f.link.lock().notice.as_deref() == Some("You joined Band."));
+    assert_eq!(
+        f.site.calls("POST /v1/projects/invitations/accept")[0].body,
+        Some(json!({"code": "prjinv_0123456789abcdef"}))
+    );
+    {
+        let state = f.link.lock();
+        assert!(state.invite.is_none());
+        assert_eq!(state.screen, Screen::Project);
+        assert_eq!(state.project_open.as_deref(), Some("prj_cccccccccccccccc"));
+    }
+    // A second link, declined: nothing is joined.
+    assert!(
+        f.link
+            .open_link("https://openagents.com/projects/join/prjinv_ffff")
+    );
+    until(|| {
+        f.link
+            .lock()
+            .invite
+            .as_ref()
+            .is_some_and(|i| matches!(i.phase, crate::account_link::InvitePhase::Ready { .. }))
+    });
+    f.link.tap(Intent::DeclineInvite);
+    assert!(f.link.lock().invite.is_none());
+    assert_eq!(
+        f.site.calls("POST /v1/projects/invitations/accept").len(),
+        1
+    );
+    // A used or expired link says so, with Close.
+    f.site.answer(
+        "POST /v1/projects/invitations/preview",
+        404,
+        json!({"error": {"code": "invitation_not_found", "message": "Not found."}}),
+    );
+    assert!(
+        f.link
+            .open_link(&format!("{SITE}/projects/join/prjinv_used"))
+    );
+    until(|| {
+        f.link
+            .lock()
+            .invite
+            .as_ref()
+            .is_some_and(|i| matches!(i.phase, crate::account_link::InvitePhase::Failed(_)))
+    });
+    let shown = words(&mut f);
+    assert!(
+        shown
+            .iter()
+            .any(|w| w == "This invitation was used or has expired. Ask for a new link."),
+        "{shown:?}"
+    );
+    assert!(shown.iter().any(|w| w == "Close"));
+}
+
+#[test]
+fn only_a_join_link_carries_an_invitation_code() {
+    use crate::account_link::join_code;
+    let site = "https://openagents.com";
+    for (link, code) in [
+        (
+            "https://openagents.com/projects/join/prjinv_abc",
+            Some("prjinv_abc"),
+        ),
+        (
+            "https://openagents.com/projects/join/prjinv_abc/?x=1",
+            Some("prjinv_abc"),
+        ),
+        ("https://openagents.com/projects/join/", None),
+        ("https://openagents.com/projects/join/a b", None),
+        ("https://evil.example/projects/join/prjinv_abc", None),
+        ("https://openagents.com/connect#prjinv_abc", None),
+        ("https://openagents.com.evil.example/projects/join/x", None),
+    ] {
+        assert_eq!(join_code(site, link).as_deref(), code, "{link}");
+    }
 }

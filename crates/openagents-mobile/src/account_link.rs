@@ -36,8 +36,15 @@
 //!
 //! **Projects** (#11558). The Projects screen lists `GET /v1/projects`
 //! (each with zero or more repositories, one primary), makes one from a
-//! name alone (`POST /v1/projects {name}`), and a tap on a project starts
-//! a chat inside it (`POST /v1/threads` with `project`, #11542).
+//! name alone (`POST /v1/projects {name}`), and a tap on a project shows
+//! its chats (`GET /v1/threads?project=`, every member's in a shared
+//! project, each naming who started it, #11591) with **New chat**, which
+//! starts one inside it (`POST /v1/threads` with `project`, #11542). A
+//! shared project names the person's role; a viewer reads and sends
+//! nothing. An invitation link opened on the phone
+//! (`/projects/join/<code>`) shows on Projects: read first
+//! (`POST /v1/projects/invitations/preview`), then Join
+//! (`.../accept`) or Decline.
 //!
 //! **Supervise.** `GET /v1/agents` lists what Coder runs on each computer
 //! (status, elapsed, cost, a pending question), and
@@ -384,6 +391,19 @@ pub struct Thread {
     pub pinned: bool,
     /// The project (`prj_…`) the chat is filed under (#11541).
     pub project: Option<String>,
+    /// Who started it, in a project's chat list (`GET /v1/threads?project=`,
+    /// #11586): every member's chats list in a shared project.
+    pub started_by: Option<StartedBy>,
+}
+
+/// Who started a chat in a project.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct StartedBy {
+    /// "You", a member's name, or "A former member".
+    pub name: String,
+    /// The signed-in person started it.
+    pub you: bool,
 }
 
 /// One project on the account, as `GET /v1/projects` lists it (#11558):
@@ -397,6 +417,32 @@ pub struct Project {
     pub repositories: usize,
     /// How many of the account's chats are filed under it.
     pub chats: u64,
+    /// The signed-in person's role in it: `owner`, `editor`, or `viewer`
+    /// (#11585). A website from before sharing sends none: the owner.
+    pub role: String,
+    /// How many people are in it.
+    pub members: u64,
+    /// Other people are in it, or were invited.
+    pub shared: bool,
+}
+
+impl Project {
+    /// Whether the signed-in person may start chats and send messages in
+    /// it: the owner and editors; viewers read only.
+    #[must_use]
+    pub fn writes(&self) -> bool {
+        self.role != "viewer"
+    }
+
+    /// "Shared · editor" for a shared project; `None` for one only the
+    /// signed-in person is in.
+    #[must_use]
+    pub fn sharing(&self) -> Option<String> {
+        self.shared.then(|| match self.role.as_str() {
+            "" => "Shared".to_owned(),
+            role => format!("Shared · {role}"),
+        })
+    }
 }
 
 impl Project {
@@ -418,8 +464,64 @@ impl Project {
             repositories: repositories.map_or(usize::from(primary.is_some()), Vec::len),
             primary,
             chats: value["counts"]["threads"].as_u64().unwrap_or(0),
+            role: value["role"].as_str().unwrap_or("owner").to_owned(),
+            members: value["members"].as_u64().unwrap_or(1),
+            shared: value["shared"].as_bool().unwrap_or(false),
         })
     }
+}
+
+/// An invitation link to a shared project, opened on this phone
+/// (`https://openagents.com/projects/join/<code>`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Invite {
+    /// The code from the link.
+    pub code: String,
+    pub phase: InvitePhase,
+}
+
+/// Where an invitation is.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum InvitePhase {
+    /// Waiting to be read (`POST /v1/projects/invitations/preview`).
+    Reading,
+    /// What the link offers, to join or decline.
+    Ready {
+        project: String,
+        name: String,
+        role: String,
+        invited_by: Option<String>,
+        /// The person is already in the project.
+        member: bool,
+    },
+    /// Joining (`POST /v1/projects/invitations/accept`).
+    Joining,
+    /// It can't be used: why.
+    Failed(String),
+}
+
+/// The invitation code an opened link carries, when it is a link to join
+/// a shared project on `origin` (or openagents.com): the code after
+/// `/projects/join/`, letters, digits, `_`, and `-` only.
+#[must_use]
+pub fn join_code(origin: &str, link: &str) -> Option<String> {
+    let link = link.trim();
+    let rest = [
+        origin.trim_end_matches('/'),
+        PRODUCTION,
+        "https://www.openagents.com",
+    ]
+    .iter()
+    .find_map(|site| link.strip_prefix(site))?;
+    let code = rest.strip_prefix("/projects/join/")?;
+    let code = code.split(['?', '#']).next().unwrap_or_default();
+    let code = code.trim_end_matches('/');
+    (!code.is_empty()
+        && code.len() <= 128
+        && code
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-'))
+    .then(|| code.to_owned())
 }
 
 /// How many views before the newest still take a tap.
@@ -802,6 +904,8 @@ pub enum Screen {
     NewSchedule,
     /// The account's projects, and a new one by name (#11558).
     Projects,
+    /// One project's chats, every member's in a shared one (#11591).
+    Project,
 }
 
 /// An open chat.
@@ -890,6 +994,10 @@ pub struct Packet {
     /// Open the drawer: the top bar's menu button was tapped (sent once).
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub menu: bool,
+    /// Show the account surface on this screen: an invitation link to a
+    /// shared project opened the app (`projects`, sent once).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub show: Option<Screen>,
     /// The surface changes on its own: ask for packets.
     pub live: bool,
 }
@@ -970,6 +1078,14 @@ pub enum Intent {
     ProjectChat {
         id: String,
     },
+    /// Open one project's chats (#11591).
+    OpenProject {
+        id: String,
+    },
+    /// Join the shared project the opened invitation offers.
+    JoinProject,
+    /// Turn the opened invitation down (or close it).
+    DeclineInvite,
     /// Delete a memory note everywhere.
     DeleteNote {
         id: String,
@@ -1048,6 +1164,19 @@ pub struct State {
     pub projects_read: bool,
     /// A new project is on its way.
     pub projects_busy: bool,
+    /// The project the Project screen shows (#11591).
+    pub project_open: Option<String>,
+    /// Its chats, every member's in a shared one, newest first
+    /// (`GET /v1/threads?project=`).
+    pub project_chats: Vec<Thread>,
+    /// They were read for `project_open`.
+    pub project_chats_read: bool,
+    /// The open chat was opened from the Project screen: Back goes there.
+    pub from_project: bool,
+    /// An invitation link to a shared project the app was opened with.
+    pub invite: Option<Invite>,
+    /// Ask the host to show the surface on this screen, once.
+    pub show_host: Option<Screen>,
     pub agents: Vec<Agents>,
     pub agents_read: bool,
     pub screen: Screen,
@@ -1295,6 +1424,9 @@ impl Link {
                     } else {
                         Screen::Account
                     };
+                    if state.screen == Screen::Project && state.project_open.is_none() {
+                        state.screen = Screen::Projects;
+                    }
                 }
                 state.notice = None;
                 state.changed();
@@ -1378,7 +1510,8 @@ impl Link {
             Intent::Open { id } => {
                 let mut state = self.lock();
                 open_chat(&mut state, &id);
-                state.from_list = state.screen == Screen::Chats;
+                state.from_project = state.screen == Screen::Project;
+                state.from_list = matches!(state.screen, Screen::Chats | Screen::Project);
                 state.screen = Screen::Chat;
                 state.changed();
                 drop(state);
@@ -1406,7 +1539,11 @@ impl Link {
                 let mut state = self.lock();
                 state.screen = match state.screen {
                     Screen::Message => Screen::Running,
+                    Screen::Chat if state.from_project && state.project_open.is_some() => {
+                        Screen::Project
+                    }
                     Screen::Chat => Screen::Chats,
+                    Screen::Project => Screen::Projects,
                     Screen::Note => Screen::Memory,
                     Screen::NewSchedule => Screen::Schedules,
                     _ => Screen::Account,
@@ -1449,9 +1586,12 @@ impl Link {
             Intent::DeleteNote { id } => self.delete_note(id),
             Intent::ProjectChat { id } => {
                 let mut state = self.lock();
-                if state.signed() && state.project_list.iter().any(|p| p.id == id) {
-                    // Back goes to Your chats, where the new chat lists.
+                // Viewers read a shared project's chats; they start none.
+                if state.signed() && state.project_list.iter().any(|p| p.id == id && p.writes()) {
+                    // Back goes to the project's chats when it was open,
+                    // else to Your chats, where the new chat lists.
                     state.from_list = true;
+                    state.from_project = state.project_open.as_deref() == Some(id.as_str());
                     state.open = Some(Open {
                         id: uuid::Uuid::new_v4().to_string(),
                         loaded: true,
@@ -1463,6 +1603,28 @@ impl Link {
                     state.notice = None;
                     state.changed();
                 }
+            }
+            Intent::OpenProject { id } => {
+                let mut state = self.lock();
+                if state.signed() && state.project_list.iter().any(|p| p.id == id) {
+                    if state.project_open.as_deref() != Some(id.as_str()) {
+                        state.project_chats.clear();
+                        state.project_chats_read = false;
+                    }
+                    state.project_open = Some(id);
+                    state.screen = Screen::Project;
+                    state.notice = None;
+                    state.changed();
+                    drop(state);
+                    self.nudge.notify_one();
+                }
+            }
+            Intent::JoinProject => self.join_project(),
+            Intent::DeclineInvite => {
+                let mut state = self.lock();
+                state.invite = None;
+                state.notice = None;
+                state.changed();
             }
             Intent::NewSchedule => {
                 let mut state = self.lock();
@@ -1545,7 +1707,7 @@ impl Link {
             Intent::AddPhoto => {
                 let state = self.lock();
                 if let Some(open) = &state.open
-                    && takes_photos(open)
+                    && takes_photos(&state, open)
                     && open.photos.len() < MAX_PHOTOS
                 {
                     drop(state);
@@ -1692,6 +1854,9 @@ impl Link {
             state.projects.clear();
             state.project_list.clear();
             state.projects_read = false;
+            state.project_open = None;
+            state.project_chats.clear();
+            state.project_chats_read = false;
             state.computers.clear();
             state.agents.clear();
             state.threads_read = false;
@@ -1770,7 +1935,11 @@ impl Link {
     /// Whether the open chat takes photos and files now: a web chat that
     /// takes replies.
     pub fn takes_attachments(&self) -> bool {
-        self.lock().open.as_ref().is_some_and(takes_photos)
+        let state = self.lock();
+        state
+            .open
+            .as_ref()
+            .is_some_and(|open| takes_photos(&state, open))
     }
 
     /// Add a photo or file the host's picker read to the open chat's
@@ -1781,7 +1950,11 @@ impl Link {
     pub fn attach(&mut self, name: &str, bytes: Vec<u8>) {
         let checked = attachable(name, bytes);
         let mut state = self.lock();
-        let Some(open) = state.open.as_mut().filter(|open| takes_photos(open)) else {
+        let takes = state
+            .open
+            .as_ref()
+            .is_some_and(|open| takes_photos(&state, open));
+        let Some(open) = state.open.as_mut().filter(|_| takes) else {
             return;
         };
         let notice = match checked {
@@ -2016,6 +2189,104 @@ impl Link {
                     Ok(reply) => reply.message("That project wasn't made. Try again."),
                     Err(error) => error.clone(),
                 });
+                state.changed();
+            }
+            wake();
+            nudge.notify_one();
+        });
+    }
+
+    /// A link the app was opened with: an invitation to a shared project
+    /// (`https://openagents.com/projects/join/<code>`) shows on the
+    /// Projects screen to join or decline, read once signed in. Answers
+    /// whether it was one.
+    pub fn open_link(&mut self, link: &str) -> bool {
+        let mut state = self.lock();
+        let Some(code) = join_code(&state.origin, link) else {
+            return false;
+        };
+        state.invite = Some(Invite {
+            code,
+            phase: InvitePhase::Reading,
+        });
+        state.show_host = Some(Screen::Projects);
+        state.screen = if state.signed() {
+            Screen::Projects
+        } else {
+            Screen::Account
+        };
+        state.notice = None;
+        state.changed();
+        drop(state);
+        self.nudge.notify_one();
+        true
+    }
+
+    /// Join the shared project the invitation offers
+    /// (`POST /v1/projects/invitations/accept`), then show its chats.
+    fn join_project(&mut self) {
+        let (origin, token, code) = {
+            let mut state = self.lock();
+            let Some(session) = state.session.clone() else {
+                return;
+            };
+            let Some(invite) = state.invite.as_mut() else {
+                return;
+            };
+            if !matches!(invite.phase, InvitePhase::Ready { member: false, .. }) {
+                return;
+            }
+            invite.phase = InvitePhase::Joining;
+            let code = invite.code.clone();
+            state.notice = None;
+            state.changed();
+            (state.origin.clone(), session.token, code)
+        };
+        let http = self.http.clone();
+        let state = self.state.clone();
+        let wake = self.wake.clone();
+        let nudge = self.nudge.clone();
+        self.spawn(async move {
+            let reply = http
+                .call(
+                    "POST",
+                    format!("{origin}/v1/projects/invitations/accept"),
+                    Some(token),
+                    Some(json!({"code": code})),
+                )
+                .await;
+            {
+                let mut state = lock(&state);
+                match &reply {
+                    Ok(reply) if (200..300).contains(&reply.status) => {
+                        state.invite = None;
+                        if let Some(project) = Project::from_value(&reply.body) {
+                            state
+                                .projects
+                                .insert(project.id.clone(), project.name.clone());
+                            state.notice = Some(format!("You joined {}.", project.name));
+                            state.project_list.retain(|p| p.id != project.id);
+                            state.project_open = Some(project.id.clone());
+                            state.project_list.insert(0, project);
+                            state.project_chats.clear();
+                            state.project_chats_read = false;
+                            state.screen = Screen::Project;
+                        }
+                    }
+                    Ok(reply) => {
+                        let why = reply.message("That invitation didn't work. Try again.");
+                        if let Some(invite) = state.invite.as_mut() {
+                            invite.phase = InvitePhase::Failed(why);
+                        }
+                    }
+                    // No answer: read it again, to join once it answers.
+                    Err(error) => {
+                        if let Some(invite) = state.invite.as_mut() {
+                            invite.phase = InvitePhase::Reading;
+                        }
+                        state.notice = Some(error.clone());
+                    }
+                }
                 state.changed();
             }
             wake();
@@ -2616,7 +2887,11 @@ impl Link {
             .then(|| state.origin.trim_start_matches("https://").to_owned());
         let live = state.shown
             && (matches!(state.sign_in, SignIn::Starting | SignIn::Waiting { .. })
-                || state.open.as_ref().is_some_and(|o| o.sending || !o.loaded));
+                || state.open.as_ref().is_some_and(|o| o.sending || !o.loaded)
+                || state.invite.as_ref().is_some_and(|i| {
+                    matches!(i.phase, InvitePhase::Reading | InvitePhase::Joining)
+                }));
+        let show = state.show_host.take();
         let shown = state.shown;
         drop(state);
         let view = shown.then(|| self.render()).flatten();
@@ -2634,6 +2909,7 @@ impl Link {
             notify,
             open_url: None,
             menu: std::mem::take(&mut self.menu),
+            show,
             live,
         }
     }
@@ -2724,13 +3000,46 @@ pub(crate) fn attachable_file(bytes: &[u8]) -> Option<Result<(), String>> {
 
 /// Whether `open` is a chat a reply with photos can go to: a web chat that
 /// takes replies now. Coder's chats on a computer and the phone's own
-/// take words only.
-pub(crate) fn takes_photos(open: &Open) -> bool {
+/// take words only, and so does a chat someone else started in a shared
+/// project (#11586).
+pub(crate) fn takes_photos(state: &State, open: &Open) -> bool {
     open.new
-        || open
+        || (open
             .thread
             .as_ref()
             .is_some_and(|thread| thread.surface == "web" && thread.can_reply)
+            && !someone_elses(state, &open.id)
+            && !read_only(state, open))
+}
+
+/// Whether `id` is a chat someone else started in a shared project.
+pub(crate) fn someone_elses(state: &State, id: &str) -> bool {
+    started_by(state, id).is_some_and(|by| !by.you)
+}
+
+/// Who started chat `id`, when a project's chat list named it.
+pub(crate) fn started_by<'a>(state: &'a State, id: &str) -> Option<&'a StartedBy> {
+    state
+        .project_chats
+        .iter()
+        .find(|t| t.id == id)
+        .and_then(|t| t.started_by.as_ref())
+}
+
+/// The project `open` is in (or starts in), as the account lists it.
+pub(crate) fn project_of<'a>(state: &'a State, open: &Open) -> Option<&'a Project> {
+    let id = open
+        .thread
+        .as_ref()
+        .and_then(|t| t.project.as_ref())
+        .or(open.project.as_ref())?;
+    state.project_list.iter().find(|p| &p.id == id)
+}
+
+/// Whether `open` is in a shared project where the signed-in person is a
+/// viewer: they read it and send nothing.
+pub(crate) fn read_only(state: &State, open: &Open) -> bool {
+    project_of(state, open).is_some_and(|p| !p.writes())
 }
 
 /// `value` for a URL query: letters, digits, and `-._~` as they are, every
@@ -2756,7 +3065,14 @@ fn open_chat(state: &mut State, id: &str) {
     if state.open.as_ref().is_some_and(|open| open.id == id) {
         return;
     }
-    let thread = state.threads.iter().find(|t| t.id == id).cloned();
+    // A chat someone else started in a shared project lists only under
+    // the project; its row stands in until the chat is read.
+    let thread = state
+        .threads
+        .iter()
+        .chain(&state.project_chats)
+        .find(|t| t.id == id)
+        .cloned();
     state.open = Some(Open {
         id: id.to_owned(),
         thread,
@@ -2853,6 +3169,10 @@ async fn wait_for_approval(
             state.sign_in = SignIn::Idle;
             state.choice_read = false;
             state.notice = None;
+            // An invitation opened before sign-in shows now.
+            if state.invite.is_some() {
+                state.screen = Screen::Projects;
+            }
             state.changed();
             drop(state);
             wake();
@@ -2979,6 +3299,40 @@ impl Poller {
                 .filter_map(Project::from_value)
                 .collect(),
         )
+    }
+
+    /// One project's chats (`GET /v1/threads?project=ID`), oldest first,
+    /// every member's in a shared project, each naming who started it.
+    /// `Err` carries the HTTP status (0 when the call failed).
+    async fn project_chats(
+        &self,
+        origin: &str,
+        token: &str,
+        project: &str,
+    ) -> Result<Vec<Thread>, u16> {
+        let reply = self
+            .http
+            .call(
+                "GET",
+                format!(
+                    "{origin}/v1/threads?project={}&limit=200",
+                    query_value(project)
+                ),
+                Some(token.to_owned()),
+                None,
+            )
+            .await
+            .map_err(|_| 0u16)?;
+        if reply.status != 200 {
+            return Err(reply.status);
+        }
+        Ok(reply.body["data"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|row| serde_json::from_value::<Thread>(row.clone()).ok())
+            .filter(|t| !t.id.is_empty())
+            .collect())
     }
 
     async fn run(self) {
@@ -3146,7 +3500,9 @@ impl Poller {
         // The Projects screen reads them each pass while it shows.
         let unknown = {
             let state = lock(&self.state);
-            (state.shown && state.screen == Screen::Projects && !state.projects_busy)
+            (state.shown
+                && matches!(state.screen, Screen::Projects | Screen::Project)
+                && !state.projects_busy)
                 || state
                     .threads
                     .iter()
@@ -3164,6 +3520,100 @@ impl Poller {
                 state.project_list = list;
                 state.projects_read = true;
                 state.changed();
+            }
+        }
+        // The open project's chats, every member's in a shared one
+        // (#11591), while it or one of its chats shows.
+        let project = {
+            let state = lock(&self.state);
+            state.project_open.clone().filter(|_| {
+                state.shown
+                    && (state.screen == Screen::Project
+                        || (state.screen == Screen::Chat && state.from_project))
+            })
+        };
+        if let Some(project) = project {
+            match self.project_chats(&origin, &token, &project).await {
+                Ok(mut chats) => {
+                    // The website lists them oldest first.
+                    chats.reverse();
+                    let mut state = lock(&self.state);
+                    if state.project_open.as_deref() == Some(project.as_str())
+                        && (state.project_chats != chats || !state.project_chats_read)
+                    {
+                        state.project_chats = chats;
+                        state.project_chats_read = true;
+                        state.changed();
+                    }
+                }
+                Err(401) => signed_out = true,
+                Err(404) => {
+                    // Left, removed, or deleted: back to the list.
+                    let mut state = lock(&self.state);
+                    if state.project_open.as_deref() == Some(project.as_str()) {
+                        state.project_open = None;
+                        state.project_chats.clear();
+                        state.project_list.retain(|p| p.id != project);
+                        if state.screen == Screen::Project {
+                            state.screen = Screen::Projects;
+                        }
+                        state.notice = Some("You're no longer in that project.".into());
+                        state.changed();
+                    }
+                }
+                Err(_) => failed = true,
+            }
+        }
+        // An invitation link the app was opened with: what it offers.
+        let invite = lock(&self.state)
+            .invite
+            .as_ref()
+            .filter(|i| i.phase == InvitePhase::Reading)
+            .map(|i| i.code.clone());
+        if let Some(code) = invite {
+            match self
+                .http
+                .call(
+                    "POST",
+                    format!("{origin}/v1/projects/invitations/preview"),
+                    Some(token.clone()),
+                    Some(json!({"code": code})),
+                )
+                .await
+            {
+                Ok(reply) if reply.status == 401 => signed_out = true,
+                Ok(reply) => {
+                    let body = &reply.body;
+                    let phase = match (
+                        reply.status,
+                        body["project"]["id"].as_str(),
+                        body["project"]["name"].as_str(),
+                    ) {
+                        (200, Some(project), Some(name)) => InvitePhase::Ready {
+                            project: project.to_owned(),
+                            name: name.to_owned(),
+                            role: body["role"].as_str().unwrap_or("editor").to_owned(),
+                            invited_by: body["invited_by"]
+                                .as_str()
+                                .filter(|n| !n.trim().is_empty())
+                                .map(str::to_owned),
+                            member: body["member"].as_bool().unwrap_or(false),
+                        },
+                        (404, ..) => InvitePhase::Failed(
+                            "This invitation was used or has expired. Ask for a new link."
+                                .to_owned(),
+                        ),
+                        _ => InvitePhase::Failed(
+                            reply.message("That invitation couldn't be read. Try again."),
+                        ),
+                    };
+                    let mut state = lock(&self.state);
+                    if let Some(invite) = state.invite.as_mut().filter(|i| i.code == code) {
+                        invite.phase = phase;
+                        state.changed();
+                    }
+                }
+                Err(_) => failed = true,
             }
         }
         if let Some(id) = open {
@@ -3384,6 +3834,9 @@ impl Poller {
             state.projects.clear();
             state.project_list.clear();
             state.projects_read = false;
+            state.project_open = None;
+            state.project_chats.clear();
+            state.project_chats_read = false;
             state.agents.clear();
             state.memory.clear();
             state.memory_read = false;

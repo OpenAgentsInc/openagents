@@ -111,6 +111,7 @@ class MainActivity : ComponentActivity() {
     private var screensShown = 0
     private var imagePicksShown = 0
     private var linkMenusShown = 0
+    private var linkProjectsShown = 0
     /** Each attached image's card by resource, so a refresh keeps it. */
     private val imageViews = HashMap<String, View>()
 
@@ -538,8 +539,8 @@ class MainActivity : ComponentActivity() {
             "wallet" -> select(AppTab.WALLET)
             "verse" -> select(AppTab.VERSE)
             "settings" -> { select(AppTab.ACCOUNT); open(null) }
-            "account", "running", "account_chats" -> {
-                link.show(if (place == "account_chats") "chats" else place)
+            "account", "running", "account_chats", "account_projects" -> {
+                link.show(place.removePrefix("account_"))
                 select(AppTab.LINK)
             }
             else -> if (place.startsWith("link_chat:")) {
@@ -959,6 +960,11 @@ class MainActivity : ComponentActivity() {
         if (bridge.linkMenus != linkMenusShown) {
             linkMenusShown = bridge.linkMenus
             openDrawer(true)
+        }
+        // An invitation link to a shared project: Projects (#11591).
+        if (bridge.linkProjects != linkProjectsShown) {
+            linkProjectsShown = bridge.linkProjects
+            go("account_projects")
         }
         // The chat's attach control asked for a photo.
         if (bridge.imagePicks != imagePicksShown) {

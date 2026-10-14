@@ -1599,7 +1599,13 @@ impl App {
             }
             Request::ConnectOpen => self.connect.open(),
             Request::ConnectCode { value } => self.connect.code(&value),
-            Request::ConnectLink { value } => self.connect.link(&value),
+            // An invitation to a shared project opens on the account
+            // surface (#11591); any other link pairs a computer.
+            Request::ConnectLink { value } => {
+                if !self.link.open_link(&value) {
+                    self.connect.link(&value);
+                }
+            }
             Request::ConnectClose => self.connect.close(),
             Request::ConnectNearby { id } => self.connect.nearby(&id),
             Request::ComputersRefresh => {

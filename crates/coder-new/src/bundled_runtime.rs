@@ -354,7 +354,7 @@ impl RuntimeEvent {
 pub fn cli_tool_definition() -> Value {
     json!({"type":"function","function":{
         "name":"openagents_cli",
-        "description":"Run the bundled OpenAgents CLI in the current working directory. Pass an argument array, never a shell command. Use [\"--help\"] to discover command groups, then [\"GROUP\",\"--help\"] for syntax. The CLI supports computers, tasks, issues, settings, knowledge, relays, plugins, worlds, and wallets; commands retain their own access checks. The person's projects (their projects, or a project they name, such as finances) are their openagents.com projects, the Projects list on the website: read them with [\"projects\",\"list\"] and [\"projects\",\"show\",NAME] for one project and its chats (by name, repository, or id); every chat's messages with [\"projects\",\"read\",NAME], or one chat's with [\"chat\",\"read\",\"--thread\",ID] (website and phone chats included; [\"chat\",\"threads\",\"--account\"] lists them all); its files and notes with [\"projects\",\"files\",\"list\",NAME]. A project needs only a name: make one with [\"projects\",\"create\",NAME] (add [\"--repo\",\"OWNER/NAME\"] only when the person names one). A project can have no repository, one, or several with one primary ([\"projects\",\"repo\",\"add\"|\"remove\"|\"primary\",PROJECT,REPO]); one repository can be in several projects and names can repeat. When a name matches more than one project the command lists them: ask the person which one, then use its id. Start a new chat inside a project (\"make a new chat in my finances project\") with [\"chat\",\"send\",MESSAGE,\"--project\",NAME]: OpenAgents answers it on openagents.com and it shows in that project. Files of an only_me project are locked to the person's devices: answer from them with [\"vault\",\"ask\",FILE,\"--project\",ID,\"--question\",TEXT] and never send their contents elsewhere. GitHub Project boards are a different thing, under [\"board\",...]. JSON output is added by the host. Call only for work the user requested; do not send messages, publish, pay, or delete data without their authorization.",
+        "description":"Run the bundled OpenAgents CLI in the current working directory. Pass an argument array, never a shell command. Use [\"--help\"] to discover command groups, then [\"GROUP\",\"--help\"] for syntax. The CLI supports computers, tasks, issues, settings, knowledge, relays, plugins, worlds, and wallets; commands retain their own access checks. The person's projects (their projects, or a project they name, such as finances) are their openagents.com projects, the Projects list on the website: read them with [\"projects\",\"list\"] and [\"projects\",\"show\",NAME] for one project and its chats (by name, repository, or id); every chat's messages with [\"projects\",\"read\",NAME], or one chat's with [\"chat\",\"read\",\"--thread\",ID] (website and phone chats included; [\"chat\",\"threads\",\"--account\"] lists them all); its files and notes with [\"projects\",\"files\",\"list\",NAME]. A project needs only a name: make one with [\"projects\",\"create\",NAME] (add [\"--repo\",\"OWNER/NAME\"] only when the person names one). A project can have no repository, one, or several with one primary ([\"projects\",\"repo\",\"add\"|\"remove\"|\"primary\",PROJECT,REPO]); one repository can be in several projects and names can repeat. When a name matches more than one project the command lists them: ask the person which one, then use its id. Projects other people shared with the person list too, each with their role (owner, editor, or viewer) and marked shared. In a shared project, [\"projects\",\"show\",NAME] lists every member's chats, each with started_by (name, and you when the person started it): say who started a chat when it wasn't the person. A viewer reads a shared project and sends nothing: don't start or reply to chats there for a viewer. When the website refuses to start a chat or send a message, tell the person its reason as it gave it. Join a shared project from an invitation link (openagents.com/projects/join/...) with [\"projects\",\"join\",LINK], only when the person asks. Start a new chat inside a project (\"make a new chat in my finances project\") with [\"chat\",\"send\",MESSAGE,\"--project\",NAME]: OpenAgents answers it on openagents.com and it shows in that project. Files of an only_me project are locked to the person's devices: answer from them with [\"vault\",\"ask\",FILE,\"--project\",ID,\"--question\",TEXT] and never send their contents elsewhere. GitHub Project boards are a different thing, under [\"board\",...]. JSON output is added by the host. Call only for work the user requested; do not send messages, publish, pay, or delete data without their authorization.",
         "parameters":{"type":"object","properties":{"arguments":{"type":"array","items":{"type":"string"},"maxItems":128}},"required":["arguments"],"additionalProperties":false}
     }})
 }
@@ -3452,6 +3452,79 @@ pub(crate) fn still_running(group_clear: bool) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// #11591: Coder reads openagents.com projects through the CLI tool.
+    /// Against a stand-in CLI with an owned and a shared project, the
+    /// tool hands the model each project's role and sharing, who started
+    /// each chat in the shared one, and a viewer's refusal in the
+    /// website's own words; the tool's description says how to use them.
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn shared_projects_reach_the_model_with_roles_starters_and_refusals() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let program = dir.path().join("openagents");
+        std::fs::write(
+            &program,
+            r#"#!/bin/sh
+case "$*" in
+"--json projects list")
+  printf '%s\n' '{"data":[{"id":"prj_0123456789abcdef","name":"openagents","role":"owner","members":1,"shared":false},{"id":"prj_aaaaaaaaaaaaaaaa","name":"Garden","role":"viewer","members":3,"shared":true}]}' ;;
+"--json projects show Garden")
+  printf '%s\n' '{"project":{"id":"prj_aaaaaaaaaaaaaaaa","name":"Garden","role":"viewer","shared":true},"threads":[{"id":"t1","title":"Tomatoes","started_by":{"name":"Ada","you":false}},{"id":"t2","title":"Watering","started_by":{"name":"You","you":true}}]}' ;;
+"--json chat send Hello --project Garden")
+  echo "You can read this project's chats. Ask its owner to make you an editor to send messages." >&2
+  exit 1 ;;
+*) exit 2 ;;
+esac
+"#,
+        )
+        .unwrap();
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let cancel = Arc::new(AtomicBool::new(false));
+        let run = |words: &[&str]| {
+            let words: Vec<String> = words.iter().map(|w| (*w).to_owned()).collect();
+            let program = program.clone();
+            let cwd = dir.path().to_owned();
+            let cancel = cancel.clone();
+            async move { cli_checked(&program, &words, &cwd, &cancel, &mut |_| {}).await }
+        };
+        let listed = run(&["projects", "list"]).await.unwrap();
+        let listed: Value = serde_json::from_str(listed["stdout"].as_str().unwrap()).unwrap();
+        assert_eq!(listed["data"][0]["shared"], json!(false));
+        assert_eq!(listed["data"][1]["role"], json!("viewer"));
+        assert_eq!(listed["data"][1]["shared"], json!(true));
+        let shown = run(&["projects", "show", "Garden"]).await.unwrap();
+        let shown: Value = serde_json::from_str(shown["stdout"].as_str().unwrap()).unwrap();
+        assert_eq!(shown["threads"][0]["started_by"]["name"], json!("Ada"));
+        assert_eq!(shown["threads"][1]["started_by"]["you"], json!(true));
+        let refused = run(&["chat", "send", "Hello", "--project", "Garden"])
+            .await
+            .unwrap();
+        assert_eq!(refused["exit"], json!(1));
+        assert!(
+            refused["stderr"]
+                .to_string()
+                .contains("Ask its owner to make you an editor"),
+            "{refused}"
+        );
+        let description = cli_tool_definition()["function"]["description"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        for words in [
+            "role (owner, editor, or viewer)",
+            "started_by",
+            "A viewer reads a shared project and sends nothing",
+            "tell the person its reason as it gave it",
+            r#"[\"projects\",\"join\",LINK]"#,
+        ] {
+            assert!(
+                description.contains(&words.replace("\\\"", "\"")),
+                "{words}"
+            );
+        }
+    }
 
     /// #11537: the Claude Code login's thinking shows as Claude Code's
     /// own does: `Thinking` while a block streams, then the block as a

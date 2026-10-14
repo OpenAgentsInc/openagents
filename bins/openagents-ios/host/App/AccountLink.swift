@@ -40,6 +40,8 @@ struct LinkPacket: Decodable, Equatable {
     let open_url: String?
     /// The top bar's menu button was tapped: open the drawer (#11472).
     let menu: Bool?
+    /// Show the surface on this screen (`projects`), once.
+    let show: String?
     let live: Bool
 
     static func == (a: LinkPacket, b: LinkPacket) -> Bool {
@@ -147,6 +149,9 @@ extension MobileBridge {
             UIApplication.shared.open(url)
         }
         if packet.menu == true { linkMenuRequested += 1 }
+        if let screen = packet.show {
+            linkShowRequest = ScreenRequest(screen: screen, serial: linkShowRequest.serial + 1)
+        }
         if packet.signed_in { LinkBackground.schedule() }
     }
 }

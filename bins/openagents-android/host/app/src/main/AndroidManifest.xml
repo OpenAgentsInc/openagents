@@ -38,6 +38,8 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="https" android:host="openagents.com" android:path="/connect" />
+                <!-- An invitation to a shared project (#11591). -->
+                <data android:scheme="https" android:host="openagents.com" android:pathPrefix="/projects/join/" />
             </intent-filter>
         </activity>
     </application>

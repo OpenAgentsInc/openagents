@@ -433,6 +433,10 @@ final class MobileBridge: ObservableObject {
     @Published private(set) var computersRequested = 0
     /// Counts taps on the account surface's menu button (#11472).
     @Published var linkMenuRequested = 0
+    /// The account surface asked to show one of its screens (`projects`,
+    /// after an invitation link opened the app), numbered so a repeat
+    /// still shows.
+    @Published var linkShowRequest = ScreenRequest(screen: "", serial: 0)
     /// The Coder tab's last request to open another screen (`wallet`,
     /// `keys`, `playtest`, or `report`), numbered so a repeat still shows.
     @Published private(set) var screenRequest = ScreenRequest(screen: "", serial: 0)

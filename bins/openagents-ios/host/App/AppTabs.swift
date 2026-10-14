@@ -190,6 +190,10 @@ struct AppTabs: View {
         .onChange(of: bridge.computersRequested) { _, _ in tab = .account }
         // The account surface's top bar asked for the drawer (#11472).
         .onChange(of: bridge.linkMenuRequested) { _, _ in openDrawer() }
+        // An invitation link to a shared project: Projects (#11591).
+        .onChange(of: bridge.linkShowRequest) { _, request in
+            if request.screen == "projects" { go("account_projects") }
+        }
         // A tap on a notice from Coder: Running.
         .onChange(of: notifier.openRunning) { _, _ in go("running") }
         // An offer under a chat reply opened another screen.
@@ -353,8 +357,8 @@ extension AppTabs {
         case "settings":
             settingsHome += 1
             tab = .account
-        case "account", "running", "account_chats":
-            linkScreen = id == "account_chats" ? "chats" : id
+        case "account", "running", "account_chats", "account_projects":
+            linkScreen = id.hasPrefix("account_") ? String(id.dropFirst("account_".count)) : id
             linkChat = nil
             tab = .link
         case let place where place.hasPrefix("link_chat:"):

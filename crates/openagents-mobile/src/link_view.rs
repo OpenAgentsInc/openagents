@@ -63,6 +63,7 @@ fn draw(state: &State, composer: u64, messages: usize, text: usize) -> Node<Inte
         Screen::Schedules => schedules(state),
         Screen::NewSchedule => new_schedule(state, composer),
         Screen::Projects => projects(state, composer),
+        Screen::Project => project(state, composer),
     }
 }
 
@@ -196,6 +197,13 @@ fn account(state: &State) -> Node<Intent> {
             ));
             if let SignIn::Failed(error) = sign_in {
                 children.push(status("link-error", error, warn()));
+            }
+            if state.invite.is_some() {
+                children.push(status(
+                    "link-invite-sign-in",
+                    "Sign in to join the project you were invited to.",
+                    quiet(),
+                ));
             }
             children.extend(notice(state));
             children.push(button(
@@ -341,13 +349,17 @@ fn chat(state: &State, open: &Open, composer: u64, limit: usize, cut_at: usize) 
                 "Chat".into()
             }
         });
-    // A new chat in a project names it until the website has the chat.
-    let where_ = thread.map(|thread| detail(state, thread)).or_else(|| {
-        open.project
-            .as_ref()
-            .and_then(|id| state.projects.get(id))
-            .map(|name| format!("In {name}"))
-    });
+    // A new chat in a project names it until the website has the chat;
+    // a chat someone else started in a shared project names them.
+    let where_ = match crate::account_link::started_by(state, &open.id) {
+        Some(by) if !by.you => Some(format!("Started by {}", by.name)),
+        _ => thread.map(|thread| detail(state, thread)).or_else(|| {
+            open.project
+                .as_ref()
+                .and_then(|id| state.projects.get(id))
+                .map(|name| format!("In {name}"))
+        }),
+    };
     let mut children = vec![bar(
         "link-chat-header",
         Lead::of(state.from_list),
@@ -462,6 +474,10 @@ fn chat(state: &State, open: &Open, composer: u64, limit: usize, cut_at: usize) 
         },
     });
     let (enabled, placeholder) = match thread {
+        // A viewer in a shared project reads it and sends nothing.
+        _ if crate::account_link::read_only(state, open) => {
+            (false, "Only the owner and editors can reply here".into())
+        }
         None if open.new => (true, "Message OpenAgents".to_owned()),
         Some(t) if t.can_reply => (true, "Reply".to_owned()),
         Some(t) if t.surface == "terminal" => (
@@ -480,7 +496,7 @@ fn chat(state: &State, open: &Open, composer: u64, limit: usize, cut_at: usize) 
     // Photos and files for the reply (#11174): a web chat takes up to
     // four. Each shows as a pill that removes it; the attach control is
     // inside the composer, leading its field.
-    let takes = crate::account_link::takes_photos(open);
+    let takes = crate::account_link::takes_photos(state, open);
     if takes {
         for (index, (name, _)) in open.photos.iter().enumerate() {
             children.push(button(
@@ -850,6 +866,9 @@ fn projects(state: &State, composer: u64) -> Node<Intent> {
         None,
     )];
     children.extend(notice(state));
+    if let Some(invite) = &state.invite {
+        children.push(invite_card(invite));
+    }
     children.push(Node {
         key: "link-project-composer".into(),
         style: Style::default(),
@@ -884,16 +903,174 @@ fn projects(state: &State, composer: u64) -> Node<Intent> {
             &project.name,
             &project_line(project),
             Some(Glyph::Folder),
-            Intent::ProjectChat {
+            Intent::OpenProject {
                 id: project.id.clone(),
             },
         ));
     }
     children.push(status(
         "link-projects-how",
-        "Tap a project to start a chat in it.",
+        "Tap a project to see its chats.",
         quiet(),
     ));
+    page(children)
+}
+
+/// An invitation link to a shared project: what it offers, with Join and
+/// Decline.
+fn invite_card(invite: &crate::account_link::Invite) -> Node<Intent> {
+    use crate::account_link::InvitePhase;
+    let mut lines = vec![];
+    match &invite.phase {
+        InvitePhase::Reading => {
+            lines.push(working("link-invite-reading", "Reading the invitation…"));
+        }
+        InvitePhase::Joining => lines.push(working("link-invite-joining", "Joining…")),
+        InvitePhase::Failed(why) => {
+            lines.push(status("link-invite-failed", why, warn()));
+            lines.push(button(
+                "link-invite-close",
+                "Close",
+                Some(Glyph::Back),
+                Intent::DeclineInvite,
+            ));
+        }
+        InvitePhase::Ready {
+            project,
+            name,
+            role,
+            invited_by,
+            member,
+        } => {
+            let title = match invited_by {
+                Some(by) => format!("{by} invited you to {name}"),
+                None => format!("You're invited to {name}"),
+            };
+            lines.push(text(
+                "link-invite-title",
+                &title,
+                TextRole::Body,
+                ink(),
+                true,
+            ));
+            if *member {
+                lines.push(status(
+                    "link-invite-member",
+                    "You're already in this project.",
+                    quiet(),
+                ));
+                lines.push(button(
+                    "link-invite-open",
+                    &format!("Open {name}"),
+                    Some(Glyph::Folder),
+                    Intent::OpenProject {
+                        id: project.clone(),
+                    },
+                ));
+                lines.push(button(
+                    "link-invite-close",
+                    "Close",
+                    Some(Glyph::Back),
+                    Intent::DeclineInvite,
+                ));
+            } else {
+                lines.push(status(
+                    "link-invite-role",
+                    &if role == "viewer" {
+                        "You'll be able to read its chats.".to_owned()
+                    } else {
+                        "You'll be able to read its chats and start your own.".to_owned()
+                    },
+                    quiet(),
+                ));
+                lines.push(button(
+                    "link-invite-join",
+                    "Join",
+                    Some(Glyph::Check),
+                    Intent::JoinProject,
+                ));
+                lines.push(button(
+                    "link-invite-decline",
+                    "Decline",
+                    Some(Glyph::Back),
+                    Intent::DeclineInvite,
+                ));
+            }
+        }
+    }
+    card("link-invite", lines)
+}
+
+/// One project's chats (#11591): every member's in a shared project, each
+/// naming who started it when it wasn't the signed-in person, and **New
+/// chat** for the owner and editors.
+fn project(state: &State, composer: u64) -> Node<Intent> {
+    let Some(project) = state
+        .project_open
+        .as_ref()
+        .and_then(|id| state.project_list.iter().find(|p| &p.id == id))
+    else {
+        return projects(state, composer);
+    };
+    let mut children = vec![bar(
+        "link-project-header",
+        Lead::Back,
+        &project.name,
+        project
+            .sharing()
+            .as_deref()
+            .map(|line| ("link-project-sharing", line)),
+        None,
+    )];
+    children.extend(notice(state));
+    if project.writes() {
+        children.push(button(
+            "link-project-new-chat",
+            "New chat",
+            Some(Glyph::Compose),
+            Intent::ProjectChat {
+                id: project.id.clone(),
+            },
+        ));
+    } else {
+        children.push(status(
+            "link-project-viewer",
+            "You can read this project's chats. Ask its owner to make you an editor to start one.",
+            quiet(),
+        ));
+    }
+    if !state.project_chats_read {
+        children.push(working("link-project-loading", "Loading its chats…"));
+        return page(children);
+    }
+    if state.project_chats.is_empty() {
+        children.push(status(
+            "link-project-empty",
+            "No chats in this project yet.",
+            quiet(),
+        ));
+        return page(children);
+    }
+    for thread in &state.project_chats {
+        let title = if thread.title.trim().is_empty() {
+            "New chat".to_owned()
+        } else {
+            thread.title.clone()
+        };
+        let detail = match &thread.started_by {
+            Some(by) if !by.you => format!("Started by {}", by.name),
+            _ => crate::account_link::place(thread),
+        };
+        children.push(two_line_row(
+            &format!("link-project-chat-{}", slug(&thread.id)),
+            &title,
+            &detail,
+            None,
+            Intent::Open {
+                id: thread.id.clone(),
+            },
+        ));
+    }
     page(children)
 }
 
@@ -923,10 +1100,14 @@ fn project_line(project: &crate::account_link::Project) -> String {
         (Some(primary), 1) => primary.clone(),
         (Some(primary), n) => format!("{primary} and {} more", n - 1),
     };
-    match project.chats {
+    let line = match project.chats {
         0 => repositories,
         1 => format!("{repositories} · 1 chat"),
         n => format!("{repositories} · {n} chats"),
+    };
+    match project.sharing() {
+        Some(sharing) => format!("{sharing} · {line}"),
+        None => line,
     }
 }
 
