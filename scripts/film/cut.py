@@ -9,8 +9,12 @@
 and freeze detection and the contact sheets), in about a second. It also reads
 `<clip>.beats.json` beside a source, when its renderer wrote one: the clip's
 animation beats (`[{"from", "to", "what"}]`, clip seconds), and fails a shot
-that ends inside one, so a cut never chops an animation off mid-move. Video
-Lab (scripts/film/lab.py) runs it on every edit.
+that ends inside one, so a cut never chops an animation off mid-move. And it
+fails a shot that pauses: one that holds a still frame (`play`) longer than
+STILL_OK (0.4 s; a shot's `"still_ok"` allows more), or whose part of its clip
+has a still stretch that long (measured once per clip with freezedetect and
+cached under the Lab's root, `motion/`). Video Lab (scripts/film/lab.py) runs
+it on every edit.
 
 `inspect` writes contact sheets sized for a model to read, then checks the cut:
   - sources exist and are long enough
@@ -483,6 +487,70 @@ def beats_for(src):
         return []
 
 
+# A shot may show a still picture this long (seconds) and no longer, unless it
+# sets "still_ok": the owner's rule for Episode 290 is that an animation never
+# pauses mid-film. Holds the cut asks for ("play") count, push-in or not.
+STILL_OK = 0.4
+# What "still" means: ffmpeg freezedetect's noise tolerance on a 192x108 copy
+# (0.0001 is about a 0.03 level change per pixel, so film grain and slow eases
+# still count as moving).
+STILL_NOISE = 0.0001
+
+
+def freezes(path, min_len=STILL_OK):
+    """Stretches [{"from", "to"}] (the file's seconds) where its picture doesn't move."""
+    log = subprocess.run(["ffmpeg", "-v", "info", "-i", str(path), "-an", "-vf",
+                          f"scale=192:108,freezedetect=n={STILL_NOISE}:d={min_len}", "-f", "null", "-"],
+                         capture_output=True, text=True).stderr
+    starts = [float(x) for x in re.findall(r"freeze_start: ([\d.]+)", log)]
+    ends = [float(x) for x in re.findall(r"freeze_end: ([\d.]+)", log)]
+    end_of = None
+    out = []
+    for i, a in enumerate(starts):
+        if i < len(ends):
+            b = ends[i]
+        else:
+            end_of = end_of if end_of is not None else probe(path)["dur"]
+            b = end_of
+        out.append({"from": round(a, 3), "to": round(b, 3)})
+    return out
+
+
+def stills_for(src, cache_dir):
+    """A clip's still stretches, measured once and kept in cache_dir by the
+    file's path, size and time (a re-rendered clip is measured again)."""
+    st = src.stat()
+    key = hashlib.sha256(f"{src.resolve()}|{st.st_size}|{st.st_mtime_ns}|{STILL_NOISE}|{STILL_OK}".encode()).hexdigest()
+    path = cache_dir / f"{key[:24]}.json"
+    if path.exists():
+        try:
+            return json.loads(path.read_text())
+        except ValueError:
+            pass
+    found = freezes(src)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(found))
+    return found
+
+
+def still_problems(shot, src, start_in, end_in, played, cache_dir, problems):
+    """A shot that pauses: it holds its last frame longer than it may, or the
+    part of its clip it plays has a still stretch in it."""
+    name, ok = shot["name"], shot.get("still_ok", STILL_OK)
+    if shot.get("sound"):
+        return  # a person talking; the speech checks cover where it's cut
+    held = shot["dur"] - played
+    if shot.get("play") is not None and held > ok + 1e-6:
+        problems.append(f"{name}: holds a still frame for {held:g}s (only {played:g}s of {src.name} plays in a "
+                        f"{shot['dur']:g}s slot), so the animation pauses; end the shot when the clip's move does, "
+                        f"on the beat grid, or play more of the clip")
+    for s in stills_for(src, cache_dir):
+        a, b = max(s["from"], start_in), min(s["to"], end_in)
+        if b - a > ok + 1e-6:
+            problems.append(f"{name}: the picture is still from {a:.2f}s to {b:.2f}s of {src.name} ({b - a:.1f}s "
+                            f"on screen); end the shot before {a:.2f}s or start it after {b:.2f}s")
+
+
 def speech_problems(shot, src, p, problems, notes):
     """A shot that keeps its own sound: it starts and ends in a pause in the
     speech (never mid-word), plays at its own speed, and doesn't hold a frame."""
@@ -558,6 +626,8 @@ def check(cut, w, h, allow_missing):
         # The last source second on screen, and whether it lands inside an animation.
         start_in = shot.get("in", 0.0)
         end_in = start_in + played * shot.get("speed", 1.0)
+        if p["dur"] + 1e-3 >= need:
+            still_problems(shot, src, start_in, end_in, played, SOURCES.parent / "motion", problems)
         for b in beats_for(src):
             if b["from"] + 1e-3 < end_in < b["to"] - 1e-3:
                 need = (b["to"] - start_in) / shot.get("speed", 1.0)

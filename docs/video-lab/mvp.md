@@ -134,6 +134,11 @@ The chat then says so in its own words and offers 12.0 s or 12.5 s.
 These edits are refused in the same way:
 
 - a shot ending inside an animation;
+- a shot that pauses: it holds a still frame (`play`) for more than 0.4 s, or
+  the part of its clip it plays has a still stretch that long (measured once per
+  clip, cached in `~/work/film-out/lab/motion/`). A shot that should rest sets
+  `"still_ok"`. After a cut renders, the Lab measures the same rule on the
+  render and `lab_open` and `lab_render` name any pause left;
 - a missing source, or one that's too short;
 - a title outside the safe area;
 - music shorter than the cut;

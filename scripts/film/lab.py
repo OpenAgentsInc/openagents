@@ -725,6 +725,8 @@ def do_render(doc: str, n: int, quality: str, log) -> Path:
         info = {"doc": doc, "version": n, "quality": quality, "digest": v["digest"], "file": str(out),
                 "poster": str(poster), "seconds": dur, "rendered": now(), "took": round(now() - started, 1),
                 "no_training": bool(why), "private": why}
+        if kind == "cut.v1":
+            info["pauses"] = render_pauses(out, data)
         out.with_suffix(".json").write_text(json.dumps(info, indent=2) + "\n")
         if why:
             # The mark travels with the file: not for training, stays on this Mac.
@@ -733,6 +735,29 @@ def do_render(doc: str, n: int, quality: str, log) -> Path:
         return out
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+def render_pauses(path: Path, data: dict) -> list[dict]:
+    """Where a rendered cut's picture stops moving in the middle of a shot
+    (cut.py's STILL_OK or longer), leaving out shots of someone talking and
+    title cards. The check before a render catches holds and still clips;
+    this is the same rule measured on the pixels that came out."""
+    cm = cutmod()
+    out = []
+    for f in cm.freezes(path):
+        for s in timeline(data):
+            shot = data["shots"][s["i"]]
+            if shot.get("sound") or "title" in shot:
+                continue
+            a, b = max(f["from"], s["start"]), min(f["to"], s["end"])
+            if b - a > shot.get("still_ok", cm.STILL_OK) + 1e-6:
+                out.append({"shot": s["name"], "from": round(a, 2), "to": round(b, 2)})
+    return out
+
+
+def pauses_text(ps: list[dict]) -> str:
+    return (f"The render pauses mid-shot {len(ps)} times: "
+            + "; ".join(f"{p['shot']} {clock(p['from'])}-{clock(p['to'])}" for p in ps))
 
 
 def probe_duration(path: Path) -> float:
@@ -1624,6 +1649,10 @@ def tool_open(args) -> dict:
     if problems:
         lines.append("Problems the checks find in this version:")
         lines += [f"- {p}" for p in problems]
+    best = best_render(doc, v)
+    ps = (render_info(doc, v, best[1]) or {}).get("pauses") if best else None
+    if ps:
+        lines.append(pauses_text(ps))
     ns = [n for n in notes_for(doc)]
     if ns:
         lines.append(f"{len(ns)} review notes (lab_notes reads them).")
@@ -1809,6 +1838,9 @@ def tool_render(args) -> dict:
     text = f"The {quality} ({QUALITIES[quality][0]}) of {doc_meta(doc)['title']} v{v['n']} {state}."
     if est and job["state"] != "done":
         text += f" The last one took about {int(est // 60)} min {int(est % 60)} s."
+    ps = (render_info(doc, v, quality) or {}).get("pauses") if job["state"] == "done" else None
+    if ps:
+        text += " " + pauses_text(ps)
     return {"text": text, "card": card(doc, v, quality, job=job)}
 
 
@@ -1879,7 +1911,7 @@ TOOLS = {
                             "lab_open: /captions/7 (remove several from the highest index down). Removing a shot removes the captions "
                             "over it and its music hit too. In a cut, captions move with "
                             "their shots when shot lengths change. The edit is checked first (schema, the beat "
-                            "grid, sources long enough, no shot ending inside an animation, music length) and "
+                            "grid, sources long enough, no shot ending inside an animation, no shot pausing on a still picture for more than 0.4 s, music length) and "
                             "refused with the reason if it adds a problem; then fix the patch. A preview renders.",
                  {"document": "string", "patch": "string", "summary": "string", "version": "string?"}),
     "lab_render": (tool_render, "Render a version: preview (quick, 960x540), review (1080p) or master (full size).",

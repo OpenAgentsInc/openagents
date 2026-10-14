@@ -125,6 +125,41 @@ class LabTest(unittest.TestCase):
         for s in lab.tool_specs():
             self.assertEqual(s["parameters"]["type"], "object")
 
+    def test_a_shot_that_pauses_is_refused_and_ending_the_pause_is_saved(self):
+        lab.create("still", "cut.v1", "Still film", self.cut, "First", "test")
+        out = lab.call("lab_edit", {"document": "still", "summary": "hold the end", "render": False,
+                                    "patch": json.dumps([{"op": "add", "path": "/shots/@end/play", "value": 2.0}])})
+        self.assertTrue(out["refused"], out["text"])
+        self.assertIn("holds a still frame for 1s", out["text"])
+        held = {**self.cut, "shots": [dict(s) for s in self.cut["shots"]]}
+        held["shots"][2]["play"] = 2.0
+        lab.create("held", "cut.v1", "Held film", held, "First", "test")
+        out = lab.call("lab_edit", {"document": "held", "summary": "no hold", "render": False,
+                                    "patch": json.dumps([{"op": "remove", "path": "/shots/@end/play"}])})
+        self.assertNotIn("refused", out, out.get("text"))
+        self.assertIn("Fixed: end: holds a still frame", out["text"])
+        ok = {**held, "shots": [dict(s) for s in held["shots"]]}
+        ok["shots"][2]["still_ok"] = 1.0
+        self.assertFalse([p for p in lab.check("cut.v1", ok)[0] if "still frame" in p], "still_ok allows a hold")
+
+    def test_a_clip_that_freezes_mid_shot_is_found_before_and_after_the_render(self):
+        frozen = TMP / "frozen.mp4"  # moves 0-2 s, still 2-3.5 s, moves again 3.5-5 s
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=320x180:rate=30:duration=2",
+                        "-f", "lavfi", "-i", "testsrc2=size=320x180:rate=30:duration=1.5",
+                        "-filter_complex", "[0:v]tpad=stop_mode=clone:stop_duration=1.5[a];[a][1:v]concat=n=2:v=1",
+                        "-pix_fmt", "yuv420p", str(frozen)], check=True)
+        cut = {**self.cut, "shots": [{"name": "moves", "src": str(frozen), "in": 0.0, "dur": 2.0},
+                                     {"name": "stops", "src": str(frozen), "in": 2.0, "dur": 3.0}],
+               "captions": []}
+        problems, _ = lab.check("cut.v1", cut)
+        self.assertTrue(any(p.startswith("stops: the picture is still from 2.") for p in problems), problems)
+        self.assertFalse(any(p.startswith("moves:") for p in problems), problems)
+        found = lab.render_pauses(frozen, cut)
+        self.assertEqual([p["shot"] for p in found], ["stops"])
+        self.assertAlmostEqual(found[0]["from"], 2.0, delta=0.1)
+        self.assertAlmostEqual(found[0]["to"], 3.5, delta=0.1)
+        self.assertIn("pauses mid-shot 1 times", lab.pauses_text(found))
+
     def test_keep_captions_removes_every_caption_but_those_over_the_named_or_speaking_shots(self):
         lab.create("caps", "cut.v1", "Caption film", self.cut, "First", "test")
         out = lab.call("lab_keep_captions", {"document": "caps", "over": "card", "render": False})
