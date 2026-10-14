@@ -142,22 +142,30 @@ exit, forever, and is enabled at boot.
 
 ```sh
 export CLOUDSDK_CONFIG=/Users/christopherdavid/work/.secrets/gcloud-sa-config
-H="oa-solver-dispatch-1 --zone us-central1-a --project openagentsgemini"
+H=(oa-solver-dispatch-1 --zone us-central1-a --project openagentsgemini)   # zsh or bash
 # Logs (journald; also on the serial console)
-gcloud compute ssh $H --tunnel-through-iap --command 'sudo journalctl -u oa-solver-dispatch -n 100 --no-pager'
-gcloud compute instances get-serial-port-output $H | grep oa-solver-dispatch
+gcloud compute ssh "${H[@]}" --tunnel-through-iap --command 'sudo journalctl -u oa-solver-dispatch -n 100 --no-pager'
+gcloud compute instances get-serial-port-output "${H[@]}" | grep oa-solver-dispatch
 # Restart
-gcloud compute ssh $H --tunnel-through-iap --command 'sudo systemctl restart oa-solver-dispatch'
+gcloud compute ssh "${H[@]}" --tunnel-through-iap --command 'sudo systemctl restart oa-solver-dispatch'
 # Move to another commit: build it, point the host at it, rerun the startup script
 gcloud builds submit --no-source --config deploy/solver-box/dispatcher/cloudbuild.yaml \
   --substitutions _COMMIT=$(git rev-parse origin/main) --project openagentsgemini --region us-central1 \
   --service-account projects/openagentsgemini/serviceAccounts/oa-mvp-automation@openagentsgemini.iam.gserviceaccount.com \
   --gcs-log-dir gs://openagentsgemini-oa-mvp-cloud-build-logs/oa-solver-box
-gcloud compute instances add-metadata $H --metadata oa-solver-box-commit=$(git rev-parse origin/main)
-gcloud compute ssh $H --tunnel-through-iap --command 'sudo google_metadata_script_runner startup'
+gcloud compute instances add-metadata "${H[@]}" --metadata oa-solver-box-commit=$(git rev-parse origin/main)
+gcloud compute ssh "${H[@]}" --tunnel-through-iap --command 'sudo google_metadata_script_runner startup'
 # Stop taking runs (runs already taken finish or are stopped by the site)
-gcloud compute ssh $H --tunnel-through-iap --command 'sudo systemctl stop oa-solver-dispatch'
+gcloud compute ssh "${H[@]}" --tunnel-through-iap --command 'sudo systemctl stop oa-solver-dispatch'
 ```
+
+**Production today (2026-10-14):** openagents.com's web runs without
+`--github-app`, so people connect GitHub by OAuth and the account service
+issues no broker tickets; every production Solver run therefore takes the
+pool's GitHub token and its pull request is opened as the pool's owner.
+The requester's-token path turns on once the web is started with
+`--github-app` (the `coder-github-app-key` App) and a person installs the
+App from Projects.
 
 Each run logs one line when it is taken, naming which GitHub token it
 uses ("with the requester's GitHub token" or "with the pool's GitHub
