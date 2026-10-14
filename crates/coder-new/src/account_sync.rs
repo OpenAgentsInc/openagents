@@ -43,6 +43,14 @@ pub(crate) const AGENTS: &str = "agents";
 /// have as they are here: ones saved by another process, background
 /// agents' chats, and sends a crash or a lost `sync.json` write dropped.
 pub(crate) const SWEEP_EVERY: std::time::Duration = coder_sync::CHECK_EVERY;
+/// How often a running Coder reads `sync.json` again, so sync turned on or
+/// off by another Coder or `coder sync` applies here without a restart
+/// (#11598).
+pub(crate) const RECHECK_EVERY: std::time::Duration = std::time::Duration::from_secs(5);
+/// How often a Coder that isn't checking in asks the website for this
+/// computer's choice, so turning sync on there reaches it (#11598). While
+/// it checks in, each check-in brings the choice.
+pub(crate) const ASK_WEB_EVERY: std::time::Duration = std::time::Duration::from_secs(60);
 
 /// The session prefix of a chat started on openagents.com for Coder on
 /// this computer (the website's `coder_sync::web_session`): Coder takes
@@ -94,6 +102,12 @@ pub(crate) struct SyncState {
     /// Chats this Coder removed from its sent list, so another Coder's
     /// record of them isn't merged back ([`Settings::merge_sent`]).
     forgot: BTreeSet<String>,
+    /// When `sync.json` was last read again ([`RECHECK_EVERY`]).
+    rechecked: Option<Instant>,
+    /// The website's choice, asked again while not checking in
+    /// ([`ASK_WEB_EVERY`]), and when it was last asked.
+    asked_again: Option<mpsc::Receiver<Option<Choice>>>,
+    asked_at: Option<Instant>,
 }
 
 /// What one take brought for one chat.
@@ -393,6 +407,9 @@ impl App {
             own_runs: None,
             swept: None,
             forgot: BTreeSet::new(),
+            rechecked: None,
+            asked_again: None,
+            asked_at: None,
         });
         sync.settings = settings;
         // Ask the website once where this computer's chats live: a choice
@@ -406,6 +423,7 @@ impl App {
                 let _ = send.send(coder_sync::choice_now(&saved, &computer));
             });
             sync.asked = Some(asked);
+            sync.asked_at = Some(Instant::now());
         }
         if (sync.settings.on || !sync.settings.to_delete.is_empty())
             && sync.worker.is_none()
@@ -642,6 +660,7 @@ impl App {
     pub(crate) fn poll_sync(&mut self) {
         self.poll_memory();
         self.poll_schedules();
+        self.recheck_sync();
         let busy = self.live.busy;
         let open = self.session_id().map(str::to_owned);
         let account_dir = self.account_dir.clone();
@@ -723,6 +742,72 @@ impl App {
         self.report_activity();
         self.answer_web_reply();
         self.sweep_sync(true);
+    }
+
+    /// Sync turned on or off elsewhere applies here without a restart
+    /// (#11598): another Coder's `/sync`, `coder sync`, or an edit of
+    /// `sync.json` is read again every [`RECHECK_EVERY`], and a choice made
+    /// on openagents.com is asked for every [`ASK_WEB_EVERY`] while this
+    /// Coder isn't checking in (a check-in brings it otherwise).
+    fn recheck_sync(&mut self) {
+        let Some(dir) = self.account_dir.clone() else {
+            return;
+        };
+        if self.account.is_none() {
+            return;
+        }
+        let answered = self
+            .sync
+            .as_mut()
+            .and_then(|sync| sync.asked_again.as_ref()?.try_recv().ok());
+        if let Some(sync) = &mut self.sync
+            && answered.is_some()
+        {
+            sync.asked_again = None;
+        }
+        if let Some(Some(web)) = answered {
+            self.apply_web_choice(Some(web));
+        }
+        let Some(sync) = &mut self.sync else {
+            return;
+        };
+        if !sync.listening
+            && sync.asked_again.is_none()
+            && sync.asked_at.is_none_or(|at| at.elapsed() >= ASK_WEB_EVERY)
+            && let Some(saved) = signed_in(&dir)
+        {
+            sync.asked_at = Some(Instant::now());
+            let (send, asked) = mpsc::channel();
+            let computer = sync.computer.clone();
+            std::thread::spawn(move || {
+                let _ = send.send(coder_sync::choice_now(&saved, &computer));
+            });
+            sync.asked_again = Some(asked);
+        }
+        if sync
+            .rechecked
+            .is_some_and(|at| at.elapsed() < RECHECK_EVERY)
+        {
+            return;
+        }
+        sync.rechecked = Some(Instant::now());
+        let Ok(stored) = Settings::load_checked(&dir) else {
+            return;
+        };
+        let was = sync.settings.on;
+        sync.settings.on = stored.on;
+        sync.settings.chosen = stored.chosen;
+        if !stored.on {
+            if was {
+                sync.heartbeat = None;
+            }
+            return;
+        }
+        // Turned on elsewhere, or on with no sender yet: start sending,
+        // checking in, and sweeping every chat here up.
+        if !was || sync.worker.is_none() {
+            self.start_sync();
+        }
     }
 
     /// Tell the website what runs here when it changed, while sync is on
@@ -1098,6 +1183,52 @@ mod tests {
             app.notice.as_deref(),
             Some("Use /sync on, /sync all, /sync off, or /sync delete.")
         );
+    }
+
+    /// #11598: a running Coder picks up sync turned on or off elsewhere
+    /// (another Coder, `coder sync`, an edited `sync.json`) without a
+    /// restart.
+    #[test]
+    fn sync_turned_on_elsewhere_applies_without_a_restart() {
+        crate::account::without_env_sign_in();
+        let dir = tempfile::tempdir().unwrap();
+        let saved: Saved = serde_json::from_value(serde_json::json!({
+            "origin": "http://127.0.0.1:9", "account": "acct_1", "label": "Octo",
+            "expires_at": u64::MAX,
+            "token": "sess_0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        }))
+        .unwrap();
+        saved.store(dir.path()).unwrap();
+        let mut app = App {
+            account_dir: Some(dir.path().to_path_buf()),
+            account: Some("Octo".into()),
+            ..App::default()
+        };
+        app.start_sync();
+        let sync = app.sync.as_ref().unwrap();
+        assert!(!sync.settings.on && sync.worker.is_none());
+
+        Settings {
+            on: true,
+            chosen: true,
+            ..Settings::default()
+        }
+        .store(dir.path())
+        .unwrap();
+        app.sync.as_mut().unwrap().rechecked = None;
+        app.recheck_sync();
+        let sync = app.sync.as_ref().unwrap();
+        assert!(sync.settings.on && sync.worker.is_some());
+
+        let mut off = Settings::load(dir.path());
+        off.on = false;
+        off.store(dir.path()).unwrap();
+        // Read again only after a while.
+        app.recheck_sync();
+        assert!(app.sync.as_ref().unwrap().settings.on);
+        app.sync.as_mut().unwrap().rechecked = None;
+        app.recheck_sync();
+        assert!(!app.sync.as_ref().unwrap().settings.on);
     }
 
     #[test]

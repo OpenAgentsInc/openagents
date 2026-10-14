@@ -477,6 +477,7 @@ mod tests {
                 continued_taken: 0,
                 asks: Vec::new(),
                 steps: Default::default(),
+                active_unix: None,
             }),
             environment: None,
             tasks: Vec::new(),

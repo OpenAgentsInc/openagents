@@ -9,7 +9,8 @@
 //! record (`pinned_unix`, `archived_unix`), so they survive a reload.
 //!
 //! For a signed-in person with projects (#11034, [`crate::projects`]), the
-//! list groups chats under a Projects heading, one group per project, and
+//! list groups chats under a Projects heading, one group per project, while
+//! Chats still lists every chat with its project named (#11598), and
 //! the row menu offers moving a chat to a project (`project` on the chat
 //! record). Names come from the account, so nobody else sees them.
 
@@ -154,12 +155,10 @@ pub(crate) fn build(list: ChatList, rows: &[Conversation], csrf: &str, view: Vie
             list = list.project(group);
         }
     }
-    list = list.items(
-        unpinned
-            .iter()
-            .filter(|chat| project_of(chat, view).is_none())
-            .map(|chat| row(chat, csrf, view, false)),
-    );
+    // Every chat lists under Chats, newest first, project chats too, each
+    // naming its project (#11598): a chat filed under a closed project
+    // group is never out of sight.
+    list = list.items(unpinned.iter().map(|chat| row(chat, csrf, view, false)));
     let open = rows.iter().any(|chat| chat.archived_unix.is_none());
     // The search box waits until people have more chats (owner,
     // 2026-10-09); `/chat/list?q=` and its keyboard shortcuts stay.
@@ -240,10 +239,24 @@ fn matches(chat: &Conversation, q: &str) -> bool {
 fn row(chat: &Conversation, csrf: &str, view: View<'_>, grouped: bool) -> NavItem {
     let id = &chat.id;
     let current = view.current.unwrap_or_default();
+    // The copy in a project's group has its own row id; both share the
+    // status slot, which the live stream replaces wherever it is.
+    let row_id = if grouped {
+        format!("chat-project-row-{id}")
+    } else {
+        format!("chat-row-{id}")
+    };
     let mut item = NavItem::new(chat.title.clone(), format!("/chat/{id}"))
         .current(view.current == Some(id.as_str()))
-        .row_id(format!("chat-row-{id}"));
-    if let Some(detail) = line_two(chat, !grouped) {
+        .row_id(row_id.clone());
+    // Under Chats, a project's chat names its project first (#11598).
+    let project = project_of(chat, view).filter(|_| !grouped);
+    let detail = match (project, line_two(chat, !grouped && project.is_none())) {
+        (Some(project), Some(rest)) => Some(format!("{} · {rest}", project.name)),
+        (Some(project), None) => Some(project.name.clone()),
+        (None, rest) => rest,
+    };
+    if let Some(detail) = detail {
         item = item.detail(detail);
     }
     let working = row_status(chat) == Some(ChatStatus::Working);
@@ -268,7 +281,7 @@ fn row(chat: &Conversation, csrf: &str, view: View<'_>, grouped: bool) -> NavIte
     let rename = RowAction::get("Rename", format!("/chat/{id}/rename"))
         .icon(Icon::Pencil)
         .field("current", current)
-        .target(format!("#chat-row-{id}"))
+        .target(format!("#{row_id}"))
         .swap("outerHTML");
     let mut archive = RowAction::post("Archive", format!("/chat/{id}/archive"))
         .icon(Icon::Archive)

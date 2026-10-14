@@ -34,8 +34,10 @@ Top to bottom:
    name shows the same facts. The heading shows the project name and, when any of
    its chats is running or needs the person, one status dot (the most urgent
    of its chats). Groups remember their open or closed state per browser.
-4. **Chats**: every chat with no project, newest first. Before projects
-   exist this is the only list, as today.
+4. **Chats**: every chat, newest first by its own last activity, project
+   chats too with the project's name first on line 2 (#11598); a synced
+   chat lists by its last step's time, never by when it was uploaded.
+   Before projects exist this is the only list, as today.
 5. The account menu (or Log in) at the bottom.
 
 Archived chats leave the sidebar; an **Archived chats** link under the list

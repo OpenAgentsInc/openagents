@@ -85,6 +85,7 @@ async fn show(
     let csrf = service
         .csrf(&headers, &viewer, CSRF_SCOPE, "")
         .unwrap_or_default();
+    let chats = project_chats(&app, &headers, &id).await;
     respond(
         &headers,
         &status,
@@ -95,7 +96,47 @@ async fn show(
         StatusCode::OK,
         app.config.github_install.is_some(),
         crate::connections::access::permitted(&app, &viewer),
+        chats.as_deref(),
     )
+}
+
+/// The project's chats, newest first (#11598); `None` when the list can't
+/// be read, so the page still shows.
+async fn project_chats(
+    app: &App,
+    headers: &HeaderMap,
+    id: &str,
+) -> Option<Vec<crate::chat_store::Conversation>> {
+    let owner = crate::pages::chat::reader(app, headers).await?;
+    let mut chats = app.config.chat_store.list(&owner).await.ok()?;
+    chats.retain(|chat| chat.project.as_deref() == Some(id) && chat.archived_unix.is_none());
+    Some(chats)
+}
+
+/// The Chats section of a project's page: each chat with its second line,
+/// newest first.
+pub(crate) fn chats_section(chats: &[crate::chat_store::Conversation]) -> Markup {
+    html! {
+        section aria-labelledby="project-chats" {
+            (MarkdownRoot::new(html! { h2 #project-chats { "Chats" } }))
+            @if chats.is_empty() {
+                p { "No chats in this project yet." }
+            } @else {
+                ul.oa-chat-archive-list role="list" {
+                    @for chat in chats {
+                        li.oa-chat-archive-row {
+                            a href=(format!("/chat/{}", chat.id)) {
+                                @if chat.title.trim().is_empty() { "New chat" } @else { (chat.title) }
+                            }
+                            @if let Some(line) = crate::pages::chat::line_two(chat, false) {
+                                span.oa-page-meta { (line) }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -109,6 +150,7 @@ fn respond(
     code: StatusCode,
     install: bool,
     sources: bool,
+    chats: Option<&[crate::chat_store::Conversation]>,
 ) -> Response {
     let Some(project) = status.projects.iter().find(|p| p.id == id) else {
         return protect(crate::ui_page::problem(
@@ -125,9 +167,10 @@ fn respond(
             .section(PAGE)
             .status(code)
             .head(htmx_head())
-            .content(PageColumn::new(view(
-                status, project, csrf, q, problem, install, None, sources,
-            )))
+            .content(PageColumn::new(html! {
+                (view(status, project, csrf, q, problem, install, None, sources))
+                @if let Some(chats) = chats { (chats_section(chats)) }
+            }))
             .respond(headers),
     )
 }
@@ -282,6 +325,7 @@ async fn apply(
                 StatusCode::from_u16(error.status()).unwrap_or(StatusCode::BAD_REQUEST),
                 app.config.github_install.is_some(),
                 crate::connections::access::permitted(app, &viewer),
+                None,
             )
         }
         Err(error) => failed(headers, &error),

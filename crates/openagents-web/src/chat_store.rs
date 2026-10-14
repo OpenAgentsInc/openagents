@@ -135,6 +135,12 @@ pub(crate) struct Terminal {
     /// whether it ran, and its whole input and output.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub steps: BTreeMap<usize, StepDetail>,
+    /// The chat's own last activity (#11598): the time of its last step,
+    /// as Coder sent it, or a reply on the website. The chat lists by it,
+    /// never by when it was uploaded. Older records have none and take
+    /// their session's start ([`Conversation::settle_terminal_time`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub active_unix: Option<u64>,
 }
 
 /// One tool step of a synced Coder chat, opened (#11543): the tool's name,
@@ -377,6 +383,28 @@ impl Conversation {
                     .working_unix
                     .is_some_and(|at| now_unix().saturating_sub(at) <= TERMINAL_WORKING_SECONDS)
             })
+    }
+
+    /// A synced chat from before its own last activity was kept (#11598)
+    /// lists by its session's own start time, which Coder writes into the
+    /// session id (`20261007T153200Z-…`), not by when it was uploaded: a
+    /// whole folder of chats sent at once would otherwise all read as now.
+    /// The next upload from a current Coder sets the real last activity.
+    /// Applied on every read, so the fix needs no migration; the next write
+    /// keeps it.
+    pub(crate) fn settle_terminal_time(&mut self) {
+        let Some(terminal) = &mut self.terminal else {
+            return;
+        };
+        if terminal.active_unix.is_some() {
+            return;
+        }
+        if let Some(started) = crate::coder_sync::session_started(&terminal.session)
+            && started < self.updated_unix
+        {
+            self.updated_unix = started;
+            terminal.active_unix = Some(started);
+        }
     }
 
     /// Whether this is a Coder chat deleted on the web (hidden everywhere).
@@ -2177,7 +2205,9 @@ fn decode(bytes: &[u8], owner: &str, id: &str) -> Result<Conversation, Error> {
     }
     validate_conversation(&record.conversation)
         .map_err(|_| Error::Corrupt("The retained conversation selection is invalid."))?;
-    Ok(record.conversation)
+    let mut conversation = record.conversation;
+    conversation.settle_terminal_time();
+    Ok(conversation)
 }
 
 impl RepositorySource {

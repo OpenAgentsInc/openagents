@@ -787,3 +787,31 @@ fn reasoning_content_syncs_as_a_thinking_row() {
         ]
     );
 }
+
+/// #11598: a chat goes up with its own last activity, the time of its
+/// last step, so the website never lists it by when it arrived.
+#[test]
+fn a_chat_carries_its_last_steps_time() {
+    let doc = document(json!([
+        {"step_id": 1, "source": "user", "message": "Hello", "timestamp": "2026-10-07T15:32:00.000Z"},
+        {"step_id": 2, "source": "agent", "message": "Hi", "timestamp": "2026-10-07T15:33:10.500Z"},
+    ]));
+    let sent = upload(&doc, "Studio", &Screen::shapes());
+    assert_eq!(sent.body["active_unix"], 1_791_387_190);
+    // Without step times, the time it was last saved; without either, none.
+    let mut saved_only = document(json!([{"step_id": 1, "source": "user", "message": "Hello"}]));
+    saved_only["extra"] = json!({"updated_ms": 1_791_387_190_000_u64});
+    assert_eq!(last_active(&saved_only), Some(1_791_387_190));
+    let bare = document(json!([{"step_id": 1, "source": "user", "message": "Hello"}]));
+    assert!(
+        upload(&bare, "Studio", &Screen::shapes())
+            .body
+            .get("active_unix")
+            .is_none()
+    );
+    // A new time alone is a new upload.
+    assert_ne!(
+        sent.digest,
+        upload(&bare, "Studio", &Screen::shapes()).digest
+    );
+}

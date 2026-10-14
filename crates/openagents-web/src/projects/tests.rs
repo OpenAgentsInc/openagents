@@ -524,6 +524,28 @@ async fn connecting_github_adds_a_project_that_groups_chats_for_its_owner_only()
     assert!(at(&group) < at("Fix the login"));
     assert!(at("Fix the login") < at(">Chats<"));
     assert!(at(">Chats<") < at("Plan the week"));
+    // Chats lists the project's chat too, naming its project (#11598).
+    let chats = &home.body[at(">Chats<")..];
+    assert!(chats.contains("Fix the login"), "{chats}");
+    assert!(chats.contains(">storefront<"), "{chats}");
+    assert!(
+        home.body
+            .contains(&format!(r#"id="chat-project-row-{CHAT}""#))
+    );
+    assert!(home.body.contains(&format!(r#"id="chat-row-{CHAT}""#)));
+    // The project's page lists it.
+    let project_page = browser.get(&world, &format!("{PAGE}/{id}")).await;
+    assert!(
+        project_page.body.contains(">Chats<")
+            && project_page
+                .body
+                .contains(&format!(r#"href="/chat/{CHAT}""#))
+            && !project_page
+                .body
+                .contains(&format!(r#"href="/chat/{LOOSE}""#)),
+        "{}",
+        project_page.body
+    );
     assert!(home.body.contains("Manage projects"));
     assert!(home.body.contains("Move to storefront"));
     assert!(home.body.contains("Remove from storefront"));
@@ -549,7 +571,7 @@ async fn connecting_github_adds_a_project_that_groups_chats_for_its_owner_only()
             .unwrap_or_else(|| panic!("{text}: {}", moved.body))
     };
     assert!(at(&group) < at("Plan the week"));
-    assert!(!moved.body.contains(">Chats<"));
+    assert!(at(">Chats<") < moved.body.rfind("Plan the week").unwrap());
     assert_eq!(
         world
             .store

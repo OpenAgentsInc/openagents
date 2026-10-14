@@ -1168,6 +1168,7 @@ async fn a_coder_chat_opens_read_only_with_its_computer() {
             continued_taken: 0,
             asks: Vec::new(),
             steps: Default::default(),
+            active_unix: None,
         }),
         environment: None,
         tasks: Vec::new(),
@@ -1285,6 +1286,7 @@ async fn a_coder_chat_shows_its_steps_and_thinking_as_rows() {
             message("assistant", "You have two projects.", None),
         ],
         repository: None,
+        active_unix: None,
     };
     crate::coder_sync::save(&store, OWNER, "coder-new-steps", &upload)
         .await
@@ -1329,6 +1331,7 @@ async fn a_coder_chat_takes_a_reply_while_its_computer_is_online() {
             step: None,
         }],
         repository: None,
+        active_unix: None,
     };
     crate::coder_sync::save(&store, OWNER, "coder-new-1", &upload)
         .await

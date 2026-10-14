@@ -125,6 +125,11 @@ pub(crate) struct Upload {
     /// project for that repository ([`file_in_project`]).
     #[serde(default)]
     pub repository: Option<String>,
+    /// The chat's own last activity, in unix seconds (#11598): the time of
+    /// its last step on the computer. The chat lists by it, never by when
+    /// it arrived here.
+    #[serde(default)]
+    pub active_unix: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -199,6 +204,27 @@ pub(crate) fn chat_id(owner: &str, session: &str) -> String {
         &hex[16..20],
         &hex[20..]
     )
+}
+
+/// When a Coder session started, from its id (`20261007T153200Z-3c92c890`,
+/// `coder-new` `sessions`), in unix seconds; `None` for ids without one.
+pub(crate) fn session_started(session: &str) -> Option<u64> {
+    let stamp = session.get(..16)?;
+    let b = stamp.as_bytes();
+    if b[8] != b'T' || b[15] != b'Z' || !session[16..].is_empty() && !session[16..].starts_with('-')
+    {
+        return None;
+    }
+    let iso = format!(
+        "{}-{}-{}T{}:{}:{}Z",
+        &stamp[..4],
+        &stamp[4..6],
+        &stamp[6..8],
+        &stamp[9..11],
+        &stamp[11..13],
+        &stamp[13..15]
+    );
+    atif::document::parse_iso(&iso).map(|ms| ms / 1000)
 }
 
 /// Coder's session ids: letters, numbers, `_`, and `-`, up to 128 bytes
@@ -279,20 +305,23 @@ fn checked(upload: &Upload) -> Result<Checked, Saved> {
     if secret_screen::credential_in(&title).is_some() {
         return Err(Saved::Secret);
     }
+    let mut digested = json!({
+        "computer": computer,
+        "title": title,
+        "messages": messages
+            .iter()
+            .map(|m| json!([m.role, m.text]))
+            .collect::<Vec<_>>(),
+        "steps": steps,
+    });
+    // A new last-activity time alone is a change (#11598), so a chat sent
+    // before times were kept gets its own time on the next upload.
+    if let Some(active) = upload.active_unix {
+        digested["active"] = json!(active);
+    }
     let digest = format!(
         "{:x}",
-        Sha256::digest(
-            serde_json::to_vec(&json!({
-                "computer": computer,
-                "title": title,
-                "messages": messages
-                    .iter()
-                    .map(|m| json!([m.role, m.text]))
-                    .collect::<Vec<_>>(),
-                "steps": steps,
-            }))
-            .unwrap_or_default()
-        )
+        Sha256::digest(serde_json::to_vec(&digested).unwrap_or_default())
     );
     Ok((title, computer, messages, steps, digest))
 }
@@ -312,8 +341,18 @@ pub(crate) async fn save(
         Err(saved) => return Ok(saved),
     };
     let id = chat_id(owner, session);
+    let now = now_unix();
+    // The chat's own last activity (#11598), never later than now; an
+    // upload without one (an older Coder) is new activity now, except the
+    // first, which may be an old chat sent late: it takes its session's
+    // start.
+    let active = upload
+        .active_unix
+        .filter(|at| *at > 0)
+        .map(|at| at.min(now));
     for _ in 0..4 {
         let Some(loaded) = store.load(owner, &id).await? else {
+            let first = active.or_else(|| session_started(session).filter(|at| *at <= now));
             let chat = Conversation {
                 id: id.clone(),
                 owner: owner.to_owned(),
@@ -323,11 +362,12 @@ pub(crate) async fn save(
                 pending: None,
                 requests: Vec::new(),
                 selection: None,
-                updated_unix: now_unix(),
+                updated_unix: first.unwrap_or(now),
                 pinned_unix: None,
                 archived_unix: None,
                 project: None,
                 terminal: Some(Terminal {
+                    active_unix: Some(first.unwrap_or(now)),
                     computer: computer.clone(),
                     session: session.to_owned(),
                     title: title.clone(),
@@ -381,8 +421,15 @@ pub(crate) async fn save(
         let cut = (messages.len() + continued.len()).saturating_sub(all.len());
         next.messages = all;
         next.revision += 1;
-        next.updated_unix = now_unix();
+        // Messages added on the website after the computer's last step
+        // keep the chat at their time.
+        next.updated_unix = match active {
+            Some(at) if continued.is_empty() => at,
+            Some(at) => at.max(current.updated_unix),
+            None => now,
+        };
         if let Some(terminal) = &mut next.terminal {
+            terminal.active_unix = Some(next.updated_unix);
             terminal.continued = continued;
             terminal.continued_taken = taken;
             terminal.steps = placed_steps(&details, cut);
@@ -1083,6 +1130,7 @@ pub(crate) async fn start_from_web(
             archived_unix: None,
             project,
             terminal: Some(Terminal {
+                active_unix: Some(now_unix()),
                 computer,
                 session: session.clone(),
                 // Empty until Coder's first upload, so the website's title
@@ -1731,6 +1779,7 @@ mod tests {
                 })
                 .collect(),
             repository: None,
+            active_unix: None,
         }
     }
 
@@ -1922,6 +1971,88 @@ mod tests {
         assert!(matches!(&one[19..20], "8" | "9" | "a" | "b"));
         assert!(valid_session("coder-new-20261009_abc"));
         assert!(!valid_session("../x") && !valid_session(""));
+    }
+
+    /// #11598: a chat lists by its own last activity, never by when it
+    /// was uploaded; one sent before times were kept lists by its
+    /// session's start until Coder sends its time.
+    #[tokio::test]
+    async fn a_synced_chat_lists_by_its_own_time_not_the_upload_time() {
+        assert_eq!(
+            session_started("20261007T153200Z-3c92c890"),
+            Some(1_791_387_120)
+        );
+        assert_eq!(session_started("coder-new-1"), None);
+        assert_eq!(session_started("20261007T153200Zx"), None);
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::local(dir.path().to_path_buf());
+        let now = now_unix();
+        // Sent late, with its time: it keeps it.
+        let mut old = upload("Old chat", &[("user", "Hi")]);
+        old.active_unix = Some(1_791_390_000);
+        save(&store, &owner(), "20261007T153200Z-aaaaaaaa", &old)
+            .await
+            .unwrap();
+        // Sent by an older Coder without a time: its session's start.
+        let plain = upload("Older Coder", &[("user", "Hi")]);
+        save(&store, &owner(), "20261008T000000Z-bbbbbbbb", &plain)
+            .await
+            .unwrap();
+        // A time from the future is now at most.
+        let mut ahead = upload("Ahead", &[("user", "Hi")]);
+        ahead.active_unix = Some(now + 86_400);
+        save(&store, &owner(), "cccccccc", &ahead).await.unwrap();
+        let listed = store.list(&owner()).await.unwrap();
+        let times: Vec<(&str, u64)> = listed
+            .iter()
+            .map(|chat| (chat.title.as_str(), chat.updated_unix))
+            .collect();
+        assert_eq!(times[0].0, "Ahead");
+        assert!(times[0].1 <= now_unix() && times[0].1 >= now);
+        assert_eq!(
+            &times[1..],
+            [("Older Coder", 1_791_417_600), ("Old chat", 1_791_390_000)]
+        );
+
+        // The same messages with a new time move the chat to that time.
+        old.active_unix = Some(1_791_500_000);
+        let saved = save(&store, &owner(), "20261007T153200Z-aaaaaaaa", &old)
+            .await
+            .unwrap();
+        assert!(matches!(saved, Saved::Saved { changed: true, .. }));
+        let id = chat_id(&owner(), "20261007T153200Z-aaaaaaaa");
+        let chat = store.load(&owner(), &id).await.unwrap().unwrap();
+        assert_eq!(chat.conversation.updated_unix, 1_791_500_000);
+    }
+
+    /// #11598: a chat stored before times were kept, with the upload time,
+    /// reads with its session's start.
+    #[tokio::test]
+    async fn a_chat_stored_with_its_upload_time_reads_with_its_start() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::local(dir.path().to_path_buf());
+        save(
+            &store,
+            &owner(),
+            "20261007T153200Z-aaaaaaaa",
+            &upload("Old chat", &[("user", "Hi")]),
+        )
+        .await
+        .unwrap();
+        let id = chat_id(&owner(), "20261007T153200Z-aaaaaaaa");
+        let loaded = store.load(&owner(), &id).await.unwrap().unwrap();
+        // As a server from before #11598 kept it.
+        let mut legacy = loaded.conversation.clone();
+        legacy.revision += 1;
+        legacy.updated_unix = 1_791_400_000;
+        legacy.terminal.as_mut().unwrap().active_unix = None;
+        store.compare_and_swap(&loaded, &legacy).await.unwrap();
+        let read = store.load(&owner(), &id).await.unwrap().unwrap();
+        assert_eq!(read.conversation.updated_unix, 1_791_387_120);
+        assert_eq!(
+            read.conversation.terminal.unwrap().active_unix,
+            Some(1_791_387_120)
+        );
     }
 
     #[tokio::test]
@@ -2119,6 +2250,7 @@ mod tests {
             continued_taken: 2,
             asks: Vec::new(),
             steps: Default::default(),
+            active_unix: None,
         };
         let uploaded = [
             message(Role::User, "Fix it"),

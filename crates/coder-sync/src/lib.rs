@@ -308,7 +308,7 @@ fn write_private(file: &Path, bytes: &[u8]) -> Result<(), String> {
 /// One chat, ready to send.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Upload {
-    /// `{computer, title, messages: [{role, text}]}`.
+    /// `{computer, title, messages: [{role, text}], active_unix?}`.
     pub body: Value,
     /// A digest of `body`, so an unchanged chat isn't sent again.
     pub digest: String,
@@ -415,6 +415,9 @@ pub fn upload(document: &Value, computer: &str, screen: &Screen) -> Upload {
         .unwrap_or_else(|| "Coder chat".to_owned());
     let computer = line(computer, 64);
     let mut body = json!({"computer": computer, "title": title, "messages": messages});
+    if let Some(active) = last_active(document) {
+        body["active_unix"] = json!(active);
+    }
     while serde_json::to_vec(&body).map_or(0, |bytes| bytes.len()) > MAX_BODY {
         let Some(messages) = body["messages"].as_array_mut() else {
             break;
@@ -434,6 +437,25 @@ pub fn upload(document: &Value, computer: &str, screen: &Screen) -> Upload {
         digest,
         left_out,
     }
+}
+
+/// The chat's own last activity, in unix seconds (#11598): its last
+/// step's time, or when it was last saved when no step has one. The
+/// website lists the chat by it, never by when it arrived.
+#[must_use]
+pub fn last_active(document: &Value) -> Option<u64> {
+    let steps = document
+        .get("steps")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|step| step.get("timestamp")?.as_str())
+        .filter_map(atif::document::parse_iso)
+        .max();
+    steps
+        .or_else(|| document.pointer("/extra/updated_ms")?.as_u64())
+        .map(|ms| ms / 1000)
+        .filter(|at| *at > 0)
 }
 
 fn message_text(value: &Value) -> String {
@@ -730,6 +752,19 @@ fn session_path(session: &str) -> Option<String> {
 /// this process leave it out.
 static NO_REPOSITORY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
+/// A website from before #11598 takes no last-activity time: once one
+/// refuses it, this process leaves it out.
+static NO_ACTIVE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// A refusal for a field the website doesn't know yet.
+fn unknown_field(answer: &Answer, answered: &Value) -> bool {
+    matches!(answer, Answer::Refused(_))
+        && answered["error"]["code"] == "invalid"
+        && answered["error"]["message"]
+            .as_str()
+            .is_some_and(|words| words.starts_with("Send {computer"))
+}
+
 /// Send one chat. A website that doesn't take the chat's repository yet
 /// gets the chat without it.
 pub async fn put(http: &reqwest::Client, saved: &Saved, session: &str, upload: &Upload) -> Answer {
@@ -742,15 +777,17 @@ pub async fn put(http: &reqwest::Client, saved: &Saved, session: &str, upload: &
     if named && NO_REPOSITORY.load(Ordering::Relaxed) {
         body.as_object_mut().map(|body| body.remove("repository"));
     }
+    if NO_ACTIVE.load(Ordering::Relaxed) {
+        body.as_object_mut().map(|body| body.remove("active_unix"));
+    }
     let (mut answer, mut answered) =
         call_v1(http, saved, reqwest::Method::PUT, &path, Some(&body)).await;
-    if body.get("repository").is_some()
-        && matches!(answer, Answer::Refused(_))
-        && answered["error"]["code"] == "invalid"
-        && answered["error"]["message"]
-            .as_str()
-            .is_some_and(|words| words.starts_with("Send {computer"))
-    {
+    if body.get("active_unix").is_some() && unknown_field(&answer, &answered) {
+        NO_ACTIVE.store(true, Ordering::Relaxed);
+        body.as_object_mut().map(|body| body.remove("active_unix"));
+        (answer, answered) = call_v1(http, saved, reqwest::Method::PUT, &path, Some(&body)).await;
+    }
+    if body.get("repository").is_some() && unknown_field(&answer, &answered) {
         NO_REPOSITORY.store(true, Ordering::Relaxed);
         body.as_object_mut().map(|body| body.remove("repository"));
         (answer, answered) = call_v1(http, saved, reqwest::Method::PUT, &path, Some(&body)).await;
