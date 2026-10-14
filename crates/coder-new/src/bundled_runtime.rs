@@ -498,13 +498,9 @@ pub async fn cli(
     cancel: &Arc<AtomicBool>,
     emit: &mut dyn FnMut(RuntimeEvent),
 ) -> Result<Value, String> {
-    let program = cli_binary().ok_or_else(|| {
-        format!(
-            "The bundled OpenAgents CLI is missing. Reinstall Coder with `{}`.",
-            crate::account::INSTALL_COMMAND
-        )
-    })?;
-    cli_at(&program, arguments, cwd, cancel, emit).await
+    // A command this build's instructions know and the CLI here lacks is
+    // answered with an update, not "unknown command" (#11595).
+    crate::cli_capabilities::run(arguments, cwd, cancel, emit).await
 }
 
 pub(crate) async fn cli_at(

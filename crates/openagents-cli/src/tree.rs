@@ -90,6 +90,7 @@ const CODER: &[Declared] = &[
 const PAIR: &[Declared] = &[Declared::screen("", Effect::Grants, "account.computers")];
 const DOCTOR: &[Declared] = &[Declared::computer("", Effect::ReadOnly)];
 const VERSION: &[Declared] = &[Declared::computer("", Effect::ReadOnly)];
+const CAPABILITIES: &[Declared] = &[Declared::computer("", Effect::ReadOnly)];
 const MCP: &[Declared] = &[Declared::computer("serve", Effect::LongRunning)];
 const COMPLETIONS: &[Declared] = &[Declared::computer("", Effect::ReadOnly)];
 const PYLON: &[Declared] = &[
@@ -358,6 +359,7 @@ pub fn help() -> Vec<GroupHelp<'static>> {
         group("completions", Some(completions_usage()), COMPLETIONS),
         group("doctor", None, DOCTOR),
         group("version", None, VERSION),
+        group("capabilities", None, CAPABILITIES),
     ];
     // The Verse commands exist only in a build with the `verse` feature.
     #[cfg(feature = "verse")]
@@ -442,6 +444,23 @@ mod tests {
             "crates/coder/src/cli_route/tree.json is stale; run \
              `OPENAGENTS_WRITE_CLI_TREE=1 cargo test -p openagents-cli --bin openagents tree::tests::the_bundled_tree` to regenerate it"
         );
+    }
+
+    /// `openagents capabilities` lists the bundled tree, so Coder sees
+    /// the commands its instructions name, and the command itself
+    /// (#11595).
+    #[test]
+    fn capabilities_lists_the_commands_coder_checks() {
+        let tree = generate().unwrap_or_else(|errors| panic!("{errors}"));
+        for path in [
+            &["capabilities"][..],
+            &["projects", "list"],
+            &["projects", "show"],
+        ] {
+            let words: Vec<String> = path.iter().map(|word| (*word).to_owned()).collect();
+            let leaf = tree.leaf(&words).unwrap_or_else(|| panic!("{path:?}"));
+            assert_eq!(leaf.effect, Effect::ReadOnly, "{path:?}");
+        }
     }
 
     #[test]

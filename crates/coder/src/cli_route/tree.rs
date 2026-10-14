@@ -21,6 +21,11 @@ use super::usage::{self, Form, Token};
 /// The tree's schema, recorded in the file and on every proposal.
 pub const SCHEMA: &str = "openagents.cli-tree.v1";
 
+/// What `openagents capabilities` prints: its version and every command
+/// it runs, so a caller checks a command exists before relying on it
+/// (#11595).
+pub const CAPABILITIES_SCHEMA: &str = "openagents.cli-capabilities.v1";
+
 pub use crate::router::{Effect, RunsOn};
 
 /// Every effect class, in the order of consequence.

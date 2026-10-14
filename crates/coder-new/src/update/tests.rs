@@ -1163,3 +1163,110 @@ fn an_older_openagents_on_path_gets_the_installer_line() {
     fake("1.0.0");
     assert_eq!(stale_cli_notice(Some(&path), None, v("1.0.0")), None);
 }
+
+/// `version`'s three Unix commands, its `openagents` answering
+/// `capabilities` with `commands` (#11595).
+#[cfg(unix)]
+fn archive_with_cli(version: &str, commands: &[&[&str]]) -> Vec<u8> {
+    let cli = crate::cli_capabilities::tests::new_cli(version, commands);
+    let scripts: Vec<(String, Vec<u8>)> = ["coder", "openagents", "microcoder"]
+        .iter()
+        .map(|name| {
+            let body = if *name == "openagents" {
+                cli.clone()
+            } else {
+                format!("echo \"{name} {version} (test)\"\n")
+            };
+            (
+                (*name).to_owned(),
+                format!("#!/bin/sh\n{body}").into_bytes(),
+            )
+        })
+        .collect();
+    let entries: Vec<TarEntry<'_>> = scripts
+        .iter()
+        .map(|(name, data)| TarEntry {
+            name,
+            kind: b'0',
+            data,
+        })
+        .collect();
+    tar_gz(&entries)
+}
+
+/// A release is installed for a missing CLI command only when its sums
+/// verify and its own `openagents` lists the command; the version Coder
+/// already is counts, an older one never does (#11595).
+#[cfg(unix)]
+#[test]
+fn a_cli_update_installs_only_a_verified_release_that_has_the_command() {
+    let need = vec![vec!["projects".to_owned(), "list".to_owned()]];
+    let channel = Channel::default();
+    let base = channel.serve();
+    let dir = tempfile::tempdir().unwrap();
+    let bin = dir.path().join("bin");
+    install_old(&bin, &["coder", "openagents", "microcoder"]);
+    let ctx = context(
+        &dir.path().join("state"),
+        &bin,
+        &base,
+        "1.0.0",
+        "linux-x86_64",
+    );
+
+    // The channel's release lacks the command too: nothing changes.
+    channel.put("/coder.stable", "1.0.0");
+    channel.publish(
+        "1.0.0",
+        "linux-x86_64",
+        &archive_with_cli("1.0.0", &[&["board", "list"]]),
+    );
+    let error = block(install_for_cli(&ctx, &need)).unwrap_err();
+    assert_eq!(
+        error,
+        "Coder 1.0.0 has no `openagents projects list` either. Coder is unchanged."
+    );
+    assert_eq!(read(bin.join("openagents")), "old openagents");
+
+    // A tampered archive never runs, whatever it lists.
+    let good = archive_with_cli("1.0.0", &[&["projects", "list"]]);
+    channel.publish("1.0.0", "linux-x86_64", &good);
+    channel.put(
+        "/coder-1.0.0-linux-x86_64.tar.gz",
+        archive_with_cli("1.0.0", &[&["projects", "list"], &["evil"]]),
+    );
+    assert!(
+        block(install_for_cli(&ctx, &need))
+            .unwrap_err()
+            .starts_with("Checksum mismatch")
+    );
+    assert_eq!(read(bin.join("openagents")), "old openagents");
+
+    // An older release is never installed.
+    let newer = context(
+        &dir.path().join("state"),
+        &bin,
+        &base,
+        "1.0.1",
+        "linux-x86_64",
+    );
+    channel.publish("1.0.0", "linux-x86_64", &good);
+    assert!(block(install_for_cli(&newer, &need)).is_err());
+    assert_eq!(read(bin.join("openagents")), "old openagents");
+
+    // The verified release that has it is installed, and its openagents
+    // answers for the command.
+    assert_eq!(block(install_for_cli(&ctx, &need)).unwrap(), v("1.0.0"));
+    let found = crate::cli_capabilities::probe(&bin.join("openagents")).unwrap();
+    assert!(found.supports(&need[0]));
+    assert_eq!(
+        read(bin.join(BACKUP_DIR).join("openagents")),
+        "old openagents"
+    );
+    assert_eq!(
+        fs::read_dir(dir.path().join("state/updates"))
+            .unwrap()
+            .count(),
+        0
+    );
+}

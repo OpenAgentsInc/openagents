@@ -426,7 +426,10 @@ pub fn notice(kind: &InstallKind, mode: Mode, latest: Version, staged: bool) -> 
     })
 }
 
-fn installer_command() -> &'static str {
+/// The installer one-liner: it installs this platform's newest Coder with
+/// its `openagents` and `microcoder`, whatever is installed now.
+#[must_use]
+pub fn installer_command() -> &'static str {
     if cfg!(windows) {
         "irm https://openagents.com/cli/install.ps1 | iex"
     } else {
@@ -809,6 +812,70 @@ pub fn install_staged(context: &Context) -> Result<Option<Version>, String> {
         .map_err(|refusal| refusal.to_string())
 }
 
+/// Installs the release the channel names when its `openagents` runs
+/// every command in `need` (#11595). The archive is verified against the
+/// release's sums like any update, and `openagents capabilities` from the
+/// unpacked archive must list each command, else nothing changes. The
+/// version this Coder already is counts, for an `openagents` older than
+/// Coder; an older or rolled-back release never does.
+pub async fn install_for_cli(context: &Context, need: &[Vec<String>]) -> Result<Version, String> {
+    let InstallKind::Standalone(bin) = &context.kind else {
+        return Err(not_standalone(&context.kind));
+    };
+    let client = http()?;
+    let channel = context.config.channel.as_str();
+    let pointer = format!("{}/coder.{channel}", context.config.base_url);
+    let body = get_text(&client, &pointer, POINTER_TIMEOUT).await?;
+    let remote =
+        parse_pointer(&body).ok_or_else(|| format!("coder.{channel} does not name a version."))?;
+    let state_path = context.state_path();
+    if remote < context.current || State::load(&state_path).held_version() == Some(remote) {
+        return Err(format!(
+            "The {channel} channel's Coder {remote} is not one this Coder installs on its own."
+        ));
+    }
+    let staged = fetch_verified(context, &client, remote).await?;
+    let openagents = commands(&context.platform)
+        .into_iter()
+        .find(|name| name.starts_with("openagents"))
+        .unwrap_or_else(|| "openagents".into());
+    let result = install_archive_checked(
+        context,
+        bin,
+        &staged.archive,
+        &staged.sha256,
+        remote,
+        &|_| Ok(()),
+        &|stage| {
+            let found =
+                crate::cli_capabilities::probe(&stage.join(&openagents)).ok_or_else(|| {
+                    format!(
+                        "The openagents in Coder {remote} does not run here. Coder is unchanged."
+                    )
+                })?;
+            match need.iter().find(|path| !found.supports(path)) {
+                Some(path) => Err(format!(
+                    "Coder {remote} has no `openagents {}` either. Coder is unchanged.",
+                    path.join(" ")
+                )),
+                None => Ok(()),
+            }
+        },
+    );
+    let mut state = State::load(&state_path);
+    if state
+        .staged
+        .as_ref()
+        .is_some_and(|other| other.archive == staged.archive)
+    {
+        state.staged = None;
+        let _ = state.save(&state_path);
+    }
+    let _ = fs::remove_file(&staged.archive);
+    result.map_err(|refusal| refusal.to_string())?;
+    Ok(remote)
+}
+
 /// Why an install did not happen.
 #[derive(Debug)]
 pub enum Refusal {
@@ -889,6 +956,20 @@ pub fn install_archive(
     version: Version,
     fault: &dyn Fn(usize) -> io::Result<()>,
 ) -> Result<(), Refusal> {
+    install_archive_checked(context, bin, archive, sha256, version, fault, &|_| Ok(()))
+}
+
+/// [`install_archive`] with `admit` run on the unpacked, checked commands'
+/// folder last, before anything is moved: an `Err` leaves Coder unchanged.
+fn install_archive_checked(
+    context: &Context,
+    bin: &Path,
+    archive: &Path,
+    sha256: &str,
+    version: Version,
+    fault: &dyn Fn(usize) -> io::Result<()>,
+    admit: &dyn Fn(&Path) -> Result<(), String>,
+) -> Result<(), Refusal> {
     let _lock = Lock::take(bin)?;
     let name = archive
         .file_name()
@@ -922,6 +1003,7 @@ pub fn install_archive(
                 check_signature(&stage.join(command), team)?;
             }
         }
+        admit(&stage)?;
         swap(bin, &stage, &names, fault)
     })();
     let _ = fs::remove_dir_all(&stage);

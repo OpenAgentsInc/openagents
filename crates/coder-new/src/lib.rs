@@ -20,6 +20,7 @@ pub mod claude_chat;
 pub mod claude_plan;
 pub mod claude_stream;
 pub mod claude_tools;
+pub mod cli_capabilities;
 pub mod cloud;
 pub mod cloud_settings;
 pub mod cloud_tools;

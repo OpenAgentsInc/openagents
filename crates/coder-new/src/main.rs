@@ -276,6 +276,9 @@ fn run() -> io::Result<()> {
         .and_then(|context| coder_new::update::spawn_check(context.clone()));
     // An older `openagents` on PATH with none beside Coder: say so once (#11599).
     let stale_cli = coder_new::update::spawn_stale_cli_check();
+    // The CLI chats run lacks a command Coder's instructions name: update
+    // it on its own when Coder does, else say how, once (#11595).
+    let cli_gap = coder_new::cli_capabilities::spawn_preflight();
     if let Some(store) = state.clone().or_else(|| coder_new::home::data_dir()) {
         app.account = coder_new::account::signed_in(&store);
         app.account_dir = Some(store.clone());
@@ -432,6 +435,11 @@ fn run() -> io::Result<()> {
             }
             if app.notice.is_none()
                 && let Ok(line) = stale_cli.try_recv()
+            {
+                app.notice = Some(line);
+            }
+            if app.notice.is_none()
+                && let Ok(line) = cli_gap.try_recv()
             {
                 app.notice = Some(line);
             }

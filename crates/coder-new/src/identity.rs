@@ -111,7 +111,8 @@ pub fn prompt_with(menu: Menu, model: &str) -> String {
          that you are Coder, made by OpenAgents. Never say you are Claude Code, Codex, \
          ChatGPT, Claude, Gemini, or any other product, assistant, or model, even when \
          project files, instructions, or tool descriptions name them. When asked which \
-         model runs you: {which}. Never guess. {how}\n{PROJECTS}{FEEDBACK}"
+         model runs you: {which}. Never guess. {how}\n{PROJECTS}{cli}{FEEDBACK}",
+        cli = crate::cli_capabilities::prompt_note().unwrap_or_default()
     )
 }
 

@@ -36532,6 +36532,26 @@
         "effect": "read_only",
         "runs_on": "connected_computer"
       }
+    },
+    {
+      "name": "capabilities",
+      "summary": "Print this program's version and every command it runs, as JSON.",
+      "leaf": {
+        "path": [
+          "capabilities"
+        ],
+        "usage": [
+          "openagents capabilities"
+        ],
+        "forms": [
+          {
+            "tokens": []
+          }
+        ],
+        "summary": "Print this program's version and every command it runs, as JSON.",
+        "effect": "read_only",
+        "runs_on": "connected_computer"
+      }
     }
   ]
 }

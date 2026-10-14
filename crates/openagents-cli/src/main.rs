@@ -321,6 +321,7 @@ Discovery (NIP-CAP, NIP-PRG), read-only:
   completions  Print a bash, zsh, or fish completion script.
   doctor       Show the identities, stores, and relays this command uses.
   version      Show the repository, commit, and tree state.
+  capabilities Print this program's version and every command it runs, as JSON.
 
 Global options: --json; --openrouter-key KEY, --vercel-key KEY, --typesafe-key KEY
 run one command on your own provider key, never stored. A key in argv shows up in
@@ -460,7 +461,9 @@ fn main() -> ExitCode {
             println!("{USAGE}");
             0
         }
-        "version" | "doctor" if rest.first().is_some_and(|word| word == "--help") => {
+        "version" | "doctor" | "capabilities"
+            if rest.first().is_some_and(|word| word == "--help") =>
+        {
             println!("usage: openagents {command} [--json]");
             0
         }
@@ -471,6 +474,8 @@ fn main() -> ExitCode {
             0
         }
         "doctor" => doctor(&output),
+        // Coder checks the commands its instructions name (#11595).
+        "capabilities" => capabilities(),
         "host" => runtime().block_on(host(&rest)),
         "pair" => runtime().block_on(pair(&rest)),
         "task" => runtime().block_on(coder::task::cli::run_with_json(&rest, json)),
@@ -641,6 +646,28 @@ pub(crate) fn host_answers_at(socket: &Path) -> bool {
 /// What `openagents --version` prints: this program's release
 /// (`1.0.0-rc.1`), then the repository, the commit, and the tree state the
 /// build came from.
+/// `openagents capabilities`: this program's version and the words of
+/// every command it runs, as JSON. Coder reads it before a chat relies on
+/// a command its instructions name (#11595). The tree is the one bundled
+/// from this commit's help, which `tree::tests` keeps equal to it.
+fn capabilities() -> u8 {
+    use coder::cli_route::tree;
+    let commands: Vec<&Vec<String>> = tree::bundled()
+        .leaves()
+        .iter()
+        .map(|leaf| &leaf.path)
+        .collect();
+    println!(
+        "{}",
+        serde_json::json!({
+            "schema": tree::CAPABILITIES_SCHEMA,
+            "version": version_line(),
+            "commands": commands,
+        })
+    );
+    0
+}
+
 pub(crate) fn version_line() -> String {
     coder::identity::program_line("openagents", env!("CARGO_PKG_VERSION"))
 }
