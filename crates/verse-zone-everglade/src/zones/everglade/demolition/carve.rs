@@ -259,20 +259,31 @@ pub struct Split {
 
 /// Pack model `name` at `scale`, split on its lattice, cut once and shared.
 ///
+/// The split keeps each triangle's material as an index into `pack`, so a
+/// split is shared only between packs that index the model's materials
+/// alike: the kit's proxies alone ([`kit::proxies`], whose materials start
+/// at 0) and the Everglade pack with the proxies installed (whose start
+/// after the pack's own) must not share one, or broken kit walls draw in
+/// the pack's first materials, its leaves and flowers (#11644).
+///
 /// # Errors
 ///
 /// Returns a message when the pack lacks the model.
 pub fn split_model(pack: &ZonePack, name: &str, scale: f32) -> Result<Arc<Split>, String> {
-    type Cache = Mutex<BTreeMap<(String, u32), Arc<Split>>>;
+    type Cache = Mutex<BTreeMap<(String, u32, Vec<u16>), Arc<Split>>>;
     static CACHE: OnceLock<Cache> = OnceLock::new();
+    let model = pack
+        .model(name)
+        .ok_or_else(|| format!("The Everglade pack has no {name}"))?;
     // A kit piece's split depends on whether the licensed kit or its proxy
-    // draws it.
+    // draws it, and every split on how its pack numbers its materials.
     let drawn = if name.starts_with("kit/") && kit::installed(pack) {
         format!("{name}@kit")
     } else {
         name.to_owned()
     };
-    let key = (drawn, scale.to_bits());
+    let materials: Vec<u16> = model.primitives.iter().map(|p| p.material).collect();
+    let key = (drawn, scale.to_bits(), materials);
     let cache = CACHE.get_or_init(Cache::default);
     if let Some(hit) = cache
         .lock()
@@ -281,9 +292,6 @@ pub fn split_model(pack: &ZonePack, name: &str, scale: f32) -> Result<Arc<Split>
     {
         return Ok(hit.clone());
     }
-    let model = pack
-        .model(name)
-        .ok_or_else(|| format!("The Everglade pack has no {name}"))?;
     let lattice = Lattice::of_model(name, model.bounds(), scale);
 
     let mut triangles = Vec::new();

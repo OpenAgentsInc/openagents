@@ -128,3 +128,35 @@ fn a_closed_building_stops_a_walker_and_holds_up_a_lander() {
     let roof = solids().floor(x, z, base + 40.0);
     assert!(roof > base + 7.0, "the roof is {} m up", roof - base);
 }
+
+/// A kit piece split first as its collision proxy (the proxies' own pack,
+/// materials from 0) and then for drawing (the Everglade pack, the proxies'
+/// materials after the pack's own) keeps the drawing pack's materials: a
+/// shared split drew broken kit walls in the pack's leaves and flowers
+/// (#11644).
+#[test]
+fn a_kit_split_keeps_its_own_packs_materials() {
+    use super::carve::split_model;
+    use crate::zones::everglade_pack::kit;
+    let name = "kit/wall-4-timber";
+    let proxies = kit::proxies();
+    let collide = split_model(proxies, name, 1.0).expect("the proxy splits");
+    let drawn = split_model(pack(), name, 1.0).expect("the wall splits");
+    let names = |pack: &crate::zones::everglade_pack::ZonePack, split: &super::carve::Split| {
+        split
+            .triangles
+            .iter()
+            .map(|t| pack.materials[usize::from(t.1)].name.clone())
+            .collect::<std::collections::BTreeSet<_>>()
+    };
+    let own: std::collections::BTreeSet<String> = pack()
+        .model(name)
+        .expect("the pack has the wall")
+        .primitives
+        .iter()
+        .map(|p| pack().materials[usize::from(p.material)].name.clone())
+        .collect();
+    assert_eq!(names(pack(), &drawn), own);
+    assert!(own.iter().all(|n| n.starts_with("kit")), "{own:?}");
+    assert_eq!(names(proxies, &collide), own);
+}

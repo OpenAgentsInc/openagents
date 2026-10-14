@@ -1672,6 +1672,21 @@ impl Town {
         self.swarm.take_impacts()
     }
 
+    /// The images of the materials broken chunks draw in, by name (`-`
+    /// for a plain color): what a test checks the chunks look like.
+    #[must_use]
+    pub fn chunk_images(&self) -> Vec<String> {
+        self.pool
+            .kit
+            .materials
+            .iter()
+            .map(|m| {
+                m.image
+                    .map_or_else(|| "-".to_owned(), |i| self.pool.kit.images[i].name.clone())
+            })
+            .collect()
+    }
+
     /// Where the staged casters' strikes landed since the last call.
     pub fn take_showcase_impacts(&mut self) -> Vec<meteor::Impact> {
         std::mem::take(&mut self.showcase_impacts)

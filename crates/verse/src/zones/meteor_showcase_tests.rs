@@ -363,3 +363,19 @@ fn broken_chunks_draw_as_gpu_instances_and_rubble_at_rest_merges() {
     runtime.tick(&InputState::default(), DT);
     assert!(runtime.dynamic_mesh().instances.is_empty());
 }
+
+/// The houses break into chunks of their own materials (the kit, or its
+/// proxies' plaster, timber, stone and tile), never the pack's leaves or
+/// flowers: a stale split once drew every broken wall as foliage (#11644).
+#[test]
+fn broken_walls_draw_in_the_houses_materials_not_foliage() {
+    let runtime = installed();
+    let images = town(&runtime).chunk_images();
+    assert!(!images.is_empty());
+    for image in &images {
+        assert!(
+            !image.starts_with("nature/"),
+            "a chunk draws in {image}: {images:?}"
+        );
+    }
+}
