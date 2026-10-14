@@ -11,3 +11,6 @@ CTRL_expressions.mouthDimpleL 0.3
 CTRL_expressions.mouthDimpleR 0.3
 CTRL_expressions.mouthLipsPressL 0.15
 CTRL_expressions.mouthLipsPressR 0.15
+# Round 9: lids relaxed a little (+22% open at 0:54 in round 8).
+CTRL_expressions.eyeRelaxL 0.2
+CTRL_expressions.eyeRelaxR 0.2

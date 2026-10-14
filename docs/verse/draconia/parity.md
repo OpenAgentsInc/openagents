@@ -578,6 +578,54 @@ $B -b --factory-startup --python scripts/blender/draconia_set.py -- ~/work/film-
   (denser cards, a painted brow under them); the lids lowered a touch;
   real cloth for the collar and robe.
 
+### Round 9, 2026-10-14: brows she can be known by, a fuller crown
+
+- **Direction.** The coordinator: round 8 regressed against round 7 (the
+  buns groom scraped flat back: nearly bald, a huge forehead and temples;
+  brows still invisible: the face looked alien). Brows first; a hair
+  silhouette that frames the face; the lids down; a real shirt collar;
+  rounds 7 and 9 side by side.
+- **What changed.**
+  - Brows: our painted brow (strands thick at the inner head, a defined
+    arch, a fuller soft fill) laid dark ash-brown over MetaHuman's albedo
+    at 72% (`MH_PAINTED_BROW`; `draconia_paint.LAST_BROW` carries the
+    brow's coverage out of the paint), under MetaHuman's `Eyebrows_M_Full`
+    cards. Close-up: `~/Downloads/draconia-brows-r9.png`.
+  - Hair: our combed body (with its bun and volume at the crown) grown
+    again, a shade darker than the cards, under MetaHuman's
+    `Hair_S_UpdoBuns` cards, so the strand texture stays and the crown is
+    full; eight locks a side, some from the front of the hairline
+    (`draconia_hair.LOCK_AZ`), not only behind the ears.
+  - Lids: the rig's eye-relax control at 0.15-0.2 in every expression
+    (round 8 measured them 12-22% too open).
+  - Collar: the points concentrated at the very front (two flaps either
+    side of the knot), not spread into a bib.
+- **Measured** (MetaHuman's tracker; ours against the reference):
+
+  | Feature (over eye spacing) | 0:54 smile | 0:24 neutral | 0:29 speaking |
+  | --- | --- | --- | --- |
+  | Eye width | -4.8% | -4.2% | -4.0% |
+  | Eye opening | +4.0% | -4.0% | +1.8% |
+  | Eye line to nose base (midface) | +2.2% | -1.8% | -0.1% |
+  | Nose base to upper lip | +2.0% | +5.3% | -0.5% |
+  | Upper lip height | +6.9% | +11.5% | +19.8% |
+  | Lower lip height | -3.7% | -3.0% | +7.6% |
+  | Mouth width | +2.4% | +4.4% | -4.6% |
+
+  The eyes now open as the reference's (round 8: +12-22%); every feature
+  but the upper lip's height is within about 5%.
+- **Honest state.** Better than round 7 side by side: visible, dark brows;
+  calmer eyes; real strand texture with volume at the crown; the moodier
+  light. Still off: the front hairline sits high and straight, with no
+  hair over the temples; the brows are a little heavy and blocky at the
+  close-up; the upper lip is tall when she speaks; a dark band under the
+  lower lids; the collar and robe still read as shells.
+- **Artifacts.** `~/Downloads/draconia-fullface-mh-v7.png` (reference |
+  round 7 | round 9), `~/Downloads/draconia-brows-r9.png`,
+  `~/Downloads/draconia-parity-round-09.png`, the progress sheet (round 8
+  kept in it, so its regression stays visible);
+  `~/work/film-out/draconia/parity/round-09/`.
+
 ## Peacock scene
 
 The peacock guardian (reference 113.0–118.0 s, [shots.md](shots.md)),

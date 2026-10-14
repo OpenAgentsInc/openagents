@@ -44,6 +44,7 @@ BROW_DZ = 0.0
 # The painted brow's soft fill under its strands and its overall strength
 # (natural brows); a head with its own brow shape wants less of both.
 BROW_FILL = 0.55
+LAST_BROW = None
 # The painted nasolabial folds' depth (a head whose mesh has its own folds
 # wants none: painted on top they age the face).
 FOLD_DEPTH = 1.2
@@ -392,6 +393,11 @@ def paint_skin(skin, marks, size, out):
             acc = np.maximum(acc, smooth(w * 1.8, w * 0.5, dist) * rng.uniform(0.55, 1.0))
         # A soft fill under the strands: skin seen through a full brow.
         brow[sel] = np.maximum(brow[sel], np.maximum(acc, fill * BROW_FILL))
+    # The brow's coverage as an image (size x size, texels the skin covers),
+    # for laying our painted brow over another albedo (MetaHuman's).
+    global LAST_BROW
+    LAST_BROW = np.zeros((size, size), np.float32)
+    LAST_BROW[cover] = brow
     brow_c = np.array([0.30, 0.26, 0.19], np.float32) if BROWS == "pale" else np.array([0.17, 0.13, 0.09], np.float32)
     col = mix(col, brow_c, np.clip(brow, 0, 1) * (0.55 if BROWS == "pale" else BROW_STRENGTH))
 

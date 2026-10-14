@@ -522,6 +522,18 @@ def dcc_skin(dcc, maps, out_dir, size):
                 blur = (np.roll(blur, 6, 0) + np.roll(blur, -6, 0) + np.roll(blur, 6, 1) + np.roll(blur, -6, 1) + blur) / 5
             spot = np.clip(blur - l2, 0, 0.25)[..., None]
             rgb = np.clip(rgb + spot * soften * (rgb / np.maximum(l2[..., None], 1e-4)), 0, 1)
+        # Round 9: our painted brow over MetaHuman's albedo, dark ash-brown
+        # (the groom's brow cards alone read almost invisible). Strands
+        # thick at the inner head, the arch defined; MH_PAINTED_BROW is its
+        # strength (0 leaves the albedo's own).
+        bs = float(os.environ.get("MH_PAINTED_BROW", "0.72"))
+        if bs > 0 and draconia_paint.LAST_BROW is not None:
+            lb = draconia_paint.LAST_BROW
+            h, w = rgb.shape[:2]
+            # (Both images are top row first.)
+            m = lb[np.arange(h) * lb.shape[0] // h][:, np.arange(w) * lb.shape[1] // w][..., None]
+            brow_srgb = np.array([0.30, 0.24, 0.19], np.float32)
+            rgb = rgb * (1 - np.clip(m, 0, 1) * bs) + brow_srgb * np.clip(m, 0, 1) * bs
         base = draconia_paint.save("mh_skin_base", np.concatenate([rgb, np.ones_like(lum)], -1), out_dir)
     n = load_px(os.path.join(dcc, "Maps", "Head_Normal.png"))[..., :3] * 2 - 1
     n[..., 1] *= -1
@@ -670,7 +682,9 @@ def main():
     draconia_paint.CAVITY_TILE = (t("T_skinMicro3_CAV.tga"), 48) if os.path.exists(t("T_skinMicro3_CAV.tga")) else None
     draconia_paint.BROW_DZ = -0.006
     # The reference's brows are natural and soft-edged, not a drawn band.
-    draconia_paint.BROW_FILL = 0.22
+    # Round 9: a fuller painted brow (it now lies under MetaHuman's brow
+    # cards on her albedo: the reference's brows are distinct and dark).
+    draconia_paint.BROW_FILL = 0.45
     draconia_paint.BROW_STRENGTH = 0.5
     draconia_paint.FOLD_DEPTH = 0.0
     # Round 6, skin against the reference: warmer, a lighter under-eye,
@@ -787,12 +801,18 @@ def main():
         # With MetaHuman's cards (they cover the scalp and set the
         # hairline): only a few of our face-framing locks, fine and nearly
         # straight, falling past the jaw in the cards' warm blonde.
-        draconia_hair.PARTS = ("locks",)
+        # Round 9: our combed body under the cards too (warm, like them),
+        # for the reference's loose, full crown over the tight buns groom.
+        draconia_hair.PARTS = tuple(os.environ.get("MH_GROW_PARTS", "body locks").split())
         draconia_hair.LOCK_WAVE = 0.25
         draconia_hair.LOCK_CURL = 0.0
-        draconia_hair.LOCKS_PER_SIDE = 5
-        draconia_hair.LOCK_HAIRS = (2, 5)
-        draconia_hair.HAIR_ROOT, draconia_hair.HAIR_MID, draconia_hair.HAIR_TIP = hair_cols
+        # Round 9: more of them, some from the front of the hairline, not
+        # only behind the ears; the grown body a shade darker than the
+        # cards so the crown has depth.
+        draconia_hair.LOCKS_PER_SIDE = 8
+        draconia_hair.LOCK_HAIRS = (3, 7)
+        draconia_hair.LOCK_AZ = (0.4, 1.35)
+        draconia_hair.HAIR_ROOT, draconia_hair.HAIR_MID, draconia_hair.HAIR_TIP = (tuple(c * 0.85 for c in col) for col in hair_cols)
         hair = groom_objs + draconia_hair.grow(head, marks, seed=7, style=HAIR_STYLE)[0]
     else:
         hair = [] if fast else draconia_hair.grow(head, marks, seed=7, style=HAIR_STYLE)[0]
@@ -819,7 +839,8 @@ def main():
         bpy.ops.object.join()
         # Round 7: the robe hangs in soft vertical folds.
         draconia_cloth.FOLDS = 0.006
-        draconia_cloth.COLLAR_POINTS = 1.0
+        # (1.0 read as a stiff white bib in round 8.)
+        draconia_cloth.COLLAR_POINTS = 0.8
         extra += draconia_cloth.build(body, marks)
         bpy.data.objects.remove(body)
     # Fewer strands than the CC0 head: the reference's brows are soft, and

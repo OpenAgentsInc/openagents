@@ -294,7 +294,7 @@ def grow(skin, marks, seed=7, style="updo"):
     # Locks leave the hairline at the temples (azimuth 0.45-1.25 rad from
     # the front), never the middle of the forehead, so they fall beside the
     # face rather than across it.
-    front_roots = [(r, n) for (r, n) in _sample_surface(me, scalp, 8000, rng) if 0.7 < abs(_angles(r, centre)[0]) < 1.35 and _angles(r, centre)[1] < _hairline_el(_angles(r, centre)[0]) + 0.16]
+    front_roots = [(r, n) for (r, n) in _sample_surface(me, scalp, 8000, rng) if LOCK_AZ[0] < abs(_angles(r, centre)[0]) < LOCK_AZ[1] and _angles(r, centre)[1] < _hairline_el(_angles(r, centre)[0]) + 0.16]
     rng.shuffle(front_roots)
     clumps = []
     for side in (1, -1):
@@ -667,6 +667,9 @@ PARTS = ("cap", "body", "locks", "fly")
 # The locks' wave amplitude (1: the original loose waves; small: nearly
 # straight, fine wisps).
 LOCK_WAVE = 1.0
+# Where the locks root, as azimuth from the front (radians): the temples by
+# default; lower bounds near 0.4 bring strands to the front of the face.
+LOCK_AZ = (0.7, 1.35)
 # The updo's body: how far the outer layers stand off the scalp (m), how
 # much the strands puff mid-path and wander (frizz), the hairline's drop
 # (radians, lower is further down the forehead and temples), extra roots

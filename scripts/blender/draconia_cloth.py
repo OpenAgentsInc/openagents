@@ -394,8 +394,10 @@ def build(body, marks):
         front = max(0.0, -d.y)  # 1 at the front
         # Round 8: real collar points, longer and spread out over the
         # sweater at the front (the reference's), not a tube.
-        drop = 0.032 + COLLAR_POINTS * 0.055 * front**3
-        fall_bot.append(top + d * (0.01 + COLLAR_POINTS * 0.04 * front**3) - Vector((0, 0, drop)))
+        # (Round 9: the points concentrated at the very front, so they read
+        # as two pointed flaps either side of the knot, not a bib.)
+        drop = 0.03 + COLLAR_POINTS * 0.06 * front**7
+        fall_bot.append(top + d * (0.008 + COLLAR_POINTS * 0.03 * front**7) - Vector((0, 0, drop)))
     fall = _strip("collar_fall", fall_top, fall_bot)
     _solidify(fall, 0.0015)
     fall.data.materials.append(bpy.data.materials["draconia_collar"])

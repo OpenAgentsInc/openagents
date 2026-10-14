@@ -1,3 +1,4 @@
-# Neutral: no controls. Round 7's blended head rests with its eyes open
-# and large (the tracker measured the opening 16% over the reference at
-# 0:24 with a small lid lift, so none is applied).
+# Neutral. Round 9: the lids relaxed a little (the tracker measured the
+# eyes 12% more open than the reference's at 0:24 in round 8).
+CTRL_expressions.eyeRelaxL 0.15
+CTRL_expressions.eyeRelaxR 0.15
