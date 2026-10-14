@@ -76,6 +76,42 @@ are the same notes the review page keeps, under
 `~/work/film-out/reviews/<video>-<hash>/notes.md`. "Read my notes" in the chat
 reads them with `lab_notes`.
 
+## Splice in a clip of someone talking (#11617)
+
+Ask in the same chat, for example:
+
+1. **add the whiteboard clip IMG_4135 as a source**
+   - `lab_import` finds it in Downloads, Movies, Desktop or
+     `~/work/film-out`, and reads its size as it plays (a phone's rotation
+     flag applied), length, a strip of frames, what's said with each word's
+     time (whisper.cpp, `whisper-cli` with `~/work/ggml-small.en.bin`), and
+     the pauses measured from its sound.
+   - Names it mishears are fixed from `scripts/film/lab_words.json`
+     ("Cloud Code" becomes Claude Code).
+2. **what does he say from 0:40 to 1:20, and where are the pauses?**
+   (`lab_sources`)
+3. **splice 0:00 to 0:19 of it in after s1-macbook-chat as wb-hook**
+   (`lab_splice`)
+   - The clip keeps its own sound, and the music ducks under it
+     (`"sound"` on the shot; `"music_duck"` on the cut, default 0.2).
+   - The in and out move to the nearest pauses that are a whole number of
+     beats apart, so no word is cut and the beat grid holds.
+   - Captions of what's said are made in the film's caption style. Later
+     shots and their captions move along, and the music is remade to the new
+     length.
+4. **show me both ways to frame it** (`lab_framing`)
+   - A clip that isn't the film's shape sits whole over a blurred, dimmed
+     copy of itself (`"fit": "blur"`) or is cropped to fill (`"crop"`).
+5. **remake the captions over wb-hook** (`lab_captions`), after its in or
+   length changed.
+
+The checks refuse a shot that keeps its sound but starts or ends mid-word,
+and a caption over it that doesn't match what's said.
+
+Sources live in `~/work/film-out/lab/sources/<id>/` (`source.json`,
+`speech.json`, the poster and strip). `cut.py check` also reads a
+`<clip>.speech.json` beside a clip.
+
 ## An edit that's refused
 
 Ask for something the checks won't take, for example **now make the

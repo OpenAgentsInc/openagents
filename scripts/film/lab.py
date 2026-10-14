@@ -30,8 +30,16 @@ A render that uses private assets (MetaHuman, Fab packs, Berkeley Mono, see
 lab_private.json) is marked not for training and never leaves this Mac: the
 service binds 127.0.0.1 only and has no upload path.
 
+Sources: `lab_import` brings a clip in (probe with the camera's rotation
+applied, poster, frame strip, its words with times by whisper.cpp, and the
+pauses measured from its sound) under ~/work/film-out/lab/sources/<id>/.
+`lab_splice` puts a range of one into a cut: the in and out snap to pauses a
+whole number of beats apart, the clip keeps its own sound with the music
+ducked, captions are made from its words, and later shots and captions move.
+
 The tools (lab_open, lab_show, lab_frame, lab_edit, lab_render, lab_compare,
-lab_notes, lab_versions, lab_list) are POST /api/tool/<name> with JSON
+lab_notes, lab_versions, lab_list, lab_import, lab_sources, lab_splice,
+lab_captions, lab_framing) are POST /api/tool/<name> with JSON
 arguments; the web chat, Coder and `openagents lab` all call them there.
 Stdlib only, plus Pillow and numpy for frames; ffmpeg on PATH.
 """
@@ -45,6 +53,7 @@ import hashlib
 import html
 import importlib.util
 import json
+import math
 import mimetypes
 import os
 import queue
@@ -869,7 +878,7 @@ def source_frame(data: dict, t: float, out: Path):
         src_t = min(src_t, max(probe_duration(expand(shot["src"])) - 2.0 / fps, 0.0))
         tmp = out.with_suffix(".src.png")
         run(["ffmpeg", "-v", "error", "-y", "-ss", f"{src_t:.3f}", "-i", str(expand(shot["src"])), "-frames:v", "1",
-             "-vf", f"scale={w}:{h}:force_original_aspect_ratio=decrease,pad={w}:{h}:-1:-1", str(tmp)])
+             "-vf", cm.fit_filter(shot, w, h), str(tmp)])
         img = Image.open(tmp).convert("RGB")
         tmp.unlink()
     for c in data.get("captions", []):
@@ -953,6 +962,502 @@ def add_note(doc: str, n, quality: str, t: float, text: str) -> dict:
     return {"saved": True, "notes_md": str(rv.review_dir(video) / "notes.md")}
 
 
+# ---- sources: clips brought into the Lab ------------------------------------------
+
+SOURCE_DIRS = [HOME / "Downloads", HOME / "Movies", HOME / "Desktop", HOME / "work/film-out"]
+VIDEO_EXT = {".mov", ".mp4", ".m4v", ".mkv", ".webm"}
+
+
+def sources_dir() -> Path:
+    return ROOT / "sources"
+
+
+def source_index() -> dict:
+    p = sources_dir() / "index.json"
+    return json.loads(p.read_text()) if p.exists() else {}
+
+
+def words_glossary() -> dict:
+    p = FILM / "lab_words.json"
+    return json.loads(p.read_text()) if p.exists() else {"fixes": {}}
+
+
+def find_clip(what: str) -> Path:
+    """A clip from what the chat passed: a path, or a file name (with or without
+    its extension) under Downloads, Movies, Desktop or ~/work/film-out."""
+    if not isinstance(what, str) or not what.strip():
+        raise Refused("say which clip: a path, or a file name like IMG_4135")
+    p = expand(what.strip())
+    if p.is_file():
+        return p
+    want = Path(what.strip()).name.lower()
+    stem = Path(want).stem if Path(want).suffix.lower() in VIDEO_EXT else want
+    found = []
+    for base in SOURCE_DIRS:
+        if not base.exists():
+            continue
+        for depth in ("*", "*/*", "*/*/*"):
+            for f in base.glob(depth):
+                if f.suffix.lower() in VIDEO_EXT and f.is_file() and f.stem.lower() == stem:
+                    found.append(f)
+    if not found:
+        raise Refused(f"there's no clip called {what} in Downloads, Movies, Desktop or ~/work/film-out; "
+                      "give its path")
+    return max(found, key=lambda f: f.stat().st_mtime)
+
+
+def tilde(p: Path) -> str:
+    try:
+        return "~/" + str(p.resolve().relative_to(HOME.resolve()))
+    except ValueError:
+        return str(p.resolve())
+
+
+def pauses(wav: Path, min_len: float = 0.12) -> list[dict]:
+    """Stretches with no voice, from the sound's loudness: under a threshold a
+    third of the way from the room's quiet (10th percentile) to speech (70th)."""
+    import wave
+    import numpy as np
+    with wave.open(str(wav)) as w:
+        sr = w.getframerate()
+        x = np.frombuffer(w.readframes(w.getnframes()), np.int16).astype(np.float32) / 32768
+    hop = max(1, int(sr * 0.01))
+    n = len(x) // hop
+    if n < 10:
+        return []
+    db = 20 * np.log10(np.sqrt((x[:n * hop].reshape(n, hop) ** 2).mean(1) + 1e-12))
+    db = np.convolve(db, np.ones(5) / 5, mode="same")
+    floor, speech = np.percentile(db, 10), np.percentile(db, 70)
+    quiet = db < floor + 0.35 * (speech - floor)
+    out, i = [], 0
+    while i < n:
+        if quiet[i]:
+            j = i
+            while j < n and quiet[j]:
+                j += 1
+            if (j - i) * 0.01 >= min_len:
+                out.append({"from": round(i * 0.01, 2), "to": round(j * 0.01, 2)})
+            i = j
+        else:
+            i += 1
+    return out
+
+
+def fix_words(words: list[dict], fixes: dict) -> list[dict]:
+    """Known mishearings fixed in place (a phrase of k words becomes one entry
+    spanning them), so captions and checks read the right names."""
+    norm = lambda t: re.sub(r"[^a-z0-9' -]", "", t.lower()).strip()
+    rules = sorted(((norm(k).split(), v) for k, v in fixes.items()), key=lambda r: -len(r[0]))
+    out, i = [], 0
+    while i < len(words):
+        for parts, right in rules:
+            k = len(parts)
+            if [norm(w["w"]) for w in words[i:i + k]] == parts:
+                tail = re.sub(r"^.*?([.,?!;:]*)$", r"\1", words[i + k - 1]["w"])
+                out.append({"w": right + tail, "from": words[i]["from"], "to": words[i + k - 1]["to"],
+                            "heard": " ".join(w["w"] for w in words[i:i + k])})
+                i += k
+                break
+        else:
+            out.append(dict(words[i]))
+            i += 1
+    return out
+
+
+def whisper_words(wav: Path, log=None) -> list[dict] | None:
+    """Words with times from whisper.cpp (whisper-cli), when it's installed."""
+    cli = os.environ.get("WHISPER_CLI") or shutil.which("whisper-cli")
+    models = [os.environ.get("WHISPER_MODEL", "")] + [str(HOME / "work/ggml-small.en.bin"),
+                                                       str(HOME / "work/ggml-base.en.bin")]
+    model = next((m for m in models if m and Path(m).exists()), None)
+    if not cli or not model:
+        return None
+    out = wav.with_name("whisper")
+    prompt = words_glossary().get("prompt", "")
+    run([cli, "-m", model, "-f", str(wav), "-ojf", "-of", str(out), "-ml", "1", "-sow", "-np"]
+        + (["--prompt", prompt] if prompt else []), log=log)
+    data = json.loads(Path(str(out) + ".json").read_text())
+    words = []
+    for seg in data.get("transcription", []):
+        t = seg.get("text", "").strip()
+        if t:
+            words.append({"w": t, "from": round(seg["offsets"]["from"] / 1000, 2),
+                          "to": round(seg["offsets"]["to"] / 1000, 2)})
+    Path(str(out) + ".json").unlink(missing_ok=True)
+    return words
+
+
+def sentences(words: list[dict]) -> list[dict]:
+    """The words as sentences with their times, for reading a transcript."""
+    out, cur = [], []
+    for w in words:
+        cur.append(w)
+        if re.search(r"[.?!]$", w["w"]):
+            out.append(cur)
+            cur = []
+    if cur:
+        out.append(cur)
+    return [{"text": " ".join(w["w"] for w in s), "from": s[0]["from"], "to": s[-1]["to"]} for s in out]
+
+
+def source_info(sid: str) -> dict:
+    p = sources_dir() / sid / "source.json"
+    if not p.exists():
+        raise Refused(f"there's no source called {sid}; the sources are "
+                      + (", ".join(sorted(set(source_index().values()))) or "none yet (lab_import adds one)"))
+    return json.loads(p.read_text())
+
+
+def speech(sid: str) -> dict | None:
+    p = sources_dir() / sid / "speech.json"
+    return json.loads(p.read_text()) if p.exists() else None
+
+
+def resolve_source(what) -> str:
+    """A source id from its id, its file name or its path."""
+    if not isinstance(what, str) or not what.strip():
+        raise Refused("say which source, e.g. the clip's name")
+    want = slug(Path(what.strip()).stem)
+    for path, sid in source_index().items():
+        if want in (sid, slug(Path(path).stem)):
+            return sid
+    try:
+        p = find_clip(what)
+    except Refused:
+        p = None
+    if p and str(p.resolve()) in source_index():
+        return source_index()[str(p.resolve())]
+    raise Refused(f"{what} isn't a source yet; lab_import brings a clip in")
+
+
+def import_source(what: str, name: str | None = None, force: bool = False) -> dict:
+    """Bring a clip in: probe it (rotation applied), a poster and a strip of
+    frames, its sound's pauses, and its words with times. Cached by the file."""
+    src = find_clip(what)
+    sid = slug(name or src.stem)
+    d = sources_dir() / sid
+    info_p = d / "source.json"
+    st = src.stat()
+    if info_p.exists() and not force:
+        info = json.loads(info_p.read_text())
+        if info.get("size") == st.st_size and info.get("mtime") == st.st_mtime and info["path"] == str(src.resolve()):
+            return info
+    d.mkdir(parents=True, exist_ok=True)
+    p = cutmod().probe(src)
+    info = {"id": sid, "path": str(src.resolve()), "src": tilde(src), "name": src.name, "size": st.st_size,
+            "mtime": st.st_mtime, "w": p["w"], "h": p["h"], "fps": round(p["fps"], 3), "duration": round(p["dur"], 3),
+            "rotation": p["rotation"], "audio": p["audio"], "imported": now()}
+    poster = d / "poster.jpg"
+    run(["ffmpeg", "-v", "error", "-y", "-ss", f"{min(5.0, p['dur'] / 2):.2f}", "-i", str(src), "-frames:v", "1",
+         "-vf", "scale=960:-2", "-q:v", "3", str(poster)])
+    times = [p["dur"] * (k + 0.5) / 6 for k in range(6)]
+    frames = []
+    for k, t in enumerate(times):
+        f = d / f"strip-{k}.jpg"
+        run(["ffmpeg", "-v", "error", "-y", "-ss", f"{t:.2f}", "-i", str(src), "-frames:v", "1",
+             "-vf", "scale=384:216:force_original_aspect_ratio=decrease,pad=384:216:-1:-1", str(f)])
+        frames.append(f)
+    contact(frames, [clock(t) for t in times], d / "strip.jpg")
+    for f in frames:
+        f.unlink(missing_ok=True)
+    info["poster"], info["strip"] = str(poster), str(d / "strip.jpg")
+    if p["audio"]:
+        wav = d / "sound16k.wav"
+        run(["ffmpeg", "-v", "error", "-y", "-i", str(src), "-map", "0:a:0", "-ac", "1", "-ar", "16000", str(wav)])
+        sp = {"duration": info["duration"], "quiet": pauses(wav), "words": [], "how": None}
+        words = whisper_words(wav)
+        if words is not None:
+            sp["words"] = fix_words(words, words_glossary().get("fixes", {}))
+            sp["how"] = "whisper.cpp"
+        wav.unlink(missing_ok=True)
+        (d / "speech.json").write_text(json.dumps(sp, indent=1) + "\n")
+        info["speech"] = str(d / "speech.json")
+    info_p.write_text(json.dumps(info, indent=2) + "\n")
+    idx = source_index()
+    idx[str(src.resolve())] = sid
+    (sources_dir() / "index.json").write_text(json.dumps(idx, indent=2) + "\n")
+    return info
+
+
+def source_text(info: dict, a: float = 0.0, b: float = 1e9) -> list[str]:
+    land = "landscape" if info["w"] >= info["h"] else "portrait"
+    lines = [f"{info['name']}: {clock(info['duration'])}, {info['w']}x{info['h']} as it plays ({land}"
+             + (f", camera rotation {info['rotation']} applied" if info.get("rotation") else "") + f"), "
+             f"{info['fps']:g} fps, " + ("with sound" if info["audio"] else "no sound") + "."]
+    sp = speech(info["id"])
+    if sp:
+        if sp["words"]:
+            lines.append("What's said (m:ss into the clip):")
+            for s in sentences(sp["words"]):
+                if s["to"] > a and s["from"] < b:
+                    lines.append(f"[{clock(s['from'])}-{clock(s['to'])}] {s['text']}")
+        else:
+            lines.append("There's no transcript (whisper-cli isn't installed), only the pauses.")
+        long_q = [q for q in sp["quiet"] if q["to"] > a and q["from"] < b]
+        lines.append("Pauses where a cut can go (seconds): "
+                     + ", ".join(f"{q['from']:.2f}-{q['to']:.2f}" for q in long_q[:80]))
+    return lines
+
+
+def snap_range(sp: dict, a: float, b: float, beat: float, reach: float = 1.5) -> tuple[float, float] | None:
+    """The in and out nearest a and b that both fall in pauses and are a whole
+    number of beats apart, so the shot keeps the beat grid and no word is cut."""
+    def spots(t):
+        out = []
+        for q in sp.get("quiet", []):
+            lo, hi = max(q["from"] + 0.03, t - reach), min(q["to"] - 0.03, t + reach)
+            x = math.ceil(lo / 0.05 - 1e-9) * 0.05
+            while x <= hi + 1e-9:
+                out.append(round(x, 2))
+                x += 0.05
+        if t >= sp.get("duration", 1e9) - 1e-6:
+            out.append(round(sp["duration"], 2))
+        return out
+    ins, outs = spots(a), spots(b)
+    best = None
+    for i in ins:
+        for o in outs:
+            k = (o - i) / beat
+            if o > i and abs(k - round(k)) < 1e-6:
+                cost = abs(i - a) + abs(o - b)
+                if best is None or cost < best[0]:
+                    best = (cost, i, o)
+    return (best[1], best[2]) if best else None
+
+
+def speech_captions(sp: dict, a: float, b: float, start: float, shot: str, slot_end: float,
+                    max_chars: int = 84, max_secs: float = 5.5) -> list[dict]:
+    """Captions of what's said in clip seconds [a, b], placed from timeline
+    second `start`: sentences, split at commas when long, as cut.py draws them."""
+    ws = [w for w in sp.get("words", []) if w["from"] >= a - 0.05 and w["to"] <= b + 0.05]
+    groups, cur = [], []
+    for w in ws:
+        if cur:
+            text = " ".join(x["w"] for x in cur + [w])
+            if len(text) > max_chars or w["to"] - cur[0]["from"] > max_secs:
+                # Break at the last comma if there is one, so a line reads as a phrase.
+                cut_at = max((k for k, x in enumerate(cur) if re.search(r"[,;:]$", x["w"])), default=None)
+                if cut_at is not None and cut_at < len(cur) - 1:
+                    groups.append(cur[:cut_at + 1])
+                    cur = cur[cut_at + 1:]
+                else:
+                    groups.append(cur)
+                    cur = []
+        cur.append(w)
+        if re.search(r"[.?!]$", w["w"]) and len(" ".join(x["w"] for x in cur)) >= 18:
+            groups.append(cur)
+            cur = []
+    if cur:
+        groups.append(cur)
+    caps = []
+    for k, g in enumerate(groups):
+        text = " ".join(x["w"] for x in g)
+        text = text[0].upper() + text[1:]
+        at = start + max(g[0]["from"] - a, 0.0)
+        end = start + min(g[-1]["to"], b) - a + 0.3
+        if k + 1 < len(groups):
+            end = min(end, start + max(groups[k + 1][0]["from"] - a, 0.0) - 0.05)
+        end = min(end, slot_end - 0.05)
+        if caps and at < caps[-1]["at"] + caps[-1]["dur"] + 0.02:
+            at = round(caps[-1]["at"] + caps[-1]["dur"] + 0.02, 3)
+        if end - at >= 0.4:
+            caps.append({"text": text, "at": round(at, 3), "dur": round(end - at, 3), "shot": shot})
+    return caps
+
+
+def insert_index(data: dict, args: dict) -> int:
+    """Where a new shot goes: after or before a named shot, or at a time (which
+    must be a shot boundary, the nearest within a second)."""
+    names = [s["name"] for s in data["shots"]]
+    if args.get("after"):
+        if args["after"] not in names:
+            raise Refused(f"there's no shot called {args['after']}; the shots are {', '.join(names)}")
+        return names.index(args["after"]) + 1
+    if args.get("before"):
+        if args["before"] not in names:
+            raise Refused(f"there's no shot called {args['before']}; the shots are {', '.join(names)}")
+        return names.index(args["before"])
+    if args.get("at") not in (None, ""):
+        t = seconds(args["at"], data)
+        tl = timeline(data)
+        edges = [(0.0, 0)] + [(s["end"], s["i"] + 1) for s in tl]
+        best = min(edges, key=lambda e: abs(e[0] - t))
+        if abs(best[0] - t) > 1.0:
+            inside = next((s for s in tl if s["start"] <= t < s["end"]), None)
+            raise Refused(f"{clock(t)} is inside {inside['name'] if inside else 'the cut'} "
+                          f"({clock(inside['start'])}-{clock(inside['end'])}); insert at a shot boundary, "
+                          "or say after or before which shot")
+        return best[1]
+    raise Refused("say where it goes: after a shot, before a shot, or at a time")
+
+
+def splice_shot(data: dict, info: dict, sp: dict | None, args: dict, name: str) -> tuple[dict, list[str]]:
+    """The new shot for a range of a source, snapped to pauses and the beat grid."""
+    beat = 60.0 / data.get("bpm", 120)
+    a = seconds(args.get("from") or 0, None)
+    b = seconds(args["to"], None) if args.get("to") not in (None, "") else info["duration"]
+    if not 0 <= a < b <= info["duration"] + 1e-3:
+        raise Refused(f"the range {clock(a)}-{clock(b)} isn't inside {info['name']} (0:00-{clock(info['duration'])})")
+    said = []
+    keep = str(args.get("sound", "yes")).lower() not in ("no", "false", "0", "off")
+    if keep and not info["audio"]:
+        keep = False
+        said.append(f"{info['name']} has no sound, so the music plays under it.")
+    if keep and sp:
+        snapped = snap_range(sp, a, b, beat)
+        if not snapped:
+            near_a, near_b = cutmod().near_pauses(a, sp), cutmod().near_pauses(b, sp)
+            raise Refused(f"no in and out near {a:.2f}s and {b:.2f}s fall in pauses a whole number of beats apart; "
+                          f"pauses near the start are at {near_a} and near the end at {near_b}")
+        if abs(snapped[0] - a) > 1e-6 or abs(snapped[1] - b) > 1e-6:
+            said.append(f"I cut it at {snapped[0]:.2f}s to {snapped[1]:.2f}s of the clip, in pauses, so no word is "
+                        f"cut and its length ({snapped[1] - snapped[0]:g} s) is whole beats.")
+        a, b = snapped
+    else:
+        b = a + max(round((b - a) / beat), 1) * beat
+    shot = {"name": name, "src": info["src"], "in": round(a, 3), "dur": round(b - a, 3)}
+    if keep:
+        shot["sound"] = {"gain": float(args.get("gain") or 1.0)}
+    fit = args.get("fit")
+    size = data["size"]
+    if not fit and abs(info["w"] / info["h"] - size[0] / size[1]) > 0.01:
+        fit = "blur"
+        said.append(f"{info['name']} is {info['w']}x{info['h']}, so it sits whole over a blurred copy of itself "
+                    "(fit blur; crop is the other choice).")
+    if fit:
+        shot["fit"] = fit
+    if args.get("xfade") not in (None, ""):
+        shot["xfade"] = float(args["xfade"])
+    return shot, said
+
+
+def tool_import(args) -> dict:
+    info = import_source(args.get("clip"), args.get("name"), str(args.get("again", "")).lower() in ("yes", "true"))
+    lines = [f"Source {info['id']} ({info['src']})."] + source_text(info)
+    out = {"text": "\n".join(lines), "source": info["id"]}
+    if args.get("document"):
+        doc = resolve(args["document"])
+        v = version(doc)
+        out["card"] = card(doc, v, "preview", image=Path(info["strip"]))
+    return out
+
+
+def tool_sources(args) -> dict:
+    if not args.get("source"):
+        idx = source_index()
+        if not idx:
+            return {"text": "No sources yet; lab_import brings a clip in."}
+        lines = ["Sources:"]
+        for sid in sorted(set(idx.values())):
+            info = source_info(sid)
+            lines.append(f"- {sid}: {info['name']}, {clock(info['duration'])}, {info['w']}x{info['h']}"
+                         + (", with a transcript" if speech(sid) and speech(sid)["words"] else ""))
+        return {"text": "\n".join(lines)}
+    info = source_info(resolve_source(args["source"]))
+    a = seconds(args["from"], None) if args.get("from") not in (None, "") else 0.0
+    b = seconds(args["to"], None) if args.get("to") not in (None, "") else 1e9
+    lines = source_text(info, a, b)
+    sp = speech(info["id"])
+    if sp and args.get("from") not in (None, ""):
+        lines.append("Words with times: " + " ".join(f"{w['w']}[{w['from']:.2f}-{w['to']:.2f}]"
+                                                     for w in sp["words"] if w["to"] > a and w["from"] < b))
+    return {"text": "\n".join(lines)}
+
+
+def tool_splice(args) -> dict:
+    doc = resolve(args.get("document"))
+    parent = version(doc, args.get("version"))
+    if parent["kind"] != "cut.v1":
+        raise Refused("lab_splice puts a clip into a cut; this document is a " + parent["kind"])
+    old = body(doc, parent["n"])
+    sid = resolve_source(args.get("source"))
+    info, sp = source_info(sid), speech(sid)
+    names = {s["name"] for s in old["shots"]}
+    name = args.get("name") or f"{sid}-{int(seconds(args.get('from') or 0, None))}"
+    if name in names:
+        raise Refused(f"there's already a shot called {name}; give the new one another name")
+    shot, said = splice_shot(old, info, sp, args, name)
+    idx = insert_index(old, args)
+    new = copy.deepcopy(old)
+    new["shots"].insert(idx, shot)
+    moved = ripple(old, new)
+    tl = {s["name"]: s for s in timeline(new)}
+    start = tl[name]["start"]
+    caps_on = str(args.get("captions", "yes")).lower() not in ("no", "false", "0", "off")
+    made = []
+    if caps_on and shot.get("sound") and sp and sp["words"]:
+        made = speech_captions(sp, shot["in"], shot["in"] + shot["dur"], start, name, tl[name]["end"])
+        # A line of the old captions that the new shot now covers gives way to what's said.
+        new["captions"] = [c for c in new.get("captions", [])
+                           if not (start - 1e-3 <= c["at"] < tl[name]["end"] - 1e-3)] + made
+        new["captions"].sort(key=lambda c: c["at"])
+    if moved:
+        said.append(f"{moved} captions after it moved with their shots.")
+    if made:
+        said.append(f"{len(made)} captions of what's said, in the film's caption style.")
+    said.append(f"{name} runs {clock(start)}-{clock(tl[name]['end'])} in the film "
+                f"({clock(shot['in'])}-{clock(shot['in'] + shot['dur'])} of {info['name']}).")
+    summary = (args.get("summary") or "").strip() or (
+        f"Splice {info['name']} {clock(shot['in'])}-{clock(shot['in'] + shot['dur'])} in as {name}")
+    return commit(doc, parent, old, new, summary, args.get("author") or "chat", args.get("render", True), said)
+
+
+def tool_captions(args) -> dict:
+    doc = resolve(args.get("document"))
+    parent = version(doc, args.get("version"))
+    old = body(doc, parent["n"])
+    name = args.get("shot")
+    tl = {s["name"]: s for s in timeline(old)}
+    if name not in tl:
+        raise Refused(f"there's no shot called {name}")
+    shot = old["shots"][tl[name]["i"]]
+    if not shot.get("sound"):
+        raise Refused(f"{name} doesn't keep its own sound, so there's nothing said to caption")
+    sp = cutmod().speech_for(expand(shot["src"]))
+    if not sp or not sp.get("words"):
+        raise Refused(f"{Path(shot['src']).name} has no transcript; lab_import it first")
+    start, end = tl[name]["start"], tl[name]["end"]
+    made = speech_captions(sp, shot.get("in", 0.0), shot.get("in", 0.0) + shot["dur"], start, name, end)
+    new = copy.deepcopy(old)
+    new["captions"] = sorted([c for c in new.get("captions", []) if not (start - 1e-3 <= c["at"] < end - 1e-3)]
+                             + made, key=lambda c: c["at"])
+    if new == old:
+        return {"text": f"The captions over {name} already match what's said."}
+    return commit(doc, parent, old, new, (args.get("summary") or "").strip() or f"Captions over {name} from what's said",
+                  args.get("author") or "chat", args.get("render", True),
+                  [f"{len(made)} captions over {name}: " + " / ".join(c["text"] for c in made)])
+
+
+def tool_framing(args) -> dict:
+    """The two ways to put a clip of another shape in the frame, side by side."""
+    sid = resolve_source(args.get("source"))
+    info = source_info(sid)
+    t = seconds(args.get("at"), None) if args.get("at") not in (None, "") else min(5.0, info["duration"] / 2)
+    size = (1920, 1080)
+    if args.get("document"):
+        size = tuple(body(resolve(args["document"]), version(resolve(args["document"]))["n"])["size"])
+    w, h = 960, int(960 * size[1] / size[0])
+    d = sources_dir() / sid
+    stills = []
+    for fit in ("blur", "crop"):
+        out = d / f"fit-{fit}-{t:.1f}.jpg"
+        run(["ffmpeg", "-v", "error", "-y", "-ss", f"{t:.2f}", "-i", info["path"], "-frames:v", "1",
+             "-vf", cutmod().fit_filter({"fit": fit}, w, h), "-q:v", "3", str(out)])
+        stills.append(out)
+    sheet = d / f"framing-{t:.1f}.jpg"
+    side_by_side(stills[0], stills[1], f"blur  {clock(t)}", f"crop  {clock(t)}", sheet)
+    same = abs(info["w"] / info["h"] - size[0] / size[1]) < 0.01
+    text = (f"{info['name']} at {clock(t)}: on the left whole over a blurred, dimmed copy of itself (fit blur), "
+            "on the right cropped to fill (fit crop).")
+    if same:
+        text += f" It's already {info['w']}x{info['h']}, the film's shape, so both fill the frame and no framing is needed."
+    out = {"text": text, "image": str(sheet)}
+    if args.get("document"):
+        doc = resolve(args["document"])
+        out["card"] = card(doc, version(doc), "preview", image=sheet)
+    return out
+
+
 # ---- the tools -------------------------------------------------------------------
 
 def base_url() -> str:
@@ -1002,6 +1507,10 @@ def shots_text(data: dict, a: float, b: float) -> list[str]:
                 extra += f", plays {sh['play']}s then holds"
             if sh.get("xfade"):
                 extra += f", {sh['xfade']}s crossfade in"
+            if sh.get("sound"):
+                extra += ", keeps its own sound (music ducked)"
+            if sh.get("fit") and sh["fit"] != "pad":
+                extra += f", fit {sh['fit']}"
             beats = cutmod().beats_for(expand(sh["src"])) if "src" in sh else []
             if beats:
                 extra += "; its animations: " + ", ".join(f"{bb['what']} {bb['from']}-{bb['to']}s of the clip"
@@ -1130,6 +1639,14 @@ def tool_edit(args) -> dict:
     touched_caps = any(isinstance(op, dict) and str(op.get("path", "")).startswith("/captions") for op in ops)
     if parent["kind"] == "cut.v1" and args.get("ripple_captions", True) and not touched_caps:
         moved = ripple(old, new)
+    return commit(doc, parent, old, new, summary, args.get("author") or "chat", args.get("render", True),
+                  [f"{moved} captions moved with their shots."] if moved else [])
+
+
+def commit(doc: str, parent: dict, old: dict, new: dict, summary: str, author: str, render=True,
+           said=None) -> dict:
+    """Check a changed document against its parent and save it as a new
+    version, or refuse it with the reason when it adds a problem."""
     before, _ = check(parent["kind"], old)
     after, notes = check(parent["kind"], new)
     added = [p for p in after if p not in before]
@@ -1140,19 +1657,18 @@ def tool_edit(args) -> dict:
         if fixed:
             why += " (It would have fixed: " + "; ".join(fixed) + ".)"
         return {"text": why, "refused": True, "problems": added}
-    author = args.get("author") or "chat"
     v = save_version(doc, parent["kind"], new, summary, author, parent=parent["n"])
     fixed = [p for p in before if shape(p) not in {shape(q) for q in after}]
-    lines = [f"Saved v{v['n']}: {summary}"]
-    if moved:
-        lines.append(f"{moved} captions moved with their shots.")
+    lines = [f"Saved v{v['n']}: {summary}"] + list(said or [])
     if fixed:
         lines.append("Fixed: " + "; ".join(fixed))
     if after:
         lines.append("Still open from before: " + "; ".join(after))
     if new.get("shots") and old.get("shots"):
         lines.append(f"Length {clock(length('cut.v1', old))} -> {clock(length('cut.v1', new))}.")
-    job = renders().submit(doc, v["n"], "preview") if args.get("render", True) else None
+    if new.get("score") and length(parent["kind"], new) != length(parent["kind"], old):
+        lines.append("The music is remade to the new length; its hits stay on their shots.")
+    job = renders().submit(doc, v["n"], "preview") if render else None
     if job:
         lines.append("A preview is rendering.")
     return {"text": "\n".join(lines), "version": v["n"], "card": card(doc, v, "preview", job=job)}
@@ -1266,6 +1782,33 @@ TOOLS = {
                   {"document": "string", "version": "string?"}),
     "lab_versions": (tool_versions, "List a document's versions: who made each and what it changed.",
                      {"document": "string"}),
+    "lab_import": (tool_import, "Bring a video clip into the Lab as a source, by its path or file name (e.g. "
+                                "IMG_4135): its size as it plays, length, a strip of frames, what's said with "
+                                "times, and the pauses where a cut can go. Pass the document being edited to "
+                                "show the strip in its card.",
+                   {"clip": "string", "name": "string?", "document": "string?"}),
+    "lab_sources": (tool_sources, "List the sources, or read one: what's said in a time range with each word's "
+                                  "time, and its pauses. Use it to pick where a splice starts and ends.",
+                    {"source": "string?", "from": "string?", "to": "string?"}),
+    "lab_splice": (tool_splice, "Put a time range of a source into a cut as a new shot, after or before a named "
+                                "shot or at a shot boundary. The source keeps its own sound (a person speaking) "
+                                "with the music ducked under it, unless sound is no. The in and out move to the "
+                                "nearest pauses a whole number of beats apart, so no word is cut. Captions of "
+                                "what's said are made in the film's caption style, later shots and their "
+                                "captions move along, and the music is remade to the new length. Checked like "
+                                "lab_edit; a preview renders.",
+                   {"document": "string", "source": "string", "from": "string", "to": "string",
+                    "after": "string?", "before": "string?", "at": "string?", "name": "string?", "fit": "string?",
+                    "sound": "string?", "captions": "string?", "xfade": "string?", "summary": "string?",
+                    "version": "string?"}),
+    "lab_captions": (tool_captions, "Remake the captions over a shot that keeps its own sound from what's said in "
+                                    "it (after its in or length changed).",
+                     {"document": "string", "shot": "string", "summary": "string?", "version": "string?"}),
+    "lab_framing": (tool_framing, "Two stills of a source side by side: whole over a blurred, dimmed copy of "
+                                  "itself (fit blur) and cropped to fill (fit crop), for choosing how a clip of "
+                                  "another shape sits in the film. Set the choice on the shot with lab_edit "
+                                  "(/shots/@NAME/fit).",
+                    {"source": "string", "at": "string?", "document": "string?"}),
 }
 
 
@@ -1287,15 +1830,25 @@ PARAM_DOCS = {
     "document": "the document's id or title, e.g. episode-290",
     "version": "a version number like 3 (default: the latest)",
     "from": "start time, m:ss or seconds", "to": "end time, m:ss or seconds",
-    "at": "a time, m:ss or seconds", "a": "the first version to compare (default: the one before b)",
+    "at": "a time, m:ss or seconds (lab_splice: the shot boundary nearest it)", "a": "the first version to compare (default: the one before b)",
     "b": "the second version (default: the latest)",
     "patch": 'a JSON Patch as a JSON string, e.g. [{"op":"replace","path":"/shots/@s4-delegation/dur","value":12.5}]',
     "summary": "one line in plain words saying what the edit changes",
     "quality": "preview, review or master",
+    "clip": "a video file's path, or its name like IMG_4135 (found in Downloads, Movies, Desktop or ~/work/film-out)",
+    "name": "a short name for the new source or shot, e.g. wb-hook",
+    "source": "a source's id or its clip's file name (lab_sources lists them)",
+    "after": "the name of the shot the new one goes after",
+    "before": "the name of the shot the new one goes before",
+    "fit": "for a clip of another shape: blur (whole, over a blurred copy) or crop (cropped to fill)",
+    "sound": "yes (default) keeps the clip's own sound with the music ducked; no plays the music over it",
+    "captions": "yes (default) makes captions of what's said; no makes none",
+    "xfade": "a crossfade into the new shot, in seconds (default none)",
+    "shot": "a shot's name",
 }
 
 
-EXTRA = {"author", "render", "ripple_captions", "quality"}  # settings the callers pass, not the model
+EXTRA = {"author", "render", "ripple_captions", "quality", "again", "gain"}  # settings the callers pass, not the model
 
 
 def call(name: str, args: dict) -> dict:

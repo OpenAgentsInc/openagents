@@ -146,7 +146,11 @@ To change a document, read it first (lab_open or lab_show), then call lab_edit w
 one-line summary in plain words. Address a cut's shot by name: /shots/@NAME/dur. In a cut at 120 BPM every shot length \
 is a whole number of beats (a multiple of 0.5 s). If lab_edit refuses, read its reason, fix the patch and try again; \
 tell the owner if it can't be done. After an edit a preview renders by itself; to compare, call lab_compare with the \
-time asked for (a and b default to the version before and the latest).\n\nDocuments:\n",
+time asked for (a and b default to the version before and the latest). \
+To use a new clip, bring it in with lab_import (a path or a file name like IMG_4135), read what's said and its pauses \
+with lab_sources, then put a range into the cut with lab_splice: it keeps the clip's own speech with the music ducked, \
+moves the in and out to pauses so no word is cut, and makes captions of what's said. Speak as I, never we.\
+\n\nDocuments:\n",
     );
     for doc in documents {
         out.push_str(&format!(

@@ -10,6 +10,7 @@
     "bpm": {"type": "number", "exclusiveMinimum": 0},
     "music": {"type": "string"},
     "music_gain": {"type": "number", "minimum": 0},
+    "music_duck": {"type": "number", "minimum": 0, "maximum": 1, "description": "The music's level under a shot that keeps its own sound (default 0.2)."},
     "out": {"type": "string"},
     "sheets": {"type": "string"},
     "cache": {"type": "string"},
@@ -27,7 +28,7 @@
       "type": "array",
       "items": {
         "type": "object", "required": ["text", "at", "dur"], "additionalProperties": false,
-        "properties": {"text": {"type": "string"}, "at": {"type": "number", "minimum": 0}, "dur": {"type": "number", "exclusiveMinimum": 0}}
+        "properties": {"text": {"type": "string"}, "at": {"type": "number", "minimum": 0}, "dur": {"type": "number", "exclusiveMinimum": 0}, "shot": {"type": "string", "description": "Made from this shot's own speech (lab_splice, lab_captions)."}}
       }
     },
     "score": {
@@ -56,6 +57,9 @@
         "dark_ok": {"type": "boolean"},
         "hold_ok": {"type": "number", "minimum": 0},
         "label": {"type": "string"},
+        "fit": {"type": "string", "enum": ["pad", "blur", "crop"], "description": "A clip of another shape: whole on black, whole over a blurred copy of itself, or cropped to fill."},
+        "focus": {"type": "array", "items": {"type": "number", "minimum": 0, "maximum": 1}, "minItems": 2, "maxItems": 2, "description": "With fit crop: the part kept, x and y from 0 to 1."},
+        "sound": {"type": "object", "additionalProperties": false, "description": "Keep the clip's own sound (speech), with the music ducked under it. Its cuts must fall in pauses.", "properties": {"gain": {"type": "number", "minimum": 0}}},
         "over": {
           "type": "object", "required": ["src"], "additionalProperties": false,
           "properties": {"src": {"type": "string"}, "at": {"type": "number", "minimum": 0}}

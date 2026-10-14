@@ -126,5 +126,136 @@ class LabTest(unittest.TestCase):
             self.assertEqual(s["parameters"]["type"], "object")
 
 
+def talking(name, w=180, h=320, rotate=None):
+    """A clip with "speech": three tone bursts with pauses between, 6 s."""
+    path = TMP / f"{name}.mp4"
+    tone_expr = "0.5*sin(2*PI*300*t)*(lt(t,1)+between(t,1.5,3)+between(t,3.6,5))"
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", f"testsrc2=size={w}x{h}:rate=30:duration=6",
+                    "-f", "lavfi", "-i", f"aevalsrc='{tone_expr}':s=48000:d=6", "-pix_fmt", "yuv420p",
+                    "-c:a", "aac", "-shortest", str(path)], check=True)
+    if rotate is not None:
+        turned = TMP / f"{name}-turned.mp4"
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-display_rotation:v:0", str(rotate), "-i", str(path),
+                        "-c", "copy", str(turned)], check=True)
+        return turned
+    return path
+
+
+# What the transcriber would hear in the talking clip (whisper.cpp isn't needed for the tests).
+HEARD = [{"w": "Well,", "from": 0.05, "to": 0.4}, {"w": "folks.", "from": 0.4, "to": 0.95},
+         {"w": "This", "from": 1.55, "to": 1.9}, {"w": "is", "from": 1.9, "to": 2.1},
+         {"w": "CODR", "from": 2.1, "to": 2.5}, {"w": "from", "from": 2.5, "to": 2.7},
+         {"w": "open", "from": 2.7, "to": 2.85}, {"w": "agents.", "from": 2.85, "to": 2.98},
+         {"w": "Let's", "from": 3.65, "to": 4.0}, {"w": "try", "from": 4.0, "to": 4.5}, {"w": "it.", "from": 4.5, "to": 4.95}]
+
+
+class SpliceTest(unittest.TestCase):
+    """A clip with its own speech, brought in and spliced into a cut (#11617)."""
+
+    @classmethod
+    def setUpClass(cls):
+        lab.whisper_words = lambda wav, log=None: [dict(w) for w in HEARD]
+        cls.clip = talking("whiteboard")
+        a = clip("wide", 12)
+        cls.cut = {"fps": 30, "size": [320, 180], "bpm": 120, "music": tone(30), "out": str(TMP / "talk.mp4"),
+                   "shots": [{"name": "open", "src": a, "in": 0.0, "dur": 2.0},
+                             {"name": "after", "src": a, "in": 2.0, "dur": 3.0}],
+                   "captions": [{"text": "Over the after shot.", "at": 2.5, "dur": 1.0}]}
+        lab.create("talk", "cut.v1", "Talk film", cls.cut, "First cut", "test")
+
+    def test_import_measures_pauses_and_fixes_names(self):
+        info = lab.import_source(str(self.clip))
+        self.assertEqual((info["w"], info["h"]), (180, 320))
+        self.assertTrue(info["audio"])
+        sp = lab.speech(info["id"])
+        gaps = [(q["from"], q["to"]) for q in sp["quiet"]]
+        for a, b in ((1.0, 1.5), (3.0, 3.6), (5.0, 6.0)):
+            self.assertTrue(any(x <= a + 0.1 and y >= b - 0.1 for x, y in gaps), (a, b, gaps))
+        said = " ".join(w["w"] for w in sp["words"])
+        self.assertIn("This is Coder from OpenAgents.", said)
+        self.assertTrue(Path(info["strip"]).exists() and Path(info["poster"]).exists())
+        self.assertEqual(lab.resolve_source("whiteboard"), info["id"])
+        out = lab.call("lab_sources", {"source": "whiteboard"})
+        self.assertIn("This is Coder from OpenAgents.", out["text"])
+        self.assertIn("Pauses where a cut can go", out["text"])
+
+    def test_a_turned_phone_clip_reads_as_it_plays(self):
+        p = lab.cutmod().probe(talking("turned", 320, 180, rotate=90))
+        self.assertEqual((p["w"], p["h"]), (180, 320))
+        self.assertEqual(abs(p["rotation"]), 90)
+
+    def test_ranges_snap_to_pauses_on_whole_beats(self):
+        sp = {"duration": 6.0, "quiet": [{"from": 1.0, "to": 1.5}, {"from": 3.0, "to": 3.6}, {"from": 5.0, "to": 6.0}]}
+        a, b = lab.snap_range(sp, 1.2, 3.2, 0.5)
+        self.assertTrue(1.0 < a < 1.5 and 3.0 < b < 3.6, (a, b))
+        self.assertAlmostEqual((b - a) / 0.5, round((b - a) / 0.5))
+        self.assertIsNone(lab.snap_range({"duration": 6.0, "quiet": []}, 1.2, 3.2, 0.5))
+
+    def test_captions_come_from_what_is_said(self):
+        sp = {"words": [dict(w) for w in HEARD]}
+        sp["words"] = lab.fix_words(sp["words"], {"CODR": "Coder", "open agents": "OpenAgents"})
+        caps = lab.speech_captions(sp, 1.25, 3.25, 10.0, "wb", 12.0)
+        self.assertEqual([c["text"] for c in caps], ["This is Coder from OpenAgents."])
+        self.assertAlmostEqual(caps[0]["at"], 10.3, places=2)
+        self.assertLessEqual(caps[0]["at"] + caps[0]["dur"], 12.0)
+
+    def test_splice_inserts_with_its_sound_captions_and_framing(self):
+        lab.import_source(str(self.clip))
+        before = lab.body("talk", lab.version("talk")["n"])
+        out = lab.call("lab_splice", {"document": "talk", "source": "whiteboard", "from": "0.9", "to": "3.2",
+                                      "after": "open", "name": "wb", "render": False})
+        self.assertNotIn("refused", out, out["text"])
+        data = lab.body("talk", out["version"])
+        shot = data["shots"][1]
+        self.assertEqual(shot["name"], "wb")
+        self.assertEqual(shot["sound"], {"gain": 1.0})
+        self.assertEqual(shot["fit"], "blur", "a portrait clip sits over a blurred copy of itself")
+        self.assertTrue(1.0 < shot["in"] < 1.5 and 3.0 < shot["in"] + shot["dur"] < 3.6, shot)
+        self.assertEqual(shot["dur"] % 0.5, 0)
+        mine = [c for c in data["captions"] if c.get("shot") == "wb"]
+        self.assertEqual([c["text"] for c in mine], ["This is Coder from OpenAgents."])
+        moved = next(c for c in data["captions"] if c["text"] == "Over the after shot.")
+        old = next(c for c in before["captions"] if c["text"] == "Over the after shot.")
+        self.assertAlmostEqual(moved["at"], old["at"] + shot["dur"])
+        self.assertIn("in pauses", out["text"])
+
+        # A cut in the middle of a word, or a caption that isn't what's said, is refused.
+        out2 = lab.call("lab_edit", {"document": "talk", "summary": "start mid-word", "render": False,
+                                     "patch": json.dumps([{"op": "replace", "path": "/shots/@wb/in", "value": 1.75}])})
+        self.assertTrue(out2.get("refused"), out2)
+        self.assertIn("mid-speech", out2["text"])
+        i = next(k for k, c in enumerate(data["captions"]) if c.get("shot") == "wb")
+        out3 = lab.call("lab_edit", {"document": "talk", "summary": "wrong words", "render": False,
+                                     "patch": json.dumps([{"op": "replace", "path": f"/captions/{i}/text",
+                                                           "value": "Something nobody said at all here."}])})
+        self.assertTrue(out3.get("refused"), out3)
+        self.assertIn("doesn't match what's said", out3["text"])
+
+        # Framing stills for both choices.
+        fr = lab.call("lab_framing", {"source": "whiteboard", "at": "2"})
+        self.assertTrue(Path(fr["image"]).exists())
+
+    def test_a_spliced_cut_renders_with_the_clips_sound_under_ducked_music(self):
+        lab.import_source(str(self.clip))
+        cut = {"fps": 30, "size": [320, 180], "bpm": 120, "music": tone(30), "out": str(TMP / "spliced.mp4"),
+               "cache": str(TMP / "cache"), "sheets": str(TMP / "sheets"),
+               "shots": [{"name": "open", "src": self.cut["shots"][0]["src"], "in": 0.0, "dur": 1.0},
+                         {"name": "wb", "src": str(self.clip), "in": 1.25, "dur": 2.0, "sound": {"gain": 1.0},
+                          "fit": "blur"},
+                         {"name": "crop", "src": str(self.clip), "in": 3.3, "dur": 1.0, "fit": "crop"}]}
+        spec = TMP / "spliced.json"
+        spec.write_text(json.dumps(cut))
+        r = subprocess.run([sys.executable, str(lab.FILM / "cut.py"), "render", str(spec), "--force"],
+                           capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr[-1500:])
+        probe = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=codec_type:format=duration",
+                                "-of", "json", str(TMP / "spliced.mp4")], capture_output=True, text=True).stdout
+        j = json.loads(probe)
+        self.assertEqual(sorted(s["codec_type"] for s in j["streams"]), ["audio", "video"])
+        self.assertAlmostEqual(float(j["format"]["duration"]), 4.0, delta=0.1)
+        expr = lab.cutmod().duck_expr([(None, 1.0, 2.0)], 0.2)
+        self.assertIn("1-0.800*", expr)
+
+
 if __name__ == "__main__":
     unittest.main()

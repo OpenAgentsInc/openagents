@@ -1,0 +1,22 @@
+{
+  "about": "Video Lab: names a transcript mishears, fixed before they reach a caption (lab_import). Whole words or phrases, matched without case; the value is the spelling captions use.",
+  "prompt": "OpenAgents, Coder, Claude Code, Codex, Haiku, Sonnet, Opus, Fable, Microcoder, System 1, System 2, plugin, ERP, Anthropic.",
+  "fixes": {
+    "CODR": "Coder",
+    "Coda": "Coder",
+    "Codor": "Coder",
+    "open agents": "OpenAgents",
+    "Open Agents": "OpenAgents",
+    "Cloud Code": "Claude Code",
+    "Clawed Code": "Claude Code",
+    "microcoder": "Microcoder",
+    "system two": "System 2",
+    "system one": "System 1",
+    "plug-in": "plugin",
+    "plug-ins": "plugins",
+    "anthropic": "Anthropic",
+    "pope": "Pope",
+    "system to harness": "System 2 harness",
+    "system to harnesses": "System 2 harnesses"
+  }
+}

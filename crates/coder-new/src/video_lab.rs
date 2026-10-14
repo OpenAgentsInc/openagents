@@ -2,7 +2,8 @@
 //!
 //! The same typed tools the web chat offers (`lab_open`, `lab_show`,
 //! `lab_frame`, `lab_edit`, `lab_render`, `lab_compare`, `lab_notes`,
-//! `lab_versions`, `lab_list`), run by the Video Lab service on this Mac
+//! `lab_versions`, `lab_list`, and for clips `lab_import`, `lab_sources`,
+//! `lab_splice`, `lab_captions`, `lab_framing`), run by the Video Lab service on this Mac
 //! (scripts/film/lab.py, `http://127.0.0.1:8792`). Coder in the terminal
 //! answers in words and gives the Lab player link for anything to watch;
 //! the video plays there or in the web chat's card.
@@ -95,14 +96,81 @@ const TOOLS: &[(&str, &str, &[(&str, &str, bool)])] = &[
         "List a document's versions: who made each and what it changed.",
         &[(DOC, DOC_HELP, true)],
     ),
+    (
+        "lab_import",
+        "Bring a video clip into the Lab as a source, by its path or file name (e.g. IMG_4135): its size as it plays, length, what's said with times, and the pauses where a cut can go.",
+        &[
+            (
+                "clip",
+                "a video file's path, or its name like IMG_4135",
+                true,
+            ),
+            ("name", "a short name for the source", false),
+            (
+                "document",
+                "the document being edited, to show the clip in its card",
+                false,
+            ),
+        ],
+    ),
+    (
+        "lab_sources",
+        "List the sources, or read one: what's said in a time range with each word's time, and its pauses.",
+        &[
+            ("source", SOURCE_HELP, false),
+            ("from", "start time, m:ss or seconds", false),
+            ("to", "end time, m:ss or seconds", false),
+        ],
+    ),
+    (
+        "lab_splice",
+        "Put a time range of a source into a cut as a new shot, after or before a named shot or at a shot boundary. It keeps its own sound with the music ducked (unless sound is no); the in and out move to the nearest pauses a whole number of beats apart; captions of what's said are made; later shots and captions move and the music is remade. Checked like lab_edit.",
+        &[
+            (DOC, DOC_HELP, true),
+            ("source", SOURCE_HELP, true),
+            ("from", "start time in the source, m:ss or seconds", true),
+            ("to", "end time in the source, m:ss or seconds", true),
+            ("after", "the shot the new one goes after", false),
+            ("before", "the shot the new one goes before", false),
+            ("at", "a time in the film; the nearest shot boundary", false),
+            ("name", "the new shot's name", false),
+            ("fit", "blur or crop, for a clip of another shape", false),
+            ("sound", "yes (default) or no", false),
+            ("captions", "yes (default) or no", false),
+            ("xfade", "a crossfade into it, in seconds", false),
+            ("summary", "one line in plain words", false),
+            ("version", VERSION_HELP, false),
+        ],
+    ),
+    (
+        "lab_captions",
+        "Remake the captions over a shot that keeps its own sound from what's said in it.",
+        &[
+            (DOC, DOC_HELP, true),
+            ("shot", "the shot's name", true),
+            ("summary", "one line in plain words", false),
+            ("version", VERSION_HELP, false),
+        ],
+    ),
+    (
+        "lab_framing",
+        "Two stills of a source side by side: whole over a blurred copy of itself (fit blur) and cropped to fill (fit crop).",
+        &[
+            ("source", SOURCE_HELP, true),
+            ("at", "a time in the source", false),
+            (DOC, "the document, for the film's frame size", false),
+        ],
+    ),
 ];
+
+const SOURCE_HELP: &str = "a source's id or its clip's file name";
 
 const DOC: &str = "document";
 const DOC_HELP: &str = "the document's id or title, e.g. episode-290";
 const VERSION_HELP: &str = "a version number like 3 (default: the latest)";
 
 /// What Coder's model is told when the tools are on.
-pub const INSTRUCTIONS: &str = "The lab_* tools see and edit the owner's films, shots and scenes in Video Lab on this computer: open a document, show a time range, look at a frame, edit it with a JSON Patch (read it first; a refused edit says why, so fix the patch), render, compare versions, and read the review notes. The terminal can't play video: end your answer with the Lab player link the tool returned (`player`), so the owner can watch it.\n";
+pub const INSTRUCTIONS: &str = "The lab_* tools see and edit the owner's films, shots and scenes in Video Lab on this computer: open a document, show a time range, look at a frame, edit it with a JSON Patch (read it first; a refused edit says why, so fix the patch), render, compare versions, read the review notes, bring a clip in (lab_import) and splice a range of it into a cut with its own speech (lab_splice). The terminal can't play video: end your answer with the Lab player link the tool returned (`player`), so the owner can watch it.\n";
 
 /// Whether `name` is a Video Lab tool.
 #[must_use]
@@ -266,7 +334,7 @@ mod tests {
         for def in &defs {
             let name = def["function"]["name"].as_str().unwrap();
             assert!(name.starts_with("lab_") && is_tool(name));
-            if name != "lab_list" {
+            if !["lab_list", "lab_import", "lab_sources", "lab_framing"].contains(&name) {
                 assert!(
                     def["function"]["parameters"]["required"]
                         .as_array()

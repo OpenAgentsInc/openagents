@@ -38,7 +38,20 @@ slow push-in over the hold, reaching 4% at the end of the slot, so a long hold
 doesn't read as a stalled picture. A missing clip with `"label"` draws that
 text on its placeholder card (a labelled slot for a shot still being made).
 
-The cut may carry `"captions": [{"text", "at", "dur"}, ...]`: lines of the
+A clip whose shape isn't the film's takes `"fit"`: "pad" (the default: whole,
+on black), "blur" (whole, over a blurred, dimmed copy of itself filling the
+frame) or "crop" (fills the frame, cropped; `"focus": [x, y]`, 0-1, picks the
+part kept, default the middle). Sizes are read with the camera's rotation flag
+applied, so a phone clip shot sideways is the landscape frame it plays as.
+
+A clip with `"sound": {"gain"?}` keeps its own sound (a person speaking): it
+plays under its slot, and the music is ducked under it (`"music_duck"`, the
+music's level there, default 0.2). Such a shot must start and end in a pause
+in its speech: `check` reads the clip's transcript (`<clip>.speech.json`
+beside it, or the one Video Lab made on import, see SOURCES) and fails a cut
+in the middle of a word, and a caption over it that doesn't match what's said.
+
+The cut may carry `"captions":[{"text", "at", "dur"}, ...]`: lines of the
 script drawn small in the bottom third (Geist Regular, from FILM_FONTS, default
 ~/work/film-out/fonts) on a soft dark band, at timeline seconds `at` for `dur`
 seconds, wrapped to at most two lines. `"caption_style"` can set `size` (a
@@ -68,6 +81,10 @@ ROOT = Path(__file__).resolve().parents[2]
 FONTS = ROOT / "crates/paper-mono/fonts"
 CACHE_VERSION = 1  # bump when segment rendering changes
 FILM_FONTS = Path(os.path.expanduser(os.environ.get("FILM_FONTS", "~/work/film-out/fonts")))
+# Clips Video Lab imported (scripts/film/lab.py lab_import): their transcript with
+# word times and their pauses, in <id>/speech.json, found by path in index.json.
+SOURCES = Path(os.path.expanduser(os.environ.get("VIDEO_LAB_ROOT", "~/work/film-out/lab"))) / "sources"
+FITS = ("pad", "blur", "crop")
 
 
 def expand(p):
@@ -83,12 +100,23 @@ def run(cmd, text=True):
 
 
 def probe(path):
-    out = run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
-               "stream=width,height,r_frame_rate:format=duration", "-of", "json", str(path)]).stdout
+    """Size as shown (a phone's rotation flag applied, so a clip shot sideways
+    reads as the frame it plays as), fps, length, and whether it has sound."""
+    out = run(["ffprobe", "-v", "error", "-show_entries",
+               "stream=codec_type,width,height,r_frame_rate:stream_side_data=rotation:format=duration",
+               "-of", "json", str(path)]).stdout
     j = json.loads(out)
-    s = j["streams"][0]
+    streams = j.get("streams", [])
+    s = next(x for x in streams if x.get("codec_type") == "video")
     num, den = s["r_frame_rate"].split("/")
-    return {"w": s["width"], "h": s["height"], "fps": float(num) / float(den), "dur": float(j["format"]["duration"])}
+    w, h, rot = s["width"], s["height"], 0
+    for side in s.get("side_data_list", []) or []:
+        if "rotation" in side:
+            rot = int(side["rotation"])
+    if abs(rot) % 180 == 90:
+        w, h = h, w
+    return {"w": w, "h": h, "fps": float(num) / float(den), "dur": float(j["format"]["duration"]),
+            "rotation": rot, "audio": any(x.get("codec_type") == "audio" for x in streams)}
 
 
 def load(path):
@@ -224,7 +252,7 @@ def render_segment(shot, cut, w, h, out, allow_missing):
     play = shot.get("play")
     if play is not None and play < length - 1e-6:
         return render_held(shot, cut, w, h, out, src, play, length)
-    vf = f"scale={w}:{h}:force_original_aspect_ratio=decrease:flags=lanczos,pad={w}:{h}:-1:-1:black,fps={fps},setsar=1"
+    vf = fit_filter(shot, w, h) + f",fps={fps},setsar=1"
     if shot.get("speed"):
         vf = f"setpts=PTS/{shot['speed']}," + vf
     over = shot.get("over")
@@ -241,6 +269,22 @@ def render_segment(shot, cut, w, h, out, allow_missing):
          "-vf", vf, "-an", "-c:v", "libx264", "-crf", "8", "-preset", "fast", "-pix_fmt", "yuv420p", str(out)])
 
 
+def fit_filter(shot, w, h):
+    """The filter that puts a clip into a w x h frame, by the shot's `fit`."""
+    fit = shot.get("fit", "pad")
+    if fit == "crop":
+        fx, fy = shot.get("focus", [0.5, 0.5])
+        return (f"scale={w}:{h}:force_original_aspect_ratio=increase:flags=lanczos,"
+                f"crop={w}:{h}:(iw-{w})*{fx}:(ih-{h})*{fy}")
+    if fit == "blur":
+        # The clip whole, over itself scaled to fill, blurred and dimmed.
+        return (f"split[fitbg][fitfg];[fitbg]scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},"
+                f"gblur=sigma={max(8, h // 40)},eq=brightness=-0.12:saturation=0.75[fitb];"
+                f"[fitfg]scale={w}:{h}:force_original_aspect_ratio=decrease:flags=lanczos[fitf];"
+                f"[fitb][fitf]overlay=(W-w)/2:(H-h)/2")
+    return f"scale={w}:{h}:force_original_aspect_ratio=decrease:flags=lanczos,pad={w}:{h}:-1:-1:black"
+
+
 def render_held(shot, cut, w, h, out, src, play, length):
     """Plays `play` seconds of the clip, then holds its last frame for the rest
     of the slot, with an eased push-in of `push` (a fraction of the frame)."""
@@ -252,7 +296,7 @@ def render_held(shot, cut, w, h, out, src, play, length):
         run(["ffmpeg", "-v", "error", "-y", "-sseof", "-0.25", "-i", str(played), "-update", "1",
              "-frames:v", "100", f"{tmp}-last.png"])
     else:
-        vf = f"scale={w}:{h}:force_original_aspect_ratio=decrease:flags=lanczos,pad={w}:{h}:-1:-1:black"
+        vf = fit_filter(shot, w, h)
         run(["ffmpeg", "-v", "error", "-y", "-ss", str(shot.get("in", 0.0)), "-i", str(src), "-frames:v", "1",
              "-vf", vf, f"{tmp}-last.png"])
     still = Image.open(f"{tmp}-last.png").convert("RGB")
@@ -288,7 +332,7 @@ def segment_cached(shot, cut, w, h, seg, cache, allow_missing):
         if p and expand(p).exists():
             st = expand(p).stat()
             stamp.append([str(expand(p)), st.st_size, st.st_mtime])
-    spec = {k: v for k, v in shot.items() if k not in ("start", "name", "xfade", "xfade_kind")}
+    spec = {k: v for k, v in shot.items() if k not in ("start", "name", "xfade", "xfade_kind", "sound")}
     key = hashlib.sha1(json.dumps([spec, w, h, cut["fps"], stamp, CACHE_VERSION], sort_keys=True,
                                   default=str).encode()).hexdigest()[:16]
     hit = cache / f"{key}.mp4"
@@ -357,6 +401,75 @@ def render_caption(cap, st, w, h, path):
 
 # ---- inspect ------------------------------------------------------------------
 
+def speech_for(src):
+    """A clip's speech, when it has been transcribed: {"words": [{"w", "from",
+    "to"}], "quiet": [{"from", "to"}], "duration"} in the clip's seconds.
+    `quiet` are measured pauses (no voice), which is where a cut may go."""
+    side = Path(src).with_suffix(".speech.json")
+    if side.exists():
+        try:
+            return json.loads(side.read_text())
+        except (OSError, ValueError):
+            return None
+    index = SOURCES / "index.json"
+    if index.exists():
+        try:
+            sid = json.loads(index.read_text()).get(str(Path(src).resolve()))
+        except (OSError, ValueError):
+            sid = None
+        if sid and (SOURCES / sid / "speech.json").exists():
+            return json.loads((SOURCES / sid / "speech.json").read_text())
+    return None
+
+
+def in_pause(t, speech, slack=0.02):
+    """Whether time t of the clip falls in a pause (or before or after all speech)."""
+    if t >= speech.get("duration", 1e9) - slack:
+        return True
+    return any(q["from"] - slack <= t <= q["to"] + slack for q in speech.get("quiet", []))
+
+
+def word_at(t, speech):
+    for w in speech.get("words", []):
+        if w["from"] < t < w["to"]:
+            return w["w"]
+    near = min(speech.get("words", []), key=lambda w: min(abs(w["from"] - t), abs(w["to"] - t)), default=None)
+    return near["w"] if near else None
+
+
+def near_pauses(t, speech, n=2):
+    """The pauses nearest t, as clip seconds a cut could go at (their middles)."""
+    qs = sorted(speech.get("quiet", []), key=lambda q: abs((q["from"] + q["to"]) / 2 - t))[:n]
+    return sorted(round((q["from"] + q["to"]) / 2, 2) for q in qs)
+
+
+WORD = re.compile(r"[a-z0-9']+")
+
+
+def said(text):
+    return [w.strip("'") for w in WORD.findall(text.lower().replace("-", " "))]
+
+
+def heard(speech, a, b):
+    """The words spoken between clip seconds a and b."""
+    return [w["w"] for w in speech.get("words", []) if w["to"] > a and w["from"] < b]
+
+
+def caption_matches(text, speech, a, b, glossary=None):
+    """Whether a caption over clip seconds [a, b] says what's said there: most of
+    its words are heard in that stretch (a second either side), after the
+    transcript's known mishearings are corrected (glossary)."""
+    words = said(text)
+    if not words:
+        return True, ""
+    spoken = " ".join(heard(speech, a - 1.0, b + 1.0))
+    for wrong, right in (glossary or {}).items():
+        spoken = re.sub(rf"\b{re.escape(wrong.lower())}\b", right.lower(), spoken.lower())
+    pool = set(said(spoken))
+    found = sum(1 for w in words if w in pool)
+    return found >= 0.6 * len(words), spoken
+
+
 def beats_for(src):
     """The animation beats a source's renderer recorded beside it, if any:
     `<clip>.beats.json` = [{"from": s, "to": s, "what": "..."}, ...] in the
@@ -368,6 +481,31 @@ def beats_for(src):
         return json.loads(side.read_text())
     except (OSError, ValueError):
         return []
+
+
+def speech_problems(shot, src, p, problems, notes):
+    """A shot that keeps its own sound: it starts and ends in a pause in the
+    speech (never mid-word), plays at its own speed, and doesn't hold a frame."""
+    name = shot["name"]
+    if not p.get("audio"):
+        problems.append(f"{name}: keeps its sound, but {src.name} has no sound")
+        return
+    if shot.get("speed", 1.0) != 1.0:
+        problems.append(f"{name}: keeps its sound, so it plays at its own speed (remove speed)")
+    if shot.get("play") is not None and shot["play"] < shot["dur"] - 1e-6:
+        problems.append(f"{name}: keeps its sound, so it can't hold a frame (remove play)")
+    sp = speech_for(src)
+    if not sp:
+        notes.append(f"{name}: keeps its sound, but {src.name} has no transcript yet, so its cuts can't be checked "
+                     f"against the speech (lab_import makes one)")
+        return
+    a = shot.get("in", 0.0)
+    for label, t in (("starts", a), ("ends", a + shot["dur"])):
+        if not in_pause(t, sp):
+            w = word_at(t, sp)
+            problems.append(f"{name}: {label} mid-speech at {t:.2f}s of {src.name}"
+                            + (f", in '{w}'" if w else "") + "; cut in a pause, e.g. at "
+                            + " or ".join(f"{x:.2f}s" for x in near_pauses(t, sp)))
 
 
 def check(cut, w, h, allow_missing):
@@ -407,8 +545,14 @@ def check(cut, w, h, allow_missing):
         need = shot.get("in", 0.0) + played * shot.get("speed", 1.0)
         if p["dur"] + 1e-3 < need:
             problems.append(f"{name}: {src.name} is {p['dur']:.2f}s, the cut needs {need:.2f}s")
-        if abs(p["w"] / p["h"] - w / h) > 0.01:
-            problems.append(f"{name}: {src.name} is {p['w']}x{p['h']}, not {w}:{h}; it would be letterboxed")
+        fit = shot.get("fit", "pad")
+        if fit not in FITS:
+            problems.append(f"{name}: fit is pad, blur or crop, not {fit}")
+        if abs(p["w"] / p["h"] - w / h) > 0.01 and fit == "pad":
+            problems.append(f"{name}: {src.name} is {p['w']}x{p['h']}, not {w}:{h}; it would be letterboxed "
+                            f"(set its fit to blur or crop)")
+        if shot.get("sound"):
+            speech_problems(shot, src, p, problems, notes)
         if p["h"] < h:
             notes.append(f"{name}: {src.name} is {p['h']}p, upscaled to {h}p")
         # The last source second on screen, and whether it lands inside an animation.
@@ -441,6 +585,20 @@ def check(cut, w, h, allow_missing):
                 problems.append(f"caption '{c['text'][:40]}' leaves the action-safe area")
             if c["at"] < 0 or c["at"] + c["dur"] > cut["total"] + 1e-3:
                 problems.append(f"caption '{c['text'][:40]}' runs off the timeline")
+            # A caption over a shot that keeps its speech says what's said there.
+            for shot in cut["shots"]:
+                if not shot.get("sound") or "src" not in shot:
+                    continue
+                if not (shot["start"] - 1e-3 <= c["at"] < shot["start"] + shot["dur"] - 1e-3):
+                    continue
+                sp = expand(shot["src"]).exists() and speech_for(expand(shot["src"]))
+                if not sp:
+                    continue
+                a = shot.get("in", 0.0) + c["at"] - shot["start"]
+                ok, spoken = caption_matches(c["text"], sp, a, a + c["dur"])
+                if not ok:
+                    problems.append(f"caption '{c['text'][:40]}' over {shot['name']} doesn't match what's said "
+                                    f"there ('{spoken[:60]}')")
 
     music = cut.get("music")
     if music and expand(music).exists():
@@ -511,6 +669,25 @@ def contact_sheets(cut, segs, cut_path):
 
 # ---- render -------------------------------------------------------------------
 
+def sound_slots(cut):
+    """(shot, start, dur) for each shot that keeps its own sound, on the timeline."""
+    out = []
+    for shot in cut["shots"]:
+        if shot.get("sound") and "src" in shot and expand(shot["src"]).exists():
+            out.append((shot, shot["start"], shot["dur"]))
+    return out
+
+
+def duck_expr(slots, level, ramp=0.35):
+    """An ffmpeg volume expression: 1 outside the slots, `level` inside them,
+    easing down over `ramp` seconds before each and back up after it."""
+    terms = []
+    for _, start, dur in slots:
+        a, b = start, start + dur
+        terms.append(f"clip(min((t-{a - ramp:.3f})/{ramp},({b + ramp:.3f}-t)/{ramp}),0,1)")
+    return f"1-{1 - level:.3f}*min(1,{'+'.join(terms)})" if terms else "1"
+
+
 def assemble(cut, segs, w, h, out, master):
     fps = cut["fps"]
     inputs, chain = [], []
@@ -558,17 +735,39 @@ def assemble(cut, segs, w, h, out, master):
     music = expand(cut["music"])
     inputs += ["-i", str(music)]
     a = f"[{n}:a]atrim=end={total},asetpts=PTS-STARTPTS,volume={cut.get('music_gain', 1.0)}"
+    nxt = n + 1
+    spoken = sound_slots(cut)
+    if spoken:
+        # The music ducks under every shot that keeps its own speech.
+        a += f",volume='{duck_expr(spoken, cut.get('music_duck', 0.2))}':eval=frame"
     if fout:
         a += f",afade=t=out:st={total - fout}:d={fout}"
+    beds = []
     voice = cut.get("voice")
     if voice:
         inputs += ["-itsoffset", str(voice.get("at", 0.0)), "-i", str(expand(voice["src"]))]
-        audio.append(a + "[m]")
-        audio.append(f"[{n + 1}:a]volume={voice.get('gain', 1.0)},asplit=2[vo][key]")
-        audio.append("[m][key]sidechaincompress=threshold=0.04:ratio=6:attack=20:release=400[duck]")
-        audio.append("[duck][vo]amix=inputs=2:normalize=0,loudnorm=I=-14:TP=-1.0:LRA=11[a]")
+        audio.append(a + "[m0]")
+        audio.append(f"[{nxt}:a]volume={voice.get('gain', 1.0)},asplit=2[vo][key]")
+        audio.append("[m0][key]sidechaincompress=threshold=0.04:ratio=6:attack=20:release=400[m]")
+        beds.append("[vo]")
+        nxt += 1
     else:
-        audio.append(a + ",loudnorm=I=-14:TP=-1.0:LRA=11[a]")
+        audio.append(a + "[m]")
+    for j, (shot, start, dur) in enumerate(spoken):
+        # The shot's own sound, exactly its slot, with short fades so a cut in a pause doesn't click.
+        inputs += ["-ss", str(shot.get("in", 0.0)), "-t", f"{dur:.3f}", "-i", str(expand(shot["src"]))]
+        ms = int(round(start * 1000))
+        f = min(0.05, dur / 4)
+        audio.append(f"[{nxt}:a:0]aresample=48000,aformat=channel_layouts=stereo,atrim=end={dur:.3f},"
+                     f"asetpts=PTS-STARTPTS,afade=t=in:d={f},afade=t=out:st={dur - f:.3f}:d={f},"
+                     f"volume={shot['sound'].get('gain', 1.0)},adelay={ms}|{ms}[sp{j}]")
+        beds.append(f"[sp{j}]")
+        nxt += 1
+    if beds:
+        audio.append(f"[m]{''.join(beds)}amix=inputs={1 + len(beds)}:normalize=0:duration=first,"
+                     f"loudnorm=I=-14:TP=-1.0:LRA=11[a]")
+    else:
+        audio.append("[m]loudnorm=I=-14:TP=-1.0:LRA=11[a]")
     graph = ";".join(chain + audio)
     out.parent.mkdir(parents=True, exist_ok=True)
     run(["ffmpeg", "-v", "error", "-y", *inputs, "-filter_complex", graph, "-map", "[v]", "-map", "[a]",
