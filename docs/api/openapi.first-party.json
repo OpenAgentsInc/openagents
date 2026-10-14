@@ -8166,7 +8166,7 @@
     "/v1/connections/google/tools/{tool}": {
       "post": {
         "operationId": "runGoogleTool",
-        "summary": "Run one read-only Drive tool (`drive_search`, `drive_list_folder`, `drive_read`) with its arguments.",
+        "summary": "Run one read-only Drive tool (`drive_search`, `drive_list_folder`, `drive_read`) with its arguments. `drive_read` reads Docs, Sheets, and PDFs as text and describes photos and videos (Gemini on Vertex), adding `usage` and `cost_usd`.",
         "tags": [
           "Connections"
         ],

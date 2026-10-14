@@ -39,6 +39,9 @@ pub enum Content {
     Pdf(Vec<u8>),
     /// A plain file with its MIME type.
     Plain(String, String),
+    /// A photo or video: its MIME type, bytes, and a video's length in
+    /// milliseconds.
+    Media(String, Vec<u8>, Option<u64>),
 }
 
 #[derive(Clone, Debug)]
@@ -47,6 +50,8 @@ pub struct FakeFile {
     pub name: String,
     pub parent: Option<String>,
     pub content: Content,
+    /// The size Drive reports, when not the content's own.
+    pub size: Option<u64>,
 }
 
 impl FakeFile {
@@ -57,6 +62,7 @@ impl FakeFile {
             name: name.into(),
             parent: parent.map(str::to_owned),
             content,
+            size: None,
         }
     }
 
@@ -66,18 +72,25 @@ impl FakeFile {
             Content::Doc(_) => DOC.into(),
             Content::Sheet(_) => SHEET.into(),
             Content::Pdf(_) => PDF.into(),
-            Content::Plain(mime, _) => mime.clone(),
+            Content::Plain(mime, _) | Content::Media(mime, _, _) => mime.clone(),
         }
     }
 
     fn json(&self) -> Value {
-        json!({
+        let mut out = json!({
             "id": self.id,
             "name": self.name,
             "mimeType": self.mime(),
             "webViewLink": format!("https://drive.example/{}", self.id),
             "modifiedTime": "2026-10-01T00:00:00Z",
-        })
+        });
+        if let Content::Media(_, bytes, millis) = &self.content {
+            out["size"] = json!(self.size.unwrap_or(bytes.len() as u64).to_string());
+            if let Some(millis) = millis {
+                out["videoMediaMetadata"] = json!({"durationMillis": millis.to_string()});
+            }
+        }
+        out
     }
 
     fn text(&self) -> String {
@@ -307,6 +320,7 @@ async fn handle(State(inner): State<Arc<Mutex<Inner>>>, request: Request) -> Res
             return match &file.content {
                 Content::Pdf(bytes) => bytes.clone().into_response(),
                 Content::Plain(_, text) => text.clone().into_response(),
+                Content::Media(_, bytes, _) => bytes.clone().into_response(),
                 _ => StatusCode::FORBIDDEN.into_response(),
             };
         }

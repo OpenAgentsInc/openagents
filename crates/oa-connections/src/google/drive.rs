@@ -9,6 +9,13 @@
 //! ([`MAX_TEXT_CHARS`], [`MAX_TABS`], [`MAX_ROWS`], [`MAX_PDF_BYTES`]) and
 //! says when it was cut.
 //!
+//! Photos (JPEG, PNG, WebP, HEIC, HEIF) and videos (MOV, MP4, and the
+//! other kinds Gemini takes) are looked at by the host's [`LookAt`] and
+//! come back as a description of what is in them, with what looking cost
+//! ([`Spent`]). A photo over [`MAX_IMAGE_BYTES`], a video over
+//! [`MAX_VIDEO_BYTES`] or longer than [`MAX_VIDEO_SECONDS`] is refused
+//! before anything is fetched, saying so.
+//!
 //! Every tool here calls with `GET`, so each one's default policy is
 //! [`crate::core::Policy::Allow`].
 
@@ -29,6 +36,34 @@ pub const SHEET: &str = "application/vnd.google-apps.spreadsheet";
 pub const SLIDES: &str = "application/vnd.google-apps.presentation";
 pub const PDF: &str = "application/pdf";
 
+/// The photo types a model looks at.
+const IMAGE_TYPES: [&str; 5] = [
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "image/heic",
+    "image/heif",
+];
+/// The video types a model looks at.
+const VIDEO_TYPES: [&str; 10] = [
+    "video/quicktime",
+    "video/mp4",
+    "video/mpeg",
+    "video/mpg",
+    "video/webm",
+    "video/x-flv",
+    "video/wmv",
+    "video/x-ms-wmv",
+    "video/3gpp",
+    "video/x-m4v",
+];
+/// The largest photo looked at.
+pub const MAX_IMAGE_BYTES: u64 = 15 * 1024 * 1024;
+/// The largest video looked at.
+pub const MAX_VIDEO_BYTES: u64 = 500 * 1024 * 1024;
+/// The longest video looked at.
+pub const MAX_VIDEO_SECONDS: u64 = 5 * 60;
+
 /// The most text one read returns.
 pub const MAX_TEXT_CHARS: usize = 60_000;
 /// The most tabs of a spreadsheet read.
@@ -41,7 +76,8 @@ pub const MAX_PDF_BYTES: usize = 12 * 1024 * 1024;
 const MAX_EXPORT_BYTES: usize = 4 * 1024 * 1024;
 /// The most files one search or listing returns.
 pub const MAX_RESULTS: u32 = 50;
-const FIELDS: &str = "id,name,mimeType,webViewLink,modifiedTime,size";
+const FIELDS: &str =
+    "id,name,mimeType,webViewLink,modifiedTime,size,videoMediaMetadata(durationMillis)";
 
 /// Turns a PDF's bytes into its text; the host provides it (the website
 /// uses Gemini on Vertex).
@@ -64,6 +100,35 @@ pub struct File {
     pub modified_time: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub size: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub video_media_metadata: Option<VideoMetadata>,
+}
+
+/// What Drive knows about a video.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VideoMetadata {
+    /// Its length in milliseconds (Drive sends an int64 as a string).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duration_millis: Option<String>,
+}
+
+/// A photo or a video.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MediaKind {
+    Image,
+    Video,
+}
+
+impl MediaKind {
+    /// In a word a person reads.
+    #[must_use]
+    pub fn word(self) -> &'static str {
+        match self {
+            Self::Image => "photo",
+            Self::Video => "video",
+        }
+    }
 }
 
 impl File {
@@ -81,8 +146,42 @@ impl File {
             SHEET => "spreadsheet",
             SLIDES => "presentation",
             PDF => "pdf",
+            mime if mime.starts_with("image/") => "photo",
+            mime if mime.starts_with("video/") => "video",
             _ => "file",
         }
+    }
+
+    /// Whether it is a photo or video a model can look at.
+    #[must_use]
+    pub fn media(&self) -> Option<MediaKind> {
+        let mime = self.mime_type.as_str();
+        if IMAGE_TYPES.contains(&mime) {
+            Some(MediaKind::Image)
+        } else if VIDEO_TYPES.contains(&mime) {
+            Some(MediaKind::Video)
+        } else {
+            None
+        }
+    }
+
+    /// Its size in bytes, when Drive says.
+    #[must_use]
+    pub fn bytes(&self) -> Option<u64> {
+        self.size.as_deref()?.parse().ok()
+    }
+
+    /// A video's length in whole seconds (rounded up), when Drive says.
+    #[must_use]
+    pub fn seconds(&self) -> Option<u64> {
+        let millis: u64 = self
+            .video_media_metadata
+            .as_ref()?
+            .duration_millis
+            .as_deref()?
+            .parse()
+            .ok()?;
+        Some(millis.div_ceil(1000))
     }
 
     /// Where it opens in the browser.
@@ -109,6 +208,9 @@ impl File {
         if let Some(modified) = &self.modified_time {
             out["modified"] = json!(modified);
         }
+        if let Some(seconds) = self.seconds() {
+            out["seconds"] = json!(seconds);
+        }
         out
     }
 }
@@ -132,6 +234,12 @@ pub enum DriveError {
     Unreachable,
     /// The PDF's text couldn't be read.
     Pdf(String),
+    /// A photo or video over its size cap, in megabytes.
+    MediaTooLarge(MediaKind, u64),
+    /// A video longer than [`MAX_VIDEO_SECONDS`].
+    TooLong,
+    /// Looking at a photo or video didn't work.
+    Media(String),
 }
 
 impl fmt::Display for DriveError {
@@ -147,6 +255,17 @@ impl fmt::Display for DriveError {
             Self::Invalid(why) => f.write_str(why),
             Self::Unreachable => f.write_str("Google Drive couldn't be reached. Try again."),
             Self::Pdf(why) => write!(f, "The PDF's text couldn't be read ({why})."),
+            Self::MediaTooLarge(kind, megabytes) => write!(
+                f,
+                "That {} is larger than {megabytes} MB, too large to look at.",
+                kind.word()
+            ),
+            Self::TooLong => write!(
+                f,
+                "That video is longer than {} minutes, too long to look at.",
+                MAX_VIDEO_SECONDS / 60
+            ),
+            Self::Media(why) => write!(f, "It couldn't be looked at ({why})."),
         }
     }
 }
@@ -167,16 +286,72 @@ impl fmt::Debug for Drive {
     }
 }
 
+/// What a model call cost: the tokens it read and wrote, and their list
+/// price in US dollar micros.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Spent {
+    pub input: u64,
+    pub output: u64,
+    pub usd_micros: u64,
+}
+
+impl Spent {
+    /// Both together.
+    #[must_use]
+    pub fn plus(self, other: Self) -> Self {
+        Self {
+            input: self.input + other.input,
+            output: self.output + other.output,
+            usd_micros: self.usd_micros + other.usd_micros,
+        }
+    }
+}
+
+/// A photo or video to look at.
+#[derive(Clone, Debug)]
+pub struct Media {
+    pub kind: MediaKind,
+    pub file: File,
+    /// Its size in bytes, when Drive says.
+    pub bytes: Option<u64>,
+}
+
+/// What looking at a photo or video found: a description, and its cost.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Seen {
+    pub text: String,
+    pub spent: Spent,
+}
+
+/// Looks at a photo or video and describes it; the host provides it (the
+/// website uses Gemini on Vertex). It gets the Drive to fetch the file
+/// from, read-only.
+pub type LookAt = Arc<
+    dyn Fn(Drive, Media) -> Pin<Box<dyn Future<Output = Result<Seen, String>> + Send>>
+        + Send
+        + Sync,
+>;
+
+/// What the host lends `drive.read`: PDFs as text, and photos and videos
+/// described. Without one, that kind of file is refused.
+#[derive(Clone, Default)]
+pub struct Readers {
+    pub pdf: Option<PdfText>,
+    pub media: Option<LookAt>,
+}
+
 /// What `drive.read` read.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Read {
     pub file: File,
-    /// `text` or `csv`.
+    /// `text`, `csv`, or `description` (a photo or video, described).
     pub format: &'static str,
     pub text: String,
     pub truncated: bool,
     /// Something to say about how it was read (only the first tab, ...).
     pub note: Option<String>,
+    /// What a model call to read it cost, when one did.
+    pub spent: Option<Spent>,
 }
 
 impl Read {
@@ -268,13 +443,14 @@ impl Drive {
         }
     }
 
-    async fn get(
+    /// A `GET` whose status was good, before its body is read.
+    async fn send(
         &self,
         url: &str,
         query: &[(&str, &str)],
-        limit: usize,
-    ) -> Result<Vec<u8>, DriveError> {
-        let mut response = self
+        limit: u64,
+    ) -> Result<reqwest::Response, DriveError> {
+        let response = self
             .http
             .get(url)
             .query(query)
@@ -299,10 +475,20 @@ impl Drive {
         }
         if response
             .content_length()
-            .is_some_and(|length| length as usize > limit)
+            .is_some_and(|length| length > limit)
         {
             return Err(DriveError::TooLarge);
         }
+        Ok(response)
+    }
+
+    async fn get(
+        &self,
+        url: &str,
+        query: &[(&str, &str)],
+        limit: usize,
+    ) -> Result<Vec<u8>, DriveError> {
+        let mut response = self.send(url, query, limit as u64).await?;
         let mut bytes = Vec::new();
         while let Some(chunk) = response
             .chunk()
@@ -428,13 +614,100 @@ impl Drive {
         serde_json::from_value(body).map_err(|_| DriveError::Unreachable)
     }
 
-    /// One file as text ([`Read`]).
+    /// A file's bytes, at most `limit` of them, for a [`LookAt`] that
+    /// sends them along whole.
+    ///
+    /// # Errors
+    ///
+    /// [`DriveError`]: [`DriveError::TooLarge`] past `limit`.
+    pub async fn media_bytes(&self, id: &str, limit: usize) -> Result<Vec<u8>, DriveError> {
+        if !valid_id(id) {
+            return Err(DriveError::Invalid("That isn't a Drive file id.".into()));
+        }
+        self.get(
+            &format!("{}/{id}", self.files_url()),
+            &[("alt", "media"), ("supportsAllDrives", "true")],
+            limit,
+        )
+        .await
+    }
+
+    /// A file's bytes as a response still to be read, for a [`LookAt`]
+    /// that streams them on; refused when Drive says it is over `limit`.
+    /// The reader must stop at `limit` itself when Drive doesn't say.
     ///
     /// # Errors
     ///
     /// [`DriveError`].
-    pub async fn read(&self, id: &str, pdf: Option<&PdfText>) -> Result<Read, DriveError> {
+    pub async fn media_stream(
+        &self,
+        id: &str,
+        limit: u64,
+    ) -> Result<reqwest::Response, DriveError> {
+        if !valid_id(id) {
+            return Err(DriveError::Invalid("That isn't a Drive file id.".into()));
+        }
+        self.send(
+            &format!("{}/{id}", self.files_url()),
+            &[("alt", "media"), ("supportsAllDrives", "true")],
+            limit,
+        )
+        .await
+    }
+
+    /// A photo or video, described by `look`, after its size and length
+    /// are checked.
+    async fn look(
+        &self,
+        file: File,
+        kind: MediaKind,
+        look: Option<&LookAt>,
+    ) -> Result<Seen, DriveError> {
+        let Some(look) = look else {
+            return Err(DriveError::Unsupported(kind.word().to_owned()));
+        };
+        let cap = match kind {
+            MediaKind::Image => MAX_IMAGE_BYTES,
+            MediaKind::Video => MAX_VIDEO_BYTES,
+        };
+        let bytes = file.bytes();
+        if bytes.is_some_and(|bytes| bytes > cap) {
+            return Err(DriveError::MediaTooLarge(kind, cap / (1024 * 1024)));
+        }
+        if kind == MediaKind::Video && file.seconds().is_some_and(|s| s > MAX_VIDEO_SECONDS) {
+            return Err(DriveError::TooLong);
+        }
+        look(self.clone(), Media { kind, file, bytes })
+            .await
+            .map_err(DriveError::Media)
+    }
+
+    /// One file as text ([`Read`]); a photo or video as a description of
+    /// it, when `readers` can look at one.
+    ///
+    /// # Errors
+    ///
+    /// [`DriveError`].
+    pub async fn read(&self, id: &str, readers: &Readers) -> Result<Read, DriveError> {
         let file = self.file(id).await?;
+        if let Some(kind) = file.media() {
+            let seen = self
+                .look(file.clone(), kind, readers.media.as_ref())
+                .await?;
+            let (text, truncated) = capped(&seen.text, MAX_TEXT_CHARS);
+            return Ok(Read {
+                file,
+                format: "description",
+                text,
+                truncated,
+                note: Some(format!(
+                    "This {} was looked at by a model; the text describes what is in it.",
+                    kind.word()
+                )),
+                spent: Some(seen.spent),
+            });
+        }
+        let pdf = readers.pdf.as_ref();
         let url = format!("{}/{id}", self.files_url());
         let text_of = |bytes: Vec<u8>| String::from_utf8_lossy(&bytes).into_owned();
         let (format, text, note) = match file.mime_type.as_str() {
@@ -508,6 +781,7 @@ impl Drive {
             text,
             truncated,
             note,
+            spent: None,
         })
     }
 
@@ -662,7 +936,7 @@ pub fn tool_specs() -> Vec<ToolSpec> {
         },
         ToolSpec {
             id: "drive.read".into(),
-            description: "Read one Google Drive file as text: a Doc as text, a Sheet as CSV (every tab), a PDF as text. Long files are cut and say so.".into(),
+            description: "Read one Google Drive file: a Doc as text, a Sheet as CSV (every tab), a PDF as text, and a photo or video as a description of what is in it. Long files are cut and say so; very large or long videos are refused and say so.".into(),
             method: HttpMethod::Get,
             input_schema: json!({
                 "type": "object",
@@ -760,13 +1034,15 @@ impl Call {
     }
 }
 
-/// What a call produced: the tool result, and the files it read (for
-/// citing) or listed (which may be read next).
+/// What a call produced: the tool result, the files it read (for
+/// citing) or listed (which may be read next), and what model calls it
+/// made cost.
 #[derive(Clone, Debug)]
 pub struct Outcome {
     pub result: Value,
     pub read: Vec<File>,
     pub listed: Vec<File>,
+    pub spent: Option<Spent>,
 }
 
 /// Run `call` on `drive`.
@@ -774,7 +1050,7 @@ pub struct Outcome {
 /// # Errors
 ///
 /// [`DriveError`].
-pub async fn run(drive: &Drive, call: &Call, pdf: Option<&PdfText>) -> Result<Outcome, DriveError> {
+pub async fn run(drive: &Drive, call: &Call, readers: &Readers) -> Result<Outcome, DriveError> {
     match call {
         Call::Search { query, folder } => {
             let files = drive.search(query, folder.as_deref(), 20).await?;
@@ -782,6 +1058,7 @@ pub async fn run(drive: &Drive, call: &Call, pdf: Option<&PdfText>) -> Result<Ou
                 result: json!({"files": files.iter().map(File::json).collect::<Vec<_>>()}),
                 read: Vec::new(),
                 listed: files,
+                spent: None,
             })
         }
         Call::ListFolder { folder, page_token } => {
@@ -794,14 +1071,16 @@ pub async fn run(drive: &Drive, call: &Call, pdf: Option<&PdfText>) -> Result<Ou
                 result,
                 read: Vec::new(),
                 listed: files,
+                spent: None,
             })
         }
         Call::Read { file } => {
-            let read = drive.read(file, pdf).await?;
+            let read = drive.read(file, readers).await?;
             Ok(Outcome {
                 result: read.json(),
                 read: vec![read.file.clone()],
                 listed: Vec::new(),
+                spent: read.spent,
             })
         }
     }

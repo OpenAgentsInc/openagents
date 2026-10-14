@@ -26,7 +26,8 @@
 //! ([`discovery`]), and the curated read-only Drive tools
 //! ([`google::drive`]): `drive.search`, `drive.list_folder`, and
 //! `drive.read` (Docs as text, Sheets as CSV, PDFs as text through a
-//! [`google::drive::PdfText`] the host provides).
+//! [`google::drive::PdfText`] the host provides, and photos and videos
+//! described by a [`google::drive::LookAt`] it provides).
 
 pub mod core;
 pub mod discovery;

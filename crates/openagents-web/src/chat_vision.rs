@@ -98,6 +98,12 @@ impl Gemini {
     /// credential.
     #[must_use]
     pub(crate) fn from_env() -> Option<Self> {
+        Self::from_env_for(GEMINI)
+    }
+
+    /// Like [`Gemini::from_env`], for the Vertex model `model`.
+    #[must_use]
+    pub(crate) fn from_env_for(model: &str) -> Option<Self> {
         let config = vertex::Config::from_env();
         if !config.token.present() {
             return None;
@@ -105,7 +111,7 @@ impl Gemini {
         let (row, thinking) = config
             .models
             .iter()
-            .find(|(row, _)| row.id == GEMINI)
+            .find(|(row, _)| row.id == model)
             .cloned()?;
         let token = config.token.clone();
         let url = vertex::Vertex::new(config)
@@ -191,10 +197,15 @@ pub(crate) struct Doors {
 
 /// This server's file doors (the Gemini credential is read once).
 pub(crate) fn doors(app: &App) -> Option<Doors> {
-    static GEMINI_DOOR: std::sync::OnceLock<Option<Gemini>> = std::sync::OnceLock::new();
-    let gemini = GEMINI_DOOR.get_or_init(Gemini::from_env).clone();
+    let gemini = doors_gemini();
     let endpoint = endpoint(app);
     (gemini.is_some() || endpoint.is_some()).then_some(Doors { gemini, endpoint })
+}
+
+/// The Gemini door (the credential is read once), when there is one.
+pub(crate) fn doors_gemini() -> Option<Gemini> {
+    static GEMINI_DOOR: std::sync::OnceLock<Option<Gemini>> = std::sync::OnceLock::new();
+    GEMINI_DOOR.get_or_init(Gemini::from_env).clone()
 }
 
 /// One file as a content part.

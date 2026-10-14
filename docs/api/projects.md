@@ -69,7 +69,7 @@ from the code, this is how it works today:
 | `DELETE /v1/projects/{id}` | `{id, object: "project.deleted"}`; `409 project_has_threads` while chats are in it, unless `?detach_threads=true` |
 | `GET /v1/threads?project=ID\|name:NAME\|none` | `{data: [Thread], next}`, by last activity, oldest first, `?limit`, `?after` |
 | `GET /v1/threads/{id}/messages` | `{data: [Message], next}`, oldest first; each message's `content` is one `text` block |
-| `POST /v1/threads` `{"request_id": UUID, "text", "project": ID\|"name:NAME"}` | `201 {id, answering: true}`: a new chat inside the project, answered by OpenAgents with the project's instructions and its primary repository (a project with no repository: a plain chat with its instructions), as starting a chat in a project on the website does ([#11542](https://github.com/OpenAgentsInc/openagents/issues/11542)). `404 not_found` when the project isn't yours. Read the reply with `GET /v1/threads/{id}` |
+| `POST /v1/threads` `{"request_id": UUID, "text", "project": ID\|"name:NAME"}` | `201 {id, answering: true}`: a new chat inside the project, answered by OpenAgents with the project's instructions and its primary repository (a project with no repository: a plain chat with its instructions; a project with Drive sources: answered from them, photos and videos included, see [connections.md](connections.md)), as starting a chat in a project on the website does ([#11542](https://github.com/OpenAgentsInc/openagents/issues/11542)). `404 not_found` when the project isn't yours. Read the reply with `GET /v1/threads/{id}` |
 | `PATCH /v1/threads/{id}` `{"project": ID \| "name:NAME" \| null}` | Move the chat into one of your projects, or out of any (`null`): the Thread. Coder's sync files a synced chat under the project holding the chat's own GitHub repository (from its folder's git remote): the one project holding it, else the one where it is the primary; when several have it as primary (or none does), the chat stays unfiled. A person's move stays put (#11541) |
 | `PATCH /v1/projects/{id}` `{"name"?, "instructions"?, "primary_repository"?, "protection"?}` | The Project. `instructions: null` clears them; `primary_repository` must already be in the project. `protection`: `standard` or `only_me` (`sealed` answers `400 not_available`). Repositories are added and removed with the routes above |
 | `POST /v1/files?purpose=project&filename=NAME`, the file's bytes as the body | `201` File: `{id: "file_…", object: "file", filename, mime_type, size_bytes, sha256, created_at, stored_as: "original", project}`. 10 MB at most. Not multipart |
@@ -450,6 +450,7 @@ openagents projects files add PROJECT PATH... [--protection standard|only_me]
 openagents projects files get PROJECT FILE [--output PATH]
 openagents projects files remove PROJECT FILE
 openagents projects notes add PROJECT --title T (--text TEXT | --file PATH)
+openagents projects sources list|add|remove PROJECT [LINK|ID]   # Drive sources (connections.md)
 openagents chat send MESSAGE --project PROJECT
 ```
 

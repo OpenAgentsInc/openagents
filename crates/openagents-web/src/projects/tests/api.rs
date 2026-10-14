@@ -639,3 +639,44 @@ async fn projects_need_no_repository_and_share_them() {
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(body["data"].as_array().unwrap().len(), 2);
 }
+
+/// Message text with newlines, tabs, and other control characters comes
+/// back from the threads API as strict JSON: every control character
+/// escaped, none raw, so a strict parser (Python's `json.loads`) reads
+/// it.
+#[tokio::test]
+async fn thread_text_with_control_characters_comes_back_as_strict_json() {
+    let world = world().await;
+    let mut browser = Browser::default();
+    browser.sign_in(&world, "octo-local").await;
+    let me = Api::of(&browser);
+    let text = "Line one\nLine two\tafter a tab\r\nA bell \u{7} and \u{1f} end";
+    let (status, body) = me
+        .json(
+            &world,
+            "PUT",
+            "/v1/threads/synced/s-control",
+            json!({"computer": "Studio", "title": "Tabs\tand\nnewlines",
+                   "messages": [{"role": "user", "text": text},
+                                {"role": "assistant", "text": text}]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let chat = body["chat"].as_str().unwrap().to_owned();
+    for path in [
+        format!("/v1/threads/{chat}"),
+        format!("/v1/threads/{chat}/messages"),
+        "/v1/threads".to_owned(),
+    ] {
+        let (status, _, bytes) = me.call(&world, "GET", &path, Body::empty()).await;
+        assert_eq!(status, StatusCode::OK, "{path}");
+        assert!(
+            !bytes.iter().any(|byte| *byte < 0x20),
+            "{path} has a raw control character"
+        );
+        let parsed: Value = serde_json::from_slice(&bytes).unwrap();
+        if path.ends_with(&chat) {
+            assert_eq!(parsed["messages"][0]["text"], text, "{parsed}");
+        }
+    }
+}

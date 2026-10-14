@@ -989,6 +989,7 @@ fn drive_file(id: &str, name: &str, mime_type: &str) -> oa_connections::google::
         web_view_link: None,
         modified_time: None,
         size: None,
+        video_media_metadata: None,
     }
 }
 

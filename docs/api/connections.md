@@ -62,10 +62,10 @@ openagents connections            # Google Drive: connected as you@example.com
 | Route | What |
 | --- | --- |
 | `GET /v1/connections/google/drive` | `{data: [DriveFile], folder, query, next}`: My Drive. `?folder=ID or link` for one folder (`?page=` with `next` for more), `?q=TEXT` to search. |
-| `POST /v1/connections/google/tools/{tool}` | Run one read-only tool (`drive_search`, `drive_list_folder`, `drive_read`) with its arguments: `{result, read}`. Coder uses this. |
+| `POST /v1/connections/google/tools/{tool}` | Run one read-only tool (`drive_search`, `drive_list_folder`, `drive_read`) with its arguments: `{result, read}`, plus `{usage: {input, output}, cost_usd}` when `drive_read` had a model look at a photo or video. Coder uses this. |
 
 `DriveFile` is `{id, object: "drive_file", name, kind, folder, link, modified_at}`;
-`kind` is `folder`, `document`, `spreadsheet`, `pdf`, or `file`.
+`kind` is `folder`, `document`, `spreadsheet`, `pdf`, `photo`, `video`, or `file`.
 
 ```sh
 openagents connections drive                     # My Drive
@@ -107,9 +107,47 @@ or `openagents chat send "What did I spend on groceries in October?" --project f
 Follow-ups go to `POST /v1/threads/{id}/messages`. In a project with Drive
 sources and Google connected, Gemini on Vertex AI reads the sources with the
 Drive tools and answers from them; the answer ends with `Files read:` and a
-link to each file, and says which model saw them. A message the files don't
-answer goes to the general chat. A message with images or PDFs attached is
-answered without Drive.
+link to each file, says which model saw them, and ends with what the answer
+cost (`Cost: $0.04 · 52,310 tokens in, 1,204 out`). A message the files
+don't answer goes to the general chat. A message with images or PDFs
+attached is answered without Drive.
+
+Read the reply with a JSON parser straight from the response (`curl … |
+python3 -m json.tool`, or `jq`). Message text holds escaped newlines and
+tabs (`\n`, `\t`); zsh's `echo "$body"` turns those into raw control
+characters, which strict parsers then refuse.
+
+## Photos and videos
+
+`drive_read` reads Docs as text, Sheets as CSV, PDFs as text, and photos
+and videos as a description of what is in them: Gemini 4 Argon on Vertex AI
+looks at each one (Google first) and the answer describes each file it
+looked at, with its link.
+
+- Photos: JPEG, PNG, WebP, HEIC, and HEIF, up to 15 MB each, sent as they
+  are (Gemini reads HEIC itself).
+- Videos: MOV, MP4, and the other types Gemini takes, up to 500 MB and 5
+  minutes each, at Gemini's low media resolution to keep their cost down.
+  A larger or longer one is refused before anything is fetched, and the
+  answer says so.
+- One answer looks at most at 6 photos and videos. When more were asked
+  for, the answer says how many it looked at and that the rest were not.
+- A file up to 7 MB goes inside the request to Gemini. A larger one is
+  streamed from Drive into a private object in the bucket
+  `openagentsgemini-drive-media-tmp` (random name, no public access, no
+  soft-delete copies), given to Gemini as a `gs://` link, and deleted as
+  soon as Gemini has answered; the bucket deletes anything a day old should
+  a delete fail. Nothing is written to Drive, no file name or content is
+  logged, and nothing is kept after the request.
+- Video tokens cost the most: the answer's `Cost:` line and the tool
+  route's `cost_usd` are priced at Gemini's list price
+  ([/v1/rates](https://openagents.com/v1/rates)).
+
+```sh
+curl -s -X POST https://openagents.com/v1/threads \
+  -H "Authorization: Bearer $OPENAGENTS_TOKEN" \
+  -d '{"request_id": "'"$(uuidgen | tr A-Z a-z)"'", "project": "name:devlog", "text": "Describe the three most recent videos in the Devlog folder."}'
+```
 
 ## The access list (admins)
 

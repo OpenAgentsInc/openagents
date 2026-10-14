@@ -70,7 +70,7 @@ WEB = [
     ("/v1/connections/google", "Connections", [("delete", "removeGoogleConnection", "Disconnect Google and ask Google to revoke it; projects keep their sources.")]),
     ("/v1/connections/google/connect", "Connections", [("post", "connectGoogle", "The link that connects Google (`{sheets?, return_to?}`). Open it in a browser signed in as the same account; Google's consent is the person's click.")]),
     ("/v1/connections/google/drive", "Connections", [("get", "browseDrive", "One Drive folder (`?folder=`, My Drive by default, `?page=`) or a search (`?q=`), to pick sources.")]),
-    ("/v1/connections/google/tools/{tool}", "Connections", [("post", "runGoogleTool", "Run one read-only Drive tool (`drive_search`, `drive_list_folder`, `drive_read`) with its arguments.")]),
+    ("/v1/connections/google/tools/{tool}", "Connections", [("post", "runGoogleTool", "Run one read-only Drive tool (`drive_search`, `drive_list_folder`, `drive_read`) with its arguments. `drive_read` reads Docs, Sheets, and PDFs as text and describes photos and videos (Gemini on Vertex), adding `usage` and `cost_usd`.")]),
     ("/v1/projects/{id}/sources", "Connections", [("get", "listProjectSources", "The project's Drive sources."), ("post", "attachProjectSource", "Attach a Drive folder or file (`{link}` or `{id}`), checked with Drive first.")]),
     ("/v1/projects/{id}/sources/{source}", "Connections", [("delete", "detachProjectSource", "Detach one source; the file stays in Drive.")]),
     ("/v1/admin/access/drive-connections", "Connections", [("get", "listDriveAccess", "Admins: who may use Google Drive connections."), ("post", "allowDriveAccess", "Admins: allow someone (`{email}` or `{account}`).")]),

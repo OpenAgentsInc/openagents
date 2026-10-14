@@ -11,7 +11,7 @@ use inference::upstream::google::TokenSource;
 use inference::upstream::secret::Secret;
 use inference::upstream::vertex;
 use oa_connections::fake::{self, Content, FakeFile, FakeGoogle};
-use oa_connections::google::drive::Drive;
+use oa_connections::google::drive::{Drive, Readers};
 use oa_connections::google::oauth::Client;
 use oa_connections::google::{DRIVE_READONLY, SHEETS_READONLY};
 use openagents_chat::basic_coder::Turn;
@@ -370,7 +370,7 @@ async fn the_drive_door_reads_the_sources_and_cites_the_files_it_read() {
     let instructions = format!("Be brief.{}", chat::guidance(&sources()));
     let ended = chat::converse(
         &gemini,
-        None,
+        &Readers::default(),
         &live(&google),
         &sources(),
         &instructions,
@@ -378,9 +378,11 @@ async fn the_drive_door_reads_the_sources_and_cites_the_files_it_read() {
     )
     .await
     .unwrap();
-    let Ending::Answer { text, read } = ended else {
+    let Ending::Answer(answered) = ended else {
         panic!("handed off");
     };
+    let chat::Answered { text, read, .. } = &answered;
+    let (text, read) = (text.clone(), read.clone());
     assert_eq!(text, "You spent 1,284.10 in October.");
     assert_eq!(read.len(), 1);
     assert_eq!(read[0].name, "Spending October");
@@ -445,7 +447,7 @@ async fn a_message_not_about_the_files_goes_to_the_general_chat() {
     let (gemini, state) = fake_gemini(true).await;
     let ended = chat::converse(
         &gemini,
-        None,
+        &Readers::default(),
         &live(&google),
         &sources(),
         "Be brief.",

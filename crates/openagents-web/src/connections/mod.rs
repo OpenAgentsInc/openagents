@@ -21,6 +21,7 @@
 
 pub(crate) mod access;
 pub(crate) mod chat;
+pub(crate) mod media;
 pub(crate) mod sources;
 #[cfg(test)]
 mod tests;
@@ -38,7 +39,7 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use hmac::{Hmac, Mac};
 use maud::{Markup, html};
 use oa_connections::core::{Connection, Policy, Scope};
-use oa_connections::google::drive::{self, Call, Drive, PdfText};
+use oa_connections::google::drive::{self, Call, Drive, Readers};
 use oa_connections::google::oauth::{self, OAuthError, Pkce};
 use oa_connections::google::{self as google_api, DRIVE_READONLY, Endpoints, SHEETS_READONLY};
 use openagents_ui::actions::{Alert, Badge, Button, ButtonLink, ButtonType, ButtonVariant, Color};
@@ -268,7 +269,7 @@ pub(crate) async fn run_tool(
     live: &Live,
     name: &str,
     arguments: Value,
-    pdf: Option<&PdfText>,
+    readers: &Readers,
 ) -> Result<Outcome, String> {
     let integration = google_api::integration(&Endpoints::default());
     let spec = integration
@@ -290,7 +291,7 @@ pub(crate) async fn run_tool(
         Policy::Block => return Err("That tool is turned off.".into()),
     }
     let call = Call::parse(name, arguments)?;
-    match drive::run(&live.drive, &call, pdf).await {
+    match drive::run(&live.drive, &call, readers).await {
         Ok(outcome) => Ok(outcome),
         Err(error) => Err(error.to_string()),
     }
@@ -1142,13 +1143,22 @@ async fn api_tool(
         Ok(live) => live,
         Err(unready) => return api_unready(service, unready),
     };
-    let pdf = chat::pdf_reader(&app);
-    match run_tool(&live, &tool, arguments, pdf.as_ref()).await {
-        Ok(outcome) => axum::Json(json!({
-            "result": outcome.result,
-            "read": outcome.read.iter().map(|f| json!({"name": f.name, "link": f.link()})).collect::<Vec<_>>(),
-        }))
-        .into_response(),
-        Err(message) => crate::coder_sync::refused(StatusCode::UNPROCESSABLE_ENTITY, "tool_failed", &message),
+    let readers = chat::readers(&app);
+    match run_tool(&live, &tool, arguments, &readers).await {
+        Ok(outcome) => {
+            let mut body = json!({
+                "result": outcome.result,
+                "read": outcome.read.iter().map(|f| json!({"name": f.name, "link": f.link()})).collect::<Vec<_>>(),
+            });
+            // A photo or video was looked at by a model: what that cost.
+            if let Some(spent) = outcome.spent {
+                body["usage"] = json!({"input": spent.input, "output": spent.output});
+                body["cost_usd"] = json!(spent.usd_micros as f64 / 1_000_000.0);
+            }
+            axum::Json(body).into_response()
+        }
+        Err(message) => {
+            crate::coder_sync::refused(StatusCode::UNPROCESSABLE_ENTITY, "tool_failed", &message)
+        }
     }
 }
