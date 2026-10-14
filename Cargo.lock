@@ -17160,6 +17160,7 @@ dependencies = [
  "rcgen",
  "reqwest 0.12.28",
  "resvg",
+ "robot-data",
  "robot-description",
  "rtrb",
  "rust-native",

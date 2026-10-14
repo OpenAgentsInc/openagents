@@ -1,0 +1,97 @@
+{
+  "schema": "robot-joint-mapping.v1",
+  "robot_type": "so101_follower",
+  "robot_version": "3a65d2d35e68a8d2f0c2cc176d19b884506543c93ba72980145b80abe276022c",
+  "joints": [
+    {
+      "feature": "shoulder_pan.pos",
+      "joint": "shoulder_pan",
+      "unit": {
+        "unit": "normalized",
+        "source_min": -100.0,
+        "source_max": 100.0,
+        "target_min": -1.91986,
+        "target_max": 1.91986
+      },
+      "offset": 0.0,
+      "direction": 1.0,
+      "lower": -1.91986,
+      "upper": 1.91986
+    },
+    {
+      "feature": "shoulder_lift.pos",
+      "joint": "shoulder_lift",
+      "unit": {
+        "unit": "normalized",
+        "source_min": -100.0,
+        "source_max": 100.0,
+        "target_min": -1.74533,
+        "target_max": 1.74533
+      },
+      "offset": 0.0,
+      "direction": 1.0,
+      "lower": -1.74533,
+      "upper": 1.74533
+    },
+    {
+      "feature": "elbow_flex.pos",
+      "joint": "elbow_flex",
+      "unit": {
+        "unit": "normalized",
+        "source_min": -100.0,
+        "source_max": 100.0,
+        "target_min": -1.69,
+        "target_max": 1.69
+      },
+      "offset": 0.0,
+      "direction": 1.0,
+      "lower": -1.69,
+      "upper": 1.69
+    },
+    {
+      "feature": "wrist_flex.pos",
+      "joint": "wrist_flex",
+      "unit": {
+        "unit": "normalized",
+        "source_min": -100.0,
+        "source_max": 100.0,
+        "target_min": -1.65806,
+        "target_max": 1.65806
+      },
+      "offset": 0.0,
+      "direction": 1.0,
+      "lower": -1.65806,
+      "upper": 1.65806
+    },
+    {
+      "feature": "wrist_roll.pos",
+      "joint": "wrist_roll",
+      "unit": {
+        "unit": "normalized",
+        "source_min": -100.0,
+        "source_max": 100.0,
+        "target_min": -2.74385,
+        "target_max": 2.84121
+      },
+      "offset": 0.0,
+      "direction": 1.0,
+      "lower": -2.74385,
+      "upper": 2.84121
+    },
+    {
+      "feature": "gripper.pos",
+      "joint": "gripper",
+      "unit": {
+        "unit": "normalized",
+        "source_min": 0.0,
+        "source_max": 100.0,
+        "target_min": -0.174533,
+        "target_max": 1.74533
+      },
+      "offset": 0.0,
+      "direction": 1.0,
+      "lower": -0.174533,
+      "upper": 1.74533
+    }
+  ]
+}

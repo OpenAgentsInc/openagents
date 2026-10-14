@@ -184,6 +184,7 @@ webpki-roots = "1"
 getrandom = { version = "0.3", features = ["wasm_js"] }
 
 [dev-dependencies]
+robot-data = { path = "../robot-data" }
 verse-pbr = { path = "../verse-pbr", features = ["diagnostics"] }
 # The relevance visualizer's System One client (examples/relevance).
 jev = { path = "../jev" }

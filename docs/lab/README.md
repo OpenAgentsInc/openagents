@@ -2,7 +2,8 @@
 
 Status: proposed design, 2026-10-14. This document specifies a Robot Lab;
 the document and private-storage foundation is implemented in
-[`robot-lab`](../../crates/robot-lab/README.md). The interactive workbench,
+[`robot-lab`](../../crates/robot-lab/README.md), and the pinned SO-101 importer,
+Verse inspection capture, and LeRobot reader are implemented. The interactive workbench,
 simulation, and learned control remain tracked below. The first delivery is local robot
 inspection and motion replay in an inline chat card. Simulation and learned
 control follow as separately testable additions.
@@ -190,8 +191,8 @@ flowchart LR
 
 Proposed ownership: `robot-lab` owns documents and orchestration;
 `robot-description` owns portable link, joint, and asset definitions;
-`robot-sim` owns the headless runner and backend interface. These names are
-design suggestions, not crates that already exist. Keep renderer integration
+`robot-data` reads recorded motion. These crates exist; the proposed
+`robot-sim` owns the headless runner and backend interface. Keep renderer integration
 in Verse adapters and result presentation in Gym adapters. Avoid making the
 generic physics crate depend on chat, projects, or Hugging Face.
 
@@ -319,7 +320,9 @@ the table, move a joint, move the cube, compare the two scene versions, add a
 note, close the chat, and reopen the same lab. A later simulation walkthrough
 adds a ten-episode run, a stop, and replay of a failed attempt.
 
-The next implementation decision is a small import spike: pin the SO-101
-source, qualify its geometry and joint frames, and produce the first Verse
-capture. That determines the importer work before expanding the catalog or
-promising policy compatibility.
+The SO-101 import spike pins The Robot Studio's description and meshes at
+`a758567c3978dfeefe282ede0500085a48fe8f78`, with Apache-2.0 notices.
+Run `cargo run -p verse --no-default-features --features capture --example
+robot_lab_capture -- OUTPUT.png shoulder_lift=0.6` for an inspection capture.
+Add `--dataset FOLDER --mapping FILE --episode N --frame N` for recorded poses.
+The mapping names the exact description and its units or calibration ranges.

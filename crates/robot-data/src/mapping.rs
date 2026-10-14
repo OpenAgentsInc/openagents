@@ -11,6 +11,7 @@ use crate::{Result, name, require};
 pub struct Mapping {
     pub schema: String,
     pub robot_type: String,
+    /// SHA-256 of the original robot description used by this mapping.
     pub robot_version: String,
     pub joints: Vec<JointMapping>,
 }
@@ -57,7 +58,7 @@ impl Mapping {
         require(
             self.robot_version.len() == 64
                 && self.robot_version.bytes().all(|b| b.is_ascii_hexdigit()),
-            "Choose an exact saved robot version.",
+            "Choose an exact robot description file.",
         )?;
         require(
             !self.joints.is_empty() && self.joints.len() == features.len() && features.len() <= 64,

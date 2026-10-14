@@ -28,3 +28,8 @@ Regenerate with `python fixtures/prepare.py SCRATCH` in an isolated environment
 with `pyarrow==21.0.0`. `SCRATCH` must be an explicit persistent scratch folder.
 Run `cargo test -p robot-data --features video` for table, mapping, clock,
 path, corruption, and local camera tests; the camera test requires `ffmpeg`.
+
+The example `so101-view-mapping.json` maps normalized positions onto the pinned
+URDF's ranges for visualization. The recording does not include the physical
+arm's motor calibration; use your own calibration table to reproduce its
+physical angles. The example is never benchmark or hardware-control evidence.
