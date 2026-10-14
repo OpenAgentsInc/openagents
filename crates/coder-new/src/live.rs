@@ -871,7 +871,11 @@ impl Background {
             let id = request.id;
             let (sender, receiver) = mpsc::channel();
             let (cancel, canceled) = oneshot::channel();
-            std::thread::spawn(move || run(request, sender, canceled));
+            // A Coder-loop turn through the relay door runs past a plain
+            // thread's 2 MiB in a debug build; give it the run's stack.
+            let _ = std::thread::Builder::new()
+                .stack_size(crate::issue_run::RUN_STACK)
+                .spawn(move || run(request, sender, canceled));
             self.active = Some((id, cancel, receiver));
         }
         let mut finished = false;
