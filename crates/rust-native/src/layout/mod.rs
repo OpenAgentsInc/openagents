@@ -353,10 +353,13 @@ struct Row {
     /// A hash of the row's content.
     content: u64,
     expanded: bool,
+    /// Steps inside the row the reader opened, such as one step of a
+    /// turn's trace: expanded keys under the row's own key (`{key}-…`).
+    inner: Vec<String>,
     height: f32,
     /// The inputs the display was computed for: content, width bits,
     /// typography, and expansion.
-    laid: Option<(u64, u32, u64, bool)>,
+    laid: Option<(u64, u32, u64, u64)>,
     /// The display list from the last layout.
     display: Option<Arc<RowDisplay>>,
 }
@@ -640,6 +643,7 @@ impl TranscriptLayout {
                     source: Source::Earlier(earlier),
                     content,
                     expanded: false,
+                    inner: vec![],
                     height: 0.0,
                     laid: None,
                     display: None,
@@ -652,9 +656,11 @@ impl TranscriptLayout {
                 return Err(LayoutError::DuplicateRow(key));
             }
             let open = expanded.contains(&key);
+            let inside = inner(&expanded, &key);
             let row = match (incoming.remove(&key), previous.remove(&key)) {
                 (Some((_, content)), Some(old)) if old.content == content => Row {
                     expanded: open,
+                    inner: inside,
                     ..old
                 },
                 (Some((node, content)), _) => Row {
@@ -662,12 +668,14 @@ impl TranscriptLayout {
                     source: Source::Node(node),
                     content,
                     expanded: open,
+                    inner: inside,
                     height: 0.0,
                     laid: None,
                     display: None,
                 },
                 (None, Some(old)) => Row {
                     expanded: open,
+                    inner: inside,
                     ..old
                 },
                 (None, None) => return Err(LayoutError::UnknownRow(key)),
@@ -703,6 +711,7 @@ impl TranscriptLayout {
         if expanded != self.expanded {
             for row in &mut self.rows {
                 row.expanded = row.key != EARLIER_KEY && expanded.contains(&row.key);
+                row.inner = inner(&expanded, &row.key);
             }
             self.expanded = expanded;
         }
@@ -756,7 +765,12 @@ impl TranscriptLayout {
         self.frame = None;
         let mut relaid = 0;
         for row in &mut self.rows {
-            let inputs = (row.content, width.to_bits(), fingerprint, row.expanded);
+            let inputs = (
+                row.content,
+                width.to_bits(),
+                fingerprint,
+                hash_of(&(row.expanded, &row.inner)),
+            );
             if row.laid != Some(inputs) {
                 let mut display = lay(row, width, &self.typography, &mut self.cache, measurer);
                 display.version = hash_of(&inputs);
@@ -779,14 +793,19 @@ impl TranscriptLayout {
     fn offsets(&mut self) {
         self.tops.clear();
         let mut y = EDGE_INSET;
+        let mut last = 0.0;
         for row in &self.rows {
             self.tops.push(y);
-            y += row.height + f32::from(self.metrics.row_gap);
+            // A turn's header sits close above the turn.
+            let header = row.display.as_ref().is_some_and(|display| display.header);
+            let gap = f32::from(self.metrics.row_gap);
+            last = if header { gap.min(6.0) } else { gap };
+            y += row.height + last;
         }
         let end = if self.rows.is_empty() {
             2.0 * EDGE_INSET
         } else {
-            y - f32::from(self.metrics.row_gap) + EDGE_INSET
+            y - last + EDGE_INSET
         };
         self.tops.push(end);
     }
@@ -867,6 +886,18 @@ impl TranscriptLayout {
 /// Rows by key, each with a hash of its content.
 type Incoming = HashMap<String, (Arc<Node<()>>, u64)>;
 
+/// The expanded keys inside the row `key`: its steps the reader opened.
+fn inner(expanded: &HashSet<String>, key: &str) -> Vec<String> {
+    let prefix = format!("{key}-");
+    let mut keys: Vec<String> = expanded
+        .iter()
+        .filter(|open| open.starts_with(&prefix))
+        .cloned()
+        .collect();
+    keys.sort();
+    keys
+}
+
 /// Validates each row as a one-node view and hashes its content.
 fn checked_rows(rows: Vec<Node<()>>) -> Result<Incoming, LayoutError> {
     let mut incoming = HashMap::with_capacity(rows.len());
@@ -892,6 +923,7 @@ fn lay(
         measurer,
         cache,
         typography,
+        open: &row.inner,
         out: RowDisplay {
             key: row.key.clone(),
             ..RowDisplay::default()

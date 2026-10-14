@@ -489,8 +489,9 @@ internal class RowView(context: Context) : FrameLayout(context) {
     private fun widgetView(widget: RowModel.Widget): View? = when (widget.kind) {
         "copy" -> TextView(context).apply {
             text = "Copy"; textSize = 12f; setTextColor(Palette.SECONDARY); gravity = Gravity.CENTER_VERTICAL or Gravity.END
-            contentDescription = "Copy code"
             val code = widget.json.optString("text")
+            // Under an answer it copies the answer; in a code block, the code.
+            contentDescription = if (code == model?.copy) "Copy" else "Copy code"
             setOnClickListener {
                 clipboard(code)
                 text = "Copied"

@@ -953,7 +953,8 @@ final class NativeRowView: UIView, UIContextMenuInteractionDelegate, UIEditMenuI
                 return true
             })
         }
-        for widget in model.display.widgets where widget.kind == "copy" {
+        // The Copy under an answer is the message's own Copy above.
+        for widget in model.display.widgets where widget.kind == "copy" && widget.text != model.display.copy {
             let text = widget.text ?? ""
             actions.append(UIAccessibilityCustomAction(name: "Copy code") { _ in
                 UIPasteboard.general.string = text
@@ -1310,7 +1311,7 @@ private final class NativeCopyButton: UIButton {
         super.init(frame: .zero)
         show(copied: false)
         addAction(UIAction { [weak self] _ in self?.copyText() }, for: .touchUpInside)
-        accessibilityHint = "Copies this code block"
+        accessibilityHint = "Copies the text"
     }
 
     @available(*, unavailable)
@@ -1610,7 +1611,11 @@ final class NativeTranscriptView: UIScrollView, UIScrollViewDelegate, UIGestureR
                 width: Float(bounds.width), scale: Float(scale),
                 // A streamed token keeps the order; Rust then updates in place.
                 order: order == sentOrder && !sentOrder.isEmpty ? nil : order, rows: rows,
-                expanded: Array(expanded.intersection(nodes.keys)),
+                // A row's own key, or a step inside it (`{row}-…`), which
+                // opens on its own.
+                expanded: Array(expanded.filter { key in
+                    nodes[key] != nil || nodes.keys.contains { key.hasPrefix($0 + "-") }
+                }),
                 earlier: earlier.map { NativeLayoutUpdate.Earlier(label: $0.label, loading: $0.loading) },
                 curve: curve)
         }

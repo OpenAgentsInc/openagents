@@ -286,6 +286,127 @@ fn expanding_a_tool_lays_out_only_that_row() {
     assert!(display.texts.iter().any(|t| t.contains("12 passed")));
 }
 
+/// A turn's trace: one line whose steps each open on their own to a small
+/// code block, and an edit's diff in green and red (#11638).
+#[test]
+fn a_trace_opens_to_steps_that_open_on_their_own() {
+    let step = |key: &str, name: &str, state: ToolState, language: &str, body: &str| {
+        node(
+            key,
+            Element::Tool {
+                name: name.into(),
+                detail: "src/sum.rs".into(),
+                state,
+                children: vec![node(
+                    &format!("{key}-body"),
+                    Element::Markdown {
+                        blocks: markdown::parse(&format!("```{language}\n{body}\n```")),
+                    },
+                )],
+            },
+        )
+    };
+    let trace = node(
+        "turn",
+        Element::Tool {
+            name: "Worked".into(),
+            detail: "2 steps · 1 didn't work".into(),
+            state: ToolState::Failed,
+            children: vec![
+                step(
+                    "turn-s0",
+                    "Run",
+                    ToolState::Failed,
+                    "",
+                    "test sum ... FAILED",
+                ),
+                step(
+                    "turn-s1",
+                    "Edit",
+                    ToolState::Done,
+                    "diff",
+                    "-    1 + 1\n+    2 + 2",
+                ),
+            ],
+        },
+    );
+    let mut layout = TranscriptLayout::new();
+    let mut measurer = FixedMeasurer::default();
+    let mut request = update(vec![trace.clone()], 390.0);
+    layout.update(request.clone(), &mut measurer).unwrap();
+    let closed = layout.placement(0).unwrap().height;
+    request.expanded = vec!["turn".into()];
+    layout.update(request.clone(), &mut measurer).unwrap();
+    let display = layout.display(0).unwrap().clone();
+    let toggles: Vec<_> = display
+        .widgets
+        .iter()
+        .filter_map(|w| match &w.kind {
+            WidgetKind::Toggle { key, expanded } => Some((key.clone(), *expanded)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        toggles,
+        [
+            ("turn".to_owned(), true),
+            ("turn-s0".to_owned(), false),
+            ("turn-s1".to_owned(), false)
+        ]
+    );
+    assert!(!display.texts.iter().any(|t| t.contains("2 + 2")));
+    let open = layout.placement(0).unwrap().height;
+    assert!(open > closed);
+    request.expanded = vec!["turn".into(), "turn-s1".into()];
+    layout.update(request, &mut measurer).unwrap();
+    let display = layout.display(0).unwrap().clone();
+    assert!(layout.placement(0).unwrap().height > open);
+    assert!(display.texts.iter().any(|t| t.contains("2 + 2")));
+    let inks: Vec<_> = display.styles.iter().map(|s| s.ink).collect();
+    assert!(inks.contains(&super::display::Ink::Rgba(rows::DIFF_ADDED)));
+    assert!(inks.contains(&super::display::Ink::Rgba(rows::DIFF_REMOVED)));
+    assert!(display.widgets.iter().any(|w| matches!(
+        &w.kind,
+        WidgetKind::Copy { text, .. } if text.contains("+    2 + 2")
+    )));
+}
+
+/// An answer has a Copy control under it; the person's message does not.
+#[test]
+fn an_answer_has_copy_under_it() {
+    let mut layout = TranscriptLayout::new();
+    let mut measurer = FixedMeasurer::default();
+    layout
+        .update(
+            update(
+                vec![
+                    message("u", MessageRole::User, "Fix it."),
+                    message("a", MessageRole::Assistant, "Fixed **it**."),
+                ],
+                390.0,
+            ),
+            &mut measurer,
+        )
+        .unwrap();
+    let copies = |index: usize, layout: &TranscriptLayout| {
+        layout
+            .display(index)
+            .unwrap()
+            .widgets
+            .iter()
+            .filter_map(|w| match &w.kind {
+                WidgetKind::Copy { text, .. } => Some((text.clone(), w.y + w.h)),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+    };
+    assert!(copies(0, &layout).is_empty());
+    let answer = copies(1, &layout);
+    assert_eq!(answer.len(), 1);
+    assert_eq!(answer[0].0, "Fixed it.");
+    assert!(answer[0].1 <= layout.placement(1).unwrap().height);
+}
+
 #[test]
 fn width_changes_relay_every_row_and_measurements_are_cached() {
     let mut layout = TranscriptLayout::new();

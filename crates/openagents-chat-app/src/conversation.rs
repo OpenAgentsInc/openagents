@@ -763,12 +763,12 @@ fn transcript<I: Clone>(
     if let Some(error) = inner.error.as_ref().filter(|_| inner.rows.is_empty()) {
         children.push(system(&format!("{key}-error"), error));
     }
-    children.extend(
-        inner
-            .rows
-            .iter()
-            .map(|row| draw(row, inner.compact, &inner.delegated)),
-    );
+    children.extend(draw_rows(
+        &inner.rows,
+        inner.compact,
+        &inner.delegated,
+        working.is_some(),
+    ));
     children.extend(pending.iter().map(sent));
     // One working row at most: the task's own state when it has one,
     // since it says more than the read that is still loading.
@@ -1098,8 +1098,7 @@ fn entries(readable: &coder_history::Readable) -> Vec<Entry> {
         || text.is_empty()
         || matches!(
             kind,
-            "reasoning"
-                | "session"
+            "session"
                 | "session_meta"
                 | "turn_context"
                 | "token_count"
@@ -1113,6 +1112,14 @@ fn entries(readable: &coder_history::Readable) -> Vec<Entry> {
         )
     {
         return vec![];
+    }
+    // The model's thinking: a step that opens to its words (#11638).
+    if kind == "reasoning" {
+        return vec![Entry::Tool {
+            name: THINKING.into(),
+            detail: String::new(),
+            body: bounded(text, TOOL_BYTES),
+        }];
     }
     let tool_kind = matches!(
         kind,
@@ -1248,7 +1255,383 @@ fn sent<I>(pending: &Pending<'_>) -> Node<I> {
 /// Render parsed task rows with the same semantics on every native adapter.
 pub fn project_rows<I>(rows: &[Row]) -> Vec<Node<I>> {
     let delegated = std::collections::BTreeMap::new();
-    rows.iter().map(|row| draw(row, 0, &delegated)).collect()
+    draw_rows(rows, 0, &delegated, false)
+}
+
+/// The name of the model's thinking as a step.
+pub const THINKING: &str = "Thinking";
+
+/// Who answers in a Coder chat, on each turn's header.
+const AUTHOR: &str = "Coder";
+
+/// A chat's rows drawn with the transcript components, as the web draws a
+/// conversation (#11638): the person's words as bubbles, one header per
+/// agent turn, each tool call with its result as one step (running, done,
+/// or failed) that opens to small code blocks, an edit as a diff, and a
+/// run of two or more steps under one "Worked" line that opens to them.
+/// `live` is whether the chat is still working, so its last step without
+/// a result is running.
+fn draw_rows<I>(
+    rows: &[Row],
+    compact: u8,
+    delegated: &std::collections::BTreeMap<String, Vec<Row>>,
+    live: bool,
+) -> Vec<Node<I>> {
+    let mut out = Vec::with_capacity(rows.len() + 4);
+    let mut turn = true;
+    let mut index = 0;
+    while index < rows.len() {
+        let row = &rows[index];
+        match &row.entry {
+            Entry::Message {
+                role: MessageRole::User,
+                ..
+            } => {
+                out.push(draw(row, compact, delegated));
+                turn = true;
+                index += 1;
+                continue;
+            }
+            Entry::Message {
+                role: MessageRole::System,
+                ..
+            } => {
+                out.push(draw(row, compact, delegated));
+                index += 1;
+                continue;
+            }
+            _ => {}
+        }
+        if turn {
+            out.push(crate::projection::turn_header(
+                &format!("{}-who", row_key(row)),
+                AUTHOR,
+                gray(),
+            ));
+            turn = false;
+        }
+        if !matches!(row.entry, Entry::Tool { .. }) {
+            out.push(draw(row, compact, delegated));
+            index += 1;
+            continue;
+        }
+        // A run of steps: each call takes the first result after it that
+        // no earlier call took, so calls made together keep their own.
+        let mut steps: Vec<Step<'_>> = vec![];
+        while let Some(Row {
+            entry: Entry::Tool { name, detail, body },
+            ..
+        }) = rows.get(index)
+        {
+            let open = steps
+                .iter_mut()
+                .find(|step| step.output.is_none() && !matches!(step.name, THINKING | "Result"));
+            match open {
+                Some(step) if name == "Result" => step.output = Some(body),
+                _ => steps.push(Step {
+                    key: row_key(&rows[index]),
+                    name,
+                    detail,
+                    input: body,
+                    output: None,
+                }),
+            }
+            index += 1;
+        }
+        let last = index == rows.len();
+        let count = steps.len();
+        let mut drawn: Vec<(Node<I>, bool)> = steps
+            .iter()
+            .enumerate()
+            .map(|(at, step)| {
+                let running = live
+                    && last
+                    && at + 1 == count
+                    && step.output.is_none()
+                    && step.name != THINKING
+                    && step.name != "Result";
+                let failed = step.output.is_some_and(failed_output)
+                    || (step.name == "Result" && failed_output(step.input));
+                let key = if count == 1 {
+                    step.key.clone()
+                } else {
+                    format!("{}-s{at}", steps[0].key)
+                };
+                (step_node(&key, step, running, failed, compact), failed)
+            })
+            .collect();
+        if count == 1 {
+            out.extend(drawn.pop().map(|(node, _)| node));
+            continue;
+        }
+        let failed = drawn.iter().filter(|(_, failed)| *failed).count();
+        let running = drawn.iter().any(|(node, _)| {
+            matches!(
+                node.element,
+                Element::Tool {
+                    state: ToolState::Running,
+                    ..
+                }
+            )
+        });
+        let mut detail = format!("{count} steps");
+        match failed {
+            0 => {}
+            1 => detail.push_str(" · 1 didn't work"),
+            n => detail.push_str(&format!(" · {n} didn't work")),
+        }
+        out.push(node(
+            &steps[0].key,
+            Element::Tool {
+                name: "Worked".into(),
+                detail,
+                state: if running {
+                    ToolState::Running
+                } else {
+                    ToolState::Done
+                },
+                children: drawn.into_iter().map(|(node, _)| node).collect(),
+            },
+        ));
+    }
+    out
+}
+
+/// One tool call and its result, or the model's thinking.
+struct Step<'a> {
+    key: String,
+    name: &'a str,
+    detail: &'a str,
+    input: &'a str,
+    output: Option<&'a str>,
+}
+
+fn row_key(row: &Row) -> String {
+    format!("r{}-{}-{}", row.segment, row.offset, row.part)
+}
+
+/// Whether a tool's result says it failed: a nonzero exit code, or an
+/// error in its first words.
+fn failed_output(text: &str) -> bool {
+    let text = text.trim();
+    if text.starts_with('{')
+        && let Ok(value) = serde_json::from_str::<serde_json::Value>(text)
+    {
+        let code = ["/metadata/exit_code", "/exit_code", "/exitCode"]
+            .iter()
+            .find_map(|at| value.pointer(at).and_then(serde_json::Value::as_i64));
+        return code.is_some_and(|code| code != 0)
+            || value.get("is_error").and_then(serde_json::Value::as_bool) == Some(true)
+            || value.get("error").is_some_and(|error| !error.is_null());
+    }
+    let first = text
+        .lines()
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_ascii_lowercase();
+    for lead in ["exit code:", "process exited with code"] {
+        if let Some(code) = first.strip_prefix(lead) {
+            return code
+                .trim()
+                .trim_end_matches('.')
+                .parse::<i64>()
+                .is_ok_and(|code| code != 0);
+        }
+    }
+    first.starts_with("error")
+        || first.starts_with("<tool_use_error>")
+        || first.starts_with("failed")
+}
+
+/// One step: a line with its state that opens to small code blocks — what
+/// it ran and what came back — or, for an edit, its diff; thinking opens
+/// to its words.
+fn step_node<I>(key: &str, step: &Step<'_>, running: bool, failed: bool, compact: u8) -> Node<I> {
+    let bytes = match compact {
+        0 => TOOL_BYTES,
+        1 => COMPACT_TOOL_BYTES,
+        _ => 0,
+    };
+    let code = |suffix: &str, language: Option<&str>, text: &str| Node {
+        key: format!("{key}-{suffix}"),
+        style: Style {
+            foreground: Some(white()),
+            ..Style::default()
+        },
+        element: Element::Markdown {
+            blocks: vec![markdown::Block::Code {
+                language: language.map(str::to_owned),
+                text: bounded(text, bytes),
+            }],
+        },
+    };
+    let mut children = vec![];
+    if bytes > 0 {
+        if step.name == THINKING {
+            children.push(Node {
+                key: format!("{key}-text"),
+                style: Style {
+                    foreground: Some(gray()),
+                    ..Style::default()
+                },
+                element: Element::Text {
+                    value: bounded(step.input, bytes),
+                    role: TextRole::Body,
+                },
+            });
+        } else if let Some(diff) = edit_diff(step.name, step.input) {
+            children.push(code("diff", Some("diff"), &diff));
+        } else {
+            let (language, input) = shown_input(step.name, step.input);
+            if !input.trim().is_empty() {
+                children.push(code("in", language, &input));
+            }
+            if let Some(output) = step.output.filter(|text| !text.trim().is_empty()) {
+                children.push(code("out", None, output));
+            }
+        }
+    }
+    let detail = if step.name == THINKING {
+        String::new()
+    } else {
+        step.detail.to_owned()
+    };
+    node(
+        key,
+        Element::Tool {
+            name: step.name.to_owned(),
+            detail,
+            state: if running {
+                ToolState::Running
+            } else if failed {
+                ToolState::Failed
+            } else {
+                ToolState::Done
+            },
+            children,
+        },
+    )
+}
+
+/// A call's input as it reads best: a shell command as the command line,
+/// anything else as sent.
+fn shown_input<'a>(
+    name: &str,
+    input: &'a str,
+) -> (Option<&'static str>, std::borrow::Cow<'a, str>) {
+    let shell = matches!(
+        name.to_ascii_lowercase().as_str(),
+        "bash" | "shell" | "exec_command" | "run" | "local_shell" | "terminal"
+    );
+    if !shell {
+        return (None, input.into());
+    }
+    let command = serde_json::from_str::<serde_json::Value>(input)
+        .ok()
+        .and_then(|value| {
+            let command = value.get("command").or_else(|| value.get("cmd"))?;
+            match command {
+                serde_json::Value::String(text) => Some(text.clone()),
+                serde_json::Value::Array(parts) => {
+                    let parts: Vec<&str> = parts.iter().filter_map(|p| p.as_str()).collect();
+                    // `["bash", "-lc", "cargo test"]` runs its last part.
+                    match parts.as_slice() {
+                        [shell, flag, script] if flag.starts_with('-') && shell.ends_with("sh") => {
+                            Some((*script).to_owned())
+                        }
+                        _ => Some(parts.join(" ")),
+                    }
+                }
+                _ => None,
+            }
+        });
+    match command {
+        Some(command) => (Some("bash"), command.into()),
+        None => (Some("bash"), input.into()),
+    }
+}
+
+/// An edit's change as a unified diff: a patch as written, or an edit's
+/// old and new text, or a new file's lines.
+fn edit_diff(name: &str, input: &str) -> Option<String> {
+    let patch = |text: &str| {
+        text.trim_start().starts_with("*** Begin Patch").then(|| {
+            text.lines()
+                .filter(|line| !matches!(line.trim(), "*** Begin Patch" | "*** End Patch"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        })
+    };
+    if let Some(diff) = patch(input) {
+        return Some(diff);
+    }
+    let value: serde_json::Value = serde_json::from_str(input.trim()).ok()?;
+    let field = |name: &str| value.get(name).and_then(serde_json::Value::as_str);
+    if let Some(diff) = field("input").or(field("patch")).and_then(patch) {
+        return Some(diff);
+    }
+    let path = field("file_path").or(field("path")).unwrap_or_default();
+    let head = |out: &mut String| {
+        if !path.is_empty() {
+            out.push_str(&format!("+++ {path}\n"));
+        }
+    };
+    match name.to_ascii_lowercase().as_str() {
+        "edit" | "str_replace" | "str_replace_based_edit_tool" => {
+            let mut out = String::new();
+            head(&mut out);
+            out.push_str(&replacement(field("old_string")?, field("new_string")?));
+            Some(out)
+        }
+        "multiedit" => {
+            let mut out = String::new();
+            head(&mut out);
+            for edit in value.get("edits")?.as_array()? {
+                let old = edit.get("old_string")?.as_str()?;
+                let new = edit.get("new_string")?.as_str()?;
+                out.push_str(&replacement(old, new));
+            }
+            Some(out)
+        }
+        "write" | "create" => {
+            let mut out = String::new();
+            head(&mut out);
+            for line in field("content")?.lines() {
+                out.push_str(&format!("+{line}\n"));
+            }
+            Some(out)
+        }
+        _ => None,
+    }
+}
+
+/// `old` replaced by `new` as diff lines, with the lines they share at
+/// either end as context.
+fn replacement(old: &str, new: &str) -> String {
+    let a: Vec<&str> = old.lines().collect();
+    let b: Vec<&str> = new.lines().collect();
+    let prefix = a.iter().zip(&b).take_while(|(x, y)| x == y).count();
+    let suffix = a[prefix..]
+        .iter()
+        .rev()
+        .zip(b[prefix..].iter().rev())
+        .take_while(|(x, y)| x == y)
+        .count();
+    let mut out = String::new();
+    for line in &a[..prefix] {
+        out.push_str(&format!(" {line}\n"));
+    }
+    for line in &a[prefix..a.len() - suffix] {
+        out.push_str(&format!("-{line}\n"));
+    }
+    for line in &b[prefix..b.len() - suffix] {
+        out.push_str(&format!("+{line}\n"));
+    }
+    for line in &a[a.len() - suffix..] {
+        out.push_str(&format!(" {line}\n"));
+    }
+    out
 }
 
 fn draw<I>(
@@ -1589,7 +1972,8 @@ mod tests {
         };
         let mut keys: Vec<&str> = children.iter().map(|child| child.key.as_str()).collect();
         keys.dedup();
-        assert_eq!(keys.len(), 4);
+        // Four messages, and a header above each of the two replies.
+        assert_eq!(keys.len(), 6);
     }
 
     #[test]
@@ -1635,14 +2019,21 @@ mod tests {
             rows: vec![tool(0), tool(10), tool(20), tool(30)],
             ..Inner::default()
         };
+        // The turn's header, then its four steps under one line.
         let body = |inner: &Inner| match &transcript(inner, "t", (), &[], None).element {
-            Element::Transcript { children, .. } => match &children[0].element {
-                Element::Tool { children, .. } => {
-                    children.first().map(|child| match &child.element {
-                        Element::Text { value, .. } => value.len(),
-                        _ => 0,
-                    })
-                }
+            Element::Transcript { children, .. } => match &children[1].element {
+                Element::Tool { children, .. } => match &children[0].element {
+                    Element::Tool { children, .. } => {
+                        children.first().map(|child| match &child.element {
+                            Element::Markdown { blocks } => match &blocks[..] {
+                                [markdown::Block::Code { text, .. }] => text.len(),
+                                _ => 0,
+                            },
+                            _ => 0,
+                        })
+                    }
+                    _ => None,
+                },
                 _ => None,
             },
             _ => None,
@@ -1738,12 +2129,14 @@ mod tests {
         let Element::Transcript { children, .. } = &view.element else {
             panic!("a transcript");
         };
+        // Under the turn's header.
+        assert!(matches!(&children[0].element, Element::Text { value, .. } if value == "Coder"));
         let Element::Tool {
             name,
             detail,
             state,
             children,
-        } = &children[0].element
+        } = &children[1].element
         else {
             panic!("a delegate row");
         };
@@ -1776,6 +2169,226 @@ mod tests {
         ));
     }
 
+    /// A Coder turn draws as the web's (#11638): a header, its steps under
+    /// one "Worked" line (each call with its result, a failure marked, an
+    /// edit as a diff, thinking as words), then the answer.
+    fn turn_rows() -> Vec<Row> {
+        let tool = |offset, name: &str, detail: &str, body: &str| {
+            Row::new(
+                offset,
+                offset + 10,
+                0,
+                Entry::Tool {
+                    name: name.into(),
+                    detail: detail.into(),
+                    body: body.into(),
+                },
+            )
+        };
+        vec![
+            message(0, MessageRole::User, "Fix the total"),
+            tool(10, THINKING, "", "The total is in src/sum.rs."),
+            tool(
+                20,
+                "Bash",
+                "cargo test sum",
+                "{\"command\":[\"bash\",\"-lc\",\"cargo test sum\"]}",
+            ),
+            tool(30, "Result", "", "Exit code: 101\ntest sum ... FAILED"),
+            tool(
+                40,
+                "Edit",
+                "src/sum.rs",
+                "{\"file_path\":\"src/sum.rs\",\"old_string\":\"fn total() {\\n    1 + 1\\n}\",\"new_string\":\"fn total() {\\n    2 + 2\\n}\"}",
+            ),
+            tool(50, "Result", "", "The file was updated."),
+            message(60, MessageRole::Assistant, "Fixed."),
+        ]
+    }
+
+    /// Paints the phone's transcripts to PNG (#11638): a Coder turn closed,
+    /// its trace and two steps open, and an OpenAgents chat. Run with
+    /// `OPENAGENTS_TRANSCRIPT_CAPTURE=DIR cargo test -p openagents-chat-app
+    /// capture_phone_transcripts -- --ignored`.
+    #[test]
+    #[ignore = "writes PNG captures"]
+    fn capture_phone_transcripts() {
+        use rust_native_desktop::text::Fonts;
+        use rust_native_desktop::theme::ladder;
+        use rust_native_desktop::transcript::Transcript;
+        use rust_native_desktop::{Frame, PxRect};
+        let directory = std::path::PathBuf::from(
+            std::env::var("OPENAGENTS_TRANSCRIPT_CAPTURE").expect("a capture directory"),
+        );
+        let (width, scale) = (390.0f32, 3.0f32);
+        let paint = |name: &str, rows: Vec<Node<()>>, open: &[&str]| {
+            let mut transcript = Transcript::default();
+            transcript.set_expanded(open.iter().map(|key| (*key).to_owned()));
+            transcript.update(rows.clone(), width, 4000.0).unwrap();
+            let height = transcript.height().ceil().max(200.0);
+            transcript.update(rows, width, height).unwrap();
+            let mut frame = Frame::new(
+                (width * scale) as usize,
+                (height * scale) as usize,
+                ladder::GROUND,
+            );
+            transcript.paint(
+                &mut frame,
+                PxRect {
+                    x: 0.0,
+                    y: 0.0,
+                    w: width * scale,
+                    h: height * scale,
+                },
+                scale,
+                &mut Fonts::new(),
+            );
+            let path = directory.join(format!("transcript-phone-{name}.png"));
+            std::fs::write(&path, frame.png().unwrap()).unwrap();
+        };
+        let rows = turn_rows();
+        paint(
+            "coder",
+            draw_rows(&rows, 0, &Default::default(), false),
+            &[],
+        );
+        paint(
+            "coder-open",
+            draw_rows(&rows, 0, &Default::default(), false),
+            &["r0-10-0", "r0-10-0-s1", "r0-10-0-s2"],
+        );
+        paint(
+            "coder-working",
+            draw_rows(&rows[..5], 0, &Default::default(), true),
+            &["r0-10-0"],
+        );
+        let turns = vec![
+            openagents_chat::basic_coder::Turn::user("What does a Coder run cost?"),
+            openagents_chat::basic_coder::Turn::assistant(
+                "We charge for the model time a run uses.\n\n- Small fixes cost cents\n- You set your own limit",
+                None,
+            ),
+        ];
+        let hosted: Vec<Node<()>> = crate::projection::Projection::default().rows(
+            &turns,
+            0,
+            crate::projection::Reply {
+                busy: false,
+                partial: "",
+                failure: None,
+            },
+            &crate::projection::Appearance {
+                prefix: "talk-m",
+                body_suffix: "-md",
+                streaming_key: "talk-m2".into(),
+                working_key: "talk-working",
+                working_label: "Working",
+                failed_key: "talk-failed",
+                markdown_style: Style {
+                    foreground: Some(white()),
+                    ..Style::default()
+                },
+                status_style: Style {
+                    foreground: Some(gray()),
+                    ..Style::default()
+                },
+                author: Some("OpenAgents"),
+            },
+        );
+        paint("openagents", hosted, &[]);
+    }
+
+    #[test]
+    fn a_turn_draws_a_header_one_trace_and_the_answer() {
+        let mut rows = turn_rows();
+        let drawn: Vec<Node<()>> = draw_rows(&rows, 0, &Default::default(), false);
+        assert_eq!(drawn.len(), 4);
+        assert!(matches!(&drawn[1].element, Element::Text { value, .. } if value == "Coder"));
+        assert_eq!(drawn[1].key, "r0-10-0-who");
+        let Element::Tool {
+            name,
+            detail,
+            state,
+            children,
+        } = &drawn[2].element
+        else {
+            panic!("a trace");
+        };
+        assert_eq!(
+            (name.as_str(), detail.as_str()),
+            ("Worked", "3 steps · 1 didn't work")
+        );
+        assert_eq!(*state, ToolState::Done);
+        let steps: Vec<(&str, &str, ToolState)> = children
+            .iter()
+            .map(|step| match &step.element {
+                Element::Tool { name, state, .. } => (step.key.as_str(), name.as_str(), *state),
+                _ => panic!("a step"),
+            })
+            .collect();
+        assert_eq!(
+            steps,
+            [
+                ("r0-10-0-s0", THINKING, ToolState::Done),
+                ("r0-10-0-s1", "Bash", ToolState::Failed),
+                ("r0-10-0-s2", "Edit", ToolState::Done),
+            ]
+        );
+        let code = |step: &Node<()>| match &step.element {
+            Element::Tool { children, .. } => children
+                .iter()
+                .filter_map(|child| match &child.element {
+                    Element::Markdown { blocks } => match &blocks[..] {
+                        [markdown::Block::Code { language, text }] => {
+                            Some((language.clone(), text.clone()))
+                        }
+                        _ => None,
+                    },
+                    _ => None,
+                })
+                .collect::<Vec<_>>(),
+            _ => vec![],
+        };
+        assert_eq!(
+            code(&children[1]),
+            [
+                (Some("bash".to_owned()), "cargo test sum".to_owned()),
+                (None, "Exit code: 101\ntest sum ... FAILED".to_owned())
+            ]
+        );
+        assert_eq!(
+            code(&children[2]),
+            [(
+                Some("diff".to_owned()),
+                "+++ src/sum.rs\n fn total() {\n-    1 + 1\n+    2 + 2\n }\n".to_owned()
+            )]
+        );
+        assert!(matches!(
+            &drawn[3].element,
+            Element::Message {
+                role: MessageRole::Assistant,
+                ..
+            }
+        ));
+        // Still working: the last call has no result yet and is running.
+        rows.truncate(5);
+        let drawn: Vec<Node<()>> = draw_rows(&rows, 0, &Default::default(), true);
+        let Element::Tool {
+            state, children, ..
+        } = &drawn[2].element
+        else {
+            panic!("a trace");
+        };
+        assert_eq!(*state, ToolState::Running);
+        assert!(matches!(
+            children[2].element,
+            Element::Tool {
+                state: ToolState::Running,
+                ..
+            }
+        ));
+    }
+
     #[test]
     fn records_become_messages_and_tool_rows() {
         assert_eq!(
@@ -1786,7 +2399,14 @@ mod tests {
             }]
         );
         assert!(entries(&readable("user", Some("user"), "<environment_context>x")).is_empty());
-        assert!(entries(&readable("reasoning", None, "hmm")).is_empty());
+        assert_eq!(
+            entries(&readable("reasoning", None, "hmm")),
+            vec![Entry::Tool {
+                name: THINKING.into(),
+                detail: String::new(),
+                body: "hmm".into()
+            }]
+        );
         let split = entries(&readable(
             "assistant",
             Some("assistant"),

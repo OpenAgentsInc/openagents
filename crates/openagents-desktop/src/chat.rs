@@ -4452,6 +4452,7 @@ fn appearance() -> Appearance<'static> {
         working_key: "working",
         working_label: "OpenAgents is replying…",
         failed_key: "talk-failed",
+        author: None,
         markdown_style: Style::default(),
         status_style: Style::default(),
     }

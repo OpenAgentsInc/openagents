@@ -11302,6 +11302,7 @@ dependencies = [
  "playtest",
  "route-contract",
  "rust-native",
+ "rust-native-desktop",
  "rustls",
  "secp256k1 0.31.1",
  "serde",

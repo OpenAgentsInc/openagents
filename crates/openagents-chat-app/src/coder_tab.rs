@@ -3570,6 +3570,7 @@ impl CoderTab {
                 working_key: "talk-working",
                 working_label,
                 failed_key: "talk-failed",
+                author: Some("OpenAgents"),
                 status_style: Style {
                     foreground: Some(gray()),
                     ..Style::default()
@@ -3792,6 +3793,7 @@ impl CoderTab {
                     working_key: "thread-working",
                     working_label,
                     failed_key: "thread-failed",
+                    author: Some("OpenAgents"),
                     status_style: Style {
                         foreground: Some(gray()),
                         ..Style::default()

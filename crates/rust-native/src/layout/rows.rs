@@ -104,6 +104,8 @@ pub(crate) struct Ctx<'a> {
     pub measurer: &'a mut dyn Measurer,
     pub cache: &'a mut MeasureCache,
     pub typography: &'a Typography,
+    /// Steps inside this row the reader opened (their node keys).
+    pub open: &'a [String],
     pub out: RowDisplay,
 }
 
@@ -614,8 +616,13 @@ impl Ctx<'_> {
             f32::from(metrics.code_size_half_points) / 2.0
         });
         let style = TextStyle::new(self.font(code_size, Weight::Regular, false, true), ink);
-        let para = Para::plain(code, style);
-        if let Some(language) = language {
+        let diff = language == Some("diff");
+        let para = if diff {
+            diff_para(code, style)
+        } else {
+            Para::plain(code, style)
+        };
+        if let Some(language) = language.filter(|_| !diff) {
             self.out.code_blocks.push(super::display::CodeBlock {
                 text: self.out.texts.len() as u32,
                 language: language.to_owned(),
@@ -844,7 +851,11 @@ impl Ctx<'_> {
                 detail,
                 state,
                 children,
-            } => self.tool(&node.key, name, detail, *state, children, false, x, y, w),
+            } => {
+                // A step inside a trace opens on its own (#11638).
+                let open = self.open.iter().any(|key| *key == node.key);
+                self.tool(&node.key, name, detail, *state, children, open, x, y, w)
+            }
             Element::Working { label } => self.working(label, x, y),
             Element::Stack { children, .. } => {
                 let spacing = |space: Option<Space>, default: f32| match space {
@@ -1206,6 +1217,23 @@ impl Ctx<'_> {
         if !expanded || children.is_empty() {
             return header;
         }
+        // A trace: the steps under its line, each one line that opens on
+        // its own, indented under the line's status mark (#11638).
+        if children
+            .iter()
+            .all(|child| matches!(child.element, Element::Tool { .. }))
+        {
+            let content = self.stack(
+                children,
+                x + 12.0,
+                y + header,
+                (w - 12.0).max(1.0),
+                SECONDARY,
+                0.0,
+                false,
+            );
+            return header + content;
+        }
         let body_y = y + header + 4.0;
         let mut body = rect(x, body_y, w, 0.0, 8.0);
         body.fill = Some(Ink::Role(ColorRole::Surface));
@@ -1245,6 +1273,30 @@ impl Ctx<'_> {
         );
         h + 8.0
     }
+}
+
+/// An added line of a diff.
+pub const DIFF_ADDED: [u8; 4] = [46, 160, 67, 255];
+/// A removed line of a diff.
+pub const DIFF_REMOVED: [u8; 4] = [218, 54, 51, 255];
+
+/// A diff's text with added lines green, removed lines red, and hunk
+/// headers quiet, so an edit reads as a diff (#11638).
+fn diff_para(code: &str, style: TextStyle) -> Para {
+    let mut para = Para::default();
+    for line in code.split_inclusive('\n') {
+        let ink = if line.starts_with("+++") || line.starts_with("---") || line.starts_with("@@") {
+            SECONDARY
+        } else if line.starts_with('+') {
+            Ink::Rgba(DIFF_ADDED)
+        } else if line.starts_with('-') {
+            Ink::Rgba(DIFF_REMOVED)
+        } else {
+            style.ink
+        };
+        para.push(line, TextStyle { ink, ..style }, false, None);
+    }
+    para
 }
 
 /// Column widths that fit `available`: columns narrower than an even share
@@ -1338,8 +1390,25 @@ pub(crate) fn lay_row(ctx: &mut Ctx<'_>, node: &Node<()>, expanded: bool, width:
                 },
                 ..Accessibility::default()
             };
-            ctx.out.copy = Some(text);
-            ctx.message(*role, note.as_deref(), children, x, 0.0, w, tone)
+            let height = ctx.message(*role, note.as_deref(), children, x, 0.0, w, tone);
+            // An answer carries a Copy control under it, as on the web
+            // (#11638).
+            let answer = *role == MessageRole::Assistant && !text.trim().is_empty();
+            ctx.out.copy = Some(text.clone());
+            if answer {
+                let size = ctx.typography.size(12.0) / 12.0;
+                let (copy_w, copy_h) = ((56.0 * size).ceil(), (28.0 * size).ceil());
+                ctx.widget(
+                    x - 4.0,
+                    height + 4.0,
+                    copy_w,
+                    copy_h,
+                    WidgetKind::Copy { text, icon: false },
+                );
+                height + 4.0 + copy_h
+            } else {
+                height
+            }
         }
         Element::Tool {
             name,
@@ -1367,6 +1436,15 @@ pub(crate) fn lay_row(ctx: &mut Ctx<'_>, node: &Node<()>, expanded: bool, width:
             )
         }
         _ => {
+            // A turn's header: a short status line in semibold, such as
+            // "Coder" above its steps and answer (#11638).
+            ctx.out.header = matches!(
+                node.element,
+                Element::Text {
+                    role: TextRole::Status,
+                    ..
+                }
+            ) && node.style.weight == Some(crate::style::TextWeight::Semibold);
             ctx.out.accessibility.label = plain(node);
             ctx.node(node, x, 0.0, w, tone, false)
         }

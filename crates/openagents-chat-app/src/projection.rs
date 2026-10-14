@@ -16,6 +16,37 @@ pub struct Appearance<'a> {
     pub failed_key: &'a str,
     pub markdown_style: Style,
     pub status_style: Style,
+    /// Who answers, on a header above each reply (#11638), such as
+    /// "OpenAgents"; `None` draws replies without one.
+    pub author: Option<&'a str>,
+}
+
+/// A turn's header: who answers, on a short line above the turn's steps
+/// and answer, as the web's turn header (#11638). The layout keeps the
+/// turn close under it.
+pub fn turn_header<I>(key: &str, author: &str, color: rust_native::style::Color) -> Node<I> {
+    Node {
+        key: key.into(),
+        style: Style {
+            foreground: Some(color),
+            weight: Some(rust_native::style::TextWeight::Semibold),
+            ..Style::default()
+        },
+        element: Element::Text {
+            value: author.into(),
+            role: rust_native::TextRole::Status,
+        },
+    }
+}
+
+/// The header above a reply, when the appearance names who answers.
+fn header<I>(key: &str, appearance: &Appearance<'_>) -> Option<Node<I>> {
+    let author = appearance.author?;
+    let color = appearance
+        .status_style
+        .foreground
+        .unwrap_or(crate::visual::inks().quiet);
+    Some(turn_header(&format!("{key}-who"), author, color))
 }
 
 #[derive(Default)]
@@ -52,6 +83,9 @@ impl Projection {
                 .or_insert_with(|| (turn.clone(), rust_native::markdown::parse(&turn.text)));
             if entry.0 != *turn {
                 *entry = (turn.clone(), rust_native::markdown::parse(&turn.text));
+            }
+            if turn.role != Role::User {
+                rows.extend(header(&format!("{}{index}", appearance.prefix), appearance));
             }
             rows.push(message(
                 &format!("{}{index}", appearance.prefix),
@@ -109,6 +143,11 @@ impl Projection {
             if entry.0 != *turn {
                 *entry = make();
             }
+            if turn.role != Role::User {
+                rows.extend(
+                    header(&format!("{}{index}", appearance.prefix), appearance).map(Arc::new),
+                );
+            }
             rows.push(entry.1.clone());
         }
         rows.extend(
@@ -128,6 +167,7 @@ impl Projection {
         let mut rows = vec![];
         self.partial.set(reply.partial);
         if !reply.partial.is_empty() {
+            rows.extend(header(&appearance.streaming_key, appearance));
             rows.push(message(
                 &appearance.streaming_key,
                 MessageRole::Assistant,
@@ -251,6 +291,7 @@ mod tests {
             working_key: "working",
             working_label: "Working…",
             failed_key: "failed",
+            author: None,
             markdown_style: Style::default(),
             status_style: Style::default(),
         }
@@ -292,6 +333,54 @@ mod tests {
         let earlier = projection.shared_rows(&turns[..200], 0, reply(""), &appearance);
         assert!(Arc::ptr_eq(&earlier[0], &corrected[0]));
         assert_eq!(projection.shared.len(), 200);
+    }
+
+    /// With an author, each reply, settled or streaming, has a header above
+    /// it that the settled reply keeps (#11638); the person's words have none.
+    #[test]
+    fn replies_carry_a_header_naming_who_answers() {
+        let turns = vec![
+            Turn::user("Question"),
+            Turn::assistant("Answer", None),
+            Turn::user("Again"),
+        ];
+        let mut named = appearance();
+        named.author = Some("OpenAgents");
+        named.streaming_key = "message-3".into();
+        let rows: Vec<Node<()>> = Projection::default().rows(
+            &turns,
+            0,
+            Reply {
+                busy: false,
+                partial: "More",
+                failure: None,
+            },
+            &named,
+        );
+        let keys: Vec<&str> = rows.iter().map(|row| row.key.as_str()).collect();
+        assert_eq!(
+            keys,
+            [
+                "message-0",
+                "message-1-who",
+                "message-1",
+                "message-2",
+                "message-3-who",
+                "message-3"
+            ]
+        );
+        assert!(matches!(&rows[1].element, Element::Text { value, .. } if value == "OpenAgents"));
+        let plain: Vec<Node<()>> = Projection::default().rows(
+            &turns,
+            0,
+            Reply {
+                busy: false,
+                partial: "",
+                failure: None,
+            },
+            &appearance(),
+        );
+        assert_eq!(plain.len(), 3);
     }
 
     #[test]

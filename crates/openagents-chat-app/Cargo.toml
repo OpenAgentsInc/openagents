@@ -35,6 +35,8 @@ uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]
 oa-copy = { path = "../oa-copy" }
+# Paints transcripts to PNG for phone captures (#11638), without a window.
+rust-native-desktop = { path = "../rust-native-desktop", default-features = false }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 tempfile = "3"
 xp-ledger = { path = "../xp-ledger", features = ["fixtures"] }

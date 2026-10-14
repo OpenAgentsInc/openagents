@@ -298,6 +298,11 @@ pub struct RowDisplay {
     /// The message's plain text for a Copy action, if the row is a message.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub copy: Option<String>,
+    /// A turn's header ("Coder", "OpenAgents"): the row under it follows
+    /// closely, as the turn's body (#11638). The layout places rows; an
+    /// adapter needs nothing from it.
+    #[serde(skip)]
+    pub header: bool,
 }
 
 impl RowDisplay {

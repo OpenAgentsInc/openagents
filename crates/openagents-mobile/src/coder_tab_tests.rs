@@ -1263,7 +1263,8 @@ fn a_first_chat_needs_no_computer_and_streams_its_reply() {
         .iter()
         .map(|row| row["key"].as_str().unwrap())
         .collect();
-    assert_eq!(order, ["talk-m0", "talk-m1", "talk-working"]);
+    // The reply has its turn's header above it (#11638).
+    assert_eq!(order, ["talk-m0", "talk-m1-who", "talk-m1", "talk-working"]);
 
     hand.say("A relay **stores** and forwards events.", true);
     let chat = fixture.render();

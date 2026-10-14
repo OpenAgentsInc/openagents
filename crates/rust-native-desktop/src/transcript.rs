@@ -144,6 +144,13 @@ impl Transcript {
         self.dragging
     }
 
+    /// Opens the tool rows and steps keyed `keys`, as a reader's taps
+    /// would, for captures and tests; the next update lays them out open.
+    pub fn set_expanded(&mut self, keys: impl IntoIterator<Item = String>) {
+        self.expanded = keys.into_iter().collect();
+        self.version = self.version.wrapping_add(1);
+    }
+
     /// Update only changed rows. Readers away from the tail keep their visible anchor.
     pub fn update(
         &mut self,

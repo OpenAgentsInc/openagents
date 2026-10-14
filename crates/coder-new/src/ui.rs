@@ -1990,6 +1990,112 @@ struct CachedEntry {
     run_output: Option<(usize, Vec<Line<'static>>, usize, bool)>,
     /// What a copy takes from each of a Run's output rows.
     run_copy: Vec<RowCopy>,
+    /// Where the entry sits in a finished run of steps the compact view
+    /// shows as one line (#11638).
+    fold: Option<Fold>,
+}
+
+/// A finished run of a turn's steps, drawn in the compact view as one line
+/// that Ctrl+O opens, as the web's trace sits under one "Worked" line
+/// (#11638). An edit keeps its diff under that line.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum Fold {
+    /// The run's first step: the line, with how many steps there were and
+    /// how many failed.
+    Head { steps: usize, failed: usize },
+    /// A later step of the run.
+    Member,
+}
+
+/// A tool call the run's line stands for: not a card (thinking, a plan,
+/// a notice) the person needs to read.
+fn is_step(entry: &crate::live::Entry) -> bool {
+    matches!(entry, crate::live::Entry::Tool { name, .. } if !is_card(name))
+}
+
+/// Each entry's place in a folded run. A run folds once it has two or
+/// more steps, none still running, and something came after it: a reply,
+/// the person's next message, or a reply that is streaming.
+fn folds(entries: &[crate::live::Entry], streaming: bool) -> Vec<Option<Fold>> {
+    let mut out = vec![None; entries.len()];
+    let mut start = 0;
+    while start < entries.len() {
+        if !is_step(&entries[start]) {
+            start += 1;
+            continue;
+        }
+        let end = entries[start..]
+            .iter()
+            .position(|entry| !is_step(entry))
+            .map_or(entries.len(), |at| start + at);
+        let run = &entries[start..end];
+        let settled = run
+            .iter()
+            .all(|entry| !matches!(entry, crate::live::Entry::Tool { running: true, .. }));
+        if run.len() >= 2 && settled && (end < entries.len() || streaming) {
+            let failed = run
+                .iter()
+                .filter(|entry| {
+                    matches!(entry, crate::live::Entry::Tool { output, .. }
+                        if crate::tools::output_failed(output))
+                })
+                .count();
+            out[start] = Some(Fold::Head {
+                steps: run.len(),
+                failed,
+            });
+            for slot in &mut out[start + 1..end] {
+                *slot = Some(Fold::Member);
+            }
+        }
+        start = end;
+    }
+    out
+}
+
+/// The rows a folded step shows: the run's one line on its first step,
+/// and an edit's diff, which stays readable without opening the run.
+fn fold_rows(
+    entry: &crate::live::Entry,
+    fold: &Fold,
+    (lines, copy): (Vec<Line<'static>>, Vec<RowCopy>),
+    width: u16,
+) -> (Vec<Line<'static>>, Vec<RowCopy>) {
+    let edit = matches!(entry, crate::live::Entry::Tool { name, .. }
+        if matches!(name.as_str(), "Edit" | "Write"));
+    let (mut rows, mut rows_copy) = if edit {
+        (lines, copy)
+    } else {
+        (Vec::new(), Vec::new())
+    };
+    if let Fold::Head { steps, failed } = fold {
+        // The turn went on past a failed step; the words say it failed.
+        let (glyph, color) = crate::tools::outcome_header(false, false, 0);
+        let mut spans = vec![
+            span(format!("{glyph} "), color),
+            Span::styled(
+                "Worked",
+                Style::default().fg(color).add_modifier(Modifier::BOLD),
+            ),
+        ];
+        let mut said = format!(" · {steps} steps");
+        match failed {
+            0 => {}
+            1 => said.push_str(" · 1 didn't work"),
+            n => said.push_str(&format!(" · {n} didn't work")),
+        }
+        let room = width.saturating_sub(8);
+        let said = truncate(&said, room);
+        let hint = " · Ctrl+O opens them";
+        let fits = said.width() + hint.width() <= usize::from(room);
+        spans.push(span(said, t::TEXT_SECONDARY));
+        if fits {
+            spans.push(span(hint, t::GRAY_DIM));
+        }
+        rows.insert(0, Line::from(spans));
+        rows_copy.insert(0, RowCopy::lead(2));
+    }
+    (rows, rows_copy)
 }
 
 /// Columns at a Run box's left edge where the wheel scrolls the box.
@@ -2183,6 +2289,7 @@ impl TranscriptCache {
                     gap_after: false,
                     run_output: None,
                     run_copy: Vec::new(),
+                    fold: None,
                 };
                 cached.bound_run(width, phase, previous_offset);
                 if index < self.entries.len() {
@@ -2201,7 +2308,28 @@ impl TranscriptCache {
                 (cached.lines, cached.copy) = entry_rows(entry, width, phase, view);
                 // Rebuilt rows carry no gap the loop below pushed.
                 cached.gap_after = false;
+                cached.fold = None;
                 cached.bound_run(width, phase, offset);
+            }
+        }
+        let streaming = !chat.partial.is_empty();
+        // A finished run of steps reads as one line in the compact view
+        // (#11638); Ctrl+O's verbose view shows every step.
+        let wanted = if view == ViewMode::Compact {
+            folds(&chat.entries, streaming)
+        } else {
+            vec![None; self.entries.len()]
+        };
+        for (cached, fold) in self.entries.iter_mut().zip(wanted) {
+            if cached.fold != fold {
+                let rows = entry_rows(&cached.entry, width, phase, view);
+                (cached.lines, cached.copy) = match &fold {
+                    Some(fold) => fold_rows(&cached.entry, fold, rows, width),
+                    None => rows,
+                };
+                cached.gap_after = false;
+                cached.fold = fold;
+                cached.bound_run(width, phase, None);
             }
         }
         // A compact tool row carries no trailing blank so calls run together;
@@ -2211,7 +2339,6 @@ impl TranscriptCache {
         // `gap_after` means the entry's last row is a gap this loop pushed:
         // `ends_blank` looks past it, or the gap reads as the entry's own
         // blank and is pushed and popped on alternating draws (#11395).
-        let streaming = !chat.partial.is_empty();
         for index in 0..self.entries.len() {
             let follows_reply = match self.entries.get(index + 1) {
                 Some(next) => is_reply(&next.entry),
@@ -2259,6 +2386,7 @@ impl TranscriptCache {
                     gap_after: false,
                     run_output: None,
                     run_copy: Vec::new(),
+                    fold: None,
                 });
                 self.builds += 1;
             }
@@ -3353,6 +3481,122 @@ mod export_notice_tests {
             positions.windows(2).all(|pair| pair[0] == pair[1]),
             "{positions:?}"
         );
+    }
+
+    /// A finished turn's steps sit under one "Worked" line in the compact
+    /// view, which says how many failed and keeps an edit's diff; Ctrl+O
+    /// opens every step, and a run still working is never folded (#11638).
+    #[test]
+    fn a_finished_turns_steps_fold_under_one_line_that_ctrl_o_opens() {
+        use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
+        let diff = crate::file_tools::unified(
+            "fn total() -> u32 {\n    1 + 1\n}\n",
+            "fn total() -> u32 {\n    2 + 2\n}\n",
+        );
+        let mut app = App::default();
+        app.mode = Mode::Live;
+        app.live.entries = vec![
+            crate::live::Entry::User("Fix the total in src/sum.rs".into()),
+            crate::live::Entry::Tool {
+                name: crate::claude_stream::THINKING.into(),
+                input: serde_json::Value::Null,
+                output: serde_json::json!({"text": "The total is computed in src/sum.rs."}),
+                running: false,
+            },
+            crate::live::Entry::Tool {
+                name: "Read".into(),
+                input: serde_json::json!({"path": "src/sum.rs"}),
+                output: serde_json::json!({"content": "fn total() -> u32 {\n    1 + 1\n}\n"}),
+                running: false,
+            },
+            crate::live::Entry::Tool {
+                name: "Run".into(),
+                input: serde_json::json!({"command": "cargo test sum"}),
+                output: serde_json::json!({"stdout": "test sum ... FAILED", "exit_code": 101, "error": "1 test failed"}),
+                running: false,
+            },
+            crate::live::Entry::Tool {
+                name: "Edit".into(),
+                input: serde_json::json!({"path": "src/sum.rs"}),
+                output: serde_json::json!({
+                    "path": "src/sum.rs", "diff": diff.text, "added": diff.added, "removed": diff.removed,
+                }),
+                running: false,
+            },
+            crate::live::Entry::Tool {
+                name: "Run".into(),
+                input: serde_json::json!({"command": "cargo test sum"}),
+                output: serde_json::json!({"stdout": "test sum ... ok"}),
+                running: false,
+            },
+            crate::live::Entry::Assistant {
+                text: "Fixed: `total` now returns 4, and the test passes.".into(),
+                model: None,
+                elapsed_ms: None,
+            },
+        ];
+        let screen = |app: &mut App| {
+            let mut terminal = Terminal::new(TestBackend::new(80, 30)).unwrap();
+            terminal.draw(|frame| render(frame, app)).unwrap();
+            let buffer = terminal.backend().buffer();
+            (0..30)
+                .map(|y| {
+                    (0..80)
+                        .map(|x| buffer[(x, y)].symbol())
+                        .collect::<String>()
+                        .trim_end()
+                        .to_owned()
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+        let folded = screen(&mut app);
+        assert!(
+            folded.contains("● Worked · 4 steps · 1 didn't work · Ctrl+O opens them"),
+            "{folded}"
+        );
+        assert!(!folded.contains("cargo test sum"), "{folded}");
+        assert!(!folded.contains("Read src/sum.rs"), "{folded}");
+        // The edit's diff stays, as does the thinking and the answer.
+        assert!(folded.contains("2 + 2"), "{folded}");
+        assert!(folded.contains("The total is computed"), "{folded}");
+        assert!(folded.contains("Fixed: total now returns 4"), "{folded}");
+        assert_eq!(folded.matches("Worked").count(), 1, "{folded}");
+        app.handle(Event::Key(KeyEvent::new(
+            KeyCode::Char('o'),
+            KeyModifiers::CONTROL,
+        )));
+        assert_eq!(app.view, ViewMode::Verbose);
+        let opened = screen(&mut app);
+        assert!(!opened.contains("Worked"), "{opened}");
+        assert!(opened.contains("cargo test sum"), "{opened}");
+        assert!(opened.contains("1 test failed"), "{opened}");
+        app.handle(Event::Key(KeyEvent::new(
+            KeyCode::Char('o'),
+            KeyModifiers::CONTROL,
+        )));
+        // Still working: the steps show one by one.
+        app.live.entries.pop();
+        if let Some(crate::live::Entry::Tool { running, .. }) = app.live.entries.last_mut() {
+            *running = true;
+        }
+        let working = screen(&mut app);
+        assert!(!working.contains("Worked"), "{working}");
+        assert!(working.contains("cargo test sum"), "{working}");
+        if let Ok(directory) = std::env::var("OPENAGENTS_TRANSCRIPT_CAPTURE") {
+            for (name, text) in [
+                ("folded", &folded),
+                ("opened", &opened),
+                ("working", &working),
+            ] {
+                std::fs::write(
+                    std::path::Path::new(&directory)
+                        .join(format!("transcript-terminal-{name}.txt")),
+                    text,
+                )
+                .unwrap();
+            }
+        }
     }
 
     /// A message the person sends, or the model's thinking, under a compact

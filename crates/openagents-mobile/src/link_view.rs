@@ -436,6 +436,7 @@ fn chat(state: &State, open: &Open, composer: u64, limit: usize, cut_at: usize) 
                 working_key: "link-working",
                 working_label: &label,
                 failed_key: "link-failed",
+                author: None,
                 status_style: Style {
                     foreground: Some(quiet()),
                     ..Style::default()
