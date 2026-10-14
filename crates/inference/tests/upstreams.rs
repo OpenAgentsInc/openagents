@@ -1460,3 +1460,69 @@ async fn argon_calls_a_tool_and_keeps_its_signature() {
         "low"
     );
 }
+
+/// Argon's thinking reaches the caller (#11577). At its own default level
+/// Argon thinks a few dozen tokens and Vertex sends no thought part, so a
+/// request that names no effort asks for `high`, where the summary comes
+/// back as `thought: true` parts, as on Gemini 3.8 Flash.
+#[tokio::test]
+async fn argon_streams_its_thoughts_as_reasoning() {
+    let stub = stub(vec![Reply::stream(&fixture(
+        "vertex-gemini-4-argon-thoughts.sse",
+    ))])
+    .await;
+    let adapter = vertex_at(&stub.url);
+    let ask = request(json!({
+        "input": "Is 391 prime? Think it through briefly, then answer in one line.",
+        "stream": true,
+    }));
+    let sent = adapter.send(&ask, vertex::ARGON).await.expect("sent");
+    let (events, error) = drain(sent).await;
+    assert!(error.is_none(), "{error:?}");
+    check(&events);
+    assert!(
+        events
+            .iter()
+            .any(|event| event.type_name() == "response.reasoning_summary_text.delta"),
+        "the thought streams as reasoning deltas"
+    );
+    let response = folded(&events);
+    assert_eq!(response.status, ResponseStatus::Completed);
+    let Item::Reasoning(reasoning) = &response.output[0] else {
+        panic!("first item is reasoning: {:?}", response.output[0]);
+    };
+    assert!(
+        reasoning
+            .summary_text()
+            .starts_with("**Testing Primality of 391**")
+    );
+    assert!(
+        response
+            .output_text()
+            .starts_with("To check if 391 is prime")
+    );
+    assert!(!response.output_text().contains("Testing Primality"));
+    let usage = response.usage.expect("usage");
+    assert_eq!(usage.output_tokens_details.reasoning_tokens, 587);
+    let body = stub.seen()[0].json();
+    let thinking = &body["generationConfig"]["thinkingConfig"];
+    assert_eq!(thinking["includeThoughts"], true);
+    assert_eq!(thinking["thinkingLevel"], "high");
+    // A named effort still wins, and 3.8 Flash keeps its own default.
+    let flash = vertex::default_models()
+        .into_iter()
+        .find(|(row, _)| row.id == "google/gemini-3.8-flash")
+        .expect("flash");
+    let argon_row = vertex::default_models()
+        .into_iter()
+        .find(|(row, _)| row.id == vertex::ARGON)
+        .expect("argon");
+    let low = request(json!({"input": "hi", "reasoning": {"effort": "low"}}));
+    let body = vertex::body(&low, &argon_row.0, argon_row.1).unwrap();
+    assert_eq!(
+        body["generationConfig"]["thinkingConfig"]["thinkingLevel"],
+        "low"
+    );
+    let body = vertex::body(&ask, &flash.0, flash.1).unwrap();
+    assert!(body["generationConfig"]["thinkingConfig"]["thinkingLevel"].is_null());
+}

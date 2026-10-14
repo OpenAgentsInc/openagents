@@ -62,6 +62,8 @@ impl Upstream for Gemini {
             let row = check(self, request, model)?;
             let thinking = if row.upstream_model.starts_with("gemini-2.5") {
                 Thinking::Budget
+            } else if row.upstream_model.starts_with("gemini-4-argon") {
+                Thinking::LevelHigh
             } else {
                 Thinking::Level
             };

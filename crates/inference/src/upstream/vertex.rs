@@ -73,6 +73,11 @@ pub const SKIP_SIGNATURE: &str = "skip_thought_signature_validator";
 pub enum Thinking {
     /// `thinkingLevel` (Gemini 3).
     Level,
+    /// `thinkingLevel`, `high` when the caller names no effort (Gemini 4
+    /// Argon). At its own default Argon thinks a few dozen tokens and
+    /// Vertex sends no thought summary for so short a thought, so nothing
+    /// could stream as reasoning; Gemini 3's default is already `high`.
+    LevelHigh,
     /// `thinkingBudget` in tokens (Gemini 2.5).
     Budget,
 }
@@ -159,7 +164,7 @@ pub fn default_models() -> Vec<(ModelRow, Thinking)> {
                                after 2026-11-30; limits from the Gemini API model card \
                                (1,048,576 input, 32,768 output per reply)",
             },
-            Thinking::Level,
+            Thinking::LevelHigh,
         ),
     ]
 }
@@ -551,12 +556,16 @@ pub fn body(
         .reasoning
         .as_ref()
         .is_some_and(|reasoning| reasoning.effort.is_some());
-    if row.capabilities.reasoning && (asked || thinking == Thinking::Level) {
+    if row.capabilities.reasoning && (asked || thinking != Thinking::Budget) {
         let mut thinking_config = Map::new();
         thinking_config.insert("includeThoughts".into(), json!(true));
-        if let Some(effort) = request.reasoning.as_ref().and_then(|r| r.effort.as_ref()) {
+        let effort = request.reasoning.as_ref().and_then(|r| r.effort.as_ref());
+        if effort.is_none() && thinking == Thinking::LevelHigh {
+            thinking_config.insert("thinkingLevel".into(), json!("high"));
+        }
+        if let Some(effort) = effort {
             match thinking {
-                Thinking::Level => {
+                Thinking::Level | Thinking::LevelHigh => {
                     let level = match effort {
                         ReasoningEffort::None | ReasoningEffort::Minimal => "minimal",
                         ReasoningEffort::Low => "low",
