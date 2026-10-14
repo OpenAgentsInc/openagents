@@ -1521,7 +1521,11 @@ def shots_text(data: dict, a: float, b: float) -> list[str]:
 
 
 def caps_text(data: dict, a: float, b: float) -> list[str]:
-    return [f"{clock(c['at'])} \"{c['text']}\"" for c in data.get("captions", []) if a <= c["at"] < b]
+    """Captions in [a, b) with their index, so a patch can address one
+    (/captions/7/text, remove /captions/7)."""
+    return [f"[{i}] {clock(c['at'])}-{clock(c['at'] + c['dur'])} \"{c['text']}\""
+            + (f" (said in {c['shot']})" if c.get("shot") else "")
+            for i, c in enumerate(data.get("captions", [])) if a <= c["at"] < b]
 
 
 def tool_list(args) -> dict:
@@ -1541,6 +1545,9 @@ def tool_open(args) -> dict:
     if v["kind"] == "cut.v1":
         lines.append("Shots:")
         lines += shots_text(data, 0, 1e9)
+        if data.get("captions"):
+            lines.append("Captions ([index] from-to; remove several from the highest index down):")
+            lines += caps_text(data, 0, 1e9)
     else:
         lines.append(json.dumps(data, indent=1)[:2500])
     if problems:
@@ -1769,7 +1776,8 @@ TOOLS = {
     "lab_frame": (tool_frame, "One still at a time (or several times as a strip), for looking closely.",
                   {"document": "string", "at": "string", "version": "string?"}),
     "lab_edit": (tool_edit, "Change a document by a JSON Patch (RFC 6902) on its JSON, making a new version. "
-                            "Address a shot by name: /shots/@s4-delegation/dur. In a cut, captions move with "
+                            "Address a shot by name: /shots/@s4-delegation/dur, and a caption by its index from "
+                            "lab_open: /captions/7 (remove several from the highest index down). In a cut, captions move with "
                             "their shots when shot lengths change. The edit is checked first (schema, the beat "
                             "grid, sources long enough, no shot ending inside an animation, music length) and "
                             "refused with the reason if it adds a problem; then fix the patch. A preview renders.",
