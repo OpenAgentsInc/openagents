@@ -14,10 +14,16 @@ works:
 ~/work/openagents-coderdev/scripts/dev/full-local.sh start --lab
 ```
 
-Then open **http://127.0.0.1:4301** and sign in with GitHub, the same as the
-local web app before.
+Then open **http://127.0.0.1:4301**. You can chat with the Lab signed in
+or not: only this Mac reaches the Lab. To be yourself rather than a guest
+(your chats and projects), open http://127.0.0.1:4301/login and choose
+**Continue with GitHub**.
 
 The film review page on 8791 keeps running beside it.
+
+`--no-build` skips the server builds, but the chat page's browser code is
+rebuilt when it is older than the checkout. A stale build kept a sent
+message on "Working" after the page moved to the new chat.
 
 The first start builds the whole stack into
 `~/work/openagents-target-fulllocal`, which takes several minutes. Later

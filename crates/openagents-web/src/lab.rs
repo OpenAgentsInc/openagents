@@ -111,13 +111,12 @@ pub(crate) struct LabDoor {
     pub fallback: Option<Box<dyn Door>>,
 }
 
-/// The Lab door for `owner`, when a Lab is configured and answering, the
-/// owner is signed in, and this server has Gemini.
-pub(crate) async fn door(app: &App, owner: &str) -> Option<LabDoor> {
+/// The Lab door, when a Lab is configured and answering and this server
+/// has Gemini. A Lab is only ever configured on the computer it runs on
+/// (loopback, [`lab_url`]), so whoever uses this site there is its owner,
+/// signed in or not: the person at the Mac.
+pub(crate) async fn door(app: &App, _owner: &str) -> Option<LabDoor> {
     let lab = lab_url()?;
-    if !crate::chat_store::is_account_owner(owner) {
-        return None;
-    }
     let gemini = crate::chat_vision::doors(app).and_then(|doors| doors.gemini)?;
     let (tools, documents) = match manifest(&lab).await {
         Ok(found) => found,
@@ -568,7 +567,7 @@ const CSS: &str = r".oa-lab-card{margin:12px 0;padding:12px;border:1px solid rgb
 .oa-lab-private{margin:6px 0 0;font-size:12px;opacity:.6}
 .oa-lab-note{display:flex;gap:6px;margin-top:8px}
 .oa-lab-note input[type=text]{flex:1;min-width:0;padding:6px 10px;border-radius:8px;border:1px solid rgba(127,127,127,.35);background:transparent;color:inherit;font:inherit}
-.oa-lab-button{margin-top:8px;padding:6px 12px;border-radius:8px;border:1px solid rgba(127,127,127,.35);background:transparent;color:inherit;font:inherit;cursor:pointer}
+.oa-lab-button{margin-top:8px;padding:6px 12px;border-radius:8px;border:1px solid rgba(127,127,127,.35);background:transparent;color:inherit;font:inherit}
 .oa-lab-note .oa-lab-button{margin-top:0}
 ";
 

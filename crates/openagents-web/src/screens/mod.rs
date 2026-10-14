@@ -138,6 +138,10 @@ pub(crate) const NOT_SCREENS: &[(&str, &str)] = &[
         "/chat/{id}/lab/card",
         "a Video Lab card in a chat, refreshed while it renders",
     ),
+    (
+        "/chat/{id}/lab/media/{*path}",
+        "a Video Lab render or frame, played inside a chat's card",
+    ),
     ("/chat/{id}/workspace", "part of a chat page"),
     ("/chat/{id}/rename", "part of the chat list"),
     ("/chat/{id}/agents", "part of a chat page"),

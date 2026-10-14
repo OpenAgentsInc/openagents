@@ -226,6 +226,22 @@ start() {
         "$web_port" "$gateway_port" "$relay" "$lab" "$lab_port" > "$run/ports"
     if [ "$build_first" = 1 ]; then
         build
+    elif [ ! -s "$state/build/chat/coder_chat_web_bg.wasm" ] \
+        || [ -n "$(find "$root/crates/coder-chat-web" -name '*.rs' -newer "$state/build/chat/coder_chat_web_bg.wasm" 2>/dev/null | head -n 1)" ]; then
+        # The chat page's browser code must match this checkout: an older
+        # build keeps a sent message on "Working" after the page moves
+        # without a full load.
+        echo "Rebuilding the chat's browser code (older than this checkout) ..."
+        "$root/scripts/build-coder-chat-web.sh" "$state/build/chat" > "$logs/chat-wasm.log" 2>&1 \
+            || echo "The chat Wasm build failed; see $logs/chat-wasm.log" >&2
+    fi
+
+    # Google first (Vertex AI): Gemini for the chat's own tools and the
+    # product knowledge embeddings. $GOOGLE_APPLICATION_CREDENTIALS, else
+    # this Mac's automation service account.
+    google_credentials=${GOOGLE_APPLICATION_CREDENTIALS:-}
+    if [ -z "$google_credentials" ] && [ -f "$secrets/gcp-mvp-automation.json" ]; then
+        google_credentials="$secrets/gcp-mvp-automation.json"
     fi
 
     load OPENROUTER_API_KEY openrouter.env
@@ -324,7 +340,15 @@ EOF
         export OPENAGENTS_PRODUCT_KNOWLEDGE="$root/knowledge/openagents"
         # Product notes' embeddings take the house order: Vertex first,
         # then OpenAI or OpenRouter, the Vercel AI Gateway last (#11602).
+        # Vertex needs the Google credential and its project, as
+        # production's worker sets them (deploy/coder-worker-chat.env.example).
         export CODER_AI_GATEWAY_KEY="${AI_GATEWAY_API_KEY:-}"
+        if [ -n "$google_credentials" ]; then
+            export GOOGLE_APPLICATION_CREDENTIALS="$google_credentials"
+            KB_VERTEX_PROJECT=${KB_VERTEX_PROJECT:-$(sed -n 's/.*"project_id": *"\([^"]*\)".*/\1/p' "$google_credentials" | head -n 1)}
+            KB_VERTEX_PROJECT=${KB_VERTEX_PROJECT:-openagentsgemini}
+            export KB_VERTEX_PROJECT KB_VERTEX_MODEL=${KB_VERTEX_MODEL:-gemini-embedding-001}
+        fi
         cd "$state"
         exec nohup "$target/debug/coder-worker" > "$logs/worker.log" 2>&1
     ) &
@@ -388,7 +412,6 @@ EOF
     # Video Lab (docs/video-lab/mvp.md): the Lab service, and the website's
     # chat pointed at it with Gemini as the model that calls its tools.
     lab_url=""
-    google_credentials=${GOOGLE_APPLICATION_CREDENTIALS:-}
     if [ "$lab" = 1 ]; then
         lab_url="http://127.0.0.1:$lab_port"
         if curl -fsS -o /dev/null "$lab_url/healthz" 2>/dev/null; then
@@ -402,9 +425,6 @@ EOF
                 stop > /dev/null
                 exit 1
             fi
-        fi
-        if [ -z "$google_credentials" ] && [ -f "$secrets/gcp-mvp-automation.json" ]; then
-            google_credentials="$secrets/gcp-mvp-automation.json"
         fi
         [ -n "$google_credentials" ] || echo "No Google credential, so the chat can't use the Lab's tools (Gemini)." >&2
     fi
