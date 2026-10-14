@@ -1,0 +1,3 @@
+# Arms lowered from the A pose (round 6), for the uniform and the medium shots.
+upperarm_l 0 40 0
+upperarm_r 0 40 0

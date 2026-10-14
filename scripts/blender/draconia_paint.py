@@ -47,6 +47,9 @@ BROW_FILL = 0.55
 # The painted nasolabial folds' depth (a head whose mesh has its own folds
 # wants none: painted on top they age the face).
 FOLD_DEPTH = 1.2
+# Under-eye darkening (a share), and the freckles' density and strength.
+UNDER_EYE = 0.5
+FRECKLES = (0.95, 0.6)
 BROW_STRENGTH = 0.62
 # Skin base albedo (linear) and an optional cavity tile (path, repeats).
 SKIN_BASE = (0.64, 0.53, 0.50)
@@ -303,7 +306,7 @@ def paint_skin(skin, marks, size, out):
 
     # Under-eye: a faint blue-purple, slightly darker.
     under = sum(gauss(P, e + np.array([0, -0.004, -0.012], np.float32), (0.013, 0.02, 0.006)) for e in (el, er))
-    col = mix(col, col * np.array([0.92, 0.89, 0.92], np.float32), np.clip(under, 0, 1) * 0.5)
+    col = mix(col, col * np.array([0.92, 0.89, 0.92], np.float32), np.clip(under, 0, 1) * UNDER_EYE)
     # Eyelid crease and lid: slightly darker, warmer.
     lid = sum(gauss(P, e + np.array([0, 0.0, 0.009], np.float32), (0.013, 0.02, 0.004)) for e in (el, er))
     col = mix(col, col * np.array([0.94, 0.92, 0.92], np.float32), np.clip(lid, 0, 1) * 0.35)
@@ -349,11 +352,11 @@ def paint_skin(skin, marks, size, out):
         1,
     ) * front
     d, ident = cells(P, 0.0022, seed=21)
-    alive = ident < fmask * 0.95
+    alive = ident < fmask * FRECKLES[0]
     radius = 0.18 + 0.25 * ((ident * 7.13) % 1.0)
     frk = np.where(alive, smooth(radius, radius * 0.45, d), 0.0) * (0.35 + 0.5 * ((ident * 3.71) % 1.0))
     frk_c = np.array([0.40, 0.24, 0.15], np.float32)
-    col = mix(col, frk_c * (col.mean(1, keepdims=True) / 0.45), np.clip(frk, 0, 1) * 0.6)
+    col = mix(col, frk_c * (col.mean(1, keepdims=True) / 0.45), np.clip(frk, 0, 1) * FRECKLES[1])
 
     # Brows: strands from the head (inner) rising then lying along the arch,
     # medium ash brown, darker than the hair.

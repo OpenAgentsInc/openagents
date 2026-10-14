@@ -1,3 +1,5 @@
-# Neutral, relaxed: the upper lids rest a touch lower.
-CTRL_expressions.eyeRelaxL 0.25
-CTRL_expressions.eyeRelaxR 0.25
+# Neutral. Round 6: her rigged head's lids rest open enough; the tracker
+# measured them 14% more open than at 0:24 with the archetype's lift of
+# 0.2, so only a trace is kept.
+CTRL_expressions.eyeUpperLidUpL 0.03
+CTRL_expressions.eyeUpperLidUpR 0.03

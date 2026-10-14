@@ -278,7 +278,7 @@ def grow(skin, marks, seed=7, style="updo"):
         loops = wrap(pts[-1], rng.uniform(0.6, 1.8), knot_r * rng.uniform(0.6, 1.25), rng)
         all_pts = pts + loops
         all_n = nrms + [None] * len(loops)
-        width = rng.uniform(0.0009, 0.0019) * (1.3 - 0.5 * layer)
+        width = rng.uniform(0.0009, 0.0019) * (1.3 - 0.5 * layer) * BODY_WIDTH
         body.add(all_pts, all_n, width, rng.randrange(VARIANTS), taper=0.5, free=knot_axis)
     # Loose loops that stand off the bun, and strands through its middle.
     for k in range(520):
@@ -323,13 +323,17 @@ def grow(skin, marks, seed=7, style="updo"):
                 t = k / max(n_seg - 1, 1)
                 loc, nrm = surface(p)
                 # Lift off the head; fall down and slightly out from the cheek.
-                d = Vector((side * (0.6 - 0.35 * t), 0.12, -1.0))
+                d = Vector((side * (LOCK_OUT - 0.35 * LOCK_OUT / 0.6 * t), 0.12, -1.0))
                 wave = Vector((side, -0.4, 0)) * math.sin(phase + t * 13 * sway) * 0.8
                 p = p + (d.normalized() + wave * 0.6) * seg
                 loc, nrm = surface(p)
                 if (p - loc).length < 0.003 + 0.004 * t or (p - loc).dot(nrm) < 0:
                     p = loc + nrm * (0.003 + 0.004 * t)
-                pts.append(p + off * t * 1.5)
+                curl = Vector()
+                if LOCK_CURL:
+                    a_ = phase + t * LOCK_CURL_TURNS * 2 * math.pi
+                    curl = Vector((math.cos(a_), -math.sin(a_) * 0.6, math.sin(a_) * 0.4)) * LOCK_CURL * t**1.5
+                pts.append(p + off * t * 1.5 + curl)
                 nrms.append(None)
             if not chain_made and len(pts) > 5:
                 # The clump's first hair is its guide: five links along it.
@@ -635,6 +639,17 @@ STRIPS_PATH = os.path.expanduser("~/work/film-out/draconia/build/textures/dracon
 LOCKS_PER_SIDE = 9
 LOCK_HAIRS = (3, 8)
 LOCK_LENGTH = (0.08, 0.2)
+# How far the locks lean out from the cheek as they leave the head, and a
+# curl toward their ends (radius in metres at the tip, turns over the lock).
+LOCK_OUT = 0.6
+LOCK_CURL = 0.0
+LOCK_CURL_TURNS = 2.0
+# The share of a strand's length (from the root) that shades from the root
+# colour to the lengths'.
+ROOT_SPAN = 0.15
+# Scale of the updo body's ribbon widths (wider ribbons cover the scalp
+# with fewer gaps, so the crown averages smooth rather than grainy).
+BODY_WIDTH = 1.0
 # The updo's body: how far the outer layers stand off the scalp (m), how
 # much the strands puff mid-path and wander (frizz), the hairline's drop
 # (radians, lower is further down the forehead and temples), extra roots
@@ -667,7 +682,8 @@ def paint_strips(w, h):
     mid = np.array(HAIR_MID)
     tip = np.array(HAIR_TIP)
     vv = v[:, None]
-    grad = np.where(vv < 0.15, root + (mid - root) * (vv / 0.15), mid + (tip - mid) * np.clip((vv - 0.15) / 0.85, 0, 1) ** 1.5)
+    rs = ROOT_SPAN
+    grad = np.where(vv < rs, root + (mid - root) * (vv / rs), mid + (tip - mid) * np.clip((vv - rs) / (1 - rs), 0, 1) ** 1.5)
     for k in range(VARIANTS):
         x0 = k * band
         cols = np.zeros((h, band, 4), np.float32)

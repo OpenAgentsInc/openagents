@@ -3,7 +3,7 @@
 //! (skin, eye, cornea, hair, cloth), cinema lenses and true depth of field.
 //!
 //! Usage: draconia_portrait OUT.png [--model PATH.glb] [--set PATH.glb]
-//! [--shot closeup|eyes|medium|wide|three|side|back] [--size WxH]
+//! [--shot closeup|eyes|medium|medium24|medium29|fullface|wide|three|side|back] [--size WxH]
 //! [--subframes N] [--fstop F] [--yaw DEGREES] [--turntable FRAMES]
 //! [--light key|ref] [--exposure X] [--head YAW,PITCH] [--wind X,Y,Z]
 //! [--video --seconds S] [--time T] [--stiffness K] [--gust T] [--gaze]
@@ -102,6 +102,22 @@ fn shot(
             focal_mm: 85.0,
             // Wide open, as the reference: the jars and shelves behind her
             // melt into soft round shapes (with 32 sub-frames or more).
+            fstop: 2.0,
+        },
+        // The reference's medium close-ups, framed as the stills (round 6):
+        // at 0:24, eye level, the face right of centre, eyes a little
+        // above a third down, the chin just past halfway, the collar, tie
+        // and robe below; at 0:29 a touch closer and more centred.
+        "medium24" => Shot {
+            eye: eyes + Vec3::new(0.07, -0.07, -1.25),
+            target: eyes + Vec3::new(0.07, -0.07, 0.0),
+            focal_mm: 85.0,
+            fstop: 2.0,
+        },
+        "medium29" => Shot {
+            eye: eyes + Vec3::new(0.03, -0.075, -1.1),
+            target: eyes + Vec3::new(0.03, -0.075, 0.0),
+            focal_mm: 85.0,
             fstop: 2.0,
         },
         // The peacock guardian's opening (P3, ~114.5 s of the Draconia
@@ -235,20 +251,19 @@ fn lighting(face: Vec3, kind: &str, glow: f32, sub: usize, subs: usize) -> Light
             soft(
                 &mut lights,
                 face + Vec3::new(0.95, 0.4, -0.6),
-                Vec3::new(1.0, 0.95, 0.9),
-                2.0,
-                0.35,
+                Vec3::new(1.0, 0.9, 0.8),
+                2.1,
+                0.5,
                 2,
             );
-            // Fill: soft and warm-neutral from screen right, a stop and a
-            // half under the key (the reference's shadow side keeps its
-            // warmth: its far cheek reads 97,75,66 to the lit cheek's
-            // 124,112,107).
+            // No flat frontal fill (round 6): the shadow side is lit only
+            // by a soft bounce from the side, off the jars and the room,
+            // faintly teal, low and two stops under the key.
             soft(
                 &mut lights,
-                face + Vec3::new(-0.9, 0.1, -1.0),
-                Vec3::new(0.95, 0.8, 0.7),
-                0.4,
+                face + Vec3::new(-1.0, -0.05, -0.3),
+                Vec3::new(0.75, 0.85, 0.8),
+                0.28,
                 0.4,
                 1,
             );
@@ -267,7 +282,7 @@ fn lighting(face: Vec3, kind: &str, glow: f32, sub: usize, subs: usize) -> Light
             lights.push(Light {
                 position: face + Vec3::new(-0.45, 0.18, 0.55),
                 color: Vec3::new(0.35, 0.95, 0.85),
-                intensity: 0.55,
+                intensity: 0.8,
                 range: 1.1,
             });
             soft(
@@ -359,8 +374,13 @@ struct Args {
 
 impl Args {
     fn set_glow(&self) -> f32 {
-        self.set_glow
-            .unwrap_or(if self.shot == "fullface" { 0.35 } else { 1.0 })
+        self.set_glow.unwrap_or(
+            if matches!(self.shot.as_str(), "fullface" | "medium24" | "medium29") {
+                0.35
+            } else {
+                1.0
+            },
+        )
     }
 }
 

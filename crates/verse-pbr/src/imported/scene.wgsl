@@ -61,7 +61,10 @@ fn occlusion(index:u32,p:vec3<f32>,normal:vec3<f32>)->f32{
  let layer=index*6u+face;let q=frame.shadow[layer]*vec4(p+normal*offset,1.0);let ndc=q.xyz/q.w;let uv=ndc.xy*vec2(0.5,-0.5)+vec2(0.5);
  if ndc.z>1.0||ndc.z<0.0{return 1.0;}
  var visibility=0.0;
- for(var y=-1;y<=1;y++){for(var x=-1;x<=1;x++){visibility+=textureSampleCompareLevel(shadows,shadow_sampler,uv+vec2(f32(x),f32(y))/512.0,i32(layer),ndc.z-0.001);}}
+ // Keep the filter's taps on this cube face: past its edge they read the
+ // border and draw a seam where two faces of a near light meet.
+ let inner=clamp(uv,vec2(1.5/512.0),vec2(1.0-1.5/512.0));
+ for(var y=-1;y<=1;y++){for(var x=-1;x<=1;x++){visibility+=textureSampleCompareLevel(shadows,shadow_sampler,inner+vec2(f32(x),f32(y))/512.0,i32(layer),ndc.z-0.001);}}
  return visibility/9.0;
 }
 // Derive a cotangent frame from the posed surface and UV gradients. Degenerate

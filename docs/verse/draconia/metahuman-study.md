@@ -65,6 +65,35 @@ found headless:
   rotation in degrees, scale with 0 meaning unchanged. Treating them as
   absolute transforms collapses every vertex to the origin (scale 0).
 
+Round 6 (2026-10-14): the real rig, headless, after the owner's one
+Epic sign-in (its refresh token lasts to 2027-04, so later runs log in
+without a person):
+- `scripts/unreal/draconia_rebuild.py` runs on a copy of the project
+  (`~/work/film-out/draconia/ue/DraconiaMH-r6`, never the one open in the
+  editor), in Creator's required order: remove the face rig; fit her own
+  shaped head (`fit_state_to_target_vertices`); skin, eyes and grooms in
+  Creator's own controls (the optional content is installed now: the
+  `Hair_S_Updo` groom, natural brows, curled lashes, thin peach fuzz,
+  low melanin); `request_auto_rigging(JOINTS_AND_BLEND_SHAPES)`;
+  `request_texture_sources`; then DNA, DCC, geometry and material
+  exports. `DRACONIA_STEPS` runs a subset (a skin-only pass keeps the rig).
+- The rigged head DNA has 782 blend-shape channels and the 870 joints;
+  `dna_dump` poses it through RigLogic as before (blend shapes first,
+  then joints).
+- The DCC bundle's maps: head base colour, normal (Unreal's Y-down),
+  three animated colour and three wrinkle normal maps with their masks,
+  eyes, teeth, lashes, body. `Head_SRMF.png` came out all zero in UE 5.8.3
+  (so Verse keeps its own roughness); grooms are not in the bundle.
+- Skin tone: Creator's chart, measured with `skin_tone_probe.py` (local
+  synthesis drawn to a render target; transient textures crash the
+  asset exporter): u is depth of tone (u 0.05 gives a cheek albedo of
+  about 220,157,137 sRGB, 0.35 about 183,120,93, 0.7 about 127,74,47), v
+  is warmth (higher a little cooler). Even u 0 is a saturated peach next
+  to the reference's pale, cool skin.
+- A body DNA has no expression controls; `dna_dump --joints` adds
+  rotation deltas per joint (the arms lowered 40 degrees from the A pose
+  for the uniform).
+
 ## 1. Licences
 
 ### Summary

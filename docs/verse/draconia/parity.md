@@ -24,7 +24,7 @@ every Universal clip plays on her, and it carries extra joints: `eye_l`,
 | Long, loose, waist-length hair, glare, gold hoops (peacock look) | `~/work/film-out/draconia/build-long/draconia-long.glare.glb` | `--hair long --earrings --expr glare`; 18 hanging chains plus fringe and temple locks on the head |
 | Long hair, battle decals, lips parted (D1 shot 1) | `~/work/film-out/draconia/build-battle/draconia-long.parted.glb` | `--hair long --earrings --battle --expr parted` |
 | The parity updo (the classroom reference) | `~/work/film-out/draconia/build-updo/draconia.neutral.glb` | Updo; temple locks on chains |
-| MetaHuman archetype, neutral / smile / speaking (round 4; private MetaHuman asset, never for AI training) | `~/work/film-out/draconia/metahuman/build-{neutral,smile,speak}/mh.<expr>.glb` | Static (not on the Universal rig yet): `draconia_portrait --static`; close-ups only |
+| Draconia's rigged MetaHuman, neutral / smile / speaking, with MetaHuman's own skin, eyes and teeth, the uniform on her body (round 6; private MetaHuman asset, never for AI training) | `~/work/film-out/draconia/metahuman/build-rig-{neutral,smile,speak}/mh.<expr>.glb`, set `~/work/film-out/draconia/build/draconia_set_parity.glb` | Static (not on the Universal rig yet): `draconia_portrait --static`; close-ups and the medium shots (`--shot medium24`, `medium29`) |
 
 **Through the zone renderer (`Beast`, the peacock scene):** see
 `crates/verse/examples/draconia_form.rs`, which does exactly this:
@@ -56,16 +56,16 @@ with 4096-pixel maps, `Prepared::load` with a raised `Budget`, then
 
 | Area | State | Gap |
 | --- | --- | --- |
-| Face shape | Draconia's own edits fitted into MetaHuman's identity space (round 5), posed by RigLogic | Younger and narrower than the archetype; still reads older and harder than the reference (under-eye hollows, long nose) |
-| Skin | Wrapped red-shifted diffuse, two lobes, pores and fine lines in a 4K normal map | Still smooth and waxy at close range; no cavity or micro-normal detail, too even in tone |
-| Freckles | A light dusting over nose and cheeks | Present; reads as dots, needs softer, varied, clustered freckles |
+| Face shape | Round 6: her own shape, tuned on MetaHuman's tracker's measurements of the reference, fitted and rigged by MetaHuman Creator (joints and 782 blend shapes) | Eyes measure 7-9% narrow for their spacing; mouth about 10% wide; the chin still long |
+| Skin | Round 6: MetaHuman's own albedo and normal (texture sources), graded paler and less saturated toward the reference, our micro normal and roughness | Creator's palest tone is still warm; wrinkle maps not applied per expression yet |
+| Freckles | MetaHuman's freckles (Creator's density 0.45), softened by the grade | Denser on the cheeks than the reference |
 | Eyes | Separate eyeballs, a refracting iris under an additive cornea, limbal ring | The lids sit too open and the sclera shows a hard white wedge at the corners; no caruncle, tear line or wet rim |
 | Brows | Painted strands | Too thin and drawn-on; the reference's brows are fuller, natural |
 | Lips | Analytic vermilion, rose, glossier | Shape fine; colour too orange-pink and edge too crisp |
-| Hair (updo, strands) | Round 5: 18,700 strand ribbons lying close and gathered into a bun, a lowered hairline, ten face-framing locks a side, 260 falling flyaways | Grainy at the crown; no Marschner multiple scattering yet |
-| Uniform | Shirt collar, striped tie, V-neck sweater with trim, open robe with green facing | Blocky shells with hard cuts; no folds, no wool or knit texture, no hood drape |
+| Hair (updo, strands) | Round 6: pale golden blonde, honey roots; 18,700 strand ribbons gathered into a bun with volume at the crown; 14 thin locks a side curling by the cheeks; 420 falling flyaways | Still reads as a cap from the front; MetaHuman's own groom isn't in Verse yet; no Marschner multiple scattering |
+| Uniform | Round 6: on MetaHuman's body with its arms lowered, reaching the collar: shirt collar, striped tie in the V, sweater trim, robe with green facing; visible in the medium shots | Blocky shells with hard cuts; a stand collar rather than folded points; no folds or wool texture |
 | Lighting response | Measured against 0:54: warm key screen left, warm fill, short teal rim, near-black background, soft shadows from moving area lights; f/2 bokeh of glowing jars | No Unreal-grade skin shadowing (screen-space scattering) |
-| Expressions | MetaHuman's rig controls through OpenRigLogic (smile, speaking, neutral; joints only, the archetype has no blend shapes) | Built per expression; the full rig with blend shapes and wrinkle maps waits on the owner's Epic sign-in |
+| Expressions | Round 6: her full rig through OpenRigLogic (joints and blend shapes; smile, speaking, neutral) | Built per expression, not live in Verse; wrinkle and blood-flow maps not yet driven |
 
 ## How it's built
 
@@ -368,6 +368,91 @@ $B -b --factory-startup --python scripts/blender/draconia_set.py -- ~/work/film-
   synthesized albedo from the plugin's skin-tone data); smoother strand
   shading at the crown; under-eye and nose edits through the fit; the
   robe and sweater in frame.
+
+### Round 6, 2026-10-14: measured against the reference, and her real rig
+
+- **Direction.** The coordinator's round 5 review, in order: a shorter,
+  younger face fitted to the 0:54 frame's proportions with the error per
+  feature reported; a loose updo instead of two lank curtains; warmer,
+  real skin and the reference's light; the uniform and each row's
+  framing; the Unreal column dropped until it shows her properly. Then the
+  owner signed in to Epic, and the coordinator asked for her real rig and
+  MetaHuman's own skin.
+- **Measuring.** MetaHuman's own face tracker runs on the reference
+  stills and on our renders (`scripts/unreal/landmarks.py`, local, the
+  tracker MetaHuman Creator conforms portraits with);
+  `scripts/verse/draconia_landmarks.py` turns its lips, eyelid and
+  nasolabial curves into proportions over the eyes' spacing. Face width
+  and the chin, which the tracker doesn't give, are hand-marked. Same
+  tracker on both sides; each reference row against the render of the
+  same shot.
+- **What changed.**
+  - Face: the shape edits re-tuned on those numbers (a shorter upper lip
+    and chin, rounder, fuller cheeks, the under-eye hollows filled, the
+    mouth's corners drawn in, lids opened by the rig's controls). The
+    face's width to height went from 22% narrow (round 5) to 3% at the
+    0:54 frame; nose base to lip from +27% to +3% (on our edits alone).
+  - Her real MetaHuman: a headless run on a copy of the project
+    (`scripts/unreal/draconia_rebuild.py`; the owner's open editor
+    untouched) removes the rig, fits these edits into MetaHuman's identity
+    space, sets her look in Creator's controls (the palest tone, freckles,
+    grey-green eyes, the `Hair_S_Updo` groom, natural brows), creates the
+    full rig (joints and 782 blend shapes) and downloads the texture
+    sources, using the owner's stored sign-in; no person needed. Verse
+    poses that rig through OpenRigLogic and takes MetaHuman's albedo and
+    normal. Creator's palest tone is still a saturated peach (measured:
+    `skin_tone_probe.py`), so the albedo is graded paler and less
+    saturated toward the reference (`MH_ALBEDO_GRADE`, lips kept), and its
+    freckles softened (`MH_FRECKLE_SOFTEN`). The DCC export's roughness
+    map came out empty, so the roughness stays ours.
+  - Hair: pale golden blonde with darker honey roots; 14 thinner locks a
+    side that fall close by the cheeks and curl toward their ends; more
+    volume at the crown with less wander (no frizz), wider ribbons so the
+    crown isn't grainy.
+  - Light: no flat frontal fill: the shadow side gets only a soft, faintly
+    teal bounce from the side; a softer, warmer key from camera left; a
+    stronger teal rim.
+  - Wardrobe and framing: MetaHuman's body posed with its arms down
+    (`dna_dump --joints`), the uniform cut from the body and the head
+    mesh's neck together so it reaches the collar; new `medium24` and
+    `medium29` shots framed as the 0:24 and 0:29 rows, which now show the
+    collar, the striped tie and the robe's green facing.
+  - Renderer (general): a soft light's shadow filter no longer samples
+    past its cube face's edge (that drew a seam where two faces of a near
+    light met).
+- **Measured now** (MetaHuman's tracker; ours minus the reference, as a
+  share of the reference):
+
+  | Feature (over eye spacing) | 0:54 smile | 0:24 neutral | 0:29 speaking |
+  | --- | --- | --- | --- |
+  | Eye width | -6.9% | -7.3% | -7.7% |
+  | Eye opening | +1.4% | +3.0% | +6.7% |
+  | Eye line to nose base (midface) | +1.4% | -1.7% | -2.6% |
+  | Nose base to upper lip | +10.4% | +8.1% | +6.3% |
+  | Upper lip height | -22.4% | -11.5% | -5.1% |
+  | Lower lip height | -9.2% | -8.8% | +3.4% |
+  | Mouth width | +3.1% | -1.3% | -9.2% |
+
+  Hand-marked at 0:54 on our edits before the rig: face width to
+  eye-to-chin height -3.0% (round 5: -22.2%); lip to chin +18% (long).
+  The rigged head (Creator's fit of the edits) gave back some of the
+  upper-lip shortening: its fit regularizes toward MetaHuman's faces.
+- **Artifacts.** `~/Downloads/draconia-fullface-mh-v4.png` (reference |
+  Verse; rows 0:54 smile, 0:24 neutral, 0:29 speaking, 1:22 eyes),
+  `~/Downloads/draconia-parity-round-06.png`, the progress sheet;
+  `~/work/film-out/draconia/parity/round-06/`, the landmark files in
+  `~/work/film-out/draconia/parity/landmarks/`.
+- **Honest state.** Her real rig and MetaHuman's skin are in, but she
+  doesn't pass as the reference yet: the face still reads older and
+  broader, the upper lip thin and long, the eyes narrow for their spacing;
+  MetaHuman's albedo needed grading to come near the reference's pale
+  skin. Unreal's own render of her is bald (the groom isn't in the DCC
+  bundle) and in default lighting, so its column is out of the grid until
+  it shows her with hair and clothes.
+- **Next.** Lips and philtrum through Creator's own sculpting on the rigged
+  head (the rig must be removed and remade); the eyes wider; wrinkle and
+  blood-flow maps driven per expression; MetaHuman's groom as strands in
+  Verse; her hair and the uniform in Unreal's column.
 
 ## Peacock scene
 

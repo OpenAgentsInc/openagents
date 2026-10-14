@@ -7,3 +7,6 @@ CTRL_expressions.mouthLowerLipDepressL 0.08
 CTRL_expressions.mouthLowerLipDepressR 0.08
 CTRL_expressions.browRaiseInL 0.12
 CTRL_expressions.browRaiseInR 0.12
+# Round 6: lids a little more open.
+CTRL_expressions.eyeUpperLidUpL 0.0
+CTRL_expressions.eyeUpperLidUpR 0.0

@@ -37,6 +37,38 @@ def log(msg):
     unreal.log(f"DRACONIA {msg}")
 
 
+# The character's exported MetaHuman materials (export_materials), set by
+# slot: MetaHuman's own skin, eyes, teeth, lashes and wet shells.
+MATERIALS = os.environ.get("DRACONIA_UE_MATERIALS", "")
+SLOTS = [
+    ("teeth", "MI_Face_Teeth"),
+    ("eyeleft", "MI_Face_Eye_Left"),
+    ("eye_left", "MI_Face_Eye_Left"),
+    ("eyeright", "MI_Face_Eye_Right"),
+    ("eye_right", "MI_Face_Eye_Right"),
+    ("lash", "MI_Face_EyelashesHiLODs"),
+    ("shell", "MI_Face_EyeShell"),
+    ("edge", "MI_Face_LacrimalFluid"),
+    ("lacrimal", "MI_Face_LacrimalFluid"),
+    ("saliva", "MI_Face_LacrimalFluid"),
+    ("body", "MI_Body_Skin"),
+    ("head", "MI_Face_Skin_LOD0"),
+]
+
+
+def dress(comp):
+    if not MATERIALS:
+        return
+    reg = unreal.AssetRegistryHelpers.get_asset_registry()
+    mis = {str(a.asset_name): a for a in reg.get_assets_by_path(MATERIALS, recursive=True) if str(a.asset_class_path.asset_name) == "MaterialInstanceConstant"}
+    for i, name in enumerate(comp.get_material_slot_names()):
+        n = str(name).lower()
+        pick = next((mi for key, mi in SLOTS if key in n and mi in mis), None)
+        if pick:
+            comp.set_material(i, mis[pick].get_asset())
+        log(f"slot {name}: {pick}")
+
+
 def spawn(cls, loc, rot=unreal.Rotator(0, 0, 0)):
     sub = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
     return sub.spawn_actor_from_class(cls, loc, rot)
@@ -58,6 +90,9 @@ def setup():
             continue
         a = spawn(unreal.SkeletalMeshActor, unreal.Vector(0, 0, 0))
         a.skeletal_mesh_component.set_skinned_asset_and_update(mesh)
+        dress(a.skeletal_mesh_component)
+        # Always LOD0: a scene capture's view doesn't drive LOD selection.
+        a.skeletal_mesh_component.set_forced_lod(1)
         meshes.append(a)
         log(f"placed {path}")
     if not meshes:
@@ -76,8 +111,11 @@ def setup():
     # Screen left: the camera faces -Y; in Unreal's left-handed frame (X
     # forward, Y right at zero yaw) its right is then +X, so left is -X.
     left = unreal.Vector(-1, 0, 0)
-    cam_loc = eyes + front * 74.0 + left * 6.0
-    target = eyes + unreal.Vector(0, 0, -4.8)
+    # DRACONIA_UE_FRAMING "distance,left,down" (cm) matches Verse's shots:
+    # the full face (74, 6, 4.8, the default) or the 0:24 medium (125, 7, 7).
+    dist, side, down = (float(x) for x in os.environ.get("DRACONIA_UE_FRAMING", "74,6,4.8").split(","))
+    cam_loc = eyes + front * dist + left * side + unreal.Vector(0, 0, -down) * (0 if dist < 100 else 1)
+    target = eyes + left * (side if dist >= 100 else 0) + unreal.Vector(0, 0, -down)
     rot = unreal.MathLibrary.find_look_at_rotation(cam_loc, target)
     # A scene capture, not a viewport screenshot: it renders on demand,
     # whatever the editor's window is doing. Its horizontal field of view
@@ -142,7 +180,7 @@ def main():
         if pending and t >= pending[0]:
             s = pending.pop(0)
             sc.capture_scene()
-            name = f"fullface-{int(s)}s"
+            name = f"{os.environ.get('DRACONIA_UE_NAME', 'fullface')}-{int(s)}s"
             unreal.RenderingLibrary.export_render_target(world, rt, OUT, name)
             log(f"captured {os.path.join(OUT, name)}")
         if not pending and t >= SHOTS[-1] + 5:

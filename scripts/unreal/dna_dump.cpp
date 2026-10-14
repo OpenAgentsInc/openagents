@@ -2,7 +2,7 @@
 // RigLogic, for Draconia's private import into Verse
 // (docs/verse/draconia/metahuman-study.md).
 //
-//   dna_dump HEAD.dna OUT_DIR [--lod N] [--controls CONTROLS.txt] [--list-controls]
+//   dna_dump HEAD.dna OUT_DIR [--lod N] [--controls CONTROLS.txt] [--joints JOINTS.txt] [--list-controls]
 //
 // Writes OUT_DIR/<mesh>.obj for every mesh in the level of detail (default
 // 0), with positions (centimetres, as the DNA stores them), texture
@@ -11,6 +11,10 @@
 // (the DNA's raw control names, such as CTRL_expressions_mouthCornerPullL);
 // when given, RigLogic evaluates them and the meshes are written posed:
 // blend shapes applied, then joint deltas by linear blend skinning.
+// JOINTS.txt holds lines `joint rx ry rz` (degrees), extra rotation deltas
+// added to those joints (and to RigLogic's when both are given): a pose
+// for a body DNA, which has no expression controls, such as the arms
+// lowered from MetaHuman's A pose.
 //
 // Links Epic's OpenRigLogic (MIT): build it, then
 //   c++ -std=c++17 -O2 dna_dump.cpp -I$ORL/include -L$ORL/build -lriglogic413_5_0 -o dna_dump
@@ -93,12 +97,13 @@ int main(int argc, char** argv) {
         fprintf(stderr, "usage: dna_dump HEAD.dna OUT_DIR [--lod N] [--controls FILE]\n");
         return 2;
     }
-    std::string path = argv[1], out = argv[2], controls;
+    std::string path = argv[1], out = argv[2], controls, jointsFile;
     int lod = 0;
     for (int i = 3; i < argc; ++i) {
         std::string a = argv[i];
         if (a == "--lod" && i + 1 < argc) lod = atoi(argv[++i]);
         else if (a == "--controls" && i + 1 < argc) controls = argv[++i];
+        else if (a == "--joints" && i + 1 < argc) jointsFile = argv[++i];
     }
     auto stream = rl4::makeScoped<rl4::FileStream>(path.c_str(), rl4::FileStream::AccessMode::Read, rl4::FileStream::OpenMode::Binary);
     auto reader = rl4::makeScoped<rl4::BinaryStreamReader>(stream.get());
@@ -156,6 +161,30 @@ int main(int argc, char** argv) {
         auto jo = inst->getJointOutputs();
         jointOut.assign(jo.begin(), jo.end());
         fprintf(stderr, "riglogic: %zu blend shape outputs, %zu joint values\n", bs.size(), jo.size());
+    }
+    if (!jointsFile.empty()) {
+        if (jointOut.empty()) jointOut.assign(static_cast<std::size_t>(joints) * 9, 0.0f);
+        const std::size_t st = jointOut.size() / joints;
+        std::map<std::string, std::uint16_t> byName;
+        for (std::uint16_t j = 0; j < joints; ++j) byName[r->getJointName(j).c_str()] = j;
+        std::ifstream f(jointsFile);
+        std::string line;
+        while (std::getline(f, line)) {
+            std::istringstream s(line);
+            std::string name;
+            float x, y, z;
+            if (line.empty() || line[0] == '#' || !(s >> name >> x >> y >> z)) continue;
+            auto it = byName.find(name);
+            if (it == byName.end()) {
+                fprintf(stderr, "unknown joint %s\n", name.c_str());
+                continue;
+            }
+            float* o = &jointOut[it->second * st];
+            o[3] += x;
+            o[4] += y;
+            o[5] += z;
+        }
+        pose = true;
     }
     // Joint world matrices, neutral and posed. RigLogic's joint outputs are
     // deltas from the neutral pose, 9 values per joint: translation (cm),

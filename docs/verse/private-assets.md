@@ -406,4 +406,9 @@ follows this page's rules, with one more:
   in this repository scans `~/work/film-out/`.) Films and renders for
   review are fine.
 - **Licence:** see `docs/verse/draconia/metahuman-study.md`.
+- **Headless runs work on copies** of the owner's project
+  (`~/work/film-out/draconia/ue/DraconiaMH-r6`, `-probe`), never the one
+  open in the editor; each copy is under the same `ue/` folder and its
+  marker. The rigged character's exports (head and body DNA, the DCC
+  bundle's maps) are in `~/work/film-out/draconia/metahuman/export/`.
 

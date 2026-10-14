@@ -103,38 +103,70 @@ def draconia_shape(vs, marks):
     Blender frame: x her left, -y forward, z up) computed on the rest head
     and added to every expression's head, so the rig still moves it.
 
-    After the coordinator's read of round 4 against the reference type (a
-    young face): a narrower jaw and lower face, a chin a touch higher (a
-    shorter lower face reads younger), fuller lips, higher, more forward
-    cheekbones. Gentle and smooth, every edit fading out before the neck
-    seam, the ears and the back of the head. These are edits of our own,
-    not taken from any person's face."""
+    Round 6 tuned these against the reference's proportions as MetaHuman's
+    own tracker measures them (`scripts/verse/draconia_landmarks.py`; the
+    numbers are in docs/verse/draconia/parity.md): a shorter upper lip
+    (nose base to lip was 27% long), a shorter chin (lower face 8% long),
+    rounder, fuller cheeks (the face was 16% narrow at the cheeks), the
+    under-eye hollows filled, a fuller upper lip and a slightly narrower
+    mouth; the jaw below the mouth stays narrower (round 5). Every edit
+    fades out before the neck seam, the ears and the back of the head.
+    Proportions only: no person's face is copied."""
     e = (marks.eye_l + marks.eye_r) / 2
     m = marks.mouth
     x, y, z = vs[:, 0], vs[:, 1], vs[:, 2]
     dz = z - e.z
     d = np.zeros_like(vs)
-    # Not behind the jaw's angle, the ears or the skull.
     front = 1 - smooth(e.y + 0.05, e.y + 0.085, y)
-    # Not into the neck (the seam with the body must not move).
     neck = 1 - smooth(-0.125, -0.165, dz)
-    # 1. The lower face narrower: up to 11% in x at the jaw line.
-    jaw = smooth(-0.025, -0.085, dz) * neck * front
-    d[:, 0] += -x * 0.11 * jaw
-    # 2. The chin 5 mm higher, tapering up to the mouth.
-    chin = smooth(-0.075, -0.11, dz) * neck * front * np.exp(-(x / 0.035) ** 2)
-    d[:, 2] += 0.005 * chin
-    # 3. Fuller lips: forward 2.2 mm and 1.4 mm away from the mouth line,
-    # in a soft ellipse over the lips.
-    lips = np.exp(-(((x - m.x) / 0.026) ** 2) - (((z - m.z) / 0.011) ** 2)) * (y < m.y + 0.02)
-    d[:, 1] += -0.0022 * lips
-    d[:, 2] += np.sign(z - m.z) * 0.0014 * lips * smooth(0.0, 0.004, np.abs(z - m.z))
-    # 4. Higher cheekbones: up 3 mm and forward 2.5 mm under the outer eye.
-    for s in (1, -1):
-        c = np.array([s * 0.045, e.y - 0.0, e.z - 0.028])
-        g = np.exp(-(((x - c[0]) / 0.02) ** 2) - (((y - c[1]) / 0.025) ** 2) - (((z - c[2]) / 0.016) ** 2))
-        d[:, 2] += 0.003 * g
+    # 1. The jaw below the mouth narrower (up to 10%), the cheeks untouched.
+    jaw = smooth(-0.06, -0.095, dz) * neck * front
+    d[:, 0] += -x * 0.10 * jaw
+    # 2. Rounder, fuller cheeks at the nose's base: out (x) and forward,
+    # a broad soft bulge over each cheek.
+    for s_ in (1, -1):
+        c = np.array([s_ * 0.05, e.y + 0.012, e.z - 0.04])
+        g = np.exp(-(((x - c[0]) / 0.03) ** 2) - (((y - c[1]) / 0.035) ** 2) - (((z - c[2]) / 0.03) ** 2))
+        d[:, 0] += s_ * 0.004 * g
         d[:, 1] += -0.0025 * g
+    # 3. Higher cheekbones (round 5).
+    for s_ in (1, -1):
+        c = np.array([s_ * 0.045, e.y, e.z - 0.028])
+        g = np.exp(-(((x - c[0]) / 0.02) ** 2) - (((y - c[1]) / 0.025) ** 2) - (((z - c[2]) / 0.016) ** 2))
+        d[:, 2] += 0.002 * g
+        d[:, 1] += -0.002 * g
+    # 4. The under-eye hollows filled: forward 1.5 mm in a band under each
+    # eye.
+    for s_ in (1, -1):
+        c = np.array([s_ * 0.031, e.y + 0.004, e.z - 0.016])
+        g = np.exp(-(((x - c[0]) / 0.017) ** 2) - (((y - c[1]) / 0.02) ** 2) - (((z - c[2]) / 0.008) ** 2))
+        d[:, 1] += -0.0015 * g
+    # 5. A shorter upper lip and chin: the mouth and everything under it
+    # rise 6 mm (fading in from the nose's base), the chin 2.5 mm more.
+    # Over the mouth and chin only (a Gaussian across the face), with a
+    # broad ramp: a narrow one across the whole face sheared the cheeks
+    # into a visible crease.
+    across = np.exp(-((x - m.x) / 0.045) ** 2)
+    lift = smooth(m.z + 0.03, m.z - 0.005, z) * neck * front * across
+    d[:, 2] += 0.006 * lift
+    chin = smooth(m.z - 0.01, m.z - 0.05, z) * neck * front * np.exp(-(x / 0.035) ** 2)
+    d[:, 2] += 0.0025 * chin
+    # 6. Lips: fuller (forward 2 mm), the upper lip taller, the lower lip
+    # fuller, the mouth 4% narrower and its corners drawn in.
+    # (Soft toward the back: a hard cut here left a seam across the cheeks.)
+    lips = np.exp(-(((x - m.x) / 0.026) ** 2) - (((z - m.z) / 0.011) ** 2)) * (1 - smooth(m.y + 0.008, m.y + 0.025, y))
+    d[:, 1] += -0.002 * lips
+    upper = lips * (z > m.z) * smooth(0.0, 0.004, z - m.z)
+    d[:, 2] += 0.0016 * upper
+    lower = lips * (z < m.z) * smooth(0.0, 0.004, m.z - z)
+    d[:, 2] += -0.0016 * lower
+    d[:, 1] += -0.0008 * lower
+    d[:, 0] += -(x - m.x) * 0.04 * lips
+    # The mouth's corners 2.5 mm in (the tracker measured the mouth 13%
+    # wide at 0:24).
+    for s_ in (1, -1):
+        g = np.exp(-(((x - (m.x + s_ * 0.024)) / 0.011) ** 2) - (((z - m.z) / 0.009) ** 2)) * (1 - smooth(m.y + 0.012, m.y + 0.03, y))
+        d[:, 0] += -s_ * 0.0025 * g
     return d
 
 
@@ -295,6 +327,70 @@ def teeth_rgba(tex_dir, out_dir):
     return draconia_paint.save("mh_teeth", np.concatenate([rgb, np.ones_like(lum)], -1), out_dir)
 
 
+def dcc_skin(dcc, maps, out_dir, size):
+    """MetaHuman's own skin from the character's DCC export (`Maps/`): its
+    albedo as the base colour; its normal (Unreal's Y-down convention,
+    flipped to glTF's Y-up) with MetaHuman's tiled micro normal laid over
+    for pores; its roughness (SRMF's G) in the ORM's G, keeping our baked
+    occlusion in R."""
+    base = image(os.path.join(dcc, "Maps", "Head_Basecolor.png"))
+    # Creator's palest tone (u 0) is still a saturated peach next to the
+    # reference's pale, cool skin; MH_ALBEDO_GRADE "saturation,gain"
+    # (default 0.5,1.14: half the saturation, a touch lighter, which also
+    # softens its freckles) pulls it toward the reference, on the sRGB
+    # values. 1,1 leaves MetaHuman's albedo exactly as exported.
+    sat, gain = (float(x) for x in os.environ.get("MH_ALBEDO_GRADE", "0.5,1.14").split(","))
+    if (sat, gain) != (1.0, 1.0):
+        a = load_px(os.path.join(dcc, "Maps", "Head_Basecolor.png"))
+        rgb = a[..., :3]
+        lum = rgb.mean(-1, keepdims=True)
+        # The lips (the most saturated skin over a broad area) keep more of
+        # their colour; chroma is judged blurred, so freckles (small) don't.
+        chroma = (rgb.max(-1) - rgb.min(-1)) / np.maximum(rgb.max(-1), 1e-4)
+        for _ in range(6):
+            chroma = (np.roll(chroma, 8, 0) + np.roll(chroma, -8, 0) + np.roll(chroma, 8, 1) + np.roll(chroma, -8, 1) + chroma) / 5
+        keep = np.clip((chroma[..., None] - 0.3) / 0.15, 0, 1)
+        k = sat + (min(1.0, sat + 0.4) - sat) * keep
+        rgb = np.clip((lum + (rgb - lum) * k) * gain, 0, 1)
+        # Soften the freckles (MH_FRECKLE_SOFTEN, default 0.55): a small
+        # dark spot, darker than its blurred surroundings, is lifted that
+        # share toward them. Broad shading is untouched.
+        soften = float(os.environ.get("MH_FRECKLE_SOFTEN", "0.55"))
+        if soften > 0:
+            l2 = rgb.mean(-1)
+            blur = l2.copy()
+            for _ in range(3):
+                blur = (np.roll(blur, 3, 0) + np.roll(blur, -3, 0) + np.roll(blur, 3, 1) + np.roll(blur, -3, 1) + blur) / 5
+            spot = np.clip(blur - l2, 0, 0.25)[..., None]
+            rgb = np.clip(rgb + spot * soften * (rgb / np.maximum(l2[..., None], 1e-4)), 0, 1)
+        base = draconia_paint.save("mh_skin_base", np.concatenate([rgb, np.ones_like(lum)], -1), out_dir)
+    n = load_px(os.path.join(dcc, "Maps", "Head_Normal.png"))[..., :3] * 2 - 1
+    n[..., 1] *= -1
+    if draconia_paint.DETAIL_TILE:
+        tile_path, repeats, strength = draconia_paint.DETAIL_TILE
+        t = load_px(tile_path)[..., :3] * 2 - 1
+        h, w = n.shape[:2]
+        ys = (np.arange(h) * repeats * t.shape[0] // h) % t.shape[0]
+        xs = (np.arange(w) * repeats * t.shape[1] // w) % t.shape[1]
+        d = t[ys][:, xs]
+        n = np.stack([n[..., 0] + d[..., 0] * strength * 0.6, n[..., 1] + d[..., 1] * strength * 0.6, n[..., 2]], -1)
+    n /= np.linalg.norm(n, axis=-1, keepdims=True)
+    normal = draconia_paint.save("mh_skin_normal", np.concatenate([n * 0.5 + 0.5, np.ones(n.shape[:2] + (1,), np.float32)], -1), out_dir, "Non-Color")
+    srmf = load_px(os.path.join(dcc, "Maps", "Head_SRMF.png"))
+    orm_old = np.array(maps["orm"].pixels[:], np.float32).reshape(maps["orm"].size[1], maps["orm"].size[0], 4)[::-1]
+    h, w = srmf.shape[:2]
+    ys = np.arange(h) * orm_old.shape[0] // h
+    xs = np.arange(w) * orm_old.shape[1] // w
+    ao = orm_old[ys][:, xs][..., 0]
+    rough = srmf[..., 1]
+    if rough.max() < 0.01:
+        # The UE 5.8 DCC export's SRMF came out empty (all zero); keep the
+        # painted roughness rather than read it as a mirror.
+        rough = orm_old[ys][:, xs][..., 1]
+    orm = np.stack([ao, np.clip(rough, 0.05, 1), np.zeros_like(ao), np.ones_like(ao)], -1)
+    return {"base": base, "normal": normal, "orm": draconia_paint.save("mh_skin_orm", orm, out_dir, "Non-Color")}
+
+
 def lash_rgba(tex_dir, out_dir):
     """Lash cards' colour (near black, brown at the tips) with the coverage
     map as alpha."""
@@ -389,14 +485,19 @@ def main():
                 for v in rest.data.vertices:
                     f.write(f"{v.co.x * 100:.5f} {v.co.z * 100:.5f} {-v.co.y * 100:.5f}\n")
     t = lambda n: os.path.join(tex_dir, n)  # noqa: E731
-    draconia_paint.DETAIL_TILE = (t("T_SkinMicro3_N.tga"), 48, 0.6) if os.path.exists(t("T_SkinMicro3_N.tga")) else None
+    draconia_paint.DETAIL_TILE = (t("T_SkinMicro3_N.tga"), 48, 1.0) if os.path.exists(t("T_SkinMicro3_N.tga")) else None
     draconia_paint.CAVITY_TILE = (t("T_skinMicro3_CAV.tga"), 48) if os.path.exists(t("T_skinMicro3_CAV.tga")) else None
     draconia_paint.BROW_DZ = -0.006
     # The reference's brows are natural and soft-edged, not a drawn band.
     draconia_paint.BROW_FILL = 0.22
     draconia_paint.BROW_STRENGTH = 0.5
     draconia_paint.FOLD_DEPTH = 0.0
-    draconia_paint.SKIN_BASE = (0.66, 0.56, 0.54)
+    # Round 6, skin against the reference: warmer, a lighter under-eye,
+    # freckles thicker over the nose and cheeks, pores (MetaHuman's micro
+    # normal) at full strength.
+    draconia_paint.UNDER_EYE = 0.2
+    draconia_paint.FRECKLES = (1.35, 0.72)
+    draconia_paint.SKIN_BASE = (0.68, 0.55, 0.48)
     out_dir = os.path.dirname(out)
     if rest is not head:
         # Bake on the rest head alone: the posed one would occlude it.
@@ -405,12 +506,29 @@ def main():
     if rest is not head:
         bpy.data.objects.remove(rest)
         bpy.context.collection.objects.link(head)
-    m = draconia.material("draconia_skin", "skin", images=maps)
+    # The rigged character's own skin, once Creator has made it (MH_DCC:
+    # the DCC export's folder): albedo, normal and roughness replace the
+    # painted ones; our baked occlusion stays.
+    dcc = os.environ.get("MH_DCC")
+    if dcc and os.path.exists(os.path.join(dcc, "Maps", "Head_Basecolor.png")):
+        maps = dcc_skin(dcc, maps, out_dir, size)
+    # Skin shading: more scattering (warm light through the cheeks and
+    # nose) and a stronger, oily specular than the CC0 head's matte 0.3.
+    m = draconia.material("draconia_skin", "skin", images=maps, extras={"verse_shading_params": [0.85, 0.85, 0.5, 0.0]})
     head.data.materials.append(m)
 
-    teeth = draconia.material("mh_teeth", "standard", rough=0.35, images={"base": teeth_rgba(tex_dir, out_dir), "normal": image(t("T_Teeth_Normal.tga"), "Non-Color")})
+    teeth_base = teeth_rgba(tex_dir, out_dir)
+    eye_base = None
+    if dcc and os.environ.get("MH_DCC_EYES") == "1" and os.path.exists(os.path.join(dcc, "Maps", "Eyes_Color.png")):
+        # Creator's eyes and teeth (MH_DCC_EYES=1). Off by default: round 6's
+        # export gave a muddy brown iris and yellow teeth next to our
+        # composed grey-green iris (MetaHuman's iris photograph, tinted)
+        # and toned-down teeth.
+        eye_base = image(os.path.join(dcc, "Maps", "Eyes_Color.png"))
+        teeth_base = image(os.path.join(dcc, "Maps", "Teeth_Color.png")) or teeth_base
+    teeth = draconia.material("mh_teeth", "standard", rough=0.35, images={"base": teeth_base, "normal": image(t("T_Teeth_Normal.tga"), "Non-Color")})
     objs["teeth"].data.materials.append(teeth)
-    eye = draconia.material("mh_eye", "eye", rough=0.15, images={"base": compose_eye(tex_dir, out_dir), "normal": image(t("T_Eye_N.tga"), "Non-Color")}, extras={"verse_shading_params": [0.0, 0.163, 0.0, 0.0]})
+    eye = draconia.material("mh_eye", "eye", rough=0.15, images={"base": eye_base or compose_eye(tex_dir, out_dir), "normal": image(t("T_Eye_N.tga"), "Non-Color")}, extras={"verse_shading_params": [0.0, 0.163, 0.0, 0.0]})
     for n in ("eyeLeft", "eyeRight"):
         objs[n].data.materials.append(eye)
     wet = draconia.material("mh_wet", "cornea", rough=0.08)
@@ -428,33 +546,59 @@ def main():
 
     # The reference's hair is platinum, near white in the light, with ash
     # roots; and its face-framing locks are thick, falling to the jaw.
-    draconia_hair.HAIR_ROOT = (0.40, 0.37, 0.30)
-    draconia_hair.HAIR_MID = (0.74, 0.71, 0.62)
-    draconia_hair.HAIR_TIP = (0.86, 0.84, 0.78)
+    # Pale golden blonde (round 6 review: the ash platinum read grey under
+    # the teal light): warm lengths, lighter tips, darker honey roots.
+    draconia_hair.HAIR_ROOT = (0.30, 0.22, 0.12)
+    draconia_hair.HAIR_MID = (0.80, 0.66, 0.42)
+    draconia_hair.HAIR_TIP = (0.90, 0.80, 0.60)
+    draconia_hair.ROOT_SPAN = 0.22
     draconia_hair.STRIPS_PATH = os.path.join(out_dir, "mh_hair.png")
-    draconia_hair.LOCKS_PER_SIDE = 10
-    draconia_hair.LOCK_HAIRS = (10, 24)
-    draconia_hair.LOCK_LENGTH = (0.1, 0.2)
-    # A soft updo, not a frizzed helmet: strands lie close over the scalp
-    # and gather back, the hairline comes down the forehead and temples
-    # with dense fine roots, and the flyaways are few and fall.
-    draconia_hair.LIFT = 0.007
-    draconia_hair.PUFF = 0.45
-    draconia_hair.MESS = (0.15, 0.5)
+    # Round 6: not two curtains but wisps. More, thinner locks that fall
+    # close by the cheeks and curl toward their ends.
+    draconia_hair.LOCKS_PER_SIDE = 14
+    draconia_hair.LOCK_HAIRS = (4, 11)
+    draconia_hair.LOCK_LENGTH = (0.07, 0.17)
+    draconia_hair.LOCK_OUT = 0.3
+    draconia_hair.LOCK_CURL = 0.012
+    draconia_hair.LOCK_CURL_TURNS = 1.6
+    # A loose, messy updo with volume at the crown: strands stand off the
+    # scalp more than round 5's (lift 11 mm, puff 0.8), wander more, and
+    # gather into the bun without frizz (low wander); wider ribbons so the
+    # crown is not grainy.
+    draconia_hair.LIFT = 0.011
+    draconia_hair.PUFF = 0.8
+    draconia_hair.MESS = (0.1, 0.35)
+    draconia_hair.BODY_WIDTH = 1.4
     draconia_hair.HAIRLINE_DROP = (0.06, 0.26)
     draconia_hair.EDGE_ROOTS = 5000
-    draconia_hair.FLY_COUNT = 260
-    draconia_hair.FLY_DROOP = 0.3
-    draconia_hair.FLY_LENGTH = (0.03, 0.09)
-    # The cap reaches nearly to the hairline in the lengths' shade, so the
-    # scalp never shows pale through the strands.
+    draconia_hair.FLY_COUNT = 420
+    draconia_hair.FLY_DROOP = 0.25
+    draconia_hair.FLY_LENGTH = (0.03, 0.1)
+    # The cap reaches nearly to the hairline in the roots' shade.
     draconia_hair.CAP_INSET = 0.025
-    draconia_hair.CAP_FROM_MID = 0.6
+    draconia_hair.CAP_FROM_MID = 0.45
     hair, _ = draconia_hair.grow(head, marks, seed=7, style=HAIR_STYLE)
     extra = list(hair)
     body_dir = os.environ.get("MH_BODY_DIR")
     if body_dir and os.path.exists(os.path.join(body_dir, "body_lod0_mesh.obj")):
         body = read_obj(os.path.join(body_dir, "body_lod0_mesh.obj"), "body_fit")
+        # MetaHuman's body mesh stops in a low scoop under the neck; the
+        # head mesh's lower part (the neck and the top of the chest) fills
+        # it. The uniform is cut from both, so it reaches the collar.
+        bib = head.copy()
+        bib.data = head.data.copy()
+        bpy.context.collection.objects.link(bib)
+        bm = bmesh.new()
+        bm.from_mesh(bib.data)
+        cut = marks.neck.z - 0.005
+        bmesh.ops.delete(bm, geom=[f for f in bm.faces if f.calc_center_median().z > cut], context="FACES")
+        bm.to_mesh(bib.data)
+        bm.free()
+        bpy.ops.object.select_all(action="DESELECT")
+        body.select_set(True)
+        bib.select_set(True)
+        bpy.context.view_layer.objects.active = body
+        bpy.ops.object.join()
         extra += draconia_cloth.build(body, marks)
         bpy.data.objects.remove(body)
     # Fewer strands than the CC0 head: the reference's brows are soft, and
