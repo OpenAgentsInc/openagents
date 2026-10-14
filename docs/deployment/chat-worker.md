@@ -2130,6 +2130,23 @@ are still written in the plural voice, which their lints enforce.
 To roll back: `sudo ln -sfn /opt/coder-worker/releases/9f2a916688
 /opt/coder-worker/chat && sudo systemctl restart coder-worker-chat`.
 
+Release `446443a418` (2026-10-14 UTC, #11618) puts the OpenAgents voice
+back to "we": the owner's rule is that OpenAgents is a "we" and individual
+agents such as Coder are an "I" (`AGENTS.md`, "Voice"). It undoes the
+voice half of `48045c51d3` and `7f2ede0734` (the model notes, product-note
+and Gym grounding notes, and chat prompts), keeping their content fixes.
+Built with `cargo zigbuild --locked --release -p coder --bin coder-worker
+--target x86_64-unknown-linux-musl` (sha256 `aa4b68d65d341640…`),
+installed with `knowledge/` from `git archive 446443a418 knowledge/` and
+`codebase-kb.gz` copied from `48045c51d3`, checked with `--check`, and put
+live by moving the `chat` symlink and restarting `coder-worker-chat`. On
+openagents.com as the test account (`X-OpenAgents-Test: 1`, chats
+deleted), "can you review my GitHub issues?" answered "We cannot access
+your accounts…" and "Can you browse the web?" "We can't browse the web…".
+
+To roll back: `sudo ln -sfn /opt/coder-worker/releases/48045c51d3
+/opt/coder-worker/chat && sudo systemctl restart coder-worker-chat`.
+
 Staged routing (#11247 stage B, #11297) asks each turn in two requests: a
 coarse `route_hint` with the other main questions, then `route` and
 `answer` over the hint's shortlist, with the dispatch questions
