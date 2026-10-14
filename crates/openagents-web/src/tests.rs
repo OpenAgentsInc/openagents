@@ -3539,6 +3539,107 @@ async fn the_api_alias_goes_to_the_gateway_without_cookies() {
     assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 0);
 }
 
+/// `openagents.com/v1/responses` naming a model id goes to the gateway's
+/// router, as `/api/v1` does (#11597): a lane word, a run's own turn, and a
+/// credential only the legacy server knows still reach the legacy server.
+#[tokio::test]
+async fn v1_responses_for_a_model_id_goes_to_the_gateway() {
+    use std::sync::atomic::Ordering;
+    let api = Router::new().fallback(|request: Request<Body>| async move {
+        let headers = request.headers().clone();
+        let value = |name: &str| {
+            headers
+                .get(name)
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or_default()
+                .to_owned()
+        };
+        if value("authorization") == "Bearer legacy" {
+            return StatusCode::UNAUTHORIZED.into_response();
+        }
+        let uri = request.uri().to_string();
+        let body = to_bytes(request.into_body(), 1024 * 1024).await.unwrap();
+        axum::Json(json!({
+            "gateway": true,
+            "uri": uri,
+            "cookie": value("cookie"),
+            "body": String::from_utf8_lossy(&body),
+        }))
+        .into_response()
+    });
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = format!("http://{}", listener.local_addr().unwrap());
+    tokio::spawn(async move { axum::serve(listener, api).await.unwrap() });
+    let root = tempfile::tempdir().unwrap();
+    let (legacy, hits) = echo_upstream().await;
+    let mut config = proxying(root.path(), &legacy);
+    config.inference = Some(Arc::new(upstream::Upstream::new(&address).unwrap()));
+    let app = router(config);
+    let call = |path: &str, bearer: &str, model: &str, run: bool| {
+        let mut builder = Request::builder()
+            .method("POST")
+            .uri(path)
+            .header(header::HOST, "openagents.com")
+            .header(header::AUTHORIZATION, format!("Bearer {bearer}"))
+            .header(header::COOKIE, "theme=dark");
+        if run {
+            builder = builder.header("x-coder-run", "r1");
+        }
+        let body = json!({ "model": model, "input": "hi" }).to_string();
+        app.clone().oneshot(builder.body(Body::from(body)).unwrap())
+    };
+
+    let response = call(
+        "/v1/responses",
+        "oak_1.secret",
+        "google/gemini-4-argon",
+        false,
+    )
+    .await
+    .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
+    let echoed: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(echoed["gateway"], true);
+    assert_eq!(echoed["uri"], "/v1/responses");
+    assert_eq!(echoed["cookie"], "");
+    assert!(echoed["body"].as_str().unwrap().contains("gemini-4-argon"));
+    assert_eq!(hits.load(Ordering::SeqCst), 0);
+
+    let response = call(
+        "/v1/chat/completions",
+        "oak_1.secret",
+        "openagents/fast",
+        false,
+    )
+    .await
+    .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(hits.load(Ordering::SeqCst), 0);
+
+    // A lane word, a run's turn, and a legacy-only key: the legacy server.
+    call("/v1/responses", "oak_1.secret", "flash", false)
+        .await
+        .unwrap();
+    assert_eq!(hits.load(Ordering::SeqCst), 1);
+    call(
+        "/v1/responses",
+        "oak_1.secret",
+        "google/gemini-4-argon",
+        true,
+    )
+    .await
+    .unwrap();
+    assert_eq!(hits.load(Ordering::SeqCst), 2);
+    // The echo upstream answers 418: the legacy server's answer, not the
+    // gateway's 401.
+    let response = call("/v1/responses", "legacy", "google/gemini-4-argon", false)
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::IM_A_TEAPOT);
+    assert_eq!(hits.load(Ordering::SeqCst), 3);
+}
+
 /// Every route path the gateway source mounts (string literals that look
 /// like one), with `{param}` segments filled in.
 fn gateway_route_paths() -> Vec<String> {

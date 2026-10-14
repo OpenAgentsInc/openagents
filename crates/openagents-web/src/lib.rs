@@ -41,6 +41,7 @@ pub mod connections;
 mod demo;
 mod device;
 mod docs_mcp;
+mod door_route;
 mod environments;
 /// Staging's stand-in for a GitHub App (#11226).
 pub use environments::push::StandIn as StagingPush;
@@ -483,6 +484,7 @@ pub fn router(config: Config) -> Router {
         studio: app.config.studio_hosts.clone(),
         upstream: app.config.upstream.clone(),
         api: app.config.inference.is_some(),
+        inference: app.config.inference.clone(),
     };
     let site_hosts = hosts.clone();
     let mut site = Router::<App>::new();
@@ -626,6 +628,9 @@ struct Hosts {
     upstream: Option<Arc<upstream::Upstream>>,
     /// `/api/v1/` goes to the inference gateway.
     api: bool,
+    /// The inference gateway, for `/v1/responses` and
+    /// `/v1/chat/completions` naming a model id ([`door_route`]).
+    inference: Option<Arc<upstream::Upstream>>,
 }
 
 impl Hosts {
@@ -747,6 +752,14 @@ async fn guard(hosts: Hosts, mut request: Request, next: Next) -> Response {
         // this site's authorization server (#11084).
         let mcp = public && oauth::keyed_mcp(path);
         let origin = format!("https://{host}");
+        // A model id on the public inference paths goes to the gateway's
+        // router, Vertex first, as `/api/v1` does (#11597).
+        if public
+            && let Some(gateway) = &hosts.inference
+            && door_route::applies(request.method(), path)
+        {
+            return door_route::route(request, gateway, upstream).await;
+        }
         let mut response = upstream.forward(request).await;
         if mcp && response.status() == StatusCode::UNAUTHORIZED {
             response
