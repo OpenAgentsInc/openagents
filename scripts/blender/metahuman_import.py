@@ -170,6 +170,40 @@ def draconia_shape(vs, marks):
     return d
 
 
+def draconia_refine(vs, marks):
+    """Round 7's small edits on top of a blend of MetaHuman presets (the
+    coordinator's targets): a narrow V jaw tapering to the chin, a slimmer
+    nose with a narrower base, a shorter upper lip, longer eyes. Offsets in
+    metres, Blender frame; each fades out before the neck, ears and skull."""
+    e = (marks.eye_l + marks.eye_r) / 2
+    m = marks.mouth
+    nt = marks.nose_tip
+    x, y, z = vs[:, 0], vs[:, 1], vs[:, 2]
+    d = np.zeros_like(vs)
+    front = 1 - smooth(e.y + 0.05, e.y + 0.085, y)
+    neck = 1 - smooth(-0.125, -0.165, z - e.z)
+    # A V jaw: below the mouth, narrower the lower it goes (to 9% at the
+    # chin), so the jaw line tapers.
+    v = smooth(m.z - 0.005, m.z - 0.05, z) * neck * front
+    d[:, 0] += -x * 0.09 * v
+    # A slimmer nose: the nostril wings and the bridge's sides 10% in.
+    nose = np.exp(-(((z - (nt.z - 0.008)) / 0.012) ** 2)) * np.exp(-((x / 0.025) ** 2)) * (1 - smooth(nt.y + 0.02, nt.y + 0.035, y))
+    d[:, 0] += -x * 0.10 * nose
+    # A shorter upper lip: the whole mouth (both lips together) 1 mm up, so
+    # the philtrum shortens without the lip growing taller. (A first try
+    # lifted the upper lip alone: its vermilion grew 17-22% too tall.)
+    ul = np.exp(-(((x - m.x) / 0.03) ** 2) - (((z - m.z) / 0.012) ** 2)) * (1 - smooth(m.y + 0.008, m.y + 0.025, y))
+    d[:, 2] += 0.001 * ul
+    # Longer, almond eyes (they measured 7% short for their spacing): each
+    # eye's outer corner 1.8 mm out and a touch up, the lids following.
+    for eye, s_ in ((marks.eye_l, 1.0), (marks.eye_r, -1.0)):
+        c = np.array([eye.x + s_ * 0.0165, eye.y + 0.006, eye.z + 0.001])
+        g = np.exp(-(((x - c[0]) / 0.008) ** 2) - (((y - c[1]) / 0.01) ** 2) - (((z - c[2]) / 0.007) ** 2))
+        d[:, 0] += s_ * 0.0018 * g
+        d[:, 2] += 0.0004 * g
+    return d
+
+
 def fit_deltas(fbx, rest_obj, mesh_dir):
     """Per-vertex offsets from the rest head to MetaHuman Creator's fit of
     Draconia (`scripts/unreal/fit_face.py` exports it as FBX). The FBX
@@ -352,15 +386,17 @@ def dcc_skin(dcc, maps, out_dir, size):
         keep = np.clip((chroma[..., None] - 0.3) / 0.15, 0, 1)
         k = sat + (min(1.0, sat + 0.4) - sat) * keep
         rgb = np.clip((lum + (rgb - lum) * k) * gain, 0, 1)
-        # Soften the freckles (MH_FRECKLE_SOFTEN, default 0.55): a small
-        # dark spot, darker than its blurred surroundings, is lifted that
-        # share toward them. Broad shading is untouched.
-        soften = float(os.environ.get("MH_FRECKLE_SOFTEN", "0.55"))
+        # Soften the freckles (MH_FRECKLE_SOFTEN, default 0.85): a dark
+        # spot up to a few millimetres across, darker than its blurred
+        # surroundings, is lifted that share toward them. Broad shading is
+        # untouched. (Round 7: the reference's freckles are fine and sparse;
+        # MetaHuman's read as blotches.)
+        soften = float(os.environ.get("MH_FRECKLE_SOFTEN", "0.85"))
         if soften > 0:
             l2 = rgb.mean(-1)
             blur = l2.copy()
-            for _ in range(3):
-                blur = (np.roll(blur, 3, 0) + np.roll(blur, -3, 0) + np.roll(blur, 3, 1) + np.roll(blur, -3, 1) + blur) / 5
+            for _ in range(4):
+                blur = (np.roll(blur, 6, 0) + np.roll(blur, -6, 0) + np.roll(blur, 6, 1) + np.roll(blur, -6, 1) + blur) / 5
             spot = np.clip(blur - l2, 0, 0.25)[..., None]
             rgb = np.clip(rgb + spot * soften * (rgb / np.maximum(l2[..., None], 1e-4)), 0, 1)
         base = draconia_paint.save("mh_skin_base", np.concatenate([rgb, np.ones_like(lum)], -1), out_dir)
@@ -462,9 +498,19 @@ def main():
     # `fit`: MetaHuman Creator's fit of them; `archetype`: MetaHuman's),
     # computed on the rest head, added to the posed one.
     shape = os.environ.get("MH_SHAPE", "draconia")
-    if shape in ("draconia", "fit"):
+    if shape in ("draconia", "fit", "blend"):
         rv = np.array([v.co for v in rest.data.vertices])
-        if shape == "fit":
+        if shape == "blend":
+            # A blend of preset heads (MH_BLEND_HEAD: DNA centimetres, one
+            # vertex a line, from draconia_preset_blend.py) plus round 7's
+            # refinements.
+            t = np.loadtxt(os.environ["MH_BLEND_HEAD"]) * 0.01
+            target = np.stack([t[:, 0], -t[:, 2], t[:, 1]], 1)
+            delta = target - rv
+            e = (marks.eye_l + marks.eye_r) / 2
+            delta *= (1 - smooth(-0.125, -0.165, rv[:, 2] - e.z))[:, None]
+            delta += draconia_refine(rv + delta, marks)
+        elif shape == "fit":
             # MetaHuman Creator's fit of our shaped head (MH_FIT_FBX).
             delta = fit_deltas(os.environ["MH_FIT_FBX"], rest, os.environ.get("MH_NEUTRAL_DIR", mesh_dir))
             # The neck stays the archetype's, where it meets the body.
@@ -476,7 +522,16 @@ def main():
             for v, dv in zip(o.data.vertices, delta):
                 v.co += Vector(dv)
             o.data.update()
+        # Keep the mouth and nose tip on the same vertices: the profile's
+        # geometric search can land elsewhere on a reshaped face (a preset
+        # put the painted lips on the philtrum).
+        keep = {}
+        for k in ("mouth", "nose_tip"):
+            if hasattr(marks, k):
+                keep[k] = int(np.argmin(np.linalg.norm(rv - np.array(getattr(marks, k)), axis=1)))
         marks.profile(rest)
+        for k, i in keep.items():
+            setattr(marks, k, rest.data.vertices[i].co.copy())
         target = os.environ.get("MH_SHAPE_OUT")
         if target:
             # The shaped rest head in DNA centimetres (x, y up, z forward),
@@ -497,6 +552,8 @@ def main():
     # normal) at full strength.
     draconia_paint.UNDER_EYE = 0.2
     draconia_paint.FRECKLES = (1.35, 0.72)
+    # Round 7: a dewy sheen on the forehead and nose, as the reference.
+    draconia_paint.TZONE_GLOSS = 0.22
     draconia_paint.SKIN_BASE = (0.68, 0.55, 0.48)
     out_dir = os.path.dirname(out)
     if rest is not head:
@@ -546,18 +603,20 @@ def main():
 
     # The reference's hair is platinum, near white in the light, with ash
     # roots; and its face-framing locks are thick, falling to the jaw.
-    # Pale golden blonde (round 6 review: the ash platinum read grey under
-    # the teal light): warm lengths, lighter tips, darker honey roots.
-    draconia_hair.HAIR_ROOT = (0.30, 0.22, 0.12)
-    draconia_hair.HAIR_MID = (0.80, 0.66, 0.42)
-    draconia_hair.HAIR_TIP = (0.90, 0.80, 0.60)
+    # Platinum ash blonde (round 7: round 6's gold read yellow; round 5's ash
+    # read grey): a little warmth in the lengths, near-white tips, darker
+    # ash roots.
+    draconia_hair.HAIR_ROOT = (0.30, 0.25, 0.18)
+    draconia_hair.HAIR_MID = (0.80, 0.74, 0.60)
+    draconia_hair.HAIR_TIP = (0.92, 0.89, 0.80)
     draconia_hair.ROOT_SPAN = 0.22
     draconia_hair.STRIPS_PATH = os.path.join(out_dir, "mh_hair.png")
     # Round 6: not two curtains but wisps. More, thinner locks that fall
     # close by the cheeks and curl toward their ends.
-    draconia_hair.LOCKS_PER_SIDE = 14
-    draconia_hair.LOCK_HAIRS = (4, 11)
-    draconia_hair.LOCK_LENGTH = (0.07, 0.17)
+    # Round 7: longer, wispier locks that fall past the jaw.
+    draconia_hair.LOCKS_PER_SIDE = 12
+    draconia_hair.LOCK_HAIRS = (3, 8)
+    draconia_hair.LOCK_LENGTH = (0.14, 0.26)
     draconia_hair.LOCK_OUT = 0.3
     draconia_hair.LOCK_CURL = 0.012
     draconia_hair.LOCK_CURL_TURNS = 1.6
@@ -565,9 +624,13 @@ def main():
     # scalp more than round 5's (lift 11 mm, puff 0.8), wander more, and
     # gather into the bun without frizz (low wander); wider ribbons so the
     # crown is not grainy.
-    draconia_hair.LIFT = 0.011
-    draconia_hair.PUFF = 0.8
-    draconia_hair.MESS = (0.1, 0.35)
+    # Round 7: looser at the crown, so it isn't a cap (more lift and puff,
+    # a little more wander), and a messy centre part.
+    draconia_hair.LIFT = 0.016
+    draconia_hair.PUFF = 1.1
+    draconia_hair.MESS = (0.18, 0.5)
+    draconia_hair.PART = 1.3
+    draconia_hair.PART_JITTER = 0.006
     draconia_hair.BODY_WIDTH = 1.4
     draconia_hair.HAIRLINE_DROP = (0.06, 0.26)
     draconia_hair.EDGE_ROOTS = 5000
@@ -577,9 +640,12 @@ def main():
     # The cap reaches nearly to the hairline in the roots' shade.
     draconia_hair.CAP_INSET = 0.025
     draconia_hair.CAP_FROM_MID = 0.45
-    hair, _ = draconia_hair.grow(head, marks, seed=7, style=HAIR_STYLE)
+    # MH_FAST=1: the face alone (no hair, uniform or brow strands), for
+    # scoring many heads quickly.
+    fast = os.environ.get("MH_FAST") == "1"
+    hair = [] if fast else draconia_hair.grow(head, marks, seed=7, style=HAIR_STYLE)[0]
     extra = list(hair)
-    body_dir = os.environ.get("MH_BODY_DIR")
+    body_dir = None if fast else os.environ.get("MH_BODY_DIR")
     if body_dir and os.path.exists(os.path.join(body_dir, "body_lod0_mesh.obj")):
         body = read_obj(os.path.join(body_dir, "body_lod0_mesh.obj"), "body_fit")
         # MetaHuman's body mesh stops in a low scoop under the neck; the
@@ -599,11 +665,14 @@ def main():
         bib.select_set(True)
         bpy.context.view_layer.objects.active = body
         bpy.ops.object.join()
+        # Round 7: the robe hangs in soft vertical folds.
+        draconia_cloth.FOLDS = 0.006
         extra += draconia_cloth.build(body, marks)
         bpy.data.objects.remove(body)
     # Fewer strands than the CC0 head: the reference's brows are soft, and
     # 650 read as a dark slab at the eye close-up.
-    extra += draconia.brows(head, marks, {"l": (None, None, marks.eye_l), "r": (None, None, marks.eye_r)}, count=400)
+    if not fast:
+        extra += draconia.brows(head, marks, {"l": (None, None, marks.eye_l), "r": (None, None, marks.eye_r)}, count=400)
     parts = list(objs.values()) + extra
     draconia.export(out, parts)
     d = {k: (list(v) if isinstance(v, Vector) else v) for k, v in marks.__dict__.items() if not callable(v)}

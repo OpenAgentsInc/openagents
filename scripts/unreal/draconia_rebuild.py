@@ -88,8 +88,9 @@ def skin(c, sub):
     s.body_texture_index = 2
     s.face_texture_index = 3
     fr = unreal.MetaHumanCharacterFrecklesProperties()
-    fr.density = 0.45
-    fr.strength = 0.4
+    # Fine and sparse, as the reference (round 7).
+    fr.density = 0.25
+    fr.strength = 0.25
     fr.saturation = 0.6
     fr.tone_shift = 0.3
     fr.mask = unreal.MetaHumanCharacterFrecklesMask.TYPE1

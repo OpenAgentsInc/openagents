@@ -25,6 +25,27 @@ SILVER = (0.42, 0.44, 0.44, 1)
 CHARCOAL = (0.022, 0.022, 0.025, 1)
 BLACK = (0.012, 0.012, 0.014, 1)
 WHITE = (0.70, 0.70, 0.67, 1)
+# Fold depth (m) of the robe's drape below the shoulders (0: a smooth
+# shell, the CC0 builds' default).
+FOLDS = 0.0
+
+
+def _folds(obj, top_z, depth):
+    """Vertical folds in a hanging garment: each vertex below `top_z` moves
+    along its normal by a few overlapping waves around the body (so the
+    folds run down, wavering), growing from nothing at the shoulders to
+    `depth` 15 cm lower."""
+    me = obj.data
+    normals = [v.normal.copy() for v in me.vertices]
+    for v, n in zip(me.vertices, normals):
+        p = v.co.copy()
+        fade = min(1.0, max(0.0, (top_z - p.z) / 0.15))
+        if fade <= 0:
+            continue
+        a = math.atan2(p.x, p.y)
+        w = math.sin(a * 23 + p.z * 9) * 0.6 + math.sin(a * 41 - p.z * 15 + 1.3) * 0.3 + math.sin(a * 9 + p.z * 4 + 0.4) * 0.4
+        v.co = p + n * depth * fade * w
+    me.update()
 
 
 def _mat(name, color, rough=0.85, sheen=0.5, image=None):
@@ -323,6 +344,8 @@ def build(body, marks):
             f.material_index = 1
     bm.to_mesh(me)
     bm.free()
+    if FOLDS:
+        _folds(robe, chest.z + 0.08, FOLDS)
     _solidify(robe, 0.003)
     out.append(robe)
 

@@ -210,14 +210,16 @@ def grow(skin, marks, seed=7, style="updo"):
         """March from the root over the scalp toward the knot."""
         pts, nrms = [], []
         p = root.copy()
-        side = 1.0 if root.x >= 0 else -1.0
+        # A messy part: strands near the middle pick their side with some
+        # randomness (PART_JITTER, metres), so the line wanders.
+        side = 1.0 if root.x + rng.gauss(0, PART_JITTER) >= 0 else -1.0
         step = 0.004
         for k in range(120):
             loc, nrm = surface(p)
             to_knot = knot - loc
             dist = to_knot.length
             # Away from the part near it, then toward the knot.
-            part_push = Vector((side, 0, 0)) * math.exp(-abs(loc.x) / 0.02) * 0.8
+            part_push = Vector((side, 0, 0)) * math.exp(-abs(loc.x) / 0.02) * PART
             d = to_knot.normalized() + part_push
             d = d - nrm * d.dot(nrm)
             if d.length < 1e-6:
@@ -650,6 +652,10 @@ ROOT_SPAN = 0.15
 # Scale of the updo body's ribbon widths (wider ribbons cover the scalp
 # with fewer gaps, so the crown averages smooth rather than grainy).
 BODY_WIDTH = 1.0
+# The centre part: how hard strands near it comb away, and how much the
+# line wanders (the side a root falls to is decided with this much noise).
+PART = 0.8
+PART_JITTER = 0.0
 # The updo's body: how far the outer layers stand off the scalp (m), how
 # much the strands puff mid-path and wander (frizz), the hairline's drop
 # (radians, lower is further down the forehead and temples), extra roots

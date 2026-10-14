@@ -50,6 +50,9 @@ FOLD_DEPTH = 1.2
 # Under-eye darkening (a share), and the freckles' density and strength.
 UNDER_EYE = 0.5
 FRECKLES = (0.95, 0.6)
+# How much glossier the forehead and nose (the T-zone) are than the rest of
+# the face: a dewy sheen.
+TZONE_GLOSS = 0.09
 BROW_STRENGTH = 0.62
 # Skin base albedo (linear) and an optional cavity tile (path, repeats).
 SKIN_BASE = (0.64, 0.53, 0.50)
@@ -453,7 +456,7 @@ def paint_skin(skin, marks, size, out):
     height *= 0.00009  # metres: pores ~0.08 mm deep
     rough = 0.58 + 0.12 * (fbm(P, 0.006, 3, seed=51) - 0.5)
     tzone = np.clip(gauss(P, mid + np.array([0, -0.02, 0.045], np.float32), (0.03, 0.05, 0.03)) + gauss(P, nose_tip, (0.012, 0.04, 0.03)), 0, 1)
-    rough = rough - 0.09 * tzone - 0.04 * gauss(P, cheek_l, (0.02, 0.03, 0.02)) - 0.04 * gauss(P, cheek_r, (0.02, 0.03, 0.02))
+    rough = rough - TZONE_GLOSS * tzone - 0.04 * gauss(P, cheek_l, (0.02, 0.03, 0.02)) - 0.04 * gauss(P, cheek_r, (0.02, 0.03, 0.02))
     rough = rough + 0.12 * np.clip(-pores, 0, 1)
     # Moist lips: glossier, varied by fine lip lines.
     rough = rough * (1 - lips) + (0.34 + 0.12 * (fbm(P * np.array([1, 1, 0.2], np.float32), 0.0006, 2, seed=45) - 0.5)) * lips

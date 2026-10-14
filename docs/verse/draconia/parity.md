@@ -56,13 +56,13 @@ with 4096-pixel maps, `Prepared::load` with a raised `Budget`, then
 
 | Area | State | Gap |
 | --- | --- | --- |
-| Face shape | Round 6: her own shape, tuned on MetaHuman's tracker's measurements of the reference, fitted and rigged by MetaHuman Creator (joints and 782 blend shapes) | Eyes measure 7-9% narrow for their spacing; mouth about 10% wide; the chin still long |
+| Face shape | Round 7: a blend of the three best-scoring Creator presets with small edits, fitted and rigged by MetaHuman Creator (joints and 782 blend shapes) | Young and slim at last; jaw and cheeks still fuller than the reference; eyes a little too open, upper lip a little tall |
 | Skin | Round 6: MetaHuman's own albedo and normal (texture sources), graded paler and less saturated toward the reference, our micro normal and roughness | Creator's palest tone is still warm; wrinkle maps not applied per expression yet |
-| Freckles | MetaHuman's freckles (Creator's density 0.45), softened by the grade | Denser on the cheeks than the reference |
+| Freckles | Round 7: MetaHuman's freckles at density and strength 0.25, small dark spots lifted 85% | Fine and sparse; close to the reference |
 | Eyes | Separate eyeballs, a refracting iris under an additive cornea, limbal ring | The lids sit too open and the sclera shows a hard white wedge at the corners; no caruncle, tear line or wet rim |
 | Brows | Painted strands | Too thin and drawn-on; the reference's brows are fuller, natural |
 | Lips | Analytic vermilion, rose, glossier | Shape fine; colour too orange-pink and edge too crisp |
-| Hair (updo, strands) | Round 6: pale golden blonde, honey roots; 18,700 strand ribbons gathered into a bun with volume at the crown; 14 thin locks a side curling by the cheeks; 420 falling flyaways | Still reads as a cap from the front; MetaHuman's own groom isn't in Verse yet; no Marschner multiple scattering |
+| Hair (updo, strands) | Round 7: platinum ash, darker roots; strand ribbons gathered into a bun with lift at the crown and a messy centre part; 12 wispy locks a side past the jaw; falling flyaways | The crown still reads as a white cap from the front; MetaHuman's own groom isn't in Verse yet; no Marschner multiple scattering |
 | Uniform | Round 6: on MetaHuman's body with its arms lowered, reaching the collar: shirt collar, striped tie in the V, sweater trim, robe with green facing; visible in the medium shots | Blocky shells with hard cuts; a stand collar rather than folded points; no folds or wool texture |
 | Lighting response | Measured against 0:54: warm key screen left, warm fill, short teal rim, near-black background, soft shadows from moving area lights; f/2 bokeh of glowing jars | No Unreal-grade skin shadowing (screen-space scattering) |
 | Expressions | Round 6: her full rig through OpenRigLogic (joints and blend shapes; smile, speaking, neutral) | Built per expression, not live in Verse; wrinkle and blood-flow maps not yet driven |
@@ -453,6 +453,72 @@ $B -b --factory-startup --python scripts/blender/draconia_set.py -- ~/work/film-
   head (the rig must be removed and remade); the eyes wider; wrinkle and
   blood-flow maps driven per expression; MetaHuman's groom as strands in
   Verse; her hair and the uniform in Unreal's column.
+
+### Round 7, 2026-10-14: from MetaHuman's presets, not the archetype
+
+- **Direction.** The coordinator's read of round 6: still not her (a broad
+  round jaw, a heavy nose, small deep-set eyes, older and blotchy), and
+  the archetype is the problem. Start from the closest Creator presets,
+  scored against the reference; blend them; small edits on top. Then
+  finer freckles, platinum ash hair with a looser crown, folds in the robe.
+  Mid-round: her eyes stay open and large while she smiles.
+- **Presets, scored.** `scripts/unreal/presets_export.py` exports all 29
+  presets in UE 5.8's Optional/Presets as geometry, headless;
+  `scripts/verse/draconia_presets.sh` builds each as a fast, face-only Verse
+  model smiling (the archetype rig's smile on the preset's shape), renders
+  it at 0:54's framing and light, and `draconia_preset_score.py` ranks them
+  by MetaHuman's tracker against 0:54 plus the face's 3D breadth against
+  the near-frontal 0:24 still (hand-marked there). Best: Vivian 11.7%,
+  Sunita 12.0%, Celeste 12.6%, Ada 12.7%, Etta 13.1%, Aera 13.8%; the
+  archetype-derived round 6 head was older and broader than any of the top
+  six by eye. Contact sheet: `~/Downloads/draconia-presets-r7.png`
+  (`draconia_preset_sheet.py`). Python has no preset-blend call, so the
+  blend is vertex-wise over the matched heads (`draconia_preset_blend.py`):
+  Vivian 0.45, Celeste 0.30, Sunita 0.25, the same thing Creator's preset
+  blend does in its identity space, and Creator's fit takes it from there.
+- **What changed.**
+  - Face: that blend plus `draconia_refine` (a V jaw tapering to the chin,
+    the nose's base 10% slimmer, the mouth 1 mm higher for a shorter upper
+    lip, each eye's outer corner 1.8 mm out for longer, almond eyes), fitted
+    and rigged by Creator headless, with texture sources. A first pass
+    lifted the upper lip alone and its vermilion grew 17-22% too tall; the
+    second pass lifts the whole mouth.
+  - Expressions: the smile no longer closes her eyes (the cheeks barely
+    raise the lower lids, no inner squint); neutral needs no lid lift on
+    this head.
+  - Skin: Creator's freckles at density and strength 0.25, and the albedo's
+    small dark spots lifted 85% toward their surroundings (they read as
+    blotches); a glossier, dewy forehead and nose (T-zone roughness down
+    0.22).
+  - Hair: platinum ash with darker roots, more lift and puff at the crown,
+    a messy centre part (strands near the middle choose their side with
+    some randomness), 12 wispy locks a side falling past the jaw.
+  - Robe: soft vertical folds below the shoulders (`draconia_cloth.FOLDS`).
+- **Measured** (MetaHuman's tracker; ours against the reference):
+
+  | Feature (over eye spacing) | 0:54 smile | 0:24 neutral | 0:29 speaking |
+  | --- | --- | --- | --- |
+  | Eye width | -3.2% | -3.2% | -3.9% |
+  | Eye opening | +17.6% | +11.1% | +14.9% |
+  | Eye line to nose base (midface) | +3.4% | -1.4% | -0.1% |
+  | Nose base to upper lip | +2.7% | +6.6% | +0.9% |
+  | Upper lip height | +6.8% | +15.5% | +19.5% |
+  | Lower lip height | -3.0% | -2.8% | +9.6% |
+  | Mouth width | +5.2% | +6.2% | -4.3% |
+
+  Eyes now measure long enough and a little too open; the upper lip is
+  fuller than the reference's (as asked) and somewhat too tall.
+- **Artifacts.** `~/Downloads/draconia-fullface-mh-v5.png`,
+  `~/Downloads/draconia-presets-r7.png`,
+  `~/Downloads/draconia-parity-round-07.png` and `.mp4` (the rounds so
+  far), the progress sheet; `~/work/film-out/draconia/parity/round-07/`.
+- **Honest state.** The first version that reads young and slim; closer to
+  the reference's type than any round before. Still off: the jaw and
+  cheeks are fuller than hers, the hair's crown reads as a white cap, the
+  lids carry a dark ring, the robe is still a hard-edged shell.
+- **Next.** The crown and hairline (MetaHuman's updo groom as strands in
+  Verse); the lid ring; the jaw through Creator's own sculpting; fabric
+  normals and the collar's points.
 
 ## Peacock scene
 
