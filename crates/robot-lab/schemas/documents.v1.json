@@ -1,0 +1,1247 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Document",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "content": {
+          "$ref": "#/$defs/Robot"
+        },
+        "schema": {
+          "type": "string",
+          "const": "robot.v1"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "content"
+      ]
+    },
+    {
+      "type": "object",
+      "properties": {
+        "content": {
+          "$ref": "#/$defs/Scene"
+        },
+        "schema": {
+          "type": "string",
+          "const": "robot-scene.v1"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "content"
+      ]
+    },
+    {
+      "type": "object",
+      "properties": {
+        "content": {
+          "$ref": "#/$defs/Experiment"
+        },
+        "schema": {
+          "type": "string",
+          "const": "robot-experiment.v1"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "content"
+      ]
+    },
+    {
+      "type": "object",
+      "properties": {
+        "content": {
+          "$ref": "#/$defs/Episode"
+        },
+        "schema": {
+          "type": "string",
+          "const": "robot-episode.v1"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "content"
+      ]
+    }
+  ],
+  "$defs": {
+    "Asset": {
+      "type": "object",
+      "properties": {
+        "bytes": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "media_type": {
+          "type": "string"
+        },
+        "sha256": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "sha256",
+        "bytes",
+        "media_type"
+      ]
+    },
+    "Axes": {
+      "type": "string",
+      "enum": [
+        "y_up",
+        "z_up"
+      ]
+    },
+    "Build": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "sha256": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "sha256"
+      ]
+    },
+    "Camera": {
+      "type": "object",
+      "properties": {
+        "height": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "id": {
+          "type": "string"
+        },
+        "intrinsics": {
+          "description": "fx, fy, cx, cy, in pixels.",
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "double"
+          },
+          "maxItems": 4,
+          "minItems": 4
+        },
+        "pose": {
+          "$ref": "#/$defs/Pose"
+        },
+        "robot_link": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "maxItems": 2,
+          "minItems": 2,
+          "prefixItems": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "width": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "pose",
+        "width",
+        "height",
+        "intrinsics"
+      ]
+    },
+    "Capability": {
+      "type": "string",
+      "enum": [
+        "inspect",
+        "replay",
+        "simulate"
+      ]
+    },
+    "Contact": {
+      "type": "object",
+      "properties": {
+        "a": {
+          "type": "string"
+        },
+        "b": {
+          "type": "string"
+        },
+        "force": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "double"
+          },
+          "maxItems": 3,
+          "minItems": 3
+        },
+        "position": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "double"
+          },
+          "maxItems": 3,
+          "minItems": 3
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "a",
+        "b",
+        "position",
+        "force"
+      ]
+    },
+    "Controller": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "build": {
+              "$ref": "#/$defs/Build"
+            },
+            "joints": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "kind": {
+              "type": "string",
+              "const": "scripted"
+            },
+            "robot": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "build",
+            "robot",
+            "joints"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "build": {
+              "$ref": "#/$defs/Build"
+            },
+            "cameras": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "instruction": {
+              "type": "string"
+            },
+            "joints": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "kind": {
+              "type": "string",
+              "const": "policy"
+            },
+            "normalization": {
+              "$ref": "#/$defs/Asset"
+            },
+            "robot": {
+              "type": "string"
+            },
+            "weights": {
+              "$ref": "#/$defs/Asset"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "build",
+            "weights",
+            "normalization",
+            "robot",
+            "joints",
+            "cameras",
+            "instruction"
+          ]
+        }
+      ]
+    },
+    "CubeTask": {
+      "type": "object",
+      "properties": {
+        "max_angular_speed": {
+          "type": "number",
+          "format": "double"
+        },
+        "max_linear_speed": {
+          "type": "number",
+          "format": "double"
+        },
+        "object": {
+          "type": "string"
+        },
+        "stable_seconds": {
+          "type": "number",
+          "format": "double"
+        },
+        "target_max": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "double"
+          },
+          "maxItems": 3,
+          "minItems": 3
+        },
+        "target_min": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "double"
+          },
+          "maxItems": 3,
+          "minItems": 3
+        },
+        "version": {
+          "$ref": "#/$defs/Build"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "object",
+        "target_min",
+        "target_max",
+        "stable_seconds",
+        "max_linear_speed",
+        "max_angular_speed"
+      ]
+    },
+    "Episode": {
+      "type": "object",
+      "properties": {
+        "experiment": {
+          "$ref": "#/$defs/Reference"
+        },
+        "mode": {
+          "$ref": "#/$defs/EpisodeMode"
+        },
+        "outcome": {
+          "$ref": "#/$defs/Outcome"
+        },
+        "seed": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Step"
+          }
+        },
+        "wall_seconds": {
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "experiment",
+        "seed",
+        "mode",
+        "steps",
+        "outcome",
+        "wall_seconds"
+      ]
+    },
+    "EpisodeMode": {
+      "type": "string",
+      "enum": [
+        "demonstration",
+        "simulation"
+      ]
+    },
+    "Experiment": {
+      "type": "object",
+      "properties": {
+        "backend": {
+          "$ref": "#/$defs/Build"
+        },
+        "control_every_steps": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "controller": {
+          "$ref": "#/$defs/Controller"
+        },
+        "limits": {
+          "$ref": "#/$defs/ResourceLimits"
+        },
+        "scene": {
+          "$ref": "#/$defs/Reference"
+        },
+        "seeds": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          }
+        },
+        "sensor_every_steps": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "task": {
+          "$ref": "#/$defs/CubeTask"
+        },
+        "timestep_seconds": {
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "scene",
+        "task",
+        "controller",
+        "backend",
+        "timestep_seconds",
+        "control_every_steps",
+        "sensor_every_steps",
+        "seeds",
+        "limits"
+      ]
+    },
+    "Geometry": {
+      "type": "object",
+      "properties": {
+        "pose": {
+          "$ref": "#/$defs/Pose"
+        },
+        "rgba": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "double"
+          },
+          "maxItems": 4,
+          "minItems": 4
+        },
+        "shape": {
+          "$ref": "#/$defs/Shape"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "pose",
+        "shape",
+        "rgba"
+      ]
+    },
+    "Inertial": {
+      "type": "object",
+      "properties": {
+        "center": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "double"
+          },
+          "maxItems": 3,
+          "minItems": 3
+        },
+        "mass": {
+          "type": "number",
+          "format": "double"
+        },
+        "tensor": {
+          "description": "Symmetric inertia: xx, yy, zz, xy, xz, yz, in kg m².",
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "double"
+          },
+          "maxItems": 6,
+          "minItems": 6
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "mass",
+        "center",
+        "tensor"
+      ]
+    },
+    "Joint": {
+      "type": "object",
+      "properties": {
+        "axis": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "double"
+          },
+          "maxItems": 3,
+          "minItems": 3
+        },
+        "child": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/JointKind"
+        },
+        "limits": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Limits"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "origin": {
+          "$ref": "#/$defs/Pose"
+        },
+        "parent": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "parent",
+        "child",
+        "kind",
+        "origin",
+        "axis"
+      ]
+    },
+    "JointKind": {
+      "type": "string",
+      "enum": [
+        "fixed",
+        "revolute",
+        "continuous",
+        "prismatic"
+      ]
+    },
+    "Light": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "intensity": {
+          "type": "number",
+          "format": "double"
+        },
+        "position": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "double"
+          },
+          "maxItems": 3,
+          "minItems": 3
+        },
+        "rgb": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "double"
+          },
+          "maxItems": 3,
+          "minItems": 3
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "position",
+        "rgb",
+        "intensity"
+      ]
+    },
+    "Limits": {
+      "type": "object",
+      "properties": {
+        "effort": {
+          "type": "number",
+          "format": "double"
+        },
+        "lower": {
+          "type": "number",
+          "format": "double"
+        },
+        "upper": {
+          "type": "number",
+          "format": "double"
+        },
+        "velocity": {
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "lower",
+        "upper",
+        "effort",
+        "velocity"
+      ]
+    },
+    "Link": {
+      "type": "object",
+      "properties": {
+        "collisions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Geometry"
+          }
+        },
+        "inertial": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Inertial"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "visuals": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Geometry"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "visuals",
+        "collisions"
+      ]
+    },
+    "Object": {
+      "type": "object",
+      "properties": {
+        "collider": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Shape"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "friction": {
+          "type": "number",
+          "format": "double"
+        },
+        "geometry": {
+          "$ref": "#/$defs/Geometry"
+        },
+        "id": {
+          "type": "string"
+        },
+        "mass": {
+          "description": "Zero denotes a static object; positive mass denotes a dynamic body.",
+          "type": "number",
+          "format": "double"
+        },
+        "mesh": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Asset"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "geometry",
+        "mass",
+        "friction"
+      ]
+    },
+    "ObjectState": {
+      "type": "object",
+      "properties": {
+        "angular_velocity": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "double"
+          },
+          "maxItems": 3,
+          "minItems": 3
+        },
+        "held": {
+          "type": "boolean"
+        },
+        "linear_velocity": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "double"
+          },
+          "maxItems": 3,
+          "minItems": 3
+        },
+        "pose": {
+          "$ref": "#/$defs/Pose"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "pose",
+        "linear_velocity",
+        "angular_velocity",
+        "held"
+      ]
+    },
+    "Outcome": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "complete"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "success"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "failed"
+            },
+            "reason": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "reason"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "stopped"
+            },
+            "reason": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "reason"
+          ]
+        }
+      ]
+    },
+    "Pose": {
+      "type": "object",
+      "properties": {
+        "position": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "double"
+          },
+          "maxItems": 3,
+          "minItems": 3
+        },
+        "rotation": {
+          "description": "Unit quaternion in xyzw order, in the containing coordinate frame.",
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "double"
+          },
+          "maxItems": 4,
+          "minItems": 4
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "position",
+        "rotation"
+      ]
+    },
+    "Reference": {
+      "description": "An immutable saved document version, never a moving latest-version alias.",
+      "type": "object",
+      "properties": {
+        "document": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "document",
+        "version"
+      ]
+    },
+    "ResourceLimits": {
+      "type": "object",
+      "properties": {
+        "inference_timeout_ms": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "max_artifact_bytes": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "max_steps": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "wall_seconds": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "max_steps",
+        "wall_seconds",
+        "max_artifact_bytes",
+        "inference_timeout_ms"
+      ]
+    },
+    "Robot": {
+      "type": "object",
+      "properties": {
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Capability"
+          },
+          "uniqueItems": true
+        },
+        "description": {
+          "type": "string"
+        },
+        "joints": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Joint"
+          }
+        },
+        "links": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Link"
+          }
+        },
+        "meters_per_unit": {
+          "type": "number",
+          "format": "double"
+        },
+        "name": {
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/Source"
+        },
+        "source_axes": {
+          "$ref": "#/$defs/Axes"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "source",
+        "description",
+        "meters_per_unit",
+        "source_axes",
+        "links",
+        "joints",
+        "capabilities"
+      ]
+    },
+    "RobotInstance": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "joints": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number",
+            "format": "double"
+          }
+        },
+        "pose": {
+          "description": "Runtime Y-up meters; source conversion happens at import.",
+          "$ref": "#/$defs/Pose"
+        },
+        "robot": {
+          "$ref": "#/$defs/Reference"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "robot",
+        "pose",
+        "joints"
+      ]
+    },
+    "Scene": {
+      "type": "object",
+      "properties": {
+        "cameras": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Camera"
+          }
+        },
+        "lights": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Light"
+          }
+        },
+        "name": {
+          "type": "string"
+        },
+        "objects": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Object"
+          }
+        },
+        "robots": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RobotInstance"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "robots",
+        "objects",
+        "lights",
+        "cameras"
+      ]
+    },
+    "Sensor": {
+      "type": "object",
+      "properties": {
+        "asset": {
+          "$ref": "#/$defs/Asset"
+        },
+        "frame": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "timestamp_seconds": {
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "asset",
+        "timestamp_seconds",
+        "frame"
+      ]
+    },
+    "Shape": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "box"
+            },
+            "size": {
+              "type": "array",
+              "items": {
+                "type": "number",
+                "format": "double"
+              },
+              "maxItems": 3,
+              "minItems": 3
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "size"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "sphere"
+            },
+            "radius": {
+              "type": "number",
+              "format": "double"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "radius"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "cylinder"
+            },
+            "length": {
+              "type": "number",
+              "format": "double"
+            },
+            "radius": {
+              "type": "number",
+              "format": "double"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "radius",
+            "length"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string",
+              "const": "mesh"
+            },
+            "scale": {
+              "type": "array",
+              "items": {
+                "type": "number",
+                "format": "double"
+              },
+              "maxItems": 3,
+              "minItems": 3
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "file",
+            "scale"
+          ]
+        }
+      ]
+    },
+    "Source": {
+      "type": "object",
+      "properties": {
+        "converter": {
+          "type": "string"
+        },
+        "files": {
+          "description": "Original relative file names and their exact saved bytes.",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/Asset"
+          }
+        },
+        "license": {
+          "type": "string"
+        },
+        "notices": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Asset"
+          }
+        },
+        "repository": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "repository",
+        "revision",
+        "files",
+        "license",
+        "notices",
+        "converter"
+      ]
+    },
+    "Step": {
+      "type": "object",
+      "properties": {
+        "actions": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number",
+            "format": "double"
+          }
+        },
+        "contacts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Contact"
+          }
+        },
+        "index": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "inference_ms": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "joints": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number",
+            "format": "double"
+          }
+        },
+        "limit_violations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "objects": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/ObjectState"
+          }
+        },
+        "observation_step": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        },
+        "sensors": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/Sensor"
+          }
+        },
+        "time_seconds": {
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "index",
+        "time_seconds",
+        "joints",
+        "actions",
+        "objects",
+        "contacts",
+        "sensors",
+        "limit_violations"
+      ]
+    }
+  }
+}

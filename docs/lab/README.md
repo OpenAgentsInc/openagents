@@ -1,7 +1,9 @@
 # Robot Lab: robots and experiments inside chat
 
 Status: proposed design, 2026-10-14. This document specifies a Robot Lab;
-it does not describe a shipped feature. The first delivery is local robot
+the document and private-storage foundation is implemented in
+[`robot-lab`](../../crates/robot-lab/README.md). The interactive workbench,
+simulation, and learned control remain tracked below. The first delivery is local robot
 inspection and motion replay in an inline chat card. Simulation and learned
 control follow as separately testable additions.
 [LeRobot data, the Verse room, and a Rust physics path](lerobot-in-verse.md)
@@ -272,6 +274,19 @@ uses separate training, validation, and held-out tests. Publishing a result is
 an explicit action; an experiment does not automatically upload recordings.
 
 ## Delivery slices and acceptance
+
+Implementation issues: import and inspection [#11594](https://github.com/OpenAgentsInc/openagents/issues/11594),
+documents [#11603](https://github.com/OpenAgentsInc/openagents/issues/11603),
+chat cards [#11604](https://github.com/OpenAgentsInc/openagents/issues/11604),
+recorded motion [#11605](https://github.com/OpenAgentsInc/openagents/issues/11605),
+MuJoCo [#11606](https://github.com/OpenAgentsInc/openagents/issues/11606),
+Rust joints [#11607](https://github.com/OpenAgentsInc/openagents/issues/11607),
+ACT [#11608](https://github.com/OpenAgentsInc/openagents/issues/11608),
+SmolVLA and policy services [#11609](https://github.com/OpenAgentsInc/openagents/issues/11609),
+Gym [#11610](https://github.com/OpenAgentsInc/openagents/issues/11610),
+dataset export [#11611](https://github.com/OpenAgentsInc/openagents/issues/11611),
+Verse room [#11612](https://github.com/OpenAgentsInc/openagents/issues/11612),
+and other devices [#11613](https://github.com/OpenAgentsInc/openagents/issues/11613).
 
 1. **Import and inspect.** One pinned SO-101, a table and cube, checked source
    notices, forward kinematics, joint limits, and an offscreen capture. Verify

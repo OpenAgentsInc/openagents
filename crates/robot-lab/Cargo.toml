@@ -1,0 +1,22 @@
+[package]
+name = "robot-lab"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Checked Robot Lab documents, private project storage, and typed operations"
+
+[dependencies]
+fs2 = "0.4.3"
+schemars = "1.2.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["float_roundtrip"] }
+sha2 = "0.10"
+tempfile = "3"
+thiserror = "2"
+
+[dev-dependencies]
+oa-copy = { path = "../oa-copy" }
+
+[lints]
+workspace = true

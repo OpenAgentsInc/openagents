@@ -13577,6 +13577,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "robot-lab"
+version = "1.0.0-rc.13"
+dependencies = [
+ "fs2",
+ "oa-copy",
+ "schemars 1.2.2",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "route-contract"
 version = "1.0.0-rc.13"
 dependencies = [
