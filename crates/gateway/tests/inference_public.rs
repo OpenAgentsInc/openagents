@@ -153,6 +153,15 @@ async fn deploy(public: bool, book: Option<Value>) -> Deployment {
 
 /// [`deploy`] with `inference.public` set to `terms`.
 async fn deploy_with(terms: Option<Value>, book: Option<Value>) -> Deployment {
+    deploy_with_accounts(terms, book, None).await
+}
+
+/// [`deploy_with`] with an `accounts` block, as JSON.
+async fn deploy_with_accounts(
+    terms: Option<Value>,
+    book: Option<Value>,
+    accounts: Option<Value>,
+) -> Deployment {
     let dir = tempfile::tempdir().unwrap();
     let mut manifest = common::manifest(&common::artifact('a'), None);
     let acme = manifest.tenants["acme"].clone();
@@ -219,7 +228,7 @@ async fn deploy_with(terms: Option<Value>, book: Option<Value>) -> Deployment {
         team_reports: None,
         inference: Some(inference),
         decisions: None,
-        accounts: None,
+        accounts: accounts.map(|accounts| serde_json::from_value(accounts).unwrap()),
         billing: None,
         funding: None,
         earnings: None,
@@ -582,7 +591,9 @@ fn sign_in(d: &Deployment) -> Signed {
     use tenancy::sessions::{SessionBook, Sessions};
     use tenancy::workspaces::UserId;
     let dir = d._dir.path();
-    let accounts = Accounts::install(dir).unwrap();
+    let accounts = Accounts::install(dir)
+        .or_else(|_| Accounts::open(dir))
+        .unwrap();
     let ada = accounts.create_account("Ada", &[]).unwrap();
     let gone = accounts.create_account("Gone", &[]).unwrap();
     for who in [&ada, &gone] {
@@ -590,7 +601,9 @@ fn sign_in(d: &Deployment) -> Signed {
             .create_workspace(&who.id, &who.label, WorkspaceKind::Personal, "acme", None)
             .unwrap();
     }
-    let sessions = Sessions::install(dir, SessionBook::new(3600, 3600)).unwrap();
+    let sessions = Sessions::install(dir, SessionBook::new(3600, 3600))
+        .or_else(|_| Sessions::open(dir))
+        .unwrap();
     let user = sessions
         .mutate(|book, _, now| book.issue(UserId::from(ada.id.as_str()), now))
         .unwrap()
@@ -820,4 +833,61 @@ async fn a_spent_allowance_says_so_plainly() {
         "Today's free allowance is used up. Add credit or use your own key."
     );
     assert!(allowance_used(&d).values().all(|used| used["micros"] == 0));
+}
+
+/// Site admins (the admin panel's notion, by the invite list) have no
+/// daily cap on the free allowance: past the day's cap they are still
+/// answered and still metered; a normal account is still refused.
+#[tokio::test]
+async fn a_site_admin_has_no_daily_cap_on_the_allowance() {
+    let accounts = json!({
+        "signup_tenant": "acme",
+        "invite_only": {"github": [
+            {"id": 7, "login": "boss", "admin": true},
+            {"id": 8, "login": "someone"}
+        ]}
+    });
+    let d = deploy_with_accounts(Some(allowance(1)), None, Some(accounts)).await;
+    let signed = sign_in(&d);
+    let (bob, bob_token) = sign_in_another(&d, "Bob");
+    let store = tenancy::Accounts::open(d._dir.path()).unwrap();
+    let ada = store
+        .store()
+        .unwrap()
+        .accounts
+        .values()
+        .find(|a| a.label == "Ada")
+        .unwrap()
+        .id
+        .clone();
+    for (account, id, login) in [(&ada, 7, "boss"), (&bob, 8, "someone")] {
+        let profile = serde_json::from_value(json!({"id": id, "login": login})).unwrap();
+        store.link_github(account, &profile).unwrap();
+    }
+    // The admin is answered twice over a cap that covers nothing, metered.
+    for _ in 0..2 {
+        let (status, body, _) = call(
+            &d,
+            &signed.user,
+            "/v1/chat/completions",
+            chat("openagents/auto"),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+    }
+    let used = allowance_used(&d);
+    assert!(used[&ada]["micros"].as_u64().unwrap() > 1, "{used:?}");
+    // A normal account is still refused at the cap.
+    let (status, body, _) = call(
+        &d,
+        &bob_token,
+        "/v1/chat/completions",
+        chat("openagents/auto"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::PAYMENT_REQUIRED, "{body}");
+    assert_eq!(
+        body["error"]["message"],
+        "Today's free allowance is used up. Add credit or use your own key."
+    );
 }

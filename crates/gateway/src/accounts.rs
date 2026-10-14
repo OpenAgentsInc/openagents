@@ -242,6 +242,25 @@ fn bearer(headers: &HeaderMap) -> Result<String, Response> {
         })
 }
 
+/// Whether `account` is a site admin — the same notion `GET /v1/account`
+/// answers as `admin` and the admin panel uses. Any trouble reading the
+/// store, or no accounts config, is not admin.
+pub(crate) fn account_is_site_admin(state: &ServeState, account: &str) -> bool {
+    let Some(config) = state.config.accounts.as_ref() else {
+        return false;
+    };
+    let Ok(accounts) = Accounts::open(&state.dir) else {
+        return false;
+    };
+    let Ok(store) = accounts.store() else {
+        return false;
+    };
+    oa_auth::service::site_admin(
+        config.invite_only.as_ref(),
+        store.identities.github_of(account),
+    )
+}
+
 /// Open the accounts store — the membership read every management call
 /// makes.
 pub(crate) fn accounts_store(state: &ServeState) -> Result<Accounts, Response> {
