@@ -117,6 +117,15 @@ pub const ROUTES: &[Route] = &[
     route("/v1/workspaces/{workspace}/sso/unlink", Public, "Workspaces", &[op("post", "unlinkSso", "Unlink a member's single sign-on identity.")]),
     route("/v1/workspaces/{workspace}/sso/sign-in", Public, "Workspaces", &[op("post", "signInSso", "Sign in through the workspace's single sign-on provider.")]),
     route("/v1/workspaces/{workspace}/sso/audit", Public, "Workspaces", &[op("get", "getSsoAudit", "Single sign-on events.")]),
+    // ---- PUBLIC: agents that register themselves (#11630).
+    route("/v1/agents/challenge", Public, "Agents", &[op("get", "getAgentChallenge", "A proof-of-work challenge for registering an agent, good for ten minutes.")]),
+    route("/v1/agents/register", Public, "Agents", &[op("post", "registerAgent", "An agent registers itself with a solved challenge: an agent account and an API key (shown once), a claim code, the free tier, and how to pay.")]),
+    route("/v1/agents/me", Public, "Agents", &[op("get", "getAgent", "The calling agent: its free tier today, its credit, and how to pay.")]),
+    route("/v1/agents/claim", Public, "Agents", &[op("post", "claimAgent", "A signed-in person links an agent to their account with its claim code.")]),
+    route("/v1/agents/claimed", Public, "Agents", &[op("get", "listClaimedAgents", "The signed-in person's agents.")]),
+    route("/v1/agents/{account}/revoke", Public, "Agents", &[op("post", "revokeAgent", "The person who claimed an agent, or a site admin, revokes it; its key stops at once.")]),
+    route("/v1/agents/credit", Public, "Agents", &[op("post", "creditAgent", "The pay host adds bought credit to an agent after a Lightning payment (signed header only).")]),
+    route("/v1/admin/agents", FirstParty, "Agents", &[op("get", "listAgents", "Every agent account, for site admins.")]),
     // ---- PUBLIC: usage and money.
     route("/v1/workspaces/{workspace}/usage", Public, "Usage", &[op("get", "getWorkspaceUsage", "The workspace's usage, totaled.")]),
     route("/v1/workspaces/{workspace}/usage/activity", Public, "Usage", &[op("get", "listWorkspaceActivity", "The workspace's calls, newest first (`data`, `next`, `?after=`).")]),
@@ -460,6 +469,7 @@ mod tests {
         let modules = [
             crate::budgets::routes(),
             crate::accounts::routes(),
+            crate::agent_accounts::routes(),
             crate::sso::routes(),
             crate::github_repos::routes(),
             crate::usage::routes(),

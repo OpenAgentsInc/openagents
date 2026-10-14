@@ -42,6 +42,12 @@
 #   INVITE_ONLY_JSON            optional: accounts.invite_only, the GitHub people who
 #                               may sign in ({"github": [{"id": N, "login": L, "admin": true}]})
 #   GATEWAY_HOLD                optional: `serving` (above)
+#   AGENT_FORWARDED_HOPS        optional: X-Forwarded-For entries the platform appends
+#                               in front of the gateway (default 1); agent sign-up limits
+#                               count the address that many entries from the right (#11630)
+#   AGENT_CREDIT_JSON           optional: accounts.agents.credit, buying agent credit over
+#                               Lightning through the pay host's hosted resource
+#                               (docs/agents/self-registration.md); absent, agents can't pay yet
 #   BYOK_KEYRING_JSON           optional: the oa-seal keyring that seals workspaces'
 #                               own provider keys (Settings > API keys)
 #   INFERENCE_STORE_KEY         optional: the key that seals stored responses
@@ -277,6 +283,13 @@ fi
 clef="$clef \"clef_models\": {$clef_models},"
 jev=false
 [ "${DECISION_JEV:-}" = on ] && jev=true
+# Agents registering themselves (#11630, docs/agents/self-registration.md):
+# the limits and the free tier are the config's defaults.
+agent_credit=""
+if [ -n "${AGENT_CREDIT_JSON:-}" ]; then
+    agent_credit=", \"credit\": $AGENT_CREDIT_JSON"
+fi
+agents="\"agents\": {\"forwarded_hops\": ${AGENT_FORWARDED_HOPS:-1}$agent_credit},"
 cat > "$private/gateway.json" << EOF
 {
   "v": "openagents.gateway.v1",
@@ -284,6 +297,7 @@ cat > "$private/gateway.json" << EOF
   "registry": "$state/gateway/registry",
   "accounts": {
     "signup_tenant": "signup",
+    $agents
     $operator
     $invite
     $database

@@ -326,6 +326,7 @@ pub(crate) fn site_index_json() -> Value {
             "agent_skills": format!("{SITE}/.well-known/agent-skills/index.json"),
             "skill": format!("{SITE}/skill.md"),
             "auth": format!("{SITE}/auth.md"),
+            "agent_register": format!("{SITE}/v1/agents/register"),
         },
     })
 }
@@ -519,7 +520,7 @@ fn home_markdown() -> String {
 const AGENT_LINKS: &str = "## For agents\n\n\
 - [llms.txt](/llms.txt) and [llms-full.txt](/llms-full.txt): every guide, as Markdown.\n\
 - Any page as Markdown: add `.md` to its address, or send `Accept: text/markdown`.\n\
-- [auth.md](/auth.md): how to get and use an API key.\n\
+- [auth.md](/auth.md): register as an agent yourself, or get and use an API key.\n\
 - [MCP server](/mcp/docs): read and search the docs as tools, no key needed \
 ([server card](/.well-known/mcp/server-card.json)).\n\
 - [OpenAPI](/openapi.json) and the [API catalog](/.well-known/api-catalog).\n\
@@ -608,6 +609,7 @@ with the coding agents you already use. Developers can call our models through t
 Every page here is also Markdown: add `.md` to its address, or send `Accept: text/markdown`.\n\
 {}\n## API\n\n- [API docs]({SITE}/docs/api.md): {API_LEAD}\n{}\
 - [Authentication]({SITE}/auth.md): get an API key and send it.\n\
+- [Agent sign-up]({SITE}/auth.md#register-yourself-as-an-agent): an agent registers itself with a small proof of work (`POST {SITE}/v1/agents/register`), gets a key and a small daily free tier, and pays over Lightning past it.\n\
 - [For agents]({SITE}/docs/api/for-agents.md): find us, say who you are, and pay. {}\n\
 - [OpenAPI]({SITE}/openapi.json): the API's machine-readable description.\n\
 - [API catalog]({SITE}/.well-known/api-catalog): where each API and its description live.\n\n\
@@ -864,7 +866,8 @@ pub(crate) fn api_catalog_json(origin: &str, methods: &[crate::payments::Method]
                 {"href": format!("{origin}/docs/api"), "type": "text/html"},
                 {"href": format!("{origin}/docs/api.md"), "type": "text/markdown"},
                 {"href": format!("{origin}/docs/api/for-agents"), "type": "text/html", "title": "For agents: find, sign in, pay"},
-                {"href": format!("{origin}/docs/api/pay-per-request"), "type": "text/html", "title": "Pay per request"}
+                {"href": format!("{origin}/docs/api/pay-per-request"), "type": "text/html", "title": "Pay per request"},
+                {"href": format!("{origin}/auth.md#register-yourself-as-an-agent"), "type": "text/markdown", "title": "Register as an agent"}
             ],
             "describedby": [{"href": format!("{origin}/auth.md"), "type": "text/markdown"}]
         });

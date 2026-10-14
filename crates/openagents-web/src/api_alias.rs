@@ -45,6 +45,14 @@ const PUBLIC: &[Rule] = &[
     Rule(POST, "/v1/systemone"),
     // The Decisions API in OpenAI's shape (docs/api/decisions.md).
     Rule(POST, "/v1/decisions"),
+    // Agents that register themselves (#11630).
+    Rule(GET, "/v1/agents/challenge"),
+    Rule(POST, "/v1/agents/register"),
+    Rule(GET, "/v1/agents/me"),
+    Rule(POST, "/v1/agents/claim"),
+    Rule(GET, "/v1/agents/claimed"),
+    Rule(POST, "/v1/agents/*/revoke"),
+    Rule(POST, "/v1/agents/credit"),
     // Usage and money (4.5, 4.6).
     Rule(GET, "/v1/key"),
     Rule(GET, "/v1/usage/*"),

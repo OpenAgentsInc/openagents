@@ -586,6 +586,7 @@ impl Accounts {
                 label: label.into(),
                 principals: vec![],
                 created: crate::registry::now_utc(),
+                agent: None,
             };
             store.accounts.insert(account.id.clone(), account.clone());
             let (source, _) = store.referrals.capture(&account.id, input, now)?;

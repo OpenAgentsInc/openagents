@@ -288,7 +288,7 @@ pub(crate) fn sessions_store(state: &ServeState) -> Result<sessions::Sessions, R
 
 /// The registry — needed wherever a key authenticates or a tenant
 /// resolves.
-fn registry(state: &ServeState) -> Result<Registry, Response> {
+pub(crate) fn registry(state: &ServeState) -> Result<Registry, Response> {
     Registry::open(&state.dir).map_err(|trouble| {
         unavailable(
             "registry_unavailable",
@@ -508,6 +508,17 @@ pub(crate) fn accounts_refusal(refusal: tenancy::accounts::Refusal) -> Response 
         }
         R::LastCredential(_) => (StatusCode::CONFLICT, "last_credential"),
         R::ProviderLinked { .. } => (StatusCode::CONFLICT, "provider_linked"),
+        R::Agent(agent) => {
+            use tenancy::accounts::agents::AgentRefusal as A;
+            match agent {
+                A::InvalidClaim => (StatusCode::FORBIDDEN, "invalid_claim"),
+                A::ClaimExpired => (StatusCode::FORBIDDEN, "claim_expired"),
+                A::AlreadyClaimed => (StatusCode::CONFLICT, "already_claimed"),
+                A::Revoked => (StatusCode::CONFLICT, "agent_revoked"),
+                A::AgentCannotClaim => (StatusCode::FORBIDDEN, "agent_cannot_claim"),
+                A::NotAgent => (StatusCode::NOT_FOUND, "not_an_agent"),
+            }
+        }
         R::EmptyField(field) => {
             return refused(
                 StatusCode::BAD_REQUEST,
@@ -679,6 +690,20 @@ async fn sign_in(State(state): State<Arc<ServeState>>, headers: HeaderMap) -> Re
         }
         Err(response) => return response,
     };
+    // An agent account (#11630) uses its key; it never becomes a website
+    // session, so the website's chats, computers, and tools stay out of
+    // its reach.
+    if accounts
+        .store()
+        .ok()
+        .is_some_and(|store| store.agent(&account).is_some())
+    {
+        return refused(
+            StatusCode::FORBIDDEN,
+            "agent_account",
+            "An agent account uses its API key directly; it can't sign in to the website.",
+        );
+    }
     let sessions = match sessions_store(&state) {
         Ok(sessions) => sessions,
         Err(response) => return response,
@@ -1462,6 +1487,7 @@ async fn account_view(State(state): State<Arc<ServeState>>, headers: HeaderMap) 
                 "label": record.label,
                 "principals": record.principals,
                 "created": record.created,
+                "kind": if record.agent.is_some() { "agent" } else { "person" },
                 "email": store.identities.github_of(&record.id)
                     .and_then(|i| i.profile.verified_email().or(i.profile.email.as_deref())),
                 "avatar_url": store.identities.github_of(&record.id).and_then(|i| i.profile.avatar()),

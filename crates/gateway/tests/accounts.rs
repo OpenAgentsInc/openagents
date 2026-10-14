@@ -56,6 +56,7 @@ fn account_config(anonymous: Option<config::Anonymous>) -> config::Accounts {
         store: Default::default(),
         database_url_env: String::new(),
         import_files: false,
+        agents: None,
         anonymous,
     }
 }
@@ -1866,6 +1867,7 @@ async fn signup_and_anonymous_off_when_not_configured() {
             store: Default::default(),
             database_url_env: String::new(),
             import_files: false,
+            agents: None,
             anonymous: None,
         }),
         false,
@@ -1983,6 +1985,7 @@ async fn stores_install_under_accounts_config_and_validate() {
             store: Default::default(),
             database_url_env: String::new(),
             import_files: false,
+            agents: None,
             recovery_ttl_secs: 3_600,
             anonymous: Some(config::Anonymous {
                 workspace: "public".to_string(),

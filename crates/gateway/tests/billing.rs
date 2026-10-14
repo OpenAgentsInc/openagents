@@ -120,6 +120,7 @@ fn account_config() -> config::Accounts {
         store: Default::default(),
         database_url_env: String::new(),
         import_files: false,
+        agents: None,
         anonymous: None,
     }
 }

@@ -626,6 +626,52 @@ impl Account<'_> {
         hosted_url(&raw)
     }
 
+    /// `POST /v1/agents/claim`: link an agent to the signed-in person
+    /// with the claim code the agent got at registration (#11630).
+    pub async fn claim_agent(&self, code: &str) -> Result<serde_json::Value> {
+        let body = serde_json::to_vec(&serde_json::json!({ "claim": code }))
+            .map_err(|_| Error::Config("Invalid claim code.".into()))?;
+        let raw = self
+            .client
+            .request_private_bounded(Method::POST, "/v1/agents/claim", Some(body), 64 * 1024)
+            .await?;
+        json_body(&raw)
+    }
+
+    /// `GET /v1/agents/claimed`: the signed-in person's agents.
+    pub async fn claimed_agents(&self) -> Result<serde_json::Value> {
+        let raw = self
+            .client
+            .request_private_bounded(Method::GET, "/v1/agents/claimed", None, 1024 * 1024)
+            .await?;
+        json_body(&raw)
+    }
+
+    /// `POST /v1/agents/{account}/revoke`: the claiming person or a site
+    /// admin revokes an agent.
+    pub async fn revoke_agent(&self, account: &str) -> Result<serde_json::Value> {
+        identifier(account)?;
+        let raw = self
+            .client
+            .request_private_bounded(
+                Method::POST,
+                &format!("/v1/agents/{account}/revoke"),
+                Some(b"{}".to_vec()),
+                64 * 1024,
+            )
+            .await?;
+        json_body(&raw)
+    }
+
+    /// `GET /v1/admin/agents`: every agent account, for site admins.
+    pub async fn admin_agents(&self) -> Result<serde_json::Value> {
+        let raw = self
+            .client
+            .request_private_bounded(Method::GET, "/v1/admin/agents", None, 8 * 1024 * 1024)
+            .await?;
+        json_body(&raw)
+    }
+
     /// End the current session once; uncertainty never causes a replay.
     pub async fn sign_out(&self) -> Result<()> {
         self.client
@@ -633,4 +679,13 @@ impl Account<'_> {
             .await?;
         Ok(())
     }
+}
+
+fn json_body(raw: &RawResponse) -> Result<serde_json::Value> {
+    serde_json::from_slice(&raw.bytes).map_err(|_| Error::ResponseValidation {
+        status: raw.status,
+        field_path: "agent document".into(),
+        body: None,
+        request_id: None,
+    })
 }

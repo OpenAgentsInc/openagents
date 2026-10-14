@@ -221,6 +221,9 @@ pub struct ServeState {
     /// The decision dispatcher (#11225), present when `decisions` is
     /// configured.
     pub(crate) decisions: Option<Arc<crate::decision_dispatch::Dispatch>>,
+    /// Agents registering themselves (#11630), present when
+    /// `accounts.agents` is configured.
+    pub(crate) agents: Option<crate::agent_accounts::Agents>,
 }
 
 impl ServeState {
@@ -406,13 +409,29 @@ impl ServeState {
             })
             .transpose()
             .map_err(Trouble::Money)?;
-        let inference_book = config
+        let mut inference_book = config
             .inference
             .as_ref()
             .map(|_| crate::inference_public::Book::open(&config.registry))
             .transpose()
-            .map_err(Trouble::Money)?
-            .map(Mutex::new);
+            .map_err(Trouble::Money)?;
+        let agents = match config
+            .accounts
+            .as_ref()
+            .and_then(|accounts| accounts.agents.clone().zip(accounts.signup_tenant.clone()))
+        {
+            Some((signup, tenant)) => Some(
+                crate::agent_accounts::Agents::open(
+                    &config.registry,
+                    signup,
+                    tenant,
+                    inference_book.as_mut(),
+                )
+                .map_err(Trouble::Money)?,
+            ),
+            None => None,
+        };
+        let inference_book = inference_book.map(Mutex::new);
         let provider_keys = config
             .inference
             .as_ref()
@@ -501,6 +520,7 @@ impl ServeState {
             attempt_ids: AtomicU64::new(0),
             job_cancels: Mutex::new(HashMap::new()),
             decisions,
+            agents,
         });
         Ok(state)
     }
@@ -587,6 +607,10 @@ pub fn router(state: Arc<ServeState>) -> axum::Router {
     crate::subscriptions::resume(&state);
     router
         .layer(DefaultBodyLimit::max(body_max))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            crate::agent_accounts::limits,
+        ))
         .layer(middleware::from_fn(purchase_route))
         .layer(middleware::from_fn(crate::envelope::layer))
         .layer(middleware::from_fn_with_state(state.clone(), cors))
@@ -743,6 +767,9 @@ fn api_routes(state: &ServeState) -> Vec<(&'static str, MethodRouter<Arc<ServeSt
         {
             routes.extend(crate::budgets::routes());
         }
+    }
+    if state.agents.is_some() {
+        routes.extend(crate::agent_accounts::routes());
     }
     if state.config.accounts.is_some() {
         routes.extend(crate::accounts::routes());

@@ -276,6 +276,8 @@ struct Admitted {
     service: bool,
     /// The signed-in account a `sess_` session belongs to; `None` for a key.
     account: Option<String>,
+    /// The agent account a key belongs to (#11630).
+    agent: Option<String>,
 }
 
 /// The caller, or the refusal. A service tenant's key is metered and not
@@ -309,6 +311,7 @@ pub(crate) fn admit(state: &Arc<ServeState>, headers: &HeaderMap) -> Result<Call
         scope,
         service,
         account,
+        agent,
     } = if tenancy::sessions::is_session_bearer(token) {
         admit_session(state, config, headers, token)?
     } else {
@@ -323,6 +326,7 @@ pub(crate) fn admit(state: &Arc<ServeState>, headers: &HeaderMap) -> Result<Call
                 scopes,
                 scope: scope.clone(),
                 account,
+                agent,
             },
         )))
     });
@@ -414,6 +418,11 @@ fn admit_key(
         Err(_) if service => authenticated.tenant.clone(),
         Err(refusal) => return Err(refusal),
     };
+    let agent = if service {
+        None
+    } else {
+        crate::agent_accounts::agent_of_key(state, &authenticated.key_id)
+    };
     Ok(Admitted {
         tenant: authenticated.tenant,
         key_id: authenticated.key_id,
@@ -421,6 +430,7 @@ fn admit_key(
         scope,
         service,
         account: None,
+        agent,
     })
 }
 
@@ -476,6 +486,7 @@ fn admit_session(
         scope,
         service: false,
         account: Some(account),
+        agent: None,
     })
 }
 
@@ -590,9 +601,10 @@ async fn responses(
 async fn run_responses(
     state: &Arc<ServeState>,
     mut caller: Caller,
-    request: CreateResponse,
+    mut request: CreateResponse,
     events: bool,
 ) -> Result<Response, Response> {
+    crate::agent_accounts::default_output(state, &caller, &mut request);
     // Beside the workspace's own keys (`crate::inference_byok::own`, in
     // `admit`): the key owner's own linked computers (#11080).
     crate::inference_own_coder::attach(state, &mut caller, &request).await;
@@ -679,9 +691,10 @@ async fn chat(
 async fn run_chat(
     state: &Arc<ServeState>,
     mut caller: Caller,
-    request: CreateResponse,
+    mut request: CreateResponse,
     include_usage: bool,
 ) -> Result<Response, Response> {
+    crate::agent_accounts::default_output(state, &caller, &mut request);
     crate::inference_own_coder::attach(state, &mut caller, &request).await;
     let id = caller.request_id.clone();
     let gateway = match engine(state) {

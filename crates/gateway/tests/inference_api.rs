@@ -289,6 +289,7 @@ async fn deploy_with(pay: Pay, refuse: bool) -> Deployment {
             store: Default::default(),
             database_url_env: String::new(),
             import_files: false,
+            agents: None,
             anonymous: None,
         }),
         billing: None,

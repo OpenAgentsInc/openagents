@@ -647,6 +647,158 @@ pub struct Accounts {
     /// `postgres-import.json` so later starts never import stale files.
     #[serde(default)]
     pub import_files: bool,
+    /// Agents registering themselves (#11630, `crate::agent_accounts`):
+    /// `POST /v1/agents/register` with a proof of work, the sign-up
+    /// limits, and the agent free tier. Absent, agents can't register.
+    /// Needs `signup_tenant`.
+    #[serde(default)]
+    pub agents: Option<AgentSignup>,
+}
+
+/// Agent self-registration and what an agent account may use for free
+/// (#11630, docs/agents/self-registration.md). Every field has the
+/// default the doc names, so `{}` turns registration on with them.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AgentSignup {
+    /// Leading zero bits the proof of work needs (SHA-256).
+    #[serde(default = "agent_default_difficulty")]
+    pub difficulty_bits: u8,
+    /// Registrations one address may make a day (UTC).
+    #[serde(default = "agent_default_per_ip")]
+    pub per_ip_per_day: u32,
+    /// Registrations one network (an IPv4 /24, an IPv6 /48) may make a day.
+    #[serde(default = "agent_default_per_network")]
+    pub per_network_per_day: u32,
+    /// Registrations everyone together may make a day.
+    #[serde(default = "agent_default_per_day")]
+    pub per_day: u32,
+    /// The proxies in front of the gateway that each append to
+    /// `X-Forwarded-For`; the address that many entries from the right
+    /// is the caller's, and anything left of it is the caller's own text.
+    #[serde(default = "agent_default_hops")]
+    pub forwarded_hops: usize,
+    /// The free tier.
+    #[serde(default)]
+    pub free: AgentFree,
+    /// Buying credit over Lightning through the pay host's hosted
+    /// resource. Absent, agents can't pay yet and the `402` says so.
+    #[serde(default)]
+    pub credit: Option<AgentCredit>,
+}
+
+/// What an agent account gets free each day (UTC).
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AgentFree {
+    /// The only models free requests may use: small ones.
+    #[serde(default = "agent_default_models")]
+    pub models: Vec<String>,
+    /// Free model requests per agent per day.
+    #[serde(default = "agent_default_requests")]
+    pub requests_per_day: u32,
+    /// The most one agent's free requests may cost a day, micros of USD
+    /// at our price; each request holds its worst case.
+    #[serde(default = "agent_default_usd")]
+    pub usd_micros_per_day: u64,
+    /// The longest input a free request may carry, in characters.
+    #[serde(default = "agent_default_input")]
+    pub max_input_chars: u64,
+    /// The most output tokens a free request may ask for; an agent's
+    /// request that names none gets this many.
+    #[serde(default = "agent_default_output")]
+    pub max_output_tokens: u64,
+    /// Decision calls (`/v1/systemone`, `/v1/decisions`) per agent per day.
+    #[serde(default = "agent_default_decisions")]
+    pub decisions_per_day: u32,
+    /// Other API calls per agent per day.
+    #[serde(default = "agent_default_reads")]
+    pub reads_per_day: u32,
+    /// The circuit breaker: what every free agent together may cost a
+    /// day, micros of USD.
+    #[serde(default = "agent_default_global_usd")]
+    pub global_usd_micros_per_day: u64,
+    /// The circuit breaker on decision calls by every free agent together.
+    #[serde(default = "agent_default_global_decisions")]
+    pub global_decisions_per_day: u32,
+}
+
+impl Default for AgentFree {
+    fn default() -> Self {
+        Self {
+            models: agent_default_models(),
+            requests_per_day: agent_default_requests(),
+            usd_micros_per_day: agent_default_usd(),
+            max_input_chars: agent_default_input(),
+            max_output_tokens: agent_default_output(),
+            decisions_per_day: agent_default_decisions(),
+            reads_per_day: agent_default_reads(),
+            global_usd_micros_per_day: agent_default_global_usd(),
+            global_decisions_per_day: agent_default_global_decisions(),
+        }
+    }
+}
+
+/// Buying agent credit with Lightning: the pay host sells the hosted
+/// resource `buy_url` and, once paid, forwards the request to
+/// `upstream_url` (`POST /v1/agents/credit`) with a header it signs.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AgentCredit {
+    /// The pay host's header key, hex (`GET /v1/paid-key` on the pay front).
+    pub paid_key: String,
+    /// Where an agent buys a top-up, such as
+    /// `https://api.openagents.com/x/openagents-agent-credit`.
+    pub buy_url: String,
+    /// The upstream registered for the resource, exactly as registered.
+    pub upstream_url: String,
+    /// The price of one top-up, sats.
+    pub price_sats: u64,
+    /// The credit one paid top-up adds, micros of USD.
+    pub credit_usd_micros: u64,
+}
+
+fn agent_default_difficulty() -> u8 {
+    22
+}
+fn agent_default_per_ip() -> u32 {
+    5
+}
+fn agent_default_per_network() -> u32 {
+    20
+}
+fn agent_default_per_day() -> u32 {
+    500
+}
+fn agent_default_hops() -> usize {
+    1
+}
+fn agent_default_models() -> Vec<String> {
+    vec!["google/gemini-2.5-flash-lite".to_string()]
+}
+fn agent_default_requests() -> u32 {
+    20
+}
+fn agent_default_usd() -> u64 {
+    5_000
+}
+fn agent_default_input() -> u64 {
+    8_000
+}
+fn agent_default_output() -> u64 {
+    1_024
+}
+fn agent_default_decisions() -> u32 {
+    20
+}
+fn agent_default_reads() -> u32 {
+    500
+}
+fn agent_default_global_usd() -> u64 {
+    2_000_000
+}
+fn agent_default_global_decisions() -> u32 {
+    2_000
 }
 
 /// Where the account stores live.

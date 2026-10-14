@@ -17,6 +17,7 @@ mod account_export;
 mod account_memory;
 mod account_schedules;
 pub mod actors_host;
+mod agent_accounts;
 mod agent_ready;
 mod agent_work;
 mod agents_page;
@@ -552,6 +553,7 @@ pub fn router(config: Config) -> Router {
         .merge(account::routes())
         .merge(settings::routes())
         .merge(sign_in_keys::routes())
+        .merge(agent_accounts::routes())
         .merge(vault::routes())
         .merge(account_export::routes())
         .merge(projects::routes())

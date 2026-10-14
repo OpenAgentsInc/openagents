@@ -113,6 +113,10 @@ pub(crate) fn routes() -> Router<App> {
 
 /// Whether `path` is one of these routes (`crate::upstream::owned`).
 pub(crate) fn owns(path: &str) -> bool {
+    // The gateway's agent sign-up routes (#11630) share the prefix.
+    if path.starts_with("/v1/agents/") && path != "/v1/agents/actions" {
+        return false;
+    }
     ["/v1/threads", "/v1/computers", "/v1/agents"]
         .iter()
         .any(|prefix| {

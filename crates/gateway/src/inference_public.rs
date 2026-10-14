@@ -271,6 +271,56 @@ struct Saved {
     /// (reserved worst cases included until they settle).
     #[serde(default)]
     allowance: BTreeMap<String, DayMicros>,
+    /// Each agent account's free tier used today (#11630).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    agent_free: BTreeMap<String, AgentDay>,
+    /// Every agent's free tier together today: the circuit breaker.
+    #[serde(default)]
+    agent_free_all: AgentDay,
+    /// Each agent account's bought credit, micros of USD.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    agent_credit: BTreeMap<String, AgentCredit>,
+}
+
+/// One day of an agent's free tier: requests taken and their cost,
+/// micros of USD (worst cases included until they settle).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AgentDay {
+    pub day: u64,
+    pub requests: u32,
+    pub micros: u64,
+}
+
+impl AgentDay {
+    fn on(self, day: u64) -> Self {
+        if self.day == day {
+            self
+        } else {
+            Self {
+                day,
+                ..Self::default()
+            }
+        }
+    }
+}
+
+/// An agent's bought credit: what it can spend (holds taken out) and
+/// everything ever credited, which the credit journal is checked against.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AgentCredit {
+    pub balance: u64,
+    pub credited: u64,
+}
+
+/// Why an agent's free tier can't take a request.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AgentShort {
+    /// The day's free requests are used.
+    Requests,
+    /// The day's free budget can't cover this request's worst case.
+    Budget,
+    /// Every agent's free use together reached today's cap.
+    Global,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -439,6 +489,129 @@ impl Book {
         let _ = self.save();
     }
 
+    /// `account`'s free tier on `day`.
+    #[must_use]
+    pub fn agent_day(&self, account: &str, day: u64) -> AgentDay {
+        self.saved
+            .agent_free
+            .get(account)
+            .copied()
+            .unwrap_or_default()
+            .on(day)
+    }
+
+    /// Every agent's free tier together on `day`.
+    #[must_use]
+    pub fn agent_all(&self, day: u64) -> AgentDay {
+        self.saved.agent_free_all.on(day)
+    }
+
+    /// Takes one free request and holds `worst` from `account`'s free tier
+    /// and the global one, when both still cover it.
+    ///
+    /// # Errors
+    ///
+    /// What ran out.
+    pub fn reserve_agent_free(
+        &mut self,
+        account: &str,
+        worst: u64,
+        free: &crate::config::AgentFree,
+        day: u64,
+    ) -> Result<(), AgentShort> {
+        let mine = self.agent_day(account, day);
+        let all = self.agent_all(day);
+        if mine.requests >= free.requests_per_day {
+            return Err(AgentShort::Requests);
+        }
+        if all.micros.saturating_add(worst) > free.global_usd_micros_per_day {
+            return Err(AgentShort::Global);
+        }
+        if mine.micros.saturating_add(worst) > free.usd_micros_per_day {
+            return Err(AgentShort::Budget);
+        }
+        let take = |d: AgentDay| AgentDay {
+            day,
+            requests: d.requests.saturating_add(1),
+            micros: d.micros.saturating_add(worst),
+        };
+        self.saved.agent_free.insert(account.to_owned(), take(mine));
+        self.saved.agent_free_all = take(all);
+        self.save().map_err(|_| AgentShort::Global)
+    }
+
+    /// Replaces a free hold of `reserved` with what the request cost; a
+    /// request that failed before any answer (`gave_back`) returns its
+    /// count too.
+    pub fn settle_agent_free(
+        &mut self,
+        account: &str,
+        reserved: u64,
+        actual: u64,
+        day: u64,
+        gave_back: bool,
+    ) {
+        let fix = |d: &mut AgentDay| {
+            if d.day == day {
+                d.micros = d.micros.saturating_sub(reserved).saturating_add(actual);
+                if gave_back {
+                    d.requests = d.requests.saturating_sub(1);
+                }
+            }
+        };
+        if let Some(mine) = self.saved.agent_free.get_mut(account) {
+            fix(mine);
+        }
+        fix(&mut self.saved.agent_free_all);
+        let _ = self.save();
+    }
+
+    /// `account`'s bought credit.
+    #[must_use]
+    pub fn agent_credit(&self, account: &str) -> AgentCredit {
+        self.saved
+            .agent_credit
+            .get(account)
+            .copied()
+            .unwrap_or_default()
+    }
+
+    /// Holds `worst` from `account`'s credit, when it covers it.
+    pub fn reserve_agent_credit(&mut self, account: &str, worst: u64) -> bool {
+        let mut credit = self.agent_credit(account);
+        if worst == 0 || credit.balance < worst {
+            return false;
+        }
+        credit.balance -= worst;
+        self.saved.agent_credit.insert(account.to_owned(), credit);
+        self.save().is_ok()
+    }
+
+    /// Replaces a credit hold of `reserved` with what the request cost.
+    pub fn settle_agent_credit(&mut self, account: &str, reserved: u64, actual: u64) {
+        if let Some(credit) = self.saved.agent_credit.get_mut(account) {
+            credit.balance = credit
+                .balance
+                .saturating_add(reserved)
+                .saturating_sub(actual.min(reserved));
+            let _ = self.save();
+        }
+    }
+
+    /// Adds `micros` of bought credit to `account`.
+    ///
+    /// # Errors
+    ///
+    /// The book cannot be written.
+    pub fn add_agent_credit(&mut self, account: &str, micros: u64) -> Result<AgentCredit, String> {
+        let mut credit = self.agent_credit(account);
+        credit.balance = credit.balance.saturating_add(micros);
+        credit.credited = credit.credited.saturating_add(micros);
+        self.saved.agent_credit.insert(account.to_owned(), credit);
+        self.save()?;
+        Ok(credit)
+    }
+
     /// Counts a request against the key's rate cap; false when over it.
     fn admit_rate(&mut self, key: &str, per_minute: u32, now_ms: u64) -> bool {
         let times = self.recent.entry(key.to_owned()).or_default();
@@ -486,7 +659,7 @@ fn now_ms() -> u64 {
         .unwrap_or_default()
 }
 
-fn today() -> u64 {
+pub(crate) fn today() -> u64 {
     now_ms() / 86_400_000
 }
 
@@ -574,6 +747,8 @@ impl inference::run::Admitted for Held {
     fn payment(&self) -> inference::meter::Payment {
         match self.ticket.kind {
             Kind::Free | Kind::Allowance { .. } => inference::meter::Payment::Free,
+            Kind::Agent { credit: false, .. } => inference::meter::Payment::Free,
+            Kind::Agent { credit: true, .. } => inference::meter::Payment::Paid,
             Kind::Mine => inference::meter::Payment::OwnKey,
             Kind::Paid { .. } => inference::meter::Payment::Paid,
         }
@@ -600,6 +775,9 @@ pub(crate) struct Public {
     /// The signed-in account a `sess_` session acts for: the one whose
     /// free allowance it spends. `None` for an `oak_` key.
     pub account: Option<String>,
+    /// The agent account an agent's key belongs to (#11630): its free
+    /// tier and bought credit stand in for everything else.
+    pub agent: Option<String>,
 }
 
 fn limit(param: &str, message: impl Into<String>) -> ApiError {
@@ -686,7 +864,7 @@ pub(crate) struct Ticket {
     kind: Kind,
 }
 
-enum Kind {
+pub(crate) enum Kind {
     Free,
     /// On the signed-in account's free allowance (#11264).
     Allowance {
@@ -699,10 +877,38 @@ enum Kind {
     },
     /// Every attempt is on the caller's own key: no fee in P1.
     Mine,
+    /// An agent account's request (#11630): on its free tier, or held
+    /// from its bought credit.
+    Agent {
+        account: String,
+        day: u64,
+        reserved: u64,
+        priced: Vec<(String, money::Priced)>,
+        credit: bool,
+    },
     Paid {
         /// The answering model's hold settles; the rest are released.
         holds: Vec<(String, money::Hold)>,
     },
+}
+
+impl Kind {
+    /// An agent's request, on its free tier or held from its credit.
+    pub(crate) fn agent(
+        account: &str,
+        day: u64,
+        reserved: u64,
+        priced: Vec<(String, money::Priced)>,
+        credit: bool,
+    ) -> Self {
+        Self::Agent {
+            account: account.to_owned(),
+            day,
+            reserved,
+            priced,
+            credit,
+        }
+    }
 }
 
 /// One model's worst case: its price (rate card plus margin) and the
@@ -957,7 +1163,8 @@ pub(crate) async fn admit(
         .as_ref()
         .and_then(|inference| inference.public.as_ref())
         .and_then(|public| public.free_tier.as_ref());
-    if let Some(free) = free_tier
+    if public.agent.is_none()
+        && let Some(free) = free_tier
         && all_free(Some(free), prepared)
     {
         let mut book = book.lock().await;
@@ -1015,6 +1222,22 @@ pub(crate) async fn admit(
                 ));
             }
         }
+    }
+    // An agent account has its own free tier and its bought credit, and
+    // nothing else (#11630): no session allowance, no workspace balance.
+    if let Some(account) = &public.agent {
+        let kind = crate::agent_accounts::admit_inference(
+            state,
+            account,
+            request,
+            prepared,
+            request_id,
+            &public.tenant,
+            worst,
+            priced_models,
+        )
+        .await?;
+        return Ok(ticket(kind));
     }
     // The signed-in account's free allowance comes before its balance
     // (#11264): on the router models it lists, and on the models
@@ -1168,13 +1391,32 @@ pub(crate) async fn abandon(state: &ServeState, ticket: Ticket) {
                 }
             }
         }
+        Kind::Agent {
+            account,
+            day,
+            reserved,
+            credit,
+            ..
+        } => {
+            if let Some(book) = &state.inference_book {
+                let mut book = book.lock().await;
+                if *credit {
+                    book.settle_agent_credit(account, *reserved, 0);
+                } else {
+                    book.settle_agent_free(account, *reserved, 0, *day, true);
+                }
+            }
+        }
     }
     if let Some(book) = &state.inference_book {
         book.lock().await.record_charge(
             &ticket.request_id,
             Charge {
                 tenant: ticket.tenant.clone(),
-                free: matches!(ticket.kind, Kind::Free | Kind::Allowance { .. }),
+                free: matches!(
+                    ticket.kind,
+                    Kind::Free | Kind::Allowance { .. } | Kind::Agent { credit: false, .. }
+                ),
                 micros: Some(0),
                 settlement: "released",
             },
@@ -1210,6 +1452,46 @@ impl Drop for Settler {
 }
 
 async fn settle(state: &ServeState, ticket: Ticket, model: Option<String>, usage: Option<Usage>) {
+    if let Kind::Agent {
+        account,
+        day,
+        reserved,
+        priced,
+        credit,
+    } = &ticket.kind
+    {
+        let answering = model
+            .as_deref()
+            .and_then(|model| priced.iter().find(|(held, _)| held == model))
+            .or_else(|| priced.first());
+        let cost = usage
+            .as_ref()
+            .and_then(|usage| answering.and_then(|(_, priced)| priced.price.quote(usage).ok()))
+            .unwrap_or(*reserved);
+        if let Some(book) = &state.inference_book {
+            let mut book = book.lock().await;
+            if *credit {
+                book.settle_agent_credit(account, *reserved, cost);
+                book.add_spend(&ticket.key_id, cost, today());
+            } else {
+                book.settle_agent_free(account, *reserved, cost, *day, false);
+            }
+            book.record_charge(
+                &ticket.request_id,
+                Charge {
+                    tenant: ticket.tenant.clone(),
+                    free: !*credit,
+                    micros: Some(cost),
+                    settlement: if *credit {
+                        "agent_credit"
+                    } else {
+                        "agent_free"
+                    },
+                },
+            );
+        }
+        return;
+    }
     if let Kind::Allowance {
         account,
         day,

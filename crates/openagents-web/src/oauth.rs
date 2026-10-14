@@ -165,8 +165,27 @@ pub(crate) fn authorization_server(origin: &str) -> Value {
         "service_documentation": format!("{origin}/auth.md"),
         "agent_auth": {
             "skill": format!("{origin}/auth.md"),
-            "register_uri": register,
+            // Agents register themselves (#11630): no person, no email.
+            "register_uri": format!("{origin}/v1/agents/register"),
+            "identity_types_supported": ["anonymous"],
+            "anonymous": {
+                "credential_types_supported": ["api_key"],
+                "challenge_uri": format!("{origin}/v1/agents/challenge"),
+                "register_uri": format!("{origin}/v1/agents/register"),
+                "proof": "sha256 proof of work",
+            },
+            "claim_uri": format!("{origin}/v1/agents/claim"),
+            "claim_page": format!("{origin}/settings/agent-accounts"),
             "registration_methods": [
+                {
+                    "type": "anonymous",
+                    "challenge_uri": format!("{origin}/v1/agents/challenge"),
+                    "register_uri": format!("{origin}/v1/agents/register"),
+                    "credential_types": ["api_key"],
+                    "claim_uri": format!("{origin}/v1/agents/claim"),
+                    "approval": "None: the agent solves a small proof of work.",
+                    "documentation": format!("{origin}/auth.md"),
+                },
                 {
                     "type": "oauth2_dynamic_client_registration",
                     "registration_endpoint": register,
@@ -1273,9 +1292,23 @@ mod tests {
             server["agent_auth"]["skill"],
             "https://openagents.com/auth.md"
         );
+        // Agents register themselves, anonymously (#11630): the method
+        // Is It Agent Ready's authMd check looks for.
         assert_eq!(
             server["agent_auth"]["register_uri"],
-            server["registration_endpoint"]
+            "https://openagents.com/v1/agents/register"
+        );
+        assert_eq!(
+            server["agent_auth"]["identity_types_supported"],
+            json!(["anonymous"])
+        );
+        assert_eq!(
+            server["agent_auth"]["anonymous"]["credential_types_supported"],
+            json!(["api_key"])
+        );
+        assert_eq!(
+            server["agent_auth"]["claim_uri"],
+            "https://openagents.com/v1/agents/claim"
         );
         assert!(
             !server["agent_auth"]["registration_methods"]

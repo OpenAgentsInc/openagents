@@ -502,6 +502,15 @@ pub(crate) fn settings_content(
                     }
                     div class="oa-settings-control" { (action_link("Manage", crate::sign_in_keys::PAGE)) }
                 }
+                div class="oa-settings-row" {
+                    div class="oa-settings-text" {
+                        span class="oa-settings-label" { "Agents" }
+                        span class="oa-settings-hint" {
+                            "Agents that signed up on their own. Claim one to see it and turn it off."
+                        }
+                    }
+                    div class="oa-settings-control" { (action_link("Manage", crate::agent_accounts::PAGE)) }
+                }
             }
             section class="oa-settings-group" aria-labelledby="settings-memory" {
                 h2 #settings-memory { "Memory" }

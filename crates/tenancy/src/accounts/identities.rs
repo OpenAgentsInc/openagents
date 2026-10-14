@@ -308,6 +308,7 @@ impl super::Accounts {
                 label: profile.label(),
                 principals: vec![github_principal(profile.id)],
                 created: stamp.clone(),
+                agent: None,
             };
             let workspace = personal_workspace(&account, tenant, &stamp)?;
             store

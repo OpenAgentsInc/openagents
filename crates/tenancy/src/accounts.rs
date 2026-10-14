@@ -31,6 +31,7 @@
 //! calls is specified in
 //! `docs/decision-models/service/workspace-membership.md`, not implemented here.
 
+pub mod agents;
 pub mod commercial;
 pub mod identities;
 #[cfg(test)]
@@ -144,6 +145,10 @@ pub struct Account {
     pub principals: Vec<String>,
     /// When the account was created, as RFC 3339 in UTC.
     pub created: String,
+    /// Set when the account is an agent that registered itself
+    /// ([`agents`], #11630), never a person.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent: Option<agents::Agent>,
 }
 
 /// The join between an account and a workspace: the record every
@@ -716,6 +721,8 @@ pub enum Refusal {
         account: String,
         provider: &'static str,
     },
+    /// An agent registration, claim, or revocation was refused.
+    Agent(agents::AgentRefusal),
 }
 
 impl std::fmt::Display for Refusal {
@@ -828,6 +835,7 @@ impl std::fmt::Display for Refusal {
                 f,
                 "this account already has a different {provider} account linked"
             ),
+            Self::Agent(refusal) => write!(f, "{refusal}"),
         }
     }
 }
@@ -1339,6 +1347,7 @@ impl Accounts {
                 label: label.to_string(),
                 principals: principals.to_vec(),
                 created: crate::registry::now_utc(),
+                agent: None,
             };
             store.accounts.insert(account.id.clone(), account.clone());
             Ok(account)
