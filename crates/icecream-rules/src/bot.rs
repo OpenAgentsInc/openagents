@@ -5,7 +5,7 @@
 use crate::game::{Game, Input, Tool};
 use crate::geom::{V2, first_hit};
 use crate::man::ManState;
-use crate::tuning::{FART_RADIUS, PLAYER_RADIUS};
+use crate::tuning::PLAYER_RADIUS;
 
 #[derive(Clone, Debug, Default)]
 pub struct Bot {
@@ -74,7 +74,7 @@ impl Bot {
             input.sprint = man.state == ManState::Chase && !at_door;
             if seen {
                 input.aim = to.normalized();
-                if distance < FART_RADIUS - 0.8 && player.farts > 0 {
+                if distance < game.tuning.fart_radius - 0.8 && player.farts > 0 {
                     input.select = Some(Tool::Fart);
                     input.fire = true;
                 } else if player.fudge > 0 {

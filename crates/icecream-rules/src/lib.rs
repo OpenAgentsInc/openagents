@@ -18,6 +18,7 @@ pub use game::{Event, Game, Input, Options, Prompt, RunCard, Status, Tool};
 pub use geom::{V2, v};
 pub use layout::{House, Module, Pickup};
 pub use man::{Man, ManState};
+pub use tuning::Tuning;
 
 /// Steps a second.
 pub const HZ: u32 = 30;

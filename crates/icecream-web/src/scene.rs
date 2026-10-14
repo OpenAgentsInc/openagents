@@ -325,11 +325,9 @@ pub fn room(house: &House, index: usize) -> Mesh {
 
 /// A room's furniture in world space.
 fn props_of(house: &House, index: usize) -> Vec<(PropKind, Block)> {
-    let room = &house.rooms[index];
-    let c = centre(room.cell);
-    room.module
-        .def()
-        .props
+    let c = centre(house.rooms[index].cell);
+    house
+        .props(index)
         .iter()
         .map(|p| {
             (

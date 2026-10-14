@@ -15678,6 +15678,373 @@
       ]
     },
     {
+      "name": "game",
+      "summary": "Game Lab: change games on this computer by editing their settings (open, play, edit, versions, compare, notes).",
+      "children": [
+        {
+          "name": "list",
+          "leaf": {
+            "path": [
+              "game",
+              "list"
+            ],
+            "usage": [
+              "list"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "list"
+                  }
+                ]
+              }
+            ],
+            "summary": "The games.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "open",
+          "leaf": {
+            "path": [
+              "game",
+              "open"
+            ],
+            "usage": [
+              "open [GAME] [--version N]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "open"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "GAME",
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "version",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Its settings, bot-run stats and versions.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "play",
+          "leaf": {
+            "path": [
+              "game",
+              "play"
+            ],
+            "usage": [
+              "play [GAME] [--version N]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "play"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "GAME",
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "version",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "A link to play a version.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "edit",
+          "leaf": {
+            "path": [
+              "game",
+              "edit"
+            ],
+            "usage": [
+              "edit [GAME] --patch PATCH --summary TEXT [--version N] [--author NAME]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "edit"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "GAME",
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "patch",
+                    "value": "PATCH",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "summary",
+                    "value": "TEXT",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "version",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "author",
+                    "value": "NAME",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "A JSON Patch (or a file with one) on its game.v1 document, checked with its rules and 24 seeded bot runs before it's saved; a refused edit says why.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "versions",
+          "leaf": {
+            "path": [
+              "game",
+              "versions"
+            ],
+            "usage": [
+              "versions [GAME]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "versions"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "GAME",
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Who made each version and what it changed.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "compare",
+          "leaf": {
+            "path": [
+              "game",
+              "compare"
+            ],
+            "usage": [
+              "compare [GAME] [--a N] [--b N]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "compare"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "GAME",
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "a",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "b",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Two versions: what changed and what the bot runs measured (version 1 is the original).",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "notes",
+          "leaf": {
+            "path": [
+              "game",
+              "notes"
+            ],
+            "usage": [
+              "notes [GAME] [--version N] [--text TEXT] [--seconds S] [--room ROOM]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "notes"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "GAME",
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "version",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "text",
+                    "value": "TEXT",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "seconds",
+                    "value": "S",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "room",
+                    "value": "ROOM",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "The notes on it, or save one at a time and place.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        }
+      ],
+      "options": [
+        {
+          "kind": "option",
+          "name": "version",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "patch",
+          "value": "PATCH",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "summary",
+          "value": "TEXT",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "author",
+          "value": "NAME",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "a",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "b",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "text",
+          "value": "TEXT",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "seconds",
+          "value": "S",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "room",
+          "value": "ROOM",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        }
+      ]
+    },
+    {
       "name": "scratch",
       "summary": "Make and print this session's durable scratch directory, under ~/.openagents/scratch, for files that must outlive a reboot.",
       "leaf": {

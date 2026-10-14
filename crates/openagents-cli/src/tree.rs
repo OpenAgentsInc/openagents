@@ -242,6 +242,7 @@ pub fn help() -> Vec<GroupHelp<'static>> {
         ),
         group("lease", Some(crate::lease::USAGE), crate::lease::EFFECTS),
         group("lab", Some(crate::lab::USAGE), crate::lab::EFFECTS),
+        group("game", Some(crate::game::USAGE), crate::game::EFFECTS),
         group(
             "scratch",
             Some(crate::scratch::USAGE),

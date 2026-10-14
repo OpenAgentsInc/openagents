@@ -21,6 +21,65 @@ pub struct Options {
     /// A still picture: the Ice Cream Man in the bedroom, facing you
     /// (captures).
     pub portrait: bool,
+    /// Game Lab's version of the game (`docs/game-lab/README.md`): its
+    /// numbers, `t.NAME=VALUE` (`icecream_rules::tuning::FIELDS`), played
+    /// as data without building the game again.
+    pub tune: Vec<(String, String)>,
+    /// Its words, `c.NAME=TEXT` (percent-encoded): title, tagline,
+    /// escaped_line, scooped_line.
+    pub words: Vec<(String, String)>,
+}
+
+/// `%XX` and `+` decoded; a bad escape is kept as it is.
+fn decode(text: &str) -> String {
+    let bytes = text.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'%' if i + 2 < bytes.len() => {
+                let hex = |b: u8| (b as char).to_digit(16);
+                match (hex(bytes[i + 1]), hex(bytes[i + 2])) {
+                    (Some(hi), Some(lo)) => {
+                        out.push((hi * 16 + lo) as u8);
+                        i += 3;
+                        continue;
+                    }
+                    _ => out.push(b'%'),
+                }
+            }
+            b'+' => out.push(b' '),
+            b => out.push(b),
+        }
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+impl Options {
+    /// The run's numbers: the defaults with the fragment's changes (a
+    /// value out of bounds is left at its default).
+    #[must_use]
+    pub fn tuning(&self) -> icecream_rules::Tuning {
+        let mut tuning = icecream_rules::Tuning::default();
+        for (name, value) in &self.tune {
+            if let Ok(value) = value.parse::<f64>() {
+                let _ = tuning.set(name, value);
+            }
+        }
+        tuning
+    }
+
+    /// A word the fragment changed, by name.
+    #[must_use]
+    pub fn word(&self, name: &str) -> Option<&str> {
+        self.words
+            .iter()
+            .rev()
+            .find(|(n, _)| n == name)
+            .map(|(_, text)| text.as_str())
+            .filter(|text| !text.trim().is_empty())
+    }
 }
 
 impl Options {
@@ -47,7 +106,13 @@ impl Options {
                     options.portrait = true;
                     options.skip = true;
                 }
-                _ => {}
+                _ => {
+                    if let Some(name) = key.strip_prefix("t.") {
+                        options.tune.push((name.to_owned(), value.to_owned()));
+                    } else if let Some(name) = key.strip_prefix("c.") {
+                        options.words.push((name.to_owned(), decode(value)));
+                    }
+                }
             }
         }
         options
@@ -70,5 +135,23 @@ mod tests {
         assert!(!none.skip);
         assert_eq!(Options::parse("#speed=99").speed, 8);
         assert_eq!(Options::parse("#seed=x").seed, None);
+    }
+
+    #[test]
+    fn a_game_lab_version_comes_as_data() {
+        let o = Options::parse(
+            "#seed=7&t.man_chase=4.48&t.extra_closets=2&t.unlock=1e9&c.title=The%20Slow%20Man&c.tagline=",
+        );
+        let t = o.tuning();
+        assert!((t.man_chase - 4.48).abs() < 1e-6);
+        assert_eq!(t.extra_closets, 2);
+        assert_eq!(
+            t.unlock,
+            icecream_rules::tuning::UNLOCK,
+            "out of bounds stays put"
+        );
+        assert_eq!(o.word("title"), Some("The Slow Man"));
+        assert_eq!(o.word("tagline"), None);
+        assert_eq!(decode("a%2Cb+c%zz"), "a,b c%zz");
     }
 }

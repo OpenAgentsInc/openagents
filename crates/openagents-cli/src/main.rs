@@ -49,6 +49,7 @@ mod ext_eval_init;
 mod ext_run;
 #[cfg(feature = "verse")]
 mod film;
+mod game;
 mod github_verbs;
 mod gym;
 mod host_observers;
@@ -234,6 +235,8 @@ Coder:
     film_help!(),
     "  lab          Video Lab: see and edit films, shots and scenes on this computer
                (open, show, frame, edit, versions, render, compare, notes).
+  game         Game Lab: change games on this computer by editing their settings
+               (open, play, edit, versions, compare, notes).
   scratch      Make and print this session's durable scratch directory, under
                ~/.openagents/scratch, for files that must outlive a reboot.
   browser      Run a command beside a Chrome of its own: a fresh profile and
@@ -487,6 +490,7 @@ fn main() -> ExitCode {
         "sales" => sales::run(&output, &rest),
         "customer" => customer::run(&output, &rest),
         "lab" => lab::run(&output, &rest),
+        "game" => game::run(&output, &rest),
         "scratch" => scratch::run(&output, &rest),
         #[cfg(feature = "verse")]
         "film" => film::run(&output, &rest),

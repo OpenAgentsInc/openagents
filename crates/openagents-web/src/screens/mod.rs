@@ -139,6 +139,18 @@ pub(crate) const NOT_SCREENS: &[(&str, &str)] = &[
         "a Video Lab card in a chat, refreshed while it renders",
     ),
     (
+        "/chat/{id}/game/card",
+        "a Game Lab card in a chat, refreshed while the game gets ready",
+    ),
+    (
+        "/chat/game/build/{file}",
+        "the game's code for a Game Lab card",
+    ),
+    (
+        "/chat/{id}/game/play",
+        "a Game Lab version of a game, played inside a chat's card",
+    ),
+    (
         "/chat/{id}/lab/media/{*path}",
         "a Video Lab render or frame, played inside a chat's card",
     ),

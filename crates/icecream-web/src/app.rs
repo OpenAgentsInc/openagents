@@ -430,7 +430,7 @@ impl App {
 
     fn new_run(&mut self) {
         self.seed = self.options.seed.unwrap_or_else(new_seed);
-        self.game = Game::new(self.seed, self.rule_options());
+        self.game = Game::tuned(self.seed, self.rule_options(), self.options.tuning());
         if self.options.no_farts {
             self.game.player.farts = 0;
         }
@@ -1043,7 +1043,7 @@ impl App {
         }
         // Fart clouds: puffs that swell, then shrink away.
         for (n, cloud) in game.clouds.iter().enumerate() {
-            let life = icecream_rules::tuning::CLOUD_LIFE;
+            let life = game.tuning.cloud_life;
             let grow = (cloud.age / 0.35).min(1.0);
             let fade = ((life - cloud.age) / 0.6).clamp(0.0, 1.0);
             for i in 0..8 {
@@ -1237,8 +1237,13 @@ impl App {
         ];
         match self.phase {
             Phase::Title => Some(Card {
-                title: copy::TITLE.to_owned(),
-                lines: vec![copy::TAGLINE.to_owned()],
+                title: self.options.word("title").unwrap_or(copy::TITLE).to_owned(),
+                lines: vec![
+                    self.options
+                        .word("tagline")
+                        .unwrap_or(copy::TAGLINE)
+                        .to_owned(),
+                ],
                 note: Some(copy::NOTE.to_owned()),
                 buttons: vec![
                     (copy::HOW_TO_PLAY.to_owned(), Action::Tour, false),
@@ -1260,9 +1265,21 @@ impl App {
             Phase::Over => {
                 let run = self.game.run_card();
                 let (title, line, again) = if run.escaped {
-                    (copy::ESCAPED, copy::ESCAPED_LINE, copy::PLAY_AGAIN)
+                    (
+                        copy::ESCAPED,
+                        self.options
+                            .word("escaped_line")
+                            .unwrap_or(copy::ESCAPED_LINE),
+                        copy::PLAY_AGAIN,
+                    )
                 } else {
-                    (copy::SCOOPED, copy::SCOOPED_LINE, copy::TRY_AGAIN)
+                    (
+                        copy::SCOOPED,
+                        self.options
+                            .word("scooped_line")
+                            .unwrap_or(copy::SCOOPED_LINE),
+                        copy::TRY_AGAIN,
+                    )
                 };
                 let mut lines = vec![line.to_owned()];
                 lines.extend(copy::card_lines(&run));
@@ -1285,7 +1302,9 @@ impl App {
         let player = &game.player;
         let playing = matches!(self.phase, Phase::Playing | Phase::Menu | Phase::Ending(_));
         self.hud.set_playing(playing);
-        self.hud.health(player.health);
+        // The bar is a share of full health, whatever full is in this version.
+        self.hud
+            .health(player.health * 100.0 / game.tuning.max_health.max(1.0));
         self.hud.keys(player.keys);
         self.hud
             .hot_bar(player.tool, player.fudge, player.farts, player.keys);
@@ -1297,7 +1316,7 @@ impl App {
             None
         };
         let unlock = (prompt == Some(Prompt::Unlock) && player.unlock > 0.0)
-            .then(|| player.unlock / icecream_rules::tuning::UNLOCK);
+            .then(|| player.unlock / game.tuning.unlock.max(1e-3));
         let text = match (prompt, unlock) {
             (Some(Prompt::Unlock), Some(_)) => Some(copy::UNLOCKING),
             (Some(p), _) => Some(copy::prompt(p)),
@@ -1361,6 +1380,17 @@ impl App {
             ("data-hidden", game.player.hidden.is_some().to_string()),
             ("data-clouds", game.clouds.len().to_string()),
             ("data-spotted", self.spotted.to_string()),
+            // Game Lab's "note at this time and place".
+            ("data-seconds", format!("{:.1}", game.seconds())),
+            (
+                "data-room",
+                game.house.rooms[icecream_rules::layout::index(icecream_rules::layout::cell_of(
+                    game.player.pos,
+                ))]
+                .module
+                .name()
+                .to_owned(),
+            ),
             (
                 "data-prompt",
                 game.prompt()
@@ -1517,7 +1547,7 @@ pub fn start() {
         meshes,
         hud,
         sound: Sound::new(),
-        game: Game::new(seed, RuleOptions { man: !options.calm }),
+        game: Game::tuned(seed, RuleOptions { man: !options.calm }, options.tuning()),
         options,
         bot: None,
         seed,

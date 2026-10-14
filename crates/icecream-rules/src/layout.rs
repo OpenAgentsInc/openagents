@@ -155,6 +155,9 @@ const fn usable(kind: PropKind, x0: f32, z0: f32, x1: f32, z1: f32, h: f32, at: 
 pub struct ModuleDef {
     pub props: &'static [Prop],
     pub key_slots: &'static [V2],
+    /// Where an extra closet fits, clear of the lanes, the furniture and
+    /// the key spots, when a house asks for more hiding spots.
+    pub spare_closet: Option<Prop>,
 }
 
 use PropKind as K;
@@ -169,6 +172,7 @@ static BEDROOM: ModuleDef = ModuleDef {
         prop(K::Plant, 3.6, 3.6, 4.4, 4.4, 1.2),
     ],
     key_slots: &[v(3.6, 0.0), v(0.0, 3.6), v(-3.4, 0.0), v(3.0, -1.6)],
+    spare_closet: Some(usable(K::Closet, 2.0, 3.6, 3.4, IN, 2.4, v(2.7, 2.9))),
 };
 
 static KITCHEN: ModuleDef = ModuleDef {
@@ -179,6 +183,7 @@ static KITCHEN: ModuleDef = ModuleDef {
         prop(K::Counter, -IN, 2.0, -4.0, IN, 1.0),
     ],
     key_slots: &[v(0.0, -3.8), v(3.2, -2.8), v(-3.6, 0.0), v(0.0, 3.6)],
+    spare_closet: Some(usable(K::Closet, -3.9, 3.6, -2.4, IN, 2.4, v(-3.1, 2.9))),
 };
 
 static LIVING_ROOM: ModuleDef = ModuleDef {
@@ -190,6 +195,7 @@ static LIVING_ROOM: ModuleDef = ModuleDef {
         prop(K::Plant, -4.4, 3.6, -3.6, 4.4, 1.2),
     ],
     key_slots: &[v(0.0, -3.6), v(2.6, 3.0), v(-3.6, 0.0), v(3.6, 0.0)],
+    spare_closet: None,
 };
 
 static BATHROOM: ModuleDef = ModuleDef {
@@ -200,6 +206,7 @@ static BATHROOM: ModuleDef = ModuleDef {
         usable(K::Closet, -IN, -4.6, -3.6, -2.4, 2.2, v(-2.9, -3.5)),
     ],
     key_slots: &[v(3.2, -2.4), v(0.0, 3.6), v(-3.6, 0.0), v(2.4, 2.6)],
+    spare_closet: Some(usable(K::Closet, 1.8, 3.6, 3.4, IN, 2.2, v(2.6, 2.9))),
 };
 
 static LAUNDRY: ModuleDef = ModuleDef {
@@ -211,6 +218,7 @@ static LAUNDRY: ModuleDef = ModuleDef {
         prop(K::Shelf, -IN, -IN, -2.0, -4.2, 1.8),
     ],
     key_slots: &[v(3.0, -2.6), v(0.0, -3.6), v(3.6, 0.0), v(-3.0, -2.8)],
+    spare_closet: None,
 };
 
 static HALLWAY: ModuleDef = ModuleDef {
@@ -221,6 +229,7 @@ static HALLWAY: ModuleDef = ModuleDef {
         prop(K::Pillar, 1.7, 1.7, IN, IN, WALL_HEIGHT),
     ],
     key_slots: &[v(0.0, -3.8), v(3.8, 0.0), v(0.0, 3.8), v(-3.8, 0.0)],
+    spare_closet: None,
 };
 
 static STAIRWELL: ModuleDef = ModuleDef {
@@ -230,6 +239,7 @@ static STAIRWELL: ModuleDef = ModuleDef {
         prop(K::Plant, 3.6, 3.6, 4.4, 4.4, 1.2),
     ],
     key_slots: &[v(-3.0, -3.0), v(0.0, 3.6), v(3.6, 0.0), v(2.4, 2.6)],
+    spare_closet: None,
 };
 
 static FREEZER_ROOM: ModuleDef = ModuleDef {
@@ -240,6 +250,7 @@ static FREEZER_ROOM: ModuleDef = ModuleDef {
         usable(K::Fridge, 3.6, 3.6, IN, IN, 2.4, v(2.9, 2.9)),
     ],
     key_slots: &[v(3.0, -2.2), v(-3.0, 2.2), v(0.0, -3.8), v(3.8, 0.0)],
+    spare_closet: None,
 };
 
 /// A grid cell: column and row.
@@ -330,6 +341,9 @@ pub struct House {
     pub spawn_room: usize,
     pub man_start: V2,
     pub front: FrontDoor,
+    /// Furniture added beyond the rooms' modules (spare closets), by room,
+    /// in room space.
+    pub extras: Vec<(usize, Prop)>,
 }
 
 /// The centre of a cell in world space.
@@ -380,6 +394,57 @@ fn opposite(side: Side) -> Side {
 }
 
 impl House {
+    /// The house for `seed` with `extra` more closets to hide in (up to
+    /// one in each room whose module has room for one): the same house
+    /// otherwise.
+    #[must_use]
+    pub fn tuned(seed: u64, extra: usize) -> Self {
+        let mut house = Self::new(seed);
+        if extra == 0 {
+            return house;
+        }
+        let mut rooms: Vec<usize> = (0..house.rooms.len())
+            .filter(|i| house.rooms[*i].module.def().spare_closet.is_some())
+            .collect();
+        // Its own stream, so the rest of the house stays as it was.
+        let mut rng = Rng::new(seed ^ 0x5eed_c105_e7c1_05e7);
+        rng.shuffle(&mut rooms);
+        for room in rooms.into_iter().take(extra) {
+            let Some(p) = house.rooms[room].module.def().spare_closet else {
+                continue;
+            };
+            let c = centre(house.rooms[room].cell);
+            let block = Block {
+                min: c + p.min,
+                max: c + p.max,
+                height: p.height,
+            };
+            house.blocks.push(block);
+            if let Some(at) = p.use_at {
+                house.closets.push(Spot {
+                    at: c + at,
+                    block,
+                    room,
+                });
+            }
+            house.extras.push((room, p));
+        }
+        house
+    }
+
+    /// A room's furniture in room space: its module's and any extras.
+    #[must_use]
+    pub fn props(&self, room: usize) -> Vec<Prop> {
+        let mut props = self.rooms[room].module.def().props.to_vec();
+        props.extend(
+            self.extras
+                .iter()
+                .filter(|(r, _)| *r == room)
+                .map(|(_, p)| *p),
+        );
+        props
+    }
+
     /// Builds the house for `seed`.
     #[must_use]
     pub fn new(seed: u64) -> Self {
@@ -469,6 +534,7 @@ impl House {
                 at: V2::ZERO,
                 stand: V2::ZERO,
             },
+            extras: Vec::new(),
         };
         let distance = house.distances(spawn_cell);
 
@@ -721,8 +787,9 @@ mod tests {
     fn every_module_keeps_its_lanes_and_spots_reachable() {
         for module in Module::ALL {
             let def = module.def();
-            let blocks: Vec<Block> = def
-                .props
+            // A spare closet, when a house asks for one, keeps them too.
+            let props: Vec<Prop> = def.props.iter().copied().chain(def.spare_closet).collect();
+            let blocks: Vec<Block> = props
                 .iter()
                 .map(|p| Block {
                     min: p.min,
@@ -731,7 +798,7 @@ mod tests {
                 })
                 .collect();
             let mut spots: Vec<V2> = def.key_slots.to_vec();
-            spots.extend(def.props.iter().filter_map(|p| p.use_at));
+            spots.extend(props.iter().filter_map(|p| p.use_at));
             spots.extend([v(0.0, -4.8), v(4.8, 0.0), v(0.0, 4.8), v(-4.8, 0.0)]);
             for spot in spots {
                 assert!(
@@ -739,7 +806,7 @@ mod tests {
                     "{module:?}: {spot:?} is blocked from the centre"
                 );
             }
-            for p in def.props {
+            for p in &props {
                 assert!(p.min.x >= -IN && p.max.x <= IN && p.min.z >= -IN && p.max.z <= IN);
                 if let Some(at) = p.use_at {
                     let block = Block {
@@ -851,5 +918,46 @@ mod tests {
             }
         }
         assert!(fridges >= 20 && closets >= 20);
+    }
+
+    #[test]
+    fn extra_closets_add_hiding_spots_and_keep_the_house() {
+        for seed in 0..30 {
+            let plain = House::new(seed);
+            let house = House::tuned(seed, 2);
+            assert_eq!(house.closets.len(), plain.closets.len() + 2, "seed {seed}");
+            assert_eq!(house.extras.len(), 2);
+            assert_eq!(house.keys, plain.keys);
+            assert_eq!(house.front, plain.front);
+            assert_eq!(House::tuned(seed, 0), plain);
+            for spot in &house.closets {
+                assert!(house.open(spot.at, BODY), "seed {seed}: {spot:?}");
+            }
+            for target in house.keys.iter().chain([&house.front.stand]) {
+                let route = house.route(house.spawn, *target, BODY);
+                let mut last = house.spawn;
+                for point in &route {
+                    assert!(
+                        first_hit(&house.blocks, last, *point, BODY - 0.05, 0.0).is_none(),
+                        "seed {seed}: {last:?} to {point:?}"
+                    );
+                    last = *point;
+                }
+            }
+            let (room, _) = house.extras[0];
+            assert_eq!(
+                house.props(room).len(),
+                house.rooms[room].module.def().props.len() + 1
+            );
+        }
+        // Every house has room for the most a document may ask for.
+        for seed in 0..100 {
+            let house = House::tuned(seed, crate::tuning::MAX_EXTRA_CLOSETS as usize);
+            assert_eq!(
+                house.extras.len(),
+                crate::tuning::MAX_EXTRA_CLOSETS as usize,
+                "seed {seed}"
+            );
+        }
     }
 }

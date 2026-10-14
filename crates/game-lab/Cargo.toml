@@ -1,0 +1,18 @@
+[package]
+name = "game-lab"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Game Lab: change a game by talking. Versioned game documents (game.v1), checked edits with seeded bot runs, and the local service the web chat's game tools call."
+
+[dependencies]
+icecream-rules = { path = "../icecream-rules" }
+icecream-web = { path = "../icecream-web" }
+axum = "0.8"
+serde_json = "1"
+sha2 = "0.10"
+tokio = { version = "1", features = ["fs", "macros", "net", "rt-multi-thread"] }
+
+[lints]
+workspace = true

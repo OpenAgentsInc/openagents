@@ -90,3 +90,5 @@ Each step says what you should see. Start signed out.
   as the `oa_cloud_session` cookie to act signed in.
   With `start --lab` (Video Lab, docs/video-lab/mvp.md) the gateway is on
   8790 instead, since the film review page holds 8791.
+  With `start --lab` Game Lab runs too, on 8793 (docs/game-lab/mvp.md);
+  `start --game` runs Game Lab alone.

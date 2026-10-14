@@ -179,6 +179,8 @@ pub struct Game {
     pub player: Player,
     pub man: Man,
     pub options: Options,
+    /// The numbers this run plays by.
+    pub tuning: Tuning,
     pub shots: Vec<Shot>,
     pub clouds: Vec<Cloud>,
     /// Which of the house's keys were picked up.
@@ -197,11 +199,11 @@ pub struct Game {
 }
 
 /// The fan of a volley: each pellet's turn, as cosine and sine.
-fn fan() -> [(f32, f32); VOLLEY_PELLETS] {
+fn fan(spread: f32) -> [(f32, f32); VOLLEY_PELLETS] {
     let mut turns = [(1.0, 0.0); VOLLEY_PELLETS];
     let middle = (VOLLEY_PELLETS / 2) as f32;
     for (i, turn) in turns.iter_mut().enumerate() {
-        let degrees = (i as f32 - middle) * VOLLEY_SPREAD;
+        let degrees = (i as f32 - middle) * spread;
         let radians = degrees.to_radians();
         *turn = (radians.cos(), radians.sin());
     }
@@ -211,21 +213,27 @@ fn fan() -> [(f32, f32); VOLLEY_PELLETS] {
 impl Game {
     #[must_use]
     pub fn new(seed: u64, options: Options) -> Self {
-        let house = House::new(seed);
-        let man = Man::new(house.man_start, seed);
+        Self::tuned(seed, options, Tuning::default())
+    }
+
+    /// A run with its numbers from `tuning` (Game Lab's versions).
+    #[must_use]
+    pub fn tuned(seed: u64, options: Options, tuning: Tuning) -> Self {
+        let house = House::tuned(seed, tuning.extra_closets as usize);
+        let man = Man::tuned(house.man_start, seed, tuning);
         let player = Player {
             pos: house.spawn,
             height: 0.0,
             vy: 0.0,
             facing: v(0.0, -1.0),
-            health: MAX_HEALTH,
+            health: tuning.max_health,
             tool: Tool::Fudge,
-            fudge: FUDGE_START,
-            farts: FARTS_START,
+            fudge: tuning.fudge_start,
+            farts: tuning.farts_start,
             keys: 0,
             hidden: None,
             shove: V2::ZERO,
-            since_hit: REGEN_AFTER,
+            since_hit: tuning.regen_after,
             fire_wait: 0.0,
             unlock: 0.0,
             moving: false,
@@ -238,6 +246,7 @@ impl Game {
             player,
             man,
             options,
+            tuning,
             shots: Vec::new(),
             clouds: Vec::new(),
             status: Status::Playing,
@@ -294,7 +303,7 @@ impl Game {
             return Some((Prompt::Leave, 0));
         }
         let p = self.player.pos;
-        if p.distance(self.house.front.stand) <= REACH {
+        if p.distance(self.house.front.stand) <= self.tuning.reach {
             let prompt = if self.player.keys as usize >= self.house.keys.len() {
                 Prompt::Unlock
             } else {
@@ -305,13 +314,13 @@ impl Game {
         let mut best: Option<(Prompt, usize, f32)> = None;
         for (i, (spot, _)) in self.house.fridges.iter().enumerate() {
             let d = p.distance(spot.at);
-            if !self.opened[i] && d <= REACH && best.is_none_or(|b| d < b.2) {
+            if !self.opened[i] && d <= self.tuning.reach && best.is_none_or(|b| d < b.2) {
                 best = Some((Prompt::Fridge, i, d));
             }
         }
         for (i, spot) in self.house.closets.iter().enumerate() {
             let d = p.distance(spot.at);
-            if d <= REACH && best.is_none_or(|b| d < b.2) {
+            if d <= self.tuning.reach && best.is_none_or(|b| d < b.2) {
                 best = Some((Prompt::Hide, i, d));
             }
         }
@@ -353,12 +362,13 @@ impl Game {
             self.step_man();
         }
         self.clouds.iter_mut().for_each(|c| c.age += DT);
-        self.clouds.retain(|c| c.age < CLOUD_LIFE);
+        self.clouds.retain(|c| c.age < self.tuning.cloud_life);
 
         let player = &mut self.player;
         player.since_hit += DT;
-        if player.since_hit >= REGEN_AFTER {
-            player.health = (player.health + REGEN_RATE * DT).min(MAX_HEALTH);
+        if player.since_hit >= self.tuning.regen_after {
+            player.health =
+                (player.health + self.tuning.regen_rate * DT).min(self.tuning.max_health);
         }
     }
 
@@ -374,7 +384,11 @@ impl Game {
         let walk = input.walk.clamped(1.0);
         player.moving = walk.length() > 0.1;
         player.sprinting = player.moving && input.sprint;
-        let speed = if player.sprinting { SPRINT } else { WALK };
+        let speed = if player.sprinting {
+            self.tuning.sprint
+        } else {
+            self.tuning.walk
+        };
         let delta = walk * (speed * DT) + player.shove * DT;
         player.pos = slide(blocks, player.pos, delta, PLAYER_RADIUS, player.height);
         player.shove = player.shove * (1.0 - SHOVE_FADE * DT).max(0.0);
@@ -382,14 +396,14 @@ impl Game {
             player.facing = walk.normalized();
         }
         if player.sprinting {
-            self.noises.push((player.pos, SPRINT_NOISE));
+            self.noises.push((player.pos, self.tuning.sprint_noise));
         }
         if jumped && player.height <= 0.0 {
-            player.vy = JUMP_SPEED;
+            player.vy = self.tuning.jump_speed;
             self.events.push(Event::Jumped);
         }
         player.height += player.vy * DT;
-        player.vy -= GRAVITY * DT;
+        player.vy -= self.tuning.gravity * DT;
         if player.height <= 0.0 {
             player.height = 0.0;
             player.vy = 0.0;
@@ -408,23 +422,23 @@ impl Game {
         match player.tool {
             Tool::Fudge if player.fudge > 0 => {
                 player.fudge -= 1;
-                player.fire_wait = 1.0 / FUDGE_RATE;
+                player.fire_wait = 1.0 / self.tuning.fudge_rate;
                 self.shots.push(Shot {
                     kind: ShotKind::Fudge,
                     pos: player.pos + aim * 0.5,
                     height: 1.1,
-                    vel: aim * FUDGE_SPEED,
-                    left: FUDGE_RANGE,
+                    vel: aim * self.tuning.fudge_speed,
+                    left: self.tuning.fudge_range,
                 });
                 self.stats.fudge_shots += 1;
-                self.noises.push((player.pos, FUDGE_NOISE));
+                self.noises.push((player.pos, self.tuning.fudge_noise));
                 self.events.push(Event::FudgeFired);
             }
             Tool::Fart if player.farts > 0 => {
                 player.farts -= 1;
-                player.fire_wait = FART_WAIT;
+                player.fire_wait = self.tuning.fart_wait;
                 let from = player.pos;
-                let to = from + aim * FART_RANGE;
+                let to = from + aim * self.tuning.fart_range;
                 let at = match first_hit(&self.house.blocks, from, to, 0.3, 1.0) {
                     Some(t) => from + (to - from) * (t * 0.9),
                     None => to,
@@ -432,14 +446,14 @@ impl Game {
                 self.clouds.push(Cloud { at, age: 0.0 });
                 self.stats.farts += 1;
                 self.events.push(Event::Fart(at));
-                if self.options.man && self.man.pos.distance(at) <= FART_RADIUS {
+                if self.options.man && self.man.pos.distance(at) <= self.tuning.fart_radius {
                     self.man.fart(at);
                     self.events.push(Event::FartHit);
                 }
             }
             Tool::Keys => {
-                player.fire_wait = JINGLE_WAIT;
-                self.noises.push((player.pos, JINGLE_NOISE));
+                player.fire_wait = self.tuning.jingle_wait;
+                self.noises.push((player.pos, self.tuning.jingle_noise));
                 self.events.push(Event::Jingle);
             }
             tool => {
@@ -478,23 +492,27 @@ impl Game {
                 let pickup = self.house.fridges[i].1;
                 match pickup {
                     Pickup::Fudge => {
-                        self.player.fudge = (self.player.fudge + FUDGE_PICKUP).min(FUDGE_MAX);
+                        self.player.fudge = (self.player.fudge + self.tuning.fudge_pickup)
+                            .min(self.tuning.fudge_max);
                     }
-                    Pickup::Fart => self.player.farts = (self.player.farts + 1).min(FARTS_MAX),
+                    Pickup::Fart => {
+                        self.player.farts = (self.player.farts + 1).min(self.tuning.farts_max)
+                    }
                 }
-                self.noises.push((self.player.pos, FRIDGE_NOISE));
+                self.noises
+                    .push((self.player.pos, self.tuning.fridge_noise));
                 self.events.push(Event::Pickup(pickup));
             }
             Prompt::Locked if pressed => {
-                self.noises.push((self.player.pos, DOOR_NOISE));
+                self.noises.push((self.player.pos, self.tuning.door_noise));
                 self.events.push(Event::DoorLocked);
             }
             Prompt::Unlock if input.interact => {
                 self.player.unlock += DT;
                 if self.tick.is_multiple_of(u64::from(HZ / 2)) {
-                    self.noises.push((self.player.pos, DOOR_NOISE));
+                    self.noises.push((self.player.pos, self.tuning.door_noise));
                 }
-                if self.player.unlock >= UNLOCK - 1e-4 {
+                if self.player.unlock >= self.tuning.unlock - 1e-4 {
                     self.status = Status::Escaped;
                     self.events.push(Event::Escaped);
                 }
@@ -508,7 +526,7 @@ impl Game {
             return;
         }
         for (i, key) in self.house.keys.iter().enumerate() {
-            if !self.taken[i] && key.distance(self.player.pos) <= KEY_REACH {
+            if !self.taken[i] && key.distance(self.player.pos) <= self.tuning.key_reach {
                 self.taken[i] = true;
                 self.player.keys += 1;
                 self.events.push(Event::Key(self.player.keys));
@@ -543,11 +561,11 @@ impl Game {
                 }
                 ShotKind::Sprinkle(_) => {
                     if self.player.hidden.is_none()
-                        && self.player.height < PELLET_DODGE
+                        && self.player.height < self.tuning.pellet_dodge
                         && segment_distance(from, to, self.player.pos) <= PLAYER_RADIUS + 0.1
                     {
                         self.events.push(Event::SprinkleHit);
-                        self.hurt(SPRINKLE_DAMAGE);
+                        self.hurt(self.tuning.sprinkle_damage);
                         return false;
                     }
                 }
@@ -570,31 +588,31 @@ impl Game {
         for act in acts {
             match act {
                 Act::Volley(dir) => {
-                    for (cos, sin) in fan() {
-                        let vel = dir.rotated(cos, sin) * PELLET_SPEED;
+                    for (cos, sin) in fan(self.tuning.volley_spread) {
+                        let vel = dir.rotated(cos, sin) * self.tuning.pellet_speed;
                         self.sprinkle = (self.sprinkle + 1) % 5;
                         self.shots.push(Shot {
                             kind: ShotKind::Sprinkle(self.sprinkle),
                             pos: self.man.pos + dir * (MAN_RADIUS + 0.2),
                             height: 1.2,
                             vel,
-                            left: VOLLEY_MAX + 3.0,
+                            left: self.tuning.volley_max + 3.0,
                         });
                     }
                     self.events.push(Event::Volley);
                 }
                 Act::Grab => {
                     let away = (self.player.pos - self.man.pos).normalized();
-                    self.player.shove = away * GRAB_SHOVE;
+                    self.player.shove = away * self.tuning.grab_shove;
                     self.events.push(Event::Grabbed);
-                    self.hurt(GRAB_DAMAGE);
+                    self.hurt(self.tuning.grab_damage);
                 }
                 Act::PullOut => {
                     self.player.hidden = None;
                     let away = (self.player.pos - self.man.pos).normalized();
-                    self.player.shove = away * GRAB_SHOVE;
+                    self.player.shove = away * self.tuning.grab_shove;
                     self.events.push(Event::PulledOut);
-                    self.hurt(GRAB_DAMAGE);
+                    self.hurt(self.tuning.grab_damage);
                 }
                 Act::Spotted => self.events.push(Event::Spotted),
                 Act::Lost => self.events.push(Event::Lost),

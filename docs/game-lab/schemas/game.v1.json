@@ -1,0 +1,590 @@
+{
+  "$id": "https://openagents.com/schemas/game.v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "copy": {
+      "additionalProperties": false,
+      "properties": {
+        "escaped_line": {
+          "default": "You burst out into the sunshine. He waves sadly from the window.",
+          "description": "the line when you escape",
+          "maxLength": 160,
+          "minLength": 1,
+          "type": "string"
+        },
+        "scooped_line": {
+          "default": "He plopped you into a cone. Yuck.",
+          "description": "the line when he scoops you",
+          "maxLength": 160,
+          "minLength": 1,
+          "type": "string"
+        },
+        "tagline": {
+          "default": "You're stuck in an Airbnb that keeps going. Find three keys and get out before he scoops you.",
+          "description": "the line under the title",
+          "maxLength": 160,
+          "minLength": 1,
+          "type": "string"
+        },
+        "title": {
+          "default": "The Ice Cream Man",
+          "description": "the game's name on its title card",
+          "maxLength": 160,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "title",
+        "tagline",
+        "escaped_line",
+        "scooped_line"
+      ],
+      "type": "object"
+    },
+    "game": {
+      "const": "the-ice-cream-man"
+    },
+    "items": {
+      "additionalProperties": false,
+      "properties": {
+        "cloud_life": {
+          "default": 3.0,
+          "description": "seconds a fart cloud hangs about",
+          "maximum": 20.0,
+          "minimum": 0.2,
+          "type": "number"
+        },
+        "confused": {
+          "default": 4.0,
+          "description": "seconds a fart cloud confuses him",
+          "maximum": 60.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "fart_radius": {
+          "default": 3.5,
+          "description": "how big a fart cloud is",
+          "maximum": 15.0,
+          "minimum": 0.5,
+          "type": "number"
+        },
+        "fart_range": {
+          "default": 4.5,
+          "description": "how far the fart launcher throws",
+          "maximum": 20.0,
+          "minimum": 1.0,
+          "type": "number"
+        },
+        "fart_shove": {
+          "default": 10.0,
+          "description": "how hard a fart cloud shoves him",
+          "maximum": 40.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "fart_wait": {
+          "default": 1.0,
+          "description": "seconds between fart clouds",
+          "maximum": 20.0,
+          "minimum": 0.1,
+          "type": "number"
+        },
+        "farts_max": {
+          "default": 5,
+          "description": "the most fart clouds you can carry",
+          "maximum": 99,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "farts_start": {
+          "default": 3,
+          "description": "fart clouds at the start",
+          "maximum": 50,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "freeze_hits": {
+          "default": 6,
+          "description": "fudge hits that freeze him",
+          "maximum": 50,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "frozen": {
+          "default": 3.0,
+          "description": "seconds he stays frozen",
+          "maximum": 60.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "fudge_max": {
+          "default": 60,
+          "description": "the most hot fudge you can carry",
+          "maximum": 999,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "fudge_memory": {
+          "default": 4.0,
+          "description": "seconds fudge hits keep counting toward a freeze",
+          "maximum": 30.0,
+          "minimum": 0.5,
+          "type": "number"
+        },
+        "fudge_pickup": {
+          "default": 15,
+          "description": "hot fudge in a fridge",
+          "maximum": 500,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "fudge_range": {
+          "default": 13.0,
+          "description": "how far fudge flies, metres",
+          "maximum": 40.0,
+          "minimum": 1.0,
+          "type": "number"
+        },
+        "fudge_rate": {
+          "default": 6.0,
+          "description": "squirts a second",
+          "maximum": 20.0,
+          "minimum": 0.5,
+          "type": "number"
+        },
+        "fudge_slow": {
+          "default": 2.5,
+          "description": "seconds a fudge hit slows him",
+          "maximum": 20.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "fudge_speed": {
+          "default": 16.0,
+          "description": "how fast fudge flies",
+          "maximum": 40.0,
+          "minimum": 2.0,
+          "type": "number"
+        },
+        "fudge_start": {
+          "default": 30,
+          "description": "hot fudge at the start",
+          "maximum": 500,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "jingle_noise": {
+          "default": 30.0,
+          "description": "how far the key ring's jingle carries",
+          "maximum": 80.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "jingle_wait": {
+          "default": 1.5,
+          "description": "seconds between jingles",
+          "maximum": 20.0,
+          "minimum": 0.2,
+          "type": "number"
+        },
+        "slowed": {
+          "default": 0.5,
+          "description": "his share of his speed while slowed",
+          "maximum": 1.0,
+          "minimum": 0.05,
+          "type": "number"
+        }
+      },
+      "required": [
+        "fudge_start",
+        "fudge_max",
+        "fudge_pickup",
+        "fudge_rate",
+        "fudge_speed",
+        "fudge_range",
+        "fudge_slow",
+        "slowed",
+        "freeze_hits",
+        "fudge_memory",
+        "frozen",
+        "farts_start",
+        "farts_max",
+        "fart_range",
+        "fart_radius",
+        "fart_shove",
+        "confused",
+        "fart_wait",
+        "cloud_life",
+        "jingle_noise",
+        "jingle_wait"
+      ],
+      "type": "object"
+    },
+    "layout": {
+      "additionalProperties": false,
+      "properties": {
+        "extra_closets": {
+          "default": 0,
+          "description": "hiding spots (closets) added to the house",
+          "maximum": 4,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "seed": {
+          "description": "the house the card plays",
+          "maximum": 4294967295,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "seed",
+        "extra_closets"
+      ],
+      "type": "object"
+    },
+    "man": {
+      "additionalProperties": false,
+      "properties": {
+        "gloat": {
+          "default": 1.0,
+          "description": "seconds he stands gloating after a grab",
+          "maximum": 10.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "grab_damage": {
+          "default": 30.0,
+          "description": "a grab's damage",
+          "maximum": 200.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "grab_reach": {
+          "default": 1.25,
+          "description": "how far he reaches to grab",
+          "maximum": 4.0,
+          "minimum": 0.5,
+          "type": "number"
+        },
+        "grab_shove": {
+          "default": 8.0,
+          "description": "how hard a grab shoves you",
+          "maximum": 30.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "grab_wait": {
+          "default": 2.0,
+          "description": "seconds between grabs",
+          "maximum": 20.0,
+          "minimum": 0.2,
+          "type": "number"
+        },
+        "man_chase": {
+          "default": 5.6,
+          "description": "his speed chasing you",
+          "maximum": 14.0,
+          "minimum": 0.5,
+          "type": "number"
+        },
+        "man_investigate": {
+          "default": 3.6,
+          "description": "his speed going to look at a noise",
+          "maximum": 12.0,
+          "minimum": 0.5,
+          "type": "number"
+        },
+        "man_search": {
+          "default": 3.2,
+          "description": "his speed searching where he last saw you",
+          "maximum": 12.0,
+          "minimum": 0.5,
+          "type": "number"
+        },
+        "man_wander": {
+          "default": 2.4,
+          "description": "his speed wandering the rooms",
+          "maximum": 12.0,
+          "minimum": 0.5,
+          "type": "number"
+        },
+        "notice": {
+          "default": 4.0,
+          "description": "how close you can be before he notices you whichever way he faces",
+          "maximum": 20.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "pellet_dodge": {
+          "default": 0.45,
+          "description": "how high a jump clears sprinkles, metres",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "pellet_speed": {
+          "default": 11.0,
+          "description": "how fast sprinkles fly",
+          "maximum": 40.0,
+          "minimum": 1.0,
+          "type": "number"
+        },
+        "search_time": {
+          "default": 7.0,
+          "description": "seconds he searches the last place he saw you",
+          "maximum": 60.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "sight": {
+          "default": 22.0,
+          "description": "how far he sees, metres",
+          "maximum": 60.0,
+          "minimum": 2.0,
+          "type": "number"
+        },
+        "sight_angle": {
+          "default": 70.0,
+          "description": "his field of view either side of where he faces, degrees",
+          "maximum": 180.0,
+          "minimum": 10.0,
+          "type": "number"
+        },
+        "sniff_every": {
+          "default": 25.0,
+          "description": "how often a wandering Ice Cream Man sniffs out your room, seconds",
+          "maximum": 600.0,
+          "minimum": 3.0,
+          "type": "number"
+        },
+        "sprinkle_damage": {
+          "default": 5.0,
+          "description": "a sprinkle pellet's damage",
+          "maximum": 100.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "volley_max": {
+          "default": 15.0,
+          "description": "the farthest he fires sprinkles from",
+          "maximum": 40.0,
+          "minimum": 1.0,
+          "type": "number"
+        },
+        "volley_min": {
+          "default": 3.0,
+          "description": "the nearest he fires sprinkles from",
+          "maximum": 30.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "volley_spread": {
+          "default": 6.0,
+          "description": "degrees between a volley's pellets",
+          "maximum": 30.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "volley_wait": {
+          "default": 2.4,
+          "description": "seconds between volleys",
+          "maximum": 30.0,
+          "minimum": 0.3,
+          "type": "number"
+        }
+      },
+      "required": [
+        "man_wander",
+        "man_investigate",
+        "man_search",
+        "man_chase",
+        "sight",
+        "sight_angle",
+        "notice",
+        "search_time",
+        "sniff_every",
+        "sprinkle_damage",
+        "grab_damage",
+        "grab_shove",
+        "grab_reach",
+        "grab_wait",
+        "gloat",
+        "volley_min",
+        "volley_max",
+        "volley_spread",
+        "pellet_speed",
+        "volley_wait",
+        "pellet_dodge"
+      ],
+      "type": "object"
+    },
+    "noise": {
+      "additionalProperties": false,
+      "properties": {
+        "door_noise": {
+          "default": 25.0,
+          "description": "how far rattling the front door is heard",
+          "maximum": 80.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "fridge_noise": {
+          "default": 8.0,
+          "description": "how far opening a fridge is heard",
+          "maximum": 80.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "fudge_noise": {
+          "default": 12.0,
+          "description": "how far a squirt of fudge is heard",
+          "maximum": 80.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "sprint_noise": {
+          "default": 8.0,
+          "description": "how far sprinting is heard",
+          "maximum": 80.0,
+          "minimum": 0.0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "sprint_noise",
+        "fudge_noise",
+        "fridge_noise",
+        "door_noise"
+      ],
+      "type": "object"
+    },
+    "player": {
+      "additionalProperties": false,
+      "properties": {
+        "gravity": {
+          "default": 16.0,
+          "description": "how fast a jump comes down",
+          "maximum": 40.0,
+          "minimum": 4.0,
+          "type": "number"
+        },
+        "jump_speed": {
+          "default": 5.5,
+          "description": "a jump's starting speed",
+          "maximum": 10.0,
+          "minimum": 2.0,
+          "type": "number"
+        },
+        "max_health": {
+          "default": 100.0,
+          "description": "the player's health",
+          "maximum": 1000.0,
+          "minimum": 10.0,
+          "type": "number"
+        },
+        "regen_after": {
+          "default": 10.0,
+          "description": "seconds without a hit before health comes back",
+          "maximum": 120.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "regen_rate": {
+          "default": 4.0,
+          "description": "health back a second",
+          "maximum": 50.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "sprint": {
+          "default": 7.0,
+          "description": "the player's sprinting speed, metres a second",
+          "maximum": 16.0,
+          "minimum": 1.0,
+          "type": "number"
+        },
+        "walk": {
+          "default": 4.5,
+          "description": "the player's walking speed, metres a second",
+          "maximum": 12.0,
+          "minimum": 1.0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "walk",
+        "sprint",
+        "jump_speed",
+        "gravity",
+        "max_health",
+        "regen_after",
+        "regen_rate"
+      ],
+      "type": "object"
+    },
+    "rules": {
+      "additionalProperties": false,
+      "properties": {
+        "front_door": {
+          "description": "how the front door, the only way out, opens; the rules refuse \"locked\", since nobody could escape",
+          "enum": [
+            "opens_with_all_keys",
+            "locked"
+          ]
+        },
+        "key_reach": {
+          "default": 0.9,
+          "description": "how close you must walk to pick up a key",
+          "maximum": 4.0,
+          "minimum": 0.3,
+          "type": "number"
+        },
+        "keys": {
+          "const": 3,
+          "description": "keys the house hides and the door needs (fixed in the game's code)"
+        },
+        "reach": {
+          "default": 1.4,
+          "description": "how close you must be to use a closet, fridge or the front door",
+          "maximum": 4.0,
+          "minimum": 0.5,
+          "type": "number"
+        },
+        "unlock": {
+          "default": 2.0,
+          "description": "seconds holding E at the front door with every key to unlock it",
+          "maximum": 600.0,
+          "minimum": 0.0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "front_door",
+        "keys",
+        "unlock",
+        "reach",
+        "key_reach"
+      ],
+      "type": "object"
+    },
+    "schema": {
+      "const": "game.v1"
+    }
+  },
+  "required": [
+    "schema",
+    "game",
+    "layout",
+    "player",
+    "man",
+    "items",
+    "noise",
+    "rules",
+    "copy"
+  ],
+  "title": "game.v1: a game's editable surface in Game Lab (docs/game-lab/README.md)",
+  "type": "object"
+}

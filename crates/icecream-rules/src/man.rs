@@ -77,11 +77,19 @@ pub struct Man {
     /// In Search: whether he reached the spot and is looking around.
     looking: bool,
     rng: Rng,
+    /// The numbers he plays by.
+    pub tuning: Tuning,
 }
 
 impl Man {
     #[must_use]
     pub fn new(at: V2, seed: u64) -> Self {
+        Self::tuned(at, seed, Tuning::default())
+    }
+
+    /// He plays by `tuning`'s numbers.
+    #[must_use]
+    pub fn tuned(at: V2, seed: u64, tuning: Tuning) -> Self {
         Self {
             pos: at,
             facing: v(0.0, 1.0),
@@ -94,16 +102,17 @@ impl Man {
             fudge_hits: 0,
             fudge_memory: 0.0,
             shove: V2::ZERO,
-            volley_wait: VOLLEY_WAIT,
+            volley_wait: tuning.volley_wait,
             grab_wait: 0.0,
             gloat: 0.0,
-            sniff: SNIFF_EVERY,
+            sniff: tuning.sniff_every,
             saw_hide: false,
             moving: false,
             stuck: 0,
             replan: 0.0,
             looking: false,
             rng: Rng::new(seed.wrapping_mul(31).wrapping_add(17)),
+            tuning,
         }
     }
 
@@ -116,12 +125,12 @@ impl Man {
         }
         let to = player - self.pos;
         let distance = to.length();
-        if distance > SIGHT {
+        if distance > self.tuning.sight {
             return false;
         }
-        let ahead = distance <= NOTICE
+        let ahead = distance <= self.tuning.notice
             || matches!(self.state, ManState::Chase)
-            || self.facing.dot(to.normalized()) >= SIGHT_COS;
+            || self.facing.dot(to.normalized()) >= self.tuning.sight_cos();
         ahead && first_hit(&house.blocks, self.pos, player, 0.0, 1.5).is_none()
     }
 
@@ -131,12 +140,12 @@ impl Man {
             return false;
         }
         self.fudge_hits += 1;
-        self.fudge_memory = FUDGE_MEMORY;
-        self.slow = FUDGE_SLOW;
-        if self.fudge_hits >= FREEZE_HITS {
+        self.fudge_memory = self.tuning.fudge_memory;
+        self.slow = self.tuning.fudge_slow;
+        if self.fudge_hits >= self.tuning.freeze_hits {
             self.fudge_hits = 0;
             self.state = ManState::Frozen;
-            self.timer = FROZEN;
+            self.timer = self.tuning.frozen;
             self.path.clear();
             self.shove = V2::ZERO;
             return true;
@@ -149,10 +158,10 @@ impl Man {
     pub fn fart(&mut self, at: V2) {
         let away = (self.pos - at).normalized();
         let away = if away == V2::ZERO { v(1.0, 0.0) } else { away };
-        self.shove = away * FART_SHOVE;
+        self.shove = away * self.tuning.fart_shove;
         if self.state != ManState::Frozen {
             self.state = ManState::Confused;
-            self.timer = CONFUSED;
+            self.timer = self.tuning.confused;
         }
         self.last_seen = None;
         self.saw_hide = false;
@@ -209,7 +218,11 @@ impl Man {
     }
 
     fn speed(&self, base: f32) -> f32 {
-        if self.slow > 0.0 { base * SLOWED } else { base }
+        if self.slow > 0.0 {
+            base * self.tuning.slowed
+        } else {
+            base
+        }
     }
 
     /// One step.
@@ -242,7 +255,7 @@ impl Man {
                 if self.timer <= 0.0 {
                     let goal = self.last_seen.unwrap_or(senses.player);
                     self.state = ManState::Search;
-                    self.timer = SEARCH_TIME;
+                    self.timer = self.tuning.search_time;
                     self.looking = false;
                     self.head_to(house, goal);
                 }
@@ -260,7 +273,7 @@ impl Man {
                 self.pos = slide(
                     &house.blocks,
                     self.pos,
-                    facing * MAN_WANDER * 0.6 * DT,
+                    facing * self.tuning.man_wander * 0.6 * DT,
                     MAN_RADIUS,
                     0.0,
                 );
@@ -289,7 +302,7 @@ impl Man {
             acts.push(Act::Lost);
             let goal = self.last_seen.unwrap_or(senses.player);
             self.state = ManState::Search;
-            self.timer = SEARCH_TIME;
+            self.timer = self.tuning.search_time;
             self.looking = false;
             self.head_to(house, goal);
         }
@@ -313,7 +326,7 @@ impl Man {
         if self.state == ManState::Wander {
             self.sniff -= DT;
             if self.sniff <= 0.0 {
-                self.sniff = SNIFF_EVERY;
+                self.sniff = self.tuning.sniff_every;
                 self.state = ManState::Investigate;
                 self.head_to(house, centre(cell_of(senses.player)));
             }
@@ -328,7 +341,7 @@ impl Man {
                     (true, Some(closet)) => closet,
                     _ => senses.player,
                 };
-                let speed = self.speed(MAN_CHASE);
+                let speed = self.speed(self.tuning.man_chase);
                 let direct = first_hit(&house.blocks, self.pos, target, MAN_RADIUS * 0.8, 0.0)
                     .is_none_or(|t| t >= 0.999);
                 if direct && (sees || senses.hidden) {
@@ -344,37 +357,37 @@ impl Man {
                 let distance = self.pos.distance(target);
                 if sees {
                     self.facing = (senses.player - self.pos).normalized();
-                    if distance <= GRAB_REACH && self.grab_wait <= 0.0 {
+                    if distance <= self.tuning.grab_reach && self.grab_wait <= 0.0 {
                         acts.push(Act::Grab);
-                        self.grab_wait = GRAB_WAIT;
-                        self.gloat = GLOAT;
-                    } else if (VOLLEY_MIN..=VOLLEY_MAX).contains(&distance)
+                        self.grab_wait = self.tuning.grab_wait;
+                        self.gloat = self.tuning.gloat;
+                    } else if (self.tuning.volley_min..=self.tuning.volley_max).contains(&distance)
                         && self.volley_wait <= 0.0
                     {
                         acts.push(Act::Volley(self.facing));
-                        self.volley_wait = VOLLEY_WAIT;
+                        self.volley_wait = self.tuning.volley_wait;
                     }
                 } else if senses.hidden
                     && self.saw_hide
-                    && distance <= GRAB_REACH + 0.4
+                    && distance <= self.tuning.grab_reach + 0.4
                     && self.grab_wait <= 0.0
                 {
                     acts.push(Act::PullOut);
                     self.saw_hide = false;
-                    self.grab_wait = GRAB_WAIT;
-                    self.gloat = GLOAT;
+                    self.grab_wait = self.tuning.grab_wait;
+                    self.gloat = self.tuning.gloat;
                 }
             }
             ManState::Investigate => {
-                let speed = self.speed(MAN_INVESTIGATE);
+                let speed = self.speed(self.tuning.man_investigate);
                 if self.follow(house, speed) {
                     self.state = ManState::Search;
-                    self.timer = SEARCH_TIME;
+                    self.timer = self.tuning.search_time;
                     self.looking = true;
                 }
             }
             ManState::Search => {
-                let speed = self.speed(MAN_SEARCH);
+                let speed = self.speed(self.tuning.man_search);
                 let arrived = self.follow(house, speed);
                 self.looking |= arrived;
                 if self.looking {
@@ -402,7 +415,7 @@ impl Man {
                 }
             }
             ManState::Wander => {
-                let speed = self.speed(MAN_WANDER);
+                let speed = self.speed(self.tuning.man_wander);
                 if self.follow(house, speed) {
                     let here = cell_of(self.pos);
                     let next = house.neighbours(here);

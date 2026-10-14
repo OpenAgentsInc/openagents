@@ -2307,6 +2307,13 @@ async fn answer(
         (Some(_), true) => crate::lab::door(&app, &payer).await,
         _ => None,
     };
+    // With a Game Lab on this Mac, Gemini plays and changes the owner's
+    // games with its tools, or hands the message on to Video Lab and the
+    // chat behind it (docs/game-lab/mvp.md).
+    let game_lab = match (&door, parts.is_empty()) {
+        (Some(_), true) => crate::game_lab::door(&app).await,
+        _ => None,
+    };
     // Images or PDFs go to the door that takes them; the hosted chat
     // answers with the words only when it can't (#11174).
     // Whether the Drive door answers: it may look at videos, which takes
@@ -2343,10 +2350,17 @@ async fn answer(
                 }
                 None => door,
             };
-            match lab {
+            let door: Box<dyn openagents_chat::basic_coder::Door> = match lab {
                 Some(mut lab) => {
                     lab.fallback = Some(door);
-                    Some(Box::new(lab))
+                    Box::new(lab)
+                }
+                None => door,
+            };
+            match game_lab {
+                Some(mut game_lab) => {
+                    game_lab.fallback = Some(door);
+                    Some(Box::new(game_lab))
                 }
                 None => Some(door),
             }
@@ -2428,6 +2442,8 @@ async fn answer(
                         meta.switched = r.meta.switched.clone();
                         // A Video Lab answer's card (the video under it).
                         meta.cards = crate::lab::cards(&r.meta);
+                        // A Game Lab answer's card (the game under it).
+                        meta.cards.extend(crate::game_lab::cards(&r.meta));
                         meta
                     })
                     .filter(|meta| !meta.is_empty()),
@@ -2794,6 +2810,8 @@ fn messages(chat: &Conversation, before: Option<usize>, links: bool) -> Markup {
             (crate::github_tools::thread_entry(&chat.id, index + start, crate::suggestions::message_reply(chat, message)))
             // A Video Lab answer: its video, inline (docs/video-lab/mvp.md).
             (crate::lab::thread_entry(&chat.id, crate::suggestions::message_reply(chat, message)))
+            // A Game Lab answer: the game, playable inline (docs/game-lab/mvp.md).
+            (crate::game_lab::thread_entry(&chat.id, crate::suggestions::message_reply(chat, message)))
             // A reply the router read as work on code, about an issue: "Work on this issue" (#11258).
             (crate::work_runs::thread_entry(&chat.id, index + start, crate::suggestions::message_reply(chat, message)))
             (work::rows(chat, index + start + 1, links))

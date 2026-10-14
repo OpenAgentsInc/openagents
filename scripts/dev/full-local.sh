@@ -2,7 +2,7 @@
 # The whole 1.0 web stack on this Mac, wired the way production runs it
 # (docs/dev/full-local.md):
 #
-#   scripts/dev/full-local.sh start [--no-build] [--lab]
+#   scripts/dev/full-local.sh start [--no-build] [--lab] [--game]
 #                                                  build, start everything, return
 #   scripts/dev/full-local.sh stop                 stop what start started
 #   scripts/dev/full-local.sh status               what runs, where
@@ -37,6 +37,10 @@
 #                  defaults to 8790, since the film review page holds 8791.
 #                  Gemini's credential is $GOOGLE_APPLICATION_CREDENTIALS, else
 #                  ~/work/.secrets/gcp-mvp-automation.json.
+#   game lab       with --lab or --game: game-lab serve on 127.0.0.1:8793
+#                  (GAME_LAB_PORT), and the website's chat gets its game_*
+#                  tools the same way (docs/game-lab/mvp.md). --game alone
+#                  leaves Video Lab off.
 #
 # Everything persists under $FULL_LOCAL (default ~/.openagents/full-local):
 # accounts, sessions, chats, saved keys, the gateway registry, logs.
@@ -152,8 +156,9 @@ build() {
 
 status() {
     any=0
-    for name in gateway worker web lab; do
+    for name in gateway worker web lab game; do
         [ "$name" = lab ] && [ "${lab:-0}" != 1 ] && continue
+        [ "$name" = game ] && [ "${game:-0}" != 1 ] && continue
         if p=$(pid "$name"); then
             any=1
             printf '%-8s running (pid %s)\n' "$name" "$p"
@@ -170,12 +175,15 @@ status() {
         if [ "${lab:-0}" = 1 ]; then
             echo "Video Lab: http://127.0.0.1:${lab_port:-8792} (the chat's films; log in $logs/lab.log)"
         fi
+        if [ "${game:-0}" = 1 ]; then
+            echo "Game Lab:  http://127.0.0.1:${game_port:-8793} (the chat's games; log in $logs/game.log)"
+        fi
         echo "Logs:      $logs/{gateway,worker,web}.log"
     fi
 }
 
 stop() {
-    for name in web worker gateway lab; do
+    for name in web worker gateway lab game; do
         if p=$(pid "$name"); then
             kill "$p" 2>/dev/null || true
             i=0
@@ -193,10 +201,12 @@ stop() {
 start() {
     build_first=1
     lab=0
+    game=0
     for arg in "$@"; do
         case "$arg" in
         --no-build) build_first=0 ;;
-        --lab) lab=1 ;;
+        --lab) lab=1 game=1 ;;
+        --game) game=1 ;;
         *) usage ;;
         esac
     done
@@ -204,6 +214,7 @@ start() {
         gateway_port=8790
     fi
     lab_port=${VIDEO_LAB_PORT:-8792}
+    game_port=${GAME_LAB_PORT:-8793}
     if pid gateway > /dev/null || pid worker > /dev/null || pid web > /dev/null; then
         echo "Already running; 'stop' first to restart."
         status
@@ -223,8 +234,8 @@ start() {
 
     mkdir -p "$state" "$run" "$logs"
     chmod 700 "$state"
-    printf 'web_port=%s\ngateway_port=%s\nrelay=%s\nlab=%s\nlab_port=%s\n' \
-        "$web_port" "$gateway_port" "$relay" "$lab" "$lab_port" > "$run/ports"
+    printf 'web_port=%s\ngateway_port=%s\nrelay=%s\nlab=%s\nlab_port=%s\ngame=%s\ngame_port=%s\n' \
+        "$web_port" "$gateway_port" "$relay" "$lab" "$lab_port" "$game" "$game_port" > "$run/ports"
     if [ "$build_first" = 1 ]; then
         build
     elif [ ! -s "$state/build/chat/coder_chat_web_bg.wasm" ] \
@@ -430,8 +441,37 @@ EOF
         [ -n "$google_credentials" ] || echo "No Google credential, so the chat can't use the Lab's tools (Gemini)." >&2
     fi
 
+    # Game Lab (docs/game-lab/mvp.md): the service that keeps the games'
+    # versions, checks edits with bot runs and builds the game once; the
+    # website's chat gets its tools the same way as Video Lab's.
+    game_url=""
+    if [ "$game" = 1 ]; then
+        game_url="http://127.0.0.1:$game_port"
+        if curl -fsS -o /dev/null "$game_url/healthz" 2>/dev/null; then
+            echo "Game Lab is already running on $game_url."
+        else
+            if [ ! -x "$target/debug/game-lab" ] || [ "$build_first" = 1 ]; then
+                cargo_build -p game-lab --bin game-lab >> "$logs/build.log" 2>&1 \
+                    || { echo "The Game Lab build failed; see $logs/build.log" >&2; stop > /dev/null; exit 1; }
+            fi
+            nohup "$target/debug/game-lab" serve --port "$game_port" --repo "$root" \
+                > "$logs/game.log" 2>&1 &
+            echo $! > "$run/game.pid"
+            if ! wait_http "$game_url/healthz" 30; then
+                echo "Game Lab didn't start; see $logs/game.log" >&2
+                stop > /dev/null
+                exit 1
+            fi
+        fi
+        [ -n "$google_credentials" ] || echo "No Google credential, so the chat can't use Game Lab's tools (Gemini)." >&2
+    fi
+
     # The website.
     (
+        if [ -n "$game_url" ]; then
+            export OPENAGENTS_GAME_LAB="$game_url"
+            [ -n "$google_credentials" ] && export GOOGLE_APPLICATION_CREDENTIALS="$google_credentials"
+        fi
         if [ -n "$lab_url" ]; then
             export OPENAGENTS_VIDEO_LAB="$lab_url"
             [ -n "$google_credentials" ] && export GOOGLE_APPLICATION_CREDENTIALS="$google_credentials"

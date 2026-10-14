@@ -6449,6 +6449,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "312d2295c7302019c395cfb90dacd00a82a2eabd700429bba9c7a3f38dbbe11b"
 
 [[package]]
+name = "game-lab"
+version = "1.0.0-rc.13"
+dependencies = [
+ "axum 0.8.9",
+ "icecream-rules",
+ "icecream-web",
+ "serde_json",
+ "sha2 0.10.9",
+ "tokio",
+]
+
+[[package]]
 name = "gateway"
 version = "1.0.0-rc.13"
 dependencies = [
