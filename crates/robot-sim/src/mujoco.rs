@@ -91,8 +91,11 @@ impl Runtime {
             "Choose a simulation folder outside the Git checkout.",
         )?;
         require(
-            cfg!(target_os = "linux") && cfg!(target_arch = "x86_64"),
-            "Run MuJoCo on a Linux x86-64 host with this version of Robot Lab.",
+            // macOS arm64: bindings regenerated from the official 3.3.7
+            // macOS headers are byte-identical, and the native tests pass.
+            (cfg!(target_os = "linux") && cfg!(target_arch = "x86_64"))
+                || (cfg!(target_os = "macos") && cfg!(target_arch = "aarch64")),
+            "Run MuJoCo on a Linux x86-64 or Apple silicon Mac host with this version of Robot Lab.",
         )?;
         require(
             pin.sha256.len() == 64 && pin.sha256.bytes().all(|b| b.is_ascii_hexdigit()),

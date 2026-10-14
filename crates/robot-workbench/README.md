@@ -20,7 +20,8 @@ binary, player, and catalog, with its lab folder outside every Git checkout:
 ```sh
 ~/work/film-out/robot-lab-bin/robot-workbench serve --root ~/robot-lab \
   --project arm-demo --build ~/work/film-out/robot-lab-player \
-  --catalog ~/work/film-out/robot-lab-catalog --port 8795
+  --catalog ~/work/film-out/robot-lab-catalog --port 8795 \
+  --execution ~/work/film-out/mujoco/execution.json
 open "http://127.0.0.1:8795/play?document=so101-table&version=81d51e5dfbd5c23a0d1d90f44b3aaef1493a7215f0849b60b87e27976126a249"
 ```
 
@@ -34,7 +35,19 @@ In a scene, the arm panel has one slider per joint within the description's
 limits, Open gripper, Close gripper, and Reset pose. Keys: Q/A shoulder pan,
 W/S shoulder lift, E/D elbow flex, R/F wrist flex, T/G wrist roll, O/C gripper,
 0 reset. Moves change the unsaved draft and draw immediately; Save pose keeps
-them as a new version. Posing is kinematic; physics stays in `record`.
+them as a new version.
+
+With `--execution`, the configuration's pinned MuJoCo library also enables the
+panel's Simulate toggle. Its `{"library":{"path":…,"sha256":…}}` names the
+official 3.3.7 build; on this Mac that is `libmujoco.3.3.7.dylib` from
+`mujoco-3.3.7-macos-universal2.dmg`, with hashes in
+`~/work/film-out/mujoco/pin.json`. Simulate starts unsaved physics from the
+saved scene through `POST /api/sim`: `{"start":{"document":…,"version":…}}`,
+then `record`'s commands (`pose` with joint targets and steps, `step`,
+`finish`), at most 240 steps per call. The player sends the current targets
+with 8 steps (1/30 s) about every 33 ms, and draws the arm and cube from the
+returned step. Reset pose restarts the physics. Nothing is saved; use `record`
+for an episode.
 
 Keep `CARGO_TARGET_DIR` outside the checkout. The service listens on loopback;
 `--port 0` chooses an available port. Its SO-101 catalog defaults to the licensed,

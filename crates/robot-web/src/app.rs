@@ -60,6 +60,10 @@ struct App {
     frame_ms: f64,
     pose_ms: f64,
     pose_started: Option<f64>,
+    /// The latest live physics step while Simulate is on; never saved.
+    sim: Option<robot_lab::document::Step>,
+    /// Bumped on every Simulate toggle and reset so a stale loop stops.
+    sim_run: u64,
 }
 impl Drop for App {
     fn drop(&mut self) {
@@ -231,9 +235,10 @@ fn world(
     state: &State,
     robot: &robot_description::Robot,
     shift: f32,
+    live: Option<&robot_lab::document::Step>,
 ) -> Result<verse::mesh::Mesh, String> {
     let mut scene =
-        verse::robot_lab::document_scene(robot, &state.displayed_scene(), state.step())?;
+        verse::robot_lab::document_scene(robot, &state.displayed_scene(), state.step().or(live))?;
     if let Some(link) = state.link.as_ref().and_then(|name| robot.link(name)) {
         for vertex in &mut scene.robot[scene.link_ranges[link].clone()] {
             vertex.color = [0.2, 0.8, 1.0];
@@ -254,9 +259,10 @@ fn combined(app: &App) -> Result<verse::mesh::Mesh, String> {
         &app.state,
         robot,
         if app.comparison.is_some() { -0.7 } else { 0.0 },
+        app.sim.as_ref(),
     )?;
     if let (Some(other), Some(robot)) = (&app.comparison, &app.other_robot) {
-        left.faces.extend(world(other, robot, 0.7)?.faces);
+        left.faces.extend(world(other, robot, 0.7, None)?.faces);
     }
     Ok(left)
 }
@@ -1447,12 +1453,29 @@ fn arm_panel(app: &Shared) -> Result<(), String> {
     button(app, &panel, "reset-pose", "Reset pose", |app, _| {
         arm_reset(app)
     })?;
+    let holder = add(&document, &panel, "label", "", "Simulate")?;
+    let toggle: HtmlInputElement = add(&document, &holder, "input", "simulate", "")?
+        .dyn_into()
+        .map_err(js)?;
+    toggle.set_type("checkbox");
+    listen(app, toggle.unchecked_ref(), "change", |app, event| {
+        if let Some(target) = event
+            .target()
+            .and_then(|t| t.dyn_into::<HtmlInputElement>().ok())
+        {
+            if target.checked() {
+                sim_start(app);
+            } else {
+                sim_stop(app);
+            }
+        }
+    })?;
     add(
         &document,
         &panel,
         "p",
         "",
-        "Keys: Q/A shoulder pan, W/S shoulder lift, E/D elbow, R/F wrist flex, T/G wrist roll, O/C gripper, 0 reset.",
+        "Keys: Q/A shoulder pan, W/S shoulder lift, E/D elbow, R/F wrist flex, T/G wrist roll, O/C gripper, 0 reset. With Simulate on, moves become joint targets for physics, and the arm can push and grasp the cube.",
     )?;
     panel.remove_attribute("hidden").map_err(js)?;
     listen(app, document.unchecked_ref(), "keydown", |app, event| {
@@ -1525,14 +1548,111 @@ fn arm_limit(app: &Shared, joint: &str, upper: bool) {
     }
 }
 fn arm_reset(app: &Shared) {
-    {
+    let simulating = {
         let mut data = app.borrow_mut();
         data.state.draft.clear();
         data.dirty = true;
         readout(&data);
-    }
+        data.sim.is_some()
+    };
     update_joint_input(app);
     request_frame(app);
+    if simulating {
+        // Reset also restores the arm and cube in physics.
+        sim_start(app);
+    }
+}
+async fn wait(window: &Window, ms: i32) {
+    let promise = js_sys::Promise::new(&mut |resolve, _| {
+        let _ = window.set_timeout_with_callback_and_timeout_and_arguments_0(&resolve, ms);
+    });
+    let _ = JsFuture::from(promise).await;
+}
+/// Start live physics from the saved scene, then send the current joint
+/// targets with 8 steps (1/30 s) about every 33 ms, so it runs near real time.
+fn sim_start(app: &Shared) {
+    let run = {
+        let mut data = app.borrow_mut();
+        data.sim_run += 1;
+        data.sim_run
+    };
+    let weak = Rc::downgrade(app);
+    spawn_local(async move {
+        let Some((window, base, scene)) = weak.upgrade().map(|app| {
+            let data = app.borrow();
+            (
+                data.window.clone(),
+                data.base.clone(),
+                data.state.bundle().scene_reference.clone(),
+            )
+        }) else {
+            return;
+        };
+        let url = format!("{base}/api/sim");
+        let mut request = json!({ "start": scene });
+        loop {
+            let began = now(&window);
+            let result = json_value(&window, &url, Some(&request)).await;
+            let Some(app) = weak.upgrade() else {
+                return;
+            };
+            if !sim_show(&app, run, result) {
+                return;
+            }
+            request = json!({"command":"pose","joints":app.borrow().state.displayed_scene().robots[0].joints,"steps":8});
+            drop(app);
+            wait(&window, (33.3 - (now(&window) - began)).max(1.0) as i32).await;
+        }
+    });
+}
+fn sim_show(app: &Shared, run: u64, result: Result<Value, String>) -> bool {
+    let mut data = app.borrow_mut();
+    if data.sim_run != run {
+        return false;
+    }
+    let step = result.and_then(|value| {
+        serde_json::from_value::<robot_lab::document::Step>(value["step"].clone())
+            .map_err(|_| "The simulation couldn't be read".to_string())
+    });
+    let running = match step {
+        Ok(step) => {
+            data.sim = Some(step);
+            true
+        }
+        Err(error) => {
+            data.sim_run += 1;
+            data.sim = None;
+            status(&data.document, &error);
+            if let Ok(toggle) = element(&data.document, "simulate")
+                .and_then(|e| e.dyn_into::<HtmlInputElement>().map_err(js))
+            {
+                toggle.set_checked(false);
+            }
+            false
+        }
+    };
+    data.dirty = true;
+    drop(data);
+    request_frame(app);
+    running
+}
+fn sim_stop(app: &Shared) {
+    let (window, base) = {
+        let mut data = app.borrow_mut();
+        data.sim_run += 1;
+        data.sim = None;
+        data.dirty = true;
+        (data.window.clone(), data.base.clone())
+    };
+    request_frame(app);
+    spawn_local(async move {
+        let _ = json_value(
+            &window,
+            &format!("{base}/api/sim"),
+            Some(&json!({"command":"finish"})),
+        )
+        .await;
+    });
 }
 fn sync_arm(app: &App) {
     if app.state.bundle().episode.is_some() {
@@ -1817,6 +1937,8 @@ async fn open(window: Window, document: Document) -> Result<(), String> {
         frame_ms: 0.0,
         pose_ms: 0.0,
         pose_started: None,
+        sim: None,
+        sim_run: 0,
     }));
     element(&document, "poster")?
         .set_attribute(

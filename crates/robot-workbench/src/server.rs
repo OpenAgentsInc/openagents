@@ -18,6 +18,7 @@ pub struct Server {
     pub build: PathBuf,
     robots: Mutex<BTreeMap<String, Arc<robot_description::Robot>>>,
     posters: Mutex<BTreeMap<String, robot_lab::document::Asset>>,
+    sim: Option<crate::sim::Sim>,
 }
 
 impl Server {
@@ -27,7 +28,13 @@ impl Server {
             build: build.into(),
             robots: Mutex::new(BTreeMap::new()),
             posters: Mutex::new(BTreeMap::new()),
+            sim: None,
         }
+    }
+    /// Offer the player's live, unsaved physics with a pinned MuJoCo library.
+    pub fn with_physics(mut self, pin: robot_sim::mujoco::LibraryPin) -> Self {
+        self.sim = Some(crate::sim::Sim::new(self.host.clone(), pin));
+        self
     }
     pub fn router(self: Arc<Self>) -> Router {
         Router::new()
@@ -35,6 +42,7 @@ impl Server {
             .route("/api/tools", get(tool_definitions))
             .route("/api/docs", get(documents))
             .route("/api/tool/{name}", post(tool))
+            .route("/api/sim", post(simulate))
             .route("/api/view", get(view))
             .route("/api/asset/{hash}", get(asset))
             .route("/api/poster", get(poster))
@@ -266,6 +274,25 @@ async fn tool(
         Ok(Ok(value)) => Json(value).into_response(),
         Ok(Err(e)) => failure(e),
         Err(_) => failure("The robot tool couldn't finish".into()),
+    }
+}
+async fn simulate(
+    State(server): State<Arc<Server>>,
+    headers: HeaderMap,
+    Json(request): Json<crate::sim::Request>,
+) -> Response {
+    if let Some(origin) = headers.get(header::ORIGIN) {
+        if origin.to_str().ok() != Some(&server.host.base) {
+            return (StatusCode::FORBIDDEN, "Open this control in Robot Lab").into_response();
+        }
+    }
+    let Some(sim) = server.sim.clone() else {
+        return failure("Start the lab with a MuJoCo --execution file to simulate".into());
+    };
+    match tokio::task::spawn_blocking(move || sim.run(request)).await {
+        Ok(Ok(value)) => Json(value).into_response(),
+        Ok(Err(e)) => failure(e),
+        Err(_) => failure("The simulation couldn't finish".into()),
     }
 }
 async fn poster(State(server): State<Arc<Server>>, Query(subject): Query<Subject>) -> Response {

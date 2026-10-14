@@ -58,10 +58,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             config,
         )));
     }
-    let server = std::sync::Arc::new(robot_workbench::server::Server::new(
+    // The execution configuration's pinned library also drives live physics.
+    let physics = host.runs.as_ref().map(|runs| runs.config.library.clone());
+    let mut server = robot_workbench::server::Server::new(
         host,
         &build.ok_or("Choose --build for the player files")?,
-    ));
+    );
+    if let Some(pin) = physics {
+        server = server.with_physics(pin);
+    }
+    let server = std::sync::Arc::new(server);
     eprintln!("Robot Lab: {base}");
     axum::serve(listener, server.router()).await?;
     Ok(())

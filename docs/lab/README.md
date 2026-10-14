@@ -207,8 +207,9 @@ The first dynamic manipulation backend uses MuJoCo through its C API,
 behind a Rust wrapper with explicit model/data ownership. Its
 [modeling documentation](https://mujoco.readthedocs.io/en/stable/modeling.html)
 describes MJCF and URDF loading, including URDF's more limited expressiveness.
-The wrapper qualifies Linux x86-64 with pinned SO-101 and Franka inputs and
-refuses other platforms until tested. Native hosts run simulation first;
+The wrapper qualifies Linux x86-64 with pinned SO-101 and Franka inputs, and
+Apple silicon Macs with the SO-101 and contact tests, and refuses other
+platforms until tested. Native hosts run simulation first;
 web and phone can render recorded or streamed poses without linking MuJoCo.
 
 Verse draws each link from the backend's body transforms. One backend owns all

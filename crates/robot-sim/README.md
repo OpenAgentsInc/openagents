@@ -6,8 +6,11 @@ scripted control, private jobs, and recovery. Enable `mujoco` on a native host
 to load an operator-selected MuJoCo **3.3.7** library and its SHA-256.
 The product runtime uses the C API and does not start Python.
 
-Linux x86-64 is qualified with SO-101 and Franka fixtures. Other hosts receive
-an explicit unsupported-platform error until qualified. Phone and browser
+Linux x86-64 is qualified with SO-101 and Franka fixtures. Apple silicon Macs
+are qualified with the SO-101 and contact tests, using `libmujoco.3.3.7.dylib`
+from the official `mujoco-3.3.7-macos-universal2.dmg`; bindings regenerated
+from its headers are byte-identical. Other hosts receive an explicit
+unsupported-platform error until qualified. Phone and browser
 builds keep the native feature off.
 
 `Runtime` owns the library; each `Model` owns matching native model/data and a

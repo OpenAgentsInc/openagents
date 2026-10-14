@@ -14,3 +14,5 @@ pub mod record;
 pub mod runs;
 #[cfg(all(feature = "host", not(target_arch = "wasm32")))]
 pub mod server;
+#[cfg(all(feature = "host", not(target_arch = "wasm32")))]
+pub mod sim;
