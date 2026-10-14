@@ -950,12 +950,14 @@ pub async fn acp_briefed(
         ("devin-cli", Some(model)) if model != acp_client::devin::DEFAULT_MODEL => {
             acp_client::devin::arguments(model)
         }
-        // Devin's account default is never what Coder asks for: the model
-        // the person configured for Devin is, else SWE-2 (#11556). Devin's
-        // server may still start on another model it allows; the rail
-        // names the one it reports.
+        // Devin's account default is never what Coder asks for: Coder's
+        // fastest SWE-2 is (#11556, #11583). Devin's server starts on its
+        // account default when it doesn't allow the model asked for; that
+        // is refused below once the session reports its model.
+        // The person's pick in /models comes first, so a delegation the
+        // call names no model for runs it too.
         ("devin-cli", _) => acp_client::devin::arguments(
-            &crate::agent_models::default_model(crate::agent_models::DEVIN)
+            &crate::agent_models::turn_model(crate::agent_models::DEVIN)
                 .unwrap_or_else(|| acp_client::devin::CODER_MODEL.to_owned()),
         ),
         // Grok Build runs the pick, else the default `grok models` names,
@@ -1025,6 +1027,10 @@ pub async fn acp_briefed(
     let (hooks, refused) = crate::sdk_hooks::acp(cwd, &agent.id, &agent.name, cancel);
     let checks = crate::sdk_hooks::unkept(&agent.name, &refused);
     let _gate = acp_gate(agent, &hooks, &mut arguments, &mut environment)?;
+    // The model Devin was asked for, held against the one it reports.
+    let devin_asked = (agent.id == crate::agent_models::DEVIN)
+        .then(|| acp_client::devin::asked_model(&arguments))
+        .flatten();
     // What it can't be stopped from is a status for the rail and the
     // result's `checks`, never words of the agent's reply (#11556).
     let briefed = briefing
@@ -1160,6 +1166,22 @@ pub async fn acp_briefed(
                 }
             }
         }
+        // Devin starts on its account default when it doesn't allow the
+        // model asked for (a Free plan offers only SWE-1.6 Slow): that turn
+        // is refused in one plain line, never run on the slower model
+        // (#11583).
+        if let Some(asked) = &devin_asked
+            && !acp_client::devin::admits(asked, model.as_deref())
+        {
+            let line = devin_model_refused(
+                &agent.name,
+                asked,
+                model.as_deref(),
+                &acp_client::devin::offered_models(&session.opened),
+            );
+            session.close(Duration::from_secs(2)).await;
+            return Err(line);
+        }
         if model.as_deref().is_some_and(crate::agent_models::is_clef) {
             session.close(Duration::from_secs(2)).await;
             return Err(format!(
@@ -1192,6 +1214,7 @@ pub async fn acp_briefed(
             cwd: cwd.to_path_buf(),
             seen: BTreeMap::new(),
             refusals: Arc::clone(&refusals),
+            last_thought: LastThought::default(),
         };
         let mut result = session
             .prompt(
@@ -1230,7 +1253,9 @@ pub async fn acp_briefed(
                 .await;
         }
         handler.end_thought();
-        let text = handler.text;
+        // The answer, else the last thinking block when the agent put its
+        // answer there and wrote no message (#11583).
+        let (text, reply_source) = turn_reply(&handler.text, &handler.last_thought.text);
         let worked = !handler.tools.is_empty() || !text.is_empty();
         let group_clear = session.close(Duration::from_secs(2)).await;
         turns.end("close").await;
@@ -1243,7 +1268,19 @@ pub async fn acp_briefed(
         }
         let error = match result {
             Ok(reply) => {
+                // A turn that ended with no words is a failure the caller
+                // sees, never an empty success (#11583).
+                if text.trim().is_empty() && reply.stop_reason == acp_client::StopReason::EndTurn {
+                    return Err(empty_reply(
+                        &agent.name,
+                        reply.usage.as_ref().and_then(|usage| usage.output_tokens),
+                    ));
+                }
                 let mut result = json!({"session":id,"reply":text,"model":model,"stop_reason":reply.stop_reason.as_str(),"usage":reply.usage,"group_clear":group_clear,"attempts":attempt});
+                if let Some(source) = reply_source {
+                    // Its words came as thinking, not as a message.
+                    result["reply_source"] = json!(source);
+                }
                 if let Some(note) = &checked.note {
                     result["update"] = json!(note);
                 }
@@ -1298,6 +1335,31 @@ pub async fn acp_briefed(
             group_clear,
         ));
     }
+}
+
+/// The line a Devin turn ends with when Devin started on another model
+/// than the one asked for (#11583): the model asked for, what the account
+/// offers, and where to change either.
+fn devin_model_refused(
+    name: &str,
+    asked: &str,
+    reported: Option<&str>,
+    offered: &[String],
+) -> String {
+    let words = |model: &str| crate::agent_models::display(crate::agent_models::DEVIN, model);
+    let offers = match offered {
+        [] => reported.map_or_else(|| "another model".to_owned(), words),
+        [only] => format!("only {}", words(only)),
+        many => many
+            .iter()
+            .map(|model| words(model))
+            .collect::<Vec<_>>()
+            .join(", "),
+    };
+    format!(
+        "{name} can't run {} on this Devin account: it offers {offers} here. Upgrade the Devin plan at https://app.devin.ai, or pick a model it offers with /models.",
+        words(asked)
+    )
 }
 
 /// What a session keeps alive so an agent's own hooks reach Coder's
@@ -1960,6 +2022,61 @@ struct AcpEvents<'a> {
     seen: BTreeMap<String, Value>,
     /// Why the hooks refused a step, for the agent's next prompt.
     refusals: Arc<std::sync::Mutex<Vec<String>>>,
+    /// The agent's last thinking block, for a turn whose answer never
+    /// came as message text (#11583).
+    last_thought: LastThought,
+}
+
+/// The agent's thinking since its last step or words (#11583). Devin's
+/// SWE models think in `agent_thought_chunk`s, then answer in
+/// `agent_message_chunk`s; sometimes the answer stays in the thinking and
+/// the turn ends with no message text at all. That last block is what the
+/// turn said.
+#[derive(Default)]
+struct LastThought {
+    text: String,
+    /// A step or words came after it: the next thought starts a new block.
+    closed: bool,
+}
+
+impl LastThought {
+    fn push(&mut self, piece: &str) {
+        if self.closed {
+            self.text.clear();
+            self.closed = false;
+        }
+        if self.text.len() < TEXT_MAX {
+            self.text
+                .push_str(&bounded(piece, TEXT_MAX.saturating_sub(self.text.len())));
+        }
+    }
+
+    fn close(&mut self) {
+        self.closed = true;
+    }
+}
+
+/// The reply a turn hands back (#11583): its message text; else, when the
+/// agent wrote none, its last thinking block, marked as such; else
+/// nothing, which the caller reports as a failure.
+fn turn_reply(text: &str, last_thought: &str) -> (String, Option<&'static str>) {
+    if !text.trim().is_empty() {
+        return (text.to_owned(), None);
+    }
+    if !last_thought.trim().is_empty() {
+        return (last_thought.trim().to_owned(), Some("thought"));
+    }
+    (String::new(), None)
+}
+
+/// The failure a turn that ended with no words is (#11583): it is never
+/// handed back as an empty success.
+fn empty_reply(name: &str, output_tokens: Option<u64>) -> String {
+    let tokens = output_tokens
+        .filter(|tokens| *tokens > 0)
+        .map(|tokens| format!(", after writing {tokens} tokens"))
+        .unwrap_or_default();
+    format!("{name} ended without an answer{tokens}. Nothing came back to use; ask it again.")
 }
 
 /// Whether an ACP tool kind only looks, never changes anything.
@@ -2044,9 +2161,11 @@ impl Handler for AcpEvents<'_> {
             Update::AgentText(_) | Update::ToolCall { .. } | Update::ToolCallUpdate { .. }
         ) {
             self.end_thought();
+            self.last_thought.close();
         }
         match update {
             Update::Thought(text) => {
+                self.last_thought.push(&text);
                 for event in self.thought.piece(&bounded(&text, TEXT_MAX)) {
                     (self.emit)(event);
                 }
@@ -3386,6 +3505,7 @@ mod tests {
             cwd: PathBuf::new(),
             seen: BTreeMap::new(),
             refusals: Arc::default(),
+            last_thought: LastThought::default(),
         };
         assert_eq!(
             handler.permission(&request),
@@ -3414,6 +3534,7 @@ mod tests {
             cwd: PathBuf::new(),
             seen: BTreeMap::new(),
             refusals: Arc::default(),
+            last_thought: LastThought::default(),
         };
         for line in crate::claude_stream::recorded("grok-acp.jsonl") {
             if let Some((_, update)) = acp_client::wire::parse_update(&line["params"]) {
@@ -4050,6 +4171,7 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
             cwd: PathBuf::new(),
             seen: BTreeMap::new(),
             refusals: Arc::default(),
+            last_thought: LastThought::default(),
         };
         handler.update(Update::ToolCall {
             id: "read-1".into(),
@@ -4535,7 +4657,9 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
             dir.path(),
             &acp_client::replay::blocks(acp_client::replay::DEVIN_TURN),
         );
-        let _ = acp(
+        // The recording opened on SWE-2 High, not the SWE-2 Medium asked
+        // for: that turn is refused (#11583).
+        let refused = acp(
             &devin_agent(program),
             "Write result.txt.",
             dir.path(),
@@ -4544,7 +4668,8 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
             &mut |_| {},
         )
         .await
-        .unwrap();
+        .unwrap_err();
+        assert!(refused.contains("can't run SWE-2 Medium"), "{refused}");
         let arguments = acp_client::replay::arguments(dir.path());
         assert_eq!(arguments[0], "--config");
         // No model named: Coder's SWE-2 default, never Devin's account
@@ -4566,6 +4691,119 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
             .expect("a set_mode");
         assert_eq!(set_mode["params"]["modeId"], "accept-edits");
         desk.close();
+    }
+
+    /// The recorded Free-account Devin turn (#11583), with `keep` choosing
+    /// which `session/update` kinds stay, run as a delegation on `model`.
+    async fn free_devin_turn(
+        model: Option<&str>,
+        keep: impl Fn(&str) -> bool,
+    ) -> Result<Value, String> {
+        let _gate_lock = crate::approval::test_lock().lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let blocks: Vec<Vec<Value>> =
+            acp_client::replay::blocks(acp_client::replay::DEVIN_FREE_TURN)
+                .into_iter()
+                .map(|block| {
+                    block
+                        .into_iter()
+                        .filter(|frame| {
+                            frame["params"]["update"]["sessionUpdate"]
+                                .as_str()
+                                .is_none_or(&keep)
+                        })
+                        .collect()
+                })
+                .collect();
+        let program = acp_client::replay::script(dir.path(), &blocks);
+        acp(
+            &devin_agent(program),
+            "READ-ONLY: Read crates/coder-delegate/src and tell me in three bullets what the terminal turn module does. Reply with the summary only.",
+            dir.path(),
+            model,
+            &Arc::new(AtomicBool::new(false)),
+            &mut |_| {},
+        )
+        .await
+    }
+
+    /// A Devin Free account opens every session on SWE-1.6 Slow whatever
+    /// `--model` asks for; Coder's SWE-2 default is refused in one line
+    /// that names what the account offers, never run slow (#11583).
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn a_devin_session_on_another_model_than_asked_is_refused() {
+        let refused = free_devin_turn(None, |_| true).await.unwrap_err();
+        assert_eq!(
+            refused,
+            "Devin CLI can't run SWE-2 Medium on this Devin account: it offers only SWE-1.6 Slow here. Upgrade the Devin plan at https://app.devin.ai, or pick a model it offers with /models."
+        );
+    }
+
+    /// The person's own pick of SWE-1.6 Slow runs, and the answer Devin
+    /// writes after its last thinking block is the reply (#11583).
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn a_picked_devin_model_runs_and_its_answer_is_the_reply() {
+        let result = free_devin_turn(Some("swe-1-6-slow"), |_| true)
+            .await
+            .unwrap();
+        assert_eq!(result["model"], "swe-1-6-slow");
+        assert_eq!(result["stop_reason"], "end_turn");
+        let reply = result["reply"].as_str().unwrap();
+        assert_eq!(reply.matches("- **").count(), 3, "{reply}");
+        assert!(result.get("reply_source").is_none());
+    }
+
+    /// The reported shape (#11583): Devin ends its turn with `end_turn`
+    /// and output tokens spent, but every word came as thinking. The last
+    /// thinking block is the reply, marked as thought.
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn a_devin_answer_left_in_its_thinking_is_still_the_reply() {
+        let result = free_devin_turn(Some("swe-1-6-slow"), |kind| kind != "agent_message_chunk")
+            .await
+            .unwrap();
+        assert_eq!(result["reply_source"], "thought");
+        let reply = result["reply"].as_str().unwrap();
+        assert!(
+            reply.starts_with("The user asked me to read the terminal turn module"),
+            "{reply}"
+        );
+        assert!(reply.contains("four-phase process"), "{reply}");
+        // Only the last block: the thinking before the earlier reads is
+        // not part of it.
+        assert!(!reply.contains("Let me read more"), "{reply}");
+    }
+
+    /// A turn that ends with no words at all is a failure the caller sees,
+    /// never an empty success (#11583).
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn a_devin_turn_with_no_words_fails_visibly() {
+        let failed = free_devin_turn(Some("swe-1-6-slow"), |kind| {
+            kind != "agent_message_chunk" && kind != "agent_thought_chunk"
+        })
+        .await
+        .unwrap_err();
+        assert_eq!(
+            failed,
+            "Devin CLI ended without an answer, after writing 424 tokens. Nothing came back to use; ask it again."
+        );
+    }
+
+    #[test]
+    fn a_reply_is_the_message_else_the_last_thought() {
+        let mut thought = LastThought::default();
+        thought.push("first ");
+        thought.close();
+        thought.push("second");
+        assert_eq!(turn_reply("answer", &thought.text), ("answer".into(), None));
+        assert_eq!(
+            turn_reply(" \n", &thought.text),
+            ("second".into(), Some("thought"))
+        );
+        assert_eq!(turn_reply("", ""), (String::new(), None));
     }
 
     #[tokio::test]
@@ -4743,6 +4981,7 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
             cwd: PathBuf::new(),
             seen: BTreeMap::new(),
             refusals: Arc::default(),
+            last_thought: LastThought::default(),
         };
         let chosen = |answer| match answer {
             acp_client::wire::PermissionAnswer::Selected(option) => option,

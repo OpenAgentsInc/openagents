@@ -193,6 +193,15 @@ pub fn received(dir: &Path) -> Vec<Value> {
 /// `/workspace`, `bypass` mode, and one prompt that runs `echo` and `ls`.
 pub const DEVIN_TURN: &str = include_str!("../fixtures/devin-3000.11.3-turn.jsonl");
 
+/// A recorded Devin 3000.11.3 turn on a Devin Free account (2026-10-14,
+/// #11583): asked for `--model swe-2-high`, the session opened on
+/// `swe-1-6-slow`, the only model the account offers; `bypass` mode; one
+/// read-only prompt that reads three files and answers in three bullets.
+/// Each step's thinking comes as `agent_thought_chunk`s, the answer as
+/// `agent_message_chunk`s after the last one. MCP log notifications are
+/// left out and local paths read `/workspace`.
+pub const DEVIN_FREE_TURN: &str = include_str!("../fixtures/devin-3000.11.3-free-turn.jsonl");
+
 /// The recorded OpenCode 1.18.26 turn: initialize, a new session on
 /// `google/gemini-3.6-flash`, and one prompt that runs `cat` through the
 /// bash tool and answers `done`.

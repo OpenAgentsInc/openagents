@@ -260,9 +260,44 @@ impl TurnStats {
 
 /// Whether the model a session reports is the one a route admitted. The
 /// route model `default` admits whatever Devin reports.
+///
+/// Devin doesn't refuse a `--model` its account doesn't allow: it logs
+/// "did not resolve to an available, allowed model", starts the session
+/// on the account default, and reports that one (a Free plan offers only
+/// `swe-1-6-slow`, #11583). This check is how a caller notices.
 #[must_use]
 pub fn admits(route_model: &str, reported: Option<&str>) -> bool {
     route_model == DEFAULT_MODEL || reported == Some(route_model)
+}
+
+/// The model `arguments` ask Devin for (`--model NAME`), when they name
+/// one.
+#[must_use]
+pub fn asked_model(arguments: &[String]) -> Option<String> {
+    arguments
+        .iter()
+        .position(|argument| argument == "--model")
+        .and_then(|at| arguments.get(at + 1))
+        .filter(|model| model.as_str() != DEFAULT_MODEL)
+        .cloned()
+}
+
+/// The models a session lets the person switch to: its `model`
+/// configuration option's values.
+#[must_use]
+pub fn offered_models(opened: &crate::wire::Opened) -> Vec<String> {
+    opened
+        .config_options
+        .iter()
+        .find(|option| option.id == "model" || option.category.as_deref() == Some("model"))
+        .map(|option| {
+            option
+                .options
+                .iter()
+                .map(|value| value.value.clone())
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -316,6 +351,21 @@ mod tests {
         assert!(admits("swe-2-high", Some("swe-2-high")));
         assert!(!admits("swe-2-high", Some("adaptive")));
         assert!(!admits("swe-2-high", None));
+        assert_eq!(
+            asked_model(&arguments("swe-2-medium")).as_deref(),
+            Some("swe-2-medium")
+        );
+        assert_eq!(asked_model(&arguments(DEFAULT_MODEL)), None);
+        // A Free account's session, as Devin 3000.11.3 opened it on
+        // 2026-10-14 after `--model swe-2-medium` (#11583).
+        let opened: crate::wire::Opened = serde_json::from_value(json!({
+            "sessionId": "rose-argon",
+            "configOptions": [{"id": "model", "category": "model", "currentValue": "swe-1-6-slow",
+                "options": [{"value": "swe-1-6-slow", "name": "SWE-1.6 Slow"}]}]
+        }))
+        .unwrap();
+        assert_eq!(offered_models(&opened), vec!["swe-1-6-slow"]);
+        assert!(!admits("swe-2-medium", opened.model()));
         let meta = engine_meta("openagents-coder-engine");
         assert!(is_engine_session(
             meta.as_object(),

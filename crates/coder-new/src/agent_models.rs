@@ -430,14 +430,13 @@ pub fn forget(agent: &str) {
 }
 
 /// The model `agent` runs when the person picked none: Devin CLI's is
-/// the model the person configured for Devin (`agent.model`), else
-/// Coder's SWE-2 default; Grok Build's the default its CLI names.
+/// Coder's fastest SWE-2 ([`acp_client::devin::CODER_MODEL`]; owner,
+/// 2026-10-14: "MUST BE SWE 2 Fast", #11583), never Devin's own account
+/// or `config.json` default; Grok Build's the default its CLI names.
 #[must_use]
 pub fn default_model(agent: &str) -> Option<String> {
     match agent {
-        DEVIN => {
-            Some(devin_configured().unwrap_or_else(|| acp_client::devin::CODER_MODEL.to_owned()))
-        }
+        DEVIN => Some(acp_client::devin::CODER_MODEL.to_owned()),
         GROK => listed(GROK)
             .and_then(|models| models.into_iter().find(|model| model.default))
             .map(|model| model.id),
@@ -447,30 +446,6 @@ pub fn default_model(agent: &str) -> Option<String> {
             .map(|model| model.id),
         _ => None,
     }
-}
-
-/// The model the person configured in Devin's own `config.json`. Never
-/// read in a unit test.
-#[cfg(not(test))]
-fn devin_configured() -> Option<String> {
-    let path = acp_client::devin::config_path(&|name| std::env::var_os(name))?;
-    acp_client::devin::configured_model(&std::fs::read(path).ok()?)
-}
-
-#[cfg(test)]
-fn devin_configured() -> Option<String> {
-    DEVIN_CONFIG.with(|config| config.borrow().clone())
-}
-
-#[cfg(test)]
-thread_local! {
-    static DEVIN_CONFIG: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
-}
-
-/// A unit test's configured Devin model.
-#[cfg(test)]
-pub fn set_devin_configured(model: Option<&str>) {
-    DEVIN_CONFIG.with(|config| *config.borrow_mut() = model.map(str::to_owned));
 }
 
 /// The model `agent`'s next turn runs: the pick, else [`default_model`].
@@ -645,15 +620,19 @@ Available models:
         );
     }
 
-    /// Devin runs the model the person configured for it, else Coder's
-    /// SWE-2 Medium (owner, 2026-10-13).
+    /// Devin runs the person's pick, else Coder's fastest SWE-2, whatever
+    /// Devin's own `config.json` names (owner, 2026-10-14, #11583).
     #[test]
-    fn devin_runs_the_configured_model_else_swe_2_medium() {
+    fn devin_runs_the_pick_else_the_fastest_swe_2() {
+        // The Devin delegation tests read the pick too.
+        let _lock = crate::approval::test_lock()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         forget(DEVIN);
-        set_devin_configured(Some("swe-2-high"));
-        assert_eq!(turn_model(DEVIN).as_deref(), Some("swe-2-high"));
-        set_devin_configured(None);
         assert_eq!(turn_model(DEVIN).as_deref(), Some("swe-2-medium"));
+        hold(DEVIN, "swe-2-high");
+        assert_eq!(turn_model(DEVIN).as_deref(), Some("swe-2-high"));
+        forget(DEVIN);
         assert_eq!(
             acp_client::devin::configured_model(br#"{"agent":{"model":"swe-2-high"}}"#).as_deref(),
             Some("swe-2-high")

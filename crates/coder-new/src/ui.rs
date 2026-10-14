@@ -982,8 +982,9 @@ fn rail_harness(app: &App) -> Option<String> {
 /// "Devin CLI (SWE-2 Medium)", #11556). That is the pick in /models, else
 /// the default its own CLI names (Grok's `grok models`, Oh My Pi's first
 /// chat model), never a model an earlier session reported, which may be
-/// stale; until the list is read the rail names none. Devin starts on the model its own server allows, so what its
-/// session last ran comes first there. A Clef model is never named: it
+/// stale; until the list is read the rail names none. Devin's default is
+/// Coder's fastest SWE-2, and a session Devin starts on another model is
+/// refused (#11583), so its rail names that default too. A Clef model is never named: it
 /// can't chat, and Oh My Pi with nothing else reads "(no chat model)".
 pub(crate) fn agent_rail_label(id: &str, name: &str) -> String {
     use crate::agent_models as agents;
@@ -1029,7 +1030,7 @@ pub(crate) fn agent_rail_from(
     };
     let cached = usable(&facts.cached);
     let model = usable(&facts.choice).or_else(|| {
-        if agents::lists_models(id) && id != agents::DEVIN {
+        if agents::lists_models(id) {
             // The list's default, once read. While it is read the rail
             // names no model: a cached one may be stale (owner,
             // 2026-10-13: the rail said Grok 4.6, then 4.7 ran).
@@ -4273,28 +4274,28 @@ mod agent_rail_label_tests {
         );
     }
 
-    /// Devin starts on the model its own server allows, so the model its
-    /// last session reported names the rail; the configured default only
-    /// before any session.
+    /// Devin's rail names the model its next turn asks for, the pick else
+    /// Coder's SWE-2 default, never the account default an earlier
+    /// session fell back to (#11583).
     #[test]
-    fn devin_names_what_its_session_ran() {
+    fn devin_names_the_model_its_next_turn_asks_for() {
         let facts = AgentFacts {
             listed: true,
-            default: Some("swe-2-high".into()),
+            default: Some("swe-2-medium".into()),
             cached: Some("swe-1-6-slow".into()),
             ..AgentFacts::default()
         };
         let display = |model: &str| crate::agent_models::display("devin-cli", model);
         assert_eq!(
             agent_rail_from("devin-cli", "Devin CLI", &facts, display),
-            "Devin CLI (SWE-1.6 Slow)"
+            "Devin CLI (SWE-2 Medium)"
         );
-        let fresh = AgentFacts {
-            cached: None,
+        let picked = AgentFacts {
+            choice: Some("swe-2-high".into()),
             ..facts
         };
         assert_eq!(
-            agent_rail_from("devin-cli", "Devin CLI", &fresh, display),
+            agent_rail_from("devin-cli", "Devin CLI", &picked, display),
             "Devin CLI (SWE-2 High)"
         );
     }
