@@ -97,6 +97,47 @@ paths filter); otherwise it does nothing. `code-graph publish` writes the
 branch with Git plumbing only (`hash-object`, `mktree`, `commit-tree`), so
 it never touches a working tree.
 
+**The host (since 2026-10-14).** The writer is the GCE VM
+`oa-coder-worker-1` (project `openagentsgemini`, zone `us-central1-a`,
+e2-standard-4, the always-on chat worker host), under its own Unix user
+`oa-codegraph` (lingering, so the user timer runs without a login). That
+user owns nothing of the chat workers and cannot read their env files.
+Its checkout is `~/openagents` (a blobless clone), the publisher's bare
+clone `~/.cache/openagents/code-graph/repo.git`, and its Rust toolchain
+`~/.cargo` (rustup, stable).
+
+**Credential.** One SSH deploy key with write access to
+OpenAgentsInc/openagents only, titled `code-graph publisher
+(oa-coder-worker-1, #11622)`; the private half is
+`/home/oa-codegraph/.ssh/code_graph_deploy` (0600, on that host only),
+selected by that user's `~/.ssh/config`. Deploy keys are scoped to one
+repository but not to one branch, so the boundary is the host account:
+nothing else on the VM uses the key, and the only push it makes is
+`code-graph publish`'s force-push of `code-graph`. The worker's existing
+credentials were not reused: the chat worker has no GitHub push
+credential, and Solver's are per-requester OAuth tokens and the pool's
+GitHub token, both broader than this job.
+
+**Runbook.** With `H=(oa-coder-worker-1 --zone us-central1-a --project
+openagentsgemini --tunnel-through-iap)` and the automation gcloud config:
+
+```bash
+# status, last runs
+gcloud compute ssh "${H[@]}" --command 'sudo -iu oa-codegraph env XDG_RUNTIME_DIR=/run/user/1003 systemctl --user list-timers openagents-code-graph.timer --no-pager'
+gcloud compute ssh "${H[@]}" --command 'sudo -iu oa-codegraph env XDG_RUNTIME_DIR=/run/user/1003 journalctl --user -u openagents-code-graph -n 40 --no-pager'
+# upgrade the publisher to a newer main (or roll back: pass an older commit)
+gcloud compute ssh "${H[@]}" --command 'sudo -iu oa-codegraph env XDG_RUNTIME_DIR=/run/user/1003 PATH=/home/oa-codegraph/.cargo/bin:/usr/bin:/bin ~/install.sh [COMMIT]'
+```
+
+`~/install.sh` is a copy of `deploy/code-graph/install.sh`; refresh it
+from `origin/main` before an upgrade. **Rollback / turn off:** stop the
+timer (`systemctl --user disable --now openagents-code-graph.timer` as
+`oa-codegraph`) and delete the deploy key in the repository's
+Settings > Deploy keys (or `gh api -X DELETE
+repos/OpenAgentsInc/openagents/keys/166468997`). Readers keep working:
+with no fresh published graph they build one locally. To restore the last
+good branch, force-push its commit back to `code-graph`.
+
 **Readers.** Coder's tools find a checkout's graph in this order:
 
 1. the graph already loaded in the process for the same state;
