@@ -4,6 +4,9 @@ pub mod act;
 pub mod artifacts;
 pub mod controller;
 pub mod preprocess;
+pub mod service;
+pub mod smol_artifacts;
+pub mod smolvla;
 pub type Result<T> = std::result::Result<T, Error>;
 #[derive(Debug, thiserror::Error)]
 pub enum Error {

@@ -320,6 +320,49 @@
             "cameras",
             "instruction"
           ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "build": {
+              "$ref": "#/$defs/Build"
+            },
+            "cameras": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "instruction": {
+              "type": "string"
+            },
+            "joints": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "kind": {
+              "type": "string",
+              "const": "service"
+            },
+            "manifest": {
+              "$ref": "#/$defs/Asset"
+            },
+            "robot": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "build",
+            "manifest",
+            "robot",
+            "joints",
+            "cameras",
+            "instruction"
+          ]
         }
       ]
     },

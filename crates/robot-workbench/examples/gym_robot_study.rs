@@ -2,7 +2,7 @@
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     use std::path::Path;
     let args = std::env::args().skip(1).collect::<Vec<_>>();
-    if args.len() != 9 {
+    if !(9..=10).contains(&args.len()) {
         return Err("Use: STORE PROJECT SCENE@VERSION STUDY LIBRARY LIBRARY_SHA POLICY_FOLDER POLICY_SHA OUTPUT_FOLDER".into());
     }
     let store = robot_lab::Store::open(Path::new(&args[0]), &args[1])?;
@@ -19,7 +19,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             sha256: args[5].clone(),
         },
         policy: Some(robot_workbench::experiments::Policy {
-            id: "act".into(),
+            id: args.get(9).cloned().unwrap_or_else(|| "act".into()),
             root: args[6].clone().into(),
             sha256: args[7].clone(),
         }),

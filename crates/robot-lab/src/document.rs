@@ -289,6 +289,14 @@ pub enum Controller {
         cameras: Vec<String>,
         instruction: String,
     },
+    Service {
+        build: Build,
+        manifest: Asset,
+        robot: String,
+        joints: Vec<String>,
+        cameras: Vec<String>,
+        instruction: String,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -801,6 +809,7 @@ impl Controller {
         match self {
             Self::Manual { robot, .. }
             | Self::Scripted { robot, .. }
+            | Self::Service { robot, .. }
             | Self::Policy { robot, .. } => robot,
         }
     }
@@ -808,6 +817,7 @@ impl Controller {
         match self {
             Self::Manual { joints, .. }
             | Self::Scripted { joints, .. }
+            | Self::Service { joints, .. }
             | Self::Policy { joints, .. } => joints,
         }
     }
@@ -865,6 +875,22 @@ impl Experiment {
         )?;
         unique(self.controller.joints().iter().map(String::as_str), 64)?;
         match &self.controller {
+            Controller::Service {
+                build,
+                manifest,
+                cameras,
+                instruction,
+                ..
+            } => {
+                build.validate()?;
+                manifest.validate()?;
+                require(
+                    manifest.media_type == "application/json" && manifest.bytes <= 2 << 20,
+                    "Use a bounded saved policy-service description",
+                )?;
+                unique(cameras.iter().map(String::as_str), 16)?;
+                text(instruction, 4096)?;
+            }
             Controller::Manual { build, .. } | Controller::Scripted { build, .. } => {
                 build.validate()?
             }
@@ -1009,6 +1035,7 @@ impl Document {
                 .filter_map(|o| o.mesh.as_ref())
                 .collect(),
             Self::Experiment(experiment) => match &experiment.controller {
+                Controller::Service { manifest, .. } => vec![manifest],
                 Controller::Policy {
                     weights,
                     normalization,

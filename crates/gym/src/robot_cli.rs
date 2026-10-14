@@ -259,7 +259,9 @@ fn write_summary(
     writeln!(
         output,
         "{}: {} of {} recorded attempts succeeded",
-        summary.controller.name, summary.successes, summary.recorded
+        controller_name(&summary.controller),
+        summary.successes,
+        summary.recorded
     )
     .map_err(|e| e.to_string())?;
     if !summary.missing_seeds.is_empty() {
@@ -303,6 +305,15 @@ fn write_summary(
         .map_err(|e| e.to_string())?;
     }
     Ok(())
+}
+fn controller_name(build: &Build) -> &str {
+    match build.name.as_str() {
+        "robot-scripted-v1" => "Scripted controller",
+        "robot-act-candle-v1" => "ACT",
+        "robot-smolvla-candle-v1" => "SmolVLA",
+        "robot-policy-service-v1" => "Policy service",
+        _ => "Controller",
+    }
 }
 fn player(text: &str) -> Result<String, String> {
     let url = url::Url::parse(text).map_err(|_| "Choose the local Robot Lab player's address")?;

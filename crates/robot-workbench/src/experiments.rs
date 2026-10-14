@@ -149,23 +149,19 @@ impl Session {
             robot_lab::document::Controller::Scripted { build, .. } => {
                 Control::Scripted(Scripted::open(&host.store, build).map_err(|e| e.to_string())?)
             }
-            robot_lab::document::Controller::Policy { .. } => {
+            robot_lab::document::Controller::Policy { .. }
+            | robot_lab::document::Controller::Service { .. } => {
                 let configured = config
                     .policy
                     .as_ref()
-                    .ok_or("Configure a policy checkpoint before starting this experiment")?;
-                let artifact = Artifact::open(&configured.root, &configured.sha256)
-                    .map_err(|e| e.to_string())?;
-                Control::Act(
-                    NativeController::new(
-                        artifact,
-                        host.store.clone(),
-                        &bundle.robot,
-                        &bundle.scene,
-                        &experiment,
-                    )
-                    .map_err(|e| e.to_string())?,
-                )
+                    .ok_or("Configure a policy before starting this experiment")?;
+                let artifact = SavedPolicy::open(configured)?;
+                Control::Act(artifact.controller(
+                    host.store.clone(),
+                    &bundle.robot,
+                    &bundle.scene,
+                    &experiment,
+                )?)
             }
             robot_lab::document::Controller::Manual { .. } => {
                 return Err("Use the manual recorder for this experiment".into());
@@ -277,6 +273,57 @@ pub fn scripted_experiment(
         )
         .map_err(|e| e.to_string())
 }
+enum SavedPolicy {
+    Act(Artifact),
+    Smol(robot_policy::smol_artifacts::Artifact),
+    Service(robot_policy::service::Configured),
+}
+impl SavedPolicy {
+    fn open(config: &Policy) -> Result<Self, String> {
+        Ok(match config.id.as_str() {
+            "act" => {
+                Self::Act(Artifact::open(&config.root, &config.sha256).map_err(|e| e.to_string())?)
+            }
+            "smolvla" => Self::Smol(
+                robot_policy::smol_artifacts::Artifact::open(&config.root, &config.sha256)
+                    .map_err(|e| e.to_string())?,
+            ),
+            "service" => Self::Service(
+                robot_policy::service::Configured::open(&config.root, &config.sha256)
+                    .map_err(|e| e.to_string())?,
+            ),
+            _ => return Err("Choose act, smolvla, or service for this policy".into()),
+        })
+    }
+    fn binding(&self) -> &robot_policy::artifacts::Binding {
+        match self {
+            Self::Act(a) => &a.pin.binding,
+            Self::Smol(a) => &a.pin.binding,
+            Self::Service(a) => &a.manifest.binding,
+        }
+    }
+    fn build(&self) -> Build {
+        match self {
+            Self::Act(a) => a.build.clone(),
+            Self::Smol(a) => a.build.clone(),
+            Self::Service(a) => a.manifest.build.clone(),
+        }
+    }
+    fn controller(
+        self,
+        store: robot_lab::Store,
+        robot: &robot_lab::document::Robot,
+        scene: &robot_lab::document::Scene,
+        experiment: &Experiment,
+    ) -> Result<NativeController, String> {
+        match self {
+            Self::Act(a) => NativeController::new(a, store, robot, scene, experiment),
+            Self::Smol(a) => NativeController::new_smol(a, store, robot, scene, experiment),
+            Self::Service(a) => a.controller(store, robot, scene, experiment),
+        }
+        .map_err(|e| e.to_string())
+    }
+}
 pub fn policy_experiment(
     host: &Host,
     scene: &Reference,
@@ -288,63 +335,82 @@ pub fn policy_experiment(
     let configured = config
         .policy
         .as_ref()
-        .ok_or("Configure a policy checkpoint before starting this experiment")?;
-    let artifact =
-        Artifact::open(&configured.root, &configured.sha256).map_err(|e| e.to_string())?;
+        .ok_or("Configure a policy before creating this experiment")?;
+    let artifact = SavedPolicy::open(configured)?;
+    let binding = artifact.binding();
     let bundle = host.bundle(scene)?;
-    let backend = backend_build(host, scene, artifact.pin.binding.timestep_seconds, config)?;
-    let weights = host
-        .store
-        .put_asset(
-            std::fs::File::open(artifact.root.join(&artifact.pin.weights))
-                .map_err(|e| e.to_string())?,
-            "application/x-safetensors",
-            256 << 20,
-        )
-        .map_err(|e| e.to_string())?;
-    let normalization = host
-        .store
-        .put_asset(
-            std::fs::File::open(artifact.root.join(&artifact.pin.normalization))
-                .map_err(|e| e.to_string())?,
-            "application/json",
-            1 << 20,
-        )
-        .map_err(|e| e.to_string())?;
+    let backend = backend_build(host, scene, binding.timestep_seconds, config)?;
+    let robot = bundle.scene.robots[0].id.clone();
+    let joints = binding
+        .actions
+        .joints
+        .iter()
+        .map(|j| j.joint.clone())
+        .collect();
+    let cameras = binding.cameras.iter().map(|c| c.id.clone()).collect();
+    let instruction = binding.instruction.clone();
+    let controller = if let SavedPolicy::Service(service) = &artifact {
+        let manifest = host
+            .store
+            .put_asset(
+                std::io::Cursor::new(&service.manifest_bytes),
+                "application/json",
+                2 << 20,
+            )
+            .map_err(|e| e.to_string())?;
+        robot_lab::document::Controller::Service {
+            build: artifact.build(),
+            manifest,
+            robot,
+            joints,
+            cameras,
+            instruction,
+        }
+    } else {
+        let (weights, normalization) = match &artifact {
+            SavedPolicy::Act(a) => (&a.pin.weights, &a.pin.normalization),
+            SavedPolicy::Smol(a) => (&a.pin.weights, &a.pin.normalization),
+            _ => unreachable!(),
+        };
+        let weights = host
+            .store
+            .put_asset(
+                std::fs::File::open(configured.root.join(weights)).map_err(|e| e.to_string())?,
+                "application/x-safetensors",
+                2 << 30,
+            )
+            .map_err(|e| e.to_string())?;
+        let normalization = host
+            .store
+            .put_asset(
+                std::fs::File::open(configured.root.join(normalization))
+                    .map_err(|e| e.to_string())?,
+                "application/json",
+                1 << 20,
+            )
+            .map_err(|e| e.to_string())?;
+        robot_lab::document::Controller::Policy {
+            build: artifact.build(),
+            weights,
+            normalization,
+            robot,
+            joints,
+            cameras,
+            instruction,
+        }
+    };
     let experiment = Experiment {
         scene: scene.clone(),
         task: cube_task(),
-        controller: robot_lab::document::Controller::Policy {
-            build: artifact.build.clone(),
-            weights,
-            normalization,
-            robot: bundle.scene.robots[0].id.clone(),
-            joints: artifact
-                .pin
-                .binding
-                .actions
-                .joints
-                .iter()
-                .map(|j| j.joint.clone())
-                .collect(),
-            cameras: artifact
-                .pin
-                .binding
-                .cameras
-                .iter()
-                .map(|c| c.id.clone())
-                .collect(),
-            instruction: artifact.pin.binding.instruction.clone(),
-        },
+        controller,
         backend,
-        timestep_seconds: artifact.pin.binding.timestep_seconds,
-        control_every_steps: artifact.pin.binding.control_every_steps,
-        sensor_every_steps: 8,
+        timestep_seconds: binding.timestep_seconds,
+        control_every_steps: binding.control_every_steps,
+        sensor_every_steps: binding.control_every_steps,
         seeds,
         limits: limits(max_steps),
     };
-    artifact
-        .pin
+    binding
         .validate_scene(&bundle.robot, &bundle.scene, &experiment)
         .map_err(|e| e.to_string())?;
     host.store
@@ -452,8 +518,7 @@ pub fn study(
         .policy
         .as_ref()
         .ok_or("Choose the policy checkpoint for this comparison")?;
-    let artifact =
-        Artifact::open(&configured.root, &configured.sha256).map_err(|e| e.to_string())?;
+    let artifact = SavedPolicy::open(configured)?;
     let mut suite = Suite {
         schema: gym::robot::SUITE_SCHEMA.into(),
         name: name.into(),
@@ -465,7 +530,7 @@ pub fn study(
         sensor_every_steps: 8,
         max_steps: 241,
         cases,
-        exposure: std::collections::BTreeMap::from([(artifact.build.sha256.clone(), vec![7])]),
+        exposure: std::collections::BTreeMap::from([(artifact.build().sha256, vec![7])]),
         digest: String::new(),
     };
     suite.digest = suite.compute_digest()?;
@@ -572,6 +637,7 @@ pub fn cli(args: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
             "--library-sha",
             "--policy",
             "--policy-sha",
+            "--policy-kind",
         ]
         .contains(&flag.as_str())
             || values.insert(flag, value).is_some()
@@ -595,7 +661,10 @@ pub fn cli(args: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
         },
         policy: if let Some(root) = values.get("--policy") {
             Some(Policy {
-                id: "act".into(),
+                id: values
+                    .get("--policy-kind")
+                    .cloned()
+                    .unwrap_or_else(|| "act".into()),
                 root: root.into(),
                 sha256: value("--policy-sha")?,
             })
@@ -651,5 +720,114 @@ pub fn recover_cli(args: Vec<String>) -> Result<(), Box<dyn std::error::Error>> 
         "{}",
         serde_json::json!({"job":job.id,"status":job.status,"episode":job.episode})
     );
+    Ok(())
+}
+
+pub async fn service_cli(args: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
+    let mut values = std::collections::BTreeMap::new();
+    let mut args = args.into_iter();
+    while let Some(flag) = args.next() {
+        let value = args
+            .next()
+            .ok_or("Choose a value for this policy-service option")?;
+        if ![
+            "--root",
+            "--project",
+            "--experiment",
+            "--policy",
+            "--policy-sha",
+            "--policy-kind",
+            "--port",
+            "--manifest-output",
+        ]
+        .contains(&flag.as_str())
+            || values.insert(flag, value).is_some()
+        {
+            return Err("Choose supported policy-service options once each".into());
+        }
+    }
+    let value = |key: &str| {
+        values
+            .get(key)
+            .cloned()
+            .ok_or_else(|| format!("Choose {key} for this policy service"))
+    };
+    let store = robot_lab::Store::open(Path::new(&value("--root")?), &value("--project")?)?;
+    let catalog = Path::new(env!("CARGO_MANIFEST_DIR")).join("../robot-description/assets/so101");
+    let host = Host::open(store.clone(), &catalog, "http://127.0.0.1:8794")?;
+    let reference = value("--experiment")?;
+    let (document, version) = reference
+        .split_once('@')
+        .ok_or("Choose the exact experiment as DOCUMENT@VERSION")?;
+    let Document::Experiment(experiment) = store
+        .get(&Reference {
+            document: document.into(),
+            version: version.into(),
+        })?
+        .content
+    else {
+        return Err("Choose a saved policy experiment".into());
+    };
+    let bundle = host.bundle(&experiment.scene)?;
+    let token = std::env::var("ROBOT_POLICY_TOKEN")
+        .map_err(|_| "Set ROBOT_POLICY_TOKEN before serving this policy")?;
+    let root = value("--policy")?;
+    let expected = value("--policy-sha")?;
+    let server = match values
+        .get("--policy-kind")
+        .map(String::as_str)
+        .unwrap_or("act")
+    {
+        "act" => robot_policy::service::Server::act(
+            Artifact::open(Path::new(&root), &expected)?,
+            store,
+            &bundle.robot,
+            &bundle.scene,
+            &experiment,
+            token,
+        )?,
+        "smolvla" => robot_policy::service::Server::smol(
+            robot_policy::smol_artifacts::Artifact::open(Path::new(&root), &expected)?,
+            store,
+            &bundle.robot,
+            &bundle.scene,
+            &experiment,
+            token,
+        )?,
+        _ => return Err("Choose act or smolvla for this policy service".into()),
+    };
+    let path = PathBuf::from(value("--manifest-output")?);
+    if !path.is_absolute()
+        || path
+            .parent()
+            .ok_or("Choose a manifest folder")?
+            .canonicalize()?
+            .ancestors()
+            .any(|p| p.join(".git").exists())
+    {
+        return Err("Save the policy-service manifest outside the Git checkout".into());
+    }
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    use std::io::Write;
+    let mut file = options.open(path)?;
+    file.write_all(server.manifest_bytes())?;
+    file.sync_all()?;
+    let port = values
+        .get("--port")
+        .map(|p| p.parse::<u16>())
+        .transpose()?
+        .unwrap_or(0);
+    let listener = tokio::net::TcpListener::bind(("127.0.0.1", port)).await?;
+    eprintln!(
+        "{}",
+        serde_json::json!({"url":format!("http://127.0.0.1:{}",listener.local_addr()?.port()),"manifest_sha256":robot_policy::artifacts::digest(server.manifest_bytes())})
+    );
+    axum::serve(listener, Arc::new(server).router()).await?;
     Ok(())
 }

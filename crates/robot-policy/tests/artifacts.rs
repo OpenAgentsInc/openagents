@@ -140,3 +140,77 @@ fn explicit_units_offsets_and_direction_round_trip_observed_positions() {
     assert!((decoded["shoulder"] - 0.4).abs() < 1e-7);
     assert!(state_features(&pin.binding.state, &BTreeMap::new()).is_err());
 }
+
+#[test]
+fn smolvla_import_checks_prompt_tokens_camera_layout_and_each_file_hash() {
+    let root = tempfile::tempdir().unwrap();
+    let (act, _) = fixture(root.path());
+    let reference: serde_json::Value =
+        serde_json::from_str(include_str!("../fixtures/smol-hybrid.json")).unwrap();
+    let architecture = serde_json::from_value(reference["configuration"].clone()).unwrap();
+    let mut binding = act.binding;
+    binding.environment.clear();
+    binding.instruction = "Move the cube".into();
+    binding.cameras = vec![robot_policy::artifacts::Camera {
+        id: "front".into(),
+        source: [32, 32],
+        target: [32, 32],
+        definition_sha256: "d".repeat(64),
+        max_age_steps: 8,
+    }];
+    let normalization = Normalization {
+        state: Normalize::Identity,
+        environment: None,
+        action: Normalize::Identity,
+        cameras: BTreeMap::from([("front".into(), Normalize::Identity)]),
+    };
+    let normalized = serde_json::to_vec(&normalization).unwrap();
+    std::fs::write(root.path().join("normalization.json"), &normalized).unwrap();
+    let tokenizer=br#"{"version":"1.0","truncation":null,"padding":null,"added_tokens":[],"normalizer":null,"pre_tokenizer":{"type":"Whitespace"},"post_processor":null,"decoder":null,"model":{"type":"WordLevel","vocab":{"[UNK]":0,"Move":3,"the":8,"cube":11},"unk_token":"[UNK]"}}"#;
+    std::fs::write(root.path().join("tokenizer.json"), tokenizer).unwrap();
+    let mut files = act.files;
+    files.insert(
+        "normalization.json".into(),
+        FilePin {
+            sha256: digest(&normalized),
+            bytes: normalized.len() as u64,
+        },
+    );
+    files.insert(
+        "tokenizer.json".into(),
+        FilePin {
+            sha256: digest(tokenizer),
+            bytes: tokenizer.len() as u64,
+        },
+    );
+    let mut pin = robot_policy::smol_artifacts::Pin {
+        schema: "robot-smolvla.v1".into(),
+        source: act.source,
+        architecture,
+        binding,
+        weights: "model.safetensors".into(),
+        normalization: "normalization.json".into(),
+        tokenizer: "tokenizer.json".into(),
+        language_tokens: vec![3, 8, 11],
+        language_valid: vec![true; 3],
+        empty_cameras: 0,
+        files,
+    };
+    let bytes = serde_json::to_vec(&pin).unwrap();
+    std::fs::write(root.path().join("policy.json"), &bytes).unwrap();
+    let artifact =
+        robot_policy::smol_artifacts::Artifact::open(root.path(), &digest(&bytes)).unwrap();
+    assert!(
+        artifact.model().is_err(),
+        "invalid tensor containers cannot construct a model"
+    );
+    pin.language_tokens[0] = 4;
+    let bytes = serde_json::to_vec(&pin).unwrap();
+    std::fs::write(root.path().join("policy.json"), &bytes).unwrap();
+    assert!(robot_policy::smol_artifacts::Artifact::open(root.path(), &digest(&bytes)).is_err());
+    pin.empty_cameras = usize::MAX;
+    assert!(
+        pin.validate().is_err(),
+        "extreme camera counts must refuse without overflowing"
+    );
+}

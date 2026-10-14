@@ -140,3 +140,5 @@ pub mod tui;
 
 /// The schema family every Gym document is tagged with.
 pub const SCHEMA_PREFIX: &str = "openagents.gym";
+
+mod robot_metric;

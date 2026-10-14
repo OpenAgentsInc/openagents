@@ -130,6 +130,7 @@ impl<B: Backend, C: Controller> Runner<B, C> {
         let expected = match &experiment.controller {
             robot_lab::document::Controller::Manual { build, .. }
             | robot_lab::document::Controller::Scripted { build, .. }
+            | robot_lab::document::Controller::Service { build, .. }
             | robot_lab::document::Controller::Policy { build, .. } => build,
         };
         require(

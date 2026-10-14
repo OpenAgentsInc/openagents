@@ -20,6 +20,10 @@ name = "act_run"
 required-features = ["host"]
 
 [[example]]
+name = "prepare_policy"
+required-features = ["host"]
+
+[[example]]
 name = "gym_robot_study"
 required-features = ["host"]
 

@@ -13973,9 +13973,12 @@ dependencies = [
 name = "robot-policy"
 version = "1.0.0-rc.13"
 dependencies = [
+ "axum 0.8.9",
+ "base64 0.22.1",
  "candle-core",
  "candle-nn",
  "oa-copy",
+ "reqwest 0.12.28",
  "robot-data",
  "robot-lab",
  "robot-sim",
@@ -13984,6 +13987,10 @@ dependencies = [
  "sha2 0.10.9",
  "tempfile",
  "thiserror 2.0.20",
+ "tokenizers 0.22.2",
+ "tokio",
+ "tower 0.5.3",
+ "url",
 ]
 
 [[package]]

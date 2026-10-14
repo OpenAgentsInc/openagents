@@ -1,4 +1,4 @@
-ACT reference cases use Hugging Face LeRobot 0.3.3, Apache-2.0,
+ACT and SmolVLA reference cases use Hugging Face LeRobot 0.3.3, Apache-2.0,
 at b883328e6c95681ca90a18b102e4ae5e1f91e2bf.
 https://github.com/huggingface/lerobot/tree/b883328e6c95681ca90a18b102e4ae5e1f91e2bf
 
@@ -6,3 +6,8 @@ The camera test pattern is original test data created by OpenAgents and
 released under CC0-1.0. The generated reference weights are stored outside
 this repository. These random reference cases establish numerical agreement;
 they are not evidence of task performance.
+
+SmolVLA cases also pin Transformers 4.51.3 (Apache-2.0), using a tiny
+original configuration and supplied noise. They cover the full vision,
+language, and action path without fetching pretrained weights.
+https://github.com/huggingface/transformers/tree/v4.51.3

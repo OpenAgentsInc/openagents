@@ -100,6 +100,18 @@ pub fn image(
     target: [u32; 2],
     normalization: &Normalize,
 ) -> Result<Vec<f32>> {
+    require(
+        target.iter().all(|d| (16..=640).contains(d)),
+        "Use the policy's bounded camera dimensions",
+    )?;
+    resize_image(png, source, target, normalization)
+}
+fn resize_image(
+    png: &[u8],
+    source: [u32; 2],
+    target: [u32; 2],
+    normalization: &Normalize,
+) -> Result<Vec<f32>> {
     let [width, height] = source;
     let [out_width, out_height] = target;
     require(
@@ -107,8 +119,8 @@ pub fn image(
             && height > 0
             && width <= 2048
             && height <= 2048
-            && (16..=640).contains(&out_width)
-            && (16..=640).contains(&out_height),
+            && (1..=640).contains(&out_width)
+            && (1..=640).contains(&out_height),
         "Use the policy's bounded camera dimensions.",
     )?;
     normalization.validate(3)?;
@@ -152,5 +164,34 @@ pub fn image(
         output.iter().all(|value| value.is_finite()),
         "The policy's camera normalization exceeds its numeric range.",
     )?;
+    Ok(output)
+}
+
+/// Match LeRobot's top/left letterbox padding and SigLIP [-1, 1] range.
+pub fn smol_image(png: &[u8], source: [u32; 2], size: u32) -> Result<Vec<f32>> {
+    require(
+        (16..=512).contains(&size) && source.iter().all(|d| (1..=2048).contains(d)),
+        "Use bounded SmolVLA camera dimensions",
+    )?;
+    let ratio = (source[0] as f64 / size as f64).max(source[1] as f64 / size as f64);
+    let width = (source[0] as f64 / ratio) as u32;
+    let height = (source[1] as f64 / ratio) as u32;
+    require(
+        width > 0 && height > 0,
+        "Choose a camera aspect ratio that fits the policy image",
+    )?;
+    let pixels = resize_image(png, source, [width, height], &Normalize::Identity)?;
+    let plane = (size * size) as usize;
+    let input = (width * height) as usize;
+    let mut output = vec![-1.; plane * 3];
+    for channel in 0..3 {
+        for y in 0..height {
+            for x in 0..width {
+                output[channel * plane
+                    + ((size - height + y) * size + (size - width + x)) as usize] =
+                    pixels[channel * input + (y * width + x) as usize] * 2. - 1.;
+            }
+        }
+    }
     Ok(output)
 }

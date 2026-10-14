@@ -117,7 +117,10 @@ Verse wrote, and its statistics match.
 with golden fixtures generated offline by the Python reference, the way
 [`kev`](../../crates/kev/) and [`laya`](../../crates/laya/) carry theirs.
 ACT (a ResNet-18 backbone, a small transformer, and action chunking) is the
-smallest useful first port; SmolVLA follows. Weights stay out of git.
+smallest useful first port. ACT and SmolVLA inference now run in Candle, with
+official reference fixtures and checked private artifacts. An explicitly
+configured policy service uses the same bounded observation/action contract.
+Weights stay out of git.
 
 ## The Verse room
 

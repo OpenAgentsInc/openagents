@@ -3,7 +3,7 @@
 use crate::{
     Error, Result,
     act::Act,
-    artifacts::{Artifact, Axis, Normalization, Pin, features, state_features},
+    artifacts::{Artifact, Axis, Binding, Normalization, features, state_features},
     preprocess, require,
 };
 use candle_core::{Device, Tensor};
@@ -18,18 +18,29 @@ use std::{
     time::Duration,
 };
 
-struct Input {
-    step: u32,
-    seed: u64,
-    state: Snapshot,
-    sensors: BTreeMap<String, Sensor>,
+pub(crate) struct Input {
+    pub(crate) step: u32,
+    pub(crate) seed: u64,
+    pub(crate) timeout_ms: u32,
+    pub(crate) state: Snapshot,
+    pub(crate) sensors: BTreeMap<String, Sensor>,
 }
-trait Engine: Send + Sync {
+pub(crate) trait Engine: Send + Sync {
     fn infer(&self, input: &Input) -> Result<ActionChunk>;
 }
-struct Native {
-    model: Act,
-    pin: Pin,
+pub(crate) enum Network {
+    Act(Act),
+    Smol {
+        model: crate::smolvla::SmolVla,
+        config: crate::smolvla::Config,
+        tokens: Vec<u32>,
+        valid: Vec<bool>,
+        empty_cameras: usize,
+    },
+}
+pub(crate) struct Native {
+    model: Network,
+    binding: Binding,
     normalization: Normalization,
     store: Store,
     max_steps: u32,
@@ -38,17 +49,14 @@ impl Engine for Native {
     fn infer(&self, input: &Input) -> Result<ActionChunk> {
         require(
             input.step < self.max_steps
-                && input
-                    .step
-                    .is_multiple_of(self.pin.binding.control_every_steps),
+                && input.step.is_multiple_of(self.binding.control_every_steps),
             "Choose a policy observation on this experiment's control schedule.",
         )?;
-        let raw = state_features(&self.pin.binding.state, &input.state.joints)?;
+        let raw = state_features(&self.binding.state, &input.state.joints)?;
         let state = self.normalization.state.apply(&raw)?;
-        let state = Tensor::from_vec(state, (1, self.pin.architecture.state_dim), &Device::Cpu)?;
+        let state = Tensor::from_vec(state, (1, self.binding.state.joints.len()), &Device::Cpu)?;
         let environment = if let Some(normalization) = &self.normalization.environment {
             let values = self
-                .pin
                 .binding
                 .environment
                 .iter()
@@ -66,15 +74,15 @@ impl Engine for Native {
                 .collect::<Result<Vec<_>>>()?;
             Some(Tensor::from_vec(
                 normalization.apply(&values)?,
-                (1, self.pin.architecture.environment_dim),
+                (1, self.binding.environment.len()),
                 &Device::Cpu,
             )?)
         } else {
             None
         };
         let mut images = Vec::new();
-        let time = f64::from(input.step) * self.pin.binding.timestep_seconds;
-        for camera in &self.pin.binding.cameras {
+        let time = f64::from(input.step) * self.binding.timestep_seconds;
+        for camera in &self.binding.cameras {
             let sensor = input.sensors.get(&camera.id).ok_or_else(|| {
                 Error::Invalid(format!(
                     "This policy needs a recorded image from camera {}.",
@@ -86,48 +94,91 @@ impl Engine for Native {
                     && sensor.timestamp_seconds.is_finite()
                     && sensor.timestamp_seconds <= time + 1e-9
                     && time - sensor.timestamp_seconds
-                        <= f64::from(camera.max_age_steps) * self.pin.binding.timestep_seconds
-                            + 1e-9,
+                        <= f64::from(camera.max_age_steps) * self.binding.timestep_seconds + 1e-9,
                 "A required policy camera is missing or too old.",
             )?;
             let bytes = self
                 .store
                 .asset_bytes(&sensor.asset, 16 << 20)
                 .map_err(|e| Error::Invalid(e.to_string()))?;
-            let values = preprocess::image(
-                &bytes,
-                camera.source,
-                camera.target,
-                &self.normalization.cameras[&camera.id],
-            )?;
+            let values = match &self.model {
+                Network::Act(_) => preprocess::image(
+                    &bytes,
+                    camera.source,
+                    camera.target,
+                    &self.normalization.cameras[&camera.id],
+                )?,
+                Network::Smol { config, .. } => {
+                    preprocess::smol_image(&bytes, camera.source, config.vision.image_size as u32)?
+                }
+            };
             images.push(Tensor::from_vec(
                 values,
                 (1, 3, camera.target[1] as usize, camera.target[0] as usize),
                 &Device::Cpu,
             )?);
         }
-        let predicted = self
-            .model
-            .forward(&state, environment.as_ref(), &images)?
-            .to_vec3::<f32>()?;
+        let predicted = match &self.model {
+            Network::Act(model) => model.forward(&state, environment.as_ref(), &images)?,
+            Network::Smol {
+                model,
+                config,
+                tokens,
+                valid,
+                empty_cameras,
+            } => {
+                let state = Tensor::cat(
+                    &[
+                        state,
+                        Tensor::zeros(
+                            (1, config.max_state_dim - self.binding.state.joints.len()),
+                            candle_core::DType::F32,
+                            &Device::Cpu,
+                        )?,
+                    ],
+                    1,
+                )?;
+                let mut image_valid = vec![true; images.len()];
+                for _ in 0..*empty_cameras {
+                    images.push(Tensor::full(
+                        -1_f32,
+                        (1, 3, config.vision.image_size, config.vision.image_size),
+                        &Device::Cpu,
+                    )?);
+                    image_valid.push(false);
+                }
+                let noise = Tensor::from_vec(
+                    crate::smol_artifacts::noise(
+                        input.seed,
+                        input.step,
+                        config.chunk_size * config.max_action_dim,
+                    ),
+                    (1, config.chunk_size, config.max_action_dim),
+                    &Device::Cpu,
+                )?;
+                model.forward(&state, &images, &image_valid, tokens, valid, &noise)?
+            }
+        }
+        .to_vec3::<f32>()?;
         let last = self.max_steps.saturating_sub(2);
         require(
             input.step <= last,
             "This experiment has no remaining action steps.",
         )?;
         let count = self
-            .pin
             .binding
             .action_steps
-            .min(((last - input.step) / self.pin.binding.control_every_steps + 1) as usize);
-        let action_features = features(&self.pin.binding.actions);
+            .min(((last - input.step) / self.binding.control_every_steps + 1) as usize);
+        let action_features = features(&self.binding.actions);
         let mut actions = Vec::with_capacity(count);
         for row in &predicted[0][..count] {
-            let raw = self.normalization.action.undo(row)?;
+            let raw = self
+                .normalization
+                .action
+                .undo(&row[..self.binding.actions.joints.len()])?;
             let values = raw.iter().map(|v| f64::from(*v)).collect::<Vec<_>>();
             actions.push(
-                self.pin
-                    .binding
+                self.binding
                     .actions
                     .convert(&action_features, &values)
                     .map_err(|e| Error::Invalid(e.to_string()))?,
@@ -136,7 +187,7 @@ impl Engine for Native {
         let _ = input.seed;
         Ok(ActionChunk {
             observation_step: input.step,
-            expires_step: input.step + (count as u32 - 1) * self.pin.binding.control_every_steps,
+            expires_step: input.step + (count as u32 - 1) * self.binding.control_every_steps,
             actions,
         })
     }
@@ -183,18 +234,53 @@ impl NativeController {
         )?;
         let (model, pin, normalization, build) = artifact.model()?;
         let engine = Native {
-            model,
-            pin,
+            model: Network::Act(model),
+            binding: pin.binding,
             normalization,
             store,
             max_steps: experiment.limits.max_steps,
         };
         Self::worker(Arc::new(engine), build, experiment.seeds.clone())
     }
-    fn worker(engine: Arc<dyn Engine>, build: Build, seeds: Vec<u64>) -> Result<Self> {
+    pub fn new_smol(
+        artifact: crate::smol_artifacts::Artifact,
+        store: Store,
+        robot: &Robot,
+        scene: &Scene,
+        experiment: &Experiment,
+    ) -> Result<Self> {
+        artifact.pin.validate()?;
+        artifact
+            .pin
+            .binding
+            .validate_scene(robot, scene, experiment)?;
+        validate_policy_assets(
+            &artifact.pin.binding,
+            &artifact.pin.files[&artifact.pin.weights],
+            &artifact.pin.files[&artifact.pin.normalization],
+            experiment,
+            scene,
+        )?;
+        let (model, pin, normalization, build) = artifact.model()?;
+        let engine = Native {
+            model: Network::Smol {
+                model,
+                config: pin.architecture,
+                tokens: pin.language_tokens,
+                valid: pin.language_valid,
+                empty_cameras: pin.empty_cameras,
+            },
+            binding: pin.binding,
+            normalization,
+            store,
+            max_steps: experiment.limits.max_steps,
+        };
+        Self::worker(Arc::new(engine), build, experiment.seeds.clone())
+    }
+    pub(crate) fn worker(engine: Arc<dyn Engine>, build: Build, seeds: Vec<u64>) -> Result<Self> {
         let (sender, receiver) = mpsc::sync_channel::<Request>(1);
         std::thread::Builder::new()
-            .name("robot-act".into())
+            .name("robot-policy".into())
             .spawn(move || {
                 while let Ok(request) = receiver.recv() {
                     let reply = engine.infer(&request.input);
@@ -240,6 +326,7 @@ impl Controller for NativeController {
             input: Input {
                 step: observation.step,
                 seed: observation.seed,
+                timeout_ms: observation.timeout_ms,
                 state: Snapshot {
                     joints: observation.state.joints.clone(),
                     objects: observation.state.objects.clone(),
@@ -271,6 +358,22 @@ impl Controller for NativeController {
 }
 
 fn weights_match(artifact: &Artifact, experiment: &Experiment, scene: &Scene) -> bool {
+    validate_policy_assets(
+        &artifact.pin.binding,
+        &artifact.pin.files[&artifact.pin.weights],
+        &artifact.pin.files[&artifact.pin.normalization],
+        experiment,
+        scene,
+    )
+    .is_ok()
+}
+pub(crate) fn validate_policy_assets(
+    binding: &Binding,
+    weights_pin: &robot_data::dataset::FilePin,
+    normalization_pin: &robot_data::dataset::FilePin,
+    experiment: &Experiment,
+    scene: &Scene,
+) -> Result<()> {
     let robot_lab::document::Controller::Policy {
         weights,
         normalization,
@@ -281,23 +384,23 @@ fn weights_match(artifact: &Artifact, experiment: &Experiment, scene: &Scene) ->
         ..
     } = &experiment.controller
     else {
-        return false;
+        return Err(Error::Invalid(
+            "Choose a learned-policy experiment for this controller".into(),
+        ));
     };
-    weights.bytes == artifact.pin.files[&artifact.pin.weights].bytes
-        && normalization.bytes == artifact.pin.files[&artifact.pin.normalization].bytes
-        && robot == &scene.robots[0].id
-        && joints.iter().collect::<std::collections::BTreeSet<_>>()
-            == artifact
-                .pin
-                .binding
-                .actions
-                .joints
-                .iter()
-                .map(|j| &j.joint)
-                .collect()
-        && cameras.iter().collect::<std::collections::BTreeSet<_>>()
-            == artifact.pin.binding.cameras.iter().map(|c| &c.id).collect()
-        && instruction == &artifact.pin.binding.instruction
+    require(
+        weights.sha256 == weights_pin.sha256
+            && weights.bytes == weights_pin.bytes
+            && normalization.sha256 == normalization_pin.sha256
+            && normalization.bytes == normalization_pin.bytes
+            && robot == &scene.robots[0].id
+            && joints.iter().collect::<std::collections::BTreeSet<_>>()
+                == binding.actions.joints.iter().map(|j| &j.joint).collect()
+            && cameras.iter().collect::<std::collections::BTreeSet<_>>()
+                == binding.cameras.iter().map(|c| &c.id).collect()
+            && instruction == &binding.instruction,
+        "Use the policy's exact robot, checkpoint, cameras, joints, and fixed instruction",
+    )
 }
 
 #[cfg(test)]

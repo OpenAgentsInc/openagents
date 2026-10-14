@@ -7,8 +7,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if command.as_deref() == Some("recover") {
         return robot_workbench::experiments::recover_cli(args.collect());
     }
+    if command.as_deref() == Some("serve-policy") {
+        return robot_workbench::experiments::service_cli(args.collect()).await;
+    }
     if command.as_deref() == Some("execute") {
-        return robot_workbench::experiments::cli(args.collect());
+        let arguments = args.collect();
+        tokio::task::spawn_blocking(move || {
+            robot_workbench::experiments::cli(arguments).map_err(|e| e.to_string())
+        })
+        .await??;
+        return Ok(());
     }
     if command.as_deref() == Some("publish") {
         return robot_workbench::record::publish_cli(args.collect()).await;

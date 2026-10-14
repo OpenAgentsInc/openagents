@@ -99,19 +99,57 @@ impl Pin {
                 && self.files.contains_key(&self.normalization),
             "Choose a supported ACT checkpoint with all its saved files.",
         )?;
-        require(
-            self.source.repository.starts_with("https://")
-                && self.source.repository.len() <= 2048
-                && self.source.revision.len() == 40
-                && self.source.revision.bytes().all(|b| b.is_ascii_hexdigit())
-                && !self.source.license.is_empty()
-                && self.source.license.len() <= 128
-                && !self.source.purpose.is_empty()
-                && self.source.purpose.len() <= 512
-                && serde_json::to_vec(&self.source.training_evidence)?.len() <= 1 << 20,
-            "Pin the policy's source, license, and qualification evidence.",
+        self.source.validate()?;
+        self.binding.validate(
+            self.architecture.state_dim,
+            self.architecture.action_dim,
+            self.architecture.environment_dim,
+            self.architecture.cameras,
+            self.architecture.chunk_size,
         )?;
-        let binding = &self.binding;
+        let mut total = 0_u64;
+        for (name, pin) in &self.files {
+            file_name(name)?;
+            total = total.saturating_add(pin.bytes);
+            require(
+                pin.sha256.len() == 64
+                    && pin.sha256.bytes().all(|b| b.is_ascii_hexdigit())
+                    && pin.bytes > 0
+                    && pin.bytes <= 256 << 20
+                    && total <= 300 << 20,
+                "Use bounded policy files with recorded hashes.",
+            )?;
+        }
+        Ok(())
+    }
+    pub fn validate_scene(
+        &self,
+        robot: &Robot,
+        scene: &Scene,
+        experiment: &Experiment,
+    ) -> Result<()> {
+        self.validate()?;
+        self.binding.validate_scene(robot, scene, experiment)
+    }
+}
+impl Binding {
+    pub fn validate(
+        &self,
+        state_dim: usize,
+        action_dim: usize,
+        environment_dim: usize,
+        camera_count: usize,
+        chunk_size: usize,
+    ) -> Result<()> {
+        require(
+            (1..=64).contains(&state_dim)
+                && (1..=64).contains(&action_dim)
+                && environment_dim <= 64
+                && camera_count <= 4
+                && (1..=128).contains(&chunk_size),
+            "Use bounded policy input and action shapes",
+        )?;
+        let binding = self;
         let state = features(&binding.state);
         let actions = features(&binding.actions);
         binding
@@ -130,14 +168,14 @@ impl Pin {
                     .all(|b| b.is_ascii_hexdigit())
                 && binding.state.robot_version == binding.robot_description_sha256
                 && binding.actions.robot_version == binding.robot_description_sha256
-                && state.len() == self.architecture.state_dim
-                && actions.len() == self.architecture.action_dim
-                && binding.environment.len() == self.architecture.environment_dim
-                && binding.cameras.len() == self.architecture.cameras,
+                && state.len() == state_dim
+                && actions.len() == action_dim
+                && binding.environment.len() == environment_dim
+                && binding.cameras.len() == camera_count,
             "Map the checkpoint to its exact robot, input shapes, and actions.",
         )?;
         require(
-            (1..=self.architecture.chunk_size).contains(&binding.action_steps)
+            (1..=chunk_size).contains(&binding.action_steps)
                 && binding.timestep_seconds.is_finite()
                 && (1e-6..=1.).contains(&binding.timestep_seconds)
                 && (1..=10000).contains(&binding.control_every_steps),
@@ -190,19 +228,6 @@ impl Pin {
                 "Map environment inputs to named scene objects.",
             )?;
         }
-        let mut total = 0_u64;
-        for (name, pin) in &self.files {
-            file_name(name)?;
-            total = total.saturating_add(pin.bytes);
-            require(
-                pin.sha256.len() == 64
-                    && pin.sha256.bytes().all(|b| b.is_ascii_hexdigit())
-                    && pin.bytes > 0
-                    && pin.bytes <= 256 << 20
-                    && total <= 300 << 20,
-                "Use bounded policy files with recorded hashes.",
-            )?;
-        }
         Ok(())
     }
     pub fn validate_scene(
@@ -211,7 +236,6 @@ impl Pin {
         scene: &Scene,
         experiment: &Experiment,
     ) -> Result<()> {
-        self.validate()?;
         robot
             .validate()
             .map_err(|e| Error::Invalid(e.to_string()))?;
@@ -227,16 +251,15 @@ impl Pin {
             .get(&robot.description)
             .ok_or_else(|| Error::Invalid("The robot is missing its description.".into()))?;
         require(
-            description.sha256 == self.binding.robot_description_sha256
+            description.sha256 == self.robot_description_sha256
                 && scene.robots.len() == 1
-                && experiment.task.version == self.binding.task
-                && digest(&serde_json::to_vec(&experiment.task)?)
-                    == self.binding.task_definition_sha256
-                && (experiment.timestep_seconds - self.binding.timestep_seconds).abs() < 1e-12
-                && experiment.control_every_steps == self.binding.control_every_steps,
+                && experiment.task.version == self.task
+                && digest(&serde_json::to_vec(&experiment.task)?) == self.task_definition_sha256
+                && (experiment.timestep_seconds - self.timestep_seconds).abs() < 1e-12
+                && experiment.control_every_steps == self.control_every_steps,
             "Use the robot, task, and control timing declared by this policy.",
         )?;
-        for mapping in [&self.binding.state, &self.binding.actions] {
+        for mapping in [&self.state, &self.actions] {
             let expected: Vec<_> = robot
                 .joints
                 .iter()
@@ -273,7 +296,7 @@ impl Pin {
                 )?;
             }
         }
-        for camera in &self.binding.cameras {
+        for camera in &self.cameras {
             let actual = scene
                 .cameras
                 .iter()
@@ -288,19 +311,33 @@ impl Pin {
             )?;
         }
         require(
-            self.binding
-                .environment
+            self.environment
                 .iter()
                 .all(|f| scene.objects.iter().any(|o| o.id == f.object)),
             "This policy needs its mapped scene objects.",
         )
     }
 }
+
 impl Normalization {
     pub fn validate(&self, pin: &Pin) -> Result<()> {
-        self.state.validate(pin.architecture.state_dim)?;
-        self.action.validate(pin.architecture.action_dim)?;
-        match (&self.environment, pin.architecture.environment_dim) {
+        self.validate_binding(
+            &pin.binding,
+            pin.architecture.state_dim,
+            pin.architecture.action_dim,
+            pin.architecture.environment_dim,
+        )
+    }
+    pub fn validate_binding(
+        &self,
+        binding: &Binding,
+        state_dim: usize,
+        action_dim: usize,
+        environment_dim: usize,
+    ) -> Result<()> {
+        self.state.validate(state_dim)?;
+        self.action.validate(action_dim)?;
+        match (&self.environment, environment_dim) {
             (None, 0) => (),
             (Some(norm), n) if n > 0 => norm.validate(n)?,
             _ => {
@@ -310,10 +347,10 @@ impl Normalization {
             }
         }
         require(
-            self.cameras.len() == pin.binding.cameras.len(),
+            self.cameras.len() == binding.cameras.len(),
             "Save normalization for every policy camera.",
         )?;
-        for camera in &pin.binding.cameras {
+        for camera in &binding.cameras {
             self.cameras
                 .get(&camera.id)
                 .ok_or_else(|| {
@@ -443,7 +480,7 @@ pub fn state_features(mapping: &Mapping, joints: &BTreeMap<String, f64>) -> Resu
 pub fn digest(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
-fn file_name(name: &str) -> Result<()> {
+pub(crate) fn file_name(name: &str) -> Result<()> {
     require(
         !name.is_empty()
             && name.len() <= 512
@@ -454,7 +491,7 @@ fn file_name(name: &str) -> Result<()> {
         "Keep policy files inside the checkpoint folder.",
     )
 }
-fn read(root: &Path, name: &str, limit: usize) -> Result<Vec<u8>> {
+pub(crate) fn read(root: &Path, name: &str, limit: usize) -> Result<Vec<u8>> {
     file_name(name)?;
     let path = root.join(name);
     require(
@@ -468,4 +505,21 @@ fn read(root: &Path, name: &str, limit: usize) -> Result<Vec<u8>> {
         .read_to_end(&mut bytes)?;
     require(bytes.len() <= limit, "This policy file is too large.")?;
     Ok(bytes)
+}
+
+impl Source {
+    pub fn validate(&self) -> Result<()> {
+        require(
+            self.repository.starts_with("https://")
+                && self.repository.len() <= 2048
+                && self.revision.len() == 40
+                && self.revision.bytes().all(|b| b.is_ascii_hexdigit())
+                && !self.license.is_empty()
+                && self.license.len() <= 128
+                && !self.purpose.is_empty()
+                && self.purpose.len() <= 512
+                && serde_json::to_vec(&self.training_evidence)?.len() <= 1 << 20,
+            "Pin the policy's source, license, and qualification evidence.",
+        )
+    }
 }

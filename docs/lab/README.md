@@ -232,9 +232,8 @@ does not change the observation/action sequence. Interactive operation uses an
 explicit timeout policy and reports when it cannot keep up.
 
 Policy cameras use the checkpoint's dimensions, intrinsics, preprocessing, and
-camera names. The orbit camera is separate. A future Rust inference backend or
-an explicitly configured external policy endpoint must implement the same
-observation/action contract. Initial delivery uses pose edits and recorded
+camera names. The orbit camera is separate. Native ACT and SmolVLA inference and an explicitly configured policy service
+implement the same checked observation/action contract. Initial delivery uses pose edits and recorded
 motion; learned-policy support does not depend on adding a Python runtime.
 
 ## Import and reproducibility

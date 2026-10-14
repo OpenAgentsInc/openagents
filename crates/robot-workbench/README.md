@@ -157,3 +157,8 @@ execute here. Interactive attempts start paused and save partial work after
 60 seconds without a control command. Batch runs continue when a view closes.
 Run `robot-workbench recover --root FOLDER --project PROJECT --job NAME` after
 a process interruption to save its last completed step without restarting it.
+
+Policy configuration `id` selects `act`, `smolvla`, or `service`; the execute
+command exposes the same choice as `--policy-kind`. The study example accepts
+this optional final argument. Service experiments save their pinned manifest,
+including checkpoint hashes, rather than copying remote weights to the client.
