@@ -27,28 +27,41 @@
 //!   part: the 36 mm shafts, the 60 mm hubs, the 40 mm mast, a 12 mm lid
 //!   hinge pin), and its torque limit that force × the pin's
 //!   [`PIN_LENGTH`].
-//! - **Fastened:** every pair of solids that touch within one rigid group
+//! - **Bolted:** every pair of solids that touch within one rigid group
 //!   (the solids not separated by an articulated joint, from the
-//!   assembly's parents) is a fixed joint: bolted or bonded. Its force
-//!   limit is [`FASTENER_EFFICIENCY`] × σᵧ × A, where A is the contact
-//!   patch (the overlap of the two solids' boxes across the axis they meet
-//!   on, at least 1 cm²) and σᵧ the yield strength of the weaker material
-//!   ([`yield_strength`]); its torque limit is that force × half the
-//!   seam's length (the fasteners' couple). A big
-//!   seam (the avionics bay on the deck) holds far more than a small one
-//!   (a solar wing's strut, a tube's cap). A solid that touches nothing in
-//!   its group is joined to the nearest solid of the group.
+//!   assembly's parents) is a bolted seam: a fixed joint held by bolts.
+//!   The seam's length (its contact patch's longest side, from the overlap
+//!   of the two solids' boxes) sets the bolts ([`bolts_for`]):
+//!
+//!   | seam length | bolts |
+//!   | --- | --- |
+//!   | under 30 mm | 2 × M3 |
+//!   | 30–80 mm | 2 × M4 |
+//!   | 80–200 mm | 4 × M4 |
+//!   | 200–350 mm | 6 × M5 |
+//!   | 350 mm and over | 8 × M6 |
+//!
+//!   Each bolt is class 8.8 steel ([`bolt_strength`]): 800 MPa over its
+//!   tensile stress area (M3 5.03, M4 8.78, M5 14.2, M6 20.1 mm²), so an M5
+//!   holds 11.4 kN in tension and 6.8 kN in shear (0.6 of tension). The
+//!   pattern of N bolts over a seam of length s holds N × that in shear
+//!   and tension, N × Ft × s / 4 in bending (half the bolts in tension at
+//!   half the pattern's length) and N × Fv × s / 2 in twist. Shear with
+//!   twist and tension with bending combine by the interaction rule
+//!   (V/Vc + Mt/Mtc)² + (T/Tc + Mb/Mbc)² = 1 ([`Capacity::used`]). A solid
+//!   that touches nothing in its group is joined to the nearest solid of
+//!   the group by two M3s.
 //!
 //! Every joint is also built to carry [`DESIGN_FACTOR`] times what it
 //! carries standing still under gravity (measured in a settling run when
 //! the rover is made), as a structure is designed with a margin over its
-//! static load: a joint's limits are the larger of the two. A small seam
-//! that holds up a cantilevered wing is held by its design load, not its
-//! patch.
+//! static load: its capacities are scaled up where they fall short of it.
 //!
-//! A joint whose force or torque reached its limit in a step breaks
-//! (sparks at its anchor); its peak load and limit are kept for the
-//! report ([`Rover::joints`]).
+//! A joint breaks in the step its load reaches its capacity (sparks at its
+//! anchor). The solver doesn't cap the joints, so the loads recorded are
+//! what they carried: in a blow, on a hard landing, or as a piece tumbles.
+//! Each joint's peak load and the largest share of its capacity it used
+//! are kept for the report ([`Rover::joints`]).
 //!
 //! # What hits it
 //!
@@ -56,10 +69,10 @@
 //! [`BLAST_PRESSURE`] × the area the solid shows the blast (its box's
 //! cross-section facing the centre), falling off to nothing at the blast's
 //! edge; shading by other parts is not modelled. A meteor that lands on
-//! the rover also gives up its momentum ([`METEOR_MASS`] × [`METEOR_SPEED`]
-//! along its flight) to the solid its flight meets first. The joints then
-//! carry what their parts were given, and break where that is over their
-//! limit.
+//! the rover bursts on the first solid its flight meets, which takes its
+//! whole momentum ([`METEOR_MASS`] × [`METEOR_SPEED`] along its flight) as
+//! one sharp impulse in a step. The joints round that solid take the shock
+//! first, and what they pass on loads the next ones.
 //!
 //! # Collisions
 //!
@@ -70,7 +83,8 @@
 //! collision group of its own, recomputed whenever a joint breaks, so
 //! loose parts bounce off the body and pile up on each other. Colliders
 //! are each solid's box on its principal axes, and a capsule along the
-//! axle for a wheel.
+//! axle for a wheel. A part flying faster than 40 m/s meets only the
+//! ground until it slows: it would cross another part within a step.
 //!
 //! Native only: the glTF is built into the binary, which the browser build
 //! leaves out.
@@ -103,9 +117,6 @@ pub const STRUCK: f64 = 1.2;
 /// The blast's push per square metre a solid shows it at the centre, N s/m²
 /// (falling off linearly to nothing at the blast's edge).
 pub const BLAST_PRESSURE: f64 = 350.0;
-/// The share of a fastened contact patch that holds at yield: the bolts
-/// and bond of a seam carry a small fraction of its area.
-pub const FASTENER_EFFICIENCY: f64 = 0.01;
 /// The share of a pin's shear strength it holds under a sudden blow
 /// (notches, bushings, the eye around it).
 pub const PIN_EFFICIENCY: f64 = 0.15;
@@ -119,7 +130,9 @@ const SETTLE: f64 = 0.5;
 /// the gas that pushes it (falling off with the push).
 pub const BLAST_SPEED: f64 = 25.0;
 /// A contact this hard (impulse in one step, N s) raises dust.
-const DUST_IMPULSE: f64 = 1.5;
+const DUST_IMPULSE: f64 = 4.0;
+/// The least time between two puffs of dust, s.
+const DUST_EVERY: f64 = 0.4;
 /// Debris boxes mirrored into the rover's world, at most.
 const DEBRIS: usize = 40;
 /// Two solids' boxes this close count as touching, m.
@@ -128,7 +141,12 @@ const TOUCH: f64 = 0.002;
 /// Collision bits: the ground, the houses' debris, then one per piece.
 const GROUND_BIT: u32 = 1;
 const DEBRIS_BIT: u32 = 2;
-const PIECE_BITS: u32 = 30;
+const PIECE_BITS: u32 = 29;
+/// A part flying faster than this (m/s) crosses another in under a step
+/// and only meets the ground: colliding at that speed with the step's
+/// look-ahead throws both apart unphysically.
+const FAST: f64 = 40.0;
+const FAST_BIT: u32 = 1 << 31;
 
 fn find(p: &mut [usize], mut i: usize) -> usize {
     while p[i] != i {
@@ -465,11 +483,16 @@ pub struct Link {
     /// The two solids, by instance.
     pub a: String,
     pub b: String,
-    pub max_force: f64,
-    pub max_torque: f64,
-    /// The largest force and torque it carried in a step.
+    /// What it can carry.
+    pub capacity: Capacity,
+    /// Its capacities times this: at least [`DESIGN_FACTOR`] over its
+    /// standing load.
+    pub scale: f64,
+    /// The largest force and torque it carried in a step, N and N m, and
+    /// the largest share of its capacity (1 breaks it).
     pub peak_force: f64,
     pub peak_torque: f64,
+    pub peak_use: f64,
     /// When it broke, s, if it did.
     pub broke: Option<f64>,
     id: JointId,
@@ -478,8 +501,93 @@ pub struct Link {
     anchor: DVec3,
 }
 
-/// Something worth an effect: sparks where a joint broke, dust where a part
-/// landed hard.
+/// What a joint can carry.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Capacity {
+    /// A pin: its shear force and bending torque, N and N m.
+    Pin { force: f64, torque: f64 },
+    /// A bolted seam: `bolts` bolts of `size`, the seam's normal on body
+    /// `a` (body frame), and the pattern's capacities: shear and tension,
+    /// N, and bending and twisting, N m.
+    Bolted {
+        bolts: u32,
+        size: &'static str,
+        normal: DVec3,
+        shear: f64,
+        tension: f64,
+        bending: f64,
+        twist: f64,
+    },
+}
+
+impl Capacity {
+    /// The share of the capacity a force and torque on the joint take
+    /// (both in body `a`'s frame), at `scale`: 1 or more breaks it. A pin
+    /// fails in shear or bending, whichever comes first. A bolt pattern
+    /// takes shear with twist, and tension with bending, combined by the
+    /// usual interaction rule: (V/Vc + Mt/Mtc)² + (T/Tc + Mb/Mbc)² = 1.
+    #[must_use]
+    pub fn used(&self, force: DVec3, torque: DVec3, scale: f64) -> f64 {
+        match *self {
+            Capacity::Pin {
+                force: f,
+                torque: t,
+            } => (force.length() / f).max(torque.length() / t) / scale,
+            Capacity::Bolted {
+                normal,
+                shear,
+                tension,
+                bending,
+                twist,
+                ..
+            } => {
+                let pull = force.dot(normal).abs();
+                let slide = (force - normal * force.dot(normal)).length();
+                let turn = torque.dot(normal).abs();
+                let bend = (torque - normal * torque.dot(normal)).length();
+                let a = slide / shear + turn / twist;
+                let b = pull / tension + bend / bending;
+                (a * a + b * b).sqrt() / scale
+            }
+        }
+    }
+}
+
+/// The bolts of a seam by its length (its patch's longest side), m: how
+/// many, and of what size. Class 8.8 steel (800 MPa ultimate).
+#[must_use]
+pub fn bolts_for(span: f64) -> (u32, &'static str) {
+    if span < 0.03 {
+        (2, "M3")
+    } else if span < 0.08 {
+        (2, "M4")
+    } else if span < 0.2 {
+        (4, "M4")
+    } else if span < 0.35 {
+        (6, "M5")
+    } else {
+        (8, "M6")
+    }
+}
+
+/// One bolt's tensile and shear strength, N: 800 MPa (class 8.8) over its
+/// tensile stress area (ISO 898-1: M3 5.03, M4 8.78, M5 14.2, M6 20.1 mm²),
+/// shear at 0.6 of tension.
+#[must_use]
+pub fn bolt_strength(size: &str) -> (f64, f64) {
+    let area = match size {
+        "M3" => 5.03,
+        "M4" => 8.78,
+        "M5" => 14.2,
+        _ => 20.1,
+    } * 1e-6;
+    let tension = 800e6 * area;
+    (tension, 0.6 * tension)
+}
+
+/// Something worth an effect: sparks where a joint broke (`rover_sparks`),
+/// a puff of dust where a part landed hard (`rover_landing`); both fire
+/// once.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Event {
     pub effect: &'static str,
@@ -498,6 +606,9 @@ pub struct Rover {
     debris: Vec<BodyId>,
     /// Pairs of solids that broke apart and still overlap.
     intimate: std::collections::BTreeSet<(usize, usize)>,
+    /// Which parts are flying faster than [`FAST`].
+    fast: Vec<bool>,
+    last_dust: f64,
     ground: ColliderId,
     origin: DVec3,
     caster: DVec3,
@@ -609,8 +720,7 @@ impl Rover {
                         kind: JointKind,
                         link: Kind,
                         name: String,
-                        force: f64,
-                        torque: f64| {
+                        capacity: Capacity| {
             let (pa, qa) = rest(a);
             let (pb, qb) = rest(b);
             let anchor_a = qa.inverse() * (at - pa);
@@ -622,10 +732,11 @@ impl Rover {
                     kind: link,
                     a: model.solids[a].instance.clone(),
                     b: model.solids[b].instance.clone(),
-                    max_force: force,
-                    max_torque: torque,
+                    capacity,
+                    scale: 1.0,
                     peak_force: 0.0,
                     peak_torque: 0.0,
+                    peak_use: 0.0,
                     broke: None,
                     id,
                     bodies: (a, b),
@@ -694,8 +805,7 @@ impl Rover {
                 kind,
                 Kind::Pin,
                 name.to_owned(),
-                force,
-                torque,
+                Capacity::Pin { force, torque },
             );
         }
         // Fastened seams: touching solids in one rigid group.
@@ -706,7 +816,7 @@ impl Rover {
             .collect();
         let n = model.solids.len();
         let mut joined = vec![false; n];
-        let seam = |i: usize, j: usize| -> Option<(f64, DVec3, f64)> {
+        let seam = |i: usize, j: usize| -> Option<(f64, DVec3, f64, DVec3)> {
             let (a, b) = (&model.solids[i], &model.solids[j]);
             let lo = a.lo.max(b.lo);
             let hi = a.hi.min(b.hi);
@@ -715,23 +825,35 @@ impl Rover {
                 return None;
             }
             let o = o.max(DVec3::splat(1e-6));
-            let area = if o.x <= o.y && o.x <= o.z {
-                o.y * o.z
+            let (area, normal) = if o.x <= o.y && o.x <= o.z {
+                (o.y * o.z, DVec3::X)
             } else if o.y <= o.z {
-                o.x * o.z
+                (o.x * o.z, DVec3::Y)
             } else {
-                o.x * o.y
+                (o.x * o.y, DVec3::Z)
             };
-            Some((area.max(1e-4), (lo + hi) / 2.0, o.max_element()))
+            Some((area.max(1e-4), (lo + hi) / 2.0, o.max_element(), normal))
         };
         let mut fasten =
-            |world: &mut World, i: usize, j: usize, area: f64, middle: DVec3, span: f64| {
-                let force = FASTENER_EFFICIENCY * weaker(i, j) * area;
-                // The fasteners sit along the seam: their couple's arm is half
-                // its length.
-                let torque = force * 0.5 * span.max(area.sqrt());
+            |world: &mut World, i: usize, j: usize, middle: DVec3, span: f64, normal: DVec3| {
+                // Bolted: bolts by the seam's length, the pattern's
+                // capacities from the bolts and their spacing.
+                let (count, size) = bolts_for(span);
+                let (tension, shear) = bolt_strength(size);
+                let n = f64::from(count);
+                let span = span.max(0.01);
                 let (_, qi) = rest(i);
                 let (_, qj) = rest(j);
+                let capacity = Capacity::Bolted {
+                    bolts: count,
+                    size,
+                    normal: qi.inverse() * (turn * normal),
+                    shear: n * shear,
+                    tension: n * tension,
+                    // Half the bolts in tension at half the pattern's length.
+                    bending: n * tension * span / 4.0,
+                    twist: n * shear * span / 2.0,
+                };
                 let name = format!(
                     "{} to {}",
                     model.solids[i].instance, model.solids[j].instance
@@ -746,8 +868,7 @@ impl Rover {
                     },
                     Kind::Fastened,
                     name,
-                    force,
-                    torque,
+                    capacity,
                 );
             };
         for i in 0..n {
@@ -755,8 +876,8 @@ impl Rover {
                 if groups[i] != groups[j] {
                     continue;
                 }
-                if let Some((area, middle, span)) = seam(i, j) {
-                    fasten(&mut world, i, j, area, middle, span);
+                if let Some((_, middle, span, normal)) = seam(i, j) {
+                    fasten(&mut world, i, j, middle, span, normal);
                     joined[i] = true;
                     joined[j] = true;
                 }
@@ -777,7 +898,7 @@ impl Rover {
                 });
             if let Some(j) = nearest {
                 let middle = (model.solids[i].com + model.solids[j].com) / 2.0;
-                fasten(&mut world, i, j, 1e-4, middle, 0.01);
+                fasten(&mut world, i, j, middle, 0.01, DVec3::Y);
             }
         }
         world.solver.iterations = world.solver.iterations.max(30);
@@ -814,6 +935,8 @@ impl Rover {
             links,
             debris,
             intimate: std::collections::BTreeSet::new(),
+            fast: Vec::new(),
+            last_dust: f64::NEG_INFINITY,
             ground,
             origin,
             caster: caster.as_dvec3(),
@@ -822,6 +945,7 @@ impl Rover {
             hardest: None,
             elapsed: 0.0,
         };
+        rover.fast = vec![false; rover.bodies.len()];
         rover.regroup();
         rover.settle();
         rover
@@ -832,33 +956,37 @@ impl Rover {
     /// [`DESIGN_FACTOR`] times the load it carried standing.
     fn settle(&mut self) {
         let steps = (SETTLE / STEP).round() as usize;
-        let mut force = vec![0.0f64; self.links.len()];
-        let mut torque = vec![0.0f64; self.links.len()];
+        let mut used = vec![0.0f64; self.links.len()];
         let field = |_: DVec3, _: DVec3| DVec3::new(0.0, -GRAVITY, 0.0);
         for step in 0..steps {
             self.world.step(&field);
             // The last half: the load standing, not the first jolt.
             if step >= steps / 2 {
                 for (k, link) in self.links.iter().enumerate() {
-                    if let Some(j) = self.world.joint(link.id) {
-                        force[k] = force[k].max(j.impulse.length() / STEP);
-                        torque[k] = torque[k].max(j.angular_impulse.length() / STEP);
-                    }
+                    let (force, torque) = self.load(link);
+                    used[k] = used[k].max(link.capacity.used(force, torque, 1.0));
                 }
             }
         }
         for (k, link) in self.links.iter_mut().enumerate() {
-            link.max_force = link.max_force.max(DESIGN_FACTOR * force[k]);
-            link.max_torque = link.max_torque.max(DESIGN_FACTOR * torque[k]);
-            if let Some(j) = self.world.joint_mut(link.id) {
-                j.max_force = link.max_force;
-                j.max_torque = link.max_torque;
-            }
+            link.scale = (DESIGN_FACTOR * used[k]).max(1.0);
         }
         for b in self.world.bodies_mut() {
             b.vel = DVec3::ZERO;
             b.omega = DVec3::ZERO;
         }
+    }
+
+    /// The force and torque a joint carried in the last step, in its body
+    /// `a`'s frame, N and N m.
+    fn load(&self, link: &Link) -> (DVec3, DVec3) {
+        let Some(joint) = self.world.joint(link.id) else {
+            return (DVec3::ZERO, DVec3::ZERO);
+        };
+        let q = self.world.bodies()[self.bodies[link.bodies.0].0 as usize]
+            .orientation
+            .inverse();
+        (q * joint.impulse / STEP, q * joint.angular_impulse / STEP)
     }
 
     /// The pieces: each body's root, from the joints still holding.
@@ -923,6 +1051,15 @@ impl Rover {
             let root = find(&mut parent, k);
             let next = bits.len() as u32;
             let bit = *bits.entry(root).or_insert(1 << (2 + next % PIECE_BITS));
+            if self.fast[k] {
+                for &c in &self.colliders[k] {
+                    self.world.collider_mut(c).filter = Filter {
+                        group: FAST_BIT,
+                        mask: GROUND_BIT | DEBRIS_BIT,
+                    };
+                }
+                continue;
+            }
             for &c in &self.colliders[k] {
                 self.world.collider_mut(c).filter = Filter {
                     group: bit,
@@ -1083,12 +1220,10 @@ impl Rover {
     }
 
     /// A meteor of mass `mass` (kg) and momentum `momentum` (N s) flying
-    /// along `flight` that lands at `at`. It meets the solids on its line
-    /// in turn (within [`STRUCK`] of the landing) and moves with each it
-    /// meets, as a perfectly inelastic collision: a solid of mass m takes
-    /// m / (m + M) of the momentum the meteor still has, and the meteor
-    /// goes on with the rest into the next solid, and finally the ground.
-    /// Returns what each solid took (instance, impulse, N s).
+    /// along `flight` that lands at `at`: it bursts on the first solid its
+    /// flight meets (within [`STRUCK`] of the landing), which takes its
+    /// whole momentum as one sharp impulse in a step. Returns that solid
+    /// and the impulse.
     pub fn strike(
         &mut self,
         at: DVec3,
@@ -1129,20 +1264,20 @@ impl Rover {
             }
         }
         met.sort_by(|a, b| a.0.total_cmp(&b.0));
-        let mut left = momentum;
+        let _ = mass;
         let mut given = Vec::new();
-        for (t, k) in met {
+        // The meteor bursts on the first solid its flight meets: its whole
+        // momentum, in one step, into that solid. The joints round it take
+        // the shock.
+        for (t, k) in met.into_iter().take(1) {
             let point = from + flight * t;
-            let m = model.solids[k].mass;
-            let share = left * m / (m + mass);
-            left -= share;
-            let impulse = flight * share;
+            let impulse = flight * momentum;
             let body = &mut self.world.bodies_mut()[self.bodies[k].0 as usize];
             body.wake();
             body.apply_impulse_at(impulse, point);
             if given.is_empty() {
                 self.events.push(Event {
-                    effect: "scorch_embers",
+                    effect: "rover_sparks",
                     at: point.as_vec3(),
                 });
             }
@@ -1189,33 +1324,36 @@ impl Rover {
         self.elapsed += STEP;
         let mut snapped = false;
         let before = self.pieces();
-        for link in self.links.iter_mut().filter(|l| l.broke.is_none()) {
-            let Some(joint) = self.world.joint(link.id) else {
+        for k in 0..self.links.len() {
+            if self.links[k].broke.is_some() {
                 continue;
-            };
-            let (force, torque) = (
-                joint.impulse.length() / STEP,
-                joint.angular_impulse.length() / STEP,
-            );
-            link.peak_force = link.peak_force.max(force);
-            link.peak_torque = link.peak_torque.max(torque);
-            // At its limit (the solver capped it there): it gives way.
-            if joint.saturated
-                || force >= link.max_force * 0.999
-                || torque >= link.max_torque * 0.999
-            {
+            }
+            let (force, torque) = self.load(&self.links[k]);
+            let link = &mut self.links[k];
+            link.peak_force = link.peak_force.max(force.length());
+            link.peak_torque = link.peak_torque.max(torque.length());
+            let used = link.capacity.used(force, torque, link.scale);
+            link.peak_use = link.peak_use.max(used);
+            if used >= 1.0 {
                 link.broke = Some(self.elapsed);
-                let a = &self.world.bodies()[self.bodies[link.bodies.0].0 as usize];
-                let at = a.pos + a.orientation * link.anchor;
-                self.world.remove_joint(link.id);
+                let (id, a, anchor) = (link.id, link.bodies.0, link.anchor);
+                let body = &self.world.bodies()[self.bodies[a].0 as usize];
+                let at = body.pos + body.orientation * anchor;
+                self.world.remove_joint(id);
                 self.events.push(Event {
-                    effect: "scorch_embers",
+                    effect: "rover_sparks",
                     at: at.as_vec3(),
                 });
                 snapped = true;
             }
         }
-        let mut changed = false;
+        let fast: Vec<bool> = self
+            .bodies
+            .iter()
+            .map(|id| self.world.bodies()[id.0 as usize].vel.length() > FAST)
+            .collect();
+        let mut changed = fast != self.fast;
+        self.fast = fast;
         if snapped {
             let after = self.pieces();
             let n = self.bodies.len();
@@ -1241,27 +1379,19 @@ impl Rover {
         if changed {
             self.regroup();
         }
-        let mut dust = Vec::new();
-        for c in &self.world.contacts {
-            if c.impulse.length() > DUST_IMPULSE
-                && (self.bodies.contains(&c.body_a) || self.bodies.contains(&c.body_b))
-            {
-                dust.push(c.point.as_vec3());
-            }
-        }
-        for at in dust.into_iter().take(2) {
-            if self
-                .events
-                .iter()
-                .filter(|e| e.effect == "debris_dust")
-                .count()
-                < 6
-            {
-                self.events.push(Event {
-                    effect: "debris_dust",
-                    at,
-                });
-            }
+        // A hard landing raises one puff of dust, at most every
+        // [`DUST_EVERY`] seconds, so the dust doesn't hide what landed.
+        if self.elapsed - self.last_dust >= DUST_EVERY
+            && let Some(c) = self.world.contacts.iter().find(|c| {
+                c.impulse.length() > DUST_IMPULSE
+                    && (self.bodies.contains(&c.body_a) || self.bodies.contains(&c.body_b))
+            })
+        {
+            self.last_dust = self.elapsed;
+            self.events.push(Event {
+                effect: "rover_landing",
+                at: c.point.as_vec3(),
+            });
         }
     }
 
@@ -1356,16 +1486,28 @@ mod tests {
             r.joints().iter().filter(|l| l.kind == Kind::Pin).count(),
             12
         );
-        // A seam's limit grows with its patch: the bay on the deck holds
-        // more than a solar wing's mount.
-        let limit = |a: &str, b: &str| {
+        // Seams are bolted by their size: the bay on the deck with more
+        // and bigger bolts than a solar wing's mount.
+        let bolts = |a: &str, b: &str| {
             r.joints()
                 .iter()
                 .filter(|l| (l.a == a && l.b == b) || (l.a == b && l.b == a))
-                .map(|l| l.max_force)
-                .fold(0.0, f64::max)
+                .find_map(|l| match l.capacity {
+                    Capacity::Bolted {
+                        bolts,
+                        size,
+                        tension,
+                        ..
+                    } => Some((bolts, size, tension)),
+                    Capacity::Pin { .. } => None,
+                })
         };
-        assert!(limit("chassis", "avionics_bay") > 10.0 * limit("chassis", "solar_panel_l"));
+        let bay = bolts("chassis", "avionics_bay").expect("the bay is bolted down");
+        let wing = bolts("chassis", "solar_panel_l").expect("the wing is bolted on");
+        assert!(bay.0 >= 6 && bay.2 > 2.0 * wing.2, "{bay:?} {wing:?}");
+        assert_eq!(bolts_for(0.32), (6, "M5"));
+        // One M5's tension: 800 MPa over 14.2 mm².
+        assert!((bolt_strength("M5").0 - 11_360.0).abs() < 1.0);
     }
 
     #[test]
@@ -1391,18 +1533,6 @@ mod tests {
         r.step_free(240);
         assert!(!r.broken().is_empty());
         let later = r.momentum();
-        if (later - after).length() >= 1e-6 * after.length() {
-            for (k, id) in r.bodies.iter().enumerate() {
-                let b = &r.world.bodies()[id.0 as usize];
-                eprintln!(
-                    "{k} {} m {:.4} v {:.1} p {:.1}",
-                    model().solids[k].instance,
-                    b.mass,
-                    b.vel.length(),
-                    b.momentum().length()
-                );
-            }
-        }
         assert!(
             (later - after).length() < 1e-6 * after.length(),
             "{after} -> {later}"
@@ -1422,17 +1552,13 @@ mod tests {
         let broke: Vec<&Link> = r.joints().iter().filter(|l| l.broke.is_some()).collect();
         assert!(!broke.is_empty(), "nothing broke");
         for l in r.joints() {
-            let over = l.peak_force >= l.max_force * 0.999 || l.peak_torque >= l.max_torque * 0.999;
             assert_eq!(
                 l.broke.is_some(),
-                over,
-                "{} {:?}: {:.0} N of {:.0}, {:.0} N m of {:.0}",
+                l.peak_use >= 1.0,
+                "{} {:?}: {:.2} of its capacity",
                 l.name,
                 l.kind,
-                l.peak_force,
-                l.max_force,
-                l.peak_torque,
-                l.max_torque
+                l.peak_use
             );
         }
     }

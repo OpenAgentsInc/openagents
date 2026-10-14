@@ -95,14 +95,32 @@ fn lot_axes() -> (Vec3, Vec3) {
     (Vec3::new(cos, 0.0, -sin), Vec3::new(sin, 0.0, cos))
 }
 
-/// The director's camera at film time `t`, given where the rover is and
-/// where it stood: an establishing shot with the houses behind it, a low
-/// shot beside it as the meteors fall, a side shot that tracks it as it is
-/// thrown, and a high, wide aftermath.
-fn camera(t: f32, at: Vec3, stood: Vec3) -> (Vec3, Vec3) {
+/// Where the rover's body is and how far its parts lie from it (those
+/// within 10 m; at most 2.5 m): what the last shots frame.
+fn scatter(runtime: &WorldRuntime) -> (Vec3, f32) {
+    let Some(rover) = runtime.meteor_rover() else {
+        return (Vec3::ZERO, 1.0);
+    };
+    let center = rover.center();
+    let reach = rover
+        .poses()
+        .iter()
+        .map(|p| p.1.as_vec3().distance(center))
+        .filter(|d| *d < 10.0)
+        .fold(0.8, f32::max);
+    (center, reach.min(2.5))
+}
+
+/// The director's camera at film time `t`, given where the rover is, where
+/// it stood, and where its parts lie: close on it with the houses behind,
+/// low beside it as the meteors fall, above it (over the dust) as it is
+/// thrown, looking down on the scattered parts, and a slow orbit round them
+/// to end.
+fn camera(t: f32, at: Vec3, stood: Vec3, parts: (Vec3, f32)) -> (Vec3, Vec3) {
     let (along, out) = lot_axes();
     let ground = Vec3::new(stood.x, 0.0, stood.z);
-    let shots: [(f32, Box<dyn Fn(f32) -> (Vec3, Vec3)>); 4] = [
+    let (middle, reach) = parts;
+    let shots: [(f32, Box<dyn Fn(f32) -> (Vec3, Vec3)>); 5] = [
         (
             0.0,
             Box::new(move |u: f32| {
@@ -122,16 +140,31 @@ fn camera(t: f32, at: Vec3, stood: Vec3) -> (Vec3, Vec3) {
         (
             5.6,
             Box::new(move |u: f32| {
-                let eye = at + along * (4.0 - u) + out * 3.0 + Vec3::Y * (2.6 - 0.8 * u);
-                (eye, at + Vec3::Y * 0.2)
+                // Above the dust, a little behind the throw.
+                let eye = at + along * (2.4 - 0.6 * u) + out * 1.8 + Vec3::Y * (2.8 - 0.8 * u);
+                (eye, at + Vec3::Y * 0.1)
             }),
         ),
         (
-            10.0,
+            9.5,
             Box::new(move |u: f32| {
+                // Looking down on where the parts came to rest, from the open
+                // lawn's side.
                 let eye =
-                    at.lerp(ground, 0.5) + out * 6.0 - along * (3.0 - u) + Vec3::Y * (2.8 + u);
-                (eye, at.lerp(ground, 0.5) + Vec3::Y * 0.2)
+                    middle + out * (reach + 0.9) - along * 0.6 + Vec3::Y * (reach + 0.7 - 0.3 * u);
+                (eye, middle)
+            }),
+        ),
+        (
+            11.5,
+            Box::new(move |u: f32| {
+                // A slow orbit round the scattered parts.
+                let angle = -0.6 + 1.2 * u;
+                let side = out * angle.cos() + along * angle.sin();
+                (
+                    middle + side * (reach + 1.1) + Vec3::Y * 1.0,
+                    middle + Vec3::Y * 0.1,
+                )
             }),
         ),
     ];
@@ -142,7 +175,7 @@ fn camera(t: f32, at: Vec3, stood: Vec3) -> (Vec3, Vec3) {
         }
     }
     let start = shots[which].0;
-    let end = shots.get(which + 1).map_or(start + 4.0, |s| s.0);
+    let end = shots.get(which + 1).map_or(start + 3.0, |s| s.0);
     (shots[which].1)(ease((t - start) / (end - start)))
 }
 
@@ -201,7 +234,7 @@ fn main() -> Result<(), String> {
     let mut args = std::env::args().skip(1);
     let out = PathBuf::from(args.next().ok_or("Expected an output directory")?);
     let mut video = out.join("verse-meteor-rover.mp4");
-    let mut seconds = 14.0_f32;
+    let mut seconds = 14.5_f32;
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--video" => video = PathBuf::from(args.next().ok_or("--video needs a path")?),
@@ -229,7 +262,7 @@ fn main() -> Result<(), String> {
     let atlas = verse::ui::Atlas::new(16.0);
     let ui = verse::ui::UiBatch::default();
     let aspect = WIDTH as f32 / HEIGHT as f32;
-    let (eye, target) = camera(0.0, stood, stood);
+    let (eye, target) = camera(0.0, stood, stood, (stood, 1.0));
     runtime.set_shot(Some((eye, target)));
     let mut renderer = verse::render::Offscreen::new(
         WIDTH,
@@ -253,7 +286,7 @@ fn main() -> Result<(), String> {
             }
         }
         let at = rover(&runtime);
-        let (eye, target) = camera(t, at, stood);
+        let (eye, target) = camera(t, at, stood, scatter(&runtime));
         runtime.set_shot(Some((eye, target)));
         let dynamic = runtime.dynamic_mesh();
         let pixels = renderer.render(runtime.view(aspect), &dynamic, &ui)?;
@@ -296,10 +329,20 @@ fn main() -> Result<(), String> {
             r.joints()
                 .iter()
                 .map(|l| {
+                    let capacity = match l.capacity {
+                        verse::zones::meteor_rover::Capacity::Pin { force, torque } => serde_json::json!({
+                            "pin": {"shear_n": (force * l.scale).round(), "bending_n_m": (torque * l.scale).round()}}),
+                        verse::zones::meteor_rover::Capacity::Bolted { bolts, size, shear, tension, bending, twist, .. } => serde_json::json!({
+                            "bolts": format!("{bolts} x {size}"),
+                            "shear_n": (shear * l.scale).round(), "tension_n": (tension * l.scale).round(),
+                            "bending_n_m": (bending * l.scale).round(), "twist_n_m": (twist * l.scale).round()}),
+                    };
                     serde_json::json!({
                         "joint": l.name, "kind": format!("{:?}", l.kind),
-                        "limit_n": l.max_force.round(), "peak_n": l.peak_force.round(),
-                        "limit_n_m": (l.max_torque * 10.0).round() / 10.0, "peak_n_m": (l.peak_torque * 10.0).round() / 10.0,
+                        "capacity": capacity,
+                        "design_scale": (l.scale * 100.0).round() / 100.0,
+                        "peak_n": l.peak_force.round(), "peak_n_m": (l.peak_torque * 10.0).round() / 10.0,
+                        "peak_share_of_capacity": (l.peak_use * 1000.0).round() / 1000.0,
                         "broke_s": l.broke.map(|t| (t * 100.0).round() / 100.0),
                     })
                 })

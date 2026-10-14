@@ -1,0 +1,27 @@
+# A part of the CAD Lab rover landing hard in the Meteor Showcase
+# (`verse::zones::meteor_rover`): one small puff of dust that settles in a
+# second or two, so it never hides what landed.
+description = "A part landing hard: one small puff of dust."
+
+[[emitter]]
+name = "puff"
+sheet = "sparks"
+frames = [3, 3]
+animate = "random"
+blend = "alpha"
+light = "lit"
+lit = true
+density = 0.7
+burst = 6
+life = [0.8, 1.4]
+shape = "sphere"
+radius = 0.15
+spread = 70.0
+speed = [0.3, 0.8]
+drag = 2.0
+size = [0.2, 0.35]
+scale = [[0.0, 0.7], [0.4, 1.4], [1.0, 1.8]]
+color = [0.8, 0.76, 0.68]
+alpha = [[0.0, 0.0], [0.1, 0.6], [1.0, 0.0]]
+spin = [-0.5, 0.5]
+priority = 2

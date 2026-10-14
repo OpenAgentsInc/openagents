@@ -1,0 +1,22 @@
+# A bolt or pin of the CAD Lab rover giving way in the Meteor Showcase
+# (`verse::zones::meteor_rover`): one quick spray of sparks.
+description = "A joint snapping: a short spray of sparks."
+
+[[emitter]]
+name = "sparks"
+sheet = "sparks"
+frames = [1, 1]
+animate = "random"
+luminance = 18.0
+burst = 18
+life = [0.25, 0.6]
+shape = "sphere"
+radius = 0.05
+spread = 180.0
+speed = [2.0, 5.0]
+drag = 1.2
+gravity = -9.8
+size = [0.04, 0.08]
+color = [1.0, 0.6, 0.2]
+alpha = [1.0, 1.0, 0.0]
+priority = 3

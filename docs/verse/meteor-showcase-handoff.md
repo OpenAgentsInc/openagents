@@ -324,24 +324,35 @@ the lawn in front of the houses, from its v38 glTF and assembly
   sum to the CAD mass, 87.94 kg.
 - **Joints, 72:** the 12 CAD joints are pins (rocker and bogie pivots held
   level by soft servos, six axles, the camera pan, the lid hinge); every
-  pair of touching solids in one rigid group is a fastened weld.
-- **Break limits:** a pin holds 0.15 × 0.6 σᵧ × πr² (r from the CAD part:
-  36 mm shafts, 60 mm hubs, 40 mm mast, 12 mm lid pin) and that force ×
-  4 cm in torque. A seam holds 0.01 × σᵧ × its contact patch, and that
-  force × half its length in torque. Either way, every joint holds at least
-  4 × the load it carries standing (measured in a settling run). σᵧ is the
-  weaker material's handbook yield (6061 aluminium 276 MPa, Ti-6Al-4V 880,
-  steel 250, glass 50, ...). A joint at its limit breaks.
+  pair of touching solids in one rigid group is a bolted seam.
+- **Pins** hold 0.15 × 0.6 σᵧ × πr² in shear (r from the CAD part: 36 mm
+  shafts, 60 mm hubs, 40 mm mast, 12 mm lid pin) and that force × 4 cm in
+  bending.
+- **Bolted seams** take their bolts from the seam's length: under 30 mm
+  2 × M3, to 80 mm 2 × M4, to 200 mm 4 × M4, to 350 mm 6 × M5, longer
+  8 × M6. The bolts are class 8.8, 800 MPa over the tensile stress area
+  (M3 5.03, M4 8.78, M5 14.2, M6 20.1 mm²), with shear at 0.6 of tension.
+  A pattern of N bolts over a seam of length s holds N × Fv in shear, N × Ft
+  in tension, N × Ft × s/4 in bending and N × Fv × s/2 in twist. Loads
+  combine by (V/Vc + Mt/Mtc)² + (T/Tc + Mb/Mbc)² ≤ 1.
+- **Design floor:** every joint carries at least 4 × its standing load
+  (measured in a settling run).
+- **Breaking:** the solver doesn't cap the joints, so the recorded loads are
+  real. A joint breaks in the step its load reaches its capacity, whether
+  from a blow, a landing, or a piece tumbling.
 - **Loads:** a blast pushes each solid by the area it shows the blast
   (350 N s/m² at the centre, falling off to the edge, no faster than the
-  25 m/s gas). A meteor that lands on the rover (18 kg at 32 m/s) moves with
-  each solid on its line in turn, as a perfectly inelastic collision: each
-  takes m/(m + M) of what momentum is left, and the rest goes on.
+  25 m/s gas). A meteor that lands on the rover (18 kg at 32 m/s) bursts on
+  the first solid its flight meets, which takes the whole impulse in one
+  step; the joints round it take the shock.
 - **Collisions:** pieces collide with the ground, the houses' debris near
   them (mirrored in as moving boxes; one-way), and each other once
   separate. Each piece held together by its joints is a collision group of
-  its own. Parts that broke apart while overlapping (a rail inside the
-  body's box) collide only once they are clear.
+  its own. Parts that broke apart while overlapping collide only once
+  clear. Parts faster than 40 m/s meet only the ground.
+- **Effects:** sparks at a breaking joint and dust at a hard landing fire
+  once each (`rover_sparks`, `rover_landing`). The old dust puffs were
+  continuous emitters that piled up into a cloud over the rover.
 
 `WorldRuntime::add_meteor_rover` and `stage_meteor_rover` set it up: the
 third meteor lands on the rover and the sixth beside it. The rover is
@@ -351,13 +362,16 @@ Film: `cargo run --release -p verse --example meteor_rover_capture --
 OUT_DIR --video PATH` with `VERSE_QUALITY=high`. It has close shots round
 the rover, then the scene replayed to just before the hardest hit and
 filmed four times slower. `capture.json` lists every joint's limit, peak
-load and when it broke. On 2026-10-14, 14 of the 72 joints broke:
+load and when it broke. On 2026-10-14, 4 of the 72 joints broke:
 
-- both rocker pivots: bending past their 1011 N m;
-- the lid hinge: 112 N m;
-- the mast's seam to the body: 1068 N m;
-- the solar wings' mounts and seams: 126 N, 90 N and 108 N.
+- the mast's bolted seam to the body: 4 × M4, 2.56 × its capacity, from
+  bending;
+- both rocker pivots: bending, 1.72 and 1.14 × capacity;
+- the lid hinge: 1.46 × capacity.
 
-The axles held (the most loaded carried 2.3 kN of their 70 kN). The
-bogies, the body's seams and the cameras held too, so the body tumbled
-away with its wheels on.
+The rest held, because a rigid body mostly moves as one: its seams only
+carry the difference in what neighbouring parts are pushed with. The
+avionics bay's 6 × M5 seam peaked at 15 % of its capacity, the hazard
+cameras' 2 × M4 at 71 % and 63 %, the solar wings' 2 × M3 mounts at 36 %,
+and the most loaded axle at 17 %. `capture.json` has every joint's bolts,
+capacities, peak loads and share.
