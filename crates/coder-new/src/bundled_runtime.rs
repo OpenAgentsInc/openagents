@@ -2876,7 +2876,7 @@ async fn run_microcoder_with<G: Generate>(
             "Working directory: every command runs in {}. {}",
             directory.display(),
             if read_only {
-                "This task is read-only: commands cannot change files."
+                "This task is read-only: commands cannot change the project's files or the person's. $TMPDIR is a private scratch folder for this task: to build or test, copy the project there (cargo already builds into $CARGO_TARGET_DIR there)."
             } else {
                 "Commands have full filesystem and network access unless the host explicitly installs an approval policy."
             }
@@ -3079,15 +3079,23 @@ fn command_boundary(
 ) -> Result<Option<coder_boundary::Boundary>, String> {
     if read_only {
         // A read-only task never runs unbounded: where the boundary cannot
-        // hold, the task is refused rather than run with write access.
-        return coder_boundary::Boundary::readonly()
+        // hold, the task is refused rather than run with write access. It
+        // still gets space to work (#11593): a private scratch folder
+        // (its TMPDIR, cargo's target and home, the tool caches; see
+        // [`scratch_env`]) and the package caches cargo fills, never the
+        // project or the person's own files.
+        let mut spec = coder_boundary::Boundary::readonly()
             .protecting(directory)
-            .owned_scratch_under(std::env::temp_dir())
-            .build()
-            .map(Some)
-            .map_err(|error| {
-                format!("Coder could not keep this task from changing files here: {error}")
-            });
+            .owned_scratch_under(std::env::temp_dir());
+        for cache in package_caches() {
+            let resolved = cache.canonicalize().unwrap_or_else(|_| cache.clone());
+            if !resolved.starts_with(directory) && !directory.starts_with(&resolved) {
+                spec = spec.writable(resolved);
+            }
+        }
+        return spec.build().map(Some).map_err(|error| {
+            format!("Coder could not keep this task from changing files here: {error}")
+        });
     }
     if !crate::approval::gated() {
         return Ok(None);
@@ -3097,6 +3105,73 @@ fn command_boundary(
         .build()
         .map(Some)
         .map_err(|error| format!("Coder could not limit the command to this project: {error}"))
+}
+
+/// The person's cargo home: `CARGO_HOME`, else `~/.cargo`.
+fn cargo_home() -> Option<PathBuf> {
+    std::env::var_os("CARGO_HOME")
+        .filter(|home| !home.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| user_home::home_os().map(|home| PathBuf::from(home).join(".cargo")))
+}
+
+/// The package caches a read-only task may fill (#11593): cargo's
+/// downloaded crates and Git checkouts, never the cargo home itself, which
+/// holds its configuration, installed programs and credentials.
+fn package_caches() -> Vec<PathBuf> {
+    cargo_home()
+        .map(|home| vec![home.join("registry"), home.join("git")])
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|path| path.is_dir())
+        .collect()
+}
+
+/// A read-only task's variables (#11593), each a folder in its private
+/// `scratch`, made if missing: cargo builds into `target` there, and its
+/// home is `cargo-home` there, whose `registry` and `git` lead to the
+/// person's caches and whose configuration is a copy of theirs (never
+/// their credentials), so its locks and records land in the scratch; the
+/// other tools cache under `cache`.
+fn scratch_env(scratch: &Path) -> Vec<(&'static str, PathBuf)> {
+    let target = scratch.join("target");
+    let home = scratch.join("cargo-home");
+    let cache = scratch.join("cache");
+    for folder in [&target, &home, &cache] {
+        let _ = std::fs::create_dir_all(folder);
+    }
+    if let Some(real) = cargo_home() {
+        for cache in ["registry", "git"] {
+            let link = home.join(cache);
+            if real.join(cache).is_dir() && std::fs::symlink_metadata(&link).is_err() {
+                #[cfg(unix)]
+                let _ = std::os::unix::fs::symlink(real.join(cache), &link);
+            }
+        }
+        for config in ["config.toml", "config"] {
+            let copy = home.join(config);
+            if real.join(config).is_file() && !copy.exists() {
+                let _ = std::fs::copy(real.join(config), copy);
+            }
+        }
+    }
+    let mut vars = vec![
+        ("CARGO_TARGET_DIR", target),
+        ("CARGO_HOME", home),
+        ("XDG_CACHE_HOME", cache.clone()),
+        ("GOCACHE", cache.join("go-build")),
+        ("npm_config_cache", cache.join("npm")),
+        ("PIP_CACHE_DIR", cache.join("pip")),
+    ];
+    // rustup finds its toolchains without the person's cargo home.
+    if let Some(rustup) = std::env::var_os("RUSTUP_HOME")
+        .filter(|home| !home.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| user_home::home_os().map(|home| PathBuf::from(home).join(".rustup")))
+    {
+        vars.push(("RUSTUP_HOME", rustup));
+    }
+    vars
 }
 
 struct Checkout<'a> {
@@ -3161,12 +3236,17 @@ impl Env for Checkout<'_> {
                 }
             };
             command.current_dir(&self.directory);
-            if let Some(scratch) = self
-                .boundary
-                .as_ref()
-                .and_then(|boundary| boundary.scratch())
+            if let Some(boundary) = &self.boundary
+                && let Some(scratch) = boundary.scratch()
             {
                 command.env("TMPDIR", scratch);
+                // A read-only task builds and caches in its scratch
+                // (#11593).
+                if boundary.checkout().is_none() {
+                    for (name, value) in scratch_env(scratch) {
+                        command.env(name, value);
+                    }
+                }
             }
             scrub_credentials(&mut command);
             let mut bridge = self
@@ -5762,6 +5842,93 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
         assert_eq!(
             microcoder_loop::run::runs_on("Gemini 4 Argon through the OpenAgents gateway"),
             " You run on Gemini 4 Argon through the OpenAgents gateway. Asked which model runs you, say exactly that; never guess."
+        );
+    }
+
+    /// #11593: a read-only task has a private scratch to work in: it can
+    /// copy the project there and run its tests, cargo builds there, and
+    /// the project itself still can't change.
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn a_read_only_task_tests_a_copy_in_its_scratch_and_cannot_change_the_project() {
+        let _gate_lock = crate::approval::test_lock()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        use microcoder_loop::models::{Ask, Basis, Generated, NextAction};
+        struct Copying(std::cell::Cell<usize>);
+        impl Generate for Copying {
+            async fn generate(&self, _system: &str, _prompt: &str) -> Generated {
+                let first = self.0.get() == 0;
+                self.0.set(self.0.get() + 1);
+                Generated {
+                    action: Ok(NextAction {
+                        rationale: "Test a copy.".into(),
+                        commands: if first {
+                            vec![
+                                "cp -R . \"$TMPDIR/copy\" && cd \"$TMPDIR/copy\" && sh test.sh > result && cat result".into(),
+                                "touch \"$CARGO_TARGET_DIR/built\" && mkdir -p \"$XDG_CACHE_HOME/tool\" && test -d \"$CARGO_HOME\" && echo cached".into(),
+                                "echo changed > test.sh || echo refused".into(),
+                            ]
+                        } else {
+                            vec![]
+                        },
+                        view: vec![],
+                        freeze_tests: false,
+                        expand: vec![],
+                        finished: !first,
+                        reply: "Done.".into(),
+                        ask: Ask::None,
+                    }),
+                    model: "fixture/model".into(),
+                    prompt_tokens: 1,
+                    completion_tokens: 1,
+                    usd: Some(0.0),
+                    known_usd: 0.0,
+                    cost_unknown: None,
+                    usd_upper: Some(0.0),
+                    cost_basis: Basis::Billed,
+                    milliseconds: 1,
+                }
+            }
+        }
+        let dir = tempfile::tempdir().unwrap();
+        if coder_boundary::Boundary::readonly()
+            .protecting(dir.path())
+            .build()
+            .is_err()
+        {
+            return;
+        }
+        std::fs::write(dir.path().join("test.sh"), "echo tests passed\n").unwrap();
+        let mut events = vec![];
+        run_microcoder_with(
+            "Run the tests",
+            dir.path(),
+            true,
+            &Copying(std::cell::Cell::new(0)),
+            None,
+            &[],
+            &Arc::new(AtomicBool::new(false)),
+            &mut |event| events.push(event),
+            None,
+        )
+        .await
+        .unwrap();
+        let shown = format!("{events:?}");
+        assert!(shown.contains("tests passed"), "{shown}");
+        assert!(shown.contains("cached"), "{shown}");
+        assert!(shown.contains("refused"), "{shown}");
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("test.sh")).unwrap(),
+            "echo tests passed\n"
+        );
+        assert!(!dir.path().join("result").exists());
+        let vars = scratch_env(dir.path());
+        let names: Vec<&str> = vars.iter().map(|(name, _)| *name).collect();
+        assert!(names.starts_with(&["CARGO_TARGET_DIR", "CARGO_HOME", "XDG_CACHE_HOME"]));
+        assert!(
+            vars.iter()
+                .all(|(name, path)| *name == "RUSTUP_HOME" || path.starts_with(dir.path()))
         );
     }
 }

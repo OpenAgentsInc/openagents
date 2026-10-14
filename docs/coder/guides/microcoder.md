@@ -48,6 +48,13 @@ model it runs on. A model the call names runs on the chat's own door;
 `microcoder --provider codex` and the other explicit providers are
 unchanged.
 
+A read-only Microcoder task can't change the project or the person's
+files, but it has a private scratch folder for the run: `$TMPDIR`, with
+cargo building into `$CARGO_TARGET_DIR` and its home in `$CARGO_HOME`
+there (leading to the person's crate caches, which it may fill), and the
+other tools' caches under `$XDG_CACHE_HOME`. So it can copy the project
+there and run its tests (#11593).
+
 ## Run a Terminal-Bench 4 task
 
 ```sh
