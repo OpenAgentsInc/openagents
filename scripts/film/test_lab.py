@@ -235,6 +235,20 @@ class SpliceTest(unittest.TestCase):
         fr = lab.call("lab_framing", {"source": "whiteboard", "at": "2"})
         self.assertTrue(Path(fr["image"]).exists())
 
+    def test_removing_a_shot_takes_its_captions_and_music_hit(self):
+        lab.create("trim", "cut.v1", "Trim film", {**self.cut, "music": tone(30),
+                                                   "score": {"cuts_at": ["after"]}}, "First", "test")
+        data = lab.body("trim", 1)
+        data.pop("score")
+        out = lab.call("lab_edit", {"document": "trim", "summary": "drop after", "render": False,
+                                    "patch": json.dumps([{"op": "remove", "path": "/shots/@after"}])})
+        self.assertNotIn("refused", out, out.get("text"))
+        new = lab.body("trim", out["version"])
+        self.assertEqual([s["name"] for s in new["shots"]], ["open"])
+        self.assertEqual(new["captions"], [])
+        self.assertEqual(new["score"]["cuts_at"], [])
+        self.assertIn("captions over the removed shots went with them", out["text"])
+
     def test_a_spliced_cut_renders_with_the_clips_sound_under_ducked_music(self):
         lab.import_source(str(self.clip))
         cut = {"fps": 30, "size": [320, 180], "bpm": 120, "music": tone(30), "out": str(TMP / "spliced.mp4"),

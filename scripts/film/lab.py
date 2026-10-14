@@ -1642,12 +1642,40 @@ def tool_edit(args) -> dict:
     new = apply_patch(old, ops)
     if new == old:
         raise Refused("the patch changes nothing")
-    moved = 0
+    moved, said = 0, []
     touched_caps = any(isinstance(op, dict) and str(op.get("path", "")).startswith("/captions") for op in ops)
+    if parent["kind"] == "cut.v1":
+        said += drop_removed(old, new, touched_caps)
     if parent["kind"] == "cut.v1" and args.get("ripple_captions", True) and not touched_caps:
         moved = ripple(old, new)
-    return commit(doc, parent, old, new, summary, args.get("author") or "chat", args.get("render", True),
-                  [f"{moved} captions moved with their shots."] if moved else [])
+    if moved:
+        said.append(f"{moved} captions moved with their shots.")
+    return commit(doc, parent, old, new, summary, args.get("author") or "chat", args.get("render", True), said)
+
+
+def drop_removed(old: dict, new: dict, touched_caps: bool) -> list[str]:
+    """When shots are removed, the captions over them go too (unless the patch
+    handles captions itself) and the score stops marking them."""
+    gone = [s for s in timeline(old) if s["name"] not in {x.get("name") for x in new.get("shots", [])}]
+    if not gone:
+        return []
+    said = []
+    if not touched_caps and new.get("captions"):
+        keep = [c for c in new["captions"]
+                if not any(g["start"] - 1e-6 <= c["at"] < g["end"] - 1e-6 for g in gone)]
+        if len(keep) != len(new["captions"]):
+            said.append(f"{len(new['captions']) - len(keep)} captions over the removed shots went with them.")
+            new["captions"] = keep
+    score = new.get("score")
+    if score:
+        names = {g["name"] for g in gone}
+        cuts = [n for n in score.get("cuts_at", []) if n not in names]
+        if cuts != score.get("cuts_at"):
+            score["cuts_at"] = cuts
+            said.append("The music no longer marks the removed shots.")
+        if score.get("end_at") in names:
+            score.pop("end_at")
+    return said
 
 
 def commit(doc: str, parent: dict, old: dict, new: dict, summary: str, author: str, render=True,
@@ -1777,7 +1805,8 @@ TOOLS = {
                   {"document": "string", "at": "string", "version": "string?"}),
     "lab_edit": (tool_edit, "Change a document by a JSON Patch (RFC 6902) on its JSON, making a new version. "
                             "Address a shot by name: /shots/@s4-delegation/dur, and a caption by its index from "
-                            "lab_open: /captions/7 (remove several from the highest index down). In a cut, captions move with "
+                            "lab_open: /captions/7 (remove several from the highest index down). Removing a shot removes the captions "
+                            "over it and its music hit too. In a cut, captions move with "
                             "their shots when shot lengths change. The edit is checked first (schema, the beat "
                             "grid, sources long enough, no shot ending inside an animation, music length) and "
                             "refused with the reason if it adds a problem; then fix the patch. A preview renders.",
