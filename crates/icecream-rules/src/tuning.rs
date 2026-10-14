@@ -383,7 +383,7 @@ tunables! {
     "look" yellow: f32 = YELLOW, 0.0, 1.0, "how yellowed the rooms look, from 0 (pastel ice cream) to 1 (Backrooms: monotone yellow wallpaper, damp carpet, fluorescent panels)";
     "look" fog_near: f32 = FOG_NEAR, 0.0, 100.0, "where the fog starts, metres from the camera";
     "look" fog_far: f32 = FOG_FAR, 1.0, 120.0, "where the fog is thickest, metres from the camera";
-    "look" flicker: f32 = FLICKER, 0.0, 1.0, "how often the lights flicker, from 0 (never) to 1 (all the time)";
+    "look" flicker: f32 = FLICKER, 0.0, 1.0, "how often the lights flicker, from 0 (never) to 1 (often): above 0.05 they dip for half a second at a time, two a second at most, so they never strobe";
     "look" buzz: f32 = BUZZ, 0.0, 1.0, "how loud the fluorescent lights buzz, from 0 to 1";
     "look" first_person: u32 = FIRST_PERSON, 0, 1, "the camera a run starts with: 1 first person, 0 third person (V switches)";
 }

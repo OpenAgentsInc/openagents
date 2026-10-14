@@ -1085,17 +1085,20 @@ impl App {
             WARM
         };
         let tick = (self.time * 14.0) as u32;
-        // How often the tubes flicker: the version's number (3% a tick in
-        // the original).
-        let chance = (t.flicker * 10_000.0) as u32;
-        let flicker = if hash(index as u32, tick) % 10_000 < chance {
-            if backrooms { 0.4 } else { 0.55 }
+        // How often the tubes flicker (the version's number; 0.03 in the
+        // original). Brief flickers never come more often than the
+        // original's 5%; more than that becomes slow half-second dips, two
+        // a second at most, so the lights never strobe.
+        let fast = (t.flicker.min(0.05) * 10_000.0) as u32;
+        let slow = ((t.flicker - 0.05).max(0.0) * 10_000.0) as u32;
+        let flicker = if hash(index as u32, tick) % 10_000 < fast {
+            if backrooms { 0.45 } else { 0.55 }
         } else if !backrooms
             && scene::cold(room.module)
             && hash(index as u32 + 50, tick / 3) % 100 < 6
         {
             0.8
-        } else if backrooms && hash(index as u32 + 70, tick / 9) % 10_000 < chance / 3 {
+        } else if slow > 0 && hash(index as u32 + 70, (self.time * 2.0) as u32) % 10_000 < slow {
             0.62
         } else {
             1.0

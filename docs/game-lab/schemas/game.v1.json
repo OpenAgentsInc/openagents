@@ -280,7 +280,7 @@
         },
         "flicker": {
           "default": 0.03,
-          "description": "how often the lights flicker, from 0 (never) to 1 (all the time)",
+          "description": "how often the lights flicker, from 0 (never) to 1 (often): above 0.05 they dip for half a second at a time, two a second at most, so they never strobe",
           "maximum": 1.0,
           "minimum": 0.0,
           "type": "number"

@@ -236,7 +236,8 @@ closets and fridges), with more doorways looping between them
 (`layout.loops`). The look (`look.yellow`) turns the pastel flavours into
 monotone striped yellow wallpaper, damp patches on the carpet, a grid of
 ceiling tiles and long fluorescent panels; the fog comes in closer and
-yellow-grey (`fog_near`, `fog_far`), the tubes flicker more (`flicker`)
+yellow-grey (`fog_near`, `fog_far`), the tubes flicker more (`flicker`; past the original rate they dip for half a
+second at a time, two a second at most, so they never strobe)
 and buzz (`buzz`). He, his cones, the keys and the sprinkles stay ice
 cream: it's still The Ice Cream Man, lost in the Backrooms.
 
@@ -247,11 +248,20 @@ dropped cone when it's hurt, solves the button puzzle after the keys,
 fights minions that come near (sword or spear in reach, else fudge, else
 the pistol), and hits him with what it has while he's frozen or confused.
 
-| Bot over 24 seeded houses | Wins | Middle escape | Hits | Spotted |
-|---|---|---|---|---|
-| The original (v1) | 24 of 24 | 0:26 | 1.7 | 2.0 |
-| Weapons, minions, free roam | 23 of 24 | 0:53 | 3.6 | 4.2 |
-| ... in the Backrooms | 24 of 24 | 0:42 | 1.8 | 3.8 |
+The versions made in Game Lab's chat for the revision, as the bot measured
+them over the same 24 seeded houses (v2 is an earlier playtest: him 20%
+slower, two more closets):
+
+| Version | Wins | Middle escape | Hits | Spotted | Hiding spots |
+|---|---|---|---|---|---|
+| v1, the original | 24 of 24 | 0:26 | 1.7 | 2.0 | 11 |
+| v2, slower, more closets | 24 of 24 | 0:25 | 1.4 | 1.8 | 13 |
+| v3, + weapons, minions, free roam | 24 of 24 | 0:53 | 3.3 | 4.3 | 13 |
+| v4, + the Backrooms | 24 of 24 | 0:42 | 1.9 | 3.9 | 7 |
+
+With the man at his original speeds, the rules' own check measures the
+weapons, minions and free roam at 23 of 24, and with the Backrooms at 24
+of 24 (`game-lab` `sim` tests).
 
 ## MVP scope
 

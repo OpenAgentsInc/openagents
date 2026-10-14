@@ -1081,10 +1081,12 @@ mod tests {
         let listed = lab.run("game_code_requests", &json!({"game": ICE_CREAM_MAN}));
         let requests = listed["requests"].as_array().unwrap();
         assert_eq!(requests.len(), 2);
-        for request in requests {
-            // A temporary Lab's requests are named in no commit.
-            assert_eq!(request["status"], "waiting for Coder", "{request}");
-        }
+        // r1 of this game was made by a real commit (#11626), which this
+        // checkout's history has: it's linked.
+        assert_eq!(requests[0]["status"], "made", "{}", requests[0]);
+        let hash = requests[0]["commit"].as_str().unwrap();
+        assert!(requests[0]["commit_url"].as_str().unwrap().ends_with(hash));
+        assert!(requests[1]["status"] == "waiting for Coder" || requests[1]["status"] == "made");
         // A commit that names a request is found by its line.
         assert!(commit_for(&lab.repo, "a line no commit has 7c1e3b0d").is_none());
     }
