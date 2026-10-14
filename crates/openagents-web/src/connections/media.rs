@@ -149,6 +149,15 @@ async fn look_now(
         MediaKind::Video => oa_connections::google::drive::MAX_VIDEO_BYTES,
     };
     let object = object_name();
+    // Deleted whatever happens, even when the answer is abandoned
+    // mid-look (the chat's deadline drops this future): the guard's drop
+    // starts the delete. The bucket's one-day rule catches a failed one.
+    let mut cleanup = Cleanup {
+        gemini: gemini.clone(),
+        bucket: bucket.to_owned(),
+        object: object.clone(),
+        armed: true,
+    };
     let uploaded = upload(gemini, bucket, &object, drive, media, &mime, cap).await;
     let seen = match uploaded {
         Ok(()) => {
@@ -160,10 +169,32 @@ async fn look_now(
         }
         Err(why) => Err(why),
     };
-    // Deleted whatever happened; a partial upload leaves no object, and
-    // the bucket's one-day rule catches a delete that fails.
     remove(gemini, bucket, &object).await;
+    cleanup.armed = false;
     seen
+}
+
+/// Deletes a passed-through object when dropped before the look did.
+struct Cleanup {
+    gemini: Gemini,
+    bucket: String,
+    object: String,
+    /// Still to delete: the look was abandoned before it deleted it.
+    armed: bool,
+}
+
+impl Drop for Cleanup {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+        let gemini = self.gemini.clone();
+        let bucket = std::mem::take(&mut self.bucket);
+        let object = std::mem::take(&mut self.object);
+        if let Ok(runtime) = tokio::runtime::Handle::try_current() {
+            runtime.spawn(async move { remove(&gemini, &bucket, &object).await });
+        }
+    }
 }
 
 /// One Gemini call: the description and what it cost.
