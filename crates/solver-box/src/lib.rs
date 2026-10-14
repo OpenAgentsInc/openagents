@@ -30,7 +30,7 @@ pub mod dispatch;
 /// The solver container, built by `deploy/solver-box/cloudbuild.yaml` and
 /// named by its commit (the repository's tags are immutable). A newer build
 /// is used by setting [`IMAGE_ENV`] (or `--image`) until this is moved.
-pub const IMAGE: &str = "us-central1-docker.pkg.dev/openagentsgemini/openagents/oa-solver-box:41b28a8fb74dea19e6e78e13fb32f0516324b871";
+pub const IMAGE: &str = "us-central1-docker.pkg.dev/openagentsgemini/openagents/oa-solver-box:253e883a15e7660d74856120cb66d29007defa63";
 /// Names the solver container instead of [`IMAGE`].
 pub const IMAGE_ENV: &str = "OA_SOLVER_IMAGE";
 /// Every hand's model unless the run names another.
