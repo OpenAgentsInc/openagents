@@ -1136,6 +1136,62 @@ fn version_of(path: &Path) -> Option<Version> {
     Version::parse(text.split_whitespace().nth(1)?)
 }
 
+/// The line Coder shows once a session when the `openagents` its chats
+/// would run, the first on `path`, is older than Coder `coder` and none
+/// sits beside Coder (`beside`, [`coder_lease::shim::own_cli_dir`]): with
+/// one beside it, chats run that one (#11599). `None` when the command is
+/// missing, current, or does not say its version.
+#[must_use]
+pub fn stale_cli_notice(
+    path: Option<&std::ffi::OsStr>,
+    beside: Option<&Path>,
+    coder: Version,
+) -> Option<String> {
+    if beside.is_some() {
+        return None;
+    }
+    let found =
+        acp_client::process::first_executable(acp_client::process::on_path("openagents", path))?;
+    let version = said_version(&found)?;
+    (version < coder).then(|| {
+        format!(
+            "The openagents command at {} is {version}, older than Coder {coder}. Update both with: {}",
+            found.display(),
+            installer_command()
+        )
+    })
+}
+
+/// The version `program --version` names: the first word that reads as
+/// one, so `openagents 1.0.0` and a bare `1.0.0` both count.
+fn said_version(program: &Path) -> Option<Version> {
+    let output = Command::new(program)
+        .arg("--version")
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .output()
+        .ok()?;
+    String::from_utf8_lossy(&output.stdout)
+        .split_whitespace()
+        .find_map(|word| Version::parse(word.trim_start_matches('v')))
+}
+
+/// [`stale_cli_notice`] for this process, on a background thread.
+#[must_use]
+pub fn spawn_stale_cli_check() -> std::sync::mpsc::Receiver<String> {
+    let (send, receive) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        if let Some(line) = stale_cli_notice(
+            std::env::var_os("PATH").as_deref(),
+            coder_lease::shim::own_cli_dir().as_deref(),
+            Version::current(),
+        ) {
+            let _ = send.send(line);
+        }
+    });
+    receive
+}
+
 fn not_standalone(kind: &InstallKind) -> String {
     match kind {
         InstallKind::Desktop => {

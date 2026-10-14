@@ -1132,3 +1132,34 @@ fn settings_commands_save_the_choice() {
     command(&args(&["--help"]), dir.path(), &mut out).unwrap();
     assert!(String::from_utf8_lossy(&out).contains("coder update --rollback"));
 }
+
+/// #11599: an `openagents` on `PATH` older than Coder, with none beside
+/// Coder, gets one line naming it and the installer; a current one, one
+/// beside Coder, or none at all gets nothing.
+#[cfg(unix)]
+#[test]
+fn an_older_openagents_on_path_gets_the_installer_line() {
+    use std::os::unix::fs::PermissionsExt;
+    let scratch = tempfile::tempdir().unwrap();
+    let bin = scratch.path().join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    let program = bin.join("openagents");
+    let fake = |version: &str| {
+        std::fs::write(&program, format!("#!/bin/sh\necho openagents {version}\n")).unwrap();
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
+    };
+    let path = std::ffi::OsString::from(format!("{}:/bin:/usr/bin", bin.display()));
+    assert_eq!(stale_cli_notice(Some(&path), None, v("1.0.0")), None);
+    fake("1.0.0-rc.5");
+    let line = stale_cli_notice(Some(&path), None, v("1.0.0")).unwrap();
+    assert!(line.contains("1.0.0-rc.5"), "{line}");
+    assert!(line.contains(&program.display().to_string()), "{line}");
+    assert!(line.ends_with(installer_command()), "{line}");
+    let beside = scratch.path().join("release");
+    assert_eq!(
+        stale_cli_notice(Some(&path), Some(&beside), v("1.0.0")),
+        None
+    );
+    fake("1.0.0");
+    assert_eq!(stale_cli_notice(Some(&path), None, v("1.0.0")), None);
+}

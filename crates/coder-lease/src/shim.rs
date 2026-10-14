@@ -238,20 +238,38 @@ pub fn path_with(dir: &Path, path: Option<&OsStr>) -> OsString {
         .unwrap_or_else(|_| path.map(OsStr::to_owned).unwrap_or_default())
 }
 
-/// The directory of this program when an `openagents` sits in it (the
-/// release archive and a dev build put Coder and the CLI side by side),
-/// or when this program is `openagents` itself (#11538).
+/// The directory of this program when an `openagents` or `microcoder`
+/// sits in it (the release archive and a dev build put Coder, the CLI,
+/// and the engine side by side), or when this program is one of them
+/// (#11538, #11599).
 #[must_use]
 pub fn own_cli_dir() -> Option<PathBuf> {
     cli_dir_beside(&std::env::current_exe().ok()?)
 }
 
-/// The directory of `program` when an `openagents` sits in it.
+/// The commands Coder ships with and runs from beside itself (#11599).
+pub const SHIPPED_COMMANDS: [&str; 2] = ["openagents", "microcoder"];
+
+/// The directory of `program`, symlinks resolved, when an `openagents`
+/// or `microcoder` sits in it; else the directory `program` was started
+/// from (a link's own folder) when one sits there (#11599).
 #[must_use]
 pub fn cli_dir_beside(program: &Path) -> Option<PathBuf> {
-    let dir = program.parent()?;
-    let name = format!("openagents{}", std::env::consts::EXE_SUFFIX);
-    dir.join(name).is_file().then(|| dir.to_path_buf())
+    let resolved = std::fs::canonicalize(program).ok();
+    resolved
+        .as_deref()
+        .and_then(Path::parent)
+        .into_iter()
+        .chain(program.parent())
+        .find(|dir| holds_shipped_command(dir))
+        .map(Path::to_path_buf)
+}
+
+fn holds_shipped_command(dir: &Path) -> bool {
+    SHIPPED_COMMANDS.iter().any(|name| {
+        dir.join(format!("{name}{}", std::env::consts::EXE_SUFFIX))
+            .is_file()
+    })
 }
 
 /// `path` as every process Coder starts gets it (#11538): the directory of
@@ -441,6 +459,32 @@ mod tests {
             Some(expected.clone())
         );
         assert_eq!(child_path_with(Some(OsStr::new("/bin")), None, None), None);
+    }
+
+    /// #11599: a `microcoder` alone marks the folder too, and a link to
+    /// Coder (say on a `PATH` folder) leads to the folder Coder really
+    /// sits in, with the CLI beside it.
+    #[cfg(unix)]
+    #[test]
+    fn the_shipped_folder_is_found_through_a_link_and_by_microcoder() {
+        let scratch = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(scratch.path()).unwrap();
+        let real = root.join("release");
+        let links = root.join("links");
+        std::fs::create_dir_all(&real).unwrap();
+        std::fs::create_dir_all(&links).unwrap();
+        let coder = real.join("coder");
+        std::fs::write(&coder, "").unwrap();
+        let link = links.join("coder");
+        std::os::unix::fs::symlink(&coder, &link).unwrap();
+        assert_eq!(cli_dir_beside(&link), None);
+        std::fs::write(real.join("microcoder"), "").unwrap();
+        assert_eq!(cli_dir_beside(&link), Some(real.clone()));
+        std::fs::write(real.join("openagents"), "").unwrap();
+        assert_eq!(cli_dir_beside(&link), Some(real.clone()));
+        // The real folder wins over the link's when both hold one.
+        std::fs::write(links.join("openagents"), "").unwrap();
+        assert_eq!(cli_dir_beside(&link), Some(real));
     }
 
     #[test]

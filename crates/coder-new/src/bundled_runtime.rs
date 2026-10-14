@@ -3546,6 +3546,45 @@ mod tests {
         assert_eq!(with_own_cli(plain.clone(), None), plain);
     }
 
+    /// #11599: with an old fake `openagents` first on a scratch `PATH` and
+    /// a new one beside a test Coder (reached through a link), the shell
+    /// Run starts resolves the new one.
+    #[cfg(unix)]
+    #[test]
+    fn run_resolves_the_openagents_beside_coder_over_an_older_one_on_path() {
+        use std::os::unix::fs::PermissionsExt;
+        let scratch = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(scratch.path()).unwrap();
+        let fake = |dir: &Path, version: &str| {
+            std::fs::create_dir_all(dir).unwrap();
+            let program = dir.join("openagents");
+            std::fs::write(&program, format!("#!/bin/sh\necho openagents {version}\n")).unwrap();
+            std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
+        };
+        let old = root.join("old-bin");
+        fake(&old, "1.0.0-rc.5");
+        let release = root.join("release");
+        fake(&release, "1.0.0");
+        std::fs::write(release.join("coder"), "").unwrap();
+        let links = root.join("links");
+        std::fs::create_dir_all(&links).unwrap();
+        std::os::unix::fs::symlink(release.join("coder"), links.join("coder")).unwrap();
+        let path = format!("{}:/bin:/usr/bin", old.display());
+        let run = |cli: Option<&Path>| {
+            let mut command = std::process::Command::new("/bin/sh");
+            command.args(["-c", "openagents --version"]).env_clear();
+            command.envs(with_own_cli(
+                vec![("PATH".into(), path.clone().into())],
+                cli,
+            ));
+            String::from_utf8(command.output().unwrap().stdout).unwrap()
+        };
+        assert_eq!(run(None), "openagents 1.0.0-rc.5\n");
+        let cli = coder_lease::shim::cli_dir_beside(&links.join("coder"));
+        assert_eq!(cli.as_deref(), Some(release.as_path()));
+        assert_eq!(run(cli.as_deref()), "openagents 1.0.0\n");
+    }
+
     #[tokio::test]
     async fn microcoder_streaming_completion_keeps_one_successful_command() {
         let _gate_lock = crate::approval::test_lock().lock().unwrap();

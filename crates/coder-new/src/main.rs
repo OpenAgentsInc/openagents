@@ -274,6 +274,8 @@ fn run() -> io::Result<()> {
     let update_events = update
         .as_ref()
         .and_then(|context| coder_new::update::spawn_check(context.clone()));
+    // An older `openagents` on PATH with none beside Coder: say so once (#11599).
+    let stale_cli = coder_new::update::spawn_stale_cli_check();
     if let Some(store) = state.clone().or_else(|| coder_new::home::data_dir()) {
         app.account = coder_new::account::signed_in(&store);
         app.account_dir = Some(store.clone());
@@ -427,6 +429,11 @@ fn run() -> io::Result<()> {
                 .map(std::sync::mpsc::Receiver::try_recv)
             {
                 app.update_line = Some(line);
+            }
+            if app.notice.is_none()
+                && let Ok(line) = stale_cli.try_recv()
+            {
+                app.notice = Some(line);
             }
             app.follow_tick();
             app.poll_issue_run();
