@@ -315,6 +315,11 @@ pub(super) struct Row {
     /// Where the Claude plan stands, as Claude Code last reported it in
     /// this run: "Claude plan: 5h 62% · week 31% · resets 14:20 UTC".
     pub plan: Option<String>,
+    /// A work run (the briefed agent, Solver in the cloud): its progress
+    /// while it works, the newest last, and how it ended once it has. The
+    /// run's one card in the chat is this row (#11600).
+    pub steps: Vec<String>,
+    pub ended: Option<String>,
 }
 
 impl Row {
@@ -342,6 +347,10 @@ pub(super) struct Live {
     pub choices: Vec<PauseChoice>,
     /// The plan windows Claude Code reported during the run (#11292).
     pub plan: Option<coder_engine_status::PlanUsage>,
+    /// A work run's progress in plain words, newest last (#11600).
+    pub steps: Vec<String>,
+    /// How a finished work run ended, in plain words.
+    pub ended: Option<String>,
 }
 
 /// The panel's rows for the chat's runs: one per agent (its newest run,
@@ -431,8 +440,12 @@ pub(super) fn run_rows(
             cost_usd: (!costs.is_empty()).then(|| costs.iter().sum::<f64>()),
             waiting: task.agent.as_ref().map_or(0, |agent| agent.inbox.len()),
             can_message: task.agent.is_some() && links && !gone,
-            transcript: (links && !gone && !matches!(task.kind, TaskKind::Work | TaskKind::Solver))
-                .then(|| format!("/environments/{}/runs/{}", task.environment, task.id)),
+            transcript: if matches!(task.kind, TaskKind::Work | TaskKind::Solver) {
+                Some(format!("{}/{}", crate::work_runs::PAGE, task.id))
+            } else {
+                (links && !gone)
+                    .then(|| format!("/environments/{}/runs/{}", task.environment, task.id))
+            },
             choices: if links && !gone && task.state == TaskState::Paused {
                 live.choices.clone()
             } else {
@@ -441,6 +454,14 @@ pub(super) fn run_rows(
             plan: live
                 .plan
                 .and_then(|plan| plan.text(now_unix, &|ms| clock(ms / 1000))),
+            steps: if task.state.finished() {
+                Vec::new()
+            } else if live.steps.is_empty() {
+                task.steps.clone()
+            } else {
+                live.steps.clone()
+            },
+            ended: live.ended.clone().filter(|_| task.state.finished()),
         });
     }
     rows
@@ -484,6 +505,8 @@ pub(super) fn computer_rows(agents: &phone_api::Agents, session: &str, now_unix:
                 transcript: None,
                 choices: item_choices(&item.choices),
                 plan: None,
+                steps: Vec::new(),
+                ended: None,
             });
         }
     }
@@ -552,6 +575,9 @@ pub(super) fn render(chat_id: &str, csrf: &str, rows: &[Row], notice: Option<&st
                         @if let Some(plan) = &row.plan {
                             span.oa-task-row-detail.oa-agents-plan { (plan) }
                         }
+                        @if let Some(ended) = &row.ended {
+                            span.oa-task-row-detail.oa-agents-ended { (crate::github_refs::linked(ended, row.place.as_str())) }
+                        }
                         span.oa-chat-status.oa-task-row-status data-status=(row.standing.key()) {
                             @if row.standing == Standing::Working {
                                 (openagents_ui::actions::LoadingIndicator::new().decorative())
@@ -560,6 +586,9 @@ pub(super) fn render(chat_id: &str, csrf: &str, rows: &[Row], notice: Option<&st
                             }
                             span.oa-chat-status-label { (row.standing.label()) }
                         }
+                    }
+                    @if let Target::Run(id) = &row.target {
+                        (super::work::steps(id, &format!("{}#", row.place), &row.engine, &row.steps))
                     }
                     div.oa-agents-actions {
                         @if row.can_stop() {
@@ -613,6 +642,26 @@ pub(super) fn slot(chat: &Conversation) -> Markup {
     }
 }
 
+/// What the panel shows of a work run: its cost so far, its progress in
+/// plain words, and once it has ended, how ("Already done on main:
+/// e3646e3d38", "Failed: No computer could be had …", "Pull request …").
+fn work_live(run: &crate::work_runs::WorkRun) -> Live {
+    let ended = run.state.finished().then(|| {
+        let stage = crate::work_runs::stage(run);
+        let mut chars = stage.chars();
+        chars
+            .next()
+            .map(|first| first.to_uppercase().chain(chars).collect::<String>())
+            .unwrap_or_default()
+    });
+    Live {
+        cost_usd: crate::work_runs::cost_so_far(run),
+        steps: super::work::work_seen(run).steps.unwrap_or_default(),
+        ended,
+        ..Live::default()
+    }
+}
+
 /// The panel's rows for `chat` as this request may see them.
 async fn rows(app: &App, headers: &HeaderMap, chat: &Conversation) -> Vec<Row> {
     let links = super::work::links(app, headers).await;
@@ -621,6 +670,7 @@ async fn rows(app: &App, headers: &HeaderMap, chat: &Conversation) -> Vec<Row> {
     let saved = crate::cloud::byo::saved_class(app, headers).await;
     // Work runs (the briefed agent, Solver in the cloud) report their cost
     // in their own records.
+    // Their progress and how they ended come from there too (#11600).
     let mut worked = std::collections::HashMap::new();
     for task in chat
         .tasks
@@ -630,17 +680,14 @@ async fn rows(app: &App, headers: &HeaderMap, chat: &Conversation) -> Vec<Row> {
         if let Ok(Some(run)) =
             crate::work_runs::load(&app.config.chat_store, &chat.owner, &task.id).await
         {
-            worked.insert(task.id.clone(), crate::work_runs::cost_so_far(&run));
+            worked.insert(task.id.clone(), work_live(&run));
         }
     }
     let mut rows = run_rows(
         chat,
         |task| {
-            if let Some(cost_usd) = worked.get(&task.id) {
-                return Some(Live {
-                    cost_usd: *cost_usd,
-                    ..Live::default()
-                });
+            if let Some(live) = worked.get(&task.id) {
+                return Some(live.clone());
             }
             let studio = studio.as_ref()?;
             let run = studio.claude_run(&task.environment, &task.id)?;
@@ -649,6 +696,7 @@ async fn rows(app: &App, headers: &HeaderMap, chat: &Conversation) -> Vec<Row> {
                 paused_until: run.paused_until,
                 choices: studio.claude_choices(&task.environment, &task.id, saved),
                 plan: coder_engine_status::PlanUsage::from_events(&run.events),
+                ..Live::default()
             })
         },
         links,

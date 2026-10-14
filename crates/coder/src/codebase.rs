@@ -328,7 +328,7 @@ pub fn judged(response: &SystemOneResponse, candidates: &[(&Chunk, f64)]) -> Jud
 pub fn prompt(question: &str, kept: &[Excerpt], commit: &str) -> (String, String) {
     let short = &commit[..commit.len().min(10)];
     let instructions = format!(
-        "We are OpenAgents: speak as \"we\", never \"I\". Answer the user's question about the \
+        "I am OpenAgents: speak as \"I\", never \"we\". Answer the user's question about the \
          OpenAgents repository (github.com/OpenAgentsInc/openagents) using ONLY the excerpts \
          below, read at commit {short}. Cite every fact with the excerpt's location exactly as \
          given, in the form path:start-end (or path:line for a line inside that range). Never \

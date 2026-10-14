@@ -61,6 +61,19 @@ Boat: the command may still be running. Commands are never retried.
   preempted). `provisioning: spot` asks for a spot VM that stops, keeping
   its disk, when Google takes it back.
 - **Zones** `us-central1-a,b,c,f`, tried in order when one has no capacity.
+  When no zone has room for a `large` or `xlarge` n2d machine (common in
+  us-central1 through 2026-10-14), the same shape on E2 is tried in every
+  zone: `e2-standard-8` ($0.268 an hour on demand) or `e2-standard-16`
+  ($0.536); the sandbox keeps its size name and reports the machine it got
+  and its price (`machineType`, `dollarsPerHour`). Only when that fails too
+  does it end `error`: "Google has no large computer free in any zone right
+  now." (#11600)
+- **Progress.** While a sandbox is not ready its `progress` (in the
+  sandbox's extra fields) says in plain words what is happening: "Asking
+  Google for a large computer", "Google has no large computer free in that
+  zone; trying another (2 of 4)", "Google is starting the computer", "The
+  computer is on; getting it ready". A GCE insert in a busy zone can take
+  1 to 4.5 minutes.
 - **Ready** is per boot: once the VM answers SSH, the service writes `env`
   to `/run/oa-boat/env` (tmpfs, so neither a stopped disk nor a template
   image holds it), runs `setupScript` once, puts `coder-cloud-runtime` on

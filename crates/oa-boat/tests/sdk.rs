@@ -20,6 +20,8 @@ struct World {
     images: BTreeMap<String, Image>,
     clock: i64,
     full_zones: Vec<String>,
+    /// Machine types no zone has room for.
+    full_machines: Vec<String>,
     /// The insert is made but its wait fails in transport.
     flaky_zones: Vec<String>,
     /// The wait fails in transport and the VM never appears.
@@ -49,7 +51,12 @@ fn labels(v: &Value) -> BTreeMap<String, String> {
 impl Compute for Fake {
     async fn insert_instance(&self, zone: &str, body: Value) -> Result<()> {
         let mut w = self.0.lock().unwrap();
-        if w.full_zones.iter().any(|z| z == zone) {
+        let machine = body["machineType"].as_str().unwrap_or_default();
+        if w.full_zones.iter().any(|z| z == zone)
+            || w.full_machines
+                .iter()
+                .any(|m| machine.ends_with(&format!("/{m}")))
+        {
             return Err(GceError::new(409, "ZONE_RESOURCE_POOL_EXHAUSTED", "full"));
         }
         if w.lost_zones.iter().any(|z| z == zone) {
@@ -551,6 +558,53 @@ async fn idempotent_creates_full_zones_and_refusals() {
         .await
         .unwrap_err();
     assert!(e.to_string().contains("400"), "{e}");
+}
+
+#[tokio::test]
+async fn a_size_with_no_room_in_any_zone_lands_on_its_alternate_machine() {
+    let r = rig(|_| {}).await;
+    r.fake.0.lock().unwrap().full_machines = vec!["n2d-standard-8".into()];
+    let c = &r.client;
+    let id = create(
+        c,
+        CreateSandboxRequest {
+            type_: Some("large".into()),
+            ..Default::default()
+        },
+        None,
+    )
+    .await;
+    let ready = c.wait_until_ready(&id, &fast()).await.unwrap();
+    assert_eq!(ready.type_.as_deref(), Some("large"));
+    assert_eq!(ready.extra["machineType"], json!("e2-standard-8"));
+    assert_eq!(ready.extra["dollarsPerHour"], json!(0.26805));
+    assert!(ready.extra.get("progress").is_none());
+
+    // The alternate full too: the sandbox fails in plain words.
+    r.fake.0.lock().unwrap().full_machines = vec!["n2d-standard-8".into(), "e2-standard-8".into()];
+    let id = create(
+        c,
+        CreateSandboxRequest {
+            type_: Some("large".into()),
+            ..Default::default()
+        },
+        None,
+    )
+    .await;
+    c.wait_until_ready(&id, &fast()).await.unwrap_err();
+    let failed = c
+        .get(&GetParams {
+            sandbox_id: id.clone(),
+            ..Default::default()
+        })
+        .await
+        .unwrap()
+        .sandbox;
+    assert_eq!(failed.state, "error");
+    assert_eq!(
+        failed.error,
+        Nullable::Value("Google has no large computer free in any zone right now.".into())
+    );
 }
 
 #[tokio::test]

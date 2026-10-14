@@ -95,3 +95,27 @@ Nothing reads the message's words to pick a tool.
   it there.
 - `pr open` has no CLI verb yet, so the chat can't propose it; the tools
   page has it.
+
+## Reading issues and pull requests in a project chat (#11600)
+
+A chat in a project with a repository answers "review my available
+issues" or "what are my 5 newest open issues?" from GitHub itself
+(`crates/openagents-web/src/github_tools/issues.rs`). Like the Gmail and
+Drive doors, Gemini gets typed functions and picks one; no words are
+matched:
+
+- `github_list_issues` `{state, kind, sort, labels, limit}`: the
+  repository's issues (or pull requests, or both), newest first.
+- `github_search_issues` `{query, kind, limit}`: GitHub's issue search,
+  limited to the repository.
+- `github_read_issue` `{number}`: one issue or pull request with its
+  newest 15 comments.
+- `general_chat`: anything else goes to the hosted chat.
+
+They read only the chat's own repository, as the person, with the GitHub
+token their connection gives for that turn (never kept). When GitHub
+won't show the repository to them, the answer ends with one sentence and
+the link that fixes it, **Connect private repositories**
+(`/auth/github/repos?access=private`). The answer speaks as "I" and links
+every issue it names. Nothing here writes to GitHub; the confirm cards
+above do that.

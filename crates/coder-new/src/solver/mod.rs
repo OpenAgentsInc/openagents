@@ -1121,7 +1121,12 @@ impl End<'_> {
                     .await
                 }
                 None => {
-                    transcript.notice("No pull request: the run has no working copy.");
+                    // A run that stopped before the work (already done on
+                    // main, gated, setup failed) says its own reason; this
+                    // is only news when there was a change to deliver.
+                    if outcome.delivers() {
+                        transcript.notice("No pull request: the run has no working copy.");
+                    }
                     setup::Delivery::default()
                 }
             }

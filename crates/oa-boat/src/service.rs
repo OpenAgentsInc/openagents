@@ -125,6 +125,9 @@ struct Pending {
     provisioning: Provisioning,
     created: i64,
     error: Option<String>,
+    /// What is happening now, in plain words ("Google has no large
+    /// computer free in us-central1-a; trying us-central1-b").
+    note: Option<String>,
 }
 
 #[derive(Default)]
@@ -388,7 +391,13 @@ impl<C: Compute, R: Remote> Service<C, R> {
         extra.insert("machineType".into(), json!(i.machine));
         extra.insert("zone".into(), json!(i.zone));
         extra.insert("diskGb".into(), json!(disk));
-        extra.insert("dollarsPerHour".into(), json!(size.hourly(prov)));
+        extra.insert(
+            "dollarsPerHour".into(),
+            json!(size.hourly_on(&i.machine, prov)),
+        );
+        if let Some(progress) = Self::progress_of(state, i) {
+            extra.insert("progress".into(), json!(progress));
+        }
         extra.insert(
             "diskDollarsPerHour".into(),
             json!(disk as f64 * sizes::DISK_HOURLY_PER_GB),
@@ -438,8 +447,22 @@ impl<C: Compute, R: Remote> Service<C, R> {
         }
     }
 
+    /// A starting VM's step in plain words; `None` once it is ready.
+    fn progress_of(state: &str, i: &Instance) -> Option<&'static str> {
+        (state == "provisioned").then(|| {
+            if i.status == "RUNNING" {
+                "The computer is on; getting it ready"
+            } else {
+                "Google is starting the computer"
+            }
+        })
+    }
+
     fn pending_view(suffix: &str, p: &Pending) -> Sandbox {
         let mut extra = BTreeMap::new();
+        if let Some(note) = &p.note {
+            extra.insert("progress".into(), json!(note));
+        }
         extra.insert("provisioning".into(), json!(p.provisioning.label()));
         extra.insert("machineType".into(), json!(p.size.machine));
         extra.insert(
@@ -736,7 +759,7 @@ fi
         &self,
         suffix: &str,
         zone: &str,
-        size: Size,
+        machine: &str,
         prov: Provisioning,
         source: Value,
         disk_gb: i64,
@@ -769,7 +792,7 @@ fi
         };
         json!({
             "name": format!("{PREFIX}{suffix}"),
-            "machineType": format!("zones/{zone}/machineTypes/{}", size.machine),
+            "machineType": format!("zones/{zone}/machineTypes/{machine}"),
             "labels": labels,
             "tags": {"items": [self.cfg.tag]},
             "metadata": {"items": [
@@ -788,18 +811,56 @@ fi
         })
     }
 
-    /// Insert in the first zone with room, in the background.
+    /// Insert in the first zone with room, in the background: the size's
+    /// own machine type in every zone, then its alternate (the same shape
+    /// on another family) in every zone. The pending record's note says
+    /// which, in plain words, while it tries.
     fn spawn_insert(
         self: &Arc<Self>,
         suffix: String,
-        bodies: impl Fn(&str) -> Value + Send + 'static,
+        size: Size,
+        bodies: impl Fn(&str, &str) -> Value + Send + 'static,
         after: Option<String>,
     ) {
         let this = self.clone();
         tokio::spawn(async move {
             let mut last = None;
-            for zone in this.cfg.zones.clone() {
-                let mut inserted = this.compute.insert_instance(&zone, bodies(&zone)).await;
+            let zones = this.cfg.zones.clone();
+            let machines = size.machines();
+            let mut tries = Vec::new();
+            for machine in &machines {
+                for zone in &zones {
+                    tries.push((*machine, zone.clone()));
+                }
+            }
+            let mut previous: Option<&str> = None;
+            let mut place = 0;
+            'tries: for (machine, zone) in tries {
+                place = if previous == Some(machine) {
+                    place + 1
+                } else {
+                    1
+                };
+                let note = match previous {
+                    None => format!("Asking Google for a {} computer", size.name),
+                    Some(m) if m == machine => format!(
+                        "Google has no {} computer free in that zone; trying another ({place} of {})",
+                        size.name,
+                        zones.len()
+                    ),
+                    Some(_) => format!(
+                        "Google has no {} computer free in any zone; trying a different kind of {} computer",
+                        size.name, size.name
+                    ),
+                };
+                if let Some(p) = this.st().pending.get_mut(&suffix) {
+                    p.note = Some(note);
+                }
+                previous = Some(machine);
+                let mut inserted = this
+                    .compute
+                    .insert_instance(&zone, bodies(&zone, machine))
+                    .await;
                 // A failure while waiting (the transport, not GCE's answer)
                 // leaves the outcome open: watch the VM itself until it runs
                 // (use it) or is gone (GCE's create failed; try the next
@@ -845,17 +906,17 @@ fi
                         if let Some(snapshot) = &after {
                             let _ = this.compute.delete_snapshot(snapshot).await;
                         }
-                        eprintln!("oa-boat: bx_{suffix} inserted in {zone}");
+                        eprintln!("oa-boat: bx_{suffix} inserted in {zone} as {machine}");
                         this.spawn_prepare(suffix, zone, false);
                         return;
                     }
                     Err(e) if e.capacity() => {
-                        eprintln!("oa-boat: bx_{suffix}: no capacity in {zone}");
+                        eprintln!("oa-boat: bx_{suffix}: no capacity for {machine} in {zone}");
                         last = Some(e);
                     }
                     Err(e) => {
                         last = Some(e);
-                        break;
+                        break 'tries;
                     }
                 }
             }
@@ -866,7 +927,10 @@ fi
                 .map(|e| {
                     eprintln!("oa-boat: bx_{suffix} failed: {e}");
                     if e.capacity() {
-                        "No zone had capacity for this machine.".to_owned()
+                        format!(
+                            "Google has no {} computer free in any zone right now.",
+                            size.name
+                        )
                     } else {
                         "Compute Engine refused the machine.".to_owned()
                     }
@@ -874,6 +938,7 @@ fi
                 .unwrap_or_default();
             if let Some(p) = this.st().pending.get_mut(&suffix) {
                 p.error = Some(why);
+                p.note = None;
             }
         });
     }
@@ -1004,6 +1069,7 @@ fi
             provisioning: prov,
             created: time::now(),
             error: None,
+            note: None,
         };
         {
             let mut st = self.st();
@@ -1025,11 +1091,12 @@ fi
         let link = image.self_link.clone();
         self.spawn_insert(
             suffix.clone(),
-            move |zone| {
+            size,
+            move |zone, machine| {
                 this.instance_body(
                     &s2,
                     zone,
-                    size,
+                    machine,
                     prov,
                     json!({"sourceImage": link}),
                     disk,
@@ -1356,6 +1423,7 @@ fi
             provisioning: prov,
             created: time::now(),
             error: None,
+            note: None,
         };
         {
             let mut st = self.st();
@@ -1387,11 +1455,12 @@ fi
             let link = format!("projects/{}/global/snapshots/{snapshot}", this.cfg.project);
             this.spawn_insert(
                 s2.clone(),
-                move |zone| {
+                size,
+                move |zone, machine| {
                     body_this.instance_body(
                         &s3,
                         zone,
-                        size,
+                        machine,
                         prov,
                         json!({"sourceSnapshot": link}),
                         disk_gb,
@@ -1932,7 +2001,7 @@ wc -c < "$d/err" 2>/dev/null || echo 0
         let prov = Self::provisioning_of(&i);
         let now = time::now();
         let seconds = Self::run_seconds(&i, now);
-        let rate = size.hourly(prov);
+        let rate = size.hourly_on(&i.machine, prov);
         let disk = i.disk_gb.unwrap_or(size.disk_gb);
         let disk_rate = disk as f64 * sizes::DISK_HOURLY_PER_GB;
         let mut extra = BTreeMap::new();

@@ -2158,6 +2158,12 @@ async fn answer(
         }
         _ => None,
     };
+    // In a project with a repository, Gemini reads its GitHub issues and
+    // pull requests as the person, or hands the message on (#11600).
+    let issues = match (&door, parts.is_empty()) {
+        (Some(_), true) => crate::github_tools::issues::door(&owner, repo.as_ref()),
+        _ => None,
+    };
     // With a Video Lab on this Mac, Gemini works on the owner's films with
     // the Lab's tools, or hands the message on (docs/video-lab/mvp.md).
     let lab = match (&door, parts.is_empty()) {
@@ -2178,6 +2184,13 @@ async fn answer(
             }))
         }
         (Some(door), _) => {
+            let door: Box<dyn openagents_chat::basic_coder::Door> = match issues {
+                Some(mut issues) => {
+                    issues.fallback = Some(door);
+                    Box::new(issues)
+                }
+                None => door,
+            };
             let door: Box<dyn openagents_chat::basic_coder::Door> = match mail {
                 Some(mut mail) => {
                     mail.fallback = Some(door);

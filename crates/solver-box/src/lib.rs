@@ -20,7 +20,7 @@ use std::time::{Duration, Instant};
 
 use boat::models::{
     CommandParams, CommandRequest, CommandResponseBody, CreateParams, CreateSandboxRequest,
-    DeleteSandboxParams, UsageParams,
+    DeleteSandboxParams, GetParams, UsageParams,
 };
 use boat::{CommandFrame, Nullable, WaitOptions, shell_quote};
 use serde_json::{Value, json};
@@ -36,10 +36,14 @@ pub const IMAGE_ENV: &str = "OA_SOLVER_IMAGE";
 /// Every hand's model unless the run names another.
 pub const DEFAULT_MODEL: &str = "google/gemini-4-argon";
 /// The box sizes tried in turn (`crates/oa-boat/src/sizes.rs`): `large`
-/// (n2d-standard-8, 32 GB), then `xlarge` (n2d-standard-16), then
-/// `default` (e2-standard-4, 16 GB) when Google has no n2d capacity in any
-/// zone (seen 2026-10-14).
-pub const SIZES: [&str; 3] = ["large", "xlarge", "default"];
+/// (n2d-standard-8, 32 GB, and oa-boat itself falls back to e2-standard-8
+/// when no zone has an n2d free), then `default` (e2-standard-4, 16 GB).
+/// `xlarge` is not tried: when Google has no n2d-standard-8 free it has no
+/// n2d-standard-16 either (seen all through 2026-10-14).
+pub const SIZES: [&str; 2] = ["large", "default"];
+/// How long a run waits for a computer, all sizes together, before it
+/// fails saying so. Google usually takes 40 s to 2 min; 4.5 min was seen.
+pub const BOX_WAIT: Duration = Duration::from_secs(10 * 60);
 /// The box's TTL: a work run is cancelled after 6 hours anyway.
 pub const TTL_SECONDS: i64 = 6 * 3600;
 /// How often the Vertex AI token on the box is rewritten (a token lives an
@@ -487,9 +491,9 @@ async fn sh(client: &boat::Client, id: &str, command: &str) -> Result<(i64, Stri
 }
 
 /// Waits until the box runs commands (it can report ready a few seconds
-/// before), up to ten minutes.
-async fn reachable(client: &boat::Client, id: &str) -> Result<(), String> {
-    let deadline = Instant::now() + Duration::from_secs(600);
+/// before), up to `deadline` and at least a minute.
+async fn reachable(client: &boat::Client, id: &str, deadline: Instant) -> Result<(), String> {
+    let deadline = deadline.max(Instant::now() + Duration::from_secs(60));
     loop {
         match sh(client, id, "true").await {
             Ok(_) => return Ok(()),
@@ -530,28 +534,44 @@ pub async fn run_until(
     mut on: impl FnMut(&Progress),
 ) -> Value {
     let started = Instant::now();
-    on(&Progress::new("box", "Asking for a computer"));
+    let deadline = started + BOX_WAIT;
+    on(&Progress::new("box", "Asking Google for a computer"));
     let mut last = String::new();
     let mut up = None;
-    for size in SIZES {
-        match start_box(client, run.issue, size).await {
+    for (n, size) in SIZES.iter().enumerate() {
+        match start_box(client, run.issue, size, deadline, stop, &mut on).await {
             Ok(id) => {
                 up = Some(id);
                 break;
             }
-            Err(why) => {
+            Err(Waited::Stopped) => {
+                return result(
+                    None,
+                    Some(STOPPED.into()),
+                    &BoxUsage::default(),
+                    started.elapsed().as_secs_f64(),
+                );
+            }
+            Err(Waited::Failed(why)) => {
+                let next = SIZES.get(n + 1).filter(|_| Instant::now() < deadline);
                 on(&Progress::new(
                     "box",
-                    format!("No {size} computer was free: {why}"),
+                    match next {
+                        Some(next) => format!("{why} Trying a {next} computer instead."),
+                        None => why.clone(),
+                    },
                 ));
                 last = why;
+                if next.is_none() {
+                    break;
+                }
             }
         }
     }
     let Some(id) = up else {
         return result(
             None,
-            Some(format!("No computer was free: {last}")),
+            Some(no_computer(&last, started.elapsed())),
             &BoxUsage::default(),
             started.elapsed().as_secs_f64(),
         );
@@ -588,9 +608,51 @@ pub async fn run_until(
     )
 }
 
-/// Makes a box of `size` and waits until it runs commands; a box that
-/// never does (no capacity in any zone, say) is deleted.
-async fn start_box(client: &boat::Client, issue: u64, size: &str) -> Result<String, String> {
+/// The run's error when no box came: what Google said, how long it was
+/// tried, and what to do.
+fn no_computer(last: &str, waited: Duration) -> String {
+    let minutes = waited.as_secs().div_ceil(60).max(1);
+    let plural = if minutes == 1 { "" } else { "s" };
+    let why = last.trim().trim_end_matches('.');
+    let why = if why.is_empty() {
+        "Google did not start one"
+    } else {
+        why
+    };
+    format!(
+        "No computer could be had in {minutes} minute{plural} ({why}). Nothing was changed; ask Solver again in a few minutes."
+    )
+}
+
+/// Why [`start_box`] gave no box.
+enum Waited {
+    Stopped,
+    /// In plain words, ending with a full stop.
+    Failed(String),
+}
+
+async fn delete_box(client: &boat::Client, id: &str) {
+    let _ = client
+        .delete_sandbox(&DeleteSandboxParams {
+            sandbox_id: id.to_owned(),
+            x_ascii_confirm_delete: id.to_owned(),
+            ..Default::default()
+        })
+        .await;
+}
+
+/// Makes a box of `size` and waits until it runs commands, saying through
+/// `on` what Google is doing (oa-boat's `progress`: which zone it tries,
+/// that the computer is starting) whenever that changes. A box that never
+/// does by `deadline`, or that the person stops, is deleted.
+async fn start_box(
+    client: &boat::Client,
+    issue: u64,
+    size: &str,
+    deadline: Instant,
+    stop: &Stop,
+    on: &mut impl FnMut(&Progress),
+) -> Result<String, Waited> {
     let nonce = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_nanos());
@@ -609,27 +671,61 @@ async fn start_box(client: &boat::Client, issue: u64, size: &str) -> Result<Stri
             ..Default::default()
         })
         .await
-        .map_err(|e| why(&e))?
+        .map_err(|e| {
+            Waited::Failed(format!(
+                "Google would not make a {size} computer: {}.",
+                why(&e)
+            ))
+        })?
         .sandbox
         .id;
-    let wait = WaitOptions {
-        timeout: Duration::from_secs(900),
-        interval: Duration::from_secs(3),
-        ..Default::default()
-    };
-    let ready = match client.wait_until_ready(&id, &wait).await {
-        Ok(_) => reachable(client, &id).await,
-        Err(e) => Err(why(&e)),
-    };
-    if let Err(why_not) = ready {
-        let _ = client
-            .delete_sandbox(&DeleteSandboxParams {
+    let mut said = String::new();
+    loop {
+        if stopped(stop) {
+            delete_box(client, &id).await;
+            return Err(Waited::Stopped);
+        }
+        if Instant::now() > deadline {
+            delete_box(client, &id).await;
+            return Err(Waited::Failed(match said.as_str() {
+                "" => format!("Google did not start a {size} computer in time."),
+                last => format!("Google did not start a {size} computer in time (last: {last})."),
+            }));
+        }
+        if let Ok(info) = client
+            .get(&GetParams {
                 sandbox_id: id.clone(),
-                x_ascii_confirm_delete: id.clone(),
                 ..Default::default()
             })
-            .await;
-        return Err(format!("{id}: {why_not}"));
+            .await
+        {
+            let sandbox = info.sandbox;
+            match sandbox.state.as_str() {
+                "ready" | "idle" | "running" => break,
+                "archived" | "archiving" | "error" | "cancelled" => {
+                    delete_box(client, &id).await;
+                    let error = match &sandbox.error {
+                        Nullable::Value(e) if !e.trim().is_empty() => e.trim().to_owned(),
+                        _ => format!("The {size} computer did not start."),
+                    };
+                    return Err(Waited::Failed(error));
+                }
+                _ => {}
+            }
+            if let Some(progress) = sandbox.extra.get("progress").and_then(Value::as_str)
+                && progress != said
+            {
+                said = progress.to_owned();
+                on(&Progress::new("box", progress));
+            }
+        }
+        tokio::time::sleep(Duration::from_secs(3)).await;
+    }
+    if let Err(why_not) = reachable(client, &id, deadline).await {
+        delete_box(client, &id).await;
+        return Err(Waited::Failed(format!(
+            "The {size} computer started but never answered: {why_not}."
+        )));
     }
     Ok(id)
 }

@@ -32,9 +32,17 @@ and the box is deleted. Nothing runs on the person's computer.
 3. **Box.** The box dispatcher (`oa-solver-box`) takes solver runs only
    (`POST /v1/work-hosts/{name}/claim` `{engines: ["solver"]}`) and asks the
    Box SDK (`crates/boat`, against our own [oa-boat](oa-boat.md) on GCE; never
-   hosted boat.dev) for a box: a `large` on-demand (then `xlarge`, then
-   `default` when Google has no capacity for the size) sandbox from the
-   `oa-coder-host` image, its env holding no credential.
+   hosted boat.dev) for a box: a `large` on-demand sandbox from the
+   `oa-coder-host` image, its env holding no credential. oa-boat tries the
+   n2d machine in every zone, then the same shape on E2; when Google has
+   none, the dispatcher tries a `default` box. While it waits, the chat's
+   card says what Google is doing ("Google has no large computer free in
+   that zone; trying another (2 of 4)", "Google is starting the
+   computer"). Getting a box usually takes 40 s to 2 minutes; after 10
+   minutes (`solver_box::BOX_WAIT`, all sizes together) the run fails
+   with "No computer could be had in 10 minutes (…). Nothing was changed;
+   ask Solver again in a few minutes." A Stop during the wait ends it and
+   deletes any box made (#11600).
 4. **Repository.** The dispatcher writes the run's credentials to the box
    through the files API (mode 600, outside snapshots, deleted by the run's
    first step): the requester's GitHub token when the account has connected
@@ -60,10 +68,13 @@ and the box is deleted. Nothing runs on the person's computer.
    `notice`. The chat shows the latest twelve under the task row in plain
    words as they arrive (`work_runs::solver_words`: "The computer is up",
    "Thinking: …", "Editing crates/…", "Checks: 2 of 2 checks passed"; the
-   hands' own instructions and the computer's ids are left out). The
-   Agents panel lists the run with its time and cost so far and a Stop
+   hands' own instructions and the computer's ids are left out). The run
+   has **one card** in the chat, in the Agents panel (#11600): its
+   progress, its time and cost so far, a link to `/work/{id}`, and a Stop
    that cancels it: the dispatcher's next report gets `{cancel: true}`,
-   kills the run and deletes the box.
+   kills the run and deletes the box. Once it ends, the card says how
+   ("Pull request …", "Already done on main: e3646e3d38", "Failed: …")
+   and the thread gets the result message.
 7. **Result.** The run's result carries the pull request URL, the checks,
    the files, the time and the cost; the chat's turn ends with one message:
    "Solver in the cloud finished OWNER/NAME#N in 2 min 49 s for $0.05
@@ -89,7 +100,8 @@ and the box is deleted. Nothing runs on the person's computer.
 | What fails | What the person sees | What happens |
 | --- | --- | --- |
 | No dispatcher running (`oa-solver-dispatch-1` down) | the row stays "Waiting for a computer" | the run is cancelled after 6 hours, as every work run |
-| oa-boat has no capacity or refuses | "No computer was free" | the run fails; no box to delete |
+| oa-boat has no capacity or refuses | the card says which size and zone Google had no room in, then "No computer could be had in N minutes (…)" | the run fails after `large` (n2d, then E2) and `default`, or after 10 minutes; any box made is deleted |
+| Main already has a commit for the issue | "Already done on main: COMMIT" and a Done card; the message links the commit | the run ends done, not failed; nothing changes |
 | Box never reachable | "The computer did not start" | the box is deleted, the run fails |
 | Container pull fails | "The solver could not start" | box deleted, run fails |
 | No GitHub access to the repository | "Connect GitHub with access to OWNER/NAME" | box deleted, run fails |

@@ -20,6 +20,17 @@ pub struct Size {
     pub standard_hourly: f64,
     /// Compute dollars an hour as a spot VM.
     pub spot_hourly: f64,
+    /// The same shape on another machine family, tried in every zone when
+    /// Google has no room for `machine` in any of them.
+    pub alternate: Option<Alternate>,
+}
+
+/// A size's second machine type and its prices.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Alternate {
+    pub machine: &'static str,
+    pub standard_hourly: f64,
+    pub spot_hourly: f64,
 }
 
 pub const SIZES: [Size; 4] = [
@@ -31,6 +42,7 @@ pub const SIZES: [Size; 4] = [
         disk_gb: 50,
         standard_hourly: 0.06701,
         spot_hourly: 0.04021,
+        alternate: None,
     },
     Size {
         name: "default",
@@ -40,6 +52,7 @@ pub const SIZES: [Size; 4] = [
         disk_gb: 100,
         standard_hourly: 0.13402,
         spot_hourly: 0.08042,
+        alternate: None,
     },
     Size {
         name: "large",
@@ -49,6 +62,11 @@ pub const SIZES: [Size; 4] = [
         disk_gb: 200,
         standard_hourly: 0.33797,
         spot_hourly: 0.17211,
+        alternate: Some(Alternate {
+            machine: "e2-standard-8",
+            standard_hourly: 0.26805,
+            spot_hourly: 0.16085,
+        }),
     },
     Size {
         name: "xlarge",
@@ -58,6 +76,11 @@ pub const SIZES: [Size; 4] = [
         disk_gb: 300,
         standard_hourly: 0.67594,
         spot_hourly: 0.34422,
+        alternate: Some(Alternate {
+            machine: "e2-standard-16",
+            standard_hourly: 0.53610,
+            spot_hourly: 0.32170,
+        }),
     },
 ];
 
@@ -69,9 +92,12 @@ pub fn size(name: &str) -> Option<Size> {
     SIZES.iter().copied().find(|s| s.name == name)
 }
 
-/// The class a GCE machine type belongs to.
+/// The class a GCE machine type belongs to (its own or its alternate).
 pub fn by_machine(machine: &str) -> Option<Size> {
-    SIZES.iter().copied().find(|s| s.machine == machine)
+    SIZES
+        .iter()
+        .copied()
+        .find(|s| s.machine == machine || s.alternate.is_some_and(|a| a.machine == machine))
 }
 
 /// How a VM is provisioned.
@@ -106,6 +132,25 @@ impl Size {
             Provisioning::Spot => self.spot_hourly,
         }
     }
+
+    /// An hour of this size on `machine`: the alternate's price when the
+    /// VM runs on it.
+    pub fn hourly_on(&self, machine: &str, p: Provisioning) -> f64 {
+        match self.alternate {
+            Some(a) if a.machine == machine => match p {
+                Provisioning::Standard => a.standard_hourly,
+                Provisioning::Spot => a.spot_hourly,
+            },
+            _ => self.hourly(p),
+        }
+    }
+
+    /// The machine types tried, in order.
+    pub fn machines(&self) -> Vec<&'static str> {
+        let mut all = vec![self.machine];
+        all.extend(self.alternate.map(|a| a.machine));
+        all
+    }
 }
 
 #[cfg(test)]
@@ -124,7 +169,20 @@ mod tests {
             };
             assert!((s.standard_hourly - want).abs() < 0.0005, "{}", s.name);
             assert!(s.spot_hourly < s.standard_hourly);
+            if let Some(a) = s.alternate {
+                assert!(a.machine.starts_with("e2"));
+                let want = e2(s.vcpu as f64, s.memory_gb as f64);
+                assert!((a.standard_hourly - want).abs() < 0.0005, "{}", a.machine);
+                let spot = s.vcpu as f64 * 0.01309 + s.memory_gb as f64 * 0.001754;
+                assert!((a.spot_hourly - spot).abs() < 0.0005, "{}", a.machine);
+                assert_eq!(by_machine(a.machine).unwrap().name, s.name);
+                assert_eq!(s.hourly_on(a.machine, Provisioning::Spot), a.spot_hourly);
+            }
         }
+        assert_eq!(
+            size("large").unwrap().machines(),
+            ["n2d-standard-8", "e2-standard-8"]
+        );
         assert_eq!(size("large").unwrap().machine, "n2d-standard-8");
         assert_eq!(by_machine("e2-standard-2").unwrap().name, "small");
         assert!(size("huge").is_none());

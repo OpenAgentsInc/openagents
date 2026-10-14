@@ -905,3 +905,112 @@ fn claims_name_their_engines_and_answers_read_the_token() {
     );
     assert_eq!(password("error=ticket_refused\n"), None);
 }
+
+#[tokio::test]
+async fn a_solver_run_that_finds_the_issue_already_done_ends_done_and_says_so() {
+    let (_dir, store) = store();
+    let owner = account_owner("acct_alice");
+    let run = submit(
+        &store,
+        &owner,
+        requester("acct_alice"),
+        Ask {
+            repo: "OpenAgentsInc/openagents".into(),
+            ..solver_ask(11579, None)
+        },
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    claim_for(&store, None, "oa-solver-1", Some(&[Engine::Solver]))
+        .await
+        .unwrap()
+        .unwrap();
+    let notice = |text: &str| Progress {
+        secs: 90.0,
+        phase: "notice".into(),
+        text: text.into(),
+        ..Progress::default()
+    };
+    // The solver's "no working copy" line comes before its real reason:
+    // the chat leaves it out.
+    assert_eq!(
+        solver_words(&notice("No pull request: the run has no working copy.")),
+        None
+    );
+    report(
+        &store,
+        "oa-solver-1",
+        &run.id,
+        Report {
+            result: Some(json!({
+                "engine": "solver", "ok": false,
+                "outcome": {"status": "already_done", "reason": "Main already has a commit for this issue: e3646e3d38 Drive answers that look at videos get 330 s, not the chat's 130 s (#11579)", "delivers": false},
+                "cost_usd": null, "model_usd": null, "secs": 228.0, "checks": [],
+                "box": {"sandbox": "bx_gt7mfj6isw", "usd": 0.01, "secs": 110.0},
+            })),
+            ..Report::default()
+        },
+    )
+    .await
+    .unwrap();
+    let done = load(&store, &owner, &run.id).await.unwrap().unwrap();
+    assert_eq!(done.state, RunState::Done, "nothing to do is not a failure");
+    assert_eq!(done.why, None);
+    assert_eq!(stage(&done), "already done on main: e3646e3d38");
+    let text = said(&done);
+    assert_eq!(
+        text,
+        "Solver in the cloud found OpenAgentsInc/openagents#11579 already done on main: \
+         [e3646e3d38](https://github.com/OpenAgentsInc/openagents/commit/e3646e3d38) Drive answers \
+         that look at videos get 330 s, not the chat's 130 s (#11579). Nothing was changed \
+         (checked in 3 min 48 s for $0.01 of computer time)."
+    );
+    assert!(
+        !text.contains("unknown") && !text.contains("checks"),
+        "{text}"
+    );
+}
+
+#[tokio::test]
+async fn a_solver_run_with_no_change_and_no_checks_never_claims_checks_failed() {
+    let (_dir, store) = store();
+    let owner = account_owner("acct_alice");
+    let ask = Ask {
+        repo: "OpenAgentsInc/openagents".into(),
+        ..solver_ask(3, None)
+    };
+    let run = submit(&store, &owner, requester("acct_alice"), ask)
+        .await
+        .unwrap()
+        .unwrap();
+    claim_for(&store, None, "oa-solver-1", Some(&[Engine::Solver]))
+        .await
+        .unwrap()
+        .unwrap();
+    report(
+        &store,
+        "oa-solver-1",
+        &run.id,
+        Report {
+            result: Some(json!({
+                "engine": "solver", "ok": false, "outcome": null,
+                "cost_usd": null, "secs": 30.0, "checks": [],
+            })),
+            ..Report::default()
+        },
+    )
+    .await
+    .unwrap();
+    let failed = load(&store, &owner, &run.id).await.unwrap().unwrap();
+    assert_eq!(failed.state, RunState::Failed);
+    assert_eq!(
+        failed.why.as_deref(),
+        Some("The run ended without a change.")
+    );
+    let text = said(&failed);
+    assert_eq!(
+        text,
+        "Solver in the cloud stopped on OpenAgentsInc/openagents#3 in 30 s. The run ended without a change."
+    );
+}

@@ -386,6 +386,31 @@ pub(crate) struct Outcome {
     /// Solver in the cloud: the box's billed dollars; `None` when unknown.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub box_usd: Option<f64>,
+    /// Solver in the cloud: where the solver ended (`passed`, `failed`,
+    /// `already_done`, `gated`, ...), and why.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+impl Outcome {
+    /// The solver found main already carries a commit for the issue:
+    /// nothing to do, and that is a finished run, not a failure.
+    pub(crate) fn already_done(&self) -> bool {
+        self.status.as_deref() == Some("already_done")
+    }
+
+    /// The commit main already has for the issue, from the solver's
+    /// reason ("Main already has a commit for this issue: e3646e3d38
+    /// Drive answers … (#11579)"): its id and its subject.
+    pub(crate) fn done_commit(&self) -> Option<(String, String)> {
+        let reason = self.reason.as_deref()?;
+        let after = reason.split_once(": ").map_or(reason, |(_, rest)| rest);
+        let (id, subject) = after.trim().split_once(' ').unwrap_or((after.trim(), ""));
+        (id.len() >= 7 && id.len() <= 40 && id.bytes().all(|b| b.is_ascii_hexdigit()))
+            .then(|| (id.to_owned(), subject.trim().to_owned()))
+    }
 }
 
 /// A dollar amount from a result: finite and not negative, else unknown.
@@ -1059,6 +1084,10 @@ pub(crate) fn outcome(result: &Value) -> Outcome {
         // box apart; `cost_usd` is their sum, unknown when either is.
         model_usd: dollars(&result["model_usd"]),
         box_usd: dollars(&result["box"]["usd"]),
+        status: text(&result["outcome"]["status"]).filter(|status| {
+            status.len() <= 40 && status.bytes().all(|b| b.is_ascii_lowercase() || b == b'_')
+        }),
+        reason: text(&result["outcome"]["reason"]).map(|r| secret_screen::redact(&r)),
     }
 }
 
@@ -1128,13 +1157,20 @@ pub(crate) async fn report(
             run.outcome = Some(outcome.clone());
             if run.cancel {
                 run.end(RunState::Cancelled, Some("Cancelled.".into()));
-            } else if outcome.ok {
+            } else if outcome.ok || outcome.already_done() {
                 run.end(RunState::Done, None);
             } else {
                 let why = outcome
                     .error
                     .clone()
-                    .unwrap_or_else(|| "No change passed its checks.".into());
+                    .or_else(|| outcome.reason.clone())
+                    .unwrap_or_else(|| {
+                        if outcome.checks.is_empty() && outcome.engine == Engine::Solver.word() {
+                            "The run ended without a change.".into()
+                        } else {
+                            "No change passed its checks.".into()
+                        }
+                    });
                 run.end(RunState::Failed, Some(why));
             }
         } else if let Some(why) = &failed {
@@ -1241,17 +1277,43 @@ pub(crate) fn said(run: &WorkRun) -> String {
         );
     }
     let passed = outcome.checks.iter().filter(|c| c.ok).count();
+    // What it cost, as far as it is known; nothing when nothing is.
     let cost = match (outcome.cost_usd, outcome.model_usd, outcome.box_usd) {
         (Some(_), Some(model), Some(machine)) => format!(
-            "{} ({} model, {} computer)",
+            " for {} ({} model, {} computer)",
             money(outcome.cost_usd),
             money(Some(model)),
             money(Some(machine))
         ),
-        _ => money(outcome.cost_usd),
+        (Some(total), _, _) => format!(" for {}", money(Some(total))),
+        (None, None, Some(machine)) => format!(" for {} of computer time", money(Some(machine))),
+        (None, Some(model), None) => format!(" for {} in model calls", money(Some(model))),
+        _ => String::new(),
     };
+    if outcome.already_done() {
+        let found = match outcome.done_commit() {
+            Some((commit, subject)) => {
+                let id: String = commit.chars().take(10).collect();
+                let link = format!("[{id}](https://github.com/{}/commit/{commit})", run.repo);
+                if subject.is_empty() {
+                    link
+                } else {
+                    format!("{link} {subject}")
+                }
+            }
+            None => outcome
+                .reason
+                .clone()
+                .unwrap_or_else(|| "main already has a commit for it".into()),
+        };
+        return format!(
+            "{} found {name} already done on main: {found}. Nothing was changed (checked in {}{cost}).",
+            engine_words(&outcome.engine),
+            duration(outcome.secs),
+        );
+    }
     let mut text = format!(
-        "{} {} {name} in {} for {cost}",
+        "{} {} {name} in {}{cost}",
         engine_words(&outcome.engine),
         if outcome.ok { "finished" } else { "stopped on" },
         duration(outcome.secs),
@@ -1392,6 +1454,12 @@ pub(crate) fn stage(run: &WorkRun) -> String {
             if let Some(url) = outcome.and_then(|o| o.pr.as_deref()) {
                 return format!("pull request {url}");
             }
+            if outcome.is_some_and(Outcome::already_done) {
+                return match outcome.and_then(Outcome::done_commit) {
+                    Some((commit, _)) => format!("already done on main: {}", short(&commit)),
+                    None => "already done on main".into(),
+                };
+            }
             return match outcome.and_then(|o| o.commit.as_deref()) {
                 Some(commit) => format!("committed {}", short(commit)),
                 None => "done".into(),
@@ -1499,8 +1567,11 @@ pub(crate) fn solver_words(progress: &Progress) -> Option<String> {
         "pr" => format!("Opened a pull request: {}", flat(text, 200)),
         "cost" => flat(text, 80),
         // The solver's own last word repeats the checks and the pull
-        // request with its paths on the computer.
+        // request with its paths on the computer; the run's end says it.
         "notice" if text.starts_with("Solver ended") => return None,
+        // Said before the real reason by a run that stopped before any
+        // change (already done on main, say); the run's end says why.
+        "notice" if text == "No pull request: the run has no working copy." => return None,
         _ => flat(&without_refs(text), 200),
     })
 }

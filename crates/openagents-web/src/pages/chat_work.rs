@@ -298,7 +298,10 @@ fn task_label(kind: TaskKind) -> &'static str {
 }
 
 /// The tasks that started after the chat's first `at` messages, as rows.
-/// `links` adds each run's address (see [`links`]).
+/// `links` adds each run's address (see [`links`]). Work runs (the briefed
+/// agent, Solver in the cloud) are not here: their one card, with its
+/// progress, time, cost and Stop, is the Agents panel's ([`super::agents`],
+/// #11600).
 pub(super) fn rows(chat: &Conversation, at: usize, links: bool) -> Markup {
     let count = chat.messages.len();
     let gone = |task: &ChatTask| {
@@ -307,14 +310,14 @@ pub(super) fn rows(chat: &Conversation, at: usize, links: bool) -> Markup {
             .is_some_and(|e| e.removed && e.id == task.environment)
     };
     html! {
-        @for task in chat.tasks.iter().filter(|task| task.after_message.min(count) == at) {
+        @for task in chat.tasks.iter().filter(|task| {
+            task.after_message.min(count) == at
+                && !matches!(task.kind, TaskKind::Work | TaskKind::Solver)
+        }) {
             @let row = TaskRow::new(task_label(task.kind), status(task.state))
                 .detail(task.title.clone())
                 .id(format!("chat-task-{}", task.id));
-            @if matches!(task.kind, TaskKind::Work | TaskKind::Solver) {
-                (row.href(format!("{}/{}", crate::work_runs::PAGE, task.id)))
-                (steps(task))
-            } @else if links && !gone(task) {
+            @if links && !gone(task) {
                 (row.href(format!("/environments/{}/runs/{}", task.environment, task.id)))
             } @else {
                 (row)
@@ -323,19 +326,18 @@ pub(super) fn rows(chat: &Conversation, at: usize, links: bool) -> Markup {
     }
 }
 
-/// A task's progress in plain words under its row (Solver in the cloud,
-/// #11561): the newest last. Nothing for a task without any.
-fn steps(task: &ChatTask) -> Markup {
-    if task.steps.is_empty() {
+/// A work run's progress in plain words (Solver in the cloud, #11561):
+/// the newest last. Nothing for a run without any. Its title is
+/// `OWNER/NAME#N`: issues and pull requests link to that repository.
+pub(super) fn steps(id: &str, title: &str, label: &str, steps: &[String]) -> Markup {
+    if steps.is_empty() {
         return html! {};
     }
-    // The task's title is `OWNER/NAME#N`: its issues and pull requests
-    // link to that repository.
-    let repository = task.title.split('#').next().unwrap_or_default();
+    let repository = title.split('#').next().unwrap_or_default();
     html! {
-        ul.oa-task-steps id=(format!("chat-task-{}-steps", task.id))
-            aria-label=(format!("What {} did", task_label(task.kind))) {
-            @for step in &task.steps {
+        ul.oa-task-steps id=(format!("chat-task-{id}-steps"))
+            aria-label=(format!("What {label} did")) {
+            @for step in steps {
                 li { (crate::github_refs::linked(step, repository)) }
             }
         }
@@ -1451,7 +1453,7 @@ mod tests {
     }
 
     #[test]
-    fn a_solver_runs_progress_shows_under_its_row_and_its_result_joins_the_chat() {
+    fn a_solver_runs_progress_is_kept_for_its_card_and_its_result_joins_the_chat() {
         let mut chat = chat();
         let mut solver = task("wrk000000000000000000000001", TaskState::Working, 1);
         solver.kind = TaskKind::Solver;
@@ -1479,9 +1481,15 @@ mod tests {
             observe(&next, |_, _| seen(TaskState::Working, steps.clone(), None)).is_none(),
             "the same steps are no change"
         );
-        let html = rows(&next, 1, false).into_string();
-        assert!(html.contains("Solver in the cloud"), "{html}");
-        assert!(html.contains("/work/wrk000000000000000000000001"), "{html}");
+        // Its one card is the Agents panel's (#11600): no thread row.
+        assert_eq!(rows(&next, 1, false).into_string(), "");
+        let html = super::steps(
+            &next.tasks[0].id,
+            &next.tasks[0].title,
+            crate::work_runs::SOLVER,
+            &next.tasks[0].steps,
+        )
+        .into_string();
         assert!(html.contains("<li>The computer is up</li>"), "{html}");
         crate::copy_guard::assert_plain("/chat", &html);
 

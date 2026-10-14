@@ -764,7 +764,7 @@ records below, so do not repeat that line or greet; go straight to the news.\n",
     }
     out.push_str(
         "We are OpenAgents, answering in the OpenAgents app's chat about what's new in the Gym, \
-where people test capabilities on Coder. Always speak as \"we\", never \"I\". Answer the user's latest \
+where people test capabilities on Coder. Always speak as \"I\", never \"we\". Answer the user's latest \
 message using only the Gym records below, which we verified. After each sentence that uses a \
 record, cite it by its id in square brackets, such as [gym:build:build-20]; we take the brackets \
 out before the reply is shown, so never write an id, a file path, an event, or a \"source\" line \

@@ -259,6 +259,7 @@ fn the_list_shows_one_row_per_agent_with_its_time_and_cost() {
                 });
                 plan
             }),
+            ..Live::default()
         })
     };
     let rows = run_rows(&chat, read, true, 2_030);
@@ -355,6 +356,8 @@ fn the_panel_offers_stop_message_and_the_transcript_and_reloads_while_working() 
         transcript: Some("/environments/env-1/runs/claude-env-1-2".into()),
         choices: Vec::new(),
         plan: Some("Claude plan: 5h 62% · week 31% · resets 14:20 UTC".into()),
+        steps: Vec::new(),
+        ended: None,
     };
     let paused = Row {
         standing: Standing::Paused(Some(50_700)),
@@ -494,6 +497,7 @@ fn a_paused_agent_shows_exactly_the_choices_its_limit_allows() {
                     paused_until: Some(4_102_444_800),
                     choices: choices.clone(),
                     plan: None,
+                    ..Live::default()
                 })
             },
             true,
@@ -580,4 +584,68 @@ fn paused_runs_carry_their_choices_to_the_phone_and_back() {
     );
     assert_eq!(item_action("key"), Some("your_key"));
     assert_eq!(item_action("wait"), None);
+}
+
+#[test]
+fn a_solver_run_is_one_card_with_its_progress_time_and_stop() {
+    let mut chat = chat();
+    chat.tasks = vec![ChatTask {
+        kind: TaskKind::Solver,
+        title: "AtlantisPleb/solver-box-smoke#12".into(),
+        steps: vec!["Google is starting the computer".into()],
+        ..task("wrk1", TaskState::Working, None)
+    }];
+    // The thread draws no row for it: the panel's row is its one card.
+    let thread = super::super::work::rows(&chat, 1, true).into_string();
+    assert!(!thread.contains("wrk1"), "{thread}");
+    let rows = run_rows(
+        &chat,
+        |_| {
+            Some(Live {
+                cost_usd: Some(0.02),
+                steps: vec![
+                    "Asking Google for a large computer".into(),
+                    "Google has no large computer free in that zone; trying another (2 of 4)"
+                        .into(),
+                ],
+                ..Live::default()
+            })
+        },
+        true,
+        1_095,
+    );
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].transcript.as_deref(), Some("/work/wrk1"));
+    let html = render("c1", "token", &rows, None).into_string();
+    for needle in [
+        "Solver in the cloud · AtlantisPleb/solver-box-smoke · 1m 35s · $0.02",
+        "trying another (2 of 4)",
+        r#"action="/chat/c1/agents/stop""#,
+        r#"name="run" value="wrk1""#,
+        r#"href="/work/wrk1""#,
+        "Working",
+    ] {
+        assert!(html.contains(needle), "{needle} in {html}");
+    }
+    crate::copy_guard::assert_plain("/chat/c1", &html);
+
+    // Ended: no Stop, no progress list, how it ended in plain words.
+    chat.tasks[0].state = TaskState::Done;
+    let rows = run_rows(
+        &chat,
+        |_| {
+            Some(Live {
+                ended: Some("Already done on main: e3646e3d38".into()),
+                steps: vec!["Deleted the computer".into()],
+                ..Live::default()
+            })
+        },
+        true,
+        1_095,
+    );
+    let html = render("c1", "token", &rows, None).into_string();
+    assert!(html.contains("Already done on main: e3646e3d38"), "{html}");
+    assert!(html.contains("Done"));
+    assert!(!html.contains("/agents/stop"), "{html}");
+    assert!(!html.contains("Deleted the computer"), "{html}");
 }

@@ -110,3 +110,21 @@ fn the_box_script_deletes_the_registry_token_and_mounts_only_the_run_dir() {
     assert!(BOX_SCRIPT.contains(&format!("HOST_DIR={HOST_DIR}")));
     assert!(!BOX_SCRIPT.contains("GH_TOKEN"));
 }
+
+#[test]
+fn no_computer_says_what_google_said_how_long_and_what_to_do() {
+    let text = no_computer(
+        "Google has no default computer free in any zone right now.",
+        Duration::from_secs(125),
+    );
+    assert_eq!(
+        text,
+        "No computer could be had in 3 minutes (Google has no default computer free in any zone right now). Nothing was changed; ask Solver again in a few minutes."
+    );
+    assert!(
+        no_computer("", Duration::from_secs(5))
+            .starts_with("No computer could be had in 1 minute (Google did not start one)")
+    );
+    assert_eq!(SIZES, ["large", "default"]);
+    assert_eq!(BOX_WAIT, Duration::from_secs(600));
+}

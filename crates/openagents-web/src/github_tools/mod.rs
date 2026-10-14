@@ -29,6 +29,7 @@
 //! exact parsing of the chosen command, never of the message) and sealed
 //! the same way, so Confirm runs exactly what it shows.
 
+pub(crate) mod issues;
 #[cfg(test)]
 mod tests;
 
