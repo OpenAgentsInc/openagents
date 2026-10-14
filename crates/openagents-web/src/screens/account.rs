@@ -305,6 +305,13 @@ pub(crate) fn screens() -> Vec<Screen> {
             routes: &["/admin/analytics"],
             states: vec![state("admin", "As an admin sees it", analytics)],
         },
+        Screen {
+            id: "drive-access",
+            title: "Google Drive access",
+            group: Group::Page,
+            routes: &[crate::connections::access::PAGE],
+            states: vec![state("admin", "As an admin sees it", drive_access)],
+        },
     ]
 }
 
@@ -850,7 +857,8 @@ fn project_page(headers: &HeaderMap, project: oa_auth::repos::Project) -> Respon
     };
     let listed = listing(vec![repository(102, "sample-org/sample-site", false)]);
     let list = crate::projects::repos_page(Ok(listed), CSRF, "", 1, Some(&project));
-    let body = crate::projects::page::view(&status, &project, CSRF, "", None, false, Some(list));
+    let body =
+        crate::projects::page::view(&status, &project, CSRF, "", None, false, Some(list), true);
     crate::projects::page_for(headers, StatusCode::OK, body)
 }
 
@@ -901,7 +909,7 @@ fn projects(
 ) -> Response {
     let status = oa_auth::repos::Status { access, projects };
     let list = listed.map(|listed| crate::projects::repos_page(listed, CSRF, q, 1, None));
-    let body = crate::projects::view_with(&status, CSRF, q, None, install, list);
+    let body = crate::projects::view_with(&status, CSRF, q, None, install, list, true);
     crate::projects::page_for(headers, StatusCode::OK, body)
 }
 
@@ -1731,6 +1739,16 @@ fn profile_missing(headers: &HeaderMap) -> Response {
 }
 
 // Analytics.
+
+fn drive_access(headers: &HeaderMap) -> Response {
+    let access = crate::cloud::connections::Access::seeded();
+    settings_page(
+        headers,
+        "Google Drive access",
+        crate::connections::access::PAGE,
+        crate::connections::access::view(&access, CSRF),
+    )
+}
 
 fn analytics(headers: &HeaderMap) -> Response {
     use crate::analytics::{Counts, Key, Series};

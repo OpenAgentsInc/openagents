@@ -1032,7 +1032,7 @@ pub(crate) fn native_error(error: jev::Error) -> SessionError {
     }
 }
 
-fn identifier(value: &str) -> bool {
+pub(crate) fn identifier(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= 128
         && !matches!(value, "." | "..")

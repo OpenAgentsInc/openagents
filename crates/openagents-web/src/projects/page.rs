@@ -94,6 +94,7 @@ async fn show(
         None,
         StatusCode::OK,
         app.config.github_install.is_some(),
+        crate::connections::access::permitted(&app, &viewer),
     )
 }
 
@@ -107,6 +108,7 @@ fn respond(
     problem: Option<&str>,
     code: StatusCode,
     install: bool,
+    sources: bool,
 ) -> Response {
     let Some(project) = status.projects.iter().find(|p| p.id == id) else {
         return protect(crate::ui_page::problem(
@@ -124,7 +126,7 @@ fn respond(
             .status(code)
             .head(htmx_head())
             .content(PageColumn::new(view(
-                status, project, csrf, q, problem, install, None,
+                status, project, csrf, q, problem, install, None, sources,
             )))
             .respond(headers),
     )
@@ -139,6 +141,7 @@ pub(crate) fn view(
     problem: Option<&str>,
     install: bool,
     list: Option<Markup>,
+    sources: bool,
 ) -> Markup {
     let action = |what: &str| format!("{}/{what}", repositories_href(&project.id));
     html! {
@@ -151,10 +154,12 @@ pub(crate) fn view(
         }
         div.oa-page-actions {
             (ButtonLink::new("New chat", format!("/?project={}", project.id)).size(ControlSize::Sm))
-            (ButtonLink::new("Sources", crate::connections::sources::href(&project.id))
-                .size(ControlSize::Sm)
-                .variant(ButtonVariant::Ghost)
-                .color(Color::Secondary))
+            @if sources {
+                (ButtonLink::new("Sources", crate::connections::sources::href(&project.id))
+                    .size(ControlSize::Sm)
+                    .variant(ButtonVariant::Ghost)
+                    .color(Color::Secondary))
+            }
             (ButtonLink::new("Vault", crate::vault::project_href(&project.id))
                 .size(ControlSize::Sm)
                 .variant(ButtonVariant::Ghost)
@@ -276,6 +281,7 @@ async fn apply(
                 Some(&problem),
                 StatusCode::from_u16(error.status()).unwrap_or(StatusCode::BAD_REQUEST),
                 app.config.github_install.is_some(),
+                crate::connections::access::permitted(app, &viewer),
             )
         }
         Err(error) => failed(headers, &error),

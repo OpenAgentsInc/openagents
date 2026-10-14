@@ -20,8 +20,11 @@ use serde_json::{Value, json};
 use super::chat::{self, Ending, FAST};
 use super::{Google, Live};
 use crate::chat_vision::{GEMINI, Gemini};
+use crate::cloud::connections::AccessEntry;
 use crate::cloud::connections::{Source, Store, Stored};
-use crate::projects::tests::{Browser, Options, account_owner_of, hidden, world_with};
+use crate::projects::tests::{
+    Browser, Options, World, account_id_of, account_owner_of, hidden, world_with,
+};
 
 const FOLDER: &str = "folder-finances-0001";
 const SHEET: &str = "sheet-spending-00001";
@@ -73,6 +76,15 @@ async fn connecting_google_and_attaching_a_drive_folder_to_a_project() {
     .await;
     let mut browser = Browser::default();
     browser.sign_in(&world, "octo-local").await;
+    store
+        .update_access(|a| {
+            a.add(AccessEntry {
+                account: Some(account_id_of(&world, "octo-local")),
+                ..AccessEntry::default()
+            })
+        })
+        .unwrap()
+        .unwrap();
 
     // Settings offers Connect, in plain words.
     let page = browser.get(&world, super::PAGE).await;
@@ -445,4 +457,349 @@ async fn a_message_not_about_the_files_goes_to_the_general_chat() {
     assert_eq!(state.lock().unwrap().bodies.len(), 1);
     // Nothing was read from Drive.
     assert!(google.requests().is_empty());
+}
+
+/// One app API call with `token`: the status and the JSON answer.
+async fn api(
+    world: &World,
+    token: &str,
+    method: &str,
+    path: &str,
+    body: Value,
+) -> (StatusCode, Value) {
+    use axum::body::{Body, to_bytes};
+    use axum::http::{Request, header};
+    use tower::ServiceExt;
+    let request = Request::builder()
+        .method(method)
+        .uri(path)
+        .header(header::HOST, world.host.as_str())
+        .header(header::CONTENT_TYPE, "application/json")
+        .header(header::AUTHORIZATION, format!("Bearer {token}"))
+        .body(if body.is_null() {
+            Body::empty()
+        } else {
+            Body::from(body.to_string())
+        })
+        .unwrap();
+    let response = world.site.clone().oneshot(request).await.unwrap();
+    let status = response.status();
+    let bytes = to_bytes(response.into_body(), 1 << 20).await.unwrap();
+    (
+        status,
+        serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+    )
+}
+
+/// Connect Google for a signed-in browser through the fake Google.
+async fn connect_google(browser: &mut Browser, world: &World) {
+    let start = browser.get(world, super::CONNECT).await;
+    assert_eq!(start.status, StatusCode::SEE_OTHER, "{}", start.body);
+    let state = url::Url::parse(start.location())
+        .unwrap()
+        .query_pairs()
+        .find(|(k, _)| k == "state")
+        .unwrap()
+        .1
+        .into_owned();
+    let callback = browser
+        .get(
+            world,
+            &format!("/auth/google/callback?code={}&state={state}", fake::CODE),
+        )
+        .await;
+    let next = callback.body[callback.body.find(super::FINISH).unwrap()..]
+        .split('"')
+        .next()
+        .unwrap()
+        .replace("&amp;", "&");
+    let finished = browser.get(world, &next).await;
+    assert_eq!(finished.status, StatusCode::SEE_OTHER, "{}", finished.body);
+}
+
+#[tokio::test]
+async fn the_api_connects_google_and_attaches_sources_for_allowed_accounts_only() {
+    let google = FakeGoogle::start(files(), &[DRIVE_READONLY, SHEETS_READONLY]).await;
+    let dir = tempfile::tempdir().unwrap();
+    let store = store(&dir);
+    // octo-local is a site admin; quiet-local is invited, not an admin.
+    let world = world_with(Options {
+        public: true,
+        invite: Some(json!({"github": [{"id": 583231, "admin": true}, {"id": 9000001}]})),
+        connections: Some((
+            store.clone(),
+            Arc::new(Google::new(
+                Client::new("cid.apps".into(), "client-secret".into()),
+                google.endpoints(),
+            )),
+        )),
+        ..Options::default()
+    })
+    .await;
+    assert!(crate::upstream::owned("/v1/connections/google/drive"));
+    assert!(crate::upstream::owned("/v1/admin/access/drive-connections"));
+    assert!(crate::upstream::owned("/admin/access/drive-connections"));
+    assert!(crate::upstream::owned("/v1/projects/prj_0/sources"));
+    let mut admin = Browser::default();
+    admin.sign_in(&world, "octo-local").await;
+    let me = admin.0.get("oa_cloud_session").cloned().unwrap();
+    let mut quiet = Browser::default();
+    quiet.sign_in(&world, "quiet-local").await;
+    let them = quiet.0.get("oa_cloud_session").cloned().unwrap();
+    let quiet_id = account_id_of(&world, "quiet-local");
+
+    // Someone not allowed sees nothing: no page, no link, no API.
+    assert_eq!(
+        quiet.get(&world, super::PAGE).await.status,
+        StatusCode::NOT_FOUND
+    );
+    assert!(
+        !quiet
+            .get(&world, crate::settings::PAGE)
+            .await
+            .body
+            .contains(super::PAGE)
+    );
+    for (method, path) in [
+        ("GET", "/v1/connections"),
+        ("POST", "/v1/connections/google/connect"),
+        ("GET", "/v1/connections/google/drive"),
+        ("DELETE", "/v1/connections/google"),
+        ("POST", "/v1/connections/google/tools/drive_search"),
+        ("GET", "/v1/projects/prj_0/sources"),
+        ("GET", "/v1/admin/access/drive-connections"),
+    ] {
+        let (status, body) = api(&world, &them, method, path, json!({})).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{method} {path}: {body}");
+    }
+    assert_eq!(
+        quiet.get(&world, super::access::PAGE).await.status,
+        StatusCode::NOT_FOUND
+    );
+
+    // An admin may: not connected yet, and the link that connects.
+    let (status, listed) = api(&world, &me, "GET", "/v1/connections", Value::Null).await;
+    assert_eq!(status, StatusCode::OK, "{listed}");
+    assert_eq!(listed["google"]["status"], "not_connected");
+    let (status, consent) = api(
+        &world,
+        &me,
+        "POST",
+        "/v1/connections/google/connect",
+        Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{consent}");
+    assert_eq!(
+        consent["url"],
+        "https://openagents.test/auth/google/connect?scope=drive"
+    );
+    let (_, consent) = api(
+        &world,
+        &me,
+        "POST",
+        "/v1/connections/google/connect",
+        json!({"sheets": true}),
+    )
+    .await;
+    assert_eq!(
+        consent["url"],
+        "https://openagents.test/auth/google/connect"
+    );
+    // That link asks Google for Drive alone.
+    let start = admin.get(&world, "/auth/google/connect?scope=drive").await;
+    assert!(start.location().contains("drive.readonly"));
+    assert!(!start.location().contains("spreadsheets"));
+
+    // A project; sources are refused cleanly until Google is connected.
+    let (status, project) = api(
+        &world,
+        &me,
+        "POST",
+        "/v1/projects",
+        json!({"name": "finances"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{project}");
+    let id = project["id"].as_str().unwrap().to_owned();
+    let sources = format!("/v1/projects/{id}/sources");
+    let folder_link = format!("https://drive.google.com/drive/folders/{FOLDER}");
+    let (status, refused) = api(&world, &me, "POST", &sources, json!({"link": folder_link})).await;
+    assert_eq!(status, StatusCode::CONFLICT, "{refused}");
+    assert_eq!(refused["error"]["code"], "google_not_connected");
+    assert!(
+        refused["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("openagents connections connect google")
+    );
+    let (status, empty) = api(&world, &me, "GET", &sources, Value::Null).await;
+    assert_eq!(status, StatusCode::OK, "{empty}");
+    assert_eq!(empty["data"], json!([]));
+
+    // Connected (Google's page is a person's click; the fake clicks).
+    connect_google(&mut admin, &world).await;
+    let (_, listed) = api(&world, &me, "GET", "/v1/connections", Value::Null).await;
+    assert_eq!(listed["google"]["status"], "connected");
+    assert_eq!(listed["google"]["email"], fake::EMAIL);
+    assert_eq!(listed["google"]["sheets"], true);
+    assert!(!listed.to_string().contains(fake::REFRESH));
+
+    // Browse and search Drive to pick.
+    let (status, root) = api(
+        &world,
+        &me,
+        "GET",
+        "/v1/connections/google/drive",
+        Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{root}");
+    assert_eq!(root["data"][0]["name"], "Finances");
+    assert_eq!(root["data"][0]["folder"], true);
+    let (_, inside) = api(
+        &world,
+        &me,
+        "GET",
+        &format!("/v1/connections/google/drive?folder={FOLDER}"),
+        Value::Null,
+    )
+    .await;
+    assert_eq!(inside["data"][0]["name"], "Spending October");
+
+    // Attach (checked with Drive), again (no change), a bad link, list.
+    let (status, added) = api(&world, &me, "POST", &sources, json!({"link": folder_link})).await;
+    assert_eq!(status, StatusCode::CREATED, "{added}");
+    assert_eq!(added["name"], "Finances");
+    assert_eq!(added["kind"], "folder");
+    let (status, _) = api(&world, &me, "POST", &sources, json!({"id": FOLDER})).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = api(
+        &world,
+        &me,
+        "POST",
+        &sources,
+        json!({"link": "https://example.com/x"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let (status, _) = api(
+        &world,
+        &me,
+        "POST",
+        &sources,
+        json!({"id": "missing-file-00001"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (_, listed) = api(&world, &me, "GET", &sources, Value::Null).await;
+    assert_eq!(listed["data"].as_array().unwrap().len(), 1);
+    assert_eq!(listed["google"], "connected");
+    // The project's chat routes to Drive for this account.
+    let owner = account_owner_of(&world, "octo-local");
+    assert!(
+        store
+            .access()
+            .unwrap()
+            .seen
+            .iter()
+            .any(|s| crate::chat_store::account_owner(&s.account) == owner && s.via == "admin")
+    );
+
+    // The admin lets quiet-local in, with no redeploy; then out again.
+    let (status, list) = api(
+        &world,
+        &me,
+        "POST",
+        "/v1/admin/access/drive-connections",
+        json!({"account": quiet_id}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{list}");
+    let (status, theirs) = api(&world, &them, "GET", "/v1/connections", Value::Null).await;
+    assert_eq!(status, StatusCode::OK, "{theirs}");
+    assert_eq!(theirs["google"]["status"], "not_connected");
+    assert_eq!(quiet.get(&world, super::PAGE).await.status, StatusCode::OK);
+    let (status, _) = api(
+        &world,
+        &me,
+        "DELETE",
+        &format!("/v1/admin/access/drive-connections/{quiet_id}"),
+        Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = api(&world, &them, "GET", "/v1/connections", Value::Null).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    // By email too.
+    let (status, list) = api(
+        &world,
+        &me,
+        "POST",
+        "/v1/admin/access/drive-connections",
+        json!({"email": "Someone@Example.com"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{list}");
+    assert!(list.to_string().contains("someone@example.com"));
+    // The admin page lists them.
+    let page = admin.get(&world, super::access::PAGE).await;
+    assert_eq!(page.status, StatusCode::OK, "{}", page.body);
+    assert!(page.body.contains("someone@example.com"));
+    crate::copy_guard::assert_plain(super::access::PAGE, &page.body);
+
+    // Detach, then remove the connection: the sources stay.
+    let (status, _) = api(
+        &world,
+        &me,
+        "DELETE",
+        &format!("{sources}/{FOLDER}"),
+        Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = api(
+        &world,
+        &me,
+        "DELETE",
+        &format!("{sources}/{FOLDER}"),
+        Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, removed) = api(&world, &me, "DELETE", "/v1/connections/google", Value::Null).await;
+    assert_eq!(status, StatusCode::OK, "{removed}");
+    assert_eq!(removed["deleted"], true);
+    let (_, listed) = api(&world, &me, "GET", "/v1/connections", Value::Null).await;
+    assert_eq!(listed["google"]["status"], "not_connected");
+}
+
+#[test]
+fn the_access_list_starts_with_the_owners_accounts_and_matches_email_without_case() {
+    use crate::cloud::connections::Access;
+    let mut access = Access::seeded();
+    assert!(
+        access
+            .entry_for("acct_x", Some("Chris@OpenAgents.com"))
+            .is_some()
+    );
+    assert!(
+        access
+            .entry_for("acct_x", Some("other@example.com"))
+            .is_none()
+    );
+    assert!(access.remove("chris@openagents.com"));
+    assert!(
+        access
+            .entry_for("acct_x", Some("chris@openagents.com"))
+            .is_none()
+    );
+    assert_eq!(
+        access.add(AccessEntry {
+            account: Some("acct_y".into()),
+            ..AccessEntry::default()
+        }),
+        Ok(true)
+    );
+    assert!(access.knows("acct_y"));
 }

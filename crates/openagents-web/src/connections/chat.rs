@@ -116,7 +116,7 @@ pub(crate) struct DriveDoor {
 /// Drive sources, Google is connected, and this server has Gemini.
 pub(crate) async fn door(app: &App, owner: &str, project: Option<&str>) -> Option<DriveDoor> {
     let project = project?;
-    if !crate::chat_store::is_account_owner(owner) {
+    if !crate::chat_store::is_account_owner(owner) || !super::access::knows(app, owner) {
         return None;
     }
     let sources: Vec<Source> = app

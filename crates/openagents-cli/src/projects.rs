@@ -83,6 +83,16 @@ pub(crate) const USAGE: &str = "usage: openagents projects COMMAND [--account-di
               Delete a file or note from the project for good.
   notes add PROJECT --title TITLE (--text TEXT | --file PATH)
               Add a text note to the project.
+  sources list PROJECT
+              The Google Drive folders and files the project's chats read
+              from to answer. Also: openagents projects sources PROJECT
+  sources add PROJECT LINK
+              Attach a Drive folder or file by its link or id. Connect Google
+              first with openagents connections connect google; find one with
+              openagents connections drive.
+  sources remove PROJECT SOURCE
+              Detach a Drive folder or file (its id from sources list). The
+              file stays in your Drive.
 Start a new chat inside a project with openagents chat send MESSAGE
 --project PROJECT; OpenAgents answers it there, with the project's
 instructions and files and its primary repository when it has one, and it
@@ -114,6 +124,9 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("files get", Effect::LocalWrite),
     Declared::computer("files remove", Effect::Publishes),
     Declared::computer("notes add", Effect::Publishes),
+    Declared::computer("sources list", Effect::ReadOnly),
+    Declared::computer("sources add", Effect::Publishes),
+    Declared::computer("sources remove", Effect::Publishes),
 ];
 
 /// The largest file `files add` sends.
@@ -134,7 +147,7 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         Ok(args) => args,
         Err(message) => return output.usage("projects", &message, USAGE),
     };
-    let positional = args.positional();
+    let positional = sources_order(args.positional());
     let command = positional.first().map(String::as_str).unwrap_or_default();
     let command = if command == "chats" {
         "threads"
@@ -143,7 +156,7 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
     };
     // `files add` and `notes add` are two words; their arguments follow.
     let (command, rest): (String, &[String]) = match command {
-        "files" | "notes" | "repo" => match positional.get(1) {
+        "files" | "notes" | "repo" | "sources" => match positional.get(1) {
             Some(sub) => (format!("{command} {sub}"), &positional[2..]),
             None => {
                 return output.usage(
@@ -173,6 +186,8 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         "files get" => (&["account-dir", "output", "out"], 2, 2),
         "files remove" => (&["account-dir"], 2, 2),
         "notes add" => (&["account-dir", "title", "text", "file"], 1, 1),
+        "sources list" => (&["account-dir"], 1, 1),
+        "sources add" | "sources remove" => (&["account-dir"], 2, 2),
         _ => return output.usage("projects", &format!("unknown command `{command}`"), USAGE),
     };
     if let Some(name) = args
@@ -189,6 +204,8 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
             (1, 2) => "a project and at most one chat".to_owned(),
             (2, 2) if command == "move" => "a chat and a project, or a chat and --none".to_owned(),
             (2, 2) if command.starts_with("repo ") => "a project and a repository".to_owned(),
+            (2, 2) if command == "sources add" => "a project and a Drive link".to_owned(),
+            (2, 2) if command == "sources remove" => "a project and a source".to_owned(),
             (2, 2) => "a project and a file".to_owned(),
             _ => "a project and one or more files".to_owned(),
         };
@@ -408,12 +425,79 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
                     });
                 })
         }
+        "sources list" => projects.sources(target).map(|listed| {
+            output.emit(&listed, sources_text);
+        }),
+        "sources add" => projects.add_source(target, &rest[1]).map(|added| {
+            output.emit(&added, |value| {
+                format!(
+                    "Attached {} ({}) to {}. Its chats read from it now.",
+                    value["name"].as_str().unwrap_or_default(),
+                    value["kind"].as_str().unwrap_or_default(),
+                    value["project_name"].as_str().unwrap_or(target),
+                )
+            });
+        }),
+        "sources remove" => projects.remove_source(target, &rest[1]).map(|removed| {
+            output.emit(&removed, |value| {
+                format!(
+                    "Detached {} from {}. It stays in your Drive.",
+                    value["name"].as_str().unwrap_or_default(),
+                    value["project_name"].as_str().unwrap_or(target),
+                )
+            });
+        }),
         _ => unreachable!("checked above"),
     };
     match result {
         Ok(()) => 0,
         Err(message) => output.fail("projects", &message),
     }
+}
+
+/// `sources PROJECT [list|add LINK|remove SOURCE]` read as `sources
+/// list|add|remove PROJECT ...`, the form the help lists.
+fn sources_order(positional: &[String]) -> Vec<String> {
+    let verbs = ["list", "add", "remove"];
+    match positional {
+        [first, project, rest @ ..] if first == "sources" && !verbs.contains(&project.as_str()) => {
+            let (verb, more) = match rest.split_first() {
+                Some((verb, more)) if verbs.contains(&verb.as_str()) => (verb.clone(), more),
+                _ => ("list".to_owned(), rest),
+            };
+            let mut out = vec![first.clone(), verb, project.clone()];
+            out.extend(more.iter().cloned());
+            out
+        }
+        other => other.to_vec(),
+    }
+}
+
+fn sources_text(listed: &Value) -> String {
+    let name = listed["project_name"].as_str().unwrap_or_default();
+    let sources = listed["data"].as_array().cloned().unwrap_or_default();
+    let mut lines = Vec::new();
+    if listed["google"] != "connected" {
+        lines.push(
+            "Google isn't connected, so chats can't read these now. Connect it with: openagents connections connect google"
+                .to_owned(),
+        );
+    }
+    if sources.is_empty() {
+        lines.push(format!(
+            "{name} has no Drive sources. Attach one with: openagents projects sources add {name} LINK"
+        ));
+    }
+    for source in &sources {
+        lines.push(format!(
+            "  {}  {}  {}  ({})",
+            source["name"].as_str().unwrap_or_default(),
+            source["kind"].as_str().unwrap_or_default(),
+            source["link"].as_str().unwrap_or_default(),
+            source["id"].as_str().unwrap_or_default(),
+        ));
+    }
+    lines.join("\n")
 }
 
 struct Projects<'a>(&'a Site);
@@ -940,11 +1024,13 @@ impl Projects<'_> {
         let project_id = id(&project)?.to_owned();
         let file_id = file["id"].as_str().unwrap_or_default().to_owned();
         if file["type"] == "source" {
-            return Err(format!(
-                "{} is a Drive source; remove it on the project's Sources page: {}/projects/{project_id}/sources",
-                file["name"].as_str().unwrap_or_default(),
-                self.0.saved.origin
-            ));
+            let site = self.0;
+            self.send(site.http.delete(site.url(&format!(
+                "/v1/projects/{project_id}/sources/{}",
+                safe(&file_id)?
+            ))))
+            .map_err(not_open)?;
+            return Ok(json!({"id": file_id, "name": file["name"], "object": "source.deleted"}));
         }
         if file["type"] == "vault" {
             crate::vault::with_vault(account_dir, |vault| vault.remove(&file_id))?;
@@ -975,6 +1061,63 @@ impl Projects<'_> {
                     message
                 }
             })
+    }
+}
+
+impl Projects<'_> {
+    /// The project's Drive sources, with its name.
+    fn sources(&self, target: &str) -> Result<Value, String> {
+        let project = self.find(target)?;
+        let mut listed = self
+            .get(&format!("/v1/projects/{}/sources", id(&project)?))
+            .map_err(not_open)?;
+        listed["project_name"] = project["name"].clone();
+        Ok(listed)
+    }
+
+    fn add_source(&self, target: &str, link: &str) -> Result<Value, String> {
+        let project = self.find(target)?;
+        let site = self.0;
+        let mut added = self
+            .send(
+                site.http
+                    .post(site.url(&format!("/v1/projects/{}/sources", id(&project)?)))
+                    .json(&json!({"link": link.trim()})),
+            )
+            .map_err(not_open)?;
+        added["project_name"] = project["name"].clone();
+        Ok(added)
+    }
+
+    fn remove_source(&self, target: &str, source: &str) -> Result<Value, String> {
+        let listed = self.sources(target)?;
+        let sources = listed["data"].as_array().cloned().unwrap_or_default();
+        let found = sources
+            .iter()
+            .find(|s| s["id"] == source || s["link"] == source || s["name"] == source)
+            .ok_or_else(|| {
+                format!("That isn't one of this project's sources. See them with: openagents projects sources list {target}")
+            })?;
+        let source_id = safe(found["id"].as_str().unwrap_or_default())
+            .map_err(|_| "The website answered with a source id that isn't valid.".to_owned())?
+            .to_owned();
+        let site = self.0;
+        let mut removed = self.send(site.http.delete(site.url(&format!(
+            "/v1/projects/{}/sources/{source_id}",
+            listed["project"].as_str().unwrap_or_default()
+        ))))?;
+        removed["name"] = found["name"].clone();
+        removed["project_name"] = listed["project_name"].clone();
+        Ok(removed)
+    }
+}
+
+/// The website's `404` for an account Connections aren't open to yet.
+fn not_open(message: String) -> String {
+    if message == "Not found." || message.contains("answered 404") {
+        "Drive sources aren't open to your account yet.".to_owned()
+    } else {
+        message
     }
 }
 
@@ -1388,8 +1531,9 @@ fn show_text(shown: &Value) -> String {
     let sources = shown["project"]["counts"]["sources"].as_u64().unwrap_or(0);
     if sources > 0 {
         lines.push(format!(
-            "{sources} Drive source{} (see them on the project's Sources page)",
-            if sources == 1 { "" } else { "s" }
+            "{sources} Drive source{} (see them with: openagents projects sources list {})",
+            if sources == 1 { "" } else { "s" },
+            shown["project"]["name"].as_str().unwrap_or_default()
         ));
     }
     if threads.is_empty() {
@@ -1627,6 +1771,32 @@ mod tests {
     fn a_file_name_is_sent_encoded() {
         assert_eq!(encode("statement 09/2026.pdf"), "statement%2009%2F2026.pdf");
         assert_eq!(encode("plain-name_1.csv"), "plain-name_1.csv");
+    }
+
+    #[test]
+    fn sources_read_in_either_order() {
+        let words = |w: &[&str]| w.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>();
+        assert_eq!(
+            sources_order(&words(&["sources", "finances", "add", "LINK"])),
+            words(&["sources", "add", "finances", "LINK"])
+        );
+        assert_eq!(
+            sources_order(&words(&["sources", "finances"])),
+            words(&["sources", "list", "finances"])
+        );
+        assert_eq!(
+            sources_order(&words(&["sources", "remove", "finances", "f1"])),
+            words(&["sources", "remove", "finances", "f1"])
+        );
+        let text = sources_text(
+            &json!({"project_name": "finances", "google": "connected", "data": [
+                {"id": "f1", "name": "Finances", "kind": "folder", "link": "https://drive.google.com/drive/folders/f1"}
+            ]}),
+        );
+        assert_eq!(
+            text,
+            "  Finances  folder  https://drive.google.com/drive/folders/f1  (f1)"
+        );
     }
 
     #[test]

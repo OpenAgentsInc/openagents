@@ -224,6 +224,11 @@ pub fn help() -> Vec<GroupHelp<'static>> {
             crate::projects::EFFECTS,
         ),
         group(
+            "connections",
+            Some(crate::connections::USAGE),
+            crate::connections::EFFECTS,
+        ),
+        group(
             "board",
             Some(crate::github_verbs::PROJECT_USAGE),
             crate::github_verbs::PROJECT_EFFECTS,

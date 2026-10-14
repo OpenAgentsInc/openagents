@@ -290,6 +290,14 @@ pub fn load_tools_definition(available: &[Family]) -> Value {
 }
 
 impl ExecutionSettings {
+    /// Whether the Drive tools are offered: signed in, and the website
+    /// allows this account Connections with Google connected (#11574).
+    fn drive_offered(&self) -> bool {
+        self.connections
+            .as_ref()
+            .is_some_and(crate::connection_tools::offered)
+    }
+
     /// Why `harness` can't take this chat's turns, in the person's words,
     /// or `None` when it can (#11519).
     #[must_use]
@@ -447,7 +455,7 @@ impl ExecutionSettings {
         if self.fleet.is_some() {
             definitions.extend(crate::fleet::tool_definitions(self));
         }
-        if self.connections.is_some() {
+        if self.drive_offered() {
             definitions.extend(crate::connection_tools::definitions());
         }
         if self.shell {
@@ -540,7 +548,7 @@ impl ExecutionSettings {
                     guidance.push_str(crate::ops_tool::instructions());
                     guidance.push_str("The OpenAgents CLI ships beside Coder and is available through openagents_cli for requested OpenAgents work. Answer conversational questions directly; read [\"--help\"] or a group's --help only when you need a command you do not know. Use argument arrays and its --json output. The command covers computers, Coder tasks and issues, settings, knowledge, plugin registries, relay identities, shared worlds, and wallets. It enforces each command's existing rights; do not assume a chat tool grants access. The person's projects are their openagents.com projects (the Projects list on the website, such as finances): list them with openagents projects list, and read one with its chats with openagents projects show NAME, before looking anywhere else. A project needs only a name: make one with openagents projects create NAME (add --repo OWNER/NAME only when the person names a repository). A project can have no repository, one, or several with one primary (openagents projects repo add|remove|primary PROJECT REPO); the same repository can be in several projects, and two projects can share a name. When a name matches more than one project, the command lists them: ask the person which one, then use its id. Start a new chat inside a project (\"make a new chat in my finances project\") with openagents chat send MESSAGE --project NAME; OpenAgents answers it on openagents.com and it shows in that project. A project's files and notes are openagents projects files list NAME and files get NAME FILE. When the project is only_me, its files are locked to the person's devices: answer questions about them with openagents vault ask FILE --project ID --question TEXT on this computer (add --route fast only when the person said so), and never send their contents anywhere else.\n");
                 }
-                if self.connections.is_some() {
+                if self.drive_offered() {
                     guidance.push_str(crate::connection_tools::INSTRUCTIONS);
                 }
                 if self.registered(ToolBinding::Jev) {
@@ -766,7 +774,7 @@ impl ExecutionSettings {
                 }
                 Ok(output)
             }
-            name if crate::connection_tools::is_tool(name) && self.connections.is_some() => {
+            name if crate::connection_tools::is_tool(name) && self.drive_offered() => {
                 let account = self
                     .connections
                     .as_ref()
@@ -1510,16 +1518,19 @@ mod tests {
         let mut settings = settings();
         assert!(!names(&settings).iter().any(|n| n == "drive_read"));
         assert!(!settings.instructions().contains("drive_read"));
-        settings.connections = Some(
-            serde_json::from_value(json!({
-                "origin": "https://openagents.com",
-                "account": "acct",
-                "label": "Ada",
-                "expires_at": u64::MAX,
-                "token": "sess_test",
-            }))
-            .unwrap(),
-        );
+        let saved: openagents_login::Saved = serde_json::from_value(json!({
+            "origin": "https://openagents.com",
+            "account": "acct",
+            "label": "Ada",
+            "expires_at": u64::MAX,
+            "token": "sess_test",
+        }))
+        .unwrap();
+        // Not offered to an account the website doesn't allow them.
+        crate::connection_tools::set_offered(&saved, false);
+        settings.connections = Some(saved.clone());
+        assert!(!names(&settings).iter().any(|n| n == "drive_read"));
+        crate::connection_tools::set_offered(&saved, true);
         let offered = names(&settings);
         for tool in ["drive_search", "drive_list_folder", "drive_read"] {
             assert!(offered.iter().any(|n| n == tool), "{tool}");

@@ -768,7 +768,7 @@ async fn attach(
             StatusCode::BAD_REQUEST,
             "use_the_sources_page",
             &format!(
-                "Connect Drive files and folders on the project's Sources page: https://openagents.com/projects/{project}/sources"
+                "Attach Drive folders and files with POST /v1/projects/{project}/sources, or run: openagents projects sources PROJECT add LINK"
             ),
         );
     }
@@ -948,7 +948,7 @@ async fn detach(
             StatusCode::BAD_REQUEST,
             "use_the_sources_page",
             &format!(
-                "Remove Drive sources on the project's Sources page: https://openagents.com/projects/{project}/sources"
+                "Remove a Drive source with DELETE /v1/projects/{project}/sources/{attachment}, or run: openagents projects sources PROJECT remove {attachment}"
             ),
         );
     } else {

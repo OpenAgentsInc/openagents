@@ -36,6 +36,7 @@ TAGS = {
     "Computers": "Your computers and whether their chats sync.",
     "Threads": "Chats synced from the terminal.",
     "Traces": "Agent traces (ATIF).",
+    "Connections": "Services connected to the account (Google Drive) and the Drive sources a project's chats read. Only for accounts allowed them while Google reviews the app; `404` for everyone else.",
 }
 
 
@@ -65,6 +66,15 @@ WEB = [
     ("/v1/traces/{id}/share", "Traces", [("post", "shareTrace", "Share or stop sharing a trace.")]),
     ("/v1/traces/{id}/agents", "Traces", [("get", "listTraceAgents", "A trace's agents, parents first."), ("post", "uploadTraceAgent", "Save an agent under a trace (`?parent=`).")]),
     ("/v1/traces/{id}/agents/{agent}", "Traces", [("get", "getTraceAgent", "One agent's ATIF document.")]),
+    ("/v1/connections", "Connections", [("get", "listConnections", "Google's status (`connected`, `not_connected`, `reconnect`, `unavailable`), its account email and scopes, the read-only Drive tools, and every Drive source.")]),
+    ("/v1/connections/google", "Connections", [("delete", "removeGoogleConnection", "Disconnect Google and ask Google to revoke it; projects keep their sources.")]),
+    ("/v1/connections/google/connect", "Connections", [("post", "connectGoogle", "The link that connects Google (`{sheets?, return_to?}`). Open it in a browser signed in as the same account; Google's consent is the person's click.")]),
+    ("/v1/connections/google/drive", "Connections", [("get", "browseDrive", "One Drive folder (`?folder=`, My Drive by default, `?page=`) or a search (`?q=`), to pick sources.")]),
+    ("/v1/connections/google/tools/{tool}", "Connections", [("post", "runGoogleTool", "Run one read-only Drive tool (`drive_search`, `drive_list_folder`, `drive_read`) with its arguments.")]),
+    ("/v1/projects/{id}/sources", "Connections", [("get", "listProjectSources", "The project's Drive sources."), ("post", "attachProjectSource", "Attach a Drive folder or file (`{link}` or `{id}`), checked with Drive first.")]),
+    ("/v1/projects/{id}/sources/{source}", "Connections", [("delete", "detachProjectSource", "Detach one source; the file stays in Drive.")]),
+    ("/v1/admin/access/drive-connections", "Connections", [("get", "listDriveAccess", "Admins: who may use Google Drive connections."), ("post", "allowDriveAccess", "Admins: allow someone (`{email}` or `{account}`).")]),
+    ("/v1/admin/access/drive-connections/{who}", "Connections", [("delete", "removeDriveAccess", "Admins: take someone off the list.")]),
 ]
 
 
@@ -156,7 +166,7 @@ def main():
                 "bearer": {
                     "type": "http",
                     "scheme": "bearer",
-                    "description": "An account session (`sess_...`) from sign-in, or an API key (`oak_...`).",
+                    "description": "An account session (`sess_...`) from sign-in, a sign-in key (`oa_sk_...`), or an API key (`oak_...`).",
                 }
             },
             "schemas": {

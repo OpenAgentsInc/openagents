@@ -7976,6 +7976,121 @@
               }
             }
           ]
+        },
+        {
+          "name": "sources",
+          "children": [
+            {
+              "name": "list",
+              "leaf": {
+                "path": [
+                  "projects",
+                  "sources",
+                  "list"
+                ],
+                "usage": [
+                  "sources list PROJECT"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "sources"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "list"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "PROJECT"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "The Google Drive folders and files the project's chats read from to answer. Also: openagents projects sources PROJECT",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "add",
+              "leaf": {
+                "path": [
+                  "projects",
+                  "sources",
+                  "add"
+                ],
+                "usage": [
+                  "sources add PROJECT LINK"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "sources"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "add"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "PROJECT"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "LINK"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Attach a Drive folder or file by its link or id. Connect Google first with openagents connections connect google; find one with openagents connections drive.",
+                "effect": "publishes",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "remove",
+              "leaf": {
+                "path": [
+                  "projects",
+                  "sources",
+                  "remove"
+                ],
+                "usage": [
+                  "sources remove PROJECT SOURCE"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "sources"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "remove"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "PROJECT"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "SOURCE"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Detach a Drive folder or file (its id from sources list). The file stays in your Drive.",
+                "effect": "publishes",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
         }
       ],
       "options": [
@@ -8076,6 +8191,279 @@
           "kind": "option",
           "name": "project",
           "value": "PROJECT",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        }
+      ]
+    },
+    {
+      "name": "connections",
+      "summary": "Services connected to your openagents.com account: connect Google Drive, browse it, and see what's attached.",
+      "children": [
+        {
+          "name": "list",
+          "leaf": {
+            "path": [
+              "connections",
+              "list"
+            ],
+            "usage": [
+              "list"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "list"
+                  }
+                ]
+              }
+            ],
+            "summary": "The services connected to your openagents.com account: Google Drive, whether it's connected and as whom, and the Drive sources attached to your projects.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "connect",
+          "children": [
+            {
+              "name": "google",
+              "leaf": {
+                "path": [
+                  "connections",
+                  "connect",
+                  "google"
+                ],
+                "usage": [
+                  "connect google [--sheets] [--no-open]"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "connect"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "google"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "sheets",
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "no-open",
+                        "optional": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Print the link that connects Google Drive (read only), and open it in your browser on this computer. --sheets also lets chats read every tab of your Google Sheets. Open the link signed in to openagents.com as you; Google asks you to allow it.",
+                "effect": "grants",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
+        },
+        {
+          "name": "remove",
+          "children": [
+            {
+              "name": "google",
+              "leaf": {
+                "path": [
+                  "connections",
+                  "remove",
+                  "google"
+                ],
+                "usage": [
+                  "remove google"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "remove"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "google"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Disconnect Google. Your projects keep their Drive sources for when you connect it again.",
+                "effect": "grants",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
+        },
+        {
+          "name": "drive",
+          "leaf": {
+            "path": [
+              "connections",
+              "drive"
+            ],
+            "usage": [
+              "drive [QUERY] [--folder FOLDER]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "drive"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "QUERY",
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "folder",
+                    "value": "FOLDER",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Browse your Drive (My Drive, or the folder's id or link), or search it, to find a folder or file to attach.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "access",
+          "children": [
+            {
+              "name": "list",
+              "leaf": {
+                "path": [
+                  "connections",
+                  "access",
+                  "list"
+                ],
+                "usage": [
+                  "access list"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "access"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "list"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Admins: who may use Google Drive connections while Google hasn't approved the app. Admins always may.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "add",
+              "leaf": {
+                "path": [
+                  "connections",
+                  "access",
+                  "add"
+                ],
+                "usage": [
+                  "access add WHO"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "access"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "add"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "WHO"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Admins: let someone use them, by email or account id.",
+                "effect": "grants",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "remove",
+              "leaf": {
+                "path": [
+                  "connections",
+                  "access",
+                  "remove"
+                ],
+                "usage": [
+                  "access remove WHO"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "access"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "remove"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "WHO"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Admins: take someone off the list.",
+                "effect": "grants",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
+        }
+      ],
+      "options": [
+        {
+          "kind": "option",
+          "name": "sheets",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "no-open",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "folder",
+          "value": "FOLDER",
           "open": true,
           "optional": true,
           "repeated": true

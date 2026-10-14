@@ -29,12 +29,12 @@ const LOOSE: &str = "22345678-1234-4234-8234-123456789abc";
 
 pub(crate) struct World {
     _root: tempfile::TempDir,
-    site: Router,
+    pub(crate) site: Router,
     fake: Fake,
     store: Arc<Store>,
     github: reqwest::Client,
     /// The Host header requests carry.
-    host: String,
+    pub(crate) host: String,
     /// The site's origin: `http://` the local host, `https://` a public one.
     origin: String,
 }
@@ -183,7 +183,7 @@ async fn world_at(port: u16, options: Options) -> World {
 }
 
 #[derive(Default)]
-pub(crate) struct Browser(BTreeMap<String, String>);
+pub(crate) struct Browser(pub(crate) BTreeMap<String, String>);
 
 pub(crate) struct Answer {
     pub(crate) status: StatusCode,
@@ -326,6 +326,22 @@ impl Browser {
 }
 
 /// The chat owner for the account that signed in with GitHub `login`.
+/// The account id of the person signed in with GitHub as `login`.
+pub(crate) fn account_id_of(world: &World, login: &str) -> String {
+    let store = tenancy::Accounts::open(&world._root.path().join("accounts"))
+        .unwrap()
+        .store()
+        .unwrap();
+    store
+        .identities
+        .github
+        .values()
+        .find(|identity| identity.profile.login == login)
+        .unwrap_or_else(|| panic!("no account for {login}"))
+        .account
+        .clone()
+}
+
 pub(crate) fn account_owner_of(world: &World, login: &str) -> String {
     let store = tenancy::Accounts::open(&world._root.path().join("accounts"))
         .unwrap()
@@ -640,7 +656,7 @@ fn closed_groups_come_from_their_cookie_and_the_page_reads_plainly() {
         access: Access::None,
         projects: Vec::new(),
     };
-    let html = view(&status, "t", "", None, false).into_string();
+    let html = view(&status, "t", "", None, false, true).into_string();
     crate::copy_guard::assert_plain(PAGE, &html);
     let status = Status {
         access: Access::Connected {
@@ -650,7 +666,7 @@ fn closed_groups_come_from_their_cookie_and_the_page_reads_plainly() {
         projects: Vec::new(),
     };
     // The page shows at once; the list loads after it.
-    let html = view(&status, "t", "", None, false).into_string();
+    let html = view(&status, "t", "", None, false, true).into_string();
     assert!(html.contains("Include private repositories"), "{html}");
     assert!(
         html.contains(r#"hx-get="/projects/repositories?page=1""#),

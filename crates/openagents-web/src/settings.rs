@@ -196,7 +196,7 @@ async fn settings(
     .await;
     let body = html! {
         (settings_content(&viewer.account_label, claude, chats, plan))
-        (crate::connections::settings_row(&app))
+        (crate::connections::settings_row(&app, &viewer))
         (computers)
         (agents)
         (macs)

@@ -78,6 +78,16 @@ async fn the_app_token_runs_its_own_accounts_drive_tools() {
             })
         })
         .unwrap();
+    // Connections are only for allowed accounts (#11574).
+    store
+        .update_access(|access| {
+            access.add(crate::cloud::connections::AccessEntry {
+                account: Some("alice".into()),
+                ..Default::default()
+            })
+        })
+        .unwrap()
+        .unwrap();
     let endpoints = google.endpoints();
     let kept = store.clone();
     let fixture = fixture_with(move |config| {
@@ -139,7 +149,26 @@ async fn the_app_token_runs_its_own_accounts_drive_tools() {
     .await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
 
-    // Bob has no connection; no token is signed out.
+    // Bob isn't allowed Connections: the routes don't exist for him.
+    let (status, bob) = call(
+        &fixture.site,
+        Some(&token("bob")),
+        Method::GET,
+        "/v1/connections",
+        Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{bob}");
+    // Allowed, he has no connection; no token is signed out.
+    store
+        .update_access(|access| {
+            access.add(crate::cloud::connections::AccessEntry {
+                account: Some("bob".into()),
+                ..Default::default()
+            })
+        })
+        .unwrap()
+        .unwrap();
     let (status, bob) = call(
         &fixture.site,
         Some(&token("bob")),

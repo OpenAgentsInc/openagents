@@ -21,7 +21,7 @@ use openagents_ui::content::MarkdownRoot;
 use openagents_ui::forms::Input;
 use serde::Deserialize;
 
-use super::{CONNECT, Unready, live};
+use super::{CONNECT, Unready, api_unready, drive_refused, google_state, live};
 use crate::App;
 use crate::chat_store::account_owner;
 use crate::cloud::connections::Source;
@@ -34,6 +34,11 @@ pub(crate) fn routes() -> Router<App> {
     Router::new()
         .route("/projects/{id}/sources", get(page).post(attach))
         .route("/projects/{id}/sources/remove", post(remove))
+        .route("/v1/projects/{id}/sources", get(api_list).post(api_attach))
+        .route(
+            "/v1/projects/{id}/sources/{source}",
+            axum::routing::delete(api_detach),
+        )
 }
 
 /// The sources page of a project.
@@ -51,7 +56,7 @@ async fn project<'a>(
     headers: &HeaderMap,
     id: &str,
 ) -> Result<(&'a CloudSession, Viewer, Project), Response> {
-    let (service, viewer) = crate::settings::viewer(app, headers, &href(id)).await?;
+    let (service, viewer) = super::access::page_viewer(app, headers, &href(id)).await?;
     let status = service.github_status(headers).await.map_err(|_| {
         protect(crate::layout::problem(
             StatusCode::SERVICE_UNAVAILABLE,
@@ -416,5 +421,190 @@ async fn remove(
             &project.id,
             Some("That couldn't be saved. Try again later."),
         ),
+    }
+}
+
+// The app API (`docs/api/connections.md`) ------------------------------------
+
+/// A source as the app API shows it.
+pub(crate) fn source_object(source: &Source) -> serde_json::Value {
+    serde_json::json!({
+        "id": source.id,
+        "object": "source",
+        "project": source.project,
+        "integration": source.integration,
+        "name": source.name,
+        "kind": source.kind,
+        "link": source.link(),
+        "added_at": crate::projects::api::rfc3339(source.added_at),
+    })
+}
+
+/// The caller (who may use Connections) and their project `reference`
+/// (its id or `name:NAME`): the service, the account owner, the project id.
+async fn api_project<'a>(
+    app: &'a App,
+    headers: &HeaderMap,
+    reference: &str,
+) -> Result<(&'a CloudSession, String, String), Response> {
+    let (service, viewer) = super::access::api_viewer(app, headers).await?;
+    let (_, token, _) = crate::projects::api::caller(app, headers).await?;
+    let status = crate::projects::api::status(service, &token).await?;
+    let project = crate::projects::api::named(&status.projects, reference)?;
+    Ok((
+        service,
+        account_owner(&viewer.account_id),
+        project.id.clone(),
+    ))
+}
+
+fn api_stored_failed() -> Response {
+    crate::coder_sync::refused(
+        StatusCode::SERVICE_UNAVAILABLE,
+        "unavailable",
+        "That couldn't be read or saved. Try again later.",
+    )
+}
+
+/// `GET /v1/projects/{id}/sources`.
+async fn api_list(State(app): State<App>, headers: HeaderMap, Path(id): Path<String>) -> Response {
+    let (_, owner, project) = match api_project(&app, &headers, &id).await {
+        Ok(found) => found,
+        Err(response) => return response,
+    };
+    let Some(Ok(account)) = app.config.connections.as_deref().map(|s| s.load(&owner)) else {
+        return api_stored_failed();
+    };
+    let google = account.connection(oa_connections::google::SLUG, super::DEFAULT);
+    crate::coder_sync::answer(
+        StatusCode::OK,
+        serde_json::json!({
+            "project": project,
+            "google": google_state(&app, google).await,
+            "data": account.sources_of(&project).into_iter().map(source_object).collect::<Vec<_>>(),
+        }),
+    )
+}
+
+#[derive(Deserialize)]
+struct AttachBody {
+    #[serde(default)]
+    link: Option<String>,
+    #[serde(default)]
+    id: Option<String>,
+}
+
+/// `POST /v1/projects/{id}/sources` `{link}` or `{id}`: attach a Drive
+/// folder or file, checked with Drive first as the page checks it.
+async fn api_attach(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    body: Result<axum::Json<AttachBody>, axum::extract::rejection::JsonRejection>,
+) -> Response {
+    let (service, owner, project) = match api_project(&app, &headers, &id).await {
+        Ok(found) => found,
+        Err(response) => return response,
+    };
+    let given = match body {
+        Ok(axum::Json(AttachBody { link: Some(v), .. }))
+        | Ok(axum::Json(AttachBody { id: Some(v), .. })) => v,
+        _ => {
+            return crate::coder_sync::refused(
+                StatusCode::BAD_REQUEST,
+                "invalid_request",
+                "Send {\"link\": \"a Drive folder or file link\"} or {\"id\": \"its id\"} as JSON.",
+            );
+        }
+    };
+    let Some(item) = drive::parse_link(&given).map(|found| found.id) else {
+        return crate::coder_sync::refused(
+            StatusCode::BAD_REQUEST,
+            "invalid_request",
+            "That isn't a Google Drive folder or file link.",
+        );
+    };
+    let Some(store) = app.config.connections.as_deref() else {
+        return api_unready(service, Unready::Off);
+    };
+    let live = match live(&app, &owner).await {
+        Ok(live) => live,
+        Err(unready) => return api_unready(service, unready),
+    };
+    let file = match live.drive.file(&item).await {
+        Ok(file) => file,
+        Err(error) => return drive_refused(service, &error),
+    };
+    let source = Source {
+        project: project.clone(),
+        integration: oa_connections::google::SLUG.into(),
+        id: file.id.clone(),
+        name: if file.name.is_empty() {
+            file.id.clone()
+        } else {
+            file.name.clone()
+        },
+        kind: file.kind().into(),
+        added_at: now(),
+    };
+    let saved = store.update(&owner, |account| {
+        let had = account
+            .sources_of(&project)
+            .iter()
+            .any(|s| s.id == source.id);
+        account.attach(source.clone()).map(|()| {
+            let kept = account
+                .sources_of(&project)
+                .into_iter()
+                .find(|s| s.id == source.id)
+                .cloned()
+                .unwrap_or(source);
+            (had, kept)
+        })
+    });
+    match saved {
+        Ok(Ok((had, kept))) => crate::coder_sync::answer(
+            if had {
+                StatusCode::OK
+            } else {
+                StatusCode::CREATED
+            },
+            source_object(&kept),
+        ),
+        Ok(Err(why)) => crate::coder_sync::refused(StatusCode::CONFLICT, "full", why),
+        Err(_) => api_stored_failed(),
+    }
+}
+
+/// `DELETE /v1/projects/{id}/sources/{source}`.
+async fn api_detach(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path((id, source)): Path<(String, String)>,
+) -> Response {
+    let (_, owner, project) = match api_project(&app, &headers, &id).await {
+        Ok(found) => found,
+        Err(response) => return response,
+    };
+    let Some(store) = app.config.connections.as_deref() else {
+        return api_stored_failed();
+    };
+    match store.update(&owner, |account| {
+        let before = account.sources.len();
+        account
+            .sources
+            .retain(|s| !(s.project == project && s.id == source));
+        before != account.sources.len()
+    }) {
+        Ok(true) => crate::coder_sync::answer(
+            StatusCode::OK,
+            serde_json::json!({"id": source, "object": "source.deleted", "project": project}),
+        ),
+        Ok(false) => crate::coder_sync::refused(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "That isn't one of this project's sources. See them with: openagents projects sources PROJECT",
+        ),
+        Err(_) => api_stored_failed(),
     }
 }

@@ -19,6 +19,7 @@
 //!   Every call is checked against the connection's grant and the tool's
 //!   policy ([`oa_connections::effective_policy`]) first.
 
+pub(crate) mod access;
 pub(crate) mod chat;
 pub(crate) mod sources;
 #[cfg(test)]
@@ -31,7 +32,7 @@ use axum::Router;
 use axum::extract::{Form, Path, Query, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Redirect, Response};
-use axum::routing::{get, post};
+use axum::routing::{delete, get, post};
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use hmac::{Hmac, Mac};
@@ -62,6 +63,12 @@ const CALLBACK: &str = "/auth/google/callback";
 const FINISH: &str = "/auth/google/finish";
 /// The app API: the account's connections.
 const API: &str = "/v1/connections";
+/// The app API: forget the Google connection.
+const API_GOOGLE: &str = "/v1/connections/google";
+/// The app API: the link that connects Google.
+const API_CONNECT: &str = "/v1/connections/google/connect";
+/// The app API: browse or search Drive.
+const API_DRIVE: &str = "/v1/connections/google/drive";
 /// The app API: run one Google tool.
 const API_TOOL: &str = "/v1/connections/google/tools/{tool}";
 const CSRF_SCOPE: &str = "connections";
@@ -89,13 +96,17 @@ pub(crate) fn routes() -> Router<App> {
         .route(CALLBACK, get(callback))
         .route(FINISH, get(finish))
         .route(API, get(api_list))
+        .route(API_GOOGLE, delete(api_remove))
+        .route(API_CONNECT, post(api_connect))
+        .route(API_DRIVE, get(api_drive))
         .route(API_TOOL, post(api_tool))
         .merge(sources::routes())
+        .merge(access::routes())
 }
 
 /// Whether `path` is one of the app API's paths here.
 pub(crate) fn owns(path: &str) -> bool {
-    path == API || path.starts_with("/v1/connections/")
+    path == API || path.starts_with("/v1/connections/") || access::owns(path)
 }
 
 /// Google as this server reaches it: the OAuth client and endpoints.
@@ -288,8 +299,8 @@ pub(crate) async fn run_tool(
 // Settings ------------------------------------------------------------------
 
 /// The Settings row that opens this page.
-pub(crate) fn settings_row(app: &App) -> Markup {
-    if app.config.connections.is_none() {
+pub(crate) fn settings_row(app: &App, viewer: &Viewer) -> Markup {
+    if app.config.connections.is_none() || !access::permitted(app, viewer) {
         return html! {};
     }
     html! {
@@ -319,7 +330,7 @@ async fn page(
     headers: HeaderMap,
     Query(query): Query<PageQuery>,
 ) -> Response {
-    let (service, viewer) = match crate::settings::viewer(&app, &headers, PAGE).await {
+    let (service, viewer) = match access::page_viewer(&app, &headers, PAGE).await {
         Ok(found) => found,
         Err(response) => return response,
     };
@@ -442,7 +453,7 @@ async fn remove(
     headers: HeaderMap,
     Form(form): Form<CsrfForm>,
 ) -> Response {
-    let (service, viewer) = match crate::settings::viewer(&app, &headers, PAGE).await {
+    let (service, viewer) = match access::page_viewer(&app, &headers, PAGE).await {
         Ok(found) => found,
         Err(response) => return response,
     };
@@ -559,7 +570,8 @@ fn redirect_uri(service: &CloudSession) -> String {
 struct ConnectQuery {
     #[serde(default)]
     return_to: Option<String>,
-    /// `sheets`: ask only for Sheets (incremental consent).
+    /// `sheets`: ask only for Sheets (incremental consent); `drive`: only
+    /// Drive; neither: both.
     #[serde(default)]
     scope: Option<String>,
 }
@@ -569,7 +581,7 @@ async fn connect(
     headers: HeaderMap,
     Query(query): Query<ConnectQuery>,
 ) -> Response {
-    let (service, viewer) = match crate::settings::viewer(&app, &headers, PAGE).await {
+    let (service, viewer) = match access::page_viewer(&app, &headers, PAGE).await {
         Ok(found) => found,
         Err(response) => return response,
     };
@@ -596,10 +608,10 @@ async fn connect(
         owner: account_owner(&viewer.account_id),
         issued: now(),
     };
-    let scopes: &[&str] = if query.scope.as_deref() == Some("sheets") {
-        &[SHEETS_READONLY]
-    } else {
-        &[DRIVE_READONLY, SHEETS_READONLY]
+    let scopes: &[&str] = match query.scope.as_deref() {
+        Some("sheets") => &[SHEETS_READONLY],
+        Some("drive") => &[DRIVE_READONLY],
+        _ => &[DRIVE_READONLY, SHEETS_READONLY],
     };
     let url = oauth::authorize_url(
         &google.endpoints,
@@ -681,7 +693,7 @@ fn back_with(problem: &str) -> Response {
 }
 
 async fn finished(app: &App, headers: &HeaderMap, query: CallbackQuery) -> Response {
-    let (service, viewer) = match crate::settings::viewer(app, headers, PAGE).await {
+    let (service, viewer) = match access::page_viewer(app, headers, PAGE).await {
         Ok(found) => found,
         Err(response) => return response,
     };
@@ -754,24 +766,80 @@ async fn finished(app: &App, headers: &HeaderMap, query: CallbackQuery) -> Respo
 }
 
 // The app API --------------------------------------------------------------
+//
+// Every route takes the same credential as the other `/v1` app routes
+// (`Authorization: Bearer sess_…` from `openagents login` or `coder login`,
+// or a sign-in key `oa_sk_…` from `openagents keys create`) and answers only
+// that account's own connection (`docs/api/connections.md`). A browser
+// cookie alone is never enough, so these routes need no CSRF token.
 
-/// The signed-in app's account owner, or its JSON refusal. Only an app's
-/// own token (`Authorization: Bearer sess_...`) is accepted.
-async fn app_owner(app: &App, headers: &HeaderMap) -> Result<String, Response> {
-    let Some(token) = crate::account_export::app_token(headers) else {
-        return Err(crate::coder_sync::refused(
-            StatusCode::UNAUTHORIZED,
-            "signed_out",
-            "Sign in with coder login.",
-        ));
+/// The caller of an app API route: the account service and their account
+/// owner, or the app API's refusal.
+pub(crate) async fn api_caller<'a>(
+    app: &'a App,
+    headers: &HeaderMap,
+) -> Result<(&'a CloudSession, String), Response> {
+    let (service, viewer) = access::api_viewer(app, headers).await?;
+    Ok((service, account_owner(&viewer.account_id)))
+}
+
+/// The app API's answer when Google can't be used, with the page and the
+/// command that connect it.
+pub(crate) fn api_unready(service: &CloudSession, unready: Unready) -> Response {
+    let origin = service.origin().trim_end_matches('/');
+    let fix = format!("Connect it at {origin}{PAGE} or run: openagents connections connect google");
+    let (status, code, message) = match unready {
+        Unready::Off => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "unavailable",
+            unready.words().to_owned(),
+        ),
+        Unready::NotConnected => (
+            StatusCode::CONFLICT,
+            "google_not_connected",
+            format!("Google isn't connected. {fix}"),
+        ),
+        Unready::Reconnect => (
+            StatusCode::CONFLICT,
+            "google_reconnect",
+            format!("Google no longer accepts your connection. {fix}"),
+        ),
+        Unready::Unavailable => (
+            StatusCode::BAD_GATEWAY,
+            "google_unavailable",
+            unready.words().to_owned(),
+        ),
     };
-    let (_, viewer) = crate::account_export::app_viewer(app, token).await?;
-    Ok(account_owner(&viewer.account_id))
+    crate::coder_sync::refused(status, code, &message)
+}
+
+/// The app API's answer for a failed Drive call.
+pub(crate) fn drive_refused(service: &CloudSession, error: &drive::DriveError) -> Response {
+    let (status, code) = match error {
+        drive::DriveError::NotFound => (StatusCode::NOT_FOUND, "not_found"),
+        drive::DriveError::Unauthorized => return api_unready(service, Unready::Reconnect),
+        drive::DriveError::Forbidden => (StatusCode::FORBIDDEN, "drive_forbidden"),
+        drive::DriveError::Unreachable => (StatusCode::BAD_GATEWAY, "google_unavailable"),
+        _ => (StatusCode::UNPROCESSABLE_ENTITY, "invalid_request"),
+    };
+    crate::coder_sync::refused(status, code, &error.to_string())
+}
+
+/// The Google connection's state for the app API: `connected`,
+/// `reconnect` (Google stopped accepting it), `not_connected`, or
+/// `unavailable` (this server can't connect Google).
+pub(crate) async fn google_state(app: &App, stored: Option<&Stored>) -> &'static str {
+    match stored {
+        Some(stored) if stored.reconnect => "reconnect",
+        Some(_) => "connected",
+        None if app.config.connections.is_some() && google(app).await.is_some() => "not_connected",
+        None => "unavailable",
+    }
 }
 
 async fn api_list(State(app): State<App>, headers: HeaderMap) -> Response {
-    let owner = match app_owner(&app, &headers).await {
-        Ok(owner) => owner,
+    let owner = match api_caller(&app, &headers).await {
+        Ok((_, owner)) => owner,
         Err(response) => return response,
     };
     let available = app.config.connections.is_some() && google(&app).await.is_some();
@@ -805,18 +873,249 @@ async fn api_list(State(app): State<App>, headers: HeaderMap) -> Response {
                 "integration": stored.integration,
                 "name": stored.name,
                 "identity": stored.identity,
+                "status": if stored.reconnect { "reconnect" } else { "connected" },
+                "scopes": stored.granted_scopes,
+                "sheets": drive::has_sheets(&stored.granted_scopes),
+                "connected_at": crate::projects::api::rfc3339(stored.connected_at),
                 "reconnect": stored.reconnect,
                 "tools": tools,
             })
         })
         .collect();
+    let stored = account.connection(google_api::SLUG, DEFAULT);
+    let google = json!({
+        "status": google_state(&app, stored).await,
+        "email": stored.and_then(|s| s.identity.clone()),
+        "scopes": stored.map(|s| s.granted_scopes.clone()).unwrap_or_default(),
+        "sheets": stored.is_some_and(|s| drive::has_sheets(&s.granted_scopes)),
+        "connected_at": stored.map(|s| crate::projects::api::rfc3339(s.connected_at)),
+    });
     let sources: Vec<Value> = account
         .sources
         .iter()
         .map(|s| json!({"project": s.project, "id": s.id, "name": s.name, "kind": s.kind, "link": s.link()}))
         .collect();
-    axum::Json(json!({"available": available, "connections": connections, "sources": sources}))
-        .into_response()
+    crate::coder_sync::answer(
+        StatusCode::OK,
+        json!({"available": available, "google": google, "connections": connections, "sources": sources}),
+    )
+}
+
+#[derive(Deserialize, Default)]
+struct ConnectBody {
+    /// Also read every tab of Sheets.
+    #[serde(default)]
+    sheets: bool,
+    /// A same-site path to land on after Google.
+    #[serde(default)]
+    return_to: Option<String>,
+}
+
+/// `POST /v1/connections/google/connect` `{sheets?, return_to?}`: the link
+/// that connects Google. Google's consent is a person's click, so the link
+/// opens in a browser signed in to this site as the same account; the
+/// finishing step checks that, so a link can't connect someone else's
+/// Google to this account.
+async fn api_connect(
+    State(app): State<App>,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
+) -> Response {
+    let (service, owner) = match api_caller(&app, &headers).await {
+        Ok(found) => found,
+        Err(response) => return response,
+    };
+    let body: ConnectBody = if body.iter().all(u8::is_ascii_whitespace) {
+        ConnectBody::default()
+    } else {
+        match serde_json::from_slice(&body) {
+            Ok(body) => body,
+            Err(_) => {
+                return crate::coder_sync::refused(
+                    StatusCode::BAD_REQUEST,
+                    "invalid_request",
+                    "Send {\"sheets\": true} to read Sheets too, or no body.",
+                );
+            }
+        }
+    };
+    let Some(store) = app.config.connections.as_deref() else {
+        return api_unready(service, Unready::Off);
+    };
+    if google(&app).await.is_none() {
+        return api_unready(service, Unready::Off);
+    }
+    let stored = store
+        .load(&owner)
+        .ok()
+        .and_then(|account| account.connection(google_api::SLUG, DEFAULT).cloned());
+    let drive_granted = stored
+        .as_ref()
+        .is_some_and(|s| !s.reconnect && s.granted_scopes.iter().any(|g| g == DRIVE_READONLY));
+    // Sheets on top of a working Drive connection asks only for Sheets.
+    let (scope, scopes): (Option<&str>, Vec<&str>) = match (body.sheets, drive_granted) {
+        (false, _) => (Some("drive"), vec![DRIVE_READONLY]),
+        (true, true) => (Some("sheets"), vec![SHEETS_READONLY]),
+        (true, false) => (None, vec![DRIVE_READONLY, SHEETS_READONLY]),
+    };
+    let mut query = Vec::new();
+    if let Some(scope) = scope {
+        query.push(format!("scope={scope}"));
+    }
+    if let Some(return_to) = body.return_to.as_deref() {
+        query.push(format!(
+            "return_to={}",
+            encode(&safe_return(Some(return_to)))
+        ));
+    }
+    let origin = service.origin().trim_end_matches('/');
+    let url = if query.is_empty() {
+        format!("{origin}{CONNECT}")
+    } else {
+        format!("{origin}{CONNECT}?{}", query.join("&"))
+    };
+    crate::coder_sync::answer(
+        StatusCode::OK,
+        json!({
+            "object": "connection.consent",
+            "integration": google_api::SLUG,
+            "url": url,
+            "scopes": scopes,
+            "status": google_state(&app, stored.as_ref()).await,
+            "message": "Open this link in a browser signed in to openagents.com as you. Google asks you to allow read-only access, then you come back here.",
+        }),
+    )
+}
+
+/// `DELETE /v1/connections/google`: forget the connection and ask Google
+/// to revoke it. The projects' sources stay for when it's connected again.
+async fn api_remove(State(app): State<App>, headers: HeaderMap) -> Response {
+    let (service, owner) = match api_caller(&app, &headers).await {
+        Ok(found) => found,
+        Err(response) => return response,
+    };
+    let Some(store) = app.config.connections.as_deref() else {
+        return api_unready(service, Unready::Off);
+    };
+    let removed = store.update(&owner, |account| {
+        let token = account
+            .connection(google_api::SLUG, DEFAULT)
+            .map(|c| c.refresh_token.clone());
+        account
+            .connections
+            .retain(|c| !(c.integration == google_api::SLUG && c.name == DEFAULT));
+        (token, account.sources.len())
+    });
+    match removed {
+        Ok((token, sources)) => {
+            let deleted = token.is_some();
+            if let (Some(token), Some(google)) = (token, google(&app).await) {
+                oauth::revoke(&google.http, &google.endpoints, &token).await;
+            }
+            crate::coder_sync::answer(
+                StatusCode::OK,
+                json!({
+                    "object": "connection.deleted",
+                    "integration": google_api::SLUG,
+                    "deleted": deleted,
+                    "sources_kept": sources,
+                }),
+            )
+        }
+        Err(_) => crate::coder_sync::refused(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "unavailable",
+            "Your connection couldn't be changed. Try again later.",
+        ),
+    }
+}
+
+/// A Drive file or folder as the app API shows it.
+pub(crate) fn file_object(file: &drive::File) -> Value {
+    json!({
+        "id": file.id,
+        "object": "drive_file",
+        "name": file.name,
+        "kind": file.kind(),
+        "folder": file.is_folder(),
+        "link": file.link(),
+        "modified_at": file.modified_time,
+    })
+}
+
+#[derive(Deserialize, Default)]
+struct DriveQuery {
+    #[serde(default)]
+    q: Option<String>,
+    #[serde(default)]
+    folder: Option<String>,
+    #[serde(default)]
+    page: Option<String>,
+}
+
+/// `GET /v1/connections/google/drive?q=&folder=&page=`: one folder of the
+/// person's Drive (My Drive by default), or a search, for picking sources.
+async fn api_drive(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Query(query): Query<DriveQuery>,
+) -> Response {
+    let (service, owner) = match api_caller(&app, &headers).await {
+        Ok(found) => found,
+        Err(response) => return response,
+    };
+    let folder = match query
+        .folder
+        .as_deref()
+        .map(str::trim)
+        .filter(|f| !f.is_empty())
+    {
+        None => None,
+        Some(folder) => match drive::parse_link(folder) {
+            Some(found) => Some(found.id),
+            None if folder == "root" => Some("root".to_owned()),
+            None => {
+                return crate::coder_sync::refused(
+                    StatusCode::BAD_REQUEST,
+                    "invalid_request",
+                    "folder is a Drive folder id or link.",
+                );
+            }
+        },
+    };
+    let live = match live(&app, &owner).await {
+        Ok(live) => live,
+        Err(unready) => return api_unready(service, unready),
+    };
+    let q = query.q.as_deref().map(str::trim).filter(|q| !q.is_empty());
+    let listed = match q {
+        Some(q) => live
+            .drive
+            .search(q, folder.as_deref().filter(|f| *f != "root"), 50)
+            .await
+            .map(|files| (files, None)),
+        None => {
+            let page = query
+                .page
+                .as_deref()
+                .filter(|p| !p.is_empty() && p.len() <= 512);
+            live.drive
+                .list_folder(folder.as_deref().unwrap_or("root"), page)
+                .await
+        }
+    };
+    match listed {
+        Ok((files, next)) => crate::coder_sync::answer(
+            StatusCode::OK,
+            json!({
+                "data": files.iter().map(file_object).collect::<Vec<_>>(),
+                "folder": folder.unwrap_or_else(|| "root".to_owned()),
+                "query": q,
+                "next": next,
+            }),
+        ),
+        Err(error) => drive_refused(service, &error),
+    }
 }
 
 async fn api_tool(
@@ -825,8 +1124,8 @@ async fn api_tool(
     Path(tool): Path<String>,
     body: axum::body::Bytes,
 ) -> Response {
-    let owner = match app_owner(&app, &headers).await {
-        Ok(owner) => owner,
+    let (service, owner) = match api_caller(&app, &headers).await {
+        Ok(found) => found,
         Err(response) => return response,
     };
     let arguments: Value = match serde_json::from_slice(&body) {
@@ -841,14 +1140,7 @@ async fn api_tool(
     };
     let live = match live(&app, &owner).await {
         Ok(live) => live,
-        Err(unready) => {
-            let status = match unready {
-                Unready::Off => StatusCode::SERVICE_UNAVAILABLE,
-                Unready::NotConnected | Unready::Reconnect => StatusCode::CONFLICT,
-                Unready::Unavailable => StatusCode::BAD_GATEWAY,
-            };
-            return crate::coder_sync::refused(status, "not_connected", unready.words());
-        }
+        Err(unready) => return api_unready(service, unready),
     };
     let pdf = chat::pdf_reader(&app);
     match run_tool(&live, &tool, arguments, pdf.as_ref()).await {

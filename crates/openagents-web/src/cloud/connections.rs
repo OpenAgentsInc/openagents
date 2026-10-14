@@ -162,6 +162,126 @@ struct File {
     sealed: oa_seal::Sealed,
 }
 
+/// The access list's key in the store: no account owner value looks like
+/// it ([`crate::chat_store::account_owner`]).
+const ACCESS_KEY: &str = "site:access:google-drive-connections";
+/// The most entries the access list keeps.
+pub const MAX_ACCESS: usize = 200;
+/// Who the access list lets in before an admin first changes it: the
+/// owner's accounts (2026-10-14).
+pub const ACCESS_SEED: [&str; 2] = ["chris@openagents.com", "kikidesignsfun@gmail.com"];
+
+/// Who may see and use Google Drive connections while Google hasn't
+/// approved the app (#11574): accounts by id, or by email until they
+/// sign up. Site admins always may; that isn't kept here.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Access {
+    #[serde(default)]
+    pub entries: Vec<AccessEntry>,
+    /// Accounts that passed by email or as an admin, so a chat answered
+    /// without the person's sign-in at hand (an app's message) knows them.
+    /// Refreshed on each signed-in check.
+    #[serde(default)]
+    pub seen: Vec<Seen>,
+}
+
+/// One entry: an account id or an email (lowercase).
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AccessEntry {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub email: Option<String>,
+    #[serde(default)]
+    pub added_at: u64,
+}
+
+/// An account that passed, and how: `admin`, or the email entry.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Seen {
+    pub account: String,
+    pub via: String,
+}
+
+impl Access {
+    /// The list before any change: [`ACCESS_SEED`].
+    #[must_use]
+    pub fn seeded() -> Self {
+        Self {
+            entries: ACCESS_SEED
+                .iter()
+                .map(|email| AccessEntry {
+                    email: Some((*email).to_owned()),
+                    ..AccessEntry::default()
+                })
+                .collect(),
+            seen: Vec::new(),
+        }
+    }
+
+    /// Whether the entries name `account` or `email`; the matching entry's
+    /// word (`account` or the email).
+    #[must_use]
+    pub fn entry_for(&self, account: &str, email: Option<&str>) -> Option<String> {
+        let email = email.map(str::to_lowercase);
+        self.entries.iter().find_map(|entry| {
+            if entry.account.as_deref() == Some(account) {
+                Some("account".to_owned())
+            } else if entry.email.is_some() && entry.email == email {
+                entry.email.clone()
+            } else {
+                None
+            }
+        })
+    }
+
+    /// Whether `account` is let in without its sign-in at hand: named, or
+    /// seen passing.
+    #[must_use]
+    pub fn knows(&self, account: &str) -> bool {
+        self.entries
+            .iter()
+            .any(|e| e.account.as_deref() == Some(account))
+            || self.seen.iter().any(|s| s.account == account)
+    }
+
+    /// Add an account id or email; `false` when it's already there.
+    ///
+    /// # Errors
+    ///
+    /// A sentence when the list is full.
+    pub fn add(&mut self, entry: AccessEntry) -> Result<bool, &'static str> {
+        let entry = AccessEntry {
+            email: entry.email.map(|e| e.trim().to_lowercase()),
+            ..entry
+        };
+        if self.entries.iter().any(|e| {
+            (e.account.is_some() && e.account == entry.account)
+                || (e.email.is_some() && e.email == entry.email)
+        }) {
+            return Ok(false);
+        }
+        if self.entries.len() >= MAX_ACCESS {
+            return Err("The list is full. Remove someone first.");
+        }
+        self.entries.push(entry);
+        Ok(true)
+    }
+
+    /// Remove the entry naming `who` (an account id or email), and what was
+    /// seen through it; `false` when nothing matched.
+    pub fn remove(&mut self, who: &str) -> bool {
+        let lowered = who.trim().to_lowercase();
+        let before = self.entries.len() + self.seen.len();
+        self.entries.retain(|e| {
+            e.account.as_deref() != Some(who.trim()) && e.email.as_deref() != Some(lowered.as_str())
+        });
+        self.seen
+            .retain(|s| s.account != who.trim() && s.via != lowered);
+        before != self.entries.len() + self.seen.len()
+    }
+}
+
 /// The store: a private directory and the keyring that seals it.
 pub struct Store {
     root: PathBuf,
@@ -233,10 +353,18 @@ impl Store {
     ///
     /// [`CustodyError::Unavailable`] when the file doesn't open.
     pub fn load(&self, owner: &str) -> Result<Account, CustodyError> {
+        Ok(self.read_sealed(owner)?.unwrap_or_default())
+    }
+
+    /// The sealed record kept under `owner`, if any.
+    fn read_sealed<T: serde::de::DeserializeOwned>(
+        &self,
+        owner: &str,
+    ) -> Result<Option<T>, CustodyError> {
         self.check()?;
         let Some(mut bytes) = custody::read_private(&self.root.join(Self::name(owner)), FILE_MAX)?
         else {
-            return Ok(Account::default());
+            return Ok(None);
         };
         let file = serde_json::from_slice::<File>(&bytes);
         bytes.fill(0);
@@ -248,7 +376,9 @@ impl Store {
             .keyring
             .open(&Self::bound(owner), &file.sealed)
             .map_err(|_| CustodyError::Unavailable)?;
-        serde_json::from_slice(&plain).map_err(|_| CustodyError::Unavailable)
+        serde_json::from_slice(&plain)
+            .map(Some)
+            .map_err(|_| CustodyError::Unavailable)
     }
 
     fn save(&self, owner: &str, account: &Account) -> Result<(), CustodyError> {
@@ -259,7 +389,11 @@ impl Store {
             }
             return Ok(());
         }
-        let mut plain = serde_json::to_vec(account).map_err(|_| CustodyError::Unavailable)?;
+        self.write_sealed(owner, account)
+    }
+
+    fn write_sealed<T: Serialize>(&self, owner: &str, value: &T) -> Result<(), CustodyError> {
+        let mut plain = serde_json::to_vec(value).map_err(|_| CustodyError::Unavailable)?;
         if plain.len() > RECORD_MAX {
             plain.fill(0);
             return Err(CustodyError::Invalid);
@@ -274,6 +408,32 @@ impl Store {
         .map_err(|_| CustodyError::Unavailable)?;
         self.check()?;
         custody::write_private(&self.root, &Self::name(owner), &bytes)
+    }
+
+    /// Who may use Google Drive connections ([`Access`]); the seed list
+    /// until an admin first changes it.
+    ///
+    /// # Errors
+    ///
+    /// [`CustodyError::Unavailable`] when the file doesn't open.
+    pub fn access(&self) -> Result<Access, CustodyError> {
+        Ok(self.read_sealed(ACCESS_KEY)?.unwrap_or_else(Access::seeded))
+    }
+
+    /// Change the access list with `change` and keep it.
+    ///
+    /// # Errors
+    ///
+    /// [`CustodyError`] when it can't be read or kept.
+    pub fn update_access<T>(
+        &self,
+        change: impl FnOnce(&mut Access) -> T,
+    ) -> Result<T, CustodyError> {
+        let _writing = self.writing.lock().map_err(|_| CustodyError::Unavailable)?;
+        let mut access = self.access()?;
+        let out = change(&mut access);
+        self.write_sealed(ACCESS_KEY, &access)?;
+        Ok(out)
     }
 
     /// Change the account's record with `change` and keep it; returns what

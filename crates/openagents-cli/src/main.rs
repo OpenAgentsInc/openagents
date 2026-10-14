@@ -36,6 +36,7 @@ mod cloud;
 mod computer;
 #[cfg(unix)]
 mod connect;
+mod connections;
 mod customer;
 mod deploy;
 mod discover;
@@ -220,6 +221,8 @@ Coder:
   projects     Your openagents.com projects (the Projects list on the
                website): list, show one with its chats, add, remove, and
                private files.
+  connections  Services connected to your openagents.com account: connect
+               Google Drive, browse it, and see what's attached.
   board        GitHub Project boards: list items by status, add an issue, and
                move it to a status.
   lease        Run a command under a lease on a shared resource (build slots,
@@ -470,6 +473,7 @@ fn main() -> ExitCode {
         "task" => runtime().block_on(coder::task::cli::run_with_json(&rest, json)),
         "issue" => issue::run(&output, &rest),
         "projects" => projects::run(&output, &rest),
+        "connections" => connections::run(&output, &rest),
         "board" => issue::project(&output, &rest),
         "lease" | "leases" => lease::run(&output, &rest),
         "sales" => sales::run(&output, &rest),

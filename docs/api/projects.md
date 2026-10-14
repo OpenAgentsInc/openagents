@@ -37,7 +37,7 @@ The owner's ask: "our CLI needs to interact with that via api first class".
 | A project groups the owner's chats, with a name, instructions, and zero or more repositories (one primary) | `crates/openagents-web/src/projects/`, gateway `crates/gateway/src/github_repos.rs`, `oa_auth::repos` | Live on the website (sidebar: Projects); repositories as a list since 2026-10-13 |
 | Create, change, and remove a project | gateway `POST /v1/projects`, `PATCH /v1/projects/{id}`, `DELETE /v1/projects/{id}` (older `/v1/account/projects`) | Built, first-party |
 | List projects | gateway `GET /v1/account/github` ("connected GitHub access and projects") | Built, first-party |
-| Drive sources on a project | web `/projects/{id}/sources` (`crates/openagents-web/src/connections/sources.rs`) | Website pages only |
+| Drive sources on a project | web `/projects/{id}/sources` and `GET`/`POST /v1/projects/{id}/sources`, `DELETE /v1/projects/{id}/sources/{source}` (`crates/openagents-web/src/connections/sources.rs`, [connections.md](connections.md)) | Live for accounts allowed Connections (#11574) |
 | A chat's project | web `/chat/{id}/project`; `Conversation::project` | Website only |
 | Threads over HTTP for the apps | `GET /v1/threads`, `GET /v1/threads/{id}`, `POST /v1/threads/{id}/messages` (`phone_api.rs`) | Built (staging), app token |
 | Account export | `crates/openagents-web/src/account_export.rs` (projects and chats) | Live |
@@ -75,7 +75,7 @@ from the code, this is how it works today:
 | `POST /v1/files?purpose=project&filename=NAME`, the file's bytes as the body | `201` File: `{id: "file_…", object: "file", filename, mime_type, size_bytes, sha256, created_at, stored_as: "original", project}`. 10 MB at most. Not multipart |
 | `GET /v1/files/{id}`, `GET /v1/files/{id}/content`, `DELETE /v1/files/{id}` | The File; its bytes (`Content-Disposition`, `Digest: sha-256=…`); `{id, object: "file.deleted"}` |
 | `GET /v1/projects/{id}/attachments` | `{data: [Attachment], next, protection}`, oldest first: `file`, `document`, `source` (the project's Drive sources), and `vault` |
-| `POST /v1/projects/{id}/attachments` | `{"file": "file_…"}`, `{"document": {"title", "text"}}` (1 MB of text), or `{"vault": "<object id>"}` (an object already in the caller's vault): `201` Attachment. Drive sources still connect on the Sources page |
+| `POST /v1/projects/{id}/attachments` | `{"file": "file_…"}`, `{"document": {"title", "text"}}` (1 MB of text), or `{"vault": "<object id>"}` (an object already in the caller's vault): `201` Attachment. Drive sources attach with `POST /v1/projects/{id}/sources` ([connections.md](connections.md)) |
 | `GET /v1/projects/{id}/documents/{doc}` | `{id: "pdoc_…", object: "document", title, text, size_bytes, created_at, project}` |
 | `DELETE /v1/projects/{id}/attachments/{att}` | `{id, object: "attachment.deleted"}`; a file is deleted with it |
 
@@ -113,7 +113,7 @@ from the code, this is how it works today:
   name and type stay in the index. A vault file removed from the vault
   itself leaves the listing. Removing a project forgets its files and its
   record of vault files; the vault files themselves stay in the vault.
-- **Not yet:** `sealed`, multipart uploads, connecting Drive sources
+- **Not yet:** `sealed`, multipart uploads
   through the API, `oak_` keys with `projects:*` scopes, and `GET
   /v1/threads` filters other than `project` (without `project` it still
   answers the apps' older shape).

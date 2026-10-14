@@ -231,6 +231,7 @@ async fn list_page(
         None,
         StatusCode::OK,
         app.config.github_install.is_some(),
+        crate::connections::access::permitted(&app, &viewer),
     )
     .await
 }
@@ -244,6 +245,7 @@ async fn render(
     problem: Option<String>,
     status: StatusCode,
     install: bool,
+    sources: bool,
 ) -> Response {
     let state = match service.github_status(headers).await {
         Ok(state) => state,
@@ -252,7 +254,7 @@ async fn render(
     let token = service
         .csrf(headers, viewer, CSRF_SCOPE, "")
         .unwrap_or_default();
-    let body = view(&state, &token, q, problem.as_deref(), install);
+    let body = view(&state, &token, q, problem.as_deref(), install, sources);
     page_for(headers, status, body)
 }
 
@@ -448,8 +450,15 @@ pub(crate) fn repos_page(
 
 /// The page body (separate from I/O for tests). `install`: this server
 /// adds repositories through its GitHub App.
-fn view(state: &Status, csrf: &str, q: &str, problem: Option<&str>, install: bool) -> Markup {
-    view_with(state, csrf, q, problem, install, None)
+fn view(
+    state: &Status,
+    csrf: &str,
+    q: &str,
+    problem: Option<&str>,
+    install: bool,
+    sources: bool,
+) -> Markup {
+    view_with(state, csrf, q, problem, install, None, sources)
 }
 
 /// The page body with `list`, the repositories list, in place of the one
@@ -461,6 +470,7 @@ pub(crate) fn view_with(
     problem: Option<&str>,
     install: bool,
     list: Option<Markup>,
+    sources: bool,
 ) -> Markup {
     let q = q.trim();
     html! {
@@ -502,10 +512,12 @@ pub(crate) fn view_with(
                                     .size(ControlSize::Sm)
                                     .variant(ButtonVariant::Ghost)
                                     .color(Color::Secondary))
-                                (ButtonLink::new("Sources", crate::connections::sources::href(&project.id))
-                                    .size(ControlSize::Sm)
-                                    .variant(ButtonVariant::Ghost)
-                                    .color(Color::Secondary))
+                                @if sources {
+                                    (ButtonLink::new("Sources", crate::connections::sources::href(&project.id))
+                                        .size(ControlSize::Sm)
+                                        .variant(ButtonVariant::Ghost)
+                                        .color(Color::Secondary))
+                                }
                                 (ButtonLink::new("Vault", crate::vault::project_href(&project.id))
                                     .size(ControlSize::Sm)
                                     .variant(ButtonVariant::Ghost)
@@ -723,6 +735,7 @@ async fn add(State(app): State<App>, headers: HeaderMap, Form(form): Form<AddFor
                 Some(problem),
                 StatusCode::from_u16(error.status()).unwrap_or(StatusCode::BAD_REQUEST),
                 app.config.github_install.is_some(),
+                crate::connections::access::permitted(&app, &viewer),
             )
             .await
         }
@@ -853,6 +866,7 @@ async fn finished(app: &App, headers: &HeaderMap, query: FinishQuery) -> Respons
             Some("That GitHub connection expired. Start again from this browser.".into()),
             StatusCode::BAD_REQUEST,
             install,
+            crate::connections::access::permitted(&app, &viewer),
         )
         .await;
     };
@@ -883,6 +897,7 @@ async fn finished(app: &App, headers: &HeaderMap, query: FinishQuery) -> Respons
                 Some(error.to_string()),
                 StatusCode::from_u16(error.status()).unwrap_or(StatusCode::BAD_REQUEST),
                 install,
+                crate::connections::access::permitted(&app, &viewer),
             )
             .await
         }
