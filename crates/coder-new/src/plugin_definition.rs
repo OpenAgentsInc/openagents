@@ -171,6 +171,15 @@ pub const DEFINITIONS: &[PluginDefinition] = &[
         composer_rails: &[],
     },
     PluginDefinition {
+        id: crate::code_graph_plugin::PLUGIN,
+        name: "Code Graph",
+        description: crate::code_graph_plugin::DESCRIPTION,
+        default_enabled: true,
+        tools: &[],
+        model_provider: None,
+        composer_rails: &[],
+    },
+    PluginDefinition {
         id: crate::token_savers::PLUGIN,
         name: "Token savers",
         description: crate::token_savers::DESCRIPTION,

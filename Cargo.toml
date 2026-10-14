@@ -45,6 +45,15 @@ unimplemented = "deny"
 [profile.dev.package.sha2]
 opt-level = 3
 
+# The code graph (#11622) parses every Rust file of a checkout on a local
+# build; unoptimized it would take most of a minute instead of seconds.
+[profile.dev.package.code-graph]
+opt-level = 3
+[profile.dev.package.tree-sitter]
+opt-level = 3
+[profile.dev.package.tree-sitter-rust]
+opt-level = 3
+
 # The vault's recovery code is stretched with scrypt (2^17, 128 MiB); at
 # opt-level 0 one unlock takes most of a minute.
 [profile.dev.package.scrypt]

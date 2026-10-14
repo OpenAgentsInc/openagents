@@ -24,6 +24,7 @@ pub mod cli_capabilities;
 pub mod cloud;
 pub mod cloud_settings;
 pub mod cloud_tools;
+pub mod code_graph_plugin;
 pub mod codex;
 pub mod codex_chat;
 mod codex_usage;

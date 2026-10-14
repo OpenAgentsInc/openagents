@@ -1,0 +1,11 @@
+[Unit]
+Description=Check main for code changes and republish the code graph every five minutes
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=5min
+RandomizedDelaySec=30s
+Unit=openagents-code-graph.service
+
+[Install]
+WantedBy=timers.target

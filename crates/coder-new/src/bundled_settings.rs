@@ -51,6 +51,9 @@ struct Preferences {
     /// Second look (#11540); off unless turned on.
     #[serde(default)]
     second_look: bool,
+    /// Code Graph (#11622); on unless turned off.
+    #[serde(default = "on")]
+    code_graph: bool,
     jev_enabled: bool,
     jev_model: String,
     jev_endpoint: String,
@@ -80,6 +83,7 @@ impl Default for Preferences {
             opencode: true,
             token_savers: true,
             second_look: false,
+            code_graph: true,
             jev_enabled: true,
             jev_model: jev::defaults::MODEL.into(),
             jev_endpoint: crate::jev_plugin::DEFAULT_ENDPOINT.into(),
@@ -200,6 +204,7 @@ pub fn saved_enabled(dir: &std::path::Path, id: &str) -> bool {
         (crate::token_savers::PLUGIN, Ok(Some(value))) => value.token_savers,
         (crate::second_look::PLUGIN, Ok(Some(value))) => value.second_look,
         (crate::second_look::PLUGIN, _) => false,
+        (crate::code_graph_plugin::PLUGIN, Ok(Some(value))) => value.code_graph,
         (crate::claude::PLUGIN, Ok(Some(value))) => value.claude,
         _ => true,
     }
@@ -229,6 +234,8 @@ pub struct BundledSettings {
     pub token_savers: bool,
     /// Second look (#11540).
     pub second_look: bool,
+    /// Code Graph (#11622).
+    pub code_graph: bool,
     pub jev_enabled: bool,
     pub acp_agents: Vec<AcpAgent>,
     pub focus: SettingsFocus,
@@ -276,6 +283,7 @@ impl Default for BundledSettings {
             opencode: true,
             token_savers: true,
             second_look: false,
+            code_graph: true,
             jev_enabled: true,
             acp_agents: Vec::new(),
             focus: SettingsFocus::ApiKey,
@@ -320,6 +328,7 @@ impl BundledSettings {
             opencode: self.opencode,
             token_savers: self.token_savers,
             second_look: self.second_look,
+            code_graph: self.code_graph,
             jev_enabled: self.jev_enabled,
             jev_model: self.jev_model.clone(),
             jev_endpoint: self.jev_endpoint.clone(),
@@ -346,11 +355,13 @@ impl BundledSettings {
         self.opencode = value.opencode;
         self.token_savers = value.token_savers;
         self.second_look = value.second_look;
+        self.code_graph = value.code_graph;
         // The process-wide flags; a test leaves them to their defaults so
         // tests running alongside see Token savers on and Second look off.
         if self.live && !cfg!(test) {
             crate::token_savers::set_enabled(value.token_savers);
             crate::second_look::set_enabled(value.second_look);
+            crate::code_graph_plugin::set_enabled(value.code_graph);
         }
         self.jev_enabled = value.jev_enabled;
         self.jev_model = value.jev_model;
@@ -477,6 +488,7 @@ impl BundledSettings {
             crate::opencode_chat::PLUGIN => self.opencode && crate::opencode_chat::installed(),
             crate::token_savers::PLUGIN => self.token_savers,
             crate::second_look::PLUGIN => self.second_look,
+            crate::code_graph_plugin::PLUGIN => self.code_graph,
             "jev" => self.jev_enabled,
             crate::brainstorm::PLUGIN => self.brainstorm.preferences.enabled,
             _ => false,
@@ -505,6 +517,7 @@ impl BundledSettings {
             crate::opencode_chat::PLUGIN => &mut value.opencode,
             crate::token_savers::PLUGIN => &mut value.token_savers,
             crate::second_look::PLUGIN => &mut value.second_look,
+            crate::code_graph_plugin::PLUGIN => &mut value.code_graph,
             "jev" => &mut value.jev_enabled,
             crate::brainstorm::PLUGIN => &mut value.brainstorm.enabled,
             _ => return false,

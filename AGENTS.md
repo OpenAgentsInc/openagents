@@ -227,6 +227,16 @@ decided on 2026-09-28 to commit it (see `INVARIANTS.md`, Phone wallet).
 and `ldk-node` link different `libsqlite3-sys` versions. Build and test it
 with `--manifest-path crates/openagents-mobile/Cargo.toml`, not `-p`.
 
+## Code Graph (#11622)
+
+For structure and impact questions (where `X` is defined, who calls `X`,
+what breaks if `X` changes, a module's public items), query the code graph
+before opening source: Coder's `graph_*` tools, or `cargo run --release -p
+code-graph -- query graph_impact '{"symbol":"X"}'`. Then read only the
+lines it points to. The graph lives on the `code-graph` branch and under
+`.git/code-graph/`; never commit it to `main`. Read
+`docs/code-graph/README.md`.
+
 ## Skills
 
 Four skills are vendored under `.agents/skills/`. Read and apply them:
@@ -263,6 +273,11 @@ uses, and marks which are implemented and which are only specified.
   shell command record the same way. Reimplemented from the Harbor
   trajectory RFC's reference implementation; `serde` and `sha2` only, no
   network. Read `docs/coder/runtime/traces.md`.
+- `crates/code-graph` — the deterministic code graph (#11622): nodes for
+  Rust items with `file:line`, edges for calls, imports, impls and type
+  references, built with pinned tree-sitter and no model; the typed queries
+  behind Coder's `graph_*` tools; and the one publisher of the `code-graph`
+  branch. Read `docs/code-graph/README.md`.
 - `crates/gym` — the measurement and control plane for decision models:
   pinned suites, a receipt-chained result store, digested acceptance gates,
   and the terminal that reads them. It scores whatever answers

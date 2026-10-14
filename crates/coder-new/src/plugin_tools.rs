@@ -438,6 +438,10 @@ impl ExecutionSettings {
             definitions.push(run);
             definitions.extend(crate::shells::tool_definitions(self));
             definitions.extend(crate::file_tools::definitions());
+            // The code graph (#11622), where this is a Rust checkout.
+            if crate::code_graph_plugin::offered(&self.cwd) {
+                definitions.extend(crate::code_graph_plugin::definitions());
+            }
             definitions.extend(crate::web_tools::definitions());
             // Media files on this computer (#11172), with the same access as Run.
             definitions.push(crate::media::definition());
@@ -543,6 +547,9 @@ impl ExecutionSettings {
         );
         if self.shell {
             guidance.push_str(crate::file_tools::INSTRUCTIONS);
+            if crate::code_graph_plugin::offered(&self.cwd) {
+                guidance.push_str(crate::code_graph_plugin::INSTRUCTIONS);
+            }
             if self.boundary.is_some() {
                 guidance.push_str(crate::checkout_guard::INSTRUCTIONS);
             }
@@ -838,6 +845,12 @@ impl ExecutionSettings {
                     result = crate::connection_tools::execute(account, name, arguments) => result,
                     () = async { while !cancel.load(Ordering::Relaxed) { tokio::time::sleep(std::time::Duration::from_millis(50)).await; } } => Err("The Drive request was canceled.".into()),
                 }
+            }
+            name if crate::code_graph_plugin::is_tool(name)
+                && self.shell
+                && crate::code_graph_plugin::offered(&self.cwd) =>
+            {
+                crate::code_graph_plugin::execute(name, arguments, &self.cwd).await
             }
             "web_fetch" | "web_search" if self.shell => {
                 let call = async {

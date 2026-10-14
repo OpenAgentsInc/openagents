@@ -3055,6 +3055,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "code-graph"
+version = "1.0.0-rc.13"
+dependencies = [
+ "flate2",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "tree-sitter",
+ "tree-sitter-rust",
+]
+
+[[package]]
 name = "code-highlight"
 version = "1.0.0-rc.13"
 dependencies = [
@@ -3731,6 +3744,7 @@ dependencies = [
  "brainstorm-client",
  "briefed-agent",
  "claude_agent_sdk",
+ "code-graph",
  "code-highlight",
  "coder",
  "coder-boundary",

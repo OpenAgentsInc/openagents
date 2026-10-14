@@ -1,0 +1,31 @@
+[package]
+name = "code-graph"
+description = "A deterministic code graph of a repository's Rust (functions, types, modules; calls, uses, impls, type references) and the typed queries Coder's graph tools answer from it (#11622)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lib]
+name = "code_graph"
+path = "src/lib.rs"
+
+[[bin]]
+name = "code-graph"
+path = "src/main.rs"
+
+[dependencies]
+# Pinned exactly: the parser and grammar versions are recorded in every
+# graph, and the same commit must give the same bytes.
+tree-sitter = "=0.27.0"
+tree-sitter-rust = "=0.24.2"
+flate2 = "=1.1.10"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

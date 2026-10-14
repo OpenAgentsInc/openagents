@@ -1,0 +1,14 @@
+[Unit]
+Description=OpenAgents code graph: publish the graph of main to the code-graph branch when its code changed
+Documentation=https://github.com/OpenAgentsInc/openagents/blob/main/docs/code-graph/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/libexec/openagents-code-graph/publish.sh
+TimeoutStartSec=10min
+Nice=10
+NoNewPrivileges=true
+PrivateTmp=true
+UMask=0077
