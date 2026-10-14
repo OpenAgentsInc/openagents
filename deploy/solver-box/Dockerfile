@@ -33,10 +33,18 @@ FROM rust:1.97.1-slim-trixie
 
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-        ca-certificates curl git gh jq procps ripgrep bubblewrap \
+        ca-certificates curl git jq procps ripgrep bubblewrap \
         python3 python3-numpy \
         build-essential pkg-config clang cmake protobuf-compiler libprotobuf-dev \
         libssl-dev libasound2-dev libudev-dev \
+    # gh from GitHub's own apt repository: Debian's 2.46 lacks the
+    # `stateReason` field the solver reads from `gh issue view`.
+    && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+        -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+        > /etc/apt/sources.list.d/github-cli.list \
+    && apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends gh \
     && rm -rf /var/lib/apt/lists/* \
     && rustup component add rustfmt clippy \
     && rm -rf /usr/local/rustup/downloads /usr/local/rustup/tmp

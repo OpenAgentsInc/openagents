@@ -27,7 +27,8 @@ gcloud builds submit --no-source --config deploy/solver-box/cloudbuild.yaml \
 | Release `coder-new` (also linked as `coder`) | `/usr/local/bin` |
 | The briefing scripts (`scripts/filefind`, `scripts/coder`, `scripts/bench/briefed-ab`, `scripts/bench/traces`) | `/opt/oa-tools`, named by `CODER_ISSUE_RUN_TOOLS` |
 | Rust 1.97.1 (rust-toolchain.toml) with rustfmt and clippy, build tools, protobuf | the `rust:1.97.1-slim-trixie` base |
-| git, gh, python3 with numpy, ripgrep, bubblewrap, jq | Debian packages |
+| git, python3 with numpy, ripgrep, bubblewrap, jq | Debian packages |
+| gh (current; Debian's 2.46 lacks fields the solver reads) | GitHub's apt repository |
 | The entrypoint [`solver-box-run`](solver-box-run) | `/usr/local/bin/solver-box-run` |
 
 ## The entrypoint contract
@@ -55,25 +56,37 @@ added, removed, commit, error, summary, patch}` line (the patch is cut at
 200 KB). Exit 0 when a pull request opened, 1 when the run ended without
 one, 2 when it never reached the solver.
 
-## The dispatcher
+## The box runner
 
-`oa-solver-box` ([`crates/solver-box`](../../crates/solver-box)) claims
-solver runs from the website, makes a `large` box per run, installs Docker
-on it, writes the credentials through the files API, runs this container
-with `--privileged` (bubblewrap, the hands' run boundary, needs namespaces),
-follows its output, reports progress lines and the result, and deletes the
-box however the run ends.
+`oa-solver-box` ([`crates/solver-box`](../../crates/solver-box)) runs one
+issue: it asks our Box service for a `large` box (on demand, TTL 6 h, idle
+stop 30 min, no env), makes `/run/oa-solver` and `/run/oa-solver-host` on
+the box's tmpfs (mode 700), writes the env file, the Vertex AI token and an
+Artifact Registry token there through the files API (mode 600), and starts
+[`box-run.sh`](../../crates/solver-box/src/box-run.sh) detached: it puts
+Docker on the box when the image lacks it, signs Docker in with the registry
+token and deletes it, pulls this image and runs it with `--privileged`
+(bubblewrap, the hands' run boundary, needs namespaces). The runner follows
+the output as progress lines (`box`, `stage`, `briefing`, `thinking`,
+`tool`, `checks`, `pr`, `cost`, `notice`), rewrites the Vertex AI token every
+20 minutes, reads the box's usage and deletes the box however the run ends.
+The result is in the work-run result shape (`ok`, `engine: "solver"`,
+`cost_usd` = model plus box, unknown stays null, `secs`, `checks`,
+`diff.{files,added,removed}`, `landed.url`, `error`) plus `box`, `patch` and
+`reply`.
 
 ```sh
 set -a; . ~/work/.secrets/boat.env; set +a     # BOAT_API_KEY, BOAT_API_BASE
 export CLOUDSDK_CONFIG=/Users/christopherdavid/work/.secrets/gcloud-sa-config
-# One issue, no website: progress lines on stdout.
-cargo run -p solver-box -- --local-issue OWNER/NAME#N
-# Against the website: claim solver runs until stopped (or --once).
-OPENAGENTS_WORK_HOST_TOKEN=... cargo run -p solver-box -- --name solver-1 --origin https://openagents.com
+# Until the Coder loop's Vertex door lands (#11562): an OpenAgents sign-in key.
+set -a; . ~/work/.secrets/coder-gate-signin.env; set +a   # OPENAGENTS_TOKEN
+cargo run -p solver-box -- --local-issue AtlantisPleb/coder-one-sandbox#1 --result /tmp/solver-result.json
 ```
 
-The GitHub token for `--local-issue` is `OA_SOLVER_GH_TOKEN`, else
-`gh auth token`. The Artifact Registry pull token and the Vertex token come
-from the dispatcher's own Google identity (`gcloud auth print-access-token`,
-or the metadata server on GCE).
+The GitHub token is `OA_SOLVER_GH_TOKEN`, else `gh auth token`. Google
+access tokens come from `gcloud auth print-access-token`, or the metadata
+server with `--metadata-token` (when the runner itself runs on Google
+Cloud). Claiming solver work runs from the website and reporting each
+progress line and the result is the dispatcher's
+([#11562](https://github.com/OpenAgentsInc/openagents/issues/11562)); it
+calls `solver_box::run` per claimed run.

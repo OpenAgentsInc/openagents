@@ -97,7 +97,7 @@ and the box is deleted. Nothing runs on the person's computer.
 ```sh
 export CLOUDSDK_CONFIG=/Users/christopherdavid/work/.secrets/gcloud-sa-config
 gcloud compute instances list --filter labels.openagents-managed=oa-boat --project openagentsgemini
-gcloud artifacts docker images list us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/oa-solver-box
+gcloud artifacts docker images list us-central1-docker.pkg.dev/openagentsgemini/openagents/oa-solver-box
 ```
 
 The dispatcher, the image and the Vertex door are documented with their

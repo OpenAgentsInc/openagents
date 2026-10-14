@@ -61,6 +61,10 @@ if ! git clone -q --filter=blob:none "https://github.com/$OA_REPO.git" "$REPO_DI
   give_up "Could not clone $OA_REPO: ${why:-no answer from GitHub}. Connect GitHub with access to $OA_REPO."
 fi
 step clone done "Cloned $OA_REPO at $(git -C "$REPO_DIR" rev-parse --short HEAD)"
+if ! gh issue view "$OA_ISSUE" -R "$OA_REPO" --json number,stateReason >/dev/null 2>"$WORK/issue.err"; then
+  why=$(tail -n 1 "$WORK/issue.err")
+  give_up "Could not read issue #$OA_ISSUE in $OA_REPO: ${why:-no answer from GitHub}. Connect GitHub with access to $OA_REPO."
+fi
 
 step solver start "Solver on issue #$OA_ISSUE with $MODEL"
 coder-new solver "$OA_ISSUE" \

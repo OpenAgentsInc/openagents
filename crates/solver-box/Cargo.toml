@@ -1,0 +1,21 @@
+[package]
+name = "solver-box"
+version.workspace = true
+edition = "2024"
+rust-version.workspace = true
+description = "Runs Solver on one GitHub issue in the solver container on a Google Cloud box from oa-boat (#11560)."
+publish = false
+
+[[bin]]
+name = "oa-solver-box"
+path = "src/main.rs"
+
+[dependencies]
+boat = { path = "../boat" }
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[lints]
+workspace = true
