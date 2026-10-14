@@ -668,6 +668,7 @@ fn choices(computers: &[&str]) -> Choices {
         claude_subscription: false,
         claude_signed_in: Vec::new(),
         claude_keys: false,
+        solver: false,
     }
 }
 

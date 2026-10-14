@@ -313,6 +313,20 @@ a.oa-task-row:focus-visible {
   --indicator-size: 12px;
 }
 
+/* A task's progress in plain words under its row (Solver in the cloud,
+   #11561): the newest last, quiet, wrapping long lines. */
+.oa-task-steps {
+  margin: calc(var(--spacing) * -3) 0 calc(var(--spacing) * 4);
+  padding: 0 calc(var(--spacing) * 3) 0 calc(var(--spacing) * 7);
+  color: var(--color-text-secondary);
+  font-size: var(--font-text-sm-size);
+  line-height: var(--font-text-sm-line-height);
+  overflow-wrap: anywhere;
+}
+.oa-task-steps li + li {
+  margin-top: calc(var(--spacing) * 0.5);
+}
+
 /* A chat's agents (#11164): one task row each, with Stop, Message and
    Open transcript under it. */
 .oa-agents:empty {

@@ -420,6 +420,7 @@ async fn start(
         version,
         finished_unix: None,
         agent: None,
+        steps: Vec::new(),
     };
     let recorded = sidebar::update(&app, &owner, &id, |chat| {
         if chat.terminal.is_none() {
@@ -514,6 +515,7 @@ mod tests {
             version: Some(3),
             finished_unix: None,
             agent: None,
+            steps: Vec::new(),
         }
     }
 
@@ -630,6 +632,7 @@ mod tests {
                 reply: reply.map(str::to_owned),
                 error: None,
                 cost_usd: None,
+                steps: None,
             })
         }
     }

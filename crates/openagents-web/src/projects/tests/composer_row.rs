@@ -477,6 +477,7 @@ async fn serve_for_screenshots() {
         claude_subscription: false,
         claude_signed_in: vec![],
         claude_keys: false,
+        solver: false,
     };
     let picked = choices.resolve(&crate::composer_row::Wanted {
         project: project.clone(),

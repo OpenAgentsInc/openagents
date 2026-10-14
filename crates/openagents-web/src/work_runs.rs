@@ -11,12 +11,12 @@
 //!
 //! | Route | Who | What |
 //! | --- | --- | --- |
-//! | `POST /v1/work` `{repo, issue, land?, engine?}` | The account | Ask for issue `issue` of `repo` to be worked: `201 {id, state, url, events}`; `land` is `pr` (default), `queue` (the landing queue) or `none`; `engine` is `briefed` (default) or `bare` |
+//! | `POST /v1/work` `{repo, issue, land?, engine?}` | The account | Ask for issue `issue` of `repo` to be worked: `201 {id, state, url, events}`; `land` is `pr` (default), `queue` (the landing queue) or `none`; `engine` is `briefed` (default), `bare` or `solver` (Solver in the cloud) |
 //! | `GET /v1/work` | The account | `{runs: [View]}`, newest first |
 //! | `GET /v1/work/{id}?after=N` | The account | One run, its progress from line `after` |
 //! | `GET /v1/work/{id}/events` | The account | Server-sent events: `progress` lines, `state` changes, then `result` |
 //! | `POST /v1/work/{id}/cancel` | The account | Stop the run |
-//! | `POST /v1/work-hosts/{name}/claim` | A work host | The next waiting run with the requester's own Claude sign-in, or `{run: null}` |
+//! | `POST /v1/work-hosts/{name}/claim` `{engines?}` | A work host | The next waiting run of those engines (briefed and bare when it names none) with the requester's own Claude sign-in, or a Solver run with the requester's GitHub token (`run.github_token`), or `{run: null}` |
 //! | `POST /v1/work-hosts/{name}/runs/{id}` `{lines?, result?, failed?}` | A work host | Progress, then the result; answers `{cancel}` |
 //!
 //! The account routes take the app's own token (`Authorization: Bearer
@@ -29,6 +29,18 @@
 //! keeps it only in that run's process. Without one the run stops and says
 //! so; the server's own key is never used. One account's runs take turns
 //! (a Claude plan runs one automated turn at a time).
+//!
+//! **Solver in the cloud** (`engine: "solver"`, #11561,
+//! `docs/cloud/solver-on-gcp.md`) needs no Claude sign-in: only a host that
+//! names it in its claim takes it (`oa-solver-box --serve`), and it doesn't
+//! take turns with the account's other runs. When it is asked for, the
+//! website asks the account service for a credential-broker ticket for its
+//! repository ([`Ticket`]); when a host takes the run, the ticket is
+//! redeemed once for a GitHub token scoped to that repository, handed to
+//! that host only, and dropped from the record. Its progress lines
+//! (`box`, `stage`, `briefing`, `thinking`, `tool`, `checks`, `pr`, `cost`,
+//! `notice`) read in plain words in the chat it started from
+//! ([`solver_words`]).
 //!
 //! Records live in the chat store: one object per run (`work-runs/runs/`),
 //! the waiting and running runs (`work-runs/queue.json`), and each
@@ -178,6 +190,11 @@ pub(crate) enum Engine {
     Briefed,
     /// Bare Claude Code, told "Complete this issue."
     Bare,
+    /// Solver in the cloud (#11559, docs/cloud/solver-on-gcp.md): the
+    /// solver container on a Google Cloud box of its own, every hand on
+    /// Gemini 4 Argon through Vertex AI. Only hosts that ask for it by
+    /// engine take it (`oa-solver-box`); it needs no Claude sign-in.
+    Solver,
 }
 
 impl Engine {
@@ -185,6 +202,7 @@ impl Engine {
         match word.trim() {
             "briefed" | "" => Some(Self::Briefed),
             "bare" | "claude" => Some(Self::Bare),
+            "solver" => Some(Self::Solver),
             _ => None,
         }
     }
@@ -193,15 +211,26 @@ impl Engine {
         match self {
             Self::Briefed => "briefed",
             Self::Bare => "bare",
+            Self::Solver => "solver",
         }
     }
+
+    /// Whether the run uses the requester's own Claude sign-in (and so
+    /// takes turns with the account's other such runs).
+    pub(crate) fn uses_claude(self) -> bool {
+        !matches!(self, Self::Solver)
+    }
 }
+
+/// What Solver in the cloud is called where a person reads it.
+pub(crate) const SOLVER: &str = "Solver in the cloud";
 
 /// The engine's name as a person reads it.
 fn engine_words(word: &str) -> &'static str {
     match word {
         "briefed" => "Briefed agent",
         "bare" => "Claude Code",
+        "solver" => SOLVER,
         _ => "Not started",
     }
 }
@@ -252,6 +281,32 @@ pub(crate) struct Requester {
     pub members_epoch: u64,
 }
 
+/// A credential-broker ticket (`oa_auth::repos::broker`) for one Solver
+/// run's repository, asked for under the requester's session when the run
+/// is asked for. It is not a GitHub token: the website redeems it once,
+/// when a host takes the run, for a token scoped to that one repository,
+/// and drops it from the record then (or when the run ends). Never shown,
+/// logged, or answered to anyone.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub(crate) struct Ticket(String);
+
+impl Ticket {
+    pub(crate) fn new(ticket: String) -> Self {
+        Self(ticket)
+    }
+}
+
+impl std::fmt::Debug for Ticket {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Ticket(…)")
+    }
+}
+
+/// How long a Solver run's ticket lasts: as long as the run may wait, and
+/// an hour to start.
+const TICKET_SECONDS: u64 = WAIT_TTL + 3600;
+
 /// One progress line from the host.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub(crate) struct Progress {
@@ -260,7 +315,9 @@ pub(crate) struct Progress {
     pub secs: f64,
     /// The engine's step (`work_issue.py`): `start`, `issue`, `briefing`,
     /// `escalate`, `agent`, `verify`, `checks`, `cost`, `commit`, `land`,
-    /// `done`.
+    /// `done`; Solver in the cloud's (`oa-solver-box`): `box`, `stage`,
+    /// `briefing`, `thinking`, `tool`, `checks`, `pr`, `cost`, `notice`
+    /// (its `data` is not kept).
     #[serde(default)]
     pub phase: String,
     pub text: String,
@@ -321,6 +378,17 @@ pub(crate) struct Outcome {
     pub briefing_files: Vec<String>,
     #[serde(default)]
     pub error: Option<String>,
+    /// Solver in the cloud: the model calls' dollars; `None` when unknown.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_usd: Option<f64>,
+    /// Solver in the cloud: the box's billed dollars; `None` when unknown.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub box_usd: Option<f64>,
+}
+
+/// A dollar amount from a result: finite and not negative, else unknown.
+fn dollars(value: &Value) -> Option<f64> {
+    value.as_f64().filter(|c| c.is_finite() && *c >= 0.0)
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -357,6 +425,10 @@ pub(crate) struct WorkRun {
     pub cancel: bool,
     #[serde(default)]
     pub finished_unix: Option<u64>,
+    /// Solver in the cloud: the requester's GitHub access, until a host
+    /// takes the run ([`Ticket`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub github: Option<Ticket>,
 }
 
 impl WorkRun {
@@ -371,6 +443,7 @@ impl WorkRun {
         self.state = state;
         self.why = why;
         self.finished_unix = Some(now_unix());
+        self.github = None;
     }
 
     /// Settle a run no host took, or whose host went quiet. Returns whether
@@ -403,6 +476,9 @@ struct Queued {
     /// The order runs were asked for (several can share a second).
     #[serde(default)]
     seq: u64,
+    /// The run's engine, so a host takes only the engines it runs.
+    #[serde(default)]
+    engine: Engine,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -414,6 +490,10 @@ struct Queue {
     /// Runs a host took and hasn't finished: id to owner.
     #[serde(default)]
     running: BTreeMap<String, String>,
+    /// Those of [`Self::running`] that use no Claude sign-in (Solver in
+    /// the cloud), so they don't hold up the account's other runs.
+    #[serde(default)]
+    running_free: std::collections::BTreeSet<String>,
     /// The next run's place in line.
     #[serde(default)]
     next: u64,
@@ -582,7 +662,9 @@ async fn load_plain(store: &Store, id: &str) -> Result<Option<WorkRun>, Error> {
 async fn unqueue(store: &Store, id: &str) {
     let id = id.to_owned();
     let _ = update(store, QUEUE_KEY, fresh_queue, move |queue| {
-        let gone = queue.waiting.remove(&id).is_some() | queue.running.remove(&id).is_some();
+        let gone = queue.waiting.remove(&id).is_some()
+            | queue.running.remove(&id).is_some()
+            | queue.running_free.remove(&id);
         (gone, ())
     })
     .await;
@@ -614,6 +696,8 @@ pub(crate) struct Ask {
     pub engine: Engine,
     pub source: String,
     pub title: Option<String>,
+    /// Solver in the cloud: the requester's GitHub access ([`github_ticket`]).
+    pub github: Option<Ticket>,
 }
 
 /// Why a request was refused.
@@ -663,10 +747,11 @@ pub(crate) async fn submit(
         why: None,
         cancel: false,
         finished_unix: None,
+        github: ask.github.filter(|_| ask.engine == Engine::Solver),
     };
     let bytes = serde_json::to_vec(&run).map_err(|_| Error::Invalid("A work run is invalid."))?;
     store.write_key(&run_key(&id), bytes, None).await?;
-    let (run_id, who) = (id.clone(), owner.to_owned());
+    let (run_id, who, engine) = (id.clone(), owner.to_owned(), ask.engine);
     let queued = update(store, QUEUE_KEY, fresh_queue, move |queue| {
         queue.schema = QUEUE_SCHEMA.into();
         let theirs = queue.waiting.values().filter(|q| q.owner == who).count();
@@ -680,6 +765,7 @@ pub(crate) async fn submit(
                 owner: who.clone(),
                 created_unix: now,
                 seq: queue.next,
+                engine,
             },
         );
         (true, true)
@@ -768,7 +854,8 @@ pub(crate) async fn cancel(store: &Store, owner: &str, id: &str) -> Result<Optio
 // ------------------------------------------------------------- the hosts'
 
 /// A run handed to a host, with the requester's Claude sign-in as the
-/// environment Claude Code reads.
+/// environment Claude Code reads. A Solver run carries its GitHub ticket
+/// here (`run.github`) and no longer in its record.
 pub(crate) struct Taken {
     pub run: WorkRun,
     pub env: BTreeMap<String, String>,
@@ -802,27 +889,58 @@ impl Credentials for Saved<'_> {
     }
 }
 
-/// The oldest waiting run whose account has none running, taken by `host`
-/// with its requester's sign-in. A run whose sign-in can't be used stops
-/// and says why.
+/// The oldest waiting run of the briefed or bare engine whose account has
+/// none running, taken by `host` with its requester's sign-in (what
+/// `scripts/work/worker.py` hosts get; they never get Solver runs). A run
+/// whose sign-in can't be used stops and says why.
 pub(crate) async fn claim(
     store: &Store,
     credentials: &dyn Credentials,
     host: &str,
 ) -> Result<Option<Taken>, Error> {
+    claim_for(store, Some(credentials), host, None).await
+}
+
+/// [`claim`] for a host that names the engines it runs (`{"engines":
+/// ["solver"]}`): only runs of those engines. Runs that use no Claude
+/// sign-in (Solver in the cloud) don't take turns with the account's
+/// other runs, and get no Claude credential; without `credentials` (no
+/// Settings > Claude store here) only those are taken.
+pub(crate) async fn claim_for(
+    store: &Store,
+    credentials: Option<&dyn Credentials>,
+    host: &str,
+    engines: Option<&[Engine]>,
+) -> Result<Option<Taken>, Error> {
+    let wanted = |engine: Engine| {
+        (credentials.is_some() || !engine.uses_claude())
+            && match engines {
+                Some(engines) => engines.contains(&engine),
+                None => engine != Engine::Solver,
+            }
+    };
     loop {
         let picked = update(store, QUEUE_KEY, fresh_queue, |queue| {
             let mut waiting: Vec<(&String, &Queued)> = queue.waiting.iter().collect();
             waiting.sort_by_key(|(_, q)| (q.created_unix, q.seq));
-            let busy: Vec<&String> = queue.running.values().collect();
+            let busy: Vec<&String> = queue
+                .running
+                .iter()
+                .filter(|(id, _)| !queue.running_free.contains(*id))
+                .map(|(_, owner)| owner)
+                .collect();
             let Some((id, queued)) = waiting
                 .into_iter()
-                .find(|(_, q)| !busy.contains(&&q.owner))
+                .filter(|(_, q)| wanted(q.engine))
+                .find(|(_, q)| !q.engine.uses_claude() || !busy.contains(&&q.owner))
                 .map(|(id, q)| (id.clone(), q.clone()))
             else {
                 return (false, None);
             };
             queue.waiting.remove(&id);
+            if !queued.engine.uses_claude() {
+                queue.running_free.insert(id.clone());
+            }
             queue.running.insert(id.clone(), queued.owner);
             (true, Some(id))
         })
@@ -838,7 +956,9 @@ pub(crate) async fn claim(
             run.state = RunState::Running;
             run.host = Some(host.clone());
             run.started_unix = Some(now_unix());
-            (true, Some(run.clone()))
+            let taken = run.clone();
+            run.github = None;
+            (true, Some(taken))
         })
         .await?
         .flatten();
@@ -846,7 +966,17 @@ pub(crate) async fn claim(
             unqueue(store, &id).await;
             continue;
         };
-        match credentials.release(&run.requester) {
+        if !run.engine.uses_claude() {
+            return Ok(Some(Taken {
+                run,
+                env: BTreeMap::new(),
+            }));
+        }
+        let released = match credentials {
+            Some(credentials) => credentials.release(&run.requester),
+            None => Err("No computer here can run it.".to_owned()),
+        };
+        match released {
             Ok(env) => return Ok(Some(Taken { run, env })),
             Err(why) => {
                 update_run(store, &id, |run| {
@@ -923,6 +1053,10 @@ pub(crate) fn outcome(result: &Value) -> Outcome {
         landing: text(&landed["entry"]["id"]),
         briefing_files: strings(&result["briefing"]["files"]),
         error: text(&result["error"]).map(|e| secret_screen::redact(&e)),
+        // Solver in the cloud (`oa-solver-box`): the model calls and the
+        // box apart; `cost_usd` is their sum, unknown when either is.
+        model_usd: dollars(&result["model_usd"]),
+        box_usd: dollars(&result["box"]["usd"]),
     }
 }
 
@@ -1075,6 +1209,8 @@ pub(crate) fn view(run: &WorkRun, after: usize) -> Value {
             "pr": o.pr,
             "landing": o.landing,
             "briefing_files": o.briefing_files,
+            "model_usd": o.model_usd,
+            "box_usd": o.box_usd,
         })),
         "lines": run.lines[start..],
         "next": run.dropped + run.lines.len(),
@@ -1092,15 +1228,39 @@ pub(crate) fn said(run: &WorkRun) -> String {
             run.why.as_deref().unwrap_or("it didn't finish.")
         );
     };
+    if run.engine == Engine::Solver && run.state == RunState::Cancelled {
+        let cost = match outcome.cost_usd.or(outcome.box_usd) {
+            Some(usd) => format!(" It cost {}.", money(Some(usd))),
+            None => String::new(),
+        };
+        return format!(
+            "{SOLVER} on {name} stopped after {}, as asked; its computer was deleted.{cost}",
+            duration(outcome.secs),
+        );
+    }
     let passed = outcome.checks.iter().filter(|c| c.ok).count();
+    let cost = match (outcome.cost_usd, outcome.model_usd, outcome.box_usd) {
+        (Some(_), Some(model), Some(machine)) => format!(
+            "{} ({} model, {} computer)",
+            money(outcome.cost_usd),
+            money(Some(model)),
+            money(Some(machine))
+        ),
+        _ => money(outcome.cost_usd),
+    };
     let mut text = format!(
-        "{} {} {name} in {} for {}: checks {passed}/{} passed",
+        "{} {} {name} in {} for {cost}",
         engine_words(&outcome.engine),
         if outcome.ok { "finished" } else { "stopped on" },
         duration(outcome.secs),
-        money(outcome.cost_usd),
-        outcome.checks.len(),
     );
+    // A run that never reached its checks says nothing about them.
+    if !outcome.checks.is_empty() || run.engine != Engine::Solver {
+        text.push_str(&format!(
+            ": checks {passed}/{} passed",
+            outcome.checks.len()
+        ));
+    }
     if let Some(pr) = &outcome.pr {
         text.push_str(&format!(", pull request {pr}"));
     } else if let Some(entry) = &outcome.landing {
@@ -1201,6 +1361,18 @@ pub(crate) fn board_title(run: &WorkRun) -> String {
     }
 }
 
+/// What a run has cost so far: its result's cost when it has one, else
+/// the newest `cost` line's; `None` when unknown.
+pub(crate) fn cost_so_far(run: &WorkRun) -> Option<f64> {
+    run.outcome.as_ref().and_then(|o| o.cost_usd).or_else(|| {
+        run.lines
+            .iter()
+            .rev()
+            .find(|l| l.phase == "cost")
+            .and_then(|l| l.cost_usd)
+    })
+}
+
 /// Where a run is, in the fleet rows' words (#11250): `waiting for a
 /// computer`, `starting`, `finding files`, `coding`, `coding again with
 /// Claude Code`, `checks`, `landing`, `queued <entry>`, then how it
@@ -1234,6 +1406,9 @@ pub(crate) fn stage(run: &WorkRun) -> String {
         RunState::Cancelled => return "stopped".into(),
         RunState::Running => {}
     }
+    if run.engine == Engine::Solver {
+        return solver_stage(run);
+    }
     let again = run.lines.iter().any(|l| l.phase == "escalate");
     let last = run
         .lines
@@ -1252,6 +1427,152 @@ pub(crate) fn stage(run: &WorkRun) -> String {
         },
         _ => "starting".into(),
     }
+}
+
+/// Where a running Solver run is (`oa-solver-box`'s line kinds): `getting
+/// a computer`, `reading the issue`, `coding`, `checks`, `opening a pull
+/// request`, `finishing`.
+fn solver_stage(run: &WorkRun) -> String {
+    let last = run
+        .lines
+        .iter()
+        .rev()
+        .find(|l| !matches!(l.phase.as_str(), "cost" | "notice"));
+    match last.map(|l| l.phase.as_str()) {
+        Some("box")
+            if run
+                .lines
+                .iter()
+                .any(|l| l.phase == "pr" || l.phase == "checks") =>
+        {
+            "finishing".into()
+        }
+        Some("box") | None => "getting a computer".into(),
+        Some("stage" | "briefing") => "reading the issue".into(),
+        Some("checks") => "checks".into(),
+        Some("pr") => "opening a pull request".into(),
+        Some(_) => "coding".into(),
+    }
+}
+
+/// The plain words a Solver progress line reads as in its chat, or `None`
+/// for a line the chat leaves out (the hands' instructions, the computer's
+/// ids and paths, the solver's own bookkeeping). Tools read as what they
+/// do.
+pub(crate) fn solver_words(progress: &Progress) -> Option<String> {
+    let text = progress.text.trim();
+    if text.is_empty() {
+        return None;
+    }
+    Some(match progress.phase.as_str() {
+        "box" => {
+            if text.starts_with("Computer ") && text.ends_with(" is up") {
+                "The computer is up".into()
+            } else if text.starts_with("Deleted computer") {
+                "Deleted the computer".into()
+            } else if text.starts_with("Installing Docker") {
+                "Setting up the computer".into()
+            } else if text == "Docker is ready" {
+                "The computer is set up".into()
+            } else if text.starts_with("Could not delete computer") {
+                "The computer could not be deleted yet; it stops by itself".into()
+            } else if text == "The solver exited 0" {
+                return None;
+            } else if text.starts_with("The solver exited") {
+                "The solver stopped with an error".into()
+            } else if let Some(rest) = text.strip_prefix("Solver on issue ") {
+                // "Solver on issue #7 with google/gemini-4-argon"
+                let issue = rest.split_whitespace().next().unwrap_or_default();
+                format!("Solver started on issue {issue}")
+            } else {
+                flat(text, 160)
+            }
+        }
+        // The hands' own instructions: not for the chat.
+        "stage" => return None,
+        "briefing" => flat(&without_refs(text), 200),
+        "thinking" => format!("Thinking: {}", flat(&unmarked(text), 240)),
+        "tool" => tool_words(text)?,
+        "checks" => format!("Checks: {}", flat(text, 120)),
+        "pr" => format!("Opened a pull request: {}", flat(text, 200)),
+        "cost" => flat(text, 80),
+        // The solver's own last word repeats the checks and the pull
+        // request with its paths on the computer.
+        "notice" if text.starts_with("Solver ended") => return None,
+        _ => flat(&without_refs(text), 200),
+    })
+}
+
+/// `text` on one line, cut to `most` characters.
+fn flat(text: &str, most: usize) -> String {
+    let flat = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    if flat.chars().count() <= most {
+        flat
+    } else {
+        let mut cut: String = flat.chars().take(most - 1).collect();
+        cut.push('…');
+        cut
+    }
+}
+
+/// `text` without the parenthesized references to our own issues the
+/// solver's step cards carry ("(#11210)", "(#11211's generator)"), which
+/// would read as the person's repository's issues.
+fn without_refs(text: &str) -> String {
+    let mut out = String::new();
+    let mut rest = text;
+    while let Some(at) = rest.find("(#") {
+        let Some(close) = rest[at..].find(')') else {
+            break;
+        };
+        out.push_str(rest[..at].trim_end());
+        rest = &rest[at + close + 1..];
+    }
+    out.push_str(rest);
+    out
+}
+
+/// Markdown marks taken out of a thought: headings, code ticks and fences.
+fn unmarked(text: &str) -> String {
+    text.lines()
+        .map(|line| line.trim_start().trim_start_matches('#').trim_start())
+        .filter(|line| !line.starts_with("```"))
+        .collect::<Vec<_>>()
+        .join(" ")
+        .replace('`', "")
+}
+
+/// A tool line ("Edit crates/a.rs", "Run cargo test -p a") as what it
+/// does; `None` for the solver's own bookkeeping.
+fn tool_words(text: &str) -> Option<String> {
+    let (name, rest) = text.split_once(' ').unwrap_or((text, ""));
+    let rest = rest.trim();
+    if matches!(name, "Run" | "Bash" | "Shell") {
+        let words: Vec<&str> = rest.split_whitespace().collect();
+        let said = match words.as_slice() {
+            ["git", "add", ..] => return None,
+            ["git", "switch" | "checkout", .., branch] => {
+                format!("Making the branch {}", flat(branch, 80))
+            }
+            ["git", "commit", ..] => "Committing the change".into(),
+            ["git", "push", ..] => "Pushing the branch".into(),
+            ["gh", "pr", "create", ..] => "Opening the pull request".into(),
+            [] => "Running a command".into(),
+            _ => format!("Running {}", flat(rest, 160)),
+        };
+        return Some(said);
+    }
+    let verb = match name {
+        "Summary" => return None,
+        "Read" => "Reading",
+        "Edit" | "MultiEdit" | "Write" | "ApplyPatch" => "Editing",
+        "Grep" | "Glob" | "Search" | "LS" => "Looking through",
+        _ => "Working with",
+    };
+    Some(match rest {
+        "" => format!("{verb} the code"),
+        rest => format!("{verb} {}", flat(rest, 160)),
+    })
 }
 
 /// Whether a board item is a work run's.
@@ -1420,7 +1741,7 @@ async fn submit_route(State(app): State<App>, headers: HeaderMap, body: Bytes) -
         return refused(
             StatusCode::BAD_REQUEST,
             "invalid",
-            "Send {repo, issue, land?, engine?}; land is pr, queue or none; engine is briefed or bare.",
+            "Send {repo, issue, land?, engine?}; land is pr, queue or none; engine is briefed, bare or solver.",
         );
     };
     let source = sent
@@ -1429,13 +1750,20 @@ async fn submit_route(State(app): State<App>, headers: HeaderMap, body: Bytes) -
         .filter(|s| SOURCES.contains(s))
         .unwrap_or("api");
     let owner = account_owner(&viewer.account_id);
+    let repo = sent.repo.trim().to_owned();
+    let github = if engine == Engine::Solver && valid_repo(&repo) {
+        github_ticket(&app, &headers, &repo).await
+    } else {
+        None
+    };
     let ask = Ask {
-        repo: sent.repo.trim().to_owned(),
+        repo,
         issue,
         land,
         engine,
         source: source.into(),
         title: None,
+        github,
     };
     match submit(&app.config.chat_store, &owner, requester, ask).await {
         Ok(Ok(run)) => answer(StatusCode::CREATED, view(&run, 0)),
@@ -1628,10 +1956,19 @@ fn host_name(name: &str) -> Option<String> {
     .then(|| name.to_owned())
 }
 
+/// What a host's claim may say: the engines it runs. A host that names
+/// none gets the briefed and bare engines' runs.
+#[derive(Debug, Default, Deserialize)]
+struct ClaimBody {
+    #[serde(default)]
+    engines: Option<Vec<String>>,
+}
+
 async fn claim_route(
     State(app): State<App>,
     headers: HeaderMap,
     Path(name): Path<String>,
+    body: Bytes,
 ) -> Response {
     if !host_allowed(&app, &headers) {
         return refused(StatusCode::UNAUTHORIZED, "unauthorized", "Not a work host.");
@@ -1639,22 +1976,60 @@ async fn claim_route(
     let Some(host) = host_name(&name) else {
         return refused(StatusCode::BAD_REQUEST, "invalid", "Name the host.");
     };
-    let Some(computers) = app.config.cloud_byo.as_deref() else {
-        return answer(StatusCode::OK, json!({"run": null}));
+    let asked: ClaimBody = if body.iter().all(u8::is_ascii_whitespace) {
+        ClaimBody::default()
+    } else {
+        match serde_json::from_slice(&body) {
+            Ok(asked) => asked,
+            Err(_) => {
+                return refused(
+                    StatusCode::BAD_REQUEST,
+                    "invalid",
+                    "Send {engines?: [briefed|bare|solver]}.",
+                );
+            }
+        }
     };
-    match claim(&app.config.chat_store, &Saved(computers), &host).await {
+    let engines: Option<Vec<Engine>> = match asked.engines {
+        None => None,
+        Some(words) => match words.iter().map(|w| Engine::parse(w)).collect() {
+            Some(engines) => Some(engines),
+            None => {
+                return refused(
+                    StatusCode::BAD_REQUEST,
+                    "invalid",
+                    "An engine is briefed, bare or solver.",
+                );
+            }
+        },
+    };
+    let saved = app.config.cloud_byo.as_deref().map(Saved);
+    let credentials = saved.as_ref().map(|saved| saved as &dyn Credentials);
+    match claim_for(
+        &app.config.chat_store,
+        credentials,
+        &host,
+        engines.as_deref(),
+    )
+    .await
+    {
         Ok(Some(taken)) => {
-            let mut response = answer(
-                StatusCode::OK,
-                json!({"run": {
-                    "id": taken.run.id,
-                    "repo": taken.run.repo,
-                    "issue": taken.run.issue,
-                    "land": taken.run.land.word(),
-                    "engine": taken.run.engine.word(),
-                    "env": taken.env,
-                }}),
-            );
+            let mut run = json!({
+                "id": taken.run.id,
+                "repo": taken.run.repo,
+                "issue": taken.run.issue,
+                "land": taken.run.land.word(),
+                "engine": taken.run.engine.word(),
+                "env": taken.env,
+            });
+            // Solver in the cloud: the requester's GitHub access, for this
+            // host only ([`Ticket`]).
+            if let Some(ticket) = &taken.run.github
+                && let Some(token) = redeem(&app, ticket, &taken.run.repo).await
+            {
+                run["github_token"] = json!(token);
+            }
+            let mut response = answer(StatusCode::OK, json!({"run": run}));
             response
                 .headers_mut()
                 .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
@@ -1663,6 +2038,58 @@ async fn claim_route(
         Ok(None) => answer(StatusCode::OK, json!({"run": null})),
         Err(error) => stored(&error),
     }
+}
+
+/// The GitHub token a run's ticket is good for now, from the account
+/// service's credential broker; `None` when it refuses (the host then uses
+/// its own pool's access, or says to connect GitHub). Nothing is logged.
+async fn redeem(app: &App, ticket: &Ticket, repo: &str) -> Option<String> {
+    let service = app.config.cloud.as_deref()?;
+    let form = url::form_urlencoded::Serializer::new(String::new())
+        .append_pair("ticket", &ticket.0)
+        .append_pair("protocol", "https")
+        .append_pair("host", oa_auth::repos::broker::HOST)
+        .append_pair("path", &format!("{repo}.git"))
+        .finish();
+    let (status, text) = service.git_credential(form.as_bytes()).await;
+    (status == 200).then(|| password(&text)).flatten()
+}
+
+/// The `password` line of Git's credential answer.
+fn password(text: &str) -> Option<String> {
+    text.lines()
+        .find_map(|line| line.strip_prefix("password="))
+        .map(str::trim)
+        .filter(|token| !token.is_empty() && token.len() <= 1024)
+        .map(str::to_owned)
+}
+
+/// A credential-broker ticket for `repo` under this request's session (the
+/// sign-in cookie, or the app's own `Bearer sess_…`), so a Solver run gets
+/// GitHub access as the person who asked; `None` when the account service
+/// gives none (GitHub not connected, the repository not one of the
+/// person's projects): the run then uses the host's own access.
+pub(crate) async fn github_ticket(app: &App, headers: &HeaderMap, repo: &str) -> Option<Ticket> {
+    let service = app.config.cloud.as_deref()?;
+    let bearer = headers
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .map(str::trim)
+        .filter(|token| !token.is_empty());
+    let ticket = match bearer {
+        Some(token) => {
+            service
+                .github_broker_ticket_as(token, repo, TICKET_SECONDS)
+                .await
+        }
+        None => {
+            service
+                .github_broker_ticket(headers, repo, TICKET_SECONDS)
+                .await
+        }
+    };
+    ticket.ok().map(Ticket::new)
 }
 
 async fn report_route(
@@ -1945,7 +2372,7 @@ pub(crate) fn list_body(
             }
             @if !saved {
                 div class="oa-thread-notice" role="alert" {
-                    p { "Runs use your own Claude sign-in. " a href="/settings/claude#key" { "Save it in Settings" } " first." }
+                    p { "The briefed agent and Claude Code use your own Claude sign-in. " a href="/settings/claude#key" { "Save it in Settings" } " first, or pick " (SOLVER) ", which needs none." }
                 }
             }
             section class="oa-settings-group" aria-labelledby="work-new" {
@@ -1964,9 +2391,11 @@ pub(crate) fn list_body(
                             option value="queue" { "Land through the landing queue" }
                             option value="none" { "Commit only" }
                         }
-                        label class="oa-settings-hint" {
-                            input type="checkbox" name="engine" value="bare";
-                            " Use Claude Code alone instead of the briefed agent"
+                        label class="oa-settings-label" for="work-engine" { "Who works on it" }
+                        select #work-engine name="engine" {
+                            option value="briefed" selected { "Briefed agent (your Claude sign-in)" }
+                            option value="bare" { "Claude Code alone (your Claude sign-in)" }
+                            option value="solver" { (SOLVER) " (a computer of its own, no Claude sign-in)" }
                         }
                     }
                     div class="oa-settings-control" {
@@ -2075,6 +2504,16 @@ async fn submit_page(
         .as_deref()
         .filter(|s| SOURCES.contains(s))
         .unwrap_or("web");
+    let engine = form
+        .engine
+        .as_deref()
+        .and_then(Engine::parse)
+        .unwrap_or_default();
+    let github = if engine == Engine::Solver && valid_repo(&repo) {
+        github_ticket(&app, &headers, &repo).await
+    } else {
+        None
+    };
     let ask = Ask {
         repo,
         issue,
@@ -2083,13 +2522,10 @@ async fn submit_page(
             .as_deref()
             .and_then(Land::parse)
             .unwrap_or_default(),
-        engine: form
-            .engine
-            .as_deref()
-            .and_then(Engine::parse)
-            .unwrap_or_default(),
+        engine,
         source: source.into(),
         title: None,
+        github,
     };
     match submit(&app.config.chat_store, &owner, requester, ask).await {
         Ok(Ok(run)) => protect(Redirect::to(&format!("{PAGE}/{}", run.id)).into_response()),

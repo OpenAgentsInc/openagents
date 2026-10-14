@@ -412,19 +412,26 @@ pub(super) fn run_rows(
                 .agent
                 .as_ref()
                 .map_or_else(|| task.title.clone(), |agent| agent.name.clone()),
-            place: place.clone(),
+            // A work run's place is its repository (its title is
+            // `OWNER/NAME#N`).
+            place: if matches!(task.kind, TaskKind::Work | TaskKind::Solver) {
+                task.title.split('#').next().unwrap_or_default().to_owned()
+            } else {
+                place.clone()
+            },
             engine: match task.kind {
                 TaskKind::Claude => ENGINE.to_owned(),
                 TaskKind::Continue => "Cloud computer".to_owned(),
                 TaskKind::Work => "Briefed agent".to_owned(),
                 TaskKind::OpenAgents => "OpenAgents".to_owned(),
+                TaskKind::Solver => crate::work_runs::SOLVER.to_owned(),
             },
             standing: standing(task.state, live.paused_until),
             elapsed_seconds,
             cost_usd: (!costs.is_empty()).then(|| costs.iter().sum::<f64>()),
             waiting: task.agent.as_ref().map_or(0, |agent| agent.inbox.len()),
             can_message: task.agent.is_some() && links && !gone,
-            transcript: (links && !gone)
+            transcript: (links && !gone && !matches!(task.kind, TaskKind::Work | TaskKind::Solver))
                 .then(|| format!("/environments/{}/runs/{}", task.environment, task.id)),
             choices: if links && !gone && task.state == TaskState::Paused {
                 live.choices.clone()
@@ -535,7 +542,9 @@ pub(super) fn render(chat_id: &str, csrf: &str, rows: &[Row], notice: Option<&st
                     div.oa-task-row.oa-agents-row id=(format!("chat-agent-{index}")) data-status=(row.standing.key()) {
                         span.oa-task-row-title { (crate::github_refs::linked(&row.name, crate::github_refs::DEFAULT_REPOSITORY)) }
                         span.oa-task-row-detail {
-                            (row.engine) " · " (row.place) " · " (agent_fleet::elapsed_words(row.elapsed_seconds))
+                            (row.engine)
+                            @if !row.place.is_empty() { " · " (row.place) }
+                            " · " (agent_fleet::elapsed_words(row.elapsed_seconds))
                             @if let Some(cost) = row.cost_usd { " · " (agent_fleet::dollars(cost)) }
                             @if row.waiting == 1 { " · 1 message waiting" }
                             @else if row.waiting > 1 { " · " (row.waiting) " messages waiting" }
@@ -610,9 +619,29 @@ async fn rows(app: &App, headers: &HeaderMap, chat: &Conversation) -> Vec<Row> {
     let now_unix = now();
     let studio = app.config.environments.get();
     let saved = crate::cloud::byo::saved_class(app, headers).await;
+    // Work runs (the briefed agent, Solver in the cloud) report their cost
+    // in their own records.
+    let mut worked = std::collections::HashMap::new();
+    for task in chat
+        .tasks
+        .iter()
+        .filter(|task| matches!(task.kind, TaskKind::Work | TaskKind::Solver))
+    {
+        if let Ok(Some(run)) =
+            crate::work_runs::load(&app.config.chat_store, &chat.owner, &task.id).await
+        {
+            worked.insert(task.id.clone(), crate::work_runs::cost_so_far(&run));
+        }
+    }
     let mut rows = run_rows(
         chat,
         |task| {
+            if let Some(cost_usd) = worked.get(&task.id) {
+                return Some(Live {
+                    cost_usd: *cost_usd,
+                    ..Live::default()
+                });
+            }
             let studio = studio.as_ref()?;
             let run = studio.claude_run(&task.environment, &task.id)?;
             Some(Live {
@@ -758,6 +787,27 @@ async fn stop_route(
 }
 
 async fn stop_run(app: &App, headers: &HeaderMap, owner: &str, id: &str, run: &str) -> String {
+    // A work run (the briefed agent, Solver in the cloud) stops through
+    // its own record: a waiting one at once, a running one at its host's
+    // next report, which kills it and deletes its computer.
+    if let Ok(loaded) = load_owned(app, owner, id).await
+        && let Some(task) =
+            loaded.conversation.tasks.iter().find(|task| {
+                task.id == run && matches!(task.kind, TaskKind::Work | TaskKind::Solver)
+            })
+    {
+        if task.state.finished() {
+            return "It has already ended.".to_owned();
+        }
+        return match crate::work_runs::cancel(&app.config.chat_store, owner, run).await {
+            Ok(Some(())) => {
+                let _ = super::work::sync(app, loaded).await;
+                "Stopping it. Its result joins the chat when it has stopped.".to_owned()
+            }
+            Ok(None) => "That run isn't there anymore.".to_owned(),
+            Err(_) => "That didn't go through. Try again.".to_owned(),
+        };
+    }
     let (Some(studio), true) = (
         app.config.environments.get(),
         super::work::links(app, headers).await,
@@ -1067,6 +1117,7 @@ pub(super) fn handed_task(task: &ChatTask, run: String, started_unix: u64) -> Ch
             inbox: Vec::new(),
             ..agent.clone()
         }),
+        steps: Vec::new(),
     }
 }
 
@@ -1235,6 +1286,7 @@ async fn deliver(app: &App, headers: &HeaderMap, chat: &Conversation) -> Option<
                         inbox: Vec::new(),
                         ..agent.clone()
                     }),
+                    steps: Vec::new(),
                 };
                 let recorded = sidebar::update(app, &chat.owner, &chat.id, |next| {
                     super::work::record(next, environment.clone(), task.clone());

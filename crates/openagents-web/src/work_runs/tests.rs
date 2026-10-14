@@ -22,6 +22,7 @@ fn ask(issue: u64) -> Ask {
         engine: Engine::Briefed,
         source: "api".into(),
         title: None,
+        github: None,
     }
 }
 
@@ -533,6 +534,7 @@ fn a_finished_runs_result_reads_plainly() {
         why: None,
         cancel: false,
         finished_unix: Some(2),
+        github: None,
     };
     let html = html! { div { (result_markup(&run)) } }.into_string();
     assert!(
@@ -573,4 +575,333 @@ async fn a_finished_run_tells_its_chat_what_it_did() {
         "Briefed agent finished OpenAgentsInc/openagents#11257 in 1 min 14 s for $0.40: checks 1/1 \
          passed, pull request https://github.com/OpenAgentsInc/openagents/pull/7."
     );
+}
+
+fn solver_ask(issue: u64, ticket: Option<&str>) -> Ask {
+    Ask {
+        repo: "AtlantisPleb/solver-box-smoke".into(),
+        issue,
+        land: Land::Pr,
+        engine: Engine::Solver,
+        source: "chat".into(),
+        title: None,
+        github: ticket.map(|t| Ticket::new(t.into())),
+    }
+}
+
+#[tokio::test]
+async fn solver_runs_go_only_to_hosts_that_name_them_with_the_ticket_once() {
+    let (_dir, store) = store();
+    let owner = account_owner("acct_alice");
+    let solver = submit(
+        &store,
+        &owner,
+        requester("acct_alice"),
+        solver_ask(5, Some("ogb_a_b_c")),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    // The ticket is kept, never answered.
+    let stored = load(&store, &owner, &solver.id).await.unwrap().unwrap();
+    assert!(stored.github.is_some());
+    assert!(!view(&stored, 0).to_string().contains("ogb_"));
+    assert_eq!(format!("{:?}", stored.github), "Some(Ticket(…))");
+    let briefed = submit(&store, &owner, requester("acct_alice"), ask(7))
+        .await
+        .unwrap()
+        .unwrap();
+
+    // A Claude work host never gets a Solver run.
+    let taken = claim(&store, &SIGNED_IN, "oa-work-1")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(taken.run.id, briefed.id);
+    assert!(
+        claim(&store, &SIGNED_IN, "oa-work-1")
+            .await
+            .unwrap()
+            .is_none()
+    );
+
+    // The dispatcher takes it while the account's briefed run still goes
+    // (no turns), without Claude credentials, and gets the ticket once.
+    let taken = claim_for(&store, None, "oa-solver-1", Some(&[Engine::Solver]))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(taken.run.id, solver.id);
+    assert!(taken.env.is_empty());
+    assert_eq!(taken.run.github, Some(Ticket::new("ogb_a_b_c".into())));
+    let after = load(&store, &owner, &solver.id).await.unwrap().unwrap();
+    assert_eq!(after.state, RunState::Running);
+    assert!(after.github.is_none(), "the ticket left the record");
+    assert!(
+        claim_for(&store, None, "oa-solver-1", Some(&[Engine::Solver]))
+            .await
+            .unwrap()
+            .is_none()
+    );
+
+    // Its progress and its result, with the box and the model apart.
+    let lines = [
+        "box", "briefing", "thinking", "tool", "checks", "pr", "cost",
+    ]
+    .iter()
+    .zip([
+        "Computer bx_10m5t58f98 is up",
+        "The issue: Add a word counter",
+        "I will add a function.",
+        "Edit crates/textkit/src/lib.rs",
+        "2 of 2 checks passed",
+        "https://github.com/AtlantisPleb/solver-box-smoke/pull/6",
+        "$0.04 in model calls",
+    ])
+    .map(|(phase, text)| Progress {
+        secs: 1.0,
+        phase: (*phase).into(),
+        text: text.into(),
+        ..Progress::default()
+    })
+    .collect();
+    let heard = report(
+        &store,
+        "oa-solver-1",
+        &solver.id,
+        Report {
+            lines,
+            ..Report::default()
+        },
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert!(!heard.cancel);
+    let going = load(&store, &owner, &solver.id).await.unwrap().unwrap();
+    assert_eq!(stage(&going), "opening a pull request");
+    report(
+        &store,
+        "oa-solver-1",
+        &solver.id,
+        Report {
+            result: Some(json!({
+                "engine": "solver", "ok": true, "outcome": "passed",
+                "cost_usd": 0.0534, "model_usd": 0.0434, "secs": 169.0,
+                "checks": [{"name": "check:textkit", "ok": true}, {"name": "test:textkit", "ok": true}],
+                "diff": {"files": ["crates/textkit/src/lib.rs"], "added": 13, "removed": 0},
+                "commit": "25bb7d9",
+                "landed": {"url": "https://github.com/AtlantisPleb/solver-box-smoke/pull/6"},
+                "box": {"sandbox": "bx_5ij1cb060a", "usd": 0.01, "secs": 108.0},
+            })),
+            ..Report::default()
+        },
+    )
+    .await
+    .unwrap();
+    let done = load(&store, &owner, &solver.id).await.unwrap().unwrap();
+    assert_eq!(done.state, RunState::Done);
+    let outcome = done.outcome.as_ref().unwrap();
+    assert_eq!(outcome.files, vec!["crates/textkit/src/lib.rs".to_owned()]);
+    assert_eq!(outcome.box_usd, Some(0.01));
+    assert_eq!(
+        said(&done),
+        "Solver in the cloud finished AtlantisPleb/solver-box-smoke#5 in 2 min 49 s for $0.05 \
+         ($0.04 model, $0.01 computer): checks 2/2 passed, pull request \
+         https://github.com/AtlantisPleb/solver-box-smoke/pull/6."
+    );
+    assert_eq!(
+        stage(&done),
+        "pull request https://github.com/AtlantisPleb/solver-box-smoke/pull/6"
+    );
+}
+
+#[tokio::test]
+async fn a_site_without_claude_sign_ins_hands_out_only_solver_runs() {
+    let (_dir, store) = store();
+    let owner = account_owner("acct_alice");
+    submit(&store, &owner, requester("acct_alice"), ask(7))
+        .await
+        .unwrap()
+        .unwrap();
+    // A host naming no engines, with no Claude store here: nothing.
+    assert!(claim_for(&store, None, "h", None).await.unwrap().is_none());
+    let solver = submit(&store, &owner, requester("acct_alice"), solver_ask(5, None))
+        .await
+        .unwrap()
+        .unwrap();
+    let taken = claim_for(&store, None, "h", Some(&[Engine::Solver, Engine::Briefed]))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(taken.run.id, solver.id);
+    assert_eq!(taken.run.github, None);
+}
+
+#[tokio::test]
+async fn stopping_a_solver_run_reaches_its_host_and_drops_a_waiting_ticket() {
+    let (_dir, store) = store();
+    let owner = account_owner("acct_alice");
+    let waiting = submit(
+        &store,
+        &owner,
+        requester("acct_alice"),
+        solver_ask(5, Some("ogb_a_b_c")),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    cancel(&store, &owner, &waiting.id).await.unwrap().unwrap();
+    let stopped = load(&store, &owner, &waiting.id).await.unwrap().unwrap();
+    assert_eq!(stopped.state, RunState::Cancelled);
+    assert!(stopped.github.is_none());
+
+    let running = submit(&store, &owner, requester("acct_alice"), solver_ask(6, None))
+        .await
+        .unwrap()
+        .unwrap();
+    claim_for(&store, None, "s", Some(&[Engine::Solver]))
+        .await
+        .unwrap()
+        .unwrap();
+    cancel(&store, &owner, &running.id).await.unwrap().unwrap();
+    let heard = report(&store, "s", &running.id, Report::default())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(heard.cancel, "the host is told to stop and delete its box");
+    report(
+        &store,
+        "s",
+        &running.id,
+        Report {
+            result: Some(json!({"engine": "solver", "ok": false, "secs": 81.0,
+                "cost_usd": null, "checks": [], "box": {"usd": 0.004}})),
+            ..Report::default()
+        },
+    )
+    .await
+    .unwrap();
+    let ended = load(&store, &owner, &running.id).await.unwrap().unwrap();
+    assert_eq!(ended.state, RunState::Cancelled);
+    assert_eq!(
+        said(&ended),
+        "Solver in the cloud on AtlantisPleb/solver-box-smoke#6 stopped after 1 min 21 s, as \
+         asked; its computer was deleted. It cost $0.00."
+    );
+}
+
+#[test]
+fn solver_progress_reads_in_plain_words() {
+    let words = |phase: &str, text: &str| {
+        solver_words(&Progress {
+            phase: phase.into(),
+            text: text.into(),
+            ..Progress::default()
+        })
+    };
+    assert_eq!(
+        words("box", "Computer bx_10m5t58f98 is up").as_deref(),
+        Some("The computer is up")
+    );
+    assert_eq!(
+        words("box", "Deleted computer bx_10m5t58f98").as_deref(),
+        Some("Deleted the computer")
+    );
+    assert_eq!(
+        words("box", "Installing Docker on the computer").as_deref(),
+        Some("Setting up the computer")
+    );
+    assert_eq!(words("stage", "You are the Briefer. Read …"), None);
+    assert_eq!(
+        words("tool", "Edit crates/textkit/src/lib.rs").as_deref(),
+        Some("Editing crates/textkit/src/lib.rs")
+    );
+    assert_eq!(
+        words("tool", "Bash cargo test -p textkit").as_deref(),
+        Some("Running cargo test -p textkit")
+    );
+    assert_eq!(
+        words("thinking", "I will add\na function.").as_deref(),
+        Some("Thinking: I will add a function.")
+    );
+    assert_eq!(
+        words(
+            "thinking",
+            "## Files to change\n- `a.rs`: add it\n```rust\nfn a() {}\n```"
+        )
+        .as_deref(),
+        Some("Thinking: Files to change - a.rs: add it fn a() {}")
+    );
+    assert_eq!(
+        words(
+            "tool",
+            "Run git commit -q -m textkit: add (#7) Made by Coder"
+        )
+        .as_deref(),
+        Some("Committing the change")
+    );
+    assert_eq!(
+        words("tool", "Run git switch -c coder/issue-7").as_deref(),
+        Some("Making the branch coder/issue-7")
+    );
+    assert_eq!(words("tool", "Run git add -A"), None);
+    assert_eq!(words("tool", "Summary"), None);
+    assert_eq!(
+        words(
+            "briefing",
+            "Context finder: candidates, then a learned scorer (#11210)"
+        )
+        .as_deref(),
+        Some("Context finder: candidates, then a learned scorer")
+    );
+    assert_eq!(
+        words(
+            "briefing",
+            "Briefing: plan and rules (#11211's generator), checked"
+        )
+        .as_deref(),
+        Some("Briefing: plan and rules, checked")
+    );
+    assert_eq!(
+        words("box", "Solver on issue #7 with google/gemini-4-argon").as_deref(),
+        Some("Solver started on issue #7")
+    );
+    assert_eq!(words("box", "The solver exited 0"), None);
+    assert_eq!(
+        words(
+            "notice",
+            "Solver ended: passed. Working copy: /work/state/x"
+        ),
+        None
+    );
+    assert_eq!(
+        words("pr", "https://github.com/a/b/pull/2").as_deref(),
+        Some("Opened a pull request: https://github.com/a/b/pull/2")
+    );
+    let page: String = ["box", "briefing", "thinking", "checks", "cost"]
+        .iter()
+        .zip([
+            "Asking for a computer",
+            "The briefing: 3 files",
+            "Reading the issue.",
+            "2 of 2 checks passed",
+            "$0.04 in model calls",
+        ])
+        .filter_map(|(phase, text)| words(phase, text))
+        .collect::<Vec<_>>()
+        .join("\n");
+    crate::copy_guard::assert_plain("/chat", &page);
+}
+
+#[test]
+fn claims_name_their_engines_and_answers_read_the_token() {
+    assert_eq!(Engine::parse("solver"), Some(Engine::Solver));
+    assert_eq!(Engine::Solver.word(), "solver");
+    assert!(!Engine::Solver.uses_claude());
+    assert_eq!(
+        password("username=x-access-token\npassword=ghs_abc\npassword_expiry_utc=1\n").as_deref(),
+        Some("ghs_abc")
+    );
+    assert_eq!(password("error=ticket_refused\n"), None);
 }

@@ -41,6 +41,19 @@ type Result<T> = std::result::Result<T, RepoCallError>;
 /// The largest answer read from the account service.
 const BODY_MAX: usize = 1024 * 1024;
 
+/// The ticket in the account service's broker answer.
+fn broker_ticket(body: &Value) -> Result<String> {
+    body["ticket"]
+        .as_str()
+        .filter(|ticket| {
+            ticket.starts_with(oa_auth::repos::broker::PREFIX)
+                && ticket.len() <= 512
+                && !ticket.contains(char::is_whitespace)
+        })
+        .map(str::to_string)
+        .ok_or(RepoCallError::Session(SessionError::Unavailable))
+}
+
 impl CloudSession {
     /// The account's GitHub access and projects.
     pub(crate) async fn github_status(&self, headers: &HeaderMap) -> Result<Status> {
@@ -183,15 +196,30 @@ impl CloudSession {
                 Some(json!({"repository": repository, "seconds": seconds})),
             )
             .await?;
-        body["ticket"]
-            .as_str()
-            .filter(|ticket| {
-                ticket.starts_with(oa_auth::repos::broker::PREFIX)
-                    && ticket.len() <= 512
-                    && !ticket.contains(char::is_whitespace)
-            })
-            .map(str::to_string)
-            .ok_or(RepoCallError::Session(SessionError::Unavailable))
+        broker_ticket(&body)
+    }
+
+    /// [`Self::github_broker_ticket`] under a signed-in app's own token
+    /// (`coder solver N --cloud`, #11561).
+    pub(crate) async fn github_broker_ticket_as(
+        &self,
+        token: &str,
+        repository: &str,
+        seconds: u64,
+    ) -> Result<String> {
+        if !oa_auth::repos::full_name(repository) {
+            return Err(RepoCallError::Repo(RepoError::Invalid));
+        }
+        let body = self
+            .account_call_as(
+                token,
+                Method::POST,
+                "/v1/account/github/broker",
+                None,
+                Some(json!({"repository": repository, "seconds": seconds})),
+            )
+            .await?;
+        broker_ticket(&body)
     }
 
     /// Hand a machine's Git credential request (the helper's form: ticket,

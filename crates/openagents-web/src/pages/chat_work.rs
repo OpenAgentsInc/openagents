@@ -293,6 +293,7 @@ fn task_label(kind: TaskKind) -> &'static str {
         TaskKind::Continue => "Cloud computer",
         TaskKind::Work => "Briefed agent",
         TaskKind::OpenAgents => "OpenAgents",
+        TaskKind::Solver => crate::work_runs::SOLVER,
     }
 }
 
@@ -310,12 +311,32 @@ pub(super) fn rows(chat: &Conversation, at: usize, links: bool) -> Markup {
             @let row = TaskRow::new(task_label(task.kind), status(task.state))
                 .detail(task.title.clone())
                 .id(format!("chat-task-{}", task.id));
-            @if task.kind == TaskKind::Work {
+            @if matches!(task.kind, TaskKind::Work | TaskKind::Solver) {
                 (row.href(format!("{}/{}", crate::work_runs::PAGE, task.id)))
+                (steps(task))
             } @else if links && !gone(task) {
                 (row.href(format!("/environments/{}/runs/{}", task.environment, task.id)))
             } @else {
                 (row)
+            }
+        }
+    }
+}
+
+/// A task's progress in plain words under its row (Solver in the cloud,
+/// #11561): the newest last. Nothing for a task without any.
+fn steps(task: &ChatTask) -> Markup {
+    if task.steps.is_empty() {
+        return html! {};
+    }
+    // The task's title is `OWNER/NAME#N`: its issues and pull requests
+    // link to that repository.
+    let repository = task.title.split('#').next().unwrap_or_default();
+    html! {
+        ul.oa-task-steps id=(format!("chat-task-{}-steps", task.id))
+            aria-label=(format!("What {} did", task_label(task.kind))) {
+            @for step in &task.steps {
+                li { (crate::github_refs::linked(step, repository)) }
             }
         }
     }
@@ -343,6 +364,8 @@ pub(super) struct Seen {
     pub error: Option<String>,
     /// Dollars it cost so far, when known.
     pub cost_usd: Option<f64>,
+    /// What it did lately, in plain words, when it reports that.
+    pub steps: Option<Vec<String>>,
 }
 
 /// The chat with its unfinished tasks' states as `read` reports them, or
@@ -381,14 +404,23 @@ pub(super) fn observe(
                         now(),
                     ));
                 }
-            } else if seen.state == TaskState::Done
-                && let Some(reply) = seen.reply.filter(|reply| !reply.trim().is_empty())
+            } else if (seen.state == TaskState::Done
+                // Solver in the cloud says how it ended either way: its
+                // pull request, or why it stopped (#11561).
+                || (task.kind == TaskKind::Solver && seen.state.finished()))
+                && let Some(reply) = seen.reply.clone().filter(|reply| !reply.trim().is_empty())
             {
                 answers.push(reply);
             }
         }
         if seen.version.is_some() && task.version != seen.version {
             task.version = seen.version;
+            changed = true;
+        }
+        if let Some(steps) = seen.steps
+            && task.steps != steps
+        {
+            task.steps = steps;
             changed = true;
         }
     }
@@ -406,12 +438,9 @@ pub(super) async fn sync(app: &App, loaded: Loaded) -> Loaded {
     }
     // The briefed agent's runs (#11258) are read from their own records.
     let mut worked = std::collections::HashMap::new();
-    for task in loaded
-        .conversation
-        .tasks
-        .iter()
-        .filter(|task| task.kind == TaskKind::Work && !task.state.finished())
-    {
+    for task in loaded.conversation.tasks.iter().filter(|task| {
+        matches!(task.kind, TaskKind::Work | TaskKind::Solver) && !task.state.finished()
+    }) {
         if let Ok(Some(run)) =
             crate::work_runs::load(&app.config.chat_store, &loaded.conversation.owner, &task.id)
                 .await
@@ -430,6 +459,7 @@ pub(super) async fn sync(app: &App, loaded: Loaded) -> Loaded {
             reply: run.reply.or_else(|| said(&run.events)),
             error: run.error,
             cost_usd: run.cost_usd,
+            steps: None,
         })
     }) else {
         return loaded;
@@ -495,12 +525,35 @@ pub(super) fn work_seen(run: &crate::work_runs::WorkRun) -> Seen {
         Work::Cancelled => TaskState::Stopped,
     };
     let reply = run.state.finished().then(|| crate::work_runs::said(run));
+    // Solver in the cloud's progress, in plain words, under its row.
+    let steps = (run.engine == crate::work_runs::Engine::Solver).then(|| {
+        let mut steps: Vec<String> = run
+            .lines
+            .iter()
+            .filter_map(crate::work_runs::solver_words)
+            .map(|step| {
+                step.chars()
+                    .take(crate::chat_store::MAX_TASK_STEP_CHARS)
+                    .collect()
+            })
+            .collect();
+        if run.state == Work::Waiting {
+            steps.push("Waiting for a computer".to_owned());
+        }
+        steps.dedup();
+        let extra = steps
+            .len()
+            .saturating_sub(crate::chat_store::MAX_TASK_STEPS);
+        steps.drain(..extra);
+        steps
+    });
     Seen {
         state,
         version: None,
         reply: reply.clone(),
         error: run.why.clone(),
         cost_usd: run.outcome.as_ref().and_then(|o| o.cost_usd),
+        steps,
     }
 }
 
@@ -532,27 +585,37 @@ pub(super) fn issues_named(text: &str, repository: Option<&str>) -> Vec<(String,
     found
 }
 
-/// Hands `issues` to the briefed agent for the signed-in person, each a
-/// task of the chat; `Err` says why it can't.
+/// Hands `issues` to `engine` (the briefed agent, or Solver in the cloud)
+/// for the signed-in person, each a task of the chat; `Err` says why it
+/// can't. A Solver run gets the person's GitHub access for its
+/// repository ([`crate::work_runs::github_ticket`]).
 pub(super) async fn begin_work(
     app: &App,
     headers: &HeaderMap,
     owner: &str,
     issues: &[(String, u64)],
     source: &str,
+    engine: crate::work_runs::Engine,
 ) -> Result<Vec<ChatTask>, String> {
     let requester = crate::work_runs::web_requester(app, headers)
         .await
         .ok_or("Working on issues isn't open to this account yet.")?;
+    let solver = engine == crate::work_runs::Engine::Solver;
     let mut tasks = Vec::new();
     for (repo, issue) in issues {
+        let github = if solver {
+            crate::work_runs::github_ticket(app, headers, repo).await
+        } else {
+            None
+        };
         let ask = crate::work_runs::Ask {
             repo: repo.clone(),
             issue: *issue,
             land: crate::work_runs::Land::Pr,
-            engine: crate::work_runs::Engine::Briefed,
+            engine,
             source: source.into(),
             title: None,
+            github,
         };
         let run =
             match crate::work_runs::submit(&app.config.chat_store, owner, requester.clone(), ask)
@@ -567,7 +630,11 @@ pub(super) async fn begin_work(
             };
         tasks.push(ChatTask {
             id: run.id,
-            kind: TaskKind::Work,
+            kind: if solver {
+                TaskKind::Solver
+            } else {
+                TaskKind::Work
+            },
             environment: "work".into(),
             title: format!("{repo}#{issue}"),
             state: TaskState::Working,
@@ -576,6 +643,7 @@ pub(super) async fn begin_work(
             version: None,
             finished_unix: None,
             agent: None,
+            steps: Vec::new(),
         });
     }
     Ok(tasks)
@@ -662,6 +730,7 @@ pub(super) async fn begin(
             version,
             finished_unix: None,
             agent: None,
+            steps: Vec::new(),
         },
     ))
 }
@@ -882,6 +951,7 @@ async fn run(
             &owner,
             &named,
             if agents > 1 { "fleet" } else { "chat" },
+            crate::work_runs::Engine::Briefed,
         )
         .await
         {
@@ -949,6 +1019,7 @@ async fn run(
         version,
         finished_unix: None,
         agent: None,
+        steps: Vec::new(),
     };
     let recorded = sidebar::update(&app, &owner, &id, |chat| {
         record(chat, environment.clone(), task.clone());
@@ -1033,6 +1104,7 @@ async fn run_agents(
             version,
             finished_unix: None,
             agent: Some(agent),
+            steps: Vec::new(),
         });
     }
     let environment = ChatEnvironment {
@@ -1115,6 +1187,7 @@ mod tests {
             version: Some(3),
             finished_unix: None,
             agent: None,
+            steps: Vec::new(),
         }
     }
 
@@ -1189,6 +1262,7 @@ mod tests {
                 reply: None,
                 error: None,
                 cost_usd: None,
+                steps: None,
             })
         };
         let same = observe(&chat, |_, run| match run {
@@ -1346,5 +1420,72 @@ mod tests {
             title(&"x".repeat(200)).chars().count(),
             TASK_TITLE_CHARS + 1
         );
+    }
+
+    #[test]
+    fn a_solver_runs_progress_shows_under_its_row_and_its_result_joins_the_chat() {
+        let mut chat = chat();
+        let mut solver = task("wrk000000000000000000000001", TaskState::Working, 1);
+        solver.kind = TaskKind::Solver;
+        solver.environment = "work".into();
+        solver.title = "AtlantisPleb/solver-box-smoke#5".into();
+        chat.tasks = vec![solver];
+        let steps = vec![
+            "The computer is up".to_owned(),
+            "Editing crates/textkit/src/lib.rs".to_owned(),
+        ];
+        let seen = |state, steps: Vec<String>, reply: Option<&str>| {
+            Some(Seen {
+                state,
+                version: None,
+                reply: reply.map(str::to_owned),
+                error: None,
+                cost_usd: None,
+                steps: Some(steps),
+            })
+        };
+        let next = observe(&chat, |_, _| seen(TaskState::Working, steps.clone(), None))
+            .expect("new steps are a change");
+        assert_eq!(next.tasks[0].steps, steps);
+        assert!(
+            observe(&next, |_, _| seen(TaskState::Working, steps.clone(), None)).is_none(),
+            "the same steps are no change"
+        );
+        let html = rows(&next, 1, false).into_string();
+        assert!(html.contains("Solver in the cloud"), "{html}");
+        assert!(html.contains("/work/wrk000000000000000000000001"), "{html}");
+        assert!(html.contains("<li>The computer is up</li>"), "{html}");
+        crate::copy_guard::assert_plain("/chat", &html);
+
+        let reply = "Solver in the cloud finished AtlantisPleb/solver-box-smoke#5 in 2 min 49 s for $0.05: checks 2/2 passed, pull request https://github.com/AtlantisPleb/solver-box-smoke/pull/6.";
+        let done = observe(&next, |_, _| {
+            seen(TaskState::Done, steps.clone(), Some(reply))
+        })
+        .expect("it ended");
+        assert_eq!(done.tasks[0].state, TaskState::Done);
+        assert_eq!(done.messages.last().map(|m| m.text.as_str()), Some(reply));
+        assert!(done.tasks[0].validate().is_ok());
+    }
+
+    #[test]
+    fn a_solver_run_that_stopped_says_why_in_its_chat() {
+        let mut chat = chat();
+        let mut solver = task("wrk000000000000000000000002", TaskState::Working, 1);
+        solver.kind = TaskKind::Solver;
+        solver.environment = "work".into();
+        chat.tasks = vec![solver];
+        let why = "The run on acme/app#3 stopped: Connect GitHub with access to acme/app.";
+        let next = observe(&chat, |_, _| {
+            Some(Seen {
+                state: TaskState::Failed,
+                version: None,
+                reply: Some(why.into()),
+                error: None,
+                cost_usd: None,
+                steps: None,
+            })
+        })
+        .expect("it ended");
+        assert_eq!(next.messages.last().map(|m| m.text.as_str()), Some(why));
     }
 }

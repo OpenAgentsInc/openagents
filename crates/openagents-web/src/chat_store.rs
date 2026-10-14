@@ -430,7 +430,17 @@ pub(crate) struct ChatTask {
     /// older records have none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent: Option<TaskAgent>,
+    /// What the run did lately, in plain words, oldest first (Solver in
+    /// the cloud's progress, #11561): the thread shows them under the
+    /// task's row. At most [`MAX_TASK_STEPS`].
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub steps: Vec<String>,
 }
+
+/// The most progress lines one task keeps for its row.
+pub(crate) const MAX_TASK_STEPS: usize = 12;
+/// The longest progress line a task keeps, in characters.
+pub(crate) const MAX_TASK_STEP_CHARS: usize = 400;
 
 /// The most messages that wait for one agent's next run.
 pub(crate) const MAX_AGENT_INBOX: usize = 8;
@@ -485,6 +495,9 @@ pub(crate) enum TaskKind {
     /// Coder's own agent, taking over a Claude Code run a usage limit
     /// paused when the person chose Continue with OpenAgents (#11293).
     OpenAgents,
+    /// An issue solved by Solver in the cloud on a computer of its own
+    /// (#11561, `crate::work_runs`): the task's id is the work run's.
+    Solver,
 }
 
 /// A task's last known state, as the run reports it.
@@ -515,6 +528,14 @@ impl ChatTask {
         }
         if let Some(agent) = &self.agent {
             agent.validate()?;
+        }
+        if self.steps.len() > MAX_TASK_STEPS
+            || self
+                .steps
+                .iter()
+                .any(|step| !bounded_text(step, MAX_TASK_STEP_CHARS * 4))
+        {
+            return Err(Error::Invalid("The chat's task is invalid."));
         }
         Ok(())
     }
@@ -3003,6 +3024,7 @@ mod tests {
             version: Some(3),
             finished_unix: None,
             agent: None,
+            steps: Vec::new(),
         }];
         let bytes = encode(&record).unwrap();
         let text = String::from_utf8(bytes.clone()).unwrap();

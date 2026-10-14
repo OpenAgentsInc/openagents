@@ -1415,6 +1415,7 @@ async fn a_long_finished_task_says_done_until_the_chat_is_opened() {
         version: Some(3),
         finished_unix: Some(400),
         agent: None,
+        steps: Vec::new(),
     }];
     fixture
         .app

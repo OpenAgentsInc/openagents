@@ -46,6 +46,7 @@ fn choices() -> Choices {
         claude_subscription: false,
         claude_signed_in: vec![],
         claude_keys: true,
+        solver: false,
     }
 }
 
@@ -77,6 +78,7 @@ fn targets_parse_and_print_back() {
         Target::Chat,
         Target::Claude("env-1".into()),
         Target::Coder("studio mac".into()),
+        Target::Solver,
     ] {
         assert_eq!(Target::parse(&target.value()), target);
     }
@@ -330,6 +332,7 @@ fn a_chat_row_keeps_its_project_branch_and_claude_code() {
             version: Some(3),
             finished_unix: None,
             agent: None,
+            steps: Vec::new(),
         }],
         opened_unix: None,
         branch: Some("fix-login".into()),
@@ -425,4 +428,41 @@ fn claude_code_before_claude_is_connected_shows_the_connect_card() {
     // The refusal a send gets says the same, plainly.
     assert!(CONNECT.contains("your message stays in the box"));
     crate::copy_guard::assert_plain("/composer/row", CONNECT);
+}
+
+#[test]
+fn solver_in_the_cloud_is_offered_with_a_projects_repository_in_any_chat() {
+    let mut choices = choices();
+    // Not open to this person: not offered.
+    let picked = choices.resolve(&wanted(APP, "", "solver"));
+    assert_eq!(picked.target, Target::Chat);
+    choices.solver = true;
+    // No project: nothing to solve in.
+    assert!(
+        !choices
+            .targets(None)
+            .iter()
+            .any(|(target, _)| *target == Target::Solver)
+    );
+    let picked = choices.resolve(&wanted(APP, "", "solver"));
+    assert_eq!(picked.target, Target::Solver);
+    let html = render(Some(&choices), &picked);
+    assert!(
+        html.contains(r#"aria-label="Where it runs: Solver in the cloud""#),
+        "{html}"
+    );
+    // An existing chat keeps it: Solver runs in the same chat.
+    choices.for_existing_chat();
+    assert_eq!(
+        choices.resolve(&wanted(APP, "", "solver")).target,
+        Target::Solver
+    );
+    let panel = panel("target", &choices, &picked, Some("chat-1")).into_string();
+    assert!(panel.contains("Solver in the cloud"), "{panel}");
+    assert!(
+        panel.contains("Its progress and the pull request show in this chat."),
+        "{panel}"
+    );
+    assert!(panel.contains("target=solver"), "{panel}");
+    crate::copy_guard::assert_plain("/composer/row/target", &panel);
 }

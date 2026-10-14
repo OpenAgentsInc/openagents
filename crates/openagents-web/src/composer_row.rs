@@ -26,6 +26,13 @@
 //!   message sent for one anyway is refused ([`CODER_NEW_CHAT`]). A chat
 //!   that is already Coder's has its own reply path.
 //!
+//! **Solver in the cloud** when a project with a repository is picked and
+//! the request may do agent work ([`crate::work_runs`], #11561): the
+//! message names the issue (its link, `OWNER/NAME#N`, or `#N` in the
+//! project's repository), Solver works it on a Google Cloud computer of
+//! its own, and its progress and the pull request show in this same chat,
+//! new or existing.
+//!
 //! Claude Code in an environment is offered even before the person has
 //! connected Claude (#11234), when this server keeps their own key
 //! ([`crate::cloud::byo`]): picking it then shows one card right in the
@@ -91,6 +98,9 @@ pub(crate) enum Target {
     Claude(String),
     /// Coder on this computer (its name).
     Coder(String),
+    /// Solver in the cloud on the issue the message names, in the picked
+    /// project's repository (#11561, [`crate::work_runs`]).
+    Solver,
 }
 
 impl Target {
@@ -100,6 +110,8 @@ impl Target {
             Self::Claude(id.to_owned())
         } else if let Some(name) = value.strip_prefix("coder:").filter(|name| !name.is_empty()) {
             Self::Coder(name.to_owned())
+        } else if value == "solver" {
+            Self::Solver
         } else {
             Self::Chat
         }
@@ -110,6 +122,7 @@ impl Target {
             Self::Chat => String::new(),
             Self::Claude(id) => format!("claude:{id}"),
             Self::Coder(name) => format!("coder:{name}"),
+            Self::Solver => "solver".to_owned(),
         }
     }
 }
@@ -167,6 +180,10 @@ pub(crate) struct Choices {
     /// This server keeps people's own Claude keys, so the connect card
     /// offers Use a key.
     pub claude_keys: bool,
+    /// The person may hand issues to Solver in the cloud here (agent work,
+    /// [`crate::work_runs::web_requester`]): offered with a project that
+    /// has a repository.
+    pub solver: bool,
 }
 
 /// Where it runs when nothing else is picked: answered here, in this chat.
@@ -226,6 +243,9 @@ impl Choices {
         let mut targets = vec![(Target::Chat, HERE.to_owned())];
         if let Some(env) = project.and_then(|project| self.environment(project)) {
             targets.push((Target::Claude(env.id.clone()), env.label()));
+        }
+        if self.solver && project.and_then(Project::repository).is_some() {
+            targets.push((Target::Solver, crate::work_runs::SOLVER.to_owned()));
         }
         for computer in &self.computers {
             targets.push((
@@ -307,6 +327,10 @@ pub(crate) async fn choices(app: &App, headers: &HeaderMap, owner: &str) -> Opti
     let claude_subscription =
         claude_connect && crate::settings::subscription::offered(app, headers).await;
     let account = crate::chat_store::is_account_owner(owner);
+    let solver = account
+        && crate::work_runs::web_requester(app, headers)
+            .await
+            .is_some();
     let computers = if account {
         online_computers(app, owner).await
     } else {
@@ -328,6 +352,7 @@ pub(crate) async fn choices(app: &App, headers: &HeaderMap, owner: &str) -> Opti
         claude_subscription,
         claude_signed_in,
         claude_keys: app.config.cloud_byo.is_some(),
+        solver,
     })
 }
 
@@ -398,6 +423,9 @@ pub(crate) async fn checked(
         return Err(match asked {
             Target::Coder(_) => {
                 "Coder on that computer isn't online now. Pick where it runs again."
+            }
+            Target::Solver => {
+                "Solver in the cloud needs a project with a repository. Pick the project, then where it runs."
             }
             _ => "Claude Code can't run there now. Pick where it runs again.",
         });
@@ -498,6 +526,7 @@ pub(crate) fn row(
                             Target::Chat => Icon::Chat,
                             Target::Claude(_) => Icon::Code,
                             Target::Coder(_) => Icon::Terminal,
+                            Target::Solver => Icon::Code,
                         })
                         .hx(load("target"))
                         .autofocus(focus == Some("target")))
@@ -588,6 +617,12 @@ pub(crate) fn wanted_for(chat: &crate::chat_store::Conversation) -> Wanted {
                 && task.after_message == at + 1 =>
         {
             Target::Claude(env.id.clone()).value()
+        }
+        // A chat whose newest message went to Solver keeps it picked.
+        (Some(task), _, Some(at))
+            if task.kind == TaskKind::Solver && task.after_message == at + 1 =>
+        {
+            Target::Solver.value()
         }
         _ => String::new(),
     };
@@ -828,6 +863,7 @@ fn target_panel(choices: &Choices, picked: &Picked, with: &With<'_>) -> Markup {
                         Target::Chat => "Answers here. Nothing runs.",
                         Target::Claude(_) => "Runs on a fresh computer with this repository. Its answer shows in this chat.",
                         Target::Coder(_) => "Starts a new chat with Coder on your computer, with its files and tools.",
+                        Target::Solver => "Name an issue: a computer of its own solves it and opens a pull request. Its progress and the pull request show in this chat.",
                     }),
                     *target == picked.target,
                 ))

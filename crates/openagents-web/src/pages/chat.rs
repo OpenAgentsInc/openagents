@@ -320,6 +320,9 @@ async fn start(State(app): State<App>, headers: HeaderMap, Form(prompt): Form<Pr
         crate::composer_row::Target::Claude(_) => {
             return start_claude(&app, &headers, &owner, &id, text, digest, &picked, files).await;
         }
+        crate::composer_row::Target::Solver => {
+            return start_solver(&app, &headers, &owner, &id, text, digest, &picked, files).await;
+        }
     }
     let admitted_at = now();
     if cloud.is_none() {
@@ -646,7 +649,16 @@ async fn start_claude(
     let working = if named.is_empty() {
         None
     } else {
-        match work::begin_work(app, headers, owner, &named, "chat").await {
+        match work::begin_work(
+            app,
+            headers,
+            owner,
+            &named,
+            "chat",
+            crate::work_runs::Engine::Briefed,
+        )
+        .await
+        {
             Ok(tasks) => Some(tasks),
             Err(message) => return refusal(StatusCode::CONFLICT, &message),
         }
@@ -724,6 +736,188 @@ async fn start_claude(
     }
     work::watch(app.clone(), owner.to_owned(), id.to_owned());
     crate::chat_html::protect(Redirect::to(&format!("/chat/{id}")).into_response())
+}
+
+/// The issues a message for Solver in the cloud names, in the picked
+/// project's repository ([`work::issues_named`]), each handed to Solver as
+/// a task of the chat; `Err` is the refusal, the message staying in the
+/// box. Solver works from the issue, so files don't go with it.
+async fn begin_solver(
+    app: &App,
+    headers: &HeaderMap,
+    owner: &str,
+    text: &str,
+    picked: &crate::composer_row::Picked,
+    files: &[crate::chat_files::FileRef],
+) -> Result<Vec<crate::chat_store::ChatTask>, Response> {
+    if !files.is_empty() {
+        return Err(refusal(
+            StatusCode::BAD_REQUEST,
+            "Solver in the cloud works from the issue, so files don't go with it. Remove them, or pick Answer here.",
+        ));
+    }
+    let Some(repository) = picked
+        .project
+        .as_ref()
+        .and_then(oa_auth::repos::Project::repository)
+    else {
+        return Err(refusal(
+            StatusCode::CONFLICT,
+            "Solver in the cloud needs a project with a repository. Pick the project, then where it runs.",
+        ));
+    };
+    let named = work::issues_named(text, Some(repository));
+    if named.is_empty() {
+        return Err(refusal(
+            StatusCode::BAD_REQUEST,
+            &format!(
+                "Name the issue for Solver: its link, OWNER/NAME#N, or #N in {repository}. Your message stays in the box."
+            ),
+        ));
+    }
+    work::begin_work(
+        app,
+        headers,
+        owner,
+        &named,
+        "chat",
+        crate::work_runs::Engine::Solver,
+    )
+    .await
+    .map_err(|message| refusal(StatusCode::CONFLICT, &message))
+}
+
+/// Stops Solver runs that were asked for but couldn't be recorded on
+/// their chat, so nothing runs that no chat shows.
+async fn abandon_work(app: &App, owner: &str, tasks: &[crate::chat_store::ChatTask]) {
+    for task in tasks {
+        let _ = crate::work_runs::cancel(&app.config.chat_store, owner, &task.id).await;
+    }
+}
+
+/// A new chat whose first message hands the issue it names to Solver in
+/// the cloud (#11561): the run is a task of the chat, its progress shows
+/// under the task's row, and its result joins the chat when it ends. On
+/// to its page.
+#[allow(clippy::too_many_arguments)]
+async fn start_solver(
+    app: &App,
+    headers: &HeaderMap,
+    owner: &str,
+    id: &str,
+    text: String,
+    digest: String,
+    picked: &crate::composer_row::Picked,
+    files: Vec<crate::chat_files::FileRef>,
+) -> Response {
+    let tasks = match begin_solver(app, headers, owner, &text, picked, &files).await {
+        Ok(tasks) => tasks,
+        Err(response) => return response,
+    };
+    let mut record = Conversation {
+        id: id.to_owned(),
+        owner: owner.to_owned(),
+        revision: 1,
+        title: text.chars().take(64).collect(),
+        messages: vec![Message {
+            role: Role::User,
+            text,
+            request_id: Some(id.to_owned()),
+        }],
+        pending: None,
+        requests: vec![Request {
+            id: id.to_owned(),
+            digest,
+            outcome: Outcome::Answered,
+            selection: None,
+            cloud: None,
+            files,
+            reply: None,
+        }],
+        selection: None,
+        updated_unix: now(),
+        pinned_unix: None,
+        archived_unix: None,
+        project: picked.project.as_ref().map(|project| project.id.clone()),
+        terminal: None,
+        environment: None,
+        tasks: Vec::new(),
+        opened_unix: None,
+        branch: picked.branch.clone(),
+        filed: false,
+    };
+    work::record_work(&mut record, tasks.clone());
+    match app.config.chat_store.create(&record).await {
+        Ok(_) => {}
+        Err(Error::Conflict) => {
+            abandon_work(app, owner, &tasks).await;
+            return crate::chat_html::protect(Redirect::to(&format!("/chat/{id}")).into_response());
+        }
+        Err(e) => {
+            abandon_work(app, owner, &tasks).await;
+            return unavailable(e);
+        }
+    }
+    work::watch(app.clone(), owner.to_owned(), id.to_owned());
+    crate::chat_html::protect(Redirect::to(&format!("/chat/{id}")).into_response())
+}
+
+/// A later message on a chat that hands the issue it names to Solver in
+/// the cloud: it joins this chat with the run as a task after it, in one
+/// write. The chat is never moved to another one.
+#[allow(clippy::too_many_arguments)]
+async fn follow_solver(
+    app: &App,
+    headers: &HeaderMap,
+    loaded: Loaded,
+    request_id: &str,
+    text: String,
+    digest: String,
+    picked: &crate::composer_row::Picked,
+    place: Option<(Option<String>, Option<String>)>,
+    files: Vec<crate::chat_files::FileRef>,
+) -> Response {
+    let chat = &loaded.conversation;
+    if work::running(chat) {
+        return refusal(
+            StatusCode::CONFLICT,
+            "A run is still working in this chat. Wait for it to finish, or stop it under Agents.",
+        );
+    }
+    let tasks = match begin_solver(app, headers, &chat.owner, &text, picked, &files).await {
+        Ok(tasks) => tasks,
+        Err(response) => return response,
+    };
+    let mut next = chat.clone();
+    next.revision += 1;
+    if let Some((project, branch)) = place {
+        next.project = project;
+        next.branch = branch;
+    }
+    next.messages.push(Message {
+        role: Role::User,
+        text,
+        request_id: Some(request_id.to_owned()),
+    });
+    next.requests.push(Request {
+        id: request_id.to_owned(),
+        digest,
+        outcome: Outcome::Answered,
+        selection: chat.selection.clone(),
+        cloud: None,
+        files,
+        reply: None,
+    });
+    work::record_work(&mut next, tasks.clone());
+    let saved = match app.config.chat_store.compare_and_swap(&loaded, &next).await {
+        Ok(saved) => saved,
+        Err(e) => {
+            abandon_work(app, &chat.owner, &tasks).await;
+            return unavailable(e);
+        }
+    };
+    work::watch(app.clone(), chat.owner.clone(), chat.id.clone());
+    accepted(app, headers, &saved.conversation).await
 }
 
 /// The environment the picked Claude Code target runs in, checked again.
@@ -1297,6 +1491,20 @@ async fn follow(
     if matches!(picked.target, crate::composer_row::Target::Coder(_)) {
         return refusal(StatusCode::CONFLICT, crate::composer_row::CODER_NEW_CHAT);
     }
+    if picked.target == crate::composer_row::Target::Solver {
+        return follow_solver(
+            &app,
+            &headers,
+            loaded,
+            &prompt.request_id,
+            text,
+            hash,
+            &picked,
+            place,
+            files,
+        )
+        .await;
+    }
     if matches!(picked.target, crate::composer_row::Target::Claude(_)) {
         return follow_claude(
             &app,
@@ -1611,7 +1819,16 @@ async fn follow_claude(
     let working = if named.is_empty() {
         None
     } else {
-        match work::begin_work(app, headers, &chat.owner, &named, "chat").await {
+        match work::begin_work(
+            app,
+            headers,
+            &chat.owner,
+            &named,
+            "chat",
+            crate::work_runs::Engine::Briefed,
+        )
+        .await
+        {
             Ok(tasks) => Some(tasks),
             Err(message) => return refusal(StatusCode::CONFLICT, &message),
         }

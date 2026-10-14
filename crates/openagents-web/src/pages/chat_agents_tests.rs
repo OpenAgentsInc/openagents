@@ -54,6 +54,7 @@ fn task(id: &str, state: TaskState, agent: Option<TaskAgent>) -> ChatTask {
         version: Some(3),
         finished_unix: None,
         agent,
+        steps: Vec::new(),
     }
 }
 
@@ -192,6 +193,7 @@ fn ended_agent_runs_put_their_result_in_the_chat_once() {
             reply: Some("Fixed.".into()),
             error: Some("It broke.".into()),
             cost_usd: Some(0.5),
+            steps: None,
         })
     })
     .expect("two ended");
@@ -211,6 +213,7 @@ fn ended_agent_runs_put_their_result_in_the_chat_once() {
             reply: None,
             error: None,
             cost_usd: None,
+            steps: None,
         }))
         .is_none()
     );

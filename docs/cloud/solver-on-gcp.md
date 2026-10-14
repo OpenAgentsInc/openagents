@@ -14,16 +14,21 @@ and the box is deleted. Nothing runs on the person's computer.
 
 ## The flow
 
-1. **Ask.** In a chat, the person picks **Solver in the cloud** under "Where
-   it runs" and names an issue (a link, `OWNER/NAME#N`, or `#N` in the chat's
-   repository), or the typed router reads the message as work on code
-   (`work.dispatch`) and the person presses "Solve in the cloud" on the offer
-   card. Ids are read only after the route is chosen; there is no keyword
-   matching. The Coder SDK (`coder_sdk::cloud_solver`) and the CLI
-   (`coder solver N --cloud`) send the same request.
+1. **Ask.** In a chat (new or existing) with a project that has a
+   repository, the person picks **Solver in the cloud** under "Where it
+   runs" and names an issue (a link, `OWNER/NAME#N`, or `#N` in the
+   project's repository). Ids are read only after that choice; there is no
+   keyword matching, and nothing under an answer offers it (no buttons
+   under answers, no second chat). The Coder SDK
+   (`coder_sdk::cloud_solver`), the CLI (`coder solver N --cloud`) and the
+   `/work` page's "Who works on it" send the same request.
 2. **Queue.** The website records a work run (`POST /v1/work`
    `{repo, issue, land: "pr", engine: "solver"}`, `crates/openagents-web/src/work_runs.rs`)
    tied to the chat. The chat shows one task row linked to `/work/{id}`.
+   Under the person's session it also asks the account service for a
+   credential-broker ticket for the repository (`oa_auth::repos::broker`,
+   good for the run's 6-hour wait and an hour more); the ticket, not a
+   GitHub token, waits in the run's record and is never shown.
 3. **Box.** The box dispatcher (`oa-solver-box`) takes solver runs only
    (`POST /v1/work-hosts/{name}/claim` `{engines: ["solver"]}`) and asks the
    Box SDK (`crates/boat`, against our own [oa-boat](oa-boat.md) on GCE; never
@@ -33,7 +38,11 @@ and the box is deleted. Nothing runs on the person's computer.
 4. **Repository.** The dispatcher writes the run's credentials to the box
    through the files API (mode 600, outside snapshots, deleted by the run's
    first step): the requester's GitHub token when the account has connected
-   GitHub, otherwise the pool's git token, as cloud Coder does today
+   GitHub (the claim's `run.github_token`: the website redeems the run's
+   ticket once, when the dispatcher takes the run, for an installation
+   token scoped to that one repository, answers it to that host only with
+   `Cache-Control: no-store`, and drops the ticket from the record),
+   otherwise the pool's git token, as cloud Coder does today
    ([boat-chat-work.md](boat-chat-work.md#credentials)); a short-lived
    Artifact Registry pull token; a Vertex AI access token, rewritten every
    20 minutes while the run lives. The box pulls the solver container and
@@ -47,11 +56,18 @@ and the box is deleted. Nothing runs on the person's computer.
    No step or time budget is added.
 6. **Stream.** The dispatcher follows the solver's NDJSON and reports it
    (`POST /v1/work-hosts/{name}/runs/{id}`) as progress lines: `box`,
-   `intake`, `briefing`, `thinking`, `tool`, `checks`, `pr`, `cost`. The chat
-   shows them under the task row as they arrive: what the agent is thinking,
-   each tool call, and the stage.
+   `stage`, `briefing`, `thinking`, `tool`, `checks`, `pr`, `cost`,
+   `notice`. The chat shows the latest twelve under the task row in plain
+   words as they arrive (`work_runs::solver_words`: "The computer is up",
+   "Thinking: …", "Editing crates/…", "Checks: 2 of 2 checks passed"; the
+   hands' own instructions and the computer's ids are left out). The
+   Agents panel lists the run with its time and cost so far and a Stop
+   that cancels it: the dispatcher's next report gets `{cancel: true}`,
+   kills the run and deletes the box.
 7. **Result.** The run's result carries the pull request URL, the checks,
-   the files, the time and the cost; the chat's turn ends with the link.
+   the files, the time and the cost; the chat's turn ends with one message:
+   "Solver in the cloud finished OWNER/NAME#N in 2 min 49 s for $0.05
+   ($0.04 model, $0.01 computer): checks 2/2 passed, pull request URL".
 8. **Release.** The dispatcher deletes the box when the run ends, however it
    ends. A failed run's box is deleted too; its `change.patch` and
    `summary.json` are kept in the run's result first.
