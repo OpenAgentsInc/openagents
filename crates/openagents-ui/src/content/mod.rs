@@ -31,7 +31,7 @@ mod transcript;
 
 pub use activity::{ActivityStatus, FileChanges, ResultCard, Step, Steps, ToolCall, ToolGroup};
 pub use answer::{AnswerCard, AnswerColumns, AnswerSteps, MAX_TABS, Tabs};
-pub use code::{CodeBlock, CodeSize, StickyActionBar};
+pub use code::{CodeBlock, CodeSize, StickyActionBar, replacement_diff};
 pub use link_card::{LinkCard, LinkCards};
 pub use markdown::{Heading, InlineCode, List, ListItem, MarkdownRoot, MarkdownSize, Paragraph};
 pub use page::{Facts, PageColumn};

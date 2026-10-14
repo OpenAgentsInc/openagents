@@ -394,7 +394,9 @@ fn every_rendered_class_has_a_rule() {
             input: String::new(), output: String::new(), detail_id: "s-2".into() }))
     };
     let shell = format!("{shell}{}", extra.into_string());
-    let css = format!("{SHELL_CSS}{COMPOSER_CSS}{THREAD_CSS}");
+    // Messages draw with the transcript components (#11621), so the
+    // whole bundle is the reference.
+    let css = crate::stylesheet().to_owned();
     let mut missing = Vec::new();
     for chunk in shell.split("class=\"").skip(1) {
         let classes = chunk.split('"').next().unwrap();
@@ -477,7 +479,7 @@ fn messages_escape_text_and_keep_authors_for_screen_readers() {
         .id("m-0")
         .render()
         .into_string();
-    assert!(user.contains(r#"<article class="oa-message" data-role="user" id="m-0">"#));
+    assert!(user.contains(r#"<article class="oa-message oa-turn" data-role="user" data-from="person" id="m-0">"#), "{user}");
     assert!(user.contains(r#"<h2 class="oa-message-author oa-visually-hidden">You</h2>"#));
     assert!(user.contains("&lt;script&gt;x&lt;/script&gt;\nline"));
     let assistant = Message::assistant(maud::PreEscaped("<p>ok</p>"))
@@ -485,22 +487,33 @@ fn messages_escape_text_and_keep_authors_for_screen_readers() {
         .render()
         .into_string();
     assert!(assistant.contains(r#"data-role="assistant""#));
-    assert!(assistant.contains("OpenAgents</h2>"));
-    assert!(assistant.contains(r#"<div class="oa-message-content"><p>ok</p></div>"#));
+    // A turn's header names its author once; an answer that continues the
+    // turn keeps the name for screen readers only.
+    assert!(assistant.contains(r#"<h2 class="oa-message-author oa-turn__author">OpenAgents</h2>"#), "{assistant}");
+    assert!(assistant.contains(r#"<div class="oa-message-content oa-turn__body"><p>ok</p></div>"#));
+    let continued = Message::assistant(maud::PreEscaped("<p>ok</p>"))
+        .author("OpenAgents")
+        .continued(true)
+        .action(maud::PreEscaped("<button>Copy</button>"))
+        .render()
+        .into_string();
+    assert!(!continued.contains("oa-turn__header"), "{continued}");
+    assert!(continued.contains(r#"oa-visually-hidden">OpenAgents</h2>"#), "{continued}");
+    assert!(continued.contains(r#"<footer class="oa-turn__footer">"#), "{continued}");
     let status = Message::status("Failed").render().into_string();
     assert!(status.contains(r#"<h2 class="oa-message-author">Status</h2>"#));
     assert_eq!(Message::status("x").role(), MessageRole::Status);
-    // The model's thinking (#11543): a "Thinking" row that opens to its
-    // words, slanted, with the heading for screen readers only.
+    // The model's thinking: one trace line that opens to its words,
+    // slanted, with the heading for screen readers only.
     let thinking = Message::thinking("I'll look\nfirst", "t-9")
         .render()
         .into_string();
     assert!(thinking.contains(r#"data-role="thinking""#));
     assert!(thinking.contains(r#"oa-visually-hidden">Thinking</h2>"#));
-    assert!(thinking.contains(r#"aria-expanded="false" aria-controls="t-9" data-oa-tool-step"#));
-    assert!(thinking.contains(r#"<div class="oa-tool-step__detail" id="t-9" hidden><p class="oa-message-thinking">I'll look"#));
-    // A tool step: its mark, name, and line, opening to its input and
-    // output with a copy action; a failed one says so in words too.
+    assert!(thinking.contains(r#"<li class="oa-trace-step" id="t-9" data-kind="reasoning""#), "{thinking}");
+    assert!(thinking.contains(r#"<p class="oa-message-thinking">I'll look"#), "{thinking}");
+    // A tool step: a trace line with its name, line and status, opening
+    // to its input and output with a copy action; a failed one says so.
     let step = Message::step(&Step {
         name: "OpenAgents CLI".into(),
         summary: "projects show finances".into(),
@@ -513,11 +526,26 @@ fn messages_escape_text_and_keep_authors_for_screen_readers() {
     .into_string();
     assert!(step.contains(r#"data-role="step""#));
     assert!(step.contains(r#"data-state="failed""#));
-    assert!(step.contains(r#"<span class="oa-tool-step__name">OpenAgents CLI</span><span class="oa-tool-step__summary">projects show finances</span>"#));
+    assert!(step.contains(r#"data-status="error""#), "{step}");
+    assert!(step.contains(r#"OpenAgents CLI</span> <code class="oa-trace-step__detail">projects show finances</code>"#), "{step}");
     assert!(step.contains(", failed"));
     assert!(step.contains("data-oa-copy"));
     assert!(step.contains("No such project"));
-    // With nothing to open it is a plain row.
+    // An edit's input reads as a diff.
+    let edit = Message::step(&Step {
+        name: "Edit".into(),
+        summary: "src/a.rs".into(),
+        state: StepState::Running,
+        input: r#"{"file_path":"src/a.rs","old_string":"x","new_string":"y"}"#.into(),
+        output: String::new(),
+        detail_id: "e".into(),
+    })
+    .render()
+    .into_string();
+    assert!(edit.contains(r#"data-diff="del">-x"#), "{edit}");
+    assert!(edit.contains(r#"data-diff="add">+y"#), "{edit}");
+    assert!(edit.contains("oa-shimmer-text"), "{edit}");
+    // With nothing to open it is a plain line.
     let plain = Message::step(&Step {
         name: String::new(),
         summary: "Bash: ls".into(),
@@ -528,7 +556,7 @@ fn messages_escape_text_and_keep_authors_for_screen_readers() {
     })
     .render()
     .into_string();
-    assert!(!plain.contains("<button"));
+    assert!(!plain.contains("<details"));
 }
 
 #[test]

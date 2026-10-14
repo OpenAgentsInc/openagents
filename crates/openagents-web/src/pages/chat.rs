@@ -2742,6 +2742,7 @@ fn turn(
     streaming: bool,
     signed_in: bool,
     step: Option<&crate::chat_store::StepDetail>,
+    continued: bool,
 ) -> ThreadMessage {
     // A chat an account owns is read signed in; an answer's buttons for
     // the other case are left out.
@@ -2770,7 +2771,19 @@ fn turn(
                 p.oa-thread-notice data-oa-switched=(switched.provider.word()) { (switched.line()) }
             }
         })
-        .author("OpenAgents"),
+        .author("OpenAgents")
+        // One turn shows one header: an answer after this turn's steps (or
+        // an earlier answer) continues it.
+        .continued(continued)
+        .action_if(!streaming && !message.text.trim().is_empty(), || {
+            openagents_ui::actions::CopyButton::new(message.text.clone())
+                .label("Copy")
+                .aria_label("Copy the answer")
+                .copy_icon(openagents_ui::icons::Icon::Copy)
+                .size(openagents_ui::actions::ControlSize::Xs)
+                .variant(openagents_ui::actions::ButtonVariant::Ghost)
+                .color(openagents_ui::actions::Color::Secondary)
+        }),
         // A tool step Coder synced (#11543): one compact row with its
         // mark, the tool's name, and the line Coder's terminal shows after
         // it, opening to its whole input and output.
@@ -2797,6 +2810,25 @@ fn turn(
         Role::Thinking => ThreadMessage::thinking(&message.text, &format!("chat-step-{index}")),
     }
     .id(format!("chat-message-{index}"))
+}
+
+/// The header of an agent turn that starts with steps: who is answering.
+fn turn_header() -> Markup {
+    html! {
+        header.oa-turn__header.oa-thread-turn-header aria-hidden="true" {
+            span.oa-turn__avatar { (openagents_ui::icons::Icon::Agent.size(openagents_ui::icons::IconSize::Sm)) }
+            span.oa-turn__author { "OpenAgents" }
+        }
+    }
+}
+
+/// Whether the message at `index` continues the agent's turn above it:
+/// the message before it is the agent's (an answer, a step, its thinking).
+fn continues(chat: &Conversation, index: usize) -> bool {
+    index
+        .checked_sub(1)
+        .and_then(|before| chat.messages.get(before))
+        .is_some_and(|before| before.role != Role::User)
 }
 
 /// Whether `message` is the reply still being written for the pending
@@ -2827,6 +2859,11 @@ fn messages(chat: &Conversation, before: Option<usize>, links: bool) -> Markup {
         }
         @if start == 0 { (work::rows(chat, 0, links)) }
         @for (index,message) in chat.messages[start..end].iter().enumerate() {
+            // A turn that starts with steps or thinking gets its header
+            // first, above them (#11621).
+            @if matches!(message.role, Role::Tool | Role::Thinking) && !continues(chat, index + start) {
+                (turn_header())
+            }
             (turn(
                 message,
                 index + start,
@@ -2835,6 +2872,7 @@ fn messages(chat: &Conversation, before: Option<usize>, links: bool) -> Markup {
                 streaming(chat, message),
                 crate::chat_store::is_account_owner(&chat.owner),
                 chat.terminal.as_ref().and_then(|t| t.steps.get(&(index + start))),
+                continues(chat, index + start),
             ))
             // The files sent with it (#11174).
             (crate::chat_files::shown(&chat.id, crate::chat_files::of_message(chat, message)))
@@ -2881,7 +2919,7 @@ pub(crate) fn shared_messages(chat: &Conversation) -> Markup {
         @for (index, message) in chat.messages.iter().enumerate() {
             @if !message.text.trim().is_empty() {
                 // A step shows its row, never what it read or printed.
-                (turn(message, index, &[], None, false, false, shared_step(chat, index).as_ref()))
+                (turn(message, index, &[], None, false, false, shared_step(chat, index).as_ref(), continues(chat, index)))
             }
         }
     }

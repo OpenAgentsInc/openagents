@@ -1308,11 +1308,15 @@ async fn a_coder_chat_shows_its_steps_and_thinking_as_rows() {
         ) || body.contains("I&#39;ll glance at the finance threads first."),
         "{body}"
     );
+    // Each step is a trace line (#11621) that opens to its input and output.
     assert!(
-        body.contains(r#"<span class="oa-tool-step__name">OpenAgents CLI</span><span class="oa-tool-step__summary">projects show finances</span>"#),
+        body.contains(r#"OpenAgents CLI</span> <code class="oa-trace-step__detail">projects show finances</code>"#),
         "{body}"
     );
-    assert!(body.contains(r#"aria-controls="chat-step-2""#), "{body}");
+    assert!(
+        body.contains(r#"<li class="oa-trace-step" id="chat-step-2""#),
+        "{body}"
+    );
     assert!(body.contains(r#"data-state="failed""#), "{body}");
     assert!(body.contains("ls missing"), "{body}");
     fixture.no_worker();

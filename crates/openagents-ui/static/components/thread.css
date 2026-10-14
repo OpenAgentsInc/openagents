@@ -69,124 +69,33 @@
   white-space: pre-wrap;
 }
 
-/* Tool steps and thinking (#11543): one compact row each, close together
-   like Coder's terminal, opening to the whole input and output. */
+/* Tool steps and thinking (#11543, #11621): each is one trace line
+   (trace.css), close together, and a run of them joins into one trace with
+   its rail running from line to line. */
 .oa-message[data-role="step"],
 .oa-message[data-role="thinking"] {
-  margin-bottom: calc(var(--spacing) * 1);
+  margin-bottom: 0;
+}
+.oa-message:is([data-role="step"], [data-role="thinking"]):has(+ .oa-message:is([data-role="step"], [data-role="thinking"])) .oa-trace > .oa-trace-step::before {
+  content: "";
+  position: absolute;
+  top: calc(var(--trace-icon) + 10px);
+  bottom: -4px;
+  left: calc(var(--trace-pad-x) + var(--trace-icon) / 2 - 0.5px);
+  width: 1px;
+  background: var(--color-border-subtle);
+  pointer-events: none;
 }
 .oa-message[data-role="step"] + .oa-message:not([data-role="step"]):not([data-role="thinking"]),
 .oa-message[data-role="thinking"] + .oa-message:not([data-role="step"]):not([data-role="thinking"]) {
   margin-top: calc(var(--spacing) * 4);
 }
-.oa-tool-step {
-  min-width: 0;
-  font-size: var(--font-text-sm-size);
-  line-height: var(--font-text-sm-line-height);
+.oa-message[data-role="assistant"] > .oa-turn__header + .oa-turn__body {
+  margin-top: calc(var(--spacing) * 2);
 }
-.oa-tool-step__row {
-  box-sizing: border-box;
-  display: flex;
-  align-items: baseline;
-  gap: calc(var(--spacing) * 2);
-  width: 100%;
-  min-width: 0;
-  margin: 0;
-  padding: calc(var(--spacing) * 1) calc(var(--spacing) * 2);
-  border: 0;
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--color-text-secondary);
-  font: inherit;
-  text-align: start;
+.oa-message[data-role="assistant"] > .oa-turn__footer {
+  margin-top: calc(var(--spacing) * 1);
 }
-button.oa-tool-step__row {
-  cursor: pointer;
-}
-button.oa-tool-step__row:hover {
-  background: var(--color-background-secondary-soft-alpha);
-}
-button.oa-tool-step__row:focus-visible {
-  outline: 2px solid var(--color-border-primary-outline);
-  outline-offset: 1px;
-}
-.oa-tool-step__mark {
-  flex: none;
-  width: 0.75em;
-  color: var(--color-text-success);
-  text-align: center;
-}
-.oa-tool-step[data-state="failed"] .oa-tool-step__mark {
-  color: var(--color-text-danger);
-}
-.oa-tool-step[data-state="running"] .oa-tool-step__mark::before {
-  display: inline-block;
-  box-sizing: border-box;
-  width: 0.7em;
-  height: 0.7em;
-  border: 2px solid var(--color-text-tertiary);
-  border-top-color: transparent;
-  border-radius: 100%;
-  content: "";
-  animation: oa-tool-step-spin 0.8s linear infinite;
-}
-@keyframes oa-tool-step-spin {
-  to {
-    transform: rotate(1turn);
-  }
-}
-.oa-tool-step__name {
-  flex: none;
-  color: var(--color-text);
-  font-weight: var(--font-weight-semibold);
-}
-.oa-tool-step__summary {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  font-family: var(--font-mono);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.oa-tool-step[data-kind="thinking"] .oa-tool-step__name {
-  color: var(--color-text-tertiary);
-  font-style: italic;
-  font-weight: var(--font-weight-normal);
-}
-.oa-tool-step__chevron {
-  flex: none;
-  margin-inline-start: auto;
-  color: var(--color-text-tertiary);
-}
-.oa-tool-step__chevron::before {
-  display: inline-block;
-  content: "›";
-  transition: transform 120ms ease;
-}
-.oa-tool-step__row[aria-expanded="true"] .oa-tool-step__chevron::before {
-  transform: rotate(90deg);
-}
-.oa-tool-step__detail {
-  margin: calc(var(--spacing) * 1) 0 calc(var(--spacing) * 2) calc(var(--spacing) * 6);
-}
-.oa-tool-step__detail .oa-code-block {
-  max-height: 24rem;
-  overflow: auto;
-}
-.oa-tool-step__label {
-  margin: calc(var(--spacing) * 2) 0 calc(var(--spacing) * 1);
-  color: var(--color-text-tertiary);
-  font-size: var(--font-text-xs-size);
-}
-@media (prefers-reduced-motion: reduce) {
-  .oa-tool-step[data-state="running"] .oa-tool-step__mark::before {
-    animation: none;
-  }
-  .oa-tool-step__chevron::before {
-    transition: none;
-  }
-}
-
 .oa-thread-notice,
 .oa-agents-notice {
   margin: 0 0 calc(var(--spacing) * 4);
@@ -408,4 +317,15 @@ a.oa-task-row:focus-visible {
 /* Text the thread doesn't size itself (step lines, notices) follows it. */
 .oa-thread-view {
   font-size: var(--font-text-md-size);
+}
+.oa-tool-step {
+  min-width: 0;
+}
+/* One turn shows one header: an answer right after the agent's own steps
+   or answer continues that turn (#11621). */
+.oa-message:is([data-role="assistant"], [data-role="step"], [data-role="thinking"]) + .oa-message[data-role="assistant"] > .oa-turn__header {
+  display: none;
+}
+.oa-thread-turn-header {
+  margin: 0 0 calc(var(--spacing) * 1);
 }

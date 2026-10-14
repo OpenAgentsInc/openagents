@@ -122,6 +122,51 @@ pub enum CodeSize {
     Sm,
 }
 
+/// One replacement (`old` became `new`) as a unified-looking diff for a
+/// [`CodeBlock::diff`] block: a hunk line, the lines both share at the
+/// start and the end as context, then what was removed and added. Also
+/// returns the counts of added and removed lines.
+#[must_use]
+pub fn replacement_diff(old: &str, new: &str) -> (String, usize, usize) {
+    let old_lines: Vec<&str> = if old.is_empty() {
+        Vec::new()
+    } else {
+        old.lines().collect()
+    };
+    let new_lines: Vec<&str> = if new.is_empty() {
+        Vec::new()
+    } else {
+        new.lines().collect()
+    };
+    let head = old_lines
+        .iter()
+        .zip(&new_lines)
+        .take_while(|(a, b)| a == b)
+        .count();
+    let tail = old_lines[head..]
+        .iter()
+        .rev()
+        .zip(new_lines[head..].iter().rev())
+        .take_while(|(a, b)| a == b)
+        .count();
+    let mut out = format!("@@ -{} +{} @@\n", old_lines.len(), new_lines.len());
+    for l in &old_lines[..head] {
+        out.push_str(&format!(" {l}\n"));
+    }
+    let removed = &old_lines[head..old_lines.len() - tail];
+    let added = &new_lines[head..new_lines.len() - tail];
+    for l in removed {
+        out.push_str(&format!("-{l}\n"));
+    }
+    for l in added {
+        out.push_str(&format!("+{l}\n"));
+    }
+    for l in &old_lines[old_lines.len() - tail..] {
+        out.push_str(&format!(" {l}\n"));
+    }
+    (out, added.len(), removed.len())
+}
+
 /// How a diff line reads (`data-diff`).
 fn diff_kind(line: &str) -> Option<&'static str> {
     if line.starts_with("+++") || line.starts_with("---") {

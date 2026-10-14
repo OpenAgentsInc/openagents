@@ -14,7 +14,7 @@ use openagents_ui::actions::{ButtonVariant, Color, ControlSize, CopyButton};
 use openagents_ui::content::{
     Attachment, AttachmentKind, Attachments, Bubble, CodeBlock, CodeSize, MarkdownRoot,
     MarkdownSize, Marker, MessageScroller, Question, Questionnaire, Trace, TraceKind, TraceStatus,
-    TraceStep, Turn,
+    TraceStep, Turn, replacement_diff,
 };
 use openagents_ui::icons::Icon;
 use serde_json::Value;
@@ -137,48 +137,6 @@ fn shown(value: &Value) -> String {
 
 fn file_language(path: &str) -> &str {
     path.rsplit_once('.').map_or("", |(_, ext)| ext)
-}
-
-/// A unified-looking diff of one replacement.
-fn replacement_diff(old: &str, new: &str) -> (String, usize, usize) {
-    let old_lines: Vec<&str> = if old.is_empty() {
-        Vec::new()
-    } else {
-        old.lines().collect()
-    };
-    let new_lines: Vec<&str> = if new.is_empty() {
-        Vec::new()
-    } else {
-        new.lines().collect()
-    };
-    // Keep the lines both share at the start and the end as context.
-    let head = old_lines
-        .iter()
-        .zip(&new_lines)
-        .take_while(|(a, b)| a == b)
-        .count();
-    let tail = old_lines[head..]
-        .iter()
-        .rev()
-        .zip(new_lines[head..].iter().rev())
-        .take_while(|(a, b)| a == b)
-        .count();
-    let mut out = format!("@@ -{} +{} @@\n", old_lines.len(), new_lines.len());
-    for l in &old_lines[..head] {
-        out.push_str(&format!(" {l}\n"));
-    }
-    let removed = &old_lines[head..old_lines.len() - tail];
-    let added = &new_lines[head..new_lines.len() - tail];
-    for l in removed {
-        out.push_str(&format!("-{l}\n"));
-    }
-    for l in added {
-        out.push_str(&format!("+{l}\n"));
-    }
-    for l in &old_lines[old_lines.len() - tail..] {
-        out.push_str(&format!(" {l}\n"));
-    }
-    (out, added.len(), removed.len())
 }
 
 /// The trajectories of the agents a document asked, by id.

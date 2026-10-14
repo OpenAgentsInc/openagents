@@ -55,4 +55,28 @@
     start();
   }
   document.addEventListener("htmx:afterSettle", start);
+
+  // A redrawn thread keeps the lines the reader opened: a live chat
+  // redraws its turns as they change, and a line someone opened (or
+  // closed) stays that way.
+  const chosen = new Map();
+  document.addEventListener("toggle", (event) => {
+    const details = event.target;
+    if (!(details instanceof HTMLDetailsElement)) return;
+    const line = details.parentElement;
+    if (line && line.matches("li.oa-trace-step[id]")) chosen.set(line.id, details.open);
+  }, true);
+  new MutationObserver((records) => {
+    if (chosen.size === 0) return;
+    for (const record of records) {
+      for (const node of record.addedNodes) {
+        if (!(node instanceof Element)) continue;
+        const lines = node.matches("li.oa-trace-step[id]") ? [node] : node.querySelectorAll("li.oa-trace-step[id]");
+        for (const line of lines) {
+          const details = line.querySelector(":scope > details");
+          if (details && chosen.has(line.id)) details.open = chosen.get(line.id);
+        }
+      }
+    }
+  }).observe(document.documentElement, { childList: true, subtree: true });
 })();
