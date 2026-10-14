@@ -79,15 +79,7 @@ mod plan;
 #[cfg(unix)]
 pub mod plugin_catalog;
 pub mod plugin_definition;
-#[cfg(unix)]
 pub mod plugin_hooks;
-/// Plugins' own hooks are found through the `background` crate, which is
-/// Unix-only: on Windows no plugin hook registers.
-#[cfg(not(unix))]
-pub mod plugin_hooks {
-    /// Nothing to register on this platform.
-    pub fn register(_: &mut coder_sdk::Registry) {}
-}
 pub mod plugin_store;
 pub mod plugin_tools;
 pub mod plugins;

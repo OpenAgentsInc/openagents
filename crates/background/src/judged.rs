@@ -55,7 +55,7 @@ pub const ALL_KINDS: [(&str, &str); 6] = [
 ];
 
 /// The kinds that may be proposed.
-pub const KINDS: [&str; 3] = ["build_output", "package_cache", "app_cache"];
+pub use crate::plugin_list::KINDS;
 
 /// Where unknown folders are looked for: the children of these.
 pub const SURVEY: [&str; 3] = ["~/.openagents", "~/work", "~/.cache"];

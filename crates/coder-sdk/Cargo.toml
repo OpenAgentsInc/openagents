@@ -28,6 +28,8 @@ plugin = { path = "../plugin" }
 tokio = { version = "1", features = ["rt", "io-util", "io-std", "sync", "macros", "process", "time"] }
 # The folder holding an ACP agent's hook plugin or configuration (`acp::gate`).
 tempfile = "3"
+# The token a loopback hook host asks for (Windows, #11571).
+getrandom = "0.3"
 
 [[bin]]
 name = "monitor-replay"

@@ -16,20 +16,7 @@ pub const LOG_BYTES: u64 = 10 * 1024 * 1024;
 /// Keep this many rotated logs.
 pub const LOG_FILES: usize = 10;
 
-/// Write `bytes` to `path` through a temporary file and a rename.
-///
-/// # Errors
-/// The write or rename failed.
-pub fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    let mut tmp = path.as_os_str().to_owned();
-    tmp.push(format!(".tmp-{}", std::process::id()));
-    let tmp = std::path::PathBuf::from(tmp);
-    std::fs::write(&tmp, bytes)?;
-    std::fs::rename(&tmp, path)
-}
+pub use crate::layout::write_atomic;
 
 /// The rule `id`: its file when there is one, else the built-in, else the
 /// rule an enabled plugin brings. A plugin's rule edited here (paused, or

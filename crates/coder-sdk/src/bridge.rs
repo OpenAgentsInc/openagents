@@ -3,8 +3,9 @@
 //!
 //! The harness runs the program on an event with its hook input on
 //! standard input. The program asks the session's in-process registry,
-//! held by the host that started the session ([`Host`], on a Unix socket
-//! named by [`SOCKET_VAR`]), and prints the reply the harness expects. So a
+//! held by the host that started the session ([`Host`], at the path named
+//! by [`SOCKET_VAR`]: a Unix socket, or on Windows a file naming a loopback
+//! port and the token that port asks for), and prints the reply the harness expects. So a
 //! Codex-style `-c hooks.PreToolUse=...` harness gets the whole registry,
 //! composed by the same rules, instead of one hard-wired hook.
 //!
@@ -17,14 +18,13 @@
 //! with `updatedInput`, no `continue: false` before a tool).
 
 use std::io::{BufRead, BufReader, Read, Write};
+use std::net::{Ipv4Addr, TcpListener, TcpStream};
 #[cfg(unix)]
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
-#[cfg(not(unix))]
-use unsupported::{UnixListener, UnixStream};
 
 use serde_json::{Value, json};
 
@@ -221,10 +221,13 @@ fn held(step: &str) -> String {
     }
 }
 
-/// The host side: answers the bridge on a Unix socket from one session's
-/// runner, until dropped.
+/// The host side: answers the bridge from one session's runner, until
+/// dropped: on a Unix socket, or where there is none (Windows) on a
+/// loopback port that only answers a caller holding its token.
 pub struct Host {
     path: PathBuf,
+    /// The loopback port, when the host isn't on a Unix socket.
+    port: Option<u16>,
     stop: Arc<AtomicBool>,
     thread: Option<std::thread::JoinHandle<()>>,
 }
@@ -246,12 +249,25 @@ impl Host {
         Self::start_at(runner, path)
     }
 
-    /// Starts answering on `path`.
+    /// Starts answering on `path`: a Unix socket where the platform has
+    /// them, else a loopback port named in a file at `path`.
     ///
     /// # Errors
     ///
     /// When the socket can't be made.
     pub fn start_at(runner: Arc<Mutex<Runner>>, path: PathBuf) -> std::io::Result<Host> {
+        #[cfg(unix)]
+        {
+            Self::start_unix(runner, path)
+        }
+        #[cfg(not(unix))]
+        {
+            Self::start_loopback(runner, path)
+        }
+    }
+
+    #[cfg(unix)]
+    fn start_unix(runner: Arc<Mutex<Runner>>, path: PathBuf) -> std::io::Result<Host> {
         let _ = std::fs::remove_file(&path);
         let listener = UnixListener::bind(&path)?;
         let stop = Arc::new(AtomicBool::new(false));
@@ -268,11 +284,56 @@ impl Host {
                     // One connection per hook firing; each answers alone.
                     let _ = std::thread::Builder::new()
                         .name("coder hook".into())
-                        .spawn(move || serve_one(&runner, stream));
+                        .spawn(move || serve_one(&runner, &stream, None));
                 }
             })?;
         Ok(Host {
             path,
+            port: None,
+            stop,
+            thread: Some(thread),
+        })
+    }
+
+    /// The host on a loopback port: the file at `path` holds
+    /// `127.0.0.1:PORT TOKEN`, and a request without the token is
+    /// answered with nothing. The file is made only by this user (the
+    /// temporary folder is theirs), so the token is the access check.
+    pub(crate) fn start_loopback(
+        runner: Arc<Mutex<Runner>>,
+        path: PathBuf,
+    ) -> std::io::Result<Host> {
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0))?;
+        let address = listener.local_addr()?;
+        let token = loopback_token()?;
+        let _ = std::fs::remove_file(&path);
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)?;
+        writeln!(file, "{address} {token}")?;
+        drop(file);
+        let stop = Arc::new(AtomicBool::new(false));
+        let stopping = stop.clone();
+        let thread = std::thread::Builder::new()
+            .name("coder hook host".into())
+            .spawn(move || {
+                let token = Arc::new(token);
+                for stream in listener.incoming() {
+                    if stopping.load(Ordering::SeqCst) {
+                        break;
+                    }
+                    let Ok(stream) = stream else { continue };
+                    let runner = runner.clone();
+                    let token = token.clone();
+                    let _ = std::thread::Builder::new()
+                        .name("coder hook".into())
+                        .spawn(move || serve_one(&runner, &stream, Some(&token)));
+                }
+            })?;
+        Ok(Host {
+            path,
+            port: Some(address.port()),
             stop,
             thread: Some(thread),
         })
@@ -315,7 +376,13 @@ impl Drop for Host {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::SeqCst);
         // Wake the accept loop so it sees the stop.
-        let _ = UnixStream::connect(&self.path);
+        match self.port {
+            Some(port) => drop(TcpStream::connect((Ipv4Addr::LOCALHOST, port))),
+            #[cfg(unix)]
+            None => drop(UnixStream::connect(&self.path)),
+            #[cfg(not(unix))]
+            None => {}
+        }
         if let Some(thread) = self.thread.take() {
             let _ = thread.join();
         }
@@ -323,16 +390,19 @@ impl Drop for Host {
     }
 }
 
-/// One request line `{"format", "input"}` in, one reply line out (`null`
-/// for no change).
-fn serve_one(runner: &Mutex<Runner>, stream: UnixStream) {
+/// One request line `{"format", "input"}` in (with `"token"` on a
+/// loopback port), one reply line out (`null` for no change).
+fn serve_one<S>(runner: &Mutex<Runner>, stream: &S, token: Option<&str>)
+where
+    for<'a> &'a S: Read + Write,
+{
     let mut line = String::new();
-    let Ok(read) = stream.try_clone() else { return };
-    if BufReader::new(read).read_line(&mut line).is_err() {
+    if BufReader::new(stream).read_line(&mut line).is_err() {
         return;
     }
     let reply = serde_json::from_str::<Value>(&line)
         .ok()
+        .filter(|request| token.is_none_or(|token| request["token"].as_str() == Some(token)))
         .and_then(|request| {
             let format = Format::from_name(request["format"].as_str()?)?;
             let mut runner = runner.lock().unwrap_or_else(PoisonError::into_inner);
@@ -341,6 +411,35 @@ fn serve_one(runner: &Mutex<Runner>, stream: UnixStream) {
         .unwrap_or(Value::Null);
     let mut stream = stream;
     let _ = writeln!(stream, "{reply}");
+}
+
+/// A fresh token for a loopback host: 32 random hex digits.
+fn loopback_token() -> std::io::Result<String> {
+    let mut bytes = [0u8; 16];
+    getrandom::fill(&mut bytes).map_err(std::io::Error::other)?;
+    Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
+}
+
+/// The loopback port and token in the file at `path`, when it is one.
+fn loopback_address(path: &Path) -> Option<(std::net::SocketAddr, String)> {
+    let text = std::fs::read_to_string(path).ok()?;
+    let (address, token) = text.trim().split_once(' ')?;
+    let address: std::net::SocketAddr = address.parse().ok()?;
+    (address.ip().is_loopback() && !token.is_empty()).then(|| (address, token.to_owned()))
+}
+
+/// One request to the host and its reply line, over `stream`.
+fn exchange<S>(stream: &S, request: &Value) -> std::io::Result<Option<Value>>
+where
+    for<'a> &'a S: Read + Write,
+{
+    let mut writer = stream;
+    writeln!(writer, "{request}")?;
+    let mut line = String::new();
+    BufReader::new(stream).read_line(&mut line)?;
+    let reply: Value = serde_json::from_str(line.trim())
+        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?;
+    Ok((!reply.is_null()).then_some(reply))
 }
 
 /// Asks the host on `socket`.
@@ -354,19 +453,26 @@ pub fn ask(
     input: &Value,
     wait: Duration,
 ) -> std::io::Result<Option<Value>> {
-    let mut stream = UnixStream::connect(socket)?;
-    stream.set_read_timeout(Some(wait))?;
-    stream.set_write_timeout(Some(wait))?;
-    writeln!(
-        stream,
-        "{}",
-        json!({"format": format.name(), "input": input})
-    )?;
-    let mut line = String::new();
-    BufReader::new(stream).read_line(&mut line)?;
-    let reply: Value = serde_json::from_str(line.trim())
-        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?;
-    Ok((!reply.is_null()).then_some(reply))
+    let mut request = json!({"format": format.name(), "input": input});
+    if let Some((address, token)) = loopback_address(socket) {
+        request["token"] = Value::String(token);
+        let stream = TcpStream::connect_timeout(&address, wait)?;
+        stream.set_read_timeout(Some(wait))?;
+        stream.set_write_timeout(Some(wait))?;
+        return exchange(&stream, &request);
+    }
+    #[cfg(unix)]
+    {
+        let stream = UnixStream::connect(socket)?;
+        stream.set_read_timeout(Some(wait))?;
+        stream.set_write_timeout(Some(wait))?;
+        exchange(&stream, &request)
+    }
+    #[cfg(not(unix))]
+    Err(std::io::Error::new(
+        std::io::ErrorKind::NotFound,
+        "no hook host is listening there",
+    ))
 }
 
 /// The bridge on one hook input: the host named by [`SOCKET_VAR`] when it
@@ -421,71 +527,6 @@ pub fn main(args: &[String], fallback: impl FnOnce(&Value) -> Option<Value>) -> 
         let _ = writeln!(std::io::stdout(), "{reply}");
     }
     0
-}
-
-/// Windows has no Unix sockets in `std`: the host can't start, so a session
-/// runs without the bridge ([`install`] gives `None`), and the bridge
-/// program, finding no host, answers with its own rules.
-#[cfg(not(unix))]
-mod unsupported {
-    use std::io::{Error, ErrorKind, Read, Result, Write};
-    use std::path::Path;
-    use std::time::Duration;
-
-    fn refuse<T>() -> Result<T> {
-        Err(Error::new(
-            ErrorKind::Unsupported,
-            "the hook bridge needs a Unix socket, which this platform lacks",
-        ))
-    }
-
-    pub struct UnixListener;
-
-    impl UnixListener {
-        pub fn bind(_: &Path) -> Result<Self> {
-            refuse()
-        }
-
-        pub fn incoming(&self) -> std::iter::Empty<Result<UnixStream>> {
-            std::iter::empty()
-        }
-    }
-
-    pub enum UnixStream {}
-
-    impl UnixStream {
-        pub fn connect(_: &Path) -> Result<Self> {
-            refuse()
-        }
-
-        pub fn try_clone(&self) -> Result<Self> {
-            match *self {}
-        }
-
-        pub fn set_read_timeout(&self, _: Option<Duration>) -> Result<()> {
-            match *self {}
-        }
-
-        pub fn set_write_timeout(&self, _: Option<Duration>) -> Result<()> {
-            match *self {}
-        }
-    }
-
-    impl Read for UnixStream {
-        fn read(&mut self, _: &mut [u8]) -> Result<usize> {
-            match *self {}
-        }
-    }
-
-    impl Write for UnixStream {
-        fn write(&mut self, _: &[u8]) -> Result<usize> {
-            match *self {}
-        }
-
-        fn flush(&mut self) -> Result<()> {
-            match *self {}
-        }
-    }
 }
 
 #[cfg(test)]
@@ -705,5 +746,23 @@ mod tests {
             Some(json!({"fallback": true}))
         });
         assert_eq!(fallback, Some(json!({"fallback": true})));
+    }
+    #[test]
+    fn a_loopback_host_answers_only_with_its_token() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("hook-host");
+        let host = Host::start_loopback(Arc::new(Mutex::new(runner())), path.clone()).unwrap();
+        let reply = ask(&path, Format::Codex, &codex_pre("make deploy"), WAIT)
+            .unwrap()
+            .unwrap();
+        assert_eq!(reply["hookSpecificOutput"]["permissionDecision"], "deny");
+        // The right port with the wrong token gets nothing.
+        let (address, _) = loopback_address(&path).unwrap();
+        let stream = TcpStream::connect(address).unwrap();
+        let forged = json!({"format": "codex", "input": codex_pre("make deploy"), "token": "0"});
+        assert_eq!(exchange(&stream, &forged).unwrap(), None);
+        drop(host);
+        assert!(!path.exists());
+        assert!(ask(&path, Format::Codex, &codex_pre("ls"), WAIT).is_err());
     }
 }

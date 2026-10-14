@@ -76,9 +76,11 @@ futures = "0.3"
 unicode-segmentation = "1"
 unicode-width = "0.2"
 workflow-run = { path = "../workflow-run" }
+# Installed plugins and their hooks on every platform; the rest of the
+# crate (background rules) is Unix-only.
+background = { path = "../background" }
 
 [target.'cfg(unix)'.dependencies]
-background = { path = "../background" }
 # OpenCode's saved reason for a failed delegated turn (#11464).
 coder-history = { path = "../coder-history", default-features = false, features = ["opencode"] }
 

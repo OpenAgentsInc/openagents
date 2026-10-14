@@ -3801,6 +3801,7 @@ dependencies = [
  "claude_agent_sdk",
  "coder-delegate",
  "futures",
+ "getrandom 0.3.4",
  "hook-log",
  "jev",
  "plugin",

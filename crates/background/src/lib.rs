@@ -41,12 +41,14 @@ pub mod inuse;
 pub mod judged;
 #[cfg(unix)]
 pub mod kache;
+pub mod layout;
 #[cfg(unix)]
 pub mod lease_slots;
 #[cfg(unix)]
 pub mod paths;
 #[cfg(unix)]
 pub mod plan;
+pub mod plugin_list;
 #[cfg(unix)]
 pub mod plugins;
 pub mod pool;
@@ -69,6 +71,7 @@ pub mod services {
 
 #[cfg(not(unix))]
 pub mod paths {
+    pub use crate::layout::Layout;
     pub use crate::task_paths::{SLOTS, STORE_VAR, task_store, task_targets, task_worktrees};
 }
 #[cfg(unix)]
@@ -88,8 +91,7 @@ pub mod view;
 #[cfg(unix)]
 pub mod volume;
 
-#[cfg(unix)]
-pub use paths::Layout;
+pub use layout::Layout;
 #[cfg(unix)]
 pub use plan::{Env, Facts, Plan};
 pub use records::TaskFact;

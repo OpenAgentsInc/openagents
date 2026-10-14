@@ -38,7 +38,7 @@ pub fn grants(layout: &Layout) -> Grants {
 pub fn installed(layout: &Layout) -> (Vec<Plugin>, Vec<String>) {
     let mut found = Vec::new();
     let mut problems = Vec::new();
-    for plugin in background::plugins::installed(layout) {
+    for plugin in background::plugin_list::installed(layout) {
         let pins_hooks = std::fs::read_to_string(plugin.dir.join("package.json"))
             .ok()
             .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
@@ -164,7 +164,7 @@ pub fn listing(layout: &Layout, id: &str) -> Vec<String> {
 /// No such plugin, no such hook, a hook that doesn't ask to rewrite, or
 /// the file can't be written.
 pub fn set_rewrite(layout: &Layout, name: &str, hook: &str, on: bool) -> Result<String, String> {
-    let installed = background::plugins::find(layout, name)?;
+    let installed = background::plugin_list::find(layout, name)?;
     let plugin = plugin_hooks::load(
         &installed.id,
         &installed.name,
@@ -195,7 +195,7 @@ pub fn set_rewrite(layout: &Layout, name: &str, hook: &str, on: bool) -> Result<
     }
     let bytes = serde_json::to_vec_pretty(&grants).map_err(|error| error.to_string())?;
     std::fs::create_dir_all(layout.extensions()).map_err(|error| error.to_string())?;
-    background::store::write_atomic(&grants_path(layout), &bytes)
+    background::layout::write_atomic(&grants_path(layout), &bytes)
         .map_err(|error| error.to_string())?;
     Ok(if on {
         format!(
@@ -221,7 +221,7 @@ mod tests {
         let source = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../plugin-hook-guard");
         let into = layout
             .extensions()
-            .join(background::plugins::LOCAL_KEY)
+            .join(background::plugin_list::LOCAL_KEY)
             .join("hook-guard")
             .join("0.1.0");
         for part in [
