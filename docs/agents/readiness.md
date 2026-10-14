@@ -10,14 +10,16 @@ every check that failed, and where each fix lives. The umbrella issue is
 
 All scans were read-only, against production. "Before" is revision
 `coder-web-577cc8118e-20261014191503` (the #11083 work deployed); "after"
-is the deploy of this change (below).
+is production after this change's deploys: `coder-web-f99baee65c-20261014195620`
+(commit `bcedc28ef8`), then the order-aware negotiation fix (see the end of
+this section).
 
 | Checker | How it was run | Baseline 2026-10-09 | Before 2026-10-14 | After 2026-10-14 |
 | --- | --- | --- | --- | --- |
-| Is It Agent Ready (Cloudflare) | `POST https://isitagentready.com/api/scan` | Level 0, 2 pass / 14 fail / 6 neutral | **Level 5 "Agent-Native"**: 14 pass, 2 fail (dnsAid, authMd), 6 neutral (webBotAuth, 5 commerce) | AFTER_IIAR |
-| AgentReadyCheck | `GET https://www.agentreadycheck.com/api/check?url=` | 0 / 100 | **100 / 100 "agent-ready"**: llms, openapi pass; mcp skip | AFTER_ARC |
-| AG AgentReady | MCP `tools/call run_website_scan {"website_url": …, "force_rescan": true}` at `https://agagentready.com/mcp` | Overall 33 (agent 42, revenue 26, trust 36) | **Overall 48** (agent/WebMCP 65, revenue 34, trust 52); WebMCP Verified, 5 tools | AFTER_AG |
-| AgentGrade (new to this record) | MCP `tools/call scan_compact` / `scan_url` at `https://agentgrade.com/mcp` (no key) | Not run | **45 / 60 checks, 75 %, grade B** | AFTER_AGR |
+| Is It Agent Ready (Cloudflare) | `POST https://isitagentready.com/api/scan` | Level 0, 2 pass / 14 fail / 6 neutral | **Level 5 "Agent-Native"**: 14 pass, 2 fail (dnsAid, authMd), 6 neutral (webBotAuth, 5 commerce) | **Level 5 "Agent-Native"**, unchanged: dnsAid (owner DNS) and authMd (owner decision) still fail |
+| AgentReadyCheck | `GET https://www.agentreadycheck.com/api/check?url=` | 0 / 100 | **100 / 100 "agent-ready"**: llms, openapi pass; mcp skip | **100 / 100**, unchanged |
+| AG AgentReady | MCP `tools/call run_website_scan {"website_url": …, "force_rescan": true}` at `https://agagentready.com/mcp` | Overall 33 (agent 42, revenue 26, trust 36) | **Overall 48** (agent/WebMCP 65, revenue 34, trust 52); WebMCP Verified, 5 tools | **Overall 57** (agent/WebMCP 72, revenue 45, trust 61): one `h1`, machine-readable email; all seven WebMCP prerequisites present ([report](https://agagentready.com/report/4158c3be627ba79b7ba896a23e08553eb48dc06b092c15ad)) |
+| AgentGrade (new to this record) | MCP `tools/call scan_compact` / `scan_url` at `https://agentgrade.com/mcp` (no key) | Not run | **45 / 60 checks, 75 %, grade B** | **52 / 61, 85 %, grade A-** after the first deploy; after the second: AFTER_AGR2 |
 | Readiness.sh | Catalog `GET https://readiness.sh/api/v1/checks` (still criteria set v27, 124 checks), applied by hand; a scored scan still needs an account token (`POST /api/v1/scans`), and `GET /api/v1/scores/openagents.com` answers `scan_not_found` | Not scored | Not scored (hand pass below) | Not scored |
 
 Searched for checkers and standards that appeared since 2026-10-09. New
@@ -81,7 +83,7 @@ AgentGrade checks that failed (required unless marked optional):
 | Skill file found, frontmatter valid | `/skill.md` 404 | Fixed: `/skill.md` serves the OpenAgents API skill (agentskills.io frontmatter) |
 | Accept: text returns text | `/` with `Accept: text/plain` answered HTML | Fixed: plain text gets the Markdown twin as `text/plain` |
 | Accept: JSON returns JSON | `/` with `Accept: application/json` answered HTML | Fixed: `/` answers a JSON site index (name, description, every discovery document) |
-| Returns preferred Content-Type | Only Markdown was negotiated | Fixed: Markdown, plain text, and JSON by `q` against HTML (`agent_ready::preferred`) |
+| Returns preferred Content-Type | Only Markdown was negotiated | Fixed: Markdown, plain text, and JSON against HTML by `q`, the first listed winning a tie (`agent_ready::preferred`; the first deploy let Markdown win a tie with HTML listed first, which this check catches, so a second deploy fixed it) |
 | Structured errors (JSON 404) | HTML 404 for `Accept: application/json` | Fixed: a JSON `{"error": "not_found", …}` 404 |
 | Payments: live 402, x402, MPP, SPT, L402, Bazaar | Not on openagents.com's own pages | Not changed here: paying per request is the API's (#11085); x402/MPP/SPT examples are EVM/Stripe and out of scope (Bitcoin-only rails). The scanner probes `POST /`, which is a page |
 | Rate limit headers (optional) | None on pages | Not changed: the API sends `Retry-After` on `429`; pages are not rate-limited per client |

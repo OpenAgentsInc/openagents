@@ -151,13 +151,14 @@ pub(crate) enum Wanted {
     Json,
 }
 
-/// What the client asks for instead of HTML, if anything: the named type
-/// with the highest `q` that is at least HTML's (Markdown first on a tie,
-/// then plain text, then JSON). `*/*` names nothing.
+/// What the client asks for instead of HTML, if anything (RFC 9110
+/// §12.5.1): of the types it names (HTML, Markdown, plain text, JSON), the
+/// one with the highest `q`, the one listed first on a tie. `None` when
+/// HTML wins or nothing is named; `*/*` names nothing.
 pub(crate) fn preferred(headers: &HeaderMap) -> Option<Wanted> {
     let accept = headers.get(header::ACCEPT).and_then(|v| v.to_str().ok())?;
-    let (mut markdown, mut plain, mut json, mut html) = (None, None, None, None::<f32>);
-    let most = |slot: &mut Option<f32>, q: f32| *slot = Some(slot.map_or(q, |s| s.max(q)));
+    // (type, q, position); `None` is HTML.
+    let mut best: Option<(Option<Wanted>, f32)> = None;
     for item in accept.split(',') {
         let mut parts = item.split(';');
         let kind = parts.next().unwrap_or_default().trim().to_ascii_lowercase();
@@ -165,30 +166,19 @@ pub(crate) fn preferred(headers: &HeaderMap) -> Option<Wanted> {
             .filter_map(|p| p.trim().strip_prefix("q="))
             .find_map(|q| q.trim().parse::<f32>().ok())
             .unwrap_or(1.0);
-        match kind.as_str() {
-            "text/markdown" | "text/x-markdown" => most(&mut markdown, q),
-            "text/plain" => most(&mut plain, q),
-            "application/json" => most(&mut json, q),
-            "text/html" | "application/xhtml+xml" => most(&mut html, q),
-            _ => {}
+        let named = match kind.as_str() {
+            "text/markdown" | "text/x-markdown" => Some(Wanted::Markdown),
+            "text/plain" => Some(Wanted::Plain),
+            "application/json" => Some(Wanted::Json),
+            "text/html" | "application/xhtml+xml" => None,
+            _ => continue,
+        };
+        // Strictly higher wins, so an earlier entry keeps a tie.
+        if q > 0.0 && best.is_none_or(|(_, top)| q > top) {
+            best = Some((named, q));
         }
     }
-    let floor = html.unwrap_or(0.0);
-    [
-        (Wanted::Markdown, markdown),
-        (Wanted::Plain, plain),
-        (Wanted::Json, json),
-    ]
-    .into_iter()
-    .filter_map(|(wanted, q)| q.filter(|q| *q > 0.0 && *q >= floor).map(|q| (wanted, q)))
-    .fold(
-        None,
-        |best: Option<(Wanted, f32)>, (wanted, q)| match best {
-            Some((_, top)) if top >= q => best,
-            _ => Some((wanted, q)),
-        },
-    )
-    .map(|(wanted, _)| wanted)
+    best.and_then(|(named, _)| named)
 }
 
 /// Whether the client asks for Markdown at least as much as HTML.
@@ -1197,7 +1187,7 @@ mod tests {
     }
 
     #[test]
-    fn the_preferred_type_is_the_highest_named_one_at_least_html() {
+    fn the_preferred_type_has_the_highest_q_and_comes_first_on_a_tie() {
         let ask = |accept: &str| {
             let mut headers = HeaderMap::new();
             headers.insert(header::ACCEPT, HeaderValue::from_str(accept).unwrap());
@@ -1205,10 +1195,12 @@ mod tests {
         };
         assert_eq!(ask("text/plain"), Some(Wanted::Plain));
         assert_eq!(ask("application/json"), Some(Wanted::Json));
-        assert_eq!(
-            ask("application/json, text/plain, */*"),
-            Some(Wanted::Plain)
-        );
+        assert_eq!(ask("application/json, text/plain, */*"), Some(Wanted::Json));
+        // Order breaks a tie, and `q` beats order (RFC 9110 §12.5.1).
+        assert_eq!(ask("text/markdown, text/html, */*"), Some(Wanted::Markdown));
+        assert_eq!(ask("text/html, text/markdown, */*"), None);
+        assert_eq!(ask("text/markdown;q=0.5, text/html;q=1.0"), None);
+        assert_eq!(ask("application/json, text/html, */*"), Some(Wanted::Json));
         assert_eq!(
             ask("text/plain;q=0.5, application/json"),
             Some(Wanted::Json)
