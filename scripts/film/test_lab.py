@@ -199,6 +199,16 @@ class SpliceTest(unittest.TestCase):
         self.assertAlmostEqual(caps[0]["at"], 10.3, places=2)
         self.assertLessEqual(caps[0]["at"] + caps[0]["dur"], 12.0)
 
+    def test_word_times_settle_out_of_pauses_and_belong_to_one_side(self):
+        quiet = [{"from": 19.11, "to": 19.49}, {"from": 0.01, "to": 0.31}]
+        words = lab.settle([{"w": "this.", "from": 18.97, "to": 19.44}, {"w": "Well,", "from": 0.0, "to": 0.32}],
+                           quiet)
+        self.assertEqual(words[0]["to"], 19.11, "a word stretched into the pause after it ends where the voice does")
+        self.assertEqual(words[1]["from"], 0.31, "a word stretched back over the pause before it starts after it")
+        self.assertTrue(lab.in_range(words[0], 0.25, 19.25))
+        self.assertFalse(lab.in_range(words[0], 19.35, 42.85), "a word is captioned on one side of a cut only")
+        self.assertTrue(lab.in_range(words[1], 0.25, 19.25))
+
     def test_splice_inserts_with_its_sound_captions_and_framing(self):
         lab.import_source(str(self.clip))
         before = lab.body("talk", lab.version("talk")["n"])

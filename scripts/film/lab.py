@@ -1225,26 +1225,61 @@ def snap_range(sp: dict, a: float, b: float, beat: float, reach: float = 1.5) ->
     return (best[1], best[2]) if best else None
 
 
+def settle(words: list[dict], quiet: list[dict]) -> list[dict]:
+    """Word times moved out of the measured pauses: a transcriber stretches a
+    word into the silence after it (or starts it early), and the sound says
+    where the voice really is. A word across a whole pause keeps its longer side."""
+    out = []
+    for w in words:
+        w = dict(w)
+        for q in quiet:
+            if w["from"] < q["from"] and w["to"] > q["to"]:
+                if q["from"] - w["from"] > w["to"] - q["to"]:
+                    w["to"] = q["from"]
+                else:
+                    w["from"] = q["to"]
+            elif q["from"] <= w["from"] < q["to"] < w["to"]:
+                w["from"] = q["to"]
+            elif w["from"] < q["from"] < w["to"] <= q["to"]:
+                w["to"] = q["from"]
+        out.append(w)
+    return out
+
+
+def in_range(w: dict, a: float, b: float) -> bool:
+    """Whether a transcribed word is spoken inside clip seconds [a, b]. The
+    cuts sit in measured pauses, but a transcriber's word times run a little
+    long into them, so a word belongs to the side of the cut its middle is on,
+    and a word starting up to 0.3 s before the in (the first word of a clip,
+    stamped at 0) still counts when its middle is near the in."""
+    mid = (w["from"] + w["to"]) / 2
+    return mid < b + 0.05 and w["from"] >= a - 0.3 and mid >= a - 0.15
+
+
 def speech_captions(sp: dict, a: float, b: float, start: float, shot: str, slot_end: float,
-                    max_chars: int = 84, max_secs: float = 5.5) -> list[dict]:
+                    max_chars: int = 92, max_secs: float = 5.5) -> list[dict]:
     """Captions of what's said in clip seconds [a, b], placed from timeline
     second `start`: sentences, split at commas when long, as cut.py draws them."""
-    ws = [w for w in sp.get("words", []) if w["from"] >= a - 0.05 and w["to"] <= b + 0.05]
+    words = fix_words(settle(sp.get("words", []), sp.get("quiet", [])), words_glossary().get("fixes", {}))
+    ws = [w for w in words if in_range(w, a, b)]
     groups, cur = [], []
     for w in ws:
         if cur:
             text = " ".join(x["w"] for x in cur + [w])
             if len(text) > max_chars or w["to"] - cur[0]["from"] > max_secs:
-                # Break at the last comma if there is one, so a line reads as a phrase.
-                cut_at = max((k for k, x in enumerate(cur) if re.search(r"[,;:]$", x["w"])), default=None)
-                if cut_at is not None and cut_at < len(cur) - 1:
+                # Break at the last sentence end, else the last comma, so a line reads as a phrase.
+                ends = [k for k, x in enumerate(cur[:-1]) if re.search(r"[.?!]$", x["w"])]
+                commas = [k for k, x in enumerate(cur[:-1]) if re.search(r"[,;:]$", x["w"])]
+                cut_at = (ends or commas or [None])[-1]
+                if cut_at is not None:
                     groups.append(cur[:cut_at + 1])
                     cur = cur[cut_at + 1:]
                 else:
                     groups.append(cur)
                     cur = []
         cur.append(w)
-        if re.search(r"[.?!]$", w["w"]) and len(" ".join(x["w"] for x in cur)) >= 18:
+        if re.search(r"[.?!]$", w["w"]) and (w["to"] - cur[0]["from"] >= 1.6
+                                              or len(" ".join(x["w"] for x in cur)) >= 40):
             groups.append(cur)
             cur = []
     if cur:
@@ -1252,7 +1287,8 @@ def speech_captions(sp: dict, a: float, b: float, start: float, shot: str, slot_
     caps = []
     for k, g in enumerate(groups):
         text = " ".join(x["w"] for x in g)
-        text = text[0].upper() + text[1:]
+        if k == 0:
+            text = text[0].upper() + text[1:]
         at = start + max(g[0]["from"] - a, 0.0)
         end = start + min(g[-1]["to"], b) - a + 0.3
         if k + 1 < len(groups):
