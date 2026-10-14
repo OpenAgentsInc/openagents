@@ -14,6 +14,28 @@ cargo run -p robot-workbench -- serve \
   --project EXISTING_PROJECT --build /absolute/path/to/player
 ```
 
+The owner's local arm demo (SO-101 on a table with a cube) runs from a copied
+binary, player, and catalog, with its lab folder outside every Git checkout:
+
+```sh
+~/work/film-out/robot-lab-bin/robot-workbench serve --root ~/robot-lab \
+  --project arm-demo --build ~/work/film-out/robot-lab-player \
+  --catalog ~/work/film-out/robot-lab-catalog --port 8795
+open "http://127.0.0.1:8795/play?document=so101-table&version=81d51e5dfbd5c23a0d1d90f44b3aaef1493a7215f0849b60b87e27976126a249"
+```
+
+To create that scene in a new project, call `robot_import` once:
+`curl -X POST -H 'content-type: application/json' -d
+'{"document":"so101-table","source":"so101","revision":"REVISION"}'
+http://127.0.0.1:PORT/api/tool/robot_import`, with `REVISION` from
+`robot-description/assets/so101/source.json`. It returns the player link.
+
+In a scene, the arm panel has one slider per joint within the description's
+limits, Open gripper, Close gripper, and Reset pose. Keys: Q/A shoulder pan,
+W/S shoulder lift, E/D elbow flex, R/F wrist flex, T/G wrist roll, O/C gripper,
+0 reset. Moves change the unsaved draft and draw immediately; Save pose keeps
+them as a new version. Posing is kinematic; physics stays in `record`.
+
 Keep `CARGO_TARGET_DIR` outside the checkout. The service listens on loopback;
 `--port 0` chooses an available port. Its SO-101 catalog defaults to the licensed,
 pinned files in `robot-description/assets/so101`. Imports copy checked files into

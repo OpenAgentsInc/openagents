@@ -607,6 +607,7 @@ fn readout(app: &App) {
     if let Ok(node) = element(&app.document, "readout") {
         node.set_text_content(Some(&app.state.readout()));
     }
+    sync_arm(app);
     if let Ok(node) = element(&app.document, "joint") {
         if let Ok(select) = node.dyn_into::<HtmlSelectElement>() {
             select.set_value(&app.state.joint);
@@ -1359,9 +1360,195 @@ fn controls(app: &Shared) -> Result<(), String> {
         apply(app, Intent::AddNote, None)
     })?;
     add(&document, &notes, "div", "saved-notes", "")?;
+    if app.borrow().state.bundle().episode.is_none() {
+        arm_panel(app)?;
+    }
     update_joint_input(app);
     readout(&app.borrow());
     Ok(())
+}
+
+/// Keys for the main joints: (joint, raise key, lower key).
+const ARM_KEYS: [(&str, &str, &str); 6] = [
+    ("shoulder_pan", "q", "a"),
+    ("shoulder_lift", "w", "s"),
+    ("elbow_flex", "e", "d"),
+    ("wrist_flex", "r", "f"),
+    ("wrist_roll", "t", "g"),
+    ("gripper", "o", "c"),
+];
+
+fn movable_joints(app: &App) -> Vec<(String, f64, f64)> {
+    app.state
+        .bundle()
+        .robot
+        .joints
+        .iter()
+        .filter(|j| j.kind != robot_lab::document::JointKind::Fixed)
+        .map(|j| {
+            let (min, max) = j
+                .limits
+                .map_or((-std::f64::consts::PI, std::f64::consts::PI), |l| {
+                    (l.lower, l.upper)
+                });
+            (j.name.clone(), min, max)
+        })
+        .collect()
+}
+
+/// Draft-pose controls for a scene: one live slider per joint within its
+/// limits, gripper open and close, keys for the main joints, and a reset to
+/// the saved pose. Moving here changes only the unsaved draft; Save pose
+/// still creates the new version.
+fn arm_panel(app: &Shared) -> Result<(), String> {
+    let document = app.borrow().document.clone();
+    let panel = element(&document, "arm")?;
+    let mut joints = movable_joints(&app.borrow());
+    // Base to tip, matching the key list; other joints follow.
+    joints.sort_by_key(|(name, ..)| {
+        ARM_KEYS
+            .iter()
+            .position(|(joint, ..)| joint == name)
+            .unwrap_or(ARM_KEYS.len())
+    });
+    for (name, min, max) in joints {
+        let holder = add(&document, &panel, "label", "", &name.replace('_', " "))?;
+        let input: HtmlInputElement = add(&document, &holder, "input", &format!("arm-{name}"), "")?
+            .dyn_into()
+            .map_err(js)?;
+        input.set_type("range");
+        input.set_min(&min.to_string());
+        input.set_max(&max.to_string());
+        input.set_step("0.001");
+        add(
+            &document,
+            &holder,
+            "output",
+            &format!("arm-{name}-value"),
+            "",
+        )?;
+        let joint = name.clone();
+        listen(app, input.unchecked_ref(), "input", move |app, event| {
+            if let Some(target) = event
+                .target()
+                .and_then(|t| t.dyn_into::<HtmlInputElement>().ok())
+            {
+                let joint = joint.clone();
+                apply(app, Intent::JointValue { joint }, Some(&target.value()));
+            }
+        })?;
+    }
+    button(app, &panel, "gripper-open", "Open gripper", |app, _| {
+        arm_limit(app, "gripper", true)
+    })?;
+    button(app, &panel, "gripper-close", "Close gripper", |app, _| {
+        arm_limit(app, "gripper", false)
+    })?;
+    button(app, &panel, "reset-pose", "Reset pose", |app, _| {
+        arm_reset(app)
+    })?;
+    add(
+        &document,
+        &panel,
+        "p",
+        "",
+        "Keys: Q/A shoulder pan, W/S shoulder lift, E/D elbow, R/F wrist flex, T/G wrist roll, O/C gripper, 0 reset.",
+    )?;
+    panel.remove_attribute("hidden").map_err(js)?;
+    listen(app, document.unchecked_ref(), "keydown", |app, event| {
+        let Ok(event) = event.dyn_into::<web_sys::KeyboardEvent>() else {
+            return;
+        };
+        if event.ctrl_key() || event.meta_key() || event.alt_key() {
+            return;
+        }
+        let typing = event.target().is_some_and(|t| {
+            t.dyn_ref::<HtmlInputElement>()
+                .is_some_and(|i| i.type_() != "range")
+                || t.dyn_ref::<HtmlSelectElement>().is_some()
+        });
+        if typing {
+            return;
+        }
+        let key = event.key().to_lowercase();
+        if key == "0" {
+            arm_reset(app);
+            event.prevent_default();
+            return;
+        }
+        let Some((joint, sign)) = ARM_KEYS.iter().find_map(|(joint, up, down)| {
+            (key == *up)
+                .then_some((*joint, 1.0))
+                .or_else(|| (key == *down).then_some((*joint, -1.0)))
+        }) else {
+            return;
+        };
+        let current = {
+            let data = app.borrow();
+            let Some((_, min, max)) = movable_joints(&data)
+                .into_iter()
+                .find(|(name, ..)| name == joint)
+            else {
+                return;
+            };
+            let value = data.state.displayed_scene().robots[0]
+                .joints
+                .get(joint)
+                .copied()
+                .unwrap_or(0.0);
+            (value + sign * 0.05).clamp(min, max)
+        };
+        apply(
+            app,
+            Intent::JointValue {
+                joint: joint.into(),
+            },
+            Some(&current.to_string()),
+        );
+        event.prevent_default();
+    })?;
+    Ok(())
+}
+fn arm_limit(app: &Shared, joint: &str, upper: bool) {
+    let target = movable_joints(&app.borrow())
+        .into_iter()
+        .find(|(name, ..)| name == joint)
+        .map(|(_, min, max)| if upper { max } else { min });
+    if let Some(value) = target {
+        apply(
+            app,
+            Intent::JointValue {
+                joint: joint.into(),
+            },
+            Some(&value.to_string()),
+        );
+    }
+}
+fn arm_reset(app: &Shared) {
+    {
+        let mut data = app.borrow_mut();
+        data.state.draft.clear();
+        data.dirty = true;
+        readout(&data);
+    }
+    update_joint_input(app);
+    request_frame(app);
+}
+fn sync_arm(app: &App) {
+    if app.state.bundle().episode.is_some() {
+        return;
+    }
+    let scene = app.state.displayed_scene();
+    for (name, value) in &scene.robots[0].joints {
+        if let Ok(input) = element(&app.document, &format!("arm-{name}"))
+            .and_then(|e| e.dyn_into::<HtmlInputElement>().map_err(js))
+        {
+            input.set_value(&value.to_string());
+        }
+        if let Ok(node) = element(&app.document, &format!("arm-{name}-value")) {
+            node.set_text_content(Some(&format!("{:.2} rad", value)));
+        }
+    }
 }
 fn update_joint_input(app: &Shared) {
     let data = app.borrow();
