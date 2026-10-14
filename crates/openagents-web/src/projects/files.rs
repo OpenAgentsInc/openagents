@@ -44,7 +44,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
-use super::api::{Page, caller, named, paged, rfc3339, status};
+use super::api::{Access, Page, access, paged, rfc3339};
 use crate::App;
 use crate::chat_files::Kind;
 use crate::chat_store::{Error, Store, account_owner, now_unix};
@@ -512,43 +512,84 @@ fn no_file() -> Response {
     refused(StatusCode::NOT_FOUND, "not_found", "There's no such file.")
 }
 
-/// The caller's file `id` and its record's generation.
+/// Which project a file is read through: a member of a shared project
+/// reads its files with `?project=ID` (#11585).
+#[derive(Default, Deserialize)]
+struct FileQuery {
+    #[serde(default)]
+    project: Option<String>,
+}
+
+/// The caller's file `id` (or, with `project`, that project's file kept
+/// in its home's folder), the folder's owner, and its record's
+/// generation. With `edit`, the caller must be able to change it.
 async fn own_file(
     app: &App,
     headers: &HeaderMap,
     id: &str,
+    project: Option<&str>,
+    edit: bool,
 ) -> Result<(String, FileInfo, String), Response> {
-    let account = crate::coder_sync::account(app, headers).await?;
+    let owner = match project.filter(|p| !p.is_empty()) {
+        Some(reference) => {
+            let found = access(app, headers, reference).await?;
+            if edit {
+                found.edits()?;
+            }
+            Some((found.home_owner(), found.project.id))
+        }
+        None => None,
+    };
+    let (owner, within) = match owner {
+        Some((owner, project)) => (owner, Some(project)),
+        None => (
+            account_owner(&crate::coder_sync::account(app, headers).await?),
+            None,
+        ),
+    };
     if !valid_prefixed(id, "file_") {
         return Err(no_file());
     }
-    let owner = account_owner(&account);
     let key = file_key(&owner, id, ".json").map_err(|_| no_file())?;
     match read_json::<FileInfo>(&app.config.chat_store, &key).await {
-        Ok(Some((info, generation))) if info.id == id => Ok((owner, info, generation)),
+        Ok(Some((info, generation)))
+            if info.id == id
+                && within
+                    .as_ref()
+                    .is_none_or(|p| info.project.as_ref() == Some(p)) =>
+        {
+            Ok((owner, info, generation))
+        }
         Ok(_) => Err(no_file()),
         Err(error) => Err(stored(&error)),
     }
 }
 
-/// `GET /v1/files/{id}`.
-async fn file_info(State(app): State<App>, headers: HeaderMap, Path(id): Path<String>) -> Response {
-    match own_file(&app, &headers, &id).await {
+/// `GET /v1/files/{id}[?project=ID]`.
+async fn file_info(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Query(query): Query<FileQuery>,
+) -> Response {
+    match own_file(&app, &headers, &id, query.project.as_deref(), false).await {
         Ok((_, info, _)) => answer(StatusCode::OK, info.shown()),
         Err(response) => response,
     }
 }
 
-/// `GET /v1/files/{id}/content`.
+/// `GET /v1/files/{id}/content[?project=ID]`.
 async fn file_content(
     State(app): State<App>,
     headers: HeaderMap,
     Path(id): Path<String>,
+    Query(query): Query<FileQuery>,
 ) -> Response {
-    let (owner, info, _) = match own_file(&app, &headers, &id).await {
-        Ok(found) => found,
-        Err(response) => return response,
-    };
+    let (owner, info, _) =
+        match own_file(&app, &headers, &id, query.project.as_deref(), false).await {
+            Ok(found) => found,
+            Err(response) => return response,
+        };
     let bytes = match file_key(&owner, &id, "") {
         Ok(key) => match app.config.chat_store.read_key(&key).await {
             Ok(Some((bytes, _))) => bytes,
@@ -599,13 +640,15 @@ async fn delete_file(store: &Store, owner: &str, info: &FileInfo) -> Result<(), 
     Ok(())
 }
 
-/// `DELETE /v1/files/{id}`: the file, from its project too.
+/// `DELETE /v1/files/{id}[?project=ID]`: the file, from its project too.
 async fn file_delete(
     State(app): State<App>,
     headers: HeaderMap,
     Path(id): Path<String>,
+    Query(query): Query<FileQuery>,
 ) -> Response {
-    let (owner, info, _) = match own_file(&app, &headers, &id).await {
+    let (owner, info, _) = match own_file(&app, &headers, &id, query.project.as_deref(), true).await
+    {
         Ok(found) => found,
         Err(response) => return response,
     };
@@ -617,16 +660,9 @@ async fn file_delete(
 
 // ----------------------------------------------------------- attachments
 
-/// The caller's account and the id of their project `reference` names.
-async fn own_project(
-    app: &App,
-    headers: &HeaderMap,
-    reference: &str,
-) -> Result<(String, String), Response> {
-    let (service, token, account) = caller(app, headers).await?;
-    let status = status(service, &token).await?;
-    let project = named(&status.projects, reference)?.id.clone();
-    Ok((account, project))
+/// The caller's access to the project `reference` names (#11585).
+async fn own_project(app: &App, headers: &HeaderMap, reference: &str) -> Result<Access, Response> {
+    access(app, headers, reference).await
 }
 
 fn source_attachment(source: &crate::cloud::connections::Source) -> Value {
@@ -658,11 +694,12 @@ async fn attachments(
     Path(id): Path<String>,
     Query(page): Query<Page>,
 ) -> Response {
-    let (account, project) = match own_project(&app, &headers, &id).await {
+    let found = match own_project(&app, &headers, &id).await {
         Ok(found) => found,
         Err(response) => return response,
     };
-    let owner = account_owner(&account);
+    let project = found.project.id.clone();
+    let owner = found.home_owner();
     let held = match held(&app.config.chat_store, &owner, &project).await {
         Ok(held) => held,
         Err(error) => return stored(&error),
@@ -687,7 +724,7 @@ async fn attachments(
     for vault in held.vault.iter().filter(|v| in_vault.contains(&v.id)) {
         rows.push((vault.created_unix, vault.id.clone(), vault.attachment()));
     }
-    for source in sources(&app, &account, &project) {
+    for source in sources(&app, found.home(), &project) {
         rows.push((
             source.added_at,
             source.id.clone(),
@@ -741,10 +778,14 @@ async fn attach(
     Path(id): Path<String>,
     body: Result<axum::Json<AttachBody>, JsonRejection>,
 ) -> Response {
-    let (account, project) = match own_project(&app, &headers, &id).await {
+    let found = match own_project(&app, &headers, &id).await {
         Ok(found) => found,
         Err(response) => return response,
     };
+    if let Err(response) = found.edits() {
+        return response;
+    }
+    let project = found.project.id.clone();
     let Ok(axum::Json(body)) = body else {
         return refused(
             StatusCode::BAD_REQUEST,
@@ -773,7 +814,7 @@ async fn attach(
         );
     }
     let store = &app.config.chat_store;
-    let owner = account_owner(&account);
+    let owner = found.home_owner();
     let held = match held(store, &owner, &project).await {
         Ok(held) => held,
         Err(error) => return stored(&error),
@@ -787,6 +828,10 @@ async fn attach(
     }
     let now = now_unix();
     if let Some(object) = body.vault {
+        // Vault files open only on the home account's devices.
+        if found.home() != found.account {
+            return super::api::role_refused();
+        }
         let size = match crate::vault::object_size(&app, &owner, &object).await {
             Ok(Some(size)) => size,
             Ok(None) => {
@@ -861,7 +906,8 @@ async fn attach(
         };
     }
     let file = body.file.unwrap_or_default();
-    let (_, mut info, generation) = match own_file(&app, &headers, &file).await {
+    let (uploader, mut info, generation) = match own_file(&app, &headers, &file, None, false).await
+    {
         Ok(found) => found,
         Err(response) => return response,
     };
@@ -884,13 +930,28 @@ async fn attach(
         Err(error) => return stored(&error),
     };
     let saved = async {
-        write_json(
-            store,
-            &file_key(&owner, &info.id, ".json")?,
-            &info,
-            Some(&generation),
-        )
-        .await?;
+        if uploader == owner {
+            write_json(
+                store,
+                &file_key(&owner, &info.id, ".json")?,
+                &info,
+                Some(&generation),
+            )
+            .await?;
+        } else {
+            // A member's upload moves into the project's home folder, so
+            // every member reads it there (#11585).
+            let (bytes, _) = store
+                .read_key(&file_key(&uploader, &info.id, "")?)
+                .await?
+                .ok_or(Error::Invalid("The file is gone."))?;
+            store
+                .write_key(&file_key(&owner, &info.id, "")?, bytes, None)
+                .await?;
+            write_json(store, &file_key(&owner, &info.id, ".json")?, &info, None).await?;
+            remove_key(store, &file_key(&uploader, &info.id, ".json")?).await?;
+            remove_key(store, &file_key(&uploader, &info.id, "")?).await?;
+        }
         write_json(store, &key, &info, None).await
     }
     .await;
@@ -914,12 +975,16 @@ async fn detach(
     headers: HeaderMap,
     Path((id, attachment)): Path<(String, String)>,
 ) -> Response {
-    let (account, project) = match own_project(&app, &headers, &id).await {
+    let found = match own_project(&app, &headers, &id).await {
         Ok(found) => found,
         Err(response) => return response,
     };
+    if let Err(response) = found.edits() {
+        return response;
+    }
+    let project = found.project.id.clone();
     let store = &app.config.chat_store;
-    let owner = account_owner(&account);
+    let owner = found.home_owner();
     let removed = if valid_prefixed(&attachment, "file_") {
         let key = match project_key(&owner, &project, &format!("f-{attachment}.json")) {
             Ok(key) => key,
@@ -940,7 +1005,7 @@ async fn detach(
             Ok(key) => remove_key(store, &key).await,
             Err(error) => Err(error),
         }
-    } else if sources(&app, &account, &project)
+    } else if sources(&app, found.home(), &project)
         .iter()
         .any(|s| s.id == attachment)
     {
@@ -970,14 +1035,15 @@ async fn document(
     headers: HeaderMap,
     Path((id, doc)): Path<(String, String)>,
 ) -> Response {
-    let (account, project) = match own_project(&app, &headers, &id).await {
+    let found = match own_project(&app, &headers, &id).await {
         Ok(found) => found,
         Err(response) => return response,
     };
+    let project = found.project.id.clone();
     if !valid_prefixed(&doc, "pdoc_") {
         return no_attachment();
     }
-    let owner = account_owner(&account);
+    let owner = found.home_owner();
     let key = match project_key(&owner, &project, &format!("d-{doc}.json")) {
         Ok(key) => key,
         Err(error) => return stored(&error),

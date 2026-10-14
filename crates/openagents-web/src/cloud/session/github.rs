@@ -367,6 +367,25 @@ impl CloudSession {
         .map(|_| ())
     }
 
+    /// A project-membership call at the account service under a signed-in
+    /// app's own token (#11585): `GET`/`PATCH`/`DELETE`
+    /// `/v1/projects/{id}/members[/{member}]`, `POST
+    /// /v1/projects/{id}/invitations`, `POST /v1/projects/{id}/leave`, and
+    /// `POST /v1/projects/invitations/{preview,accept}`. The answer as the
+    /// service gave it.
+    pub(crate) async fn project_call_as(
+        &self,
+        token: &str,
+        method: Method,
+        path: &str,
+        body: Option<Value>,
+    ) -> Result<Value> {
+        if !path.starts_with("/v1/projects/") {
+            return Err(RepoCallError::Repo(RepoError::Invalid));
+        }
+        self.account_call_as(token, method, path, None, body).await
+    }
+
     /// One account-service call under the request's session cookie.
     async fn account_call(
         &self,

@@ -389,6 +389,7 @@ fn project(id: &str, name: &str) -> oa_auth::repos::Project {
         name: name.to_owned(),
         instructions: None,
         created_unix: now() - 86_400 * 30,
+        sharing: None,
         repositories: vec![oa_auth::repos::ProjectRepository {
             repository_id: 1,
             repository: format!("sample-org/{name}"),

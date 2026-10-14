@@ -25,6 +25,7 @@
 
 pub mod docs;
 pub mod import;
+pub mod projects;
 pub mod records;
 #[cfg(test)]
 mod tests;
@@ -49,6 +50,11 @@ pub const MIGRATIONS: &[(i32, &str, &str)] = &[
         2,
         "provider_keys_by_workspace",
         include_str!("../migrations/0002_provider_keys_by_workspace.sql"),
+    ),
+    (
+        3,
+        "shared_projects",
+        include_str!("../migrations/0003_shared_projects.sql"),
     ),
 ];
 
@@ -268,6 +274,12 @@ impl Database {
     ///
     /// A migration fails; nothing of that migration is applied.
     pub fn migrate(&self) -> Result<Vec<i32>, Error> {
+        self.migrate_through(i32::MAX)
+    }
+
+    /// [`Self::migrate`], up to and including migration `last` (tests: a
+    /// database as an older version left it).
+    pub(crate) fn migrate_through(&self, last: i32) -> Result<Vec<i32>, Error> {
         let client = self.client()?;
         let applied = self.block(async {
             client
@@ -283,7 +295,7 @@ impl Database {
                     )
                     .await?;
                 let mut applied = Vec::new();
-                for (version, name, sql) in MIGRATIONS {
+                for (version, name, sql) in MIGRATIONS.iter().filter(|(v, _, _)| *v <= last) {
                     let done = client
                         .query_opt(
                             "SELECT 1 FROM public.schema_migrations WHERE version = $1",

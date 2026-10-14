@@ -524,6 +524,9 @@ async fn project_of(
     let (service, token, _) = crate::projects::api::caller(app, headers).await?;
     let status = crate::projects::api::status(service, &token).await?;
     let project = crate::projects::api::named(&status.projects, reference)?.clone();
+    if !crate::projects::api::role_of(&project).edits() {
+        return Err(crate::projects::api::role_refused());
+    }
     let github = service.github_token_as(&token).await.ok();
     Ok((project, github))
 }

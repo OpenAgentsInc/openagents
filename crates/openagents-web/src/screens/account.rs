@@ -839,6 +839,7 @@ fn project() -> oa_auth::repos::Project {
         name: "sample-app".into(),
         instructions: Some("Answer in plain words.".into()),
         created_unix: NOW - 20 * DAY,
+        sharing: None,
         repositories: vec![oa_auth::repos::ProjectRepository {
             repository_id: 101,
             repository: REPO.into(),

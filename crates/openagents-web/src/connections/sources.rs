@@ -65,10 +65,11 @@ async fn project<'a>(
             (crate::projects::PAGE, "Projects"),
         ))
     })?;
+    // Drive sources belong to the account whose project it is (#11585).
     let project = status
         .projects
         .into_iter()
-        .find(|p| p.id == id)
+        .find(|p| p.id == id && p.sharing.as_ref().is_none_or(|s| s.home.is_none()))
         .ok_or_else(|| {
             protect(crate::layout::problem(
                 StatusCode::NOT_FOUND,
@@ -451,6 +452,10 @@ pub(crate) async fn api_project<'a>(
     let (_, token, _) = crate::projects::api::caller(app, headers).await?;
     let status = crate::projects::api::status(service, &token).await?;
     let project = crate::projects::api::named(&status.projects, reference)?;
+    // Drive sources belong to the account whose project it is (#11585).
+    if project.sharing.as_ref().is_some_and(|s| s.home.is_some()) {
+        return Err(crate::projects::api::role_refused());
+    }
     Ok((
         service,
         account_owner(&viewer.account_id),

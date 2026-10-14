@@ -25,6 +25,15 @@ pub(crate) fn routes() -> Vec<(&'static str, MethodRouter<Arc<ServeState>>)> {
         ("/v1/account/github/token", post(token)),
         ("/v1/projects", post(add)),
         ("/v1/projects/{id}", delete(remove).patch(edit)),
+        ("/v1/projects/{id}/members", get(members)),
+        (
+            "/v1/projects/{id}/members/{member}",
+            axum::routing::patch(set_role).delete(remove_member),
+        ),
+        ("/v1/projects/{id}/leave", post(leave)),
+        ("/v1/projects/{id}/invitations", post(invite)),
+        ("/v1/projects/invitations/preview", post(preview)),
+        ("/v1/projects/invitations/accept", post(accept)),
         // Older paths of the two above (#11158), until the two newest
         // website releases stop calling them.
         (
@@ -176,6 +185,82 @@ async fn remove(
     run(&state, &headers, Call::RemoveProject(id)).await
 }
 
+/// The JSON body, or `null` when it isn't JSON.
+fn json_body(body: Option<Json<Value>>) -> Value {
+    body.map(|Json(body)| body).unwrap_or(Value::Null)
+}
+
+async fn members(
+    State(state): State<Arc<ServeState>>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Response {
+    run(&state, &headers, Call::Members(id)).await
+}
+
+async fn set_role(
+    State(state): State<Arc<ServeState>>,
+    headers: HeaderMap,
+    Path((id, member)): Path<(String, String)>,
+    body: Option<Json<Value>>,
+) -> Response {
+    match oa_auth::repos::bodies::set_role(id, member, &json_body(body)) {
+        Some(call) => run(&state, &headers, call).await,
+        None => invalid(),
+    }
+}
+
+async fn remove_member(
+    State(state): State<Arc<ServeState>>,
+    headers: HeaderMap,
+    Path((id, member)): Path<(String, String)>,
+) -> Response {
+    run(&state, &headers, Call::RemoveMember { id, member }).await
+}
+
+async fn leave(
+    State(state): State<Arc<ServeState>>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Response {
+    run(&state, &headers, Call::Leave(id)).await
+}
+
+async fn invite(
+    State(state): State<Arc<ServeState>>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    body: Option<Json<Value>>,
+) -> Response {
+    let body = body.map_or_else(|| serde_json::json!({}), |Json(body)| body);
+    match oa_auth::repos::bodies::invite(id, &body) {
+        Some(call) => run(&state, &headers, call).await,
+        None => invalid(),
+    }
+}
+
+async fn preview(
+    State(state): State<Arc<ServeState>>,
+    headers: HeaderMap,
+    body: Option<Json<Value>>,
+) -> Response {
+    match oa_auth::repos::bodies::code(&json_body(body)) {
+        Some(code) => run(&state, &headers, Call::Invitation(code)).await,
+        None => invalid(),
+    }
+}
+
+async fn accept(
+    State(state): State<Arc<ServeState>>,
+    headers: HeaderMap,
+    body: Option<Json<Value>>,
+) -> Response {
+    match oa_auth::repos::bodies::code(&json_body(body)) {
+        Some(code) => run(&state, &headers, Call::Accept(code)).await,
+        None => invalid(),
+    }
+}
+
 async fn app_grant(
     State(state): State<Arc<ServeState>>,
     headers: HeaderMap,
@@ -247,6 +332,12 @@ mod tests {
                 "/v1/account/github/token",
                 "/v1/projects",
                 "/v1/projects/{id}",
+                "/v1/projects/{id}/members",
+                "/v1/projects/{id}/members/{member}",
+                "/v1/projects/{id}/leave",
+                "/v1/projects/{id}/invitations",
+                "/v1/projects/invitations/preview",
+                "/v1/projects/invitations/accept",
                 "/v1/account/projects",
                 "/v1/account/projects/{id}",
                 "/v1/account/github/app/grant",

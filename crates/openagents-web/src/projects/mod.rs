@@ -63,12 +63,14 @@ const CSRF_SCOPE: &str = "projects";
 /// The most repositories the page lists at once.
 pub(crate) mod api;
 pub(crate) mod files;
+pub(crate) mod members;
 pub(crate) mod page;
 
 pub(crate) fn routes() -> Router<App> {
     Router::new()
         .merge(api::routes())
         .merge(files::routes())
+        .merge(members::routes())
         .route(PAGE, get(list_page).post(add))
         .route(REPOS, get(repositories))
         .merge(page::routes())
@@ -166,6 +168,7 @@ pub(crate) async fn chosen(app: &App, value: &str) -> Option<String> {
     sidebar(app)
         .await?
         .project(value)
+        .filter(|project| api::role_of(project).edits())
         .map(|project| project.id.clone())
 }
 

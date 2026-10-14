@@ -19,6 +19,7 @@ The owner's ask: "our CLI needs to interact with that via api first class".
 - [Setup: credentials and base URL](#setup-credentials-and-base-url)
 - [Objects](#objects)
 - [Projects](#projects)
+- [Members and invitations](#members-and-invitations)
 - [Threads and messages](#threads-and-messages)
 - [Files, generated files, and artifacts](#files-generated-files-and-artifacts)
 - [Project attachments and documents](#project-attachments-and-documents)
@@ -195,6 +196,49 @@ A project may also be named in the path by its exact name when it is unique
 for the caller (`/v1/projects/name:finances`), so the CLI and Coder can use
 the name a person says. Names may repeat; when one is shared, the answer is
 `409 ambiguous_name` naming each project, never a guess.
+
+## Members and invitations
+
+Built 2026-10-14 ([#11585](https://github.com/OpenAgentsInc/openagents/issues/11585),
+part of the shared projects MVP [#11592](https://github.com/OpenAgentsInc/openagents/issues/11592)).
+Anyone can share a project they own, and anyone can be invited.
+
+| Role | Can |
+| --- | --- |
+| `owner` | Everything an editor can, plus invite, change roles, remove members, rename, delete, change `protection`, and give the project to another member. Exactly one per project. |
+| `editor` | Read and add chats, files, and notes; edit instructions; add and remove repositories. |
+| `viewer` | Read the project's chats, files, notes, and instructions. |
+
+| Route | Who | Answer |
+| --- | --- | --- |
+| `GET /v1/projects/{id}/members` | Any member | `{data: [Member], next, role, invitations?}`; the owner also gets the open invitations `{id, role, expires_at}` |
+| `PATCH /v1/projects/{id}/members/{account}` `{"role"}` | Owner | The Project. `editor` or `viewer`; `owner` gives the project to that member, and you become an editor |
+| `DELETE /v1/projects/{id}/members/{account}` | Owner (or the member, which is leaving) | `{account, object: "project.member.removed", project}`. It takes effect on their next request |
+| `POST /v1/projects/{id}/invitations` `{"role"?, "expires_in"?}` | Owner | `201 {object: "project.invitation", id, project, role, code, url, expires_at}`: a single-use link, shown once. `editor` and 7 days by default; `expires_in` is seconds, 10 minutes to 30 days. Only the code's SHA-256 digest is kept. An invitation can't make an owner. A project whose `protection` is `only_me` answers `409 only_me_project` ("Files in this project open only on your devices. Change it to standard to share it.") |
+| `POST /v1/projects/invitations/preview` `{"code"}` | Anyone signed in | `{project: {id, name}, role, invited_by, expires_at, member}` without using it. `code` may be the whole link |
+| `POST /v1/projects/invitations/accept` `{"code"}` | Anyone signed in | The Project, with your role. Someone already in keeps their role. A used or expired link: `404 invitation_not_found` |
+| `POST /v1/projects/{id}/leave` | Any member but the owner | `{id, object: "project.left"}`; the owner gets `409 owner_stays` |
+
+`Member` is `{account, object: "project.member", name, login, role,
+joined_at, you}`. The Project object gains `role` (yours), `members` (how
+many people are in it), and `shared`.
+
+- A project you aren't in answers `404`, never `403`. An action your role
+  doesn't allow answers `403 project_role`.
+- Shared projects count toward the 200 projects an account can be in.
+- A shared project's files and notes are kept with the project (in the
+  storage of the account that made it), so every member reads the same
+  ones. A member reads a file with `GET /v1/files/{id}/content?project=ID`.
+  An editor's upload moves into the project when it is attached.
+- A shared project can't switch to `only_me` (`409 shared_project`).
+- Drive sources stay with the account that connected them.
+- Chats synced from Coder file themselves only under projects you own
+  alone.
+
+Storage: `identity.projects` and `identity.project_members`
+([schema](../data/schema.md)); migration 3 copied every project the
+GitHub-access records held, each owned by its account with no other
+members. `tenant-db projects-census` checks the copy.
 
 ## Threads and messages
 

@@ -342,7 +342,14 @@ pub(crate) async fn choices(app: &App, headers: &HeaderMap, owner: &str) -> Opti
         Vec::new()
     };
     Some(Choices {
-        projects: sidebar.status.projects.clone(),
+        // A viewer reads a shared project's chats but starts none (#11585).
+        projects: sidebar
+            .status
+            .projects
+            .iter()
+            .filter(|p| crate::projects::api::role_of(p).edits())
+            .cloned()
+            .collect(),
         connected,
         environments,
         computers,

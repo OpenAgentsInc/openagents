@@ -419,3 +419,112 @@ fn a_tenant_kept_provider_key_is_named_and_moved_once() {
             .is_empty()
     );
 }
+
+/// Migration 3 (#11585): every project an account kept in its
+/// GitHub-access record becomes a row owned by that account, with the
+/// record exactly as it was and in the account's order; records without
+/// projects, or with a malformed list, add nothing; the census is clean.
+#[test]
+fn migration_3_moves_each_project_to_a_row_owned_by_its_account() {
+    let Some(url) = super::testing::url() else {
+        eprintln!("skipped: TENANCY_TEST_DATABASE_URL is not set");
+        return;
+    };
+    let admin = Database::open(&url).unwrap();
+    let name = format!("tenancy_m3_{}", std::process::id());
+    admin
+        .execute(&format!("DROP DATABASE IF EXISTS {name}"), &[])
+        .unwrap();
+    admin
+        .execute(&format!("CREATE DATABASE {name}"), &[])
+        .unwrap();
+    let database = Database::open(&format!("{url} dbname={name}")).unwrap();
+    assert_eq!(database.migrate_through(2).unwrap(), vec![1, 2]);
+    let old = serde_json::json!({
+        "id": "prj_0123456789abcdef", "name": "finances", "repository_id": 9,
+        "repository": "AtlantisPleb/finances", "default_branch": "main",
+        "private": true, "created_unix": 5, "installation_id": 77
+    });
+    let newer = serde_json::json!({
+        "id": "prj_00000000000000bb", "name": "notes", "created_unix": 6,
+        "instructions": "Be brief.", "repositories": []
+    });
+    let third = serde_json::json!({"id": "prj_00000000000000cc", "name": "c", "created_unix": 7});
+    let records = [
+        (
+            "acct_a",
+            serde_json::json!({"v": "openagents.github-access.v1", "account": "acct_a",
+                "projects": [old.clone(), newer.clone()]}),
+        ),
+        (
+            "acct_b",
+            serde_json::json!({"v": "openagents.github-access.v1", "account": "acct_b",
+                "projects": [third.clone()]}),
+        ),
+        (
+            "acct_c",
+            serde_json::json!({"v": "openagents.github-access.v1", "account": "acct_c"}),
+        ),
+        (
+            "acct_d",
+            serde_json::json!({"v": "openagents.github-access.v1", "account": "acct_d",
+                "projects": {"not": "a list"}}),
+        ),
+    ];
+    for (account, record) in &records {
+        database
+            .execute(
+                "INSERT INTO identity.github_access (account_id, account_digest, record) VALUES ($1, $2, $3)",
+                &[account, &format!("digest-{account}"), record],
+            )
+            .unwrap();
+    }
+    assert_eq!(database.migrate().unwrap(), vec![3]);
+    let a = super::projects::for_account(&database, "acct_a").unwrap();
+    assert_eq!(
+        a.iter().map(|row| row.record.clone()).collect::<Vec<_>>(),
+        vec![old, newer]
+    );
+    for row in &a {
+        assert_eq!(row.home, "acct_a");
+        assert_eq!(row.invitations, serde_json::json!([]));
+        assert_eq!(
+            row.members,
+            vec![super::projects::MemberRow {
+                account: "acct_a".into(),
+                role: "owner".into(),
+                joined_unix: row.record["created_unix"].as_i64().unwrap(),
+            }]
+        );
+    }
+    let b = super::projects::for_account(&database, "acct_b").unwrap();
+    assert_eq!(b.len(), 1);
+    assert_eq!(b[0].record, third);
+    assert!(
+        super::projects::for_account(&database, "acct_c")
+            .unwrap()
+            .is_empty()
+    );
+    let census = super::projects::census(&database).unwrap();
+    assert_eq!(census.kept_in_records, 3);
+    assert_eq!(census.accounts_with_projects, 2);
+    assert_eq!(
+        (census.project_rows, census.member_rows, census.owner_rows),
+        (3, 3, 3)
+    );
+    assert!(census.missing.is_empty() && census.changed.is_empty());
+    assert!(census.duplicate_ids.is_empty());
+    // The records keep their copy.
+    let kept: serde_json::Value = database
+        .query(
+            "SELECT record FROM identity.github_access WHERE account_id = 'acct_a'",
+            &[],
+        )
+        .unwrap()[0]
+        .get(0);
+    assert_eq!(kept["projects"].as_array().unwrap().len(), 2);
+    drop(database);
+    admin
+        .execute(&format!("DROP DATABASE IF EXISTS {name}"), &[])
+        .ok();
+}

@@ -97,6 +97,13 @@ pub(super) fn ticket(
     secret.fill(0);
     let now = now();
     let expires_unix = now + seconds;
+    // Only a project the account owns (#11585): a shared project's
+    // repository goes through each member's own access (#11587).
+    let repository_id = owned_repository(dir, account, |r| {
+        r.repository.eq_ignore_ascii_case(repository)
+    })?
+    .ok_or(RepoError::NotFound)?
+    .repository_id;
     mutate(dir, account, |record| {
         let revoked = if app {
             record.app.as_ref().map(|grant| grant.revoked_unix)
@@ -106,12 +113,6 @@ pub(super) fn ticket(
         if revoked.ok_or(RepoError::NotConnected)?.is_some() {
             return Err(RepoError::Reconnect);
         }
-        let repository_id = record
-            .projects
-            .iter()
-            .find_map(|p| p.holding(repository))
-            .ok_or(RepoError::NotFound)?
-            .repository_id;
         record.tickets.retain(|t| t.expires_unix > now);
         if record.tickets.len() >= MAX_TICKETS {
             record.tickets.sort_by_key(|t| t.expires_unix);
@@ -230,12 +231,10 @@ async fn answer(
     if held.expires_unix <= now() {
         return Err(Refused::Ticket);
     }
-    let project = record
-        .projects
-        .iter()
-        .flat_map(|p| p.repositories.iter())
-        .find(|r| r.repository_id == held.repository_id)
-        .ok_or(Refused::Repository)?;
+    let project = owned_repository(dir, &record.account, |r| {
+        r.repository_id == held.repository_id
+    })?
+    .ok_or(Refused::Repository)?;
     if !project.repository.eq_ignore_ascii_case(path) {
         return Err(Refused::Repository);
     }
@@ -271,4 +270,17 @@ async fn answer(
         minted.token.as_str(),
         minted.expires_unix
     ))
+}
+
+/// The first repository `pick` chooses among the projects `account` owns.
+fn owned_repository(
+    dir: &Path,
+    account: &str,
+    pick: impl Fn(&super::ProjectRepository) -> bool,
+) -> Result<Option<super::ProjectRepository>, RepoError> {
+    Ok(super::members::held_by(dir, account)?
+        .into_iter()
+        .filter(|held| held.role_of(account) == Some(super::Role::Owner))
+        .flat_map(|held| held.project.repositories)
+        .find(|r| pick(r)))
 }

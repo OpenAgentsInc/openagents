@@ -11,6 +11,7 @@ fn project(id: &str, repository: &str) -> Project {
         name: repository.split('/').nth(1).unwrap().into(),
         instructions: None,
         created_unix: 1,
+        sharing: None,
         repositories: vec![oa_auth::repos::ProjectRepository {
             repository_id: 7,
             repository: repository.into(),

@@ -71,6 +71,7 @@ fn records_are_per_account_private_files_and_projects_survive_disconnecting() {
                 primary: true,
                 installation_id: None,
             }],
+            sharing: None,
         });
         Ok(())
     })
@@ -316,7 +317,7 @@ fn github_access_round_trips_through_the_account_database() {
         .unwrap();
     assert!(!rows[0].get::<_, String>(0).contains("gho_example_token"));
     assert_eq!(rows[0].get::<_, Option<i64>>(1), Some(42));
-    // Two writers on one account: both projects are kept.
+    // Two writers on one account: both changes are kept.
     std::thread::scope(|scope| {
         for n in 0..2_u64 {
             let dir = dir.path();
@@ -328,6 +329,7 @@ fn github_access_round_trips_through_the_account_database() {
                         instructions: None,
                         created_unix: 1,
                         repositories: Vec::new(),
+                        sharing: None,
                     });
                     Ok(())
                 })
@@ -335,7 +337,10 @@ fn github_access_round_trips_through_the_account_database() {
             });
         }
     });
-    assert_eq!(status(dir.path(), "acct_a").unwrap().projects.len(), 2);
+    // (The record's own list is the copy from before #11585, which the
+    // project store doesn't read in Postgres: migration 3 copied it.)
+    assert_eq!(load(dir.path(), "acct_a").unwrap().projects.len(), 2);
+    assert!(status(dir.path(), "acct_a").unwrap().projects.is_empty());
     disconnect(dir.path(), "acct_a").unwrap();
     assert!(!matches!(
         status(dir.path(), "acct_a").unwrap().access,
@@ -406,6 +411,7 @@ fn project_with(id: &str, repositories: Vec<ProjectRepository>) -> Project {
         instructions: None,
         created_unix: 1,
         repositories,
+        sharing: None,
     }
 }
 

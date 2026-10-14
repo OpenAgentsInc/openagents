@@ -42,7 +42,7 @@ use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::Response;
 use axum::routing::get;
-use oa_auth::repos::{Project, RepoError, Status};
+use oa_auth::repos::{Project, RepoError, Role as ProjectRole, Status};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -115,7 +115,7 @@ fn signed_out() -> Response {
 }
 
 /// The app API's answer for a failed account-service call.
-fn failed(error: RepoCallError) -> Response {
+pub(crate) fn failed(error: RepoCallError) -> Response {
     match error {
         RepoCallError::Session(SessionError::Unauthenticated | SessionError::InvalidRequest) => {
             signed_out()
@@ -136,11 +136,107 @@ fn failed(error: RepoCallError) -> Response {
                 RepoError::SsoRequired | RepoError::Forbidden | RepoError::OtherGithub => {
                     (StatusCode::FORBIDDEN, "github_refused")
                 }
+                RepoError::NotAllowed => (StatusCode::FORBIDDEN, "project_role"),
+                RepoError::OwnerStays => (StatusCode::CONFLICT, "owner_stays"),
+                RepoError::InvitationGone => (StatusCode::NOT_FOUND, "invitation_not_found"),
+                RepoError::ProjectFull => (StatusCode::CONFLICT, "project_full"),
                 _ => (StatusCode::BAD_GATEWAY, "github_unavailable"),
             };
             refused(status, code, &error.to_string())
         }
     }
+}
+
+/// The caller's role, read from the project the account service answered
+/// with (an account service from before #11585 answers only the caller's
+/// own projects: the owner).
+pub(crate) fn role_of(project: &Project) -> ProjectRole {
+    project
+        .sharing
+        .as_ref()
+        .map_or(ProjectRole::Owner, |s| s.role)
+}
+
+/// The account whose storage keeps the project's files, notes, and Drive
+/// sources: the caller's own, unless the project was shared with them.
+pub(crate) fn home_of<'a>(project: &'a Project, account: &'a str) -> &'a str {
+    project
+        .sharing
+        .as_ref()
+        .and_then(|s| s.home.as_deref())
+        .unwrap_or(account)
+}
+
+/// Whether other people are in the project.
+pub(crate) fn shared(project: &Project) -> bool {
+    project.sharing.as_ref().is_some_and(|s| s.shared())
+}
+
+/// The answer when the caller's role doesn't allow an action.
+pub(crate) fn role_refused() -> Response {
+    refused(
+        StatusCode::FORBIDDEN,
+        "project_role",
+        &RepoError::NotAllowed.to_string(),
+    )
+}
+
+/// The caller's access to one project (#11585).
+pub(crate) struct Access {
+    pub(crate) account: String,
+    /// The caller's own sign-in, for the account service.
+    pub(crate) token: String,
+    pub(crate) project: Project,
+    pub(crate) role: ProjectRole,
+}
+
+impl Access {
+    /// The chat-store owner whose folder keeps the project's files.
+    pub(crate) fn home_owner(&self) -> String {
+        account_owner(home_of(&self.project, &self.account))
+    }
+
+    /// The home account.
+    pub(crate) fn home(&self) -> &str {
+        home_of(&self.project, &self.account)
+    }
+
+    /// Editors and the owner add and change; viewers only read.
+    pub(crate) fn edits(&self) -> Result<(), Response> {
+        if self.role.edits() {
+            Ok(())
+        } else {
+            Err(role_refused())
+        }
+    }
+
+    /// The owner only.
+    pub(crate) fn owns(&self) -> Result<(), Response> {
+        if self.role.owns() {
+            Ok(())
+        } else {
+            Err(role_refused())
+        }
+    }
+}
+
+/// The caller's access to the project `reference` names (`404` when they
+/// aren't in it).
+pub(crate) async fn access(
+    app: &App,
+    headers: &HeaderMap,
+    reference: &str,
+) -> Result<Access, Response> {
+    let (service, token, account) = caller(app, headers).await?;
+    let status = status(service, &token).await?;
+    let project = named(&status.projects, reference)?.clone();
+    let role = role_of(&project);
+    Ok(Access {
+        account,
+        token,
+        project,
+        role,
+    })
 }
 
 fn not_yours() -> Response {
@@ -255,6 +351,9 @@ pub(crate) fn object(
         "updated_at": rfc3339(updated),
         "protection": kept.protection.word(),
         "counts": {"threads": threads, "files": kept.files, "documents": kept.documents, "sources": sources},
+        "role": role_of(project),
+        "members": project.sharing.as_ref().map_or(1, |s| s.members),
+        "shared": shared(project),
     })
 }
 
@@ -338,16 +437,12 @@ async fn list(State(app): State<App>, headers: HeaderMap, Query(page): Query<Pag
     projects.sort_by(|a, b| a.created_unix.cmp(&b.created_unix).then(a.id.cmp(&b.id)));
     let mut rows = Vec::with_capacity(projects.len());
     for p in &projects {
-        let summary = match kept(&app, &account, &p.id).await {
+        let home = home_of(p, &account);
+        let summary = match kept(&app, home, &p.id).await {
             Ok(summary) => summary,
             Err(response) => return response,
         };
-        rows.push(object(
-            p,
-            &chats,
-            source_count(&app, &account, &p.id),
-            &summary,
-        ));
+        rows.push(object(p, &chats, source_count(&app, home, &p.id), &summary));
     }
     match paged(rows, &page) {
         Ok(body) => answer(StatusCode::OK, body),
@@ -433,8 +528,9 @@ async fn shown(app: &App, account: &str, project: &Project) -> Response {
         Ok(chats) => chats,
         Err(response) => return response,
     };
-    let sources = source_count(app, account, &project.id);
-    let summary = match kept(app, account, &project.id).await {
+    let home = home_of(project, account);
+    let sources = source_count(app, home, &project.id);
+    let summary = match kept(app, home, &project.id).await {
         Ok(summary) => summary,
         Err(response) => return response,
     };
@@ -555,8 +651,9 @@ async fn show(State(app): State<App>, headers: HeaderMap, Path(id): Path<String>
         Ok(chats) => chats,
         Err(response) => return response,
     };
-    let sources = source_count(&app, &account, &project.id);
-    let summary = match kept(&app, &account, &project.id).await {
+    let home = home_of(project, &account);
+    let sources = source_count(&app, home, &project.id);
+    let summary = match kept(&app, home, &project.id).await {
         Ok(summary) => summary,
         Err(response) => return response,
     };
@@ -620,10 +717,22 @@ async fn edit(
         Ok(project) => project.clone(),
         Err(response) => return response,
     };
-    if let Some(protection) = body.protection.as_deref()
-        && let Err(response) = super::files::edit(&app, &account, &project.id, protection).await
-    {
-        return response;
+    if let Some(protection) = body.protection.as_deref() {
+        if !role_of(&project).owns() {
+            return role_refused();
+        }
+        if protection == "only_me" && shared(&project) {
+            return refused(
+                StatusCode::CONFLICT,
+                "shared_project",
+                "Other people are in this project, so its files can't open only on your devices. Remove them first.",
+            );
+        }
+        if let Err(response) =
+            super::files::edit(&app, home_of(&project, &account), &project.id, protection).await
+        {
+            return response;
+        }
     }
     let edit = oa_auth::repos::ProjectChange {
         name: body.name.map(|n| n.trim().to_owned()),
@@ -665,8 +774,9 @@ async fn remove(
         Ok(status) => status,
         Err(response) => return response,
     };
-    let project = match named(&status.projects, &id) {
-        Ok(project) => project.id.clone(),
+    let (project, home) = match named(&status.projects, &id) {
+        Ok(project) if !role_of(project).owns() => return role_refused(),
+        Ok(project) => (project.id.clone(), home_of(project, &account).to_owned()),
         Err(response) => return response,
     };
     let chats = match account_chats(&app, &account).await {
@@ -688,7 +798,7 @@ async fn remove(
     if let Err(error) = service.remove_project_as(&token, &project).await {
         return failed(error);
     }
-    if let Err(error) = super::files::forget_project(&app, &account, &project).await {
+    if let Err(error) = super::files::forget_project(&app, &home, &project).await {
         return stored(&error);
     }
     let owner = account_owner(&account);
@@ -823,6 +933,7 @@ pub(crate) async fn move_thread(
                 Err(response) => return response,
             };
             match named(&status.projects, &reference) {
+                Ok(project) if !role_of(project).edits() => return role_refused(),
                 Ok(project) => Some(project.id.clone()),
                 Err(response) => return response,
             }

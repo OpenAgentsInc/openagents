@@ -6,6 +6,7 @@
 //! tenant-db verify  --registry DIR [--dsn-env VAR]
 //! tenant-db tenant-provider-keys [--dsn-env VAR]
 //! tenant-db assign-provider-key --tenant T --provider P --workspace WS [--dsn-env VAR]
+//! tenant-db projects-census [--dsn-env VAR]
 //! ```
 //!
 //! The connection string comes from the environment variable named by
@@ -22,6 +23,14 @@
 //! workspace named, the fingerprint; never a key), and
 //! `assign-provider-key` names the workspace that saved one on a tenant
 //! many workspaces share, so the gateway moves it there at its next start.
+//!
+//! `projects-census` (#11585) counts what migration 3 copied from the
+//! GitHub-access records into `identity.projects` and its members, and
+//! exits 1 when a kept project has no row owned by its account, a row's
+//! record differs from the copy it came from, or two accounts kept one
+//! id. Like every command it first applies any migration not yet applied,
+//! so run it against a copy of the database for a dry run. It prints
+//! counts and project ids only.
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -116,6 +125,34 @@ fn run() -> Result<ExitCode, String> {
                 ExitCode::FAILURE
             })
         }
+        "projects-census" => {
+            let census = tenancy::db::projects::census(&database).map_err(|e| e.to_string())?;
+            let clean = census.missing.is_empty()
+                && census.changed.is_empty()
+                && census.duplicate_ids.is_empty()
+                && census.project_rows >= census.kept_in_records
+                && census.owner_rows == census.project_rows;
+            println!(
+                "{}",
+                serde_json::json!({
+                    "kept_in_records": census.kept_in_records,
+                    "accounts_with_projects": census.accounts_with_projects,
+                    "project_rows": census.project_rows,
+                    "member_rows": census.member_rows,
+                    "owner_rows": census.owner_rows,
+                    "duplicate_ids": census.duplicate_ids,
+                    "missing": census.missing,
+                    "changed": census.changed,
+                    "clean": clean,
+                    "millis": started.elapsed().as_millis() as u64,
+                })
+            );
+            Ok(if clean {
+                ExitCode::SUCCESS
+            } else {
+                ExitCode::FAILURE
+            })
+        }
         _ => Err(usage()),
     }
 }
@@ -134,6 +171,6 @@ fn print(report: &import::Report, started: std::time::Instant) {
 fn usage() -> String {
     "usage: tenant-db migrate | import --registry DIR [--force] | verify --registry DIR \
      | tenant-provider-keys | assign-provider-key --tenant T --provider P --workspace WS \
-     [--dsn-env VAR]"
+     | projects-census [--dsn-env VAR]"
         .into()
 }

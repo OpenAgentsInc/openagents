@@ -512,7 +512,18 @@ async fn projects_of(app: &App, headers: &HeaderMap) -> Option<Vec<Project>> {
         return Some(projects.clone());
     }
     let status = service.github_status_as(&token).await.ok()?;
-    let projects = status.projects;
+    // A synced chat files only under a project the person owns alone:
+    // filing it into a shared one would show it to the other members
+    // (#11585).
+    let projects: Vec<Project> = status
+        .projects
+        .into_iter()
+        .filter(|p| {
+            p.sharing
+                .as_ref()
+                .is_none_or(|s| s.role.owns() && !s.shared())
+        })
+        .collect();
     let mut kept = kept.lock().ok()?;
     kept.retain(|_, (_, at)| at.elapsed() < FOR);
     kept.insert(key, (projects.clone(), Instant::now()));
@@ -1928,6 +1939,7 @@ mod tests {
             name: "p".into(),
             instructions: None,
             created_unix: 1,
+            sharing: None,
             repositories: repositories
                 .iter()
                 .enumerate()

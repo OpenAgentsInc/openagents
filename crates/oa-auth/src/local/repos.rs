@@ -20,6 +20,15 @@ pub(super) fn router(service: LocalService) -> Router {
         .route("/v1/account/github/token", post(token))
         .route("/v1/projects", post(add))
         .route("/v1/projects/{id}", delete(remove).patch(edit))
+        .route("/v1/projects/{id}/members", get(members))
+        .route(
+            "/v1/projects/{id}/members/{member}",
+            axum::routing::patch(set_role).delete(remove_member),
+        )
+        .route("/v1/projects/{id}/leave", post(leave))
+        .route("/v1/projects/{id}/invitations", post(invite))
+        .route("/v1/projects/invitations/preview", post(preview))
+        .route("/v1/projects/invitations/accept", post(accept))
         // The older paths (#11158).
         .route("/v1/account/projects", post(add))
         .route("/v1/account/projects/{id}", delete(remove))
@@ -144,6 +153,82 @@ async fn remove(
     UrlPath(id): UrlPath<String>,
 ) -> Response {
     run(&state, &headers, Call::RemoveProject(id)).await
+}
+
+type JsonBody = Result<axum::Json<Value>, axum::extract::rejection::JsonRejection>;
+
+fn json_body(body: JsonBody) -> Value {
+    body.map(|axum::Json(body)| body).unwrap_or(Value::Null)
+}
+
+async fn members(
+    State(state): State<LocalService>,
+    headers: HeaderMap,
+    UrlPath(id): UrlPath<String>,
+) -> Response {
+    run(&state, &headers, Call::Members(id)).await
+}
+
+async fn set_role(
+    State(state): State<LocalService>,
+    headers: HeaderMap,
+    UrlPath((id, member)): UrlPath<(String, String)>,
+    body: JsonBody,
+) -> Response {
+    match repos::bodies::set_role(id, member, &json_body(body)) {
+        Some(call) => run(&state, &headers, call).await,
+        None => invalid(),
+    }
+}
+
+async fn remove_member(
+    State(state): State<LocalService>,
+    headers: HeaderMap,
+    UrlPath((id, member)): UrlPath<(String, String)>,
+) -> Response {
+    run(&state, &headers, Call::RemoveMember { id, member }).await
+}
+
+async fn leave(
+    State(state): State<LocalService>,
+    headers: HeaderMap,
+    UrlPath(id): UrlPath<String>,
+) -> Response {
+    run(&state, &headers, Call::Leave(id)).await
+}
+
+async fn invite(
+    State(state): State<LocalService>,
+    headers: HeaderMap,
+    UrlPath(id): UrlPath<String>,
+    body: JsonBody,
+) -> Response {
+    let body = match body {
+        Ok(axum::Json(body)) => body,
+        Err(_) => json!({}),
+    };
+    match repos::bodies::invite(id, &body) {
+        Some(call) => run(&state, &headers, call).await,
+        None => invalid(),
+    }
+}
+
+async fn preview(
+    State(state): State<LocalService>,
+    headers: HeaderMap,
+    body: JsonBody,
+) -> Response {
+    match repos::bodies::code(&json_body(body)) {
+        Some(code) => run(&state, &headers, Call::Invitation(code)).await,
+        None => invalid(),
+    }
+}
+
+async fn accept(State(state): State<LocalService>, headers: HeaderMap, body: JsonBody) -> Response {
+    match repos::bodies::code(&json_body(body)) {
+        Some(code) => run(&state, &headers, Call::Accept(code)).await,
+        None => invalid(),
+    }
 }
 
 async fn app_grant(

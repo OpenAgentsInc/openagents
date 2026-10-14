@@ -52,8 +52,10 @@ use crate::service::CodeRequest;
 
 pub mod broker;
 mod installed;
+pub mod members;
 
 pub use installed::Installation;
+pub use members::{Member, Role, Sharing};
 
 /// The directory beside `accounts.json` the per-account files live in.
 pub const STORE_DIR: &str = "github-access";
@@ -86,6 +88,10 @@ pub struct Project {
     /// Its repositories, in the order they were added.
     #[serde(default)]
     pub repositories: Vec<ProjectRepository>,
+    /// Who is in it, as the account reading it sees (#11585): set on the
+    /// projects an account service answers with, never kept.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sharing: Option<Sharing>,
 }
 
 /// One repository in a project.
@@ -130,6 +136,8 @@ struct StoredProject {
     private: Option<bool>,
     #[serde(default)]
     installation_id: Option<u64>,
+    #[serde(default)]
+    sharing: Option<Sharing>,
 }
 
 impl From<StoredProject> for Project {
@@ -154,6 +162,7 @@ impl From<StoredProject> for Project {
             instructions: stored.instructions,
             created_unix: stored.created_unix,
             repositories,
+            sharing: stored.sharing,
         };
         project.settle_primary();
         project
@@ -236,6 +245,46 @@ pub struct NewProject {
     pub instructions: Option<String>,
     #[serde(default)]
     pub repositories: Vec<String>,
+}
+
+/// Read a membership route's body into its call (#11585): `PATCH
+/// /v1/projects/{id}/members/{member}` takes `{role}`, `POST
+/// /v1/projects/{id}/invitations` takes `{role?, seconds?}` (an editor
+/// for a week when empty), and the invitation routes take `{code}`.
+pub mod bodies {
+    use super::{Call, Role};
+    use serde_json::Value;
+
+    /// `{role}` for a member.
+    #[must_use]
+    pub fn set_role(id: String, member: String, body: &Value) -> Option<Call> {
+        let role = Role::from_word(body.get("role")?.as_str()?)?;
+        Some(Call::SetRole { id, member, role })
+    }
+
+    /// `{role?, seconds?}` for an invitation.
+    #[must_use]
+    pub fn invite(id: String, body: &Value) -> Option<Call> {
+        let role = match body.get("role") {
+            None | Some(Value::Null) => Role::Editor,
+            Some(value) => Role::from_word(value.as_str()?)?,
+        };
+        let seconds = match body.get("seconds") {
+            None | Some(Value::Null) => 0,
+            Some(value) => value.as_u64()?,
+        };
+        Some(Call::Invite { id, role, seconds })
+    }
+
+    /// `{code}` for an invitation link.
+    #[must_use]
+    pub fn code(body: &Value) -> Option<String> {
+        body.get("code")?
+            .as_str()
+            .map(str::trim)
+            .filter(|code| !code.is_empty() && code.len() <= 256)
+            .map(str::to_string)
+    }
 }
 
 /// Read the account service's `POST /v1/projects` body: `{name?,
@@ -472,10 +521,19 @@ pub enum RepoError {
     NeedsRepoAccess,
     /// The person's GitHub account can't push to that repository.
     CannotPush,
+    /// The caller's role in the project doesn't allow that (#11585).
+    NotAllowed,
+    /// The owner can't leave or step down without giving the project to
+    /// another member.
+    OwnerStays,
+    /// The invitation was used, expired, or never existed.
+    InvitationGone,
+    /// The project has as many members as it holds.
+    ProjectFull,
 }
 
 impl RepoError {
-    const ALL: [Self; 19] = [
+    const ALL: [Self; 23] = [
         Self::NotConnected,
         Self::Reconnect,
         Self::OtherGithub,
@@ -495,6 +553,10 @@ impl RepoError {
         Self::Suspended,
         Self::NeedsRepoAccess,
         Self::CannotPush,
+        Self::NotAllowed,
+        Self::OwnerStays,
+        Self::InvitationGone,
+        Self::ProjectFull,
     ];
 
     /// A stable code for the HTTP error envelope.
@@ -520,6 +582,10 @@ impl RepoError {
             Self::Suspended => "github_app_suspended",
             Self::NeedsRepoAccess => "github_needs_repo_access",
             Self::CannotPush => "github_cannot_push",
+            Self::NotAllowed => "project_role",
+            Self::OwnerStays => "project_owner_stays",
+            Self::InvitationGone => "invitation_not_found",
+            Self::ProjectFull => "project_full",
         }
     }
 
@@ -531,11 +597,17 @@ impl RepoError {
             | Self::Reconnect
             | Self::OtherGithub
             | Self::Full
-            | Self::NeedsRepoAccess => 409,
-            Self::NotFound | Self::NotInstalled => 404,
+            | Self::NeedsRepoAccess
+            | Self::OwnerStays
+            | Self::ProjectFull => 409,
+            Self::NotFound | Self::NotInstalled | Self::InvitationGone => 404,
             Self::Denied => 401,
             Self::Invalid => 400,
-            Self::SsoRequired | Self::Forbidden | Self::Suspended | Self::CannotPush => 403,
+            Self::SsoRequired
+            | Self::Forbidden
+            | Self::Suspended
+            | Self::CannotPush
+            | Self::NotAllowed => 403,
             Self::RateLimited => 429,
             Self::GithubError | Self::BadAnswer => 502,
             Self::Unavailable | Self::NotConfigured => 503,
@@ -586,6 +658,14 @@ impl std::fmt::Display for RepoError {
             Self::CannotPush => {
                 "Your GitHub account can't push to that repository. Ask its owner for write access, then try again."
             }
+            Self::NotAllowed => "Your role in this project doesn't allow that.",
+            Self::OwnerStays => {
+                "You own this project. Make another member the owner first, or delete the project."
+            }
+            Self::InvitationGone => {
+                "That invitation link has expired or was already used. Ask for a new one."
+            }
+            Self::ProjectFull => "This project has as many members as it can hold.",
         })
     }
 }
@@ -643,6 +723,28 @@ pub enum Call {
     /// that lets one machine fetch and push one project's repository
     /// through the credential broker ([`broker`]).
     BrokerTicket { repository: String, seconds: u64 },
+    /// `GET /v1/projects/{id}/members` (#11585).
+    Members(String),
+    /// `PATCH /v1/projects/{id}/members/{member}` `{role}`.
+    SetRole {
+        id: String,
+        member: String,
+        role: Role,
+    },
+    /// `DELETE /v1/projects/{id}/members/{member}`.
+    RemoveMember { id: String, member: String },
+    /// `POST /v1/projects/{id}/leave`.
+    Leave(String),
+    /// `POST /v1/projects/{id}/invitations` `{role?, seconds?}`.
+    Invite {
+        id: String,
+        role: Role,
+        seconds: u64,
+    },
+    /// `POST /v1/projects/invitations/preview` `{code}`.
+    Invitation(String),
+    /// `POST /v1/projects/invitations/accept` `{code}`.
+    Accept(String),
 }
 
 /// Answer `call` for `account` with the OAuth App only (see
@@ -741,6 +843,19 @@ pub async fn answer_with(
                 remove_project(dir, account, &id)?;
                 json!({"removed": id})
             }
+            Call::Members(id) => members::members(dir, account, &id)?,
+            Call::SetRole { id, member, role } => {
+                members::set_role(dir, account, &id, &member, role)?
+            }
+            Call::RemoveMember { id, member } => {
+                members::remove_member(dir, account, &id, &member)?
+            }
+            Call::Leave(id) => members::leave(dir, account, &id)?,
+            Call::Invite { id, role, seconds } => {
+                members::invite(dir, account, &id, role, seconds)?
+            }
+            Call::Invitation(code) => members::preview(dir, account, &code)?,
+            Call::Accept(code) => members::accept(dir, account, &code)?,
         })
     }
     .await;
@@ -753,9 +868,14 @@ pub async fn answer_with(
     }
 }
 
-/// The account's access and projects.
+/// The account's access and projects: its own and those shared with it
+/// (#11585), each with the account's role.
 pub fn status(dir: &Path, account: &str) -> Result<Status, RepoError> {
-    Ok(load(dir, account)?.status())
+    let access = load(dir, account)?.status().access;
+    Ok(Status {
+        access,
+        projects: members::projects_of(dir, account)?,
+    })
 }
 
 /// Finish a repository-access trip: exchange the code, check the GitHub
@@ -1077,12 +1197,41 @@ fn entry(found: &Repository, installation: Option<u64>) -> ProjectRepository {
 }
 
 /// A rename, a new default branch or visibility on GitHub follows into
-/// every project that holds the repository.
-fn follow(record: &mut Record, found: &Repository, installation: Option<u64>) {
-    for held in record
-        .projects
+/// every project the account owns that holds the repository, except
+/// `skip` (changed by the caller itself).
+fn follow(
+    dir: &Path,
+    account: &str,
+    found: &Repository,
+    installation: Option<u64>,
+    skip: Option<&str>,
+) -> Result<(), RepoError> {
+    for held in members::held_by(dir, account)? {
+        if held.role_of(account) != Some(Role::Owner)
+            || skip == Some(held.project.id.as_str())
+            || !held.project.repositories.iter().any(|r| {
+                r.repository_id == found.id
+                    && (r.repository != found.full_name
+                        || r.default_branch != found.default_branch
+                        || r.private != found.private
+                        || (installation.is_some() && r.installation_id != installation))
+            })
+        {
+            continue;
+        }
+        members::edit(dir, account, &held.project.id, false, |project| {
+            follow_into(project, found, installation);
+            Ok(())
+        })?;
+    }
+    Ok(())
+}
+
+/// [`follow`] for one project.
+fn follow_into(project: &mut Project, found: &Repository, installation: Option<u64>) {
+    for held in project
+        .repositories
         .iter_mut()
-        .flat_map(|p| p.repositories.iter_mut())
         .filter(|r| r.repository_id == found.id)
     {
         held.repository.clone_from(&found.full_name);
@@ -1142,19 +1291,15 @@ pub fn create_project(
         instructions,
         created_unix: now(),
         repositories,
+        sharing: None,
     };
     fresh.settle_primary();
     forget(dir, account);
-    mutate(dir, account, |record| {
-        if record.projects.len() >= MAX_PROJECTS {
-            return Err(RepoError::Full);
-        }
-        for (repository, installation) in found {
-            follow(record, repository, *installation);
-        }
-        record.projects.push(fresh.clone());
-        Ok(fresh.clone())
-    })
+    let created = members::create(dir, account, fresh)?;
+    for (repository, installation) in found {
+        follow(dir, account, repository, *installation, Some(&created.id))?;
+    }
+    Ok(created)
 }
 
 /// Change a project: its name, instructions, and repositories. `found` is
@@ -1188,15 +1333,8 @@ pub fn edit_project(
         return Err(RepoError::Invalid);
     }
     forget(dir, account);
-    mutate(dir, account, |record| {
-        if let Some((repository, installation)) = found {
-            follow(record, repository, *installation);
-        }
-        let project = record
-            .projects
-            .iter_mut()
-            .find(|p| p.id == id)
-            .ok_or(RepoError::NotFound)?;
+    // Renaming is the owner's; instructions and repositories an editor's.
+    let edited = members::edit(dir, account, id, name.is_some(), |project| {
         if let Some(name) = &name {
             project.name.clone_from(name);
         }
@@ -1204,6 +1342,7 @@ pub fn edit_project(
             project.instructions.clone_from(instructions);
         }
         if let Some((repository, installation)) = found {
+            follow_into(project, repository, *installation);
             let at = match project
                 .repositories
                 .iter()
@@ -1244,8 +1383,12 @@ pub fn edit_project(
             }
         }
         project.settle_primary();
-        Ok(project.clone())
-    })
+        Ok(())
+    })?;
+    if let Some((repository, installation)) = found {
+        follow(dir, account, repository, *installation, Some(id))?;
+    }
+    Ok(edited)
 }
 
 /// Remove a project. Removing one that isn't there is not an error.
@@ -1254,10 +1397,7 @@ pub fn remove_project(dir: &Path, account: &str, id: &str) -> Result<(), RepoErr
         return Err(RepoError::Invalid);
     }
     forget(dir, account);
-    mutate(dir, account, |record| {
-        record.projects.retain(|p| p.id != id);
-        Ok(())
-    })
+    members::remove(dir, account, id)
 }
 
 /// Whether `value` looks like a project id.
@@ -1404,6 +1544,9 @@ struct Record {
     /// Credential-broker tickets, by digest ([`broker`]).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     tickets: Vec<broker::Ticket>,
+    /// The account's projects before #11585. Projects now live in their
+    /// own store with members ([`members`]); this copy is read only to
+    /// fill a file store that doesn't exist yet, and is never changed.
     #[serde(default)]
     projects: Vec<Project>,
 }
