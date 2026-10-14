@@ -30,6 +30,7 @@ the books. No text, figures, or tables are copied from any book.
 | [in-space-assembly.md](in-space-assembly.md) | Robotic assembly in microgravity, free-floating arm dynamics, flight precedents, assembly planning |
 | [sim-mapping.md](sim-mapping.md) | How each topic maps to our crates, and the tests Lagrange 2 needs |
 | [cislunar-strategy.md](cislunar-strategy.md) | A phased station network, construction and transport targets, schedule, and alternative execution plans |
+| [autonomy-and-environment.md](autonomy-and-environment.md) | Why the robots must close their own loops (light time, coverage), stage-checked assembly, radiation and compute, LEO disposal and restraint rules, and the matching simulation scenarios |
 
 ## Confidence marks
 

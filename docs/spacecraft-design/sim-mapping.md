@@ -140,3 +140,5 @@ frozen, as Lagrange 1 did for its station-keeping cost.
 5. Four arms, the planner, failures, and replay.
 6. The test burn.
 7. The zone, sky, and demo capture.
+
+Fault and operations scenarios (link loss, stuck latches, controller resets, solar events, restraint, debris holds) are listed in [autonomy-and-environment.md](autonomy-and-environment.md#4-what-this-adds-to-the-simulation).
