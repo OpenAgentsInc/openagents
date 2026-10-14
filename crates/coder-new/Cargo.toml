@@ -83,6 +83,8 @@ background = { path = "../background" }
 [target.'cfg(unix)'.dependencies]
 # OpenCode's saved reason for a failed delegated turn (#11464).
 coder-history = { path = "../coder-history", default-features = false, features = ["opencode"] }
+# Who owns a linked state folder (#11582).
+libc = "0.2"
 
 [dev-dependencies]
 axum = "0.8"

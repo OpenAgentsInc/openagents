@@ -187,7 +187,11 @@ mod tests {
         let link = temporary.path().join("linked-root");
         symlink(&root, &link).unwrap();
         let mut appearance = Appearance::default();
-        appearance.load(Store::under(link)).unwrap();
+        appearance.load(Store::under(&link)).unwrap();
+        // A state folder linked to the user's own folder is fine (#11582);
+        // re-point it at nothing so the save is refused.
+        fs::remove_file(&link).unwrap();
+        symlink(temporary.path().join("gone"), &link).unwrap();
 
         assert_eq!(
             appearance.toggle_system_terminal_background().unwrap_err(),

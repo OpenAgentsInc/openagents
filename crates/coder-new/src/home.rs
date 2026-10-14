@@ -80,6 +80,80 @@ pub fn migrate(root: &Path) -> std::io::Result<bool> {
     Ok(moved)
 }
 
+/// Checks a Coder state folder (`~/.openagents/coder`, or `--state DIR`)
+/// before private files go in it. A real folder passes, and so does a link
+/// to a folder this user owns, the link included: [`migrate`] leaves
+/// `coder-new` as a link to `coder`, and a run that still names `coder-new`
+/// must work (#11582). Anything else is refused with the path and the one
+/// command that clears it. `Ok(false)` means the folder does not exist yet.
+/// Folders inside the state folder (such as `sessions/`) are checked with
+/// [`private_subdir`], which never follows a link.
+pub fn state_dir(path: &Path) -> Result<bool, String> {
+    let link = match fs::symlink_metadata(path) {
+        Ok(meta) => meta,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(_) => return Err(format!("Coder can't read its folder {}.", path.display())),
+    };
+    if link.is_dir() {
+        return Ok(true);
+    }
+    if !link.is_symlink() {
+        return Err(not_a_folder(path));
+    }
+    let Ok(target) = fs::metadata(path) else {
+        return Err(format!(
+            "Coder's folder {} is a link to a folder that doesn't exist. Move the link aside and Coder makes a new folder: mv {} {}.old",
+            path.display(),
+            path.display(),
+            path.display()
+        ));
+    };
+    if !target.is_dir() {
+        return Err(not_a_folder(path));
+    }
+    if !owned(&link) || !owned(&target) {
+        return Err(format!(
+            "Coder's folder {} is a link to a folder another user owns, so Coder won't keep your chats there. Move the link aside and Coder makes your own folder: mv {} {}.old",
+            path.display(),
+            path.display(),
+            path.display()
+        ));
+    }
+    Ok(true)
+}
+
+/// Checks a folder inside a state folder, such as `sessions/`: it must be a
+/// real folder, never a link. `Ok(false)` means it does not exist yet.
+pub fn private_subdir(path: &Path) -> Result<bool, String> {
+    match fs::symlink_metadata(path) {
+        Ok(meta) if meta.is_dir() => Ok(true),
+        Ok(_) => Err(not_a_folder(path)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(_) => Err(format!("Coder can't read its folder {}.", path.display())),
+    }
+}
+
+fn not_a_folder(path: &Path) -> String {
+    format!(
+        "Coder's folder {} is not a plain folder (it is a file or a link Coder won't follow). Move it aside and Coder makes a new folder: mv {} {}.old",
+        path.display(),
+        path.display(),
+        path.display()
+    )
+}
+
+#[cfg(unix)]
+fn owned(meta: &fs::Metadata) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    // SAFETY: geteuid has no pointers or preconditions.
+    meta.uid() == unsafe { libc::geteuid() }
+}
+
+#[cfg(not(unix))]
+fn owned(_meta: &fs::Metadata) -> bool {
+    true
+}
+
 fn merge(from: &Path, into: &Path) -> std::io::Result<bool> {
     let mut moved = false;
     for entry in fs::read_dir(from)? {
@@ -185,6 +259,48 @@ mod tests {
         );
         assert!(old.join("sessions/a.json").is_file());
         assert!(!fs::symlink_metadata(&old).unwrap().is_symlink());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_state_folder_may_be_a_link_to_the_users_own_folder() {
+        // #11582: `coder-new -> coder` after the rename.
+        let root = tempfile::tempdir().unwrap();
+        let new = root.path().join(DIR);
+        let old = root.path().join(OLD_DIR);
+        fs::create_dir(&new).unwrap();
+        std::os::unix::fs::symlink(DIR, &old).unwrap();
+        assert_eq!(state_dir(&new), Ok(true));
+        assert_eq!(state_dir(&old), Ok(true));
+        assert_eq!(state_dir(&root.path().join("missing")), Ok(false));
+
+        // A link to a file, or to nothing, is refused with the fix.
+        let file = root.path().join("file");
+        fs::write(&file, "x").unwrap();
+        let to_file = root.path().join("to-file");
+        std::os::unix::fs::symlink(&file, &to_file).unwrap();
+        let error = state_dir(&to_file).unwrap_err();
+        assert!(
+            error.contains(&format!("mv {}", to_file.display())),
+            "{error}"
+        );
+        let dangling = root.path().join("dangling");
+        std::os::unix::fs::symlink(root.path().join("gone"), &dangling).unwrap();
+        assert!(state_dir(&dangling).unwrap_err().contains("doesn't exist"));
+        assert!(state_dir(&file).is_err());
+
+        // Inside the state folder, a link is never followed.
+        let sessions = new.join("sessions");
+        std::os::unix::fs::symlink(&new, &sessions).unwrap();
+        let error = private_subdir(&sessions).unwrap_err();
+        assert!(
+            error.contains(&format!("mv {}", sessions.display())),
+            "{error}"
+        );
+        fs::remove_file(&sessions).unwrap();
+        assert_eq!(private_subdir(&sessions), Ok(false));
+        fs::create_dir(&sessions).unwrap();
+        assert_eq!(private_subdir(&sessions), Ok(true));
     }
 
     #[test]

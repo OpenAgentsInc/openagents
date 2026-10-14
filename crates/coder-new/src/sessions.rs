@@ -179,36 +179,34 @@ impl Store {
     }
 
     fn directory(&self, create: bool) -> Result<bool, String> {
-        for path in [&self.root, &self.root.join("sessions")] {
-            match fs::symlink_metadata(path) {
-                Ok(metadata) if !metadata.is_dir() => {
-                    return Err("The chat session directory is not a regular directory.".into());
+        // The state folder may be a link to the user's own folder
+        // (`coder-new -> coder`, #11582); `sessions/` inside it may not.
+        let checks: [(PathBuf, fn(&Path) -> Result<bool, String>); 2] = [
+            (self.root.clone(), crate::home::state_dir),
+            (self.root.join("sessions"), crate::home::private_subdir),
+        ];
+        for (path, check) in checks {
+            if !check(&path)? {
+                if !create {
+                    return Ok(false);
                 }
-                Ok(_) => {}
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                    if !create {
-                        return Ok(false);
-                    }
-                    let mut builder = fs::DirBuilder::new();
-                    builder.recursive(true);
-                    #[cfg(unix)]
-                    {
-                        use std::os::unix::fs::DirBuilderExt;
-                        builder.mode(0o700);
-                    }
-                    builder
-                        .create(path)
-                        .map_err(|_| "Cannot create the chat session directory.")?;
-                    if !fs::symlink_metadata(path).is_ok_and(|metadata| metadata.is_dir()) {
-                        return Err("The chat session directory is not a regular directory.".into());
-                    }
+                let mut builder = fs::DirBuilder::new();
+                builder.recursive(true);
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::DirBuilderExt;
+                    builder.mode(0o700);
                 }
-                Err(_) => return Err("Cannot read the chat session directory.".into()),
+                let cannot = || format!("Coder can't create its folder {}.", path.display());
+                builder.create(&path).map_err(|_| cannot())?;
+                if !check(&path)? {
+                    return Err(cannot());
+                }
             }
             #[cfg(unix)]
             if create {
                 use std::os::unix::fs::PermissionsExt;
-                fs::set_permissions(path, fs::Permissions::from_mode(0o700))
+                fs::set_permissions(&path, fs::Permissions::from_mode(0o700))
                     .map_err(|_| "Cannot protect the chat session directory.")?;
             }
         }
@@ -394,6 +392,45 @@ mod tests {
         assert!(again.is_ok(), "{:?}", again.err());
     }
 
+    /// #11582: `~/.openagents/coder-new` is a link to `coder` after the
+    /// rename. A store rooted at the link works; a linked `sessions/` is
+    /// still refused, naming the path and the fix.
+    #[test]
+    #[cfg(unix)]
+    fn a_linked_state_folder_works_but_a_linked_sessions_folder_does_not() {
+        let temp = tempfile::tempdir().unwrap();
+        let real = temp.path().join("coder");
+        fs::create_dir(&real).unwrap();
+        let linked = temp.path().join("coder-new");
+        std::os::unix::fs::symlink("coder", &linked).unwrap();
+
+        let store = Store::under(&linked);
+        assert!(store.list().unwrap().is_empty());
+        store
+            .save("one", &document("one", "Through the link", temp.path()))
+            .unwrap();
+        assert!(real.join("sessions/one.atif.json").is_file());
+        assert_eq!(store.list().unwrap()[0].title, "Through the link");
+        assert_eq!(Store::under(&real).list().unwrap().len(), 1);
+
+        let other = temp.path().join("other");
+        fs::create_dir(&other).unwrap();
+        let elsewhere = temp.path().join("elsewhere");
+        fs::create_dir(&elsewhere).unwrap();
+        std::os::unix::fs::symlink(&elsewhere, other.join("sessions")).unwrap();
+        let error = Store::under(&other).lease("two").err().unwrap();
+        let sessions = other.join("sessions");
+        assert!(
+            error.contains(&format!(
+                "mv {} {}.old",
+                sessions.display(),
+                sessions.display()
+            )),
+            "{error}"
+        );
+        assert!(Store::under(&other).list().is_err());
+    }
+
     #[test]
     fn snapshots_are_private_atomic_and_exclusive() {
         let temp = tempfile::tempdir().unwrap();
@@ -534,10 +571,18 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let outside = temp.path().join("outside");
         fs::create_dir(&outside).unwrap();
+        // A state folder linked to the user's own folder is allowed (#11582);
+        // one linked to a file or to nothing is refused.
+        let file = temp.path().join("file");
+        fs::write(&file, "kept").unwrap();
         let root_link = temp.path().join("linked-root");
-        symlink(&outside, &root_link).unwrap();
-        assert!(Store::under(root_link).lease("one").is_err());
-        assert!(!outside.join("sessions").exists());
+        symlink(&file, &root_link).unwrap();
+        assert!(Store::under(&root_link).lease("one").is_err());
+        let dangling = temp.path().join("dangling-root");
+        symlink(temp.path().join("gone"), &dangling).unwrap();
+        assert!(Store::under(&dangling).lease("one").is_err());
+        assert!(!temp.path().join("gone").exists());
+        assert_eq!(fs::read_to_string(&file).unwrap(), "kept");
         let store = Store::under(temp.path().join("state"));
         fs::create_dir(&store.root).unwrap();
         symlink(&outside, store.root.join("sessions")).unwrap();

@@ -3666,6 +3666,7 @@ dependencies = [
  "inference",
  "jev",
  "jev-hosted",
+ "libc",
  "markdown-stream",
  "microcoder-loop",
  "model-access",

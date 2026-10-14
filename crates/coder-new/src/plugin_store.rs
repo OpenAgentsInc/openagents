@@ -296,7 +296,8 @@ fn write_private(root: &Path, filename: &str, bytes: &[u8]) -> std::io::Result<(
         builder.mode(0o700);
     }
     builder.create(root)?;
-    if !fs::symlink_metadata(root)?.is_dir() {
+    // The state folder may be a link to the user's own folder (#11582).
+    if !crate::home::state_dir(root).map_err(std::io::Error::other)? {
         return Err(std::io::ErrorKind::InvalidInput.into());
     }
     #[cfg(unix)]
