@@ -3,6 +3,10 @@
 CTRL_expressions.jawOpen 0.2
 CTRL_expressions.mouthUpperLipRaiseL 0.03
 CTRL_expressions.mouthUpperLipRaiseR 0.03
+# Round 13: the upper lip rolled in a little, so less of its red shows
+# (it measured 18% tall speaking).
+CTRL_expressions.mouthUpperLipRollInL 0.3
+CTRL_expressions.mouthUpperLipRollInR 0.3
 CTRL_expressions.mouthLowerLipDepressL 0.08
 CTRL_expressions.mouthLowerLipDepressR 0.08
 CTRL_expressions.browRaiseInL 0.12

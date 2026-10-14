@@ -50,8 +50,8 @@ import draconia_paint  # noqa: E402
 
 HAIR_STYLE = os.environ.get("MH_HAIR", "updo")
 # The composed iris's tint and gain (round 12: muted olive grey-green).
-IRIS_TINT = (0.50, 0.64, 0.46)
-IRIS_GAIN = 2.6
+IRIS_TINT = (0.45, 0.62, 0.56)
+IRIS_GAIN = 4.8
 
 ROLES = {
     "head": "skin",
@@ -483,14 +483,16 @@ def compose_eye(tex_dir, out_dir, size=2048, iris_r=0.163, tint=(0.52, 0.62, 0.5
     # 5's grey-green (round 11: the reference's iris is light sea green
     # with a dark limbal ring).
     lum = np.clip(lum + (lum - lum.mean()) * 0.7, 0, 1)
-    # Round 12: muted grey-green, sampled from the reference at 1:22 (its
-    # iris reads about 32,41,29 sRGB: green over red 1.28, blue over red
-    # 0.91), half round 11's saturation and darker; round 11's sea green
+    # Round 13: a light sage grey-green, the lit outer iris at 0:54 and in
+    # the close-up (about 95,120,105 sRGB); round 12 sampled 1:22's iris in
+    # shadow and read near black at medium framing; round 11's sea green
     # glowed teal.
     sea = np.array(IRIS_TINT, np.float32)
     green = np.clip(lum * sea * IRIS_GAIN, 0, 1)
     grey = lum * IRIS_GAIN * float(np.mean(sea))
-    green = np.clip(green * 0.55 + grey * 0.45, 0, 1)
+    green = np.clip(green * 0.65 + grey * 0.35, 0, 1)
+    # Darker flecks: the iris photo's own darkest fibres deepened.
+    green = green * np.where(lum < np.percentile(lum, 25), 0.7, 1.0)
     # Keep the pupil black and the fibres' contrast.
     green = np.where(lum < 0.08, ic, green)
     t = np.clip(r / iris_r, 0, 2)[..., None]
@@ -498,7 +500,7 @@ def compose_eye(tex_dir, out_dir, size=2048, iris_r=0.163, tint=(0.52, 0.62, 0.5
     green = green * (1 - 0.6 * limbal)
     # Lighter flecks around the pupil (the reference's).
     fleck = np.exp(-(((t - 0.42) / 0.12) ** 2))
-    green = np.clip(green * (1 + 0.35 * fleck), 0, 1)
+    green = np.clip(green * (1 + 0.15 * fleck), 0, 1)
     blend = np.clip((r - iris_r) / 0.006, 0, 1)[..., None]
     col = green * (1 - blend) + col * blend
     rgba = np.concatenate([col, np.ones((size, size, 1), np.float32)], -1)
@@ -880,6 +882,12 @@ def main():
         draconia_hair.BODY_ROOTS = 5000
         draconia_hair.BODY_WIDTH = 2.4
         draconia_hair.MESS = (0.35, 1.0)
+        # Round 13: loose loops and pieces lifting off the crown, with dark
+        # gaps under them (more lift; longer, springier flyaways).
+        draconia_hair.LIFT = 0.024
+        draconia_hair.FLY_COUNT = 520
+        draconia_hair.FLY_LENGTH = (0.04, 0.12)
+        draconia_hair.FLY_DROOP = 0.12
         # (Round 12: the front lower too: it still sat high.)
         draconia_hair.HAIRLINE_DROP = (0.16, 0.38)
         draconia_hair.LOCK_WAVE = 0.25
@@ -920,6 +928,12 @@ def main():
         draconia_cloth.FOLDS = 0.006
         # (1.0 read as a stiff white bib in round 8.)
         draconia_cloth.COLLAR_POINTS = 1.0
+        # Round 13: a short band open at the front, two separate points
+        # either side of the knot.
+        draconia_cloth.COLLAR_STYLE = "points"
+        draconia_cloth.COLLAR_BAND = 0.018
+        draconia_cloth.COLLAR_GAP = 0.7
+        draconia_cloth.ROBE_OPEN_TOP = -0.03
         # Round 11: fabric normals, a thicker robe and collar, deeper folds.
         draconia_cloth.FABRIC = True
         draconia_cloth.ROBE_THICK = 0.007

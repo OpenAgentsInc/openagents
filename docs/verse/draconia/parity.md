@@ -760,6 +760,50 @@ $B -b --factory-startup --python scripts/blender/draconia_set.py -- ~/work/film-
   every pose; white cloth is white. Still off: the upper lip at rest and
   speaking; the hairline; the robe and collar's shapes.
 
+### Round 13, 2026-10-14: a light green iris, the upper lip within 5%, an open robe
+
+- **Direction.** The coordinator's read of round 12: the iris overshot to
+  near black at medium framing (the 1:22 sample was in shadow); the collar
+  and tie looked unchanged; the speaking upper lip +18%; the crown a cap.
+- **What changed.**
+  - Iris: a light sage grey-green toward the lit outer iris at 0:54 and
+    in the close-up (about 95,120,105 sRGB), with darker flecks; ours now
+    reads about 93,108,92 at its lit 90th percentile. In the close-up it
+    reads light, perhaps a little pale round the pupil.
+  - Upper lip: the rig's upper-lip roll-in (0.15 at rest, 0.3 speaking)
+    on top of round 12's sculpt layer: +3.6% / +4.5% / +3.9%, within 5%
+    in all three rows for the first time.
+  - Collar and tie: two bugs found by rendering the uniform alone. The
+    collar band's ring was sorted by plain angle, so its strip bridged the
+    gap left for the knot and closed into a white band (now sorted from
+    the front, the gap between the list's ends); and the robe's front
+    opening stopped 2 cm under the neck, leaving a slab of robe and facing
+    across the chest (`draconia_cloth.ROBE_OPEN_TOP`, now open to the top).
+    The collar is a short band open at the front with two separate points
+    either side of a fuller knot (`COLLAR_STYLE = "points"`); the robe's
+    top edge is cut straight.
+  - Crown: more lift, longer and springier flyaways (loops off the crown).
+- **Measured** (MetaHuman's tracker; ours against the reference):
+
+  | Feature (over eye spacing) | 0:54 smile | 0:24 neutral | 0:29 speaking |
+  | --- | --- | --- | --- |
+  | Eye width | -2.7% | -1.7% | -2.1% |
+  | Eye opening | +4.4% | +5.2% | +4.2% |
+  | Eye line to nose base (midface) | +1.1% | -1.9% | -1.4% |
+  | Nose base to upper lip | +2.1% | +6.9% | +6.7% |
+  | Upper lip height | +3.6% | +4.5% | +3.9% |
+  | Lower lip height | -4.8% | -3.7% | +8.9% |
+  | Mouth width | +3.9% | +3.7% | -5.7% |
+
+- **Artifacts.** `~/Downloads/draconia-fullface-mh-v11.png` (reference |
+  round 12 | round 13), `~/Downloads/draconia-parity-round-13.png`, the
+  progress sheet; `~/work/film-out/draconia/parity/round-13/`.
+- **Honest state.** Light green eyes that read at medium framing; the lips
+  within 5%. The collar is no longer a bib, but its points read as two
+  long white slivers and the neckline around them is still awkward; the
+  crown still reads smooth from the front; the iris's lighter ring round
+  the pupil is too bright in the close-up.
+
 ## Peacock scene
 
 The peacock guardian (reference 113.0–118.0 s, [shots.md](shots.md)),

@@ -2,3 +2,6 @@
 # eyes 12% more open than the reference's at 0:24 in round 8).
 CTRL_expressions.eyeRelaxL 0.15
 CTRL_expressions.eyeRelaxR 0.15
+# Round 13: the upper lip rolled in a touch (11% tall at rest).
+CTRL_expressions.mouthUpperLipRollInL 0.15
+CTRL_expressions.mouthUpperLipRollInR 0.15
