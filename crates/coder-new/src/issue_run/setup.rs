@@ -568,7 +568,94 @@ pub async fn change_checks(worktree: &Path, base: &str) -> Vec<Check> {
             paths.extend(text.lines().map(str::to_owned));
         }
     }
-    checks_for_paths(worktree, &paths)
+    let mut found = checks_for_paths(worktree, &paths);
+    for check in kind_checks(worktree, base, &paths).await {
+        if !found.iter().any(|have| have.id == check.id) {
+            found.push(check);
+        }
+    }
+    found
+}
+
+/// The checks the repository's own tools give the changed files that are
+/// not Rust or Markdown (a Python script's `py_compile` and the tests that
+/// name it, a shell script's `bash -n`, JSON that parses), from the
+/// briefing's per-kind contract (`scripts/bench/briefed-ab/kinds.py plan`,
+/// #11310). Only checks this computer can run, each one required: a
+/// Python repository's change is proven like a Rust one (#11562).
+pub async fn kind_checks(worktree: &Path, base: &str, paths: &[String]) -> Vec<Check> {
+    let files: Vec<&str> = paths
+        .iter()
+        .map(String::as_str)
+        .filter(|path| {
+            !path.ends_with(".rs")
+                && !path.ends_with(".md")
+                && !path.ends_with("Cargo.toml")
+                && !path.ends_with("Cargo.lock")
+                && worktree.join(path).is_file()
+        })
+        .collect();
+    if files.is_empty() {
+        return Vec::new();
+    }
+    let script = super::tools_root(worktree).join("scripts/bench/briefed-ab/kinds.py");
+    if !script.is_file() {
+        return Vec::new();
+    }
+    let script = script.display().to_string();
+    let root = worktree.display().to_string();
+    let mut args = vec![
+        script.as_str(),
+        "plan",
+        "--root",
+        root.as_str(),
+        "--base",
+        base,
+        "--no-rust",
+    ];
+    args.extend(files);
+    let Ok(text) = output("python3", &args, worktree).await else {
+        return Vec::new();
+    };
+    planned_kind_checks(&text)
+}
+
+/// [`kind_checks`]' reading of `kinds.py plan`'s answer: the runnable
+/// checks of kinds other than Rust and documents, which this harness
+/// checks itself.
+#[must_use]
+pub fn planned_kind_checks(answer: &str) -> Vec<Check> {
+    let Ok(answer) = serde_json::from_str::<Value>(answer) else {
+        return Vec::new();
+    };
+    answer["checks"]
+        .as_array()
+        .map(|checks| {
+            checks
+                .iter()
+                .filter(|check| {
+                    !matches!(
+                        check["kind"].as_str(),
+                        None | Some("rust" | "rust-nested" | "docs")
+                    ) && check["available"].as_bool().unwrap_or(true)
+                })
+                .filter_map(|check| {
+                    let argv: Vec<String> = check["argv"]
+                        .as_array()?
+                        .iter()
+                        .filter_map(|word| word.as_str().map(str::to_owned))
+                        .collect();
+                    (!argv.is_empty()).then(|| Check {
+                        id: check["id"].as_str().unwrap_or("check").to_owned(),
+                        argv,
+                        filter: check["filter"].as_bool().unwrap_or(false),
+                        what: check["what"].as_str().unwrap_or_default().to_owned(),
+                        required: true,
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// [`change_checks`] for a list of changed paths.
@@ -961,7 +1048,33 @@ pub async fn open_pr(
     outcome: &Outcome,
     transcript: &mut Transcript,
 ) -> Option<String> {
-    delivery(options, base, outcome, transcript).await.url
+    delivery(options, base, outcome, transcript, None).await.url
+}
+
+/// The commit message's and the pull request body's last lines: who made
+/// the change. A Claude session is credited to Claude; any other engine
+/// names the model that did the work (`model`, else the run's).
+#[must_use]
+pub fn attribution(options: &Options, model: Option<&str>) -> (String, String) {
+    if options.engine == crate::solver::Engine::Claude {
+        return (
+            "Made by coder issue-run from a briefed Claude agent.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>".to_owned(),
+            format!(
+                "Made by `coder issue-run {}`: a briefed Claude agent working from the issue's decision steps.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+                options.issue
+            ),
+        );
+    }
+    let model = model
+        .map(str::trim)
+        .filter(|model| !model.is_empty())
+        .unwrap_or(options.model.as_str());
+    (
+        format!("Made by Coder from a briefed agent on {model}."),
+        format!(
+            "Made by Coder: a briefed agent on {model} working from the issue's decision steps."
+        ),
+    )
 }
 
 /// How a run's delivery ended. `status` is one of `none` (nothing was
@@ -990,6 +1103,7 @@ pub async fn delivery(
     base: &Base,
     outcome: &Outcome,
     transcript: &mut Transcript,
+    model: Option<&str>,
 ) -> Delivery {
     if !outcome.delivers() {
         transcript.notice(format!(
@@ -1004,14 +1118,9 @@ pub async fn delivery(
         return Delivery::none();
     }
     let branch = format!("coder/issue-{}", base.issue);
-    let message = format!(
-        "{} (#{})\n\nMade by coder issue-run from a briefed Claude agent.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
-        base.title, base.issue
-    );
-    let body = format!(
-        "Closes #{}.\n\nMade by `coder issue-run {}`: a briefed Claude agent working from the issue's decision steps.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
-        base.issue, base.issue
-    );
+    let (made_by, made_by_body) = attribution(options, model);
+    let message = format!("{} (#{})\n\n{made_by}", base.title, base.issue);
+    let body = format!("Closes #{}.\n\n{made_by_body}", base.issue);
     let steps: Vec<Vec<String>> = vec![
         vec!["git".into(), "switch".into(), "-c".into(), branch.clone()],
         vec!["git".into(), "add".into(), "-A".into()],

@@ -23,6 +23,7 @@
 //! pull-request step, so the terminal draws it with the same widgets and
 //! `coder solver --replay` plays a recording again.
 
+pub mod cloud;
 pub mod conform;
 pub mod hands;
 pub mod host;
@@ -300,6 +301,10 @@ Options:
                         --engine devin).
   --files K             Files in the briefing (default 6).
   --timeout SECS        How long each hand may work (default 1800).
+  --cloud               Run on a Google Cloud box of its own instead of this computer,
+                        every hand on Gemini 4 Argon, as your OpenAgents account;
+                        prints the progress and the pull request (with --json, as
+                        JSON lines; with --detach, only the run's page).
   --plain               Print the run as text instead of opening the terminal screen.
   --json                With --plain: one JSON line per transcript change.
   --snapshot FILE       Also save a picture of the whole run as an SVG file.
@@ -1105,7 +1110,15 @@ impl End<'_> {
         let delivery = if self.options.inner.open_pr {
             match &self.base {
                 Some(base) => {
-                    setup::delivery(&self.options.inner, base, &outcome, transcript).await
+                    let model = coder.as_ref().and_then(|work| work.model.clone());
+                    setup::delivery(
+                        &self.options.inner,
+                        base,
+                        &outcome,
+                        transcript,
+                        model.as_deref(),
+                    )
+                    .await
                 }
                 None => {
                     transcript.notice("No pull request: the run has no working copy.");

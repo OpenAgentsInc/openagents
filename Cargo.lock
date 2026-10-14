@@ -3805,6 +3805,7 @@ dependencies = [
  "hook-log",
  "jev",
  "plugin",
+ "reqwest 0.12.28",
  "route-contract",
  "serde",
  "serde_json",

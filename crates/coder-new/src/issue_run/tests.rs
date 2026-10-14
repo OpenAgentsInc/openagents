@@ -1056,3 +1056,42 @@ fn a_bare_number_uses_the_checkouts_own_repository() {
         assert_eq!(named.github, "other/thing");
     }
 }
+
+#[test]
+fn a_pull_request_names_the_model_that_did_the_work() {
+    let mut options = crate::issue_run::Options::parse(&args("5 --github o/r")).unwrap();
+    options.engine = crate::solver::Engine::Coder;
+    options.model = crate::models::GATEWAY_AUTO.to_owned();
+    let (commit, body) =
+        crate::issue_run::setup::attribution(&options, Some("google/gemini-4-argon"));
+    assert_eq!(
+        commit,
+        "Made by Coder from a briefed agent on google/gemini-4-argon."
+    );
+    assert!(body.contains("google/gemini-4-argon"), "{body}");
+    for text in [&commit, &body] {
+        assert!(!text.contains("Claude"), "{text}");
+    }
+    options.engine = crate::solver::Engine::Claude;
+    let (commit, body) = crate::issue_run::setup::attribution(&options, None);
+    assert!(commit.contains("Co-Authored-By: Claude"), "{commit}");
+    assert!(body.contains("Claude Code"), "{body}");
+}
+
+#[test]
+fn a_python_change_gets_its_repositorys_own_required_checks() {
+    let planned = json!({"checks": [
+        {"id": "py_compile:textkit", "kind": "python", "argv": ["python3", "-m", "py_compile", "textkit/words.py"], "what": "the scripts parse", "filter": false, "required": true, "available": true},
+        {"id": "tests:textkit", "kind": "python", "argv": ["python3", "-m", "unittest", "tests.test_words"], "what": "run the tests", "filter": false, "required": true, "available": true},
+        {"id": "ruff:textkit", "kind": "python", "argv": ["ruff", "check", "textkit/words.py"], "what": "lint", "required": true, "available": false},
+        {"id": "check:textkit", "kind": "rust", "argv": ["cargo", "check", "-p", "textkit"], "required": true, "available": true},
+        {"id": "doccheck:docs", "kind": "docs", "argv": ["python3", "kinds.py"], "required": true, "available": true}
+    ]});
+    let checks = crate::issue_run::setup::planned_kind_checks(&planned.to_string());
+    assert_eq!(
+        checks.iter().map(|c| c.id.as_str()).collect::<Vec<_>>(),
+        ["py_compile:textkit", "tests:textkit"]
+    );
+    assert!(checks.iter().all(|c| c.required));
+    assert!(crate::issue_run::setup::planned_kind_checks("not json").is_empty());
+}

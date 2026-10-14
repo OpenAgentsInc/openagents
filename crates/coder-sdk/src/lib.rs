@@ -20,6 +20,7 @@ pub mod auto_policy;
 pub mod bridge;
 pub mod checkout_guard;
 pub mod claude;
+pub mod cloud_solver;
 pub mod codex;
 pub mod command;
 pub mod compose;

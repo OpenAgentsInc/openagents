@@ -145,6 +145,12 @@ fn run() -> io::Result<()> {
             println!("{}", coder_new::solver::USAGE);
             return Ok(());
         }
+        if args.iter().any(|arg| arg == "--cloud") {
+            let runtime = tokio::runtime::Runtime::new()?;
+            return runtime
+                .block_on(coder_new::solver::cloud::command(&args[1..]))
+                .map_err(|message| io::Error::other(message));
+        }
         let options = coder_new::solver::Options::parse(&args[1..])
             .map_err(|message| io::Error::new(io::ErrorKind::InvalidInput, message))?;
         if options.inner.plain || !io::IsTerminal::is_terminal(&io::stdout()) {

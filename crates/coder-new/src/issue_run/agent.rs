@@ -64,6 +64,8 @@ pub struct Work {
     /// What the Stop gate (#11487) did, when it was on: stops, blocks, and
     /// why each allowed stop went through.
     pub stop_gate: Option<Value>,
+    /// The model that answered, when the session's door names it.
+    pub model: Option<String>,
 }
 
 fn lock<T>(shared: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -935,7 +937,7 @@ impl Session {
     pub fn briefed(options: &super::Options, briefing: &Briefing) -> Self {
         let (detail, engine) = match options.engine {
             crate::solver::Engine::Coder => (
-                "Coder loop on the OpenAgents gateway",
+                coder_door_words(),
                 Engine::Coder {
                     writes: true,
                     account: options.account.clone(),
@@ -2284,13 +2286,20 @@ pub async fn run_coder(
         .unwrap_or_else(|_| worktree.to_path_buf());
     let started = Instant::now();
     let mut work = Work::default();
+    // The Vertex AI door when the environment names one (a solver box,
+    // #11562), else the OpenAgents gateway as the signed-in account.
+    let vertex = crate::provider::VertexDoor::from_env();
+    let model = match &vertex {
+        Some(_) => crate::provider::VertexDoor::model(&session.model),
+        None => crate::models::GATEWAY_AUTO.to_owned(),
+    };
     let card = json!({
         "kind": "agent",
         "title": session.title,
         "detail": session.detail,
         "rows": [
-            {"label": "engine", "text": "Coder loop on the OpenAgents gateway"},
-            {"label": "model", "text": session.model},
+            {"label": "engine", "text": coder_door_words()},
+            {"label": "model", "text": if vertex.is_some() { model.as_str() } else { session.model.as_str() }},
             {"label": "tools", "text": session.tools_text()},
             {"label": "checks", "text": session.checks.iter().map(|check| check.id.clone()).collect::<Vec<_>>().join(", ")},
             {"label": "briefing", "text": format!("{} files, {} characters in the prompt", session.briefed.len(), session.system.chars().count() + session.prompt.chars().count())},
@@ -2300,14 +2309,17 @@ pub async fn run_coder(
     let Engine::Coder { writes, account } = session.engine else {
         unreachable!("run_coder takes a Coder session")
     };
-    let Some(account) = account else {
-        let why = "The Coder loop needs your OpenAgents sign-in: run coder login.".to_owned();
-        transcript.finish(card_index, card, json!({"error": why.clone()}));
-        work.error = Some(why);
-        return work;
+    let door = match (&vertex, account) {
+        (Some(vertex), _) => crate::provider::Provider::vertex(vertex)
+            .map(|provider| (provider, vertex.token().unwrap_or_default())),
+        (None, Some(account)) => crate::provider::Provider::gateway(&account)
+            .map(|provider| (provider, account.token().to_owned())),
+        (None, None) => {
+            Err("The Coder loop needs your OpenAgents sign-in: run coder login.".to_owned())
+        }
     };
-    let provider = match crate::provider::Provider::gateway(&account) {
-        Ok(provider) => provider,
+    let (provider, secret) = match door {
+        Ok(door) => door,
         Err(why) => {
             transcript.finish(card_index, card, json!({"error": why.clone()}));
             work.error = Some(why);
@@ -2318,7 +2330,7 @@ pub async fn run_coder(
     let mut execution = coder_settings(&root, writes);
     execution
         .redaction_keys
-        .push(model_access::ApiKey::new(account.token()));
+        .push(model_access::ApiKey::new(&secret));
     let mut prompt = session.prompt.clone();
     if prompt.len() > CODER_PROMPT_MAX {
         let mut cut = CODER_PROMPT_MAX;
@@ -2373,6 +2385,8 @@ pub async fn run_coder(
     let mut running: Vec<(usize, String, Value)> = Vec::new();
     let mut sent_back = 0;
     let mut earlier = (0, 0);
+    // The sent-back turns' cost; unknown once any turn's is.
+    let mut earlier_cost = Some(0.0);
     let result = loop {
         let watcher = {
             let (stop, run_stop, timeout) =
@@ -2439,7 +2453,7 @@ pub async fn run_coder(
             // The turn's state lives on the heap: a solver hand runs on a plain
             // thread's stack, which a debug build's turn would overflow.
             let turn = Box::pin(provider.chat_with_plugins(
-                crate::models::GATEWAY_AUTO,
+                &model,
                 &options,
                 messages.clone(),
                 &execution,
@@ -2468,6 +2482,7 @@ pub async fn run_coder(
         sent_back += 1;
         earlier.0 += reply.usage.prompt_tokens;
         earlier.1 += reply.usage.completion_tokens;
+        earlier_cost = earlier_cost.zip(reply.usage.cost).map(|(a, b)| a + b);
         if !reply.text.trim().is_empty() {
             transcript.push(Entry::Assistant {
                 text: reply.text.trim().to_owned(),
@@ -2523,7 +2538,8 @@ pub async fn run_coder(
             );
             work.input_tokens = (input > 0).then_some(input);
             work.output_tokens = (output > 0).then_some(output);
-            work.cost_usd = reply.usage.cost;
+            work.cost_usd = earlier_cost.zip(reply.usage.cost).map(|(a, b)| a + b);
+            work.model = model;
         }
         Err(why) => {
             work.error = Some(if transcript.cancelled() {
@@ -2540,6 +2556,17 @@ pub async fn run_coder(
     work.misses = misses;
     work.stop_gate = gate.map(|gate| lock(&gate.tally).clone());
     work
+}
+
+/// Where the Coder loop's model calls go, in words: Vertex AI when a
+/// Vertex door is set (#11562), else the OpenAgents gateway.
+#[must_use]
+pub fn coder_door_words() -> &'static str {
+    if crate::provider::VertexDoor::from_env().is_some() {
+        "Coder loop on Vertex AI"
+    } else {
+        "Coder loop on the OpenAgents gateway"
+    }
 }
 
 /// How many times the Stop gate sends a Coder-loop session back before

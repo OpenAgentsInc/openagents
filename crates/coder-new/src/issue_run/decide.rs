@@ -913,6 +913,22 @@ fn finder_error_line(stderr: &[u8]) -> String {
         .unwrap_or_else(|| "it exited without saying why".to_owned())
 }
 
+/// The briefing generator's levers. A repository without a root
+/// `Cargo.toml` gets the per-kind checks (#11310), so a Python or shell
+/// change is briefed with its own checks; the Rust default lists none
+/// for it (#11562).
+fn levers(options: &Options, files: &[Value], repo: &Path) -> Value {
+    let mut levers = if files.is_empty() {
+        json!({"finder": "lite", "briefing_files": options.files})
+    } else {
+        json!({})
+    };
+    if !repo.join("Cargo.toml").is_file() {
+        levers["checks"] = json!("kinds");
+    }
+    levers
+}
+
 /// The briefing, from #11211's generator.
 async fn brief(
     options: &Options,
@@ -938,7 +954,7 @@ async fn brief(
         "base": base.base,
         "files": files,
         "kind": kind,
-        "levers": if files.is_empty() { json!({"finder": "lite", "briefing_files": options.files}) } else { json!({}) },
+        "levers": levers(options, files, &base.repo),
     });
     let answer = run_with_input(&script, &request, &base.repo).await;
     card["ms"] = json!(started.elapsed().as_millis() as u64);

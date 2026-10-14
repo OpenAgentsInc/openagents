@@ -122,6 +122,9 @@ async fn environment_text(repo: &Path, engine: Engine) -> String {
                 "missing"
             }
         )),
+        Engine::Coder if crate::provider::VertexDoor::from_env().is_some() => {
+            lines.push("model access: Vertex AI".to_owned());
+        }
         Engine::Coder => lines.push(format!(
             "openagents sign-in: {}",
             if crate::home::data_dir()
@@ -900,6 +903,14 @@ impl HandBack {
 /// The hands' known costs added up; `None` when none reported one.
 #[must_use]
 pub fn total_cost(turns: &[Turn]) -> Option<f64> {
+    // A hand that spent tokens without a known cost makes the total
+    // unknown: never a partial sum shown as the whole.
+    if turns
+        .iter()
+        .any(|turn| turn.work.cost_usd.is_none() && turn.work.input_tokens.is_some())
+    {
+        return None;
+    }
     let known: Vec<f64> = turns.iter().filter_map(|turn| turn.work.cost_usd).collect();
     (!known.is_empty()).then(|| known.iter().sum())
 }

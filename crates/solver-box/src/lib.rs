@@ -9,11 +9,11 @@
 //! minutes while it runs, reads the run's result, and deletes the box
 //! however the run ends.
 //!
-//! The website side (claiming solver work runs and reporting their
-//! progress and result) is the dispatcher's, #11562: it calls [`run`] per
-//! claimed run and posts each [`Progress`] and the result [`Value`], which
-//! is already in the work-run result shape (`diff`, `landed.url`, `checks`,
-//! `cost_usd`, `secs`, `error`).
+//! The website side is [`dispatch`] (#11562): it claims solver work runs
+//! from openagents.com, calls [`run_until`] per run, and posts each
+//! [`Progress`] and the result [`Value`], which is already in the work-run
+//! result shape (`diff`, `landed.url`, `checks`, `cost_usd`, `secs`,
+//! `error`).
 
 use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
@@ -24,6 +24,8 @@ use boat::models::{
 };
 use boat::{CommandFrame, Nullable, WaitOptions, shell_quote};
 use serde_json::{Value, json};
+
+pub mod dispatch;
 
 /// The solver container, built by `deploy/solver-box/cloudbuild.yaml` and
 /// named by its commit (the repository's tags are immutable). A newer build
@@ -47,6 +49,8 @@ pub const VERTEX_REFRESH: Duration = Duration::from_secs(20 * 60);
 pub const RUN_DIR: &str = "/run/oa-solver";
 /// Where the box's own script reads the registry token.
 pub const HOST_DIR: &str = "/run/oa-solver-host";
+/// A run the person stopped.
+pub const STOPPED: &str = "Stopped";
 const SCRIPT_PATH: &str = "/tmp/oa-solver-box.sh";
 const BOX_SCRIPT: &str = include_str!("box-run.sh");
 
@@ -503,6 +507,26 @@ pub async fn run(
     run: &Run,
     credentials: &Credentials,
     google: &GoogleToken,
+    on: impl FnMut(&Progress),
+) -> Value {
+    run_until(client, run, credentials, google, &Stop::default(), on).await
+}
+
+/// The person's Stop for a run: [`run_until`] ends the run and deletes the
+/// box once it is set.
+pub type Stop = std::sync::Arc<std::sync::atomic::AtomicBool>;
+
+fn stopped(stop: &Stop) -> bool {
+    stop.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// [`run`] that ends early, deleting the box, when `stop` is set.
+pub async fn run_until(
+    client: &boat::Client,
+    run: &Run,
+    credentials: &Credentials,
+    google: &GoogleToken,
+    stop: &Stop,
     mut on: impl FnMut(&Progress),
 ) -> Value {
     let started = Instant::now();
@@ -536,7 +560,8 @@ pub async fn run(
         data: json!({"sandbox": id}),
         ..Progress::new("box", format!("Computer {id} is up"))
     });
-    let (summary, error) = match on_box(client, &id, run, credentials, google, &mut on).await {
+    let (summary, error) = match on_box(client, &id, run, credentials, google, stop, &mut on).await
+    {
         Ok(summary) => (summary, None),
         Err(error) => (None, Some(error)),
     };
@@ -632,8 +657,12 @@ async fn on_box(
     run: &Run,
     credentials: &Credentials,
     google: &GoogleToken,
+    stop: &Stop,
     on: &mut impl FnMut(&Progress),
 ) -> Result<Option<Value>, String> {
+    if stopped(stop) {
+        return Err(STOPPED.into());
+    }
     let dirs =
         format!("sudo -n install -d -m 0700 -o \"$(id -u)\" -g \"$(id -g)\" {RUN_DIR} {HOST_DIR}");
     match sh(client, id, &dirs).await {
@@ -704,7 +733,7 @@ async fn on_box(
             }
         })
     };
-    let followed = follow(&mut follower, on).await;
+    let followed = follow(&mut follower, stop, on).await;
     refresher.abort();
     followed
 }
@@ -712,13 +741,22 @@ async fn on_box(
 /// Reads the container's output to its end; returns its summary line.
 async fn follow(
     follower: &mut boat::CommandFollower,
+    stop: &Stop,
     on: &mut impl FnMut(&Progress),
 ) -> Result<Option<Value>, String> {
     let mut reader = Reader::default();
     let mut partial = String::new();
     let mut exit = None;
     loop {
-        let frame = match follower.next().await {
+        let next = tokio::select! {
+            next = follower.next() => next,
+            () = async {
+                while !stopped(stop) {
+                    tokio::time::sleep(Duration::from_millis(500)).await;
+                }
+            } => return Err(STOPPED.into()),
+        };
+        let frame = match next {
             Ok(Some(frame)) => frame,
             Ok(None) => break,
             Err(e) => return Err(format!("Reading the run on the computer: {}", why(&e))),

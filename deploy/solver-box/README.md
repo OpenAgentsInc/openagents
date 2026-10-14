@@ -46,7 +46,7 @@ container. `solver-box-run` sources `/run/oa-solver/env` and deletes it:
 | `OA_SOLVER_MODEL` | every hand's model, default `google/gemini-4-argon` |
 | `CODER_VERTEX_TOKEN_FILE` | `/run/oa-solver/vertex-token`, a Vertex AI access token the dispatcher rewrites every 20 minutes |
 | `CODER_VERTEX_PROJECT`, `CODER_VERTEX_LOCATION` | `openagentsgemini`, `global` |
-| `OPENAGENTS_TOKEN` | optional: an OpenAgents sign-in key, so the Coder loop reaches Argon through the OpenAgents gateway until its Vertex door ([#11562](https://github.com/OpenAgentsInc/openagents/issues/11562)) reads the token file above |
+| `OPENAGENTS_TOKEN` | optional and unused while the Vertex door is set: the Coder loop's Vertex door ([#11562](https://github.com/OpenAgentsInc/openagents/issues/11562)) reads the token file above for every request, sends each hand's model (Argon by default) to Vertex AI's OpenAI-compatible endpoint, and counts its cost from Vertex's tokens |
 
 It runs `gh auth setup-git`, a blobless clone into `/work/repo`, then
 `coder-new solver $OA_ISSUE --repo /work/repo --github $OA_REPO --engine
@@ -81,8 +81,6 @@ The result is in the work-run result shape (`ok`, `engine: "solver"`,
 ```sh
 set -a; . ~/work/.secrets/boat.env; set +a     # BOAT_API_KEY, BOAT_API_BASE
 export CLOUDSDK_CONFIG=/Users/christopherdavid/work/.secrets/gcloud-sa-config
-# Until the Coder loop's Vertex door lands (#11562): an OpenAgents sign-in key.
-set -a; . ~/work/.secrets/coder-gate-signin.env; set +a   # OPENAGENTS_TOKEN
 cargo run -p solver-box -- --local-issue AtlantisPleb/coder-one-sandbox#1 --result /tmp/solver-result.json
 ```
 
@@ -90,7 +88,21 @@ The image is `crates/solver-box`'s `IMAGE` (a commit tag), or
 `OA_SOLVER_IMAGE`, or `--image`. The GitHub token is `OA_SOLVER_GH_TOKEN`, else `gh auth token`. Google
 access tokens come from `gcloud auth print-access-token`, or the metadata
 server with `--metadata-token` (when the runner itself runs on Google
-Cloud). Claiming solver work runs from the website and reporting each
-progress line and the result is the dispatcher's
-([#11562](https://github.com/OpenAgentsInc/openagents/issues/11562)); it
-calls `solver_box::run` per claimed run.
+Cloud).
+
+## The dispatcher
+
+`oa-solver-box --serve [--site URL] [--name NAME] [--slots N] [--once]`
+([`dispatch.rs`](../../crates/solver-box/src/dispatch.rs), #11562) takes
+solver work runs from the site (`POST /v1/work-hosts/{name}/claim
+{engines: ["solver"]}`), runs each with `solver_box::run_until`, and reports
+its progress lines (`{secs, phase, text, data}`, `phase` being the kind) every
+5 seconds, at least every 30, and then the result (`POST
+/v1/work-hosts/{name}/runs/{id}`). The site's `{cancel: true}` stops the run
+and deletes its box. The host token is `OA_WORK_HOST_TOKEN`, else the
+`openagents-work-host-token` secret. The GitHub token is the claim's
+`run.github_token` (or `run.env.GH_TOKEN`), else the pool's.
+
+People ask through the site (`POST /v1/work {repo, issue, land: "pr",
+engine: "solver"}`), the Coder SDK (`coder_sdk::cloud_solver::submit` and
+`follow`), or the CLI: `coder solver N --cloud [--json] [--detach]`.

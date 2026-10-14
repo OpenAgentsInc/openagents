@@ -104,6 +104,10 @@ pub struct Provider {
     /// through it, and a failure is its own, never handed to this
     /// computer's other logins.
     gemini: bool,
+    /// Vertex AI's OpenAI-compatible endpoint with an access token another
+    /// process keeps fresh in a file (#11562): its cost is counted from
+    /// the reply's tokens, and a failure is its own.
+    vertex: bool,
     check_http: reqwest::Client,
     chat: Client,
     base_url: String,
@@ -125,6 +129,15 @@ impl Provider {
         base_url: &str,
         dialect: openrouter::Dialect,
     ) -> Result<Self, String> {
+        Self::build_full(key, base_url, dialect, None)
+    }
+
+    fn build_full(
+        key: ApiKey,
+        base_url: &str,
+        dialect: openrouter::Dialect,
+        key_file: Option<PathBuf>,
+    ) -> Result<Self, String> {
         if key.expose().is_empty()
             || !key.expose().is_ascii()
             || key
@@ -144,11 +157,13 @@ impl Provider {
         config.timeout = STREAM_TIMEOUT;
         config.retries = 0;
         config.dialect = dialect;
+        config.key_file = key_file;
         let chat = Client::new(config).map_err(|_| "The OpenRouter connection could not start.")?;
         Ok(Self {
             key,
             gateway: false,
             gemini: dialect == openrouter::Dialect::Gemini,
+            vertex: false,
             check_http,
             chat,
             base_url: base_url.trim_end_matches('/').to_owned(),
@@ -176,6 +191,31 @@ impl Provider {
     pub(crate) fn gemini_at(key: ApiKey, base_url: &str) -> Result<Self, String> {
         Self::build_with(key, base_url, openrouter::Dialect::Gemini)
             .map_err(|_| "Set a Gemini API key without spaces or control characters.".to_owned())
+    }
+
+    /// Vertex AI's OpenAI-compatible endpoint (#11562): the Coder loop's
+    /// door on a solver box, where no OpenAgents sign-in exists. The bearer
+    /// is read from the door's token file for every request.
+    pub(crate) fn vertex(door: &VertexDoor) -> Result<Self, String> {
+        Self::vertex_at(door, &door.base_url())
+    }
+
+    fn vertex_at(door: &VertexDoor, base_url: &str) -> Result<Self, String> {
+        let token = door.token().ok_or_else(|| {
+            format!(
+                "There is no Vertex AI access token in {}.",
+                door.token_file.display()
+            )
+        })?;
+        let mut provider = Self::build_full(
+            ApiKey::new(&token),
+            base_url,
+            openrouter::Dialect::Gemini,
+            Some(door.token_file.clone()),
+        )
+        .map_err(|_| "The Vertex AI access token is not valid.".to_owned())?;
+        provider.vertex = true;
+        Ok(provider)
     }
 
     /// Checks the key without returning its label or any response-body text.
@@ -489,7 +529,11 @@ impl Provider {
                 Ok(streamed) => streamed,
                 Err(error) => {
                     if let openrouter::Error::Schema { usage, .. } = &error {
-                        aggregate_usage(&mut aggregate.usage, usage, !have_usage);
+                        let mut usage = usage.clone();
+                        if self.vertex {
+                            usage.cost = vertex_cost(model, &usage, now_secs());
+                        }
+                        aggregate_usage(&mut aggregate.usage, &usage, !have_usage);
                         have_usage = true;
                     }
                     if !capped && let Some(tokens) = affordable_tokens(&error) {
@@ -555,7 +599,7 @@ impl Provider {
                         // A no-harness turn runs on its one model only
                         // (#11548): it never moves to this computer's
                         // Claude or Codex login halfway through.
-                        if execution.no_harness.is_some() {
+                        if execution.no_harness.is_some() || self.vertex {
                             return Err(reason);
                         }
                         return self
@@ -599,6 +643,10 @@ impl Provider {
                     continue;
                 }
             };
+            let mut streamed = streamed;
+            if self.vertex {
+                streamed.reply.usage.cost = vertex_cost(model, &streamed.reply.usage, now_secs());
+            }
             aggregate_usage(&mut aggregate.usage, &streamed.reply.usage, !have_usage);
             have_usage = true;
             event_callback(RuntimeEvent::Usage(Box::new(round_usage(&streamed.reply))));
@@ -1308,6 +1356,122 @@ async fn canceled(cancel: &AtomicBool) {
     }
 }
 
+/// The Coder loop's Vertex AI door (#11562): `CODER_VERTEX_TOKEN_FILE`
+/// (an access token the solver box's runner rewrites every 20 minutes),
+/// `CODER_VERTEX_PROJECT` and `CODER_VERTEX_LOCATION`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct VertexDoor {
+    pub token_file: PathBuf,
+    pub project: String,
+    pub location: String,
+}
+
+/// The model a Vertex door runs when the hand names none of Google's.
+pub const VERTEX_MODEL: &str = "google/gemini-4-argon";
+
+impl VertexDoor {
+    /// The door the environment names, when its token file is set.
+    #[must_use]
+    pub fn from_env() -> Option<Self> {
+        let var = |name: &str| {
+            std::env::var(name)
+                .ok()
+                .map(|value| value.trim().to_owned())
+                .filter(|value| !value.is_empty())
+        };
+        let token_file = PathBuf::from(var("CODER_VERTEX_TOKEN_FILE")?);
+        Some(Self {
+            token_file,
+            project: var("CODER_VERTEX_PROJECT").unwrap_or_else(|| "openagentsgemini".into()),
+            location: var("CODER_VERTEX_LOCATION").unwrap_or_else(|| "global".into()),
+        })
+    }
+
+    /// The access token now in the file.
+    #[must_use]
+    pub fn token(&self) -> Option<String> {
+        fs::read_to_string(&self.token_file)
+            .ok()
+            .map(|text| text.trim().to_owned())
+            .filter(|token| !token.is_empty())
+    }
+
+    /// The OpenAI-compatible endpoint's base (`…/endpoints/openapi`);
+    /// `global` has no regional host.
+    #[must_use]
+    pub fn base_url(&self) -> String {
+        let host = if self.location == "global" {
+            "aiplatform.googleapis.com".to_owned()
+        } else {
+            format!("{}-aiplatform.googleapis.com", self.location)
+        };
+        format!(
+            "https://{host}/v1/projects/{}/locations/{}/endpoints/openapi",
+            self.project, self.location
+        )
+    }
+
+    /// The model a hand runs on this door: the one it names when it is
+    /// Google's, else [`VERTEX_MODEL`].
+    #[must_use]
+    pub fn model(named: &str) -> String {
+        let named = named.trim();
+        if named.starts_with("google/") {
+            named.to_owned()
+        } else {
+            VERTEX_MODEL.to_owned()
+        }
+    }
+}
+
+fn now_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |elapsed| elapsed.as_secs())
+}
+
+/// Vertex AI's list price for `model`, dollars per million tokens (input,
+/// cached input, output) at `now` (Unix seconds); `None` for a model
+/// without a known price.
+fn vertex_price(model: &str, now: u64) -> Option<(f64, f64, f64)> {
+    // Gemini 4 Argon: $2 / $0.10 / $10 until 2026-11-30, then doubled.
+    const ARGON_DOUBLES: u64 = 1_796_083_200; // 2026-12-01T00:00:00Z
+    match model.trim_start_matches("google/") {
+        "gemini-4-argon" if now < ARGON_DOUBLES => Some((2.0, 0.10, 10.0)),
+        "gemini-4-argon" => Some((4.0, 0.20, 20.0)),
+        _ => None,
+    }
+}
+
+/// One Vertex AI call's cost from its usage: uncached prompt, cached
+/// prompt, and every token after the prompt (Vertex reports the model's
+/// reasoning outside `completion_tokens`, but inside `total_tokens`).
+/// `None` when the model has no known price: unknown, never zero.
+fn vertex_cost(model: &str, usage: &openrouter::Usage, now: u64) -> Option<f64> {
+    let (input, cached_input, output) = vertex_price(model, now)?;
+    let cached = usage
+        .prompt_tokens_details
+        .as_ref()
+        .and_then(|details| details.cached_tokens)
+        .unwrap_or(0)
+        .min(usage.prompt_tokens);
+    let reasoning = usage
+        .completion_tokens_details
+        .as_ref()
+        .and_then(|details| details.reasoning_tokens)
+        .unwrap_or(0);
+    let after_prompt = usage
+        .total_tokens
+        .saturating_sub(usage.prompt_tokens)
+        .max(usage.completion_tokens.saturating_add(reasoning));
+    #[allow(clippy::cast_precision_loss)]
+    let usd = ((usage.prompt_tokens - cached) as f64 * input
+        + cached as f64 * cached_input
+        + after_prompt as f64 * output)
+        / 1_000_000.0;
+    Some(usd)
+}
+
 fn aggregate_usage(total: &mut openrouter::Usage, next: &openrouter::Usage, first: bool) {
     if first {
         *total = next.clone();
@@ -1839,6 +2003,84 @@ mod tests {
         assert_eq!(tail[2], json!({"role":"user","content":"third"}));
         assert!(slots.iter().all(|slot| slot.lock().unwrap().is_none()));
         assert!(inbox.lock().unwrap().is_empty());
+    }
+
+    /// #11562: the Coder loop's Vertex AI door reads its token file, runs
+    /// Argon, and counts the turn's cost from Vertex's tokens: reasoning is
+    /// outside `completion_tokens`, cached prompt reads are cheaper.
+    #[test]
+    fn the_vertex_door_counts_argons_cost_from_its_tokens() {
+        let dir = tempfile::tempdir().unwrap();
+        let token_file = dir.path().join("vertex-token");
+        std::fs::write(&token_file, "ya29.fixture\n").unwrap();
+        let answer = format!(
+            "data: {}\n\ndata: [DONE]\n\n",
+            json!({"model":"google/gemini-4-argon","choices":[{"delta":{"role":"assistant","content":"Hi there friend."},"finish_reason":"stop"}],
+                "usage":{"prompt_tokens":1000,"completion_tokens":9,"completion_tokens_details":{"reasoning_tokens":144},
+                    "prompt_tokens_details":{"cached_tokens":600},"total_tokens":1153}})
+        );
+        let (base, server) = sequence(vec![answer]);
+        let door = VertexDoor {
+            token_file,
+            project: "openagentsgemini".into(),
+            location: "global".into(),
+        };
+        let provider = Provider::vertex_at(&door, &base).unwrap();
+        let mut execution = jev_settings("http://127.0.0.1:1".into(), None);
+        execution.jev_enabled = false;
+        execution.cwd = dir.path().to_path_buf();
+        let reply = runtime()
+            .block_on(provider.chat_with_plugins(
+                VERTEX_MODEL,
+                &crate::models::GenerationOptions::default(),
+                vec![Message::user("Say hi in 3 words.")],
+                &execution,
+                &mut |_| {},
+                &mut |_| {},
+                &mut |_| {},
+                &Arc::new(AtomicBool::new(false)),
+            ))
+            .unwrap();
+        assert_eq!(reply.text, "Hi there friend.");
+        let requests = server.join().unwrap();
+        assert_eq!(requests[0]["model"], "google/gemini-4-argon");
+        // 400 uncached at $2, 600 cached at $0.10, 153 after the prompt
+        // at $10 (or double from December).
+        let expected = vertex_cost(VERTEX_MODEL, &reply.usage, now_secs()).unwrap();
+        assert_eq!(reply.usage.cost, Some(expected));
+        let before = vertex_cost(VERTEX_MODEL, &reply.usage, 1_791_951_479).unwrap();
+        assert!((before - (400.0 * 2.0 + 600.0 * 0.10 + 153.0 * 10.0) / 1e6).abs() < 1e-12);
+        let after = vertex_cost(VERTEX_MODEL, &reply.usage, 1_796_083_200).unwrap();
+        assert!((after - 2.0 * before).abs() < 1e-12);
+        assert_eq!(vertex_cost("google/gemini-9", &reply.usage, 0), None);
+    }
+
+    #[test]
+    fn the_vertex_door_comes_from_the_environment_and_runs_googles_models() {
+        let door = VertexDoor {
+            token_file: "/run/oa-solver/vertex-token".into(),
+            project: "openagentsgemini".into(),
+            location: "global".into(),
+        };
+        assert_eq!(
+            door.base_url(),
+            "https://aiplatform.googleapis.com/v1/projects/openagentsgemini/locations/global/endpoints/openapi"
+        );
+        let regional = VertexDoor {
+            location: "us-central1".into(),
+            ..door
+        };
+        assert!(
+            regional
+                .base_url()
+                .starts_with("https://us-central1-aiplatform.googleapis.com/")
+        );
+        assert_eq!(VertexDoor::model("google/gemini-4-argon"), VERTEX_MODEL);
+        assert_eq!(VertexDoor::model("openagents/auto"), VERTEX_MODEL);
+        assert_eq!(
+            VertexDoor::model("google/gemini-3-flash"),
+            "google/gemini-3-flash"
+        );
     }
 
     /// #11548: the no-harness model on the person's own Gemini key. The

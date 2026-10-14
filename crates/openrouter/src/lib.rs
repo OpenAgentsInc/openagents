@@ -94,6 +94,10 @@ pub struct Config {
     /// The wire the endpoint speaks: OpenRouter's, or the Gemini API's
     /// OpenAI-compatible one.
     pub dialect: Dialect,
+    /// A file holding the bearer token, read again for every request
+    /// instead of `api_key`: a short-lived access token another process
+    /// keeps fresh (the Vertex AI token on a solver box).
+    pub key_file: Option<std::path::PathBuf>,
 }
 
 /// Which chat completions wire an endpoint speaks.
@@ -185,7 +189,20 @@ impl Config {
             timeout: TIMEOUT,
             retries: RETRIES,
             dialect: Dialect::OpenRouter,
+            key_file: None,
         }
+    }
+
+    /// The bearer token for one request: `key_file`'s text when it is set
+    /// and readable, else `api_key`.
+    #[must_use]
+    pub fn bearer(&self) -> String {
+        self.key_file
+            .as_ref()
+            .and_then(|path| std::fs::read_to_string(path).ok())
+            .map(|text| text.trim().to_owned())
+            .filter(|token| !token.is_empty())
+            .unwrap_or_else(|| self.api_key.expose().to_owned())
     }
 
     /// Settings with the key from `OPENROUTER_API_KEY`, or else from
@@ -829,7 +846,7 @@ impl Client {
         let mut builder = self
             .http
             .post(format!("{}/{path}", self.config.base_url))
-            .bearer_auth(self.config.api_key.expose())
+            .bearer_auth(self.config.bearer())
             .json(body);
         if let Some(referer) = &self.config.referer {
             builder = builder.header("HTTP-Referer", referer);
@@ -1546,7 +1563,7 @@ impl Client {
         let mut builder = self
             .http
             .post(format!("{}/chat/completions", self.config.base_url))
-            .bearer_auth(self.config.api_key.expose())
+            .bearer_auth(self.config.bearer())
             .json(&body);
         if let Some(referer) = &self.config.referer {
             builder = builder.header("HTTP-Referer", referer);
@@ -2428,5 +2445,21 @@ mod tests {
         let sent = server.await.unwrap();
         assert!(sent.contains("\"stream\":true"), "{sent}");
         assert!(sent.contains("\"max_tokens\":8"), "{sent}");
+    }
+
+    #[test]
+    fn a_key_file_is_read_again_for_every_request() {
+        let dir = std::env::temp_dir().join(format!("openrouter-key-file-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("token");
+        let mut config = Config::new(ApiKey::new("first"));
+        assert_eq!(config.bearer(), "first");
+        config.key_file = Some(path.clone());
+        assert_eq!(config.bearer(), "first", "a missing file keeps the key");
+        std::fs::write(&path, "ya29.one\n").unwrap();
+        assert_eq!(config.bearer(), "ya29.one");
+        std::fs::write(&path, "ya29.two").unwrap();
+        assert_eq!(config.bearer(), "ya29.two");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
