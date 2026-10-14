@@ -108,6 +108,10 @@ Ask in the same chat, for example:
      copy of itself (`"fit": "blur"`) or is cropped to fill (`"crop"`).
 5. **remake the captions over wb-hook** (`lab_captions`), after its in or
    length changed.
+6. **remove every caption except where I'm speaking** (`lab_keep_captions`
+   with `over: speech`, or shot names): one edit keeps only the captions over
+   the shots that keep their own sound. Titles and text inside the shots'
+   pictures aren't captions and stay.
 
 The checks refuse a shot that keeps its sound but starts or ends mid-word,
 and a caption over it that doesn't match what's said.
