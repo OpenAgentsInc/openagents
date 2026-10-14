@@ -50,8 +50,8 @@ import draconia_paint  # noqa: E402
 
 HAIR_STYLE = os.environ.get("MH_HAIR", "updo")
 # The composed iris's tint and gain (round 12: muted olive grey-green).
-IRIS_TINT = (0.45, 0.62, 0.56)
-IRIS_GAIN = 4.8
+IRIS_TINT = (0.46, 0.64, 0.50)
+IRIS_GAIN = 4.4
 
 ROLES = {
     "head": "skin",
@@ -482,15 +482,21 @@ def compose_eye(tex_dir, out_dir, size=2048, iris_r=0.163, tint=(0.52, 0.62, 0.5
     # flat; then a clear sea green, brighter and more saturated than round
     # 5's grey-green (round 11: the reference's iris is light sea green
     # with a dark limbal ring).
-    lum = np.clip(lum + (lum - lum.mean()) * 0.7, 0, 1)
+    # (Round 14: less fibre contrast: at 0.7, with the light iris's gain,
+    # the brightest fibres round the pupil blew out into a white
+    # starburst in the close-up.)
+    lum = np.clip(lum + (lum - lum.mean()) * 0.25, 0, 1)
     # Round 13: a light sage grey-green, the lit outer iris at 0:54 and in
     # the close-up (about 95,120,105 sRGB); round 12 sampled 1:22's iris in
     # shadow and read near black at medium framing; round 11's sea green
     # glowed teal.
     sea = np.array(IRIS_TINT, np.float32)
-    green = np.clip(lum * sea * IRIS_GAIN, 0, 1)
+    green = lum * sea * IRIS_GAIN
     grey = lum * IRIS_GAIN * float(np.mean(sea))
-    green = np.clip(green * 0.65 + grey * 0.35, 0, 1)
+    green = green * 0.7 + grey * 0.3
+    # A soft shoulder instead of a hard clip, so the brightest fibres stay
+    # green rather than going white.
+    green = np.clip(green / (1 + 0.5 * green) * 1.35, 0, 1)
     # Darker flecks: the iris photo's own darkest fibres deepened.
     green = green * np.where(lum < np.percentile(lum, 25), 0.7, 1.0)
     # Keep the pupil black and the fibres' contrast.
@@ -500,7 +506,11 @@ def compose_eye(tex_dir, out_dir, size=2048, iris_r=0.163, tint=(0.52, 0.62, 0.5
     green = green * (1 - 0.6 * limbal)
     # Lighter flecks around the pupil (the reference's).
     fleck = np.exp(-(((t - 0.42) / 0.12) ** 2))
-    green = np.clip(green * (1 + 0.15 * fleck), 0, 1)
+    green = np.clip(green * (1 + 0.05 * fleck), 0, 1)
+    # The inner iris a touch darker and greener than the outer (the
+    # reference's close-up: a uniform soft green, not a pale centre).
+    inner = np.clip(1 - t / 0.6, 0, 1)
+    green = green * (1 - 0.18 * inner * np.array([1.0, 0.85, 0.95], np.float32))
     blend = np.clip((r - iris_r) / 0.006, 0, 1)[..., None]
     col = green * (1 - blend) + col * blend
     rgba = np.concatenate([col, np.ones((size, size, 1), np.float32)], -1)
@@ -934,6 +944,9 @@ def main():
         draconia_cloth.COLLAR_BAND = 0.018
         draconia_cloth.COLLAR_GAP = 0.7
         draconia_cloth.ROBE_OPEN_TOP = -0.03
+        # Round 14: the sweater stops 3 cm under the neck's base, so the
+        # white shirt and its collar sit at the neck, not a dark choker.
+        draconia_cloth.SWEATER_TOP = 0.03
         # Round 11: fabric normals, a thicker robe and collar, deeper folds.
         draconia_cloth.FABRIC = True
         draconia_cloth.ROBE_THICK = 0.007

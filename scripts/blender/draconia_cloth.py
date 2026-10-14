@@ -45,6 +45,7 @@ COLLAR_STYLE = "fall"
 # value opens it to the top, so the robe hangs from the shoulders and the
 # collar and tie show (round 13).
 ROBE_OPEN_TOP = 0.02
+SWEATER_TOP = -0.005
 COLLAR_BAND = 0.026
 COLLAR_GAP = 0.24
 
@@ -311,7 +312,8 @@ def build(body, marks):
     out = []
     # Shirt: only shows at the collar and in the V; the body is close.
     # Shirt: only the front panel the sweater's V shows.
-    shirt = _shell(body, "shirt", 0.0025, lambda c: torso(c) and c.z > chest.z - 0.1 and abs(c.x) < 0.1 and c.y < neck.y, smooth_iters=4)
+    # (Where the sweater stops under the neck, the shirt goes all round.)
+    shirt = _shell(body, "shirt", 0.0025, lambda c: torso(c) and ((c.z > chest.z - 0.1 and abs(c.x) < 0.1 and c.y < neck.y) or (SWEATER_TOP > 0 and c.z > neck_base_z - SWEATER_TOP - 0.01)), smooth_iters=4)
     shirt.data.materials.append(_mat("draconia_shirt", WHITE, rough=0.9, sheen=0.2, weave="plain"))
     out.append(shirt)
 
@@ -326,7 +328,9 @@ def build(body, marks):
         h = (c.z - v_bottom) / (v_top - v_bottom)
         return h > 0 and abs(c.x) < v_half * min(h, 1.0) + 0.004
 
-    sweater = _shell(body, "sweater", 0.007, lambda c: torso(c, 0.05), smooth_iters=6)
+    # (SWEATER_TOP: how far under the neck's base the sweater stops; at 0
+    # it rode up the neck as a dark choker above the collar, round 14.)
+    sweater = _shell(body, "sweater", 0.007, lambda c: torso(c, 0.05) and c.z < neck_base_z - SWEATER_TOP, smooth_iters=6)
     v_planes = []
     for side in (1, -1):
         # The V's edge on this side: from the bottom point up to the collar.
@@ -485,12 +489,16 @@ def build(body, marks):
     # shirt and between the points, and fuller.)
     ko = 0.006 if COLLAR_STYLE == "points" else 0.0
     kr = 0.004 if COLLAR_STYLE == "points" else 0.0
-    knot = _tube("tie_knot", [front + Vector((0, -0.006 - ko, 0.012)), front + Vector((0, -0.009 - ko, -0.006))], lambda t: 0.012 + kr - 0.004 * t, segs=12, flatten=0.55)
     stripes = _stripe_image("draconia_tie", [(0.0, 0.62, (0.012, 0.06, 0.042, 1)), (0.62, 0.78, (0.40, 0.42, 0.42, 1)), (0.78, 0.84, (0.012, 0.06, 0.042, 1)), (0.84, 0.9, (0.40, 0.42, 0.42, 1)), (0.9, 1.0, (0.012, 0.06, 0.042, 1))])
     tie_mat = _mat("draconia_tie", GREEN, rough=0.6, sheen=0.4, image=stripes)
-    knot.data.materials.append(tie_mat)
-    _diag_uv(knot, 8.0)
-    out.append(knot)
+    if COLLAR_STYLE == "points":
+        # (Round 14: a modelled four-in-hand knot, not a tube.)
+        out.append(_tie_knot(front, tie_mat))
+    else:
+        knot = _tube("tie_knot", [front + Vector((0, -0.006 - ko, 0.012)), front + Vector((0, -0.009 - ko, -0.006))], lambda t: 0.012 + kr - 0.004 * t, segs=12, flatten=0.55)
+        knot.data.materials.append(tie_mat)
+        _diag_uv(knot, 8.0)
+        out.append(knot)
     left, right = [], []
     for k in range(16):
         t = k / 15
@@ -510,11 +518,12 @@ def build(body, marks):
 
 
 def _collar_points(bvh, ring, hi, neck, neck_base_z):
-    """A shirt collar's two points (round 13), each a separate flap lying
-    over the sweater: from the band's top, between an inner root beside the
-    knot and an outer root at the side of the neck, down and out to a crisp
-    tip on the chest, following the body 9.5 mm out (over the 7 mm
-    sweater), so the knot shows between them."""
+    """A shirt collar's two points (round 14), modelled: each a curved
+    triangular flap with thickness, its top edge running along the band's
+    top from beside the knot to the side of the neck, its lower edge from
+    just under the knot out to a crisp tip on the chest, the surface
+    between lying on the sweater (9.5 mm off the body, over its 7 mm
+    shell), then thickened and subdivided once so its edges are soft."""
     out = []
     lift = 0.0095
     band_bottom = min(p.z for p, _ in ring)
@@ -523,30 +532,103 @@ def _collar_points(bvh, ring, hi, neck, neck_base_z):
         loc, nrm, _, _ = bvh.find_nearest(p)
         return loc + nrm * lift if loc is not None else p
 
-    for s in (1.0, -1.0):
-        # The band's top at an angle from the front (0) round the neck.
-        def top_at(a):
-            best = min(zip(ring, hi), key=lambda q: abs(math.atan2(s * q[0][1].x, -q[0][1].y) - a))
-            return best[1]
+    def front_angle(d, s):
+        return math.atan2(s * d.x, -d.y)
 
-        inner_root = top_at(0.45)
-        outer_root = top_at(1.35)
-        tip = on_body(Vector((s * 0.062, neck.y - 0.08, band_bottom - 0.065)))
-        inner, outer = [], []
-        n = 8
-        for k in range(n):
-            t = k / (n - 1)
-            # The inner edge runs down beside the knot to the tip; the outer
-            # edge sweeps out over the shoulder side then in to the tip.
-            pi = inner_root.lerp(tip, t) + Vector((0, 0, -0.004 * math.sin(math.pi * t)))
-            po = outer_root.lerp(tip, t) + Vector((s * 0.012 * math.sin(math.pi * t), 0, 0))
-            inner.append(on_body(pi) if t > 0.15 else pi)
-            outer.append(on_body(po) if t > 0.15 else po)
-        flap = _strip(f"collar_point_{'l' if s > 0 else 'r'}", inner, outer)
+    for s in (1.0, -1.0):
+        side = [(front_angle(d, s), top) for (p, d), top in zip(ring, hi) if front_angle(d, s) > 0]
+        side.sort(key=lambda q: q[0])
+
+        def top_at(a):
+            return min(side, key=lambda q: abs(q[0] - a))[1]
+
+        a0 = side[0][0]
+        inner_low = on_body(top_at(a0) + Vector((-s * 0.004, -0.004, -0.028)))
+        tip = on_body(Vector((s * 0.07, neck.y - 0.09, band_bottom - 0.07)))
+        bm = bmesh.new()
+        nu, nv = 7, 8
+        grid = []
+        for j in range(nv):
+            v = j / (nv - 1)
+            row = []
+            for i in range(nu):
+                u = i / (nu - 1)
+                # (Round 14: the top edge spans only the front of the band,
+                # so the point lies flat on the chest facing forward rather
+                # than wrapping round the neck's side edge-on.)
+                top = top_at(a0 + u * 0.55)
+                bottom = inner_low.lerp(tip, u)
+                p = top.lerp(bottom, v)
+                # Onto the sweater below the band, blending in so the flap
+                # turns over the band's top edge without tearing.
+                w = min(1.0, max(0.0, (v - 0.05) / 0.3))
+                p = p.lerp(on_body(p), w)
+                row.append(bm.verts.new(p))
+            grid.append(row)
+        for j in range(nv - 1):
+            for i in range(nu - 1):
+                bm.faces.new((grid[j][i], grid[j][i + 1], grid[j + 1][i + 1], grid[j + 1][i]))
+        me = bpy.data.meshes.new(f"collar_point_{'l' if s > 0 else 'r'}")
+        bm.to_mesh(me)
+        bm.free()
+        flap = bpy.data.objects.new(me.name, me)
+        bpy.context.collection.objects.link(flap)
         _solidify(flap, COLLAR_THICK)
+        mod = flap.modifiers.new("s", "SUBSURF")
+        mod.levels = 1
+        bpy.context.view_layer.objects.active = flap
+        bpy.ops.object.modifier_apply(modifier=mod.name)
+        for p in flap.data.polygons:
+            p.use_smooth = True
+        _box_uv(flap)
         flap.data.materials.append(bpy.data.materials["draconia_collar"])
         out.append(flap)
     return out
+
+
+def _tie_knot(front, mat):
+    """A four-in-hand knot (round 14): a trapezoid, wider at the top
+    (3 cm) than the bottom (1.7 cm), 2.4 cm tall and 1.3 cm deep, its front
+    bowed and creased by one subdivision, in the tie's stripes."""
+    bm = bmesh.new()
+    top_w, bot_w, h, dep = 0.03, 0.017, 0.024, 0.013
+    c = front + Vector((0, -0.011, 0.004))
+    pts = []
+    for zz, w in ((h / 2, top_w), (-h / 2, bot_w)):
+        for yy in (-dep / 2, dep / 2):
+            for xx in (-w / 2, w / 2):
+                pts.append(bm.verts.new(c + Vector((xx, yy, zz))))
+    # 0..3 top (front l, front r, back l, back r), 4..7 bottom.
+    for f in ((0, 1, 3, 2), (4, 6, 7, 5), (0, 4, 5, 1), (2, 3, 7, 6), (0, 2, 6, 4), (1, 5, 7, 3)):
+        bm.faces.new([pts[i] for i in f])
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    me = bpy.data.meshes.new("tie_knot")
+    bm.to_mesh(me)
+    bm.free()
+    knot = bpy.data.objects.new("tie_knot", me)
+    bpy.context.collection.objects.link(knot)
+    # Rounded edges (a subdivided box shrinks to a ball): a bevel, then
+    # one gentle cut for the bow below.
+    mod = knot.modifiers.new("b", "BEVEL")
+    mod.width = 0.003
+    mod.segments = 3
+    bpy.context.view_layer.objects.active = knot
+    bpy.ops.object.modifier_apply(modifier=mod.name)
+    bm = bmesh.new()
+    bm.from_mesh(knot.data)
+    bmesh.ops.subdivide_edges(bm, edges=bm.edges[:], cuts=2, use_grid_fill=True)
+    bm.to_mesh(knot.data)
+    bm.free()
+    # Bow the front out a little and pinch a crease across it.
+    for v in knot.data.vertices:
+        if v.co.y < c.y:
+            dz = (v.co.z - c.z) / (h / 2)
+            v.co.y -= 0.003 * (1 - dz * dz) - 0.0015 * math.exp(-((dz + 0.2) / 0.15) ** 2)
+    for p in knot.data.polygons:
+        p.use_smooth = True
+    knot.data.materials.append(mat)
+    _diag_uv(knot, 8.0)
+    return knot
 
 
 def _trim_mat():

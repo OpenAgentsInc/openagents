@@ -59,11 +59,11 @@ with 4096-pixel maps, `Prepared::load` with a raised `Budget`, then
 | Face shape | Round 7: a blend of the three best-scoring Creator presets with small edits, fitted and rigged by MetaHuman Creator (joints and 782 blend shapes) | Young and slim at last; jaw and cheeks still fuller than the reference; eyes a little too open, upper lip a little tall |
 | Skin | Round 6: MetaHuman's own albedo and normal (texture sources), graded paler and less saturated toward the reference, our micro normal and roughness | Creator's palest tone is still warm; wrinkle maps not applied per expression yet |
 | Freckles | Round 7: MetaHuman's freckles at density and strength 0.25, small dark spots lifted 85% | Fine and sparse; close to the reference |
-| Eyes | Separate eyeballs, a refracting iris under an additive cornea, limbal ring | The lids sit too open and the sclera shows a hard white wedge at the corners; no caruncle, tear line or wet rim |
-| Brows | Painted strands | Too thin and drawn-on; the reference's brows are fuller, natural |
-| Lips | Analytic vermilion, rose, glossier | Shape fine; colour too orange-pink and edge too crisp |
-| Hair (updo, strands) | Round 8: MetaHuman's own hair cards (`Hair_S_UpdoBuns`) carried onto her head, warm pale blonde, darker roots; five fine wisps a side past the jaw | Pulled tight and flat over the crown (the reference's is loose and full); no Marschner multiple scattering |
-| Uniform | Round 6: on MetaHuman's body with its arms lowered, reaching the collar: shirt collar, striped tie in the V, sweater trim, robe with green facing; visible in the medium shots | Blocky shells with hard cuts; a stand collar rather than folded points; no folds or wool texture |
+| Eyes | Round 14: MetaHuman eyeballs, a refracting sage-green iris (soft-shouldered, darker centre), cornea shell for the catchlight, limbal ring | Lids about 4% too open; no tear line or wet rim yet |
+| Brows | Round 10: MetaHuman `Eyebrows_M_Full` cards over a feathered painted brow and 700 strand brows | Close in shape; slightly darker and more even than the reference |
+| Lips | Round 13: rig upper-lip roll-in over a sculpt layer; MetaHuman lip albedo | Upper lip within 5%, lower lip +9% when speaking; mouth width within 6% |
+| Hair (updo, strands) | Round 13: MetaHuman `Hair_S_UpdoBuns` cards, our body layer and lifted flyaways, platinum | Crown still reads smooth and capped from the front; the reference is loose and full |
+| Uniform | Round 14: shell garments on MetaHuman's body (arms lowered); modelled collar points and knot; striped tie; fabric weave normals; open robe with green facing | The collar points stand off the neck, the knot floats, a white yoke hides the sweater V; robe shoulders blocky |
 | Lighting response | Measured against 0:54: warm key screen left, warm fill, short teal rim, near-black background, soft shadows from moving area lights; f/2 bokeh of glowing jars | No Unreal-grade skin shadowing (screen-space scattering) |
 | Expressions | Round 6: her full rig through OpenRigLogic (joints and blend shapes; smile, speaking, neutral) | Built per expression, not live in Verse; wrinkle and blood-flow maps not yet driven |
 
@@ -803,6 +803,43 @@ $B -b --factory-startup --python scripts/blender/draconia_set.py -- ~/work/film-
   long white slivers and the neckline around them is still awkward; the
   crown still reads smooth from the front; the iris's lighter ring round
   the pupil is too bright in the close-up.
+
+### Round 14, 2026-10-14: a greener, darker inner iris; a modelled collar and knot (still wrong)
+
+- **Direction.** The coordinator's read of round 13: the iris reads light
+  green at medium framing (keep), but in the 1:22 close-up the white
+  starburst round the pupil made it silver-blue; the collar and tie read
+  as two white slivers either side of a black cross; stop building them
+  from primitives and use a real modelled asset; the crown still smooth.
+- **Asset search.** MetaHuman's `Optional/Clothing` holds only
+  `DefaultGarment` (a crewneck), and the local Fab library has no school
+  uniform, so there is no shirt-and-tie asset to carry over. A Fab
+  uniform would need an owner purchase (not done). The collar is modelled
+  instead.
+- **What changed.**
+  - Iris (`metahuman_import.py`): contrast 0.25 (was 0.7), a soft
+    shoulder on the green channel so the bright fibres no longer clip
+    white, flecks at 0.05, the inner iris darkened 18%; tint
+    (0.46, 0.64, 0.50) at gain 4.4. In the close-up the iris now reads
+    green with a darker centre; lit 90th percentile about 74,85,67 sRGB.
+  - Collar (`draconia_cloth._collar_points`): each point a curved flap
+    (a bilinear patch from the band's top edge to a tip on the chest,
+    pressed onto the sweater), thickened and subdivided once.
+  - Knot (`draconia_cloth._tie_knot`): a trapezoid (3 cm over 1.7 cm,
+    2.4 cm tall), bowed and creased, in the tie's diagonal stripes.
+  - `SWEATER_TOP`: how far under the neck the sweater stops (MetaHuman
+    builds 3 cm), which removes the dark choker band; the shirt runs all
+    round above it.
+- **Measured** (ours against the reference): face unchanged from round 13
+  (all features within 7%; upper lip +3.7% / +4.5% / +4.1%).
+- **Artifacts.** `~/Downloads/draconia-fullface-mh-v12.png` (reference |
+  round 13 | round 14), `~/Downloads/draconia-parity-round-14.png`, the
+  progress sheet; `~/work/film-out/draconia/parity/round-14/`.
+- **Honest state.** The iris is the best it has been in the close-up. The
+  collar is still wrong: the points stand up off the neck like two white
+  fins, the knot floats in front of a bare neck, and a white yoke fills
+  the chest where the sweater's V should be. It needs rebuilding around
+  the neck itself (round 15). The crown is unchanged.
 
 ## Peacock scene
 
