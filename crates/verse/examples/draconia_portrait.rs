@@ -248,22 +248,26 @@ fn lighting(face: Vec3, kind: &str, glow: f32, sub: usize, subs: usize) -> Light
             // Key: a soft, warm source high to screen left, as the
             // reference's face light at 0:54. The camera looks along +Z
             // with Y up, so its right is -X: screen left is world +X.
+            // Round 8: further round to the side (about 60 degrees off
+            // the lens), so the far cheek falls into soft shadow and the
+            // cheekbones model, as the reference's moodier light.
             soft(
                 &mut lights,
-                face + Vec3::new(0.95, 0.4, -0.6),
+                face + Vec3::new(1.1, 0.38, -0.45),
                 Vec3::new(1.0, 0.9, 0.8),
-                2.1,
-                0.5,
+                2.2,
+                0.45,
                 2,
             );
             // No flat frontal fill (round 6): the shadow side is lit only
             // by a soft bounce from the side, off the jars and the room,
-            // faintly teal, low and two stops under the key.
+            // faintly teal; round 8 takes it to about four stops under the
+            // key, so the shadow side keeps its shape.
             soft(
                 &mut lights,
                 face + Vec3::new(-1.0, -0.05, -0.3),
                 Vec3::new(0.75, 0.85, 0.8),
-                0.28,
+                0.09,
                 0.4,
                 1,
             );

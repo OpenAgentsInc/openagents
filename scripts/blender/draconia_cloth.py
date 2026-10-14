@@ -28,6 +28,9 @@ WHITE = (0.70, 0.70, 0.67, 1)
 # Fold depth (m) of the robe's drape below the shoulders (0: a smooth
 # shell, the CC0 builds' default).
 FOLDS = 0.0
+# How far the shirt collar's points reach (1: long spread points, round 8;
+# the CC0 builds keep their shorter ones at 0.6).
+COLLAR_POINTS = 0.6
 
 
 def _folds(obj, top_z, depth):
@@ -389,8 +392,10 @@ def build(body, marks):
     fall_bot = []
     for (p, d), top in zip(ring, hi):
         front = max(0.0, -d.y)  # 1 at the front
-        drop = 0.03 + 0.04 * front**4
-        fall_bot.append(top + d * (0.008 + 0.022 * front**4) - Vector((0, 0, drop)))
+        # Round 8: real collar points, longer and spread out over the
+        # sweater at the front (the reference's), not a tube.
+        drop = 0.032 + COLLAR_POINTS * 0.055 * front**3
+        fall_bot.append(top + d * (0.01 + COLLAR_POINTS * 0.04 * front**3) - Vector((0, 0, drop)))
     fall = _strip("collar_fall", fall_top, fall_bot)
     _solidify(fall, 0.0015)
     fall.data.materials.append(bpy.data.materials["draconia_collar"])

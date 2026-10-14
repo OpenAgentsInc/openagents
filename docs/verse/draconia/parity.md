@@ -62,7 +62,7 @@ with 4096-pixel maps, `Prepared::load` with a raised `Budget`, then
 | Eyes | Separate eyeballs, a refracting iris under an additive cornea, limbal ring | The lids sit too open and the sclera shows a hard white wedge at the corners; no caruncle, tear line or wet rim |
 | Brows | Painted strands | Too thin and drawn-on; the reference's brows are fuller, natural |
 | Lips | Analytic vermilion, rose, glossier | Shape fine; colour too orange-pink and edge too crisp |
-| Hair (updo, strands) | Round 7: platinum ash, darker roots; strand ribbons gathered into a bun with lift at the crown and a messy centre part; 12 wispy locks a side past the jaw; falling flyaways | The crown still reads as a white cap from the front; MetaHuman's own groom isn't in Verse yet; no Marschner multiple scattering |
+| Hair (updo, strands) | Round 8: MetaHuman's own hair cards (`Hair_S_UpdoBuns`) carried onto her head, warm pale blonde, darker roots; five fine wisps a side past the jaw | Pulled tight and flat over the crown (the reference's is loose and full); no Marschner multiple scattering |
 | Uniform | Round 6: on MetaHuman's body with its arms lowered, reaching the collar: shirt collar, striped tie in the V, sweater trim, robe with green facing; visible in the medium shots | Blocky shells with hard cuts; a stand collar rather than folded points; no folds or wool texture |
 | Lighting response | Measured against 0:54: warm key screen left, warm fill, short teal rim, near-black background, soft shadows from moving area lights; f/2 bokeh of glowing jars | No Unreal-grade skin shadowing (screen-space scattering) |
 | Expressions | Round 6: her full rig through OpenRigLogic (joints and blend shapes; smile, speaking, neutral) | Built per expression, not live in Verse; wrinkle and blood-flow maps not yet driven |
@@ -519,6 +519,64 @@ $B -b --factory-startup --python scripts/blender/draconia_set.py -- ~/work/film-
 - **Next.** The crown and hairline (MetaHuman's updo groom as strands in
   Verse); the lid ring; the jaw through Creator's own sculpting; fabric
   normals and the collar's points.
+
+### Round 8, 2026-10-14: MetaHuman's own hair cards, moodier light
+
+- **Direction.** The coordinator's read of round 7 (the best yet; she reads
+  young): the hair a white wig cap with crimped ribbons; brows nearly
+  invisible; a dark ring round the eyes; flat, even light making her look
+  fuller; the robe and collar hard flat cards. MetaHuman's grooms
+  suggested if our strand shading is the limit.
+- **What changed.**
+  - Hair from MetaHuman's grooms: `scripts/unreal/groom_export.py` exports
+    a groom's cards meshes (LOD0, every group) and its cards atlas,
+    headless. The cards' FBX lands in the archetype DNA's own frame (checked
+    against the brow cards, 1.5 cm over the archetype's eyes; a first try
+    through the face skeletal mesh's frame put the hair 13 cm low), so
+    `metahuman_import.py` (`MH_GROOMS`) takes them onto her rigged head by
+    a similarity transform plus each card vertex's nearest-skin residual,
+    lifts any card left under her skin to just above it, and shades them as
+    Verse hair: the atlas's R channel is the coverage (alpha), G the depth
+    (darker in the clumps), B the position along the strand (root to tip
+    colour). Warm pale blonde with darker roots. `Hair_S_UpdoBuns` (pulled
+    back into buns) fits the reference best of those tried (`Hair_S_Updo`
+    has a fringe; the `S_` grooms such as `Messy` and `SweptUp` are short
+    cuts that lie flat; `L_MessyClumps` hangs loose); our own grown locks
+    stay only as five fine, nearly straight wisps a side past the jaw.
+  - Brows: MetaHuman's `Eyebrows_M_Full` cards, dark ash-brown, replacing
+    our strand brows.
+  - Lids: our baked occlusion at half strength (it dug a dark ring into
+    the lids and sockets).
+  - Light: the key further round to the side (about 60 degrees off the
+    lens) and the bounce four stops under it, so the far cheek falls into
+    soft shadow and the cheekbones model.
+  - Wardrobe: the shirt collar's points longer and spread over the sweater
+    (`draconia_cloth.COLLAR_POINTS`).
+- **Measured** (MetaHuman's tracker; ours against the reference):
+
+  | Feature (over eye spacing) | 0:54 smile | 0:24 neutral | 0:29 speaking |
+  | --- | --- | --- | --- |
+  | Eye width | -1.6% | -2.3% | -2.4% |
+  | Eye opening | +21.5% | +12.2% | +20.2% |
+  | Eye line to nose base (midface) | +3.4% | +0.4% | +1.3% |
+  | Nose base to upper lip | +3.2% | +6.4% | +0.8% |
+  | Upper lip height | +7.7% | +13.0% | +20.3% |
+  | Lower lip height | -3.2% | -1.5% | +8.2% |
+  | Mouth width | +2.5% | +6.1% | -3.9% |
+
+- **Artifacts.** `~/Downloads/draconia-fullface-mh-v6.png`,
+  `~/Downloads/draconia-parity-round-08.png`, the progress sheet;
+  `~/work/film-out/draconia/parity/round-08/` (with `try-*.png`, the grooms
+  tried).
+- **Honest state.** The hair now has real strand texture and colour, but
+  the buns groom pulls it tight and flat over the crown where the
+  reference's is loose and full; the brows are there but still faint; the
+  eyes measure too open (+12-22%); the new collar points read as a stiff
+  white bib in the medium shots; the robe is still a shell.
+- **Next.** A fuller, looser crown (MetaHuman's long loose groom blended
+  with the buns, or our own body layer under the cards); stronger brows
+  (denser cards, a painted brow under them); the lids lowered a touch;
+  real cloth for the collar and robe.
 
 ## Peacock scene
 

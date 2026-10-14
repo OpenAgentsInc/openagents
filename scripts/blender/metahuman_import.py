@@ -42,7 +42,7 @@ import sys
 import bmesh
 import bpy
 import numpy as np
-from mathutils import Vector
+from mathutils import Matrix, Vector
 
 sys.path.insert(0, os.path.dirname(__file__))
 import draconia  # noqa: E402
@@ -202,6 +202,129 @@ def draconia_refine(vs, marks):
         d[:, 0] += s_ * 0.0018 * g
         d[:, 2] += 0.0004 * g
     return d
+
+
+def _umeyama(src, dst):
+    """The similarity (s, R, t) taking src onto dst (rows correspond),
+    trying both handednesses; returns (apply, median error)."""
+    best = None
+    for mirror in (1.0, -1.0):
+        a0 = src * np.array([mirror, 1.0, 1.0])
+        mu_a, mu_b = a0.mean(0), dst.mean(0)
+        A, B = a0 - mu_a, dst - mu_b
+        U, S, Vt = np.linalg.svd(B.T @ A / len(src))
+        D = np.eye(3)
+        D[2, 2] = np.sign(np.linalg.det(U @ Vt))
+        R = U @ D @ Vt
+        s = np.trace(np.diag(S) @ D) / (A**2).sum(1).mean()
+
+        def f(p, mirror=mirror, mu_a=mu_a, mu_b=mu_b, R=R, s=s):
+            return (s * (R @ (p * np.array([mirror, 1.0, 1.0]) - mu_a).T)).T + mu_b
+
+        err = np.median(np.linalg.norm(f(src) - dst, axis=1))
+        if best is None or err < best[1]:
+            best = (f, err)
+    return best
+
+
+def groom_cards(head, arch_obj, groom_dir, grooms, out_dir, colors, push=0.0008):
+    """MetaHuman's own hair cards (scripts/unreal/groom_export.py) carried
+    onto this head. The cards' FBX export lands in the archetype DNA's own
+    frame (centimetres to metres, the same axes: checked against the brows,
+    which sit 1.5 cm over the archetype's eyes), so a similarity transform
+    takes the archetype head onto this head and each card vertex also
+    follows its nearest archetype vertex's residual: the cards sit on this
+    face's own shape and expression. Each groom's atlas gives the coverage
+    (R) as alpha and its depth (G) as a darker tone in the clumps; `colors`
+    is (root, mid, tip) linear, mixed by the atlas's B channel."""
+    from mathutils.kdtree import KDTree
+
+    def import_fbx(path):
+        """The FBX's meshes with their world transforms baked in and their
+        parents removed (deleting a parent first would drop its transform
+        from the child)."""
+        before = set(bpy.data.objects)
+        bpy.ops.import_scene.fbx(filepath=path)
+        new = [o for o in bpy.data.objects if o not in before]
+        meshes = [o for o in new if o.type == "MESH"]
+        for o in meshes:
+            mw = o.matrix_world.copy()
+            o.parent = None
+            o.data.transform(mw)
+            o.matrix_world = Matrix()
+        for o in new:
+            if o.type != "MESH":
+                bpy.data.objects.remove(o)
+        return meshes
+
+    A = np.array([v.co for v in arch_obj.data.vertices])
+    H = np.array([v.co for v in head.data.vertices])
+    Hn = np.array([v.normal for v in head.data.vertices])
+    from mathutils.bvhtree import BVHTree
+
+    bvh = BVHTree.FromObject(head, bpy.context.evaluated_depsgraph_get())
+    to_head, err = _umeyama(A, H)
+    resid = H - to_head(A)
+    print(f"GROOM archetype to head: {err * 1000:.2f} mm median")
+    scalp = KDTree(len(A))
+    for i, p in enumerate(A):
+        scalp.insert(p, i)
+    scalp.balance()
+    out = []
+    for g in grooms:
+        gdir = os.path.join(groom_dir, g)
+        if not os.path.isdir(gdir):
+            print("GROOM missing", g)
+            continue
+        atlas = load_px(os.path.join(gdir, f"{g}_CardsAtlas_Attribute.tga"))
+        cov, depth, u = atlas[..., 0], atlas[..., 1], atlas[..., 2]
+        root, mid, tip = (np.array(c, np.float32) for c in colors)
+        t = np.clip(u, 0, 1)[..., None]
+        col = np.where(t < 0.3, root + (mid - root) * (t / 0.3), mid + (tip - mid) * (t - 0.3) / 0.7)
+        col = col * (0.8 + 0.3 * depth[..., None])
+        rgba = np.concatenate([np.clip(col, 0, 1), cov[..., None]], -1)
+        img = draconia_paint.save(f"groom_{g}", rgba, out_dir)
+        mat = draconia.material(f"groom_{g}", "hair", color=(1, 1, 1, 1), rough=0.4, images={"base": img}, alpha="MASK")
+        n = 0
+        for fn in sorted(os.listdir(gdir)):
+            if not fn.endswith(".fbx"):
+                continue
+            for o in import_fbx(os.path.join(gdir, fn)):
+                if o.name.startswith("UCX_") or not o.data.uv_layers:
+                    # (UCX_: Unreal's collision hull, exported alongside.)
+                    bpy.data.objects.remove(o)
+                    continue
+                P = np.array([v.co for v in o.data.vertices])
+                near = np.array([scalp.find(p)[1] for p in P])
+                # Off the skin by `push` along its normal: the residual
+                # mapping is good to about 2 mm, and brow and scalp-hugging
+                # cards sit closer than that to the skin (they vanished
+                # inside it).
+                R_ = to_head(P) + resid[near] + Hn[near] * push
+                # Cards that still end up under this head's skin (its crown
+                # is shaped differently from the archetype's) come out to
+                # just above it, so scalp-hugging grooms don't vanish.
+                for v, r in zip(o.data.vertices, R_):
+                    q = Vector(r)
+                    loc, nrm, _, _ = bvh.find_nearest(q)
+                    if loc is not None and (q - loc).dot(nrm) < push:
+                        q = loc + nrm * push
+                    v.co = q
+                o.data.update()
+                # The cards' only UV channel is the atlas's (Unreal names it
+                # LightMapUV); keep one, named, so the glTF exporter uses it.
+                uvs = o.data.uv_layers
+                for layer in list(uvs)[1:]:
+                    uvs.remove(layer)
+                uvs[0].name = "UVMap"
+                uvs.active = uvs[0]
+                o.data.materials.clear()
+                o.data.materials.append(mat)
+                o.name = f"groom_{g}_{len(out)}"
+                out.append(o)
+                n += len(o.data.polygons)
+        print("GROOM", g, "card faces", n)
+    return out
 
 
 def fit_deltas(fbx, rest_obj, mesh_dir):
@@ -417,7 +540,10 @@ def dcc_skin(dcc, maps, out_dir, size):
     h, w = srmf.shape[:2]
     ys = np.arange(h) * orm_old.shape[0] // h
     xs = np.arange(w) * orm_old.shape[1] // w
-    ao = orm_old[ys][:, xs][..., 0]
+    # Our baked occlusion at half strength: at full strength it dug a dark
+    # ring into the lids and sockets (round 7), where the reference's lids
+    # are clean.
+    ao = 1 - (1 - orm_old[ys][:, xs][..., 0]) * 0.5
     rough = srmf[..., 1]
     if rough.max() < 0.01:
         # The UE 5.8 DCC export's SRMF came out empty (all zero); keep the
@@ -643,7 +769,33 @@ def main():
     # MH_FAST=1: the face alone (no hair, uniform or brow strands), for
     # scoring many heads quickly.
     fast = os.environ.get("MH_FAST") == "1"
-    hair = [] if fast else draconia_hair.grow(head, marks, seed=7, style=HAIR_STYLE)[0]
+    # MH_GROOMS ("Hair_S_Updo Eyebrows_M_Natural", from groom_export.py):
+    # MetaHuman's own hair cards instead of our grown ribbons; brows among
+    # them replace our brow strands. Round 8: warm pale blonde with darker
+    # roots; darker ash-brown brows.
+    grooms = os.environ.get("MH_GROOMS", "").split()
+    groom_objs = []
+    if grooms and not fast:
+        arch = read_obj(os.path.join(os.environ.get("MH_ARCHETYPE_DIR", os.path.join(os.path.dirname(mesh_dir), "archetype")), "head_lod0_mesh.obj"), "archetype_rest")
+        gdir = os.environ.get("MH_GROOM_DIR", os.path.join(os.path.dirname(mesh_dir), "grooms"))
+        hair_cols = ((0.28, 0.21, 0.13), (0.80, 0.70, 0.52), (0.90, 0.84, 0.70))
+        brow_cols = ((0.045, 0.035, 0.026), (0.07, 0.055, 0.04), (0.10, 0.08, 0.06))
+        groom_objs += groom_cards(head, arch, gdir, [g for g in grooms if not g.startswith("Eyebrows")], out_dir, hair_cols, push=0.0025)
+        groom_objs += groom_cards(head, arch, gdir, [g for g in grooms if g.startswith("Eyebrows")], out_dir, brow_cols)
+        bpy.data.objects.remove(arch)
+    if grooms and not fast:
+        # With MetaHuman's cards (they cover the scalp and set the
+        # hairline): only a few of our face-framing locks, fine and nearly
+        # straight, falling past the jaw in the cards' warm blonde.
+        draconia_hair.PARTS = ("locks",)
+        draconia_hair.LOCK_WAVE = 0.25
+        draconia_hair.LOCK_CURL = 0.0
+        draconia_hair.LOCKS_PER_SIDE = 5
+        draconia_hair.LOCK_HAIRS = (2, 5)
+        draconia_hair.HAIR_ROOT, draconia_hair.HAIR_MID, draconia_hair.HAIR_TIP = hair_cols
+        hair = groom_objs + draconia_hair.grow(head, marks, seed=7, style=HAIR_STYLE)[0]
+    else:
+        hair = [] if fast else draconia_hair.grow(head, marks, seed=7, style=HAIR_STYLE)[0]
     extra = list(hair)
     body_dir = None if fast else os.environ.get("MH_BODY_DIR")
     if body_dir and os.path.exists(os.path.join(body_dir, "body_lod0_mesh.obj")):
@@ -667,11 +819,12 @@ def main():
         bpy.ops.object.join()
         # Round 7: the robe hangs in soft vertical folds.
         draconia_cloth.FOLDS = 0.006
+        draconia_cloth.COLLAR_POINTS = 1.0
         extra += draconia_cloth.build(body, marks)
         bpy.data.objects.remove(body)
     # Fewer strands than the CC0 head: the reference's brows are soft, and
     # 650 read as a dark slab at the eye close-up.
-    if not fast:
+    if not fast and not any(g.startswith("Eyebrows") for g in grooms):
         extra += draconia.brows(head, marks, {"l": (None, None, marks.eye_l), "r": (None, None, marks.eye_r)}, count=400)
     parts = list(objs.values()) + extra
     draconia.export(out, parts)

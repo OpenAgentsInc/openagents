@@ -269,7 +269,7 @@ def grow(skin, marks, seed=7, style="updo"):
     # Extra roots along the hairline, so the edge is dense and soft.
     edge = [f for f in scalp if _angles(me.polygons[f].center, centre)[1] < _hairline_el(_angles(me.polygons[f].center, centre)[0]) + 0.12]
     roots += _sample_surface(me, edge, EDGE_ROOTS, rng)
-    for idx, (root, rn) in enumerate(roots):
+    for idx, (root, rn) in enumerate(roots if "body" in PARTS else []):
         layer = rng.random()
         # A loose updo: the outer layers ride well off the scalp (up to
         # 2 cm over the sides), the inner ones close.
@@ -283,7 +283,7 @@ def grow(skin, marks, seed=7, style="updo"):
         width = rng.uniform(0.0009, 0.0019) * (1.3 - 0.5 * layer) * BODY_WIDTH
         body.add(all_pts, all_n, width, rng.randrange(VARIANTS), taper=0.5, free=knot_axis)
     # Loose loops that stand off the bun, and strands through its middle.
-    for k in range(520):
+    for k in range(520 if "body" in PARTS else 0):
         start = knot + Vector((rng.uniform(-1, 1), rng.uniform(-0.3, 0.6), rng.uniform(-1, 1))).normalized() * knot_r * 0.9
         pts = wrap(start, rng.uniform(0.3, 0.9), knot_r * rng.uniform(1.0, 1.7), rng)
         body.add(pts, None, rng.uniform(0.0006, 0.0016), rng.randrange(VARIANTS), taper=0.7, free=knot_axis)
@@ -326,7 +326,7 @@ def grow(skin, marks, seed=7, style="updo"):
                 loc, nrm = surface(p)
                 # Lift off the head; fall down and slightly out from the cheek.
                 d = Vector((side * (LOCK_OUT - 0.35 * LOCK_OUT / 0.6 * t), 0.12, -1.0))
-                wave = Vector((side, -0.4, 0)) * math.sin(phase + t * 13 * sway) * 0.8
+                wave = Vector((side, -0.4, 0)) * math.sin(phase + t * 13 * sway) * 0.8 * LOCK_WAVE
                 p = p + (d.normalized() + wave * 0.6) * seg
                 loc, nrm = surface(p)
                 if (p - loc).length < 0.003 + 0.004 * t or (p - loc).dot(nrm) < 0:
@@ -363,7 +363,7 @@ def grow(skin, marks, seed=7, style="updo"):
 
     # Flyaways: single hairs arcing off the top and sides.
     fly = Ribbons()
-    for root, rn in _sample_surface(me, scalp, FLY_COUNT, rng):
+    for root, rn in _sample_surface(me, scalp, FLY_COUNT if "fly" in PARTS else 0, rng):
         pts = []
         loc, nrm = surface(root)
         p = loc + nrm * 0.008
@@ -403,7 +403,10 @@ def grow(skin, marks, seed=7, style="updo"):
     for loop_uv in cap_me.uv_layers.active.data:
         loop_uv.uv = (loop_uv.uv.x % 1.0 * 0.999, 0.12)
 
-    objs = [cap, body.object("hair_body"), locks.object("hair_locks"), fly.object("hair_fly")]
+    if "cap" not in PARTS:
+        bpy.data.objects.remove(cap)
+        cap = None
+    objs = ([cap] if cap else []) + [r.object(n) for r, n in ((body, "hair_body"), (locks, "hair_locks"), (fly, "hair_fly")) if r.count]
     img = paint_strips(1024, 2048)
     mat = hair_material(img)
     cap_mat = bpy.data.materials.new("draconia_hair_cap")
@@ -411,8 +414,9 @@ def grow(skin, marks, seed=7, style="updo"):
     cap_mat.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = (*(c * 0.8 for c in HAIR_ROOT), 1) if CAP_FROM_MID is None else (*(c * CAP_FROM_MID for c in HAIR_MID), 1)
     cap_mat.node_tree.nodes["Principled BSDF"].inputs["Roughness"].default_value = 0.95
     cap_mat["verse_shading"] = "standard"
-    cap.data.materials.append(cap_mat)
-    for o in objs[1:]:
+    if cap:
+        cap.data.materials.append(cap_mat)
+    for o in objs[1 if cap else 0 :]:
         o.data.materials.append(mat)
         for p in o.data.polygons:
             p.use_smooth = True
@@ -656,6 +660,13 @@ BODY_WIDTH = 1.0
 # line wanders (the side a root falls to is decided with this much noise).
 PART = 0.8
 PART_JITTER = 0.0
+# Which parts to grow: the combed body (and its bun), the face-framing
+# locks and wisps, the flyaways (the cap always). With MetaHuman's own
+# hair cards on the head, only the locks are grown, as extra wisps.
+PARTS = ("cap", "body", "locks", "fly")
+# The locks' wave amplitude (1: the original loose waves; small: nearly
+# straight, fine wisps).
+LOCK_WAVE = 1.0
 # The updo's body: how far the outer layers stand off the scalp (m), how
 # much the strands puff mid-path and wander (frizz), the hairline's drop
 # (radians, lower is further down the forehead and temples), extra roots
