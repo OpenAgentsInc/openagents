@@ -90,7 +90,7 @@ pub struct Game {
 
 /// What a refusal says when a change needs the game's code changed rather
 /// than its settings.
-pub const NEEDS_CODE: &str = "That needs the game's code changed, not just its settings, so I can't do it as an edit here; Coder can make that change as a separate step.";
+pub const NEEDS_CODE: &str = "That needs the game's code changed, not just its settings, so I can't do it as an edit here; Coder can make that change as a separate step (once the person agrees, game_propose_code records it for Coder).";
 
 fn about(name: &str) -> Option<&'static Field> {
     icecream_rules::tuning::field(name)

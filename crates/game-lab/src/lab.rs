@@ -475,6 +475,8 @@ impl Lab {
             "game_versions" => Ok(self.versions_tool(&game)),
             "game_compare" => self.compare(&game, args),
             "game_notes" => self.notes_tool(&game, args),
+            "game_propose_code" => self.propose_code(&game, args),
+            "game_code_requests" => Ok(self.code_requests_tool(&game)),
             _ => Err(format!("{name} isn't a Game Lab tool.")),
         };
         result.unwrap_or_else(|why| json!({"error": why}))
@@ -668,6 +670,119 @@ impl Lab {
         let latest = self.latest(game).unwrap_or(1);
         Ok(json!({"notes": notes, "card": self.card(game, version.unwrap_or(latest), None).ok()}))
     }
+
+    // ---- code requests ----------------------------------------------------
+
+    /// The code requests recorded for a game, oldest first.
+    #[must_use]
+    pub fn code_requests(&self, game: &str) -> Vec<Value> {
+        read_json(&self.doc_dir(game).join("code-requests.json"))
+            .and_then(|v| v.as_array().cloned())
+            .unwrap_or_default()
+    }
+
+    /// Records a change that needs the game's code changed, for Coder.
+    /// Nothing is built or changed here: the request waits until a commit
+    /// that names it (a `Game-Lab-Request: GAME/rN` line) is in the
+    /// checkout the Lab builds from, and then it links that commit.
+    ///
+    /// # Errors
+    /// An empty request, or the file can't be written.
+    pub fn add_code_request(&self, game: &str, args: &Value) -> Result<Value, String> {
+        let text = args["request"]
+            .as_str()
+            .unwrap_or_default()
+            .trim()
+            .to_owned();
+        if text.is_empty() {
+            return Err("Say what the code change should do (request).".into());
+        }
+        if text.chars().count() > 4000 {
+            return Err("The request is too long; 4000 characters at most.".into());
+        }
+        let version = self.version_arg(game, args)?;
+        let _guard = self.writes.lock().map_err(|e| e.to_string())?;
+        let mut requests = self.code_requests(game);
+        let id = format!("r{}", requests.len() + 1);
+        let request = json!({
+            "id": id,
+            "request": text,
+            "version": version,
+            "author": args["author"].as_str().unwrap_or("the chat"),
+            "at": now(),
+        });
+        requests.push(request.clone());
+        write_json(
+            &self.doc_dir(game).join("code-requests.json"),
+            &Value::Array(requests),
+        )?;
+        Ok(request)
+    }
+
+    /// A request with where it stands: waiting, or made in a commit.
+    fn request_status(&self, game: &str, request: &Value) -> Value {
+        let id = request["id"].as_str().unwrap_or_default();
+        let mut out = request.clone();
+        match commit_for(&self.repo, &format!("{REQUEST_TRAILER}: {game}/{id}")) {
+            Some((hash, subject)) => {
+                out["status"] = json!("made");
+                out["commit"] = json!(hash);
+                out["commit_subject"] = json!(subject);
+                out["commit_url"] = json!(format!("{COMMITS}/{hash}"));
+                out["build"] = json!(match self.build_state() {
+                    Build::Ready => "ready",
+                    Build::Building => "building",
+                    Build::Failed(_) => "not built",
+                });
+            }
+            None => out["status"] = json!("waiting for Coder"),
+        }
+        out
+    }
+
+    fn propose_code(&self, game: &str, args: &Value) -> Result<Value, String> {
+        let request = self.add_code_request(game, args)?;
+        let id = request["id"].as_str().unwrap_or_default().to_owned();
+        let latest = self.latest(game).unwrap_or(1);
+        Ok(json!({
+            "recorded": true,
+            "request": request,
+            "text": format!(
+                "Recorded code request {id} for Coder. Nothing in the game has changed yet: Coder makes code changes outside this chat, as a commit with tests. When a commit that makes request {id} is in this Mac's checkout, game_code_requests links it, and the new settings it adds can be changed here as versions."
+            ),
+            "card": self.card(game, latest, None).ok(),
+        }))
+    }
+
+    fn code_requests_tool(&self, game: &str) -> Value {
+        let list: Vec<Value> = self
+            .code_requests(game)
+            .iter()
+            .map(|r| self.request_status(game, r))
+            .collect();
+        let latest = self.latest(game).unwrap_or(1);
+        json!({"requests": list, "card": self.card(game, latest, None).ok()})
+    }
+}
+
+/// The line a commit carries to say which code request it makes.
+pub const REQUEST_TRAILER: &str = "Game-Lab-Request";
+/// Where a commit can be read.
+const COMMITS: &str = "https://github.com/OpenAgentsInc/openagents/commit";
+
+/// The newest commit in `repo`'s history whose message has `line`: its
+/// hash and subject.
+fn commit_for(repo: &Path, line: &str) -> Option<(String, String)> {
+    let output = std::process::Command::new("git")
+        .arg("-C")
+        .arg(repo)
+        .args(["log", "-1", "--fixed-strings", "--format=%H%x09%s"])
+        .arg(format!("--grep={line}"))
+        .output()
+        .ok()?;
+    let text = String::from_utf8(output.stdout).ok()?;
+    let (hash, subject) = text.trim().split_once('\t')?;
+    Some((hash.to_owned(), subject.to_owned()))
 }
 
 fn ready(dir: &Path) -> bool {
@@ -726,6 +841,8 @@ fn takes(name: &str) -> &'static [&'static str] {
         "game_versions" => &["game"],
         "game_compare" => &["game", "a", "b"],
         "game_notes" => &["game", "version", "text", "seconds", "room", "x", "z"],
+        "game_propose_code" => &["game", "request", "version", "author"],
+        "game_code_requests" => &["game"],
         _ => &[],
     }
 }
@@ -783,7 +900,13 @@ pub fn tools() -> Value {
          "parameters": {"type": "object", "required": ["game"], "properties": {"game": game, "version": version,
             "text": {"type": "string", "description": "a note to save"},
             "seconds": {"type": "number", "description": "the time in the run the note is about"},
-            "room": {"type": "string", "description": "the room the note is about"}}}}
+            "room": {"type": "string", "description": "the room the note is about"}}}},
+        {"name": "game_propose_code", "description": "Record a change that needs the game's code changed (game_edit refused it as needing code: new items, enemies, rules, looks or controls), for Coder to make, once the person has agreed to have Coder make it. Write the request in plain words with everything they asked for. This records it; it doesn't change the game. Coder makes it as a commit, and game_code_requests then links that commit.",
+         "parameters": {"type": "object", "required": ["game", "request"], "properties": {"game": game,
+            "request": {"type": "string", "description": "what the code change should do, in plain words, with every detail the person gave"},
+            "version": {"type": "integer", "description": "the version the request is about; the latest when left out"}}}},
+        {"name": "game_code_requests", "description": "The code requests recorded for a game and where each stands: waiting for Coder, or made in a commit (with its link). When one is made, its new settings are in the game's document (game_open) and can be changed with game_edit.",
+         "parameters": {"type": "object", "required": ["game"], "properties": {"game": game}}}
     ]})
 }
 
@@ -918,6 +1041,44 @@ mod tests {
         assert_eq!(read["notes"][0]["room"], "Kitchen");
         assert_eq!(read["notes"][0]["seconds"], 42.3);
         assert_eq!(read["card"]["notes"], 1);
+    }
+
+    #[test]
+    fn a_code_request_is_recorded_and_waits_for_its_commit() {
+        let (_dir, lab) = lab();
+        let refused = lab.run(
+            "game_propose_code",
+            &json!({"game": ICE_CREAM_MAN, "request": "  "}),
+        );
+        assert!(refused["error"].as_str().unwrap().contains("request"));
+        let recorded = lab.run(
+            "game_propose_code",
+            &json!({"game": ICE_CREAM_MAN, "request": "Minions that hunt you"}),
+        );
+        assert_eq!(recorded["recorded"], true, "{recorded}");
+        assert_eq!(recorded["request"]["id"], "r1");
+        assert!(
+            recorded["text"]
+                .as_str()
+                .unwrap()
+                .contains("Nothing in the game has changed")
+        );
+        // Nothing about the game changed: still one version.
+        assert_eq!(lab.versions(ICE_CREAM_MAN), vec![1]);
+        let second = lab.run(
+            "game_propose_code",
+            &json!({"game": ICE_CREAM_MAN, "request": "A camera toggle"}),
+        );
+        assert_eq!(second["request"]["id"], "r2");
+        let listed = lab.run("game_code_requests", &json!({"game": ICE_CREAM_MAN}));
+        let requests = listed["requests"].as_array().unwrap();
+        assert_eq!(requests.len(), 2);
+        for request in requests {
+            // A temporary Lab's requests are named in no commit.
+            assert_eq!(request["status"], "waiting for Coder", "{request}");
+        }
+        // A commit that names a request is found by its line.
+        assert!(commit_for(&lab.repo, "a line no commit has 7c1e3b0d").is_none());
     }
 
     #[test]

@@ -123,7 +123,9 @@ man_investigate, man_search and man_chase; hiding spots are closets, added with 
 from the document's current values. game_edit checks the edit with the game's rules and 24 seeded bot runs. If it \
 refuses, tell the owner why in plain words and don't save a different change instead without asking. If a request needs \
 the game's code changed rather than its settings (game_edit says so), say so and offer to have Coder make that change as a \
-later step. When asked to play, call game_play. To compare with the original, call game_compare with a=1; then say what \
+later step; when they agree, record it with game_propose_code (it records the request, it doesn't make it), and \
+game_code_requests says where each request stands and links the commit that made it. When a request is made, its new \
+settings are in the document: read it again with game_open before editing them. When asked to play, call game_play. To compare with the original, call game_compare with a=1; then say what \
 the bot runs measured.\n\nGames:\n",
     );
     for doc in documents {
