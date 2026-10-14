@@ -214,13 +214,23 @@ def grow(skin, marks, seed=7, style="updo"):
         # randomness (PART_JITTER, metres), so the line wanders.
         side = 1.0 if root.x + rng.gauss(0, PART_JITTER) >= 0 else -1.0
         step = 0.004
-        for k in range(120):
+        # Curtains (round 15): strands rooted toward the front first fall
+        # sideways and down from the part over the temple, to a point above
+        # the ear, and only then turn back to the knot (the reference's loose
+        # centre-parted updo), instead of combing straight back.
+        az0 = abs(_angles(root, centre)[0])
+        via = None
+        if CURTAIN and az0 < CURTAIN_AZ:
+            via = Vector((centre.x + side * CURTAIN_X, centre.y + CURTAIN_Y + rng.uniform(-0.01, 0.01), centre.z + CURTAIN_Z + rng.uniform(-0.012, 0.012)))
+        for k in range(120 + (60 if via else 0)):
             loc, nrm = surface(p)
-            to_knot = knot - loc
-            dist = to_knot.length
+            if via is not None and (abs(loc.x - centre.x) > abs(via.x - centre.x) - 0.035 and loc.z < via.z + 0.02):
+                via = None
+            to_knot = (via if via is not None else knot) - loc
+            dist = to_knot.length if via is None else (knot - loc).length
             # Away from the part near it, then toward the knot.
             part_push = Vector((side, 0, 0)) * math.exp(-abs(loc.x) / 0.02) * PART
-            d = to_knot.normalized() + part_push
+            d = to_knot.normalized() * (1.0 if via is None else CURTAIN) + part_push
             d = d - nrm * d.dot(nrm)
             if d.length < 1e-6:
                 break
@@ -663,6 +673,15 @@ BODY_ROOTS = 14000
 # line wanders (the side a root falls to is decided with this much noise).
 PART = 0.8
 PART_JITTER = 0.0
+# Curtains from the centre part (0: off): roots within CURTAIN_AZ radians
+# of the front first comb to a point CURTAIN_X out from the head's centre,
+# CURTAIN_Y forward and CURTAIN_Z up (m; above the ear), then to the knot;
+# CURTAIN weighs that pull against the part's push.
+CURTAIN = 0.0
+CURTAIN_AZ = 1.0
+CURTAIN_X = 0.11
+CURTAIN_Y = 0.0
+CURTAIN_Z = 0.01
 # Which parts to grow: the combed body (and its bun), the face-framing
 # locks and wisps, the flyaways (the cap always). With MetaHuman's own
 # hair cards on the head, only the locks are grown, as extra wisps.

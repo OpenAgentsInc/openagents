@@ -639,6 +639,40 @@ def image(path, colorspace="sRGB"):
     return im
 
 
+def drop_covered(body, bib, gap=0.004):
+    """Deletes the body's faces lying within `gap` of the head's bib
+    (round 15): where the two overlap, garment shells cut from both came
+    out as two layers with a crack of skin between them across the chest."""
+    from mathutils.bvhtree import BVHTree
+
+    tree = BVHTree.FromObject(bib, bpy.context.evaluated_depsgraph_get())
+    bm = bmesh.new()
+    bm.from_mesh(body.data)
+    drop = []
+    for f in bm.faces:
+        hit = tree.find_nearest(f.calc_center_median(), gap)
+        if hit[0] is not None:
+            drop.append(f)
+    bmesh.ops.delete(bm, geom=drop, context="FACES")
+    bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context="VERTS")
+    bm.to_mesh(body.data)
+    bm.free()
+    print("BODY covered faces dropped", len(drop))
+
+
+def weld_seam(obj, dist=0.006):
+    """Merges the open edges where the bib meets the body (after
+    `drop_covered`), so shells cut from the joined mesh have no crack."""
+    bm = bmesh.new()
+    bm.from_mesh(obj.data)
+    edge = [v for v in bm.verts if v.is_boundary and v.co.z > 1.0]
+    n = len(bm.verts)
+    bmesh.ops.remove_doubles(bm, verts=edge, dist=dist)
+    print("BODY seam welded", n - len(bm.verts))
+    bm.to_mesh(obj.data)
+    bm.free()
+
+
 class Marks:
     """Landmarks on the MetaHuman head for painting and cameras."""
 
@@ -925,33 +959,54 @@ def main():
         bpy.context.collection.objects.link(bib)
         bm = bmesh.new()
         bm.from_mesh(bib.data)
-        cut = marks.neck.z - 0.005
+        # (Round 15: up the neck 3 cm too, so the shirt collar's band can be
+        # cut as a shell of the neck itself.)
+        cut = marks.neck.z + 0.05
         bmesh.ops.delete(bm, geom=[f for f in bm.faces if f.calc_center_median().z > cut], context="FACES")
         bm.to_mesh(bib.data)
         bm.free()
+        drop_covered(body, bib)
         bpy.ops.object.select_all(action="DESELECT")
         body.select_set(True)
         bib.select_set(True)
         bpy.context.view_layer.objects.active = body
         bpy.ops.object.join()
+        weld_seam(body)
         # Round 7: the robe hangs in soft vertical folds.
         draconia_cloth.FOLDS = 0.006
         # (1.0 read as a stiff white bib in round 8.)
         draconia_cloth.COLLAR_POINTS = 1.0
-        # Round 13: a short band open at the front, two separate points
-        # either side of the knot.
-        draconia_cloth.COLLAR_STYLE = "points"
-        draconia_cloth.COLLAR_BAND = 0.018
+        # Round 15: the collar built from her neck: a band that is a shell
+        # of the neck, 5.5 cm up it at the back; the fall folded over it
+        # with points lying on the shirt; the knot seated in front of the
+        # band; the sweater's V, the shirt inside it, reaching back over the
+        # upper chest; the robe open wide at the collarbones with a narrower
+        # green facing.
+        draconia_cloth.COLLAR_STYLE = "shell"
+        draconia_cloth.COLLAR_BAND = 0.055
+        draconia_cloth.V_FRONT = 0.06
+        draconia_cloth.ROBE_FLARE = 0.25
+        draconia_cloth.ROBE_OPEN_X = 0.08
+        draconia_cloth.FACING_W = 0.02
+        draconia_cloth.KNOT_DROP = 0.007
+        draconia_cloth.KNOT_SIZE = 1.15
         draconia_cloth.COLLAR_GAP = 0.7
         draconia_cloth.ROBE_OPEN_TOP = -0.03
         # Round 14: the sweater stops 3 cm under the neck's base, so the
         # white shirt and its collar sit at the neck, not a dark choker.
-        draconia_cloth.SWEATER_TOP = 0.03
+        draconia_cloth.SWEATER_TOP = 0.0
         # Round 11: fabric normals, a thicker robe and collar, deeper folds.
         draconia_cloth.FABRIC = True
         draconia_cloth.ROBE_THICK = 0.007
         draconia_cloth.COLLAR_THICK = 0.0025
         draconia_cloth.FOLDS = 0.009
+        # MH_CLOTH_BLEND=path: save the body the uniform is cut from (with
+        # the neck and chest marks on it) for iterating on the uniform alone
+        # (`draconia_cloth.py`'s `test_build`).
+        if os.environ.get("MH_CLOTH_BLEND"):
+            body["neck"] = list(marks.neck)
+            body["chest"] = list(marks.chest)
+            bpy.ops.wm.save_as_mainfile(filepath=os.environ["MH_CLOTH_BLEND"], copy=True)
         extra += draconia_cloth.build(body, marks)
         bpy.data.objects.remove(body)
     # Fewer strands than the CC0 head: the reference's brows are soft, and

@@ -63,7 +63,7 @@ with 4096-pixel maps, `Prepared::load` with a raised `Budget`, then
 | Brows | Round 10: MetaHuman `Eyebrows_M_Full` cards over a feathered painted brow and 700 strand brows | Close in shape; slightly darker and more even than the reference |
 | Lips | Round 13: rig upper-lip roll-in over a sculpt layer; MetaHuman lip albedo | Upper lip within 5%, lower lip +9% when speaking; mouth width within 6% |
 | Hair (updo, strands) | Round 13: MetaHuman `Hair_S_UpdoBuns` cards, our body layer and lifted flyaways, platinum | Crown still reads smooth and capped from the front; the reference is loose and full |
-| Uniform | Round 14: shell garments on MetaHuman's body (arms lowered); modelled collar points and knot; striped tie; fabric weave normals; open robe with green facing | The collar points stand off the neck, the knot floats, a white yoke hides the sweater V; robe shoulders blocky |
+| Uniform | Round 15: cut from MetaHuman's body and neck (arms lowered): a collar band that is a shell of the neck, a fall with points laid on the chest, a seated knot, striped tie, sweater V with trim, open robe with green facing; fabric weave normals | Points wider and flatter than the reference's; tie stripes too coarse; robe reads flat black, ragged over the shoulders, no hood lining |
 | Lighting response | Measured against 0:54: warm key screen left, warm fill, short teal rim, near-black background, soft shadows from moving area lights; f/2 bokeh of glowing jars | No Unreal-grade skin shadowing (screen-space scattering) |
 | Expressions | Round 6: her full rig through OpenRigLogic (joints and blend shapes; smile, speaking, neutral) | Built per expression, not live in Verse; wrinkle and blood-flow maps not yet driven |
 
@@ -840,6 +840,64 @@ $B -b --factory-startup --python scripts/blender/draconia_set.py -- ~/work/film-
   fins, the knot floats in front of a bare neck, and a white yoke fills
   the chest where the sweater's V should be. It needs rebuilding around
   the neck itself (round 15). The crown is unchanged.
+
+### Round 15, 2026-10-14: a shirt collar built from her neck
+
+- **Direction.** The coordinator: build the collar from the rigged body's
+  own neck: the band an offset shell of the neck that touches it, the
+  points cut from it and folded down onto the sweater (a short cloth
+  simulation pinned at the band was suggested), the knot seated in the
+  band's gap, the sweater's V visible with the shirt only inside it.
+  Free Fab assets were allowed; nothing to be bought.
+- **Fab.** Fab's listing pages refuse automated reads (HTTP 403), and
+  adding even a free asset needs the owner's Fab account in a browser, so
+  nothing was fetched. Two listings turned up by search are noted for the
+  owner (prices not verified): "Japanese Schoolgirl Uniform – Modular
+  MetaHuman Outfit Pack" (shirt, tie, cardigan; MetaHuman-fitted) and
+  "Japanese Sailor School Shirt – 2 Styles" (shirt only, UE 5.7+). Both
+  are a different style from the reference's British uniform.
+- **What changed** (`draconia_cloth.py`, `COLLAR_STYLE = "shell"`).
+  - The uniform is now cut from a neck that exists: the head's bib now
+    runs 5 cm up the neck. The body faces it covers are dropped, and the
+    seam where the two meet is welded (`metahuman_import.drop_covered`,
+    `weld_seam`). Before, the two overlapping skins gave every garment
+    two layers, with a crack of skin across the chest.
+  - Band: a 3 mm shell of the neck, 5.5 cm up it at the back and 1.8 cm
+    lower at the front, cut along clean planes.
+  - Fall and points: a grid from the band's top edge (found by casting
+    from the neck's measured centre) round to the back. It is 3.2 cm deep
+    at the sides and drawn out at the front into points whose edges run
+    from beside the knot down and out to tips 7.5 cm below. Every vertex
+    is laid on the outermost layer under it (band, shirt or sweater),
+    measured along the body's normal, so the points lie on the chest
+    instead of standing off it.
+  - The cloth simulation was tried (`COLLAR_SIM`, pinned at the fold).
+    At this scale it crumpled the points and the tie, so it is off; the
+    projection is deterministic.
+  - Knot: 15% larger, seated against the band 7 mm under the fold. Tie
+    blade: laid on the shirt's most forward point across its width and
+    smoothed (along the centre line alone it dipped behind a ridge).
+  - Sweater V and shirt: "front" for the V and the shirt panel now
+    reaches back over the upper chest (`V_FRONT`; the MetaHuman `neck`
+    mark sits at the neck's front, so the V had been cut only at the
+    very front). The sweater runs up to the collar.
+  - Robe: open wide at the collarbones (`ROBE_FLARE`, its cut planes
+    matching the opening), with a 2 cm green facing.
+  - `MH_CLOTH_BLEND` saves the body the uniform is cut from, so the
+    uniform can be iterated alone in seconds.
+- **Measured.** Face unchanged (all features within 7%; the lower lip
+  +9% speaking).
+- **Artifacts.** `~/Downloads/draconia-fullface-mh-v13.png` (reference |
+  round 14 | round 15), `~/Downloads/draconia-parity-round-15.png`, the
+  progress sheet; `~/work/film-out/draconia/parity/round-15/`.
+- **Honest state.** For the first time the collar reads as a shirt
+  collar: a band at the neck and two points on the chest, with the tie
+  knot between them. Still off:
+  - the points are wider and flatter than the reference's;
+  - the tie's stripes are too coarse, and the knot shows none;
+  - the robe's top edge over the shoulders is ragged and the robe reads
+    flat black, where the reference's has a green-lined hood;
+  - the crown is unchanged.
 
 ## Peacock scene
 

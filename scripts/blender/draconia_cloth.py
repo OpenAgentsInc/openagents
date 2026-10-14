@@ -46,6 +46,16 @@ COLLAR_STYLE = "fall"
 # collar and tie show (round 13).
 ROBE_OPEN_TOP = 0.02
 SWEATER_TOP = -0.005
+# Where "front" ends for the sweater's V (m behind the `neck` mark's
+# default); the MetaHuman `neck` mark sits at the neck's front, so its V
+# reaches back over the upper chest only when this is raised (round 15).
+V_FRONT = 0.0
+# The robe's front opening: half-width at the chest (m), how much wider it
+# grows per metre above the chest (round 15: open at the collarbones, as
+# the reference's), and the green facing's width.
+ROBE_OPEN_X = 0.075
+ROBE_FLARE = 0.0
+FACING_W = 0.03
 COLLAR_BAND = 0.026
 COLLAR_GAP = 0.24
 
@@ -313,7 +323,7 @@ def build(body, marks):
     # Shirt: only shows at the collar and in the V; the body is close.
     # Shirt: only the front panel the sweater's V shows.
     # (Where the sweater stops under the neck, the shirt goes all round.)
-    shirt = _shell(body, "shirt", 0.0025, lambda c: torso(c) and ((c.z > chest.z - 0.1 and abs(c.x) < 0.1 and c.y < neck.y) or (SWEATER_TOP > 0 and c.z > neck_base_z - SWEATER_TOP - 0.01)), smooth_iters=4)
+    shirt = _shell(body, "shirt", 0.0025, lambda c: torso(c) and ((c.z > chest.z - 0.1 and abs(c.x) < 0.1 and c.y < neck.y + V_FRONT) or (SWEATER_TOP > 0 and c.z > neck_base_z - SWEATER_TOP - 0.01)), smooth_iters=4)
     shirt.data.materials.append(_mat("draconia_shirt", WHITE, rough=0.9, sheen=0.2, weave="plain"))
     out.append(shirt)
 
@@ -323,7 +333,7 @@ def build(body, marks):
     v_half = 0.065
 
     def v_open(c):
-        if c.y > neck.y - 0.01:
+        if c.y > neck.y - 0.01 + V_FRONT:
             return False  # front only
         h = (c.z - v_bottom) / (v_top - v_bottom)
         return h > 0 and abs(c.x) < v_half * min(h, 1.0) + 0.004
@@ -337,7 +347,7 @@ def build(body, marks):
         dx, dz = side * v_half, v_top - v_bottom
         n = Vector((dz, 0, -dx)).normalized() * side
         v_planes.append((Vector((side * 0.004, 0, v_bottom)), n))
-    _cut(sweater, v_planes, drop=v_open, front_y=neck.y - 0.01)
+    _cut(sweater, v_planes, drop=v_open, front_y=neck.y - 0.01 + V_FRONT)
     sweater.data.materials.append(_mat("draconia_sweater", CHARCOAL, rough=0.95, sheen=0.6, weave="knit"))
     out.append(sweater)
 
@@ -372,7 +382,7 @@ def build(body, marks):
     # Robe: black wool over everything, open down the front; a green facing
     # 4 cm wide along the opening.
     def cut_x(z):
-        return 0.075 + 0.02 * (chest.z - z)
+        return ROBE_OPEN_X + 0.02 * (chest.z - z) + ROBE_FLARE * max(0.0, z - chest.z)
 
     def robe_keep(c):
         if c.z > neck_base_z + 0.012:
@@ -381,7 +391,7 @@ def build(body, marks):
             return False
         if abs(c.x) > 0.16 and c.z < hand_z + 0.05:
             return False
-        if c.y < neck.y + 0.02 and abs(c.x) < cut_x(c.z) and c.z < neck_base_z - ROBE_OPEN_TOP:
+        if c.y < neck.y + 0.02 + V_FRONT and abs(c.x) < cut_x(c.z) and c.z < neck_base_z - ROBE_OPEN_TOP:
             return False
         return True
 
@@ -390,19 +400,24 @@ def build(body, marks):
         # below trims it.
         if neck_base_z + 0.012 < c.z <= neck_base_z + 0.03 and not (abs(c.x) > 0.16 and c.z < hand_z + 0.05):
             return True
-        return robe_keep(c) or (c.y < neck.y + 0.02 and c.z < neck_base_z - 0.02 and c.z > hip_z - 0.25 and not (abs(c.x) > 0.16 and c.z < hand_z + 0.05))
+        return robe_keep(c) or (c.y < neck.y + 0.02 + V_FRONT and c.z < neck_base_z - 0.02 and c.z > hip_z - 0.25 and not (abs(c.x) > 0.16 and c.z < hand_z + 0.05))
 
     robe = _shell(body, "robe", 0.02, robe_body, smooth_iters=10)
     planes = []
     for side in (1, -1):
-        for w in (0.0, 0.03):
-            # x = side * (0.075 + w + 0.02 (chest.z - z)): a plane in x, z.
+        for w in (0.0, FACING_W):
+            # x = side * (ROBE_OPEN_X + w + 0.02 (chest.z - z)): a plane in x, z.
             n = Vector((side, 0, 0.02)).normalized()
-            planes.append((Vector((side * (0.075 + w + 0.02 * chest.z), 0, 0)), n))
+            planes.append((Vector((side * (ROBE_OPEN_X + w + 0.02 * chest.z), 0, 0)), n))
+            if ROBE_FLARE:
+                # Above the chest: side x = X + w + (flare - 0.02) (z - chest.z).
+                k = ROBE_FLARE - 0.02
+                n = Vector((side, 0, -k)).normalized()
+                planes.append((Vector((side * (ROBE_OPEN_X + w - k * chest.z), 0, 0)), n))
     # A straight top edge round the neck (round 13: it stepped along the
     # body's faces and read jagged in the medium shots).
     _cut(robe, [(Vector((0, 0, neck_base_z + 0.012)), Vector((0, 0, 1)))])
-    _cut(robe, planes, drop=lambda c: not robe_keep(c), front_y=neck.y + 0.02)
+    _cut(robe, planes, drop=lambda c: not robe_keep(c), front_y=neck.y + 0.02 + V_FRONT)
     # Split the facing as its own material by distance to the opening edge.
     me = robe.data
     me.materials.append(_mat("draconia_robe", BLACK, rough=0.9, sheen=0.55, weave="twill"))
@@ -412,7 +427,7 @@ def build(body, marks):
     # The facing: a 4 cm band beside the opening, rising around the neck.
     for f in bm.faces:
         c = f.calc_center_median()
-        if c.y < neck.y + 0.03 and abs(c.x) < cut_x(c.z) + 0.03:
+        if c.y < neck.y + 0.03 + V_FRONT and abs(c.x) < cut_x(c.z) + FACING_W:
             f.material_index = 1
     bm.to_mesh(me)
     bm.free()
@@ -436,6 +451,10 @@ def build(body, marks):
     hood = _tube("hood", pts, lambda t: 0.022 + 0.01 * math.sin(math.pi * t), segs=14, flatten=0.6)
     hood.data.materials.append(_mat("draconia_hood", BLACK, rough=0.9, sheen=0.55))
     out.append(hood)
+
+    if COLLAR_STYLE == "shell":
+        out.extend(_shell_collar(body, neck, neck_base_z, [shirt, sweater]))
+        return out
 
     # Collar: a stand around the neck base and two points folding down.
     stand_in, stand_out = [], []
@@ -517,6 +536,221 @@ def build(body, marks):
     return out
 
 
+# The "shell" collar (round 15): the band is an offset shell of the neck
+# itself, its top higher at the back than the front; the points fold over
+# it and lie on the shirt and sweater (projected, then optionally settled
+# by a short cloth simulation pinned at the fold).
+COLLAR_FRONT_DROP = 0.018  # how much lower the band's top is at the front (m)
+COLLAR_POINT_LEN = 0.075  # fold to tip, down the front (m)
+COLLAR_POINT_SPREAD = 0.05  # tip's distance from the centre line (m)
+COLLAR_FALL = 0.032  # the fall's depth at the sides and back (m)
+COLLAR_TH0 = 0.12  # where the points' front edges start, from the front (rad)
+COLLAR_POINT_ARC = 1.3  # how far round the point's lower edge rises to the fall (rad)
+COLLAR_SIM = 0  # cloth-sim frames for the points (0: projection only)
+KNOT_DROP = 0.0  # how far under the fold's front the knot sits (m)
+KNOT_SIZE = 1.0  # the knot's scale
+
+
+def _shell_collar(body, neck, neck_base_z, under):
+    out = []
+    collar_mat = _mat("draconia_collar", WHITE, rough=0.85, sheen=0.15, weave="plain")
+    top_z = neck_base_z + COLLAR_BAND
+    lo_z = neck_base_z - 0.005
+    # The neck's own centre and depth at the band (the `neck` mark sits at
+    # its front).
+    ring = [v.co for v in body.data.vertices if abs(v.co.z - top_z) < 0.004 and abs(v.co.x) < 0.075]
+    ys = [p.y for p in ring]
+    ny, depth = (min(ys) + max(ys)) / 2, (max(ys) - min(ys)) / 2
+    print("COLLAR neck centre y", round(ny, 4), "half depth", round(depth, 4), len(ring))
+    neck = Vector((neck.x, ny, neck.z))
+
+    def top_at(c):
+        # Lower at the front (y < ny), level round the back.
+        f = max(0.0, min(1.0, (ny - c.y) / depth))
+        return top_z - COLLAR_FRONT_DROP * f
+
+    band = _shell(body, "collar_band", 0.003, lambda c: lo_z - 0.01 < c.z < top_z + 0.02, smooth_iters=2)
+    # A clean top edge: bisect along a few tilted planes, then drop faces
+    # above the line.
+    planes = [
+        (Vector((0, neck.y, top_z)), Vector((0, 0, 1))),
+        (Vector((0, neck.y, top_z)), Vector((0, -COLLAR_FRONT_DROP / depth, 1)).normalized()),
+        (Vector((0, neck.y, top_z - COLLAR_FRONT_DROP)), Vector((0, 0, 1))),
+        (Vector((0, 0, lo_z)), Vector((0, 0, 1))),
+    ]
+    _cut(band, planes, drop=lambda c: c.z > top_at(c) + 1e-4 or c.z < lo_z)
+    _solidify(band, COLLAR_THICK)
+    band.data.materials.append(collar_mat)
+    out.append(band)
+
+    # The fall: from the band's top edge (the fold) down over the band all
+    # round, 3 cm deep at the sides and back, drawn out at the front into
+    # the points, whose front edges run from beside the knot diagonally
+    # down and out to tips on the chest. Every vertex is laid on the
+    # outermost layer under it (band, shirt, sweater), measured along the
+    # body's normal.
+    deps = bpy.context.evaluated_depsgraph_get()
+    rest = BVHTree.FromObject(band, deps)
+    skin = BVHTree.FromObject(body, deps)
+    layers = [rest] + [BVHTree.FromObject(o, deps) for o in under]
+
+    def lie(p, off):
+        loc, n, _, _ = skin.find_nearest(p)
+        if loc is None:
+            return p
+        start = loc + n * 0.04
+        best = None
+        for t in layers:
+            hit = t.ray_cast(start, -n, 0.045)
+            if hit[0] is not None and (best is None or hit[3] < best):
+                best = hit[3]
+        h = (0.04 - best) if best is not None else 0.0
+        return loc + n * (max(h, 0.0) + off)
+
+    def fold_at(th, s):
+        d = Vector((s * math.sin(th), -math.cos(th), 0))
+        z = top_z - COLLAR_FRONT_DROP * max(0.0, math.cos(th)) - 0.001
+        p = None
+        for _ in range(3):
+            o = Vector((neck.x, neck.y, z))
+            hit = rest.ray_cast(o, d, 0.2)
+            if hit[0] is None:
+                return None
+            p = hit[0]
+            z = top_at(p) - 0.0008
+        return lie(p, COLLAR_THICK * 0.5 + 0.0005)
+
+    for s in (1.0, -1.0):
+        nu, nv = 21, 12
+        ths = [COLLAR_TH0 + (math.pi - COLLAR_TH0) * i / (nu - 1) for i in range(nu)]
+        fold = [fold_at(t, s) for t in ths]
+        miss = sum(f is None for f in fold)
+        if miss:
+            print("COLLAR: fold ray missed", miss)
+            ok = next(f for f in fold if f is not None)
+            fold = [f if f is not None else ok for f in fold]
+        tip = fold[0] + Vector((s * COLLAR_POINT_SPREAD, -0.03, -COLLAR_POINT_LEN))
+        bm = bmesh.new()
+        grid = []
+        for j in range(nv):
+            v = j / (nv - 1)
+            row = []
+            for i in range(nu):
+                w = max(0.0, 1.0 - (ths[i] - COLLAR_TH0) / (COLLAR_POINT_ARC - COLLAR_TH0))
+                w = w * w * (3 - 2 * w)
+                low = (fold[i] - Vector((0, 0, COLLAR_FALL))).lerp(tip, w)
+                p = fold[i].lerp(low, v)
+                if j > 0:
+                    p = lie(p, COLLAR_THICK * 0.5 + 0.0012)
+                row.append(bm.verts.new(p))
+            grid.append(row)
+        for j in range(nv - 1):
+            for i in range(nu - 1):
+                bm.faces.new((grid[j][i], grid[j][i + 1], grid[j + 1][i + 1], grid[j + 1][i]))
+        bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+        me2 = bpy.data.meshes.new(f"collar_fall_{'l' if s > 0 else 'r'}")
+        bm.to_mesh(me2)
+        bm.free()
+        flap = bpy.data.objects.new(me2.name, me2)
+        bpy.context.collection.objects.link(flap)
+        if COLLAR_SIM:
+            _settle(flap, nu, [band] + list(under), COLLAR_SIM)
+        mod = flap.modifiers.new("solid", "SOLIDIFY")
+        mod.thickness = COLLAR_THICK
+        mod.offset = 0.0
+        bpy.context.view_layer.objects.active = flap
+        bpy.ops.object.modifier_apply(modifier=mod.name)
+        mod = flap.modifiers.new("s", "SUBSURF")
+        mod.levels = 1
+        bpy.ops.object.modifier_apply(modifier=mod.name)
+        for p in flap.data.polygons:
+            p.use_smooth = True
+        _box_uv(flap)
+        flap.data.materials.append(collar_mat)
+        out.append(flap)
+    knot_top = fold_at(0.0, 1.0) or Vector((neck.x, neck.y - 0.06, top_z))
+
+    # Tie: the knot seated against the band at the front, its top at the
+    # band's top; the blade from under it down the shirt.
+    stripes = _stripe_image("draconia_tie", [(0.0, 0.62, (0.012, 0.06, 0.042, 1)), (0.62, 0.78, (0.40, 0.42, 0.42, 1)), (0.78, 0.84, (0.012, 0.06, 0.042, 1)), (0.84, 0.9, (0.40, 0.42, 0.42, 1)), (0.9, 1.0, (0.012, 0.06, 0.042, 1))])
+    tie_mat = _mat("draconia_tie", GREEN, rough=0.6, sheen=0.4, image=stripes)
+    kz = knot_top.z - 0.012 - KNOT_DROP
+    hit = rest.ray_cast(Vector((neck.x, neck.y - 0.3, kz)), Vector((0, 1, 0)))
+    front = hit[0] if hit[0] is not None else Vector((neck.x, neck.y - 0.06, kz))
+    # (_tie_knot centres the knot 1.1 cm in front of `front`, 4 mm up; its
+    # back then rests on the band.)
+    out.append(_tie_knot(front + Vector((0, 0.011 - 0.0065 - COLLAR_THICK, -0.004)), tie_mat))
+    bvh = BVHTree.FromObject(under[0], deps)
+    # The blade lies on the shirt's most forward point across its width
+    # (round 15: along the centre line alone it dipped behind a ridge in
+    # the shirt and showed broken), its line smoothed.
+    cs = []
+    for k in range(41):
+        t = k / 40
+        z = kz - 0.012 - t * 0.2
+        hw = 0.009 + 0.02 * min(t * 1.6, 1.0)
+        ys = []
+        for dx in (-hw, -hw / 2, 0.0, hw / 2, hw):
+            hit = bvh.ray_cast(Vector((neck.x + dx, neck.y - 0.3, z)), Vector((0, 1, 0)))
+            if hit[0] is not None:
+                ys.append(hit[0].y)
+        y = min(ys) if ys else neck.y - 0.08
+        cs.append((Vector((neck.x, y - 0.003 - 0.0015 * t, z)), hw))
+    raw = [c.y for c, _ in cs]
+    for _ in range(3):
+        cs = [cs[0]] + [((cs[k - 1][0] + cs[k][0] * 2 + cs[k + 1][0]) / 4, cs[k][1]) for k in range(1, len(cs) - 1)] + [cs[-1]]
+    # (Never behind where it lay before smoothing: over the convex chest
+    # the average sinks in.)
+    for (c, _), y in zip(cs, raw):
+        c.y = min(c.y, y)
+    left, right = [], []
+    for c, hw in cs:
+        left.append(c + Vector((hw, 0, 0)))
+        right.append(c + Vector((-hw, 0, 0)))
+    blade = _strip("tie_blade", left, right)
+    _solidify(blade, 0.0025)
+    _diag_uv(blade, 8.0)
+    blade.data.materials.append(tie_mat)
+    out.append(blade)
+    return out
+
+
+def _settle(flap, nu, colliders, frames):
+    """A short cloth simulation: the fold row (the first `nu` vertices)
+    pinned, the rest falling onto `colliders` under gravity."""
+    g = flap.vertex_groups.new(name="pin")
+    g.add(list(range(nu)), 1.0, "REPLACE")
+    for o in colliders:
+        if not any(m.type == "COLLISION" for m in o.modifiers):
+            c = o.modifiers.new("col", "COLLISION")
+            o.collision.thickness_outer = 0.001
+    cl = flap.modifiers.new("cloth", "CLOTH")
+    cl.settings.vertex_group_mass = "pin"
+    cl.settings.quality = 10
+    cl.settings.mass = 0.05
+    cl.settings.tension_stiffness = 40
+    cl.settings.compression_stiffness = 40
+    cl.settings.bending_stiffness = 2.0
+    cl.collision_settings.distance_min = 0.001
+    cl.collision_settings.use_self_collision = False
+    sc = bpy.context.scene
+    cl.point_cache.frame_start = 1
+    cl.point_cache.frame_end = frames
+    for f in range(1, frames + 1):
+        sc.frame_set(f)
+    deps = bpy.context.evaluated_depsgraph_get()
+    ev = flap.evaluated_get(deps)
+    co = [v.co.copy() for v in ev.data.vertices]
+    flap.modifiers.remove(cl)
+    for v, c in zip(flap.data.vertices, co):
+        v.co = c
+    flap.vertex_groups.remove(g)
+    sc.frame_set(1)
+    for o in colliders:
+        for m in [m for m in o.modifiers if m.type == "COLLISION"]:
+            o.modifiers.remove(m)
+
+
 def _collar_points(bvh, ring, hi, neck, neck_base_z):
     """A shirt collar's two points (round 14), modelled: each a curved
     triangular flap with thickness, its top edge running along the band's
@@ -591,7 +825,7 @@ def _tie_knot(front, mat):
     (3 cm) than the bottom (1.7 cm), 2.4 cm tall and 1.3 cm deep, its front
     bowed and creased by one subdivision, in the tie's stripes."""
     bm = bmesh.new()
-    top_w, bot_w, h, dep = 0.03, 0.017, 0.024, 0.013
+    top_w, bot_w, h, dep = (x * KNOT_SIZE for x in (0.03, 0.017, 0.024, 0.013))
     c = front + Vector((0, -0.011, 0.004))
     pts = []
     for zz, w in ((h / 2, top_w), (-h / 2, bot_w)):
