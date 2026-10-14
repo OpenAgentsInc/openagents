@@ -46,4 +46,7 @@ py=python3
 for candidate in python3.13 python3.12 python3.11; do
     if command -v "$candidate" > /dev/null 2>&1; then py=$candidate; break; fi
 done
+# A test run (#11601): web.py sends X-OpenAgents-Test: 1 on every request,
+# and anything it starts here does too.
+export OPENAGENTS_TEST_RUN=1
 exec "$py" -I "$(dirname "$0")/web.py" "$@"

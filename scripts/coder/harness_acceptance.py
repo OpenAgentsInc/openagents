@@ -254,7 +254,10 @@ def make_home(root: Path, key: str, keys: list[str]) -> Path:
     return home
 
 
+# The dedicated test account first (#11601): no gate run may leave chats,
+# computers, or projects on the owner's account.
 SIGNIN_KEY_FILES = [
+    REAL_HOME / "work/.secrets/openagents-test-account.env",
     REAL_HOME / "work/.secrets/coder-gate-signin.env",
     REAL_HOME / "work/.secrets/coder-acceptance.env",
 ]
@@ -284,6 +287,10 @@ def harness_env(home: Path, path: str, extra: dict | None = None) -> dict:
         # Signed in with the gate's key, Coder must not pose as the owner's
         # Mac: no check-in under its name, no replies taken from the web.
         OPENAGENTS_COMPUTER_NAME="harness-acceptance-gate",
+        # A test run (#11601): every call Coder and openagents make carries
+        # X-OpenAgents-Test: 1, so the site lists none of the chats it syncs,
+        # deletes them within an hour, and records no computer.
+        OPENAGENTS_TEST_RUN="1",
     )
     if extra:
         env.update(extra)
@@ -1539,7 +1546,7 @@ def claims_repo_required(answer: str) -> bool | None:
             "false": "It says only a name is needed, or that repositories are optional or can be added.",
         }],
     }
-    headers = {"Content-Type": "application/json"}
+    headers = {"Content-Type": "application/json", "X-OpenAgents-Test": "1"}
     if token:
         headers["Authorization"] = f"Bearer {token}"
     req = urllib.request.Request(
@@ -1684,6 +1691,7 @@ def projects_local(origin: str, token: str, ev: Path) -> list:
         req = urllib.request.Request(origin + url, method=method, data=json.dumps(body).encode() if body is not None else None)
         req.add_header("Authorization", f"Bearer {token}")
         req.add_header("Content-Type", "application/json")
+        req.add_header("X-OpenAgents-Test", "1")
         try:
             with urllib.request.urlopen(req, timeout=30) as resp:
                 return resp.status, json.loads(resp.read() or b"{}")
@@ -1883,8 +1891,8 @@ def main() -> int:
     ap.add_argument("--jobs", type=int, default=3)
     ap.add_argument("--keep", action="store_true")
     ap.add_argument("--list", action="store_true")
-    # The gate's own sign-in key ("harness-acceptance-gate" on the owner's
-    # account), never committed: the first of these files that exists.
+    # The gate's sign-in key, never committed: the first of these files
+    # that exists, the dedicated test account's first (#11601).
     ap.add_argument("--signin-key-file", default="")
     ap.add_argument("--prompt-budget", type=int, default=int(os.environ.get("HACC_PROMPT_BUDGET", "5000")))
     ap.add_argument("--turn-timeout", type=int, default=240)

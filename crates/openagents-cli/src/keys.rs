@@ -289,6 +289,25 @@ fn expires_days(text: &str) -> Result<Option<u64>, String> {
 }
 
 /// The website, as the signed-in account (also `openagents projects`).
+/// `X-OpenAgents-Test: 1` when this process is a test run
+/// (`OPENAGENTS_TEST_RUN=1`, [`coder_sync::test_run`]): the website hides
+/// what such a request makes from every list and deletes it within an
+/// hour, and records no computer for it.
+pub(crate) fn test_run_headers() -> reqwest::header::HeaderMap {
+    test_run_headers_for(coder_sync::test_run())
+}
+
+fn test_run_headers_for(test_run: bool) -> reqwest::header::HeaderMap {
+    let mut headers = reqwest::header::HeaderMap::new();
+    if test_run {
+        headers.insert(
+            coder_sync::TEST_HEADER,
+            reqwest::header::HeaderValue::from_static("1"),
+        );
+    }
+    headers
+}
+
 pub(crate) struct Site {
     pub(crate) saved: Saved,
     /// The folder the sign-in came from, when it wasn't the environment.
@@ -319,6 +338,7 @@ impl Site {
             .redirect(reqwest::redirect::Policy::none())
             .connect_timeout(Duration::from_secs(10))
             .timeout(Duration::from_secs(30))
+            .default_headers(test_run_headers())
             .build()
             .map_err(|error| format!("Couldn't start the web client: {error}"))?;
         Ok(Self { saved, dir, http })
@@ -553,6 +573,13 @@ fn date(seconds: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_test_run_marks_every_site_request() {
+        let marked = test_run_headers_for(true);
+        assert_eq!(marked.get("X-OpenAgents-Test").unwrap(), "1");
+        assert!(test_run_headers_for(false).is_empty());
+    }
 
     #[test]
     fn expiries_read_as_days() {

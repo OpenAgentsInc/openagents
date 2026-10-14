@@ -13,11 +13,18 @@
 //! | `POST /v1/threads/{id}/messages` `{request_id, text, files?}` | Reply. A terminal chat queues it for Coder on its computer (`202 {queued}`); a web chat is answered here (`202 {answering}`), with the files added below (`files`: their ids, up to four); a phone chat refuses (`409 phone`) |
 //! | `POST /v1/threads/{id}/files?name=` (the file's bytes) | Add an image, PDF, or text file to a web chat for the next reply (`201 {id, name, kind, size, url}`; #11174, [`crate::chat_files`]) |
 //! | `GET`/`DELETE /v1/threads/{id}/files/{file}` | A file of the chat; remove one not sent yet (`204`) |
+//! | `DELETE /v1/threads/{id}` | Delete the chat for good, as the web's Delete does (`204`; `404 not_found`; `409 busy` while an answer is being written, `409 changed`) (#11601) |
 //! | `GET /v1/computers` | `{computers: [Computer]}` |
+//! | `DELETE /v1/computers/{name}` | Remove the computer from the account: its check-ins, sync choice, waiting replies, and running work (`204`; `404 not_found`). Its synced chats stay; delete them one by one (#11601) |
 //! | `GET`/`PUT /v1/computers/{name}/sync` `{choice}` | The computer's (or phone's) sync choice, as `/coder/sync` |
 //! | `POST /v1/computers/{name}/activity` `{items: [Item]}` | Coder's running work on the computer; answers `{commands: [Command]}`, each handed out once. With `?kind=landing` (#11250), the landing queue's entries on the integrator computer (kind `landing`): they replace only that computer's landing items, keep its other items, and take no commands |
 //! | `GET /v1/agents` | `{computers: [{name, online, updated_unix, items}]}` |
 //! | `POST /v1/agents/actions` `{request_id, computer, item, action, question?, text?}` | Stop, approve, deny, or message an item, or take a paused item's choice (`your_key`, `openagents`, only when its `choices` list it): `202 {queued}`. On the `Environments` board (a Claude Code run on the person's environments, #11307) Stop and Message reach the run itself: `202 {queued, message}`, the message waiting for the run's next turn |
+//!
+//! A request with `X-OpenAgents-Test: 1` is a test run
+//! ([`crate::test_runs`]): the chat it starts never lists and is deleted
+//! within the hour, and its computer's sync choice and running work are
+//! never recorded.
 //!
 //! A phone chat is a synced chat ([`crate::chat_store::Terminal`]) whose
 //! session starts with [`PHONE_PREFIX`], uploaded through
@@ -75,7 +82,9 @@ pub(crate) fn routes() -> Router<App> {
         .route("/v1/threads", get(threads).post(start))
         .route(
             "/v1/threads/{id}",
-            get(thread).patch(crate::projects::api::move_thread),
+            get(thread)
+                .patch(crate::projects::api::move_thread)
+                .delete(delete_thread),
         )
         .route(
             "/v1/threads/{id}/messages",
@@ -92,6 +101,10 @@ pub(crate) fn routes() -> Router<App> {
             get(read_file).delete(remove_file),
         )
         .route("/v1/computers", get(computers_route))
+        .route(
+            "/v1/computers/{name}",
+            axum::routing::delete(remove_computer),
+        )
         .route("/v1/computers/{name}/sync", get(sync_get).put(sync_put))
         .route("/v1/computers/{name}/activity", post(activity))
         .route("/v1/agents", get(agents))
@@ -471,6 +484,8 @@ async fn start(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Respo
     let store = &app.config.chat_store;
     let id = sent.request_id.clone();
     let existed = matches!(store.load(&owner, &id).await, Ok(Some(_)));
+    // A test run's chat never lists, and goes within the hour (#11601).
+    crate::test_runs::note_if_marked(store, &headers, &owner, &id).await;
     let files = match crate::chat_files::take(store, &owner, &id, &sent.files.join(",")).await {
         Ok(files) => files,
         Err(message) => return refused(StatusCode::BAD_REQUEST, "files", message),
@@ -592,6 +607,101 @@ async fn remove_file(
     }
 }
 
+/// `DELETE /v1/threads/{id}` (#11601): the web's Delete, for the apps and
+/// the `openagents chats delete` command.
+async fn delete_thread(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Response {
+    let owner = match coder_sync::owner(&app, &headers).await {
+        Ok(owner) => owner,
+        Err(response) => return response,
+    };
+    if !crate::chat_store::valid_id(&id) {
+        return not_found();
+    }
+    let record = match app.config.chat_store.load(&owner, &id).await {
+        Ok(Some(loaded)) if !loaded.conversation.deleted() => loaded,
+        Ok(_) | Err(Error::Invalid(_)) => return not_found(),
+        Err(error) => return stored(&error),
+    };
+    use crate::pages::chat::Removed;
+    match crate::pages::chat::remove_owned(&app, &owner, &record).await {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(Removed::Busy) => refused(
+            StatusCode::CONFLICT,
+            "busy",
+            "Wait for the answer to finish, then delete this chat.",
+        ),
+        Err(Removed::Changed) => refused(
+            StatusCode::CONFLICT,
+            "changed",
+            "This chat just changed. Try again.",
+        ),
+        Err(Removed::Unavailable) => refused(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "unavailable",
+            "Try again later.",
+        ),
+    }
+}
+
+/// Remove computer `name` from the account (#11601): its check-ins, sync
+/// choice, waiting replies, and running work. Its synced chats stay.
+/// Returns whether it was there.
+pub(crate) async fn remove_computer_named(
+    store: &Store,
+    owner: &str,
+    name: &str,
+) -> Result<bool, Error> {
+    let name = line(name, 64);
+    let gone = name.clone();
+    let mut found = false;
+    let before = store.computers(owner).await?;
+    if before.seen.contains_key(&name)
+        || before.sync.contains_key(&name)
+        || before.waiting.values().any(|on| *on == name)
+    {
+        found = true;
+        store
+            .update_computers(owner, move |computers| {
+                let had =
+                    computers.seen.remove(&gone).is_some() | computers.sync.remove(&gone).is_some();
+                let waiting = computers.waiting.len();
+                computers.waiting.retain(|_, on| *on != gone);
+                had || computers.waiting.len() != waiting
+            })
+            .await?;
+    }
+    let gone = name.clone();
+    let boards = update_agents(store, owner, move |agents| {
+        let had = agents.boards.remove(&gone).is_some();
+        let commands = agents.commands.len();
+        agents.commands.retain(|waiting| waiting.computer != gone);
+        let changed = had || agents.commands.len() != commands;
+        (changed, had)
+    })
+    .await?;
+    Ok(found || boards)
+}
+
+async fn remove_computer(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(name): Path<String>,
+) -> Response {
+    let owner = match coder_sync::owner(&app, &headers).await {
+        Ok(owner) => owner,
+        Err(response) => return response,
+    };
+    match remove_computer_named(&app.config.chat_store, &owner, &name).await {
+        Ok(true) => StatusCode::NO_CONTENT.into_response(),
+        Ok(false) => refused(StatusCode::NOT_FOUND, "not_found", "No such computer."),
+        Err(error) => stored(&error),
+    }
+}
+
 async fn computers_route(State(app): State<App>, headers: HeaderMap) -> Response {
     let owner = match coder_sync::owner(&app, &headers).await {
         Ok(owner) => owner,
@@ -650,6 +760,10 @@ async fn sync_put(
             "Send {choice: all or local}.",
         );
     };
+    // A test run's choice is answered, never recorded (#11601).
+    if crate::test_runs::marked(&headers) {
+        return answer(StatusCode::OK, json!({"choice": picked.as_str()}));
+    }
     match coder_sync::choose(&app.config.chat_store, &owner, &name, picked).await {
         Ok(Ok(picked)) => answer(StatusCode::OK, json!({"choice": picked.as_str()})),
         Ok(Err(_)) => refused(
@@ -1003,6 +1117,10 @@ async fn activity(
         );
     };
     let store = &app.config.chat_store;
+    // A test run's computer is never recorded (#11601).
+    if crate::test_runs::marked(&headers) {
+        return answer(StatusCode::OK, json!({"commands": []}));
+    }
     // A report is a check-in too: the computer is online.
     if let Err(error) = coder_sync::check_in(store, &owner, &computer).await {
         return stored(&error);

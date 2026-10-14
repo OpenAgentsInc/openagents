@@ -645,6 +645,33 @@ pub enum Answer {
     Retry,
 }
 
+/// The header that marks a request as a test run: the website hides what
+/// it makes from every list, deletes it within an hour, and records no
+/// computer for it.
+pub const TEST_HEADER: &str = "x-openagents-test";
+/// Set to `1` in a test, smoke, or gate run, so every call carries
+/// [`TEST_HEADER`] and nothing it does stays on the account.
+pub const TEST_RUN_ENV: &str = "OPENAGENTS_TEST_RUN";
+
+/// Whether this process is a test run ([`TEST_RUN_ENV`] is `1`).
+#[must_use]
+pub fn test_run() -> bool {
+    test_run_from(std::env::var(TEST_RUN_ENV).ok().as_deref())
+}
+
+fn test_run_from(value: Option<&str>) -> bool {
+    value.is_some_and(|value| matches!(value.trim(), "1" | "true" | "yes"))
+}
+
+/// `request`, with [`TEST_HEADER`] when this process is a test run.
+pub fn mark(request: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+    if test_run() {
+        request.header(TEST_HEADER, "1")
+    } else {
+        request
+    }
+}
+
 fn client() -> Option<reqwest::Client> {
     reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
@@ -662,9 +689,10 @@ async fn call(
     body: Option<&Value>,
 ) -> (Answer, Value) {
     let method_has_body = matches!(method, reqwest::Method::POST | reqwest::Method::PUT);
-    let mut request = http
-        .request(method, format!("{}{path}", saved.origin))
-        .bearer_auth(saved.token());
+    let mut request = mark(
+        http.request(method, format!("{}{path}", saved.origin))
+            .bearer_auth(saved.token()),
+    );
     if let Some(body) = body {
         request = request.json(body);
     } else if method_has_body {
@@ -1165,7 +1193,7 @@ pub async fn send_capture(
     match result {
         Ok(bytes) => {
             let send = |path: String| {
-                http.put(format!("{}{path}", saved.origin))
+                mark(http.put(format!("{}{path}", saved.origin)))
                     .bearer_auth(saved.token())
                     .header(reqwest::header::CONTENT_TYPE, "application/octet-stream")
                     .body(bytes.clone())

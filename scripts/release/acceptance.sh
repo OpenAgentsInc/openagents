@@ -105,6 +105,10 @@
 # finishes in a few steps (runs have no step limit, #10103); the chat router
 # answers a fixed handful of messages. A full run costs a few cents of engine usage.
 set -uo pipefail
+# A test run (#11601): whatever Coder and openagents make on openagents.com
+# here carries X-OpenAgents-Test: 1, so it is never listed and is deleted
+# within an hour.
+export OPENAGENTS_TEST_RUN=1
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 target="${CARGO_TARGET_DIR:-$root/target}"

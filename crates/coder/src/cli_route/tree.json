@@ -1621,6 +1621,36 @@
           }
         },
         {
+          "name": "remove",
+          "leaf": {
+            "path": [
+              "computer",
+              "remove"
+            ],
+            "usage": [
+              "remove NAME"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "remove"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "NAME"
+                  }
+                ]
+              }
+            ],
+            "summary": "Take a computer off your openagents.com account (its entry, sync choice, and running work); its chats stay. NAME as the Computers list shows it.",
+            "effect": "publishes",
+            "runs_on": "screen",
+            "screen": "account.computers"
+          }
+        },
+        {
           "name": "enable",
           "leaf": {
             "path": [
@@ -3722,6 +3752,36 @@
             ],
             "summary": "Print the thread as an ATIF-v1.8 trajectory whose session_id is ID; an account chat exports the same way.",
             "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "delete",
+          "leaf": {
+            "path": [
+              "chat",
+              "delete"
+            ],
+            "usage": [
+              "delete ID..."
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "delete"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "ID",
+                    "repeated": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Delete chats from the signed-in account on openagents.com for good (their IDs, as `chat threads --account` lists them); a terminal chat is deleted in Coder too. `openagents chats delete` is the same.",
+            "effect": "publishes",
             "runs_on": "connected_computer"
           }
         },

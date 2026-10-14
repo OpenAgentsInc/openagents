@@ -157,9 +157,10 @@ async fn send(
 ) -> Result<Value, String> {
     let http = client()?;
     let call = |path: String, body: Option<Vec<u8>>| {
-        let mut request = http
-            .request(method.clone(), format!("{}{path}", saved.origin))
-            .bearer_auth(saved.token());
+        let mut request = crate::mark(
+            http.request(method.clone(), format!("{}{path}", saved.origin))
+                .bearer_auth(saved.token()),
+        );
         if let Some(body) = body {
             request = request
                 .header(reqwest::header::CONTENT_TYPE, "application/json")

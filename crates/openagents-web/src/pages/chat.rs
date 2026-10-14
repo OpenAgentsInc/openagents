@@ -261,6 +261,8 @@ async fn start(State(app): State<App>, headers: HeaderMap, Form(prompt): Form<Pr
         Err(r) => return r,
     };
     let id = prompt.request_id.clone();
+    // A test run's chat never lists, and goes within the hour (#11601).
+    crate::test_runs::note_if_marked(&app.config.chat_store, &headers, &owner, &id).await;
     let selection = match selected(&app, &owner, &prompt) {
         Ok(v) => v,
         Err(r) => return r,
@@ -1375,45 +1377,66 @@ async fn delete(
         Ok(v) => v,
         Err(r) => return r,
     };
+    match remove_owned(&app, &owner, &record).await {
+        Ok(()) => crate::chat_html::protect(Redirect::to("/").into_response()),
+        Err(Removed::Busy) => not_deleted(
+            &id,
+            StatusCode::CONFLICT,
+            "Wait for the answer to finish, then delete this chat.",
+        ),
+        Err(Removed::Changed) => not_deleted(
+            &id,
+            StatusCode::CONFLICT,
+            "This chat just changed. Try again.",
+        ),
+        Err(Removed::Unavailable) => not_deleted(
+            &id,
+            StatusCode::SERVICE_UNAVAILABLE,
+            "We couldn't delete this chat right now. Try again.",
+        ),
+    }
+}
+
+/// Why [`remove_owned`] didn't delete a chat.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum Removed {
+    /// An answer is still being written.
+    Busy,
+    /// The chat changed since it was read.
+    Changed,
+    /// The store couldn't be reached.
+    Unavailable,
+}
+
+/// Delete the owner's chat read at `record`, as the web's Delete and the
+/// apps' `DELETE /v1/threads/{id}` (#11601) do: an answer still being
+/// written is waited for; a Coder chat is deleted in Coder too, the next
+/// time it checks (`crate::coder_sync`); its share link stops.
+pub(crate) async fn remove_owned(app: &App, owner: &str, record: &Loaded) -> Result<(), Removed> {
     let stale = match &record.conversation.pending {
         Some(pending) if now().saturating_sub(pending.started_unix) <= LEASE_SECONDS => {
-            return not_deleted(
-                &id,
-                StatusCode::CONFLICT,
-                "Wait for the answer to finish, then delete this chat.",
-            );
+            return Err(Removed::Busy);
         }
         Some(pending) => Some(pending.request_id.clone()),
         None => None,
     };
-    // A Coder chat is deleted in Coder too, the next time it checks
-    // (`crate::coder_sync`).
-    match app.config.chat_store.remove(&record).await {
+    match app.config.chat_store.remove(record).await {
         Ok(_) => {}
-        Err(Error::Conflict) => {
-            return not_deleted(
-                &id,
-                StatusCode::CONFLICT,
-                "This chat just changed. Try again.",
-            );
-        }
+        Err(Error::Conflict) => return Err(Removed::Changed),
         Err(e) => {
             eprintln!("openagents-web: conversation storage: {e}");
-            return not_deleted(
-                &id,
-                StatusCode::SERVICE_UNAVAILABLE,
-                "We couldn't delete this chat right now. Try again.",
-            );
+            return Err(Removed::Unavailable);
         }
     }
     if let Some(request_id) = stale {
-        let _ = app.config.chat_store.release(&owner, &request_id).await;
+        let _ = app.config.chat_store.release(owner, &request_id).await;
     }
     // Its link stops too (it would answer 404 anyway: the chat is gone).
-    if let Err(error) = share::stop(&app.config.chat_store, &owner, &id).await {
+    let id = &record.conversation.id;
+    if let Err(error) = share::stop(&app.config.chat_store, owner, id).await {
         eprintln!("openagents-web: chat share: {error}");
     }
-    crate::chat_html::protect(Redirect::to("/").into_response())
+    Ok(())
 }
 
 /// The confirm form posts without scripts, so a refusal is a whole page

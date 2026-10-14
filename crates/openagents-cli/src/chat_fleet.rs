@@ -507,6 +507,7 @@ pub(super) fn spawn_with(
         }
     };
     let http = reqwest::Client::builder()
+        .default_headers(crate::keys::test_run_headers())
         .timeout(Duration::from_secs(20))
         .build()
         .ok()?;

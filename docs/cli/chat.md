@@ -40,6 +40,7 @@ openagents chat answer --thread ID TEXT
 openagents chat threads [--all] [--limit N]
 openagents chat read --thread ID
 openagents chat export --thread ID
+openagents chat delete ID...                   also `openagents chats delete ID...`
 openagents chat run-coder --thread ID
 openagents chat run-command --thread ID
 openagents chat apply --thread ID
@@ -68,6 +69,16 @@ Every command also takes `--scratch`, `--local`, and `--socket PATH`, and
 - `export` prints the thread as its `ATIF-v1.8` trajectory
   ([below](#threads-as-atif)). The command checks the document with
   `crates/atif` before it prints it.
+- `delete ID...` deletes chats from the signed-in account on openagents.com
+  for good (`DELETE /v1/threads/{id}`), each ID as `chat threads --account`
+  lists it, and reports each one; it exits 1 when any was not deleted. A
+  terminal chat is deleted in Coder too. `openagents computers remove NAME`
+  takes a computer off the account (`DELETE /v1/computers/{name}`; its chats
+  stay).
+- With `OPENAGENTS_TEST_RUN=1`, every request `openagents` and Coder make
+  to openagents.com carries `X-OpenAgents-Test: 1`: the site lists none of
+  the chats such a run starts or syncs, deletes them within an hour, and
+  records no computer for it. Tests, smokes, and gates set it.
 - `follow` replays the thread's Coder task from its first event and keeps
   streaming until it ends or asks. Ctrl-C stops following, not the task.
 - `stop` stops the thread's running Coder task.

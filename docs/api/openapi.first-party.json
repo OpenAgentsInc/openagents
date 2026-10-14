@@ -6078,7 +6078,7 @@
     "/v1/threads": {
       "get": {
         "operationId": "listThreads",
-        "summary": "The account's chats (web, terminal, phone) and computers.",
+        "summary": "The account's chats (web, terminal, phone) and computers. Any request with `X-OpenAgents-Test: 1` is a test run: the chats it starts or syncs are never listed and are deleted within an hour, and its computer check-in, sync choice, and running work are not recorded.",
         "tags": [
           "Threads"
         ],
@@ -6146,6 +6146,81 @@
       "get": {
         "operationId": "getThread",
         "summary": "One chat and its newest messages.",
+        "tags": [
+          "Threads"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Done.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request isn't valid (`invalid_request`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No key or session, or it was rejected (`authentication`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed here (`permission`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Nothing with that id here (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The id id.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "deleteThread",
+        "summary": "Delete one of the account's chats for good, as the web's Delete does (`204`; `404` when there is none; `409` while an answer is still being written). A terminal chat is deleted in Coder too.",
         "tags": [
           "Threads"
         ],
@@ -8712,6 +8787,84 @@
             "in": "path",
             "required": true,
             "description": "The who id.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "x-served-by": "web"
+    },
+    "/v1/computers/{name}": {
+      "delete": {
+        "operationId": "removeComputer",
+        "summary": "Remove a computer (or phone) from the account: its entry, sync choice, waiting replies, and running work (`204`; `404` when there is none). Its chats stay.",
+        "tags": [
+          "Computers"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Done.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request isn't valid (`invalid_request`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No key or session, or it was rejected (`authentication`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed here (`permission`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Nothing with that id here (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "description": "The name id.",
             "schema": {
               "type": "string"
             }

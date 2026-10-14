@@ -264,8 +264,7 @@ async fn upload_to(
             .collect();
         url.push_str(&format!("&item={item}&epoch={epoch}"));
     }
-    let Ok(response) = http
-        .put(url)
+    let Ok(response) = crate::mark(http.put(url))
         .bearer_auth(saved.token())
         .header(reqwest::header::CONTENT_TYPE, "application/octet-stream")
         .body(bytes)

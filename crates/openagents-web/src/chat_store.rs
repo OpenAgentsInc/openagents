@@ -898,10 +898,13 @@ impl Store {
     }
 
     /// The list is private to one visitor. Fail explicitly if it exceeds [`MAX_LIST`].
-    /// Coder chats deleted on the web are left out ([`Conversation::deleted`]).
+    /// Coder chats deleted on the web are left out ([`Conversation::deleted`]),
+    /// and so are test runs' chats ([`crate::test_runs`]).
     pub(crate) async fn list(&self, owner: &str) -> Result<Vec<Conversation>, Error> {
         let mut rows = self.list_with_deleted(owner).await?;
-        rows.retain(|chat| !chat.deleted());
+        // Test runs' chats never list (#11601, `crate::test_runs`).
+        let hidden = crate::test_runs::hidden(self, owner).await?;
+        rows.retain(|chat| !chat.deleted() && !hidden.contains(&chat.id));
         Ok(rows)
     }
 

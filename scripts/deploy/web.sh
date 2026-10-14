@@ -383,6 +383,24 @@ if {"coder-serve", "gateway"} <= names:
     if not any(e["name"] == "CODER_ACCOUNTS_URL" for e in serve_env):
         serve_env.append({"name": "CODER_ACCOUNTS_URL", "value": "http://127.0.0.1:8791"})
         sys.stderr.write("  coder-serve env CODER_ACCOUNTS_URL added\n")
+# The production test account (#11601): agents' and gates' checks run as
+# an account made with the operator sign-up token (Secret Manager
+# openagents-gateway-production-smoke-signup-token, never printed), never
+# as the owner. The gateway takes the token; the site forwards the
+# operator's POST /v1/accounts and a key's POST /v1/sessions. No-ops once
+# the live spec has them.
+if "gateway" in names:
+    gw = next(c for c in spec["containers"] if c["name"] == "gateway")
+    gw_env = gw.setdefault("env", [])
+    if not any(e["name"] == "SMOKE_SIGNUP_TOKEN" for e in gw_env):
+        gw_env.append({"name": "SMOKE_SIGNUP_TOKEN",
+                       "valueFrom": {"secretKeyRef": {
+                           "name": "openagents-gateway-production-smoke-signup-token",
+                           "key": "latest"}}})
+        sys.stderr.write("  gateway env SMOKE_SIGNUP_TOKEN added (operator sign-up)\n")
+    if not any(e["name"] == "OPENAGENTS_WEB_API_OPERATOR_SIGNUP" for e in envs):
+        envs.append({"name": "OPENAGENTS_WEB_API_OPERATOR_SIGNUP", "value": "1"})
+        sys.stderr.write("  web env OPENAGENTS_WEB_API_OPERATOR_SIGNUP added\n")
 traffic = []
 for entry in service["spec"].get("traffic", []):
     if entry.get("latestRevision"):

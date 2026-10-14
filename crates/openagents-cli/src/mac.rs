@@ -228,6 +228,7 @@ struct Site {
 fn account(dir: Option<&str>) -> Result<Site, String> {
     let saved = saved(dir)?;
     let http = reqwest::blocking::Client::builder()
+        .default_headers(crate::keys::test_run_headers())
         .redirect(reqwest::redirect::Policy::none())
         .connect_timeout(Duration::from_secs(10))
         .timeout(Duration::from_secs(READ_WAIT + 30))

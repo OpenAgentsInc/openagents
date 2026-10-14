@@ -815,3 +815,24 @@ fn a_chat_carries_its_last_steps_time() {
         upload(&bare, "Studio", &Screen::shapes()).digest
     );
 }
+
+#[test]
+fn test_run_marker_reads_the_env_value() {
+    assert!(test_run_from(Some("1")));
+    assert!(test_run_from(Some(" true ")));
+    assert!(!test_run_from(Some("0")));
+    assert!(!test_run_from(Some("")));
+    assert!(!test_run_from(None));
+    assert_eq!(TEST_HEADER, "x-openagents-test");
+}
+
+#[test]
+fn a_marked_request_carries_the_test_header_only_in_a_test_run() {
+    let http = reqwest::Client::new();
+    let request = mark(http.get("http://127.0.0.1:9/x")).build().unwrap();
+    assert_eq!(
+        request.headers().get(TEST_HEADER).is_some(),
+        test_run(),
+        "the header follows {TEST_RUN_ENV}"
+    );
+}

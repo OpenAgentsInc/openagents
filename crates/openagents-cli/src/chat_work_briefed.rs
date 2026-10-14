@@ -414,6 +414,7 @@ pub(super) fn work_cloud(
 ) -> Result<u8, Failure> {
     let saved = crate::mac::saved(None).map_err(Failure::Refused)?;
     let http = reqwest::blocking::Client::builder()
+        .default_headers(crate::keys::test_run_headers())
         .redirect(reqwest::redirect::Policy::none())
         .connect_timeout(Duration::from_secs(10))
         .timeout(Duration::from_secs(60))

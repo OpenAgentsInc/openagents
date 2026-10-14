@@ -1515,6 +1515,16 @@ async fn upload(
             "Send {computer, title, messages}.",
         );
     };
+    // A test run's chat never lists, and goes within the hour (#11601).
+    if valid_session(&session) {
+        crate::test_runs::note_if_marked(
+            &app.config.chat_store,
+            &headers,
+            &owner,
+            &chat_id(&owner, &session),
+        )
+        .await;
+    }
     let saved = save(&app.config.chat_store, &owner, &session, &upload).await;
     if let (Ok(Saved::Saved { .. }), Some(repository)) = (&saved, &upload.repository)
         && oa_auth::repos::full_name(repository)
@@ -1601,6 +1611,26 @@ async fn check_in_route(State(app): State<App>, headers: HeaderMap, body: Bytes)
     let Ok(sent) = serde_json::from_slice::<CheckIn>(&body) else {
         return refused(StatusCode::BAD_REQUEST, "invalid", "Send {computer}.");
     };
+    // A test run's computer is never recorded (#11601): it is told what
+    // waits for it, from the record as it stands.
+    if crate::test_runs::marked(&headers) {
+        let computer = line(&sent.computer, 64);
+        return match app.config.chat_store.computers(&owner).await {
+            Ok(computers) => answer(
+                StatusCode::OK,
+                json!({
+                    "waiting": computers
+                        .waiting
+                        .iter()
+                        .filter(|(_, on)| **on == computer)
+                        .map(|(session, _)| session.clone())
+                        .collect::<Vec<_>>(),
+                    "sync": computers.sync.get(&computer).map(|c| c.as_str()),
+                }),
+            ),
+            Err(error) => stored(&error),
+        };
+    }
     match check_in(&app.config.chat_store, &owner, &sent.computer).await {
         Ok(Ok(waiting)) => {
             let sync = choice(&app.config.chat_store, &owner, &sent.computer)
@@ -1661,6 +1691,10 @@ async fn choose_route(State(app): State<App>, headers: HeaderMap, body: Bytes) -
             "Send {computer, choice: all or local}.",
         );
     };
+    // A test run's choice is answered, never recorded (#11601).
+    if crate::test_runs::marked(&headers) {
+        return answer(StatusCode::OK, json!({"choice": picked.as_str()}));
+    }
     match choose(&app.config.chat_store, &owner, &computer, picked).await {
         Ok(Ok(picked)) => answer(StatusCode::OK, json!({"choice": picked.as_str()})),
         Ok(Err(saved)) => respond(Ok(saved)),

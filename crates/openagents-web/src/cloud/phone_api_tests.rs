@@ -392,3 +392,235 @@ async fn an_app_sends_a_file_with_a_web_reply() {
     .await;
     assert_eq!(status, StatusCode::CONFLICT, "{body}");
 }
+
+/// `call` as a test run (#11601): with `X-OpenAgents-Test: 1`.
+async fn marked_call(
+    site: &Router,
+    method: Method,
+    path: &str,
+    bearer: &str,
+    body: Value,
+) -> (StatusCode, Value) {
+    let response = site
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(method)
+                .uri(path)
+                .header(header::HOST, HOST)
+                .header(header::AUTHORIZATION, format!("Bearer {bearer}"))
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(crate::test_runs::HEADER, "1")
+                .body(Body::from(body.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = response.status();
+    let bytes = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
+    (
+        status,
+        serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+    )
+}
+
+/// #11601: `DELETE /v1/threads/{id}` deletes the owner's chat for good;
+/// another account can't, and a second delete finds nothing.
+#[tokio::test]
+async fn a_chat_is_deleted_by_its_owner_only() {
+    let (fixture, store) = with_store().await;
+    let site = &fixture.site;
+    let id = "00000000-0000-4000-8000-0000000000d1";
+    store
+        .create(&web_chat(&account_owner("alice"), id))
+        .await
+        .unwrap();
+    let path = format!("/v1/threads/{id}");
+    let (status, _) = call(site, Method::DELETE, &path, Some(&token("bob")), None).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let alice = token("alice");
+    let (status, _) = call(site, Method::DELETE, &path, Some(&alice), None).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (_, body) = call(site, Method::GET, "/v1/threads", Some(&alice), None).await;
+    assert_eq!(body["threads"], json!([]));
+    assert!(
+        store
+            .load(&account_owner("alice"), id)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let (status, _) = call(site, Method::DELETE, &path, Some(&alice), None).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    // A synced chat is deleted too (Coder deletes its copy when it checks).
+    let chat = terminal_chat(&store).await;
+    let path = format!("/v1/threads/{chat}");
+    let (status, _) = call(site, Method::DELETE, &path, Some(&alice), None).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (_, body) = call(site, Method::GET, "/v1/threads", Some(&alice), None).await;
+    assert_eq!(body["threads"], json!([]));
+}
+
+/// #11601: `DELETE /v1/computers/{name}` removes the computer's check-ins,
+/// sync choice, and running work; its synced chats stay.
+#[tokio::test]
+async fn a_computer_is_removed_and_its_chats_stay() {
+    let (fixture, store) = with_store().await;
+    let site = &fixture.site;
+    let alice = token("alice");
+    let owner = account_owner("alice");
+    let chat = terminal_chat(&store).await;
+    crate::coder_sync::check_in(&store, &owner, "Studio")
+        .await
+        .unwrap()
+        .unwrap();
+    crate::coder_sync::check_in(&store, &owner, "Laptop")
+        .await
+        .unwrap()
+        .unwrap();
+    crate::coder_sync::choose(&store, &owner, "Studio", crate::chat_store::SyncChoice::All)
+        .await
+        .unwrap()
+        .unwrap();
+    crate::phone_api::report(&store, &owner, "Studio", Vec::new())
+        .await
+        .unwrap();
+    let (status, _) = call(
+        site,
+        Method::DELETE,
+        "/v1/computers/Studio",
+        Some(&token("bob")),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, _) = call(
+        site,
+        Method::DELETE,
+        "/v1/computers/Studio",
+        Some(&alice),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (_, body) = call(site, Method::GET, "/v1/computers", Some(&alice), None).await;
+    let names: Vec<&str> = body["computers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(names, ["Laptop"]);
+    let agents = crate::phone_api::read_agents(&store, &owner).await.unwrap();
+    assert!(!agents.boards.contains_key("Studio"));
+    let (_, body) = call(site, Method::GET, "/v1/threads", Some(&alice), None).await;
+    assert_eq!(body["threads"][0]["id"], chat.as_str());
+    let (status, _) = call(
+        site,
+        Method::DELETE,
+        "/v1/computers/Studio",
+        Some(&alice),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    // A name with a space, as the apps send it.
+    crate::coder_sync::check_in(&store, &owner, "OA Phone 59 Gate")
+        .await
+        .unwrap()
+        .unwrap();
+    let (status, _) = call(
+        site,
+        Method::DELETE,
+        "/v1/computers/OA%20Phone%2059%20Gate",
+        Some(&alice),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+}
+
+/// #11601: a test run's chats never list and go within the hour; its
+/// computer is never recorded.
+#[tokio::test]
+async fn a_test_run_leaves_nothing_listed() {
+    let (fixture, store) = with_store().await;
+    let site = &fixture.site;
+    let alice = token("alice");
+    let owner = account_owner("alice");
+    let (status, _) = marked_call(
+        site,
+        Method::POST,
+        "/v1/computers/check-in",
+        &alice,
+        json!({"computer": "harness-acceptance-gate"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = marked_call(
+        site,
+        Method::POST,
+        "/v1/computers/harness-acceptance-gate/activity",
+        &alice,
+        json!({"items": []}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = marked_call(
+        site,
+        Method::PUT,
+        "/v1/computers/harness-acceptance-gate/sync",
+        &alice,
+        json!({"choice": "all"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, body) = marked_call(
+        site,
+        Method::PUT,
+        "/coder/sessions/gate-s1",
+        &alice,
+        json!({"computer": "harness-acceptance-gate", "title": "who are you?",
+               "messages": [{"role": "user", "text": "who are you?"}]}),
+    )
+    .await;
+    assert!(status.is_success(), "{status} {body}");
+    let (_, body) = call(site, Method::GET, "/v1/computers", Some(&alice), None).await;
+    assert_eq!(body["computers"], json!([]));
+    assert!(
+        crate::phone_api::read_agents(&store, &owner)
+            .await
+            .unwrap()
+            .boards
+            .is_empty()
+    );
+    let (_, body) = call(site, Method::GET, "/v1/threads", Some(&alice), None).await;
+    assert_eq!(body["threads"], json!([]));
+    // It is still there to read back, until the sweep.
+    let made = store.list_with_deleted(&owner).await.unwrap();
+    assert_eq!(made.len(), 1);
+    let id = made[0].id.clone();
+    let (status, _) = call(
+        site,
+        Method::GET,
+        &format!("/v1/threads/{id}"),
+        Some(&alice),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    // A person's own chat is never swept.
+    let mine = "00000000-0000-4000-8000-0000000000d2";
+    store.create(&web_chat(&owner, mine)).await.unwrap();
+    assert_eq!(crate::test_runs::sweep(&store, now()).await.unwrap(), 0);
+    assert_eq!(
+        crate::test_runs::sweep(&store, now() + crate::test_runs::KEEP_SECONDS)
+            .await
+            .unwrap(),
+        1
+    );
+    assert!(store.load(&owner, &id).await.unwrap().is_none());
+    let (_, body) = call(site, Method::GET, "/v1/threads", Some(&alice), None).await;
+    assert_eq!(body["threads"][0]["id"], mine);
+    assert_eq!(body["threads"].as_array().unwrap().len(), 1);
+}

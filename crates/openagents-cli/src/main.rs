@@ -433,7 +433,7 @@ fn main() -> ExitCode {
     // the delegates' `PATH` (#10756).
     if matches!(
         command.as_str(),
-        "coder" | "host" | "task" | "chat" | "terminal" | "studio"
+        "coder" | "host" | "task" | "chat" | "chats" | "terminal" | "studio"
     ) {
         coder::task::targets::enable_lease_shims();
     }
@@ -496,7 +496,7 @@ fn main() -> ExitCode {
         "browser" => browser::run(&output, &rest),
         "capacity" => capacity::run(&output, &rest),
         "artifact" | "artifacts" => artifact::run(&output, &rest),
-        "chat" => chat::run(&output, &rest),
+        "chat" | "chats" => chat::run(&output, &rest),
         "terminal" => screen::run(&output, &rest),
         "computer" | "computers" => computer::run(&output, &rest),
         #[cfg(unix)]

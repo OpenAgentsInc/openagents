@@ -35,6 +35,21 @@ build's entry at the top of `CHANGELOG` in
 script refuses a dirty checkout or a build number App Store Connect already
 has. Report the build number and the script's last line.
 
+## Never test on the owner's account (owner, 2026-10-14, binding)
+
+No test, smoke, gate, or agent check may leave chats, computers, projects,
+or drafts on the owner's account (chris@openagents.com) in production.
+Production checks sign in as the dedicated test account (its key in
+`~/work/.secrets/openagents-test-account.env`, `OPENAGENTS_TOKEN=…`; never
+print it), not `coder-gate-signin.env`. Only a check that truly needs the
+owner's own data (Gmail, Drive) may use the owner's account, and then it
+must set `OPENAGENTS_TEST_RUN=1` (Coder, `openagents`, and the phone app then
+send `X-OpenAgents-Test: 1`) or send that header itself, so the site lists
+nothing it makes, records no computer, and deletes its chats within an
+hour; and it deletes what it made before it ends (`openagents chats delete
+ID...`, `openagents computers remove NAME`, `openagents projects remove
+ID`). A leftover is a bug to fix in the same session (#11601).
+
 ## User-facing copy (owner, 2026-10-08)
 
 Never put **machine talk** in anything a user sees: web pages, native views,

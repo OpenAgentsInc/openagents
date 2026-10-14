@@ -51,7 +51,8 @@ OPENER = urllib.request.build_opener(NoRedirect)
 
 
 def call(url, method="GET", headers=None, body=None):
-    request = urllib.request.Request(url, method=method, headers=headers or {}, data=body)
+    # A test run (#11601): the site hides and soon deletes what it makes.
+    request = urllib.request.Request(url, method=method, headers={"X-OpenAgents-Test": "1", **(headers or {})}, data=body)
     try:
         with OPENER.open(request, timeout=30) as response:
             return response.status, dict(response.headers), response.read().decode("utf-8", "replace")

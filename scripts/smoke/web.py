@@ -96,7 +96,8 @@ class Site:
 
     def request(self, path, method="GET", form=None, body=None, headers=None, cookies=True):
         url = path if path.startswith("http") else self.base + path
-        h = {"User-Agent": "openagents-web-smoke/1"}
+        # A test run (#11601): the site hides and soon deletes what it makes.
+        h = {"User-Agent": "openagents-web-smoke/1", "X-OpenAgents-Test": "1"}
         data = None
         if form is not None:
             data = urllib.parse.urlencode(form).encode()
@@ -265,7 +266,7 @@ def ask(base, question, stream=False):
 def read_events(site, chat, seconds=60):
     """Whether /chat/{id}/events streams server-sent events."""
     url = f"{site.base}/chat/{chat}/events"
-    headers = {"User-Agent": "openagents-web-smoke/1", "Accept": "text/event-stream",
+    headers = {"User-Agent": "openagents-web-smoke/1", "X-OpenAgents-Test": "1", "Accept": "text/event-stream",
                "Cookie": "; ".join(f"{k}={v}" for k, v in site.cookies.items())}
     try:
         r = OPENER.open(urllib.request.Request(url, headers=headers), timeout=seconds)

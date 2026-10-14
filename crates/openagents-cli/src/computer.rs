@@ -34,6 +34,9 @@ pub(crate) const USAGE: &str = "usage: openagents computer COMMAND [OPTIONS]
   devices HOST              Fetch and print the host's device list.
   revoke HOST DEVICE
   forget HOST               Drop the host from this device (its grant stays).
+  remove NAME               Take a computer off your openagents.com account
+                            (its entry, sync choice, and running work); its
+                            chats stay. NAME as the Computers list shows it.
   enable HOST | disable HOST | retry HOST
   workspaces HOST           Fetch the workspace labels the host accepts.
   task HOST --workspace LABEL --title TITLE [--engine ENGINE] PROMPT...
@@ -95,6 +98,7 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::device("devices", Effect::ReadOnly),
     Declared::screen("revoke", Effect::Grants, "account.computers"),
     Declared::screen("forget", Effect::LocalWrite, "account.computers"),
+    Declared::screen("remove", Effect::Publishes, "account.computers"),
     Declared::screen("enable", Effect::LocalWrite, "account.computers"),
     Declared::screen("disable", Effect::LocalWrite, "account.computers"),
     Declared::screen("retry", Effect::LocalWrite, "account.computers"),
@@ -288,6 +292,37 @@ fn render_hosts(value: &Value) -> String {
     )
 }
 
+/// `computer remove NAME`: take the computer off the signed-in account on
+/// openagents.com (`DELETE /v1/computers/{name}`).
+fn remove(output: &Output, words: &[String]) -> u8 {
+    let name = match words {
+        [name] if !name.starts_with('-') => name.as_str(),
+        _ => {
+            return output.usage(
+                "computer",
+                "`computer remove` takes one computer name, quoted when it has spaces",
+                USAGE,
+            );
+        }
+    };
+    let site = match crate::keys::Site::open(None) {
+        Ok(site) => site,
+        Err(message) => return output.fail("computer", &message),
+    };
+    match crate::account_threads::remove_computer(&site, name) {
+        Ok(()) => {
+            output.emit(&json!({"name": name, "removed": true}), |value| {
+                format!(
+                    "removed {} from your account",
+                    value["name"].as_str().unwrap_or_default()
+                )
+            });
+            0
+        }
+        Err(message) => output.fail("computer", &message),
+    }
+}
+
 pub fn run(output: &Output, words: &[String]) -> u8 {
     let Some((command, rest)) = words.split_first() else {
         return output.usage("computer", "a command is required", USAGE);
@@ -303,6 +338,11 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
     {
         println!("{LINK_USAGE}");
         return 0;
+    }
+    // `computers remove NAME`: the account's record on openagents.com, not
+    // this device's link, so no host or device key is opened.
+    if command == "remove" {
+        return remove(output, rest);
     }
     let args = match Args::parse(
         rest,

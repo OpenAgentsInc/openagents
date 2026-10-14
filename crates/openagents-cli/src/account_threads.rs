@@ -301,9 +301,97 @@ pub(crate) fn as_thread(row: &Value, turns: &[Value]) -> openagents_chat::thread
     }
 }
 
+/// The URL of `/v1/threads/{id}` or `/v1/computers/{name}`, with the last
+/// segment encoded.
+fn item_url(collection_url: &str, item: &str) -> Result<reqwest::Url, String> {
+    let mut url = reqwest::Url::parse(collection_url)
+        .map_err(|_| "The sign-in names an invalid website.".to_owned())?;
+    url.path_segments_mut()
+        .map_err(|()| "The sign-in names an invalid website.".to_owned())?
+        .push(item);
+    Ok(url)
+}
+
+/// Delete one of the account's chats for good (`DELETE /v1/threads/{id}`).
+pub(crate) fn delete_thread(site: &Site, id: &str) -> Result<(), String> {
+    let url = item_url(&site.url("/v1/threads"), id)?;
+    Site::answer(site.http.delete(url).bearer_auth(site.saved.token()).send()).map(|_| ())
+}
+
+/// Remove a computer from the account (`DELETE /v1/computers/{name}`): its
+/// entry, sync choice, and running-work board. Its chats stay.
+pub(crate) fn remove_computer(site: &Site, name: &str) -> Result<(), String> {
+    let url = item_url(&site.url("/v1/computers"), name)?;
+    Site::answer(site.http.delete(url).bearer_auth(site.saved.token()).send()).map(|_| ())
+}
+
+/// `openagents chat delete ID...` (`chats delete`): each ID deleted, each
+/// result reported; fails when any one did.
+pub(crate) fn delete_command(output: &crate::Output, words: &[String], usage: &str) -> u8 {
+    let ids: Vec<&String> = words.iter().filter(|word| !word.starts_with('-')).collect();
+    if let Some(flag) = words.iter().find(|word| word.starts_with('-')) {
+        return output.usage("chat", &format!("unknown option `{flag}`"), usage);
+    }
+    if ids.is_empty() {
+        return output.usage("chat", "`chat delete` needs one or more chat IDs", usage);
+    }
+    let site = match Site::open(None) {
+        Ok(site) => site,
+        Err(message) => return output.fail("chat", &message),
+    };
+    let results: Vec<Value> = ids
+        .iter()
+        .map(|id| match delete_thread(&site, id) {
+            Ok(()) => json!({"id": id, "deleted": true}),
+            Err(message) => json!({"id": id, "deleted": false, "error": message}),
+        })
+        .collect();
+    let failed = results.iter().any(|row| row["deleted"] != true);
+    output.emit(&json!({"results": results}), |value| {
+        value["results"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|row| match row["error"].as_str() {
+                None => format!("deleted {}", row["id"].as_str().unwrap_or_default()),
+                Some(error) => format!(
+                    "not deleted {}: {error}",
+                    row["id"].as_str().unwrap_or_default()
+                ),
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    });
+    if failed { crate::out::EXIT_FAILURE } else { 0 }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn delete_urls_encode_the_item() {
+        let computers = "https://openagents.example/v1/computers";
+        assert_eq!(
+            item_url(computers, "Christopher’s MacBook Pro (2)")
+                .unwrap()
+                .as_str(),
+            "https://openagents.example/v1/computers/Christopher%E2%80%99s%20MacBook%20Pro%20(2)"
+        );
+        assert_eq!(
+            item_url(computers, "a/b").unwrap().as_str(),
+            "https://openagents.example/v1/computers/a%2Fb"
+        );
+        assert_eq!(
+            item_url(
+                "https://openagents.example/v1/threads",
+                "95d8be69-9509-4333-ba58-b9c4032f8b25"
+            )
+            .unwrap()
+            .as_str(),
+            "https://openagents.example/v1/threads/95d8be69-9509-4333-ba58-b9c4032f8b25"
+        );
+    }
 
     #[test]
     fn account_ids_are_uuids() {

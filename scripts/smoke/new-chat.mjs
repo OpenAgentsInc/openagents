@@ -20,7 +20,11 @@ function record(name, ok, detail = '') {
 }
 
 const browser = await chromium.launch();
-const context = await browser.newContext({ viewport: { width: 1400, height: 900 } });
+// A test run (#11601): the site hides and soon deletes what it makes.
+const context = await browser.newContext({
+  viewport: { width: 1400, height: 900 },
+  extraHTTPHeaders: { 'X-OpenAgents-Test': '1' },
+});
 const token = process.env.SMOKE_SIGNUP_TOKEN || '';
 if (token) {
   const made = await fetch(`${base}/api/v1/accounts`, {

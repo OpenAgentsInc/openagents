@@ -91,6 +91,10 @@ pub(crate) const USAGE: &str = "usage: openagents chat COMMAND [OPTIONS]
   export --thread ID
         Print the thread as an ATIF-v1.8 trajectory whose session_id is ID;
         an account chat exports the same way.
+  delete ID...
+        Delete chats from the signed-in account on openagents.com for good
+        (their IDs, as `chat threads --account` lists them); a terminal
+        chat is deleted in Coder too. `openagents chats delete` is the same.
   apply --thread ID
         Bring the thread's Coder change into the checkout it was made from,
         uncommitted, so you can review and commit it there. The checkout
@@ -193,6 +197,7 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("threads", Effect::ReadOnly),
     Declared::computer("read", Effect::ReadOnly),
     Declared::computer("export", Effect::ReadOnly),
+    Declared::computer("delete", Effect::Publishes),
     Declared::computer("run-coder", Effect::Publishes),
     Declared::computer("run-command", Effect::LocalWrite),
     Declared::computer("follow", Effect::ReadOnly),
@@ -261,6 +266,7 @@ const COMMANDS: &[&str] = &[
     "answer",
     "work",
     "apply",
+    "delete",
 ];
 
 /// The command `word` is a typo of: within one edit of a name of up to six
@@ -338,6 +344,11 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
             println!("{usage}");
             return 0;
         }
+    }
+    // `chat delete ID...` (`chats delete`): the account's chats on
+    // openagents.com, deleted for good.
+    if command == "delete" {
+        return crate::account_threads::delete_command(output, rest, USAGE);
     }
     let args = match Args::parse(rest, SWITCHES) {
         Ok(args) => args,

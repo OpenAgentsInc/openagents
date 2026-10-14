@@ -107,6 +107,9 @@ def main():
         secret("openagents-vertex-sa-key", "VERTEX_SA_JSON"),
         # Work hosts that take "work on this issue" runs (#11258).
         secret("openagents-work-host-token", "OPENAGENTS_WORK_HOST_TOKEN"),
+        # The production test account (#11601): the site forwards the
+        # operator's sign-up so checks never run as the owner.
+        plain("OPENAGENTS_WEB_API_OPERATOR_SIGNUP", "1"),
     ] + ([] if args.files else [
         # The actor runtime (#11253, docs/deployment/actors.md) in the
         # account database. Mac jobs go through it only while the live
@@ -150,6 +153,8 @@ def main():
             secret("openagents-vercel-gateway-api-key", "AI_GATEWAY_API_KEY"),
             secret("openagents-gateway-production-byok-keyring", "BYOK_KEYRING_JSON"),
             secret("openagents-gateway-production-store-key", "INFERENCE_STORE_KEY"),
+            # The production test account's operator sign-up (#11601).
+            secret("openagents-gateway-production-smoke-signup-token", "SMOKE_SIGNUP_TOKEN"),
         ] + ([] if args.files else [secret(DATABASE_SECRET, "OPENAGENTS_ACCOUNTS_DATABASE_URL")]),
         "volumeMounts": [{"name": "stack", "mountPath": "/stack"}],
         "resources": {"limits": {"cpu": "1", "memory": "512Mi"}},

@@ -15,6 +15,10 @@
 # Code's own usage records, must match within 0.05. The cache check runs
 # first, so its two chats are the only Claude Code sessions it reads.
 set -euo pipefail
+# A test run (#11601): whatever Coder and openagents make on openagents.com
+# here carries X-OpenAgents-Test: 1, so it is never listed and is deleted
+# within an hour.
+export OPENAGENTS_TEST_RUN=1
 : "${OPENAGENTS:?set OPENAGENTS to the openagents binary}"
 # ACP_AGENT=devin-cli (or grok-build): only one delegation, to that installed
 # ACP agent on the Coder SDK's ACP backend with its tier's gate (#11534), told

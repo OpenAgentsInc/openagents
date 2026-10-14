@@ -21,4 +21,7 @@ set -uo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 [ "$(uname -s)" = Darwin ] || { echo "harness-acceptance: runs on a Mac" >&2; exit 2; }
 command -v tmux >/dev/null || { echo "harness-acceptance: tmux is required (brew install tmux)" >&2; exit 2; }
+# A test run (#11601): whatever it makes on openagents.com is hidden from
+# every list and deleted within an hour; it signs in as the test account.
+export OPENAGENTS_TEST_RUN=1
 exec python3 -I "$here/harness_acceptance.py" "$@"

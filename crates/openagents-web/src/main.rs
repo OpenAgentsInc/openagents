@@ -243,6 +243,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         openagents_web::chat_store::spawn_expiry(config.chat_store.clone(), days);
         println!("Chats untouched for {days} days are removed");
     }
+    // Test runs' chats go within the hour (#11601).
+    openagents_web::test_runs::spawn_sweep(config.chat_store.clone());
     let worker = openagents_web::ask::Worker::from_env()?;
     if !worker.is_production() {
         println!("Chat answers come from the worker {}", worker.worker());

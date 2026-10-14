@@ -192,6 +192,7 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
     };
     let base = url();
     let http = match reqwest::blocking::Client::builder()
+        .default_headers(crate::keys::test_run_headers())
         .timeout(Duration::from_secs(300))
         .build()
     {

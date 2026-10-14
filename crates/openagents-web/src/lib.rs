@@ -75,6 +75,7 @@ mod sign_in_keys;
 mod suggestions;
 mod tasks;
 mod terminal_connect;
+pub mod test_runs;
 pub mod theme;
 mod traces;
 pub mod ui_page;

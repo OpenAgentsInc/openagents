@@ -50,6 +50,10 @@ final class AccountGateUITests: XCTestCase {
             try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         }
         let app = XCUIApplication()
+        // A test run (#11601): the app's calls carry X-OpenAgents-Test: 1, so
+        // the site lists none of its chats, deletes them within an hour, and
+        // records no computer for this phone.
+        app.launchEnvironment["OPENAGENTS_TEST_RUN"] = "1"
         if let origin = environment["OPENAGENTS_UITEST_ORIGIN"] {
             app.launchArguments += ["--account-origin", origin]
         }

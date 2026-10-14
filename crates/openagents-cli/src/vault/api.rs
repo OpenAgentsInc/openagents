@@ -104,6 +104,7 @@ pub(crate) struct Http {
 impl Http {
     pub(crate) fn new(saved: Saved) -> Result<Self, String> {
         let http = reqwest::blocking::Client::builder()
+            .default_headers(crate::keys::test_run_headers())
             .redirect(reqwest::redirect::Policy::none())
             .connect_timeout(Duration::from_secs(10))
             .timeout(Duration::from_secs(180))

@@ -121,13 +121,13 @@ pub fn download(saved: &Saved, today: &str) -> Result<Export, String> {
             .timeout(Duration::from_secs(600))
             .build()
             .map_err(|_| "Couldn't start the download.".to_string())?;
-        let mut response = http
-            .get(format!("{}{PATH}", saved.origin.trim_end_matches('/')))
-            .bearer_auth(saved.token())
-            .header(reqwest::header::ACCEPT, "application/json")
-            .send()
-            .await
-            .map_err(|_| format!("Couldn't reach {}. Check your connection.", saved.origin))?;
+        let mut response =
+            crate::mark(http.get(format!("{}{PATH}", saved.origin.trim_end_matches('/'))))
+                .bearer_auth(saved.token())
+                .header(reqwest::header::ACCEPT, "application/json")
+                .send()
+                .await
+                .map_err(|_| format!("Couldn't reach {}. Check your connection.", saved.origin))?;
         let status = response.status().as_u16();
         let name = response
             .headers()

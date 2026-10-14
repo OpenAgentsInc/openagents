@@ -608,10 +608,41 @@ impl Https {
                 .redirect(reqwest::redirect::Policy::none())
                 .connect_timeout(Duration::from_secs(10))
                 .timeout(Duration::from_secs(25))
+                .default_headers(test_run_headers(
+                    std::env::var("OPENAGENTS_TEST_RUN").ok().as_deref(),
+                ))
                 .build()
                 .unwrap_or_default(),
         )
     }
+}
+
+/// `X-OpenAgents-Test: 1` when the app runs under a test (#11601,
+/// `OPENAGENTS_TEST_RUN=1`, as the phone gates launch it): the site lists
+/// none of the chats such calls make, deletes them within an hour, and
+/// records no computer for the phone.
+fn test_run_headers(value: Option<&str>) -> reqwest::header::HeaderMap {
+    let mut headers = reqwest::header::HeaderMap::new();
+    if value.is_some_and(|value| matches!(value.trim(), "1" | "true" | "yes")) {
+        headers.insert(
+            "x-openagents-test",
+            reqwest::header::HeaderValue::from_static("1"),
+        );
+    }
+    headers
+}
+
+#[cfg(test)]
+#[test]
+fn a_test_run_marks_the_phone_calls() {
+    assert_eq!(
+        test_run_headers(Some("1"))
+            .get("X-OpenAgents-Test")
+            .unwrap(),
+        "1"
+    );
+    assert!(test_run_headers(Some("0")).is_empty());
+    assert!(test_run_headers(None).is_empty());
 }
 
 impl Default for Https {

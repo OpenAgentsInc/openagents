@@ -45,7 +45,7 @@ else
     echo "install-local: the gate passed on $build ($report)" >&2
   else
     echo "install-local: running the harness acceptance gate on $build" >&2
-    "$here/harness-acceptance.sh" --coder "$src_coder" --out "$out" || die "the harness acceptance gate failed on $build; not installing (report under $out/$build)"
+    OPENAGENTS_TEST_RUN=1 "$here/harness-acceptance.sh" --coder "$src_coder" --out "$out" || die "the harness acceptance gate failed on $build; not installing (report under $out/$build)"
   fi
 fi
 
