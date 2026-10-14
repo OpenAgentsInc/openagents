@@ -4,6 +4,8 @@ Status: proposed design, 2026-10-14. This document specifies a Robot Lab;
 it does not describe a shipped feature. The first delivery is local robot
 inspection and motion replay in an inline chat card. Simulation and learned
 control follow as separately testable additions.
+[LeRobot data, the Verse room, and a Rust physics path](lerobot-in-verse.md)
+fills in dataset reading, a physics alternative to MuJoCo, and the Verse room.
 
 Robot Lab lets you bring an open robot into an environment, see it in 3D,
 change the experiment by talking, and compare what happens. The chat is the
