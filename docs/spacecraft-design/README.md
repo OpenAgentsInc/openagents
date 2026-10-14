@@ -10,6 +10,11 @@ for more, in support of two Verse zones:
   a spaceship factory at Earth–Moon L2, where robot arms assemble a large,
   fully simulated spacecraft that then makes a test burn.
 
+The [phased cislunar strategy](cislunar-strategy.md) extends this work into a
+startup plan: a first robotic station in low Earth orbit, lunar logistics,
+and a later L2 heavy shipyard, with an aggressive schedule and engineering
+gates for each expansion.
+
 The notes are written in our own words from general engineering knowledge.
 They are a starting point for design and test choices, not a substitute for
 the books. No text, figures, or tables are copied from any book.
@@ -24,6 +29,7 @@ the books. No text, figures, or tables are copied from any book.
 | [subsystems.md](subsystems.md) | Mass fractions, power, thermal, attitude control, communications, propulsion, structures, mechanisms |
 | [in-space-assembly.md](in-space-assembly.md) | Robotic assembly in microgravity, free-floating arm dynamics, flight precedents, assembly planning |
 | [sim-mapping.md](sim-mapping.md) | How each topic maps to our crates, and the tests Lagrange 2 needs |
+| [cislunar-strategy.md](cislunar-strategy.md) | A phased station network, construction and transport targets, schedule, and alternative execution plans |
 
 ## Confidence marks
 
@@ -34,6 +40,7 @@ Every number in these notes carries one of these marks:
 | **[V]** | Verified against the cited source while writing these notes |
 | **[C]** | Computed by us from [V] constants; the method is stated |
 | **[M]** | From memory, verify before relying on it in code or a test |
+| **[P]** | A proposed planning target or assumption, rather than a verified capability |
 
 A number marked [M] must not become a test tolerance or a code constant until
 someone checks it against the book or a primary source and changes its mark.
