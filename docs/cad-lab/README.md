@@ -42,7 +42,7 @@ licensed). We followed it:
 - **It is Rust and builds for wasm32** (`cargo check --target
   wasm32-unknown-unknown -p cad` passes), so the same engine can run in the
   browser later. The Lab runs it natively.
-- **Only `crates/cad/src/build.rs`, `render.rs` and `export.rs` touch it.**
+- **Only `crates/cad/src/build.rs`, `refs.rs`, `render.rs` and `export.rs` touch it.**
   Callers see our documents and JSON reports, so the kernel can be swapped
   (SMLib, Apache-2.0, is the precision fallback the research names).
 - **Licences:** SolidCraft MIT OR Apache-2.0; Truck Apache-2.0, including
@@ -106,6 +106,28 @@ Lab folder, never in git:
 ~/work/film-out/lab/cad/.parts/<digest>.step built parts, reused while unchanged
 ```
 
+## Naming faces and edges
+
+A fillet, chamfer, shell, draft or face colour names what it works on by
+how it was made, not by a point, so an edit upstream (a longer plate, a
+moved hole) doesn't make the pick miss (`crates/cad/src/refs.rs`):
+
+- A **face** is `feature:role`: `body:top` and `body:start` (an extrude's
+  caps), `body:side:l3` (the side swept from sketch curve `l3`; a
+  rectangle's sides are `l1` bottom, `l2` right, `l3` top, `l4` left, and
+  `sketch.line` takes `ids` of its own), `boss:+z` (a box's faces by
+  direction), `round:blend:...` (a fillet's face), `hollow:inner:body:top`
+  (a shell's inside). A face split in pieces is `name#...`; the name
+  without the suffix means every piece.
+- An **edge** is `{"between": [face, face]}` (`"*"` for any face) or every
+  edge of a face, `{"of": face}`.
+- `cad_faces(doc, part, after?)` lists a part's faces and edges by these
+  names, with their centres and normals.
+
+The names come from the kernel's own persistent naming, its feature numbers
+translated to our feature ids, and are worked out again on every build. A
+point `[x, y, z]` on the face or edge still works.
+
 ## The checks on every edit
 
 An edit that fails any check is refused with the reason in plain words, and
@@ -154,6 +176,7 @@ message (workspace rule: no keyword routing).
 | `cad_versions(doc)` | Each version's summary, author, mass and parts |
 | `cad_compare(doc, a?, b?)` | What changed: parts, features, instances, joints, mass and centre of mass |
 | `cad_export(doc, version?, formats?)` | glTF binary (`.glb`, for the web and Verse), 3MF, STEP (exact solids) and STL |
+| `cad_faces(doc, part, after?)` | A part's faces and edges by the names features pick them with |
 | `cad_render(doc, version?, view, focus?, yaw?, pitch?)` | A picture: hero, rear, plan, front, side, iso, under or detail, framing some instances; yaw and pitch turn and raise the camera to match a photograph |
 
 ## Seeing it: the card

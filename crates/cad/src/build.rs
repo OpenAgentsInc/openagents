@@ -176,6 +176,8 @@ fn feature(s: &mut Session, part: &str, f: &Value) -> Result<(), String> {
                 if sparams.get("name").is_none() {
                     sparams["name"] = json!(scoped(part, &format!("{id}-{}", i + 1)));
                 }
+                let sparams = crate::refs::resolve(s, part, &sparams)
+                    .map_err(|e| fail(format!("direct step {} ({sop}): {e}", i + 1)))?;
                 run(s, sop, &sparams)
                     .map_err(|e| fail(format!("direct step {} ({sop}): {e}", i + 1)))?;
             }
@@ -196,6 +198,7 @@ fn feature(s: &mut Session, part: &str, f: &Value) -> Result<(), String> {
             if op == "appearance.assign" && p.get("bodies").is_none() && p.get("faces").is_none() {
                 return Err(fail("name the bodies or faces to colour".into()));
             }
+            let p = crate::refs::resolve(s, part, &p).map_err(&fail)?;
             run(s, op, &p).map_err(&fail)?;
         }
     }
@@ -605,6 +608,49 @@ fn build_part(
     let meta = json!({"bodies": bodies, "warnings": warnings});
     let _ = std::fs::write(&meta_path, meta.to_string());
     Ok(PartBuild { step, meta })
+}
+
+/// The faces and edges of a part's solids, by the names a feature can use
+/// for them ([`crate::refs`]), after its whole history or after the feature
+/// `upto`.
+///
+/// # Errors
+/// The document or the part doesn't build, or has no such part or feature.
+pub fn faces_of(document: &Value, key: &str, upto: Option<&str>) -> Result<Value, Vec<String>> {
+    let assembly = doc::as_assembly(document);
+    let problems = doc::check_assembly(&assembly);
+    if !problems.is_empty() {
+        return Err(problems);
+    }
+    let part = assembly["parts"]
+        .get(key)
+        .ok_or_else(|| vec![format!("There's no part {key}.")])?;
+    let mut parameters: Vec<Value> = assembly["parameters"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    for p in assembly["parts"].as_object().into_iter().flatten() {
+        parameters.extend(p.1["parameters"].as_array().cloned().unwrap_or_default());
+    }
+    let features = part["features"].as_array().cloned().unwrap_or_default();
+    if let Some(upto) = upto
+        && !features.iter().any(|f| f["id"] == upto)
+    {
+        return Err(vec![format!("{key} has no feature {upto}.")]);
+    }
+    let mut s = session(&parameters)?;
+    for f in &features {
+        if f["suppressed"] != true {
+            feature(&mut s, key, f).map_err(|e| vec![e])?;
+        }
+        if upto.is_some_and(|u| f["id"] == u) {
+            break;
+        }
+    }
+    let mut out = crate::refs::list(&mut s, key);
+    out["part"] = json!(key);
+    out["after"] = json!(upto.unwrap_or("the last feature"));
+    Ok(out)
 }
 
 /// Builds a document (a part or an assembly), keeping built parts in the

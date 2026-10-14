@@ -263,6 +263,7 @@ impl Lab {
             "cad_export" => self.export(args),
             "cad_render" => self.render(args),
             "cad_from_json" => self.from_json(args),
+            "cad_faces" => self.faces(args),
             other => Err(format!("{other} isn't a CAD Lab tool.")),
         };
         result.unwrap_or_else(|why| json!({"error": why}))
@@ -340,6 +341,17 @@ impl Lab {
         let part = arg_str(args, "part")
             .ok_or("Name the part (part).")?
             .to_owned();
+        // A single-part document is its own part.
+        if document["kind"] == doc::PART {
+            return if document["id"] == part.as_str() {
+                Ok((part, document))
+            } else {
+                Err(format!(
+                    "This document is the single part {}.",
+                    document["id"].as_str().unwrap_or_default()
+                ))
+            };
+        }
         let known: Vec<String> = document["parts"]
             .as_object()
             .map(|p| p.keys().cloned().collect())
@@ -806,6 +818,20 @@ impl Lab {
         self.saved(id, n, &record)
     }
 
+    /// A part's faces and edges by the names features can use for them.
+    fn faces(&self, args: &Value) -> Result<Value, String> {
+        let (id, n, document, _) = self.pick(args)?;
+        let part = arg_str(args, "part").ok_or("Name the part (part).")?;
+        let mut out = cad::build::faces_of(&document, part, arg_str(args, "after"))
+            .map_err(|p| p.join(" "))?;
+        out["doc"] = json!(id);
+        out["version"] = json!(n);
+        out["how"] = json!(
+            "Name a face as \"feature:role\" in faces lists (\"body:top\"); an edge as {\"between\": [face, face]} or {\"of\": face} in edges lists."
+        );
+        Ok(out)
+    }
+
     /// Part and subassembly templates that point at another document's
     /// version, copied in.
     fn resolve_templates(&self, document: &mut Value) -> Result<(), String> {
@@ -1162,6 +1188,7 @@ fn takes(name: &str) -> &'static [&'static str] {
             "author",
         ],
         "cad_from_json" => &["doc", "document", "summary", "author"],
+        "cad_faces" => &["doc", "version", "part", "after"],
         "cad_versions" => &["doc"],
         "cad_compare" => &["doc", "a", "b"],
         "cad_export" => &["doc", "version", "formats"],
@@ -1260,6 +1287,9 @@ pub fn tools() -> Value {
             "doc": doc,
             "document": {"type": "string", "description": "the whole document as JSON"},
             "summary": summary}}},
+        {"name": "cad_faces", "description": "A part's faces and edges by the names features use to pick them (stable through edits, unlike points): faces like body:top, body:start, body:side:l3 (the side swept from sketch curve l3), boss:+z, round:blend:...; edges as the two faces they join. Use it before a fillet, chamfer, shell or draft to name what it works on.",
+         "parameters": {"type": "object", "required": ["doc", "part"], "properties": {"doc": doc, "version": version, "part": part,
+            "after": {"type": "string", "description": "list them as they stand after this feature (default: after the whole history)"}}}},
         {"name": "cad_check", "description": "Run the checks on a version again: every feature rebuilds, every solid is closed, no undeclared overlaps; with its mass, centre of mass and inertia.",
          "parameters": {"type": "object", "required": ["doc"], "properties": {"doc": doc, "version": version}}},
         {"name": "cad_versions", "description": "The versions of a CAD document: each one's summary, author, mass and part count.",
@@ -1393,6 +1423,12 @@ mod tests {
             &json!({"doc": "cube", "document": cube, "summary": "A cube"}),
         );
         assert_eq!(made["saved"], true, "{made}");
+        let faces = lab.run("cad_faces", &json!({"doc": "cube", "part": "cube"}));
+        assert!(faces.to_string().contains("\"b:+z\""), "{faces}");
+        // Its top edges rounded by name.
+        let rounded = lab.run("cad_add_feature", &json!({"doc": "cube", "part": "cube", "summary": "Round the top",
+            "features": [{"id": "round", "op": "solid.fillet", "params": {"radius": 1, "edges": [{"of": "b:+z"}]}}]}));
+        assert_eq!(rounded["version"], 2, "{rounded}");
         // A hinge subassembly made of that cube, then two copies of it.
         let hinge = json!({"title": "Hinge", "parts": {"cube": {"from": {"doc": "cube"}}},
             "instances": [{"id": "frame", "part": "cube"}, {"id": "lid", "part": "cube", "parent": "frame", "at": [0, 0, 10]}],
@@ -1404,7 +1440,7 @@ mod tests {
         assert_eq!(made["saved"], true, "{made}");
         let (saved, _) = lab.load("hinge", 1).unwrap();
         assert_eq!(saved["parts"]["cube"]["source"]["doc"], "cube");
-        assert_eq!(saved["parts"]["cube"]["source"]["version"], 1);
+        assert_eq!(saved["parts"]["cube"]["source"]["version"], 2);
         let pair = json!({"title": "Pair", "assemblies": {"hinge": {"from": {"doc": "hinge", "version": 1}}},
             "instances": [{"id": "left", "assembly": "hinge", "at": [0, 40, 0]}, {"id": "right", "assembly": "hinge", "at": [0, -40, 0]}]});
         let made = lab.run(

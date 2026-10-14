@@ -66,10 +66,9 @@ version.
    cylindrical, planar, spherical, gear; #11628), but instances are placed
    by their parents' frames, so closed loops and driving by constraint are
    not solved.
-2. **Stable references:** fillets, chamfers and shells pick edges and faces
-   by a point in the part's frame; a change that moves the edge can make a
-   pick miss. The kernel has persistent face and edge history; the document
-   doesn't use it yet.
+2. **Stable references:** done (#11628): features name faces and edges
+   (`body:top`, `{"between": [...]}`), resolved through the kernel's
+   persistent naming on every build; points still work.
 3. **Assembly structure in exports:** STEP and 3MF carry every placed solid
    flat, not an assembly tree with instances; URDF (the kernel writes it) is
    not wired to our joints yet. Robot Lab and Lagrange 2 read mass from the

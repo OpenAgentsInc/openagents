@@ -11,14 +11,15 @@
 //!   mass properties.
 //! - [`export`]: STEP, 3MF, STL and glTF; [`render`]: PNG views.
 //!
-//! Callers see our documents and JSON reports; only [`build`], [`render`]
-//! and [`export`] touch the kernel, so it can be swapped.
+//! Callers see our documents and JSON reports; only [`build`], [`refs`],
+//! [`render`] and [`export`] touch the kernel, so it can be swapped.
 
 pub mod build;
 pub mod doc;
 pub mod export;
 pub mod mass;
 pub mod overlap;
+pub mod refs;
 pub mod render;
 pub mod xf;
 
@@ -162,6 +163,62 @@ mod tests {
         let kg = eval.report["mass"]["mass_kg"].as_f64().unwrap();
         assert!((kg - expected * 2.7e-6).abs() < 0.001, "{kg}");
         assert_eq!(eval.report["checks"]["closed_solids"], 1);
+    }
+
+    #[test]
+    fn fillets_and_shells_name_their_edges_and_faces_and_survive_a_resize() {
+        // The corners are named by the sketch sides they join, so making the
+        // plate longer moves them and the fillet still finds them (a point
+        // pick at the old corner would miss).
+        let plate = |half: f64| {
+            let mut part = doc::new_part("tray", "Tray", "Aluminum", None);
+            part["features"] = json!([
+                {"id": "outline", "op": "sketch", "params": {"plane": "XY", "draw": [
+                    {"op": "sketch.rectangle.center", "params": {"center": [0, 0], "corner": [half, 25]}}]}},
+                {"id": "body", "op": "solid.extrude", "params": {"sketch": "outline", "distance": 20}},
+                {"id": "corners", "op": "solid.fillet", "params": {"radius": 5, "edges": [
+                    {"between": ["body:side:l1", "body:side:l2"]}, {"between": ["body:side:l2", "body:side:l3"]},
+                    {"between": ["body:side:l3", "body:side:l4"]}, {"between": ["body:side:l4", "body:side:l1"]}]}},
+                {"id": "hollow", "op": "solid.shell", "params": {"faces": ["body:top"], "thickness": 2}},
+                {"id": "rim", "op": "solid.chamfer", "params": {"distance": 1, "edges": [{"of": "body:start"}]}}
+            ]);
+            part
+        };
+        let volume = |part: &Value| {
+            let eval = evaluate(part).unwrap_or_else(|p| panic!("{p:?}"));
+            eval.report["mass"]["volume_cm3"].as_f64().unwrap() * 1000.0
+        };
+        let (short, long) = (volume(&plate(40.0)), volume(&plate(60.0)));
+        // A rounded open tray: about 2 mm walls on 2·(2·half + 50) − corners of
+        // perimeter, 20 high, plus a 2 mm floor.
+        let pi = std::f64::consts::PI;
+        let solid = |half: f64| 2.0 * half * 50.0 - 4.0 * 25.0 * (1.0 - pi / 4.0);
+        let hollow = |half: f64| (2.0 * half - 4.0) * 46.0 - 4.0 * 9.0 * (1.0 - pi / 4.0);
+        // The 1 mm chamfer round the bottom takes half a square mm per mm.
+        let chamfer = |half: f64| 0.5 * (2.0 * (2.0 * half + 50.0) - 40.0 + 2.0 * pi * 5.0);
+        for (half, v) in [(40.0, short), (60.0, long)] {
+            let expected = solid(half) * 20.0 - hollow(half) * 18.0 - chamfer(half);
+            assert!(
+                (v - expected).abs() / expected < 0.006,
+                "{half}: {v} vs about {expected}"
+            );
+        }
+        // A name that isn't there says which names are.
+        let mut bad = plate(40.0);
+        bad["features"][3]["params"]["faces"] = json!(["body:roof"]);
+        let why = evaluate(&bad).err().unwrap().join(" ");
+        assert!(
+            why.contains("no face body:roof") && why.contains("body:top"),
+            "{why}"
+        );
+        // What a feature can name, after the extrude.
+        let listed = build::faces_of(&plate(40.0), "tray", Some("body")).unwrap();
+        let text = listed.to_string();
+        for name in ["body:top", "body:start", "body:side:l3"] {
+            assert!(text.contains(name), "{name}: {text:.600}");
+        }
+        assert_eq!(listed["solids"][0]["faces"].as_array().unwrap().len(), 6);
+        assert_eq!(listed["solids"][0]["edges"].as_array().unwrap().len(), 12);
     }
 
     #[test]
