@@ -52,3 +52,24 @@ Genesis's soft contact. The ignored test's bar (5 cm, 0.1 m/s) is not met, so
 no fidelity claim is made. Matching the rebound needs either a comparable
 restitution model on the Genesis side or a softness parameter here, which is
 follow-up work.
+
+## Articulated-joint spike
+
+[#11607](https://github.com/OpenAgentsInc/openagents/issues/11607) adds limited
+hinges, sliders, and implicit PD servos. `mujoco_articulated.py` generates
+the committed `articulated-reference.json` with MuJoCo **3.3.7**; its original
+models and output are CC0-1.0. The script is offline acceptance tooling.
+Cargo replays the recorded actions without importing Python or MuJoCo.
+
+On `coderos-4080`, Linux x86-64, 2026-10-14, at **240 Hz** with **80 solver
+iterations**, the largest coordinate differences were **0.011115 rad** for
+the hinge, **0.003762 m** for the slider, and **0.022752 rad** for the six-link
+chain under gravity. The chain's largest anchor gap was **0.000117 m**.
+The limits are 0.02 rad or m for single joints, 0.025 rad for the chain, and
+0.001 m for hinge anchor gaps. A separate 0.5 rad step test requires a
+90% rise within 0.5 s, overshoot below 5%, and capped motor effort and speed.
+These fixtures qualify this spike, not arbitrary robot manipulation.
+
+Regenerate with `python mujoco_articulated.py articulated-reference.json`
+from this directory in an isolated environment with `mujoco==3.3.7`.
+Run `cargo test -p physics --test articulated -- --nocapture` to compare.

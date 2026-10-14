@@ -10,8 +10,8 @@
 //!   hierarchies; stable hit ordering and optional candidate measurements.
 //! - [`contact`]: a sequential-impulse solver with restitution, an elliptic
 //!   friction cone, and torsional friction.
-//! - [`joint`]: point, weld, and tether joints, hard or soft (an implicit
-//!   spring), with force and torque limits.
+//! - [`joint`]: point, weld, tether, hinge, and slider joints, hard or soft
+//!   (an implicit spring), with force and torque limits and position servos.
 //! - Island sleep ([`SleepSettings`]): settled groups resting on fixed
 //!   bodies stop costing anything until something touches them.
 //! - [`clock`]: a [`FixedStep`] accumulator that turns frame time into
@@ -70,7 +70,7 @@ pub use body::{Body, BodyKind, Composite};
 pub use clock::FixedStep;
 pub use collision::{Collider, ColliderId, ContactPoint, Filter, Manifold, Material, Shape};
 pub use contact::{ContactReport, SolverSettings};
-pub use joint::{Joint, JointId, JointKind, Spring};
+pub use joint::{Joint, JointError, JointId, JointKind, JointLimits, Servo, Spring};
 pub use ledger::{Ledger, LedgerError, Momentum};
 pub use modal::Mode;
 pub use plume::{Plume, Reflection, Sample};

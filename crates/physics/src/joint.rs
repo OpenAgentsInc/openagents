@@ -6,6 +6,9 @@
 //!   (`add_weld_constraint` in `examples/rigid/suction_cup.py`).
 //! - [`JointKind::Tether`] keeps the anchors at most a length apart and
 //!   only pulls.
+//! - [`JointKind::Hinge`] rotates about one axis; [`JointKind::Slider`]
+//!   translates along one axis. Both support unilateral position limits
+//!   and an implicit, effort-capped position [`Servo`].
 //!
 //! A joint is hard (Baumgarte-corrected) or soft: a critically damped spring
 //! set by natural frequency and damping ratio, solved implicitly so it is
@@ -45,7 +48,67 @@ pub enum JointKind {
     Tether {
         length: f64,
     },
+    /// Rotation about `axis` in `a`'s frame, relative to `relative` at zero.
+    Hinge {
+        axis: DVec3,
+        relative: DQuat,
+        limits: Option<JointLimits>,
+        servo: Option<Servo>,
+    },
+    /// Translation along `axis` in `a`'s frame, with fixed relative attitude.
+    Slider {
+        axis: DVec3,
+        relative: DQuat,
+        limits: Option<JointLimits>,
+        servo: Option<Servo>,
+    },
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct JointLimits {
+    /// Radians for a hinge, meters for a slider.
+    pub lower: f64,
+    pub upper: f64,
+}
+
+/// An implicit position PD servo. Effort is torque for a hinge and force
+/// for a slider. `max_speed` caps commanded relative speed; a body already
+/// above it decelerates under the effort cap instead of losing momentum.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Servo {
+    pub target: f64,
+    pub kp: f64,
+    pub kd: f64,
+    pub max_effort: f64,
+    pub max_speed: f64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum JointError {
+    Bodies,
+    Axis,
+    Rotation,
+    Limits,
+    Servo,
+    Inertia,
+    Settings,
+}
+
+impl std::fmt::Display for JointError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Bodies => "Choose two different bodies in this world.",
+            Self::Axis => "Use a finite unit joint axis.",
+            Self::Rotation => "Use a unit rotation for the joint's zero position.",
+            Self::Limits => "Use ordered finite limits; hinge limits must stay strictly between minus pi and pi.",
+            Self::Servo => "Use positive servo settings and a target inside the joint limits.",
+            Self::Inertia => "Use positive physical mass and inertia for each moving body.",
+            Self::Settings => "Use finite anchors and positive joint force and spring settings.",
+        })
+    }
+}
+
+impl std::error::Error for JointError {}
 
 /// A joint between bodies `a` and `b`.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
@@ -77,6 +140,12 @@ pub struct Joint {
     /// Whether a force or torque limit capped the last step.
     #[serde(default)]
     pub saturated: bool,
+    /// Absolute effort supplied by position limits in the last step, N or N m.
+    #[serde(default)]
+    pub limit_effort: f64,
+    /// Signed motor effort on `b` in the last step, N or N m.
+    #[serde(default)]
+    pub motor_effort: f64,
 }
 
 impl Joint {
@@ -96,6 +165,8 @@ impl Joint {
             point: DVec3::ZERO,
             angular_impulse: DVec3::ZERO,
             saturated: false,
+            limit_effort: 0.0,
+            motor_effort: 0.0,
         }
     }
 
@@ -144,17 +215,173 @@ impl Joint {
     /// should be to where it is, rad; zero for other kinds.
     #[must_use]
     pub fn angle_error(&self, world: &World) -> DVec3 {
-        let JointKind::Weld { relative } = self.kind else {
-            return DVec3::ZERO;
+        let relative = match self.kind {
+            JointKind::Weld { relative } | JointKind::Slider { relative, .. } => relative,
+            JointKind::Hinge { axis, relative, .. } => {
+                let parent = world[self.a].orientation;
+                let q = parent.inverse() * world[self.b].orientation * relative.inverse();
+                let twist = hinge_twist(q, axis);
+                return parent * rotation_vector(q * twist.inverse());
+            }
+            _ => return DVec3::ZERO,
         };
         let target = world[self.a].orientation * relative;
-        let mut error = world[self.b].orientation * target.inverse();
-        if error.w < 0.0 {
-            error = -error;
-        }
-        let (axis, angle) = error.to_axis_angle();
-        axis * angle
+        rotation_vector(world[self.b].orientation * target.inverse())
     }
+
+    /// Hinge angle in [-pi, pi] or slider displacement along the parent axis.
+    /// Unlimited multi-turn hinges require a separate unwrapped coordinate.
+    pub fn coordinate(&self, world: &World) -> Option<f64> {
+        match self.kind {
+            JointKind::Hinge { axis, relative, .. } => {
+                let q = world[self.a].orientation.inverse()
+                    * world[self.b].orientation
+                    * relative.inverse();
+                let twist = hinge_twist(q, axis);
+                let vector = DVec3::new(twist.x, twist.y, twist.z);
+                let angle = 2.0 * vector.dot(axis).atan2(twist.w);
+                Some(
+                    (angle + std::f64::consts::PI).rem_euclid(std::f64::consts::TAU)
+                        - std::f64::consts::PI,
+                )
+            }
+            JointKind::Slider { axis, .. } => {
+                let (a, b) = self.anchors(world);
+                Some((b - a).dot(world[self.a].orientation * axis))
+            }
+            _ => None,
+        }
+    }
+
+    pub fn validate(&self, world: &World) -> Result<(), JointError> {
+        let bodies = world.bodies();
+        if self.a == self.b
+            || [self.a, self.b]
+                .iter()
+                .any(|id| bodies.get(id.0 as usize).is_none_or(|body| body.removed))
+        {
+            return Err(JointError::Bodies);
+        }
+        for id in [self.a, self.b] {
+            let body = &world[id];
+            if !body.pos.is_finite()
+                || !body.orientation.is_finite()
+                || (body.orientation.length_squared() - 1.0).abs() > 1e-9
+            {
+                return Err(JointError::Rotation);
+            }
+            if body.kind == crate::BodyKind::Dynamic
+                && (!body.mass.is_finite()
+                    || body.mass <= 0.0
+                    || !body.inertia.is_finite()
+                    || body.inertia.min_element() <= 0.0
+                    || 2.0 * body.inertia.max_element()
+                        > body.inertia.element_sum() * (1.0 + 1e-12))
+            {
+                return Err(JointError::Inertia);
+            }
+        }
+        let bound = |n: f64| (n.is_finite() || n == f64::INFINITY) && n > 0.0;
+        if !self.anchor_a.is_finite()
+            || !self.anchor_b.is_finite()
+            || !bound(self.max_force)
+            || !bound(self.max_torque)
+            || self.spring.is_some_and(|s| {
+                !s.frequency.is_finite()
+                    || s.frequency <= 0.0
+                    || !s.damping_ratio.is_finite()
+                    || s.damping_ratio < 0.0
+            })
+        {
+            return Err(JointError::Settings);
+        }
+        let rotation = |q: DQuat| q.is_finite() && (q.length_squared() - 1.0).abs() <= 1e-9;
+        match self.kind {
+            JointKind::Hinge {
+                axis,
+                relative,
+                limits,
+                servo,
+            }
+            | JointKind::Slider {
+                axis,
+                relative,
+                limits,
+                servo,
+            } => {
+                if !axis.is_finite() || (axis.length_squared() - 1.0).abs() > 1e-9 {
+                    return Err(JointError::Axis);
+                }
+                if !rotation(relative) {
+                    return Err(JointError::Rotation);
+                }
+                if limits.is_some_and(|l| {
+                    !l.lower.is_finite()
+                        || !l.upper.is_finite()
+                        || l.lower >= l.upper
+                        || (matches!(self.kind, JointKind::Hinge { .. })
+                            && (l.lower <= -std::f64::consts::PI
+                                || l.upper >= std::f64::consts::PI))
+                }) {
+                    return Err(JointError::Limits);
+                }
+                if servo.is_some_and(|s| {
+                    !s.target.is_finite()
+                        || [s.kp, s.kd, s.max_effort, s.max_speed]
+                            .iter()
+                            .any(|n| !n.is_finite() || *n <= 0.0 || *n > 1e12)
+                        || (matches!(self.kind, JointKind::Hinge { .. })
+                            && s.target.abs() >= std::f64::consts::PI)
+                        || limits.is_some_and(|l| s.target < l.lower || s.target > l.upper)
+                }) {
+                    return Err(JointError::Servo);
+                }
+            }
+            JointKind::Weld { relative } if !rotation(relative) => {
+                return Err(JointError::Rotation);
+            }
+            JointKind::Tether { length } if !length.is_finite() || length <= 0.0 => {
+                return Err(JointError::Limits);
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    pub fn set_target(&mut self, target: f64) -> Result<(), JointError> {
+        if matches!(self.kind, JointKind::Hinge { .. }) && target.abs() >= std::f64::consts::PI {
+            return Err(JointError::Servo);
+        }
+        let (servo, limits) = match &mut self.kind {
+            JointKind::Hinge { servo, limits, .. } | JointKind::Slider { servo, limits, .. } => {
+                (servo, limits)
+            }
+            _ => return Err(JointError::Servo),
+        };
+        if !target.is_finite() || limits.is_some_and(|l| target < l.lower || target > l.upper) {
+            return Err(JointError::Servo);
+        }
+        servo.as_mut().ok_or(JointError::Servo)?.target = target;
+        Ok(())
+    }
+}
+
+fn hinge_twist(q: DQuat, axis: DVec3) -> DQuat {
+    let p = axis * DVec3::new(q.x, q.y, q.z).dot(axis);
+    let twist = DQuat::from_xyzw(p.x, p.y, p.z, q.w);
+    if twist.length_squared() > 1e-20 {
+        twist.normalize()
+    } else {
+        DQuat::IDENTITY
+    }
+}
+
+fn rotation_vector(mut error: DQuat) -> DVec3 {
+    if error.w < 0.0 {
+        error = -error;
+    }
+    let (axis, angle) = error.to_axis_angle();
+    axis * angle
 }
 
 /// Index of a joint in its world. Removed joints leave a gap, so ids stay
@@ -163,6 +390,58 @@ impl Joint {
 pub struct JointId(pub u32);
 
 impl World {
+    pub fn try_add_joint(&mut self, joint: Joint) -> Result<JointId, JointError> {
+        joint.validate(self)?;
+        Ok(self.add_joint(joint))
+    }
+
+    /// Change a motor target and wake its entire connected island.
+    pub fn set_joint_target(&mut self, id: JointId, target: f64) -> Result<(), JointError> {
+        let joint = self.joint_mut(id).ok_or(JointError::Bodies)?;
+        joint.set_target(target)?;
+        let (a, b) = (joint.a, joint.b);
+        self.wake_joint_island(a, b);
+        Ok(())
+    }
+
+    pub(crate) fn wake_joint_island(&mut self, a: BodyId, b: BodyId) {
+        let mut awake = std::collections::BTreeSet::from([a, b]);
+        loop {
+            let previous = awake.len();
+            for joint in self.joints.iter().flatten() {
+                if awake.contains(&joint.a) || awake.contains(&joint.b) {
+                    awake.insert(joint.a);
+                    awake.insert(joint.b);
+                }
+            }
+            if awake.len() == previous {
+                break;
+            }
+        }
+        for id in awake {
+            self.wake(id);
+        }
+    }
+
+    pub(crate) fn wake_active_servos(&mut self) {
+        let active: Vec<_> = self
+            .joints
+            .iter()
+            .flatten()
+            .filter_map(|joint| {
+                let servo = match joint.kind {
+                    JointKind::Hinge { servo, .. } | JointKind::Slider { servo, .. } => servo?,
+                    _ => return None,
+                };
+                ((joint.coordinate(self)? - servo.target).abs() > 1e-6)
+                    .then_some((joint.a, joint.b))
+            })
+            .collect();
+        for (a, b) in active {
+            self.wake_joint_island(a, b);
+        }
+    }
+
     /// Add a joint, waking both bodies.
     pub fn add_joint(&mut self, joint: Joint) -> JointId {
         self.wake(joint.a);

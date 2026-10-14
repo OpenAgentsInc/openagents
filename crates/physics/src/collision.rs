@@ -55,6 +55,27 @@ pub struct Filter {
 }
 
 impl Filter {
+    /// Distinct groups for a chain of at most 31 bodies. Both neighbors
+    /// exclude each other, as required by the symmetric OR filter rule.
+    /// Bit 31 remains available to environment geometry.
+    #[must_use]
+    pub fn chain_link(index: u32, count: u32) -> Option<Self> {
+        if count == 0 || count > 31 || index >= count {
+            return None;
+        }
+        let group = 1_u32 << index;
+        let mut excluded = group;
+        if index > 0 {
+            excluded |= 1 << (index - 1);
+        }
+        if index + 1 < count {
+            excluded |= 1 << (index + 1);
+        }
+        Some(Self {
+            group,
+            mask: !excluded,
+        })
+    }
     /// Collides with everything.
     pub const ALL: Self = Self {
         group: u32::MAX,

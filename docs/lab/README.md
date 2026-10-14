@@ -49,7 +49,7 @@ inspection can ship without waiting for its full video editing pipeline.
 | --- | --- | --- |
 | [Verse Engine](../../crates/verse-engine/README.md) | Headless scheduling, entity lifetimes, asset packs, animation, and presentation contracts | Skeletal animation does not establish articulated robot dynamics. |
 | [Verse rendering](../../crates/verse-pbr/Cargo.toml) | wgpu, PBR materials, glTF assets, and native drawing surfaces | Robot description import and link-to-mesh bindings need new code. |
-| [Shared physics](../../crates/physics/src/lib.rs) | Fixed steps, rigid bodies, contacts, friction, sensors, traces, and debug overlays | Current joint kinds are point, weld, and tether. Motorized revolute and prismatic joints, robot import, and a complete manipulation solver are missing. |
+| [Shared physics](../../crates/physics/src/lib.rs) | Fixed steps, rigid bodies, contacts, friction, sensors, traces, debug overlays, and limited servoed hinge and slider joints | The joint spike passes its small MuJoCo comparisons; robot import and a complete manipulation backend remain separate work. |
 | [Physics Lab](../verse/physics-lab.md) | Live scenarios, pause, reset, single-step, parameter controls, and offscreen captures | This is a local teaching and regression zone, with generated geometry; it does not load arbitrary robots. |
 | [Gym](../gym/README.md) | Pinned test suites, recorded evidence, comparisons, and replay conventions | Decision-door evaluation is not a robot environment API. Robotics needs a separate runner and result adapter. |
 | [Verse Gym](../verse/gym.md) | A place to browse results and observe recorded work | New robot results need an explicit integration. |
@@ -213,9 +213,10 @@ Visual scenery may remain outside the simulation; task-relevant geometry needs
 checked collision proxies in the selected backend.
 
 The shared `physics` crate remains useful for existing lab scenarios and
-simple environments. A later native articulated backend needs motorized joints,
-limits, inertia validation, self-collision filtering, and numerical comparison
-fixtures. It ships on its own evidence; it is not required for first inspection.
+simple environments. Its articulated-joint spike adds motorized joints,
+limits, inertia checks, neighboring-link filters, and small MuJoCo comparison
+fixtures. A complete native robot backend still needs import and manipulation
+evidence; it is not required for first inspection.
 
 Simulation steps at a declared fixed rate. Control and sensors run at declared
 step intervals. Action chunks carry their originating observation step and

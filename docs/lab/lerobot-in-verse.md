@@ -1,8 +1,8 @@
 # Robot Lab: LeRobot data, the Verse room, and a Rust physics path
 
-**Status:** Proposal, 2026-10-14. Nothing here is implemented or approved.
-No LeRobot source, Python runtime, or dataset enters the repository through
-this document.
+**Status:** Implementation in progress, 2026-10-14. The document store and
+Rust articulated-joint spike are implemented; dataset, policy, and room work
+remain tracked in the [Robot Lab plan](README.md#delivery-slices-and-acceptance).
 
 The [Robot Lab design](README.md) is the plan: an inline chat workbench,
 modeled on Video Lab ([#11581](https://github.com/OpenAgentsInc/openagents/issues/11581)),
@@ -57,8 +57,10 @@ The design proposes MuJoCo through its C API for slice 4. The other choice is
 to grow the shared [`physics`](../../crates/physics/src/lib.rs) crate, which
 already has fixed steps, restorable state, contact manifolds, an elliptic
 friction cone, torsional friction, sensors, and traces. Its
-[joints](../../crates/physics/src/joint.rs) are `Point`, `Weld`, and
-`Tether`. An arm needs:
+[joints](../../crates/physics/src/joint.rs) now include `Hinge` and `Slider`
+with limits and capped position servos. The
+[MuJoCo comparison](../../crates/physics/oracle/README.md#articulated-joint-spike)
+checks a small six-link chain. A complete arm backend needs:
 
 - Hinge (revolute) and slider (prismatic) joints with limits.
 - A position servo modeled on the SO-101's Feetech STS3215 motors:

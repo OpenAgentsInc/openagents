@@ -219,6 +219,7 @@ impl World {
         self.stats = StepStats::default();
         let dt = self.dt;
         self.slept.clear();
+        self.wake_active_servos();
         for body in &mut self.bodies {
             body.prev_pos = body.pos;
             body.prev_orientation = body.orientation;

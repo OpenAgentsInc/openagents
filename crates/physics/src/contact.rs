@@ -127,7 +127,7 @@ struct Row {
     report: ContactReport,
 }
 
-/// A tether: one scalar constraint along the line between its anchors.
+/// A scalar tether, motor, or position limit along a linear or angular axis.
 struct JointRow {
     a: usize,
     b: usize,
@@ -141,19 +141,36 @@ struct JointRow {
     lower: f64,
     upper: f64,
     impulse: f64,
+    angular: bool,
+    purpose: JointRowPurpose,
+}
+
+#[derive(Clone, Copy)]
+enum JointRowPurpose {
+    Tether,
+    Limit,
+    Motor,
 }
 
 impl JointRow {
     fn velocity(&self, motions: &[Motion]) -> f64 {
         let (a, b) = (&motions[self.a], &motions[self.b]);
-        self.dir
-            .dot(b.point_velocity(self.rb) - a.point_velocity(self.ra))
+        self.dir.dot(if self.angular {
+            b.omega - a.omega
+        } else {
+            b.point_velocity(self.rb) - a.point_velocity(self.ra)
+        })
     }
 
     fn apply(&self, motions: &mut [Motion], delta: f64) {
         let d = self.dir * delta;
-        motions[self.a].push(-d, self.ra);
-        motions[self.b].push(d, self.rb);
+        if self.angular {
+            motions[self.a].twist(-d);
+            motions[self.b].twist(d);
+        } else {
+            motions[self.a].push(-d, self.ra);
+            motions[self.b].push(d, self.rb);
+        }
     }
 
     fn solve(&mut self, motions: &mut [Motion]) {
@@ -206,16 +223,16 @@ fn skew(r: DVec3) -> DMat3 {
     )
 }
 
-/// A point (three linear rows) or weld (three linear and three angular
-/// rows) solved as one block with its full effective-mass matrix, so a soft
-/// joint's damping ratio holds for every coupled mode.
+/// The constrained directions solved together with their full effective
+/// mass matrix: three for a point, six for a weld, or five for a hinge or
+/// slider. Soft damping therefore applies to each coupled mode.
 struct BlockJoint {
     joint: usize,
     a: usize,
     b: usize,
     ra: DVec3,
     rb: DVec3,
-    /// 3 for a point joint, 6 for a weld.
+    /// Number of constrained directions, at most six.
     size: usize,
     k: [[f64; 6]; 6],
     /// Position error: linear, then angular.
@@ -226,6 +243,9 @@ struct BlockJoint {
     impulse: [f64; 6],
     force_limit: f64,
     torque_limit: f64,
+    linear: [DVec3; 3],
+    angular: [DVec3; 3],
+    linear_rows: usize,
 }
 
 impl BlockJoint {
@@ -233,17 +253,24 @@ impl BlockJoint {
         let (a, b) = (&motions[self.a], &motions[self.b]);
         let linear = b.point_velocity(self.rb) - a.point_velocity(self.ra);
         let angular = b.omega - a.omega;
-        [
-            linear.x, linear.y, linear.z, angular.x, angular.y, angular.z,
-        ]
+        let mut result = [0.0; 6];
+        for (i, direction) in self.linear[..self.linear_rows].iter().enumerate() {
+            result[i] = direction.dot(linear);
+        }
+        for (i, direction) in self.angular[..self.size - self.linear_rows]
+            .iter()
+            .enumerate()
+        {
+            result[i + self.linear_rows] = direction.dot(angular);
+        }
+        result
     }
 
     fn apply(&self, motions: &mut [Motion], delta: &[f64; 6]) {
-        let p = DVec3::new(delta[0], delta[1], delta[2]);
-        let l = DVec3::new(delta[3], delta[4], delta[5]);
+        let (p, l) = self.world_impulses(delta);
         motions[self.a].push(-p, self.ra);
         motions[self.b].push(p, self.rb);
-        if self.size == 6 {
+        if self.size > self.linear_rows {
             motions[self.a].twist(-l);
             motions[self.b].twist(l);
         }
@@ -264,7 +291,10 @@ impl BlockJoint {
                 self.impulse[i] - self.mass_scale * x[i] - self.impulse_scale * self.impulse[i];
         }
         // Force and torque limits cap the accumulated impulse's magnitude.
-        for (range, limit) in [(0..3, self.force_limit), (3..6, self.torque_limit)] {
+        for (range, limit) in [
+            (0..self.linear_rows, self.force_limit),
+            (self.linear_rows..self.size, self.torque_limit),
+        ] {
             let size = next[range.clone()]
                 .iter()
                 .map(|x| x * x)
@@ -286,8 +316,24 @@ impl BlockJoint {
     fn saturated(&self) -> bool {
         let norm =
             |r: std::ops::Range<usize>| self.impulse[r].iter().map(|x| x * x).sum::<f64>().sqrt();
-        norm(0..3) >= self.force_limit * (1.0 - 1e-9)
-            || (self.size == 6 && norm(3..6) >= self.torque_limit * (1.0 - 1e-9))
+        norm(0..self.linear_rows) >= self.force_limit * (1.0 - 1e-9)
+            || (self.size > self.linear_rows
+                && norm(self.linear_rows..self.size) >= self.torque_limit * (1.0 - 1e-9))
+    }
+
+    fn world_impulses(&self, values: &[f64; 6]) -> (DVec3, DVec3) {
+        let mut linear = DVec3::ZERO;
+        let mut angular = DVec3::ZERO;
+        for (i, direction) in self.linear[..self.linear_rows].iter().enumerate() {
+            linear += *direction * values[i];
+        }
+        for (i, direction) in self.angular[..self.size - self.linear_rows]
+            .iter()
+            .enumerate()
+        {
+            angular += *direction * values[i + self.linear_rows];
+        }
+        (linear, angular)
     }
 }
 
@@ -361,7 +407,7 @@ fn solve_row(row: &mut Row, motions: &mut [Motion]) {
 }
 
 /// Every constraint once, `iterations` times: the joint blocks, the
-/// tethers, then the contact rows, each in order.
+/// scalar joint rows, then the contact rows, each in order.
 fn sweep(
     iterations: u32,
     motions: &mut [Motion],
@@ -746,23 +792,43 @@ impl World {
             &mut blocks,
             &positions,
         );
-        for (index, row) in &tethers {
-            let point = self.bodies()[row.b].pos + row.rb;
-            if let Some(joint) = self.joints[*index].as_mut() {
-                joint.impulse = row.dir * row.impulse;
-                joint.point = point;
-                joint.angular_impulse = DVec3::ZERO;
-                joint.saturated = row.lower.is_finite() && row.impulse <= row.lower * (1.0 - 1e-9);
-            }
+        for joint in self.joints.iter_mut().flatten() {
+            joint.impulse = DVec3::ZERO;
+            joint.angular_impulse = DVec3::ZERO;
+            joint.saturated = false;
+            joint.limit_effort = 0.0;
+            joint.motor_effort = 0.0;
         }
         for block in &blocks {
             let point = self.bodies()[block.b].pos + block.rb;
             if let Some(joint) = self.joints[block.joint].as_mut() {
-                joint.impulse = DVec3::new(block.impulse[0], block.impulse[1], block.impulse[2]);
+                let (linear, angular) = block.world_impulses(&block.impulse);
+                joint.impulse = linear;
                 joint.point = point;
-                joint.angular_impulse =
-                    DVec3::new(block.impulse[3], block.impulse[4], block.impulse[5]);
+                joint.angular_impulse = angular;
                 joint.saturated = block.saturated();
+            }
+        }
+        for (index, row) in &tethers {
+            let point = self.bodies()[row.b].pos + row.rb;
+            if let Some(joint) = self.joints[*index].as_mut() {
+                if row.angular {
+                    joint.angular_impulse += row.dir * row.impulse;
+                } else {
+                    joint.impulse += row.dir * row.impulse;
+                }
+                joint.point = point;
+                match row.purpose {
+                    JointRowPurpose::Tether => {
+                        joint.saturated |=
+                            row.lower.is_finite() && row.impulse <= row.lower * (1.0 - 1e-9)
+                    }
+                    JointRowPurpose::Limit => joint.limit_effort += row.impulse.abs() / dt,
+                    JointRowPurpose::Motor => {
+                        joint.motor_effort = row.impulse / dt;
+                        joint.saturated |= row.impulse.abs() >= row.upper * (1.0 - 1e-9);
+                    }
+                }
             }
         }
         for (body, motion) in self.bodies_mut().iter_mut().zip(&motions) {
@@ -816,7 +882,10 @@ impl World {
             // between its anchors, which is already collinear.
             let (qa, qb) = match joint.kind {
                 JointKind::Tether { .. } => (pa, pb),
-                JointKind::Point | JointKind::Weld { .. } => {
+                JointKind::Point
+                | JointKind::Weld { .. }
+                | JointKind::Hinge { .. }
+                | JointKind::Slider { .. } => {
                     let mid = (pa + pb) * 0.5;
                     (mid, mid)
                 }
@@ -852,6 +921,8 @@ impl World {
                     lower,
                     upper,
                     impulse: 0.0,
+                    angular: false,
+                    purpose: JointRowPurpose::Tether,
                 })
             };
             let force_limit = joint.max_force * dt;
@@ -908,7 +979,149 @@ impl World {
                         impulse: [0.0; 6],
                         force_limit,
                         torque_limit,
+                        linear: [DVec3::X, DVec3::Y, DVec3::Z],
+                        angular: [DVec3::X, DVec3::Y, DVec3::Z],
+                        linear_rows: 3,
                     });
+                }
+                JointKind::Hinge {
+                    axis,
+                    limits,
+                    servo,
+                    ..
+                }
+                | JointKind::Slider {
+                    axis,
+                    limits,
+                    servo,
+                    ..
+                } => {
+                    let angular_motor = matches!(joint.kind, JointKind::Hinge { .. });
+                    let direction = self.bodies()[a].orientation * axis;
+                    let tangents = basis(direction);
+                    let (linear, angular, linear_rows) = if angular_motor {
+                        (
+                            [DVec3::X, DVec3::Y, DVec3::Z],
+                            [tangents[0], tangents[1], DVec3::ZERO],
+                            3,
+                        )
+                    } else {
+                        (
+                            [tangents[0], tangents[1], DVec3::ZERO],
+                            [DVec3::X, DVec3::Y, DVec3::Z],
+                            2,
+                        )
+                    };
+                    // Build the coupled effective mass in the five constrained
+                    // directions; the sixth direction belongs to motor/limits.
+                    let mut directions = [(DVec3::ZERO, DVec3::ZERO); 6];
+                    for i in 0..linear_rows {
+                        directions[i].0 = linear[i];
+                    }
+                    for i in 0..5 - linear_rows {
+                        directions[i + linear_rows].1 = angular[i];
+                    }
+                    let mut k = [[0.0; 6]; 6];
+                    let mut error = [0.0; 6];
+                    let angular_error = joint.angle_error(self);
+                    for r in 0..5 {
+                        let (lr, ar) = directions[r];
+                        let ja = ra.cross(lr) + ar;
+                        let jb = rb.cross(lr) + ar;
+                        error[r] = lr.dot(pb - pa) + ar.dot(angular_error);
+                        for c in 0..5 {
+                            let (lc, ac) = directions[c];
+                            k[r][c] = (ma.inverse_mass + mb.inverse_mass) * lr.dot(lc)
+                                + ja.dot(ma.inverse_inertia * (ra.cross(lc) + ac))
+                                + jb.dot(mb.inverse_inertia * (rb.cross(lc) + ac));
+                        }
+                    }
+                    let (bias_rate, mass_scale, impulse_scale) = match joint.spring {
+                        Some(spring) => soft_step(spring.frequency, spring.damping_ratio, dt),
+                        None => (erp / dt, 1.0, 0.0),
+                    };
+                    blocks.push(BlockJoint {
+                        joint: index,
+                        a,
+                        b,
+                        ra,
+                        rb,
+                        size: 5,
+                        k,
+                        error,
+                        bias_rate,
+                        mass_scale,
+                        impulse_scale,
+                        impulse: [0.0; 6],
+                        force_limit,
+                        torque_limit,
+                        linear,
+                        angular,
+                        linear_rows,
+                    });
+                    let coordinate = joint.coordinate(self).unwrap_or(0.0);
+                    let inverse_mass = if angular_motor {
+                        direction.dot((ma.inverse_inertia + mb.inverse_inertia) * direction)
+                    } else {
+                        1.0 / effective_mass(ma, mb, ra, rb, direction).max(f64::MIN_POSITIVE)
+                    };
+                    if !(inverse_mass.is_finite() && inverse_mass > 0.0) {
+                        continue;
+                    }
+                    if let Some(servo) = servo {
+                        let damping = servo.kd + dt * servo.kp;
+                        let gamma = 1.0 / (dt * damping);
+                        let bias = (servo.kp * (coordinate - servo.target) / damping)
+                            .clamp(-servo.max_speed, servo.max_speed);
+                        let cap = servo.max_effort * dt;
+                        tethers.push((
+                            index,
+                            JointRow {
+                                a,
+                                b,
+                                ra,
+                                rb,
+                                dir: direction,
+                                mass: 1.0 / (inverse_mass + gamma),
+                                bias,
+                                gamma,
+                                lower: -cap,
+                                upper: cap,
+                                impulse: 0.0,
+                                angular: angular_motor,
+                                purpose: JointRowPurpose::Motor,
+                            },
+                        ));
+                    }
+                    if let Some(limits) = limits {
+                        for (gap, sign) in [
+                            (coordinate - limits.lower, 1.0),
+                            (limits.upper - coordinate, -1.0),
+                        ] {
+                            // Within the range, allow only the velocity that
+                            // reaches the boundary this step. Outside, correct
+                            // the error without allowing a pulling limit force.
+                            let bias = gap * if gap >= 0.0 { 1.0 / dt } else { erp / dt };
+                            tethers.push((
+                                index,
+                                JointRow {
+                                    a,
+                                    b,
+                                    ra,
+                                    rb,
+                                    dir: direction * sign,
+                                    mass: 1.0 / inverse_mass,
+                                    bias,
+                                    gamma: 0.0,
+                                    lower: 0.0,
+                                    upper: f64::INFINITY,
+                                    impulse: 0.0,
+                                    angular: angular_motor,
+                                    purpose: JointRowPurpose::Limit,
+                                },
+                            ));
+                        }
+                    }
                 }
                 JointKind::Tether { length } => {
                     let offset = pb - pa;
