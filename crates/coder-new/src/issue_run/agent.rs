@@ -198,7 +198,9 @@ pub async fn run_check(
     command
         .args(args)
         .current_dir(worktree)
-        .stdin(std::process::Stdio::null());
+        .stdin(std::process::Stdio::null())
+        // A Python check leaves no `__pycache__` in the change (#11562).
+        .env("PYTHONDONTWRITEBYTECODE", "1");
     // Every run's worktree is new, so its own target folder would build the
     // crates from scratch each time.
     shared_target(&mut command);

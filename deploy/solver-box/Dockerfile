@@ -58,6 +58,7 @@ RUN ln -s /usr/local/bin/coder-new /usr/local/bin/coder \
 ENV CODER_ISSUE_RUN_TOOLS=/opt/oa-tools \
     CODER_ISSUE_RUN_CAPTURE=0 \
     CODER_UPDATE=off \
+    PYTHONDONTWRITEBYTECODE=1 \
     CARGO_INCREMENTAL=0 \
     CARGO_TERM_COLOR=never
 WORKDIR /work
