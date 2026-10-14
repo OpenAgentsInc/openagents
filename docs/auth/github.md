@@ -222,7 +222,14 @@ OAuth grant keep working until they install the App. Code:
 "client_secret", "token_encryption_key", "private_key"}`, where
 `private_key` names the `.pem` GitHub generated (relative to the file);
 both mode 0600, kept at `~/work/.secrets/github-app-{local,staging,
-production}.json` and `.pem`.
+production}.json` and `.pem`. Production (openagents.com, #11572) uses
+the App `openagents-coder` (id 4771671): its private file is the Secret
+Manager secret `openagents-web-production-github-app` (client secret from
+`coder-github-client-secret`, its own token encryption key) and its key
+`coder-github-app-key`, passed to the `web` and `gateway` containers as
+`GITHUB_APP_JSON` and `GITHUB_APP_PEM`. The App's settings on GitHub must
+list `https://openagents.com/auth/github/callback` as a callback URL and
+`https://openagents.com/auth/github/setup` as the setup URL.
 
 - Web server: `--github-app PRIVATE_JSON` (reads the client id and slug).
   With it, `/projects` offers **Install on repositories**.

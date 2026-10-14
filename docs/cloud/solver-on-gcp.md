@@ -159,13 +159,20 @@ gcloud compute ssh "${H[@]}" --tunnel-through-iap --command 'sudo google_metadat
 gcloud compute ssh "${H[@]}" --tunnel-through-iap --command 'sudo systemctl stop oa-solver-dispatch'
 ```
 
-**Production today (2026-10-14):** openagents.com's web runs without
-`--github-app`, so people connect GitHub by OAuth and the account service
-issues no broker tickets; every production Solver run therefore takes the
-pool's GitHub token and its pull request is opened as the pool's owner.
-The requester's-token path turns on once the web is started with
-`--github-app` (the `coder-github-app-key` App) and a person installs the
-App from Projects.
+**The requester's own GitHub token (#11572):** openagents.com's web and
+its account service run with the GitHub App `openagents-coder` (App id
+4771671; Secret Manager `openagents-web-production-github-app` for its
+private file and `coder-github-app-key` for its key, added by
+`scripts/deploy/web.sh promote` and `deploy/production/render.py`). A
+person who installs the App from Projects (**Install OpenAgents on your
+repositories**) gets an App grant; a Solver run they ask for on a
+repository of one of their projects then carries a broker ticket, and the
+dispatcher pushes and opens the pull request with that person's token
+for that one repository, so the pull request is the App's. A person
+connected only by OAuth (no App grant), or a repository the App isn't
+installed on, still gets no ticket, and the run takes the pool's token.
+A project added before the App was installed may need to be added again
+so it records the installation.
 
 Each run logs one line when it is taken, naming which GitHub token it
 uses ("with the requester's GitHub token" or "with the pool's GitHub

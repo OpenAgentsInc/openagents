@@ -304,6 +304,26 @@ for e in envs:
         e["valueFrom"]["secretKeyRef"]["name"] = "oa-boat-api-key"
         sys.stderr.write("  web env BOAT_API_KEY -> oa-boat-api-key (our own service)\n")
 env = {e["name"] for e in envs}
+# The GitHub App (#11572, docs/auth/github.md "GitHub App"): App 4771671
+# (openagents-coder), its private file and its key, for both the web
+# (`--github-app`: Projects offers Install on repositories) and the
+# gateway's account service (App grants, credential-broker tickets, so a
+# Solver run gets the requester's own token). Both launchers turn it on
+# only when both are set. People connected by OAuth keep working.
+GITHUB_APP = (
+    {"name": "GITHUB_APP_JSON",
+     "valueFrom": {"secretKeyRef": {"name": "openagents-web-production-github-app", "key": "latest"}}},
+    {"name": "GITHUB_APP_PEM",
+     "valueFrom": {"secretKeyRef": {"name": "coder-github-app-key", "key": "latest"}}},
+)
+for c in spec["containers"]:
+    if c["name"] != "gateway":
+        continue
+    genv = c.setdefault("env", [])
+    for e in GITHUB_APP:
+        if not any(x["name"] == e["name"] for x in genv):
+            genv.append(e)
+            sys.stderr.write(f"  gateway env {e['name']} added\n")
 for e in ({"name": "STACK_STATE", "value": "/stack"},
           {"name": "ENVIRONMENTS_MODEL", "value": "google/gemini-3.8-flash"},
           {"name": "BOAT_API_KEY",
@@ -314,7 +334,8 @@ for e in ({"name": "STACK_STATE", "value": "/stack"},
            "valueFrom": {"secretKeyRef": {"name": "openagents-vertex-sa-key", "key": "latest"}}},
           # Work hosts that take "work on this issue" runs (#11258).
           {"name": "OPENAGENTS_WORK_HOST_TOKEN",
-           "valueFrom": {"secretKeyRef": {"name": "openagents-work-host-token", "key": "latest"}}}):
+           "valueFrom": {"secretKeyRef": {"name": "openagents-work-host-token", "key": "latest"}}},
+          *GITHUB_APP):
     if e["name"] not in env:
         envs.append(e)
         sys.stderr.write(f"  web env {e['name']} added\n")
