@@ -6,6 +6,27 @@ every check that failed, and where each fix lives. The umbrella issue is
 2026-10-14 re-measure is
 [#11629](https://github.com/OpenAgentsInc/openagents/issues/11629).
 
+## 2026-10-14: agents register themselves (authMd passes)
+
+The owner decided agents may make their own accounts (#11630,
+[self-registration.md](self-registration.md)). `POST /v1/agents/register`
+(after a proof-of-work challenge) makes an agent account and key with a
+small daily free tier, and the `agent_auth` block now advertises
+`identity_types_supported: ["anonymous"]`,
+`anonymous.credential_types_supported: ["api_key"]`, `register_uri`, and
+`claim_uri`. Deployed as revision `coder-web-608631ce7d-20261014230348`
+(web and gateway from `d24e20ccc9`, which carries `cbb165503c`). Is It
+Agent Ready, re-run after the deploy: **Level 5 "Agent-Native"**, authMd
+**pass** ("Auth.md support detected (anonymous)"); dnsAid (owner DNS) is
+the only failing check left. Readiness.sh's `auth-md-structure` and
+`auth-md-walkthrough-simulation` were failing on the same decision.
+
+On production, a registered agent's 20 free requests answered in about
+0.7 s each and cost $0.000074 together; the 21st answered `402
+agent_free_requests_used` in 0.20 s, and a request for a larger model `402
+agent_payment_required`. The test agent was then claimed by the test
+account and turned off; its key answered `401`.
+
 ## 2026-10-14: re-measure
 
 All scans were read-only, against production. "Before" is revision
@@ -40,7 +61,7 @@ Is It Agent Ready:
   on Cloudflare (`alina`/`karl.ns.cloudflare.com`), not in our Cloud DNS
   (the project's only zone is `fleet.internal.`), so the exact records are
   in the workspace's `NEEDS_OWNER.md` for the owner to add.
-- `authMd` (fail): `/auth.md` and the `agent_auth` block are found, but the
+- `authMd` (fail; passes since the self-registration section above): `/auth.md` and the `agent_auth` block are found, but the
   checker counts a registration method as complete only for the auth.md
   agent flows (ID-JAG identity assertion, verified email, or anonymous
   registration with a `claim_uri`). We offer OAuth dynamic client
