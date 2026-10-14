@@ -173,10 +173,15 @@ runs build there.
 
 ## Cut a release
 
-1. **Bump the version.** Set `version` in `crates/openagents-cli/Cargo.toml`,
-   `crates/openagents-terminal/Cargo.toml`, and `crates/microcoder/Cargo.toml`
-   to the release, such as `1.0.0-rc.2` or `1.0.0`. `openagents --version`,
-   the welcome card, and `microcoder --version` print it. It moves apart from the workspace version. Commit and push it.
+1. **Bump the version.** Every crate we wrote carries the product's version,
+   so set them all at once: `scripts/release/versions.py set 1.0.0-rc.13`
+   (or `1.0.0`). It updates the workspace version, every crate that sets
+   its own, Psionic's workspace, mc-bridge, and our entries in the lock
+   files. `coder --version`, `openagents --version`, and
+   `microcoder --version` print it. Commit and push it.
+   `scripts/release/versions.py check` fails when any crate drifts from
+   Coder's version (crates/coder-new/Cargo.toml), and `coder.sh` runs it
+   before it builds.
 2. **Build and check.**
    `CARGO_TARGET_DIR=~/work/openagents-target-release scripts/release/terminal.sh --version 1.0.0-rc.2`
    builds every platform from an archive of `HEAD` and stages the

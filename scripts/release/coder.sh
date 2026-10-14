@@ -535,6 +535,12 @@ source=$(mktemp -d "${TMPDIR:-/tmp}/coder-terminal-source.XXXXXX")
 trap 'rm -rf "$source"' EXIT
 echo "Extracting $short into $source"
 git -C "$repo_root" archive --format=tar "$sha" | (cd "$source" && tar -xf -)
+# Every crate we wrote carries the product's version; refuse a commit where
+# one drifted (fix with scripts/release/versions.py set VERSION).
+if [ -f "$source/scripts/release/versions.py" ]; then
+  python3 "$source/scripts/release/versions.py" check ||
+    die "the crates at $short aren't all at the product's version; run scripts/release/versions.py set $version and commit"
+fi
 entitlements="$source/scripts/release/openagents-terminal.entitlements"
 
 # Signing material, read once and only when a macOS platform builds.

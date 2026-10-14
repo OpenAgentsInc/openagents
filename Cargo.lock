@@ -128,7 +128,7 @@ dependencies = [
 
 [[package]]
 name = "acp-client"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "coder-lease",
  "libc",
@@ -158,7 +158,7 @@ dependencies = [
 
 [[package]]
 name = "actors"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "axum 0.8.9",
  "futures-util",
@@ -235,7 +235,7 @@ dependencies = [
 
 [[package]]
 name = "agent-fleet"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "coder-lease",
  "serde",
@@ -1389,7 +1389,7 @@ dependencies = [
 
 [[package]]
 name = "atif"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -1467,7 +1467,7 @@ dependencies = [
 
 [[package]]
 name = "att-web"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "base64 0.22.1",
  "console_error_panic_hook",
@@ -1607,7 +1607,7 @@ dependencies = [
 
 [[package]]
 name = "background"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "atif",
  "coder-boundary",
@@ -1897,7 +1897,7 @@ dependencies = [
 
 [[package]]
 name = "bitcoin-amount"
-version = "0.1.0"
+version = "1.0.0"
 
 [[package]]
 name = "bitcoin-consensus-encoding"
@@ -2229,7 +2229,7 @@ dependencies = [
 
 [[package]]
 name = "boat"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "base64 0.22.1",
  "hmac 0.12.1",
@@ -2242,7 +2242,7 @@ dependencies = [
 
 [[package]]
 name = "boat-template"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "boat",
  "serde_json",
@@ -2314,7 +2314,7 @@ dependencies = [
 
 [[package]]
 name = "brainstorm-client"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "httpdate",
  "reqwest 0.12.28",
@@ -2400,7 +2400,7 @@ dependencies = [
 
 [[package]]
 name = "briefed-agent"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "claude_agent_sdk",
  "coder-sdk",
@@ -2415,7 +2415,7 @@ dependencies = [
 
 [[package]]
 name = "briefing-lab"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -2465,14 +2465,14 @@ dependencies = [
 
 [[package]]
 name = "bunny-rules"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "sha2 0.10.9",
 ]
 
 [[package]]
 name = "bunny-web"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "bunny-rules",
  "console_error_panic_hook",
@@ -2705,7 +2705,7 @@ dependencies = [
 
 [[package]]
 name = "capability"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "atif",
  "nostr",
@@ -2814,7 +2814,7 @@ checksum = "4b4b0fc281743d80256607bd65e8beedc42cb0787ea119c85b81b4c0eab85e5f"
 
 [[package]]
 name = "chat-load-bench"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "base64 0.22.1",
  "coder-connect",
@@ -2926,7 +2926,7 @@ checksum = "1c133bc6a41be0d194c306b5506d15e6feeea7b1d6604bd3f8310dfb2ca96486"
 
 [[package]]
 name = "claude_agent_sdk"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "async-trait",
  "futures",
@@ -2966,7 +2966,7 @@ dependencies = [
 
 [[package]]
 name = "code-highlight"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "ratatui",
  "supports-color",
@@ -2988,7 +2988,7 @@ dependencies = [
 
 [[package]]
 name = "coder"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "acp-client",
  "atif",
@@ -3061,7 +3061,7 @@ dependencies = [
 
 [[package]]
 name = "coder-access"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "base64 0.22.1",
  "coder-connect",
@@ -3081,11 +3081,11 @@ dependencies = [
 
 [[package]]
 name = "coder-binds"
-version = "0.1.0"
+version = "1.0.0"
 
 [[package]]
 name = "coder-boundary"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "errno",
  "libc",
@@ -3099,7 +3099,7 @@ dependencies = [
 
 [[package]]
 name = "coder-browser"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "coder-access",
  "coder-host-wire",
@@ -3123,7 +3123,7 @@ dependencies = [
 
 [[package]]
 name = "coder-browser-web"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "bytemuck",
  "coder-access",
@@ -3151,7 +3151,7 @@ dependencies = [
 
 [[package]]
 name = "coder-chat-web"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "js-sys",
  "wasm-bindgen",
@@ -3161,7 +3161,7 @@ dependencies = [
 
 [[package]]
 name = "coder-cloud"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "atif",
  "base64 0.22.1",
@@ -3183,7 +3183,7 @@ dependencies = [
 
 [[package]]
 name = "coder-cloud-web"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "futures-util",
  "gloo-timers",
@@ -3197,7 +3197,7 @@ dependencies = [
 
 [[package]]
 name = "coder-components-web"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "coder-demo-ui",
  "coder-ui",
@@ -3213,7 +3213,7 @@ dependencies = [
 
 [[package]]
 name = "coder-compositor"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "coder-binds",
  "coder-desk",
@@ -3229,7 +3229,7 @@ dependencies = [
 
 [[package]]
 name = "coder-computers"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "base64 0.22.1",
  "coder-access",
@@ -3260,7 +3260,7 @@ dependencies = [
 
 [[package]]
 name = "coder-connect"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "base64 0.22.1",
  "coder-history",
@@ -3284,7 +3284,7 @@ dependencies = [
 
 [[package]]
 name = "coder-control"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "coder",
  "futures-util",
@@ -3301,7 +3301,7 @@ dependencies = [
 
 [[package]]
 name = "coder-delegate"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "acp-client",
  "atif",
@@ -3329,7 +3329,7 @@ dependencies = [
 
 [[package]]
 name = "coder-demo-ui"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "coder-ui",
  "ratatui",
@@ -3343,7 +3343,7 @@ dependencies = [
 
 [[package]]
 name = "coder-desk"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "coder-binds",
  "serde",
@@ -3355,7 +3355,7 @@ dependencies = [
 
 [[package]]
 name = "coder-desk-cli"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "clap",
  "coder-desk",
@@ -3364,7 +3364,7 @@ dependencies = [
 
 [[package]]
 name = "coder-engine-status"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -3373,7 +3373,7 @@ dependencies = [
 
 [[package]]
 name = "coder-environment"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "atif",
  "boat",
@@ -3386,7 +3386,7 @@ dependencies = [
 
 [[package]]
 name = "coder-environment-build"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "coder-environment",
  "coder-environment-setup",
@@ -3399,7 +3399,7 @@ dependencies = [
 
 [[package]]
 name = "coder-environment-operator"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "boat",
  "coder-access",
@@ -3420,7 +3420,7 @@ dependencies = [
 
 [[package]]
 name = "coder-environment-setup"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "coder-access",
  "coder-cloud",
@@ -3434,7 +3434,7 @@ dependencies = [
 
 [[package]]
 name = "coder-environment-verify"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "coder-environment",
  "coder-environment-build",
@@ -3448,7 +3448,7 @@ dependencies = [
 
 [[package]]
 name = "coder-hands"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "coder-hands",
  "coder-wm",
@@ -3467,7 +3467,7 @@ dependencies = [
 
 [[package]]
 name = "coder-hands-measure"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "coder-hands",
  "coder-wm",
@@ -3478,7 +3478,7 @@ dependencies = [
 
 [[package]]
 name = "coder-history"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "base64 0.22.1",
  "libc",
@@ -3491,7 +3491,7 @@ dependencies = [
 
 [[package]]
 name = "coder-host"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "background",
  "base64 0.22.1",
@@ -3534,7 +3534,7 @@ dependencies = [
 
 [[package]]
 name = "coder-host-wire"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "coder-pty",
  "coder-reach",
@@ -3545,7 +3545,7 @@ dependencies = [
 
 [[package]]
 name = "coder-labor"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "coder",
  "coder-boundary",
@@ -3566,7 +3566,7 @@ dependencies = [
 
 [[package]]
 name = "coder-lease"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "libc",
  "serde",
@@ -3577,11 +3577,11 @@ dependencies = [
 
 [[package]]
 name = "coder-link"
-version = "0.1.0"
+version = "1.0.0"
 
 [[package]]
 name = "coder-mobile"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "base64 0.22.1",
  "coder",
@@ -3616,7 +3616,7 @@ dependencies = [
 
 [[package]]
 name = "coder-mobile-probe"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "android-activity",
  "atif",
@@ -3697,7 +3697,7 @@ dependencies = [
 
 [[package]]
 name = "coder-one"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "atif",
  "coder-boundary",
@@ -3722,7 +3722,7 @@ dependencies = [
 
 [[package]]
 name = "coder-project"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "atif",
  "base64 0.22.1",
@@ -3745,7 +3745,7 @@ dependencies = [
 
 [[package]]
 name = "coder-pty"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "base64 0.22.1",
  "coder-boundary",
@@ -3762,7 +3762,7 @@ dependencies = [
 
 [[package]]
 name = "coder-reach"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "base64 0.22.1",
  "futures-util",
@@ -3784,7 +3784,7 @@ dependencies = [
 
 [[package]]
 name = "coder-scheduler"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "getrandom 0.4.3",
  "serde",
@@ -3796,7 +3796,7 @@ dependencies = [
 
 [[package]]
 name = "coder-sdk"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "acp-client",
  "claude_agent_sdk",
@@ -3817,7 +3817,7 @@ dependencies = [
 
 [[package]]
 name = "coder-service"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "coder-access",
  "libc",
@@ -3833,7 +3833,7 @@ dependencies = [
 
 [[package]]
 name = "coder-ssh"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "libc",
  "sha2 0.10.9",
@@ -3843,7 +3843,7 @@ dependencies = [
 
 [[package]]
 name = "coder-sync"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "atif",
  "axum 0.8.9",
@@ -3861,7 +3861,7 @@ dependencies = [
 
 [[package]]
 name = "coder-terminal"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "base64 0.22.1",
  "code-highlight",
@@ -3877,7 +3877,7 @@ dependencies = [
 
 [[package]]
 name = "coder-ui"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "atif",
  "nostr",
@@ -3897,7 +3897,7 @@ dependencies = [
 
 [[package]]
 name = "coder-vt"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "coder-pty",
  "flate2",
@@ -3909,11 +3909,11 @@ dependencies = [
 
 [[package]]
 name = "coder-wm"
-version = "0.1.0"
+version = "1.0.0"
 
 [[package]]
 name = "coder-working-computer"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "base64 0.22.1",
  "boat",
@@ -3927,7 +3927,7 @@ dependencies = [
 
 [[package]]
 name = "coderbench"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "atif",
  "capability",
@@ -3942,7 +3942,7 @@ dependencies = [
 
 [[package]]
 name = "coderos-camera"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "coder-hands",
  "jpeg-decoder",
@@ -3966,7 +3966,7 @@ dependencies = [
 
 [[package]]
 name = "codex-transport"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "base64 0.22.1",
  "libc",
@@ -3996,7 +3996,7 @@ dependencies = [
 
 [[package]]
 name = "commercial-accounts"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "coder",
  "libc",
@@ -4016,7 +4016,7 @@ dependencies = [
 
 [[package]]
 name = "commercial-spend"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "coder",
  "commercial-accounts",
@@ -4052,7 +4052,7 @@ dependencies = [
 
 [[package]]
 name = "compute-workbench"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "axum 0.8.9",
  "clap",
@@ -4167,7 +4167,7 @@ checksum = "3d52eff69cd5e647efe296129160853a42795992097e8af39800e1060caeea9b"
 
 [[package]]
 name = "contribution-service"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "clap",
  "fs2",
@@ -4187,7 +4187,7 @@ dependencies = [
 
 [[package]]
 name = "contribution-workbench"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "knowledge",
  "nostr",
@@ -5134,7 +5134,7 @@ dependencies = [
 
 [[package]]
 name = "discovery"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "nostr",
  "paper-mono",
@@ -5635,7 +5635,7 @@ dependencies = [
 
 [[package]]
 name = "eval-runner"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "coder",
  "ext-eval",
@@ -5676,7 +5676,7 @@ dependencies = [
 
 [[package]]
 name = "everglade-web"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "coder-access",
  "coder-browser",
@@ -5709,7 +5709,7 @@ dependencies = [
 
 [[package]]
 name = "ext-eval"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "atif",
  "axum 0.8.9",
@@ -6330,7 +6330,7 @@ checksum = "312d2295c7302019c395cfb90dacd00a82a2eabd700429bba9c7a3f38dbbe11b"
 
 [[package]]
 name = "gateway"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "atif",
  "axum 0.8.9",
@@ -6744,7 +6744,7 @@ dependencies = [
 
 [[package]]
 name = "github-actions"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "reqwest 0.12.28",
  "serde",
@@ -6947,7 +6947,7 @@ dependencies = [
 
 [[package]]
 name = "gym"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "atif",
  "coder-terminal",
@@ -6972,7 +6972,7 @@ dependencies = [
 
 [[package]]
 name = "gym-bridge"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "base64 0.22.1",
  "coder-connect",
@@ -6992,7 +6992,7 @@ dependencies = [
 
 [[package]]
 name = "gym-leaderboard"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "atif",
  "futures-util",
@@ -7273,7 +7273,7 @@ dependencies = [
 
 [[package]]
 name = "hook-log"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -7437,11 +7437,11 @@ dependencies = [
 
 [[package]]
 name = "icecream-rules"
-version = "0.1.0"
+version = "1.0.0"
 
 [[package]]
 name = "icecream-web"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "console_error_panic_hook",
  "glam",
@@ -7726,7 +7726,7 @@ dependencies = [
 
 [[package]]
 name = "inference"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "base64 0.22.1",
  "futures-util",
@@ -8115,7 +8115,7 @@ checksum = "4d3667095d64c3ecffc96463a21157b04bf3e252f6e8d5750b20c02e33c194e3"
 
 [[package]]
 name = "jev"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "http",
  "httpdate",
@@ -8134,7 +8134,7 @@ dependencies = [
 
 [[package]]
 name = "jev-hosted"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "atif",
  "axum 0.8.9",
@@ -8389,7 +8389,7 @@ dependencies = [
 
 [[package]]
 name = "kev"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "axum 0.8.9",
  "candle-core",
@@ -8450,7 +8450,7 @@ checksum = "e2db585e1d738fc771bf08a151420d3ed193d9d895a36df7f6f8a9456b911ddc"
 
 [[package]]
 name = "knowledge"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "codex-transport",
  "flate2",
@@ -8526,7 +8526,7 @@ checksum = "bf36173d4167ed999940f804952e6b08197cae5ad5d572eb4db150ce8ad5d58f"
 
 [[package]]
 name = "laya"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "axum 0.8.9",
  "candle-core",
@@ -8609,7 +8609,7 @@ checksum = "09edd9e8b54e49e587e4f6295a7d29c3ea94d469cb40ab8ca70b288248a81db2"
 
 [[package]]
 name = "lev"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "axum 0.8.9",
  "gym",
@@ -9122,7 +9122,7 @@ checksum = "d3d25b0e0b648a86960ac23b7ad4abb9717601dec6f66c165f5b037f3f03065f"
 
 [[package]]
 name = "mac-jobs"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "actors",
  "getrandom 0.4.3",
@@ -9207,7 +9207,7 @@ dependencies = [
 
 [[package]]
 name = "markdown-stream"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "pulldown-cmark",
 ]
@@ -9319,7 +9319,7 @@ dependencies = [
 
 [[package]]
 name = "memory-stream"
-version = "0.1.0"
+version = "1.0.0"
 
 [[package]]
 name = "metal"
@@ -9377,7 +9377,7 @@ dependencies = [
 
 [[package]]
 name = "microcoder-loop"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "acp-client",
  "atif",
@@ -9403,7 +9403,7 @@ dependencies = [
 
 [[package]]
 name = "microluna"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "atif",
  "base64 0.22.1",
@@ -9510,7 +9510,7 @@ dependencies = [
 
 [[package]]
 name = "model-access"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "getrandom 0.3.4",
  "jev",
@@ -10040,7 +10040,7 @@ dependencies = [
 
 [[package]]
 name = "nostr"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "chacha20",
  "hkdf 0.13.0",
@@ -10056,7 +10056,7 @@ dependencies = [
 
 [[package]]
 name = "nostr-relay"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "nostr",
  "secp256k1 0.31.1",
@@ -10070,7 +10070,7 @@ dependencies = [
 
 [[package]]
 name = "nostr-transport"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "futures-util",
  "nostr",
@@ -10299,7 +10299,7 @@ dependencies = [
 
 [[package]]
 name = "oa-att"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "base64 0.22.1",
  "nostr",
@@ -10316,7 +10316,7 @@ dependencies = [
 
 [[package]]
 name = "oa-auth"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "aes-gcm",
  "axum 0.8.9",
@@ -10337,7 +10337,7 @@ dependencies = [
 
 [[package]]
 name = "oa-boat"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "axum 0.8.9",
  "base64 0.22.1",
@@ -10356,7 +10356,7 @@ dependencies = [
 
 [[package]]
 name = "oa-connections"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "axum 0.8.9",
  "base64 0.22.1",
@@ -10374,11 +10374,11 @@ dependencies = [
 
 [[package]]
 name = "oa-copy"
-version = "0.1.0"
+version = "1.0.0"
 
 [[package]]
 name = "oa-seal"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "aes-gcm",
  "base64 0.22.1",
@@ -10392,14 +10392,14 @@ dependencies = [
 
 [[package]]
 name = "oa-tokens"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "oa-vault"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "aes-gcm",
  "base64 0.22.1",
@@ -10416,7 +10416,7 @@ dependencies = [
 
 [[package]]
 name = "oa-vault-web"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "base64 0.22.1",
  "oa-vault",
@@ -10429,7 +10429,7 @@ dependencies = [
 
 [[package]]
 name = "oak"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "axum 0.8.9",
  "discovery",
@@ -10973,7 +10973,7 @@ checksum = "c08d65885ee38876c4f86fa503fb49d7b507c2b62552df7c70b2fce627e06381"
 
 [[package]]
 name = "openagents-chat"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "atif",
  "coder-access",
@@ -11001,7 +11001,7 @@ dependencies = [
 
 [[package]]
 name = "openagents-chat-app"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "base64 0.22.1",
  "coder-computers",
@@ -11132,7 +11132,7 @@ dependencies = [
 
 [[package]]
 name = "openagents-connect"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "base64 0.22.1",
  "coder-access",
@@ -11155,7 +11155,7 @@ dependencies = [
 
 [[package]]
 name = "openagents-deck"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "rust-native",
  "rust-native-desktop",
@@ -11227,7 +11227,7 @@ dependencies = [
 
 [[package]]
 name = "openagents-login"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "axum 0.8.9",
  "reqwest 0.12.28",
@@ -11239,7 +11239,7 @@ dependencies = [
 
 [[package]]
 name = "openagents-spark"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "async-trait",
  "bip39",
@@ -11283,7 +11283,7 @@ dependencies = [
 
 [[package]]
 name = "openagents-ui"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "maud",
  "oa-copy",
@@ -11292,7 +11292,7 @@ dependencies = [
 
 [[package]]
 name = "openagents-wallet"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "hex",
  "hmac 0.12.1",
@@ -11309,7 +11309,7 @@ dependencies = [
 
 [[package]]
 name = "openagents-web"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "actors",
  "agent-fleet",
@@ -11390,7 +11390,7 @@ dependencies = [
 
 [[package]]
 name = "openagents-x402"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "base64 0.22.1",
  "hex",
@@ -11407,7 +11407,7 @@ dependencies = [
 
 [[package]]
 name = "openrouter"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "reqwest 0.12.28",
  "serde",
@@ -11424,7 +11424,7 @@ checksum = "7c87def4c32ab89d880effc9e097653c8da5d6ef28e6b539d313baaacfbafcbe"
 
 [[package]]
 name = "openui-lang"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -11562,7 +11562,7 @@ dependencies = [
 
 [[package]]
 name = "paper-mono"
-version = "0.1.0"
+version = "1.0.0"
 
 [[package]]
 name = "parity-scale-codec"
@@ -11635,7 +11635,7 @@ checksum = "2ee67f1008b1ba2321834326597b8e186293b049a023cdef258527550b9935b4"
 
 [[package]]
 name = "pay-host"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "axum 0.8.9",
  "chrono",
@@ -11656,7 +11656,7 @@ dependencies = [
 
 [[package]]
 name = "pay-ledger"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "chrono",
  "hex",
@@ -11909,7 +11909,7 @@ dependencies = [
 
 [[package]]
 name = "physics"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "glam",
  "serde",
@@ -12052,7 +12052,7 @@ dependencies = [
 
 [[package]]
 name = "playtest"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "nostr",
  "secp256k1 0.31.1",
@@ -12076,7 +12076,7 @@ dependencies = [
 
 [[package]]
 name = "plugin"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "libc",
  "nostr",
@@ -12090,7 +12090,7 @@ dependencies = [
 
 [[package]]
 name = "plugin-action-items"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "plugin-pdk",
  "serde_json",
@@ -12098,7 +12098,7 @@ dependencies = [
 
 [[package]]
 name = "plugin-code-search"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "plugin-pdk",
  "serde_json",
@@ -12106,7 +12106,7 @@ dependencies = [
 
 [[package]]
 name = "plugin-dependency-check"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "plugin-pdk",
  "serde_json",
@@ -12114,7 +12114,7 @@ dependencies = [
 
 [[package]]
 name = "plugin-explain-error"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "plugin-pdk",
  "serde_json",
@@ -12122,7 +12122,7 @@ dependencies = [
 
 [[package]]
 name = "plugin-hook-guard"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "plugin-pdk",
  "serde_json",
@@ -12130,7 +12130,7 @@ dependencies = [
 
 [[package]]
 name = "plugin-outline"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "plugin-pdk",
  "serde_json",
@@ -12138,7 +12138,7 @@ dependencies = [
 
 [[package]]
 name = "plugin-pdk"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -12146,7 +12146,7 @@ dependencies = [
 
 [[package]]
 name = "plugin-release-notes"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "plugin-pdk",
  "serde_json",
@@ -12154,7 +12154,7 @@ dependencies = [
 
 [[package]]
 name = "plugin-repo-map"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "plugin-pdk",
  "serde_json",
@@ -12162,7 +12162,7 @@ dependencies = [
 
 [[package]]
 name = "plugin-test-report"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "plugin-pdk",
  "serde_json",
@@ -12386,7 +12386,7 @@ dependencies = [
 
 [[package]]
 name = "private-fs"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "tempfile",
  "windows-sys 0.61.2",
@@ -12702,7 +12702,7 @@ checksum = "1d8f70e07b9c3962945a74e59ca1c511bba65b6419468acc217c457d93f3c740"
 
 [[package]]
 name = "push-gateway"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "axum 0.8.9",
  "base64 0.22.1",
@@ -12727,7 +12727,7 @@ checksum = "d55d956fa96f5ec02be2e13af0e20391a5aa83d6a074e3ad368959d0fab299ea"
 
 [[package]]
 name = "pylon"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "base64 0.22.1",
  "coder-lease",
@@ -13188,7 +13188,7 @@ checksum = "03251193000f4bd3b042892be858ee50e8b3719f2b08e5833ac4353724632430"
 
 [[package]]
 name = "receipts"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -13431,7 +13431,7 @@ dependencies = [
 
 [[package]]
 name = "retail-cloud"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "boat",
  "hex",
@@ -13450,7 +13450,7 @@ dependencies = [
 
 [[package]]
 name = "retail-qualify"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "base64 0.22.1",
  "boat",
@@ -13469,7 +13469,7 @@ dependencies = [
 
 [[package]]
 name = "retail-service"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "axum 0.8.9",
  "boat",
@@ -13578,7 +13578,7 @@ dependencies = [
 
 [[package]]
 name = "route-contract"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -13683,7 +13683,7 @@ dependencies = [
 
 [[package]]
 name = "rust-native"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "code-highlight",
  "markdown-stream",
@@ -13698,7 +13698,7 @@ dependencies = [
 
 [[package]]
 name = "rust-native-desktop"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "accesskit",
  "accesskit_consumer",
@@ -13723,7 +13723,7 @@ dependencies = [
 
 [[package]]
 name = "rust-native-web"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "rust-native",
  "serde",
@@ -14133,7 +14133,7 @@ dependencies = [
 
 [[package]]
 name = "secret-screen"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "regex",
  "serde_json",
@@ -14760,7 +14760,7 @@ dependencies = [
 
 [[package]]
 name = "solver-box"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "boat",
  "reqwest 0.12.28",
@@ -14924,7 +14924,7 @@ dependencies = [
 
 [[package]]
 name = "squeeze"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "claude_agent_sdk",
  "coder-sdk",
@@ -15008,7 +15008,7 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 
 [[package]]
 name = "supervise"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "libc",
  "tempfile",
@@ -15255,7 +15255,7 @@ dependencies = [
 
 [[package]]
 name = "tenancy"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "getrandom 0.4.3",
  "gym",
@@ -15294,7 +15294,7 @@ dependencies = [
 
 [[package]]
 name = "terminal-app"
-version = "1.0.0-rc.2"
+version = "1.0.0"
 dependencies = [
  "bytemuck",
  "compute-workbench",
@@ -15316,7 +15316,7 @@ dependencies = [
 
 [[package]]
 name = "terminal-control"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "private-fs",
  "serde_json",
@@ -15329,7 +15329,7 @@ dependencies = [
 
 [[package]]
 name = "terminal-core"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "coder-pty",
  "coder-vt",
@@ -15345,7 +15345,7 @@ dependencies = [
 
 [[package]]
 name = "terminal-gfx"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "arboard",
  "bytemuck",
@@ -15370,7 +15370,7 @@ dependencies = [
 
 [[package]]
 name = "terminal-mux"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "coder-pty",
  "coder-terminal",
@@ -15390,7 +15390,7 @@ dependencies = [
 
 [[package]]
 name = "terminal-remote"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "coder-access",
  "coder-computers",
@@ -15409,7 +15409,7 @@ dependencies = [
 
 [[package]]
 name = "terminal-studio"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "coder",
  "coder-access",
@@ -15431,7 +15431,7 @@ dependencies = [
 
 [[package]]
 name = "terminal-tty"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "coder-pty",
  "coder-vt",
@@ -16219,11 +16219,11 @@ checksum = "8df9b6e13f2d32c91b9bd719c00d1958837bc7dec474d94952798cc8e69eeec3"
 
 [[package]]
 name = "town-clock"
-version = "0.1.0"
+version = "1.0.0"
 
 [[package]]
 name = "townsfolk"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "memory-stream",
  "serde",
@@ -16785,7 +16785,7 @@ checksum = "daf8dba3b7eb870caf1ddeed7bc9d2a049f3cfdfae7cb521b087cc33ae4c49da"
 
 [[package]]
 name = "user-home"
-version = "0.1.0"
+version = "1.0.0"
 
 [[package]]
 name = "usvg"
@@ -16917,7 +16917,7 @@ checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
 
 [[package]]
 name = "verse"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "arboard",
  "atif",
@@ -17005,7 +17005,7 @@ dependencies = [
 
 [[package]]
 name = "verse-bake"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "bytemuck",
  "glam",
@@ -17021,7 +17021,7 @@ dependencies = [
 
 [[package]]
 name = "verse-content"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "glam",
  "gltf",
@@ -17042,7 +17042,7 @@ dependencies = [
 
 [[package]]
 name = "verse-core"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "atif",
  "coder-ui",
@@ -17059,7 +17059,7 @@ dependencies = [
 
 [[package]]
 name = "verse-engine"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "bytemuck",
  "glam",
@@ -17074,7 +17074,7 @@ dependencies = [
 
 [[package]]
 name = "verse-film"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "bytemuck",
  "image",
@@ -17089,14 +17089,14 @@ dependencies = [
 
 [[package]]
 name = "verse-game"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "sha2 0.10.9",
 ]
 
 [[package]]
 name = "verse-gfx"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "bytemuck",
  "coder-ui",
@@ -17111,7 +17111,7 @@ dependencies = [
 
 [[package]]
 name = "verse-gym"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "coder-ui",
  "glam",
@@ -17132,7 +17132,7 @@ dependencies = [
 
 [[package]]
 name = "verse-host"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "glam",
  "rcgen",
@@ -17148,7 +17148,7 @@ dependencies = [
 
 [[package]]
 name = "verse-imported"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "glam",
  "physics",
@@ -17175,7 +17175,7 @@ dependencies = [
 
 [[package]]
 name = "verse-lagrange"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "glam",
  "physics",
@@ -17185,7 +17185,7 @@ dependencies = [
 
 [[package]]
 name = "verse-net"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "coder-ui",
  "futures-util",
@@ -17212,7 +17212,7 @@ dependencies = [
 
 [[package]]
 name = "verse-pbr"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "bytemuck",
  "coder-ui",
@@ -17240,7 +17240,7 @@ dependencies = [
 
 [[package]]
 name = "verse-private"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "axum 0.8.9",
  "base64 0.22.1",
@@ -17255,7 +17255,7 @@ dependencies = [
 
 [[package]]
 name = "verse-water-spells"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "bytemuck",
  "glam",
@@ -17278,7 +17278,7 @@ dependencies = [
 
 [[package]]
 name = "verse-world"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "coder-access",
  "coder-reach",
@@ -17304,7 +17304,7 @@ dependencies = [
 
 [[package]]
 name = "verse-zone-coast"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "glam",
  "physics",
@@ -17320,7 +17320,7 @@ dependencies = [
 
 [[package]]
 name = "verse-zone-crypt"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "glam",
  "serde",
@@ -17332,7 +17332,7 @@ dependencies = [
 
 [[package]]
 name = "verse-zone-everglade"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "atif",
  "coder",
@@ -17372,7 +17372,7 @@ dependencies = [
 
 [[package]]
 name = "verse-zone-grove"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "coder-ui",
  "glam",
@@ -17389,7 +17389,7 @@ dependencies = [
 
 [[package]]
 name = "verse-zone-lab"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "coder-ui",
  "glam",
@@ -17402,7 +17402,7 @@ dependencies = [
 
 [[package]]
 name = "verse-zone-lagrange"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "glam",
  "verse-core",
@@ -17413,7 +17413,7 @@ dependencies = [
 
 [[package]]
 name = "verse-zone-water"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "bytemuck",
  "glam",
@@ -17454,7 +17454,7 @@ dependencies = [
 
 [[package]]
 name = "voyager"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "atif",
  "jev",
@@ -19105,7 +19105,7 @@ dependencies = [
 
 [[package]]
 name = "workbench"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -19113,7 +19113,7 @@ dependencies = [
 
 [[package]]
 name = "workbench-session"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "coder-pty",
  "serde",
@@ -19123,7 +19123,7 @@ dependencies = [
 
 [[package]]
 name = "workflow-run"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "boa_engine",
  "serde",
@@ -19134,7 +19134,7 @@ dependencies = [
 
 [[package]]
 name = "world-tree"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -19293,7 +19293,7 @@ checksum = "ec7a2a501ed189703dba8b08142f057e887dfc4b2cc4db2d343ac6376ba3e0b9"
 
 [[package]]
 name = "xp-ledger"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "nostr",
  "serde",
