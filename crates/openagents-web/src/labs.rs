@@ -283,6 +283,21 @@ enum Ending {
     Handoff,
 }
 
+/// How the model may call tools at a step. The first step must call one
+/// (a Lab tool or `general_chat`): the route is always a typed choice, and
+/// an answer about a Lab document never comes before a tool has read it
+/// (#11619, where a game answer came back with no tool called). The last
+/// step must answer in words; the steps between choose.
+fn tool_config(step: usize) -> Option<Value> {
+    if step == 0 {
+        Some(json!({"functionCallingConfig": {"mode": "ANY"}}))
+    } else if step == MAX_STEPS {
+        Some(json!({"functionCallingConfig": {"mode": "NONE"}}))
+    } else {
+        None
+    }
+}
+
 async fn converse(
     gemini: &Gemini,
     labs: &[Lab],
@@ -293,8 +308,13 @@ async fn converse(
     let mut card: Option<Value> = None;
     let mut route: Option<Kind> = None;
     for step in 0..=MAX_STEPS {
-        if step == MAX_STEPS {
-            body["toolConfig"] = json!({"functionCallingConfig": {"mode": "NONE"}});
+        match tool_config(step) {
+            Some(config) => body["toolConfig"] = config,
+            None => {
+                if let Some(object) = body.as_object_mut() {
+                    object.remove("toolConfig");
+                }
+            }
         }
         let reply = gemini_call(gemini, &body).await?;
         let content = reply["candidates"][0]["content"].clone();
@@ -533,5 +553,18 @@ mod tests {
         assert!(text.contains("Say only what the tool results in this turn say"));
         assert!(text.contains("Never use one Lab's tools on the other Lab's document"));
         assert!(text.contains("no current Lab document"));
+    }
+
+    #[test]
+    fn the_first_step_must_call_a_tool_and_the_last_must_answer() {
+        assert_eq!(
+            tool_config(0).unwrap()["functionCallingConfig"]["mode"],
+            "ANY"
+        );
+        assert_eq!(tool_config(1), None);
+        assert_eq!(
+            tool_config(MAX_STEPS).unwrap()["functionCallingConfig"]["mode"],
+            "NONE"
+        );
     }
 }
