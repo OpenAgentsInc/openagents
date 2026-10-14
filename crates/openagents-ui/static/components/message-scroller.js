@@ -43,6 +43,7 @@
     let anchor = null; // { id, top }: the first turn in view
     let first = null; // the first turn's id
     let opened = false; // the reader opened or closed a line
+    let lastTop = box.scrollTop;
 
     const firstTurn = () => {
       const head = turns.querySelector(TURNS);
@@ -58,6 +59,7 @@
     };
     const toEnd = () => {
       box.scrollTop = box.scrollHeight;
+      lastTop = box.scrollTop;
     };
     const remember = () => {
       anchor = pick();
@@ -79,15 +81,26 @@
         const turn = turns.querySelector("#" + CSS.escape(anchor.id));
         if (turn) {
           const moved = turn.getBoundingClientRect().top - boxTop(box) - anchor.top;
-          if (Math.abs(moved) > 0.5) box.scrollTop += moved;
+          if (Math.abs(moved) > 0.5) {
+            box.scrollTop += moved;
+            lastTop = box.scrollTop;
+          }
         }
       }
-      if (still && follows) following = atBottom(box);
+      if (earlier && follows) following = atBottom(box);
       remember();
     };
 
+    // Following stops only when the reader moves up: a reply growing
+    // below (or the page's own scroll anchoring) also fires scroll
+    // events, with the view no longer at the end, and must not stop it.
     (page(box) ? window : box).addEventListener("scroll", () => {
-      if (follows) following = atBottom(box);
+      const top = box.scrollTop;
+      if (follows) {
+        if (atBottom(box)) following = true;
+        else if (top < lastTop - 1) following = false;
+      }
+      lastTop = top;
       remember();
     }, { passive: true });
     turns.addEventListener("click", (event) => {
