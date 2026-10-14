@@ -117,6 +117,14 @@ pub fn alias(model: &str) -> String {
     }
 }
 
+/// Tries of a start "Text file busy" refused before giving up (#11593).
+const SPAWN_BUSY_RETRIES: u64 = 8;
+
+/// Whether `error` is "Text file busy" (ETXTBSY, 26 on Linux and macOS).
+fn text_file_busy(error: &std::io::Error) -> bool {
+    cfg!(unix) && error.raw_os_error() == Some(26)
+}
+
 /// Generation through the `claude` binary.
 pub struct ClaudeGenerator {
     /// The model alias or name passed as `--model`.
@@ -779,17 +787,31 @@ impl ClaudeGenerator {
             .then_some(ready.child)
     }
 
+    /// Starts the binary. A start refused with "Text file busy" (ETXTBSY,
+    /// #11593) is tried again: another thread's process, forked while the
+    /// binary was being written or updated, holds a write handle on it until
+    /// that process execs, which is a moment.
     fn spawn(&self, system: &str) -> std::io::Result<tokio::process::Child> {
-        tokio::process::Command::new(&self.binary)
-            .args(self.args(system))
-            .current_dir(std::env::temp_dir())
-            .env(NO_CONNECTORS.0, NO_CONNECTORS.1)
-            .env(PROMPT_CACHE_TTL.0, PROMPT_CACHE_TTL.1)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .kill_on_drop(true)
-            .spawn()
+        let mut attempt = 0u64;
+        loop {
+            let started = tokio::process::Command::new(&self.binary)
+                .args(self.args(system))
+                .current_dir(std::env::temp_dir())
+                .env(NO_CONNECTORS.0, NO_CONNECTORS.1)
+                .env(PROMPT_CACHE_TTL.0, PROMPT_CACHE_TTL.1)
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .kill_on_drop(true)
+                .spawn();
+            match started {
+                Err(error) if text_file_busy(&error) && attempt < SPAWN_BUSY_RETRIES => {
+                    attempt += 1;
+                    std::thread::sleep(std::time::Duration::from_millis(10 * attempt));
+                }
+                started => return started,
+            }
+        }
     }
 
     /// Runs the binary once for this step.
@@ -1167,14 +1189,10 @@ mod tests {
     async fn a_call_keeps_the_accounts_connectors_out() {
         // A stand-in binary that answers with the variable it was given.
         let dir = tempfile::tempdir().unwrap();
-        let binary = dir.path().join("claude");
-        std::fs::write(
-            &binary,
-            "#!/bin/sh\ncat > /dev/null\necho \"{\\\"type\\\":\\\"result\\\",\\\"is_error\\\":false,\\\"result\\\":\\\"\\\",\\\"structured_output\\\":{\\\"rationale\\\":\\\"r\\\",\\\"commands\\\":[],\\\"view\\\":[],\\\"freeze_tests\\\":false,\\\"expand\\\":[],\\\"finished\\\":true,\\\"reply\\\":\\\"$ENABLE_CLAUDEAI_MCP_SERVERS\\\"},\\\"total_cost_usd\\\":0.001}\"\n",
-        )
-        .unwrap();
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&binary, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let binary = stand_in(
+            dir.path(),
+            "cat > /dev/null\necho \"{\\\"type\\\":\\\"result\\\",\\\"is_error\\\":false,\\\"result\\\":\\\"\\\",\\\"structured_output\\\":{\\\"rationale\\\":\\\"r\\\",\\\"commands\\\":[],\\\"view\\\":[],\\\"freeze_tests\\\":false,\\\"expand\\\":[],\\\"finished\\\":true,\\\"reply\\\":\\\"$ENABLE_CLAUDEAI_MCP_SERVERS\\\"},\\\"total_cost_usd\\\":0.001}\"\n",
+        );
         let generator = ClaudeGenerator::new("haiku".into(), None, binary);
         let generated = generator.generate("SYS", "hello").await;
         let action = generated
@@ -1183,14 +1201,32 @@ mod tests {
         assert_eq!(action.reply, NO_CONNECTORS.1);
     }
 
-    /// A stand-in `claude` binary running `script`.
+    /// A stand-in `claude` binary running `script`, in the test's own
+    /// folder. It is written under a temporary name, synced and closed,
+    /// made executable, and only then renamed into place, so no write
+    /// handle on it is open when a test runs it (#11593).
     #[cfg(unix)]
     fn stand_in(dir: &Path, script: &str) -> PathBuf {
+        use std::io::Write;
         use std::os::unix::fs::PermissionsExt;
         let binary = dir.join("claude");
-        std::fs::write(&binary, format!("#!/bin/sh\n{script}")).unwrap();
-        std::fs::set_permissions(&binary, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let partial = dir.join(".claude.partial");
+        {
+            let mut file = std::fs::File::create(&partial).unwrap();
+            file.write_all(format!("#!/bin/sh\n{script}").as_bytes())
+                .unwrap();
+            file.sync_all().unwrap();
+        }
+        std::fs::set_permissions(&partial, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::rename(&partial, &binary).unwrap();
         binary
+    }
+
+    /// #11593: "Text file busy" is told apart from other start failures.
+    #[test]
+    fn a_busy_binary_is_told_apart() {
+        assert!(text_file_busy(&std::io::Error::from_raw_os_error(26)));
+        assert!(!text_file_busy(&std::io::Error::from_raw_os_error(2)));
     }
 
     /// A watcher reads the thinking as it streams, the assistant message

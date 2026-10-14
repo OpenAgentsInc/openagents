@@ -424,13 +424,16 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("microcoder-env-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let env = Local { dir: dir.clone() };
-        let script = "cat > note.py <<'PY'\nprint(\"it's here\")\nPY\npython3 note.py";
-        let result = env.run(script, Duration::from_secs(10)).await;
+        // `sh`, not `python3`: a cold Python start on a busy machine can
+        // outlast the deadline, which is not what this test is about
+        // (#11593).
+        let script = "cat > note.sh <<'SH'\necho \"it's here\"\nSH\nsh note.sh";
+        let result = env.run(script, Duration::from_secs(30)).await;
         assert!(result.ok(), "{}", result.output);
         assert!(result.output.contains("it's here"));
         assert_eq!(
-            env.read("note.py").await.as_deref(),
-            Some("print(\"it's here\")\n")
+            env.read("note.sh").await.as_deref(),
+            Some("echo \"it's here\"\n")
         );
         assert_eq!(env.read("missing.txt").await, None);
         let _ = std::fs::remove_dir_all(&dir);
