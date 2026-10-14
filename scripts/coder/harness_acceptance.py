@@ -1650,7 +1650,8 @@ def projects_run(coder, root, path, signin, evidence, turn_timeout) -> dict:
 
 def projects_live(oa: Path, env: dict, ev: Path) -> list:
     """The live account: list, then make a `zz-gate-*` project with just a
-    name, see it listed with no chats, and remove it. The gate touches only
+    name, see it listed with no chats, and delete it
+    (`projects delete ID --yes`; `remove` only takes members out, #11623). The gate touches only
     `zz-gate-*` projects, never a chat."""
     log = []
 
@@ -1673,7 +1674,7 @@ def projects_live(oa: Path, env: dict, ev: Path) -> list:
         # Leftovers of an earlier, interrupted gate run.
         for p in listed(doc):
             if str(p.get("name", "")).startswith("zz-gate-") and p.get("id"):
-                call("remove", p["id"])
+                call("delete", p["id"], "--yes")
         name = f"zz-gate-{time.strftime('%Y%m%d-%H%M%S')}"
         code, made = call("create", name)
         pid = made.get("id") if isinstance(made, dict) else None
@@ -1686,13 +1687,13 @@ def projects_live(oa: Path, env: dict, ev: Path) -> list:
             bad.append(f"{name} isn't in the list")
         elif (row.get("threads") or row.get("thread_count") or row.get("chats") or 0) not in (0, [], None):
             bad.append(f"{name} has chats: {row.get('threads') or row.get('thread_count') or row.get('chats')}")
-        code, gone = call("remove", pid)
+        code, gone = call("delete", pid, "--yes")
         if code != 0:
             bad.append(f"removing {name}: {code} {str(gone)[:100]}")
         code, doc = call("list")
         if any(p.get("id") == pid for p in listed(doc)):
-            bad.append(f"{name} is still listed after remove")
-        return ["fail", "; ".join(bad)] if bad else ["pass", f"listed, made `{name}` with just a name, removed it"]
+            bad.append(f"{name} is still listed after delete")
+        return ["fail", "; ".join(bad)] if bad else ["pass", f"listed, made `{name}` with just a name, deleted it"]
     finally:
         (ev / "live.txt").write_text("\n\n".join(log))
 
