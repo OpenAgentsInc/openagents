@@ -13967,6 +13967,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "robot-policy"
+version = "1.0.0-rc.13"
+dependencies = [
+ "candle-core",
+ "candle-nn",
+ "oa-copy",
+ "robot-data",
+ "robot-lab",
+ "robot-sim",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "robot-sim"
 version = "1.0.0-rc.13"
 dependencies = [
@@ -14013,6 +14030,7 @@ dependencies = [
  "robot-data",
  "robot-description",
  "robot-lab",
+ "robot-policy",
  "robot-sim",
  "rust-native",
  "schemars 1.2.2",

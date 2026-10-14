@@ -8,11 +8,15 @@ description = "Robot Lab cards, typed tools, local player, and shared viewing st
 
 [features]
 default = ["host"]
-host = ["dep:robot-sim", "dep:robot-data", "dep:axum", "dep:tokio", "dep:tempfile", "dep:verse", "dep:png"]
+host = ["dep:robot-sim", "dep:robot-data", "dep:robot-policy", "dep:axum", "dep:tokio", "dep:tempfile", "dep:verse", "dep:png"]
 
 [[bin]]
 name = "robot-workbench"
 path = "src/main.rs"
+required-features = ["host"]
+
+[[example]]
+name = "act_run"
 required-features = ["host"]
 
 [dependencies]
@@ -28,6 +32,8 @@ rust-native = { path = "../rust-native" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 robot-sim = { path = "../robot-sim", features = ["mujoco"], optional = true }
+robot-policy = { path = "../robot-policy", optional = true }
+
 robot-data = { path = "../robot-data", features = ["video", "export", "publish"], optional = true }
 png={version="0.18",optional=true}
 axum = { version = "0.8", optional = true }

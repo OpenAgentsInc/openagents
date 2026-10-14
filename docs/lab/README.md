@@ -6,7 +6,9 @@ the document and private-storage foundation is implemented in
 Verse inspection capture, LeRobot reader, and [native simulation runner](../../crates/robot-sim/README.md)
 are implemented. The [interactive workbench](../../crates/robot-workbench/README.md)
 now provides local chat cards, inspection, version comparisons, notes, and saved
-episode playback. Learned control and device integration remain tracked below. The first delivery is local robot
+episode playback. [ACT inference](../../crates/robot-policy/README.md) now has
+reference checks and a compatible simulated-state checkpoint; task scoring,
+policy services, and device integration remain tracked below. The first delivery is local robot
 inspection and motion replay in an inline chat card. Simulation and learned
 control follow as separately testable additions.
 [LeRobot data, the Verse room, and a Rust physics path](lerobot-in-verse.md)

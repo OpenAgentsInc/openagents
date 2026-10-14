@@ -1,0 +1,8 @@
+ACT reference cases use Hugging Face LeRobot 0.3.3, Apache-2.0,
+at b883328e6c95681ca90a18b102e4ae5e1f91e2bf.
+https://github.com/huggingface/lerobot/tree/b883328e6c95681ca90a18b102e4ae5e1f91e2bf
+
+The camera test pattern is original test data created by OpenAgents and
+released under CC0-1.0. The generated reference weights are stored outside
+this repository. These random reference cases establish numerical agreement;
+they are not evidence of task performance.
