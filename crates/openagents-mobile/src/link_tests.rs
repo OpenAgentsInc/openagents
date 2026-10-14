@@ -367,7 +367,23 @@ fn chats_list_every_chat_newest_first_with_its_project() {
     });
     let mut words = vec![];
     texts(f.link.packet().view.as_ref().unwrap(), &mut words);
-    let rows: Vec<&String> = words.iter().filter(|w| w.contains('\n')).collect();
+    // Each row is its title, then its detail on a line of its own (a
+    // host draws a button's label on one line).
+    let rows: Vec<String> = words
+        .windows(2)
+        .map(|pair| format!("{}\n{}", pair[0], pair[1]))
+        .filter(|row| {
+            [
+                "Pinned plan",
+                "Mine",
+                "Fix the build",
+                "Old notes",
+                "Plan the launch",
+            ]
+            .iter()
+            .any(|title| row.starts_with(&format!("{title}\n")))
+        })
+        .collect();
     assert_eq!(
         rows,
         [
@@ -379,6 +395,7 @@ fn chats_list_every_chat_newest_first_with_its_project() {
         ],
         "{words:?}"
     );
+    assert!(words.iter().all(|w| !w.contains('\n')), "{words:?}");
 }
 
 #[test]
@@ -1792,13 +1809,19 @@ fn projects_list_make_by_name_and_start_a_chat_in_one() {
     until(|| f.link.lock().projects_read);
     let mut words = vec![];
     texts(f.link.packet().view.as_ref().unwrap(), &mut words);
-    for shown in [
-        "openagents\nOpenAgentsInc/openagents and 1 more · 3 chats",
-        "taxes\nNo repository",
-        "New project name",
+    for (title, detail) in [
+        (
+            "openagents",
+            "OpenAgentsInc/openagents and 1 more · 3 chats",
+        ),
+        ("taxes", "No repository"),
     ] {
-        assert!(words.iter().any(|w| w == shown), "{shown}: {words:?}");
+        assert!(
+            words.windows(2).any(|w| w[0] == title && w[1] == detail),
+            "{title}: {words:?}"
+        );
     }
+    assert!(words.iter().any(|w| w == "New project name"), "{words:?}");
     // A name is enough.
     let token = format!("link-project-{}", f.link.composer);
     f.link.input(&token, "  Garden   plans ");
@@ -1832,4 +1855,34 @@ fn projects_list_make_by_name_and_start_a_chat_in_one() {
         id: "prj_9999999999999999".into(),
     });
     assert_eq!(f.link.lock().open.as_ref().unwrap().id, id);
+}
+
+/// A tap the host sent for a view one packet drew is not lost when a
+/// later packet drew the surface again before the tap arrived (each
+/// packet draws a new revision).
+#[test]
+fn a_tap_on_the_view_before_the_newest_still_counts() {
+    let mut f = fixture();
+    signed(&mut f);
+    f.link.act(Action::Show {
+        screen: Screen::Account,
+        id: None,
+    });
+    let first = f.link.packet().view.expect("the account draws");
+    let revision = first["revision"].as_u64().expect("a revision");
+    let second = f.link.packet().view.expect("drawn again");
+    assert_ne!(second["revision"].as_u64(), Some(revision));
+    f.link.activate(&rust_native::Activation {
+        instance: "openagents.link".into(),
+        revision,
+        node: "link-open-projects".into(),
+    });
+    assert_eq!(f.link.lock().screen, Screen::Projects);
+    // A revision never drawn is still refused.
+    f.link.activate(&rust_native::Activation {
+        instance: "openagents.link".into(),
+        revision: revision + 1000,
+        node: "link-open-running".into(),
+    });
+    assert_eq!(f.link.lock().screen, Screen::Projects);
 }

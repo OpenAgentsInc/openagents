@@ -3983,3 +3983,88 @@ fn launch_with_no_chat_open_opens_the_chats_list() {
     assert!(node(&view, "coder-composer").is_some());
     assert_no_cards(&view);
 }
+
+/// #11573: the stop on a chat with OpenAgents counts when the tap names
+/// the view before the newest. The chat redraws with every streamed part,
+/// so on a phone the tap nearly always does; build 59's simulator gate
+/// caught Stop doing nothing. Other stale taps stay ignored.
+#[test]
+fn a_late_stop_stops_a_streaming_reply_from_openagents() {
+    let hand = Hand::default();
+    let mut fixture =
+        Fixture::new(NoComputers(Synthetic::fixture(Platform::Phone, now))).answered_by(&hand);
+    fixture.say("Tell me a long story.");
+    hand.say("Once upon a time", false);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    let mut chat = fixture.render();
+    while composer_of(&chat)["stop"].is_null() {
+        assert!(std::time::Instant::now() < deadline, "no stop control");
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        chat = fixture.render();
+    }
+    // A newer part arrives and the view is drawn again before the tap.
+    let stale = chat;
+    hand.say("Once upon a time, a keeper", false);
+    fixture.render();
+    let late = |node: &str| Activation {
+        instance: stale["instance"].as_str().unwrap().into(),
+        revision: stale["revision"].as_u64().unwrap(),
+        node: node.into(),
+    };
+    fixture.coder.activate(
+        &late("coder-new"),
+        Some(&mut fixture.computers),
+        &mut fixture.chats,
+    );
+    assert!(
+        fixture.render()["root"]
+            .to_string()
+            .contains("Once upon a time"),
+        "a stale New chat was taken"
+    );
+    fixture.coder.activate(
+        &late("coder-composer"),
+        Some(&mut fixture.computers),
+        &mut fixture.chats,
+    );
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        let chat = fixture.render();
+        if composer_of(&chat)["stop"].is_null()
+            && chat["root"]
+                .to_string()
+                .contains("Stopped showing this reply")
+        {
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the reply never stopped"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+}
+
+/// #11573: Start a chat counts when the tap names the welcome drawn just
+/// before the newest (the view redraws as the app starts up); build 59's
+/// simulator gate saw the tap do nothing.
+#[test]
+fn a_late_start_a_chat_still_opens_a_new_chat() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let hand = Hand::default();
+    let mut fixture = shell_kept(&hand, dir.path());
+    let stale = fixture.render();
+    assert!(node(&stale, "shell-welcome-start").is_some());
+    fixture.render();
+    fixture.coder.activate(
+        &Activation {
+            instance: stale["instance"].as_str().unwrap().into(),
+            revision: stale["revision"].as_u64().unwrap(),
+            node: "shell-welcome-start".into(),
+        },
+        Some(&mut fixture.computers),
+        &mut fixture.chats,
+    );
+    let view = fixture.render();
+    assert!(node(&view, "coder-composer").is_some(), "{:?}", keys(&view));
+}

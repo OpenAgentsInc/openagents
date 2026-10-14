@@ -56,6 +56,10 @@ pub const CHANGELOG: &[Release] = &[
                 title: "Cloud runs",
                 detail: "Running shows runs in OpenAgents Cloud, such as Solver in the cloud, with Stop.",
             },
+            Item {
+                title: "The first tap counts",
+                detail: "Stop works the first time while an answer streams, and so do Start a chat and the buttons on your account's screens.",
+            },
         ],
     },
     Release {

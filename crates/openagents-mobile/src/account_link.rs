@@ -422,6 +422,9 @@ impl Project {
     }
 }
 
+/// How many views before the newest still take a tap.
+const EARLIER_VIEWS: usize = 4;
+
 /// The most characters in a project's name.
 pub const MAX_PROJECT_NAME: usize = 80;
 
@@ -1113,6 +1116,10 @@ pub struct Link {
     store: Option<Arc<coder_computers::cache::Cache>>,
     /// The view last drawn, to resolve taps.
     pub(crate) view: Option<rust_native::ValidatedView<Intent>>,
+    /// The views drawn just before `view`, newest first: a tap the host
+    /// sent for one of them still counts, since a packet may redraw the
+    /// surface between the host showing a view and the person's tap.
+    earlier_views: std::collections::VecDeque<rust_native::ValidatedView<Intent>>,
     view_revision: u64,
     /// Bumped after each accepted send, so the composer clears.
     pub(crate) composer: u64,
@@ -1163,6 +1170,7 @@ impl Link {
             wake,
             store,
             view: None,
+            earlier_views: std::collections::VecDeque::new(),
             view_revision: 0,
             composer: 0,
             picking: false,
@@ -2602,13 +2610,21 @@ impl Link {
             })
             .ok()?;
         let value = serde_json::to_value(view.view()).ok();
-        self.view = Some(view);
+        if let Some(previous) = self.view.replace(view) {
+            self.earlier_views.push_front(previous);
+            self.earlier_views.truncate(EARLIER_VIEWS);
+        }
         value
     }
 
     /// Resolve a tap on the last view drawn.
     pub fn activate(&mut self, event: &rust_native::Activation) -> Option<String> {
-        let intent = self.view.as_ref()?.activate(event).ok()?.clone();
+        let intent = self
+            .view
+            .iter()
+            .chain(&self.earlier_views)
+            .find_map(|view| view.activate(event).ok())?
+            .clone();
         self.tap(intent)
     }
 }

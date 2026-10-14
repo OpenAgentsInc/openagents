@@ -1601,17 +1601,26 @@ impl CoderTab {
     /// answers now and changes nothing otherwise, and **Open Coder** and
     /// **Stop Coder too** name the task the open thread links to now.
     /// Every other stale tap is still ignored.
+    ///
+    /// A chat with OpenAgents redraws with each streamed part the same way,
+    /// so its composer's stop counts late too: it stops the reply that
+    /// shows now, and nothing else (#11573). So does the welcome's
+    /// **Start a chat**.
     fn late_thread_stop<'a>(
         &self,
         view: &'a ValidatedView<Intent>,
         event: &Activation,
     ) -> Option<&'a Intent> {
-        self.threads.opened()?;
+        let thread = self.threads.opened().is_some();
+        let talk = self.talk.is_some();
         let node = event.node.as_str();
         view.activate_late(event, |intent| match intent {
-            Intent::Stop => node == "coder-composer",
-            Intent::Open { .. } => node == "thread-coder-open",
-            Intent::StopThreadCoder { .. } => node == "thread-coder-stop",
+            Intent::Stop => (thread || talk) && node == "coder-composer",
+            // The welcome's one action opens a new chat, wherever the
+            // screen is now; a redraw at launch must not swallow it.
+            Intent::NewChat => node == "shell-welcome-start",
+            Intent::Open { .. } => thread && node == "thread-coder-open",
+            Intent::StopThreadCoder { .. } => thread && node == "thread-coder-stop",
             _ => false,
         })
         .ok()

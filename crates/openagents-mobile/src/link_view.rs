@@ -281,20 +281,20 @@ fn chats(state: &State) -> Node<Intent> {
     let mut order: Vec<&Thread> = state.threads.iter().collect();
     order.sort_by_key(|t| std::cmp::Reverse((t.pinned, t.updated_unix)));
     for thread in order {
-        let mut label = if thread.title.trim().is_empty() {
+        let title = if thread.title.trim().is_empty() {
             "New chat".to_owned()
         } else {
             thread.title.clone()
         };
-        label.push('\n');
-        if thread.working {
-            label.push_str("Working…");
+        let detail = if thread.working {
+            "Working…".to_owned()
         } else {
-            label.push_str(&row_detail(state, thread));
-        }
-        children.push(button(
+            row_detail(state, thread)
+        };
+        children.push(two_line_row(
             &format!("link-thread-{}", thread.id),
-            &label,
+            &title,
+            &detail,
             None,
             Intent::Open {
                 id: thread.id.clone(),
@@ -879,12 +879,10 @@ fn projects(state: &State, composer: u64) -> Node<Intent> {
         return page(children);
     }
     for project in &state.project_list {
-        let mut label = project.name.clone();
-        label.push('\n');
-        label.push_str(&project_line(project));
-        children.push(button(
+        children.push(two_line_row(
             &format!("link-project-{}", slug(&project.id)),
-            &label,
+            &project.name,
+            &project_line(project),
             Some(Glyph::Folder),
             Intent::ProjectChat {
                 id: project.id.clone(),
@@ -897,6 +895,25 @@ fn projects(state: &State, composer: u64) -> Node<Intent> {
         quiet(),
     ));
     page(children)
+}
+
+/// A list row with a second line: a card holding the row's button (keyed
+/// `key`) and the detail under it. A host draws a button's label on one
+/// line, so the detail can't ride in the label.
+fn two_line_row(
+    key: &str,
+    title: &str,
+    detail: &str,
+    glyph: Option<Glyph>,
+    intent: Intent,
+) -> Node<Intent> {
+    card(
+        &format!("{key}-row"),
+        vec![
+            button(key, title, glyph, intent),
+            status(&format!("{key}-detail"), detail, quiet()),
+        ],
+    )
 }
 
 /// A project row's second line: its repositories and its chats.
