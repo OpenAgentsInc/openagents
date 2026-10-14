@@ -446,7 +446,7 @@ html:has(> body.oa-body) {
 
 /* A project's group (Codex style): a folder icon and the name open and
    close it; "…" and a pencil show on hover or focus (always on touch);
-   chats sit indented beneath; rows after the first five wait behind
+   chats sit slightly indented beneath; rows after the first five wait behind
    "Show more". */
 .oa-chat-project,
 .oa-chat-project-more {
@@ -517,7 +517,7 @@ html:has(> body.oa-body) {
 }
 .oa-chat-project > .oa-nav-list,
 .oa-chat-project-more {
-  padding-inline-start: calc(var(--spacing) * 4);
+  padding-inline-start: calc(var(--spacing) * 1.5);
 }
 .oa-chat-project-card {
   display: flex;
