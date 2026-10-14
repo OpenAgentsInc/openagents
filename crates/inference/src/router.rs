@@ -191,13 +191,14 @@ impl Default for ClassTable {
     /// The spec's starting table. Model ids and upstream names are the
     /// ones the P0 adapters use; the gateway's config replaces it.
     ///
-    /// Gemini on Vertex AI comes first in every class it can serve
-    /// (`classify`, `fast`, `chat`, `long`, and so `openagents/auto` when
-    /// it judges one of them): it bills the prepaid Google credit (owner
-    /// direction, 2026-10-10, #11222). The other upstreams follow in their
-    /// earlier order. `code` and `reason` keep the Pro door first: Vertex
-    /// serves no Gemini Pro model id here yet.
+    /// Gemini on Vertex AI comes first in every class it can serve: it
+    /// bills the prepaid Google credit (owner direction, 2026-10-10,
+    /// #11222). Gemini 4 Argon leads `fast`, `chat`, `long`, `code` and
+    /// `reason` (owner, 2026-10-14: Auto's answers are Gemini 4, not 3.8),
+    /// with Gemini 3.8 Flash and the other upstreams behind it. `classify`
+    /// keeps the smallest model, since only the router reads its answer.
     fn default() -> Self {
+        let argon = "google/gemini-4-argon";
         let flash = "google/gemini-3.8-flash";
         let glm = "zai/glm-5.3-flash";
         let entry = |models: Vec<ClassModel>, first_token_ms: u64, last_ms: u64| ClassEntry {
@@ -223,6 +224,7 @@ impl Default for ClassTable {
                 TaskClass::Fast,
                 entry(
                     vec![
+                        ClassModel::on(argon, "vertex"),
                         ClassModel::on(flash, "vertex"),
                         ClassModel::on(glm, "zai"),
                         ClassModel::on(flash, "openrouter"),
@@ -235,6 +237,7 @@ impl Default for ClassTable {
                 TaskClass::Chat,
                 entry(
                     vec![
+                        ClassModel::on(argon, "vertex"),
                         ClassModel::on(flash, "vertex"),
                         ClassModel::on("openai/gpt-5.6-terra", "pro"),
                         ClassModel::on(flash, "openrouter"),
@@ -247,6 +250,7 @@ impl Default for ClassTable {
                 TaskClass::Code,
                 entry(
                     vec![
+                        ClassModel::on(argon, "vertex"),
                         ClassModel::on("openai/gpt-5.6-sol", "pro"),
                         ClassModel::on("google/gemini-3.8-pro", "vertex"),
                         ClassModel::on(glm, "zai"),
@@ -258,7 +262,11 @@ impl Default for ClassTable {
             (
                 TaskClass::Long,
                 entry(
-                    vec![ClassModel::on(flash, "vertex"), ClassModel::on(glm, "zai")],
+                    vec![
+                        ClassModel::on(argon, "vertex"),
+                        ClassModel::on(flash, "vertex"),
+                        ClassModel::on(glm, "zai"),
+                    ],
                     15_000,
                     60_000,
                 ),
@@ -267,6 +275,7 @@ impl Default for ClassTable {
                 TaskClass::Reason,
                 entry(
                     vec![
+                        ClassModel::on(argon, "vertex"),
                         ClassModel::on("openai/gpt-5.6-sol", "pro"),
                         ClassModel::on("google/gemini-3.8-pro", "vertex"),
                         ClassModel::on("google/gemini-3.8-pro", "openrouter"),
