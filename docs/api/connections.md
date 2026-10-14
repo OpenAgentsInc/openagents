@@ -195,7 +195,7 @@ Allow buttons.
 | Route | What |
 | --- | --- |
 | `POST /v1/connections/google/tools/{tool}` | Run a tool above (the arguments as a JSON object) |
-| `DELETE /v1/connections/google/gmail/drafts/{id}` | Throw a draft away |
+| `DELETE /v1/connections/google/gmail/drafts/{id}` | Throw a draft away, by its id or the message id in its link (`#drafts?compose=ID`) |
 | `GET /v1/connections/google/projects/{project}` | `{project, mail_calendar}` |
 | `POST /v1/connections/google/projects/{project}` `{mail_calendar}` | Turn Gmail and Calendar off (`false`) or on for a project's chats |
 

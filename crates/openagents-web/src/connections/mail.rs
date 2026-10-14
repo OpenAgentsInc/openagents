@@ -803,7 +803,8 @@ pub(crate) async fn api_tool(
     }
 }
 
-/// `DELETE /v1/connections/google/gmail/drafts/{id}`: throw a draft away.
+/// `DELETE /v1/connections/google/gmail/drafts/{id}`: throw a draft away,
+/// by its id or by its message's id (the one in the draft's link).
 async fn api_discard(
     State(app): State<App>,
     headers: HeaderMap,
@@ -828,6 +829,11 @@ async fn api_discard(
             "Google hasn't allowed OpenAgents to write Gmail drafts.",
         );
     }
+    // The id of the draft, or of its message (what a draft's link names).
+    let id = match draft_of_message(&live.gmail, &id).await {
+        Ok(Some(draft)) => draft,
+        _ => id,
+    };
     match live.gmail.delete_draft(&id).await {
         Ok(()) => crate::coder_sync::answer(
             StatusCode::OK,
