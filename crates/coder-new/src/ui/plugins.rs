@@ -1260,6 +1260,19 @@ mod tests {
         }
     }
 
+    /// Whether a bundled plugin's row reads on: its default, except that
+    /// Claude Code and Codex are on only where they are signed in, as the
+    /// settings decide (`bundled_settings`). A test's computer may hold
+    /// neither sign-in.
+    fn shows_on(definition: &crate::plugin_definition::PluginDefinition) -> bool {
+        definition.default_enabled
+            && match definition.id {
+                crate::claude::PLUGIN => crate::claude::available(),
+                crate::codex::PLUGIN => crate::codex::available(),
+                _ => true,
+            }
+    }
+
     #[test]
     fn manager_shows_all_bundled_plugins_their_defaults_and_selection_details() {
         let mut app = App::default();
@@ -1271,11 +1284,12 @@ mod tests {
                 .iter()
                 .find(|row| row.contains(definition.name))
                 .unwrap();
-            // Codex is on by default only where it is signed in; a test's
-            // computer holds no Codex sign-in.
-            let on = definition.default_enabled
-                && (definition.id != crate::codex::PLUGIN || crate::codex::available());
-            assert!(row.contains(if on { "[ on  ]" } else { "[ off ]" }));
+            let on = shows_on(definition);
+            assert!(
+                row.contains(if on { "[ on  ]" } else { "[ off ]" }),
+                "{}: {row}",
+                definition.id
+            );
             assert!(row.contains(app.plugins.status_for(definition.id)));
         }
         let text = canvas.rows.join("\n");
@@ -1300,11 +1314,14 @@ mod tests {
             let canvas = draw(&app, 20, 10);
             let text = canvas.rows.join("\n");
             assert!(text.contains(&format!("❯ {}", definition.name)), "{text}");
-            assert!(text.contains(if definition.default_enabled {
-                "[ on  ]"
-            } else {
-                "[ off ]"
-            }));
+            assert!(
+                text.contains(if shows_on(definition) {
+                    "[ on  ]"
+                } else {
+                    "[ off ]"
+                }),
+                "{text}"
+            );
             assert!(!canvas.cursor_visible);
         }
     }
