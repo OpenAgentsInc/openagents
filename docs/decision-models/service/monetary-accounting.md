@@ -174,10 +174,10 @@ admins and owners see the reviewed workspace roster. Alerts explain
 enforcement and cannot grant credit or release a hold. The
 [isolated fixtures](../../../crates/gateway/tests/decision_offer_budgets.rs)
 exercise the actual HTTP route and killed Gateway recovery with synthetic
-members, prices, and funds. After a killed writer, the existing native quota
-PID marker requires confirmed-dead-writer recovery before restart; the
-fixture removes only that exact waited child's marker and retains both
-journals. Monetary recovery keeps the full unknown liability. Production
+members, prices, and funds. After a killed writer, the native quota journal's
+lock is released by the kernel (`tenancy::store_lock`), so the restart takes
+it with no operator step; the fixture leaves the lock file and both journals
+in place. Monetary recovery keeps the full unknown liability. Production
 qualification remains an
 [owner step](../../../NEEDS_OWNER.md#native-team-budgets-rev-40-10847).
 

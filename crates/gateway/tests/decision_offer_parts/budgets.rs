@@ -557,7 +557,6 @@ async fn killed_native_gateway_keeps_dispatch_liability_and_cannot_retry_or_over
     )
     .await
     .unwrap();
-    let writer_pid = child.0.id();
     child.0.kill().unwrap();
     child.0.wait().unwrap();
     assert!(call.await.unwrap().is_err());
@@ -575,15 +574,12 @@ async fn killed_native_gateway_keeps_dispatch_liability_and_cannot_retry_or_over
         })
         .collect();
     assert_eq!(original.len(), 1);
-    // The native quota journal uses a persistent PID marker. Its documented
-    // recovery requires confirming the old writer is gone. Only this exact
-    // waited child is eligible; neither journal nor monetary lock is removed.
-    let marker = host.dir.path().join("quota-ledger.lock");
-    assert_eq!(
-        std::fs::read_to_string(&marker).unwrap(),
-        format!("pid {writer_pid}\n")
-    );
-    std::fs::remove_file(marker).unwrap();
+    // The native quota journal's writer lock is an OS lock on a persistent
+    // file (`tenancy::store_lock`, PAY-03): the kernel released it when the
+    // killed writer died, so the restart below takes it with no operator
+    // step. The lock file stays where it was; nothing here removes it.
+    let lock = host.dir.path().join("quota-ledger.lock");
+    assert!(lock.is_file(), "the quota lock file persists after a kill");
     assert_eq!(std::fs::read_to_string(money_path).unwrap(), money_before);
     assert_eq!(std::fs::read_to_string(&quota_path).unwrap(), quota_before);
     host.backend.resume.notify_one();

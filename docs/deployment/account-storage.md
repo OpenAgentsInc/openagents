@@ -98,9 +98,12 @@ Read from `crates/tenancy` (`accounts.rs`, `sessions.rs`, `keys.rs`,
 
 - **Atomic replace.** Every store writes a temporary file and `rename`s it
   over the old one; readers must see the old or the new file, never half.
-- **Exclusive create as a lock.** `accounts.lock`, `sessions.lock`,
-  `quota-ledger.lock` and the GitHub-access locks are `O_CREAT|O_EXCL`
-  files: the filesystem must refuse a second create.
+- **OS file locks and exclusive create.** `accounts.lock`, `sessions.lock`
+  and `quota-ledger.lock` are persistent owner-private files held with an
+  OS lock (`tenancy::store_lock`, `File::try_lock`), which the kernel
+  releases when a writer dies, so a crash never leaves a store unwritable.
+  The GitHub-access locks are `O_CREAT|O_EXCL` files: the filesystem must
+  refuse a second create.
 - **fsync** of files and directories, and stable inode numbers: a writer
   checks that its lock file and directory are still the same inodes.
 - **Owner and mode checks.** Directories and private files must belong to
