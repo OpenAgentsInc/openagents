@@ -87,7 +87,7 @@ Owners of a row update it when they change the path. The gateway spec's
 | Inference gateway (**prod**), `openagents/long` | same | Vertex AI `google/gemini-3.8-flash` | Z.ai `zai/glm-5.3-flash` |
 | Inference gateway (**prod**), `openagents/code`, `openagents/reason` | same | Pro door `openai/gpt-5.6-sol` (Vertex serves no Gemini Pro id; `gemini-3.8-pro` is 404) | `google/gemini-3.8-pro` on OpenRouter (reason); Z.ai (code) |
 | Inference gateway (**prod**), a model id such as `google/gemini-3.8-flash` (the Environments setup agent, `ENVIRONMENTS_MODEL`) | `crates/inference/src/router.rs` `plan`, step 4 (prepaid credit first) | Vertex AI | OpenRouter, then the Vercel AI Gateway (`privacy: standard` only) |
-| `openagents.com/v1/responses` and `/v1/chat/completions` naming a model id (**prod**, #11597) | `crates/openagents-web/src/door_route.rs` `route` | The inference gateway sidecar, the same router as `/api/v1` (Vertex first) | `coder-serve` only for a credential the gateway does not know (401); a lane word (`chat`, `free`, `flash`, `pro`, `mesh`, `local`), no model (a run), or a run's own turn (`x-coder-run`) stays on `coder-serve`, whose door is still the Vercel AI Gateway |
+| `openagents.com/v1/responses` and `/v1/chat/completions` naming a model id (**prod**, #11597) | `crates/openagents-web/src/door_route.rs` `route` | The inference gateway sidecar, the same router as `/api/v1` (Vertex first) | None since 2026-10-14: `coder-serve` is retired (#11614), so a lane word, no model, or a run's own turn gets the gateway's answer too |
 | Inference gateway on the person's keys (**prod**, **BYOK**) | `crates/gateway/src/inference_byok.rs` `upstreams` | The workspace's saved key (OpenRouter, Vercel, Anthropic, OpenAI, or Google) | Only their keys |
 | Inference gateway `openagents/auto` class (**prod**) | `inference_routes.rs` `JevClass` | Jev on TypeSafe direct | None. TypeSafe product: unchanged |
 | Web chat vision (**prod**, openagents-web, since `coder-web-63d03413b1-20261010135324`) | `crates/openagents-web/src/chat_vision.rs` `Gemini::call`, `VisionDoor` (#11221) | Vertex AI `gemini-3.8-flash` (global) `generateContent`, images and PDFs as `inlineData` (the Vertex adapter's `body`), the `openagents-vertex-sa-key` service account via `GOOGLE_APPLICATION_CREDENTIALS` | The inference gateway sidecar `/v1/responses` (`ENVIRONMENTS_MODEL`), then the hosted chat with the words only. Each miss is logged with its reason |
@@ -142,10 +142,10 @@ Owners of a row update it when they change the path. The gateway spec's
 - Hosted plugin-eval runner: its run door is pinned per run so results
   compare; moving it to Vertex is a change to the eval protocol, not a door
   swap.
-- `coder-serve`'s own lane words (`free`, `flash`, `pro`, `chat`) still go
-  through its `CODER_DOOR_URL=https://ai-gateway.vercel.sh` door on
-  openagents.com. That door goes away with the sidecar, which is being
-  retired (#11602), rather than being repointed.
+- Done 2026-10-14: `coder-serve` and its Vercel AI Gateway door are gone
+  from openagents.com (#11614,
+  [coder-serve-retirement.md](../deployment/coder-serve-retirement.md));
+  lane words get the gateway's answer.
 - `scripts/chat-goldens.sh` keeps `gateway` embeddings by default so a
   golden run compares with earlier ones; `CHAT_GOLDENS_NO_GATEWAY=1` moves
   them off Vercel.

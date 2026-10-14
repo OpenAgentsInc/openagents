@@ -238,7 +238,8 @@ The required and recommended checks that fail, by layer (the catalog's ids):
   with one skill (`crates/openagents-web/src/wellknown.rs`, from
   `crates/discovery`): they describe the decision API.
 - `/mcp` and `/.well-known/oauth-protected-resource`, answered by the
-  private `coder-serve` sidecar; `/mcp` needs an API key or session.
+  private `coder-serve` sidecar; `/mcp` needs an API key or session. (Since
+  2026-10-14 the site answers both itself; the sidecar is retired, #11614.)
 - `/docs` (31 guides) and, on `main` but not yet deployed, `/docs/api` with
   `.md` twins and `/docs/api/llms.txt` (#11069).
 - The gateway's own discovery set (`crates/gateway/src/discovery.rs`:
@@ -285,7 +286,9 @@ stateless MAC'd `client_id`), and the `agent_auth` block (`skill`,
 Approve and Deny) and `/oauth/token` issue the same 30-day app session a
 device sign-in does, listed and removable in Settings. A `401` from `/mcp`
 answers `WWW-Authenticate: Bearer resource_metadata="…/oauth-protected-resource/mcp", scope="account"`.
-`/mcp` itself accepts these `sess_` bearers: `coder-serve`'s admission
+`/mcp` itself accepts these `sess_` bearers. Since 2026-10-14 the site
+answers `/mcp` itself (`crates/openagents-web/src/docs_mcp.rs`, #11614);
+before that it was `coder-serve`'s admission
 (private `coder` repo, `bins/coder-serve/src/mcp/admission.rs`, set
 `CODER_ACCOUNTS_URL` to the account service) asks the account service's
 `GET /v1/session`, which now answers the account's GitHub `{id, login}`

@@ -5,10 +5,12 @@ repository (`bins/coder-serve`) into this repository's
 [`crates/openagents-web`](../../crates/openagents-web/README.md). Recorded
 2026-09-29.
 
-2026-10-14: the `coder-serve` sidecar is being retired (#11614,
-[coder-serve-retirement.md](coder-serve-retirement.md)). Without it, `/v1`
-goes to the gateway, `/mcp` is this site's, and every other unowned path
-answers 404. The history below describes the setup with the sidecar.
+2026-10-14: the `coder-serve` sidecar is retired (#11614,
+[coder-serve-retirement.md](coder-serve-retirement.md)). Since 16:41 UTC the
+`coder` service runs `web` and `gateway` only: `/v1` goes to the gateway,
+`/mcp` is this site's, and every other unowned path answers 404. Its
+database `coder-pg` is exported and stopped. The history below describes the
+setup with the sidecar.
 
 ## Live (2026-10-01)
 

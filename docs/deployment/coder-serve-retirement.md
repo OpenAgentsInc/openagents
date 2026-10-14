@@ -3,7 +3,11 @@
 Issue #11614. Recorded 2026-10-14. The owner asked to remove `coder-serve`
 from openagents.com and run everything on the new system.
 
-## What runs today
+Done 2026-10-14: the sidecar is gone (16:41 UTC), the pool groups are at 0,
+and `coder-pg` is exported and stopped (23:27 UTC). See "Result" at the end.
+The tables below describe the setup before the cut.
+
+## What ran before the cut
 
 Cloud Run service `coder` (us-central1, openagentsgemini) serves
 openagents.com with three containers:
@@ -93,8 +97,47 @@ owns all of them.
 Rollback: `scripts/deploy/web.sh rollback REVISION` to the revision that
 served before the cut. It still has the sidecar.
 
-## Dates
+## Result (2026-10-14)
 
-- 2026-10-14: audit, the web change, and the deploy with `--retire-serve`.
-- 2026-10-15: review the `retired:` counts, then close #11614.
-- After that, owner: scale the pool groups to 0 and stop `coder-pg`.
+- 16:41 UTC: `coder-web-578e2eec43-20261014164037` (commit `7f2a89a14e`)
+  serves without the sidecar. Rollback revision with the sidecar:
+  `coder-web-627d689d17-20261014163441`.
+- `coder-pool`, `coder-box-pool` and `coder-pool-spot` (us-central1-b) are
+  at size 0. They are kept, not deleted; `gcloud compute instance-groups
+  managed resize NAME --size 1 --zone us-central1-b` brings one back.
+- `retired:` lines, 16:41 to 23:20 UTC (6.6 h): 3,164. By who sent them:
+  - 1,538 `POST /computers/seen`: one old Coder Terminal 0.5.0 in earn mode,
+    on the owner's network. Earn was removed 2026-09-29; nothing to port.
+    Quitting or updating that Terminal stops them.
+  - About 1,600 scanners: `/wp-*`, `*.php`, `/.git`, `/cgi-bin`,
+    `/.well-known/*` probes (agentgrade, AgentReadyCheck,
+    isitagentready), `/api/nodes/ping` from search bots.
+  - Old clients that got 404 before the cut too: `POST /api/mdk` (an MDK
+    webhook pinger), `/api/pylons/*` (an old Bun Pylon),
+    `POST /api/agents/register`, and the smoke's own negative checks on
+    `/api/v1/sessions/*`.
+  - No real user path. The keyed `/mcp` is the site's (401 with the OAuth
+    challenge, then `/.well-known/oauth-protected-resource/mcp` and
+    `/.well-known/oauth-authorization-server`); `/v1/responses` and
+    `/v1/models` answer from the gateway.
+- `coder-pg` had no writes after the cut (its last autovacuum of
+  `coder.public.computers` was at 16:39 UTC), and no Cloud Run service lists
+  it. Exported at 23:25 UTC with `gcloud sql export sql`:
+  - `gs://openagentsgemini-coder-pg-export/coder-pg-final-20261014.sql.gz`,
+    database `coder`, 140,624,451 bytes, gzip intact, 97 tables;
+  - `gs://openagentsgemini-coder-pg-export/coder-pg-final-20261014-postgres-db.sql.gz`,
+    database `postgres` (454 bytes, empty).
+  The bucket is private (uniform access, public access prevention); only the
+  Cloud SQL service agent was added, as object admin.
+- 23:27 UTC: `coder-pg` stopped (`--activation-policy=NEVER`), not deleted.
+
+Restart `coder-pg` (needed before any rollback to the sidecar revision):
+
+```sh
+gcloud sql instances patch coder-pg --activation-policy=ALWAYS --project openagentsgemini
+scripts/deploy/web.sh rollback coder-web-627d689d17-20261014163441
+```
+
+Restore into a new instance instead: `gcloud sql import sql INSTANCE
+gs://openagentsgemini-coder-pg-export/coder-pg-final-20261014.sql.gz
+--database=coder --project openagentsgemini`.
