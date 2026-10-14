@@ -109,15 +109,8 @@ impl App {
                 Ok(outcome) => {
                     state.running = None;
                     match outcome {
-                        Outcome::Done { changed, digest } => {
+                        Outcome::Done { digest, .. } => {
                             state.sent = Some(digest);
-                            if changed > 0 && self.notice.is_none() {
-                                self.notice = Some(if changed == 1 {
-                                    "Memory: 1 note changed from your account.".into()
-                                } else {
-                                    format!("Memory: {changed} notes changed from your account.")
-                                });
-                            }
                         }
                         Outcome::Missing => {
                             state.next_look = Some(Instant::now() + MISSING_AFTER);

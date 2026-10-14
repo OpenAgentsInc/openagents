@@ -433,17 +433,8 @@ impl App {
                 Ok(outcome) => {
                     state.running = None;
                     match outcome {
-                        Outcome::Done { changed, local } => {
+                        Outcome::Done { local, .. } => {
                             state.sent = Some(local);
-                            if changed > 0 && self.notice.is_none() {
-                                self.notice = Some(if changed == 1 {
-                                    "Scheduled prompts: 1 changed from your account.".into()
-                                } else {
-                                    format!(
-                                        "Scheduled prompts: {changed} changed from your account."
-                                    )
-                                });
-                            }
                         }
                         Outcome::Missing => {
                             state.next_look = Some(Instant::now() + MISSING_AFTER);
