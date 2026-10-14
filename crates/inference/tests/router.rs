@@ -244,7 +244,7 @@ fn a_class_without_scores_keeps_the_table_order() {
     );
     let plan = world.plan(&ask("openagents/chat")).unwrap();
     assert_eq!(plan.class, Some(TaskClass::Chat));
-    assert_eq!(plan.first_token_ms, 8_000);
+    assert_eq!(plan.first_token_ms, 25_000);
 }
 
 #[test]

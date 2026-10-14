@@ -229,8 +229,11 @@ impl Default for ClassTable {
                         ClassModel::on(glm, "zai"),
                         ClassModel::on(flash, "openrouter"),
                     ],
-                    4_000,
-                    15_000,
+                    // Argon thinks before its first output token (it thinks at
+                    // high unless asked otherwise), so it gets the time to
+                    // answer before 3.8 Flash is tried.
+                    20_000,
+                    45_000,
                 ),
             ),
             (
@@ -242,8 +245,8 @@ impl Default for ClassTable {
                         ClassModel::on("openai/gpt-5.6-terra", "pro"),
                         ClassModel::on(flash, "openrouter"),
                     ],
-                    8_000,
-                    30_000,
+                    25_000,
+                    60_000,
                 ),
             ),
             (
@@ -287,8 +290,8 @@ impl Default for ClassTable {
         ]);
         Self {
             classes,
-            model_first_token_ms: 8_000,
-            model_last_ms: 30_000,
+            model_first_token_ms: 25_000,
+            model_last_ms: 60_000,
         }
     }
 }
