@@ -1,5 +1,5 @@
 {
- "source": "CAD Lab rover v38 (docs/cad-lab/mvp.md): mass properties from its check report, joints from its assembly.v1, in the CAD frame (mm, X forward, Y left, Z up)",
+ "source": "CAD Lab rover v38 (docs/cad-lab/mvp.md): each instance's material, density, parent and measured mass properties, the assembly's joints (world origin and axis) and declared contacts, in the CAD frame (mm, X forward, Y left, Z up)",
  "instances": [
   {
    "id": "chassis",
@@ -26,7 +26,10 @@
      0.0,
      0.883437
     ]
-   ]
+   ],
+   "material": "Aluminum",
+   "density_g_cm3": 2.7,
+   "parent": null
   },
   {
    "id": "emblem",
@@ -53,7 +56,10 @@
      0.0,
      0.000324
     ]
-   ]
+   ],
+   "material": "Aluminum",
+   "density_g_cm3": 2.7,
+   "parent": "chassis"
   },
   {
    "id": "rocker_l",
@@ -80,7 +86,10 @@
      -0.0,
      0.103773
     ]
-   ]
+   ],
+   "material": "Titanium",
+   "density_g_cm3": 4.43,
+   "parent": "chassis"
   },
   {
    "id": "rocker_r",
@@ -107,7 +116,10 @@
      -0.0,
      0.103773
     ]
-   ]
+   ],
+   "material": "Titanium",
+   "density_g_cm3": 4.43,
+   "parent": "chassis"
   },
   {
    "id": "rocker_shaft_l",
@@ -134,7 +146,10 @@
      -0.0,
      0.000115
     ]
-   ]
+   ],
+   "material": "Steel",
+   "density_g_cm3": 7.85,
+   "parent": "chassis"
   },
   {
    "id": "rocker_shaft_r",
@@ -161,7 +176,10 @@
      0.0,
      0.000115
     ]
-   ]
+   ],
+   "material": "Steel",
+   "density_g_cm3": 7.85,
+   "parent": "chassis"
   },
   {
    "id": "bogie_l",
@@ -188,7 +206,10 @@
      -0.0,
      0.035713
     ]
-   ]
+   ],
+   "material": "Titanium",
+   "density_g_cm3": 4.43,
+   "parent": "rocker_l"
   },
   {
    "id": "bogie_r",
@@ -215,7 +236,10 @@
      -0.0,
      0.035713
     ]
-   ]
+   ],
+   "material": "Titanium",
+   "density_g_cm3": 4.43,
+   "parent": "rocker_r"
   },
   {
    "id": "wheel_lf",
@@ -242,7 +266,10 @@
      -0.0,
      0.030956
     ]
-   ]
+   ],
+   "material": "Aluminum",
+   "density_g_cm3": 2.7,
+   "parent": "rocker_l"
   },
   {
    "id": "wheel_lm",
@@ -269,7 +296,10 @@
      -0.0,
      0.030956
     ]
-   ]
+   ],
+   "material": "Aluminum",
+   "density_g_cm3": 2.7,
+   "parent": "bogie_l"
   },
   {
    "id": "wheel_lr",
@@ -296,7 +326,10 @@
      -0.0,
      0.030956
     ]
-   ]
+   ],
+   "material": "Aluminum",
+   "density_g_cm3": 2.7,
+   "parent": "bogie_l"
   },
   {
    "id": "wheel_rf",
@@ -323,7 +356,10 @@
      0.0,
      0.030956
     ]
-   ]
+   ],
+   "material": "Aluminum",
+   "density_g_cm3": 2.7,
+   "parent": "rocker_r"
   },
   {
    "id": "wheel_rm",
@@ -350,7 +386,10 @@
      0.0,
      0.030956
     ]
-   ]
+   ],
+   "material": "Aluminum",
+   "density_g_cm3": 2.7,
+   "parent": "bogie_r"
   },
   {
    "id": "wheel_rr",
@@ -377,7 +416,10 @@
      0.0,
      0.030956
     ]
-   ]
+   ],
+   "material": "Aluminum",
+   "density_g_cm3": 2.7,
+   "parent": "bogie_r"
   },
   {
    "id": "mast",
@@ -404,7 +446,10 @@
      0.0,
      0.000608
     ]
-   ]
+   ],
+   "material": "Aluminum",
+   "density_g_cm3": 2.7,
+   "parent": "chassis"
   },
   {
    "id": "camera_head",
@@ -431,7 +476,10 @@
      -1.7e-05,
      0.033847
     ]
-   ]
+   ],
+   "material": "Aluminum",
+   "density_g_cm3": 2.7,
+   "parent": "mast"
   },
   {
    "id": "avionics_bay",
@@ -458,7 +506,10 @@
      0.0,
      0.086395
     ]
-   ]
+   ],
+   "material": "Aluminum",
+   "density_g_cm3": 2.7,
+   "parent": "chassis"
   },
   {
    "id": "flight_computer",
@@ -485,7 +536,10 @@
      -0.0,
      0.005668
     ]
-   ]
+   ],
+   "material": "Circuit Board",
+   "density_g_cm3": 1.85,
+   "parent": "avionics_bay"
   },
   {
    "id": "battery_1",
@@ -512,7 +566,10 @@
      -0.0,
      0.000883
     ]
-   ]
+   ],
+   "material": "ABS Plastic",
+   "density_g_cm3": 1.06,
+   "parent": "avionics_bay"
   },
   {
    "id": "battery_2",
@@ -539,7 +596,10 @@
      -0.0,
      0.000883
     ]
-   ]
+   ],
+   "material": "ABS Plastic",
+   "density_g_cm3": 1.06,
+   "parent": "avionics_bay"
   },
   {
    "id": "avionics_lid",
@@ -566,7 +626,10 @@
      -0.0,
      0.0253
     ]
-   ]
+   ],
+   "material": "Aluminum",
+   "density_g_cm3": 2.7,
+   "parent": "avionics_bay"
   },
   {
    "id": "sample_cassette",
@@ -593,7 +656,10 @@
      -0.0,
      0.005251
     ]
-   ]
+   ],
+   "material": "Aluminum",
+   "density_g_cm3": 2.7,
+   "parent": "chassis"
   },
   {
    "id": "sample_tube_1",
@@ -620,7 +686,10 @@
      -0.0,
      1.9e-05
     ]
-   ]
+   ],
+   "material": "Glass",
+   "density_g_cm3": 2.5,
+   "parent": "sample_cassette"
   },
   {
    "id": "sample_tube_2",
@@ -647,7 +716,10 @@
      -0.0,
      1.9e-05
     ]
-   ]
+   ],
+   "material": "Glass",
+   "density_g_cm3": 2.5,
+   "parent": "sample_cassette"
   },
   {
    "id": "sample_tube_3",
@@ -674,7 +746,10 @@
      -0.0,
      1.9e-05
     ]
-   ]
+   ],
+   "material": "Glass",
+   "density_g_cm3": 2.5,
+   "parent": "sample_cassette"
   },
   {
    "id": "sample_tube_4",
@@ -701,7 +776,10 @@
      -0.0,
      1.9e-05
     ]
-   ]
+   ],
+   "material": "Glass",
+   "density_g_cm3": 2.5,
+   "parent": "sample_cassette"
   },
   {
    "id": "sample_tube_5",
@@ -728,7 +806,10 @@
      -0.0,
      1.9e-05
     ]
-   ]
+   ],
+   "material": "Glass",
+   "density_g_cm3": 2.5,
+   "parent": "sample_cassette"
   },
   {
    "id": "sample_tube_6",
@@ -755,7 +836,10 @@
      -0.0,
      1.9e-05
     ]
-   ]
+   ],
+   "material": "Glass",
+   "density_g_cm3": 2.5,
+   "parent": "sample_cassette"
   },
   {
    "id": "antenna",
@@ -782,7 +866,10 @@
      -2e-06,
      0.00308
     ]
-   ]
+   ],
+   "material": "Aluminum",
+   "density_g_cm3": 2.7,
+   "parent": "chassis"
   },
   {
    "id": "solar_panel_l",
@@ -809,7 +896,10 @@
      -0.000105,
      0.022378
     ]
-   ]
+   ],
+   "material": "Solar Cell",
+   "density_g_cm3": 2.33,
+   "parent": "chassis"
   },
   {
    "id": "solar_panel_r",
@@ -836,7 +926,10 @@
      0.000105,
      0.022378
     ]
-   ]
+   ],
+   "material": "Solar Cell",
+   "density_g_cm3": 2.33,
+   "parent": "chassis"
   },
   {
    "id": "rail_l",
@@ -863,7 +956,10 @@
      -0.0,
      0.012268
     ]
-   ]
+   ],
+   "material": "Aluminum",
+   "density_g_cm3": 2.7,
+   "parent": "chassis"
   },
   {
    "id": "rail_r",
@@ -890,7 +986,10 @@
      -0.0,
      0.012268
     ]
-   ]
+   ],
+   "material": "Aluminum",
+   "density_g_cm3": 2.7,
+   "parent": "chassis"
   },
   {
    "id": "hazcam_l",
@@ -917,7 +1016,10 @@
      -0.0,
      0.00025
     ]
-   ]
+   ],
+   "material": "Aluminum",
+   "density_g_cm3": 2.7,
+   "parent": "chassis"
   },
   {
    "id": "hazcam_r",
@@ -944,7 +1046,10 @@
      -0.0,
      0.00025
     ]
-   ]
+   ],
+   "material": "Aluminum",
+   "density_g_cm3": 2.7,
+   "parent": "chassis"
   }
  ],
  "joints": [
@@ -1140,5 +1245,103 @@
     0.0
    ]
   }
+ ],
+ "contacts": [
+  [
+   "chassis",
+   "emblem"
+  ],
+  [
+   "chassis",
+   "rocker_shaft_l"
+  ],
+  [
+   "rocker_l",
+   "rocker_shaft_l"
+  ],
+  [
+   "chassis",
+   "rocker_shaft_r"
+  ],
+  [
+   "rocker_r",
+   "rocker_shaft_r"
+  ],
+  [
+   "chassis",
+   "mast"
+  ],
+  [
+   "chassis",
+   "avionics_bay"
+  ],
+  [
+   "avionics_bay",
+   "flight_computer"
+  ],
+  [
+   "flight_computer",
+   "battery_1"
+  ],
+  [
+   "flight_computer",
+   "battery_2"
+  ],
+  [
+   "chassis",
+   "sample_cassette"
+  ],
+  [
+   "sample_cassette",
+   "sample_tube_1"
+  ],
+  [
+   "sample_cassette",
+   "sample_tube_2"
+  ],
+  [
+   "sample_cassette",
+   "sample_tube_3"
+  ],
+  [
+   "sample_cassette",
+   "sample_tube_4"
+  ],
+  [
+   "sample_cassette",
+   "sample_tube_5"
+  ],
+  [
+   "sample_cassette",
+   "sample_tube_6"
+  ],
+  [
+   "chassis",
+   "antenna"
+  ],
+  [
+   "chassis",
+   "solar_panel_l"
+  ],
+  [
+   "chassis",
+   "solar_panel_r"
+  ],
+  [
+   "chassis",
+   "rail_l"
+  ],
+  [
+   "chassis",
+   "rail_r"
+  ],
+  [
+   "chassis",
+   "hazcam_l"
+  ],
+  [
+   "chassis",
+   "hazcam_r"
+  ]
  ]
 }

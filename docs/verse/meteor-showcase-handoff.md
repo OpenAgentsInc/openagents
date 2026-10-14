@@ -315,22 +315,49 @@ since B3 (#10907), over its offline-baked layers.
 ## The CAD Lab rover in the swarm (#11644)
 
 `verse::zones::meteor_rover` stands the rover built in CAD Lab (#11627) on
-the lawn in front of the houses: its own glTF and mass properties
-(`assets/verse/cad/rover.{glb,json}`, exported from CAD Lab rover v38) as 14
-rigid bodies in a `physics::World` of its own, the arms on hinges, the
-wheels, mast and solar wings on joints that break at a force or torque
-limit. Each meteor that lands near it pushes every part by its exposed area,
-falling off across the blast; one that lands on it also gives up its
-momentum (18 kg at 32 m/s). Sparks where a joint breaks and dust where a
-part lands hard come from the fx library (`scorch_embers`, `debris_dust`).
-`WorldRuntime::add_meteor_rover` and `stage_meteor_rover` set it up; the
-staged volley sends the third meteor onto the rover and the sixth beside it.
-Native only (the glTF is built into the binary).
+the lawn in front of the houses, from its v38 glTF and assembly
+(`assets/verse/cad/rover.{glb,json}`):
 
-Film: `cargo run --release -p verse --example meteor_rover_capture -- OUT_DIR
---video PATH` (with `VERSE_QUALITY=high`): establishing, low, tracking and
-aftermath shots, then the scene replayed from the start to just before the
-hardest hit and filmed four times slower. On 2026-10-14 the hardest hit came
-at 4.95 s (10.4 m/s); the wings, the mast and all six wheels broke off.
-Limits: the rover's parts collide with the ground only, not with each other
-or the houses' debris.
+- **Bodies:** every CAD solid is a rigid body, 51 in all, with its mass,
+  centre and full inertia tensor (diagonalised; products kept in the
+  principal frame) from its triangles and its material's density. They
+  sum to the CAD mass, 87.94 kg.
+- **Joints, 72:** the 12 CAD joints are pins (rocker and bogie pivots held
+  level by soft servos, six axles, the camera pan, the lid hinge); every
+  pair of touching solids in one rigid group is a fastened weld.
+- **Break limits:** a pin holds 0.15 × 0.6 σᵧ × πr² (r from the CAD part:
+  36 mm shafts, 60 mm hubs, 40 mm mast, 12 mm lid pin) and that force ×
+  4 cm in torque. A seam holds 0.01 × σᵧ × its contact patch, and that
+  force × half its length in torque. Either way, every joint holds at least
+  4 × the load it carries standing (measured in a settling run). σᵧ is the
+  weaker material's handbook yield (6061 aluminium 276 MPa, Ti-6Al-4V 880,
+  steel 250, glass 50, ...). A joint at its limit breaks.
+- **Loads:** a blast pushes each solid by the area it shows the blast
+  (350 N s/m² at the centre, falling off to the edge, no faster than the
+  25 m/s gas). A meteor that lands on the rover (18 kg at 32 m/s) moves with
+  each solid on its line in turn, as a perfectly inelastic collision: each
+  takes m/(m + M) of what momentum is left, and the rest goes on.
+- **Collisions:** pieces collide with the ground, the houses' debris near
+  them (mirrored in as moving boxes; one-way), and each other once
+  separate. Each piece held together by its joints is a collision group of
+  its own. Parts that broke apart while overlapping (a rail inside the
+  body's box) collide only once they are clear.
+
+`WorldRuntime::add_meteor_rover` and `stage_meteor_rover` set it up: the
+third meteor lands on the rover and the sixth beside it. The rover is
+native only (its glTF is built into the binary).
+
+Film: `cargo run --release -p verse --example meteor_rover_capture --
+OUT_DIR --video PATH` with `VERSE_QUALITY=high`. It has close shots round
+the rover, then the scene replayed to just before the hardest hit and
+filmed four times slower. `capture.json` lists every joint's limit, peak
+load and when it broke. On 2026-10-14, 14 of the 72 joints broke:
+
+- both rocker pivots: bending past their 1011 N m;
+- the lid hinge: 112 N m;
+- the mast's seam to the body: 1068 N m;
+- the solar wings' mounts and seams: 126 N, 90 N and 108 N.
+
+The axles held (the most loaded carried 2.3 kN of their 70 kN). The
+bogies, the body's seams and the cameras held too, so the body tumbled
+away with its wheels on.

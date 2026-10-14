@@ -106,31 +106,32 @@ fn camera(t: f32, at: Vec3, stood: Vec3) -> (Vec3, Vec3) {
         (
             0.0,
             Box::new(move |u: f32| {
+                // Close on the rover, the houses behind it.
                 let eye =
-                    ground + out * (17.0 - 3.0 * u) - along * (6.0 - u) + Vec3::Y * (3.2 - 0.6 * u);
-                (eye, ground - out * 7.0 + Vec3::Y * (3.5 + 1.5 * u))
+                    ground + out * (6.0 - 1.5 * u) - along * (2.5 - u) + Vec3::Y * (1.6 - 0.3 * u);
+                (eye, ground - out * 4.0 + Vec3::Y * (0.9 + 1.4 * u))
             }),
         ),
         (
             3.0,
             Box::new(move |u: f32| {
-                let eye = ground + out * (7.5 - u) + along * 4.5 + Vec3::Y * 0.9;
-                (eye, ground - out * 2.0 + Vec3::Y * (1.6 + 1.2 * u))
+                let eye = ground + out * (3.2 - 0.4 * u) + along * 2.2 + Vec3::Y * 0.5;
+                (eye, ground - out * 1.0 + Vec3::Y * (0.6 + 1.0 * u))
             }),
         ),
         (
             5.6,
             Box::new(move |u: f32| {
-                let eye = at + along * (7.0 - 1.5 * u) + out * 4.5 + Vec3::Y * (5.0 - 1.5 * u);
-                (eye, at + Vec3::Y * 0.3)
+                let eye = at + along * (4.0 - u) + out * 3.0 + Vec3::Y * (2.6 - 0.8 * u);
+                (eye, at + Vec3::Y * 0.2)
             }),
         ),
         (
             10.0,
             Box::new(move |u: f32| {
                 let eye =
-                    ground + out * 19.0 - along * (10.0 - 3.0 * u) + Vec3::Y * (6.0 + 2.0 * u);
-                (eye, at.lerp(ground, 0.5) + Vec3::Y * 0.5)
+                    at.lerp(ground, 0.5) + out * 6.0 - along * (3.0 - u) + Vec3::Y * (2.8 + u);
+                (eye, at.lerp(ground, 0.5) + Vec3::Y * 0.2)
             }),
         ),
     ];
@@ -151,8 +152,8 @@ fn replay_camera(u: f32, at: Vec3) -> (Vec3, Vec3) {
     let (along, out) = lot_axes();
     let turn = 0.5 * u - 0.25;
     let side = along * turn.cos() + out * (0.4 + turn.sin());
-    let eye = at + side * 6.5 + Vec3::Y * (3.0 + 0.5 * u);
-    (eye, at + Vec3::Y * 0.3)
+    let eye = at + side * 3.6 + Vec3::Y * (1.3 + 0.4 * u);
+    (eye, at + Vec3::Y * 0.2)
 }
 
 fn encoder(path: &Path) -> Result<std::process::Child, String> {
@@ -287,7 +288,23 @@ fn main() -> Result<(), String> {
         .ok_or("Nothing struck the rover")?;
     let broken: Vec<String> = runtime
         .meteor_rover()
-        .map(|r| r.broken().iter().map(|s| (*s).to_owned()).collect())
+        .map(verse::zones::meteor_rover::Rover::broken)
+        .unwrap_or_default();
+    let joints: Vec<serde_json::Value> = runtime
+        .meteor_rover()
+        .map(|r| {
+            r.joints()
+                .iter()
+                .map(|l| {
+                    serde_json::json!({
+                        "joint": l.name, "kind": format!("{:?}", l.kind),
+                        "limit_n": l.max_force.round(), "peak_n": l.peak_force.round(),
+                        "limit_n_m": (l.max_torque * 10.0).round() / 10.0, "peak_n_m": (l.peak_torque * 10.0).round() / 10.0,
+                        "broke_s": l.broke.map(|t| (t * 100.0).round() / 100.0),
+                    })
+                })
+                .collect()
+        })
         .unwrap_or_default();
     eprintln!("hardest hit at {hit_at:.2} s ({knock:.1} m/s); broke off: {broken:?}");
     // The replay: the same scene again, to just before the hardest hit,
@@ -361,6 +378,7 @@ fn main() -> Result<(), String> {
         "hardest_hit_s": hit_at,
         "hardest_knock_m_s": knock,
         "broke_off": broken,
+        "joints": joints,
         "replay_from_s": start,
         "replay_slower": SLOW,
         "video": video,

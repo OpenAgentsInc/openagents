@@ -2987,6 +2987,9 @@ impl WorldRuntime {
                 // and then its own physics.
                 #[cfg(not(target_arch = "wasm32"))]
                 if let (Some(rover), Some(town)) = (state.rover.as_deref_mut(), glade.town_mut()) {
+                    // The houses' debris near it, for its parts to land on.
+                    let near = town.site().chunk_boxes(rover.center().as_dvec3(), 8.0, 40);
+                    rover.set_debris(&near);
                     let mut landed = town.take_impacts();
                     landed.extend(town.take_showcase_impacts());
                     for impact in landed {

@@ -620,6 +620,40 @@ impl Site {
         out
     }
 
+    /// The box of every live chunk whose centre lies within `reach` of
+    /// `around`, nearest first, at most `most`: its centre, rotation,
+    /// velocity and half extents (m, m/s), for something simulated in a
+    /// world of its own to collide with (the Meteor Showcase's rover).
+    #[must_use]
+    pub fn chunk_boxes(
+        &self,
+        around: DVec3,
+        reach: f64,
+        most: usize,
+    ) -> Vec<(DVec3, DQuat, DVec3, DVec3)> {
+        let live: BTreeSet<u32> = self
+            .pieces
+            .iter()
+            .flat_map(|p| p.chunks.iter().filter(|c| !c.gone).map(|c| c.body.0))
+            .collect();
+        let mut out: Vec<(f64, (DVec3, DQuat, DVec3, DVec3))> = self
+            .world
+            .colliders()
+            .iter()
+            .filter(|c| live.contains(&c.body.0))
+            .filter_map(|c| {
+                let Shape::Cuboid { half } = c.shape else {
+                    return None;
+                };
+                let (pos, rot) = c.pose(&self.world);
+                let d = pos.distance(around);
+                (d <= reach).then(|| (d, (pos, rot, self.world[c.body].vel, half)))
+            })
+            .collect();
+        out.sort_by(|a, b| a.0.total_cmp(&b.0));
+        out.into_iter().take(most).map(|(_, b)| b).collect()
+    }
+
     /// A body's position and velocity, m and m/s.
     #[must_use]
     pub fn body_motion(&self, body: BodyId) -> (DVec3, DVec3) {
