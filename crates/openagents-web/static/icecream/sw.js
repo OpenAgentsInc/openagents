@@ -11,7 +11,7 @@
 const CACHE = "icecream-v1";
 const GAME = "/games/the-ice-cream-man";
 // The site's files the page uses besides the game's own.
-const SHARED = ["/static/legacy-demo.css", "/favicon.svg"];
+const SHARED = ["/static/legacy-demo.css"];
 const ours = (path) => path === GAME || path.startsWith(GAME + "/") || SHARED.includes(path);
 
 self.addEventListener("install", () => self.skipWaiting());

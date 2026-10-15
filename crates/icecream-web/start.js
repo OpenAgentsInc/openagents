@@ -109,7 +109,6 @@ import init from "./icecream_web.js";
     location.origin + game + "/icon-192.png",
     location.origin + game + "/icon-512.png",
     "/static/legacy-demo.css",
-    "/favicon.svg",
   );
   navigator.serviceWorker
     .register(game + "/sw.js", { scope: game })

@@ -61,6 +61,10 @@ async function open(device, hash) {
   page.on("console", (m) => {
     if (m.type() === "error" && !m.text().startsWith("Failed to load resource")) errors.push(`${device}: ${m.text()}`);
   });
+  page.on("crash", () => console.log(`     ${device}: the page crashed`));
+  page.on("framenavigated", (frame) => {
+    if (process.env.DEBUG) console.log(`     ${device}: navigated to ${frame.url()}`);
+  });
   page.on("response", (r) => {
     if (r.status() >= 400 && !r.url().includes("favicon")) errors.push(`${device}: ${r.status()} ${r.url()}`);
   });
