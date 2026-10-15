@@ -25,6 +25,11 @@ The [complete issue directory](terminal/issue-roadmap.md) maps this effort to
 the public [Terminal and Workbench project](https://github.com/orgs/OpenAgentsInc/projects/20),
 with today's three release issues separated from all subsequent milestones.
 
+The [research follow-ups](roadmap/2026-10-15-research-followups.md) turn the
+research of 2026-10-14/15 into work: the pre-1.0 launch-safety items (#11763 to
+#11769), what comes soon after 1.0, the bets with their triggers, what we're not
+doing, and the owner decisions they wait on.
+
 The [launch roadmap](roadmap/2026-09-29-launch-roadmap.md) holds the OpenAgents
 app MVP that ships to playtesters on 2026-09-29, its known limits, and the
 dated milestones after it; the [playtesting program](game/playtesting.md) runs
