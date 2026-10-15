@@ -73,6 +73,21 @@ fn tool(name: &str, args: &Value) -> Result<Value, String> {
             Ok(eval) => json!({"passed": true, "report": eval.report}),
             Err(problems) => json!({"passed": false, "problems": problems}),
         }),
+        "cad_configure" => {
+            let controls: Vec<cad::configure::Control> =
+                serde_json::from_value(args["controls"].clone())
+                    .map_err(|_| "Check the slider settings.")?;
+            let values: Option<Vec<f64>> = args
+                .get("values")
+                .map(|v| serde_json::from_value(v.clone()))
+                .transpose()
+                .map_err(|_| "Choose a number for each slider.")?;
+            let doc = cad::configure::apply(&document(args)?, &controls, values.as_deref())?;
+            let eval = cad::evaluate_with(&doc, &cache).map_err(|p| p.join(" "))?;
+            Ok(
+                json!({"passed":true,"document":doc,"view":cad::view::model(&eval.built),"report":eval.report}),
+            )
+        }
         "cad_drag_face" => {
             let mut doc = document(args)?;
             let edit = cad::drag::apply(
@@ -154,9 +169,10 @@ fn tool(name: &str, args: &Value) -> Result<Value, String> {
 }
 
 /// The tools the browser build runs.
-pub const TOOLS: [&str; 8] = [
+pub const TOOLS: [&str; 9] = [
     "cad_check",
     "cad_drag_face",
+    "cad_configure",
     "cad_solid",
     "cad_faces",
     "cad_import_dxf",
@@ -242,6 +258,18 @@ mod tests {
         json!({"kind": "part.v1", "id": "puck", "material": "Steel", "features": [
             {"id": "disc", "op": "solid.cylinder", "params": {"radius": 10, "height": 5}},
             {"id": "round", "op": "solid.fillet", "params": {"radius": 1, "edges": [{"of": "disc:top"}]}}]})
+    }
+
+    #[test]
+    fn configurator_changes_rebuild_and_export_without_changing_the_snapshot() {
+        let source = json!({"kind":"part.v1","id":"plate","material":"Aluminum","features":[{"id":"body","op":"solid.box","params":{"length":20,"width":10,"height":4,"center":[0,0,2]}}]});
+        let args = json!({"document":source,"controls":[{"path":"/features/0/params/height","label":"Thickness","min":2,"max":12,"step":0.5}],"values":[8]});
+        let result: Value = serde_json::from_str(&run("cad_configure", &args.to_string())).unwrap();
+        assert_eq!(result["passed"], true, "{result}");
+        assert!((result["view"]["size_mm"][2].as_f64().unwrap() - 8.0).abs() < 0.01);
+        let step = export(&result["document"].to_string(), "step").unwrap();
+        assert!(String::from_utf8_lossy(&step).contains("ISO-10303-21"));
+        assert_eq!(source["features"][0]["params"]["height"], 4);
     }
 
     #[test]

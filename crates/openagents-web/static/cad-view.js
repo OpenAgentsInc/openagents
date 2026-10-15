@@ -123,7 +123,7 @@
     function get(url) {
       return fetch(url, {credentials: "same-origin"}).then(function (r) {
         if (!r.ok) return null;
-        return /name=view\.json|\.json$/.test(url) ? r.json().then(fromView) : r.arrayBuffer().then(fromGlb);
+        return (/name=view\.json|\.json$/.test(url) || (r.headers.get("content-type") || "").includes("application/json")) ? r.json().then(fromView) : r.arrayBuffer().then(fromGlb);
       });
     }
     // An older version has no view model: its glTF turns, without names.

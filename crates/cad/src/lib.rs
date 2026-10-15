@@ -22,6 +22,7 @@
 pub mod build;
 pub mod clash;
 pub mod collision;
+pub mod configure;
 pub mod doc;
 pub mod drag;
 pub mod drawing;

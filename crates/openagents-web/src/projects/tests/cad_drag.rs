@@ -66,3 +66,35 @@ async fn serve_cad_drag() {
     .unwrap();
     axum::serve(listener, world.site).await.unwrap();
 }
+
+#[tokio::test]
+#[ignore = "serves a local configurator; needs native and browser CAD builds"]
+async fn serve_cad_configurator() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    HOST_OVERRIDE.set(format!("127.0.0.1:{port}")).unwrap();
+    let world = world_at(
+        port,
+        Options {
+            cad: Some(std::env::var_os("OA_CAD_BROWSER").unwrap().into()),
+            ..Options::default()
+        },
+    )
+    .await;
+    let mut browser = Browser::default();
+    browser.sign_in(&world, "octo-local").await;
+    let scope = crate::cad_web::Scope::personal(&account_owner_of(&world, "octo-local")).unwrap();
+    let result=crate::cad_web::engine().unwrap().run(&world.store,&scope,"cad_from_json",&json!({"doc":"bracket","document":{
+        "kind":"part.v1","id":"bracket","title":"Fan bracket","material":"Aluminum",
+        "parameters":[{"name":"hole_spacing","expression":"24 mm"},{"name":"thickness","expression":"6 mm"}],
+        "features":[
+            {"id":"body","op":"solid.box","params":{"length":60,"width":40,"height":"thickness","center":[0,0,"thickness / 2"]}},
+            {"id":"notch","op":"solid.box","params":{"length":40,"width":20,"height":30,"center":[15,15,13],"operation":"cut"}},
+            {"id":"left-hole","op":"solid.cylinder","params":{"radius":2,"height":30,"base":["-hole_spacing / 2",-8,-2],"operation":"cut"}},
+            {"id":"right-hole","op":"solid.cylinder","params":{"radius":2,"height":30,"base":["hole_spacing / 2",-8,-2],"operation":"cut"}}
+        ]}})).await;
+    assert_eq!(result["saved"], true, "{result}");
+    let out = std::path::PathBuf::from(std::env::var_os("OA_CAD_CAPTURE").unwrap());
+    std::fs::write(out,serde_json::to_vec(&json!({"url":format!("{}/cad/bracket/configurator",world.origin()),"cookies":browser.0})).unwrap()).unwrap();
+    axum::serve(listener, world.site).await.unwrap();
+}

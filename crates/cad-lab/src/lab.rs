@@ -294,6 +294,25 @@ impl Lab {
             "cad_add_feature" => self.add_feature(args),
             "cad_edit_feature" => self.edit_feature(args),
             "cad_drag_face" => self.drag_face(args),
+            "cad_config_options" => self
+                .pick(args)
+                .map(|(_, _, doc, _)| json!({"options":cad::configure::options(&doc)})),
+            "cad_configure" => self.pick(args).and_then(|(_, _, doc, _)| {
+                let controls: Vec<cad::configure::Control> =
+                    serde_json::from_value(arg_json(args, "controls")?.unwrap_or(Value::Null))
+                        .map_err(|_| "Check the slider settings.")?;
+                cad::configure::apply(&doc, &controls, None)?;
+                let options = cad::configure::options(&doc);
+                let values: Vec<f64> = controls
+                    .iter()
+                    .map(|c| {
+                        options.iter().find(|o| o["path"] == c.path).unwrap()["value"]
+                            .as_f64()
+                            .unwrap()
+                    })
+                    .collect();
+                Ok(json!({"document":doc,"controls":controls,"values":values}))
+            }),
             "cad_set_part" => self.set_part(args),
             "cad_assemble" => self.assemble(args),
             "cad_check" => self.check(args),
@@ -1684,6 +1703,8 @@ fn takes(name: &str) -> &'static [&'static str] {
             "author",
         ],
         "cad_add_feature" => &["doc", "part", "features", "after", "summary", "author"],
+        "cad_config_options" => &["doc", "version"],
+        "cad_configure" => &["doc", "version", "controls"],
         "cad_drag_face" => &["doc", "part", "face", "delta", "summary", "author"],
         "cad_edit_feature" => &[
             "doc",

@@ -331,6 +331,16 @@ the opposite face fixed. Cuts, formulas, and unsupported faces stay editable
 through chat. Viewers cannot pull faces, and a page based on an older version
 must be reloaded before saving ([#11661](https://github.com/OpenAgentsInc/openagents/issues/11661)).
 
+**Share with sliders** opens the owner's configurator settings. Choose up to
+eight numeric feature fields or literal part parameters, name their sliders,
+and set limits and steps. The link shares that version's complete design;
+visitors can rebuild it while signed out and download STEP, STL, PDF, or DXF
+for their values. Their edits stay in their browser and don't create versions
+in your account. **Stop sharing** removes a link; deleting the design removes
+its links too. A previously downloaded design stays with its recipient.
+Each design allows 20 links, with an 8 MiB snapshot limit
+([#11662](https://github.com/OpenAgentsInc/openagents/issues/11662)).
+
 ## In the browser
 
 `crates/cad-wasm` is the same engine built for `wasm32-unknown-unknown`

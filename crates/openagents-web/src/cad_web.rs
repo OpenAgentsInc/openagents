@@ -38,6 +38,8 @@
 //! [`DEADLINE`] and [`MEMORY_BYTES`], and [`RUNS_PER_HOUR`] tool runs per
 //! person.
 
+mod configurator;
+
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -517,7 +519,9 @@ impl Engine {
         }
         keep_outputs(store, scope, &dir).await;
         trim_parts(&dir.join(".parts"));
-        hosted_result(&mut result, scope);
+        if name != "cad_configure" && name != "cad_config_options" {
+            hosted_result(&mut result, scope);
+        }
         Ok(result)
     }
 
@@ -1025,6 +1029,7 @@ pub(crate) async fn delete(store: &Store, scope: &Scope, doc: &str) -> Result<()
 }
 
 async fn delete_now(store: &Store, scope: &Scope, doc: &str) -> Result<(), String> {
+    configurator::purge(store, scope, doc).await?;
     update_index(store, scope, |index| {
         index.docs.remove(doc);
     })
@@ -1120,6 +1125,7 @@ async fn page_scope(app: &App, headers: &HeaderMap, project: Option<&str>) -> Op
 
 pub(crate) fn routes() -> Router<App> {
     Router::new()
+        .merge(configurator::routes())
         // `{file}`, as /cad/{file} names the same segment (pages::cad).
         .route("/cad/{file}/file", get(file))
         .route("/cad/{file}/delete", post(delete_form))
@@ -1355,6 +1361,9 @@ pub(crate) fn doc_content(
             }
             @if engine_in_browser {
                 p.oa-cad-meta data-cad-download-status="" aria-live="polite" { "Loading the CAD engine for the files\u{2026}" }
+            }
+            @if engine_in_browser && csrf.is_some() && scope.home == scope.actor {
+                (ButtonLink::new("Share with sliders", format!("/cad/{doc}/configurator?v={version}&project={}",scope.project.as_deref().unwrap_or(""))).variant(ButtonVariant::Outline))
             }
             h2 { "Versions" }
             ol.oa-cad-versions reversed {

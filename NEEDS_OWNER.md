@@ -1,6 +1,6 @@
-## Deploy project uploads and CAD face pulls (#11679, #11661)
+## Deploy project uploads and CAD face pulls (#11679, #11661, #11662)
 
-The resumable server, CLI, and checked CAD face pulls are implemented on `main`. This Linux session
+The resumable server, CLI, checked CAD face pulls, and shared configurators are implemented on `main`. This Linux session
 cannot deploy them: the default Google Cloud login requires reauthentication,
 and the documented automation configuration is absent on this machine.
 Refresh the deployment login, then use `scripts/deploy/web.sh stage --keep-spec`,
@@ -17,7 +17,9 @@ project. The local tests cover those operations with isolated accounts and a
 lost HTTP reply; they do not establish that production has the new routes.
 The same web image must include the updated native CAD engine and browser
 WASM build. On the deployed CAD page, check a face pull at desktop and phone
-width, then confirm that the old version is unchanged. The isolated local
+width, then confirm that the old version is unchanged. Check a shared bracket
+with hole-spacing and thickness sliders while signed out, download its files,
+and stop sharing it. The isolated local
 browser check covers mouse and touch; it does not establish a production deploy.
 
 ## Show cloud environment issue runs on openagents.com and the phone (#11228)
