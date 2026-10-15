@@ -362,7 +362,7 @@ pub(crate) fn pick_text(field: &str) -> Option<String> {
         !s.is_empty()
             && s.len() <= 120
             && s.chars()
-                .all(|c| c.is_ascii_alphanumeric() || "-_:#+.*".contains(c))
+                .all(|c| c.is_ascii_alphanumeric() || "-_:#+.*@".contains(c))
     };
     let doc = pick["doc"]
         .as_str()
@@ -762,6 +762,12 @@ mod tests {
         assert!(
             edge.contains(r#"edge {"between": ["body:top", "body:side:l1"]}"#),
             "{edge}"
+        );
+        // A mirrored copy's face, as the kernel names it.
+        assert!(
+            pick_text(r#"{"doc":"b","version":1,"part":"p","face":"gusset_l:bottom@gusset_r.1"}"#)
+                .unwrap()
+                .contains("face gusset_l:bottom@gusset_r.1")
         );
         assert_eq!(pick_text(""), None);
         assert_eq!(pick_text("not json"), None);

@@ -6,7 +6,7 @@
 .oa-cad-view img,.oa-cad-canvas{position:absolute;inset:0;width:100%;height:100%;display:block;object-fit:contain;touch-action:none;cursor:grab}
 .oa-cad-canvas:active{cursor:grabbing}
 .oa-cad-tools{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-.oa-cad-tools[hidden],.oa-cad-panel[hidden],.oa-cad-readout[hidden]{display:none}
+.oa-cad-tools[hidden],.oa-cad-tools .oa-button[hidden],.oa-cad-panel[hidden],.oa-cad-readout[hidden]{display:none}
 .oa-cad-tools .oa-button[data-selected]{outline:2px solid currentColor;outline-offset:-2px}
 .oa-cad-panel{display:flex;flex-wrap:wrap;gap:12px;align-items:center;padding:8px;border-radius:8px;border:1px solid rgba(127,127,127,.2)}
 .oa-cad-panel .oa-slider{flex:1 1 220px;min-width:180px}
