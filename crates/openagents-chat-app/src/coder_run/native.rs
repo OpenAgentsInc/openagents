@@ -247,6 +247,7 @@ mod tests {
         run.outcome(
             ticket,
             Ok(Answer::Lines {
+                configuration: None,
                 lines: vec![],
                 state: State::Running,
                 native: Some(snapshot.clone()),

@@ -643,8 +643,10 @@ async fn attempt(
     options: QueryOptions,
     prompt: &str,
     transcript: &Transcript<'_>,
+    strict_resume: bool,
 ) -> Attempt {
     let mut attempt = Attempt::default();
+    let expected_resume = options.resume.clone().filter(|_| strict_resume);
     let service = match host.pending(transcript.observations.borrow().scope()) {
         Ok(service) => service,
         Err(error) => {
@@ -707,6 +709,16 @@ async fn attempt(
         if let Some(session) = query.session_id()
             && attempt.session.as_deref() != Some(session)
         {
+            if expected_resume
+                .as_ref()
+                .is_some_and(|expected| expected != session)
+            {
+                attempt.error = Some(
+                    "Claude Code opened a different session instead of resuming the saved one."
+                        .into(),
+                );
+                break;
+            }
             transcript.session(session);
             attempt.session = Some(session.to_owned());
         }
@@ -883,22 +895,59 @@ pub(crate) async fn turn(
         model: Some(route.model.clone()),
         ..Ended::default()
     };
-    let effort = recipe
-        .as_deref()
-        .and_then(|recipe| {
-            recipe.effort(
-                route_contract::recipe::CLAUDE_SESSION,
-                route.effort.as_deref(),
-            )
-        })
-        .or_else(|| route.effort.clone())
-        .unwrap_or_else(|| EFFORT.to_owned());
-    let note = host.earlier_note(SESSION_NOTE);
-    let earlier = note
-        .as_ref()
-        .and_then(|note| note.get("session"))
-        .and_then(Value::as_str)
-        .map(str::to_owned);
+    let requested = host.configuration().session.as_ref();
+    let start = requested.filter(|start| {
+        start.selection.provider == route.provider && start.selection.model == route.model
+    });
+    if requested.is_some_and(|start| start.request.is_some()) && start.is_none() {
+        ended.error = Some("The coding engine changed. Choose the model again.".into());
+        return Turn::Ended(ended);
+    }
+    let strict_resume = start.is_some_and(|start| start.strict_resume());
+    let fresh = start.is_some_and(|start| start.fresh());
+    let explicit = start.is_some_and(|start| start.request.is_some());
+    let effort = if explicit {
+        route.effort.clone().unwrap_or_else(|| EFFORT.into())
+    } else {
+        recipe
+            .as_deref()
+            .and_then(|recipe| {
+                recipe.effort(
+                    route_contract::recipe::CLAUDE_SESSION,
+                    route.effort.as_deref(),
+                )
+            })
+            .or_else(|| route.effort.clone())
+            .unwrap_or_else(|| EFFORT.to_owned())
+    };
+    if !fresh
+        && let Some(native) = host
+            .earlier_note(route_contract::session::control::NATIVE_NOTE)
+            .and_then(|value| {
+                serde_json::from_value::<route_contract::session::control::Native>(value).ok()
+            })
+        && native.account.is_some()
+        && native.account.as_ref() != start.and_then(|start| start.account.as_ref())
+    {
+        ended.error =
+            Some("Your Claude Code login changed. Start a new session to continue.".into());
+        return Turn::Ended(ended);
+    }
+    let note = if fresh || strict_resume {
+        None
+    } else {
+        host.earlier_note(SESSION_NOTE)
+    };
+    let earlier = if strict_resume {
+        start
+            .and_then(|start| start.native.as_ref())
+            .map(|native| native.session.clone())
+    } else {
+        note.as_ref()
+            .and_then(|note| note.get("session"))
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+    };
     let pending: Option<Pending> = note
         .as_ref()
         .and_then(|note| note.get("pending"))
@@ -978,6 +1027,17 @@ pub(crate) async fn turn(
             }
             None => base,
         };
+        let prompt = if let Some(start) = start {
+            match coder_sdk::session::context_prompt(start, &prompt) {
+                Ok(prompt) => prompt,
+                Err(error) => {
+                    ended.error = Some(error);
+                    return Turn::Ended(ended);
+                }
+            }
+        } else {
+            prompt
+        };
         let sequence = match host.effect(
             EFFECT,
             json!({"program": program, "cwd": host.workspace(), "model": route.model,
@@ -993,7 +1053,7 @@ pub(crate) async fn turn(
                 return Turn::Ended(ended);
             }
         };
-        let options = options(
+        let mut options = options(
             host,
             program.clone(),
             &route.model,
@@ -1001,7 +1061,21 @@ pub(crate) async fn turn(
             resume.clone(),
             env.clone(),
         );
-        let attempt = attempt(host, &gate, options, &prompt, &transcript).await;
+        if let Some(start) = start.filter(|start| start.request.is_some()) {
+            options = match coder_sdk::session::claude_start(start, options) {
+                Ok(options) => options,
+                Err(error) => {
+                    let _ = host.result(
+                        sequence,
+                        EFFECT,
+                        json!({"state":"not_started","error":error}),
+                    );
+                    ended.error = Some(error);
+                    return Turn::Ended(ended);
+                }
+            };
+        }
+        let attempt = attempt(host, &gate, options, &prompt, &transcript, strict_resume).await;
         let finished = attempt.finished.as_ref();
         if let Some(usage) = finished.and_then(|finished| finished.usage.as_ref()) {
             let observation = transcript.observations.borrow_mut().usage(usage);
@@ -1039,6 +1113,7 @@ pub(crate) async fn turn(
         // A session that can't resume, such as one whose files are gone,
         // starts afresh, once.
         let lost = resumed
+            && !strict_resume
             && tries == 1
             && !attempt.cancelled
             && gate.asked().is_none()
@@ -1059,6 +1134,37 @@ pub(crate) async fn turn(
     ended.reply = transcript.reply.borrow().clone();
     ended.refused = transcript.refused.borrow().clone();
     ended.session = attempt.session.clone().or(earlier);
+    if let Some(session) = attempt.session.as_ref()
+        && let Ok(target) = host.workspace_identity()
+    {
+        let scope = transcript.observations.borrow().scope().clone();
+        let native = route_contract::session::control::Native {
+            schema: route_contract::session::control::NATIVE_SCHEMA.into(),
+            host: scope.host,
+            task: scope.task,
+            turn: scope.turn,
+            session: session.clone(),
+            provider: "claude".into(),
+            model: route.model.clone(),
+            adapter: "claude-sdk".into(),
+            checkout: host.workspace().display().to_string(),
+            target,
+            account: start.and_then(|start| start.account.clone()),
+        };
+        if native.valid() {
+            let _ = host.append(&Step::said(Source::System, "").noting(
+                route_contract::session::control::NATIVE_NOTE,
+                serde_json::to_value(native).unwrap_or(Value::Null),
+            ));
+        }
+    }
+    if strict_resume && (attempt.error.is_some() || attempt.session.is_none()) && !attempt.cancelled
+    {
+        ended.error = Some(attempt.error.clone().unwrap_or_else(|| {
+            "Claude Code did not resume the saved session. Start a new session instead.".into()
+        }));
+        return Turn::Ended(ended);
+    }
     if attempt.cancelled {
         ended.stop = Some(StopReason::Cancelled);
         return Turn::Ended(ended);
@@ -1577,6 +1683,132 @@ done
         assert!(trace.contains("\"kind\":\"claude_sdk\""), "{trace}");
         assert!(trace.contains("\"cost_usd\":0.004"), "{trace}");
         waiting
+    }
+
+    fn configured_route(configuration: &mut Configuration) {
+        sdk_route(configuration);
+        configuration.session = Some(route_contract::session::control::Start {
+            request: None,
+            selection: route_contract::session::Selection {
+                provider: "claude".into(),
+                model: MODEL.into(),
+                effort: None,
+            },
+            account: Some("fixture-login".into()),
+            task_model: None,
+            context: None,
+            native: None,
+        });
+    }
+    fn saved_native(store: &Path) -> route_contract::session::control::Native {
+        std::fs::read_to_string(store.join("fixture.1.atif.jsonl"))
+            .unwrap()
+            .lines()
+            .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+            .filter_map(|line| {
+                serde_json::from_value(
+                    line["step"]["extensions"][route_contract::session::control::NATIVE_NOTE]
+                        .clone(),
+                )
+                .ok()
+            })
+            .last()
+            .unwrap()
+    }
+    fn configured_next(
+        grant: &[u8],
+        revision: u64,
+        mode: route_contract::session::control::Mode,
+        native: route_contract::session::control::Native,
+    ) -> Vec<u8> {
+        use route_contract::session::control as wire;
+        let mut grant: task::owner::Grant = serde_json::from_slice(&next(grant, revision)).unwrap();
+        let start = grant
+            .adapter_configuration
+            .as_mut()
+            .unwrap()
+            .session
+            .as_mut()
+            .unwrap();
+        start.request = Some(wire::Request {
+            schema: wire::SCHEMA.into(),
+            offer: route_contract::digest_of(&()),
+            adapter: "claude-sdk".into(),
+            checkout: native.checkout.clone(),
+            target: native.target.clone(),
+            selection: start.selection.clone(),
+            mode,
+            resume: (mode == wire::Mode::NativeResume).then(|| native.id()),
+        });
+        start.context = (mode == wire::Mode::ContextTransfer).then(|| wire::Context {
+            task: "fixture".into(),
+            turn: 1,
+            text: "Owner-selected earlier summary".into(),
+        });
+        start.native = (mode == wire::Mode::NativeResume).then_some(native);
+        serde_json::to_vec(&grant).unwrap()
+    }
+    #[tokio::test]
+    async fn explicit_fresh_transfer_and_native_resume_use_distinct_provider_starts() {
+        use route_contract::session::control::Mode;
+        for mode in [Mode::New, Mode::ContextTransfer, Mode::NativeResume] {
+            let (_root, store, grant) = fixture_with(MODEL, configured_route);
+            let waiting = asked(&store, &grant).await;
+            let native = saved_native(&store);
+            assert_eq!(native.account.as_deref(), Some("fixture-login"));
+            let queued = answer(&store, &waiting, "e", "Approved.");
+            let (dir, program) = fake();
+            let done = run_turn(
+                &store,
+                &configured_next(&grant, queued.revision, mode, native),
+                &program,
+            )
+            .await;
+            assert_eq!(done.turn(), 2);
+            let arguments = logged(&dir, "arguments");
+            assert_eq!(arguments.len(), 1);
+            assert_eq!(
+                arguments[0].contains("--resume=sdk-session-1"),
+                mode == Mode::NativeResume
+            );
+            let prompt = logged(&dir, "stdin")
+                .iter()
+                .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+                .find(|line| line["type"] == "user")
+                .unwrap();
+            let prompt = prompt["message"]["content"].as_str().unwrap();
+            assert_eq!(
+                prompt.contains("Owner-selected earlier summary"),
+                mode == Mode::ContextTransfer
+            );
+            assert!(!prompt.contains("allowed this step once"));
+        }
+    }
+    #[tokio::test]
+    async fn missing_explicit_native_session_never_starts_an_empty_conversation() {
+        use route_contract::session::control::Mode;
+        let (_root, store, grant) = fixture_with(MODEL, configured_route);
+        let waiting = asked(&store, &grant).await;
+        let native = saved_native(&store);
+        let queued = answer(&store, &waiting, "f", "Approved.");
+        let (dir, program) = fake();
+        // A provider that rejects the resume before producing a session ID.
+        let user_branch = "    *'\"type\":\"user\"'*)";
+        let replacement = format!(
+            "{user_branch}\n      printf '%s\\n' '{{\"type\":\"result\",\"subtype\":\"error_during_execution\",\"is_error\":true,\"num_turns\":0,\"duration_ms\":1,\"duration_api_ms\":1,\"total_cost_usd\":0,\"usage\":{{}},\"errors\":[\"Saved session missing\"]}}'\n      exit 0"
+        );
+        std::fs::write(&program, FAKE_CLAUDE.replace(user_branch, &replacement)).unwrap();
+        let task = run_turn(
+            &store,
+            &configured_next(&grant, queued.revision, Mode::NativeResume, native),
+            &program,
+        )
+        .await;
+        assert_eq!(logged(&dir, "arguments").len(), 1);
+        assert_ne!(
+            task.run.as_ref().unwrap().result.as_ref().unwrap().ending,
+            "model_finished"
+        );
     }
 
     #[tokio::test]

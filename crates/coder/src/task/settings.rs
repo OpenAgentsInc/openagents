@@ -165,6 +165,8 @@ pub struct Choice {
     pub provider: Provider,
     /// The model, when not the provider's default.
     pub model: Option<String>,
+    /// An explicit adapter choice; absent keeps the provider defaults.
+    pub engine: Option<super::autostart::RouteEngine>,
 }
 
 impl Choice {
@@ -173,6 +175,7 @@ impl Choice {
         Choice {
             provider,
             model: None,
+            engine: None,
         }
     }
 
@@ -192,11 +195,17 @@ impl Choice {
                 })?
                 .to_owned(),
         };
+        if let Some(engine) = self.engine {
+            return super::autostart::parse_route(&format!(
+                "{}/{}:{}",
+                self.provider, engine, model
+            ));
+        }
         Ok(Route {
             provider: self.provider,
             model,
             effort: None,
-            engine: None,
+            engine: self.engine,
         })
     }
 }
@@ -205,7 +214,7 @@ impl Choice {
     /// What tells two choices apart: its route, or OpenCode named without
     /// a model, which runs on OpenCode's own configured one (#10184).
     fn key(&self) -> Result<Route, String> {
-        if self.provider == Provider::OpenCode && self.model.is_none() {
+        if self.provider == Provider::OpenCode && self.model.is_none() && self.engine.is_none() {
             return Ok(Route {
                 provider: Provider::OpenCode,
                 model: String::new(),
@@ -219,9 +228,17 @@ impl Choice {
 
 impl std::fmt::Display for Choice {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &self.model {
-            Some(model) => write!(f, "{}:{model}", self.provider),
-            None => f.write_str(self.provider.as_str()),
+        match (&self.model, self.engine) {
+            (Some(model), Some(engine)) => write!(f, "{}/{}:{model}", self.provider, engine),
+            (None, Some(engine)) => write!(
+                f,
+                "{}/{}:{}",
+                self.provider,
+                engine,
+                default_model(self.provider).unwrap_or("default")
+            ),
+            (Some(model), None) => write!(f, "{}:{model}", self.provider),
+            (None, None) => f.write_str(self.provider.as_str()),
         }
     }
 }
@@ -231,6 +248,20 @@ impl std::str::FromStr for Choice {
 
     fn from_str(text: &str) -> Result<Self, String> {
         let text = text.trim();
+        if text
+            .split_once(':')
+            .is_some_and(|(name, _)| name.contains('/'))
+        {
+            let route = super::autostart::parse_route(text)?;
+            if !PROVIDERS.contains(&route.provider) {
+                return Err("This provider is not available in local coding settings.".into());
+            }
+            return Ok(Choice {
+                provider: route.provider,
+                model: Some(route.model),
+                engine: route.engine,
+            });
+        }
         let (name, model) = match text.split_once(':') {
             Some((name, model)) => (name, Some(model.trim())),
             None => (text, None),
@@ -262,7 +293,11 @@ impl std::str::FromStr for Choice {
                 Some(model.to_owned())
             }
         };
-        let choice = Choice { provider, model };
+        let choice = Choice {
+            provider,
+            model,
+            engine: None,
+        };
         choice.key()?;
         Ok(choice)
     }
@@ -515,6 +550,7 @@ impl Coder {
                     return opencode_model.map(|model| Choice {
                         provider: Provider::OpenCode,
                         model: Some(model.to_owned()),
+                        engine: None,
                     });
                 }
                 Some(choice)

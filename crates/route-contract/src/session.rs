@@ -1,5 +1,7 @@
 //! Read-only execution descriptions shared by the SDK and its clients.
 
+pub mod control;
+
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
@@ -81,6 +83,9 @@ pub struct Descriptor {
     pub resolved: Backend,
     /// The native session ID, only when the backend has actually reported it.
     pub native_session: Option<String>,
+    /// An explicit provider-session operation requested for this task turn.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub start: Option<control::Mode>,
     pub controls: Controls,
     /// Configured alternatives; their presence does not assert readiness.
     pub alternatives: Vec<Backend>,

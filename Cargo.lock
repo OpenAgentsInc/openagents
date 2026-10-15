@@ -11529,6 +11529,7 @@ dependencies = [
  "resvg",
  "rfd",
  "ring",
+ "route-contract",
  "rqrr",
  "rust-native",
  "rust-native-desktop",

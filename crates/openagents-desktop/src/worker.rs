@@ -570,6 +570,7 @@ impl CoderLane {
                 mut dirs,
                 images,
                 engine,
+                configuration,
             } => {
                 let store = self.local().store().to_path_buf();
                 if self.here
@@ -589,6 +590,9 @@ impl CoderLane {
                             .map(|folder| folder.display().to_string()),
                     );
                 }
+                if let Some(configuration) = &configuration {
+                    dirs = vec![configuration.checkout.clone()];
+                }
                 let mut why = None;
                 let mut tried = std::collections::BTreeSet::new();
                 for dir in dirs.iter().filter(|dir| !dir.is_empty()) {
@@ -607,6 +611,9 @@ impl CoderLane {
                                 && let Some(reference) =
                                     coder::task::issue_run::asked_blocking(&prompt, "", path)
                             {
+                                if configuration.is_some() {
+                                    return Err("Model choices are not available for issue tasks. Use default coding settings for this task.".into());
+                                }
                                 let record = start_issue(&store, path, reference, chat)?;
                                 let _ = std::fs::write(last_project(&store), &record.checkout);
                                 return Ok(Answer::Started {
@@ -617,14 +624,25 @@ impl CoderLane {
                             }
                             // The engine the person asked for goes first
                             // (#10076).
-                            let record = self.local().start_requested(
-                                path,
-                                &title,
-                                &prompt,
-                                Some(chat),
-                                &images,
-                                engine.map(coder::task::settings::provider_of),
-                            )?;
+                            let record = if let Some(configuration) = &configuration {
+                                self.local().start_configured(
+                                    path,
+                                    &title,
+                                    &prompt,
+                                    Some(chat),
+                                    &images,
+                                    configuration,
+                                )?
+                            } else {
+                                self.local().start_requested(
+                                    path,
+                                    &title,
+                                    &prompt,
+                                    Some(chat),
+                                    &images,
+                                    engine.map(coder::task::settings::provider_of),
+                                )?
+                            };
                             let _ = std::fs::write(last_project(&store), &record.checkout);
                             return Ok(Answer::Started {
                                 task: record.task,
@@ -652,6 +670,50 @@ impl CoderLane {
                     }),
                 })
             }
+            Request::Options {
+                task: Some(task), ..
+            } => self.local().session_options(&task).map(Answer::Options),
+            Request::Options {
+                task: None,
+                mut dirs,
+            } => {
+                if self.here
+                    && let Some(local) = self.local.as_mut()
+                {
+                    local.reload_settings();
+                }
+                let store = self.local().store().to_path_buf();
+                if let Ok(last) = std::fs::read_to_string(last_project(&store)) {
+                    dirs.push(last.trim().into());
+                }
+                if let Ok(settings) = self.local().settings() {
+                    dirs.extend(
+                        settings
+                            .projects
+                            .iter()
+                            .map(|path| path.display().to_string()),
+                    );
+                }
+                for dir in dirs.iter().filter(|dir| !dir.is_empty()) {
+                    if self.local().project(std::path::Path::new(dir)).is_ok() {
+                        return self
+                            .local()
+                            .project_session_options(std::path::Path::new(dir))
+                            .map(Answer::Options);
+                    }
+                }
+                Ok(Answer::NeedsProject {
+                    why: "Choose the project folder for Coder.".into(),
+                })
+            }
+            Request::ContinueConfigured {
+                task,
+                text,
+                configuration,
+            } => self
+                .local()
+                .answer_configured(&task, &text, &configuration)
+                .map(|_| Answer::Continued),
             Request::Poll { task } => {
                 if !self.follows.contains_key(&task) {
                     let follow = self
@@ -663,7 +725,9 @@ impl CoderLane {
                 let (lines, state) = follow.poll()?;
                 dump(&lines);
                 let native = self.local().pending_view(&task).unwrap_or(None);
+                let configuration = self.local().session_options(&task).ok();
                 Ok(Answer::Lines {
+                    configuration,
                     native,
                     lines,
                     state: match state {
@@ -1169,6 +1233,7 @@ mod tests {
         let empty = dir.path().join("empty");
         std::fs::create_dir_all(&empty).unwrap();
         let Ok(Answer::NeedsProject { why }) = ask(Run::Start {
+            configuration: None,
             title: "t".into(),
             prompt: "add a test".into(),
             dirs: vec![empty.display().to_string()],
@@ -1179,6 +1244,7 @@ mod tests {
         };
         assert!(why.contains("is not a Git checkout"), "{why}");
         let Ok(Answer::Started { task, project, .. }) = ask(Run::Start {
+            configuration: None,
             title: "add a test".into(),
             prompt: "add a test".into(),
             dirs: vec![empty.display().to_string(), top.display().to_string()],
@@ -1193,6 +1259,7 @@ mod tests {
             top.canonicalize().unwrap().display().to_string()
         );
         let Ok(Answer::Lines {
+            configuration: _,
             lines,
             state,
             native: None,
@@ -1227,6 +1294,7 @@ mod tests {
         projection.outcome(
             ticket,
             Ok(Answer::Lines {
+                configuration: None,
                 lines,
                 state,
                 native: None,
@@ -1243,6 +1311,7 @@ mod tests {
         );
         assert_eq!(ask(Run::Stop { task: task.clone() }), Ok(Answer::Stopping));
         let Ok(Answer::Lines {
+            configuration: _,
             lines,
             state,
             native: None,
@@ -1262,6 +1331,7 @@ mod tests {
         );
         // With no project given, the last one Coder used.
         let Ok(Answer::Started { project, .. }) = ask(Run::Start {
+            configuration: None,
             title: "again".into(),
             prompt: "again".into(),
             dirs: vec![],
@@ -1351,6 +1421,7 @@ mod tests {
             chat: "e".repeat(32),
             ticket: 1,
             request: Run::Start {
+                configuration: None,
                 title: "Fix this layout bug".into(),
                 prompt: "fix this layout bug".into(),
                 dirs: vec![top.display().to_string()],
@@ -1468,6 +1539,7 @@ mod tests {
         };
         // A checkout outside the project folders is not a project.
         let Ok(Answer::NeedsProject { why }) = ask(Run::Start {
+            configuration: None,
             title: "t".into(),
             prompt: "add a test".into(),
             dirs: vec![slugs.display().to_string()],
@@ -1483,6 +1555,7 @@ mod tests {
         // A checkout inside them runs, on Claude Code first, as the
         // settings order it.
         let Ok(Answer::Started { task, project, .. }) = ask(Run::Start {
+            configuration: None,
             title: "add a test".into(),
             prompt: "add a test".into(),
             dirs: vec![parser.display().to_string()],

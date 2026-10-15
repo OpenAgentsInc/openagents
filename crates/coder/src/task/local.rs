@@ -39,6 +39,8 @@
 //! so no device grant is involved; see the INVARIANTS row on local runs.
 //! Nothing here reads or prints a credential.
 
+mod sessions;
+
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -502,6 +504,48 @@ impl Record {
     }
 }
 
+pub(super) fn describe_backend(
+    provider: &str,
+    model: &str,
+    effort: Option<String>,
+    endpoint: &str,
+) -> route_contract::session::Backend {
+    use coder_sdk::session::{self, NativeSupport, Selection};
+
+    let (adapter, hooks) = match endpoint {
+        capacity::CLAUDE_SESSION_ENDPOINT => ("claude-cli", None),
+        capacity::CODEX_SESSION_ENDPOINT => ("codex-exec", None),
+        capacity::CLAUDE_SDK_ENDPOINT => ("claude-sdk", Some(coder_sdk::HookBackend::ClaudeCode)),
+        capacity::CODER_V1_ENDPOINT => ("coder", None),
+        _ => match provider {
+            "claude" | "codex" => ("coder-loop", Some(coder_sdk::HookBackend::CoderLoop)),
+            "grok" => ("acp", Some(coder_sdk::acp_backend("grok-build"))),
+            "devin" => ("acp", Some(coder_sdk::acp_backend("devin-cli"))),
+            "opencode" => ("acp", Some(coder_sdk::acp_backend("opencode"))),
+            _ => ("unknown", None),
+        },
+    };
+    session::backend(
+        Selection {
+            provider: provider.into(),
+            model: model.into(),
+            effort,
+        },
+        adapter,
+        hooks,
+        NativeSupport {
+            start: adapter != "unknown",
+            observe: adapter != "unknown",
+            stop: adapter != "unknown",
+            images: matches!(provider, "claude" | "codex"),
+            approvals: adapter == "claude-sdk",
+            resume: adapter == "claude-sdk",
+            questions: adapter == "claude-sdk",
+            ..NativeSupport::default()
+        },
+    )
+}
+
 /// Describe the configuration the task owner will launch, without probing a
 /// provider or exposing its endpoints, account, or credentials.
 fn session_descriptor(
@@ -509,50 +553,18 @@ fn session_descriptor(
     order: &[Route],
     record: &Record,
     turn: usize,
+    execution: Option<&route_contract::session::control::Start>,
 ) -> route_contract::session::Descriptor {
-    use coder_sdk::session::{self, Controls, Descriptor, NativeSupport, Selection};
+    use coder_sdk::session::{self, Controls, Descriptor, Selection};
     let configuration = policy.configuration(order);
-    let describe = |provider: &str, model: &str, effort: Option<String>, endpoint: &str| {
-        let (adapter, hooks) = match endpoint {
-            capacity::CLAUDE_SESSION_ENDPOINT => ("claude-cli", None),
-            capacity::CODEX_SESSION_ENDPOINT => ("codex-exec", None),
-            capacity::CLAUDE_SDK_ENDPOINT => {
-                ("claude-sdk", Some(coder_sdk::HookBackend::ClaudeCode))
-            }
-            capacity::CODER_V1_ENDPOINT => ("coder", None),
-            _ => match provider {
-                "claude" | "codex" => ("coder-loop", Some(coder_sdk::HookBackend::CoderLoop)),
-                "grok" => ("acp", Some(coder_sdk::acp_backend("grok-build"))),
-                "devin" => ("acp", Some(coder_sdk::acp_backend("devin-cli"))),
-                "opencode" => ("acp", Some(coder_sdk::acp_backend("opencode"))),
-                _ => ("unknown", None),
-            },
-        };
-        session::backend(
-            Selection {
-                provider: provider.into(),
-                model: model.into(),
-                effort,
-            },
-            adapter,
-            hooks,
-            NativeSupport {
-                start: adapter != "unknown",
-                observe: adapter != "unknown",
-                stop: adapter != "unknown",
-                images: matches!(provider, "claude" | "codex"),
-                approvals: adapter == "claude-sdk",
-                questions: adapter == "claude-sdk",
-                ..NativeSupport::default()
-            },
-        )
-    };
-    let resolved = describe(
+    let describe = describe_backend;
+    let mut resolved = describe(
         &configuration.provider,
         &configuration.model,
         configuration.effort.clone(),
         &configuration.generation_endpoint,
     );
+    resolved.native.resume &= execution.is_some_and(|execution| execution.account.is_some());
     let mut alternatives = vec![resolved.clone()];
     alternatives.extend(configuration.fallbacks.iter().map(|route| {
         describe(
@@ -568,12 +580,20 @@ fn session_descriptor(
         turn,
         owner: LOCAL_HOST.into(),
         checkout: record.worktree.clone(),
-        requested: record.requested.as_ref().map(|provider| Selection {
-            provider: provider.clone(),
-            ..Selection::default()
-        }),
+        requested: execution
+            .and_then(|execution| execution.request.as_ref())
+            .map(|request| request.selection.clone())
+            .or_else(|| {
+                record.requested.as_ref().map(|provider| Selection {
+                    provider: provider.clone(),
+                    ..Selection::default()
+                })
+            }),
         resolved,
         native_session: None,
+        start: execution
+            .and_then(|execution| execution.request.as_ref())
+            .map(|request| request.mode),
         controls: Controls {
             stop: true,
             continue_task: true,
@@ -1224,6 +1244,7 @@ impl Local {
             None,
             Shape::default(),
             Some(saved),
+            None,
         )
     }
 
@@ -1267,6 +1288,34 @@ impl Local {
         self.start_full(dir, None, title, prompt, thread, images, requested)
     }
 
+    /// Start on the exact choice offered for this project, without failover.
+    #[allow(clippy::too_many_arguments)]
+    pub fn start_configured(
+        &self,
+        dir: &Path,
+        title: &str,
+        prompt: &str,
+        thread: Option<&str>,
+        images: &[super::media::wire::Upload],
+        configuration: &route_contract::session::control::Request,
+    ) -> Result<Record, String> {
+        let checkout = self.project(dir)?;
+        let provider = Provider::from_config(&configuration.selection.provider)
+            .ok_or("This coding engine is unsupported.")?;
+        self.start_with(
+            dir,
+            Some(&checkout.head),
+            title,
+            prompt,
+            thread,
+            images,
+            Some(provider),
+            Shape::default(),
+            None,
+            Some(configuration),
+        )
+    }
+
     /// A run of a dispatch plan (#10183): [`Local::start_requested`] on
     /// `requested` in `shape`, in a worktree of its own.
     ///
@@ -1292,6 +1341,7 @@ impl Local {
             Some(requested),
             shape,
             None,
+            None,
         )
     }
 
@@ -1316,6 +1366,7 @@ impl Local {
             requested,
             Shape::default(),
             None,
+            None,
         )
     }
 
@@ -1331,6 +1382,7 @@ impl Local {
         requested: Option<Provider>,
         shape: Shape,
         recovered: Option<&str>,
+        configuration: Option<&route_contract::session::control::Request>,
     ) -> Result<Record, String> {
         let began = Instant::now();
         let references: Vec<_> = images.iter().map(|image| image.reference.clone()).collect();
@@ -1382,6 +1434,13 @@ impl Local {
             let chosen = (|| {
                 let (policy, asked) =
                     self.shaped(self.policy(&checkout.name)?, requested, shape)?;
+                let (policy, session) = if let Some(configuration) = configuration {
+                    let offer = self.project_session_options(&checkout.top)?;
+                    let (policy, session) = self.select_session(policy, &offer, configuration)?;
+                    (policy, Some(session))
+                } else {
+                    (policy, None)
+                };
                 // Read again before passing an engine over, and always the
                 // one the person asked for (#10105): a reading or hold may
                 // be another login's, or old.
@@ -1392,14 +1451,14 @@ impl Local {
                     }
                 }
                 let (order, runner) = self.choose_asking(&policy, asked)?;
-                Ok::<_, String>((policy, order, runner))
+                Ok::<_, String>((policy, order, runner, session))
             })();
             timings.choose_ms = millis(at);
             let taken = taking.and_then(|taking| taking.join().ok());
             (chosen, taken)
         });
         let (taken, take_ms) = taken.unwrap_or((None, 0));
-        let (policy, order, runner) = match chosen {
+        let (policy, order, runner, session) = match chosen {
             Ok(chosen) => chosen,
             Err(why) => {
                 if let Some(worktree) = taken {
@@ -1515,7 +1574,7 @@ impl Local {
         };
         timings.submit_ms = millis(submitting);
         let launching = Instant::now();
-        self.launch(&policy, &order, runner, &submitted, &mut record)?;
+        self.launch(&policy, &order, runner, &submitted, &mut record, session)?;
         timings.launch_ms = millis(launching);
         timings.total_ms = millis(began);
         // The timings with the turn, for `/export` and anyone measuring;
@@ -1545,8 +1604,22 @@ impl Local {
         runner: Runner,
         task: &super::Task,
         record: &mut Record,
+        execution: Option<route_contract::session::control::Start>,
     ) -> Result<(), String> {
-        let session = session_descriptor(policy, order, record, task.turn());
+        let mut execution = execution;
+        if let Some(execution) = &execution
+            && execution
+                .request
+                .as_ref()
+                .is_some_and(|request| request.adapter == "claude-sdk")
+            && execution.account != self.session_account(order[0].provider)
+        {
+            return Err("Your coding login changed. Choose the model again.".into());
+        }
+        if let Some(execution) = &mut execution {
+            execution.task_model = task.intent.configuration.model.clone();
+        }
+        let session = session_descriptor(policy, order, record, task.turn(), execution.as_ref());
         record.turns.push(TurnStart {
             session: Some(session),
             turn: task.turn(),
@@ -1562,13 +1635,15 @@ impl Local {
         // The record first, so a follower always knows how the turn began.
         save(&self.store, record)?;
         policy
-            .launch(
+            .launch_session(
                 &self.store.join("local").join("grants"),
                 &self.store,
                 order,
                 &task.task_id,
                 &task.intent_digest,
                 task.revision,
+                None,
+                execution.as_ref(),
                 self.launcher.as_ref(),
             )
             .map(|_| ())
@@ -1581,46 +1656,17 @@ impl Local {
     /// # Errors
     /// The task is not waiting, is not a local run, or cannot start.
     pub fn answer(&self, task: &str, text: &str) -> Result<Record, String> {
-        // Held until the next turn started: an ended task's worktree may be
-        // removed (#10291), and is recreated here first; a removal waits.
-        let _held = super::retire::lock(&self.store, task)?;
-        let mut record = record(&self.store, task)
-            .ok_or("This task was not started on this computer from a chat.")?;
-        let current = Store::open(&self.store)
-            .and_then(|store| store.show(task))
-            .map_err(|e| e.to_string())?;
-        // A turn that ended, however it ended (finished, asked, failed,
-        // or stopped), continues; a running one does not.
-        if !matches!(current.status, Status::Finished | Status::Cancelled) {
-            return Err("Coder is still working on this task; wait for it to ask.".into());
-        }
-        // Its checks run after the turn ends; the task continues once they
-        // end (#10273).
-        if current.checks == super::Checks::Running {
-            return Err(
-                "Coder is still checking this task's last turn; wait for the checks to end.".into(),
-            );
-        }
-        super::retire::restore(&self.store, &mut record)?;
-        let requested = record.requested.as_deref().and_then(Provider::from_config);
-        let (policy, asked) =
-            self.shaped(self.policy(&record.project)?, requested, record.shape)?;
-        let (order, runner) = self.choose_asking(&policy, asked)?;
-        let command = Command {
-            schema: COMMAND_SCHEMA.into(),
-            command_id: identity(&format!("continue:{task}:{}:{}", current.revision, nonce())),
-            task_id: task.into(),
-            expected_revision: Some(current.revision),
-            action: Action::Continue {
-                prompt: text.trim().to_owned(),
-            },
-        };
-        self.apply(&command)?;
-        let next = Store::open(&self.store)
-            .and_then(|store| store.show(task))
-            .map_err(|e| e.to_string())?;
-        self.launch(&policy, &order, runner, &next, &mut record)?;
-        Ok(record)
+        self.answer_session(task, text, None)
+    }
+
+    /// Apply a configuration or native-resume action on the same durable task.
+    pub fn answer_configured(
+        &self,
+        task: &str,
+        text: &str,
+        configuration: &route_contract::session::control::Request,
+    ) -> Result<Record, String> {
+        self.answer_session(task, text, Some(configuration))
     }
 
     /// Send `text` to `task` while it works: steering ([`super::steer`]).
@@ -2990,6 +3036,235 @@ mod tests {
             panic!("start")
         };
         assert!(start.session.is_none());
+    }
+
+    #[test]
+    fn configured_start_pins_sdk_without_changing_automatic_routes() {
+        use route_contract::session::control as wire;
+        let dir = tempfile::tempdir().unwrap();
+        let top = repo(dir.path());
+        let local = local(dir.path(), only_claude).with_launcher(Box::new(Held));
+        let offer = local.project_session_options(&top).unwrap();
+        let model = offer
+            .models
+            .iter()
+            .find(|m| m.available && m.adapter == "claude-sdk")
+            .unwrap();
+        let request = wire::Request {
+            schema: wire::SCHEMA.into(),
+            offer: offer.id.clone(),
+            adapter: model.adapter.clone(),
+            checkout: offer.checkout.clone(),
+            target: offer.target.clone(),
+            selection: model.selection.clone(),
+            mode: wire::Mode::New,
+            resume: None,
+        };
+        let record = local
+            .start_configured(&top, "Fixture", "Do the task", None, &[], &request)
+            .unwrap();
+        let session = record.turns[0].session.as_ref().unwrap();
+        assert_eq!(session.resolved.adapter, "claude-sdk");
+        assert_eq!(session.start, Some(wire::Mode::New));
+        assert_eq!(session.alternatives.len(), 1);
+        assert_eq!(session.requested.as_ref(), Some(&request.selection));
+        let grant: Value = serde_json::from_slice(
+            &std::fs::read(
+                local
+                    .store()
+                    .join("local/grants")
+                    .join(format!("{}-1.grant.json", record.task)),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            grant["adapter_configuration"]["session"]["request"]["adapter"],
+            "claude-sdk"
+        );
+        let automatic = local
+            .start_requested(
+                &top,
+                "Default",
+                "Do the task",
+                None,
+                &[],
+                Some(Provider::Claude),
+            )
+            .unwrap();
+        assert_eq!(
+            automatic.turns[0]
+                .session
+                .as_ref()
+                .unwrap()
+                .resolved
+                .adapter,
+            "claude-cli"
+        );
+        let mut stale = request.clone();
+        stale.target = "replacement".into();
+        assert!(
+            local
+                .start_configured(&top, "Bad", "Do task", None, &[], &stale)
+                .is_err()
+        );
+        let mut unsupported = request.clone();
+        unsupported.selection.effort = Some("invented".into());
+        assert!(
+            local
+                .start_configured(&top, "Bad", "Do task", None, &[], &unsupported)
+                .is_err()
+        );
+        let mut wrong_adapter = request;
+        wrong_adapter.adapter = "unknown".into();
+        assert!(
+            local
+                .start_configured(&top, "Bad", "Do task", None, &[], &wrong_adapter)
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn native_resume_is_owner_bound_and_continues_the_same_task() {
+        use route_contract::session::control as wire;
+        let dir = tempfile::tempdir().unwrap();
+        let top = repo(dir.path());
+        let local = local(dir.path(), only_claude)
+            .with_identify(|_| Some("fixture-login".into()))
+            .with_launcher(Box::new(Held));
+        let offer = local.project_session_options(&top).unwrap();
+        let model = offer
+            .models
+            .iter()
+            .find(|m| m.adapter == "claude-sdk")
+            .unwrap();
+        let request = wire::Request {
+            schema: wire::SCHEMA.into(),
+            offer: offer.id.clone(),
+            adapter: model.adapter.clone(),
+            checkout: offer.checkout.clone(),
+            target: offer.target.clone(),
+            selection: model.selection.clone(),
+            mode: wire::Mode::New,
+            resume: None,
+        };
+        let record = local
+            .start_configured(&top, "Fixture", "Do the task", None, &[], &request)
+            .unwrap();
+        let path = local
+            .store()
+            .join("local/grants")
+            .join(format!("{}-1.grant.json", record.task));
+        let grant = std::fs::read(path).unwrap();
+        let host = adapter::Host::admit(local.store(), &grant).await.unwrap();
+        let native = wire::Native {
+            schema: wire::NATIVE_SCHEMA.into(),
+            host: LOCAL_HOST.into(),
+            task: record.task.clone(),
+            turn: 1,
+            session: "fixture-session".into(),
+            provider: request.selection.provider.clone(),
+            model: request.selection.model.clone(),
+            adapter: "claude-sdk".into(),
+            checkout: host.workspace().display().to_string(),
+            target: host.workspace_identity().unwrap(),
+            account: host
+                .configuration()
+                .session
+                .as_ref()
+                .unwrap()
+                .account
+                .clone(),
+        };
+        assert!(
+            native.account.is_some(),
+            "the first offer binds the current login"
+        );
+        host.append(
+            &atif::Step::said(atif::Source::System, "")
+                .noting(wire::NATIVE_NOTE, serde_json::to_value(&native).unwrap()),
+        )
+        .unwrap();
+        host.finish("model_finished", true, serde_json::json!({}))
+            .unwrap();
+        let options = local.session_options(&record.task).unwrap();
+
+        assert_eq!(options.resume.as_ref().unwrap().id, native.id());
+        let mut resume = wire::Request {
+            schema: wire::SCHEMA.into(),
+            offer: options.id.clone(),
+            adapter: "claude-sdk".into(),
+            checkout: options.checkout.clone(),
+            target: options.target.clone(),
+            selection: request.selection.clone(),
+            mode: wire::Mode::NativeResume,
+            resume: Some(native.id()),
+        };
+        let changed = Local::new(local.store().to_path_buf())
+            .with_probe(only_claude)
+            .with_identify(|_| Some("different-login".into()))
+            .with_opencode_model(|| None)
+            .with_controller(std::env::current_exe().unwrap())
+            .with_launcher(Box::new(Held));
+        assert!(
+            changed
+                .session_options(&record.task)
+                .unwrap()
+                .resume
+                .is_none()
+        );
+        assert!(
+            changed
+                .answer_configured(&record.task, "Next", &resume)
+                .is_err()
+        );
+        resume.target = "replaced-folder".into();
+        assert!(
+            local
+                .answer_configured(&record.task, "Next", &resume)
+                .is_err()
+        );
+        resume.target = options.target.clone();
+        let continued = local
+            .answer_configured(&record.task, "Next", &resume)
+            .unwrap();
+        assert_eq!(continued.task, record.task);
+        assert_eq!(continued.turns.len(), 2);
+        assert_eq!(
+            continued.turns[1].session.as_ref().unwrap().start,
+            Some(wire::Mode::NativeResume)
+        );
+    }
+
+    #[test]
+    fn configured_offer_changes_with_rights_and_settings_engine_round_trips() {
+        let dir = tempfile::tempdir().unwrap();
+        let top = repo(dir.path());
+        let mut settings = settings::Coder::default();
+        settings.providers = vec!["claude/sdk:claude-opus-5-5".parse().unwrap()];
+        let encoded = serde_json::to_string(&settings).unwrap();
+        let decoded: settings::Coder = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(
+            decoded.providers[0].to_string(),
+            "claude/sdk:claude-opus-5-5"
+        );
+        let full = local(dir.path(), only_claude)
+            .with_settings(settings.clone())
+            .project_session_options(&top)
+            .unwrap();
+        settings.providers = vec![settings::Choice::new(Provider::Claude)];
+        settings.access = adapter::Access::Boundary;
+        let limited = local(dir.path(), only_claude)
+            .with_settings(settings)
+            .project_session_options(&top)
+            .unwrap();
+        assert_ne!(full.authority, limited.authority);
+        assert!(
+            !limited
+                .models
+                .iter()
+                .any(|model| model.adapter == "claude-sdk" && model.available)
+        );
     }
 
     #[test]

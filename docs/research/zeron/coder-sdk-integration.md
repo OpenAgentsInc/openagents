@@ -274,6 +274,45 @@ and stale-answer behavior. This addresses COM-09/12, RUN-06/15, and REM-04/10.
 
 ### 4. Consolidate session creation and control behind a host facade
 
+Implemented in [#11709](https://github.com/OpenAgentsInc/openagents/issues/11709).
+The local task owner now supplies versioned configuration offers for an exact
+project or task. The desktop's **Coder model** control selects a provider,
+model, supported reasoning effort, and session mode. Claude's **Live approvals**
+choice explicitly selects the SDK adapter for an already permitted model under
+full access. Automatic routing retains its existing defaults. Settings can also
+name an adapter, for example `claude/sdk:claude-opus-5-5`.
+
+Each selection binds the offer revision, adapter, project folder, physical
+folder identity, current policy, and login fingerprint. The owner validates it
+again before creating work. An explicit choice has no fallback route. Requested
+and resolved choices are recorded in the existing start descriptor and grant;
+subsequent turns retain an explicit model until the person changes it. Stale
+choices fail while preserving the draft and queued messages.
+
+The shared start contract distinguishes a new provider session, normal task
+continuation, explicit native resume, and a new session with task context.
+Native resume is available only for an ended local Claude SDK session whose
+owner recorded a known login and provider session ID, whose process cleanup
+finished, and whose original worktree still exists. The owner resolves the
+saved-session reference; the UI cannot supply an arbitrary provider ID.
+Changed logins, replaced folders, missing provider state, or unexpected provider
+session IDs fail without an automatic new conversation. Older records and
+sessions without a known login support normal task continuation only.
+
+A context transfer starts fresh and adds an owner-selected summary, bounded to
+14 KiB, separately from the person's message. It does not inherit an earlier
+permission answer. Neither fresh starts nor explicit saved-session requests
+reuse a headless approval answer. Normal task continuation keeps the existing
+approval-answer behavior.
+
+These operations use `Local`, the existing task store, execution grants, and
+Claude SDK options. They do not introduce a second task controller. Stop,
+queueing, and interrupt-and-send retain their existing task semantics; native
+steering and forks remain unavailable. Active issue workflows use their default
+coding settings. Remote hosts and other provider adapters do not gain a native
+resume action from this local implementation. Older controllers that reject an
+extended grant fail explicitly; ordinary starts omit the extension.
+
 Adapt the existing `coder_delegate::session::Session` and SDK backend-specific
 operations into one host-facing lifecycle. `Session` uses methods returning
 `impl Future`; it is not directly a `dyn Session` interface. An enum-backed
@@ -377,7 +416,7 @@ in `coder-sdk`.
 | 1 · [#11694](https://github.com/OpenAgentsInc/openagents/issues/11694) | Read-only capability/session descriptor projected through the existing task/desktop worker path. | `coder-sdk`/`coder-delegate`, current task services, `openagents-chat-app`, desktop worker. | A scripted/local task shows requested/resolved provider/model and correct supported actions; old/unknown capabilities stay unavailable. |
 | 2 · [#11697](https://github.com/OpenAgentsInc/openagents/issues/11697) | Observation bridge into current `CoderEvent` and bounded shared projections. | SDK backend adapters, task event mapper, shared chat presentation. | Equivalent fixture output displays once across initial load, follow, reconnect, completion, and chat switch. Existing exact-review state stays intact. |
 | 3 · [#11707](https://github.com/OpenAgentsInc/openagents/issues/11707) | Host-owned pending approval and SDK `Asker` bridge on one supported backend. | SDK callback/backend, task/control service, shared decision UI. | Allow once, deny, cancel, stop, stale answer, duplicate answer, no UI, and rewritten-input cases reach exactly the intended request. |
-| 4 | Explicit provider/model/reasoning configuration and native-resume request through the task owner. | Session facade/adapters, task configuration, shared composer and desktop picker. | A subsequent turn uses the recorded choices; missing native resume is explicit; no silent account/payer/target switch. |
+| 4 · [#11709](https://github.com/OpenAgentsInc/openagents/issues/11709) | Explicit provider/model/reasoning configuration and native-resume request through the task owner. | Session facade/adapters, task configuration, shared composer and desktop picker. | A subsequent turn uses the recorded choices; missing native resume is explicit; no silent account/payer/target switch. |
 | 5 | One authorized workspace read/search service plus a `ToolServer` adapter for it. | Host workspace service and SDK tool integration. | A viewer and permitted agent get consistent results for the same authorized checkout; wrong host, denied path, and stale checkout are refused. |
 | 6 | Delegation projection with inspectable child transcript. | SDK delegation, host transcript service, shared subagent model, desktop surface host. | Child start/progress/end/failure stays attached to its parent and is readable without granting control over another task. |
 | 7 | Attachment/resource references and complete scripted-session fixture. | SDK input/output adapters, host artifact storage, shared queue/media presentation. | Image-bearing follow-up and queue behavior handles acknowledgment loss, unsupported provider, owner offline, stale loads, and bounded decoding. |

@@ -23,6 +23,10 @@ pub enum Action {
     Command {
         key: String,
     },
+    CodingSettings,
+    CodingChoice {
+        target: openagents_chat_app::coder_run::configuration::Target,
+    },
     Send,
     /// Ctrl+Enter, or Cmd+Enter on macOS (#11685): the composer's message
     /// waits for the running turn to end. With nothing running it sends.

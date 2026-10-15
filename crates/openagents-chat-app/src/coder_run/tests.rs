@@ -27,6 +27,7 @@ fn fed(lines: &[Line], state: State) -> Run {
     run.outcome(
         ticket,
         Ok(Answer::Lines {
+            configuration: None,
             native: None,
             lines: lines.to_vec(),
             state,
@@ -273,6 +274,7 @@ fn replayed_lines_are_kept_once_and_polls_follow_the_state() {
     run.outcome(
         ticket,
         Ok(Answer::Lines {
+            configuration: None,
             native: None,
             lines: whole[..8].to_vec(),
             state: State::Running,
@@ -302,6 +304,7 @@ fn stop_steer_queue_and_answers_go_to_the_runner() {
     run.outcome(
         ticket,
         Ok(Answer::Lines {
+            configuration: None,
             native: None,
             lines: whole[..12].to_vec(),
             state: State::Waiting,
@@ -324,6 +327,7 @@ fn stop_steer_queue_and_answers_go_to_the_runner() {
     run.outcome(
         ticket,
         Ok(Answer::Lines {
+            configuration: None,
             native: None,
             lines: whole.to_vec(),
             state: State::Ended,
@@ -1063,6 +1067,7 @@ fn deliver(run: &mut Run, lines: &[Line], state: State) {
     run.outcome(
         ticket,
         Ok(Answer::Lines {
+            configuration: None,
             native: None,
             lines: lines.to_vec(),
             state,
@@ -1145,6 +1150,7 @@ fn missing_and_foreign_observations_do_not_join_partial_text_or_change_another_c
     assert!(!other_chat.outcome(
         u64::MAX,
         Ok(Answer::Lines {
+            configuration: None,
             native: None,
             lines,
             state: State::Ended
@@ -1168,6 +1174,7 @@ fn duplicate_observations_in_a_batch_and_repeated_outcomes_do_not_repeat_output(
     run.outcome(
         new,
         Ok(Answer::Lines {
+            configuration: None,
             native: None,
             lines: duplicate,
             state: State::Ended,
@@ -1179,6 +1186,7 @@ fn duplicate_observations_in_a_batch_and_repeated_outcomes_do_not_repeat_output(
     run.outcome(
         new,
         Ok(Answer::Lines {
+            configuration: None,
             native: None,
             lines: Vec::new(),
             state: State::Running,
@@ -1250,4 +1258,76 @@ fn the_host_result_replaces_the_streamed_answer_and_keeps_exact_review_data() {
     let (_, request) = run.tick(Instant::now()).unwrap();
     assert!(matches!(request, Request::Review { .. }));
     assert!(run.reviewer().is_some());
+}
+
+#[test]
+fn stale_coding_choice_preserves_queue_and_new_draft() {
+    let now = Instant::now();
+    let mut run = Run::follow("chat", "task", None, now);
+    run.state = State::Ended;
+    let mut offer = super::configuration::tests::offer();
+    run.configuration.update(Some(offer.clone()));
+    let mut targets = Vec::new();
+    fn collect(
+        node: &Node<super::configuration::Target>,
+        out: &mut Vec<super::configuration::Target>,
+    ) {
+        match &node.element {
+            Element::Button { intent, .. } => out.push(intent.clone()),
+            Element::Stack { children, .. } => {
+                for child in children {
+                    collect(child, out)
+                }
+            }
+            _ => {}
+        }
+    }
+    run.configuration.open();
+    let view = run
+        .configuration
+        .view("test", true, true, |target| target)
+        .unwrap();
+    collect(&view.node, &mut targets);
+    let model = targets
+        .into_iter()
+        .find(|target| target.control == super::configuration::Control::Model(1))
+        .unwrap();
+    run.action(Action::Configure(model), "");
+    run.queue.push_back("queued message".into());
+    offer.models[1].account = Some("changed-login".into());
+    offer.seal();
+    run.configuration.update(Some(offer));
+    assert!(run.action(Action::SendQueuedNow(0), "").is_none());
+    assert_eq!(run.queue.front().unwrap(), "queued message");
+    assert!(run.action(Action::Send, "new draft").is_none());
+    assert!(!run.take_consumed_input());
+    assert!(
+        run.notice
+            .as_ref()
+            .unwrap()
+            .contains("login or settings changed")
+    );
+}
+
+#[test]
+fn configured_continuation_uses_explicit_owner_request() {
+    let now = Instant::now();
+    let mut run = Run::follow("chat", "task", None, now);
+    run.state = State::Ended;
+    let offer = super::configuration::tests::offer();
+    let request = route_contract::session::control::Request {
+        schema: route_contract::session::control::SCHEMA.into(),
+        offer: offer.id.clone(),
+        adapter: "claude-sdk".into(),
+        checkout: offer.checkout.clone(),
+        target: offer.target.clone(),
+        selection: offer.models[1].selection.clone(),
+        mode: route_contract::session::control::Mode::New,
+        resume: None,
+    };
+    run.configuration.adopt(offer, Some(&request));
+    let (_, sent) = run.action(Action::Send, "next message").unwrap();
+    assert!(
+        matches!(sent,Request::ContinueConfigured{task,text,configuration} if task=="task"&&text=="next message"&&configuration==request)
+    );
 }

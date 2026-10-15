@@ -112,6 +112,9 @@ pub struct Configuration {
     /// earlier grants keep their bytes.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub studio_seat: Option<String>,
+    /// The task owner's explicit session configuration, when supported.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session: Option<route_contract::session::control::Start>,
 }
 
 /// What an admitted run's commands may reach.
@@ -204,10 +207,42 @@ impl Configuration {
     /// Whether `model` is one this grant admits. A task records the policy's
     /// first model; the grant may start on another admitted route.
     pub fn admits_model(&self, model: &str) -> bool {
-        self.model == model || self.fallbacks.iter().any(|route| route.model == model)
+        self.model == model
+            || self.fallbacks.iter().any(|route| route.model == model)
+            || self.session.as_ref().is_some_and(|start| {
+                start.request.is_some() && start.task_model.as_deref() == Some(model)
+            })
     }
 
     pub fn validate(&self) -> Result<(), Error> {
+        if let Some(start) = &self.session {
+            if let Some(request) = &start.request
+                && request.adapter
+                    != super::local::describe_backend(
+                        &self.provider,
+                        &self.model,
+                        self.effort.clone(),
+                        &self.generation_endpoint,
+                    )
+                    .adapter
+            {
+                return Err(Error::InvalidCommand("the selected coding engine changed"));
+            }
+            if (start.request.is_some()
+                && self.generation_endpoint == super::capacity::CLAUDE_SDK_ENDPOINT
+                && self.effort.as_ref().is_some_and(|effort| {
+                    !coder_sdk::session::efforts("claude-sdk").contains(&effort.as_str())
+                }))
+                || !start.valid_for(&self.provider, &self.model, self.effort.as_deref())
+                || (start.request.is_some() && !self.fallbacks.is_empty())
+                || (start.strict_resume()
+                    && self.generation_endpoint != super::capacity::CLAUDE_SDK_ENDPOINT)
+            {
+                return Err(Error::InvalidCommand(
+                    "this session configuration cannot run here",
+                ));
+            }
+        }
         // Coder V1 on the OpenAgents Gateway is the one vertex route.
         let coder_on_gateway = self.provider == "vertex"
             && self.generation_endpoint == super::capacity::CODER_V1_ENDPOINT;
@@ -808,6 +843,34 @@ impl Host {
             (owner, task)
         };
         let workspace = Path::new(&task.intent.workspace.path).canonicalize()?;
+        if let Some(context) = configuration
+            .session
+            .as_ref()
+            .and_then(|start| start.context.as_ref())
+        {
+            if context.task != task.task_id || context.turn >= task.turn() {
+                return Err(Error::InvalidCommand(
+                    "this summary belongs to a different task",
+                ));
+            }
+        }
+        if let Some(native) = configuration
+            .session
+            .as_ref()
+            .and_then(|start| start.native.as_ref())
+        {
+            if native.host != super::local::LOCAL_HOST
+                || native.task != task.task_id
+                || native.turn >= task.turn()
+                || Path::new(&native.checkout).canonicalize().ok().as_deref()
+                    != Some(workspace.as_path())
+                || native.target != super::pending::target_identity(&workspace)?
+            {
+                return Err(Error::InvalidCommand(
+                    "this saved session belongs to a different task or folder",
+                ));
+            }
+        }
         if owner.dir.starts_with(&workspace) || workspace.starts_with(&owner.dir) {
             return Err(Error::UnsafePath);
         }
@@ -1220,6 +1283,11 @@ impl Host {
             .as_ref()
             .and_then(Boundary::scratch)
             .ok_or(Error::UnsafePath)
+    }
+
+    /// A stable directory identity used to bind saved provider conversations.
+    pub fn workspace_identity(&self) -> Result<String, Error> {
+        super::pending::target_identity(self.workspace())
     }
 
     pub fn configuration(&self) -> &Configuration {

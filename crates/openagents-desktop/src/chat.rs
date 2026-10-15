@@ -86,6 +86,9 @@ pub struct Panel {
     ids: BTreeMap<String, u64>,
     fields: BTreeMap<String, Field>,
     run_drafts: BTreeMap<(String, String), String>,
+    coding_choices: BTreeMap<String, coder_run::configuration::Choice>,
+    coding_waiting: std::collections::BTreeSet<String>,
+    coding_dirs: BTreeMap<String, Vec<String>>,
     submissions: BTreeMap<String, (String, Submission)>,
     tasks: BTreeMap<String, task_chat::Session>,
     task_submissions: BTreeMap<(String, String), Submission>,
@@ -232,6 +235,9 @@ impl Panel {
             ids: BTreeMap::new(),
             fields: BTreeMap::new(),
             run_drafts: BTreeMap::new(),
+            coding_choices: BTreeMap::new(),
+            coding_waiting: std::collections::BTreeSet::new(),
+            coding_dirs: BTreeMap::new(),
             submissions: BTreeMap::new(),
             tasks: BTreeMap::new(),
             task_submissions: BTreeMap::new(),
@@ -856,18 +862,37 @@ impl Panel {
         // The engine the person asked for, from the reply's typed offer
         // (#10076).
         let engine = openagents_chat::delegation::requested(&snapshot.turns);
-        self.runs.insert(
-            chat.to_owned(),
-            Run::start_with_images(
-                chat,
-                &title,
-                &prompt,
-                self.coder_projects.clone(),
-                images,
-                Instant::now(),
-            )
-            .requesting(engine),
-        );
+        let run = Run::start_with_images(
+            chat,
+            &title,
+            &prompt,
+            self.coder_projects.clone(),
+            images,
+            Instant::now(),
+        )
+        .requesting(engine);
+        let run = if let Some(choice) = self.coding_choices.get(chat) {
+            match choice.request() {
+                Ok(Some(configuration)) => match run.configured(
+                    choice.offer().expect("an offered choice").clone(),
+                    configuration,
+                ) {
+                    Ok(run) => run,
+                    Err(error) => {
+                        self.notice = Some(error);
+                        return;
+                    }
+                },
+                Ok(None) => run,
+                Err(error) => {
+                    self.notice = Some(error);
+                    return;
+                }
+            }
+        } else {
+            run
+        };
+        self.runs.insert(chat.to_owned(), run);
         if self.session.selected.as_deref() == Some(chat) {
             self.rows_dirty = true;
         }
@@ -930,6 +955,45 @@ impl Panel {
         ticket: u64,
         result: Result<coder_run::Answer, String>,
     ) {
+        if ticket == 0 {
+            self.coding_waiting.remove(&chat);
+            match result {
+                Ok(coder_run::Answer::Options(offer)) if offer.task.is_none() => {
+                    let choice = self.coding_choices.entry(chat.clone()).or_default();
+                    choice.update(Some(offer));
+                    choice.open();
+                }
+                Ok(coder_run::Answer::NeedsProject { .. }) => {
+                    self.coding_waiting.insert(chat.clone());
+                    self.queued.push(Request::CoderRun {
+                        chat: chat.clone(),
+                        ticket: 0,
+                        request: coder_run::Request::Choose,
+                    });
+                }
+                Ok(coder_run::Answer::Folder(Some(folder))) => {
+                    self.coding_dirs.insert(chat.clone(), vec![folder.clone()]);
+                    self.coding_waiting.insert(chat.clone());
+                    self.queued.push(Request::CoderRun {
+                        chat: chat.clone(),
+                        ticket: 0,
+                        request: coder_run::Request::Options {
+                            task: None,
+                            dirs: vec![folder],
+                        },
+                    });
+                }
+                Ok(coder_run::Answer::Folder(None)) => {}
+                Err(error) => {
+                    if self.session.selected.as_ref() == Some(&chat) {
+                        self.notice = Some(error);
+                    }
+                }
+                _ => {}
+            }
+            self.rows_dirty = true;
+            return;
+        }
         let Some(run) = self.runs.get_mut(&chat) else {
             return;
         };
@@ -975,6 +1039,7 @@ impl Panel {
         let revision = run.revision;
         let requested = run.action(action, submission.as_ref().map_or("", |s| s.text.as_str()));
         let changed = revision != run.revision;
+        let consumed = run.take_consumed_input();
         if changed {
             self.rows_dirty = true;
         }
@@ -982,13 +1047,15 @@ impl Panel {
             match &requested {
                 Some((
                     ticket,
-                    coder_run::Request::Continue { .. } | coder_run::Request::Respond { .. },
+                    coder_run::Request::Continue { .. }
+                    | coder_run::Request::ContinueConfigured { .. }
+                    | coder_run::Request::Respond { .. },
                 )) => {
                     self.run_submissions
                         .insert((chat.clone(), *ticket), submission);
                 }
                 // Queued, or held until the stop ends the turn.
-                _ if changed => {
+                _ if consumed => {
                     if let Some(field) = self.fields.get_mut(&chat) {
                         let _ = field.draft.accepted(&submission);
                         field.focused = true;
@@ -1004,6 +1071,43 @@ impl Panel {
             request,
         })
     }
+    fn coding_settings(&mut self) -> Option<Request> {
+        let chat = self.session.selected.clone()?;
+        if self.tasks.contains_key(&chat) {
+            return None;
+        }
+        if let Some(run) = self.runs.get_mut(&chat) {
+            let request = run.refresh_configuration();
+            self.rows_dirty = true;
+            return request.map(|(ticket, request)| Request::CoderRun {
+                chat,
+                ticket,
+                request,
+            });
+        }
+        self.coding_choices.entry(chat.clone()).or_default().open();
+        if !self.coding_waiting.insert(chat.clone()) {
+            return None;
+        }
+        let dirs = self
+            .coding_dirs
+            .get(&chat)
+            .cloned()
+            .or_else(|| {
+                self.coding_choices
+                    .get(&chat)
+                    .and_then(|choice| choice.offer())
+                    .map(|offer| vec![offer.checkout.clone()])
+            })
+            .unwrap_or_else(|| self.coder_projects.clone());
+        self.rows_dirty = true;
+        Some(Request::CoderRun {
+            chat,
+            ticket: 0,
+            request: coder_run::Request::Options { task: None, dirs },
+        })
+    }
+
     /// The transcript revision shown now.
     fn shown(&mut self) -> u64 {
         let state = (
@@ -1744,6 +1848,25 @@ impl Panel {
         view: &ValidatedView<Intent>,
         now: Instant,
     ) -> Option<Request> {
+        match &action {
+            Action::CodingSettings => return self.coding_settings(),
+            Action::CodingChoice { target } => {
+                if self.run().is_some() {
+                    return self.run_action(RunAction::Configure(target.clone()), view);
+                }
+                if target.control == coder_run::configuration::Control::Refresh {
+                    return self.coding_settings();
+                }
+                let chat = self.session.selected.as_ref()?;
+                if let Some(choice) = self.coding_choices.get_mut(chat)
+                    && choice.apply(target)
+                {
+                    self.rows_dirty = true;
+                }
+                return None;
+            }
+            _ => {}
+        }
         let saved = match &action {
             Action::SavedSelect { id } => self.saved.select(id),
             Action::SavedRefresh => {
@@ -1832,6 +1955,7 @@ impl Panel {
         }
         let id = self.session.selected.clone()?;
         match action {
+            Action::CodingSettings | Action::CodingChoice { .. } => None,
             Action::SavedSelect { .. }
             | Action::SavedRefresh
             | Action::SavedMore
@@ -4257,6 +4381,38 @@ impl Panel {
         card.style.radius = Some(26);
         card.style.border = Some(openagents_chat_app::visual::current().composer_border);
         card.style.gap = Some(if compact { Space::Xs } else { Space::None });
+        if task.is_none() {
+            let picker = run
+                .and_then(|run| {
+                    run.configuration_view(|target| Intent::Chat {
+                        action: Action::CodingChoice { target },
+                    })
+                })
+                .or_else(|| {
+                    self.coding_choices.get(&id).and_then(|choice| {
+                        choice.view(
+                            "coding-model",
+                            !self.coding_waiting.contains(&id),
+                            true,
+                            |target| Intent::Chat {
+                                action: Action::CodingChoice { target },
+                            },
+                        )
+                    })
+                });
+            content.push(picker.map(|view| view.node).unwrap_or_else(|| {
+                button(
+                    "coding-model-open",
+                    if self.coding_waiting.contains(&id) {
+                        "Loading coding choices…"
+                    } else {
+                        "Coder model"
+                    },
+                    Action::CodingSettings,
+                    !self.coding_waiting.contains(&id),
+                )
+            }));
+        }
         content.push(card);
         let mut footer = stack("chat-footer", Axis::Vertical, content);
         footer.style.padding_start = Some(Space::Md);
@@ -4788,6 +4944,81 @@ mod start_setting_tests {
         assert!(asks.coder_run(&chat).is_some());
     }
 
+    #[test]
+    fn coding_picker_keeps_the_draft_and_freezes_the_selected_start() {
+        use coder_run::configuration::{Control, Target};
+        use route_contract::session::{Selection, control as wire};
+        let mut panel = replied(|| true);
+        let chat = "c".repeat(32);
+        let now = Instant::now();
+        panel.selected_changed(None);
+        let view = rust_native::View::new("picker-test", 1, panel.footer())
+            .validate()
+            .unwrap();
+        panel.mounted(&view);
+        panel.input(TextInput::Commit("Keep this draft"), now);
+        assert_eq!(panel.draft(), "Keep this draft");
+        assert!(matches!(
+            panel.coding_settings(),
+            Some(Request::CoderRun {
+                ticket: 0,
+                request: coder_run::Request::Options { task: None, .. },
+                ..
+            })
+        ));
+        let mut offer = wire::Offer {
+            schema: wire::SCHEMA.into(),
+            id: route_contract::digest_of(&()),
+            task: None,
+            revision: 0,
+            turn: 0,
+            authority: route_contract::digest_of(&"rights"),
+            checkout: "/fixture".into(),
+            target: "inode:1".into(),
+            base: "head".into(),
+            models: vec![wire::Model {
+                selection: Selection {
+                    provider: "claude".into(),
+                    model: "fixture-model".into(),
+                    effort: None,
+                },
+                adapter: "claude-sdk".into(),
+                efforts: vec!["high".into()],
+                available: true,
+                modes: vec![wire::Mode::New],
+                account: Some("login".into()),
+                reason: None,
+            }],
+            resume: None,
+        };
+        offer.seal();
+        panel.run_outcome(chat.clone(), 0, Ok(coder_run::Answer::Options(offer)));
+        fn find(node: &Node<Target>) -> Option<Target> {
+            match &node.element {
+                Element::Button { intent, .. } if intent.control == Control::Model(0) => {
+                    Some(intent.clone())
+                }
+                Element::Stack { children, .. } => children.iter().find_map(find),
+                _ => None,
+            }
+        }
+        let picker = panel
+            .coding_choices
+            .get(&chat)
+            .unwrap()
+            .view("test", true, true, |target| target)
+            .unwrap();
+        let target = find(&picker.node).unwrap();
+        panel.action(Action::CodingChoice { target }, &view, now);
+        assert_eq!(panel.draft(), "Keep this draft");
+        panel.start_run(&chat);
+        let (_, request) = panel.runs.get_mut(&chat).unwrap().tick(now).unwrap();
+        assert!(
+            matches!(request,coder_run::Request::Start{configuration:Some(configuration),..} if configuration.adapter=="claude-sdk"&&configuration.selection.model=="fixture-model")
+        );
+        assert_eq!(panel.draft(), "Keep this draft");
+    }
+
     /// Once a chat's Coder run has finished, Send goes to the router
     /// (#10094): the composer says so, and a reply that hands the next
     /// message to Coder continues the same task with it, as its next turn;
@@ -4812,6 +5043,7 @@ mod start_setting_tests {
             run.outcome(
                 ticket,
                 Ok(coder_run::Answer::Lines {
+                    configuration: None,
                     native: None,
                     lines: lines.clone(),
                     state: coder_run::State::Ended,
@@ -6028,6 +6260,7 @@ mod live_sdk_tests {
         run.outcome(
             ticket,
             Ok(coder_run::Answer::Lines {
+                configuration: None,
                 lines: vec![],
                 state: coder_run::State::Running,
                 native,

@@ -25,6 +25,7 @@
 //! ("ran 3 commands") when the turn ends. The question or approval the run
 //! waits on is the paged decision panel ([`crate::decision`]).
 
+pub mod configuration;
 mod native;
 
 use crate::attention::Activity;
@@ -64,6 +65,17 @@ pub enum Request {
         /// offer (#10076): the start puts it first and says why when
         /// another runs.
         engine: Option<nostr::cj_conversation::Engine>,
+        configuration: Option<route_contract::session::control::Request>,
+    },
+    /// Read owner-issued coding choices without starting a task.
+    Options {
+        task: Option<String>,
+        dirs: Vec<String>,
+    },
+    ContinueConfigured {
+        task: String,
+        text: String,
+        configuration: route_contract::session::control::Request,
     },
     /// The task's events since the last poll.
     Poll { task: String },
@@ -112,7 +124,9 @@ pub enum Answer {
     NeedsProject {
         why: String,
     },
+    Options(route_contract::session::control::Offer),
     Lines {
+        configuration: Option<route_contract::session::control::Offer>,
         native: Option<route_contract::pending::Snapshot>,
         lines: Vec<Line>,
         state: State,
@@ -150,6 +164,7 @@ pub enum Action {
         control: crate::decision::Control,
     },
     NativeCancel(route_contract::Digest),
+    Configure(configuration::Target),
     Retry,
     ChooseFolder,
     RemoveQueued(usize),
@@ -254,6 +269,10 @@ pub struct Run {
     /// `seq`, and the decision panel's state.
     decision: Option<(u64, crate::decision::Flow)>,
     native: native::Pending,
+    configuration: configuration::Choice,
+    start_configuration: Option<route_contract::session::control::Request>,
+    consumed_input: bool,
+    configuration_due: bool,
 }
 
 impl Run {
@@ -330,6 +349,10 @@ impl Run {
             plan: crate::plan_panel::Panel::default(),
             decision: None,
             native: native::Pending::default(),
+            configuration: configuration::Choice::default(),
+            start_configuration: None,
+            consumed_input: false,
+            configuration_due: false,
         }
     }
 
@@ -340,6 +363,7 @@ impl Run {
             dirs: self.dirs.clone(),
             images: self.images.clone(),
             engine: self.engine,
+            configuration: self.start_configuration.clone(),
         }
     }
 
@@ -351,6 +375,83 @@ impl Run {
             self.due = Some(self.start_request());
         }
         self
+    }
+
+    /// Use an owner-issued choice for this new task.
+    pub fn configured(
+        mut self,
+        offer: route_contract::session::control::Offer,
+        request: route_contract::session::control::Request,
+    ) -> Result<Self, String> {
+        if !offer.accepts(&request) {
+            return Err("This coding choice changed. Choose it again.".into());
+        }
+        self.configuration.adopt(offer, Some(&request));
+        self.start_configuration = Some(request);
+        self.engine = None;
+        if matches!(self.due, Some(Request::Start { .. })) {
+            self.due = Some(self.start_request());
+        }
+        Ok(self)
+    }
+
+    pub fn refresh_configuration(&mut self) -> Option<(u64, Request)> {
+        self.configuration.open();
+        self.configuration_due = true;
+        self.revision += 1;
+        let request = Request::Options {
+            task: self.task.clone(),
+            dirs: self.dirs.clone(),
+        };
+        let requested = self.request(request);
+        if requested.is_some() {
+            self.configuration_due = false;
+        }
+        requested
+    }
+
+    pub fn configuration_view<I>(
+        &self,
+        intent: impl Fn(configuration::Target) -> I,
+    ) -> Option<configuration::View<I>> {
+        self.configuration.view(
+            "coder-session",
+            !self.busy(),
+            self.state == State::Ended,
+            intent,
+        )
+    }
+
+    fn continuation(&self, text: String) -> Result<Request, String> {
+        let task = self
+            .task
+            .clone()
+            .ok_or("This coding task is unavailable.")?;
+        match self.configuration.request()? {
+            Some(configuration) => Ok(Request::ContinueConfigured {
+                task,
+                text,
+                configuration,
+            }),
+            None => Ok(Request::Continue { task, text }),
+        }
+    }
+
+    pub fn take_consumed_input(&mut self) -> bool {
+        std::mem::take(&mut self.consumed_input)
+    }
+
+    fn dispatch_continuation(&mut self, text: String) -> Option<(u64, Request)> {
+        match self.continuation(text) {
+            Ok(request) => self.request(request),
+            Err(error) => {
+                if self.notice.as_ref() != Some(&error) {
+                    self.notice = Some(error);
+                    self.revision += 1;
+                }
+                None
+            }
+        }
     }
 
     /// Whether a start that carried the draft's images was accepted since
@@ -436,7 +537,7 @@ impl Run {
     /// Whether Send can submit through this task's current composer mode.
     pub fn can_send(&self) -> bool {
         match self.mode() {
-            Mode::Send => true,
+            Mode::Send => self.configuration.request().is_ok(),
             Mode::Queue => self.can_queue() || self.steer_choice().is_some(),
             Mode::Answer => self.can_answer() && self.native_typed(),
         }
@@ -601,10 +702,11 @@ impl Run {
         let Some(task) = self.task.clone() else {
             return false;
         };
-        self.due = Some(Request::Continue {
-            task,
-            text: text.into(),
-        });
+        let Ok(request) = self.continuation(text.into()) else {
+            return false;
+        };
+        let _ = task;
+        self.due = Some(request);
         self.revision += 1;
         true
     }
@@ -683,19 +785,42 @@ impl Run {
         match step {
             crate::decision::Step::Stay => None,
             crate::decision::Step::Moved => {
+                self.consumed_input = true;
                 self.revision += 1;
                 None
             }
             crate::decision::Step::Done(text) => {
-                let task = self.task.clone()?;
                 self.revision += 1;
-                self.request(Request::Continue { task, text })
+                self.dispatch_continuation(text)
             }
         }
     }
 
     fn supports_request(&self, request: &Request) -> bool {
         match request {
+            Request::ContinueConfigured {
+                task,
+                configuration,
+                ..
+            } => {
+                self.task.as_ref() == Some(task)
+                    && self
+                        .configuration
+                        .offer()
+                        .is_some_and(|offer| offer.accepts(configuration))
+                    && if self.state == State::Waiting {
+                        self.can_answer()
+                    } else {
+                        self.can_continue()
+                    }
+            }
+            Request::Start {
+                configuration: Some(configuration),
+                ..
+            } => self
+                .configuration
+                .offer()
+                .is_some_and(|offer| offer.accepts(configuration)),
             Request::Respond { task, reply } => {
                 self.task.as_ref() == Some(task) && self.native.accepts(reply)
             }
@@ -738,6 +863,13 @@ impl Run {
         {
             return self.request(due);
         }
+        if self.configuration_due && !self.pending.values().any(|request| !mutation(request)) {
+            self.configuration_due = false;
+            return self.request(Request::Options {
+                task: self.task.clone(),
+                dirs: self.dirs.clone(),
+            });
+        }
         let task = self.task.clone()?;
         if self.phase != Phase::Following {
             return None;
@@ -747,14 +879,19 @@ impl Run {
             && (self.state != State::Waiting || self.can_answer())
             && !self.pending.values().any(|p| !mutation(p))
         {
-            if let Some(text) = self.after_stop.take() {
-                return self.request(Request::Continue { task, text });
+            if let Some(text) = self.after_stop.clone()
+                && let Some(request) = self.dispatch_continuation(text)
+            {
+                self.after_stop = None;
+                return Some(request);
             }
             if self.state == State::Ended
-                && let Some(text) = self.queue.pop_front()
+                && let Some(text) = self.queue.front().cloned()
+                && let Some(request) = self.dispatch_continuation(text)
             {
+                self.queue.pop_front();
                 self.revision += 1;
-                return self.request(Request::Continue { task, text });
+                return Some(request);
             }
         }
         // A finished turn's change for the "What changed" card: read once,
@@ -942,12 +1079,16 @@ impl Run {
                 Answer::Lines {
                     lines,
                     state,
+                    configuration,
                     native,
                 },
             ) if self.task.as_ref() == Some(task) => {
+                let config_changed = self
+                    .configuration
+                    .update(configuration.filter(|offer| offer.task.as_ref() == Some(task)));
                 let native_changed = self.native.update(native, task, state);
                 let mut last = self.cursor;
-                let mut changed = native_changed;
+                let mut changed = native_changed || config_changed;
                 for mut line in lines {
                     // A new follower replays from the first event; keep one
                     // copy of each.
@@ -978,6 +1119,12 @@ impl Run {
                                     route_contract::session::Descriptor::default()
                                 }
                             });
+                            if let Some(session) = self.session() {
+                                self.configuration.current(
+                                    session.resolved.selection.clone(),
+                                    session.resolved.adapter.clone(),
+                                );
+                            }
                             let host = self
                                 .session()
                                 .map_or(LOCAL, |session| session.owner.as_str());
@@ -1085,11 +1232,14 @@ impl Run {
                 self.notice = Some("Asked Coder to stop. Its turn ends as stopped.".into());
                 self.poll = now;
             }
-            (Request::Continue { .. }, Answer::Continued) => {
+            (Request::Continue { .. } | Request::ContinueConfigured { .. }, Answer::Continued) => {
                 self.state = State::Running;
                 self.poll = now;
                 self.heard = now;
                 accepted = true;
+            }
+            (Request::Options { task, .. }, Answer::Options(offer)) if offer.task == *task => {
+                self.configuration.update(Some(offer));
             }
             (Request::Choose, Answer::Folder(Some(dir))) => {
                 self.dirs.retain(|known| *known != dir);
@@ -1124,6 +1274,7 @@ impl Run {
 
     /// Carry out `action` with the composer's `text`.
     pub fn action(&mut self, action: Action, text: &str) -> Option<(u64, Request)> {
+        self.consumed_input = false;
         let text = text.trim();
         match action {
             Action::Retry => {
@@ -1141,6 +1292,33 @@ impl Run {
                 let task = self.task.clone()?;
                 (self.state == State::Running).then_some(())?;
                 self.request(Request::Stop { task })
+            }
+            Action::Configure(target) => {
+                if self.busy() {
+                    return None;
+                }
+                if target.control == configuration::Control::Refresh {
+                    return self.refresh_configuration();
+                }
+                if self.configuration.apply(&target) {
+                    if self.task.is_none() {
+                        match self.configuration.request() {
+                            Ok(configuration) => {
+                                self.start_configuration = configuration;
+                                let next = self.start_request();
+                                if matches!(self.failed, Some(Request::Start { .. })) {
+                                    self.failed = Some(next.clone());
+                                }
+                                if matches!(self.due, Some(Request::Start { .. })) {
+                                    self.due = Some(next);
+                                }
+                            }
+                            Err(error) => self.notice = Some(error),
+                        }
+                    }
+                    self.revision += 1;
+                }
+                None
             }
             Action::NativeDecision { request, control } => {
                 if self.busy() {
@@ -1168,16 +1346,12 @@ impl Run {
                 if !self.asking_approval() || !self.can_answer() {
                     return None;
                 }
-                let task = self.task.clone()?;
                 let text = if action == Action::Approve {
                     "Approved."
                 } else {
                     "Denied."
                 };
-                self.request(Request::Continue {
-                    task,
-                    text: text.into(),
-                })
+                self.dispatch_continuation(text.into())
             }
             Action::Decide(control) => {
                 if !self.can_answer() {
@@ -1195,7 +1369,9 @@ impl Run {
                     if self.busy() {
                         return None;
                     }
+                    let before = self.native.flow().cloned();
                     let reply = self.native.typed(text);
+                    self.consumed_input = reply.is_some() || before != self.native.flow().cloned();
                     self.revision += 1;
                     if let Some(reply) = reply {
                         let task = self.task.clone()?;
@@ -1225,10 +1401,12 @@ impl Run {
                 if action == Action::Steer {
                     let task = self.task.clone()?;
                     self.steer_choice()?;
+                    let request = self.request(Request::Stop { task })?;
                     self.after_stop = Some(text.into());
                     self.notice = Some("Coder stops, then continues with your message.".into());
                     self.revision += 1;
-                    return self.request(Request::Stop { task });
+                    self.consumed_input = true;
+                    return Some(request);
                 }
                 match mode {
                     Mode::Queue => {
@@ -1241,6 +1419,7 @@ impl Run {
                             ));
                         } else {
                             self.queue.push_back(text.into());
+                            self.consumed_input = true;
                             self.notice = None;
                         }
                         self.revision += 1;
@@ -1261,13 +1440,7 @@ impl Run {
                         let step = self.decision.as_mut()?.1.answer_typed(text);
                         self.decided(step)
                     }
-                    Mode::Answer | Mode::Send => {
-                        let task = self.task.clone()?;
-                        self.request(Request::Continue {
-                            task,
-                            text: text.into(),
-                        })
-                    }
+                    Mode::Answer | Mode::Send => self.dispatch_continuation(text.into()),
                 }
             }
             Action::RemoveQueued(index) => {
@@ -1288,14 +1461,17 @@ impl Run {
                 {
                     return None;
                 }
-                let text = self.queue.remove(index)?;
-                self.revision += 1;
-                if self.state == State::Running {
+                let text = self.queue.get(index)?.clone();
+                let request = if self.state == State::Running {
                     self.action(Action::Steer, &text)
                 } else {
-                    let task = self.task.clone()?;
-                    self.request(Request::Continue { task, text })
+                    self.dispatch_continuation(text)
+                };
+                if request.is_some() {
+                    self.queue.remove(index);
+                    self.revision += 1;
                 }
+                request
             }
         }
     }
@@ -1632,7 +1808,11 @@ impl Run {
 fn mutation(request: &Request) -> bool {
     !matches!(
         request,
-        Request::Poll { .. } | Request::Choose | Request::Review { .. } | Request::Publish { .. }
+        Request::Poll { .. }
+            | Request::Options { .. }
+            | Request::Choose
+            | Request::Review { .. }
+            | Request::Publish { .. }
     )
 }
 

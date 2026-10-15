@@ -710,6 +710,33 @@ impl Policy {
         seat: Option<&str>,
         launcher: &dyn Launch,
     ) -> std::result::Result<Launched, String> {
+        self.launch_session(
+            grants,
+            store,
+            order,
+            task,
+            intent_digest,
+            revision,
+            seat,
+            None,
+            launcher,
+        )
+    }
+
+    /// Launch an owner-validated SDK session through the same durable grant.
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn launch_session(
+        &self,
+        grants: &Path,
+        store: &Path,
+        order: &[Route],
+        task: &str,
+        intent_digest: &str,
+        revision: u64,
+        seat: Option<&str>,
+        session: Option<&route_contract::session::control::Start>,
+        launcher: &dyn Launch,
+    ) -> std::result::Result<Launched, String> {
         if order.is_empty() {
             return Err("no route to start on".into());
         }
@@ -726,6 +753,7 @@ impl Policy {
         }
         let mut configuration = self.configuration(order);
         configuration.studio_seat = seat.map(str::to_owned);
+        configuration.session = session.cloned();
         let program = shell()?;
         // A run that writes gets its independent check (#10232): the
         // recipe's frozen checks and the touched packages' tests.
@@ -814,6 +842,7 @@ impl Policy {
             fallbacks: order[1..].iter().map(route).collect(),
             access: engine.access,
             studio_seat: None,
+            session: None,
         }
     }
 

@@ -137,6 +137,7 @@ pub(super) fn fixture_images(
             fallbacks: Vec::new(),
             access: coder::task::adapter::Access::Boundary,
             studio_seat: None,
+            session: None,
         }),
     };
     let mut grant = grant;

@@ -44,6 +44,7 @@ fn coder_event(panel: &mut Panel, chat: &str, lines: &[Line], state: RunState) {
                     chat.into(),
                     ticket,
                     Ok(Answer::Lines {
+                        configuration: None,
                         native: None,
                         lines: lines.to_vec(),
                         state,
