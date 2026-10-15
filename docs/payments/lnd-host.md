@@ -105,15 +105,14 @@ watchtower port accepts only `oa-lnd-1`; RPC stays on loopback. Install it with
 the payment node with `lncli wtclient add URI`. Its disposable wallet owns no
 payment funds. Keep its tower database when upgrading.
 
-The second tower is the free US service published by the
-[frznode operator](https://frznode.com/watchtower.html), checked on 2026-10-15.
-Its public key is
-`028829fcc05c0ba83d7fff053abf663448e2e1e440f345eaa9b3f0c11ac2ce44ea`.
-`openagents-lnd-third-party-tower.service` connects to its onion address through
-local Tor. Register that key at `127.0.0.1:19911`. The encrypted watchtower
-handshake authenticates the remote key. Recheck the operator's published
-address before changing it. Check `lncli wtclient towers --include_sessions`
-for both registrations and acknowledged backups after channel activity.
+The second tower is the free service published by the
+[Mineracks operator](https://bitcoin.mineracks.com/), checked on 2026-10-15.
+Its URI is
+`0281f4affcd16ad56a6a5be055d19e24a17f9932d057f61c5403fc0809ebc696aa@tower.mineracks.com:9911`.
+The encrypted watchtower handshake authenticates the remote key. Recheck the
+operator's published address before changing it. Check
+`lncli wtclient towers --include_sessions` for both registrations and
+acknowledged backups after channel activity.
 Registration alone does not establish protection for a funded channel.
 
 ### Recovery rule and release drill
