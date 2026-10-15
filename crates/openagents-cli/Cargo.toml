@@ -99,7 +99,6 @@ nostr = { path = "../nostr" }
 # `openagents pylon`: NIP-PYLON beacons, free jobs, receipts, and pools.
 pylon = { path = "../pylon" }
 openagents-wallet = { path = "../wallet" }
-lnd-sdk = { path = "../lnd-sdk" }
 # Idempotency keys for wallet payments.
 uuid = { version = "1", features = ["v4"] }
 # The person's Spark wallet, the same as the phone's (`openagents wallet`).
@@ -144,6 +143,7 @@ world-tree = { path = "../world-tree" }
 # `openagents labor`'s, `openagents pay commission`'s, and plugin purchases'
 # stores rest on Unix file modes; Windows builds without them.
 [target.'cfg(unix)'.dependencies]
+lnd-sdk = { path = "../lnd-sdk" }
 commercial-accounts = { path = "../commercial-accounts", features = ["merchant-commissions"] }
 commercial-spend = { path = "../commercial-spend" }
 coder-labor = { path = "../coder-labor" }

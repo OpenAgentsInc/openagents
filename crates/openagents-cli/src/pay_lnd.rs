@@ -5,7 +5,6 @@ use lnd_sdk::{
     service::Wallet,
     transport::Config,
 };
-use openagents_wallet::LightningWallet;
 use openagents_x402::{front::Front, replay::ReplayStore, server::Receiver};
 use serde::Deserialize;
 use std::{
@@ -45,13 +44,14 @@ impl ReceiveSettings {
         }
     }
     fn receiver(&self) -> Result<Arc<LndReceiver>, String> {
-        let pin: [u8; 32] = hex::decode(&self.certificate_sha256)
-            .ok()
-            .and_then(|b| b.try_into().ok())
-            .ok_or("The LND certificate fingerprint is invalid.")?;
-        let node = hex::decode(&self.node_id).map_err(|_| "The LND node identity is invalid.")?;
-        if node.len() != 33 || !matches!(node[0], 2 | 3) || !self.endpoint.starts_with("https://") {
-            return Err("The LND address or node identity is invalid.".into());
+        let pin = openagents_wallet::parse_hash32(&self.certificate_sha256)
+            .map_err(|_| "The LND certificate fingerprint is invalid.")?;
+        let _: secp256k1::PublicKey = self
+            .node_id
+            .parse()
+            .map_err(|_| "The LND node identity is invalid.")?;
+        if !self.endpoint.starts_with("https://") {
+            return Err("The LND address must use HTTPS.".into());
         }
         Ok(Arc::new(LndReceiver {
             settings: self.clone(),
@@ -146,7 +146,7 @@ mod tests {
 backend = "mdk"
 endpoint = "https://127.0.0.1:1"
 certificate_sha256 = "1111111111111111111111111111111111111111111111111111111111111111"
-node_id = "021111111111111111111111111111111111111111111111111111111111111111"
+node_id = "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
 invoice_macaroon = "/absent/credential"
 readonly_macaroon = "/absent/readonly"
 "#,
