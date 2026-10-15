@@ -307,12 +307,21 @@ impl ClaudeGenerator {
 }
 
 /// Claude Code's executable name. On Windows that is the native
-/// installer's `claude.exe`; npm's `claude.cmd` shim is a batch file, which
-/// cannot carry the multi-line arguments a call passes, so it is not used.
+/// installer's `claude.exe`.
 pub const BINARY_NAME: &str = if cfg!(windows) {
     "claude.exe"
 } else {
     "claude"
+};
+
+/// The names [`locate`] looks for, in order. On Windows npm's `claude.cmd`
+/// shim comes after the native `claude.exe`: it is started as Node and its
+/// script ([`acp_client::process::launcher`]), never through `cmd.exe`,
+/// which cannot carry a multi-line argument (#11645).
+const BINARY_NAMES: &[&str] = if cfg!(windows) {
+    &["claude.exe", "claude.cmd"]
+} else {
+    &["claude"]
 };
 
 fn find_binary() -> Result<PathBuf, String> {
@@ -395,7 +404,7 @@ fn search(
     }
     let found = |dirs: &mut dyn Iterator<Item = PathBuf>| {
         dirs.filter(|dir| dir.is_absolute())
-            .map(|dir| dir.join(BINARY_NAME))
+            .flat_map(|dir| BINARY_NAMES.iter().map(move |name| dir.join(name)))
             .find(|candidate| candidate.is_file())
     };
     found(&mut dirs.into_iter()).or_else(|| {
@@ -794,7 +803,10 @@ impl ClaudeGenerator {
     fn spawn(&self, system: &str) -> std::io::Result<tokio::process::Child> {
         let mut attempt = 0u64;
         loop {
-            let started = tokio::process::Command::new(&self.binary)
+            // An npm `claude.cmd` runs as Node and its script, never
+            // through `cmd.exe`, which refuses multi-line arguments
+            // (#11645).
+            let started = acp_client::process::command_async(&self.binary)
                 .args(self.args(system))
                 .current_dir(std::env::temp_dir())
                 .env(NO_CONNECTORS.0, NO_CONNECTORS.1)

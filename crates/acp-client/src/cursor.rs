@@ -122,7 +122,7 @@ pub async fn signed_in(
     environment: &[(String, String)],
     cwd: &Path,
 ) -> Option<bool> {
-    let mut command = tokio::process::Command::new(program);
+    let mut command = crate::process::command_async(program);
     command
         .args(["status", "--format", "json"])
         .current_dir(cwd)
@@ -205,7 +205,7 @@ pub async fn version(
     environment: &[(String, String)],
     cwd: &Path,
 ) -> Option<String> {
-    let mut command = tokio::process::Command::new(program);
+    let mut command = crate::process::command_async(program);
     command
         .arg("--version")
         .current_dir(cwd)
@@ -278,7 +278,7 @@ impl Updated {
 /// the Cursor editor's launcher in its place.
 pub async fn update(program: &Path, environment: &[(String, String)], cwd: &Path) -> Updated {
     let before = version(program, environment, cwd).await;
-    let mut command = tokio::process::Command::new(program);
+    let mut command = crate::process::command_async(program);
     command
         .arg("update")
         .current_dir(cwd)
@@ -302,7 +302,7 @@ pub async fn update(program: &Path, environment: &[(String, String)], cwd: &Path
                 .unwrap_or_default(),
         );
     }
-    let mut check = tokio::process::Command::new(program);
+    let mut check = crate::process::command_async(program);
     check
         .arg("--version")
         .current_dir(cwd)

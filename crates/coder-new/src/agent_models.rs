@@ -296,7 +296,7 @@ pub fn read(agent: &str, program: &Path) -> Option<Vec<AgentModel>> {
         OMP => &["models", "--json"],
         _ => return None,
     };
-    let output = acp_client::process::non_interactive(&mut std::process::Command::new(program))
+    let output = acp_client::process::non_interactive(&mut acp_client::process::command(program))
         .args(arguments)
         .stdin(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())

@@ -1,0 +1,15 @@
+[package]
+name = "program-launch"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "How to start a program found as a Windows shim: an npm `.cmd`/`.ps1` shim runs as Node and its script (or the package's own native binary), never through cmd.exe, so arguments with newlines reach the program."
+publish.workspace = true
+
+[dependencies]
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

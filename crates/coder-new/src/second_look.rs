@@ -387,7 +387,7 @@ fn on_haiku(text: &str) -> Result<Reviewed, String> {
         .ok_or("neither the OpenAgents gateway nor Claude Code is available for a review")?;
     let empty = tempfile::tempdir().map_err(|error| error.to_string())?;
     let started = Instant::now();
-    let mut child = std::process::Command::new(&agent.program)
+    let mut child = acp_client::process::command(&agent.program)
         .current_dir(empty.path())
         .envs(acp_client::process::NON_INTERACTIVE)
         .args([

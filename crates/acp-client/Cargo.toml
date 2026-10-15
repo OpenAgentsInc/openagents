@@ -8,6 +8,8 @@ publish.workspace = true
 
 [dependencies]
 user-home = { path = "../user-home" }
+# How a Windows npm shim is started without cmd.exe (#11645).
+program-launch = { path = "../program-launch" }
 coder-lease = { path = "../coder-lease" }
 # The one credential-name policy every env scrubber shares.
 secret-screen = { path = "../secret-screen" }

@@ -2352,7 +2352,9 @@ impl Cli {
     /// [`crate::adapter`] owns both ends.
     #[must_use]
     pub fn live_command(&self, binary: &Path, launch: &Launch) -> std::process::Command {
-        let mut command = std::process::Command::new(binary);
+        // An npm `.cmd` shim runs as Node and its script, never through
+        // `cmd.exe` (#11645).
+        let mut command = acp_client::process::command(binary);
         command.args(self.live_args(launch));
         self.environ(&mut command);
         command

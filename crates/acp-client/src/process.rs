@@ -97,7 +97,16 @@ impl Agent {
     /// # Errors
     /// The program is missing or the operating system refused to start it.
     pub fn start(spec: &Spec) -> Result<Self, Unstartable> {
-        let mut command = Command::new(&spec.program);
+        // An npm shim runs as Node and its script, never through
+        // `cmd.exe`, so every argument reaches the agent (#11645).
+        let launch = program_launch::launch(&spec.program);
+        if let Some(why) = program_launch::refusal(&launch, &spec.arguments) {
+            return Err(Unstartable(format!(
+                "cannot start {}: {why}",
+                spec.program.display()
+            )));
+        }
+        let mut command = Command::from(launch.command());
         command
             .args(&spec.arguments)
             .current_dir(&spec.cwd)
@@ -242,13 +251,48 @@ pub fn first_executable(candidates: impl IntoIterator<Item = PathBuf>) -> Option
 }
 
 /// The first executable file among `candidates`: on Windows, a file whose
-/// extension is a program's (`.exe`, `.com`, `.cmd`, or `.bat`).
+/// extension is a program's (`.exe`, `.com`, `.cmd`, or `.bat`), or an npm
+/// PowerShell shim [`launcher`] can read (a `.ps1` is never started as it
+/// is).
 #[cfg(windows)]
 #[must_use]
 pub fn first_executable(candidates: impl IntoIterator<Item = PathBuf>) -> Option<PathBuf> {
     candidates.into_iter().find(|path| {
-        windows::runnable(path) && std::fs::metadata(path).is_ok_and(|meta| meta.is_file())
+        let file = std::fs::metadata(path).is_ok_and(|meta| meta.is_file());
+        file && (windows::runnable(path)
+            || (program_launch::is_powershell(path)
+                && !program_launch::is_powershell(&launcher(path).program)))
     })
+}
+
+/// How to start `program`: an npm `.cmd`/`.ps1` shim runs as Node and its
+/// script (or the package's own binary), never through `cmd.exe`, which
+/// can't pass an argument with a line break (#11645). Anything else runs
+/// as it is.
+#[must_use]
+pub fn launcher(program: &Path) -> program_launch::Launch {
+    program_launch::launch(program)
+}
+
+/// A command that starts `program` as [`launcher`] says, before the
+/// caller's own arguments.
+#[must_use]
+pub fn command(program: &Path) -> std::process::Command {
+    launcher(program).command()
+}
+
+/// [`command`] for an async caller.
+#[must_use]
+pub fn command_async(program: &Path) -> Command {
+    Command::from(command(program))
+}
+
+/// Why `args` can't be passed to `program`, or `None`: only a batch file
+/// whose shim couldn't be read refuses, for an argument with a line
+/// break.
+#[must_use]
+pub fn refusal<S: AsRef<std::ffi::OsStr>>(program: &Path, args: &[S]) -> Option<String> {
+    program_launch::refusal(&launcher(program), args)
 }
 
 /// `name` in each directory of `PATH`; on Windows, also `name` with each
@@ -268,14 +312,30 @@ fn candidates(dir: &Path, name: &str) -> Vec<PathBuf> {
     vec![dir.join(name)]
 }
 
+/// `name` in `dir` with each program extension, in `PATHEXT`'s order
+/// (the usual list when it is unset), then as an npm PowerShell shim, then
+/// bare.
 #[cfg(windows)]
 fn candidates(dir: &Path, name: &str) -> Vec<PathBuf> {
-    std::iter::once(dir.join(name))
-        .chain(
-            windows::EXTENSIONS
-                .iter()
-                .map(|extension| dir.join(format!("{name}.{extension}"))),
-        )
+    let mut extensions: Vec<String> =
+        program_launch::path_extensions(std::env::var_os("PATHEXT").as_deref())
+            .into_iter()
+            .filter(|extension| {
+                windows::EXTENSIONS
+                    .iter()
+                    .any(|known| known.eq_ignore_ascii_case(extension))
+            })
+            .collect();
+    for known in windows::EXTENSIONS {
+        if !extensions.iter().any(|extension| extension == known) {
+            extensions.push(known.to_owned());
+        }
+    }
+    extensions.push("ps1".to_owned());
+    extensions
+        .iter()
+        .map(|extension| dir.join(format!("{name}.{extension}")))
+        .chain(std::iter::once(dir.join(name)))
         .collect()
 }
 

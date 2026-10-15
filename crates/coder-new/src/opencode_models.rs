@@ -296,7 +296,7 @@ fn read() -> Vec<Listed> {
         return Vec::new();
     };
     let run = |verbose: bool| {
-        let mut command = std::process::Command::new(&program);
+        let mut command = acp_client::process::command(&program);
         acp_client::process::non_interactive(&mut command);
         command.arg("models");
         if verbose {

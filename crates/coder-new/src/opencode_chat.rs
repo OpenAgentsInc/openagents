@@ -526,7 +526,13 @@ pub async fn run_with(
     let config = config(&turn.model, turn.tools.then_some((&this, &turn.cwd)));
     let prompt = turn.prompt();
 
-    let mut command = tokio::process::Command::new(&program);
+    // An npm `opencode.cmd` runs as OpenCode's own binary (or Node and
+    // its launcher), never through `cmd.exe`, which refuses the prompt's
+    // line breaks (#11645).
+    if let Some(why) = acp_client::process::refusal(program, &[&prompt]) {
+        return Err(format!("OpenCode could not start: {why}."));
+    }
+    let mut command = acp_client::process::command_async(program);
     acp_client::process::non_interactive_async(&mut command);
     command
         .arg("run")
@@ -557,7 +563,7 @@ pub async fn run_with(
     let started = std::time::Instant::now();
     let mut child = command
         .spawn()
-        .map_err(|_| "OpenCode could not start.".to_owned())?;
+        .map_err(|error| format!("OpenCode could not start: {error}."))?;
     let pid = child.id();
     let stdout = child.stdout.take().ok_or("OpenCode gave no output.")?;
     let stderr = child.stderr.take();
@@ -679,23 +685,45 @@ pub async fn run_with(
     }
     if reply.text.trim().is_empty() {
         let failed = status.is_some_and(|status| !status.success());
-        let said = tail
-            .lines()
-            .rev()
-            .find(|line| line.to_ascii_lowercase().contains("error"))
-            .map(|line| line.chars().take(300).collect::<String>());
-        return Err(match (failed, said) {
-            (_, Some(said)) => format!("OpenCode stopped: {said}"),
-            (true, None) => "OpenCode stopped before it answered.".into(),
-            (false, None) => "OpenCode returned no answer.".into(),
-        });
+        return Err(no_answer(failed, &tail));
     }
     Ok(reply)
+}
+
+/// Why an OpenCode turn that ended without words failed: the error line
+/// it printed, else its last line of standard error, so the real reason
+/// is always there to read (#11645).
+fn no_answer(failed: bool, stderr: &str) -> String {
+    let clip = |line: &str| line.trim().chars().take(300).collect::<String>();
+    let lines = || stderr.lines().rev().filter(|line| !line.trim().is_empty());
+    let said = lines()
+        .find(|line| line.to_ascii_lowercase().contains("error"))
+        .or_else(|| lines().next())
+        .map(clip);
+    match (failed, said) {
+        (_, Some(said)) => format!("OpenCode stopped: {said}"),
+        (true, None) => "OpenCode stopped before it answered.".into(),
+        (false, None) => "OpenCode returned no answer.".into(),
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_turn_without_words_says_what_opencode_printed() {
+        assert_eq!(
+            no_answer(true, "booting\nError: no provider configured\n"),
+            "OpenCode stopped: Error: no provider configured"
+        );
+        assert_eq!(
+            no_answer(true, "node: cannot find module\n\n"),
+            "OpenCode stopped: node: cannot find module"
+        );
+        assert_eq!(no_answer(true, ""), "OpenCode stopped before it answered.");
+        assert_eq!(no_answer(false, ""), "OpenCode returned no answer.");
+    }
 
     /// Lines OpenCode 1.18.26 printed for one turn (`--format json`).
     const TURN: &str = r#"{"type":"step_start","timestamp":1,"sessionID":"ses_1","part":{"type":"step-start"}}

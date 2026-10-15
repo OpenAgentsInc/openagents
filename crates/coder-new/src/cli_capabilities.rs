@@ -16,7 +16,7 @@ use std::{
     collections::{BTreeSet, HashMap},
     io::Read,
     path::{Path, PathBuf},
-    process::{Command, Stdio},
+    process::Stdio,
     sync::{
         Arc, Mutex, OnceLock,
         atomic::{AtomicBool, Ordering},
@@ -110,7 +110,7 @@ fn parse(text: &str) -> Option<Capabilities> {
 
 /// `program arguments`' standard output when it exits 0 in time.
 fn stdout(program: &Path, arguments: &[&str]) -> Option<String> {
-    let mut child = Command::new(program)
+    let mut child = acp_client::process::command(program)
         .args(arguments)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())

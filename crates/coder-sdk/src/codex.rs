@@ -229,7 +229,9 @@ impl Codex {
     ///
     /// Codex didn't start or didn't answer.
     pub async fn spawn(launch: &Launch, hooks: Hooks) -> Result<Self, String> {
-        let mut command = tokio::process::Command::new(&launch.program);
+        // An npm `codex.cmd` runs as Node and its script, never through
+        // `cmd.exe` (#11645).
+        let mut command = acp_client::process::command_async(&launch.program);
         command
             .args(launch.args())
             .stdin(Stdio::piped())

@@ -558,7 +558,7 @@ pub(crate) async fn cli_checked_within(
     if cancel.load(Ordering::Relaxed) {
         return Err("The CLI call was canceled before it started.".into());
     }
-    let mut command = std::process::Command::new(program);
+    let mut command = acp_client::process::command(program);
     command.arg("--json").args(arguments).current_dir(cwd);
     prepare_cli_child(&mut command);
     let sink = RefCell::new(emit);
@@ -1604,7 +1604,8 @@ async fn codex_cli(
     {
         return result;
     }
-    let mut command = std::process::Command::new(program);
+    // An npm `codex.cmd` runs as Node and its script (#11645).
+    let mut command = acp_client::process::command(program);
     command
         .args(["exec", "--json", "--skip-git-repo-check"])
         .envs(acp_client::process::NON_INTERACTIVE);

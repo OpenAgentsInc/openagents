@@ -2,7 +2,7 @@
 
 use crate::error::{Error, Result};
 use crate::protocol::{StdinMessage, StdoutMessage};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin, ChildStdout, Command};
@@ -75,7 +75,9 @@ impl ProcessTransport {
             "Spawning Claude Code CLI"
         );
 
-        let mut cmd = Command::new(&command);
+        // An npm `claude.cmd` runs as Node and its script, never through
+        // `cmd.exe`, which refuses multi-line arguments (#11645).
+        let mut cmd = Command::from(program_launch::launch(Path::new(&command)).command());
         cmd.args(&command_args)
             .args(&args)
             .stdin(Stdio::piped())
