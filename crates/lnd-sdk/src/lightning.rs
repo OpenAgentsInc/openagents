@@ -291,7 +291,11 @@ impl Client {
                     .await
                 }
             })
-            .await?;
+            .await
+            .map_err(|error| match error {
+                Error::NotFound => Error::NotSynced,
+                error => error,
+            })?;
             let policy = if graph.node1_pub == channel.remote_pubkey {
                 graph.node1_policy
             } else if graph.node2_pub == channel.remote_pubkey {
