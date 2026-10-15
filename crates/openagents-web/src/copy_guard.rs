@@ -23,11 +23,36 @@ fn allowed(route: &str) -> &'static [&'static str] {
     }
 }
 
+/// Privacy claims we can't make (#11765). While we can reach a computer,
+/// it is sealed against the cloud, not against us; Gemini on Vertex, Macs
+/// and GeForce cards are never called private or confidential.
+const FALSE_PRIVACY_CLAIMS: &[&str] = &[
+    "sealed against us",
+    "sealed against openagents",
+    "sealed from us",
+    "sealed from openagents",
+];
+
+/// Each false privacy claim in `text`, ignoring case.
+fn false_privacy_claims(text: &str) -> Vec<&'static str> {
+    let lower = text.to_lowercase();
+    FALSE_PRIVACY_CLAIMS
+        .iter()
+        .copied()
+        .filter(|claim| lower.contains(claim))
+        .collect()
+}
+
 /// Fails the test, naming the route, each term and its context, when the
 /// visible text of `html` has machine talk.
 pub(crate) fn assert_plain(route: &str, html: &str) {
     assert_paragraphs_hold_only_text(route, html);
     let text = oa_copy::visible_text(&without_preformatted(html));
+    let claims = false_privacy_claims(&text);
+    assert!(
+        claims.is_empty(),
+        "{route} says {claims:?}: say \"sealed against the cloud\" (#11765)"
+    );
     let path = route.split('?').next().unwrap_or(route);
     let hits = oa_copy::violations(&text, allowed(path));
     assert!(
@@ -150,4 +175,50 @@ fn site_sources_have_no_machine_talk() {
         "machine talk in the site's copy (rewrite it in plain words, see AGENTS.md):\n{}",
         hits.join("\n")
     );
+}
+
+/// #11765: no page source or served Markdown says a computer is sealed
+/// against us. Rendered pages are checked too ([`assert_plain`]).
+#[test]
+fn site_copy_makes_no_false_privacy_claims() {
+    fn walk(dir: &std::path::Path, hits: &mut Vec<String>) {
+        let mut entries: Vec<_> = std::fs::read_dir(dir)
+            .expect("the directory")
+            .map(|e| e.expect("an entry").path())
+            .collect();
+        entries.sort();
+        for path in entries {
+            if path.is_dir() {
+                walk(&path, hits);
+            } else if path.file_name().is_some_and(|n| n != "copy_guard.rs")
+                && path.extension().is_some_and(|e| {
+                    ["rs", "md", "toml", "html", "js"].contains(&e.to_str().unwrap_or(""))
+                })
+            {
+                let text = std::fs::read_to_string(&path).unwrap_or_default();
+                for claim in false_privacy_claims(&text) {
+                    hits.push(format!("{}: {claim:?}", path.display()));
+                }
+            }
+        }
+    }
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let mut hits = Vec::new();
+    for dir in ["src", "content", "static"] {
+        walk(&root.join(dir), &mut hits);
+    }
+    assert!(
+        hits.is_empty(),
+        "say \"sealed against the cloud\", never \"sealed against us\" (#11765):\n{}",
+        hits.join("\n")
+    );
+}
+
+#[test]
+fn false_privacy_claims_are_caught_in_any_case() {
+    assert_eq!(
+        false_privacy_claims("Your computer is Sealed against us."),
+        ["sealed against us"]
+    );
+    assert!(false_privacy_claims("Your computer is sealed against the cloud.").is_empty());
 }
