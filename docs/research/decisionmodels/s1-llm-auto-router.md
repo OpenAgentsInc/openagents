@@ -294,4 +294,4 @@ the two execution engines.
 ## Decisions for later
 
 - **Their hosted API.** Do not put it in a routing path as a door. It sends user text to a third party, and our own CPU is cheaper and faster. It is fine as a reference in the offline comparison.
-- **Docs drift, found in passing.** `INVARIANTS.md` (around lines 216–217) still describes Jev as the first decision door, but the code is Clef first (`Order::ClefFirst`, owner, 2026-10-12). Fix that separately; it is not part of this note.
+- **Docs drift, found in passing.** `INVARIANTS.md` (around lines 216–217) still describes Jev as the first decision door, but the code is Clef first (`Order::ClefFirst`, owner, 2026-10-12). Fixed in #11763: the rows now say Clef first, with Jev as a backup and a choice.
