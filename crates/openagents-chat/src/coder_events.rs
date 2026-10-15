@@ -112,6 +112,9 @@ pub struct Status {
 /// A turn started: where, and on which provider.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Started {
+    /// The task owner's read-only session description, absent on older hosts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session: Option<route_contract::session::Descriptor>,
     /// The turn, from one; an answer starts the next.
     pub turn: usize,
     /// The project's name: its checkout's folder name.
@@ -2718,6 +2721,7 @@ mod tests {
     #[test]
     fn a_start_line_says_who_works_and_only_news() {
         let started = |runner: Option<Runner>, reason: &str| Started {
+            session: None,
             turn: 1,
             project: "openagents".into(),
             checkout: "/c".into(),
@@ -2878,6 +2882,7 @@ mod tests {
 
     fn started(turn: usize, provider: &str, model: &str) -> CoderEvent {
         CoderEvent::CoderStarted(Started {
+            session: None,
             turn,
             project: "p".into(),
             checkout: "/c".into(),

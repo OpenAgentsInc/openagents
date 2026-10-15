@@ -759,3 +759,170 @@ fn enter_sends_now_and_ctrl_enter_queues_while_coder_works() {
     assert_eq!(run.queued(), 1);
     assert!(!run.busy());
 }
+
+fn described_lines(controls: route_contract::session::Controls) -> Vec<Line> {
+    use route_contract::session::{Backend, Descriptor, NativeSupport, SCHEMA, Selection};
+    let mut lines = tasks(QUESTION_THEN_RESULT).remove(0);
+    let task = lines[0].task.clone();
+    let CoderEvent::CoderStarted(started) = &mut lines[0].event else {
+        panic!("start")
+    };
+    let resolved = Backend {
+        selection: Selection {
+            provider: started.provider.clone(),
+            model: started.model.clone(),
+            effort: Some("medium".into()),
+        },
+        adapter: "coder-loop".into(),
+        native: NativeSupport {
+            images: true,
+            ..NativeSupport::default()
+        },
+        ..Backend::default()
+    };
+    started.session = Some(Descriptor {
+        schema: SCHEMA.into(),
+        task,
+        turn: started.turn,
+        owner: "local".into(),
+        requested: Some(Selection {
+            provider: "devin".into(),
+            ..Selection::default()
+        }),
+        resolved: resolved.clone(),
+        alternatives: vec![resolved],
+        controls,
+        ..Descriptor::default()
+    });
+    lines.truncate(1);
+    lines
+}
+
+#[test]
+fn session_choices_reach_the_shared_desktop_projection_and_survive_row_eviction() {
+    let lines = described_lines(route_contract::session::Controls {
+        stop: true,
+        ..Default::default()
+    });
+    let mut run = fed(&lines, State::Running);
+    let session = run.session().unwrap().clone();
+    let label = run.session_label().unwrap();
+    assert!(label.contains("Requested Devin"), "{label}");
+    assert!(label.contains(&session.resolved.selection.model), "{label}");
+    assert!(text_of(&run.rows()).contains(&label));
+    assert!(run.can_stop());
+    assert!(!run.can_queue());
+    assert!(!session.resolved.native.resume);
+    run.lines.clear();
+    assert_eq!(run.session(), Some(&session));
+    assert!(text_of(&run.rows()).contains(&label));
+}
+
+#[test]
+fn unsupported_controls_cannot_dispatch_or_consume_queued_text() {
+    let lines = described_lines(Default::default());
+    let mut run = fed(&lines, State::Running);
+    assert!(!run.can_stop());
+    assert!(!run.can_queue());
+    assert!(!run.can_send());
+    assert!(run.steer_choice().is_none());
+    assert!(run.action(Action::Stop, "").is_none());
+    assert!(run.action(Action::Send, "keep this draft").is_none());
+    assert!(run.action(Action::Queue, "keep this draft").is_none());
+    assert!(run.action(Action::Steer, "keep this draft").is_none());
+    assert_eq!(run.queued(), 0);
+    run.queue.push_back("already queued".into());
+    assert!(run.action(Action::SendQueuedNow(0), "").is_none());
+    assert_eq!(run.queued(), 1);
+    assert!(!text_of(&run.rows()).contains("Stop Coder"));
+    run.state = State::Ended;
+    assert!(!run.continue_with("continue"));
+}
+
+#[test]
+fn unsupported_pending_controls_keep_polling_and_preserve_the_message() {
+    let lines = described_lines(Default::default());
+    let mut run = fed(&lines, State::Running);
+    let task = run.task.clone().unwrap();
+    run.due = Some(Request::Continue {
+        task,
+        text: "keep this message".into(),
+    });
+    let (_, request) = run.tick(Instant::now() + Duration::from_secs(60)).unwrap();
+    assert!(matches!(request, Request::Poll { .. }));
+    assert!(matches!(
+        run.due,
+        Some(Request::Continue { ref text, .. }) if text == "keep this message"
+    ));
+}
+
+#[test]
+fn requested_model_is_visible_when_the_provider_stays_the_same() {
+    let mut lines = described_lines(Default::default());
+    let CoderEvent::CoderStarted(started) = &mut lines[0].event else {
+        panic!("start")
+    };
+    let session = started.session.as_mut().unwrap();
+    session.requested = Some(route_contract::session::Selection {
+        provider: started.provider.clone(),
+        model: "requested-model".into(),
+        effort: None,
+    });
+    let label = fed(&lines, State::Running).session_label().unwrap();
+    assert!(label.contains("requested-model"), "{label}");
+    assert!(label.contains("Using"), "{label}");
+}
+
+#[test]
+fn future_or_wrong_task_descriptions_cannot_enable_controls() {
+    for wrong_task in [false, true] {
+        let mut lines = described_lines(route_contract::session::Controls {
+            stop: true,
+            queue: true,
+            ..Default::default()
+        });
+        let CoderEvent::CoderStarted(started) = &mut lines[0].event else {
+            panic!("start")
+        };
+        let session = started.session.as_mut().unwrap();
+        if wrong_task {
+            session.task = "another-task".into();
+        } else {
+            session.schema = "future-version".into();
+        }
+        let run = fed(&lines, State::Running);
+        assert!(run.session().is_none());
+        assert!(!run.can_stop());
+        assert!(!run.can_queue());
+    }
+    let lines = tasks(QUESTION_THEN_RESULT).remove(0);
+    let run = fed(&lines[..1], State::Running);
+    assert!(run.session().is_none());
+    // The legacy task protocol still supplies its existing Stop operation.
+    assert!(run.can_stop());
+}
+
+#[test]
+fn provider_switch_changes_the_label_without_granting_native_operations() {
+    let mut lines = described_lines(route_contract::session::Controls {
+        stop: true,
+        ..Default::default()
+    });
+    let mut switched = lines[0].clone();
+    switched.seq += 1;
+    switched.event = CoderEvent::ProviderSwitched(coder_events::Switched {
+        turn: turn_of(&lines[0]),
+        step_id: 1,
+        from: "old:model".into(),
+        to: Some("future:model:variant".into()),
+        reason: "test".into(),
+        resets_at: None,
+    });
+    lines.push(switched);
+    let run = fed(&lines, State::Running);
+    assert!(run.session_label().unwrap().contains("model:variant"));
+    let session = run.session().unwrap();
+    assert_eq!(session.resolved.native, Default::default());
+    assert!(session.resolved.hooks.is_empty());
+    assert_eq!(session.requested.as_ref().unwrap().provider, "devin");
+}

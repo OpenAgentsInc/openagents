@@ -3928,7 +3928,7 @@ impl Panel {
                 max_bytes: 32 * 1024,
                 enabled: true,
                 busy,
-                stop: Some(Intent::Chat {
+                stop: run.is_none_or(Run::can_stop).then_some(Intent::Chat {
                     action: Action::Stop,
                 }),
                 choices: vec![],
@@ -3958,20 +3958,24 @@ impl Panel {
         {
             // Send sends now, stopping the turn; Queue, as Ctrl+Enter,
             // keeps the message for after it (#11685).
-            buttons.push(button(
-                "chat-queue",
-                "Queue",
-                Action::Queue,
-                enabled && !busy,
-            ));
-            buttons.push(icon_button(
-                "chat-stop",
-                "Stop Coder",
-                Action::Stop,
-                !busy && run.task.is_some(),
-                Glyph::Stop,
-                false,
-            ));
+            if run.can_queue() {
+                buttons.push(button(
+                    "chat-queue",
+                    "Queue",
+                    Action::Queue,
+                    enabled && !busy,
+                ));
+            }
+            if run.can_stop() {
+                buttons.push(icon_button(
+                    "chat-stop",
+                    "Stop Coder",
+                    Action::Stop,
+                    !busy && run.task.is_some(),
+                    Glyph::Stop,
+                    false,
+                ));
+            }
         }
         if let Some(task) = task
             && task.active()
@@ -4009,7 +4013,7 @@ impl Panel {
                     _ => "Send",
                 },
                 Action::Send,
-                enabled && !busy && task_ready,
+                enabled && !busy && task_ready && run.is_none_or(Run::can_send),
                 Glyph::ArrowUp,
                 true,
             )

@@ -66,6 +66,7 @@ pub mod qualify;
 pub mod recipe;
 pub mod record;
 pub mod route;
+pub mod session;
 pub mod snapshot;
 pub mod studio;
 pub mod view;

@@ -229,6 +229,7 @@ impl Coder for FakeCoder {
                 });
             };
             emit(CoderEvent::CoderStarted(coder_events::Started {
+                session: None,
                 turn: 1,
                 project,
                 checkout,

@@ -641,6 +641,7 @@ fn a_failure_comment_links_the_runs_uploaded_artifacts() {
     let bucket = Arc::new(FakeBucket::default());
     let mut record = local_record();
     record.turns.push(local::TurnStart {
+        session: None,
         turn: 1,
         revision: 1,
         provider: "codex".into(),

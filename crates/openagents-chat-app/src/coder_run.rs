@@ -208,6 +208,7 @@ pub struct Run {
     /// draft's images once ([`Run::take_delivered`]).
     delivered: bool,
     lines: VecDeque<Line>,
+    session: Option<route_contract::session::Descriptor>,
     state: State,
     queue: VecDeque<String>,
     /// A message to send once the stop it asked for ends the turn.
@@ -288,6 +289,7 @@ impl Run {
             engine: None,
             delivered: false,
             lines: VecDeque::new(),
+            session: None,
             state: State::Running,
             queue: VecDeque::new(),
             after_stop: None,
@@ -374,6 +376,74 @@ impl Run {
         self.state
     }
 
+    /// The current turn's description, retained even after old rows are evicted.
+    pub fn session(&self) -> Option<&route_contract::session::Descriptor> {
+        self.session.as_ref().filter(|session| {
+            self.task
+                .as_deref()
+                .is_some_and(|task| session.applies_to(task, session.turn))
+        })
+    }
+
+    fn supports(&self, check: impl FnOnce(&route_contract::session::Controls) -> bool) -> bool {
+        // Older task streams have a fixed stop/continue/queue contract. This
+        // compatibility path grants no native provider operations.
+        match &self.session {
+            None => true,
+            Some(_) => self
+                .session()
+                .is_some_and(|session| check(&session.controls)),
+        }
+    }
+
+    pub fn can_stop(&self) -> bool {
+        self.supports(|controls| controls.stop)
+    }
+    pub fn can_queue(&self) -> bool {
+        self.supports(|controls| controls.queue)
+    }
+    fn can_continue(&self) -> bool {
+        self.supports(|controls| controls.continue_task)
+    }
+    fn can_answer(&self) -> bool {
+        self.supports(|controls| controls.answer)
+    }
+
+    /// Whether Send can submit through this task's current composer mode.
+    pub fn can_send(&self) -> bool {
+        match self.mode() {
+            Mode::Send => true,
+            Mode::Queue => self.can_queue() || self.steer_choice().is_some(),
+            Mode::Answer => self.can_answer(),
+        }
+    }
+
+    /// Compact reading information, without adapter or protocol terminology.
+    pub fn session_label(&self) -> Option<String> {
+        let session = self.session()?;
+        let selected = &session.resolved.selection;
+        if selected.provider.is_empty() || selected.model.is_empty() {
+            return None;
+        }
+        let provider = coder_events::provider_name(&serde_json::json!(selected.provider));
+        let using = format!("Using {provider} · {}", clip(&selected.model, 120));
+        Some(match &session.requested {
+            Some(requested)
+                if requested.provider != selected.provider
+                    || (!requested.model.is_empty() && requested.model != selected.model) =>
+            {
+                let provider = coder_events::provider_name(&serde_json::json!(requested.provider));
+                let model = if requested.model.is_empty() {
+                    String::new()
+                } else {
+                    format!(" · {}", clip(&requested.model, 120))
+                };
+                format!("Requested {provider}{model} · {using}")
+            }
+            _ => using,
+        })
+    }
+
     /// A start, stop, or continue is on its way.
     #[must_use]
     pub fn busy(&self) -> bool {
@@ -448,6 +518,7 @@ impl Run {
             || !self.routes_followups()
             || self.due.is_some()
             || self.busy()
+            || !self.can_continue()
         {
             return false;
         }
@@ -465,8 +536,13 @@ impl Run {
     /// The other way to send while Coder works: stop and send.
     #[must_use]
     pub fn steer_choice(&self) -> Option<Choice> {
-        (self.phase == Phase::Following && self.state == State::Running && self.task.is_some())
-            .then_some(Choice::StopAndSend)
+        (self.phase == Phase::Following
+            && self.state == State::Running
+            && self.task.is_some()
+            && self.can_stop()
+            && self.can_continue()
+            && self.supports(|controls| controls.stop_and_send))
+        .then_some(Choice::StopAndSend)
     }
 
     /// The last turn's ending, if it asked for approval.
@@ -539,7 +615,19 @@ impl Run {
         }
     }
 
+    fn supports_request(&self, request: &Request) -> bool {
+        match request {
+            Request::Stop { .. } => self.can_stop(),
+            Request::Continue { .. } if self.state == State::Waiting => self.can_answer(),
+            Request::Continue { .. } => self.can_continue(),
+            _ => true,
+        }
+    }
+
     fn request(&mut self, request: Request) -> Option<(u64, Request)> {
+        if !self.supports_request(&request) {
+            return None;
+        }
         let busy = if mutation(&request) {
             self.busy()
         } else {
@@ -560,14 +648,23 @@ impl Run {
         if self.busy() {
             return None;
         }
-        if let Some(due) = self.due.take() {
+        if self
+            .due
+            .as_ref()
+            .is_some_and(|due| self.supports_request(due))
+            && let Some(due) = self.due.take()
+        {
             return self.request(due);
         }
         let task = self.task.clone()?;
         if self.phase != Phase::Following {
             return None;
         }
-        if self.state != State::Running && !self.pending.values().any(|p| !mutation(p)) {
+        if self.state != State::Running
+            && self.can_continue()
+            && (self.state != State::Waiting || self.can_answer())
+            && !self.pending.values().any(|p| !mutation(p))
+        {
             if let Some(text) = self.after_stop.take() {
                 return self.request(Request::Continue { task, text });
             }
@@ -769,6 +866,28 @@ impl Run {
                     if line.seq <= last || line.task != *task {
                         continue;
                     }
+                    match &line.event {
+                        CoderEvent::CoderStarted(started) => {
+                            self.session = started.session.as_ref().map(|session| {
+                                if session.applies_to(task, started.turn)
+                                    && session.resolved.selection.provider == started.provider
+                                    && session.resolved.selection.model == started.model
+                                {
+                                    session.clone()
+                                } else {
+                                    route_contract::session::Descriptor::default()
+                                }
+                            });
+                        }
+                        CoderEvent::ProviderSwitched(switched) => {
+                            if let Some(session) = &mut self.session
+                                && session.applies_to(task, switched.turn)
+                            {
+                                session.switch_to(switched.to.as_deref());
+                            }
+                        }
+                        _ => {}
+                    }
                     self.lines.push_back(line);
                     changed = true;
                 }
@@ -855,7 +974,7 @@ impl Run {
                 self.request(Request::Stop { task })
             }
             Action::Approve | Action::Deny => {
-                if !self.asking_approval() {
+                if !self.asking_approval() || !self.can_answer() {
                     return None;
                 }
                 let task = self.task.clone()?;
@@ -870,6 +989,9 @@ impl Run {
                 })
             }
             Action::Decide(control) => {
+                if !self.can_answer() {
+                    return None;
+                }
                 self.sync_decision();
                 if self.busy() {
                     return None;
@@ -907,6 +1029,9 @@ impl Run {
                 }
                 match mode {
                     Mode::Queue => {
+                        if !self.can_queue() {
+                            return None;
+                        }
                         if self.queue.len() >= MAX_QUEUED {
                             self.notice = Some(format!(
                                 "Coder holds {MAX_QUEUED} messages for its next turn at most."
@@ -954,6 +1079,12 @@ impl Run {
                 None
             }
             Action::SendQueuedNow(index) => {
+                if (self.state == State::Running && self.steer_choice().is_none())
+                    || (self.state != State::Running && !self.can_continue())
+                    || (self.state == State::Waiting && !self.can_answer())
+                {
+                    return None;
+                }
                 let text = self.queue.remove(index)?;
                 self.revision += 1;
                 if self.state == State::Running {
@@ -1048,6 +1179,9 @@ impl Run {
             anchored.push((at, row));
         }
         let mut rows = Vec::new();
+        if let Some(label) = self.session_label() {
+            rows.push(status("coder-session", &label));
+        }
         // The task's plan, above what the run is doing now (#10471).
         if let Some(items) = self.plan_items() {
             let live = self.state == State::Running;
@@ -1101,7 +1235,7 @@ impl Run {
         // in place of its card.
         self.sync_decision();
         if let Some((seq, flow)) = &self.decision {
-            let panel = flow.view("coder", !self.busy());
+            let panel = flow.view("coder", !self.busy() && self.can_answer());
             let card = format!("coder-{seq}");
             for (key, control) in panel.controls {
                 let action = match control {
@@ -1124,7 +1258,7 @@ impl Run {
                 None => rows.push(panel.node),
             }
         }
-        if self.active() && self.task.is_some() {
+        if self.active() && self.task.is_some() && self.can_stop() {
             rows.push(self.buttons(
                 "coder-stop-row",
                 &[("coder-stop", "Stop Coder", Action::Stop)],
@@ -1178,7 +1312,15 @@ impl Run {
             .iter()
             .map(|(key, label, action)| {
                 self.actions.insert((*key).into(), action.clone());
-                let mut node = button(key, label, enabled);
+                let supported = match action {
+                    Action::Stop => self.can_stop(),
+                    Action::SendQueuedNow(_) if self.state == State::Running => {
+                        self.steer_choice().is_some()
+                    }
+                    Action::SendQueuedNow(_) => self.can_continue(),
+                    _ => true,
+                };
+                let mut node = button(key, label, enabled && supported);
                 node.style.intrinsic_width = Some(true);
                 node
             })

@@ -382,6 +382,9 @@ fn repository_folder(top: &Path) -> Option<PathBuf> {
 /// How one turn started.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TurnStart {
+    /// Frozen with the turn so replay does not read today's engine settings.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session: Option<route_contract::session::Descriptor>,
     pub turn: usize,
     pub revision: u64,
     pub provider: String,
@@ -483,6 +486,7 @@ impl Record {
     pub fn started(&self, turn: usize) -> Option<CoderEvent> {
         let start = self.turns.iter().find(|start| start.turn == turn)?;
         Some(CoderEvent::CoderStarted(Started {
+            session: start.session.clone(),
             turn,
             project: self.project.clone(),
             checkout: self.checkout.clone(),
@@ -495,6 +499,87 @@ impl Record {
             via: LOCAL_HOST.into(),
             runner: start.runner.clone(),
         }))
+    }
+}
+
+/// Describe the configuration the task owner will launch, without probing a
+/// provider or exposing its endpoints, account, or credentials.
+fn session_descriptor(
+    policy: &Policy,
+    order: &[Route],
+    record: &Record,
+    turn: usize,
+) -> route_contract::session::Descriptor {
+    use coder_sdk::session::{self, Controls, Descriptor, NativeSupport, Selection};
+    let configuration = policy.configuration(order);
+    let describe = |provider: &str, model: &str, effort: Option<String>, endpoint: &str| {
+        let (adapter, hooks) = match endpoint {
+            capacity::CLAUDE_SESSION_ENDPOINT => ("claude-cli", None),
+            capacity::CODEX_SESSION_ENDPOINT => ("codex-exec", None),
+            capacity::CLAUDE_SDK_ENDPOINT => {
+                ("claude-sdk", Some(coder_sdk::HookBackend::ClaudeCode))
+            }
+            capacity::CODER_V1_ENDPOINT => ("coder", None),
+            _ => match provider {
+                "claude" | "codex" => ("coder-loop", Some(coder_sdk::HookBackend::CoderLoop)),
+                "grok" => ("acp", Some(coder_sdk::acp_backend("grok-build"))),
+                "devin" => ("acp", Some(coder_sdk::acp_backend("devin-cli"))),
+                "opencode" => ("acp", Some(coder_sdk::acp_backend("opencode"))),
+                _ => ("unknown", None),
+            },
+        };
+        session::backend(
+            Selection {
+                provider: provider.into(),
+                model: model.into(),
+                effort,
+            },
+            adapter,
+            hooks,
+            NativeSupport {
+                start: adapter != "unknown",
+                observe: adapter != "unknown",
+                stop: adapter != "unknown",
+                images: matches!(provider, "claude" | "codex"),
+                ..NativeSupport::default()
+            },
+        )
+    };
+    let resolved = describe(
+        &configuration.provider,
+        &configuration.model,
+        configuration.effort.clone(),
+        &configuration.generation_endpoint,
+    );
+    let mut alternatives = vec![resolved.clone()];
+    alternatives.extend(configuration.fallbacks.iter().map(|route| {
+        describe(
+            &route.provider,
+            &route.model,
+            route.effort.clone(),
+            &route.generation_endpoint,
+        )
+    }));
+    Descriptor {
+        schema: session::SCHEMA.into(),
+        task: record.task.clone(),
+        turn,
+        owner: LOCAL_HOST.into(),
+        checkout: record.worktree.clone(),
+        requested: record.requested.as_ref().map(|provider| Selection {
+            provider: provider.clone(),
+            ..Selection::default()
+        }),
+        resolved,
+        native_session: None,
+        controls: Controls {
+            stop: true,
+            continue_task: true,
+            queue: true,
+            stop_and_send: true,
+            answer: true,
+        },
+        alternatives,
     }
 }
 
@@ -1441,7 +1526,9 @@ impl Local {
         task: &super::Task,
         record: &mut Record,
     ) -> Result<(), String> {
+        let session = session_descriptor(policy, order, record, task.turn());
         record.turns.push(TurnStart {
+            session: Some(session),
             turn: task.turn(),
             revision: task.revision,
             provider: order[0].provider.as_str().into(),
@@ -2822,6 +2909,63 @@ mod tests {
                 grant_digest: "sha256:held".into(),
             })
         }
+    }
+
+    #[test]
+    fn session_description_freezes_fallback_and_actual_engine_configuration() {
+        let dir = tempfile::tempdir().unwrap();
+        let top = repo(dir.path());
+        let mut settings = settings::Coder::default();
+        settings.disabled = vec![Provider::Grok, Provider::Devin, Provider::OpenCode];
+        settings.providers = vec![
+            settings::Choice::new(Provider::Claude),
+            settings::Choice::new(Provider::Codex),
+        ];
+        let local = local(dir.path(), both)
+            .with_settings(settings)
+            .with_launcher(Box::new(Held));
+        let record = local
+            .start_requested(
+                &top,
+                "fix",
+                "fix the fixture",
+                None,
+                &[],
+                Some(Provider::Grok),
+            )
+            .unwrap();
+        let start = record.started(1).unwrap();
+        let CoderEvent::CoderStarted(start) = start else {
+            panic!("start")
+        };
+        let descriptor = start.session.unwrap();
+        assert_eq!(descriptor.requested.as_ref().unwrap().provider, "grok");
+        assert!(descriptor.requested.as_ref().unwrap().model.is_empty());
+        assert_eq!(descriptor.resolved.selection.provider, "claude");
+        assert_eq!(descriptor.resolved.selection.model, start.model);
+        assert_eq!(descriptor.resolved.adapter, "claude-cli");
+        assert!(descriptor.resolved.hooks.is_empty());
+        assert!(!descriptor.resolved.native.resume);
+        assert!(descriptor.controls.continue_task);
+        assert_eq!(
+            self::record(local.store(), &record.task).unwrap().turns[0]
+                .session
+                .as_ref(),
+            Some(&descriptor)
+        );
+        let encoded = serde_json::to_string(&descriptor).unwrap();
+        assert!(!encoded.contains("https://"));
+        // Old records retain their bytes and meaning without a description.
+        let mut legacy = serde_json::to_value(&record).unwrap();
+        legacy["turns"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("session");
+        let legacy: Record = serde_json::from_value(legacy).unwrap();
+        let Some(CoderEvent::CoderStarted(start)) = legacy.started(1) else {
+            panic!("start")
+        };
+        assert!(start.session.is_none());
     }
 
     #[test]

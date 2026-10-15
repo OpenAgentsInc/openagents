@@ -154,6 +154,17 @@ would break consumers.
 and disable unsupported actions before submission. This addresses COM-01/02/08,
 RUN-01/04/07, REM-08, and parts of NAV-08 without replacing task execution.
 
+The first read-only slice is implemented in
+[#11694](https://github.com/OpenAgentsInc/openagents/issues/11694): portable types
+in `route_contract::session`, SDK backend descriptions in `coder_sdk::session`,
+and a description frozen with each local task turn. It reaches the desktop
+through `CoderStarted`, shows the requested and resolved provider/model,
+follows fallback changes, and gates task controls. Older events keep the
+existing task-control contract; absent or unknown new capability fields grant
+no provider-native operations. Executable versions and native session IDs
+remain unknown until observed. Provider installation, catalog refresh, and
+model-picker mutations remain later work.
+
 ### 2. Add a common observation contract and desktop projection
 
 Normalize provider observations near the SDK/backend boundary, then map them

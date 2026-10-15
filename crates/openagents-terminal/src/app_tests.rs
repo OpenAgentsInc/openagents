@@ -64,6 +64,7 @@ fn line(seq: u64, event: CoderEvent) -> Event {
 
 fn started() -> CoderEvent {
     CoderEvent::CoderStarted(Started {
+        session: None,
         turn: 1,
         project: "demo".into(),
         checkout: "/tmp/demo".into(),

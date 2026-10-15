@@ -759,7 +759,7 @@ impl Policy {
 
     /// The grant configuration that starts on `order[0]` and falls back to
     /// the rest. `order` must not be empty.
-    fn configuration(&self, order: &[Route]) -> adapter::Configuration {
+    pub(super) fn configuration(&self, order: &[Route]) -> adapter::Configuration {
         let engine = &self.engine;
         let route = |route: &Route| adapter::Route {
             provider: route.provider.as_str().into(),

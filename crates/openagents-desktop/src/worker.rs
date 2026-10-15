@@ -1199,6 +1199,30 @@ mod tests {
             ("codex", "local")
         );
         assert_eq!(lines[0].thread.as_deref(), Some(chat.as_str()));
+        let description = started
+            .session
+            .as_ref()
+            .expect("the task's SDK description");
+        assert!(description.applies_to(&task, 1));
+        assert_eq!(description.resolved.selection.provider, "codex");
+        assert_eq!(description.resolved.selection.model, started.model);
+        assert!(description.controls.stop);
+        assert!(!description.resolved.native.resume);
+        assert!(description.native_session.is_none());
+        // Exercise the same serialized event and projection the desktop consumes.
+        let lines = serde_json::from_slice(&serde_json::to_vec(&lines).unwrap()).unwrap();
+        let now = std::time::Instant::now();
+        let mut projection = openagents_chat_app::coder_run::Run::follow(&chat, &task, None, now);
+        let (ticket, _) = projection.tick(now).unwrap();
+        projection.outcome(ticket, Ok(Answer::Lines { lines, state }), now);
+        assert!(projection.can_stop());
+        assert!(projection.session_label().unwrap().contains(&started.model));
+        assert!(
+            projection
+                .rows()
+                .iter()
+                .any(|row| row.key == "coder-session")
+        );
         assert_eq!(ask(Run::Stop { task: task.clone() }), Ok(Answer::Stopping));
         let Ok(Answer::Lines { lines, state }) = ask(Run::Poll { task: task.clone() }) else {
             panic!("poll")
