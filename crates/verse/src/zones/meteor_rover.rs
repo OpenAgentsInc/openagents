@@ -78,7 +78,10 @@
 //! A meteor whose flight meets the rover strikes the first solid on it
 //! inelastically; above [`DISRUPTION`] the solid breaks into fragments, and
 //! the energy it took goes off as a burst where it hit. Air drag slows
-//! everything that flies. The hand calculations are in
+//! everything that flies. While a pulse crosses the rover the physics
+//! steps at 21 µs ([`FINE`]) and each joint's load is averaged over
+//! [`WINDOW`] substeps, so the joints feel the pulse's real peak. The hand
+//! calculations are in
 //! `docs/verse/meteor-showcase-handoff.md`.
 //!
 //! # Collisions
@@ -91,8 +94,9 @@
 //! loose parts bounce off the body and pile up on each other. Colliders
 //! are each solid's box on its principal axes, and a capsule along the
 //! axle for a wheel. A part flying faster than 40 m/s meets only the
-//! ground until it slows: it would cross another part within a step; if
-//! it slows inside another piece, the two don't collide until clear.
+//! ground from then on: it would cross another part within a step, and
+//! meeting the others again as it slows, from inside them, would throw
+//! it.
 //!
 //! Native only: the glTF is built into the binary, which the browser build
 //! leaves out.
@@ -143,6 +147,18 @@ pub const DRAG: f64 = 1.2;
 pub const SHIELDED: f64 = 0.5;
 /// How long a burst's wave is followed, s: past every part in reach.
 const BURST_LIFE: f64 = 0.25;
+/// Substeps per step while a blast pulse crosses the rover: 1/240 s in
+/// 200 is 21 µs, short against the pulse's positive phase (0.1–3 ms here),
+/// so joints carry its peak.
+pub const FINE: usize = 200;
+/// Substeps a joint's load is averaged over while stepping finely: 10 ×
+/// 21 µs is 0.21 ms, the order of the rover's parts' own response time
+/// (a 0.3 m aluminium panel's first bending mode is about 1 kHz), so a
+/// joint feels the pulse's peak as the structure passes it on, not each
+/// solver iteration's spike.
+pub const WINDOW: usize = 10;
+/// The longest a burst steps finely, s.
+const FINE_LONGEST: f64 = 0.02;
 /// The share of a pin's shear strength it holds under a sudden blow
 /// (notches, bushings, the eye around it).
 pub const PIN_EFFICIENCY: f64 = 0.15;
@@ -456,7 +472,7 @@ fn parse_glb(bytes: &[u8], spec: &Value) -> Option<Vec<Solid>> {
             mass,
             com,
             frame,
-            inertia: moments.max(DVec3::splat(1e-7)),
+            inertia: moments.max(DVec3::splat(mass * 1e-4)),
             center: (blo + bhi) / 2.0,
             half: ((bhi - blo) / 2.0).max(DVec3::splat(0.003)),
             lo,
@@ -527,6 +543,9 @@ pub struct Link {
     bodies: (usize, usize),
     /// Its anchor on body `a`, body frame.
     anchor: DVec3,
+    /// The impulse and angular impulse it carried since its load was last
+    /// checked, body `a`'s frame.
+    carried: (DVec3, DVec3),
 }
 
 /// What a joint can carry.
@@ -650,12 +669,17 @@ struct Burst {
     at: DVec3,
     charge: f64,
     start: f64,
+    /// Until when its pulse is still crossing the rover: the physics steps
+    /// finely till then.
+    fine_until: f64,
 }
 
 /// The rover on the lot: its world, its bodies (one per solid), its joints,
 /// and what happened to it.
 pub struct Rover {
     world: World,
+    /// The solver's position correction at the full step.
+    erp: f64,
     /// One per body.
     parts: Vec<Part>,
     bursts: Vec<Burst>,
@@ -675,6 +699,7 @@ pub struct Rover {
     /// Which parts are flying faster than [`FAST`].
     fast: Vec<bool>,
     last_dust: f64,
+    #[cfg_attr(not(test), allow(dead_code))]
     ground: ColliderId,
     origin: DVec3,
     caster: DVec3,
@@ -809,6 +834,7 @@ impl Rover {
                     id,
                     bodies: (a, b),
                     anchor: anchor_a,
+                    carried: (DVec3::ZERO, DVec3::ZERO),
                 });
             }
         };
@@ -1014,7 +1040,9 @@ impl Rover {
             })
             .collect();
         let received = vec![DVec3::ZERO; parts.len()];
+        let erp = world.solver.erp;
         let mut rover = Rover {
+            erp,
             world,
             parts,
             bursts: Vec::new(),
@@ -1078,7 +1106,8 @@ impl Rover {
         let q = self.world.bodies()[self.bodies[link.bodies.0].0 as usize]
             .orientation
             .inverse();
-        (q * joint.impulse / STEP, q * joint.angular_impulse / STEP)
+        let dt = self.world.dt;
+        (q * joint.impulse / dt, q * joint.angular_impulse / dt)
     }
 
     /// The pieces: each body's root, from the joints still holding.
@@ -1388,7 +1417,7 @@ impl Rover {
 
     /// Air drag on every part flying through still air this step:
     /// ½ ρ C_d A v², never more than stops it.
-    fn drag(&mut self) {
+    fn drag(&mut self, h: f64) {
         let mut pushes = Vec::new();
         for k in self.live() {
             let b = self.body(k);
@@ -1397,10 +1426,9 @@ impl Rover {
                 continue;
             }
             let along = b.vel / speed;
-            let slow =
-                (0.5 * blast::AIR_DENSITY * DRAG * self.area(k, along) * speed * speed * STEP
-                    / b.mass)
-                    .min(speed);
+            let slow = (0.5 * blast::AIR_DENSITY * DRAG * self.area(k, along) * speed * speed * h
+                / b.mass)
+                .min(speed);
             pushes.push((k, -along * slow * b.mass));
         }
         for (k, impulse) in pushes {
@@ -1471,10 +1499,21 @@ impl Rover {
     /// A charge of `charge` kg TNT going off at `at` now (for tests and
     /// for anything else that explodes near the rover).
     pub fn burst(&mut self, at: DVec3, charge: f64) {
+        // The pulse has passed every solid once the last one's positive
+        // phase is over.
+        let pulse = self
+            .live()
+            .map(|k| {
+                let b = self.body(k);
+                let wave = blast::Wave::at((b.pos - at).length().max(0.05), charge);
+                wave.arrival + wave.duration
+            })
+            .fold(0.0, f64::max);
         self.bursts.push(Burst {
             at,
             charge,
             start: self.elapsed,
+            fine_until: self.elapsed + pulse.min(FINE_LONGEST) + STEP / FINE as f64,
         });
     }
 
@@ -1666,7 +1705,7 @@ impl Rover {
 
     /// The blasts' push in this step on every part: each part's share of
     /// the Friedlander pulse at its distance, through the step, as a force.
-    fn press(&mut self) {
+    fn press(&mut self, h: f64) {
         let mut pushes: Vec<(usize, DVec3, DVec3)> = Vec::new();
         for burst in &self.bursts {
             for k in self.live() {
@@ -1678,8 +1717,8 @@ impl Rover {
                 let dir = away / distance;
                 let wave = blast::Wave::at(distance, burst.charge);
                 // The pulse's window this step, from its arrival.
-                let t1 = self.elapsed + STEP - burst.start - wave.arrival;
-                let t0 = t1 - STEP;
+                let t1 = self.elapsed + h - burst.start - wave.arrival;
+                let t0 = t1 - h;
                 if t1 <= 0.0 || t0 >= wave.duration {
                     continue;
                 }
@@ -1689,12 +1728,12 @@ impl Rover {
                     continue;
                 }
                 // A part behind another, seen from the burst, is shielded (not by
-                // one the burst is inside: what it struck, blown apart).
+                // one the burst is inside or on: what it struck).
                 let shielded = self.live().any(|o| {
                     o != k
                         && self
                             .ray(o, burst.at, dir, distance - 0.05)
-                            .is_some_and(|t| t > 1e-9)
+                            .is_some_and(|t| t > 0.02)
                 });
                 let shade = if shielded { SHIELDED } else { 1.0 };
                 let impulse = dir * per_area * area * shade;
@@ -1714,24 +1753,75 @@ impl Rover {
         self.carry += f64::from(dt.max(0.0));
         while self.carry >= STEP {
             self.carry -= STEP;
-            self.tick(true);
+            self.advance(true);
         }
     }
 
-    fn tick(&mut self, gravity: bool) {
-        self.press();
-        self.drag();
+    /// One step of [`STEP`]: in [`FINE`] substeps while a blast pulse is
+    /// crossing the rover, so the joints feel its real peak, not its
+    /// average over the step.
+    fn advance(&mut self, gravity: bool) {
+        if self.bursts.iter().any(|b| self.elapsed < b.fine_until) {
+            let h = STEP / FINE as f64;
+            // No position correction while the pulse passes (at most
+            // `FINE_LONGEST`): correcting a joint's drift within 21 µs would
+            // read as a load hundreds of times its real one. The velocity
+            // constraints still hold every joint and contact.
+            self.world.solver.erp = 0.0;
+            for i in 0..FINE {
+                let check = (i + 1) % WINDOW == 0 || i + 1 == FINE;
+                let span = h
+                    * (if (i + 1) % WINDOW == 0 {
+                        WINDOW
+                    } else {
+                        FINE % WINDOW
+                    }) as f64;
+                self.tick(h, gravity, check.then_some(span));
+            }
+            self.world.solver.erp = self.erp;
+        } else {
+            self.tick(STEP, gravity, Some(STEP));
+        }
+    }
+
+    /// One physics step of `h` s. When `check` is the time since the
+    /// joints' loads were last checked, each joint's load is what it
+    /// carried over that span, and a joint at its limit breaks.
+    fn tick(&mut self, h: f64, gravity: bool, check: Option<f64>) {
+        self.world.dt = h;
+        self.press(h);
+        self.drag(h);
         let g = if gravity { GRAVITY } else { 0.0 };
         let field = move |_: DVec3, _: DVec3| DVec3::new(0.0, -g, 0.0);
         self.world.step(&field);
-        self.elapsed += STEP;
+        self.elapsed += h;
+        for k in 0..self.links.len() {
+            if self.links[k].broke.is_some() {
+                continue;
+            }
+            let Some(joint) = self.world.joint(self.links[k].id) else {
+                continue;
+            };
+            let q = self.body(self.links[k].bodies.0).orientation.inverse();
+            let (linear, angular) = (q * joint.impulse, q * joint.angular_impulse);
+            let carried = &mut self.links[k].carried;
+            carried.0 += linear;
+            carried.1 += angular;
+        }
+        let Some(span) = check else {
+            return;
+        };
         let mut snapped = false;
         let before = self.pieces();
         for k in 0..self.links.len() {
             if self.links[k].broke.is_some() {
                 continue;
             }
-            let (force, torque) = self.load(&self.links[k]);
+            let (force, torque) = (
+                self.links[k].carried.0 / span,
+                self.links[k].carried.1 / span,
+            );
+            self.links[k].carried = (DVec3::ZERO, DVec3::ZERO);
             let link = &mut self.links[k];
             link.peak_force = link.peak_force.max(force.length());
             link.peak_torque = link.peak_torque.max(torque.length());
@@ -1750,8 +1840,11 @@ impl Rover {
                 snapped = true;
             }
         }
+        // Once a part has flown faster than `FAST` it meets only the ground
+        // from then on: re-enabling its collisions with the other pieces as
+        // it slows, wherever it has flown through them, throws it.
         let fast: Vec<bool> = (0..self.bodies.len())
-            .map(|k| !self.parts[k].gone && self.body(k).vel.length() > FAST)
+            .map(|k| !self.parts[k].gone && (self.fast[k] || self.body(k).vel.length() > FAST))
             .collect();
         let mut changed = fast != self.fast;
         self.fast = fast;
@@ -1845,7 +1938,7 @@ impl Rover {
     #[cfg(test)]
     fn step_free(&mut self, steps: usize) {
         for _ in 0..steps {
-            self.tick(false);
+            self.advance(false);
         }
     }
 }
@@ -1950,7 +2043,7 @@ mod tests {
             (after - before - ledger).length() < 1e-6 * ledger.length().max(1.0),
             "{before} + {ledger} -> {after}"
         );
-        // The parts carry off far less energy than the meteor brought.
+        // The parts carry off less energy than the meteor brought.
         let energy = r.kinetic_energy();
         assert!(
             energy > 0.0 && energy < charge() * blast::TNT / blast::SURFACE * 0.2,
@@ -2042,12 +2135,19 @@ mod tests {
         ];
         for burst in 0..2 {
             let mut r = settled();
-            r.blast(on(&r).as_vec3(), 5.2);
-            assert_eq!(r.bursts.len(), 2);
-            let only = r.bursts[burst];
-            r.bursts = vec![only];
+            // The scene's two bursts, on the deck where the meteor struck it
+            // and on the ground, without the strike: the blast alone.
+            let deck = DVec3::new(-55.92894, 0.49990, 7.95285);
+            let ground = DVec3::new(-56.20319, 0.0, 8.13864);
+            let charge = charge();
+            let share = 0.878_659;
+            if burst == 0 {
+                r.burst(deck, charge * share);
+            } else {
+                r.burst(ground, charge * (1.0 - share));
+            }
             for _ in 0..4 {
-                r.tick(true);
+                r.advance(true);
             }
             for (part, loads) in hand {
                 let got = r.received(part).length();
@@ -2063,6 +2163,33 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// The blast alone, with the deck not struck: the scene's meteor
+    /// landing on the ground 1 m from the deck tears both wings off at
+    /// their mounts; 4 m away they hold (the doc's hand calculation:
+    /// the mounts' bending from the wing's inertia as the deck is thrown).
+    #[test]
+    fn the_blast_alone_tears_the_wings_off_close_by_and_not_far() {
+        let wings = |d: f64| {
+            let mut r = settled();
+            let c = r
+                .poses()
+                .into_iter()
+                .find(|p| p.0 == "chassis")
+                .map_or(DVec3::ZERO, |p| p.1);
+            let toward = DVec3::new(r.caster.x - c.x, 0.0, r.caster.z - c.z).normalize();
+            r.burst(DVec3::new(c.x, r.origin.y, c.z) + toward * d, charge());
+            for _ in 0..60 {
+                r.step(1.0 / 60.0);
+            }
+            assert!(r.fragmented().is_empty());
+            (r.piece_mass("solar_panel_l"), r.piece_mass("solar_panel_r"))
+        };
+        let (l, r) = wings(1.0);
+        assert!(l < 5.0 && r < 5.0, "1 m: {l:.1} and {r:.1} kg");
+        let (l, r) = wings(4.0);
+        assert!(l > 50.0 && r > 50.0, "4 m: {l:.1} and {r:.1} kg");
     }
 
     #[test]

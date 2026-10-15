@@ -360,13 +360,20 @@ third meteor lands on the rover and the sixth beside it. The rover is
 native only (its glTF is built into the binary).
 
 Film: `cargo run --release -p verse --example meteor_rover_capture --
-OUT_DIR --video PATH` with `VERSE_QUALITY=high`. It has close shots round
-the rover, wide shots across the throw from the open lawn after the hit,
-then the scene replayed to just before the hardest hit and filmed four
-times slower. `capture.json` lists the meteor's numbers, what it struck,
-every joint's capacity, peak load and when it broke, and each solid's
-impulse and how far it ended up. `ROVER_TRACE=1` prints where every solid
-is each second.
+OUT_DIR --video PATH` with `VERSE_QUALITY=high`. The scene is
+deterministic, so each part plays it again from the start:
+
+1. the swarm coming down, up to the strike;
+2. the 0.35 s round the strike at 1/20 speed, low and 2.6 m from the
+   rover, with the scene's fire, smoke and glow hidden so each piece can
+   be seen leaving (on-screen note);
+3. the dish and bay, the left wing, and the mast each followed in flight
+   at half speed;
+4. an overhead shot of where the pieces came to rest, labelled.
+
+`capture.json` lists the meteor's numbers, what it struck, every joint's
+capacity, peak load and when it broke, and each solid's impulse and how
+far it ended up.
 
 ### The meteor's blast (2026-10-14)
 
@@ -440,48 +447,73 @@ The test asserts agreement within 20 %; the largest gap is the bay's, at
 14 %. The two bursts push from different points, so a solid's total is
 their vector sum, not the sum of the table's numbers.
 
-**What that does to the bolts.** The dish's 113 N s, arriving in under a
-millisecond, is a force of order 10⁵–10⁶ N on its 4 × M4 seam (16.9 kN in
-shear). In a 1/240 s rigid-body step the seam has to pass the difference
-between what the dish and the bay were pushed with. The step-averaged load
-it recorded in the scene was 9.6 kN with 689 N m of bending, 93 % of its capacity: it
-held, and the dish and bay flew off together. The wing's 2 × M3 mounts are
-4.8 kN in shear, but bending, 36 N m, limits them first. A wing that took
-~15 N s while the deck it is bolted to took 3.5 kN s would load them with
-far more than that. In the scene, though, the mounts go with the deck:
-the strike shatters it (5.3 MJ into 9.65 kg is 550 kJ/kg, 55 × the
-disruption threshold). A wing pushed only by a burst 2.4 m away, with the
-deck intact, moves with the deck and keeps its wings. That is the
-rigid-body answer: the blast pushes wing and deck almost alike, and the
-mounts carry only the difference.
+**The pulse, resolved.** The positive phase lasts 0.03–3 ms, far less
+than the 1/240 s physics step. While a pulse is crossing the rover, each
+step is therefore split into 200 substeps of 21 µs (`FINE`). Each
+joint's load is averaged over 10 substeps (0.21 ms, `WINDOW`), about the
+response time of the rover's parts (a 0.3 m aluminium panel's first
+bending mode is near 1 kHz). Position correction is off during the
+substeps: correcting a joint's drift within 21 µs would read as a load
+hundreds of times its real one. The velocity constraints still hold every
+joint and contact. Two checks guard this: a 1 kPa blast breaks nothing,
+and the impulses still match the hand calculations.
+
+**Do the wings tear off by blast alone?** With the deck not struck, the
+scene's charge goes off on the ground at a distance from the deck. The
+wing mount's load is the wing's inertia as the deck is thrown under it.
+By hand, the bending at the mount is
+M = m_wing × a_deck × r, where:
+
+- m_wing is 1.45 kg;
+- r is 0.15 m, the wing's centre from its mount;
+- a_deck is the rover's total blast impulse ÷ its 87.9 kg ÷ the positive
+  phase td.
+
+The two 2 × M3 mounts hold 36 N m in bending each:
+
+| burst from the deck | Z | td (ms) | rover impulse (N s) | a_deck (m/s²) | M by hand (N m, both mounts) | simulation |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1.0 m | 0.73 | 0.30 | 372 | 13 900 | 3 000 | both wings off; mounts at 2.4–3.7 × |
+| 2.4 m | 1.75 | 1.41 | 91 | 730 | 160 | mounts at 0.9–1.5 ×; a wing hangs on by one mount or its seam to the dish |
+| 4.0 m | 2.92 | 2.25 | 28 | 140 | 31 | both hold, mounts at 0.07–0.2 × |
+
+The hand figure is an upper bound. It treats the deck as rigid and loaded
+evenly through td, and it ignores the wing's own push in the same
+direction. The simulation is 2–5 times lower, but agrees on the outcome:
+the blast alone tears the wings off when the meteor lands within about
+1 m, it is the borderline case at 2.4 m, and they hold at 4 m
+(`the_blast_alone_tears_the_wings_off_close_by_and_not_far`).
 
 **The scene on 2026-10-14** (`capture.json`). The third meteor strikes the
 deck at 4.95 s and shatters it into four fragments, which leave at about
-360 m/s. Every seam to the deck goes with it:
+360 m/s. Every seam to the deck goes with it: both wings, the dish and
+the bay, the mast, the cassette, the hazard cameras, the rails, and the
+rocker shafts.
 
-- both wings (2 × M3 each);
-- the dish and the bay (6 × M5 each);
-- the mast (4 × M4);
-- the sample cassette;
-- the hazard cameras;
-- the rails;
-- the rocker shafts.
+With the pulse resolved, the blast's peaks then break joints across the
+rover:
 
-The blast then breaks these joints by load:
+- the dish's 4 × M4 seam to the bay: 247 kN peak, 22 × its capacity;
+- the lid hinge, at 39 ×;
+- the camera pan, at 2.3 ×;
+- every wheel axle;
+- both bogie and rocker pivots;
+- the batteries;
+- the right wing's inner seams, at 1.8–1.9 × when it lands at 5.48 s.
 
-- the lid hinge, 1.57 × its 2.8 kN pin capacity;
-- both rocker pivots;
-- the camera pan, 1.07 × at 6.22 s, as the mast lands.
-
-In all, 19 of the 72 joints broke. The dish, bay and right wing land about
-19.5 m away, the left wing 7 m away, and the mast with the camera head 5 m
-away. The wheel and rocker sets stay within 2.4 m. The deck's fragments
-go out to 99 m before drag and the ground stop them.
+In all, 35 of the 72 joints broke. The dish, the bay and the right wing
+land 16–21 m away and the mast 12 m away. The wheels scatter 3–17 m. The
+deck's fragments go out to 87 m.
 
 Kept from before: the bolts, the pins, the 4× design floor, and joints that
-break when their interaction ratio reaches 1. New tests cover the blast
+break when their interaction ratio reaches 1. Parts that have once flown
+faster than 40 m/s meet only the ground from then on: re-enabling their
+collisions as they slow, wherever they have flown through other parts,
+threw them. Each solid's inertia is floored at m × 1 cm², so a thin rail
+spinning on a weld stays stable. Tests cover the blast
 curves against Kinney–Graham, the hand calculations, momentum bookkeeping
 (the rover's momentum equals the sum of every blast, strike and drag
-impulse) and energy (the parts carry off less than a fifth of the
-meteor's), a 1 kPa blast that breaks nothing, a direct hit that shatters
-what it strikes, and determinism.
+impulse) and energy (the parts carry off less than half the
+meteor's), a 1 kPa blast that breaks nothing, the blast alone tearing the wings off
+at 1 m but not at 4 m, a direct hit that shatters what it strikes, and
+determinism.
