@@ -3,9 +3,11 @@
 //! Git reads other worktrees' metadata when adding a checkout. Removing a
 //! sibling then can make that read fail. The common Git directory itself is
 //! the advisory lock shared by Coder processes, including linked checkouts:
-//! `flock` on the directory, so the lock leaves no file behind in a
-//! workspace a read-only fan-out promised not to write. Other tools must
-//! cooperate with this lock to get the same guarantee.
+//! on Unix, `flock` on the directory, so the lock leaves no file behind in a
+//! workspace a read-only fan-out promised not to write. Windows cannot open
+//! or lock a directory, so there the lock is the file [`WINDOWS_LOCK_FILE`]
+//! inside the common Git directory — never inside the workspace (#11691).
+//! Other tools must cooperate with this lock to get the same guarantee.
 //!
 //! The checkout parents under `.coder/worktrees` are created when the first
 //! checkout needs them and removed, under the same lock, when the last
@@ -20,6 +22,10 @@ use supervise::{Job, Limits};
 
 const GIT_WALL: Duration = Duration::from_secs(30);
 const LOCK_WALL: Duration = Duration::from_secs(30);
+
+/// The lock file Windows takes inside the common Git directory, which it
+/// cannot lock as a directory.
+pub(crate) const WINDOWS_LOCK_FILE: &str = "coder-worktree.lock";
 
 /// The scratch Git directory seeded inside every checkout, relative to it.
 ///
@@ -51,8 +57,7 @@ impl Worktree {
         // and the returned Worktree is dropped and cleaned up. A cancelled Git
         // add cannot keep changing metadata after we release the lock.
         tokio::task::spawn_blocking(move || {
-            let repository = repository
-                .canonicalize()
+            let repository = crate::plain_path::canonical(&repository)
                 .map_err(|error| format!("cannot resolve repository: {error}"))?;
             let path = locked(&repository, |repository| {
                 let mut parent = repository.to_path_buf();
@@ -65,8 +70,7 @@ impl Worktree {
                             return Err(format!("cannot create worktree parent: {error}"));
                         }
                     }
-                    parent = parent
-                        .canonicalize()
+                    parent = crate::plain_path::canonical(&parent)
                         .map_err(|error| format!("cannot resolve worktree parent: {error}"))?;
                     if !parent.starts_with(repository) {
                         return Err(
@@ -199,7 +203,7 @@ pub(crate) fn locked<T>(
         .build()
         .map_err(|error| format!("cannot supervise Git: {error}"))?;
     let common = runtime.block_on(common_directory(repository))?;
-    let _held = acquire(&common, LOCK_WALL)?;
+    let _held = acquire(&lock_target(&common, cfg!(windows)), LOCK_WALL)?;
     transaction(repository)
 }
 
@@ -338,15 +342,36 @@ pub(crate) async fn common_directory(repository: &Path) -> Result<PathBuf, Strin
     if !path.is_absolute() {
         return Err("Git common directory is not absolute".into());
     }
-    path.canonicalize()
+    crate::plain_path::canonical(&path)
         .map_err(|error| format!("cannot resolve {}: {error}", path.display()))
 }
 
-/// Takes an exclusive `flock` on a directory that already exists — the
-/// common Git directory — so no lock file is written into the workspace.
+/// What the metadata lock of the common Git directory `common` is held
+/// on: the directory itself, or on Windows a file inside it.
+fn lock_target(common: &Path, windows: bool) -> PathBuf {
+    if windows {
+        common.join(WINDOWS_LOCK_FILE)
+    } else {
+        common.to_path_buf()
+    }
+}
+
+/// Takes an exclusive lock on `path`: a directory that already exists —
+/// the common Git directory — or a lock file inside it, created when
+/// missing. Neither writes into the workspace.
 fn acquire(path: &Path, wall: Duration) -> Result<File, String> {
-    let file = File::open(path)
-        .map_err(|error| format!("cannot open worktree lock {}: {error}", path.display()))?;
+    let opened = if path.is_dir() {
+        File::open(path)
+    } else {
+        std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(path)
+    };
+    let file =
+        opened.map_err(|error| format!("cannot open worktree lock {}: {error}", path.display()))?;
     let started = Instant::now();
     loop {
         match file.try_lock() {
@@ -489,9 +514,9 @@ mod tests {
         let linked = Worktree::add(directory.path()).await.unwrap();
         let common = common_directory(directory.path()).await.unwrap();
         assert_eq!(common_directory(linked.path()).await.unwrap(), common);
-        let held = acquire(&common, Duration::ZERO).unwrap();
+        let held = acquire(&lock_target(&common, cfg!(windows)), Duration::ZERO).unwrap();
         let linked_common = common_directory(linked.path()).await.unwrap();
-        assert!(acquire(&linked_common, Duration::ZERO).is_err());
+        assert!(acquire(&lock_target(&linked_common, cfg!(windows)), Duration::ZERO).is_err());
         drop(held);
         linked.close().await.unwrap();
     }
@@ -542,6 +567,35 @@ mod tests {
                 .filter(|line| line.starts_with("worktree "))
                 .count(),
             1
+        );
+    }
+
+    /// Windows locks a file, and that file lives in the common Git
+    /// directory: Git ignores it there, and the workspace stays untouched.
+    #[tokio::test]
+    async fn the_windows_lock_file_lives_inside_the_common_git_directory() {
+        let directory = repository().await;
+        let common = common_directory(directory.path()).await.unwrap();
+        assert_eq!(lock_target(&common, false), common);
+        let file = lock_target(&common, true);
+        assert_eq!(file.parent(), Some(common.as_path()));
+        assert_eq!(file, common.join(WINDOWS_LOCK_FILE));
+        assert!(!file.exists());
+        let held = acquire(&file, Duration::ZERO).unwrap();
+        assert!(file.is_file(), "a missing lock file is created");
+        assert!(acquire(&file, Duration::ZERO).is_err());
+        drop(held);
+        let _next = acquire(&file, RELEASE_WAIT).unwrap();
+        let status = git(directory.path())
+            .args(["status", "--porcelain"])
+            .run()
+            .await;
+        assert_eq!(status.stdout.text, "", "the workspace is untouched");
+        assert!(
+            std::fs::read_dir(directory.path())
+                .unwrap()
+                .all(|entry| entry.unwrap().file_name() == ".git"),
+            "nothing is written beside .git"
         );
     }
 

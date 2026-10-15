@@ -56,8 +56,7 @@ pub async fn add_at(
     let name = name.to_owned();
     let branch = branch.to_owned();
     tokio::task::spawn_blocking(move || {
-        let top = top
-            .canonicalize()
+        let top = crate::plain_path::canonical(&top)
             .map_err(|error| format!("cannot resolve repository: {error}"))?;
         locked(&top, |repository| {
             let path = reserve(repository, &name)?;
@@ -105,8 +104,7 @@ pub async fn attach(repository: &Path, name: &str, branch: &str) -> Result<Branc
     let name = name.to_owned();
     let branch = branch.to_owned();
     tokio::task::spawn_blocking(move || {
-        let top = top
-            .canonicalize()
+        let top = crate::plain_path::canonical(&top)
             .map_err(|error| format!("cannot resolve repository: {error}"))?;
         locked(&top, |repository| {
             let path = reserve(repository, &name)?;
@@ -229,8 +227,7 @@ fn reserve(repository: &Path, name: &str) -> Result<PathBuf, String> {
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
             Err(error) => return Err(format!("cannot create worktree parent: {error}")),
         }
-        parent = parent
-            .canonicalize()
+        parent = crate::plain_path::canonical(&parent)
             .map_err(|error| format!("cannot resolve worktree parent: {error}"))?;
         if !parent.starts_with(repository) {
             return Err("worktree parent leaves the repository through a symlink".into());

@@ -234,8 +234,9 @@ pub fn run(arguments: &[String], json_mode: bool) -> u8 {
     };
     let cwd = match cwd
         .map(PathBuf::from)
-        .map_or_else(std::env::current_dir, |path| path.canonicalize())
-    {
+        .map_or_else(std::env::current_dir, |path| {
+            coder::plain_path::canonical(&path)
+        }) {
         Ok(path) if path.is_dir() => path,
         _ => return print_error("The working directory is unavailable.".into(), json_mode),
     };
@@ -2332,7 +2333,7 @@ mod tests {
         git(&repo, &["commit", "-q", "-m", "start"]);
 
         let boundary = session_checkout(&repo, "abc123", None).unwrap().unwrap();
-        let repo_real = repo.canonicalize().unwrap();
+        let repo_real = coder::plain_path::canonical(&repo).unwrap();
         assert_eq!(boundary.shared, repo_real);
         assert_eq!(
             boundary.worktree,

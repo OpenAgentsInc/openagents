@@ -79,6 +79,7 @@ pub mod identity;
 pub mod local_chain;
 pub mod package;
 pub mod permit;
+pub mod plain_path;
 mod private;
 pub mod product_kb;
 pub mod profiles;
