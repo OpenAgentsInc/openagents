@@ -247,7 +247,10 @@ impl SpaceDriver {
         loop {
             let operation = self
                 .json(Method::GET, &format!("/v1/operations/{id}"), None, None)
-                .await?;
+                .await
+                // The mutation was accepted already. A lookup refusal cannot
+                // establish whether that mutation took effect.
+                .map_err(|_| Error::unknown("couldn't observe the accepted lifecycle operation; check the computer before trying again"))?;
             match field(&operation, "state")? {
                 "succeeded" => return Ok(()),
                 "queued" | "running" => tokio::time::sleep(Duration::from_millis(100)).await,

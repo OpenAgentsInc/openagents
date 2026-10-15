@@ -31,6 +31,7 @@ struct Records {
     stream_mode: &'static str,
     operation_states: std::collections::VecDeque<&'static str>,
     operation_reads: usize,
+    operation_error: Option<u16>,
 }
 #[derive(Clone)]
 struct Mock {
@@ -65,6 +66,13 @@ async fn api(
     r.requests.push(body.clone());
     if path.starts_with("operations/") && method == Method::GET {
         r.operation_reads += 1;
+        if let Some(status) = r.operation_error.take() {
+            return (
+                StatusCode::from_u16(status).unwrap(),
+                "do-not-echo-this-secret",
+            )
+                .into_response();
+        }
         let state = r.operation_states.pop_front().unwrap_or("succeeded");
         return reply(json!({"state":state,"terminal_error":"do-not-echo-this-secret"}));
     }
@@ -318,6 +326,12 @@ async fn lifecycle_waits_for_the_operation_and_never_echoes_its_error() {
     assert_eq!(m.records.lock().unwrap().operation_reads, 3);
     for state in ["failed", "canceled", "expired", "future_state"] {
         m.records.lock().unwrap().operation_states.push_back(state);
+        let result = d.resume(&id).await;
+        assert!(matches!(result, Outcome::Unknown { .. }));
+        assert!(!format!("{result:?}").contains("do-not-echo"));
+    }
+    for status in [403, 404, 500] {
+        m.records.lock().unwrap().operation_error = Some(status);
         let result = d.resume(&id).await;
         assert!(matches!(result, Outcome::Unknown { .. }));
         assert!(!format!("{result:?}").contains("do-not-echo"));
