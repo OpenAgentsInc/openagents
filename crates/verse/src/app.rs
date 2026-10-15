@@ -680,6 +680,12 @@ struct App {
     /// Whether Shift is held while the panel has focus, for Shift+Enter
     /// and Shift+Tab.
     panel_shift: bool,
+    /// The modifiers held, for a panel composer's Ctrl+Enter (Cmd+Enter
+    /// on macOS), which queues for later (#11685).
+    panel_modifiers: winit::keyboard::ModifiersState,
+    /// The studio panels' lines queued for later, oldest first (#11685):
+    /// kept while panels close, and sent once their work is over.
+    studio_queue: Vec<crate::panels::studio::Queued>,
     /// The terminal overlay (T), its panes, and their sessions.
     terminal: crate::terminal::Overlay,
     onboarding_capture: Option<terminal_studio::onboarding::host::Capture>,
@@ -1259,6 +1265,8 @@ impl App {
             studio_panel: None,
             studio_target: None,
             panel_shift: false,
+            panel_modifiers: winit::keyboard::ModifiersState::empty(),
+            studio_queue: Vec::new(),
             terminal: terminal_overlay(options, onboarding.as_ref())?,
             onboarding_capture: onboarding.map(terminal_studio::onboarding::host::Capture::new),
             onboarding_pending: None,
@@ -1535,6 +1543,11 @@ impl App {
         let mut panel =
             crate::panels::Panel::new(&crate::panels::studio::title(&kind, studio.view()));
         let mut controller = crate::panels::studio::Controller::new(kind.clone());
+        controller.show_queue(crate::panels::studio::queued_for(
+            &kind,
+            studio.view(),
+            &self.studio_queue,
+        ));
         controller.fill(
             &mut panel,
             studio.revision(),
@@ -1562,6 +1575,11 @@ impl App {
         let review = self.studio_review(&kind);
         let studio = self.runtime.studio();
         if let (Some(controller), Some(panel)) = (&mut self.studio_panel, &mut self.panel) {
+            controller.show_queue(crate::panels::studio::queued_for(
+                &kind,
+                studio.view(),
+                &self.studio_queue,
+            ));
             controller.fill(
                 panel,
                 studio.revision(),
@@ -1658,6 +1676,13 @@ impl App {
                     }
                 }
                 Effect::Sound(on) => self.runtime.studio_sounds(on),
+                Effect::Queue(queued) => self.studio_queue.push(queued),
+                Effect::Unqueue(index) => {
+                    if index < self.studio_queue.len() {
+                        let queued = self.studio_queue.remove(index);
+                        self.give_back(&queued.text);
+                    }
+                }
             }
         }
         self.fill_studio_panel();
@@ -1668,7 +1693,7 @@ impl App {
     /// **Close**.
     fn panel_intent(&mut self, intent: crate::panels::Intent) {
         use crate::panels::Intent;
-        if matches!(intent, Intent::Action(_) | Intent::Submit) {
+        if matches!(intent, Intent::Action(_) | Intent::Submit | Intent::Queue) {
             self.studio_panel_intent(intent);
             return;
         }
@@ -1700,6 +1725,82 @@ impl App {
         tasks
             .iter()
             .find_map(|task| self.runtime.studio_review(task))
+    }
+
+    /// Puts `text` back in the open panel's composer, after what it holds,
+    /// or else in the console's kept draft.
+    fn give_back(&mut self, text: &str) {
+        let joined = |draft: &str| {
+            if draft.is_empty() {
+                text.to_owned()
+            } else {
+                format!("{draft}\n{text}")
+            }
+        };
+        if let Some(panel) = self.panel.as_mut().filter(|panel| panel.has_composer()) {
+            let draft = joined(panel.draft());
+            panel.set_draft(&draft);
+        } else {
+            self.studio_recall.give_back(text);
+        }
+    }
+
+    /// Sends the queue's oldest line once the work it waits for is over
+    /// (#11685), one a frame, in order. One the host refuses comes back to
+    /// the composer, with why.
+    fn send_due_queued(&mut self) {
+        let Some(first) = self.studio_queue.first() else {
+            return;
+        };
+        let due = self
+            .runtime
+            .studio()
+            .view()
+            .is_some_and(|view| crate::panels::studio::due(first, view));
+        if !due {
+            return;
+        }
+        let queued = self.studio_queue.remove(0);
+        let mut refused = None;
+        for action in &queued.actions {
+            let operation = action.operation(crate::zones::everglade::studio::intents::now());
+            if let Err(error) = self.runtime.studio_send(operation) {
+                refused = Some(format!(
+                    "Not sent (`{}`): {}",
+                    crate::panels::studio::code_word(error.code),
+                    error.message
+                ));
+                break;
+            }
+        }
+        match refused {
+            Some(why) => {
+                // It comes back to the console, as a line that messages
+                // its seat when it was one.
+                let line = match &queued.seat {
+                    Some(seat) => format!("@{seat} {}", queued.text),
+                    None => queued.text.clone(),
+                };
+                let console = self
+                    .studio_panel
+                    .as_ref()
+                    .is_some_and(|c| *c.kind() == StudioPanel::Console);
+                if console {
+                    self.give_back(&line);
+                } else {
+                    self.studio_recall.give_back(&line);
+                }
+                if let Some(controller) = &mut self.studio_panel {
+                    controller.say(format!("{why} It is back in the console."));
+                }
+            }
+            None => {
+                if let Some(controller) = &mut self.studio_panel {
+                    controller.say(format!("Sent from the queue: {}", queued.text));
+                }
+            }
+        }
+        self.fill_studio_panel();
     }
 
     /// Refills an open studio panel when the studio changed, and forgets it
@@ -2049,6 +2150,7 @@ impl App {
             KeyCode::PageDown => vec![Key::PageDown],
             KeyCode::Home => vec![Key::Home],
             KeyCode::End => vec![Key::End],
+            KeyCode::Enter | KeyCode::NumpadEnter if self.queue_modifier() => vec![Key::Queue],
             KeyCode::Enter | KeyCode::NumpadEnter if shift => vec![Key::NewLine],
             KeyCode::Enter | KeyCode::NumpadEnter => vec![Key::Enter],
             KeyCode::Backspace => vec![Key::Backspace],
@@ -2061,6 +2163,13 @@ impl App {
             self.panel_key_one(key);
         }
         true
+    }
+
+    /// Whether the held modifiers make Enter queue for later: Ctrl, or Cmd
+    /// on macOS (#11685).
+    fn queue_modifier(&self) -> bool {
+        self.panel_modifiers.control_key()
+            || (cfg!(target_os = "macos") && self.panel_modifiers.super_key())
     }
 
     /// Hands one key to the open panel: a studio panel's controller takes
@@ -4263,6 +4372,7 @@ impl App {
         self.runtime.update_studio(true, dt);
         self.step_workshop();
         self.studio_signals();
+        self.send_due_queued();
         self.refresh_studio_panel();
         self.step_agents(dt);
         if self.plaza_interactive() {
@@ -5368,6 +5478,7 @@ impl ApplicationHandler for App {
                 }
             }
             WindowEvent::ModifiersChanged(modifiers) => {
+                self.panel_modifiers = modifiers.state();
                 self.terminal.modifiers(modifiers.state());
             }
             WindowEvent::MouseInput { state, button, .. } => {

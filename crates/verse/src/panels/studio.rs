@@ -19,6 +19,11 @@
 //!   Shift+Enter adds a line; and what was sent, or why the host refused
 //!   it, shows in place of the draft. A refused draft comes back. With
 //!   several repositories, a goal asks which one first.
+//! - Enter sends now; a seat reads a message while it works. Ctrl+Enter
+//!   (Cmd+Enter on macOS) queues the console's line or a seat's message
+//!   for later ([`Queued`], #11685): the queue shows in the panel, each
+//!   line can be taken back to edit, and it goes in order once the work
+//!   it waits for is over.
 //! - A seat's agent card shows its state, task, the decisions it owns or
 //!   filed, and its recent log; it pauses, resumes, stops, spawns, and
 //!   messages its seat.
@@ -777,6 +782,70 @@ pub enum Effect {
     Copy(String),
     /// Turn the studio's sounds on or off.
     Sound(bool),
+    /// Keep this in the queue for later.
+    Queue(Queued),
+    /// Take the queued line at this index of the app's queue back into
+    /// the composer, to edit or remove.
+    Unqueue(usize),
+}
+
+/// A line queued for later with Ctrl+Enter (#11685): it goes once the
+/// work it waits for is over ([`due`]), in the order it was queued.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Queued {
+    /// What the person typed: the queue shows it, and taking it back puts
+    /// it in the composer.
+    pub text: String,
+    /// The seat whose work it waits for; `None` waits for every seat.
+    pub seat: Option<String>,
+    /// What it sends, in order.
+    pub actions: Vec<Action>,
+}
+
+/// Whether a seat doing `activity` is in the middle of its work.
+#[must_use]
+pub fn working(activity: Activity) -> bool {
+    matches!(
+        activity,
+        Activity::Reading
+            | Activity::Editing
+            | Activity::Running
+            | Activity::Testing
+            | Activity::Judging
+            | Activity::Thinking
+            | Activity::Waiting
+    )
+}
+
+/// Whether `queued` may go now: the seat it waits for, or every seat, is
+/// not in the middle of its work in `view`.
+#[must_use]
+pub fn due(queued: &Queued, view: &View) -> bool {
+    view.seats
+        .iter()
+        .filter(|seat| queued.seat.as_ref().is_none_or(|name| *name == seat.seat))
+        .all(|seat| !working(seat.activity))
+}
+
+/// The queued lines a panel of `kind` shows, with their indexes in
+/// `queue`: the console shows them all, and a seat's panel those for
+/// its seat.
+#[must_use]
+pub fn queued_for(kind: &PanelKind, view: Option<&View>, queue: &[Queued]) -> Vec<(usize, String)> {
+    let seat = match kind {
+        PanelKind::Console => None,
+        PanelKind::Seat(_) | PanelKind::Desk(_) => match view.and_then(|view| seat(kind, view)) {
+            Some(seat) => Some(seat.seat.clone()),
+            None => return Vec::new(),
+        },
+        _ => return Vec::new(),
+    };
+    queue
+        .iter()
+        .enumerate()
+        .filter(|(_, queued)| seat.is_none() || queued.seat == seat)
+        .map(|(index, queued)| (index, queued.text.clone()))
+        .collect()
 }
 
 fn review_identity(review: Option<&TaskReview>) -> Option<(String, String)> {
@@ -808,6 +877,9 @@ enum Control {
     Open(PanelKind),
     /// Show the podium at this decision.
     AnswerAt(String),
+    /// Take the queued line at this index of the app's queue back into
+    /// the composer.
+    Unqueue(usize),
 }
 
 impl Control {
@@ -828,6 +900,17 @@ pub struct Recall {
     history: Vec<String>,
     draft: String,
     workspace: Option<String>,
+}
+
+impl Recall {
+    /// Puts `text` after the kept draft: a queued line taken back while
+    /// the console is closed.
+    pub fn give_back(&mut self, text: &str) {
+        if !self.draft.is_empty() {
+            self.draft.push('\n');
+        }
+        self.draft.push_str(text);
+    }
 }
 
 /// Something sent from a panel: the text to put back if it is refused,
@@ -881,6 +964,9 @@ pub struct Controller {
     /// diff, and the diff line the last move went to.
     typing: bool,
     cursor: Option<usize>,
+    /// The queued lines this panel shows, with their indexes in the
+    /// app's queue ([`queued_for`]).
+    queued: Vec<(usize, String)>,
 }
 
 impl Controller {
@@ -909,7 +995,14 @@ impl Controller {
             confirm: None,
             typing: false,
             cursor: None,
+            queued: Vec::new(),
         }
+    }
+
+    /// Shows `queued`, from [`queued_for`], at the next
+    /// [`Controller::fill`].
+    pub fn show_queue(&mut self, queued: Vec<(usize, String)>) {
+        self.queued = queued;
     }
 
     /// The panel this controls.
@@ -1251,6 +1344,19 @@ impl Controller {
             }
             PanelKind::Library => {}
         }
+        // What waits in the queue, and a button to take each back.
+        if composer.is_some() {
+            let several = self.queued.len() > 1;
+            for (shown, (index, text)) in self.queued.iter().enumerate() {
+                let label = if several {
+                    format!("Queued for later {}: {text}", shown + 1)
+                } else {
+                    format!("Queued for later: {text}")
+                };
+                rows.push(note(&format!("queued-{shown}"), &label));
+                controls.push(Control::Unqueue(*index));
+            }
+        }
         if let Some((waiting, _)) = &self.confirm
             && self.arming(waiting)
         {
@@ -1293,6 +1399,13 @@ impl Controller {
     /// button carries the number key that picks it.
     fn label(&self, control: &Control, index: usize) -> String {
         match control {
+            Control::Unqueue(index) => {
+                let several = self.queued.len() > 1;
+                match self.queued.iter().position(|(at, _)| at == index) {
+                    Some(shown) if several => format!("Edit queued {}", shown + 1),
+                    _ => "Edit queued".to_owned(),
+                }
+            }
             Control::Act(Action::Pause(_)) => "Pause".to_owned(),
             Control::Act(Action::Resume(_)) => "Resume".to_owned(),
             Control::Act(Action::Stop(_)) => "Stop".to_owned(),
@@ -1345,6 +1458,10 @@ impl Controller {
                 let draft = panel.take_draft();
                 self.submit(&draft, panel, view, review)
             }
+            Intent::Queue => {
+                let draft = panel.take_draft();
+                self.queue(&draft, panel, view, review)
+            }
             Intent::Show(_) | Intent::Close => Vec::new(),
         }
     }
@@ -1392,6 +1509,67 @@ impl Controller {
             Control::Repository(label) => self.pick_repository(&label),
             Control::Open(kind) => vec![Effect::Open(kind)],
             Control::AnswerAt(id) => vec![Effect::Answer(id)],
+            Control::Unqueue(index) => vec![Effect::Unqueue(index)],
+        }
+    }
+
+    /// Ctrl+Enter (#11685): the console's line, or a message to a seat,
+    /// waits in the queue for the work under way to end. Anything else a
+    /// panel takes, a command or an answer, has no work to wait for, so it
+    /// goes now as Enter sends it.
+    fn queue(
+        &mut self,
+        draft: &str,
+        panel: &mut Panel,
+        view: Option<&View>,
+        review: Option<&TaskReview>,
+    ) -> Vec<Effect> {
+        let Some(view) = view else {
+            return self.submit(draft, panel, None, review);
+        };
+        let text = draft.trim().to_owned();
+        let queued = match &self.kind {
+            PanelKind::Console => match intents::console(draft, view, self.workspace.as_deref()) {
+                Console::Act(action) => Some(Queued {
+                    text,
+                    seat: None,
+                    actions: vec![action],
+                }),
+                Console::Spawn { seat, text: said } => {
+                    let mut actions = vec![Action::Resume(seat.clone())];
+                    if let Some(said) = said {
+                        actions.push(Action::Message {
+                            seat: Some(seat),
+                            text: said,
+                        });
+                    }
+                    Some(Queued {
+                        text,
+                        seat: None,
+                        actions,
+                    })
+                }
+                _ => None,
+            },
+            PanelKind::Seat(_) | PanelKind::Desk(_) => seat(&self.kind, view).map(|seat| Queued {
+                seat: Some(seat.seat.clone()),
+                actions: vec![Action::Message {
+                    seat: Some(seat.seat.clone()),
+                    text: text.clone(),
+                }],
+                text,
+            }),
+            _ => None,
+        };
+        match queued {
+            Some(queued) => {
+                if self.kind == PanelKind::Console {
+                    self.remember(draft);
+                    self.completion = None;
+                }
+                vec![Effect::Queue(queued)]
+            }
+            None => self.submit(draft, panel, Some(view), review),
         }
     }
 
@@ -2421,6 +2599,85 @@ mod tests {
             Some(intent) => controller.intent(intent, panel, Some(view), review),
             None => Vec::new(),
         }
+    }
+
+    /// #11685: Enter sends a seat's message now, and Ctrl+Enter queues
+    /// it until the seat's work is over; the queue shows, each line comes
+    /// back to edit, and the console waits for every seat.
+    #[test]
+    fn ctrl_enter_queues_for_later_and_enter_sends_now() {
+        let mut view = studio();
+        view.seats[0].activity = Activity::Editing;
+        let kind = PanelKind::Desk(1);
+        let mut panel = Panel::new("seat");
+        let mut controller = Controller::new(kind.clone());
+        controller.fill(&mut panel, 1, Some(&view), None, &ALL, None);
+        type_in(&mut panel, "Now please");
+        let now = Instant::now();
+        assert_eq!(
+            press_key(&mut controller, &mut panel, Key::Enter, &view, None, now),
+            vec![Effect::Send(Action::Message {
+                seat: Some("ada".into()),
+                text: "Now please".into()
+            })]
+        );
+        type_in(&mut panel, "Then this");
+        let effects = press_key(&mut controller, &mut panel, Key::Queue, &view, None, now);
+        let [Effect::Queue(queued)] = effects.as_slice() else {
+            panic!("queued: {effects:?}");
+        };
+        assert!(panel.draft().is_empty());
+        assert_eq!(queued.seat.as_deref(), Some("ada"));
+        assert!(!due(queued, &view), "it waits while ada works");
+        let queue = vec![queued.clone()];
+        // The queue shows in her panel, and in the console.
+        controller.show_queue(queued_for(&kind, Some(&view), &queue));
+        controller.fill(&mut panel, 2, Some(&view), None, &ALL, None);
+        assert!(format!("{:?}", panel.rows).contains("Queued for later: Then this"));
+        let edit = panel
+            .actions
+            .iter()
+            .position(|(label, _)| label == "Edit queued")
+            .expect("an edit button");
+        assert_eq!(
+            controller.intent(Intent::Action(edit), &mut panel, Some(&view), None),
+            vec![Effect::Unqueue(0)]
+        );
+        assert_eq!(
+            queued_for(&PanelKind::Console, Some(&view), &queue).len(),
+            1
+        );
+        assert!(queued_for(&PanelKind::Decisions, Some(&view), &queue).is_empty());
+        view.seats[0].activity = Activity::Idle;
+        assert!(due(queued, &view), "it goes once her work is over");
+        // A console line waits for every seat.
+        let console = Queued {
+            text: "Add a flag".into(),
+            seat: None,
+            actions: Vec::new(),
+        };
+        assert!(due(&console, &view));
+        view.seats[0].activity = Activity::Thinking;
+        assert!(!due(&console, &view));
+    }
+
+    /// Ctrl+Enter on a command, which has no work to wait for, runs it now.
+    #[test]
+    fn ctrl_enter_on_a_command_runs_it_now() {
+        let view = console_view();
+        let mut panel = Panel::new("console");
+        let mut controller = Controller::new(PanelKind::Console);
+        controller.fill(&mut panel, 1, Some(&view), None, &ALL, None);
+        type_in(&mut panel, "/status");
+        let now = Instant::now();
+        assert!(press_key(&mut controller, &mut panel, Key::Queue, &view, None, now).is_empty());
+        assert!(controller.said.is_some());
+        type_in(&mut panel, "@ada Keep it short");
+        let effects = press_key(&mut controller, &mut panel, Key::Queue, &view, None, now);
+        assert!(
+            matches!(effects.as_slice(), [Effect::Queue(q)] if q.seat.is_none() && q.actions.len() == 1),
+            "{effects:?}"
+        );
     }
 
     fn console_view() -> View {

@@ -330,7 +330,8 @@ pub const HELP: &str = "Plain text starts a goal; `@seat text` messages a seat, 
      take a seat; `/task TASK cancel|retry|prioritize|reassign @seat` changes a task; \
      `/decide` opens the decisions and `/diff` the review; `/status` sums up; `/repos` \
      lists the repositories and `/repo LABEL` picks one; `/clear` and `/sound on|off`. \
-     Tab completes, Up and Down walk the history, and Shift+Enter adds a line.";
+     Enter sends now, Ctrl+Enter queues a line for later, Shift+Enter adds a line, \
+     Tab completes, and Up and Down walk the history.";
 
 /// The console's commands, for completion.
 pub const COMMANDS: [&str; 14] = [

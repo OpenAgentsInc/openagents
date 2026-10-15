@@ -66,8 +66,11 @@ pub enum Intent {
     /// The action at this index of [`Panel::set_actions`]: its owner
     /// carries it out.
     Action(usize),
-    /// Enter in the composer: its owner takes the draft.
+    /// Enter in the composer: its owner takes the draft and sends it now.
     Submit,
+    /// Ctrl+Enter (Cmd+Enter on macOS) in the composer: its owner takes
+    /// the draft and queues it for later (#11685).
+    Queue,
 }
 
 /// A key the window hands a focused panel. Every other key is still
@@ -90,8 +93,17 @@ pub enum Key {
     Enter,
     /// Shift+Enter: a line break in the composer's draft.
     NewLine,
+    /// Ctrl+Enter, or Cmd+Enter on macOS: queue the draft for later.
+    Queue,
     Other,
 }
+
+/// The composer's hint for its send keys (#11685), in the same words
+/// every OpenAgents composer shows.
+#[cfg(target_os = "macos")]
+pub const SEND_HINT: &str = "Enter to send, ⌘+Enter to queue for later";
+#[cfg(not(target_os = "macos"))]
+pub const SEND_HINT: &str = "Enter to send, Ctrl+Enter to queue for later";
 
 /// The longest draft the composer holds, in bytes: the longest text a
 /// studio intent carries.
@@ -383,7 +395,7 @@ impl Panel {
             }
             Intent::Close => false,
             // The panel's owner carries these out.
-            Intent::Action(_) | Intent::Submit => true,
+            Intent::Action(_) | Intent::Submit | Intent::Queue => true,
         }
     }
 
@@ -510,6 +522,9 @@ impl Panel {
                 Key::Enter => {
                     return (!self.draft.trim().is_empty()).then_some(Intent::Submit);
                 }
+                Key::Queue => {
+                    return (!self.draft.trim().is_empty()).then_some(Intent::Queue);
+                }
                 _ => {}
             }
         }
@@ -527,7 +542,8 @@ impl Panel {
             Key::PageDown => self.scroll(-page),
             Key::Home => self.scroll(f32::MAX / 4.0),
             Key::End => self.scroll(-f32::MAX / 4.0),
-            Key::Char(_) | Key::Backspace | Key::Enter | Key::NewLine | Key::Other => {}
+            Key::Char(_) | Key::Backspace | Key::Enter | Key::NewLine | Key::Queue | Key::Other => {
+            }
         }
         None
     }
@@ -841,10 +857,9 @@ impl Panel {
                 n => format!("{n} entries"),
             },
         };
+        let typing = format!("{SEND_HINT} · Esc returns to the world");
         let hint = match (self.focused, self.composer.is_some()) {
-            (true, true) => {
-                "Type, then Enter sends · Shift+Enter adds a line · Esc returns to the world"
-            }
+            (true, true) => typing.as_str(),
             (true, false) => "Esc returns to the world · Tab switches",
             (false, true) => "Click the panel to read it or type",
             (false, false) => "Click the panel to read it",
@@ -1206,6 +1221,16 @@ mod tests {
     }
 
     #[test]
+    fn the_composer_hint_names_the_send_keys() {
+        let expected = if cfg!(target_os = "macos") {
+            "Enter to send, ⌘+Enter to queue for later"
+        } else {
+            "Enter to send, Ctrl+Enter to queue for later"
+        };
+        assert_eq!(SEND_HINT, expected);
+    }
+
+    #[test]
     fn the_composer_takes_typed_text_and_its_owner_takes_the_actions() {
         let mut panel = sample();
         panel.set_composer(Some("Type a goal"));
@@ -1232,6 +1257,13 @@ mod tests {
             assert!(panel.key(key).is_none());
         }
         assert_eq!(panel.draft(), "a\nb");
+        // Ctrl+Enter queues the draft for later (#11685); a blank one
+        // queues nothing.
+        assert_eq!(panel.key(Key::Queue), Some(Intent::Queue));
+        assert!(panel.apply(Intent::Queue), "the panel stays open");
+        panel.set_draft(" ");
+        assert_eq!(panel.key(Key::Queue), None);
+        panel.set_draft("a\nb");
         panel.set_draft("@ada ");
         assert_eq!(panel.draft(), "@ada ");
         // Without a composer, typing does nothing.
