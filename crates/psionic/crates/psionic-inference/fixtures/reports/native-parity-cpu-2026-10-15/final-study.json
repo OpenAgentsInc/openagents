@@ -1,0 +1,438 @@
+{
+  "schema": "psionic.native.cpu.parity.final-study.v1",
+  "issue": 11723,
+  "date": "2026-10-15",
+  "qualified_timed_calls": 88000,
+  "intermediate_timed_calls": 12000,
+  "previous_study_timed_calls": 20000,
+  "total_retained_timed_calls": 120000,
+  "summary": [
+    {
+      "model": "mnist-12",
+      "bucket": "full",
+      "engine": "ort",
+      "threads": 1,
+      "p50_ms": 0.022012499999999997,
+      "p50_range_ms": [
+        0.021963,
+        0.022062
+      ],
+      "p99_range_ms": [
+        0.027613000000000002,
+        0.027649
+      ],
+      "requests_per_second_range": [
+        44389.55468855949,
+        44651.8303667141
+      ],
+      "resident_bytes_range": [
+        31449088,
+        31481856
+      ],
+      "maximum_reference_logit_error": 0.0
+    },
+    {
+      "model": "mnist-12",
+      "bucket": "full",
+      "engine": "native",
+      "threads": 1,
+      "p50_ms": 0.0150565,
+      "p50_range_ms": [
+        0.015017,
+        0.015096
+      ],
+      "p99_range_ms": [
+        0.022603,
+        0.022708
+      ],
+      "requests_per_second_range": [
+        64708.043487402996,
+        65104.0670608349
+      ],
+      "resident_bytes_range": [
+        8704000,
+        8785920
+      ],
+      "maximum_reference_logit_error": 3.814697265625e-05
+    },
+    {
+      "model": "mnist-12",
+      "bucket": "full",
+      "engine": "ort",
+      "threads": 4,
+      "p50_ms": 0.015893,
+      "p50_range_ms": [
+        0.015811000000000002,
+        0.015975
+      ],
+      "p99_range_ms": [
+        0.019926,
+        0.020315
+      ],
+      "requests_per_second_range": [
+        55342.95896077745,
+        62389.16681495012
+      ],
+      "resident_bytes_range": [
+        31555584,
+        31645696
+      ],
+      "maximum_reference_logit_error": 0.0
+    },
+    {
+      "model": "mnist-12",
+      "bucket": "full",
+      "engine": "native",
+      "threads": 4,
+      "p50_ms": 0.015088500000000001,
+      "p50_range_ms": [
+        0.015085000000000001,
+        0.015092000000000001
+      ],
+      "p99_range_ms": [
+        0.017912,
+        0.018056000000000003
+      ],
+      "requests_per_second_range": [
+        65691.38823015937,
+        65742.29450508612
+      ],
+      "resident_bytes_range": [
+        8785920,
+        8892416
+      ],
+      "maximum_reference_logit_error": 3.814697265625e-05
+    },
+    {
+      "model": "s1-llm-auto-router",
+      "bucket": "512",
+      "engine": "native",
+      "threads": 4,
+      "p50_ms": 66.0572575,
+      "p50_range_ms": [
+        66.054564,
+        66.05995100000001
+      ],
+      "p99_range_ms": [
+        73.77903900000001,
+        78.57552
+      ],
+      "requests_per_second_range": [
+        15.01447817167166,
+        15.063189385586718
+      ],
+      "resident_bytes_range": [
+        309854208,
+        327647232
+      ],
+      "maximum_reference_logit_error": 5.0067901611328125e-06
+    },
+    {
+      "model": "s1-llm-auto-router",
+      "bucket": "512",
+      "engine": "ort",
+      "threads": 4,
+      "p50_ms": 81.106604,
+      "p50_range_ms": [
+        80.93876399999999,
+        81.274444
+      ],
+      "p99_range_ms": [
+        96.16644000000001,
+        101.72302499999999
+      ],
+      "requests_per_second_range": [
+        12.231235932592048,
+        12.26436347081529
+      ],
+      "resident_bytes_range": [
+        312545280,
+        318083072
+      ],
+      "maximum_reference_logit_error": 0.0
+    }
+  ],
+  "router_512_rounds": [
+    {
+      "execution": {
+        "cpu_fallback": false,
+        "device": "cpu",
+        "engine": "native",
+        "precision": "uint8-embedding/f32",
+        "provider": "psionic-cpu",
+        "runtime_sha256": null,
+        "runtime_version": "1.0.0-rc.22",
+        "threads": 4
+      },
+      "resident_bytes": 310239232,
+      "repetition": 0,
+      "samples": 1000,
+      "process_batches": 10,
+      "p50_ms": 66.05995100000001,
+      "p95_ms": 69.26124999999999,
+      "p99_ms": 78.57552,
+      "requests_per_second": 15.01447817167166,
+      "max_reference_distance": 5.0067901611328125e-06
+    },
+    {
+      "execution": {
+        "cpu_fallback": false,
+        "device": "cpu",
+        "engine": "ort",
+        "precision": "model-defined",
+        "provider": "CPUExecutionProvider",
+        "runtime_sha256": "aa4079d18f4ea7a5f3a94d80cd4bbe0f2740436626622d64d793803a20381083",
+        "runtime_version": "ORT Build Info: git-branch=HEAD, git-commit-id=45de2a8b06, fp8-kv-cache=1, build type=Release",
+        "threads": 4
+      },
+      "resident_bytes": 314572800,
+      "repetition": 0,
+      "samples": 1000,
+      "process_batches": 10,
+      "p50_ms": 81.274444,
+      "p95_ms": 83.820267,
+      "p99_ms": 96.16644000000001,
+      "requests_per_second": 12.231235932592048,
+      "max_reference_distance": 0.0
+    },
+    {
+      "execution": {
+        "cpu_fallback": false,
+        "device": "cpu",
+        "engine": "native",
+        "precision": "uint8-embedding/f32",
+        "provider": "psionic-cpu",
+        "runtime_sha256": null,
+        "runtime_version": "1.0.0-rc.22",
+        "threads": 4
+      },
+      "resident_bytes": 310235136,
+      "repetition": 1,
+      "samples": 1000,
+      "process_batches": 10,
+      "p50_ms": 66.054564,
+      "p95_ms": 68.20606,
+      "p99_ms": 73.77903900000001,
+      "requests_per_second": 15.063189385586718,
+      "max_reference_distance": 5.0067901611328125e-06
+    },
+    {
+      "execution": {
+        "cpu_fallback": false,
+        "device": "cpu",
+        "engine": "ort",
+        "precision": "model-defined",
+        "provider": "CPUExecutionProvider",
+        "runtime_sha256": "aa4079d18f4ea7a5f3a94d80cd4bbe0f2740436626622d64d793803a20381083",
+        "runtime_version": "ORT Build Info: git-branch=HEAD, git-commit-id=45de2a8b06, fp8-kv-cache=1, build type=Release",
+        "threads": 4
+      },
+      "resident_bytes": 312676352,
+      "repetition": 1,
+      "samples": 1000,
+      "process_batches": 10,
+      "p50_ms": 80.93876399999999,
+      "p95_ms": 83.09079299999999,
+      "p99_ms": 101.72302499999999,
+      "requests_per_second": 12.26436347081529,
+      "max_reference_distance": 0.0
+    }
+  ],
+  "relative_512": [
+    {
+      "repetition": 0,
+      "p50_native_over_ort": 0.812801020207533,
+      "p99_native_over_ort": 0.8170783903407466,
+      "native_faster_at_both": true
+    },
+    {
+      "repetition": 1,
+      "p50_native_over_ort": 0.8161054201420719,
+      "p99_native_over_ort": 0.7252934033371502,
+      "native_faster_at_both": true
+    }
+  ],
+  "concurrent_router": [
+    {
+      "engine": "native",
+      "instances": 4,
+      "threads_per_instance": 1,
+      "bucket": "route-v1",
+      "maximum_tokens": 34,
+      "p50_range_ms": [
+        10.424959,
+        11.064829
+      ],
+      "p99_range_ms": [
+        16.395169000000003,
+        17.024282000000003
+      ],
+      "requests_per_second_range": [
+        346.1725950613096,
+        366.75429822962735
+      ],
+      "memory_snapshots": [
+        {
+          "peak_resident_bytes": 1361485824,
+          "resident_bytes": 1249271808
+        },
+        {
+          "peak_resident_bytes": 1361477632,
+          "resident_bytes": 1249394688
+        }
+      ]
+    },
+    {
+      "engine": "ort",
+      "instances": 4,
+      "threads_per_instance": 1,
+      "bucket": "route-v1",
+      "maximum_tokens": 34,
+      "p50_range_ms": [
+        10.882009,
+        11.806422000000001
+      ],
+      "p99_range_ms": [
+        16.940212,
+        21.240015
+      ],
+      "requests_per_second_range": [
+        314.81774282387164,
+        340.58983221806466
+      ],
+      "memory_snapshots": [
+        {
+          "peak_resident_bytes": 1071181824,
+          "resident_bytes": 1058607104
+        },
+        {
+          "peak_resident_bytes": 1064796160,
+          "resident_bytes": 1047334912
+        }
+      ]
+    }
+  ],
+  "source_snapshots": {
+    "digit": {
+      "source_commit": "27e73bff47b38f75bc591db5b48ce5ba44bcef77",
+      "source_sha256": {
+        "crates/psionic/crates/psionic-backend-cuda/src/digit.rs": "ff95f54b9aa635c42799120322e789e5b8407060c7b0570afdacc17a9a641757",
+        "crates/psionic/crates/psionic-backend-cuda/src/kernels/digit.cu": "e23be040abcbe7038216f265937e4446dea5b79d43df43a2eda6359d0ae01799",
+        "crates/psionic/crates/psionic-backend-cuda/src/kernels/digit_stub.c": "ee050ff2933aa68281f36e158f56e928a62b0db1ba54b24b28e8238220d74970",
+        "crates/psionic/crates/psionic-backend-metal/src/kernels/small_models.metal": "5be5aa0188a903ae00fa84f41cd11d1487ea88c7b94b1d5987ae6a7648f64f3f",
+        "crates/psionic/crates/psionic-backend-metal/src/small_models.rs": "ce6b2f4f4e9c36e11efa650ce58711742e2c56f04a39acad4f7e5e80abbab734",
+        "crates/psionic/crates/psionic-inference/src/artifacts.rs": "fad7846b7a40041383a4f4bc35b55eaf59bef4017f90d295f492227eb36a2dc3",
+        "crates/psionic/crates/psionic-inference/src/bin/psionic-model-bench.rs": "1f1a8e603fb77ee5754f2c52ecbb94af50a798497f6aeaa112f7d85e1667e09d",
+        "crates/psionic/crates/psionic-inference/src/bin/psionic-small-model-bench.rs": "835484bb70e963a0eb7708ffa9766f7fa73bc55d0c4f5d27d937e728250c546c",
+        "crates/psionic/crates/psionic-inference/src/buffers.rs": "3068c2957a344e07a9999f5ebcc8da4e4f0413cb3c6650fe1fe67a6225579b9b",
+        "crates/psionic/crates/psionic-inference/src/cpu.rs": "e257c9f3e74c50c0103cbea6f1238808c45df249ae8e3e4946363df191ea290d",
+        "crates/psionic/crates/psionic-inference/src/dense_accelerator.rs": "d68bda4cc07d996f3a8cfebe5fb2c390b299ddfdcfdd147ac18d9b640f6440dc",
+        "crates/psionic/crates/psionic-inference/src/http.rs": "60b12f931c51a32117b4495eb770e7d9e9593e011b61b07b8d2b9c033873d996",
+        "crates/psionic/crates/psionic-inference/src/lib.rs": "ea9294a0fb22a4dd9ca30dadc1467ae0d562dafb7821dda2c241eddade55a5a4",
+        "crates/psionic/crates/psionic-inference/src/models/mnist/cuda.rs": "da887fe1861970856daa16262a937c879c2d05fe5aad08010c2199dabc57c02a",
+        "crates/psionic/crates/psionic-inference/src/models/mnist/metal.rs": "f87ea9058c637f0edc9d911e49e7bf9654e0d2a0c8c2f4ff751ab6d99a204c6a",
+        "crates/psionic/crates/psionic-inference/src/models/mnist/simd.rs": "50640ff0798bac55b4ff29205495cd20aa2a2baf18a507ed7e1ff6b4d98bbcc4",
+        "crates/psionic/crates/psionic-inference/src/models/mnist.rs": "fe1dc4ae122069825ad2742dbdd86545b50e46da906f089f5c41626954620f5d",
+        "crates/psionic/crates/psionic-inference/src/models/mod.rs": "8857db6792199a521eb072dabd93296f57668d913c6eb254da03f1e2b84f1c17",
+        "crates/psionic/crates/psionic-inference/src/models/potion.rs": "0228b17cd4ea981d3b45183264bcabd0a30ddfcfcd8d30346c1c1b90d87f4fd7",
+        "crates/psionic/crates/psionic-inference/src/modernbert/cuda.rs": "703b85ea122370ea6f82a8235d255dd4e7974bcabb3b76fae77208971b1cbb1f",
+        "crates/psionic/crates/psionic-inference/src/modernbert/metal.rs": "cfeaac6e04f7780b649a2d2194dcfb3cd2a92ff913faa8466772ebc308b93382",
+        "crates/psionic/crates/psionic-inference/src/modernbert/simd.rs": "54da86738ebdc163d240cc32167c6c93985cd9a3326b483982b8fd7982d0e438",
+        "crates/psionic/crates/psionic-inference/src/modernbert.rs": "56b5c80bf221f3f63c169801529fc03e7345c4e0f74c99c5c19e4849433f6b1d",
+        "crates/psionic/crates/psionic-inference/src/ort_engine.rs": "c50336a454a77730571f1b9e59b8626dc161092ad2224050d593c8569a5b2631",
+        "crates/psionic/crates/psionic-inference/src/router.rs": "4e2c2edcdcd4cac56790da31aa6f3d988c02c3149863f1e15d02bf7fbb0281a7",
+        "crates/psionic/crates/psionic-inference/src/service.rs": "80b8acd9668cb1d21ef216abe012ea00927526f54ba89acb11c55ff0c73c3c07"
+      },
+      "published_source_commit": "65e7af581b5574ed195e9316c520ebf1d1874466"
+    },
+    "concurrent_router": {
+      "source_commit": "9cd4d1d669d5a5abcc08f384f97c089c7c37f1ff",
+      "source_sha256": {
+        "crates/psionic/crates/psionic-backend-cuda/src/digit.rs": "ff95f54b9aa635c42799120322e789e5b8407060c7b0570afdacc17a9a641757",
+        "crates/psionic/crates/psionic-backend-cuda/src/kernels/digit.cu": "e23be040abcbe7038216f265937e4446dea5b79d43df43a2eda6359d0ae01799",
+        "crates/psionic/crates/psionic-backend-cuda/src/kernels/digit_stub.c": "ee050ff2933aa68281f36e158f56e928a62b0db1ba54b24b28e8238220d74970",
+        "crates/psionic/crates/psionic-backend-metal/src/kernels/small_models.metal": "5be5aa0188a903ae00fa84f41cd11d1487ea88c7b94b1d5987ae6a7648f64f3f",
+        "crates/psionic/crates/psionic-backend-metal/src/small_models.rs": "ce6b2f4f4e9c36e11efa650ce58711742e2c56f04a39acad4f7e5e80abbab734",
+        "crates/psionic/crates/psionic-inference/src/artifacts.rs": "fad7846b7a40041383a4f4bc35b55eaf59bef4017f90d295f492227eb36a2dc3",
+        "crates/psionic/crates/psionic-inference/src/bin/psionic-model-bench.rs": "1f1a8e603fb77ee5754f2c52ecbb94af50a798497f6aeaa112f7d85e1667e09d",
+        "crates/psionic/crates/psionic-inference/src/bin/psionic-small-model-bench.rs": "835484bb70e963a0eb7708ffa9766f7fa73bc55d0c4f5d27d937e728250c546c",
+        "crates/psionic/crates/psionic-inference/src/buffers.rs": "3068c2957a344e07a9999f5ebcc8da4e4f0413cb3c6650fe1fe67a6225579b9b",
+        "crates/psionic/crates/psionic-inference/src/cpu.rs": "5d7ace3c5b6ee42cc9a382af5d98fcc1810f049cc486c4bf69a2a60de1cf17d6",
+        "crates/psionic/crates/psionic-inference/src/dense_accelerator.rs": "d68bda4cc07d996f3a8cfebe5fb2c390b299ddfdcfdd147ac18d9b640f6440dc",
+        "crates/psionic/crates/psionic-inference/src/http.rs": "60b12f931c51a32117b4495eb770e7d9e9593e011b61b07b8d2b9c033873d996",
+        "crates/psionic/crates/psionic-inference/src/lib.rs": "ea9294a0fb22a4dd9ca30dadc1467ae0d562dafb7821dda2c241eddade55a5a4",
+        "crates/psionic/crates/psionic-inference/src/models/mnist/cuda.rs": "da887fe1861970856daa16262a937c879c2d05fe5aad08010c2199dabc57c02a",
+        "crates/psionic/crates/psionic-inference/src/models/mnist/metal.rs": "f87ea9058c637f0edc9d911e49e7bf9654e0d2a0c8c2f4ff751ab6d99a204c6a",
+        "crates/psionic/crates/psionic-inference/src/models/mnist/simd.rs": "50640ff0798bac55b4ff29205495cd20aa2a2baf18a507ed7e1ff6b4d98bbcc4",
+        "crates/psionic/crates/psionic-inference/src/models/mnist.rs": "fe1dc4ae122069825ad2742dbdd86545b50e46da906f089f5c41626954620f5d",
+        "crates/psionic/crates/psionic-inference/src/models/mod.rs": "8857db6792199a521eb072dabd93296f57668d913c6eb254da03f1e2b84f1c17",
+        "crates/psionic/crates/psionic-inference/src/models/potion.rs": "0228b17cd4ea981d3b45183264bcabd0a30ddfcfcd8d30346c1c1b90d87f4fd7",
+        "crates/psionic/crates/psionic-inference/src/modernbert/cuda.rs": "703b85ea122370ea6f82a8235d255dd4e7974bcabb3b76fae77208971b1cbb1f",
+        "crates/psionic/crates/psionic-inference/src/modernbert/metal.rs": "cfeaac6e04f7780b649a2d2194dcfb3cd2a92ff913faa8466772ebc308b93382",
+        "crates/psionic/crates/psionic-inference/src/modernbert/simd.rs": "54da86738ebdc163d240cc32167c6c93985cd9a3326b483982b8fd7982d0e438",
+        "crates/psionic/crates/psionic-inference/src/modernbert.rs": "56b5c80bf221f3f63c169801529fc03e7345c4e0f74c99c5c19e4849433f6b1d",
+        "crates/psionic/crates/psionic-inference/src/ort_engine.rs": "c50336a454a77730571f1b9e59b8626dc161092ad2224050d593c8569a5b2631",
+        "crates/psionic/crates/psionic-inference/src/router.rs": "4e2c2edcdcd4cac56790da31aa6f3d988c02c3149863f1e15d02bf7fbb0281a7",
+        "crates/psionic/crates/psionic-inference/src/service.rs": "80b8acd9668cb1d21ef216abe012ea00927526f54ba89acb11c55ff0c73c3c07"
+      },
+      "published_source_commit": "768491bcf5b00d4e1dcfa801c4006c6ed33c5d98"
+    },
+    "cache_blocked_router": {
+      "source_commit": "3f8adb7cc40bbef1aa49176049781aee12a2a420",
+      "source_sha256": {
+        "crates/psionic/crates/psionic-backend-cuda/src/digit.rs": "ff95f54b9aa635c42799120322e789e5b8407060c7b0570afdacc17a9a641757",
+        "crates/psionic/crates/psionic-backend-cuda/src/kernels/digit.cu": "e23be040abcbe7038216f265937e4446dea5b79d43df43a2eda6359d0ae01799",
+        "crates/psionic/crates/psionic-backend-cuda/src/kernels/digit_stub.c": "ee050ff2933aa68281f36e158f56e928a62b0db1ba54b24b28e8238220d74970",
+        "crates/psionic/crates/psionic-backend-metal/src/kernels/small_models.metal": "5be5aa0188a903ae00fa84f41cd11d1487ea88c7b94b1d5987ae6a7648f64f3f",
+        "crates/psionic/crates/psionic-backend-metal/src/small_models.rs": "ce6b2f4f4e9c36e11efa650ce58711742e2c56f04a39acad4f7e5e80abbab734",
+        "crates/psionic/crates/psionic-inference/src/artifacts.rs": "fad7846b7a40041383a4f4bc35b55eaf59bef4017f90d295f492227eb36a2dc3",
+        "crates/psionic/crates/psionic-inference/src/bin/psionic-model-bench.rs": "1f1a8e603fb77ee5754f2c52ecbb94af50a798497f6aeaa112f7d85e1667e09d",
+        "crates/psionic/crates/psionic-inference/src/bin/psionic-small-model-bench.rs": "835484bb70e963a0eb7708ffa9766f7fa73bc55d0c4f5d27d937e728250c546c",
+        "crates/psionic/crates/psionic-inference/src/buffers.rs": "3068c2957a344e07a9999f5ebcc8da4e4f0413cb3c6650fe1fe67a6225579b9b",
+        "crates/psionic/crates/psionic-inference/src/cpu.rs": "5d7ace3c5b6ee42cc9a382af5d98fcc1810f049cc486c4bf69a2a60de1cf17d6",
+        "crates/psionic/crates/psionic-inference/src/dense_accelerator.rs": "d68bda4cc07d996f3a8cfebe5fb2c390b299ddfdcfdd147ac18d9b640f6440dc",
+        "crates/psionic/crates/psionic-inference/src/http.rs": "60b12f931c51a32117b4495eb770e7d9e9593e011b61b07b8d2b9c033873d996",
+        "crates/psionic/crates/psionic-inference/src/lib.rs": "ea9294a0fb22a4dd9ca30dadc1467ae0d562dafb7821dda2c241eddade55a5a4",
+        "crates/psionic/crates/psionic-inference/src/models/mnist/cuda.rs": "da887fe1861970856daa16262a937c879c2d05fe5aad08010c2199dabc57c02a",
+        "crates/psionic/crates/psionic-inference/src/models/mnist/metal.rs": "f87ea9058c637f0edc9d911e49e7bf9654e0d2a0c8c2f4ff751ab6d99a204c6a",
+        "crates/psionic/crates/psionic-inference/src/models/mnist/simd.rs": "50640ff0798bac55b4ff29205495cd20aa2a2baf18a507ed7e1ff6b4d98bbcc4",
+        "crates/psionic/crates/psionic-inference/src/models/mnist.rs": "fe1dc4ae122069825ad2742dbdd86545b50e46da906f089f5c41626954620f5d",
+        "crates/psionic/crates/psionic-inference/src/models/mod.rs": "8857db6792199a521eb072dabd93296f57668d913c6eb254da03f1e2b84f1c17",
+        "crates/psionic/crates/psionic-inference/src/models/potion.rs": "0228b17cd4ea981d3b45183264bcabd0a30ddfcfcd8d30346c1c1b90d87f4fd7",
+        "crates/psionic/crates/psionic-inference/src/modernbert/cuda.rs": "703b85ea122370ea6f82a8235d255dd4e7974bcabb3b76fae77208971b1cbb1f",
+        "crates/psionic/crates/psionic-inference/src/modernbert/metal.rs": "cfeaac6e04f7780b649a2d2194dcfb3cd2a92ff913faa8466772ebc308b93382",
+        "crates/psionic/crates/psionic-inference/src/modernbert/simd.rs": "b9045cf2d523e1efb1106ee1d7dbbe9ab171d71d9178c957ae31c43f525cc8bd",
+        "crates/psionic/crates/psionic-inference/src/modernbert.rs": "d310d717bc2f3f038693d4c45d40c16932d0754f57bcc9ca47947e8a4302ae6f",
+        "crates/psionic/crates/psionic-inference/src/ort_engine.rs": "c50336a454a77730571f1b9e59b8626dc161092ad2224050d593c8569a5b2631",
+        "crates/psionic/crates/psionic-inference/src/router.rs": "4e2c2edcdcd4cac56790da31aa6f3d988c02c3149863f1e15d02bf7fbb0281a7",
+        "crates/psionic/crates/psionic-inference/src/service.rs": "80b8acd9668cb1d21ef216abe012ea00927526f54ba89acb11c55ff0c73c3c07"
+      },
+      "published_source_commit": "65e8386aa27b42925f3c0281cc31e79ccfed3851"
+    }
+  },
+  "protocol": {
+    "host": "i7-14700K; four distinct P cores; affinity 0,2,4,6; release opt-level 3 and debug information disabled. Every child checks all 100 pinned references before timing. Other sessions continued; no own compilation overlapped qualification timings.",
+    "digit": "Two alternating rounds at thread budgets 1 and 4, 10000 timings/run. Same CUDA-capable benchmark executable for both CPU engines; no GPU inference runs.",
+    "router_512": "Two rounds of 1000 timings per engine. Each round has ten alternating 100-call process batches, reversing engine order between batches and rounds to reduce drift from changing background build load. Each process warms model/shape caches before timing. This uses the CPU-only dual-engine executable.",
+    "concurrency": "Two alternating 1000-call runs/engine across four one-thread instances on route-v1. The maximum input length is 34 tokens, so the subsequent long-activation cache blocking is not used in this workload. Models remain loaded for the memory snapshot."
+  },
+  "changes": "Packed AVX2/FMA projections, cached rotary positions, vector norms/erf-form GeGLU/softmax, first-query final-layer pruning, bounded scratch reuse, fused/vector CPU digit stages, and cache-blocked large activations. The long projection reuses 64 activation rows across four neighboring six-column panels, preserving the float32 accumulation order. Workers retain the caller allowed CPU mask.",
+  "correctness": "All pinned model decisions and digit argmax match. Native router maximum raw-logit error remains about 0.00000525 across the retained revisions; native digit error is 0.00003815. The updated blocked matrix edges match an independent f64 oracle, and strict 300-case mixed-shape CPU replay passes. Model weights, embedding quantization, and calibrated output processing are unchanged.",
+  "intermediate_results": "The first revision is retained in study.json. A fixed-worker affinity trial worsened a 512-token p99 under changing host build load; the restriction was removed. Subsequent long continuous runs also showed substantial background-load drift. Both intermediate comparisons remain committed. Final shorter alternating batches and cache-blocked code are identified separately; no failed timings were removed from those trials.",
+  "qualification": "Native is faster than ORT at median and p99 in both final 512-token rounds.",
+  "limits": [
+    "Neither engine meets the separate absolute 20 ms four-core CPU p99 target at 512 tokens.",
+    "These are local warm execution measurements on a shared host, not a promise for other machines or cold requests.",
+    "Multi-shape native CPU caching can use more host memory than ORT; the initial full-corpus RSS comparison remains in study.json.",
+    "Apple CPU and mobile performance remain unmeasured. The current native CPU library passes an ARM64 macOS Rust compile check."
+  ],
+  "files": {
+    "final-mnist-runs.jsonl": "fffc7521ea1c2cb00c0fd36f22c84f5001af166666f482faecd634085deb6560",
+    "worker-pin-trial-512-runs.jsonl": "3f7670e48e8c1795f9ce14d562dff9b484e84471accb91fa4c8ab19579e1ef0e",
+    "initial-concurrency-runs.jsonl": "268923fb347fa993a8b4ce18eb376f632b2f12ffa24ece424088e98cc6721168",
+    "unbound-continuous-512-runs.jsonl": "54483626176d15dbe979e907c3c2cffdcfa035ba75b784e5eec5f18af6bf1cf6",
+    "final-concurrency-runs.jsonl": "b5be00b76f1a4ebc832e9524db60e451910ce223553e114c5118e3f09ef583c4",
+    "final-blocked-512-runs.jsonl": "cb18310d7f2974e9eca7a4b7c8db8c438181c16022c55a754eeeafc5d698d896"
+  },
+  "source_note": "Raw records capture the local Git state at execution time. Source-file SHA-256 values identify exact tested sources across rebases onto main. Digit and concurrency reports precede the long-projection change; that branch is unused by those workloads."
+}

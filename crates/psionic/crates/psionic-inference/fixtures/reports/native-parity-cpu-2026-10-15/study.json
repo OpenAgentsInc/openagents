@@ -11,7 +11,8 @@
       "crates/psionic/crates/psionic-inference/src/models/mnist.rs": "b76f0384906bee0845aea045b1fc4c9c0ebfde67a945f05dae726c76b4c6be95",
       "crates/psionic/crates/psionic-inference/src/models/mnist/simd.rs": "b093c7a0319318b08b8d0d454bc6ea9d8d784e11f3c12549df184926ae0b7df0",
       "scripts/dev/psionic-small-model-bench.py": "579344506fc71399274a8551be75e14bffe1dc8eda08567deb9d9f736dad2a8c"
-    }
+    },
+    "published_implementation_commit": "cb9e41a4c61153c0af2a1b4232d1532328a74e45"
   },
   "timed_calls": 20000,
   "protocol": "Two alternating A/B rounds, 1000 timings/run, one process/engine, affinity 0,2,4,6 on distinct i7-14700K P cores, warm filesystem/model caches. Every run first checks all 100 references. Other sessions and repository edits continued; no own compilation overlapped these timings.",
@@ -179,11 +180,11 @@
   ],
   "correctness": "All reference decisions match. Native router maximum raw-logit error 0.00000525; native digit error 0.00003052 in this initial revision. Separate repeated CPU/GPU fixture replay and vector-kernel tests pass.",
   "changes": "Cached rotary tables; last-layer first-query pruning; AVX2/FMA packed float32 projections, vector LayerNorm, vector erf-form GeGLU and softmax; bounded 64 MiB/128-buffer activation reuse. Native CPU keeps original uint8 embeddings. Non-x86 paths use the portable Rust GEMM and scalar fallbacks.",
-  "qualification": "The router wins median and p99 on the mixed corpus at both thread budgets. At exactly 512 tokens its median is faster but p99 is worse in this initial matrix; neither engine meets the 20 ms CPU target. Digit inference matches ORT at one thread but trails at four in this initial matrix. Worker affinity and a subsequent digit revision are being qualified separately; these initial results remain visible.",
+  "qualification": "Historical first CPU revision; see final-study.json for the completed CPU comparison, current implementation, and retained intermediate trials.",
   "remaining": [
-    "Complete fixed-worker 512-token tail qualification.",
-    "Complete cropped/vector digit CPU qualification.",
-    "Apple hardware and mobile qualification remain unmeasured."
+    "See final-study.json for current qualification and remaining platform/absolute-latency limits."
   ],
-  "source_note": "Runs record the original implementation commit and exact tested source hashes. The published commit rebases those unchanged model sources onto current main; workspace version metadata can differ."
+  "source_note": "Runs record the original implementation commit and exact tested source hashes. The published commit rebases those unchanged model sources onto current main; workspace version metadata can differ.",
+  "initial_qualification": "The router wins median and p99 on the mixed corpus at both thread budgets. At exactly 512 tokens its median is faster but p99 is worse in this initial matrix; neither engine meets the 20 ms CPU target. Digit inference matches ORT at one thread but trails at four in this initial matrix. Worker affinity and a subsequent digit revision are being qualified separately; these initial results remain visible.",
+  "followup_report": "final-study.json"
 }

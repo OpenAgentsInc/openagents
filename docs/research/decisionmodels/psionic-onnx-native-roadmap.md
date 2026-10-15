@@ -22,16 +22,38 @@ inputs, hardware, and thread budget after every optimization.
 | Priority | Issue | Status | Work | Acceptance |
 | --- | --- | --- | --- | --- |
 | 1 | [#11722](https://github.com/OpenAgentsInc/openagents/issues/11722) | Complete | Keep the ModernBERT encoder on CUDA, including attention and elementwise operations | All reference cases pass; no intermediate host transfers; paired short and long input measurements, with remaining ORT gaps explicit |
-| 2 | [#11723](https://github.com/OpenAgentsInc/openagents/issues/11723) | In progress | Improve native CPU router and digit inference | Correctness unchanged; matched ORT/native measurements; separate relative parity from the 512-token absolute target |
+| 2 | [#11723](https://github.com/OpenAgentsInc/openagents/issues/11723) | Complete | Improve native CPU router and digit inference | Correctness unchanged; matched ORT/native measurements; separate relative parity from the 512-token absolute target |
 | 3 | [#11724](https://github.com/OpenAgentsInc/openagents/issues/11724) | Complete | Keep native digit inference on GPU | Persistent buffers and GPU convolution/activation/pooling; paired CUDA evidence |
 | 4 | [#11725](https://github.com/OpenAgentsInc/openagents/issues/11725) | Implemented; Apple unqualified | Complete device-resident native Metal encoder and digit execution | Build and reference parity, then measured Metal/Core ML comparisons on Apple hardware |
 | 5 | [#11726](https://github.com/OpenAgentsInc/openagents/issues/11726) | Complete | Expose accelerator serving and publish the parity status | Explicit server device selection; direct/HTTP correctness; current benchmark and platform gaps visible here |
 
 Apple CPU/Metal/Core ML measurements and mobile build, memory, startup, and
 thermal qualification remain in `NEEDS_OWNER.md`. They remain unqualified until
-measured. Native CPU/CUDA optimization and accelerator serving are engineering
-work tracked above. Router quality evaluation and routing promotion follow the
+measured. The native CPU/CUDA implementations and accelerator serving work above are
+complete on the measured Linux configuration. Router quality evaluation and routing promotion follow the
 separate router experiment plan; faster inference does not establish model quality.
+
+## Current measured comparison
+
+These warm measurements use the same i7-14700K and RTX 4080, pinned weights,
+four P-core affinity, and model thread budgets. Each engine checks every
+reference case before timing. Latencies are milliseconds. The reports below
+retain source/binary hashes, individual timings, placement, and memory.
+
+| Workload | Native p50 | ORT p50 | Native p99 | ORT p99 |
+| --- | --- | --- | --- | --- |
+| CPU router, exactly 512 tokens, four threads | 66.1 | 81.1 | 73.8–78.6 | 96.2–101.7 |
+| CUDA router, full reference mix | 0.50 | 1.27 | 1.96–1.97 | 2.70 |
+| CPU digit model, four-thread budget | 0.0151 | 0.0159 | 0.0179–0.0181 | 0.0199–0.0203 |
+| CUDA digit model | 0.055–0.056 | 0.072–0.075 | 0.066–0.078 | 0.111–0.115 |
+| CUDA router HTTP, one serial loopback client | 0.605–0.611 | 1.462–1.475 | 2.388–2.423 | 3.252–3.255 |
+
+Four concurrent one-thread CPU router instances deliver 346–367 requests/s
+with native versus ORT 315–341 on `route-v1` (at most 34 tokens). Native Potion
+embeddings also remain faster in the earlier CPU comparison. These results
+establish relative performance for the measured workloads. The separate
+20 ms p99 CPU target at 512 tokens remains unmet by both engines. Apple and
+mobile performance remain unqualified; native Metal currently targets macOS.
 
 ## Scope and current evidence
 
@@ -261,7 +283,7 @@ execution parity, not recognition accuracy. Retrieval quality, product
 image quality, audio models, and device qualification remain separate
 work.
 
-## Accelerator and package results (2026-10-15, #11706)
+## Earlier accelerator and package results (2026-10-15, #11706)
 
 The [retained study](../../../crates/psionic/crates/psionic-inference/fixtures/reports/accelerators-2026-10-15/study.json)
 contains 8,000 CUDA timings, 18,000 CPU/package timings, provider profiles,
@@ -361,6 +383,35 @@ The earlier accelerator table describes the previous mixed implementation and
 remains historical evidence. Current CPU, digit, Metal, and serving work follows
 below; Apple and mobile qualification remain unmeasured.
 
+## Native CPU parity results (2026-10-15, #11723)
+
+The [final CPU study](../../../crates/psionic/crates/psionic-inference/fixtures/reports/native-parity-cpu-2026-10-15/final-study.json)
+adds 88,000 qualification timings and retains 120,000 CPU timings across the
+initial implementation, scheduling trials, and final comparisons. Packed
+AVX2/FMA projections, cached rotary positions, vector norms and activations,
+first-query final-layer pruning, and bounded scratch reuse improve the router.
+Large MLP projections now reuse 64 activation rows across four neighboring
+weight panels, reducing cache traffic while preserving float32 accumulation
+order. CPU digit inference uses vector convolution, fused first-stage pooling,
+cropped second-stage output rows discarded by floor pooling, and a vector head.
+
+The final 512-token CPU comparison has two rounds of 1,000 timings per engine,
+split into ten alternating 100-call process batches per round to reduce drift
+from background builds. Every process checks all 100 reference cases and warms
+its caches first. Native wins median and p99 in both rounds. The earlier
+continuous-run and fixed-worker trials remain committed, including their
+misses; workers retain the caller CPU mask. The digit comparison uses two
+10,000-sample rounds per engine at budgets one and four. The maximum native
+raw-logit error is 0.00000525 for the router across retained revisions and
+0.00003815 for the digit model, with unchanged reference decisions.
+
+Host memory remains a tradeoff. The initial mixed-shape four-thread native
+router retains more scratch memory than ORT; its RSS is 343–346 MB versus
+316–318 MB. Final fixed-length runs use 310–328 MB for native and 313–318 MB
+for ORT. The digit CPU process uses about 8.8 MB versus ORT 31.5–31.6 MB.
+These snapshots keep models loaded. The current native CPU library passes an
+ARM64 macOS Rust compile check, but Apple CPU performance remains unmeasured.
+
 ## Native digit CUDA results (2026-10-15, #11724)
 
 The [paired digit study](../../../crates/psionic/crates/psionic-inference/fixtures/reports/native-parity-digit-cuda-2026-10-15/study.json)
@@ -379,7 +430,7 @@ CPU remains the faster device for this tiny CNN.
 
 ## Native Metal and serving implementation (#11725, #11726)
 
-Native Metal now implements the complete encoder and digit graph with
+Native Metal on macOS implements the complete encoder and digit graph with
 persistent shared buffers, float32 GPU kernels, and one command buffer per
 call. Fast math is disabled. The encoder covers quantized embeddings, norms,
 rotary positions, key masks, local/global attention, GeGLU, residuals, and

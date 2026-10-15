@@ -31,7 +31,8 @@
       "crates/psionic/crates/psionic-inference/src/ort_engine.rs": "c50336a454a77730571f1b9e59b8626dc161092ad2224050d593c8569a5b2631",
       "crates/psionic/crates/psionic-inference/src/router.rs": "4e2c2edcdcd4cac56790da31aa6f3d988c02c3149863f1e15d02bf7fbb0281a7",
       "crates/psionic/crates/psionic-inference/src/service.rs": "80b8acd9668cb1d21ef216abe012ea00927526f54ba89acb11c55ff0c73c3c07"
-    }
+    },
+    "published_source_commit": "65e7af581b5574ed195e9316c520ebf1d1874466"
   },
   "protocol": "Two alternating A/B rounds, 1000 timings/run, same RTX 4080 and four P-core affinity. Each process checks all 100 independent references before timing. All models and runtime libraries are pinned in raw runs. No own compilation overlapped timings; other sessions continued. Float32, eager CUDA loading, TF32 disabled.",
   "timed_calls": 4000,
@@ -103,5 +104,6 @@
     "Apple Metal/Core ML and mobile qualification.",
     "Peak per-model VRAM remains unmeasured.",
     "CPU remains the faster device for this tiny digit model on this host."
-  ]
+  ],
+  "source_note": "Source-file SHA-256 values identify exact tested sources. The original local commit was rebased into main as published_source_commit; the recorded source hashes match that published revision."
 }

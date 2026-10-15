@@ -217,23 +217,23 @@ asks only once every few calls.
 the published ONNX graph, and native Psionic for the same model. Share the
 tokenizer and answer processing, then compare correctness, speed, memory,
 and package size. Both CPU engines are implemented in `psionic-inference`
-(#11701, #11702). The native path agrees on every decision in the 100-case
-ORT reference set; maximum centered logit distance is 0.00000763. The
-[roadmap](psionic-onnx-native-roadmap.md#cpu-results-2026-10-15-11703)
-records the CPU measurements (#11703). Shared in-process and HTTP serving
-are implemented in #11704. Embeddings and digit vision now have both CPU
-engines (#11705); #11706 adds explicit accelerator selection, mixed
-native CUDA/Metal execution, CUDA evidence, and package comparisons.
-Apple device qualification remains in `NEEDS_OWNER.md`. Routing adoption
-still requires the application
-evaluation below.
+(#11701, #11702). Native agrees on every decision in the 100-case ORT
+reference set; maximum raw-logit error across the retained CPU revisions is
+0.00000525. The [current comparison](psionic-onnx-native-roadmap.md#current-measured-comparison)
+records completed CPU, CUDA, HTTP, and package work. Native now beats ORT
+in the measured router CPU/CUDA latency, CPU concurrency, and CUDA HTTP
+comparisons. Embeddings and digit vision also have both engines. The native
+CUDA router and digit graph keep all tensor computation on GPU; complete
+macOS Metal implementations still need Apple shader and device checks.
+Device qualification remains in `NEEDS_OWNER.md`. Routing adoption still
+requires the application evaluation below.
 
 **What Psionic does today.**
 
 - It runs GGUF decoder LLMs (Llama, Gemma 4, Qwen 2/3/3.5/3.8, Mistral, gpt-oss) and the Clef decision lane.
 - `GgufEmbeddingFamily { Bert, NomicBert }` and a WordPiece tokenizer exist only as metadata and tokenizer loading.
 - `/v1/embeddings` on CPU is a `ByteProjectionEmbedder`, a single projection layer, not a BERT forward pass.
-- It now has optional ORT CPU execution and a native ModernBERT encoder in `psionic-inference`. DeBERTa and XLM-R are not implemented.
+- `psionic-inference` has optional ORT CPU/CUDA/Core ML execution and native ModernBERT CPU/CUDA/macOS Metal implementations. Apple execution remains unqualified. DeBERTa and XLM-R are not implemented.
 - It already has the parts the port would reuse: rotary embeddings, sliding-window masks (decoder side), a threaded AVX-512 GEMM (`qwen35/cpu_gemm.rs`), safetensors loading (the Clef head), and a `/v1/systemone` route that already speaks the answer shape (`psionic-serve/src/clef/`).
 
 ### The gaps
@@ -248,7 +248,7 @@ This table records the implementation scope; the [roadmap](psionic-onnx-native-r
 | 3 | **Tokenizer** | Psionic's SentencePiece tokenizer reads GGUF score tables. This model ships an HF `tokenizer.json` with 580k ranked merges. The work: <br>• a loader for merge-ranked SentencePiece-style BPE with byte fallback and a Metaspace pre-tokenizer that always adds `▁`; <br>• the pair template `<bos> A <eos> B <eos>`; <br>• truncation of the second sequence only, at 512 tokens. <br>Acceptance: token ids identical to HF `tokenizers` on at least 1,000 strings across the 22 languages, plus code and paths | S–M |
 | 4 | **Heads and answer shaping** | ORT executes the four heads in the graph; native code implements the same projections. Both return raw logits to shared Rust processing: per-head temperatures from `meta.json`, softmax or sigmoid, expected score values, and the System One response. Record the engine separately from model identity | S |
 | 5 | **Serving** | Support both engines over HTTP and in process. <br>• **Over HTTP**: add the model to `psionic-openai-server` behind the existing `/v1/systemone` route. Its question schema is fixed, so a request asking anything else is refused as `not_admitted` and the judge chain moves to its next door. Warm the selected engine before `/health` (from [reax.md](reax.md)). Gateway adoption still requires the routing evaluation below. <br>• **In process**: Coder links the shared model adapter and selects ORT or native without a network hop. Measure this path separately from HTTP | S–M |
-| 6 | **CPU speed and comparison** | For native execution, reuse the threaded GEMM from the qwen35 CPU lane. Compare ORT and native on identical token tensors, thread budgets, precision, and request shapes, then measure the shared text-to-answer path separately. Target: p99 under 20 ms for 512 tokens on 4 cores. This is a target for both engines, not a measured native result | S |
+| 6 | **CPU speed and comparison** | Native CPU uses packed float32 AVX2/FMA projections and a portable Rust GEMM fallback. Compare ORT and native on identical token tensors, thread budgets, precision, and request shapes, then measure the shared text-to-answer path separately. Target: p99 under 20 ms for 512 tokens on 4 cores. This is a target for both engines, not a measured native result | S |
 | 7 | **Parity and calibration gate** | Retain about 100 requests with reference ORT logits, like `crates/psionic/fixtures/clef/`. Require the integrated ORT and native paths to match those reference outputs and each other: every categorical argmax equal, flag decisions equal, and centered-log distance (as in [calibration.md](calibration.md)) under 0.01 per answer. Compare raw logits as well as processed probabilities | S |
 
 The original estimate of about a focused week covered the native encoder
@@ -259,11 +259,10 @@ reuse both execution paths with new weights, heads, and schema metadata.
 
 ## Experiment plan
 
-There are two independent workstreams. The backend work follows the
-[roadmap](psionic-onnx-native-roadmap.md) and can start now using the
-published model. Routing evaluation and training follow the steps below;
-their results decide whether to use a model in Coder, not whether to build
-the two execution engines.
+Backend implementation and the measured Linux comparisons follow the
+[roadmap](psionic-onnx-native-roadmap.md) and are complete. Apple and mobile
+qualification remain separate. Routing evaluation and training follow the
+steps below; their results decide whether to use a model in Coder.
 
 1. **Baseline (done above).** onnxruntime on CPU: 3.3 ms p50 on `route-v1`. Size 20/32 against Clef's 24/32; cheap-answer 30/32 against 29/32.
 2. **Evaluation set.** Build 300+ Coder-shaped requests:

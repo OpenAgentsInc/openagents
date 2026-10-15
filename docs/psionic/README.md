@@ -32,9 +32,8 @@ about 0.2 seconds.
 
 ## Who uses it
 
-The Pylon provider ([`docs/compute/pylon.md`](../compute/pylon.md)) runs
-jobs on a local `psionic-openai-server`. `scripts/pylon-psionic.sh` builds
-and starts it.
+The [Pylon helper](../../scripts/pylon-psionic.sh) builds and starts a local
+`psionic-openai-server` and the Pylon provider that runs jobs through it.
 
 ## ONNX Runtime and native small models
 
@@ -50,7 +49,8 @@ but still needs Apple shader compilation and device qualification.
 The existing `psionic-openai-server` serves the fixed router through
 `--router-model-dir`, an explicit `--router-engine native|ort`, and
 `--router-device cpu|cuda|metal|coreml` for the supported engine/device pair. The
-roadmap records CPU, HTTP, CUDA, and package comparisons. Apple and mobile
+roadmap records completed Linux CPU/CUDA latency and throughput comparisons,
+HTTP results, package inventories, and retained intermediate misses. Apple and mobile
 device qualification remains in `NEEDS_OWNER.md`.
 
 ## History

@@ -329,3 +329,18 @@ To reproduce, set `PSIONIC_ROUTER_MODEL_DIR`, `PSIONIC_HTTP_CUDA_ORT_LIBRARY`,
 and a new scratch `PSIONIC_HTTP_BENCH_OUTPUT`, provision the pinned CUDA stack,
 then run the ignored `paired_cuda_http` test with features
 `ort,http,native-cuda,native-metal` in release mode under an explicit CPU mask.
+
+
+The [final native CPU study](fixtures/reports/native-parity-cpu-2026-10-15/final-study.json)
+retains the completed relative comparison and intermediate misses. At exactly
+512 tokens and four threads, native median is 66.1 ms versus ORT 81.1 ms;
+p99 is 73.8–78.6 ms versus 96.2–101.7 ms. Both still miss the separate 20 ms
+CPU p99 target. Four concurrent one-thread router instances reach 346–367
+requests/s versus ORT 315–341 on inputs of at most 34 tokens. Native CPU
+digit median is about 15 µs, faster than ORT at both thread budgets.
+
+Use `--chunks 10` with `--samples 1000` on the CPU comparison driver to
+alternate engines in smaller process batches within each round. Aggregate
+all 1,000 timings per engine/round before calculating percentiles; a
+100-sample child is not the full round. The default remains one process
+per engine/round. Keep model/thread budgets and CPU affinity identical.
