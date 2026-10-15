@@ -38,7 +38,7 @@ pub(crate) const USAGE: &str = "usage: openagents inference COMMAND [OPTIONS]
         API key (default OPENAGENTS_API_KEY); keys draw on your account's
         credit. --pay x402: with no key, pay for this one request over
         Lightning from your wallet, at most --max-msat N (also --max-fee-msat N
-        and --pay-with wallet|node).
+        and --pay-with wallet|node|lnd, with --lnd FILE).
   models [--base URL] [--key KEY]
         Every model, its providers, and its price.
   rates [--base URL]

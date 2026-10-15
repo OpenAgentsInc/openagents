@@ -27975,7 +27975,7 @@
                 ]
               }
             ],
-            "summary": "Run a model through the OpenAgents API and print its answer. `openagents inference MODEL [TEXT]` is the same. MODEL is a model id (google/gemini-3.8-flash, or just gemini-3.8-flash) or a task class we route for you: openagents/auto, openagents/chat, openagents/fast, openagents/code, openagents/long, openagents/reason, openagents/classify. TEXT or --input is the prompt; `-` reads it from stdin. --json BODY is the whole request body as JSON (`-` reads stdin); MODEL fills its `model` when it has none. --stream prints the answer as it arrives. --format: text (the answer's words, the default), json (the whole answer), or events (each streamed event as one JSON line). --api: responses (Open Responses, the default) or chat (OpenAI Chat Completions). --max-price: the most to pay per million tokens, in dollars, such as 0.50/2.00. --base: the API (default https://api.openagents.com/v1, or OPENAGENTS_API_BASE). --key: your API key (default OPENAGENTS_API_KEY); keys draw on your account's credit. --pay x402: with no key, pay for this one request over Lightning from your wallet, at most --max-msat N (also --max-fee-msat N and --pay-with wallet|node).",
+            "summary": "Run a model through the OpenAgents API and print its answer. `openagents inference MODEL [TEXT]` is the same. MODEL is a model id (google/gemini-3.8-flash, or just gemini-3.8-flash) or a task class we route for you: openagents/auto, openagents/chat, openagents/fast, openagents/code, openagents/long, openagents/reason, openagents/classify. TEXT or --input is the prompt; `-` reads it from stdin. --json BODY is the whole request body as JSON (`-` reads stdin); MODEL fills its `model` when it has none. --stream prints the answer as it arrives. --format: text (the answer's words, the default), json (the whole answer), or events (each streamed event as one JSON line). --api: responses (Open Responses, the default) or chat (OpenAI Chat Completions). --max-price: the most to pay per million tokens, in dollars, such as 0.50/2.00. --base: the API (default https://api.openagents.com/v1, or OPENAGENTS_API_BASE). --key: your API key (default OPENAGENTS_API_KEY); keys draw on your account's credit. --pay x402: with no key, pay for this one request over Lightning from your wallet, at most --max-msat N (also --max-fee-msat N and --pay-with wallet|node|lnd, with --lnd FILE).",
             "effect": "spends",
             "runs_on": "connected_computer"
           }
@@ -28193,11 +28193,20 @@
         {
           "kind": "option",
           "name": "pay-with",
-          "value": "wallet|node",
+          "value": "wallet|node|lnd",
           "choices": [
             "wallet",
-            "node"
+            "node",
+            "lnd"
           ],
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "lnd",
+          "value": "FILE",
+          "open": true,
           "optional": true,
           "repeated": true
         }
@@ -28998,7 +29007,7 @@
               "fetch"
             ],
             "usage": [
-              "fetch URL [--method M] [--body FILE|-] [--max-msat N] [--max-fee-msat F] [--wait SECONDS] [--cap PUBKEY:SLUG] [--relay URL] [--show-proof] [--pay-with wallet|node|phone]"
+              "fetch URL [--method M] [--body FILE|-] [--max-msat N] [--max-fee-msat F] [--wait SECONDS] [--cap PUBKEY:SLUG] [--relay URL] [--show-proof] [--pay-with wallet|node|lnd|phone] [--lnd FILE]"
             ],
             "forms": [
               {
@@ -29071,18 +29080,26 @@
                   {
                     "kind": "option",
                     "name": "pay-with",
-                    "value": "wallet|node|phone",
+                    "value": "wallet|node|lnd|phone",
                     "choices": [
                       "wallet",
                       "node",
+                      "lnd",
                       "phone"
                     ],
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "lnd",
+                    "value": "FILE",
+                    "open": true,
                     "optional": true
                   }
                 ]
               }
             ],
-            "summary": "Buy one call: read the 402, check the invoice against this request, refuse above the ceiling, pay from your wallet, retry with the preimage, print the body. With --cap, resolve that NIP-CAP head first and refuse a challenge whose payTo or URL it does not advertise. --pay-with node pays from this computer's Lightning node instead; --pay-with phone asks the owner's phone to pay through this computer's Coder host (mainnet only; the owner approves each payment there, and the wait is at least 300 seconds).",
+            "summary": "Buy one call: read the 402, check the invoice against this request, refuse above the ceiling, pay from your wallet, retry with the preimage, print the body. With --cap, resolve that NIP-CAP head first and refuse a challenge whose payTo or URL it does not advertise. --pay-with node pays from this computer's Lightning node instead; --pay-with phone asks the owner's phone to pay through this computer's Coder host (mainnet only; the owner approves each payment there, and the wait is at least 300 seconds). --pay-with lnd pays from an LND node over gRPC, named by the settings file --lnd FILE (alone, it implies lnd), else $OPENAGENTS_X402_LND, else lnd.toml in the x402 directory: endpoint, certificate_sha256, node_id, macaroon (a 0600 file allowing offchain:write), and network (mainnet or testnet). It sends once with the fee cap and never resends an uncertain payment.",
             "effect": "spends",
             "runs_on": "screen",
             "screen": "wallet"
@@ -29155,7 +29172,7 @@
               "call"
             ],
             "usage": [
-              "call TOOL [--arg WORD]... [--max-msat N] [--max-fee-msat F] [--wait SECONDS] [--server URI] [--cap PUBKEY:SLUG] [--relay URL] [--show-proof] [--pay-with wallet|node|phone] -- CMD [ARGS...]"
+              "call TOOL [--arg WORD]... [--max-msat N] [--max-fee-msat F] [--wait SECONDS] [--server URI] [--cap PUBKEY:SLUG] [--relay URL] [--show-proof] [--pay-with wallet|node|lnd|phone] [--lnd FILE] -- CMD [ARGS...]"
             ],
             "forms": [
               {
@@ -29226,12 +29243,20 @@
                   {
                     "kind": "option",
                     "name": "pay-with",
-                    "value": "wallet|node|phone",
+                    "value": "wallet|node|lnd|phone",
                     "choices": [
                       "wallet",
                       "node",
+                      "lnd",
                       "phone"
                     ],
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "lnd",
+                    "value": "FILE",
+                    "open": true,
                     "optional": true
                   },
                   {
@@ -29350,7 +29375,7 @@
               "buy"
             ],
             "usage": [
-              "buy PROVIDER --slug SLUG [--input FILE|-] [--max-msat N] [--max-fee-msat F] [--wait SECONDS] [--as PROFILE] [--relay URL] [--show-proof] [--pay-with wallet|node]"
+              "buy PROVIDER --slug SLUG [--input FILE|-] [--max-msat N] [--max-fee-msat F] [--wait SECONDS] [--as PROFILE] [--relay URL] [--show-proof] [--pay-with wallet|node|lnd] [--lnd FILE]"
             ],
             "forms": [
               {
@@ -29422,11 +29447,19 @@
                   {
                     "kind": "option",
                     "name": "pay-with",
-                    "value": "wallet|node",
+                    "value": "wallet|node|lnd",
                     "choices": [
                       "wallet",
-                      "node"
+                      "node",
+                      "lnd"
                     ],
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "lnd",
+                    "value": "FILE",
+                    "open": true,
                     "optional": true
                   }
                 ]
@@ -30963,12 +30996,21 @@
         {
           "kind": "option",
           "name": "pay-with",
-          "value": "wallet|node|phone",
+          "value": "wallet|node|lnd|phone",
           "choices": [
             "wallet",
             "node",
+            "lnd",
             "phone"
           ],
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "lnd",
+          "value": "FILE",
+          "open": true,
           "optional": true,
           "repeated": true
         },
@@ -31365,7 +31407,7 @@
               "payouts"
             ],
             "usage": [
-              "payouts --ledger FILE [--relay URL] [--interval SECS] [--spark-home DIR] [--once]"
+              "payouts --ledger FILE [--relay URL] [--interval SECS] [--spark-home DIR] [--once] [--lnd SETTINGS.json] [--check --require-sent-after UNIX]"
             ],
             "forms": [
               {
@@ -31405,11 +31447,30 @@
                     "kind": "option",
                     "name": "once",
                     "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "lnd",
+                    "value": "SETTINGS.json",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "check",
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "require-sent-after",
+                    "value": "UNIX",
+                    "open": true,
+                    "optional": true
                   }
                 ]
               }
             ],
-            "summary": "Pay the ledger's accrued shares out from this computer's wallet, every SECS (default 60): per payee, once its owed amount reaches 100 sats (Spark address) or 1,000 sats (Lightning address), or once its oldest share is a day old. The destination is the signed release's payout, then the payee's NIP-A3 Spark address, then its profile's lud16, read from the relay; a payee with none stays owed. Lightning addresses are paid by LNURL-pay from the wallet within a 1% fee cap; Spark addresses from the payout Spark wallet in DIR (default /var/lib/openagents-pay/spark), topped up from the wallet. Each payout's payment hash or transfer id is written before it is sent; after a restart an interrupted payout is settled only by looking it up, never sent again. A failed payout returns its shares and the payee backs off (5 min, doubling, at most 6 h). OPENAGENTS_PAY_LEDGER and OPENAGENTS_PAY_SPARK_HOME stand in for the flags.",
+            "summary": "Pay the ledger's accrued shares out from this computer's wallet, every SECS (default 60): per payee, once its owed amount reaches 100 sats (Spark address) or 1,000 sats (Lightning address), or once its oldest share is a day old. The destination is the signed release's payout, then the payee's NIP-A3 Spark address, then its profile's lud16, read from the relay; a payee with none stays owed. Lightning addresses are paid by LNURL-pay from the wallet within a 1% fee cap; Spark addresses from the payout Spark wallet in DIR (default /var/lib/openagents-pay/spark), topped up from the wallet. Each payout's payment hash or transfer id is written before it is sent; after a restart an interrupted payout is settled only by looking it up, never sent again. A failed payout returns its shares and the payee backs off (5 min, doubling, at most 6 h). OPENAGENTS_PAY_LEDGER and OPENAGENTS_PAY_SPARK_HOME stand in for the flags. Optional LND settings read a saved spending policy. --check sends nothing and requires a completed payout confirmed after the given restart time.",
             "effect": "spends",
             "runs_on": "screen",
             "screen": "wallet"
@@ -32096,6 +32157,26 @@
         {
           "kind": "option",
           "name": "once",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "lnd",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "check",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "require-sent-after",
+          "value": "UNIX",
+          "open": true,
           "optional": true,
           "repeated": true
         },

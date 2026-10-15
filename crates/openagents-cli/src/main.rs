@@ -160,6 +160,8 @@ mod world;
 #[cfg(unix)]
 mod x402;
 #[cfg(unix)]
+mod x402_lnd;
+#[cfg(unix)]
 mod x402_native;
 #[cfg(unix)]
 mod x402_node;

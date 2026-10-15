@@ -67,7 +67,7 @@ pub(crate) const USAGE: &str = "usage: openagents x402 COMMAND [OPTIONS]
                           updates it.
   fetch URL [--method M] [--body FILE|-] [--max-msat N] [--max-fee-msat F]
         [--wait SECONDS] [--cap PUBKEY:SLUG] [--relay URL] [--show-proof]
-        [--pay-with wallet|node|phone]
+        [--pay-with wallet|node|lnd|phone] [--lnd FILE]
                           Buy one call: read the 402, check the invoice against
                           this request, refuse above the ceiling, pay from your
                           wallet, retry with the preimage, print the body. With
@@ -77,7 +77,14 @@ pub(crate) const USAGE: &str = "usage: openagents x402 COMMAND [OPTIONS]
                           node instead; --pay-with phone asks the owner's phone
                           to pay through this computer's Coder host (mainnet
                           only; the owner approves each payment there, and the
-                          wait is at least 300 seconds).
+                          wait is at least 300 seconds). --pay-with lnd pays
+                          from an LND node over gRPC, named by the settings
+                          file --lnd FILE (alone, it implies lnd), else
+                          $OPENAGENTS_X402_LND, else lnd.toml in the x402
+                          directory: endpoint, certificate_sha256, node_id,
+                          macaroon (a 0600 file allowing offchain:write), and
+                          network (mainnet or testnet). It sends once with the
+                          fee cap and never resends an uncertain payment.
   mcp-serve --server URI --msat N --tool GROUP [--tool GROUP]... [--expiry SECONDS]
                           Serve `openagents mcp serve` over stdio with a toll
                           (x402 exact/lnbtc, mcp:1): a tools/call without
@@ -92,7 +99,7 @@ pub(crate) const USAGE: &str = "usage: openagents x402 COMMAND [OPTIONS]
                           connected to.
   call TOOL [--arg WORD]... [--max-msat N] [--max-fee-msat F] [--wait SECONDS]
         [--server URI] [--cap PUBKEY:SLUG] [--relay URL] [--show-proof]
-        [--pay-with wallet|node|phone]
+        [--pay-with wallet|node|lnd|phone] [--lnd FILE]
         -- CMD [ARGS...]
                           Buy one tools/call: start CMD as a stdio MCP server,
                           call TOOL with {\"args\": [WORD...]}, check the
@@ -128,7 +135,7 @@ pub(crate) const USAGE: &str = "usage: openagents x402 COMMAND [OPTIONS]
                           worker_refused, or worker_failed.
   buy PROVIDER --slug SLUG [--input FILE|-] [--max-msat N] [--max-fee-msat F]
         [--wait SECONDS] [--as PROFILE] [--relay URL] [--show-proof]
-        [--pay-with wallet|node]
+        [--pay-with wallet|node|lnd] [--lnd FILE]
                           Buy one run: resolve PROVIDER:SLUG on the relay, seal
                           the input and a request to PROVIDER, check the
                           challenge against them, refuse above the ceiling, pay
@@ -690,18 +697,26 @@ pub(crate) enum Payer {
     Node,
     /// The owner's phone, through this computer's Coder host (`x402_phone`).
     Phone,
+    /// An LND node over gRPC, named by a settings file (`x402_lnd`).
+    Lnd,
 }
 
-/// `--pay-with wallet|node|phone` (`phone` only where `phone` is true);
+/// `--pay-with wallet|node|lnd|phone` (`phone` only where `phone` is true);
 /// without it, the wallet, unless this computer has no wallet and has a
 /// Lightning node set up.
+/// `--lnd FILE` names the LND settings and, alone, means `--pay-with lnd`.
 pub(crate) fn payer(args: &Args, phone: bool) -> Result<Payer, String> {
+    if let Some(path) = args.option("lnd") {
+        crate::x402_lnd::name_settings(path);
+    }
     match args.option("pay-with") {
         Some("wallet") => Ok(Payer::Wallet),
         Some("node") => Ok(Payer::Node),
+        Some("lnd") => Ok(Payer::Lnd),
         Some("phone") if phone => Ok(Payer::Phone),
-        Some(_) if phone => Err("--pay-with takes wallet, node, or phone".into()),
-        Some(_) => Err("--pay-with takes wallet or node".into()),
+        Some(_) if phone => Err("--pay-with takes wallet, node, lnd, or phone".into()),
+        Some(_) => Err("--pay-with takes wallet, node, or lnd".into()),
+        None if args.option("lnd").is_some() => Ok(Payer::Lnd),
         None => Ok(computer_payer()),
     }
 }
@@ -737,6 +752,7 @@ pub(crate) fn pay_by(
         Payer::Wallet => crate::x402_spark::pay(bolt11, network, max_fee_msat),
         Payer::Node => pay_invoice(bolt11, network, max_fee_msat, wait),
         Payer::Phone => crate::x402_phone::pay(bolt11, network, max_fee_msat, wait, resource),
+        Payer::Lnd => crate::x402_lnd::pay(bolt11, network, max_fee_msat, wait),
     }
 }
 
@@ -2398,6 +2414,15 @@ mod tests {
             Ok(Payer::Phone)
         );
         assert!(payer(&args(&["--pay-with", "phone"]), false).is_err());
+        assert_eq!(payer(&args(&["--pay-with", "lnd"]), false), Ok(Payer::Lnd));
+        assert_eq!(
+            payer(&args(&["--lnd", "/etc/x402/lnd.toml"]), true),
+            Ok(Payer::Lnd)
+        );
+        assert_eq!(
+            crate::x402_lnd::settings_path(),
+            std::path::PathBuf::from("/etc/x402/lnd.toml")
+        );
     }
 
     #[test]

@@ -344,6 +344,9 @@ is. Not `tap-ldk`: its stated purpose is Taproot Assets *without* LND or
 
 ## 4. The integration path, phased
 
+x402 on LND, both receiving and paying, is mapped RPC by RPC in
+[x402 over LND](2026-10-15-x402-over-lnd.md), with the production switch.
+
 Each phase has acceptance checks; none starts until the one before passes.
 
 ### P0: the regtest crate (1 to 2 weeks)
