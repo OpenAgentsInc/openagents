@@ -2401,3 +2401,14 @@ for the owner's store steps, not an App Store publication.
 
 The account record, privacy declarations, rating, and review submission
 remain owner actions. No upload or store submission was made for #11681.
+## Set the LND liquidity budget and run the funded canary (#11755)
+
+Choose the inbound purchase size, LSP fee and routing fee limits, one stable
+self-funded peer, capital, fee rate, and a 100,000–500,000-sat confirmed
+reserve. The committed example disables spending. Start with the smallest
+useful purchase; the plan's 5–10 million sats is not an approved budget.
+After funding approval, run the LSPS1 guard, purchase, and anchor open with
+`lnd-liquidity`; confirm the on-chain reserve, inbound health, and alert floor.
+Send a realistic payment from an independent wallet and save `costs` output
+for comparison with MDK's approximately 2% fee. No mainnet purchase, channel,
+or test payment was made for this issue; the 100,000-sat test uses regtest.

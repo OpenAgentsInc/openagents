@@ -17,5 +17,6 @@ pub mod wallet;
 pub use lightning::Client;
 pub mod backups;
 pub mod health;
+pub mod liquidity;
 #[cfg(test)]
 mod tests;

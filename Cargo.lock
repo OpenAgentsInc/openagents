@@ -9326,6 +9326,7 @@ version = "1.0.0-rc.22"
 dependencies = [
  "async-trait",
  "bitcoin",
+ "fs2",
  "hex",
  "hyper-util",
  "lightning-invoice 0.34.1 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -9335,6 +9336,7 @@ dependencies = [
  "proptest",
  "prost 0.13.5",
  "rcgen",
+ "reqwest 0.12.28",
  "rustls",
  "rustls-pemfile",
  "serde",

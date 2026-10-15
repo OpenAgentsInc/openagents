@@ -23,6 +23,9 @@ rustls-pemfile = "2"
 zeroize = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+fs2 = "0.4"
+tokio-stream = "0.1"
 openagents-wallet = { path = "../wallet", default-features = false }
 pay-ledger = { path = "../pay-ledger" }
 nostr = { path = "../nostr" }

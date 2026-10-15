@@ -324,12 +324,54 @@ impl Client {
 }
 
 impl Client {
+    /// Run throughout the LSPS1 purchase. Reject other peers, zero-conf, and non-anchor channels.
+    pub async fn guard_inbound_channel(&self, peer: &str, minimum_sats: u64) -> Result<()> {
+        self.ensure_current().await?;
+        let (tx, rx) = tokio::sync::mpsc::channel(8);
+        let mut stream = self
+            .rpc()
+            .channel_acceptor(tokio_stream::wrappers::ReceiverStream::new(rx))
+            .await
+            .map_err(Error::from)?
+            .into_inner();
+        while let Some(request) = stream.message().await.map_err(Error::from)? {
+            let accept = hex::encode(&request.node_pubkey) == peer
+                && request.funding_amt >= minimum_sats
+                && request.commitment_type == lnrpc::CommitmentType::Anchors as i32
+                && !request.wants_zero_conf;
+            tx.send(lnrpc::ChannelAcceptResponse {
+                accept,
+                pending_chan_id: request.pending_chan_id,
+                min_accept_depth: if accept { 3 } else { 0 },
+                error: if accept {
+                    String::new()
+                } else {
+                    "This channel does not meet our requirements.".into()
+                },
+                ..Default::default()
+            })
+            .await
+            .map_err(|_| Error::Unavailable)?;
+        }
+        Err(Error::Unavailable)
+    }
     pub async fn open_peer_channel(
         &self,
         node_id: &str,
         address: &str,
         amount_sats: u64,
         announce: bool,
+    ) -> Result<String> {
+        self.open_peer_channel_at_rate(node_id, address, amount_sats, announce, 0)
+            .await
+    }
+    pub async fn open_peer_channel_at_rate(
+        &self,
+        node_id: &str,
+        address: &str,
+        amount_sats: u64,
+        announce: bool,
+        sat_per_vbyte: u64,
     ) -> Result<String> {
         self.ensure_current().await?;
         let key = hex::decode(node_id).map_err(|_| Error::Invalid("peer identity"))?;
@@ -354,6 +396,8 @@ impl Client {
             local_funding_amount: signed(amount_sats, "channel amount")?,
             private: !announce,
             commitment_type: lnrpc::CommitmentType::Anchors as i32,
+            sat_per_vbyte,
+            min_confs: 1,
             ..Default::default()
         }))
         .await?;
@@ -365,6 +409,29 @@ impl Client {
             }
         };
         Ok(format!("{txid}:{}", point.output_index))
+    }
+    pub async fn channel_opening_fee(&self, point: &str) -> Result<u64> {
+        let txid = point
+            .split_once(':')
+            .ok_or(Error::Invalid("channel point"))?
+            .0;
+        let transactions = transport::read(|| {
+            let mut rpc = self.rpc();
+            async move {
+                rpc.get_transactions(lnrpc::GetTransactionsRequest {
+                    end_height: -1,
+                    ..Default::default()
+                })
+                .await
+            }
+        })
+        .await?;
+        let tx = transactions
+            .transactions
+            .iter()
+            .find(|tx| tx.tx_hash == txid)
+            .ok_or(Error::NotFound)?;
+        unsigned(tx.total_fees)
     }
     pub async fn close_peer_channel(
         &self,

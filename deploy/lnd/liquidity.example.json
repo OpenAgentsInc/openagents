@@ -1,0 +1,22 @@
+{
+  "endpoint": "https://127.0.0.1:10009",
+  "certificate_sha256": "REPLACE_WITH_NODE_CERTIFICATE_SHA256",
+  "macaroon": "/run/openagents-lnd-liquidity/ops.macaroon",
+  "node": "03bb4d4950167daf3f9693c6cdb70cbe160ebbd19afacc1ea509116b2d716c4acd",
+  "network": "mainnet",
+  "provider": "zeus",
+  "journal": "/var/lib/openagents-lnd/liquidity.json",
+  "channel_peer": "REPLACE_WITH_OWNER_APPROVED_PEER",
+  "channel_address": "REPLACE_WITH_OWNER_APPROVED_PEER_ADDRESS",
+  "budget": {
+    "mainnet_approved": false,
+    "inbound_sats": 0,
+    "channel_sats": 0,
+    "reserve_sats": 100000,
+    "maximum_lsp_fee_sats": 0,
+    "maximum_routing_fee_msat": 0,
+    "opening_sat_per_vbyte": 0,
+    "opening_allowance_sats": 0,
+    "expiry_blocks": 12960
+  }
+}

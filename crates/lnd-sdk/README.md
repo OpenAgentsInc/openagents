@@ -36,3 +36,34 @@ regtest wallets, scoped volumes, and dynamic local ports. An unfunded offline
 testnet signer checks the existing x402 validator without admitting regtest
 invoices. The fixture removes its containers and volumes when it exits. It
 never opens a production wallet or reads a treasury secret.
+
+## Buy inbound capacity
+
+`lnd-liquidity SETTINGS ACTION` supports `info`, `plan`, `order`, `status`,
+`pay`, `guard`, `open`, and `costs`. Start with
+[`liquidity.example.json`](../../deploy/lnd/liquidity.example.json).
+The example has no spending budget. `info` and `plan` only read the provider.
+The owner must choose the capital, LSP fee limit, routing fee limit, peer,
+fee rate, and approval before an order, payment, or channel open.
+
+Run `guard` in a separate process throughout an LSPS1 purchase: it accepts
+only the selected provider's anchor channels at the requested capacity, with
+at least three confirmations. Connect that provider before `pay`. Run `open`
+for the separately approved stable peer; it requests anchors and confirmed
+inputs, and checks the remaining reserve before opening. The opening
+allowance is a conservative balance check, not a transaction fee ceiling.
+Check the actual fee and reserve afterward. Pause funding if the allowance
+is insufficient. No command retries an uncertain mutation.
+
+Keep one protected journal per node and approved budget. After an interrupted
+`pay`, repeat `pay` only to track the saved hash. After an interrupted `order`
+or `open`, inspect provider orders or LND pending channels and resolve the
+original action; do not delete the file or make another journal. `costs`
+saves actual purchase, routing, and opening costs and compares them with 2%
+of settled inbound payments. An empty receipt history has no percentage.
+Capital and the anchor reserve are not operating costs.
+
+Provider endpoints and identities come from [ZEUS](https://docs.zeusln.app/lsp/services/lsps1/)
+and [Megalith](https://docs.megalithic.me/lightning-services/lsp1-get-inbound-liquidity-for-mobile-clients/).
+Requests follow [LSPS1](https://github.com/lightning/blips/blob/master/blip-0051.md).
+Always fetch current limits; the provider examples can lag its live service.
