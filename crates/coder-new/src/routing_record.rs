@@ -1192,6 +1192,15 @@ impl crate::App {
         // Who paid, off the model that answered (#11550): the person's
         // own OpenRouter key when the chat's pick is one of its models.
         let payer = model.as_deref().map(|model| {
+            // Signed out, the free answers' model was Coder's own free
+            // tier (#11645), not gateway credit.
+            if open.harness == crate::harness_plugin::Harness::CoderLoop
+                && open.agent.is_none()
+                && model == crate::free_tier::MODEL
+                && self.connections().is_none()
+            {
+                return crate::harness_plugin::Payer::FreeTier;
+            }
             crate::harness_plugin::paid_by(
                 open.harness,
                 open.agent.is_some(),
