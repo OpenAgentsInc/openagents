@@ -4945,9 +4945,9 @@ version = "1.0.0-rc.22"
 dependencies = [
  "axum",
  "clap",
+ "gemm 0.19.0",
  "libc",
  "libm",
- "matrixmultiply",
  "ort",
  "psionic-backend-cuda",
  "psionic-backend-metal",

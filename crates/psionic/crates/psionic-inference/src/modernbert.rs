@@ -30,7 +30,12 @@ pub struct ModernBertConfig {
     pub weights_sha256: String,
 }
 
+#[cfg(target_arch = "x86_64")]
+mod simd;
+
 struct Matrix {
+    #[cfg(target_arch = "x86_64")]
+    packed: Option<simd::Packed>,
     rows: usize,
     cols: usize,
     values: Vec<f32>,
@@ -38,6 +43,7 @@ struct Matrix {
 
 struct Layer {
     config: LayerConfig,
+    rotary: std::sync::Arc<Vec<f32>>,
     attn_norm: Option<Vec<f32>>,
     mlp_norm: Vec<f32>,
     qkv: Matrix,
@@ -54,7 +60,42 @@ struct Head {
 #[cfg(feature = "native-cuda")]
 mod cuda;
 
+#[derive(Default)]
+struct Buffers {
+    state: std::sync::Mutex<(usize, std::collections::VecDeque<Vec<f32>>)>,
+}
+impl Buffers {
+    fn take(&self, len: usize) -> Vec<f32> {
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(index) = state.1.iter().rposition(|values| values.len() == len) {
+            if let Some(values) = state.1.remove(index) {
+                state.0 -= len * 4;
+                return values;
+            }
+        }
+        drop(state);
+        vec![0.0; len]
+    }
+    fn give(&self, values: Vec<f32>) {
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        let bytes = values.len() * 4;
+        if bytes > 64 * 1024 * 1024 {
+            return;
+        }
+        while state.0 + bytes > 64 * 1024 * 1024 || state.1.len() >= 128 {
+            if let Some(oldest) = state.1.pop_front() {
+                state.0 -= oldest.len() * 4;
+            } else {
+                break;
+            }
+        }
+        state.0 += bytes;
+        state.1.push_back(values);
+    }
+}
+
 pub struct ModernBertEngine {
+    buffers: Buffers,
     #[cfg(feature = "native-cuda")]
     cuda: Option<cuda::Encoder>,
     accelerator: Option<std::sync::Mutex<crate::dense_accelerator::DenseAccelerator>>,
@@ -93,6 +134,8 @@ fn floats(tensors: &SafeTensors<'_>, name: &str, shape: &[usize]) -> Result<Vec<
 
 fn matrix(tensors: &SafeTensors<'_>, name: &str, rows: usize, cols: usize) -> Result<Matrix> {
     Ok(Matrix {
+        #[cfg(target_arch = "x86_64")]
+        packed: None,
         rows,
         cols,
         values: floats(tensors, name, &[rows, cols])?,
@@ -101,6 +144,10 @@ fn matrix(tensors: &SafeTensors<'_>, name: &str, rows: usize, cols: usize) -> Re
 
 impl ModernBertEngine {
     pub fn load(root: &Path, threads: usize) -> Result<Self> {
+        Self::load_inner(root, threads, true)
+    }
+
+    fn load_inner(root: &Path, threads: usize, pack: bool) -> Result<Self> {
         if !(1..=256).contains(&threads) {
             return Err(Error("Choose between 1 and 256 CPU threads".into()));
         }
@@ -150,10 +197,21 @@ impl ModernBertEngine {
         }
         let embedding = embedding.data().to_vec();
         let mut layers = Vec::new();
+        let mut rotary_tables: BTreeMap<Vec<u32>, std::sync::Arc<Vec<f32>>> = BTreeMap::new();
         for (i, layer_config) in config.layers.iter().enumerate() {
             let prefix = format!("layers.{i}");
             layers.push(Layer {
                 config: layer_config.clone(),
+                rotary: rotary_tables
+                    .entry(
+                        layer_config
+                            .inverse_frequencies
+                            .iter()
+                            .map(|f| f.to_bits())
+                            .collect(),
+                    )
+                    .or_insert_with(|| std::sync::Arc::new(rotary_table(layer_config, 512)))
+                    .clone(),
                 attn_norm: if i == 0 {
                     None
                 } else {
@@ -181,7 +239,9 @@ impl ModernBertEngine {
                 },
             );
         }
-        Ok(Self {
+        #[allow(unused_mut)]
+        let mut model = Self {
+            buffers: Buffers::default(),
             #[cfg(feature = "native-cuda")]
             cuda: None,
             accelerator: None,
@@ -206,11 +266,29 @@ impl ModernBertEngine {
                 cpu_fallback: Some(false),
             },
             config,
-        })
+        };
+        #[cfg(target_arch = "x86_64")]
+        if pack && simd::available() {
+            for layer in &mut model.layers {
+                for weight in [
+                    &mut layer.qkv,
+                    &mut layer.attn_out,
+                    &mut layer.up,
+                    &mut layer.down,
+                ] {
+                    weight.packed =
+                        Some(simd::Packed::new(&weight.values, weight.rows, weight.cols));
+                    weight.values = Vec::new();
+                }
+            }
+        }
+        #[cfg(not(target_arch = "x86_64"))]
+        let _ = pack;
+        Ok(model)
     }
 
     pub fn load_on(root: &Path, threads: usize, device: crate::DeviceChoice) -> Result<Self> {
-        let mut model = Self::load(root, threads)?;
+        let mut model = Self::load_inner(root, threads, device == crate::DeviceChoice::Cpu)?;
         #[cfg(feature = "native-cuda")]
         if device == crate::DeviceChoice::Cuda {
             let encoder = cuda::Encoder::load(&mut model)?;
@@ -257,7 +335,7 @@ impl ModernBertEngine {
                     weight.cols,
                 )
         } else {
-            Ok(linear(input, weight))
+            Ok(linear(input, weight, &self.buffers))
         }
     }
 
@@ -300,7 +378,8 @@ impl ModernBertEngine {
         let (ids, mask) = self.inputs(inputs)?;
         let h = self.config.hidden;
         let n = ids.len();
-        let mut hidden = Vec::with_capacity(n * h);
+        let mut hidden = self.buffers.take(n * h);
+        hidden.clear();
         for id in ids {
             let id =
                 usize::try_from(*id).map_err(|_| Error("Token ID must be non-negative".into()))?;
@@ -313,24 +392,50 @@ impl ModernBertEngine {
             }));
         }
         normalize(&mut hidden, &self.embedding_norm, self.config.epsilon);
-        for layer in &self.layers {
-            let mut normalized = hidden.clone();
+        for (index, layer) in self.layers.iter().enumerate() {
+            let rows = if index + 1 == self.layers.len() { 1 } else { n };
+            let mut normalized = self.buffers.take(hidden.len());
+            normalized.copy_from_slice(&hidden);
             if let Some(weight) = &layer.attn_norm {
                 normalize(&mut normalized, weight, self.config.epsilon);
             }
             let qkv = self.linear(&normalized, &layer.qkv)?;
-            let attention = attention(&qkv, n, h, self.config.heads, mask, &layer.config);
+            self.buffers.give(normalized);
+            let attention = attention_prepared(
+                &qkv,
+                n,
+                h,
+                self.config.heads,
+                mask,
+                &layer.config,
+                &layer.rotary,
+                rows,
+                &self.buffers,
+            );
+            self.buffers.give(qkv);
             let output = self.linear(&attention, &layer.attn_out)?;
+            self.buffers.give(attention);
             add(&mut hidden, &output);
-            let mut normalized = hidden.clone();
+            self.buffers.give(output);
+            let mut normalized = self.buffers.take(rows * h);
+            normalized.copy_from_slice(&hidden[..rows * h]);
             normalize(&mut normalized, &layer.mlp_norm, self.config.epsilon);
             let up = self.linear(&normalized, &layer.up)?;
+            self.buffers.give(normalized);
             let f = self.config.intermediate;
-            let mut gated = vec![0.0; n * f];
+            let mut gated = self.buffers.take(rows * f);
             gated
                 .par_chunks_mut(f)
                 .zip(up.par_chunks(2 * f))
                 .for_each(|(out, input)| {
+                    #[cfg(target_arch = "x86_64")]
+                    if simd::available() {
+                        // SAFETY: runtime feature checks and the row slices provide the required extents.
+                        unsafe {
+                            simd::geglu_row(input, out);
+                        }
+                        return;
+                    }
                     for i in 0..f {
                         out[i] = (input[i]
                             * (1.0 + libm::erff(input[i] / std::f32::consts::SQRT_2))
@@ -338,9 +443,15 @@ impl ModernBertEngine {
                             * input[f + i];
                     }
                 });
-            add(&mut hidden, &self.linear(&gated, &layer.down)?);
+            self.buffers.give(up);
+            let down = self.linear(&gated, &layer.down)?;
+            self.buffers.give(gated);
+            add(&mut hidden, &down);
+            self.buffers.give(down);
         }
-        let mut pooled = hidden[..h].to_vec();
+        let mut pooled = self.buffers.take(h);
+        pooled.copy_from_slice(&hidden[..h]);
+        self.buffers.give(hidden);
         normalize(&mut pooled, &self.final_norm, self.config.epsilon);
         let mut outputs = Tensors::new();
         for (name, head) in &self.heads {
@@ -354,6 +465,7 @@ impl ModernBertEngine {
                 },
             );
         }
+        self.buffers.give(pooled);
         Ok(outputs)
     }
 }
@@ -364,9 +476,31 @@ impl ModelEngine for ModernBertEngine {
         if let Some(cuda) = &self.cuda {
             return cuda.report();
         }
-        self.accelerator.as_ref().and_then(|a| a.lock().ok()).map_or(serde_json::Value::Null, |a| {
-            let mut report=a.report();report["cpu_operations"]=serde_json::json!("embedding gather/dequantization, norms, RoPE, attention, GeGLU, residuals, and head biases");report
-        })
+        if let Some(accelerator) = self.accelerator.as_ref().and_then(|a| a.lock().ok()) {
+            let mut report = accelerator.report();
+            report["cpu_operations"] = serde_json::json!(
+                "embedding gather/dequantization, norms, RoPE, attention, GeGLU, residuals, and head biases"
+            );
+            return report;
+        }
+        let mut report = serde_json::json!({"placement":"CPU","activation_cache_limit_bytes":64*1024*1024,"activation_cache_max_buffers":128,"cached_activation_bytes":self.buffers.state.lock().map(|state|state.0).unwrap_or(0),"rotary":"cached position tables","final_layer_query_rows":1,"projection":"gemm 0.19 f32","erf":"libm f32"});
+        #[cfg(target_arch = "x86_64")]
+        if simd::available() {
+            report["projection"] =
+                serde_json::json!("AVX2/FMA packed 3x24 short and 16x6 long kernels");
+            report["erf"] = serde_json::json!(
+                "f32 degree-10 piecewise polynomial; dense-domain and model-reference checks"
+            );
+            report["packed_weights_bytes"] = serde_json::json!(
+                self.layers
+                    .iter()
+                    .flat_map(|l| [&l.qkv, &l.attn_out, &l.up, &l.down])
+                    .filter_map(|w| w.packed.as_ref())
+                    .map(|w| w.byte_len())
+                    .sum::<usize>()
+            );
+        }
+        report
     }
 
     fn identity(&self) -> &ExecutionIdentity {
@@ -392,6 +526,14 @@ fn add(a: &mut [f32], b: &[f32]) {
 
 fn normalize(values: &mut [f32], weight: &[f32], epsilon: f32) {
     values.par_chunks_mut(weight.len()).for_each(|row| {
+        #[cfg(target_arch = "x86_64")]
+        if simd::available() {
+            // SAFETY: features were checked and the model supplies one complete weight per value.
+            unsafe {
+                simd::normalize_row(row, weight, epsilon);
+            }
+            return;
+        }
         let mean = row.iter().sum::<f32>() / row.len() as f32;
         let variance =
             row.iter().map(|v| (*v - mean) * (*v - mean)).sum::<f32>() / row.len() as f32;
@@ -402,28 +544,26 @@ fn normalize(values: &mut [f32], weight: &[f32], epsilon: f32) {
     });
 }
 
-fn linear(input: &[f32], weight: &Matrix) -> Vec<f32> {
+fn linear(input: &[f32], weight: &Matrix, buffers: &Buffers) -> Vec<f32> {
+    #[cfg(target_arch = "x86_64")]
+    if let Some(packed) = &weight.packed {
+        return packed.multiply(input, buffers);
+    }
     let rows = input.len() / weight.rows;
-    let mut output = vec![0.0; rows * weight.cols];
-    let chunk = rows.div_ceil(rayon::current_num_threads()).max(1);
-    output
-        .par_chunks_mut(chunk * weight.cols)
-        .enumerate()
-        .for_each(|(i, out)| {
-            let a = &input[i * chunk * weight.rows..];
-            gemm(
-                out.len() / weight.cols,
-                weight.cols,
-                weight.rows,
-                a,
-                weight.rows,
-                1,
-                &weight.values,
-                weight.cols,
-                1,
-                out,
-            );
-        });
+    let mut output = buffers.take(rows * weight.cols);
+    gemm_parallel(
+        rows,
+        weight.cols,
+        weight.rows,
+        input,
+        weight.rows,
+        1,
+        &weight.values,
+        weight.cols,
+        1,
+        &mut output,
+        gemm::Parallelism::Rayon(rayon::current_num_threads()),
+    );
     output
 }
 
@@ -440,6 +580,35 @@ fn gemm(
     bcs: usize,
     out: &mut [f32],
 ) {
+    gemm_parallel(
+        m,
+        n,
+        k,
+        a,
+        ars,
+        acs,
+        b,
+        brs,
+        bcs,
+        out,
+        gemm::Parallelism::None,
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+fn gemm_parallel(
+    m: usize,
+    n: usize,
+    k: usize,
+    a: &[f32],
+    ars: usize,
+    acs: usize,
+    b: &[f32],
+    brs: usize,
+    bcs: usize,
+    out: &mut [f32],
+    parallelism: gemm::Parallelism,
+) {
     debug_assert!(m > 0 && n > 0 && k > 0);
     debug_assert!(a.len() > (m - 1) * ars + (k - 1) * acs);
     debug_assert!(b.len() > (k - 1) * brs + (n - 1) * bcs);
@@ -447,25 +616,31 @@ fn gemm(
     // SAFETY: all dimensions and strides describe the checked slices above;
     // output is a distinct contiguous m-by-n allocation.
     unsafe {
-        matrixmultiply::sgemm(
+        gemm::gemm(
             m,
-            k,
             n,
-            1.0,
-            a.as_ptr(),
-            ars as isize,
-            acs as isize,
-            b.as_ptr(),
-            brs as isize,
-            bcs as isize,
-            0.0,
+            k,
             out.as_mut_ptr(),
-            n as isize,
             1,
+            n as isize,
+            false,
+            a.as_ptr(),
+            acs as isize,
+            ars as isize,
+            b.as_ptr(),
+            bcs as isize,
+            brs as isize,
+            0.0_f32,
+            1.0,
+            false,
+            false,
+            false,
+            parallelism,
         );
     }
 }
 
+#[cfg(test)]
 fn attention(
     qkv: &[f32],
     n: usize,
@@ -474,46 +649,119 @@ fn attention(
     mask: &[i64],
     config: &LayerConfig,
 ) -> Vec<f32> {
+    let rotary = rotary_table(config, n);
+    attention_prepared(
+        qkv,
+        n,
+        h,
+        heads,
+        mask,
+        config,
+        &rotary,
+        n,
+        &Buffers::default(),
+    )
+}
+
+fn rotary_table(config: &LayerConfig, n: usize) -> Vec<f32> {
+    let half = config.inverse_frequencies.len();
+    let mut values = vec![0.0; n * half * 2];
+    for t in 0..n {
+        for (d, f) in config.inverse_frequencies.iter().enumerate() {
+            let (sin, cos) = (t as f32 * f).sin_cos();
+            values[t * half * 2 + d] = sin;
+            values[t * half * 2 + half + d] = cos;
+        }
+    }
+    values
+}
+
+#[allow(clippy::too_many_arguments)]
+fn attention_prepared(
+    qkv: &[f32],
+    n: usize,
+    h: usize,
+    heads: usize,
+    mask: &[i64],
+    config: &LayerConfig,
+    rotary: &[f32],
+    queries: usize,
+    buffers: &Buffers,
+) -> Vec<f32> {
     let dim = h / heads;
-    let mut per_head = vec![0.0; heads * n * dim];
+    let mut per_head = buffers.take(heads * queries * dim);
     per_head
-        .par_chunks_mut(n * dim)
+        .par_chunks_mut(queries * dim)
         .enumerate()
         .for_each(|(head, out)| {
-            let mut q = vec![0.0; n * dim];
-            let mut k = vec![0.0; n * dim];
-            let mut v = vec![0.0; n * dim];
+            let mut q = buffers.take(queries * dim);
+            let mut k = buffers.take(n * dim);
+            let mut v = buffers.take(n * dim);
             // The ONNX graph scales Q and K independently before their product.
             let scale = (1.0 / (dim as f32).sqrt()).sqrt();
             for t in 0..n {
-                for d in 0..dim {
-                    q[t * dim + d] = qkv[t * 3 * h + head * dim + d];
-                    k[t * dim + d] = qkv[t * 3 * h + h + head * dim + d];
-                    v[t * dim + d] = qkv[t * 3 * h + 2 * h + head * dim + d];
+                let offset = t * 3 * h + head * dim;
+                if t < queries {
+                    q[t * dim..(t + 1) * dim].copy_from_slice(&qkv[offset..offset + dim]);
                 }
-                for d in 0..dim / 2 {
-                    let angle = t as f32 * config.inverse_frequencies[d];
-                    let (sin, cos) = angle.sin_cos();
-                    for values in [&mut q, &mut k] {
-                        let a = values[t * dim + d];
-                        let b = values[t * dim + dim / 2 + d];
-                        values[t * dim + d] = (a * cos - b * sin) * scale;
-                        values[t * dim + dim / 2 + d] = (b * cos + a * sin) * scale;
+                k[t * dim..(t + 1) * dim].copy_from_slice(&qkv[offset + h..offset + h + dim]);
+                v[t * dim..(t + 1) * dim]
+                    .copy_from_slice(&qkv[offset + 2 * h..offset + 2 * h + dim]);
+            }
+            #[cfg(target_arch = "x86_64")]
+            let rotated = if simd::available() {
+                // SAFETY: CPU features and model dimensions were validated; each table covers all positions.
+                unsafe {
+                    simd::rotate(&mut q, dim, rotary, scale);
+                    simd::rotate(&mut k, dim, rotary, scale);
+                }
+                true
+            } else {
+                false
+            };
+            #[cfg(not(target_arch = "x86_64"))]
+            let rotated = false;
+            if !rotated {
+                for values in [&mut q, &mut k] {
+                    for (t, row) in values.chunks_mut(dim).enumerate() {
+                        for d in 0..dim / 2 {
+                            let sin = rotary[t * dim + d];
+                            let cos = rotary[t * dim + dim / 2 + d];
+                            let a = row[d];
+                            let b = row[dim / 2 + d];
+                            row[d] = (a * cos - b * sin) * scale;
+                            row[dim / 2 + d] = (b * cos + a * sin) * scale;
+                        }
                     }
                 }
             }
-            let mut scores = vec![0.0; n * n];
-            gemm(n, n, dim, &q, dim, 1, &k, 1, dim, &mut scores);
+            let mut scores = buffers.take(queries * n);
+            gemm(queries, n, dim, &q, dim, 1, &k, 1, dim, &mut scores);
             for (t, row) in scores.chunks_mut(n).enumerate() {
+                let first = config.window.map_or(0, |w| t.saturating_sub(w));
+                let end = config
+                    .window
+                    .map_or(n, |w| t.saturating_add(w).saturating_add(1).min(n));
+                row[..first].fill(0.0);
+                row[end..].fill(0.0);
+                let row = &mut row[first..end];
                 let mut max = f32::NEG_INFINITY;
-                for (s, value) in row.iter_mut().enumerate() {
-                    if mask[s] == 0 || config.window.is_some_and(|w| t.abs_diff(s) > w) {
+                for (i, value) in row.iter_mut().enumerate() {
+                    if mask[first + i] == 0 {
                         *value = f32::NEG_INFINITY;
                     }
                     max = max.max(*value);
                 }
                 if max == f32::NEG_INFINITY {
                     row.fill(0.0);
+                    continue;
+                }
+                #[cfg(target_arch = "x86_64")]
+                if simd::available() {
+                    // SAFETY: AVX2/FMA were checked and the maximum is finite.
+                    unsafe {
+                        simd::softmax_row(row, max);
+                    }
                     continue;
                 }
                 let mut sum = 0.0;
@@ -525,16 +773,20 @@ fn attention(
                     *value /= sum;
                 }
             }
-            gemm(n, dim, n, &scores, n, 1, &v, dim, 1, out);
+            gemm(queries, dim, n, &scores, n, 1, &v, dim, 1, out);
+            for values in [q, k, v, scores] {
+                buffers.give(values);
+            }
         });
-    let mut output = vec![0.0; n * h];
-    for t in 0..n {
+    let mut output = buffers.take(queries * h);
+    for t in 0..queries {
         for head in 0..heads {
             output[t * h + head * dim..t * h + (head + 1) * dim].copy_from_slice(
-                &per_head[head * n * dim + t * dim..head * n * dim + (t + 1) * dim],
+                &per_head[head * queries * dim + t * dim..head * queries * dim + (t + 1) * dim],
             );
         }
     }
+    buffers.give(per_head);
     output
 }
 
@@ -542,6 +794,51 @@ fn attention(
 mod tests {
     use super::*;
 
+    #[test]
+    fn activation_cache_evicts_old_buffers_and_retains_recent_sizes() {
+        let buffers = Buffers::default();
+        for len in 1..=129 {
+            buffers.give(vec![7.0; len]);
+        }
+        assert_eq!(buffers.take(1), vec![0.0]);
+        assert_eq!(buffers.take(129), vec![7.0; 129]);
+        let state = buffers.state.lock().unwrap();
+        assert!(state.0 <= 64 * 1024 * 1024 && state.1.len() <= 128);
+    }
+    #[test]
+    fn first_query_pruning_preserves_attention_output() {
+        let n = 129;
+        let h = 8;
+        let heads = 2;
+        let qkv: Vec<_> = (0..n * 3 * h)
+            .map(|i| ((i * 17 % 47) as f32 - 23.0) / 53.0)
+            .collect();
+        let mask: Vec<_> = (0..n).map(|i| i64::from(i % 3 != 2)).collect();
+        for window in [None, Some(1), Some(64)] {
+            let config = LayerConfig {
+                window,
+                inverse_frequencies: vec![1.0, 0.01],
+            };
+            let all = attention(&qkv, n, h, heads, &mask, &config);
+            let pruned = attention_prepared(
+                &qkv,
+                n,
+                h,
+                heads,
+                &mask,
+                &config,
+                &rotary_table(&config, n),
+                1,
+                &Buffers::default(),
+            );
+            assert!(
+                all[..h]
+                    .iter()
+                    .zip(&pruned)
+                    .all(|(a, b)| (a - b).abs() < 1e-6)
+            );
+        }
+    }
     #[test]
     fn local_attention_respects_padding_and_window_edges() {
         // Zero Q/K gives uniform attention over permitted keys.

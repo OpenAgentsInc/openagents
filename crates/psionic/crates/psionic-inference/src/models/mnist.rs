@@ -8,6 +8,9 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, path::Path};
 
+#[cfg(target_arch = "x86_64")]
+mod simd;
+
 pub struct MnistEngine {
     accelerator: Option<std::sync::Mutex<crate::dense_accelerator::DenseAccelerator>>,
     conv1: Vec<f32>,
@@ -79,7 +82,7 @@ impl MnistEngine {
         key: usize,
     ) -> Result<Vec<f32>> {
         let Some(accelerator) = &self.accelerator else {
-            return Ok(conv_relu(input, channels, width, weights, bias));
+            return Ok(conv_relu(input, channels, width, weights, bias, false));
         };
         let k = channels * 25;
         let mut columns = vec![0.0; width * width * k];
@@ -162,7 +165,13 @@ impl ModelEngine for MnistEngine {
         self.accelerator
             .as_ref()
             .and_then(|a| a.lock().ok())
-            .map_or(serde_json::Value::Null, |a| {
+            .map_or_else(|| {
+                #[cfg(target_arch="x86_64")]
+                let simd=std::arch::is_x86_feature_detected!("avx2") && std::arch::is_x86_feature_detected!("fma");
+                #[cfg(not(target_arch="x86_64"))]
+                let simd=false;
+                serde_json::json!({"placement":"CPU","convolution":if simd {"AVX2/FMA with eight output channels per vector group"} else {"portable scalar"},"requested_thread_budget":self.identity.threads,"convolution_parallelism":if simd {1} else {self.identity.threads}})
+            }, |a| {
                 let mut report = a.report();
                 report["cpu_operations"] = serde_json::json!(
                     "im2col, bias, ReLU, max pooling, input and output preparation"
@@ -175,11 +184,34 @@ impl ModelEngine for MnistEngine {
         &self.identity
     }
     fn run(&mut self, inputs: &Tensors) -> Result<Tensors> {
+        #[cfg(target_arch = "x86_64")]
+        if self.accelerator.is_none()
+            && std::arch::is_x86_feature_detected!("avx2")
+            && std::arch::is_x86_feature_detected!("fma")
+        {
+            return self.forward(inputs);
+        }
         self.pool.install(|| self.forward(inputs))
     }
 }
 
 fn conv_relu(
+    input: &[f32],
+    channels: usize,
+    width: usize,
+    weights: &[f32],
+    bias: &[f32],
+    parallel: bool,
+) -> Vec<f32> {
+    #[cfg(target_arch = "x86_64")]
+    if std::arch::is_x86_feature_detected!("avx2") && std::arch::is_x86_feature_detected!("fma") {
+        // SAFETY: both required CPU features were checked; the pinned model supplies fixed dimensions.
+        return unsafe { simd::conv_relu(input, channels, width, weights, bias, parallel) };
+    }
+    conv_relu_scalar(input, channels, width, weights, bias)
+}
+
+fn conv_relu_scalar(
     input: &[f32],
     channels: usize,
     width: usize,
@@ -317,6 +349,33 @@ impl MnistModel {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn vector_convolution_matches_scalar_at_padding_and_row_tails() {
+        for width in [3, 7, 14, 28] {
+            for channels in [1, 8] {
+                for out_channels in [3, 4, 8] {
+                    let input: Vec<_> = (0..channels * width * width)
+                        .map(|i| ((i * 13 % 37) as f32 - 18.0) / 19.0)
+                        .collect();
+                    let weights: Vec<_> = (0..out_channels * channels * 25)
+                        .map(|i| ((i * 7 % 29) as f32 - 14.0) / 31.0)
+                        .collect();
+                    let bias: Vec<_> = (0..out_channels).map(|i| (i as f32 - 1.0) * 0.1).collect();
+                    let actual = conv_relu(&input, channels, width, &weights, &bias, true);
+                    let expected = conv_relu_scalar(&input, channels, width, &weights, &bias);
+                    let distance = actual
+                        .iter()
+                        .zip(&expected)
+                        .map(|(a, b)| (a - b).abs())
+                        .fold(0.0_f32, f32::max);
+                    assert!(
+                        distance < 1e-4,
+                        "width={width}, channels={channels}, error={distance}"
+                    );
+                }
+            }
+        }
+    }
     #[test]
     fn pooling_uses_floor_dimensions_and_keeps_channels_separate() {
         let input: Vec<f32> = (0..32).map(|i| i as f32).collect();
