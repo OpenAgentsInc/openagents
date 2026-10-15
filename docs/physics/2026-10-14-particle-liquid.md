@@ -129,3 +129,24 @@ The demo is an original scene:
 
 1080p frames and an MP4 are in `~/Downloads/liquid-pour-11660/` on the
 owner's Mac (6 s, 180 frames, about 45 s to simulate and render).
+
+## Live in the Water Lab
+
+The Water Lab has a glass tank on a stand, ahead of and to the right of the
+spawn (`cbb573740b`).
+
+- **What it does.** Every seven seconds the tank lets a column of about
+  1,200 particles go, alternating ends. The water breaks, runs, climbs the
+  far wall and sloshes.
+- **How it is drawn.** On Medium and High, the physical renderer draws it
+  with `ScreenSpaceLiquid` after the water and blended passes. It refracts
+  the opaque scene's copy and is hidden behind its depth copy;
+  `render.wgsl`'s composite mode handles reversed depth.
+- **Who steps it.** Verse's scene device asks for WebGL 2 limits, with no
+  compute. So the CPU solver steps the tank on its own thread (inline on
+  the web), and the renderer uploads the latest positions. The GPU solver
+  is used where the device can compute.
+- **How to see it.** Run `verse --water-lab` and walk to the stand.
+  Offscreen, run
+  `cargo run --release -p verse --example water_capture -- OUT_DIR --only tank`.
+- **Capture.** `~/Downloads/water-lab-tank-11660.png` on the owner's Mac.
