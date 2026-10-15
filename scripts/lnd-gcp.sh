@@ -72,6 +72,7 @@ if ! gc compute instances describe "$node" --zone="$zone" >/dev/null 2>&1; then
     --network-interface=subnet=oa-lightning-us-central1,no-address \
     --service-account="$account" --scopes=cloud-platform --tags=oa-lnd-v1 \
     --shielded-secure-boot --shielded-vtpm --shielded-integrity-monitoring --deletion-protection \
-    --labels=purpose=openagents-lnd,issue=11752
+    --labels=purpose=openagents-lnd,issue=11752 \
+    --metadata-from-file=startup-script=deploy/lnd/network-startup.sh
 fi
 printf 'Provisioned %s; peer address %s:9735. Install from a current main commit.\n' "$node" "$external"

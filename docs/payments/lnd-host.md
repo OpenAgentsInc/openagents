@@ -9,7 +9,8 @@ uses the seed and static channel backup, never a database rollback.
 
 The first network interface is on `default`; the second is on
 `oa-lightning-us-central1` and reaches the synced `oa-bitcoind` at `10.42.0.2`.
-Only peer port 9735 has public ingress. SSH requires IAP. The default VPC's
+The boot script sets loose reverse-path filtering so Debian accepts metadata
+replies on either interface. Only peer port 9735 has public ingress. SSH requires IAP. The default VPC's
 broad allow rules are overridden for this node: gRPC on 10009 admits only
 `oa-pay-1` at `10.128.0.46`. REST binds to loopback.
 
