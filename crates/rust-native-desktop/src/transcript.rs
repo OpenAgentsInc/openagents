@@ -895,24 +895,34 @@ impl Transcript {
                     WidgetKind::Status {
                         state: rust_native::ToolState::Failed,
                     } => {
-                        frame.line(
-                            (bounds.x, bounds.y),
-                            (bounds.x + bounds.w, bounds.y + bounds.h),
-                            scale,
-                            color,
-                        );
-                        frame.line(
-                            (bounds.x + bounds.w, bounds.y),
-                            (bounds.x, bounds.y + bounds.h),
-                            scale,
-                            color,
-                        );
+                        // The same size and stroke as the check beside it
+                        // (`icons::draw`'s `Glyph::Check`): about 60% of the
+                        // box, centred, in the failure red.
+                        let failure = Color::rgb(255, 69, 58);
+                        let width = (bounds.w / 11.0).max(1.0);
+                        let p = |x: f32, y: f32| (bounds.x + x * bounds.w, bounds.y + y * bounds.h);
+                        frame.line(p(0.22, 0.22), p(0.78, 0.78), width, failure);
+                        frame.line(p(0.78, 0.22), p(0.22, 0.78), width, failure);
                     }
-                    WidgetKind::Spinner
-                    | WidgetKind::Working
-                    | WidgetKind::Status {
+                    WidgetKind::Status {
                         state: rust_native::ToolState::Running,
                     } => {
+                        // Three dots across the check's width, centred.
+                        let dot = bounds.w * 0.16;
+                        for x in [0.2, 0.5, 0.8] {
+                            frame.fill(
+                                PxRect {
+                                    x: bounds.x + x * bounds.w - dot / 2.0,
+                                    y: bounds.y + bounds.h * 0.5 - dot / 2.0,
+                                    w: dot,
+                                    h: dot,
+                                },
+                                dot / 2.0,
+                                color,
+                            );
+                        }
+                    }
+                    WidgetKind::Spinner | WidgetKind::Working => {
                         for i in 0..3 {
                             frame.fill(
                                 PxRect {
