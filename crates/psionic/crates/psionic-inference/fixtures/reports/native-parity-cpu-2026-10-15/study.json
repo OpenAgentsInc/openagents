@@ -1,0 +1,190 @@
+{
+  "schema": "psionic.native.cpu.parity.study.v1",
+  "issue": 11723,
+  "date": "2026-10-15",
+  "implementation": {
+    "implementation_commit": "b65ec490d0d7d73076b9061ab7afb8dfd266edcb",
+    "source_sha256": {
+      "crates/psionic/crates/psionic-inference/Cargo.toml": "eae79bd02681b028c4dd22d3438505433bdd05e37cf3bee1295b06f1af45ccc1",
+      "crates/psionic/crates/psionic-inference/src/modernbert.rs": "9621a2cfd5cdca6ebf9cdf2c19e8db7120b705570c62d81e20f5f8d2680b8737",
+      "crates/psionic/crates/psionic-inference/src/modernbert/simd.rs": "54da86738ebdc163d240cc32167c6c93985cd9a3326b483982b8fd7982d0e438",
+      "crates/psionic/crates/psionic-inference/src/models/mnist.rs": "b76f0384906bee0845aea045b1fc4c9c0ebfde67a945f05dae726c76b4c6be95",
+      "crates/psionic/crates/psionic-inference/src/models/mnist/simd.rs": "b093c7a0319318b08b8d0d454bc6ea9d8d784e11f3c12549df184926ae0b7df0",
+      "scripts/dev/psionic-small-model-bench.py": "579344506fc71399274a8551be75e14bffe1dc8eda08567deb9d9f736dad2a8c"
+    }
+  },
+  "timed_calls": 20000,
+  "protocol": "Two alternating A/B rounds, 1000 timings/run, one process/engine, affinity 0,2,4,6 on distinct i7-14700K P cores, warm filesystem/model caches. Every run first checks all 100 references. Other sessions and repository edits continued; no own compilation overlapped these timings.",
+  "summary": [
+    {
+      "model": "s1-llm-auto-router",
+      "engine": "ort",
+      "threads": 1,
+      "bucket": "full",
+      "p50_ms": 18.047089,
+      "p99_range_ms": [
+        245.04194,
+        245.946383
+      ],
+      "resident_bytes_range": [
+        315752448,
+        315936768
+      ],
+      "max_reference_logit_error": 0.0
+    },
+    {
+      "model": "s1-llm-auto-router",
+      "engine": "native",
+      "threads": 1,
+      "bucket": "full",
+      "p50_ms": 16.730275,
+      "p99_range_ms": [
+        235.730799,
+        236.879537
+      ],
+      "resident_bytes_range": [
+        310747136,
+        310788096
+      ],
+      "max_reference_logit_error": 5.0067901611328125e-06
+    },
+    {
+      "model": "s1-llm-auto-router",
+      "engine": "ort",
+      "threads": 4,
+      "bucket": "full",
+      "p50_ms": 7.060012500000001,
+      "p99_range_ms": [
+        85.70794599999999,
+        86.643299
+      ],
+      "resident_bytes_range": [
+        316358656,
+        318074880
+      ],
+      "max_reference_logit_error": 0.0
+    },
+    {
+      "model": "s1-llm-auto-router",
+      "engine": "native",
+      "threads": 4,
+      "bucket": "full",
+      "p50_ms": 5.6799025,
+      "p99_range_ms": [
+        74.990365,
+        76.370198
+      ],
+      "resident_bytes_range": [
+        343023616,
+        345976832
+      ],
+      "max_reference_logit_error": 5.0067901611328125e-06
+    },
+    {
+      "model": "mnist-12",
+      "engine": "ort",
+      "threads": 1,
+      "bucket": "full",
+      "p50_ms": 0.022481,
+      "p99_range_ms": [
+        0.027972,
+        0.030181
+      ],
+      "resident_bytes_range": [
+        30912512,
+        31051776
+      ],
+      "max_reference_logit_error": 0.0
+    },
+    {
+      "model": "mnist-12",
+      "engine": "native",
+      "threads": 1,
+      "bucket": "full",
+      "p50_ms": 0.0217295,
+      "p99_range_ms": [
+        0.026889999999999997,
+        0.028558
+      ],
+      "resident_bytes_range": [
+        6455296,
+        6545408
+      ],
+      "max_reference_logit_error": 3.0517578125e-05
+    },
+    {
+      "model": "mnist-12",
+      "engine": "ort",
+      "threads": 4,
+      "bucket": "full",
+      "p50_ms": 0.016439500000000003,
+      "p99_range_ms": [
+        0.019249000000000002,
+        0.02156
+      ],
+      "resident_bytes_range": [
+        31064064,
+        31145984
+      ],
+      "max_reference_logit_error": 0.0
+    },
+    {
+      "model": "mnist-12",
+      "engine": "native",
+      "threads": 4,
+      "bucket": "full",
+      "p50_ms": 0.0218975,
+      "p99_range_ms": [
+        0.025579,
+        0.026732000000000002
+      ],
+      "resident_bytes_range": [
+        6512640,
+        6582272
+      ],
+      "max_reference_logit_error": 3.0517578125e-05
+    },
+    {
+      "model": "s1-llm-auto-router",
+      "engine": "ort",
+      "threads": 4,
+      "bucket": "512",
+      "p50_ms": 85.24476000000001,
+      "p99_range_ms": [
+        95.14004600000001,
+        95.171559
+      ],
+      "resident_bytes_range": [
+        316153856,
+        316358656
+      ],
+      "max_reference_logit_error": 0.0
+    },
+    {
+      "model": "s1-llm-auto-router",
+      "engine": "native",
+      "threads": 4,
+      "bucket": "512",
+      "p50_ms": 70.66878550000001,
+      "p99_range_ms": [
+        97.140817,
+        105.414935
+      ],
+      "resident_bytes_range": [
+        311599104,
+        317509632
+      ],
+      "max_reference_logit_error": 5.0067901611328125e-06
+    }
+  ],
+  "correctness": "All reference decisions match. Native router maximum raw-logit error 0.00000525; native digit error 0.00003052 in this initial revision. Separate repeated CPU/GPU fixture replay and vector-kernel tests pass.",
+  "changes": "Cached rotary tables; last-layer first-query pruning; AVX2/FMA packed float32 projections, vector LayerNorm, vector erf-form GeGLU and softmax; bounded 64 MiB/128-buffer activation reuse. Native CPU keeps original uint8 embeddings. Non-x86 paths use the portable Rust GEMM and scalar fallbacks.",
+  "qualification": "The router wins median and p99 on the mixed corpus at both thread budgets. At exactly 512 tokens its median is faster but p99 is worse in this initial matrix; neither engine meets the 20 ms CPU target. Digit inference matches ORT at one thread but trails at four in this initial matrix. Worker affinity and a subsequent digit revision are being qualified separately; these initial results remain visible.",
+  "remaining": [
+    "Complete fixed-worker 512-token tail qualification.",
+    "Complete cropped/vector digit CPU qualification.",
+    "Apple hardware and mobile qualification remain unmeasured."
+  ],
+  "published_implementation_commit": "b78afc3f2d8c5e588c8eff2b57cad45b2867f017",
+  "source_note": "Runs record the original implementation commit and exact tested source hashes. The published commit rebases those unchanged model sources onto current main; workspace version metadata can differ."
+}
