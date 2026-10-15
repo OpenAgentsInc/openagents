@@ -2413,3 +2413,12 @@ After funding approval, run the LSPS1 guard, purchase, and anchor open with
 Send a realistic payment from an independent wallet and save `costs` output
 for comparison with MDK's approximately 2% fee. No mainnet purchase, channel,
 or test payment was made for this issue; the 100,000-sat test uses regtest.
+
+## Approve production remote signing when outbound value warrants it (#11756)
+
+The regtest-only watch-only/signer pair and production firewall and IAM
+layout are implemented. Choose a separate signer project and approve owner
+decision 5 before deploying or moving the node's seed. Follow
+[the remote-signer runbook](docs/payments/lnd-host.md#remote-signer-11756),
+including removal of old seed-bearing disks and snapshots. No production
+signer was created, and no production seed was read or moved.

@@ -187,3 +187,54 @@ credit retry test. The real LND drill checked 21,001 msat collection with
 A baked receive-only macaroon issued invoices and observed payments; LND denied
 its send request. The separate recovery drill passed again on GCP after testing
 the case where an active private channel's graph entry is still arriving.
+
+## Remote signer (#11756)
+
+Production remains a standalone node until owner decision 5. The regtest
+fixture `Regtest::remotely_signed` creates the seed only on its signer,
+exports public accounts, and initializes Alice with `InitWallet.watch_only`.
+The signer has no published port, peer listener, or chain backend. It uses
+an internal Docker network shared only with Alice. Alice receives a
+read-only mount containing the signer's public certificate and scoped RPC
+credential, never its wallet volume. `tests/remote_signer.rs` checks channel
+opening, both payment directions, all account watch-only flags, and failure
+to issue an invoice after the signer stops.
+
+For the owner-approved deployment, use a separate GCP project and an
+`e2-small` Shielded VM on a dedicated subnet, without an external address.
+Connect only the watch-only node through private VPC peering or a dedicated
+VPN; export neither a default route nor the rest of the application subnet.
+Apply an ingress deny at priority 900, then an allow at priority 800 for
+TCP 10019 from the watch-only node's private `/32`. Keep REST on loopback.
+Allow SSH through IAP only during an operator maintenance window, then
+remove that rule. Deny other ingress and Internet egress; allow only the
+private Google API path needed for password unlock and audit delivery.
+Install pinned, verified packages through an operator maintenance path.
+
+Use a dedicated signer service account. Give it accessor on its wrapped
+password secret and decrypt on its password KMS key, both in the signer
+project; give it no application-project or seed-secret read access. The
+watch-only service account gets no signer-project IAM role. Its sole
+authority is a signer-issued macaroon with `message:write signer:generate
+address:read onchain:write`, bound to its private IP. Keep the signing
+project's operator group separate from application deployers. The signer
+may append a fresh seed version during an explicit ceremony; only the
+offline recovery operator can read it. Never log seed words or passwords.
+
+Start from [`signer-lnd.conf`](../../deploy/lnd/signer-lnd.conf) and
+[`watch-only.conf`](../../deploy/lnd/watch-only.conf). Fetch the wrapped
+password into tmpfs, decrypt with Cloud KMS, and pass its file to LND.
+KMS wraps the password; LND performs BIP32 derivation and Lightning signing.
+After the owner places the existing node's seed on the isolated signer,
+check its public identity, save current SCBs, stop the only channel-database
+writer, and enable the documented watch-only migration once. Remove the
+migration flag after success. Check every wallet account is watch-only,
+retest payments and backups, and remove old seed-bearing disk snapshots
+and retired disks through the owner's retention procedure. Purging the
+live wallet does not erase historical backups or SSD blocks.
+
+The remote signer protects wallet key storage; its credential still
+authorizes signing. A compromised watch-only process can request signatures.
+Keep payout limits and monitoring in force. TLS and transport credentials
+remain on the watch-only host. Follow the pinned upstream
+[remote-signing instructions](https://github.com/lightningnetwork/lnd/blob/v0.21.1-beta/docs/remote-signing.md).

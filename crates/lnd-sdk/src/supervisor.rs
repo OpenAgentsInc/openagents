@@ -20,13 +20,21 @@ pub struct Regtest {
 }
 impl Regtest {
     pub fn start(root: &Path) -> Result<Self> {
-        Self::start_mode(root, false).map(|r| r.0)
+        Self::start_mode(root, false, false).map(|r| r.0)
     }
     pub fn recoverable(root: &Path) -> Result<(Self, TestSeed)> {
-        let (nodes, seed) = Self::start_mode(root, true)?;
+        let (nodes, seed) = Self::start_mode(root, true, false)?;
         Ok((nodes, seed.ok_or(Error::Invalid("test seed"))?))
     }
-    fn start_mode(root: &Path, recoverable: bool) -> Result<(Self, Option<TestSeed>)> {
+    /// Fresh signer wallet; only public accounts and a scoped RPC credential reach Alice.
+    pub fn remotely_signed(root: &Path) -> Result<Self> {
+        Self::start_mode(root, false, true).map(|r| r.0)
+    }
+    fn start_mode(
+        root: &Path,
+        recoverable: bool,
+        remote: bool,
+    ) -> Result<(Self, Option<TestSeed>)> {
         if !root.is_absolute() {
             return Err(Error::Invalid("absolute regtest directory"));
         }
@@ -53,6 +61,10 @@ impl Regtest {
         if recoverable {
             compose = compose.replacen("\"--noseedbackup\", ", "", 1);
         }
+        if remote {
+            compose = compose.replacen("\"--noseedbackup\", ", "\"--remotesigner.enable\", \"--remotesigner.rpchost=signer:10009\", \"--remotesigner.tlscertpath=/signer/tls.cert\", \"--remotesigner.macaroonpath=/signer/signer.macaroon\", ", 1);
+            compose = compose.replacen("volumes: [\"alice:/data\"]", "volumes: [\"alice:/data\", \"signer-public:/signer:ro\"]\n    networks: [default, signing]", 1);
+        }
         std::fs::write(root.join("compose.yaml"), compose).map_err(|_| Error::Unavailable)?;
         result.command(&["up", "-d", "bitcoin"])?;
         result.wait(|| result.bitcoin(&["getblockchaininfo"]).map(|_| ()))?;
@@ -63,7 +75,15 @@ impl Regtest {
             .ok_or(Error::Unavailable)?
             .to_owned();
         result.bitcoin(&["generatetoaddress", "101", &address])?;
+        if remote {
+            result.command(&["up", "-d", "signer"])?;
+            result.wait(|| result.lncli("signer", &["getinfo"]).map(|_| ()))?;
+            result.command(&["exec", "-T", "signer", "sh", "-c", "cp /data/tls.cert /export/tls.cert && lncli --lnddir=/data --network=regtest bakemacaroon --save_to=/export/signer.macaroon message:write signer:generate address:read onchain:write >/dev/null && chmod 0600 /export/signer.macaroon"])?;
+        }
         result.command(&["up", "-d", "alice", "bob", "tower", "testnet"])?;
+        if remote {
+            result.initialize_watch_only()?;
+        }
         let seed = if recoverable {
             Some(result.initialize(None, None)?)
         } else {
@@ -88,6 +108,86 @@ impl Regtest {
                 .map(|_| ())
         })?;
         Ok((result, seed))
+    }
+    fn initialize_watch_only(&self) -> Result<()> {
+        use crate::{
+            macaroon::{Macaroon, Role},
+            proto::lnrpc,
+            transport,
+        };
+        let exported = self.lncli("signer", &["wallet", "accounts", "list"])?;
+        let accounts = exported["accounts"]
+            .as_array()
+            .ok_or(Error::Invalid("signer accounts"))?
+            .iter()
+            .filter(|a| {
+                a["extended_public_key"]
+                    .as_str()
+                    .is_some_and(|s| !s.is_empty())
+            })
+            .map(|a| {
+                let path = a["derivation_path"]
+                    .as_str()
+                    .ok_or(Error::Invalid("account path"))?;
+                let indices: Vec<u32> = path
+                    .strip_prefix("m/")
+                    .ok_or(Error::Invalid("account path"))?
+                    .split('/')
+                    .map(|s| {
+                        s.strip_suffix('\'')
+                            .ok_or(Error::Invalid("account path"))?
+                            .parse()
+                            .map_err(|_| Error::Invalid("account path"))
+                    })
+                    .collect::<Result<_>>()?;
+                if indices.len() != 3 {
+                    return Err(Error::Invalid("account depth"));
+                }
+                Ok(lnrpc::WatchOnlyAccount {
+                    purpose: indices[0],
+                    coin_type: indices[1],
+                    account: indices[2],
+                    xpub: a["extended_public_key"]
+                        .as_str()
+                        .ok_or(Error::Invalid("account public key"))?
+                        .into(),
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+        // The signer export must include all internal families and the three Bitcoin scopes.
+        if accounts.len() < 259 {
+            return Err(Error::Invalid("incomplete signer export"));
+        }
+        self.wait(|| {
+            self.command(&[
+                "exec",
+                "-T",
+                "alice",
+                "lncli",
+                "--lnddir=/data",
+                "--network=regtest",
+                "state",
+            ])
+            .map(|_| ())
+        })?;
+        let config = self.tls_config("alice")?;
+        tokio::runtime::Runtime::new()
+            .map_err(|_| Error::Unavailable)?
+            .block_on(async {
+                let channel =
+                    transport::connect(&config, Macaroon::new(Role::Ops, 0, vec![0])?).await?;
+                let mut rpc = lnrpc::wallet_unlocker_client::WalletUnlockerClient::new(channel);
+                transport::once(rpc.init_wallet(lnrpc::InitWalletRequest {
+                    wallet_password: b"regtest-watch-only".to_vec(),
+                    watch_only: Some(lnrpc::WatchOnly {
+                        accounts,
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }))
+                .await?;
+                Ok(())
+            })
     }
     fn initialize(&self, seed: Option<&TestSeed>, backup: Option<&[u8]>) -> Result<TestSeed> {
         use crate::{
@@ -205,7 +305,7 @@ impl Regtest {
             .unwrap_or_else(|_| Value::String(String::from_utf8_lossy(&out).trim().into())))
     }
     pub fn lncli(&self, node: &str, args: &[&str]) -> Result<Value> {
-        if !["alice", "bob", "tower"].contains(&node) {
+        if !["alice", "bob", "tower", "signer"].contains(&node) {
             return Err(Error::Invalid("regtest node"));
         }
         let mut cmd = vec![
