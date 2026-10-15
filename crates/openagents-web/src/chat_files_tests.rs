@@ -250,3 +250,34 @@ fn the_tray_and_picker_render_without_inline_script() {
     assert!(script.contains("x-openagents-csrf"));
     assert!(!script.contains("eval("));
 }
+
+#[tokio::test]
+async fn cad_files_are_named_for_the_typed_import_tool_and_never_sent_as_images() {
+    let bytes = b"ISO-10303-21;\nDATA; ENDSEC; END-ISO-10303-21;";
+    assert_eq!(check(bytes).unwrap(), Kind::Step);
+    assert!(crate::chat_vision::prepared(Kind::Step, bytes.to_vec()).is_none());
+    let mut stl = vec![0u8; 134];
+    stl[80..84].copy_from_slice(&1u32.to_le_bytes());
+    assert_eq!(check(&stl).unwrap(), Kind::Stl);
+    assert!(crate::chat_vision::prepared(Kind::Stl, stl).is_none());
+    let root = tempfile::tempdir().unwrap();
+    let store = Store::local(root.path().into());
+    let files = [FileRef {
+        id: "a".repeat(32),
+        name: "part.step".into(),
+        kind: Kind::Step,
+        size: bytes.len() as u64,
+    }];
+    let text = for_model(
+        &store,
+        "unused",
+        "12345678-1234-4234-8234-123456789abc",
+        &files,
+        1000,
+        &[],
+    )
+    .await;
+    assert!(text.contains("cad_import_file"));
+    assert!(text.contains(&files[0].id));
+    assert!(!text.contains("ISO-10303-21"));
+}

@@ -39,6 +39,7 @@
 //! person.
 
 mod configurator;
+mod imports;
 
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
@@ -85,7 +86,7 @@ const MAX_FILE_BYTES: usize = 15 * 1024 * 1024;
 const MAX_PARTS_BYTES: u64 = 48 * 1024 * 1024;
 
 /// The tools that change a model (a viewer may not run them).
-const CHANGES: [&str; 9] = [
+const CHANGES: [&str; 11] = [
     "cad_new_part",
     "cad_add_feature",
     "cad_edit_feature",
@@ -95,12 +96,15 @@ const CHANGES: [&str; 9] = [
     "cad_from_json",
     "cad_import_dxf",
     "cad_import_step",
+    "cad_import_file",
+    "cad_import_model",
 ];
 /// The Lab's tools that need the Mac they run on.
 const LOCAL_ONLY: [&str; 1] = ["cad_place"];
 /// A version's files the viewer and the page read.
-pub(crate) const FILES: [&str; 5] = [
+pub(crate) const FILES: [&str; 6] = [
     "doc.json",
+    "assets.json",
     "version.json",
     "view.json",
     "model.glb",
@@ -450,6 +454,12 @@ impl Engine {
         args: &Value,
     ) -> Result<Value, String> {
         let mut args = admitted(scope, name, args)?;
+        let name = if name == "cad_import_file" {
+            args = imports::from_chat(store, scope, &args).await?;
+            "cad_import_model"
+        } else {
+            name
+        };
         if !self.admit(&scope.actor) {
             return Err(
                 "You've run a lot of CAD steps this hour. Try again in a few minutes.".into(),
@@ -494,6 +504,7 @@ impl Engine {
         let dir = self.cache.join(scope.local());
         let wanted = named_docs(&args);
         sync(store, scope, &dir, &index, &wanted).await?;
+        imports::restore(store, scope, &dir, &index, &args).await?;
         let result = {
             let _job = tokio::time::timeout(QUEUE_WAIT, self.jobs.acquire())
                 .await
@@ -614,7 +625,12 @@ fn admitted(scope: &Scope, name: &str, args: &Value) -> Result<Value, String> {
         Value::Object(_) => args.clone(),
         _ => json!({}),
     };
-    if args.to_string().len() > MAX_ARGS_BYTES {
+    let argument_limit = if name == "cad_import_model" {
+        (2 * 1024 * 1024usize).div_ceil(3) * 4 + 8192
+    } else {
+        MAX_ARGS_BYTES
+    };
+    if args.to_string().len() > argument_limit {
         return Err(format!(
             "That step is more than {} KB; make it in smaller steps.",
             MAX_ARGS_BYTES / 1024
@@ -688,6 +704,7 @@ fn hosted_tools(tools: &[Value]) -> Vec<Value> {
             }
             tool
         })
+        .chain(std::iter::once(imports::tool()))
         .collect()
 }
 
@@ -847,12 +864,18 @@ async fn persist(store: &Store, scope: &Scope, dir: &Path, result: &Value) -> Re
         }
         Err(e) => return Err(format!("We couldn't save {doc} ({e}).")),
     }
-    for file in ["version.json", "view.json", "model.glb", "hero.png"] {
+    for file in [
+        "version.json",
+        "assets.json",
+        "view.json",
+        "model.glb",
+        "hero.png",
+    ] {
         let Ok(bytes) = tokio::fs::read(at.join(file)).await else {
             continue;
         };
         put(store, &key(file)?, bytes).await?;
-        if file != "version.json" {
+        if file != "version.json" && file != "assets.json" {
             let _ = tokio::fs::remove_file(at.join(file)).await;
         }
     }
@@ -865,6 +888,7 @@ async fn persist(store: &Store, scope: &Scope, dir: &Path, result: &Value) -> Re
     };
     let title = parsed["title"].as_str().unwrap_or(doc).to_owned();
     let kind = parsed["kind"].as_str().unwrap_or_default().to_owned();
+    imports::persist(store, scope, doc, n, &at).await?;
     update_index(store, scope, |index| {
         let entry = index.docs.entry(doc.to_owned()).or_default();
         entry.title.clone_from(&title);
@@ -994,6 +1018,8 @@ pub(crate) async fn read_file(
     }
     let rest = if FILES.contains(&name) {
         format!("{doc}/v{version}/{name}")
+    } else if let Some(file) = name.strip_prefix("out/").filter(|file| valid_out(file)) {
+        format!("{doc}/v{version}/out/{file}")
     } else if valid_out(name) {
         format!("{doc}/v{version}/out/{name}")
     } else {
@@ -1126,6 +1152,7 @@ async fn page_scope(app: &App, headers: &HeaderMap, project: Option<&str>) -> Op
 pub(crate) fn routes() -> Router<App> {
     Router::new()
         .merge(configurator::routes())
+        .merge(imports::routes())
         // `{file}`, as /cad/{file} names the same segment (pages::cad).
         .route("/cad/{file}/file", get(file))
         .route("/cad/{file}/delete", post(delete_form))
@@ -1350,11 +1377,17 @@ pub(crate) fn doc_content(
             }
             p.oa-cad-meta { (crate::cad_lab::mass_line(&card["mass"])) }
             p.oa-cad-meta { (crate::cad_lab::counts_line(&card)) }
+            @if record["report"]["mesh_bodies"].as_u64().unwrap_or(0)>0 {
+                p.oa-cad-meta {"STL mesh · dimensions in millimeters"}
+            }
+            @if let Some(csrf) = csrf.filter(|_|engine().is_some()) {
+                (imports::form(scope,doc,csrf,record))
+            }
             h2 { "Files" }
             div.oa-cad-files {
                 (ButtonLink::new("GLB", download_url(scope, doc, version, "model.glb")).variant(ButtonVariant::Outline))
                 @if engine_in_browser {
-                    @for (format, label) in [("step", "STEP"), ("stl", "STL"), ("3mf", "3MF"), ("pdf", "Drawing (PDF)"), ("dxf", "Drawing (DXF)")] {
+                    @for (format, label) in [("step", "STEP"), ("stl", "STL"), ("3mf", "3MF"), ("pdf", "Drawing (PDF)"), ("dxf", "Drawing (DXF)")].into_iter().filter(|(format,_)|record["report"]["mesh_bodies"].as_u64().unwrap_or(0)==0 || matches!(*format,"stl"|"3mf")) {
                         (Button::new(label).variant(ButtonVariant::Outline).attr("data-cad-download", format).disabled(true))
                     }
                 }
@@ -1362,7 +1395,7 @@ pub(crate) fn doc_content(
             @if engine_in_browser {
                 p.oa-cad-meta data-cad-download-status="" aria-live="polite" { "Loading the CAD engine for the files\u{2026}" }
             }
-            @if engine_in_browser && csrf.is_some() && scope.home == scope.actor {
+            @if engine_in_browser && csrf.is_some() && scope.home == scope.actor && record["report"]["mesh_bodies"].as_u64().unwrap_or(0)<record["report"]["solids"].as_u64().unwrap_or(1) {
                 (ButtonLink::new("Share with sliders", format!("/cad/{doc}/configurator?v={version}&project={}",scope.project.as_deref().unwrap_or(""))).variant(ButtonVariant::Outline))
             }
             h2 { "Versions" }
@@ -1430,6 +1463,7 @@ pub(crate) async fn doc_page(
         link rel="stylesheet" href=(crate::cad_lab::ASSET_CSS);
         script src=(crate::cad_lab::ASSET_JS) defer {}
         @if engine_in_browser { script type="module" src=(DOC_JS) {} }
+        @if scope.edits && engine().is_some() {script type="module" src=(imports::SCRIPT) {}}
     };
     let mut response = crate::ui_page::UiPage::new(entry.title.clone())
         .path(format!("/cad/{doc}"))

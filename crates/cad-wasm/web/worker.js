@@ -6,7 +6,7 @@
 //   run      args {tool, args}: a cad_* tool's JSON answer
 //   export   args {document}, format glb|step|3mf|stl: the file's bytes
 //   drawing  args {document, views, ...}, format svg|pdf|dxf: the bytes
-import init, { run, export_file, drawing_file } from "./cad_wasm.js";
+import init, { run, export_file, drawing_file, store_file } from "./cad_wasm.js";
 
 const started = performance.now();
 const ready = init({ module_or_path: new URL("./cad_wasm_bg.wasm", import.meta.url) });
@@ -22,6 +22,8 @@ self.onmessage = async (event) => {
     let value;
     if (call === "run") {
       value = JSON.parse(run(args.tool, JSON.stringify(args.args)));
+    } else if (call === "asset") {
+      value = store_file(new Uint8Array(args.bytes), args.format);
     } else if (call === "export") {
       value = export_file(JSON.stringify(args.document), format);
     } else if (call === "drawing") {

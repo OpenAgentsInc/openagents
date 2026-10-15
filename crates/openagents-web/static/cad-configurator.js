@@ -39,7 +39,12 @@ if(page){
     const w=waiting.get(m.id);waiting.delete(m.id);if(w){if(m.ok)w.resolve(m.value);else w.reject(new Error(m.error));}
     if(m.broken){ready=false;files(false);say('The CAD engine stopped. Reload to try again.');}
   };
-  fetch(page.dataset.cadConfigPublic,{credentials:'omit'}).then(r=>{if(!r.ok)throw new Error('This shared link is no longer available.');return r.json();}).then(data=>{
+  fetch(page.dataset.cadConfigPublic,{credentials:'omit'}).then(r=>{if(!r.ok)throw new Error('This shared link is no longer available.');return r.json();}).then(async data=>{
+    for(const asset of data.assets || []) {
+      const bytes=Uint8Array.from(atob(asset.bytes_base64),c=>c.charCodeAt(0));
+      const reference=await call('asset',{bytes,format:asset.format});
+      if(reference!==`sha256:${asset.sha256}`)throw new Error('An imported model failed its SHA-256 check.');
+    }
     snapshot=data;sliders.forEach((s,i)=>{s.value=String(data.values[i]);s.dispatchEvent(new Event('input',{bubbles:true}));});rebuild();
   }).catch(e=>say(e.message));
   sliders.forEach(s=>s.addEventListener('input',()=>{const text=s.closest('.oa-slider')?.querySelector('.oa-slider__value-text');if(text)text.textContent=s.value;rebuild();}));

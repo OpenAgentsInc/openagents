@@ -136,6 +136,7 @@
   }
 
   function run(root, canvas, gl, model) {
+    canvas.hidden = false;
     var mesh = program(gl, MESH_VS, MESH_FS), line = program(gl, LINE_VS, LINE_FS);
     var gpuBuffers = [], gpuArrays = [];
     function vao() { var v = gl.createVertexArray(); gpuArrays.push(v); return v; }

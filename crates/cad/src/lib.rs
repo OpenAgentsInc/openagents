@@ -19,6 +19,7 @@
 //! Callers see our documents and JSON reports; only [`build`], [`refs`],
 //! [`render`] and [`export`] touch the kernel, so it can be swapped.
 
+pub mod assets;
 pub mod build;
 pub mod clash;
 pub mod collision;
@@ -31,6 +32,7 @@ pub mod exact;
 pub mod export;
 pub mod feed;
 pub mod mass;
+pub mod mesh;
 pub mod overlap;
 pub mod refs;
 pub mod render;
@@ -144,14 +146,34 @@ pub fn evaluate_with(document: &Value, cache: &std::path::Path) -> Result<Evalua
         .iter()
         .filter_map(|p| p["features"].as_u64())
         .sum::<u64>() as usize;
+    let mesh_parts: std::collections::BTreeSet<&str> = assembly["parts"]
+        .as_object()
+        .into_iter()
+        .flatten()
+        .filter(|(_, part)| {
+            part["features"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .any(|f| f["op"] == "solid.import_stl" && f["suppressed"] != true)
+        })
+        .map(|(id, _)| id.as_str())
+        .collect();
+    let mesh_bodies = built
+        .solids
+        .iter()
+        .filter(|s| mesh_parts.contains(s.part.as_str()))
+        .count();
     let report = json!({
         "checks": {
             "rebuilt": true,
-            "closed_solids": built.solids.len(),
+            "closed_solids": built.solids.len()-mesh_bodies,
+            "closed_triangle_meshes":mesh_bodies,
             "interference": "none beyond declared contacts",
             "contacts": contacts,
             "overlap_check": built.interference,
         },
+        "mesh_bodies":mesh_bodies,
         "mass": total.mass().json(),
         "parts": parts,
         "instances": instances,

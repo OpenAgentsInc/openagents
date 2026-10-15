@@ -341,6 +341,16 @@ its links too. A previously downloaded design stays with its recipient.
 Each design allows 20 links, with an 8 MiB snapshot limit
 ([#11662](https://github.com/OpenAgentsInc/openagents/issues/11662)).
 
+Attach a STEP or STL model to a web chat and ask to import it, or open a
+saved design and select **Add a STEP or STL model**. Choose the design,
+part, and feature names; a new design name creates a separate model.
+Imports allow 2 MiB per file and 8 MiB of source files per design. Saved
+versions keep their imported files so another server can rebuild them.
+STEP imports support exact solid features. STL imports stay triangle meshes
+in millimeters, must have closed edges, and occupy their own part; their page
+offers GLB, STL, and 3MF files. Imported files are also available to browser
+rebuilds and shared configurators ([#11663](https://github.com/OpenAgentsInc/openagents/issues/11663)).
+
 ## In the browser
 
 `crates/cad-wasm` is the same engine built for `wasm32-unknown-unknown`

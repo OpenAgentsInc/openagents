@@ -67,7 +67,7 @@ pub fn density(material: &str) -> Option<f64> {
 
 /// The modelling operations a part's history may use (besides `sketch`
 /// and `block`). They are the kernel's own operation names.
-pub const OPERATIONS: [&str; 32] = [
+pub const OPERATIONS: [&str; 33] = [
     "solid.extrude",
     "solid.revolve",
     "solid.sweep",
@@ -100,10 +100,11 @@ pub const OPERATIONS: [&str; 32] = [
     "solid.thread",
     "appearance.assign",
     "solid.import_step",
+    "solid.import_stl",
 ];
 
 /// The direct operations a block may run: every modelling operation.
-pub const DIRECT: [&str; 32] = OPERATIONS;
+pub const DIRECT: [&str; 33] = OPERATIONS;
 
 /// The constraints a sketch may hold between its entities (curve ids such
 /// as `l1`, point ids such as `p2`, or `l1.start`, `c1.center`, and `x` or

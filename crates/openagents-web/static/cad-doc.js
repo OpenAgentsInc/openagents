@@ -14,6 +14,7 @@ if (page && buttons.length) {
   const version = page.dataset.cadVersion;
   const title = (document.getElementById("cad-doc-title") || {}).textContent || doc;
   let documentJson = null;
+  let assetsReady = null;
   let worker = null;
   let seq = 0;
   const waiting = new Map();
@@ -42,6 +43,7 @@ if (page && buttons.length) {
       else w.reject(new Error(m.error));
       if (m.broken) {
         worker.terminate();
+        assetsReady = null;
         start();
       }
     };
@@ -62,7 +64,20 @@ if (page && buttons.length) {
   const saveButton = page.querySelector("[data-cad-pull-save]");
   let checkedDelta = null, saving = false;
   const pullSay = (text) => { if (pullStatus) pullStatus.textContent = text; };
+  const loadAssets = () => assetsReady || (assetsReady = (async () => {
+    const manifestUrl=page.dataset.cadDocument.replace('name=doc.json','name=assets.json');
+    const response=await fetch(manifestUrl,{credentials:'same-origin'});
+    if(response.status===404)return;
+    if(!response.ok)throw new Error("The design's imported files couldn't be read.");
+    for(const asset of await response.json()) {
+      const url=page.dataset.cadDocument.replace('name=doc.json',`name=out/asset-${asset.sha256}.${asset.format}`);
+      const file=await fetch(url,{credentials:'same-origin'});if(!file.ok)throw new Error('An imported model is missing.');
+      const reference=await call('asset',{bytes:await file.arrayBuffer(),format:asset.format});
+      if(reference!==`sha256:${asset.sha256}`)throw new Error('An imported model failed its SHA-256 check.');
+    }
+  })());
   const loadDocument = async () => {
+    await loadAssets();
     if (!documentJson) {
       const response = await fetch(page.dataset.cadDocument, {credentials:"same-origin"});
       if (!response.ok) throw new Error("The design couldn't be read.");
@@ -142,6 +157,7 @@ if (page && buttons.length) {
         if (!response.ok) throw new Error("the design couldn't be read");
         documentJson = await response.json();
       }
+      await loadAssets();
       const bytes = format === "pdf" || format === "dxf"
         ? await call("drawing", { document: documentJson, views: ["front", "top", "right", "iso"],
           sheet: "A3", title, subtitle: `${doc} version ${version}` }, format)

@@ -98,3 +98,57 @@ async fn serve_cad_configurator() {
     std::fs::write(out,serde_json::to_vec(&json!({"url":format!("{}/cad/bracket/configurator",world.origin()),"cookies":browser.0})).unwrap()).unwrap();
     axum::serve(listener, world.site).await.unwrap();
 }
+
+#[tokio::test]
+#[ignore = "serves a local model-upload page; needs native and browser CAD builds"]
+async fn serve_cad_imports() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    HOST_OVERRIDE.set(format!("127.0.0.1:{port}")).unwrap();
+    let world = world_at(
+        port,
+        Options {
+            cad: Some(std::env::var_os("OA_CAD_BROWSER").unwrap().into()),
+            ..Options::default()
+        },
+    )
+    .await;
+    let mut browser = Browser::default();
+    browser.sign_in(&world, "octo-local").await;
+    let scope = crate::cad_web::Scope::personal(&account_owner_of(&world, "octo-local")).unwrap();
+    let engine = crate::cad_web::engine().unwrap();
+    let result=engine.run(&world.store,&scope,"cad_from_json",&json!({"doc":"source","document":{"kind":"part.v1","id":"box","title":"Source box","features":[{"id":"body","op":"solid.box","params":{"length":10,"width":12,"height":14,"center":[0,0,7]}}]}})).await;
+    assert_eq!(result["saved"], true, "{result}");
+    let result = engine
+        .run(
+            &world.store,
+            &scope,
+            "cad_export",
+            &json!({"doc":"source","formats":["step","stl"]}),
+        )
+        .await;
+    assert!(result["files"].is_array(), "{result}");
+    let out = std::path::PathBuf::from(std::env::var_os("OA_CAD_CAPTURE").unwrap());
+    let root = out.parent().unwrap();
+    for format in ["step", "stl"] {
+        let bytes = crate::cad_web::read_file(
+            &world.store,
+            &scope,
+            "source",
+            1,
+            &format!("out/source-v1.{format}"),
+        )
+        .await
+        .unwrap();
+        std::fs::write(root.join(format!("cad-import-source.{format}")), bytes).unwrap();
+    }
+    std::fs::write(
+        out,
+        serde_json::to_vec(
+            &json!({"url":format!("{}/cad/source",world.origin()),"cookies":browser.0}),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    axum::serve(listener, world.site).await.unwrap();
+}

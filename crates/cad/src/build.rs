@@ -226,14 +226,27 @@ fn feature(s: &mut Session, part: &str, f: &Value, files: &Path) -> Result<Value
             run(s, "sketch.finish", &json!({})).map_err(&fail)?;
             return Ok(json!({"sketch": id, "dof": solved["dof"], "status": solved["status"]}));
         }
-        "solid.import_step" => {
+        "solid.import_step" | "solid.import_stl" => {
             // A STEP file (AP203, AP214 or AP242) kept in the file store by
             // its digest: its solids become this feature's.
-            let path = stored_path(files, params["file"].as_str().unwrap_or_default(), "step")
-                .map_err(&fail)?;
+            let extension = if op == "solid.import_stl" {
+                "stl"
+            } else {
+                "step"
+            };
+            let path = stored_path(
+                files,
+                params["file"].as_str().unwrap_or_default(),
+                extension,
+            )
+            .map_err(&fail)?;
             run(
                 s,
-                "file.insert_step",
+                if op == "solid.import_stl" {
+                    "file.insert_mesh"
+                } else {
+                    "file.insert_step"
+                },
                 &json!({"path": path.to_string_lossy(), "name": scoped(part, id)}),
             )
             .map_err(&fail)?;
@@ -648,7 +661,7 @@ pub const KERNEL: &str = "solidcraft@229de148";
 /// mirror copies take from their sources; 3 matches congruent sources by
 /// the kernel's order; 4 records each sketch's degrees of freedom; 6 the
 /// frames of its named faces and edges, for mates.
-const BUILD: u32 = 6;
+const BUILD: u32 = 7;
 
 /// Builds one part from its history, or takes it from the cache.
 fn build_part(
@@ -657,8 +670,21 @@ fn build_part(
     parameters: &[Value],
     cache: &Path,
 ) -> Result<PartBuild, Vec<String>> {
+    let active: Vec<&Value> = part["features"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|f| f["suppressed"] != true)
+        .collect();
+    let mesh = active.iter().any(|f| f["op"] == "solid.import_stl");
+    if mesh && active.len() != 1 {
+        return Err(vec![format!(
+            "Part {key}: keep an imported STL in its own part. Add exact CAD features in another part."
+        )]);
+    }
+    let format = if mesh { "stl" } else { "step" };
     let digest = part_digest(part, parameters);
-    let step = cache.join(format!("{digest}.step"));
+    let step = cache.join(format!("{digest}.{format}"));
     let meta_path = cache.join(format!("{digest}.json"));
     if crate::sys::exists(&step)
         && let Some(meta) =
@@ -740,11 +766,13 @@ fn build_part(
     }
     crate::sys::ensure_dir(cache).map_err(|e| vec![format!("The part cache: {e}")])?;
     let names: Vec<&Value> = bodies.iter().map(|b| &b["name"]).collect();
-    let temporary = cache.join(format!("{digest}.{}.step", crate::sys::pid()));
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let nonce = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let temporary = cache.join(format!("{digest}.{}.{nonce}.{format}", crate::sys::pid()));
     run(
         &mut s,
         "file.export",
-        &json!({"path": temporary.to_string_lossy(), "format": "step", "bodies": names}),
+        &json!({"path": temporary.to_string_lossy(), "format": format, "bodies": names}),
     )
     .map_err(|e| vec![format!("Part {key} couldn't be written: {e}")])?;
     crate::sys::rename(&temporary, &step).map_err(|e| vec![e])?;
@@ -958,7 +986,11 @@ pub fn build_with(document: &Value, cache: &Path) -> Result<Built, Vec<String>> 
         let occurrence = made["occurrence"].as_u64().unwrap_or(0);
         let inserted = run(
             &mut s,
-            "file.insert_step",
+            if b.step.extension().is_some_and(|e| e == "stl") {
+                "file.insert_mesh"
+            } else {
+                "file.insert_step"
+            },
             &json!({"path": b.step.to_string_lossy(), "name": key}),
         )
         .map_err(|e| vec![format!("Part {key} couldn't be read back: {e}")])?;
@@ -1107,7 +1139,11 @@ pub fn build_with(document: &Value, cache: &Path) -> Result<Built, Vec<String>> 
             color,
             finish: finishes.get(part).cloned().flatten(),
             mesh: body.mesh(),
-            closed: !body.body.is_surface() && !body.body.is_mesh(),
+            closed: if body.body.is_mesh() {
+                crate::mesh::closed(&body.mesh())
+            } else {
+                !body.body.is_surface()
+            },
         });
     }
     drop(state);
@@ -1120,6 +1156,7 @@ pub fn build_with(document: &Value, cache: &Path) -> Result<Built, Vec<String>> 
         sketches,
         part_steps: built_parts
             .iter()
+            .filter(|(_, _, b)| b.step.extension().is_some_and(|e| e == "step"))
             .map(|(key, _, b)| (key.clone(), b.step.clone()))
             .collect(),
         assembly: kinematic,

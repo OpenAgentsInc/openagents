@@ -244,7 +244,11 @@ async fn publish(
     .and_then(|b| serde_json::from_slice::<Value>(&b).ok()) else {
         return crate::not_found_for(&headers);
     };
-    let data = json!({"title":result["document"]["title"].as_str().unwrap_or(&doc),"version":form.version,"document":result["document"],"controls":result["controls"],"values":result["values"],"view":view});
+    let assets = match imports::bundle(&app.config.chat_store, &scope, &doc, form.version).await {
+        Ok(assets) => assets,
+        Err(error) => return (StatusCode::BAD_REQUEST, error).into_response(),
+    };
+    let data = json!({"title":result["document"]["title"].as_str().unwrap_or(&doc),"version":form.version,"document":result["document"],"controls":result["controls"],"values":result["values"],"assets":assets,"view":view});
     let saved = save(&app.config.chat_store, &scope, &doc, data).await;
     match saved {
         Ok(token) => Redirect::to(&format!("/cad-config/{token}")).into_response(),

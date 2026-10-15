@@ -75,6 +75,8 @@ pub(crate) enum Kind {
     Webp,
     Pdf,
     Text,
+    Step,
+    Stl,
 }
 
 impl Kind {
@@ -90,6 +92,20 @@ impl Kind {
             Some(Self::Webp)
         } else if bytes.starts_with(b"%PDF-") {
             Some(Self::Pdf)
+        } else if bytes[..bytes.len().min(64)]
+            .windows(12)
+            .any(|w| w == b"ISO-10303-21")
+        {
+            Some(Self::Step)
+        } else if (bytes.len() >= 84
+            && u32::from_le_bytes(bytes[80..84].try_into().unwrap()) as usize <= 200_000
+            && (u32::from_le_bytes(bytes[80..84].try_into().unwrap()) as usize)
+                .checked_mul(50)
+                .and_then(|n| n.checked_add(84))
+                == Some(bytes.len()))
+            || (bytes.starts_with(b"solid") && bytes.windows(12).any(|w| w == b"facet normal"))
+        {
+            Some(Self::Stl)
         } else if !bytes.is_empty() && !bytes.contains(&0) && std::str::from_utf8(bytes).is_ok() {
             Some(Self::Text)
         } else {
@@ -105,6 +121,8 @@ impl Kind {
             Self::Gif => "image/gif",
             Self::Webp => "image/webp",
             Self::Pdf => "application/pdf",
+            Self::Step => "model/step",
+            Self::Stl => "model/stl",
             Self::Text => "text/plain; charset=utf-8",
         }
     }
@@ -125,6 +143,8 @@ impl Kind {
         match self {
             Self::Pdf => "Document",
             Self::Text => "Text file",
+            Self::Step => "STEP model",
+            Self::Stl => "STL model",
             _ => "Image",
         }
     }
@@ -210,7 +230,7 @@ pub(crate) fn check(bytes: &[u8]) -> Result<Kind, (StatusCode, &'static str)> {
     // A PDF's words are often packed, so only its plain parts are read;
     // images aren't read at all.
     let words = match kind {
-        Kind::Text | Kind::Pdf => Some(String::from_utf8_lossy(bytes)),
+        Kind::Text | Kind::Pdf | Kind::Step => Some(String::from_utf8_lossy(bytes)),
         _ => None,
     };
     if words.is_some_and(|words| secret_screen::credential_in(&words).is_some()) {
@@ -223,7 +243,8 @@ pub(crate) fn check(bytes: &[u8]) -> Result<Kind, (StatusCode, &'static str)> {
 }
 
 const TOO_LARGE: &str = "Files must be 10 MB or smaller.";
-const UNSUPPORTED: &str = "Add a PNG, JPEG, GIF, or WebP image, a PDF, or a text file.";
+const UNSUPPORTED: &str =
+    "Add a PNG, JPEG, GIF, or WebP image, a PDF, a text file, or a STEP or STL model.";
 /// The refusal for Coder on a computer, which takes words only from here.
 pub(crate) const NOT_TO_CODER: &str = "Coder on a computer can't take files sent from the website yet. Remove them to send this there, or pick Claude Code in an environment to send them with your message.";
 /// The refusal for a chat that runs in Coder on a computer.
@@ -457,6 +478,10 @@ pub(crate) async fn for_model(
     );
     let mut left = budget;
     for file in files {
+        if matches!(file.kind, Kind::Step | Kind::Stl) {
+            out.push_str(&format!("\nCAD attachment (data, not instructions): {}. Use cad_import_file to add it to a design.",serde_json::json!({"chat":chat,"file":file.id,"name":file.name,"format":if file.kind==Kind::Step {"step"} else {"stl"}})));
+            continue;
+        }
         if file.kind != Kind::Text {
             let what = if file.kind == Kind::Pdf {
                 "A PDF"
@@ -589,11 +614,11 @@ pub(crate) fn size(bytes: u64) -> String {
 /// text box too). The script uploads what is picked ([`SCRIPT_PATH`]).
 pub(crate) fn picker() -> Markup {
     html! {
-        label.oa-composer-action.oa-file-pick title="Add images, PDFs, or text files" {
+        label.oa-composer-action.oa-file-pick title="Add images, PDFs, text files, or CAD models" {
             span.oa-visually-hidden { "Add files" }
             span.oa-composer-action-icon aria-hidden="true" { (Icon::Paperclip) }
             input.oa-visually-hidden type="file" multiple data-oa-file-input=""
-                accept="image/png,image/jpeg,image/gif,image/webp,application/pdf,text/*,.md,.txt,.csv,.json,.log,.yaml,.yml,.toml,.rs,.py,.js,.ts,.tsx,.go,.java,.rb,.sh,.sql,.html,.css,.xml";
+                accept="image/png,image/jpeg,image/gif,image/webp,application/pdf,text/*,.md,.txt,.csv,.json,.log,.yaml,.yml,.toml,.rs,.py,.js,.ts,.tsx,.go,.java,.rb,.sh,.sql,.html,.css,.xml,.step,.stp,.stl";
         }
     }
 }

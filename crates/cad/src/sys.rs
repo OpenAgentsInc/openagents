@@ -59,7 +59,9 @@ pub fn write(path: &Path, bytes: &[u8]) -> Result<(), String> {
         if let Some(dir) = path.parent() {
             ensure_dir(dir)?;
         }
-        let temporary = path.with_extension(format!("{}.tmp", std::process::id()));
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let nonce = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let temporary = path.with_extension(format!("{}.{nonce}.tmp", std::process::id()));
         std::fs::write(&temporary, bytes).map_err(|e| format!("{}: {e}", path.display()))?;
         std::fs::rename(&temporary, path).map_err(|e| format!("{}: {e}", path.display()))
     }

@@ -265,6 +265,7 @@ impl Lab {
         if let Ok(png) = cad::render::png(&eval.built, &View::named("hero"), 1280, 800) {
             std::fs::write(dir.join("hero.png"), png).map_err(|e| e.to_string())?;
         }
+        cad::assets::save(document, &self.root.join(".parts"), &dir)?;
         let record = json!({
             "n": n,
             "summary": summary,
@@ -326,6 +327,7 @@ impl Lab {
             "cad_solid" => self.solid(args),
             "cad_import_dxf" => self.import_dxf(args),
             "cad_import_step" => self.import_step(args),
+            "cad_import_model" => self.import_model(args),
             "cad_export_dxf" => self.export_dxf(args),
             "cad_place" => self.place(args),
             "cad_drawing" => self.drawing(args),
@@ -350,6 +352,7 @@ impl Lab {
         let (document, record) = self
             .load(&id, n)
             .ok_or_else(|| format!("{id} has no version {n}; it has versions 1 to {latest}."))?;
+        cad::assets::restore(&self.root.join(".parts"), &self.version_dir(&id, n))?;
         Ok((id, n, document, record))
     }
 
@@ -1200,6 +1203,71 @@ impl Lab {
         Ok(out)
     }
 
+    fn import_model(&self, args: &Value) -> Result<Value, String> {
+        use base64::Engine as _;
+        let format = arg_str(args, "format")
+            .filter(|f| matches!(*f, "step" | "stl"))
+            .ok_or("Choose a STEP or STL file.")?;
+        let encoded = arg_str(args, "data").ok_or("Give the model's base64 bytes (data).")?;
+        if encoded.len() > cad::assets::MAX_BYTES.div_ceil(3) * 4 {
+            return Err("CAD imports must be 2 MiB or smaller.".into());
+        }
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(encoded)
+            .map_err(|_| "The model's bytes couldn't be read.")?;
+        if bytes.is_empty() || bytes.len() > cad::assets::MAX_BYTES {
+            return Err("Choose a nonempty CAD file, 2 MiB or smaller.".into());
+        }
+        if format == "step"
+            && !String::from_utf8_lossy(&bytes[..bytes.len().min(64)]).contains("ISO-10303-21")
+        {
+            return Err("This isn't a STEP file.".into());
+        }
+        let id = arg_str(args, "doc").ok_or("Name the design (doc).")?;
+        if id.is_empty()
+            || id.len() > 48
+            || !id
+                .bytes()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, b'-' | b'_'))
+            || id.starts_with(['-', '_'])
+        {
+            return Err("Choose a short design name with letters, numbers, and hyphens.".into());
+        }
+        let part = arg_str(args, "part").ok_or("Name the part (part).")?;
+        let feature = arg_str(args, "feature").unwrap_or("imported");
+        let reference = cad::build::store_file(&self.root.join(".parts"), &bytes, format)?;
+        let (base, mut document) = if self.latest(id).is_some() {
+            let (_, n, d, _) = self.pick(args)?;
+            (Some(n), d)
+        } else {
+            (None, doc::new_part(part, id, doc::DEFAULT_MATERIAL, None))
+        };
+        if document["kind"] == doc::ASSEMBLY && document["parts"].get(part).is_none() {
+            document["parts"][part] = doc::new_part(part, part, doc::DEFAULT_MATERIAL, None);
+            if let Some(instances) = document["instances"].as_array_mut() {
+                instances.push(json!({"id":part,"part":part,"at":[0,0,0]}));
+            }
+        }
+        let (_, target) = Self::part_of(&mut document, args)?;
+        let features = target["features"]
+            .as_array_mut()
+            .ok_or("This part's features couldn't be read.")?;
+        if features.iter().any(|f| f["id"] == feature) {
+            return Err(
+                "This part already has a feature with that name. Choose another feature name."
+                    .into(),
+            );
+        }
+        features.push(
+            json!({"id":feature,"op":format!("solid.import_{format}"),"params":{"file":reference}}),
+        );
+        let summary = arg_str(args, "summary")
+            .map(str::to_owned)
+            .unwrap_or_else(|| format!("{part}: imported {} model", format.to_uppercase()));
+        let (n, record) = self.save(id, &document, &summary, &Self::author(args), base)?;
+        self.saved(id, n, &record)
+    }
+
     /// A STEP model (AP203, AP214 or AP242) as a feature of a part: the file
     /// is kept in the Lab's file store by its digest and the feature names
     /// it, so later features (cuts, fillets, holes) build on it.
@@ -1500,7 +1568,8 @@ impl Lab {
             "joints": report["joints"],
             "solids": report["solids"],
             "versions": versions,
-            "step": "exact solids (B-rep)",
+            "step": if report["mesh_bodies"].as_u64().unwrap_or(0)>0 {"triangle mesh"} else {"exact solids (B-rep)"},
+            "mesh_bodies":report["mesh_bodies"],
         });
         if let Some(a) = against {
             let (da, ra) = self
@@ -1763,6 +1832,9 @@ fn takes(name: &str) -> &'static [&'static str] {
             "dimensions",
             "formats",
         ],
+        "cad_import_model" => &[
+            "doc", "part", "feature", "format", "data", "summary", "author",
+        ],
         "cad_import_step" => &[
             "doc", "part", "feature", "path", "step", "after", "summary", "author",
         ],
@@ -1962,6 +2034,39 @@ mod tests {
             .as_nanos();
         let path = std::env::temp_dir().join(format!("cad-lab-test-{n}-{}", std::process::id()));
         (Dir(path.clone()), Lab::open(path).unwrap())
+    }
+
+    #[test]
+    fn uploaded_models_pin_their_source_and_rebuild_after_cache_loss() {
+        use base64::Engine as _;
+        let (_dir, lab) = lab();
+        let source = json!({"kind":"part.v1","id":"cube","features":[{"id":"body","op":"solid.box","params":{"length":10,"width":12,"height":14,"center":[0,0,7]}}]});
+        let mut source = cad::evaluate(&source).unwrap();
+        for format in ["step", "stl"] {
+            let bytes = cad::export::bytes(&mut source.built, format).unwrap();
+            let id = format!("imported-{format}");
+            let saved=lab.run("cad_import_model",&json!({"doc":id,"part":"model","feature":"source","format":format,"data":base64::engine::general_purpose::STANDARD.encode(&bytes)}));
+            assert_eq!(saved["saved"], true, "{saved}");
+            assert!(lab.version_dir(&id, 1).join("assets.json").is_file());
+            std::fs::remove_dir_all(lab.root.join(".parts")).unwrap();
+            let checked = lab.run("cad_check", &json!({"doc":id}));
+            assert!(checked.get("error").is_none(), "{checked}");
+            if format == "stl" {
+                assert_eq!(saved["card"]["mesh_bodies"], 1);
+                assert_eq!(saved["card"]["step"], "triangle mesh");
+            }
+        }
+        let too_big =
+            base64::engine::general_purpose::STANDARD.encode(vec![0; cad::assets::MAX_BYTES + 1]);
+        assert!(
+            lab.run(
+                "cad_import_model",
+                &json!({"doc":"too-big","part":"p","format":"stl","data":too_big})
+            )
+            .get("error")
+            .is_some()
+        );
+        assert!(lab.latest("too-big").is_none());
     }
 
     #[test]

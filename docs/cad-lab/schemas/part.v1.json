@@ -59,7 +59,8 @@
               "solid.remove",
               "solid.thread",
               "appearance.assign",
-              "solid.import_step"
+              "solid.import_step",
+              "solid.import_stl"
             ]
           },
           "params": {

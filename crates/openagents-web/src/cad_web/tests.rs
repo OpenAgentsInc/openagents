@@ -24,6 +24,7 @@ d="$CAD_LAB_DIR/$doc/v$n"
 mkdir -p "$d/out"
 printf '{"kind":"part.v1","id":"%s","title":"Fan bracket","n":%s}' "$doc" "$n" > "$d/doc.json"
 printf '{"n":%s,"summary":"step %s","author":"chat","created":1760400000,"report":{"mass":{"mass_kg":0.05}}}' "$n" "$n" > "$d/version.json"
+printf '[]' > "$d/assets.json"
 printf 'glTF' > "$d/model.glb"
 printf '{"kind":"cad-view.v1"}' > "$d/view.json"
 printf 'png' > "$d/out/hero-1x1.png"
@@ -150,7 +151,7 @@ fn the_tools_offered_here_leave_out_what_needs_a_mac() {
                "parameters": {"properties": {"path": {}, "step": {}}, "required": ["path"]}}),
     ]);
     let names: Vec<&str> = tools.iter().filter_map(|t| t["name"].as_str()).collect();
-    assert_eq!(names, ["cad_list", "cad_import_step"]);
+    assert_eq!(names, ["cad_list", "cad_import_step", "cad_import_file"]);
     assert_eq!(tools[0]["description"], "List the CAD documents.");
     assert!(tools[1]["parameters"]["properties"].get("path").is_none());
     assert_eq!(tools[1]["parameters"]["required"], json!([]));
@@ -162,7 +163,7 @@ async fn versions_are_kept_per_scope_and_read_back_on_another_server() {
     let me = owner("acct_1");
     let scope = Scope::personal(&me).unwrap();
     let first = engine(&f, "cache-a");
-    assert_eq!(first.tools().await.unwrap().len(), 2);
+    assert_eq!(first.tools().await.unwrap().len(), 3);
     let one = first
         .run(
             &f.store,
@@ -420,4 +421,79 @@ async fn face_pulls_check_current_version_and_editor_rights_before_running() {
         load_index(&f.store, &scope).await.unwrap().docs["bracket"].versions,
         2
     );
+}
+
+#[tokio::test]
+#[ignore = "needs a built cad-lab"]
+async fn real_engine_imports_attached_models_and_another_server_restores_their_sources() {
+    let program = PathBuf::from(std::env::var_os("OPENAGENTS_CAD_ENGINE").unwrap());
+    let f = fixture();
+    let mut first = Engine::new(program.clone());
+    first.cache = f.root.join("import-first");
+    let scope = Scope::personal(&owner("acct_1")).unwrap();
+    let made=first.run(&f.store,&scope,"cad_from_json",&json!({"doc":"source","document":{"kind":"part.v1","id":"box","features":[{"id":"body","op":"solid.box","params":{"length":10,"width":12,"height":14,"center":[0,0,7]}}]}})).await;
+    assert_eq!(made["saved"], true, "{made}");
+    let exports = first
+        .run(
+            &f.store,
+            &scope,
+            "cad_export",
+            &json!({"doc":"source","formats":["step","stl"]}),
+        )
+        .await;
+    assert!(exports["files"].is_array(), "{exports}");
+    let chat = "12345678-1234-4234-8234-123456789abc";
+    for (format, kind) in [
+        ("step", crate::chat_files::Kind::Step),
+        ("stl", crate::chat_files::Kind::Stl),
+    ] {
+        let bytes = read_file(
+            &f.store,
+            &scope,
+            "source",
+            1,
+            &format!("out/source-v1.{format}"),
+        )
+        .await
+        .unwrap();
+        assert_eq!(crate::chat_files::check(&bytes).unwrap(), kind);
+        let file = crate::chat_files::save(
+            &f.store,
+            &scope.actor,
+            chat,
+            &format!("source.{format}"),
+            kind,
+            bytes,
+        )
+        .await
+        .unwrap();
+        let doc = format!("imported-{format}");
+        let args = json!({"doc":doc,"part":"model","feature":"source","chat":chat,"file":file.id});
+        let uploaded = first.run(&f.store, &scope, "cad_import_file", &args).await;
+        assert_eq!(uploaded["saved"], true, "{uploaded}");
+        if format == "stl" {
+            assert_eq!(uploaded["card"]["mesh_bodies"], 1);
+        }
+        let other = Scope::personal(&owner("acct_other")).unwrap();
+        assert!(
+            first
+                .run(&f.store, &other, "cad_import_file", &args)
+                .await
+                .get("error")
+                .is_some()
+        );
+        let mut second = Engine::new(program.clone());
+        second.cache = f.root.join(format!("import-second-{format}"));
+        let reopened = second
+            .run(&f.store, &scope, "cad_check", &json!({"doc":doc}))
+            .await;
+        assert!(reopened.get("error").is_none(), "{reopened}");
+        let view = read_file(&f.store, &scope, &doc, 1, "view.json")
+            .await
+            .unwrap();
+        let view: Value = serde_json::from_slice(&view).unwrap();
+        assert!(!view["solids"].as_array().unwrap().is_empty());
+        let bundle = imports::bundle(&f.store, &scope, &doc, 1).await.unwrap();
+        assert_eq!(bundle.len(), 1);
+    }
 }

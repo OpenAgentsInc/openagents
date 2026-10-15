@@ -193,6 +193,15 @@ pub fn export(document: &str, format: &str) -> Result<Vec<u8>, String> {
     cad::export::bytes(&mut eval.built, format)
 }
 
+/// Register an imported model in this browser's private CAD file store.
+pub fn store_file(bytes: &[u8], format: &str) -> Result<String, String> {
+    if !matches!(format, "step" | "stl") || bytes.is_empty() || bytes.len() > cad::assets::MAX_BYTES
+    {
+        return Err("Choose a STEP or STL file, 2 MiB or smaller.".into());
+    }
+    cad::build::store_file(&cad::build::default_cache(), bytes, format)
+}
+
 /// A drawing as `format` (svg, pdf or dxf); `args` are `cad_drawing`'s,
 /// with the document.
 ///
@@ -228,6 +237,11 @@ mod web {
     #[wasm_bindgen]
     pub fn export_file(document: &str, format: &str) -> Result<Vec<u8>, JsValue> {
         super::export(document, format).map_err(|why| JsValue::from_str(&why))
+    }
+
+    #[wasm_bindgen]
+    pub fn store_file(bytes: &[u8], format: &str) -> Result<String, JsValue> {
+        super::store_file(bytes, format).map_err(|why| JsValue::from_str(&why))
     }
 
     /// A drawing as svg, pdf or dxf bytes: `drawing_file(JSON.stringify({document,

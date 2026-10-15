@@ -259,7 +259,7 @@ pub(crate) async fn parts(store: &Store, owner: &str, chat: &str, files: &[FileR
 /// smaller JPEG; anything else as it is.
 pub(crate) fn prepared(kind: Kind, bytes: Vec<u8>) -> Option<(&'static str, Vec<u8>)> {
     let mime = match kind {
-        Kind::Text => return None,
+        Kind::Text | Kind::Step | Kind::Stl => return None,
         Kind::Pdf => return Some(("application/pdf", bytes)),
         other => other.mime(),
     };
