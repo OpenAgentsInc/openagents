@@ -126,7 +126,7 @@ that brought it, as Amazon Attribution does. The design is
 | Days | What happens | Owner |
 | --- | --- | --- |
 | 1-3 | Build the hook vault from the last 90 days of issues and `/contact`; list 30 moments from traces and the launch film | Hook agent, clip-finder agent |
-| 1-5 | Ship `/go/{code}` with a closed code list and aggregate counting | A Coder run plus review |
+| 1-5 | Ship `/go/{code}` and `/r/{handle}` with named signup attribution (#11698) | A Coder run plus review |
 | 4-7 | **First experiment** (below) | Script agent, film pipeline, Christopher, Sarah |
 | 8-14 | Scale to the full cadence on all five channels | Same |
 | 15 | First kill/clone review | Scoreboard agent, Christopher |
