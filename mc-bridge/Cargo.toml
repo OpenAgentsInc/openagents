@@ -1,6 +1,6 @@
 [package]
 name = "mc-bridge"
-version = "1.0.0-rc.20"
+version = "1.0.0-rc.21"
 edition = "2021"
 publish = false
 description = "The Minecraft bot helper: an azalea client that speaks line-delimited JSON over stdin and stdout. Built by scripts/build-mc-bridge.sh on the pinned nightly, supervised as a child process by crates/voyager."

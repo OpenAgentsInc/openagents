@@ -1,6 +1,6 @@
 [package]
 name = "openagents-mobile"
-version = "1.0.0-rc.20"
+version = "1.0.0-rc.21"
 edition = "2024"
 rust-version = "1.97.1"
 publish = false
