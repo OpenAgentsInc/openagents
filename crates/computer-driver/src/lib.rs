@@ -40,6 +40,8 @@ use std::fmt;
 #[cfg(feature = "boat")]
 pub mod boat;
 pub mod fake;
+#[cfg(feature = "space")]
+pub mod space;
 
 /// The `GET /capabilities` document's schema.
 pub const CAPABILITIES_SCHEMA: &str = "openagents.computer_driver.capabilities.v1";

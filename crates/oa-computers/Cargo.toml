@@ -10,6 +10,9 @@ description = "The lifecycle layer for every computer: an API that records inten
 name = "oa-computers"
 path = "src/main.rs"
 
+[features]
+space = ["computer-driver/space"]
+
 [dependencies]
 axum = { version = "0.8", features = ["json", "query", "tokio", "http1"] }
 boat = { path = "../boat" }

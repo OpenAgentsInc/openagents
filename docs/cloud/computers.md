@@ -108,7 +108,8 @@ cargo run -p oa-computers
 ```
 
 Settings: `OA_COMPUTERS_DRIVER` (`boat` with `BOAT_API_BASE`/`BOAT_API_KEY`,
-or `fake`), `OA_COMPUTERS_LISTEN` (else `0.0.0.0:$PORT`),
+`fake`, or experimental [`space`](space.md) when built with `--features space`),
+`OA_COMPUTERS_LISTEN` (else `0.0.0.0:$PORT`),
 `OA_COMPUTERS_RECONCILE=0` (API only), `OA_COMPUTERS_LEASE_SECONDS` (60),
 `OA_COMPUTERS_REVISIT_SECONDS` (30), `OA_COMPUTERS_BACKOFF_MS` (5000),
 `OA_COMPUTERS_POLL_MS` (1000), `OA_COMPUTERS_DRIVER_POLL_MS` (3000).

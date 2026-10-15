@@ -12,9 +12,13 @@ async fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let mut url = None;
     let mut size = None;
+    #[cfg(feature = "space")]
+    let mut space = false;
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
+            #[cfg(feature = "space")]
+            "--space" => space = true,
             "--boat" => {
                 url = args.get(i + 1).cloned();
                 i += 1;
@@ -25,7 +29,7 @@ async fn main() -> ExitCode {
             }
             "-h" | "--help" => {
                 println!(
-                    "computer-conformance --boat https://HOST/api/v1 [--size NAME]\n\nBOAT_API_KEY holds the service's key."
+                    "computer-conformance --boat https://HOST/api/v1 [--size NAME]\ncomputer-conformance --space [--size NAME] (build with --features space)\n\nBOAT_API_KEY holds the Boat key. SPACE reads SPACE_API_URL, SPACE_DATA_PLANE_URL, SPACE_API_TOKEN, and SPACE_TEMPLATE."
                 );
                 return ExitCode::SUCCESS;
             }
@@ -35,6 +39,20 @@ async fn main() -> ExitCode {
             }
         }
         i += 1;
+    }
+    #[cfg(feature = "space")]
+    if space {
+        if url.is_some() {
+            eprintln!("Choose either --boat or --space.");
+            return ExitCode::from(2);
+        }
+        return match computer_driver::space::SpaceDriver::from_env() {
+            Ok(driver) => run(driver, size).await,
+            Err(e) => {
+                eprintln!("{e}");
+                ExitCode::from(2)
+            }
+        };
     }
     let Some(url) = url else {
         eprintln!("--boat URL is required");
@@ -61,6 +79,10 @@ async fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
+    run(driver, size).await
+}
+
+async fn run(driver: impl computer_driver::Driver, size: Option<String>) -> ExitCode {
     let stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())

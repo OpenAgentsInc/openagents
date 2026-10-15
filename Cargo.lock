@@ -4281,8 +4281,12 @@ dependencies = [
 name = "computer-conformance"
 version = "1.0.0-rc.22"
 dependencies = [
+ "axum 0.8.9",
+ "base64 0.22.1",
  "boat",
  "computer-driver",
+ "futures-util",
+ "serde_json",
  "tempfile",
  "tokio",
 ]
@@ -4291,10 +4295,15 @@ dependencies = [
 name = "computer-driver"
 version = "1.0.0-rc.22"
 dependencies = [
+ "base64 0.22.1",
  "boat",
+ "futures-util",
+ "reqwest 0.12.28",
  "serde",
  "serde_json",
  "tokio",
+ "tokio-tungstenite 0.30.0",
+ "uuid",
  "zeroize",
 ]
 

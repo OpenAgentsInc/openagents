@@ -10,9 +10,19 @@ description = "The one driver contract for every computer: Core, Suspend, Snapsh
 default = []
 # The Boat API driver (our oa-boat on GCE, or any Boat-shaped service).
 boat = ["dep:boat"]
+space = ["dep:reqwest", "dep:base64", "dep:futures-util", "dep:tokio-tungstenite", "dep:uuid"]
+
+[[example]]
+name = "space-spike"
+required-features = ["space"]
 
 [dependencies]
 boat = { path = "../boat", optional = true }
+base64 = { version = "0.22", optional = true }
+futures-util = { version = "0.3", optional = true }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"], optional = true }
+tokio-tungstenite = { version = "0.30", features = ["rustls-tls-webpki-roots"], optional = true }
+uuid = { version = "1", features = ["v4"], optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["process", "time", "io-util", "fs"] }

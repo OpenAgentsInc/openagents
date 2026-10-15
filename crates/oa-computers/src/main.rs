@@ -94,6 +94,17 @@ async fn main() {
         std::process::exit(2);
     };
     match env("OA_COMPUTERS_DRIVER").as_deref().unwrap_or("boat") {
+        #[cfg(feature = "space")]
+        "space" => {
+            let driver = match computer_driver::space::SpaceDriver::from_env() {
+                Ok(d) => d,
+                Err(e) => {
+                    eprintln!("oa-computers: {e}");
+                    std::process::exit(2);
+                }
+            };
+            serve(driver, dsn, token).await;
+        }
         "fake" => {
             let dir =
                 env("OA_COMPUTERS_FAKE_DIR").unwrap_or_else(|| "/tmp/oa-computers-fake".into());
