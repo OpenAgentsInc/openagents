@@ -264,7 +264,7 @@ fn cad_example() -> Markup {
             figcaption {
                 span.example-tag { "Example" }
                 strong { "Design a part by talking" }
-                span { "Ask for a 40 mm fan bracket, then pick a face and change it. Every version is kept to compare." }
+                span { "Ask for a 40 mm fan bracket, then pick a face and change it. Every version is kept to compare. CAD Lab is part of Pro." }
             }
         }
     }
@@ -341,6 +341,7 @@ fn pricing_section() -> Markup {
                         li { "Cloud agents that keep working with your laptop closed" }
                         li { "Cloud time, uploads, and advanced projects" }
                         li { "Model usage included each month" }
+                        li { "CAD Lab: design parts by talking" }
                     }
                     (button("See plans", "/pricing", "3d"))
                 }
@@ -418,7 +419,7 @@ fn footer() -> Markup {
             }
             nav.footer-columns aria-label="Footer" {
                 div { h3 { "Product" } a href="/download" { "Download" } a href="/pricing" { "Pricing" } a href="/efficiency" { "Efficiency" } }
-                div { h3 { "Resources" } a href="/docs" { "Docs" } a href=(RESEARCH) { "Research" } a href=(GITHUB) { "GitHub" } a href=(X) { "X" } }
+                div { h3 { "Resources" } a href="/docs" { "Docs" } a href=(RESEARCH) { "Research" } a href=(GITHUB) { "GitHub" } a href=(X) { "X (Twitter)" } }
                 div { h3 { "Legal" } a href="/privacy" { "Privacy" } a href="/terms" { "Terms" } }
             }
         }

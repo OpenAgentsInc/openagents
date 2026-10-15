@@ -22,6 +22,7 @@ yet. When it is, **Settings → Plan** shows how to subscribe.
 | Hours | 100 machine-hours a month |
 | Machine | 2 vCPU, 8 GB |
 | At once | 2 machines |
+| CAD Lab | Design parts by talking, measure them, and compare versions |
 | Saved environments | 20 GB, up to 10 saved versions |
 | Run length | No limit from us; set your own if you want one |
 | Models | Your own Claude or Codex key or subscription |

@@ -524,7 +524,7 @@ fn legal() -> LegalLinks {
         .link("Privacy", "/privacy")
         .link("Contact", format!("mailto:{}", crate::agent_ready::CONTACT))
         .link("GitHub", GITHUB)
-        .link("X", X)
+        .link("X (Twitter)", X)
         .note(COPYRIGHT)
 }
 
@@ -824,7 +824,7 @@ mod tests {
         assert!(html.contains(
             "<a href=\"https://github.com/OpenAgentsInc/openagents\" rel=\"noopener\">GitHub</a>"
         ));
-        assert!(html.contains("<a href=\"https://x.com/OpenAgentsInc\" rel=\"noopener\">X</a>"));
+        assert!(html.contains("<a href=\"https://x.com/OpenAgentsInc\" rel=\"noopener\">X (Twitter)</a>"));
         assert!(html.contains(COPYRIGHT));
     }
 

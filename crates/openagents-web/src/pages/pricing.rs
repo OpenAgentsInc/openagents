@@ -176,6 +176,10 @@ fn pro(t: &EnvironmentPlan, visitor: Visitor) -> PlanCard {
             ["On top of the free daily allowance"],
         )
         .item_with(
+            "CAD Lab",
+            ["Design parts by talking, measure them, and compare versions"],
+        )
+        .item_with(
             format!("Extra time at {} an hour", usd(t.extra_hour_usd_micros)),
             ["Only if you turn it on, up to a monthly limit you set"],
         )
