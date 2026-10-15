@@ -477,6 +477,42 @@ pub fn read_line(line: &str) -> Vec<Line> {
     lines
 }
 
+/// OpenCode's major version (`opencode --version`, e.g. `1.18.26` or
+/// `2.0.27`), asked once per program; `None` when it doesn't say.
+fn major_version(program: &Path) -> Option<u32> {
+    use std::collections::HashMap;
+    use std::sync::{Mutex, OnceLock};
+    static SEEN: OnceLock<Mutex<HashMap<PathBuf, Option<u32>>>> = OnceLock::new();
+    let seen = SEEN.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Some(known) = seen.lock().ok().and_then(|seen| seen.get(program).copied()) {
+        return known;
+    }
+    let mut command = acp_client::process::command(program);
+    command
+        .arg("--version")
+        .stdin(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    let major = command
+        .output()
+        .ok()
+        .and_then(|output| parse_major(&String::from_utf8_lossy(&output.stdout)));
+    if let Ok(mut seen) = seen.lock() {
+        seen.insert(program.to_path_buf(), major);
+    }
+    major
+}
+
+/// The major number at the start of a version line (`v2.0.27` → 2).
+fn parse_major(text: &str) -> Option<u32> {
+    let text = text
+        .trim()
+        .trim_start_matches(|c: char| !c.is_ascii_digit());
+    text.split(|c: char| !c.is_ascii_digit())
+        .next()?
+        .parse()
+        .ok()
+}
+
 /// Runs `turn` on OpenCode, reporting its text, tools and usage as it goes
 /// and the session as soon as OpenCode names it.
 ///
@@ -534,11 +570,20 @@ pub async fn run_with(
     }
     let mut command = acp_client::process::command_async(program);
     acp_client::process::non_interactive_async(&mut command);
+    command.arg("run");
+    if major_version(program).is_some_and(|major| major >= 2) {
+        // OpenCode 2 sends `run` to a shared background service by default,
+        // which keeps the settings it started with (an earlier turn's config
+        // folder and checks connection); `--standalone` gives this turn a
+        // private server with its own. 2 has no `--dir`: the turn's folder
+        // is the working directory set below.
+        command.arg("--standalone");
+    } else {
+        command.arg("--dir").arg(&turn.cwd);
+    }
     command
-        .arg("run")
         // `--thinking` prints the model's reasoning parts (#11552).
-        .args(["--format", "json", "--thinking", "--dir"])
-        .arg(&turn.cwd)
+        .args(["--format", "json", "--thinking"])
         .args(["-m", &turn.model]);
     if let Some(session) = &turn.session {
         command.args(["--session", session]);
@@ -710,6 +755,14 @@ fn no_answer(failed: bool, stderr: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_major_version_is_read_from_the_version_line() {
+        assert_eq!(parse_major("1.18.26\n"), Some(1));
+        assert_eq!(parse_major("v2.0.27"), Some(2));
+        assert_eq!(parse_major("opencode 2.1.0"), Some(2));
+        assert_eq!(parse_major(""), None);
+    }
 
     #[test]
     fn a_turn_without_words_says_what_opencode_printed() {
