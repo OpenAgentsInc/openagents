@@ -167,6 +167,11 @@ All scans were read-only.
 
 ### Is It Agent Ready: failed checks
 
+Status on 2026-10-15: these are the checks that failed before the work
+below; all of them pass now. DNS-AID records (`_a2a`, `_mcp`, `_catalog`
+under `_agents.openagents.com`) and DNSSEC went live on 2026-10-14, and the
+Is It Agent Ready scan then showed 16 passed, 0 failed, level 5.
+
 | Check | Finding | Spec |
 | --- | --- | --- |
 | robotsTxt | `/robots.txt` 404 | [RFC 9309](https://www.rfc-editor.org/rfc/rfc9309) |
@@ -297,7 +302,7 @@ every other credential is, the invite list (`admits_login`) still applies,
 and an answer is reused for 60 seconds, so Remove in Settings stops `/mcp`
 within a minute.
 
-Still open (see the issue): DNS-AID records, registry listings, agentic
+Still open (see the issue): registry listings, agentic
 commerce (#11085), `security.txt`, visible homepage copy, the A2A card's
 subject, and `/openapi.json` until the gateway serves it.
 
