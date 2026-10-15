@@ -52,6 +52,12 @@ network and NAT too.
 deploy/space-host/host.sh create
 deploy/space-host/host.sh install
 deploy/space-host/host.sh status
+```
+
+Wait for `SPACE installation and first sandbox passed.` before preparing
+the runtime template:
+
+```sh
 deploy/space-host/host.sh runtime
 deploy/space-host/host.sh template
 ```

@@ -61,6 +61,13 @@ cd "$upstream"
 # Reuse the upstream publisher and its existing, local cluster identity.
 docker buildx build --load -f docker/Dockerfile.seed-publish --build-context "seed=$out" -t oa-space-runtime-publish:local .
 kind load docker-image oa-space-runtime-publish:local --name space-local
+ready=0
+for attempt in {1..120}; do
+  if kubectl --context kind-space-local -n space get job space-seed-publish >/dev/null 2>&1; then ready=1; break; fi
+  sleep 5
+done
+[[ "$ready" == 1 ]] || { echo 'The seed publication job did not appear.' >&2; exit 1; }
+kubectl --context kind-space-local -n space wait --for=condition=complete job/space-seed-publish --timeout=600s
 kubectl --context kind-space-local -n space get job space-seed-publish -o json |
   python3 -c 'import json,sys
 j=json.load(sys.stdin)
