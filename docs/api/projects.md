@@ -121,8 +121,10 @@ from the code, this is how it works today:
 
 ## Setup: credentials and base URL
 
-Base URL `https://api.openagents.com/v1`. The same routes answer at
-`https://openagents.com/api/v1`.
+Base URL `https://openagents.com/v1`. These routes are served by the
+website; `https://api.openagents.com/v1` and `https://openagents.com/api/v1`
+do not answer them. Today they take the sign-in (`sess_`) or a sign-in key
+(`oa_sk_`); `oak_` keys with `projects:*` scopes are not accepted yet.
 
 | Caller | Credential | How to get it |
 | --- | --- | --- |
@@ -138,7 +140,7 @@ member role ([workspace rules](calling.md#workspace)).
 
 | Object | Id prefix | What it is |
 | --- | --- | --- |
-| Project | `proj_` | A named home for chats, instructions, files, and documents, with zero or more repositories (one primary when any). |
+| Project | `prj_` (and 16 hex characters) | A named home for chats, instructions, files, and documents, with zero or more repositories (one primary when any). |
 | Thread | `thr_` | One chat: web, terminal (Coder), or phone. Belongs to at most one project. |
 | Message | `msg_` | One turn in a thread, with content blocks (`text`, `tool_use`, `tool_result`, `image`) and any files, generated files, and artifacts. |
 | File | `file_` | Bytes you uploaded: to a message or to a project. The same object the [Model calls](model-calls.md) and [Managed Agents](managed-agents.md) pages use. |
@@ -163,15 +165,15 @@ empty `title`, and messages without content until it is purged.
 | `DELETE /v1/projects/{id}` | Delete it. `409 project_has_threads` while threads are attached, unless `?detach_threads=true` (threads stay and lose their project). |
 
 ```bash
-curl -sS https://api.openagents.com/v1/projects \
-  -H "Authorization: Bearer $OPENAGENTS_KEY"
+curl -sS https://openagents.com/v1/projects \
+  -H "Authorization: Bearer $OPENAGENTS_TOKEN"
 ```
 
 ```json
 {
   "data": [
     {
-      "id": "proj_01JB7Q4XG0N2Y9R0C3V8P5W6E1",
+      "id": "prj_3f9a1c0d2b7e4a51",
       "object": "project",
       "name": "finances",
       "instructions": null,
@@ -312,7 +314,7 @@ messages, as `tool_use` and `tool_result` blocks.
 
 | Route | Does |
 | --- | --- |
-| `POST /v1/files` | Upload (multipart, `purpose`: `message` or `project`). Returns a `file_`. |
+| `POST /v1/files?purpose=project&filename=NAME` | Upload: the file's bytes as the request body (not multipart), at most 16 MiB. Returns a `file_`. |
 | `GET /v1/files/{id}` | Metadata: `filename`, `mime_type`, `size_bytes`, `sha256`, `created_at`, `stored_as` (`original` or `extracted_text`). |
 | `GET /v1/files/{id}/content` | The stored bytes, streamed, with `Content-Disposition: attachment; filename*=utf-8''…`, `Content-Type`, and a `Digest: sha-256=…` header for the served bytes. |
 | `GET /v1/generated_files/{id}`, `.../content` | The same for a tool's output. |
@@ -344,11 +346,11 @@ A project holds three kinds of attachment, told apart by `type`:
 Uploading private data to a project is two calls, or one for text:
 
 ```bash
-id=$(curl -sS https://api.openagents.com/v1/files \
-  -H "Authorization: Bearer $OPENAGENTS_KEY" \
-  -F purpose=project -F file=@statements-2026-09.pdf | jq -r .id)
-curl -sS https://api.openagents.com/v1/projects/name:finances/attachments \
-  -H "Authorization: Bearer $OPENAGENTS_KEY" -H "Content-Type: application/json" \
+id=$(curl -sS "https://openagents.com/v1/files?purpose=project&filename=statements-2026-09.pdf" \
+  -H "Authorization: Bearer $OPENAGENTS_TOKEN" \
+  --data-binary @statements-2026-09.pdf | jq -r .id)
+curl -sS https://openagents.com/v1/projects/name:finances/attachments \
+  -H "Authorization: Bearer $OPENAGENTS_TOKEN" -H "Content-Type: application/json" \
   -d "{\"file\":\"$id\"}"
 ```
 

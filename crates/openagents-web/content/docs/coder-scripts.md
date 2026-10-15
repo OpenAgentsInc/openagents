@@ -45,6 +45,7 @@ another folder.
 | `--mode auto` | Coder picks, as Auto does in the terminal (the default). |
 | `--mode coder` | Coder's own loop. |
 | `--mode codex` | Codex, on this computer's ChatGPT login. |
+| `--mode opencode` | OpenCode, on this computer: a headless OpenCode chat. With `--json` its answer streams one JSON object per line as OpenCode writes it, and `--session` continues the same OpenCode chat. Needs OpenCode (`npm install -g opencode-ai`) and its plugin on (`openagents coder plugins enable opencode`). |
 
 A choice holds for the chat's later messages too; `--mode auto` lifts
 it. `--instructions TEXT` or `--instructions-file FILE` adds standing

@@ -97,14 +97,16 @@ response.output_text.delta        (many)
 response.output_text.done
 response.content_part.done
 response.output_item.done
-openagents:cost
 response.completed
 ```
 
-Two events are ours: `openagents:route` (which model and provider took the
-request, before the first output) and `openagents:cost` (the cost, before
-the last event). Clients that don't know them can skip them, as the
-specification asks. If something breaks after the answer has started, the
+Two more events are ours, and come only when you ask for them with the
+header `x-openagents-events: route,cost` (any value but empty, `0`, or
+`false` turns them on): `openagents:route` (which model and provider took
+the request, before the first output) and `openagents:cost` (the cost,
+just before `response.completed`). Without the header the stream has only
+the standard events above; the same facts are in the answer's `openagents`
+object and its `x-openagents-model` and `x-openagents-upstream` headers. If something breaks after the answer has started, the
 stream ends with `response.failed`.
 
 Errors are on their own page: [Errors](/docs/api/errors).
