@@ -340,16 +340,17 @@ the lawn in front of the houses, from its v38 glTF and assembly
 - **Breaking:** the solver doesn't cap the joints, so the recorded loads are
   real. A joint breaks in the step its load reaches its capacity, whether
   from a blow, a landing, or a piece tumbling.
-- **Loads:** a blast pushes each solid by the area it shows the blast
-  (350 N s/m² at the centre, falling off to the edge, no faster than the
-  25 m/s gas). A meteor that lands on the rover (18 kg at 32 m/s) bursts on
-  the first solid its flight meets, which takes the whole impulse in one
-  step; the joints round it take the shock.
+- **Loads:** real blast and impact physics; see "The meteor's blast" below.
 - **Collisions:** pieces collide with the ground, the houses' debris near
   them (mirrored in as moving boxes; one-way), and each other once
   separate. Each piece held together by its joints is a collision group of
-  its own. Parts that broke apart while overlapping collide only once
-  clear. Parts faster than 40 m/s meet only the ground.
+  its own. Parts that broke apart while overlapping, or that come to rest
+  inside another piece after flying through it, collide only once clear.
+  Parts faster than 40 m/s meet only the ground (a 100 m-deep slab, so
+  nothing crosses it in a step).
+- **Air drag:** every part flying through the air is slowed by
+  ½ ρ C_d A v² (ρ 1.225 kg/m³, C_d 1.2, A its box's cross-section along its
+  flight), which is what stops light fragments within tens of metres.
 - **Effects:** sparks at a breaking joint and dust at a hard landing fire
   once each (`rover_sparks`, `rover_landing`). The old dust puffs were
   continuous emitters that piled up into a cloud over the rover.
@@ -360,18 +361,127 @@ native only (its glTF is built into the binary).
 
 Film: `cargo run --release -p verse --example meteor_rover_capture --
 OUT_DIR --video PATH` with `VERSE_QUALITY=high`. It has close shots round
-the rover, then the scene replayed to just before the hardest hit and
-filmed four times slower. `capture.json` lists every joint's limit, peak
-load and when it broke. On 2026-10-14, 4 of the 72 joints broke:
+the rover, wide shots across the throw from the open lawn after the hit,
+then the scene replayed to just before the hardest hit and filmed four
+times slower. `capture.json` lists the meteor's numbers, what it struck,
+every joint's capacity, peak load and when it broke, and each solid's
+impulse and how far it ended up. `ROVER_TRACE=1` prints where every solid
+is each second.
 
-- the mast's bolted seam to the body: 4 × M4, 2.56 × its capacity, from
-  bending;
-- both rocker pivots: bending, 1.72 and 1.14 × capacity;
-- the lid hinge: 1.46 × capacity.
+### The meteor's blast (2026-10-14)
 
-The rest held, because a rigid body mostly moves as one: its seams only
-carry the difference in what neighbouring parts are pushed with. The
-avionics bay's 6 × M5 seam peaked at 15 % of its capacity, the hazard
-cameras' 2 × M4 at 71 % and 63 %, the solar wings' 2 × M3 mounts at 36 %,
-and the most loaded axle at 17 %. `capture.json` has every joint's bolts,
-capacities, peak loads and share.
+The first version pushed the rover with a capped 25 m/s "gas" from an
+18 kg rock at 32 m/s (9 kJ), while the same meteor flattens brick houses.
+The rover now takes the load that meteor really carries.
+
+**How big the meteor is.** The scene flattens the brick houses out to the
+showcase's damage radius, 5.2 m (`BLAST` 4 m × size 1.3). Unreinforced
+brick fails at 35–70 kPa side-on overpressure (Glasstone and Dolan, table
+5.139). Taking 50 kPa at 5.2 m, the Kinney–Graham curve gives a scaled
+distance Z = 3.79 m/kg^⅓, so the free-air TNT charge is
+W = (5.2 / 3.79)³ = 2.58 kg (`blast::charge_for`). A burst on the ground is
+reflected by it, so it equals a free-air charge 1.8 times its energy
+(UFC 3-340-02): the meteor releases E = 2.58 × 4.184 MJ / 1.8 = 6.0 MJ. A
+meteor that keeps that much energy to the ground is hypervelocity, not
+falling at terminal speed. At 3 km/s (`IMPACT_SPEED`) it weighs
+m = 2E/v² = 1.33 kg, an iron ball about 7 cm across.
+
+**The blast load** (`zones::meteor_rover::blast`). For each solid and each
+burst, at the solid's distance R, Z = R / W^⅓ gives (Kinney–Graham):
+
+- the side-on peak Ps;
+- the positive phase's duration td;
+- its impulse Is;
+- the shock's arrival time (its speed integrated outward);
+- the reflected peak Pr = 2Ps(7P₀ + 4Ps)/(7P₀ + Ps);
+- the dynamic pressure q = 2.5Ps²/(7P₀ + Ps).
+
+The pulse is Friedlander, p(t) = P(1 − t/td)e^(−bt/td), with b fitted so
+that it carries Is. The net pressure on a solid is the larger of two
+terms. The first is the reflected-minus-side-on load on its face, which
+fades as the wave clears round it in 3S/U (S the face's smaller half
+side, U the shock's speed). The second is the wind's drag, C_d q(t) with
+C_d 1.2. That pressure times the area the solid shows the burst (its box's
+cross-section) is integrated through each physics step as a real impulse.
+Nothing caps the resulting speed. A solid with another solid between it
+and the burst (a ray test against every other box) gets half, because the
+wave diffracts round small obstacles. The solid a burst goes off inside
+(what the meteor struck, blown apart) shadows nothing.
+
+**The direct strike.** A meteor whose flight meets the rover hits the
+first solid on it in a perfectly inelastic collision. The solid takes the
+impactor's momentum in proportion m/(m + mᵢ), and absorbs
+½mᵢv² × m/(m + mᵢ) of its energy. Above 10 kJ/kg (`DISRUPTION`, the order
+of the catastrophic-disruption threshold for metals struck at km/s) the
+solid breaks into four fragments, split by two planes across its two
+longest sides. The fragments share its mass, momentum and triangles, and
+fly apart with 3 % of that energy (`SPREAD`). The energy the solid took
+goes off as a burst where it hit; the rest goes off on the ground.
+
+**Hand calculations.** These cover the solar wing, the dish (`antenna`)
+and the avionics bay, from the rover at rest in the test pose
+(`the_blast_loads_match_the_hand_calculations`). The meteor strikes the
+9.65 kg deck, which takes 88 % of the energy: a 2.27 kg-TNT burst on the
+deck and a 0.31 kg burst on the ground. The hand numbers use a triangular
+pulse of the same peak and impulse:
+
+| solid | burst | R (m) | Z | Ps (MPa) | Pr (MPa) | area × shade (m²) | hand (N s) | sim (N s) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| solar wing, 1.45 kg | deck | 0.34 | 0.26 | 11.4 | 87 | 0.028 | 11.3 | 11.3 |
+| | ground | 0.69 | 1.01 | 0.99 | 5.4 | 0.069 × ½ | 10.5 | 10.1 |
+| dish, 0.74 kg | deck | 0.19 | 0.20* | 16.1 | 124 | 0.081 | 124.7 | 113.0 |
+| | ground | 0.72 | 1.06 | 0.90 | 4.8 | 0.049 × ½ | 6.6 | 6.0 |
+| bay, 3.57 kg | deck | 0.24 | 0.20* | 16.1 | 124 | 0.059 | 79.1 | 68.2 |
+| | ground | 0.57 | 0.83 | 1.49 | 9.0 | 0.103 × ½ | 19.3 | 18.6 |
+
+\* Inside the fireball; the curves are held at Z = 0.2.
+
+The test asserts agreement within 20 %; the largest gap is the bay's, at
+14 %. The two bursts push from different points, so a solid's total is
+their vector sum, not the sum of the table's numbers.
+
+**What that does to the bolts.** The dish's 113 N s, arriving in under a
+millisecond, is a force of order 10⁵–10⁶ N on its 4 × M4 seam (16.9 kN in
+shear). In a 1/240 s rigid-body step the seam has to pass the difference
+between what the dish and the bay were pushed with. The step-averaged load
+it recorded in the scene was 9.6 kN with 689 N m of bending, 93 % of its capacity: it
+held, and the dish and bay flew off together. The wing's 2 × M3 mounts are
+4.8 kN in shear, but bending, 36 N m, limits them first. A wing that took
+~15 N s while the deck it is bolted to took 3.5 kN s would load them with
+far more than that. In the scene, though, the mounts go with the deck:
+the strike shatters it (5.3 MJ into 9.65 kg is 550 kJ/kg, 55 × the
+disruption threshold). A wing pushed only by a burst 2.4 m away, with the
+deck intact, moves with the deck and keeps its wings. That is the
+rigid-body answer: the blast pushes wing and deck almost alike, and the
+mounts carry only the difference.
+
+**The scene on 2026-10-14** (`capture.json`). The third meteor strikes the
+deck at 4.95 s and shatters it into four fragments, which leave at about
+360 m/s. Every seam to the deck goes with it:
+
+- both wings (2 × M3 each);
+- the dish and the bay (6 × M5 each);
+- the mast (4 × M4);
+- the sample cassette;
+- the hazard cameras;
+- the rails;
+- the rocker shafts.
+
+The blast then breaks these joints by load:
+
+- the lid hinge, 1.57 × its 2.8 kN pin capacity;
+- both rocker pivots;
+- the camera pan, 1.07 × at 6.22 s, as the mast lands.
+
+In all, 19 of the 72 joints broke. The dish, bay and right wing land about
+19.5 m away, the left wing 7 m away, and the mast with the camera head 5 m
+away. The wheel and rocker sets stay within 2.4 m. The deck's fragments
+go out to 99 m before drag and the ground stop them.
+
+Kept from before: the bolts, the pins, the 4× design floor, and joints that
+break when their interaction ratio reaches 1. New tests cover the blast
+curves against Kinney–Graham, the hand calculations, momentum bookkeeping
+(the rover's momentum equals the sum of every blast, strike and drag
+impulse) and energy (the parts carry off less than a fifth of the
+meteor's), a 1 kPa blast that breaks nothing, a direct hit that shatters
+what it strikes, and determinism.

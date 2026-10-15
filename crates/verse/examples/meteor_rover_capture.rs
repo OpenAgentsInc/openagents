@@ -1,9 +1,11 @@
 //! The CAD Lab rover in the Meteor Showcase, as a film: the rover built by
 //! talking in CAD Lab (#11627) stands on the lot between the two kit houses
 //! at golden hour, the caster calls down the eight-meteor swarm, and the
-//! meteors that land on and beside the rover knock it over, tear its wheels,
-//! mast and wings off at their joints, and throw it across the lot, with
-//! sparks and dust. Simulated, not animated (`verse::zones::meteor_rover`).
+//! meteor that lands on the rover shatters its deck and its blast tears the
+//! dish, mast, wings, bay and wheels off at their joints and throws them
+//! across the lot, with sparks and dust. Simulated, not animated
+//! (`verse::zones::meteor_rover`: Kinney–Graham blast, Friedlander pulse,
+//! bolted joints).
 //!
 //! Usage: meteor_rover_capture OUT_DIR [--video PATH] [--seconds N]
 //!
@@ -16,7 +18,8 @@
 //! writes the film to `PATH` (`OUT_DIR/verse-meteor-rover.mp4` by default)
 //! through `ffmpeg`, the stills `verse-meteor-rover-{establishing,impact,
 //! tumble,aftermath,replay}.png` into `OUT_DIR`, and `capture.json` with
-//! what broke off and when the hardest hit came.
+//! the meteor's numbers, what it struck, every joint's capacity and peak
+//! load, each part's blast impulse and where it ended up.
 //!
 //! Run it with `VERSE_QUALITY=high`.
 
@@ -95,20 +98,67 @@ fn lot_axes() -> (Vec3, Vec3) {
     (Vec3::new(cos, 0.0, -sin), Vec3::new(sin, 0.0, cos))
 }
 
-/// Where the rover's body is and how far its parts lie from it (those
-/// within 10 m; at most 2.5 m): what the last shots frame.
-fn scatter(runtime: &WorldRuntime) -> (Vec3, f32) {
+/// Where the rover's parts are and how far they spread: the centre of
+/// the parts within 25 m of where it stood (mass not weighed: a fragment
+/// counts like a wheel), and the distance that holds four in five of them
+/// (at least 1 m, at most 7 m). What the shots after the hit frame.
+fn scatter(runtime: &WorldRuntime, stood: Vec3) -> (Vec3, f32) {
     let Some(rover) = runtime.meteor_rover() else {
-        return (Vec3::ZERO, 1.0);
+        return (stood, 1.0);
     };
-    let center = rover.center();
-    let reach = rover
+    let near: Vec<Vec3> = rover
         .poses()
         .iter()
-        .map(|p| p.1.as_vec3().distance(center))
-        .filter(|d| *d < 10.0)
-        .fold(0.8, f32::max);
-    (center, reach.min(2.5))
+        .map(|p| p.1.as_vec3())
+        .filter(|p| p.distance(stood) < 25.0)
+        .collect();
+    if near.is_empty() {
+        return (stood, 1.0);
+    }
+    let middle = near.iter().copied().sum::<Vec3>() / near.len() as f32;
+    let mut d: Vec<f32> = near.iter().map(|p| p.distance(middle)).collect();
+    d.sort_by(f32::total_cmp);
+    let reach = d[(d.len() * 4 / 5).min(d.len() - 1)];
+    (middle, reach.clamp(1.0, 7.0))
+}
+
+/// The direction the meteor that lands on the rover flies (away from the
+/// caster, level), and the level direction across it.
+fn throw_axes() -> (Vec3, Vec3) {
+    let [x, z] = showcase::rover_at();
+    let [cx, cz] = showcase::CASTER;
+    let away = Vec3::new(x - cx, 0.0, z - cz).normalize_or(Vec3::X);
+    (away, Vec3::new(-away.z, 0.0, away.x))
+}
+
+/// Where the rover's pieces are thrown (level), and where the cameras
+/// after the hit look from: across the throw, from the open lawn, so the
+/// fireball sits at one side of the frame and the pieces
+/// fly across it. The scene is deterministic: in it the dish, the bay and
+/// the right wing land about 18 m out at 0.27 along the meteor's flight and
+/// 0.96 across it (`ROVER_TRACE=1` prints where every part is each second).
+fn throw_view() -> (Vec3, Vec3) {
+    let (away, across) = throw_axes();
+    let throw = (away * 0.27 - across * 0.96).normalize();
+    let side = Vec3::new(-throw.z, 0.0, throw.x);
+    // The open lawn's side, away from the houses and their rubble.
+    let (_, out) = lot_axes();
+    let side = if side.dot(out) < 0.0 { -side } else { side };
+    (throw, side)
+}
+
+/// Where the mast is (it comes off with the camera head and lands on the
+/// open lawn), or where the rover stood.
+fn dish(runtime: &WorldRuntime, stood: Vec3) -> Vec3 {
+    runtime
+        .meteor_rover()
+        .and_then(|r| {
+            r.poses()
+                .into_iter()
+                .find(|(name, _, _)| name == "mast")
+                .map(|p| p.1.as_vec3())
+        })
+        .unwrap_or(stood)
 }
 
 /// The director's camera at film time `t`, given where the rover is, where
@@ -116,11 +166,11 @@ fn scatter(runtime: &WorldRuntime) -> (Vec3, f32) {
 /// low beside it as the meteors fall, above it (over the dust) as it is
 /// thrown, looking down on the scattered parts, and a slow orbit round them
 /// to end.
-fn camera(t: f32, at: Vec3, stood: Vec3, parts: (Vec3, f32)) -> (Vec3, Vec3) {
+fn camera(t: f32, dish: Vec3, stood: Vec3, parts: (Vec3, f32)) -> (Vec3, Vec3) {
     let (along, out) = lot_axes();
     let ground = Vec3::new(stood.x, 0.0, stood.z);
-    let (middle, reach) = parts;
-    let shots: [(f32, Box<dyn Fn(f32) -> (Vec3, Vec3)>); 5] = [
+    let _ = parts;
+    let shots: [(f32, Box<dyn Fn(f32) -> (Vec3, Vec3)>); 6] = [
         (
             0.0,
             Box::new(move |u: f32| {
@@ -140,30 +190,48 @@ fn camera(t: f32, at: Vec3, stood: Vec3, parts: (Vec3, f32)) -> (Vec3, Vec3) {
         (
             5.6,
             Box::new(move |u: f32| {
-                // Above the dust, a little behind the throw.
-                let eye = at + along * (2.4 - 0.6 * u) + out * 1.8 + Vec3::Y * (2.8 - 0.8 * u);
-                (eye, at + Vec3::Y * 0.1)
+                // Across the throw, high, the fireball at the frame's side:
+                // the pieces fly out of it across the frame.
+                let (throw, side) = throw_view();
+                let middle = ground + throw * 8.0;
+                let eye = middle + side * (17.0 + 1.5 * u) + Vec3::Y * (5.0 + u);
+                (eye, middle + Vec3::Y * 0.5)
+            }),
+        ),
+        (
+            7.0,
+            Box::new(move |u: f32| {
+                // Close on the mast and camera head, thrown off the deck.
+                let (throw, side) = throw_view();
+                let ground = Vec3::new(dish.x, 0.0, dish.z);
+                let eye = ground + side * (5.5 + u) - throw * 1.0 + Vec3::Y * 4.8;
+                (eye, ground + Vec3::Y * 0.3)
             }),
         ),
         (
             9.5,
             Box::new(move |u: f32| {
-                // Looking down on where the parts came to rest, from the open
-                // lawn's side.
-                let eye =
-                    middle + out * (reach + 0.9) - along * 0.6 + Vec3::Y * (reach + 0.7 - 0.3 * u);
+                // Looking down the line of pieces, from where it stood to
+                // where the mast came down.
+                let (_, side) = throw_view();
+                let middle = (ground + Vec3::new(dish.x, 0.0, dish.z)) / 2.0;
+                let span = ground.distance(Vec3::new(dish.x, 0.0, dish.z)).max(4.0);
+                let eye = middle + side * (0.6 * span + 3.0 - u) + Vec3::Y * (0.45 * span + 2.0);
                 (eye, middle)
             }),
         ),
         (
             11.5,
             Box::new(move |u: f32| {
-                // A slow orbit round the scattered parts.
-                let angle = -0.6 + 1.2 * u;
-                let side = out * angle.cos() + along * angle.sin();
+                // A slow turn round the scattered parts.
+                let (throw, side) = throw_view();
+                let middle = (ground + Vec3::new(dish.x, 0.0, dish.z)) / 2.0;
+                let span = ground.distance(Vec3::new(dish.x, 0.0, dish.z)).max(4.0);
+                let angle = -0.4 + 0.8 * u;
+                let round = side * angle.cos() + throw * angle.sin();
                 (
-                    middle + side * (reach + 1.1) + Vec3::Y * 1.0,
-                    middle + Vec3::Y * 0.1,
+                    middle + round * (0.6 * span + 3.0) + Vec3::Y * (0.35 * span + 1.5),
+                    middle + Vec3::Y * 0.2,
                 )
             }),
         ),
@@ -179,14 +247,13 @@ fn camera(t: f32, at: Vec3, stood: Vec3, parts: (Vec3, f32)) -> (Vec3, Vec3) {
     (shots[which].1)(ease((t - start) / (end - start)))
 }
 
-/// The replay's camera: ahead of where the rover is thrown, in the open,
-/// circling slowly round the hit.
+/// The replay's camera, circling slowly round the hit.
 fn replay_camera(u: f32, at: Vec3) -> (Vec3, Vec3) {
-    let (along, out) = lot_axes();
-    let turn = 0.5 * u - 0.25;
-    let side = along * turn.cos() + out * (0.4 + turn.sin());
-    let eye = at + side * 3.6 + Vec3::Y * (1.3 + 0.4 * u);
-    (eye, at + Vec3::Y * 0.2)
+    // Across the throw, the fireball at the frame's side.
+    let (throw, side) = throw_view();
+    let middle = Vec3::new(at.x, 0.0, at.z) + throw * (5.0 + 2.0 * u);
+    let eye = middle + side * (8.5 + u) + Vec3::Y * 3.0;
+    (eye, middle + Vec3::Y * 0.6)
 }
 
 fn encoder(path: &Path) -> Result<std::process::Child, String> {
@@ -285,8 +352,9 @@ fn main() -> Result<(), String> {
                 runtime.tick(&idle, dt);
             }
         }
-        let at = rover(&runtime);
-        let (eye, target) = camera(t, at, stood, scatter(&runtime));
+        let parts = scatter(&runtime, stood);
+        let at = parts.0;
+        let (eye, target) = camera(t, dish(&runtime, stood), stood, parts);
         runtime.set_shot(Some((eye, target)));
         let dynamic = runtime.dynamic_mesh();
         let pixels = renderer.render(runtime.view(aspect), &dynamic, &ui)?;
@@ -312,6 +380,20 @@ fn main() -> Result<(), String> {
         }
         if k % 30 == 0 {
             eprintln!("{t:.1} s, the rover at {at}");
+            if std::env::var_os("ROVER_TRACE").is_some()
+                && let Some(r) = runtime.meteor_rover()
+            {
+                let (away, across) = throw_axes();
+                for (name, pos, _) in r.poses() {
+                    let d = pos.as_vec3() - stood;
+                    eprintln!(
+                        "   {name:16} along {:6.1} across {:6.1} up {:5.1}",
+                        d.dot(away),
+                        d.dot(across),
+                        d.y
+                    );
+                }
+            }
         }
     }
     finish(film)?;
@@ -376,7 +458,7 @@ fn main() -> Result<(), String> {
             again.tick(&idle, slow_dt);
         }
         let u = k as f32 / replay_frames as f32;
-        let at = held.lerp(rover(&again), 0.6);
+        let at = held;
         let (eye, target) = replay_camera(u, at);
         again.set_shot(Some((eye, target)));
         let dynamic = again.dynamic_mesh();
@@ -417,7 +499,47 @@ fn main() -> Result<(), String> {
     if !status.success() {
         return Err("ffmpeg could not join the films".into());
     }
+    let charge = verse::zones::meteor_rover::blast::charge_for(5.2);
+    let energy = charge * verse::zones::meteor_rover::blast::TNT
+        / verse::zones::meteor_rover::blast::SURFACE;
+    let speed = verse::zones::meteor_rover::IMPACT_SPEED;
+    let meteor = serde_json::json!({
+        "damage_radius_m": 5.2,
+        "overpressure_at_radius_kpa": verse::zones::meteor_rover::blast::DAMAGE_OVERPRESSURE / 1000.0,
+        "free_air_tnt_kg": (charge * 1000.0).round() / 1000.0,
+        "energy_mj": (energy / 1e4).round() / 100.0,
+        "speed_m_s": speed,
+        "mass_kg": (2.0 * energy / (speed * speed) * 1000.0).round() / 1000.0,
+    });
+    let (struck, fragmented, parts) = runtime.meteor_rover().map_or_else(Default::default, |r| {
+        let struck: Vec<serde_json::Value> = r
+            .struck()
+            .iter()
+            .map(|(name, p, e)| serde_json::json!({"solid": name, "momentum_n_s": p.round(), "energy_kj": (e / 1000.0).round()}))
+            .collect();
+        let mut seen = std::collections::BTreeMap::new();
+        for (name, pos, _) in r.poses() {
+            let d = pos.as_vec3().distance(stood);
+            let e = seen.entry(name.clone()).or_insert(0.0f32);
+            *e = e.max(d);
+        }
+        let parts: Vec<serde_json::Value> = seen
+            .into_iter()
+            .map(|(name, d)| {
+                serde_json::json!({
+                    "solid": name,
+                    "blast_and_strike_impulse_n_s": (r.received(&name).length() * 10.0).round() / 10.0,
+                    "farthest_from_where_it_stood_m": (d * 10.0).round() / 10.0,
+                })
+            })
+            .collect();
+        (struck, r.fragmented().to_vec(), parts)
+    });
     let report = serde_json::json!({
+        "meteor": meteor,
+        "struck": struck,
+        "fragmented": fragmented,
+        "parts": parts,
         "hardest_hit_s": hit_at,
         "hardest_knock_m_s": knock,
         "broke_off": broken,

@@ -65,14 +65,21 @@
 //!
 //! # What hits it
 //!
-//! A meteor's blast pushes every solid away from its centre with
-//! [`BLAST_PRESSURE`] × the area the solid shows the blast (its box's
-//! cross-section facing the centre), falling off to nothing at the blast's
-//! edge; shading by other parts is not modelled. A meteor that lands on
-//! the rover bursts on the first solid its flight meets, which takes its
-//! whole momentum ([`METEOR_MASS`] × [`METEOR_SPEED`] along its flight) as
-//! one sharp impulse in a step. The joints round that solid take the shock
-//! first, and what they pass on loads the next ones.
+//! A meteor's energy comes from the damage the scene shows: the ground
+//! burst that gives [`blast::DAMAGE_OVERPRESSURE`] (50 kPa, enough to
+//! flatten brick houses) at its damage radius, 5.2 m in the showcase: a
+//! free-air charge of 2.58 kg TNT, 6.0 MJ released at the ground, a 1.33 kg
+//! impactor at [`IMPACT_SPEED`]. Its blast reaches every solid as a
+//! Friedlander pulse from the Kinney–Graham curves at the solid's distance:
+//! the reflected overpressure on the face it shows, fading as the wave
+//! clears round it, or the wind's drag, whichever is greater, times the
+//! area it shows, integrated through each step as a real force with
+//! nothing capping it. Solids shadowed by another get [`SHIELDED`] of it.
+//! A meteor whose flight meets the rover strikes the first solid on it
+//! inelastically; above [`DISRUPTION`] the solid breaks into fragments, and
+//! the energy it took goes off as a burst where it hit. Air drag slows
+//! everything that flies. The hand calculations are in
+//! `docs/verse/meteor-showcase-handoff.md`.
 //!
 //! # Collisions
 //!
@@ -84,7 +91,8 @@
 //! loose parts bounce off the body and pile up on each other. Colliders
 //! are each solid's box on its principal axes, and a capsule along the
 //! axle for a wheel. A part flying faster than 40 m/s meets only the
-//! ground until it slows: it would cross another part within a step.
+//! ground until it slows: it would cross another part within a step; if
+//! it slows inside another piece, the two don't collide until clear.
 //!
 //! Native only: the glTF is built into the binary, which the browser build
 //! leaves out.
@@ -100,6 +108,8 @@ use std::sync::OnceLock;
 
 use crate::pbr::LitVertex;
 
+pub mod blast;
+
 /// The rover's glTF and assembly data, exported from CAD Lab.
 const GLB: &[u8] = include_bytes!("../../../../assets/verse/cad/rover.glb");
 const SPEC: &str = include_str!("../../../../assets/verse/cad/rover.json");
@@ -108,15 +118,31 @@ const SPEC: &str = include_str!("../../../../assets/verse/cad/rover.json");
 pub const STEP: f64 = 1.0 / 240.0;
 /// Gravity, m/s².
 pub const GRAVITY: f64 = 9.81;
-/// A meteor's mass, kg, and its speed when it lands, m/s: a burning rock
-/// about 0.25 m across falling from 30 m in a second.
-pub const METEOR_MASS: f64 = 18.0;
-pub const METEOR_SPEED: f64 = 32.0;
+/// The meteor's speed when it reaches the ground, m/s: hypervelocity,
+/// still carrying a good part of its entry speed (a stony or iron body
+/// that has slowed from 11–20 km/s but is far from terminal velocity).
+/// Its mass follows from its energy ([`Rover::blast`]).
+pub const IMPACT_SPEED: f64 = 3_000.0;
 /// How far from a meteor's landing point the rover counts as struck, m.
 pub const STRUCK: f64 = 1.2;
-/// The blast's push per square metre a solid shows it at the centre, N s/m²
-/// (falling off linearly to nothing at the blast's edge).
-pub const BLAST_PRESSURE: f64 = 350.0;
+/// Specific energy that breaks a solid into fragments, J/kg: the
+/// catastrophic-disruption threshold Q* of metal targets struck at
+/// kilometres a second is of order 10⁴ J/kg (Fujiwara et al. 1989, and
+/// Holsapple's scaling for strength-dominated bodies).
+pub const DISRUPTION: f64 = 1.0e4;
+/// The share of the energy a disrupted solid takes that goes into its
+/// fragments flying apart (the rest heats and deforms them): a few per
+/// cent in impact-disruption experiments.
+pub const SPREAD: f64 = 0.03;
+/// Drag coefficient of a part, flat or blunt, in the blast's wind and
+/// flying through the air.
+pub const DRAG: f64 = 1.2;
+/// The share of the blast a part gets when another part stands between
+/// it and the burst: the wave diffracts round small obstacles, so the
+/// shadow is partial.
+pub const SHIELDED: f64 = 0.5;
+/// How long a burst's wave is followed, s: past every part in reach.
+const BURST_LIFE: f64 = 0.25;
 /// The share of a pin's shear strength it holds under a sudden blow
 /// (notches, bushings, the eye around it).
 pub const PIN_EFFICIENCY: f64 = 0.15;
@@ -126,13 +152,15 @@ pub const PIN_LENGTH: f64 = 0.04;
 pub const DESIGN_FACTOR: f64 = 4.0;
 /// How long the rover settles under gravity when it is made, s.
 const SETTLE: f64 = 0.5;
-/// The blast's gas speed at its centre, m/s: no part is pushed faster than
-/// the gas that pushes it (falling off with the push).
-pub const BLAST_SPEED: f64 = 25.0;
 /// A contact this hard (impulse in one step, N s) raises dust.
 const DUST_IMPULSE: f64 = 4.0;
 /// The least time between two puffs of dust, s.
 const DUST_EVERY: f64 = 0.4;
+/// The ground's slab is this deep below the surface (half), m: deep
+/// enough that nothing crosses it in a step.
+const GROUND_DEPTH: f64 = 50.0;
+/// Where unused debris boxes wait, m below the rover, under the ground.
+const PARKED: f64 = 400.0;
 /// Debris boxes mirrored into the rover's world, at most.
 const DEBRIS: usize = 40;
 /// Two solids' boxes this close count as touching, m.
@@ -594,10 +622,48 @@ pub struct Event {
     pub at: Vec3,
 }
 
+/// A solid as the rover simulates it: one of the CAD solids, or a
+/// fragment of one.
+#[derive(Clone)]
+struct Part {
+    instance: String,
+    material: String,
+    mass: f64,
+    /// Its box: centre (body frame) and half extents, m.
+    center: DVec3,
+    half: DVec3,
+    /// Vertices and normals in the mesh frame (the CAD solid's body
+    /// frame); a vertex sits at `p - shift` in this part's body frame.
+    shift: Vec3,
+    positions: std::sync::Arc<Vec<Vec3>>,
+    normals: std::sync::Arc<Vec<Vec3>>,
+    indices: std::sync::Arc<Vec<u32>>,
+    color: [f32; 3],
+    /// Broken into fragments: its body is out of the world.
+    gone: bool,
+}
+
+/// A blast wave on its way: where and when it went off, and its free-air
+/// TNT charge, kg.
+#[derive(Clone, Copy, Debug)]
+struct Burst {
+    at: DVec3,
+    charge: f64,
+    start: f64,
+}
+
 /// The rover on the lot: its world, its bodies (one per solid), its joints,
 /// and what happened to it.
 pub struct Rover {
     world: World,
+    /// One per body.
+    parts: Vec<Part>,
+    bursts: Vec<Burst>,
+    fragmented: Vec<String>,
+    struck: Vec<(String, f64, f64)>,
+    /// Each body's impulse from outside, and their sum, N s.
+    received: Vec<DVec3>,
+    ledger: DVec3,
     bodies: Vec<BodyId>,
     /// Each body's colliders.
     colliders: Vec<Vec<ColliderId>>,
@@ -629,13 +695,15 @@ impl Rover {
         let model = model();
         let spec = &model.spec;
         let mut world = World::new(STEP);
-        let ground_body =
-            world.add(Body::new(1.0, DVec3::ONE, origin - DVec3::Y).with_kind(BodyKind::Static));
+        let ground_body = world.add(
+            Body::new(1.0, DVec3::ONE, origin - DVec3::Y * GROUND_DEPTH)
+                .with_kind(BodyKind::Static),
+        );
         let ground = world.add_collider(
             Collider::new(
                 ground_body,
                 Shape::Cuboid {
-                    half: DVec3::new(300.0, 1.0, 300.0),
+                    half: DVec3::new(300.0, GROUND_DEPTH, 300.0),
                 },
             )
             .with_filter(Filter {
@@ -906,7 +974,7 @@ impl Rover {
         let mut debris = Vec::new();
         for k in 0..DEBRIS {
             let id = world.add(
-                Body::new(1.0, DVec3::ONE, origin - DVec3::Y * (60.0 + k as f64))
+                Body::new(1.0, DVec3::ONE, origin - DVec3::Y * (PARKED + k as f64))
                     .with_kind(BodyKind::Kinematic),
             );
             world.add_collider(
@@ -918,7 +986,7 @@ impl Rover {
                 )
                 .with_filter(Filter {
                     group: DEBRIS_BIT,
-                    mask: !(DEBRIS_BIT | GROUND_BIT),
+                    mask: !(DEBRIS_BIT | GROUND_BIT | FAST_BIT),
                 })
                 .with_material(Material {
                     friction: 0.7,
@@ -928,8 +996,32 @@ impl Rover {
             );
             debris.push(id);
         }
+        let parts: Vec<Part> = model
+            .solids
+            .iter()
+            .map(|s| Part {
+                instance: s.instance.clone(),
+                material: s.material.clone(),
+                mass: s.mass,
+                center: s.center,
+                half: s.half,
+                shift: Vec3::ZERO,
+                positions: std::sync::Arc::new(s.positions.clone()),
+                normals: std::sync::Arc::new(s.normals.clone()),
+                indices: std::sync::Arc::new(s.indices.clone()),
+                color: s.color,
+                gone: false,
+            })
+            .collect();
+        let received = vec![DVec3::ZERO; parts.len()];
         let mut rover = Rover {
             world,
+            parts,
+            bursts: Vec::new(),
+            fragmented: Vec::new(),
+            struck: Vec::new(),
+            received,
+            ledger: DVec3::ZERO,
             bodies,
             colliders,
             links,
@@ -1005,9 +1097,9 @@ impl Rover {
         (0..n).map(|k| find(&mut parent, k)).collect()
     }
 
-    /// A body's box in the world: its min and max corners.
+    /// A part's box in the world: its min and max corners.
     fn bounds(&self, k: usize) -> (DVec3, DVec3) {
-        let s = &model().solids[k];
+        let s = &self.parts[k];
         let b = &self.world.bodies()[self.bodies[k].0 as usize];
         let center = b.pos + b.orientation * s.center;
         let m = DMat3::from_quat(b.orientation);
@@ -1020,6 +1112,9 @@ impl Rover {
     }
 
     fn overlap(&self, i: usize, j: usize) -> bool {
+        if self.parts[i].gone || self.parts[j].gone {
+            return false;
+        }
         let (a, b) = (self.bounds(i), self.bounds(j));
         (0..3).all(|k| a.0[k] < b.1[k] + 0.01 && b.0[k] < a.1[k] + 0.01)
     }
@@ -1027,12 +1122,29 @@ impl Rover {
     /// Gives each piece still held together by its joints a collision bit
     /// of its own, so pieces collide with each other but a piece's own
     /// solids don't. Solids that were joined and still overlap where they
-    /// broke apart (a rail inside the body's box, a tube in its tray) don't
-    /// collide until they are clear of each other: their boxes stand for
-    /// hollow parts, and pushing them apart from inside would throw them.
+    /// broke apart (a rail inside the body's box, a tube in its tray, a
+    /// part's fragments) don't collide until they are clear of each other:
+    /// their boxes stand for hollow parts, and pushing them apart from
+    /// inside would throw them.
     fn regroup(&mut self) {
         let n = self.bodies.len();
         let roots = self.pieces();
+        // Solids of different pieces that overlap and don't collide now (a
+        // fast part that flew into another, or two pieces that shared a
+        // collision bit) stay apart until clear: colliding them from inside
+        // would throw them.
+        for i in 0..n {
+            for j in i + 1..n {
+                if roots[i] == roots[j] || self.intimate.contains(&(i, j)) || !self.overlap(i, j) {
+                    continue;
+                }
+                let filter =
+                    |k: usize| self.world.colliders()[self.colliders[k][0].0 as usize].filter;
+                if !filter(i).allows(filter(j)) {
+                    self.intimate.insert((i, j));
+                }
+            }
+        }
         let mut parent: Vec<usize> = (0..n).collect();
         for k in 0..n {
             let (a, b) = (find(&mut parent, k), find(&mut parent, roots[k]));
@@ -1048,23 +1160,25 @@ impl Rover {
         }
         let mut bits: BTreeMap<usize, u32> = BTreeMap::new();
         for k in 0..n {
+            if self.parts[k].gone {
+                continue;
+            }
             let root = find(&mut parent, k);
             let next = bits.len() as u32;
             let bit = *bits.entry(root).or_insert(1 << (2 + next % PIECE_BITS));
-            if self.fast[k] {
-                for &c in &self.colliders[k] {
-                    self.world.collider_mut(c).filter = Filter {
-                        group: FAST_BIT,
-                        mask: GROUND_BIT | DEBRIS_BIT,
-                    };
+            let filter = if self.fast[k] {
+                Filter {
+                    group: FAST_BIT,
+                    mask: GROUND_BIT,
                 }
-                continue;
-            }
-            for &c in &self.colliders[k] {
-                self.world.collider_mut(c).filter = Filter {
+            } else {
+                Filter {
                     group: bit,
-                    mask: !bit,
-                };
+                    mask: !(bit | FAST_BIT),
+                }
+            };
+            for &c in &self.colliders[k] {
+                self.world.collider_mut(c).filter = filter;
             }
         }
     }
@@ -1081,7 +1195,7 @@ impl Rover {
                     body.vel = vel;
                 }
                 None => {
-                    body.pos = self.origin - DVec3::Y * (60.0 + k as f64);
+                    body.pos = self.origin - DVec3::Y * (PARKED + k as f64);
                     body.vel = DVec3::ZERO;
                 }
             }
@@ -1100,42 +1214,61 @@ impl Rover {
         }
     }
 
-    /// The body's centre: the chassis solid, where it is now.
+    fn live(&self) -> impl Iterator<Item = usize> + '_ {
+        (0..self.parts.len()).filter(|&k| !self.parts[k].gone)
+    }
+
+    fn body(&self, k: usize) -> &Body {
+        &self.world.bodies()[self.bodies[k].0 as usize]
+    }
+
+    /// The body's centre: the centre of mass of its heaviest piece (the
+    /// solids still joined together), where it is now.
     #[must_use]
     pub fn center(&self) -> Vec3 {
-        let model = model();
-        let k = model
-            .solids
-            .iter()
-            .enumerate()
-            .filter(|(_, s)| s.instance == "chassis")
-            .max_by(|a, b| a.1.mass.total_cmp(&b.1.mass))
-            .map_or(0, |(k, _)| k);
-        self.world.bodies()[self.bodies[k].0 as usize].pos.as_vec3()
+        let roots = self.pieces();
+        let mut mass: BTreeMap<usize, f64> = BTreeMap::new();
+        for k in self.live() {
+            *mass.entry(roots[k]).or_default() += self.parts[k].mass;
+        }
+        let Some((&root, &total)) = mass.iter().max_by(|a, b| a.1.total_cmp(b.1)) else {
+            return Vec3::ZERO;
+        };
+        let sum: DVec3 = self
+            .live()
+            .filter(|&k| roots[k] == root)
+            .map(|k| self.body(k).pos * self.parts[k].mass)
+            .sum();
+        (sum / total).as_vec3()
     }
 
     /// The rover's total linear momentum, kg m/s.
     #[must_use]
     pub fn momentum(&self) -> DVec3 {
-        self.bodies
-            .iter()
-            .map(|id| self.world.bodies()[id.0 as usize].momentum())
+        self.live().map(|k| self.body(k).momentum()).sum()
+    }
+
+    /// The rover's total kinetic energy, J.
+    #[must_use]
+    pub fn kinetic_energy(&self) -> f64 {
+        self.live()
+            .map(|k| {
+                let b = self.body(k);
+                0.5 * b.mass * b.vel.length_squared() + 0.5 * (b.inertia * b.omega).dot(b.omega)
+            })
             .sum()
     }
 
     /// The rover's total mass, kg.
     #[must_use]
     pub fn mass(&self) -> f64 {
-        self.bodies
-            .iter()
-            .map(|id| self.world.bodies()[id.0 as usize].mass)
-            .sum()
+        self.live().map(|k| self.body(k).mass).sum()
     }
 
-    /// How many solids (bodies) and joints it has.
+    /// How many solids (bodies, fragments included) and joints it has.
     #[must_use]
     pub fn counts(&self) -> (usize, usize) {
-        (self.bodies.len(), self.links.len())
+        (self.live().count(), self.links.len())
     }
 
     /// Every joint, with its limits, peak loads and whether it broke.
@@ -1144,7 +1277,7 @@ impl Rover {
         &self.links
     }
 
-    /// The instances whose solids broke free of the body, in order.
+    /// The joints that broke, in order.
     #[must_use]
     pub fn broken(&self) -> Vec<String> {
         let mut out: Vec<(f64, String)> = self
@@ -1154,6 +1287,54 @@ impl Rover {
             .collect();
         out.sort_by(|a, b| a.0.total_cmp(&b.0));
         out.into_iter().map(|(_, n)| n).collect()
+    }
+
+    /// What each strike hit: the solid, the momentum it took, N s, and
+    /// the energy it took, J.
+    #[must_use]
+    pub fn struck(&self) -> &[(String, f64, f64)] {
+        &self.struck
+    }
+
+    /// The mass of the piece (the solids still joined together) that the
+    /// largest solid of `instance` is in, kg.
+    #[must_use]
+    pub fn piece_mass(&self, instance: &str) -> f64 {
+        let roots = self.pieces();
+        let Some(k) = self
+            .live()
+            .filter(|&k| self.parts[k].instance == instance)
+            .max_by(|&a, &b| self.parts[a].mass.total_cmp(&self.parts[b].mass))
+        else {
+            return 0.0;
+        };
+        self.live()
+            .filter(|&o| roots[o] == roots[k])
+            .map(|o| self.parts[o].mass)
+            .sum()
+    }
+
+    /// The solids a strike broke into fragments.
+    #[must_use]
+    pub fn fragmented(&self) -> &[String] {
+        &self.fragmented
+    }
+
+    /// The total impulse given to each solid from outside so far (blasts
+    /// and strikes), by instance, N s.
+    #[must_use]
+    pub fn received(&self, instance: &str) -> DVec3 {
+        (0..self.parts.len())
+            .filter(|&k| self.parts[k].instance == instance)
+            .map(|k| self.received[k])
+            .sum()
+    }
+
+    /// The sum of every impulse given from outside (blasts, strikes and
+    /// air drag), N s.
+    #[must_use]
+    pub fn ledger(&self) -> DVec3 {
+        self.ledger
     }
 
     /// The hardest knock: when, s, and the largest speed it gave a part,
@@ -1168,129 +1349,103 @@ impl Rover {
         std::mem::take(&mut self.events)
     }
 
-    fn velocities(&self) -> Vec<DVec3> {
-        self.bodies
-            .iter()
-            .map(|id| self.world.bodies()[id.0 as usize].vel)
-            .collect()
-    }
-
-    fn note_knock(&mut self, before: &[DVec3]) {
-        let after = self.velocities();
-        let knock = before
-            .iter()
-            .zip(&after)
-            .map(|(a, b)| (*b - *a).length())
-            .fold(0.0, f64::max);
-        if knock > 0.05 && self.hardest.is_none_or(|(_, k)| knock > k) {
+    fn give(&mut self, k: usize, impulse: DVec3, at: DVec3) {
+        let id = self.bodies[k];
+        let body = &mut self.world.bodies_mut()[id.0 as usize];
+        let before = body.vel;
+        body.wake();
+        body.apply_impulse_at(impulse, at);
+        let knock = (body.vel - before).length();
+        self.received[k] += impulse;
+        self.ledger += impulse;
+        if knock > 0.05 && self.hardest.is_none_or(|(_, v)| knock > v) {
             self.hardest = Some((self.elapsed, knock));
         }
     }
 
-    /// A meteor's blast at `at` with radius `radius`: every solid in reach
-    /// is pushed by the area it shows the blast. Returns the impulses given
-    /// (solid's instance, N s).
-    pub fn push(&mut self, at: Vec3, radius: f32) -> Vec<(String, DVec3)> {
-        let at = at.as_dvec3();
-        let radius = f64::from(radius).max(0.1);
-        let model = model();
-        let before = self.velocities();
-        let mut given = Vec::new();
-        for (k, id) in self.bodies.iter().enumerate() {
-            let s = &model.solids[k];
-            let body = &mut self.world.bodies_mut()[id.0 as usize];
-            let center = body.pos + body.orientation * s.center;
-            let away = center - at;
-            let d = away.length();
-            if d >= radius {
+    /// The area part `k` shows a blast arriving along `dir` (its box's
+    /// cross-section), m².
+    fn area(&self, k: usize, dir: DVec3) -> f64 {
+        self.face(k, dir).0
+    }
+
+    /// The area part `k` shows a wave arriving along `dir` (its box's
+    /// cross-section), m², and the smaller half side of the face it
+    /// mostly shows, m (for the wave's clearing time).
+    fn face(&self, k: usize, dir: DVec3) -> (f64, f64) {
+        let local = (self.body(k).orientation.inverse() * dir).abs();
+        let h = self.parts[k].half;
+        let area = 4.0 * (h.y * h.z * local.x + h.x * h.z * local.y + h.x * h.y * local.z);
+        let face = if local.x >= local.y && local.x >= local.z {
+            h.y.min(h.z)
+        } else if local.y >= local.z {
+            h.x.min(h.z)
+        } else {
+            h.x.min(h.y)
+        };
+        (area, face)
+    }
+
+    /// Air drag on every part flying through still air this step:
+    /// ½ ρ C_d A v², never more than stops it.
+    fn drag(&mut self) {
+        let mut pushes = Vec::new();
+        for k in self.live() {
+            let b = self.body(k);
+            let speed = b.vel.length();
+            if speed < 0.5 {
                 continue;
             }
-            let dir = (away.normalize_or(DVec3::Y) + DVec3::Y * 0.6).normalize();
-            let local = (body.orientation.inverse() * dir).abs();
-            let h = s.half;
-            let area = 4.0 * (h.y * h.z * local.x + h.x * h.z * local.y + h.x * h.y * local.z);
-            let fall = 1.0 - d / radius;
-            let impulse = dir * (BLAST_PRESSURE * area * fall).min(s.mass * BLAST_SPEED * fall);
-            body.wake();
-            body.apply_impulse_at(impulse, center);
-            given.push((s.instance.clone(), impulse));
+            let along = b.vel / speed;
+            let slow =
+                (0.5 * blast::AIR_DENSITY * DRAG * self.area(k, along) * speed * speed * STEP
+                    / b.mass)
+                    .min(speed);
+            pushes.push((k, -along * slow * b.mass));
         }
-        self.note_knock(&before);
-        given
-    }
-
-    /// A meteor of mass `mass` (kg) and momentum `momentum` (N s) flying
-    /// along `flight` that lands at `at`: it bursts on the first solid its
-    /// flight meets (within [`STRUCK`] of the landing), which takes its
-    /// whole momentum as one sharp impulse in a step. Returns that solid
-    /// and the impulse.
-    pub fn strike(
-        &mut self,
-        at: DVec3,
-        flight: DVec3,
-        mass: f64,
-        momentum: f64,
-    ) -> Vec<(String, DVec3)> {
-        let model = model();
-        let flight = flight.normalize_or(DVec3::NEG_Y);
-        let from = at - flight * 3.0;
-        let before = self.velocities();
-        // Every box the flight enters, in order.
-        let mut met: Vec<(f64, usize)> = Vec::new();
-        for (k, id) in self.bodies.iter().enumerate() {
-            let s = &model.solids[k];
-            let body = &self.world.bodies()[id.0 as usize];
-            let to_local = |p: DVec3| body.orientation.inverse() * (p - body.pos) - s.center;
-            let (o, d) = (to_local(from), body.orientation.inverse() * flight);
-            let (mut t0, mut t1) = (0.0f64, 3.0 + STRUCK);
-            let mut hit = true;
-            for axis in 0..3 {
-                let (oa, da, ha) = (o[axis], d[axis], s.half[axis]);
-                if da.abs() < 1e-12 {
-                    if oa.abs() > ha {
-                        hit = false;
-                    }
-                    continue;
-                }
-                let (mut a, mut b) = ((-ha - oa) / da, (ha - oa) / da);
-                if a > b {
-                    std::mem::swap(&mut a, &mut b);
-                }
-                t0 = t0.max(a);
-                t1 = t1.min(b);
-            }
-            if hit && t0 <= t1 {
-                met.push((t0, k));
-            }
-        }
-        met.sort_by(|a, b| a.0.total_cmp(&b.0));
-        let _ = mass;
-        let mut given = Vec::new();
-        // The meteor bursts on the first solid its flight meets: its whole
-        // momentum, in one step, into that solid. The joints round it take
-        // the shock.
-        for (t, k) in met.into_iter().take(1) {
-            let point = from + flight * t;
-            let impulse = flight * momentum;
+        for (k, impulse) in pushes {
             let body = &mut self.world.bodies_mut()[self.bodies[k].0 as usize];
-            body.wake();
-            body.apply_impulse_at(impulse, point);
-            if given.is_empty() {
-                self.events.push(Event {
-                    effect: "rover_sparks",
-                    at: point.as_vec3(),
-                });
-            }
-            given.push((model.solids[k].instance.clone(), impulse));
+            body.vel += impulse / body.mass;
+            self.ledger += impulse;
         }
-        self.note_knock(&before);
-        given
     }
 
-    /// A meteor landing at `at` with blast radius `radius`: its blast, and
-    /// its own momentum when it landed on the rover.
-    pub fn blast(&mut self, at: Vec3, radius: f32) -> Vec<(String, DVec3)> {
-        let mut given = self.push(at, radius);
+    /// Where the segment from `from` along unit `dir` first enters part
+    /// `k`'s box, as a distance, if within `length`.
+    fn ray(&self, k: usize, from: DVec3, dir: DVec3, length: f64) -> Option<f64> {
+        let s = &self.parts[k];
+        let b = self.body(k);
+        let o = b.orientation.inverse() * (from - b.pos) - s.center;
+        let d = b.orientation.inverse() * dir;
+        let (mut t0, mut t1) = (0.0f64, length);
+        for axis in 0..3 {
+            let (oa, da, ha) = (o[axis], d[axis], s.half[axis]);
+            if da.abs() < 1e-12 {
+                if oa.abs() > ha {
+                    return None;
+                }
+                continue;
+            }
+            let (mut a, mut c) = ((-ha - oa) / da, (ha - oa) / da);
+            if a > c {
+                std::mem::swap(&mut a, &mut c);
+            }
+            t0 = t0.max(a);
+            t1 = t1.min(c);
+        }
+        (t0 <= t1).then_some(t0)
+    }
+
+    /// A meteor landing at `at` whose blast reaches `radius` (the scene's
+    /// damage radius). Its energy is the ground burst whose free-air
+    /// equivalent charge ([`blast::charge_for`]) gives
+    /// [`blast::DAMAGE_OVERPRESSURE`] at that radius: E = W × 4.184 MJ/kg
+    /// ÷ [`blast::SURFACE`]; its mass is 2E/v² at [`IMPACT_SPEED`]. When
+    /// its flight meets the rover it strikes the first solid there
+    /// ([`Rover::strike`]), and the energy that solid took goes off where
+    /// it hit; the rest goes off on the ground.
+    pub fn blast(&mut self, at: Vec3, radius: f32) {
+        let charge = blast::charge_for(f64::from(radius));
         let horizontal = DVec3::new(
             f64::from(at.x) - self.caster.x,
             0.0,
@@ -1298,13 +1453,259 @@ impl Rover {
         )
         .normalize_or(DVec3::X);
         let flight = (horizontal * 0.55 + DVec3::NEG_Y * 0.83).normalize();
-        given.extend(self.strike(
-            at.as_dvec3(),
-            flight,
-            METEOR_MASS,
-            METEOR_MASS * METEOR_SPEED,
-        ));
-        given
+        let energy = charge * blast::TNT / blast::SURFACE;
+        let mass = 2.0 * energy / (IMPACT_SPEED * IMPACT_SPEED);
+        let at = at.as_dvec3();
+        match self.hit(at, flight, mass, IMPACT_SPEED) {
+            Some((_, point, deposited)) => {
+                let share = (deposited / energy).clamp(0.0, 1.0);
+                self.burst(point, charge * share);
+                if share < 1.0 {
+                    self.burst(at, charge * (1.0 - share));
+                }
+            }
+            None => self.burst(at, charge),
+        }
+    }
+
+    /// A charge of `charge` kg TNT going off at `at` now (for tests and
+    /// for anything else that explodes near the rover).
+    pub fn burst(&mut self, at: DVec3, charge: f64) {
+        self.bursts.push(Burst {
+            at,
+            charge,
+            start: self.elapsed,
+        });
+    }
+
+    /// An impactor of `mass` kg at `speed` m/s along `flight` landing at
+    /// `at`. It strikes the first solid its flight meets (within
+    /// [`STRUCK`] of the landing), a perfectly inelastic collision over
+    /// the step: the solid takes the impactor's momentum in the share of
+    /// its mass, m/(m + mᵢ), and the kinetic energy lost, ½ mᵢ v² ×
+    /// m/(m + mᵢ), goes into it. When that energy per kilogram of the
+    /// solid passes the catastrophic-disruption threshold [`DISRUPTION`],
+    /// the solid breaks into four fragments that share its momentum and
+    /// fly apart with [`SPREAD`] of that energy. Returns the solid it
+    /// struck.
+    pub fn strike(&mut self, at: DVec3, flight: DVec3, mass: f64, speed: f64) -> Option<String> {
+        self.hit(at, flight, mass, speed).map(|(name, _, _)| name)
+    }
+
+    /// [`Rover::strike`], with where it hit and the energy the solid took.
+    fn hit(
+        &mut self,
+        at: DVec3,
+        flight: DVec3,
+        mass: f64,
+        speed: f64,
+    ) -> Option<(String, DVec3, f64)> {
+        let flight = flight.normalize_or(DVec3::NEG_Y);
+        let from = at - flight * 3.0;
+        let first = self
+            .live()
+            .filter_map(|k| self.ray(k, from, flight, 3.0 + STRUCK).map(|t| (t, k)))
+            .min_by(|a, b| a.0.total_cmp(&b.0))?;
+        let (t, k) = first;
+        let point = from + flight * t;
+        let target = self.parts[k].mass;
+        let share = target / (target + mass);
+        let momentum = flight * mass * speed * share;
+        let deposited = 0.5 * mass * speed * speed * share;
+        let name = self.parts[k].instance.clone();
+        self.events.push(Event {
+            effect: "rover_sparks",
+            at: point.as_vec3(),
+        });
+        self.struck
+            .push((name.clone(), momentum.length(), deposited));
+        if deposited / target >= DISRUPTION {
+            self.fragment(k, momentum, deposited, point);
+        } else {
+            self.give(k, momentum, point);
+        }
+        Some((name, point, deposited))
+    }
+
+    /// Notes the solids that were in one piece `before` and are not now,
+    /// and still overlap: they don't collide until clear.
+    fn parted(&mut self, before: &[usize]) {
+        let after = self.pieces();
+        let n = before.len();
+        for i in 0..n {
+            for j in i + 1..n {
+                if before[i] == before[j] && after[i] != after[j] && self.overlap(i, j) {
+                    self.intimate.insert((i, j));
+                }
+            }
+        }
+    }
+
+    /// Breaks part `k` into four fragments, by two planes through its
+    /// centre across its two longest sides. Each takes a quarter of its
+    /// mass and its triangles there and a quarter of `momentum`, and flies
+    /// out from the centre with [`SPREAD`] of the `deposited` energy
+    /// between them.
+    fn fragment(&mut self, k: usize, momentum: DVec3, deposited: f64, point: DVec3) {
+        let part = self.parts[k].clone();
+        let (pos, orientation, vel, omega) = {
+            let b = self.body(k);
+            (b.pos, b.orientation, b.vel, b.omega)
+        };
+        // Its joints go with it.
+        let before = self.pieces();
+        let now = self.elapsed;
+        for link in self
+            .links
+            .iter_mut()
+            .filter(|l| l.broke.is_none() && (l.bodies.0 == k || l.bodies.1 == k))
+        {
+            link.broke = Some(now);
+            link.peak_use = link.peak_use.max(1.0);
+        }
+        self.world.remove_body(self.bodies[k]);
+        self.parts[k].gone = true;
+        self.parted(&before);
+        self.fragmented.push(part.instance.clone());
+        let h = part.half;
+        let mut axes = [0usize, 1, 2];
+        axes.sort_by(|&a, &b| h[b].total_cmp(&h[a]));
+        let (u, v) = (axes[0], axes[1]);
+        let first = self.parts.len();
+        let spread = (2.0 * SPREAD * deposited / part.mass).sqrt();
+        for (su, sv) in [(1.0, 1.0), (1.0, -1.0), (-1.0, 1.0), (-1.0, -1.0)] {
+            let mut offset = DVec3::ZERO;
+            offset[u] = su * h[u] / 2.0;
+            offset[v] = sv * h[v] / 2.0;
+            let mut half = h;
+            half[u] /= 2.0;
+            half[v] /= 2.0;
+            let center = part.center + offset;
+            let inside = |p: Vec3| {
+                let d = (p - part.shift).as_dvec3() - part.center;
+                d[u] * su >= 0.0 && d[v] * sv >= 0.0
+            };
+            let indices: Vec<u32> = part
+                .indices
+                .chunks_exact(3)
+                .filter(|t| {
+                    let c = (part.positions[t[0] as usize]
+                        + part.positions[t[1] as usize]
+                        + part.positions[t[2] as usize])
+                        / 3.0;
+                    inside(c)
+                })
+                .flatten()
+                .copied()
+                .collect();
+            let mass = part.mass / 4.0;
+            let inertia = Body::box_inertia(mass, half * 2.0);
+            let mut body = Body::new(mass, inertia, pos + orientation * center);
+            body.orientation = orientation;
+            let mut out = DVec3::ZERO;
+            out[u] = su;
+            out[v] = sv;
+            body.vel = vel + momentum / part.mass + orientation * out.normalize() * spread;
+            body.omega = omega;
+            let id = self.world.add(body);
+            let collider = self.world.add_collider(
+                Collider::new(id, Shape::Cuboid { half })
+                    .with_filter(Filter {
+                        group: FAST_BIT,
+                        mask: GROUND_BIT,
+                    })
+                    .with_material(Material {
+                        friction: 0.85,
+                        torsional: 0.01,
+                        restitution: 0.2,
+                    }),
+            );
+            self.bodies.push(id);
+            self.colliders.push(vec![collider]);
+            self.fast.push(true);
+            self.received.push(DVec3::ZERO);
+            self.parts.push(Part {
+                instance: part.instance.clone(),
+                material: part.material.clone(),
+                mass,
+                center: DVec3::ZERO,
+                shift: part.shift + center.as_vec3(),
+                half,
+                positions: part.positions.clone(),
+                normals: part.normals.clone(),
+                indices: std::sync::Arc::new(indices),
+                color: part.color,
+                gone: false,
+            });
+        }
+        // The impactor's momentum is the fragments' (the ejecta's spread
+        // sums to nothing).
+        self.ledger += momentum;
+        for f in first..self.parts.len() {
+            self.received[f] = momentum / 4.0;
+        }
+        let knock = (momentum / part.mass).length() + spread;
+        if self.hardest.is_none_or(|(_, v)| knock > v) {
+            self.hardest = Some((self.elapsed, knock));
+        }
+        self.events.push(Event {
+            effect: "rover_sparks",
+            at: point.as_vec3(),
+        });
+        // Fragments overlap each other and their neighbours where they are
+        // born: they collide only once clear.
+        for f in first..self.parts.len() {
+            for o in 0..self.parts.len() {
+                if o != f && self.overlap(f, o) {
+                    self.intimate.insert((o.min(f), o.max(f)));
+                }
+            }
+        }
+        self.regroup();
+    }
+
+    /// The blasts' push in this step on every part: each part's share of
+    /// the Friedlander pulse at its distance, through the step, as a force.
+    fn press(&mut self) {
+        let mut pushes: Vec<(usize, DVec3, DVec3)> = Vec::new();
+        for burst in &self.bursts {
+            for k in self.live() {
+                let s = &self.parts[k];
+                let b = self.body(k);
+                let center = b.pos + b.orientation * s.center;
+                let away = center - burst.at;
+                let distance = away.length().max(0.05);
+                let dir = away / distance;
+                let wave = blast::Wave::at(distance, burst.charge);
+                // The pulse's window this step, from its arrival.
+                let t1 = self.elapsed + STEP - burst.start - wave.arrival;
+                let t0 = t1 - STEP;
+                if t1 <= 0.0 || t0 >= wave.duration {
+                    continue;
+                }
+                let (area, face) = self.face(k, dir);
+                let per_area = wave.net_impulse(t0, t1, wave.clearing(face), DRAG);
+                if per_area <= 0.0 {
+                    continue;
+                }
+                // A part behind another, seen from the burst, is shielded (not by
+                // one the burst is inside: what it struck, blown apart).
+                let shielded = self.live().any(|o| {
+                    o != k
+                        && self
+                            .ray(o, burst.at, dir, distance - 0.05)
+                            .is_some_and(|t| t > 1e-9)
+                });
+                let shade = if shielded { SHIELDED } else { 1.0 };
+                let impulse = dir * per_area * area * shade;
+                pushes.push((k, impulse, center));
+            }
+        }
+        for (k, impulse, at) in pushes {
+            self.give(k, impulse, at);
+        }
+        let now = self.elapsed;
+        self.bursts.retain(|b| now - b.start < BURST_LIFE);
     }
 
     /// Advances `dt` seconds in fixed steps, breaking the joints that
@@ -1318,6 +1719,8 @@ impl Rover {
     }
 
     fn tick(&mut self, gravity: bool) {
+        self.press();
+        self.drag();
         let g = if gravity { GRAVITY } else { 0.0 };
         let field = move |_: DVec3, _: DVec3| DVec3::new(0.0, -g, 0.0);
         self.world.step(&field);
@@ -1347,23 +1750,13 @@ impl Rover {
                 snapped = true;
             }
         }
-        let fast: Vec<bool> = self
-            .bodies
-            .iter()
-            .map(|id| self.world.bodies()[id.0 as usize].vel.length() > FAST)
+        let fast: Vec<bool> = (0..self.bodies.len())
+            .map(|k| !self.parts[k].gone && self.body(k).vel.length() > FAST)
             .collect();
         let mut changed = fast != self.fast;
         self.fast = fast;
         if snapped {
-            let after = self.pieces();
-            let n = self.bodies.len();
-            for i in 0..n {
-                for j in i + 1..n {
-                    if before[i] == before[j] && after[i] != after[j] && self.overlap(i, j) {
-                        self.intimate.insert((i, j));
-                    }
-                }
-            }
+            self.parted(&before);
             changed = true;
         }
         let clear: Vec<(usize, usize)> = self
@@ -1398,16 +1791,15 @@ impl Rover {
     /// The rover's triangles where its solids are now, lit physically.
     #[must_use]
     pub fn lit(&self) -> Vec<LitVertex> {
-        let model = model();
         let mut out = Vec::new();
-        for (k, id) in self.bodies.iter().enumerate() {
-            let s = &model.solids[k];
-            let body = &self.world.bodies()[id.0 as usize];
+        for k in self.live() {
+            let s = &self.parts[k];
+            let body = self.body(k);
             let rotation = body.orientation.as_quat();
             let pos = body.pos.as_vec3();
             for tri in s.indices.chunks_exact(3) {
                 let [a, b, c] = [tri[0], tri[1], tri[2]].map(|i| i as usize);
-                let [pa, pb, pc] = [a, b, c].map(|i| pos + rotation * s.positions[i]);
+                let [pa, pb, pc] = [a, b, c].map(|i| pos + rotation * (s.positions[i] - s.shift));
                 let tangent = (pb - pa).normalize_or(Vec3::X);
                 for (p, i) in [(pa, a), (pb, b), (pc, c)] {
                     out.push(LitVertex {
@@ -1427,13 +1819,10 @@ impl Rover {
     /// Each solid's pose: its instance, position and rotation.
     #[must_use]
     pub fn poses(&self) -> Vec<(String, DVec3, DQuat)> {
-        let model = model();
-        self.bodies
-            .iter()
-            .enumerate()
-            .map(|(k, id)| {
-                let b = &self.world.bodies()[id.0 as usize];
-                (model.solids[k].instance.clone(), b.pos, b.orientation)
+        self.live()
+            .map(|k| {
+                let b = self.body(k);
+                (self.parts[k].instance.clone(), b.pos, b.orientation)
             })
             .collect()
     }
@@ -1443,6 +1832,14 @@ impl Rover {
     #[cfg(test)]
     fn float(&mut self) {
         self.world.collider_mut(self.ground).filter = Filter { group: 0, mask: 0 };
+        for c in 0..self.world.colliders().len() as u32 {
+            if self
+                .debris
+                .contains(&self.world.colliders()[c as usize].body)
+            {
+                self.world.collider_mut(ColliderId(c)).filter = Filter { group: 0, mask: 0 };
+            }
+        }
     }
 
     #[cfg(test)]
@@ -1518,79 +1915,185 @@ mod tests {
         assert!((r.center() - start).length() < 0.08);
     }
 
+    /// The scene's meteor: the charge that flattens the houses out to the
+    /// showcase's 5.2 m damage radius.
+    fn charge() -> f64 {
+        blast::charge_for(5.2)
+    }
+
+    /// Where the showcase's meteor on the rover lands: 0.25 m past its
+    /// centre, away from the caster, so its flight crosses the deck.
+    fn on(r: &Rover) -> DVec3 {
+        let c = r
+            .poses()
+            .into_iter()
+            .find(|p| p.0 == "chassis")
+            .map_or(DVec3::ZERO, |p| p.1);
+        let toward = DVec3::new(r.caster.x - c.x, 0.0, r.caster.z - c.z).normalize();
+        DVec3::new(c.x, r.origin.y, c.z) - toward * 0.25
+    }
+
     #[test]
-    fn momentum_is_conserved_through_a_strike_and_what_breaks_after() {
+    fn momentum_and_energy_add_up_through_a_blast_and_what_breaks_after() {
         let mut r = rover();
         r.float();
         let before = r.momentum();
-        let at = r.center() + Vec3::new(0.1, 0.4, 0.0);
-        let given = r.blast(at, 5.0);
-        let impulses: DVec3 = given.iter().map(|(_, j)| *j).sum();
-        let after = r.momentum();
-        assert!((after - before - impulses).length() < 1e-9 * impulses.length().max(1.0));
-        // Joints and the parts' collisions are internal: the rover keeps
-        // its momentum while it flies apart.
+        let at = on(&r);
+        r.blast(at.as_vec3(), 5.2);
         r.step_free(240);
         assert!(!r.broken().is_empty());
-        let later = r.momentum();
+        // The only outside pushes are the blast and the air's drag; the
+        // joints and the parts' collisions are internal.
+        let ledger = r.ledger();
+        let after = r.momentum();
         assert!(
-            (later - after).length() < 1e-6 * after.length(),
-            "{after} -> {later}"
+            (after - before - ledger).length() < 1e-6 * ledger.length().max(1.0),
+            "{before} + {ledger} -> {after}"
+        );
+        // The parts carry off far less energy than the meteor brought.
+        let energy = r.kinetic_energy();
+        assert!(
+            energy > 0.0 && energy < charge() * blast::TNT / blast::SURFACE * 0.2,
+            "{energy} J"
         );
     }
 
     #[test]
-    fn a_direct_hit_breaks_every_joint_loaded_past_its_limit_and_no_other() {
-        let mut r = settled();
+    fn a_direct_hit_shatters_what_it_strikes_and_conserves_momentum() {
+        let mut r = rover();
+        r.float();
+        let before = r.momentum();
         let at = r.center().as_dvec3() + DVec3::new(0.0, 0.2, 0.0);
-        let flight = DVec3::new(0.5, -0.85, 0.1);
-        let hit = r.strike(at, flight, METEOR_MASS, METEOR_MASS * METEOR_SPEED);
-        assert!(!hit.is_empty());
-        for _ in 0..30 {
-            r.step(1.0 / 60.0);
-        }
-        let broke: Vec<&Link> = r.joints().iter().filter(|l| l.broke.is_some()).collect();
-        assert!(!broke.is_empty(), "nothing broke");
+        let flight = DVec3::new(0.5, -0.85, 0.1).normalize();
+        let energy = charge() * blast::TNT / blast::SURFACE;
+        let mass = 2.0 * energy / (IMPACT_SPEED * IMPACT_SPEED);
+        let hit = r.strike(at, flight, mass, IMPACT_SPEED).expect("it hit");
+        assert_eq!(r.fragmented(), [hit.clone()]);
+        let (_, momentum, deposited) = r.struck()[0].clone();
+        // An inelastic hit: no more momentum or energy than the impactor's.
+        assert!(momentum < mass * IMPACT_SPEED && deposited < energy);
+        assert!((r.momentum() - before - flight * momentum).length() < 1e-6 * momentum);
+        r.step_free(120);
+        assert!((r.momentum() - before - r.ledger()).length() < 1e-6 * momentum);
         for l in r.joints() {
             assert_eq!(
                 l.broke.is_some(),
                 l.peak_use >= 1.0,
-                "{} {:?}: {:.2} of its capacity",
+                "{} {:.2}",
                 l.name,
-                l.kind,
                 l.peak_use
             );
         }
     }
 
     #[test]
-    fn a_weak_hit_breaks_nothing() {
+    fn the_scenes_meteor_shatters_the_deck_and_tears_off_panels_dish_and_mast() {
         let mut r = settled();
-        let at = r.center().as_dvec3() + DVec3::new(0.0, 0.2, 0.0);
-        assert!(
-            !r.strike(at, DVec3::new(0.5, -0.85, 0.1), 1.0, 1.0 * 2.0)
-                .is_empty()
-        );
+        let at = on(&r);
+        r.blast(at.as_vec3(), 5.2);
+        for _ in 0..60 {
+            r.step(1.0 / 60.0);
+        }
+        assert_eq!(r.fragmented(), ["chassis"]);
+        // Each comes away on its own or with a few small parts: its piece
+        // weighs a few kilograms, not the rover's 88.
+        for part in [
+            "solar_panel_l",
+            "solar_panel_r",
+            "antenna",
+            "mast",
+            "avionics_bay",
+        ] {
+            let held = r.piece_mass(part);
+            assert!(
+                held < 8.0,
+                "{part} is in a piece of {held:.1} kg: {:?}",
+                r.broken()
+            );
+        }
+        let broke = |name: &str| {
+            r.joints()
+                .iter()
+                .any(|l| l.name == name && l.broke.is_some())
+        };
+        assert!(broke("lid_hinge"), "{:?}", r.broken());
+        for l in r.joints() {
+            assert_eq!(
+                l.broke.is_some(),
+                l.peak_use >= 1.0,
+                "{} {:.2}",
+                l.name,
+                l.peak_use
+            );
+        }
+    }
+
+    /// The doc's hand calculations (`docs/verse/meteor-showcase-handoff.md`):
+    /// the impulse each blast gives the solar panel, the dish and the
+    /// avionics bay, from the Kinney–Graham numbers at their distances with
+    /// a triangular pulse, N s. The simulation integrates the Friedlander
+    /// pulse; they agree within 20%.
+    #[test]
+    fn the_blast_loads_match_the_hand_calculations() {
+        let hand = [
+            ("solar_panel_l", [11.28, 10.51]),
+            ("antenna", [124.7, 6.56]),
+            ("avionics_bay", [79.05, 19.26]),
+        ];
+        for burst in 0..2 {
+            let mut r = settled();
+            r.blast(on(&r).as_vec3(), 5.2);
+            assert_eq!(r.bursts.len(), 2);
+            let only = r.bursts[burst];
+            r.bursts = vec![only];
+            for _ in 0..4 {
+                r.tick(true);
+            }
+            for (part, loads) in hand {
+                let got = r.received(part).length();
+                let ratio = got / loads[burst];
+                println!(
+                    "{part}, burst {burst}: {got:.2} N s, {:.2} by hand",
+                    loads[burst]
+                );
+                assert!(
+                    (0.8..=1.2).contains(&ratio),
+                    "{part}, burst {burst}: {got:.2} N s against {:.2} by hand",
+                    loads[burst]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_weak_blast_breaks_nothing() {
+        let mut r = settled();
+        // 1 kPa side on at the rover: a charge whose 1 kPa ring is 20 m out.
+        let charge = (20.0 / blast::scaled_distance_for(1_000.0)).powi(3);
+        let at = r.center().as_dvec3() + DVec3::new(-20.0, -0.3, 0.0);
+        r.burst(at, charge);
         for _ in 0..60 {
             r.step(1.0 / 60.0);
         }
         assert!(r.broken().is_empty(), "{:?}", r.broken());
+        assert!(r.ledger().length() > 0.0);
     }
 
     #[test]
-    fn the_same_strike_does_exactly_the_same_twice() {
+    fn the_same_blast_does_exactly_the_same_twice() {
         let run = || {
             let mut r = settled();
             let at = r.center() + Vec3::new(0.6, -0.4, 0.3);
-            r.blast(at, 6.0);
+            r.blast(at, 5.2);
             for _ in 0..120 {
                 r.step(1.0 / 60.0);
             }
-            (r.poses(), r.broken())
+            (r.poses(), r.broken(), r.fragmented().to_vec())
         };
-        let (poses, broken) = run();
+        let (poses, broken, fragments) = run();
         let again = run();
         assert_eq!(poses, again.0);
         assert_eq!(broken, again.1);
+        assert_eq!(fragments, again.2);
     }
 }

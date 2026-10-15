@@ -233,9 +233,10 @@ pub fn rover_targets() -> Vec<Vec3> {
     let mut out = targets();
     let [x, z] = rover_at();
     let [cx, cz] = CASTER;
-    // Toward the caster, so the meteor comes down on the rover's near flank.
+    // A little past the rover's centre, away from the caster: the meteor
+    // comes down at a slant, so its flight crosses the deck.
     let toward = Vec3::new(cx - x, 0.0, cz - z).normalize_or_zero();
-    out[2] = Vec3::new(x, 0.0, z) + toward * 0.35;
+    out[2] = Vec3::new(x, 0.0, z) - toward * 0.25;
     out[5] = Vec3::new(x, 0.0, z) - toward * 2.2 + Vec3::new(toward.z, 0.0, -toward.x) * 1.0;
     out
 }
