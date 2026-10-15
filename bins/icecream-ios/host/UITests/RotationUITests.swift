@@ -43,5 +43,17 @@ final class RotationUITests: XCTestCase {
             }
         }
         device.orientation = .portrait
+        sleep(4)
+        // The pause menu shows the app's version (the canvas's data-version).
+        let menu = app.webViews.buttons.matching(NSPredicate(format: "label CONTAINS 'Menu'")).firstMatch
+        if menu.waitForExistence(timeout: 5) {
+            menu.tap()
+            sleep(2)
+            let shot = XCUIScreen.main.screenshot()
+            if let folder = environment["ICECREAM_SHOTS"], !folder.isEmpty {
+                try shot.pngRepresentation.write(
+                    to: URL(fileURLWithPath: folder).appendingPathComponent("\(idiom)-menu-\(seed).png"))
+            }
+        }
     }
 }
