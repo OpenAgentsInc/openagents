@@ -2401,6 +2401,7 @@ for the owner's store steps, not an App Store publication.
 
 The account record, privacy declarations, rating, and review submission
 remain owner actions. No upload or store submission was made for #11681.
+
 ## Set the LND liquidity budget and run the funded canary (#11755)
 
 Choose the inbound purchase size, LSP fee and routing fee limits, one stable

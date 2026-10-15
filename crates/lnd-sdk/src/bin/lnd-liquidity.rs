@@ -59,7 +59,12 @@ async fn run() -> Result<Value, Box<dyn std::error::Error>> {
     }
     let mut journal = Journal::open(&settings.journal)?;
     // Bind the single-use action record to this node and the exact approved budget.
-    let binding = json!({"node": settings.node, "network": settings.network, "provider": settings.provider, "budget": settings.budget,
+    let mut approved_terms = serde_json::to_value(&settings.budget)?;
+    approved_terms
+        .as_object_mut()
+        .ok_or(Error::Invalid("liquidity budget"))?
+        .remove("mainnet_approved");
+    let binding = json!({"node": settings.node, "network": settings.network, "provider": settings.provider, "budget": approved_terms,
         "channel_peer": settings.channel_peer, "channel_address": settings.channel_address});
     if let Some(saved) = journal.entries.get("binding") {
         if saved != &binding {
