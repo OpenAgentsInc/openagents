@@ -497,3 +497,19 @@ async fn real_engine_imports_attached_models_and_another_server_restores_their_s
         assert_eq!(bundle.len(), 1);
     }
 }
+
+#[test]
+fn manufacturing_cards_offer_named_face_controls_in_plain_words() {
+    let report = json!({"profile":{"process":"print","min_wall_mm":0.8,"nozzle_mm":0.4,"overhang_degrees":45},"complete":true,"findings":[{"part":"plate","instance":"plate","face":"body:+z","check":"wall","value":0.3,"limit":0.8,"unit":"mm","message":"Wall is thinner than the selected minimum."}]});
+    let card = json!({"doc":"plate","version":1,"title":"Plate","manufacturing":report});
+    let html =
+        crate::cad_lab::card_markup("12345678-1234-4234-8234-123456789abc", &card).into_string();
+    assert!(html.contains("data-cad-findings"));
+    assert!(html.contains("data-cad-faces"));
+    assert!(html.contains("body:+z"));
+    assert!(html.contains("0.30 mm"));
+    assert!(oa_copy::violations(&html, &[]).is_empty());
+    let failed=crate::cad_lab::manufacturing(&json!({"profile":{"process":"print"},"complete":false,"error":"The model couldn't be checked."})).into_string();
+    assert!(!failed.contains("No problems found"));
+    assert!(failed.contains("couldn&#39;t") || failed.contains("couldn't"));
+}

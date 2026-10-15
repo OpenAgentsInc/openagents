@@ -1,7 +1,7 @@
-## Deploy project uploads and CAD updates (#11679, #11661, #11662, #11663)
+## Deploy project uploads and CAD updates (#11679, #11661, #11662, #11663, #11664)
 
 The resumable server, CLI, checked CAD face pulls, shared configurators, and
-STEP/STL uploads are implemented on `main`. This Linux session
+STEP/STL uploads and print/CNC checks are implemented on `main`. This Linux session
 cannot deploy them: the default Google Cloud login requires reauthentication,
 and the documented automation configuration is absent on this machine.
 Refresh the deployment login, then use `scripts/deploy/web.sh stage --keep-spec`,
@@ -21,7 +21,8 @@ WASM build. On the deployed CAD page, check a face pull at desktop and phone
 width, then confirm that the old version is unchanged. Check a shared bracket
 with hole-spacing and thickness sliders while signed out, download its files,
 and stop sharing it. Import STEP and STL files, reopen them, and download
-their files from a second browser session. The isolated local
+their files from a second browser session. Ask whether a bracket can be printed,
+select a reported face, and confirm that it turns red. The isolated local
 browser check covers mouse and touch; it does not establish a production deploy.
 
 ## Show cloud environment issue runs on openagents.com and the phone (#11228)

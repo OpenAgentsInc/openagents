@@ -317,6 +317,7 @@ impl Lab {
             "cad_set_part" => self.set_part(args),
             "cad_assemble" => self.assemble(args),
             "cad_check" => self.check(args),
+            "cad_manufacture" => self.manufacture(args),
             "cad_versions" => self.versions_tool(args),
             "cad_compare" => self.compare(args),
             "cad_export" => self.export(args),
@@ -1203,6 +1204,21 @@ impl Lab {
         Ok(out)
     }
 
+    fn manufacture(&self, args: &Value) -> Result<Value, String> {
+        let (id, n, document, _) = self.pick(args)?;
+        let profile: cad::manufacture::Profile = arg_json(args, "profile")?
+            .map(serde_json::from_value)
+            .transpose()
+            .map_err(|_| "Check the print or CNC settings.")?
+            .unwrap_or_default();
+        let eval =
+            cad::evaluate_with(&document, &self.root.join(".parts")).map_err(|p| p.join(" "))?;
+        let report = cad::manufacture::check(&eval.built, &profile)?;
+        let mut card = self.card(&id, n, None)?;
+        card["manufacturing"] = report.clone();
+        Ok(json!({"doc":id,"version":n,"manufacturing":report,"card":card}))
+    }
+
     fn import_model(&self, args: &Value) -> Result<Value, String> {
         use base64::Engine as _;
         let format = arg_str(args, "format")
@@ -1772,6 +1788,7 @@ fn takes(name: &str) -> &'static [&'static str] {
             "author",
         ],
         "cad_add_feature" => &["doc", "part", "features", "after", "summary", "author"],
+        "cad_manufacture" => &["doc", "version", "profile"],
         "cad_config_options" => &["doc", "version"],
         "cad_configure" => &["doc", "version", "controls"],
         "cad_drag_face" => &["doc", "part", "face", "delta", "summary", "author"],
@@ -1990,6 +2007,8 @@ pub fn tools() -> Value {
             "hidden": {"type": "boolean", "description": "false leaves the hidden lines out"},
             "dimensions": {"type": "string", "description": "a JSON array of distances between two parallel flat faces, named like cad_faces names them, e.g. [{\"part\":\"plate\",\"faces\":[\"body:start\",\"body:top\"],\"view\":\"front\",\"label\":\"H\"}]"},
             "formats": {"type": "string", "description": "a JSON array of svg, pdf, dxf; default all three"}}}},
+        {"name":"cad_manufacture","description":"Check whether a part can be 3D printed or milled in one 3-axis setup. Measures wall thickness, print overhang angle, unsupported bridges, holes smaller than the nozzle, inside corners smaller than the cutter, and faces blocked from the tool. Returns named faces for the viewport. Checks sample the surface. For a print question, use the default print profile unless the person gave settings.",
+         "parameters":{"type":"object","required":["doc"],"properties":{"doc":doc,"version":version,"profile":{"type":"string","description":"Optional JSON object: process print (default), cnc, or both; min_wall_mm (0.8), overhang_degrees (45), bridge_mm (10), nozzle_mm (0.4), tool_radius_mm (3), up [0,0,1] (build direction / tool approach)."}}}},
         {"name": "cad_check", "description": "Run the checks on a version again: every feature rebuilds, every solid is closed, no undeclared overlaps; with its mass, centre of mass and inertia.",
          "parameters": {"type": "object", "required": ["doc"], "properties": {"doc": doc, "version": version}}},
         {"name": "cad_versions", "description": "The versions of a CAD document: each one's summary, author, mass and part count.",
@@ -2034,6 +2053,25 @@ mod tests {
             .as_nanos();
         let path = std::env::temp_dir().join(format!("cad-lab-test-{n}-{}", std::process::id()));
         (Dir(path.clone()), Lab::open(path).unwrap())
+    }
+
+    #[test]
+    fn manufacturing_checks_keep_the_version_and_put_named_findings_on_the_card() {
+        let (_dir, lab) = lab();
+        let made=lab.run("cad_from_json",&json!({"doc":"plate","document":{"kind":"part.v1","id":"plate","features":[{"id":"body","op":"solid.box","params":{"length":20,"width":10,"height":0.3,"center":[0,0,0.15]}}]}}));
+        assert_eq!(made["version"], 1, "{made}");
+        let checked = lab.run("cad_manufacture", &json!({"doc":"plate"}));
+        assert_eq!(checked["version"], 1, "{checked}");
+        assert_eq!(checked["manufacturing"]["passed"], false);
+        assert_eq!(checked["card"]["manufacturing"], checked["manufacturing"]);
+        assert!(
+            checked["manufacturing"]["findings"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|f| f["face"] == "body:+z")
+        );
+        assert_eq!(lab.latest("plate"), Some(1));
     }
 
     #[test]

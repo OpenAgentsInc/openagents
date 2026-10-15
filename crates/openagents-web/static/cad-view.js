@@ -147,8 +147,8 @@
     model.solids.forEach(function (s) {
       for (var k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], s.box[0][k]); hi[k] = Math.max(hi[k], s.box[1][k]); }
       s.vao = vao(); gl.bindVertexArray(s.vao);
-      gl.bindBuffer(gl.ARRAY_BUFFER, buffer(gl.ARRAY_BUFFER, s.pos)); gl.enableVertexAttribArray(mesh.ap); gl.vertexAttribPointer(mesh.ap, 3, gl.FLOAT, false, 0, 0);
-      gl.bindBuffer(gl.ARRAY_BUFFER, buffer(gl.ARRAY_BUFFER, s.nor)); gl.enableVertexAttribArray(mesh.an); gl.vertexAttribPointer(mesh.an, 3, gl.FLOAT, false, 0, 0);
+      gl.bindBuffer(gl.ARRAY_BUFFER, s.pbuf = buffer(gl.ARRAY_BUFFER, s.pos)); gl.enableVertexAttribArray(mesh.ap); gl.vertexAttribPointer(mesh.ap, 3, gl.FLOAT, false, 0, 0);
+      gl.bindBuffer(gl.ARRAY_BUFFER, s.nbuf = buffer(gl.ARRAY_BUFFER, s.nor)); gl.enableVertexAttribArray(mesh.an); gl.vertexAttribPointer(mesh.an, 3, gl.FLOAT, false, 0, 0);
       buffer(gl.ELEMENT_ARRAY_BUFFER, s.idx);
       // The edges as line segments.
       var segs = [];
@@ -172,7 +172,7 @@
       return {yaw: -2.3, pitch: 0.45, dist: radius / (Math.tan(0.3) * Math.min(1, a)) * 1.08, target: center.slice()};
     }
     var cam = fit();
-    var state = {mode: "pick", picks: [], section: null, explode: 0, hl: null, marks: []};
+    var state = {mode: "pick", picks: [], section: null, explode: 0, hl: null, marks: [], failures: []};
     var originalModel = model;
     root.__cadSetModel = function (json) {
       gpuBuffers.forEach(function (b) { gl.deleteBuffer(b); });
@@ -180,7 +180,7 @@
       gpuBuffers = []; gpuArrays = [];
       model = json ? fromView(json) : originalModel;
       uploadModel();
-      state.hl = null; state.edge = null; state.marks = []; state.picks = [];
+      state.hl = null; state.edge = null; state.marks = []; state.picks = []; state.failures = [];
       draw();
     };
     var pull = null, handle = null, stem = null;
@@ -219,6 +219,40 @@
     }
 
 
+    var queued = false;
+    function findingFaces(findings) {
+      state.failures.forEach(function (h) {
+        gl.deleteVertexArray(h.vao); gl.deleteBuffer(h.buffer);
+        gpuArrays=gpuArrays.filter(function(v){return v!==h.vao;}); gpuBuffers=gpuBuffers.filter(function(b){return b!==h.buffer;});
+      });
+      state.failures=[];
+      model.solids.forEach(function(s) {
+        if(!s.tface)return;
+        var names=findings.filter(function(f){return f.part===s.part && (!f.instance || f.instance===s.instance);}).map(function(f){return f.face;});
+        if(!names.length)return;
+        var indices=[];
+        for(var t=0;t<s.tface.length;t++) {
+          var name=s.names[s.tface[t]];
+          if(name && names.some(function(f){return name===f || name.startsWith(f+'#');}))indices.push(s.idx[t*3],s.idx[t*3+1],s.idx[t*3+2]);
+        }
+        if(!indices.length)return;
+        var view=vao();gl.bindVertexArray(view);
+        gl.bindBuffer(gl.ARRAY_BUFFER,s.pbuf);gl.enableVertexAttribArray(mesh.ap);gl.vertexAttribPointer(mesh.ap,3,gl.FLOAT,false,0,0);
+        gl.bindBuffer(gl.ARRAY_BUFFER,s.nbuf);gl.enableVertexAttribArray(mesh.an);gl.vertexAttribPointer(mesh.an,3,gl.FLOAT,false,0,0);
+        var selected=buffer(gl.ELEMENT_ARRAY_BUFFER,new Uint32Array(indices));
+        state.failures.push({solid:s,vao:view,buffer:selected,count:indices.length});s.visible=true;
+      });
+      root.dataset.cadHighlightedFaces=String(findings.length);draw();
+    }
+    root.__cadHighlightFindings=findingFaces;
+    var findingsOwner=root.closest('[data-cad-findings]');
+    if(findingsOwner) {
+      try {findingFaces(JSON.parse(findingsOwner.dataset.cadFindings));}catch(_){}
+      findingsOwner.querySelectorAll('[data-cad-faces]').forEach(function(button){button.addEventListener('click',function(){
+        try {findingFaces(JSON.parse(button.dataset.cadFaces));}catch(_){}
+      });});
+    }
+
     // ---- the camera ----
     function basis(w, h) {
       var cp = Math.cos(cam.pitch);
@@ -237,7 +271,6 @@
       for (var i = 0; i < 4; i++) for (var j = 0; j < 4; j++) { var s = 0; for (var k = 0; k < 4; k++) s += proj[k * 4 + j] * view[i * 4 + k]; m[i * 4 + j] = s; }
       return m;
     }
-    var queued = false;
     function draw() { if (!queued) { queued = true; requestAnimationFrame(frame); } }
     function clip() {
       if (!state.section) return null;
@@ -282,6 +315,12 @@
         gl.drawElements(gl.TRIANGLES, s.idx.length, gl.UNSIGNED_INT, 0);
       });
       gl.disable(gl.POLYGON_OFFSET_FILL);
+      // Manufacturing findings share the model's named faces.
+      if(state.failures.length) {
+        gl.uniform1f(mesh.u.flat_,1);gl.uniform3fv(mesh.u.c,[0.95,0.24,0.08]);gl.depthFunc(gl.LEQUAL);
+        state.failures.forEach(function(h){gl.uniform3fv(mesh.u.o,h.solid.offset);gl.bindVertexArray(h.vao);gl.drawElements(gl.TRIANGLES,h.count,gl.UNSIGNED_INT,0);});
+        gl.depthFunc(gl.LESS);gl.uniform1f(mesh.u.flat_,0);
+      }
       // The picked face, in the accent colour.
       if (state.hl && state.hl.solid.visible) {
         gl.uniform1f(mesh.u.flat_, 1);

@@ -115,14 +115,14 @@ struct Node {
 }
 
 /// A bounding-volume hierarchy over a mesh's triangles.
-struct Bvh {
+pub(crate) struct Bvh {
     tris: Vec<Tri>,
     order: Vec<usize>,
     nodes: Vec<Node>,
 }
 
 impl Bvh {
-    fn new(mesh: &Mesh, offset: P) -> Bvh {
+    pub(crate) fn new(mesh: &Mesh, offset: P) -> Bvh {
         let p = |i: u32| {
             let q = mesh.positions[i as usize];
             [q.x + offset[0], q.y + offset[1], q.z + offset[2]]
@@ -181,6 +181,68 @@ impl Bvh {
         node.left = left;
         node.right = right;
         me
+    }
+
+    /// Nearest positive ray hit, in millimeters for a unit direction.
+    pub(crate) fn distance(&self, o: P, d: P, limit: f64) -> Option<f64> {
+        if self.nodes.is_empty() {
+            return None;
+        }
+        let mut best = limit;
+        let mut hit = false;
+        let mut stack = vec![0];
+        while let Some(i) = stack.pop() {
+            let node = &self.nodes[i];
+            let mut near = 0.0f64;
+            let mut far = best;
+            for k in 0..3 {
+                if d[k].abs() < 1e-15 {
+                    if o[k] < node.lo[k] || o[k] > node.hi[k] {
+                        far = -1.0;
+                        break;
+                    }
+                } else {
+                    let a = (node.lo[k] - o[k]) / d[k];
+                    let b = (node.hi[k] - o[k]) / d[k];
+                    near = near.max(a.min(b));
+                    far = far.min(a.max(b));
+                }
+            }
+            if near > far {
+                continue;
+            }
+            if node.count == 0 {
+                stack.push(node.left);
+                stack.push(node.right);
+                continue;
+            }
+            for &t in &self.order[node.start..node.start + node.count] {
+                let tri = &self.tris[t];
+                let e1 = sub(tri.v[1], tri.v[0]);
+                let e2 = sub(tri.v[2], tri.v[0]);
+                let p = cross(d, e2);
+                let det = dot(e1, p);
+                if det.abs() < 1e-14 {
+                    continue;
+                }
+                let s = sub(o, tri.v[0]);
+                let u = dot(s, p) / det;
+                if !(-1e-9..=1.0 + 1e-9).contains(&u) {
+                    continue;
+                }
+                let q = cross(s, e1);
+                let v = dot(d, q) / det;
+                if v < -1e-9 || u + v > 1.0 + 1e-9 {
+                    continue;
+                }
+                let distance = dot(e2, q) / det;
+                if distance > 1e-6 && distance < best {
+                    best = distance;
+                    hit = true;
+                }
+            }
+        }
+        hit.then_some(best)
     }
 
     fn bounds(&self) -> Option<(P, P)> {

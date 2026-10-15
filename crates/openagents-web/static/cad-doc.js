@@ -105,6 +105,7 @@ if (page && buttons.length) {
       if (job.generation === generation) {
         if (result.error) throw new Error(result.error);
         viewer.__cadSetModel(result.view); checkedDelta=job.delta;
+        const findings=page.querySelector('[data-cad-findings-panel]');if(findings)findings.hidden=job.delta!==0;
         viewer.dispatchEvent(new CustomEvent("cad-pull-handle", {detail:selected}));
         pullPanel.querySelector("[data-cad-pull-label]").textContent = `${result.edit.dimension}: ${Number(result.edit.value.toFixed(2))} mm`;
         pullSay(job.delta === 0 ? "Drag Pull to move this face, or enter a distance." : "Preview checked.");
@@ -124,6 +125,7 @@ if (page && buttons.length) {
     if (!pick || saving) return;
     ++generation; pending=null; pick=null; checkedDelta=null; pullPanel.hidden=true;
     viewer.dispatchEvent(new CustomEvent("cad-pull-handle", {detail:null})); viewer.__cadSetModel(null);
+    const findings=page.querySelector('[data-cad-findings-panel]');if(findings){findings.hidden=false;viewer.__cadHighlightFindings?.(JSON.parse(page.dataset.cadFindings||'[]'));}
   };
   if (pullPanel && viewer) {
     viewer.addEventListener("cad-face-pick", (event) => {

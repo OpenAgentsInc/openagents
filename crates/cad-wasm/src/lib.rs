@@ -73,6 +73,15 @@ fn tool(name: &str, args: &Value) -> Result<Value, String> {
             Ok(eval) => json!({"passed": true, "report": eval.report}),
             Err(problems) => json!({"passed": false, "problems": problems}),
         }),
+        "cad_manufacture" => {
+            let profile: cad::manufacture::Profile = json_arg(args, "profile")?
+                .map(serde_json::from_value)
+                .transpose()
+                .map_err(|_| "Check the print or CNC settings.")?
+                .unwrap_or_default();
+            let eval = cad::evaluate_with(&document(args)?, &cache).map_err(|p| p.join(" "))?;
+            cad::manufacture::check(&eval.built, &profile)
+        }
         "cad_configure" => {
             let controls: Vec<cad::configure::Control> =
                 serde_json::from_value(args["controls"].clone())
@@ -169,8 +178,9 @@ fn tool(name: &str, args: &Value) -> Result<Value, String> {
 }
 
 /// The tools the browser build runs.
-pub const TOOLS: [&str; 9] = [
+pub const TOOLS: [&str; 10] = [
     "cad_check",
+    "cad_manufacture",
     "cad_drag_face",
     "cad_configure",
     "cad_solid",
@@ -272,6 +282,24 @@ mod tests {
         json!({"kind": "part.v1", "id": "puck", "material": "Steel", "features": [
             {"id": "disc", "op": "solid.cylinder", "params": {"radius": 10, "height": 5}},
             {"id": "round", "op": "solid.fillet", "params": {"radius": 1, "edges": [{"of": "disc:top"}]}}]})
+    }
+
+    #[test]
+    fn browser_manufacturing_checks_return_the_same_named_faces() {
+        let doc = json!({"kind":"part.v1","id":"plate","features":[{"id":"body","op":"solid.box","params":{"length":20,"width":10,"height":0.3,"center":[0,0,0.15]}}]});
+        let report: Value = serde_json::from_str(&run(
+            "cad_manufacture",
+            &json!({"document":doc}).to_string(),
+        ))
+        .unwrap();
+        assert_eq!(report["passed"], false, "{report}");
+        assert!(
+            report["findings"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|f| f["face"] == "body:+z")
+        );
     }
 
     #[test]

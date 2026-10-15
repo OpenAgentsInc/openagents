@@ -155,6 +155,22 @@ Lab folder, never in git:
 ~/work/film-out/lab/cad/.parts/<digest>.step built parts, reused while unchanged
 ```
 
+## Print and CNC checks
+
+Ask “can I 3D print this?” to run `cad_manufacture(doc, version?, profile?)`.
+The card groups findings by wall thickness, overhang, bridge span, hole size,
+inside corner radius, and three-axis tool access. Select a group or face to
+highlight it in red. The design page also has **Print checks** and **CNC checks**.
+Checking a design does not create a version.
+
+The profile defaults to printing along +Z, 0.8 mm walls, a 0.4 mm nozzle,
+45° overhangs, 10 mm bridges, and a 3 mm CNC tool radius. Set `process` to
+`print`, `cnc`, or `both`; `up` changes the build and tool direction.
+Measurements sample up to 32 triangles per named face. They are geometric
+estimates, not a slicer or toolpath simulation. Reports mark unmeasured faces
+and limit displayed findings to 512; checks accept up to 4,096 faces and
+200,000 triangles. The native Lab and browser WASM use the same checks.
+
 ## Exact mass, cross-checked
 
 Mass properties come from the solids' triangles, so a curved part is off
@@ -261,6 +277,7 @@ message (workspace rule: no keyword routing).
 | `cad_assemble(doc, instances?, joints?, contacts?, templates?, remove?, drive?)` | Place, move or remove instances of parts or subassemblies; add or move joints (loops and mates too); define subassembly templates; declare contacts; drive one joint of a mechanism (`{"joint": "crank", "value": 45}`) with the others following |
 | `cad_motion(doc, joint, from?, to?, steps?)` | Move a joint through a range with every loop closed at each step; where each joint goes and what stops it; nothing saved |
 | `cad_from_json(doc, document)` | A whole document at once (assembly from JSON), templates copied from other documents' versions |
+| `cad_manufacture(doc, version?, profile?)` | Print and CNC findings with named faces |
 | `cad_check(doc, version?)` | Rebuild and check a version again |
 | `cad_versions(doc)` | Each version's summary, author, mass and parts |
 | `cad_compare(doc, a?, b?)` | What changed: parts, features, instances, joints, mass and centre of mass |
@@ -357,7 +374,7 @@ rebuilds and shared configurators ([#11663](https://github.com/OpenAgentsInc/ope
 (SolidCraft's kernel builds for it; our crate swaps threads for a loop,
 the disk for the kernel's in-memory file store, and the clock for none,
 in `crates/cad/src/sys.rs`). A page holds its documents and calls
-`run(tool, args)` for `cad_check`, `cad_solid`, `cad_faces`,
+`run(tool, args)` for `cad_check`, `cad_manufacture`, `cad_solid`, `cad_faces`,
 `cad_import_dxf`, `cad_export_dxf` and `cad_drawing` (its report and
 SVG; `drawing_file(args, format)` for the PDF or DXF), with the Lab's arguments and
 answers, and `export_file(document, format)` for glb, STEP, 3MF or STL

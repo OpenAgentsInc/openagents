@@ -132,7 +132,7 @@ impl Frame {
 
 /// The names of `solid`'s faces (by the kernel's face index), matched to
 /// its part's named faces.
-fn face_names(solid: &Solid, xf: &Xf, frames: &Value) -> Vec<Option<String>> {
+pub(crate) fn face_names(solid: &Solid, xf: &Xf, frames: &Value) -> Vec<Option<String>> {
     let m = &solid.mesh;
     let count = m
         .tri_face

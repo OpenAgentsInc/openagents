@@ -182,6 +182,7 @@ How the model works (millimetres and degrees; X forward, Y left, Z up; the groun
 - solid.extrude {sketch, distance, direction?: "positive"|"negative"|"symmetric" (symmetric puts the distance on EACH side), operation?}; solid.revolve {sketch, axis: "x"|"y" (the sketch's own axes) or "X"|"Y"|"Z", angle? (default 360), operation?}; solid.loft {sections:[{sketch},{sketch}]} (sketches on parallel planes, e.g. "offset"); solid.sweep {sketch (the profile), path_sketch, path:[the path's curve ids in order]}; solid.pipe {path_sketch, path, diameter, wall?}; solid.draft {faces:["body:side:l2"], angle (deg), neutral:"XY"} tapers faces for moulding.
 - Name edges and faces by how they were made, so they stay picked when earlier features change: a face is "feature:role" ("body:top" and "body:start" are an extrude's caps, "body:side:l3" the side swept from sketch curve l3 (a rectangle's sides are l1 bottom, l2 right, l3 top, l4 left), "boss:+z" a box's top); an edge is {"between":["body:top","body:side:l1"]} or every edge of a face {"of":"body:top"}. cad_faces lists a part's names. solid.fillet {edges:[...], radius}; solid.chamfer {edges, distance}; solid.shell {faces:["body:top"] (the faces to remove), thickness}: hollow boxes, trays and bays. Fillet outside edges before you shell. A point [x,y,z] on an edge or face in the part's frame also picks it.
 - Repeats: solid.pattern.circular {features:[ids], axis:"X"|"Y"|"Z" or {origin, dir}, count} (copies keep the colour of the solid they copy, even when it's coloured later); solid.pattern.rectangular {features:[ids], dir1:[x,y,z], count1, spacing1, dir2?, count2?, spacing2?}; solid.mirror {features:[ids], plane:"XY"|"XZ"|"YZ"}. Pattern a small feature (a tread, a hole) right after you make it, before big cuts: it builds much faster.
+- Manufacturing: when asked “can I 3D print this?” or about machining, call cad_manufacture for that document and version. The optional profile is a JSON object encoded as a string: process print|cnc|both, min_wall_mm, overhang_degrees, bridge_mm, nozzle_mm, tool_radius_mm, up:[x,y,z]. Defaults are print, 0.8 mm wall, 45 degrees, 10 mm bridge, 0.4 mm nozzle, 3 mm tool radius, +Z. The card highlights failing named faces; summarize the findings and settings without claiming slicer or toolpath validation.
 - Exact mass: cad_set_part exact_mass true makes every edit check that part's mass, centre of mass and inertia against SMLib's exact surfaces (within 1%); use it for parts whose mass matters (latch loads, robots).
 - Finish: a part's finish is gloss, satin or matte (cad_new_part or cad_set_part finish); glossy moulded plastic is gloss.
 - Colour: the part's color (#rrggbb); a solid of its own colour: make it with "operation":"new" and a feature {"id":"..","op":"appearance.assign","params":{"bodies":["that feature's id"],"color":"#..."}}.
@@ -280,6 +281,57 @@ fn out_href(chat: &str, doc: &str, version: u64, name: &str) -> String {
         clean(doc),
         clean(name)
     )
+}
+
+/// A bounded findings list; the viewer highlights the selected named faces.
+pub(crate) fn manufacturing(report: &Value) -> Markup {
+    let process = report["profile"]["process"].as_str().unwrap_or("print");
+    let findings = report["findings"]
+        .as_array()
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
+    let labels = [
+        ("wall", "Wall thickness"),
+        ("overhang", "Overhangs"),
+        ("bridge", "Bridges"),
+        ("hole", "Small holes"),
+        ("inside_corner", "Inside corners"),
+        ("tool_reach", "Tool reach"),
+    ];
+    html! {
+        section.oa-cad-findings data-cad-findings-panel="" aria-label="Print and CNC checks" {
+            h3 {@if process=="cnc" {"CNC checks"} @else if process=="both" {"Print and CNC checks"} @else {"Print checks"}}
+            @if report["error"].is_null() {p.oa-cad-meta {
+                @if process!="cnc" {"Minimum wall " (report["profile"]["min_wall_mm"]) " mm · nozzle " (report["profile"]["nozzle_mm"]) " mm · overhang " (report["profile"]["overhang_degrees"]) "°"}
+                @else {"Tool radius " (report["profile"]["tool_radius_mm"]) " mm"}
+            }}
+            @if let Some(error)=report["error"].as_str() {p {(error)}}
+            @else if findings.is_empty() && report["complete"]!=false {p {"No problems found with these settings."}}
+            @else {
+                @for (check,label) in labels {
+                    @let group:Vec<&Value>=findings.iter().filter(|f|f["check"]==check).collect();
+                    @if !group.is_empty() {
+                        details.oa-cad-finding-group {
+                            summary { (label) " · " (group.len()) @if group.len()==1 {" face"} @else {" faces"} }
+                            (Button::new("Show these faces").variant(ButtonVariant::Outline).size(ControlSize::Sm).attr("data-cad-faces",serde_json::to_string(&group).unwrap_or_default()))
+                            ul.oa-cad-list {
+                                @for finding in &group {
+                                    li {
+                                        (Button::new(finding["face"].as_str().unwrap_or("Face")).variant(ButtonVariant::Outline).size(ControlSize::Sm).attr("data-cad-faces",json!([finding]).to_string()))
+                                        span {" " (finding["message"].as_str().unwrap_or(""))}
+                                        @if finding["unit"].as_str()==Some("mm") && finding["value"].is_number() {span {" " (format!("{:.2}",finding["value"].as_f64().unwrap_or(0.0))) " mm (limit " (finding["limit"]) " mm)."}}
+                                        @else if finding["unit"].as_str()==Some("degrees") {span {" " (format!("{:.1}° (limit {:.1}°).",finding["value"].as_f64().unwrap_or(0.),finding["limit"].as_f64().unwrap_or(0.)))}}
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            @if report["complete"]==false && report["error"].is_null() {p {"Some faces couldn't be checked."}}
+            @if report["truncated"]==true {p {"Check one part at a time to see the remaining faces."}}
+        }
+    }
 }
 
 static VIEWERS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
@@ -391,7 +443,7 @@ pub(crate) fn card_markup(chat: &str, card: &Value) -> Markup {
     let drawing = card["drawing"]["file"].as_str();
     let scope = crate::cad_web::Scope::of_card(card);
     html! {
-        div.oa-cad-card {
+        div.oa-cad-card data-cad-findings=[card.get("manufacturing").map(|r|r["findings"].to_string())] {
             link rel="stylesheet" href=(ASSET_CSS);
             script src=(ASSET_JS) defer {}
             p.oa-cad-title {
@@ -415,6 +467,7 @@ pub(crate) fn card_markup(chat: &str, card: &Value) -> Markup {
             }
             p.oa-cad-meta { (mass_line(&card["mass"])) }
             p.oa-cad-meta { (counts_line(card)) }
+            @if let Some(report)=card.get("manufacturing") {(manufacturing(report))}
             @if let Some(compare) = card["compare"].as_object() {
                 p.oa-cad-dim { "Since v" (compare.get("a").and_then(Value::as_u64).unwrap_or(0)) ":" }
                 ul.oa-cad-list {

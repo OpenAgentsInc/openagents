@@ -152,3 +152,52 @@ async fn serve_cad_imports() {
     .unwrap();
     axum::serve(listener, world.site).await.unwrap();
 }
+
+#[tokio::test]
+#[ignore = "serves a local manufacturing card; needs a native CAD build"]
+async fn serve_cad_manufacture() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    HOST_OVERRIDE.set(format!("127.0.0.1:{port}")).unwrap();
+    let world = world_at(
+        port,
+        Options {
+            cad: Some(std::env::var_os("OA_CAD_BROWSER").unwrap().into()),
+            ..Options::default()
+        },
+    )
+    .await;
+    let mut browser = Browser::default();
+    browser.sign_in(&world, "octo-local").await;
+    let scope = crate::cad_web::Scope::personal(&account_owner_of(&world, "octo-local")).unwrap();
+    let engine = crate::cad_web::engine().unwrap();
+    let made=engine.run(&world.store,&scope,"cad_from_json",&json!({"doc":"bracket","document":{"kind":"part.v1","id":"bracket","title":"Print bracket","features":[
+        {"id":"post","op":"solid.box","params":{"length":2,"width":10,"height":20,"center":[-9,0,10]}},
+        {"id":"beam","op":"solid.box","params":{"length":20,"width":10,"height":0.3,"center":[0,0,19.85],"operation":"join"}}
+    ]}})).await;
+    assert_eq!(made["saved"], true, "{made}");
+    let checked = engine
+        .run(
+            &world.store,
+            &scope,
+            "cad_manufacture",
+            &json!({"doc":"bracket"}),
+        )
+        .await;
+    assert_eq!(checked["manufacturing"]["passed"], false, "{checked}");
+    let markup = crate::cad_lab::card_markup(CHAT, &checked["card"])
+        .into_string()
+        .replace(
+            &format!("/chat/{CHAT}/cad/file?doc=bracket&amp;v=1&amp;name="),
+            "/cad/bracket/file?v=1&amp;name=",
+        );
+    let site=world.site.clone().route("/cad/bracket/check-card",axum::routing::get(move|headers:HeaderMap|{
+        let markup=markup.clone();async move {
+            let mut response=crate::ui_page::UiPage::new("Print checks").head(maud::html!{link rel="stylesheet" href=(crate::cad_lab::ASSET_CSS);script src=(crate::cad_lab::ASSET_JS) defer {}}).content(maud::PreEscaped(markup)).respond(&headers);
+            response.headers_mut().insert(header::CONTENT_SECURITY_POLICY,axum::http::HeaderValue::from_static(crate::pages::cad::CAD_POLICY));response
+        }
+    }));
+    let out = std::path::PathBuf::from(std::env::var_os("OA_CAD_CAPTURE").unwrap());
+    std::fs::write(out,serde_json::to_vec(&json!({"url":format!("{}/cad/bracket/check-card",world.origin()),"doc_url":format!("{}/cad/bracket?check=print",world.origin()),"cookies":browser.0})).unwrap()).unwrap();
+    axum::serve(listener, site).await.unwrap();
+}

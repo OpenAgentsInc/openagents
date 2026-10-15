@@ -1130,6 +1130,8 @@ pub(crate) struct PageQuery {
     name: Option<String>,
     #[serde(default)]
     download: Option<String>,
+    #[serde(default)]
+    check: Option<String>,
 }
 
 /// The signed-in person's scope for a page: their own models, or a
@@ -1347,7 +1349,7 @@ pub(crate) fn doc_content(
     });
     html! {
         section.oa-cad-doc aria-labelledby="cad-doc-title"
-            data-cad-doc-page="" data-cad-doc=(doc) data-cad-version=(version)
+            data-cad-doc-page="" data-cad-doc=(doc) data-cad-version=(version) data-cad-findings=[record.get("manufacturing").map(|r|r["findings"].to_string())]
             data-cad-document=(file_url(scope, doc, version, "doc.json"))
             data-cad-pull=[(engine_in_browser && csrf.is_some()).then(|| format!("/cad/{doc}/pull"))]
             data-cad-csrf=[csrf] data-cad-project=(scope.project.as_deref().unwrap_or("")) {
@@ -1382,6 +1384,14 @@ pub(crate) fn doc_content(
             }
             @if let Some(csrf) = csrf.filter(|_|engine().is_some()) {
                 (imports::form(scope,doc,csrf,record))
+            }
+            @if let Some(report)=record.get("manufacturing") {(crate::cad_lab::manufacturing(report))}
+            @if engine().is_some() && record["report"]["mesh_bodies"].as_u64().unwrap_or(0)<record["report"]["solids"].as_u64().unwrap_or(1) {
+                div.oa-cad-files {
+                    @for (process,label) in [("print","Print checks"),("cnc","CNC checks")] {
+                        (ButtonLink::new(label,format!("{}&check={process}",scope.page(doc,Some(version)))).variant(ButtonVariant::Outline))
+                    }
+                }
             }
             h2 { "Files" }
             div.oa-cad-files {
@@ -1450,10 +1460,32 @@ pub(crate) async fn doc_page(
         .v
         .filter(|v| (1..=entry.versions).contains(v))
         .unwrap_or(entry.versions);
-    let record = read_file(store, &scope, doc, version, "version.json")
+    let mut record = read_file(store, &scope, doc, version, "version.json")
         .await
         .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
         .unwrap_or(Value::Null);
+    if let (Some(process), Some(engine)) = (
+        query
+            .check
+            .as_deref()
+            .filter(|p| matches!(*p, "print" | "cnc")),
+        engine(),
+    ) {
+        let checked = engine
+            .run(
+                store,
+                &scope,
+                "cad_manufacture",
+                &json!({"doc":doc,"version":version,"profile":{"process":process}}),
+            )
+            .await;
+        if checked["manufacturing"].is_object() {
+            record["manufacturing"] = checked["manufacturing"].clone();
+        } else if let Some(error) = checked["error"].as_str() {
+            record["manufacturing"] =
+                json!({"profile":{"process":process},"findings":[],"complete":false,"error":error});
+        }
+    }
     let reader = crate::pages::chat::reader(app, headers)
         .await
         .unwrap_or_default();

@@ -31,6 +31,7 @@ pub mod dxf;
 pub mod exact;
 pub mod export;
 pub mod feed;
+pub mod manufacture;
 pub mod mass;
 pub mod mesh;
 pub mod overlap;
