@@ -66,8 +66,15 @@ if [[ ! -f /var/lib/openagents-lnd/lnd/data/chain/bitcoin/mainnet/wallet.db ]]; 
     touch "$cache/password-created"
   fi
 fi
+lcli() { runuser -u oa-lnd -- /opt/openagents-lnd/lncli --lnddir=/var/lib/openagents-lnd/lnd --network=mainnet "$@"; }
 systemctl daemon-reload
 systemctl enable --now openagents-lnd
+ready=0
+for _ in $(seq 1 60); do
+  if lcli state > "$cache/state.json" 2>/dev/null; then ready=1; break; fi
+  sleep 1
+done
+[[ $ready == 1 ]] || { echo 'The wallet RPC did not become ready.' >&2; exit 1; }
 if [[ ! -f /var/lib/openagents-lnd/lnd/data/chain/bitcoin/mainnet/wallet.db ]]; then
   # lncli's terminal transcript contains the fresh recovery words. It goes
   # straight to the seed secret; neither stdout nor the service log gets it.
@@ -80,22 +87,40 @@ set f [open "/run/openagents-lnd/secrets/password" r]
 set password [read $f]
 close $f
 spawn -noecho runuser -u oa-lnd -- /opt/openagents-lnd/lncli --lnddir=/var/lib/openagents-lnd/lnd --network=mainnet create
-expect -re "Input wallet password:"
+expect {
+  -re {Input wallet password:} {}
+  timeout {exit 1}
+  eof {exit 1}
+}
 send -- "$password\r"
-expect -re "Confirm.*password:"
+expect {
+  -re {Confirm.*password:} {}
+  timeout {exit 1}
+  eof {exit 1}
+}
 send -- "$password\r"
-expect -re {Enter [ynxw/]+}
+expect {
+  -re {Enter [ynxw/]+} {}
+  timeout {exit 1}
+  eof {exit 1}
+}
 send -- "n\r"
-expect -re "passphrase.*:"
+expect {
+  -re {passphrase.*:} {}
+  timeout {exit 1}
+  eof {exit 1}
+}
 send -- "\r"
-expect eof
+expect {
+  eof {}
+  timeout {exit 1}
+}
 set result [wait]
 exit [lindex $result 3]
 EXPECT
   gcloud --quiet secrets versions add lnd-oa-lnd-1-seed --project=openagentsgemini --data-file="$LND_CEREMONY" >/dev/null
   shred -u "$LND_CEREMONY"
 fi
-lcli() { runuser -u oa-lnd -- /opt/openagents-lnd/lncli --lnddir=/var/lib/openagents-lnd/lnd --network=mainnet "$@"; }
 ready=0
 for _ in $(seq 1 180); do
   if lcli getinfo > "$cache/info.json" 2>/dev/null; then ready=1; break; fi
