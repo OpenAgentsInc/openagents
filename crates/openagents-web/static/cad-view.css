@@ -1,0 +1,28 @@
+/* The CAD card and viewer (#11627, #11653): crates/openagents-web/src/cad_lab.rs. */
+.oa-cad-card{margin:12px 0;padding:12px;border:1px solid rgba(127,127,127,.28);border-radius:12px;max-width:960px}
+.oa-cad-title{margin:0 0 8px}.oa-cad-dim{opacity:.7}
+.oa-cad-viewer{display:flex;flex-direction:column;gap:8px}
+.oa-cad-view{position:relative;width:100%;aspect-ratio:16/10;border-radius:8px;overflow:hidden;background:linear-gradient(#eef1f5,#cfd5de)}
+.oa-cad-view img,.oa-cad-canvas{position:absolute;inset:0;width:100%;height:100%;display:block;object-fit:contain;touch-action:none;cursor:grab}
+.oa-cad-canvas:active{cursor:grabbing}
+.oa-cad-tools{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.oa-cad-tools[hidden],.oa-cad-panel[hidden],.oa-cad-readout[hidden]{display:none}
+.oa-cad-tools .oa-button[data-selected]{outline:2px solid currentColor;outline-offset:-2px}
+.oa-cad-panel{display:flex;flex-wrap:wrap;gap:12px;align-items:center;padding:8px;border-radius:8px;border:1px solid rgba(127,127,127,.2)}
+.oa-cad-panel .oa-slider{flex:1 1 220px;min-width:180px}
+.oa-cad-parts{display:flex;flex-wrap:wrap;gap:6px 16px}
+.oa-cad-readout{margin:0;font-size:13px}
+.oa-cad-render{width:100%;border-radius:8px;display:block}.oa-cad-drawing{background:#fff}
+.oa-cad-meta{margin:8px 0 0;font-size:13px;opacity:.85}
+.oa-cad-list{margin:6px 0 0;padding-left:20px;font-size:13px}
+.oa-cad-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;font-size:13px}
+/* The composer's picked face: shown even while no file is added (chat-files.css hides an empty tray's row). */
+.oa-composer-attachments.oa-composer-attachments:has(> [data-oa-cad-picks]:not([hidden])){display:flex}
+[data-oa-cad-picks] .oa-file-chips{margin:0;padding:0;list-style:none}
+.oa-cad-doc{display:flex;flex-direction:column;gap:16px}
+.oa-cad-files{display:flex;flex-wrap:wrap;gap:8px}
+.oa-cad-versions{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.oa-cad-versions li{display:flex;flex-wrap:wrap;gap:4px 12px;align-items:baseline;font-size:14px}
+.oa-cad-versions li[aria-current]{font-weight:600}
+.oa-cad-designs{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+@media (max-width:640px){.oa-cad-view{aspect-ratio:4/3}.oa-cad-card{padding:8px}}

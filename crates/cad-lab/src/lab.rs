@@ -5,6 +5,7 @@
 //! ROOT/<doc>/vN/doc.json        the version's assembly.v1 (or part.v1) document
 //! ROOT/<doc>/vN/version.json    its summary, author, digest and check report
 //! ROOT/<doc>/vN/model.glb       its solids, for the card's viewer and Verse
+//! ROOT/<doc>/vN/view.json       the viewer's model, with face and edge names
 //! ROOT/<doc>/vN/hero.png        its picture
 //! ROOT/<doc>/vN/out/            renders and exports asked for
 //! ```
@@ -55,8 +56,9 @@ pub fn robot_revision(document: &Value) -> String {
 /// The card kind a tool result carries.
 pub const CARD: &str = "cad_lab";
 
-/// Files of a version the Lab serves.
-pub const FILES: [&str; 2] = ["model.glb", "hero.png"];
+/// Files of a version the Lab serves: the viewer's model with its face
+/// names (`cad::view`), the glTF, and the picture.
+pub const FILES: [&str; 3] = ["view.json", "model.glb", "hero.png"];
 
 pub struct Lab {
     pub root: PathBuf,
@@ -255,6 +257,11 @@ impl Lab {
         std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
         std::fs::write(dir.join("model.glb"), cad::export::glb(&eval.built.solids))
             .map_err(|e| e.to_string())?;
+        std::fs::write(
+            dir.join("view.json"),
+            cad::view::model(&eval.built).to_string(),
+        )
+        .map_err(|e| e.to_string())?;
         if let Ok(png) = cad::render::png(&eval.built, &View::named("hero"), 1280, 800) {
             std::fs::write(dir.join("hero.png"), png).map_err(|e| e.to_string())?;
         }

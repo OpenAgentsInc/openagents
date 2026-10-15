@@ -33,6 +33,7 @@ pub mod solve;
 pub mod sys;
 pub mod tree;
 pub mod urdf;
+pub mod view;
 pub mod xf;
 
 use std::collections::BTreeMap;

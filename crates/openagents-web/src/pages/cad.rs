@@ -25,7 +25,7 @@
 use std::path::Path;
 
 use axum::Router;
-use axum::extract::{Path as UrlPath, State};
+use axum::extract::{Path as UrlPath, Query, State};
 use axum::http::{HeaderMap, HeaderValue, header};
 use axum::response::Response;
 use axum::routing::get;
@@ -166,6 +166,8 @@ async fn page(State(app): State<App>, headers: HeaderMap) -> Response {
     if build(&app).is_none() {
         return unavailable(&headers);
     }
+    // The signed-in person's designs from their chats (#11653).
+    let designs = crate::cad_web::designs(&app, &headers).await;
     let head = html! {
         link rel="stylesheet" href="/cad/cad.css";
         script type="module" src="/cad/start.js" {}
@@ -174,7 +176,18 @@ async fn page(State(app): State<App>, headers: HeaderMap) -> Response {
         .path(CAD_PATH)
         .description("Change a part and watch it rebuild, check and draw itself in your browser.")
         .head(head)
-        .content(PageColumn::new(content()).wide())
+        .content(
+            PageColumn::new(html! {
+                @if let Some((scope, index)) = &designs {
+                    section.cad-designs aria-labelledby="cad-designs-title" {
+                        h2 id="cad-designs-title" { "Your designs" }
+                        (crate::cad_web::designs_list(scope, index))
+                    }
+                }
+                (content())
+            })
+            .wide(),
+        )
         .respond(&headers);
     response.headers_mut().insert(
         header::CONTENT_SECURITY_POLICY,
@@ -186,8 +199,14 @@ async fn page(State(app): State<App>, headers: HeaderMap) -> Response {
 async fn build_file(
     State(app): State<App>,
     UrlPath(file): UrlPath<String>,
+    Query(query): Query<crate::cad_web::PageQuery>,
     request: HeaderMap,
 ) -> Response {
+    // A design's page (`/cad/{doc}`, #11653): its ids have no dot, the
+    // build's files all do.
+    if !file.contains('.') {
+        return crate::cad_web::doc_page(&app, &request, &file, &query).await;
+    }
     let Some(directory) = build(&app) else {
         return crate::not_found().await;
     };

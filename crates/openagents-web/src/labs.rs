@@ -113,6 +113,9 @@ pub(crate) struct Lab {
     pub url: String,
     pub tools: Vec<Value>,
     pub documents: Vec<Value>,
+    /// CAD Lab on this site (#11653): the models a turn works on, in place
+    /// of a Lab on a Mac.
+    pub hosted: Option<crate::cad_web::Scope>,
 }
 
 impl Lab {
@@ -152,6 +155,8 @@ pub(crate) fn current<'a>(replies: impl DoubleEndedIterator<Item = &'a Meta>) ->
 pub(crate) struct LabsDoor {
     pub gemini: Gemini,
     pub labs: Vec<Lab>,
+    /// Where CAD Lab on this site keeps its models.
+    pub store: Arc<crate::chat_store::Store>,
     pub current: Option<Current>,
     pub fallback: Option<Box<dyn Door>>,
 }
@@ -160,16 +165,18 @@ pub(crate) struct LabsDoor {
 /// this server has Gemini. Robot Lab also checks its configured owner and
 /// project before exposing private robot files and tools.
 pub(crate) async fn door(
-    _app: &App,
+    app: &App,
     current: Option<Current>,
     owner: &str,
     project: Option<&str>,
+    cad: Option<crate::cad_web::Scope>,
 ) -> Option<LabsDoor> {
+    let store = &app.config.chat_store;
     let (video, game, robot, cad, ship) = tokio::join!(
         crate::lab::manifest_here(),
         crate::game_lab::manifest_here(),
         crate::robot_lab::manifest_here(owner, project),
-        crate::cad_lab::manifest_here(),
+        crate::cad_lab::manifest_for(store, cad),
         crate::ship_lab::manifest_here()
     );
     let labs: Vec<Lab> = [video, game, robot, cad, ship]
@@ -187,6 +194,7 @@ pub(crate) async fn door(
     Some(LabsDoor {
         gemini,
         labs,
+        store: store.clone(),
         current,
         fallback: None,
     })
@@ -201,7 +209,7 @@ fn guidance(labs: &[Lab], current: Option<&Current>) -> String {
             Kind::Video => crate::lab::guidance(&lab.documents),
             Kind::Game => crate::game_lab::guidance(&lab.documents),
             Kind::Robot => crate::robot_lab::guidance(&lab.documents),
-            Kind::Cad => crate::cad_lab::guidance(&lab.documents),
+            Kind::Cad => crate::cad_lab::guidance(&lab.documents, lab.hosted.is_some()),
             Kind::Ship => crate::ship_lab::guidance(&lab.documents),
         });
     }
@@ -301,7 +309,12 @@ fn misrouted(labs: &[Lab], name: &str, arguments: &Value) -> Option<String> {
     })
 }
 
-async fn run_tool(labs: &[Lab], name: &str, arguments: &Value) -> Result<Value, String> {
+async fn run_tool(
+    store: &crate::chat_store::Store,
+    labs: &[Lab],
+    name: &str,
+    arguments: &Value,
+) -> Result<Value, String> {
     if let Some(why) = misrouted(labs, name, arguments) {
         return Err(why);
     }
@@ -313,7 +326,11 @@ async fn run_tool(labs: &[Lab], name: &str, arguments: &Value) -> Result<Value, 
         Kind::Video => crate::lab::run_tool(&lab.url, name, arguments).await,
         Kind::Game => crate::game_lab::run_tool(&lab.url, name, arguments).await,
         Kind::Robot => crate::robot_lab::run_tool(&lab.url, name, arguments).await,
-        Kind::Cad => crate::cad_lab::run_tool(&lab.url, name, arguments).await,
+        Kind::Cad => match (&lab.hosted, crate::cad_web::engine()) {
+            (Some(scope), Some(engine)) => Ok(engine.run(store, scope, name, arguments).await),
+            (Some(_), None) => Err("CAD Lab can't run here right now.".into()),
+            (None, _) => crate::cad_lab::run_tool(&lab.url, name, arguments).await,
+        },
         Kind::Ship => crate::ship_lab::run_tool(&lab.url, name, arguments).await,
     }
 }
@@ -345,6 +362,7 @@ fn tool_config(step: usize) -> Option<Value> {
 
 async fn converse(
     gemini: &Gemini,
+    store: &crate::chat_store::Store,
     labs: &[Lab],
     instructions: &str,
     turns: &[Turn],
@@ -384,7 +402,7 @@ async fn converse(
                 Value::Object(_) => call["args"].clone(),
                 _ => json!({}),
             };
-            let response = match run_tool(labs, &name, &arguments).await {
+            let response = match run_tool(store, labs, &name, &arguments).await {
                 Ok(mut result) => {
                     let kind = Kind::of_tool(&name);
                     route = kind.or(route);
@@ -447,8 +465,9 @@ impl Door for LabsDoor {
             .map(|door| door.ask(turns.clone(), context.clone(), reply.clone()));
         let gemini = self.gemini.clone();
         let labs = self.labs.clone();
+        let store = self.store.clone();
         Box::pin(async move {
-            match converse(&gemini, &labs, &instructions, &turns).await {
+            match converse(&gemini, &store, &labs, &instructions, &turns).await {
                 Ok(Ending::Answer { text, card, route }) => {
                     let route = card
                         .as_ref()
@@ -494,6 +513,7 @@ mod tests {
                 documents: vec![
                     json!({"id": "episode-290", "title": "Episode 290", "kind": "cut.v1", "versions": 15}),
                 ],
+                hosted: None,
             },
             Lab {
                 kind: Kind::Game,
@@ -502,6 +522,7 @@ mod tests {
                 documents: vec![
                     json!({"id": "the-ice-cream-man", "title": "The Ice Cream Man", "kind": "game.v1", "versions": 3}),
                 ],
+                hosted: None,
             },
             Lab {
                 kind: Kind::Robot,
@@ -510,6 +531,7 @@ mod tests {
                 documents: vec![
                     json!({"id":"robot-table","title":"SO-101 table","kind":"robot-scene.v1","versions":2}),
                 ],
+                hosted: None,
             },
         ]
     }

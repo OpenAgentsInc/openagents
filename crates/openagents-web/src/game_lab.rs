@@ -102,6 +102,7 @@ pub(crate) async fn manifest_here() -> Option<crate::labs::Lab> {
             url: lab,
             tools,
             documents,
+            hosted: None,
         }),
         Err(why) => {
             eprintln!("openagents-web: game lab: not answering at {lab}: {why}");

@@ -385,7 +385,7 @@ fn q3(a: [f64; 3]) -> Value {
 }
 
 /// A face's frame from its triangles (area, centre, unit normal).
-fn face_frame(tris: &[(f64, [f64; 3], [f64; 3])]) -> Option<Value> {
+pub(crate) fn face_frame(tris: &[(f64, [f64; 3], [f64; 3])]) -> Option<Value> {
     let total: f64 = tris.iter().map(|t| t.0).sum();
     if total <= 0.0 {
         return None;

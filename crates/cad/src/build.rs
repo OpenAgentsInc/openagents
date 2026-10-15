@@ -62,6 +62,10 @@ pub struct Built {
     /// How the interference check went: pairs, how many were measured
     /// afresh, the time, the touching pairs ([`interference`]).
     pub interference: Value,
+    /// Each placed part's named faces and edges in its own frame
+    /// ([`crate::refs::frames`]), for the viewer's picking
+    /// ([`crate::view`]).
+    pub part_frames: BTreeMap<String, Value>,
 }
 
 fn run(s: &mut Session, op: &str, params: &Value) -> Result<Value, String> {
@@ -1122,6 +1126,10 @@ pub fn build_with(document: &Value, cache: &Path) -> Result<Built, Vec<String>> 
         cache: cache.to_path_buf(),
         solver: solved.report,
         interference: Value::Null,
+        part_frames: built_parts
+            .iter()
+            .map(|(key, _, b)| (key.clone(), b.meta["frames"].clone()))
+            .collect(),
     })
 }
 

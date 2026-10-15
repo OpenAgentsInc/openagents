@@ -108,6 +108,7 @@ async fn show(
         .unwrap_or_default();
     let chats = project_chats(&app, &headers, &id).await;
     let people = people(&app, service, &headers, &status, &id, &csrf, None).await;
+    let designs = crate::cad_web::project_designs(&app, &headers, &id).await;
     respond(
         &headers,
         &status,
@@ -120,6 +121,7 @@ async fn show(
         crate::connections::access::permitted(&app, &viewer),
         chats.as_deref(),
         people,
+        designs,
     )
 }
 
@@ -397,6 +399,7 @@ fn respond(
     sources: bool,
     chats: Option<&[crate::chat_store::Conversation]>,
     people: Option<People>,
+    designs: Option<Markup>,
 ) -> Response {
     let Some(project) = status.projects.iter().find(|p| p.id == id) else {
         return protect(crate::ui_page::problem(
@@ -422,6 +425,13 @@ fn respond(
                 (view(status, project, csrf, q, problem, install, None, sources))
                 @if let Some(people) = &people { (members_section(project, people, csrf)) }
                 @if let Some(chats) = chats { (chats_section(chats)) }
+                // The project's CAD designs from its chats (#11653).
+                @if let Some(designs) = designs {
+                    section aria-labelledby="project-designs" {
+                        (MarkdownRoot::new(html! { h2 #project-designs { "Designs" } }))
+                        (designs)
+                    }
+                }
             }))
             .respond(headers),
     )
@@ -605,6 +615,7 @@ async fn apply(
                 crate::connections::access::permitted(app, &viewer),
                 None,
                 None,
+                None,
             )
         }
         Err(error) => failed(headers, &error),
@@ -699,6 +710,7 @@ async fn again(
         .unwrap_or_default();
     let chats = project_chats(app, headers, id).await;
     let people = people(app, service, headers, &status, id, &csrf, invited).await;
+    let designs = crate::cad_web::project_designs(app, headers, id).await;
     respond(
         headers,
         &status,
@@ -711,6 +723,7 @@ async fn again(
         crate::connections::access::permitted(app, &viewer),
         chats.as_deref(),
         people,
+        designs,
     )
 }
 

@@ -315,8 +315,10 @@ draws its four views and a section in about 10 s.
 ## Seeing it: the card
 
 Every CAD Lab answer has a card under it: the version turning in 3D (WebGL2
-from the version's glTF; drag to turn, scroll to zoom; its picture when
-WebGL isn't there), its mass and centre of mass, its size and counts, the
+from the version's `view.json`, or an older version's glTF; drag to turn,
+right-drag to move, scroll or pinch to zoom, tap a face or edge to see its
+name, Measure, Section, Explode and Parts; its picture when WebGL isn't
+there), its mass and centre of mass, its size and counts, the
 render or the exports the turn made, and **Compare with** the version
 before.
 
@@ -418,6 +420,24 @@ photographs it.
   (or the built binary's path in place of `cargo run ...`).
 - `openagents cad list|open|check|versions|compare|render|export|tool`
   starts the service when it isn't running.
+- **On openagents.com** (#11653, `crates/openagents-web/src/cad_web.rs`):
+  every signed-in web chat gets the same tools (except `cad_place`, a STEP
+  file by path, and URDF), with no Lab on a Mac. The turn runs on the site,
+  so each tool call runs `cad-lab tool NAME -` (shipped in the web image)
+  as a child process over a working copy of the person's documents: one at
+  a time, within 75 s and 640 MB, at most 150 calls a person an hour,
+  arguments up to 256 KB and a document up to 512 KB. Documents and
+  versions live in the private chat store under the account, or under the
+  project's home account when the chat is in a project; viewers read a
+  project's models and editors change them. Each version keeps
+  `view.json` (`crates/cad/src/view.rs`): the triangles with each face's
+  stable name, so the card's viewer (`static/cad-view.js`) shows
+  `body:top` or `{between: [..]}` when a face or edge is picked and puts
+  it in the composer. The viewer also measures, cuts with a section
+  plane, explodes an assembly and hides parts. `/cad/{doc}` (with
+  `?project=` for a project's) lists the versions and downloads GLB, and
+  STEP, STL, 3MF and PDF/DXF drawings made in the browser by
+  `crates/cad-wasm`; a project's page lists its designs.
 
 See [mvp.md](mvp.md) for the rover built with it and what is still missing,
 and [parity.md](parity.md) for how the engine covers ClassCAD's documented

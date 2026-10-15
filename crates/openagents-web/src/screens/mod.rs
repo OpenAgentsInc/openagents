@@ -221,8 +221,10 @@ pub(crate) const NOT_SCREENS: &[(&str, &str)] = &[
     ),
     (
         "/cad/{file}",
-        "the CAD engine's code and styles, for the CAD page",
+        "the CAD engine's code and styles, for the CAD page, and a design's page, which shows a person's own model",
     ),
+    ("/cad/{file}/file", "a design's files"),
+    ("/chat/cad/doc.js", "a design page's script"),
     (
         "/studios/blue-rush*",
         "the Blue Rush studio site, in its own design",

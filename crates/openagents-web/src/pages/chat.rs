@@ -86,6 +86,10 @@ struct Prompt {
     /// ([`crate::chat_files`]). Empty for none.
     #[serde(default)]
     files: String,
+    /// A face or edge picked in a CAD card's 3D view (#11653,
+    /// [`crate::cad_lab::pick_text`]). Empty for none.
+    #[serde(default)]
+    cad_pick: String,
 }
 
 impl Prompt {
@@ -243,12 +247,18 @@ async fn command(
             "Something went wrong. Reload this page.",
         ));
     }
-    let Some(text) = normalize(&prompt.q) else {
+    let Some(mut text) = normalize(&prompt.q) else {
         return Err(refusal(
             StatusCode::BAD_REQUEST,
             "Enter a message of at most 4,000 characters.",
         ));
     };
+    // "Make this 5 mm thicker" with a face picked in the 3D view: the
+    // message says which face.
+    if let Some(pick) = crate::cad_lab::pick_text(&prompt.cad_pick) {
+        text.push_str("\n\n");
+        text.push_str(&pick);
+    }
     Ok((owner, text))
 }
 
@@ -438,7 +448,13 @@ async fn start(State(app): State<App>, headers: HeaderMap, Form(prompt): Form<Pr
         )
         .await;
         let instructions = picked.project.as_ref().and_then(|p| p.instructions.clone());
-        spawn_answer(app.clone(), loaded, admitted_at, repo, instructions);
+        // CAD Lab's models (#11653): the project's, else the person's own.
+        let cad = crate::cad_web::Scope::for_turn(
+            &owner,
+            loaded.conversation.project.as_deref(),
+            picked.project.as_ref(),
+        );
+        spawn_answer(app.clone(), loaded, admitted_at, repo, instructions, cad);
     }
     crate::chat_html::protect(Redirect::to(&format!("/chat/{id}")).into_response())
 }
@@ -508,7 +524,12 @@ pub(crate) async fn start_from_app(
     match store.create(&record).await {
         Ok(loaded) => {
             note_shared(app, shared.as_ref(), owner, &loaded.conversation).await;
-            spawn_answer(app.clone(), loaded, admitted_at, repo, instructions);
+            let cad = crate::cad_web::Scope::for_turn(
+                owner,
+                loaded.conversation.project.as_deref(),
+                shared.as_ref(),
+            );
+            spawn_answer(app.clone(), loaded, admitted_at, repo, instructions, cad);
             AppSent::Answering
         }
         Err(Error::Conflict) => AppSent::Answering,
@@ -1816,7 +1837,19 @@ async fn follow(
             .or(loaded.conversation.branch.as_deref());
         let repo = repo_read(&app, &headers, project, branch).await;
         let instructions = project.and_then(|p| p.instructions.clone());
-        spawn_answer(app.clone(), loaded.clone(), admitted_at, repo, instructions);
+        let cad = crate::cad_web::Scope::for_turn(
+            &owner,
+            loaded.conversation.project.as_deref(),
+            project,
+        );
+        spawn_answer(
+            app.clone(),
+            loaded.clone(),
+            admitted_at,
+            repo,
+            instructions,
+            cad,
+        );
     }
     accepted(&app, &headers, &loaded.conversation).await
 }
@@ -1943,8 +1976,14 @@ pub(crate) async fn follow_from_app(
     });
     match store.compare_and_swap(&loaded, &next).await {
         Ok(saved) => {
-            // An app's own token reaches no GitHub connection here.
-            spawn_answer(app.clone(), saved, admitted_at, None, None);
+            // An app's own token reaches no GitHub connection here. CAD
+            // models: the sender's own outside a project.
+            let cad = crate::cad_web::Scope::for_turn(
+                payer.unwrap_or(owner),
+                saved.conversation.project.as_deref(),
+                None,
+            );
+            spawn_answer(app.clone(), saved, admitted_at, None, None, cad);
             AppSent::Answering
         }
         Err(e) => {
@@ -2114,9 +2153,10 @@ fn spawn_answer(
     admitted_at: u64,
     repo: Option<crate::repo_snapshot::RepoRead>,
     instructions: Option<String>,
+    cad: Option<crate::cad_web::Scope>,
 ) {
     tokio::spawn(async move {
-        answer(app, loaded, admitted_at, repo, instructions).await;
+        answer(app, loaded, admitted_at, repo, instructions, cad).await;
     });
 }
 
@@ -2173,6 +2213,7 @@ async fn answer(
     admitted_at: u64,
     repo: Option<crate::repo_snapshot::RepoRead>,
     instructions: Option<String>,
+    cad: Option<crate::cad_web::Scope>,
 ) {
     let chat = &loaded.conversation;
     let owner = chat.owner.clone();
@@ -2343,6 +2384,7 @@ async fn answer(
                 current,
                 if payer == owner { &payer } else { "" },
                 chat.project.as_deref(),
+                cad,
             )
             .await
         }
@@ -3367,7 +3409,7 @@ pub(crate) fn composer_with(
         // Images, PDFs, and text files: picked here, or pasted or dropped
         // on the text box (#11174, [`crate::chat_files`]).
         .leading(crate::chat_files::picker())
-        .attachments(crate::chat_files::tray())
+        .attachments(html! { (crate::chat_files::tray()) (crate::cad_lab::pick_tray()) })
         // The "+" button stays off: it only opened a panel restating the
         // repository selector.
         // .leading(

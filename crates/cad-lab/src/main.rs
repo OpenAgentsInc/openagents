@@ -1,7 +1,10 @@
 //! `cad-lab serve [--port 8794] [--dir DIR]`: the CAD Lab service on
 //! 127.0.0.1 (docs/cad-lab/mvp.md).
 //! `cad-lab schema`: prints the `part.v1` and `assembly.v1` JSON Schemas.
-//! `cad-lab tool NAME [JSON]`: runs one tool here, without the service.
+//! `cad-lab tool NAME [JSON | -]`: runs one tool here, without the service
+//! (`-` reads the arguments from stdin, for arguments longer than a command
+//! line takes; openagents.com runs its tools this way, #11653).
+//! `cad-lab tools`: prints the tools' declarations.
 //! `cad-lab mcp`: the `cad_*` tools as an MCP server on stdin and stdout.
 
 use std::path::PathBuf;
@@ -15,7 +18,7 @@ use axum::{Json, Router};
 use cad_lab::lab::{FILES, Lab};
 use serde_json::{Value, json};
 
-const USAGE: &str = "usage: cad-lab serve [--port PORT] [--dir DIR] | cad-lab schema | cad-lab tool NAME [JSON] | cad-lab mcp\n       \
+const USAGE: &str = "usage: cad-lab serve [--port PORT] [--dir DIR] | cad-lab schema | cad-lab tools | cad-lab tool NAME [JSON | -] | cad-lab mcp\n       \
      cad-lab frames DOC OUT [--from N] [--to N] [--frames F] [--turn DEG] [--width W] [--height H] [--view V] [--offset DEG] [--pitch DEG] [--fit N]";
 
 fn main() -> std::process::ExitCode {
@@ -28,9 +31,20 @@ fn main() -> std::process::ExitCode {
             );
             std::process::ExitCode::SUCCESS
         }
+        Some("tools") => {
+            println!("{}", cad_lab::lab::tools());
+            std::process::ExitCode::SUCCESS
+        }
         Some("tool") if args.len() >= 2 => {
-            let input = args.get(2).map_or("{}", String::as_str);
-            let parsed: Value = match serde_json::from_str(input) {
+            let mut input = args.get(2).map_or("{}", String::as_str).to_owned();
+            if input == "-" {
+                input.clear();
+                if let Err(e) = std::io::Read::read_to_string(&mut std::io::stdin(), &mut input) {
+                    eprintln!("cad-lab: the arguments couldn't be read ({e})");
+                    return std::process::ExitCode::from(2);
+                }
+            }
+            let parsed: Value = match serde_json::from_str(&input) {
                 Ok(v) => v,
                 Err(e) => {
                     eprintln!("cad-lab: the arguments aren't JSON ({e})");
@@ -281,6 +295,7 @@ async fn card(State(lab): State<Arc<Lab>>, Query(q): Query<Vec<(String, String)>
 fn kind(name: &str) -> &'static str {
     match name.rsplit('.').next().unwrap_or_default() {
         "png" => "image/png",
+        "json" => "application/json",
         "glb" => "model/gltf-binary",
         "step" => "model/step",
         "3mf" => "model/3mf",

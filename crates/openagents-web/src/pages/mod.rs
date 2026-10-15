@@ -4,7 +4,7 @@ pub(crate) mod api_docs;
 mod att;
 mod blue_rush;
 mod bunny;
-mod cad;
+pub(crate) mod cad;
 pub(crate) mod chat;
 mod cloud;
 pub(crate) mod connect;

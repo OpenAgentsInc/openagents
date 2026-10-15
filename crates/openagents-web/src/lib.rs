@@ -49,6 +49,7 @@ mod environments;
 /// Staging's stand-in for a GitHub App (#11226).
 pub use environments::push::StandIn as StagingPush;
 mod cad_lab;
+mod cad_web;
 mod game_lab;
 mod github_refs;
 mod github_tools;
@@ -567,6 +568,7 @@ pub fn router(config: Config) -> Router {
         .merge(game_lab::routes())
         .merge(robot_lab::routes())
         .merge(cad_lab::routes())
+        .merge(cad_web::routes())
         .merge(connections::routes())
         .merge(promises::routes())
         .merge(pilot::routes())

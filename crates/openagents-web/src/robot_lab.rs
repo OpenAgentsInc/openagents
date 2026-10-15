@@ -84,6 +84,7 @@ pub(crate) async fn manifest_here(owner: &str, project: Option<&str>) -> Option<
         url,
         tools: tools["tools"].as_array()?.clone(),
         documents: docs["documents"].as_array()?.clone(),
+        hosted: None,
     })
 }
 pub(crate) fn guidance(documents: &[Value]) -> String {
