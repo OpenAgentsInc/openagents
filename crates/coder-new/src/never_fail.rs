@@ -10,14 +10,33 @@ use crate::harness_pick::Pick;
 use crate::harness_plugin::{self, Harness};
 use crate::{App, Draft, Mode, live};
 
-/// The grey line after Auto answered for `name`, which failed with `why`.
+/// The grey line after Auto answered for `name`, which failed with `why`:
+/// what happened, then why, so the real reason is there to read (#11690).
 #[must_use]
 pub fn fallback_note(name: &str, why: &str) -> String {
+    let what = fallback_what(name, why);
+    let why = why
+        .lines()
+        .find(|line| !line.trim().is_empty())
+        .unwrap_or("")
+        .trim();
+    if why.is_empty() {
+        return what;
+    }
+    let mut why: String = why.chars().take(200).collect();
+    if !why.ends_with(['.', '!', '?']) {
+        why.push('.');
+    }
+    format!("{what} {why}")
+}
+
+fn fallback_what(name: &str, why: &str) -> String {
     let started = !(why.contains("could not start")
         || why.contains("couldn't start")
         || why.contains("didn't start")
         || why.contains("not installed")
-        || why.contains("no process"));
+        || why.contains("no process")
+        || why.contains("finish setting up"));
     if started {
         format!("{name} couldn't answer, so Auto answered.")
     } else {

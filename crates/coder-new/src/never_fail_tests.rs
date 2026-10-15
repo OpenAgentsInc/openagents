@@ -361,7 +361,9 @@ fn opencode_failing_to_start_falls_back_to_auto() {
     assert!(app.live.notice.is_none());
     assert_eq!(
         app.notice.as_deref(),
-        Some("OpenCode didn't start, so Auto answered.")
+        Some(
+            "OpenCode didn't start, so Auto answered. OpenCode could not start: batch file arguments are invalid."
+        )
     );
     // The next message: OpenCode is never chosen again this run, and the
     // chat goes on through the door that answered.
@@ -410,12 +412,12 @@ fn a_picked_harness_that_fails_falls_back_to_auto() {
         (
             Harness::OpenCode,
             "OpenCode could not start: not found",
-            "OpenCode didn't start, so Auto answered.",
+            "OpenCode didn't start, so Auto answered. OpenCode could not start: not found.",
         ),
         (
             Harness::ClaudeCode,
             "Claude Code is out of usage until 11pm",
-            "Claude Code couldn't answer, so Auto answered.",
+            "Claude Code couldn't answer, so Auto answered. Claude Code is out of usage until 11pm.",
         ),
     ] {
         computer(true, true);
@@ -592,5 +594,51 @@ fn a_failed_harness_gets_another_try_when_picked() {
     picked.next_pick = Some(Pick::Harness(Harness::OpenCode));
     picked.submit("hi", &std::env::temp_dir());
     assert_eq!(kind(&picked), Some("opencode"));
+    computer(false, false);
+}
+
+/// #11690: while OpenCode sets itself up on its first run, the rail says
+/// so beside Working; when setup fails and Auto answers, the grey line
+/// gives OpenCode's own reason.
+#[test]
+fn opencodes_first_run_setup_is_on_the_rail_and_its_failure_in_the_grey_line() {
+    computer(true, false);
+    let mut app = live_app();
+    app.next_pick = Some(Pick::Harness(Harness::OpenCode));
+    app.submit("hi", &std::env::temp_dir());
+    assert_eq!(kind(&app), Some("opencode"));
+    let id = app.request_id;
+    app.apply_update(Update::Setup {
+        id,
+        note: Some(crate::opencode_chat::SETUP_NOTE.to_owned()),
+    });
+    let label = crate::ui::working_label(&app).unwrap();
+    assert!(label.contains("Working"), "{label}");
+    assert!(
+        label.ends_with(" · Setting up OpenCode (first time only)"),
+        "{label}"
+    );
+    app.apply_update(Update::Setup { id, note: None });
+    assert!(
+        !crate::ui::working_label(&app)
+            .unwrap()
+            .contains("Setting up")
+    );
+
+    let why = "OpenCode couldn't finish setting up: npm ERR! network ETIMEDOUT";
+    app.apply_update(Update::Setup {
+        id,
+        note: Some(crate::opencode_chat::SETUP_NOTE.to_owned()),
+    });
+    finish(&mut app, Err(why.into()));
+    assert!(app.live.setting_up.is_none(), "a finished turn clears it");
+    assert_eq!(kind(&app), Some("auto"), "Auto took the message");
+    finish(&mut app, answer("Hello!", "big-pickle"));
+    assert_eq!(
+        app.notice.as_deref(),
+        Some(
+            "OpenCode didn't start, so Auto answered. OpenCode couldn't finish setting up: npm ERR! network ETIMEDOUT."
+        )
+    );
     computer(false, false);
 }

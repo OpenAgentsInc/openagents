@@ -402,18 +402,19 @@ pub async fn run(
 /// its plugin package, `coder_sdk::opencode::plugin_ready`) before a turn
 /// counts the time OpenCode takes to start (#11683): on a fresh computer
 /// that install is silent and can outlast the start limit. Quick once done.
-/// False when it still isn't set up; the turn runs anyway.
-pub async fn prepare(program: &Path) -> bool {
+///
+/// # Errors
+/// Why it still isn't set up, in OpenCode's own words when it printed
+/// any (#11690); the turn runs anyway.
+pub async fn prepare(program: &Path) -> Result<(), String> {
     static SETTING_UP: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
-    let Ok(dir) = config_dir() else {
-        return false;
-    };
+    let dir = config_dir()?;
     if coder_sdk::opencode::plugin_ready(&dir) {
-        return true;
+        return Ok(());
     }
     let _one = SETTING_UP.lock().await;
     if coder_sdk::opencode::plugin_ready(&dir) {
-        return true;
+        return Ok(());
     }
     let mut command = acp_client::process::command_async(program);
     acp_client::process::non_interactive_async(&mut command);
@@ -424,21 +425,52 @@ pub async fn prepare(program: &Path) -> bool {
         .env("OPENCODE_DISABLE_AUTOUPDATE", "1")
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
         .kill_on_drop(true);
-    let finished = match command.spawn() {
-        Ok(mut child) => tokio::time::timeout(std::time::Duration::from_secs(300), child.wait())
+    let said = match command.spawn() {
+        Ok(child) => {
+            match tokio::time::timeout(
+                std::time::Duration::from_secs(300),
+                child.wait_with_output(),
+            )
             .await
-            .is_ok(),
-        Err(_) => false,
+            {
+                Ok(Ok(output)) => String::from_utf8_lossy(&output.stderr).into_owned(),
+                Ok(Err(error)) => error.to_string(),
+                Err(_) => "it was still going after 5 minutes".to_owned(),
+            }
+        }
+        Err(error) => format!("it could not start: {error}"),
     };
-    let ready = coder_sdk::opencode::plugin_ready(&dir);
-    if !ready {
-        eprintln!(
-            "coder: OpenCode didn't finish setting up its plugin folder (finished: {finished})"
-        );
+    if coder_sdk::opencode::plugin_ready(&dir) {
+        return Ok(());
     }
-    ready
+    Err(setup_failed(&said))
+}
+
+/// Whether OpenCode still has its one-time setup of Coder's plugin folder
+/// to do, which [`prepare`] does before the turn (#11690).
+#[must_use]
+pub fn needs_setup() -> bool {
+    config_dir().is_ok_and(|dir| !coder_sdk::opencode::plugin_ready(&dir))
+}
+
+/// What the rail says while OpenCode sets itself up (#11690).
+pub const SETUP_NOTE: &str = "Setting up OpenCode (first time only)";
+
+/// Why OpenCode's setup didn't finish: the error line it printed, else its
+/// last line (#11690).
+fn setup_failed(stderr: &str) -> String {
+    let clip = |line: &str| line.trim().chars().take(300).collect::<String>();
+    let lines = || stderr.lines().rev().filter(|line| !line.trim().is_empty());
+    let said = lines()
+        .find(|line| line.to_ascii_lowercase().contains("error"))
+        .or_else(|| lines().next())
+        .map(clip);
+    match said {
+        Some(said) => format!("OpenCode couldn't finish setting up: {said}"),
+        None => "OpenCode couldn't finish setting up.".to_owned(),
+    }
 }
 
 /// [`run`] on OpenCode's `program`, under `registry`'s hooks: an issue
@@ -468,7 +500,7 @@ pub async fn run_with(
             .collect::<Vec<_>>()
             .join(" "));
     }
-    prepare(program).await;
+    let _ = prepare(program).await;
     let runner = coder_sdk::Runner::new(registry, coder_sdk::Budget::default());
     let host = coder_sdk::bridge::Host::start(Arc::new(std::sync::Mutex::new(runner)))
         .map_err(|_| "Coder could not start its checks for OpenCode.".to_owned())?;
@@ -986,6 +1018,22 @@ mod tests {
                 ),
             ]
         );
+    }
+
+    /// #11690: a setup that didn't finish says why in OpenCode's words.
+    #[test]
+    fn a_setup_that_did_not_finish_says_why() {
+        assert_eq!(
+            setup_failed(
+                "resolving plugins\nerror: EACCES: permission denied, mkdir 'node_modules'\n"
+            ),
+            "OpenCode couldn't finish setting up: error: EACCES: permission denied, mkdir 'node_modules'"
+        );
+        assert_eq!(
+            setup_failed("still downloading\n\n"),
+            "OpenCode couldn't finish setting up: still downloading"
+        );
+        assert_eq!(setup_failed(""), "OpenCode couldn't finish setting up.");
     }
 
     fn message(role: &str, content: &str) -> Message {

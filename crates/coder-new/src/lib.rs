@@ -1307,6 +1307,9 @@ impl App {
                     self.notice = Some(note);
                 }
             }
+            live::Update::Setup { note, .. } if self.live.busy => {
+                self.live.setting_up = note;
+            }
             live::Update::OpenCodeSession { session, model, .. } => {
                 self.live.opencode_session = Some(live::OpenCodeSession {
                     id: session,
@@ -1330,6 +1333,7 @@ impl App {
             live::Update::Finished { result, .. } if self.live.busy => {
                 self.live.busy = false;
                 self.live.thinking = false;
+                self.live.setting_up = None;
                 self.live.close_thinking();
                 self.live
                     .close_attempts("the turn ended before this attempt answered");

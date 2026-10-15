@@ -64,6 +64,9 @@ pub struct Chat {
     /// The model's thinking is streaming in now, so the input's rail says
     /// `Thinking` beside `Working`.
     pub thinking: bool,
+    /// What the harness is setting up before it can start, shown on the
+    /// input's rail beside `Working` (#11690): OpenCode's first run.
+    pub setting_up: Option<String>,
     /// Once the chat passes [`crate::long_session::ELIDE_PERCENT`] of the
     /// context window (#11286), bulky tool outputs older than the newest
     /// [`crate::long_session::VERBATIM_TURNS`] requests reach the model as
@@ -919,6 +922,12 @@ pub enum Update {
         id: u64,
         model: String,
     },
+    /// The harness is setting itself up before the turn can start
+    /// (`Some`), or is done (`None`), #11690.
+    Setup {
+        id: u64,
+        note: Option<String>,
+    },
     /// The OpenCode session an OpenCode turn runs in (#11507).
     OpenCodeSession {
         id: u64,
@@ -967,6 +976,7 @@ impl Update {
             | Self::Thinking { id, .. }
             | Self::ThinkingText { id, .. }
             | Self::Model { id, .. }
+            | Self::Setup { id, .. }
             | Self::OpenCodeSession { id, .. }
             | Self::Routed { id, .. }
             | Self::Finished { id, .. } => *id,
@@ -1874,8 +1884,18 @@ fn run_with_provider(
                     // (installing its plugin package) comes first, outside
                     // the start limit: on a fresh computer it is silent and
                     // slower than the limit (#11683).
+                    // The rail says so while it runs (#11690), and a setup
+                    // that fails is the reason the grey line gives.
+                    let mut setup_failed = None;
                     if let Some(program) = crate::opencode_chat::binary() {
-                        crate::opencode_chat::prepare(&program).await;
+                        let first_time = crate::opencode_chat::needs_setup();
+                        if first_time {
+                            let _ = sender.send(Update::Setup { id, note: Some(crate::opencode_chat::SETUP_NOTE.to_owned()) });
+                        }
+                        setup_failed = crate::opencode_chat::prepare(&program).await.err();
+                        if first_time {
+                            let _ = sender.send(Update::Setup { id, note: None });
+                        }
                     }
                     // OpenCode names its session within seconds of starting,
                     // so one that hasn't after 20 s won't: hand the message
@@ -1884,7 +1904,7 @@ fn run_with_provider(
                     let result = watched(
                         crate::opencode_chat::run(turn, &door_cancel, &mut events, &mut on_session),
                         &cancel, &door_cancel, &alive, limit,
-                        || silent("OpenCode", limit),
+                        || setup_failed.unwrap_or_else(|| silent("OpenCode", limit)),
                     ).await;
                     Update::Finished { id, result }
                 }

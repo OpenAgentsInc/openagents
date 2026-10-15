@@ -1219,7 +1219,7 @@ pub(crate) fn claude_rail_label() -> String {
 /// on the right, so it stays put instead of scrolling away with the
 /// transcript. It follows the same chat the composer does: the selected
 /// delegation's, else the main one.
-fn working_label(app: &App) -> Option<String> {
+pub(crate) fn working_label(app: &App) -> Option<String> {
     let chat = app
         .selected_agent
         .and_then(|index| app.delegations.get(index))
@@ -1239,6 +1239,10 @@ fn working_label(app: &App) -> Option<String> {
             facts.push(format!("↓ {} tokens", agent_fleet::token_words(tokens)));
         }
         label.push_str(&format!(" ({})", facts.join(" · ")));
+    }
+    // A harness setting itself up first says so (#11690).
+    if let Some(note) = &chat.setting_up {
+        label.push_str(&format!(" · {note}"));
     }
     // While the model's thinking streams in, the rail says so to the right.
     if chat.thinking {
