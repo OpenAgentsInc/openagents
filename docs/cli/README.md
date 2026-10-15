@@ -2048,3 +2048,12 @@ app's TestFlight screenshot and crash feedback from App Store Connect with an
 App Store Connect API key and drafts each new submission the same way.
 [docs/game/playtest-triage.md](../game/playtest-triage.md) covers the loop,
 the files, and the triage log.
+
+## Curated plugin registries
+
+`openagents registry` enrolls exact curator identities, refreshes signed catalogs,
+browses cached recommendations, compares independent curators, and verifies a
+selected member release and dependency closure. Use `--help` for commands and
+[the registry guide](../../crates/plugin-registry/README.md) for source and policy
+files. Selection is inert; installation and execution keep their existing
+permission checks.

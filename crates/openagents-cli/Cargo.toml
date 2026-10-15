@@ -58,6 +58,7 @@ openagents-terminal = { path = "../openagents-terminal" }
 openagents-chat-app = { path = "../openagents-chat-app" }
 atif = { path = "../atif" }
 atif-nostr = { path = "../atif-nostr" }
+curated-registry = { package = "plugin-registry", path = "../plugin-registry" }
 coder-host = { path = "../coder-host" }
 coder-link = { path = "../coder-link" }
 # `openagents lease`: the host resource broker's leases.

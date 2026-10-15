@@ -126,8 +126,10 @@ POL/EXT lifecycle additions remain unfinished. The index, glossary, and older
 introductions are not substitutes for current runtime evidence. The remaining
 Rust work is tracked in #11729.
 
-REG is a **Designed** profile using inert EXT catalogs and existing release/head
-kinds; no registry client is implemented. These profiles allocate no new event
+REG uses inert EXT catalogs and existing release/head kinds. `plugin-registry`
+and `openagents registry` implement curator publication, immutable mirrors,
+explicit enrollment, bounded directory/HTTPS/GitHub/Nostr reads, and independently
+verified member selection. Browsing and selection never install or execute. These profiles allocate no new event
 kinds: private artifacts use `3188`, remote host operations use admitted CAP/CJ
 profiles, and effects leave RUN evidence.
 Keeping an encrypted envelope does not implement the contract inside it.

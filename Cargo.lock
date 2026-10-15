@@ -11467,6 +11467,7 @@ dependencies = [
  "pay-ledger",
  "playtest",
  "plugin",
+ "plugin-registry",
  "private-fs",
  "pylon",
  "rcgen",
@@ -12552,6 +12553,27 @@ version = "1.0.0-rc.22"
 dependencies = [
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "plugin-registry"
+version = "1.0.0-rc.22"
+dependencies = [
+ "fs2",
+ "futures-util",
+ "nostr",
+ "nostr-transport",
+ "pylon",
+ "rcgen",
+ "reqwest 0.12.28",
+ "rustls",
+ "secp256k1 0.31.1",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-rustls",
+ "user-home",
 ]
 
 [[package]]

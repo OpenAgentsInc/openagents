@@ -39,6 +39,7 @@ pub struct Connection {
     socket: WebSocketStream<MaybeTlsStream<TcpStream>>,
     deadline: Instant,
     remaining: usize,
+    received_bytes: usize,
 }
 impl Connection {
     pub async fn connect(url: &str, secret: &SecretKey, lifetime: Duration) -> Result<Self> {
@@ -76,6 +77,7 @@ impl Connection {
             socket,
             deadline,
             remaining: 256,
+            received_bytes: 0,
         };
         let challenge = connection.next().await?;
         if challenge.as_array().is_none_or(|a| a.len() != 2)
@@ -114,14 +116,24 @@ impl Connection {
     }
     /// Connect without NIP-42 authentication, for a public relay's reads
     /// and writes of public events. The same deadline and frame budget
-    /// apply. A relay that sends an `AUTH` challenge anyway gets no answer;
-    /// the caller skips that frame.
+    /// apply. HTTPS security uses wss; loopback ws is accepted for local relays.
+    /// The caller decides whether to answer an optional `AUTH` challenge.
     pub async fn connect_open(url: &str, lifetime: Duration) -> Result<Self> {
         if lifetime.is_zero() || lifetime > Duration::from_secs(120) {
             return Err("relay connection lifetime must be within 120 seconds".into());
         }
-        if !url.starts_with("wss://") {
-            return Err("an unauthenticated relay connection must use wss".into());
+        if !url.starts_with("wss://")
+            && !["ws://127.0.0.1:", "ws://localhost:", "ws://[::1]:"]
+                .iter()
+                .any(|prefix| {
+                    url.strip_prefix(prefix).is_some_and(|tail| {
+                        tail.split('/').next().is_some_and(|port| {
+                            !port.is_empty() && port.bytes().all(|b| b.is_ascii_digit())
+                        })
+                    })
+                })
+        {
+            return Err("a public relay connection needs wss or loopback ws".into());
         }
         let deadline = Instant::now() + lifetime;
         let config = WebSocketConfig::default()
@@ -138,6 +150,7 @@ impl Connection {
             socket,
             deadline,
             remaining: 256,
+            received_bytes: 0,
         })
     }
     /// Replace the frame budget for the rest of this connection, at most
@@ -147,6 +160,11 @@ impl Connection {
     pub fn with_frame_budget(mut self, frames: usize) -> Self {
         self.remaining = frames.min(4096);
         self
+    }
+    /// JSON text bytes received, including authentication and repeated frames.
+    /// Callers can charge one budget across multiple connections and sources.
+    pub fn received_bytes(&self) -> usize {
+        self.received_bytes
     }
     pub async fn send(&mut self, value: Value) -> Result<()> {
         let text = value.to_string();
@@ -169,6 +187,7 @@ impl Connection {
                 .map_err(|_| "relay read deadline exceeded")?;
             match frame {
                 Some(Ok(Message::Text(text))) => {
+                    self.received_bytes = self.received_bytes.saturating_add(text.len());
                     return nostr::contracts::parse_strict_bounded(text.as_bytes(), MAX_BYTES)
                         .map_err(|e| e.to_string());
                 }
@@ -270,6 +289,39 @@ mod tests {
             .await
             .is_err()
         );
+    }
+
+    #[tokio::test]
+    async fn open_local_relay_and_received_text_budget() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("ws://{}", listener.local_addr().unwrap());
+        let text = json!(["EOSE", "read"]).to_string();
+        let expected = text.len();
+        let relay = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+            socket.send(Message::Text(text.into())).await.unwrap();
+            let _ = socket.next().await;
+        });
+        let mut connection = Connection::connect_open(&url, Duration::from_secs(5))
+            .await
+            .unwrap();
+        assert_eq!(connection.received_bytes(), 0);
+        assert_eq!(connection.next().await.unwrap()[0], "EOSE");
+        assert_eq!(connection.received_bytes(), expected);
+        connection.close().await.unwrap();
+        relay.await.unwrap();
+        for url in [
+            "ws://example.com:9",
+            "ws://localhost:9@evil.example",
+            "ws://127.0.0.1.evil.example:9",
+        ] {
+            assert!(
+                Connection::connect_open(url, Duration::from_millis(1))
+                    .await
+                    .is_err()
+            );
+        }
     }
 
     #[test]

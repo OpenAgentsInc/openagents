@@ -1,6 +1,6 @@
 # NIP-REG — Curated Plugin Registries
 
-`draft` `optional` — v1, 2026-10-06. **Designed.** The
+`draft` `optional` — v1, 2026-10-06. **Rust publisher, mirror, and reader implemented.** The
 [shared contracts](contracts.md) and [NIP-EXT](NIP-EXT.md) are normative.
 
 This NIP lets a client subscribe to any operator-selected plugin registry.
@@ -11,10 +11,15 @@ the package publisher, client, and executing host retain their own roles.
 
 ## Status and scope
 
-Designed. No registry publisher, registry reader, GitHub adapter, or Coder
-registry management UI is implemented by this document. Existing EXT validators
-do not establish REG conformance. Coder's current OpenRouter BYOK settings
-are local configuration for a host-supported adapter, not a downloaded package.
+[`crates/plugin-registry`](../../crates/plugin-registry/README.md) implements
+curator-signed inert catalogs, immutable mirrors, explicit local enrollment,
+bounded Nostr/GitHub/HTTPS/directory readers, and `openagents registry`
+management and selection. Fixtures exercise equal signed catalogs and member
+pins across those transports, rollback, hidden heads, independent publisher
+revocations, failed fetches, and source changes. Installed package state,
+execution, and the graphical management UI remain separate. Coder's current
+OpenRouter BYOK settings are local configuration for a host-supported adapter,
+not a downloaded package.
 
 EXT already defines package identity, releases, publisher listings,
 revocations, dependency locks, inert installation, and updates. This NIP adds
@@ -110,7 +115,10 @@ closure. Resolve a selected member's closure separately under EXT.
 
 ## Catalog document
 
-`registry.json` is a closed object, except for optional inert `meta`.
+`registry.json` follows the [catalog schema](schemas/registry.v1.json), a closed
+object except for optional inert `meta`. Semantic reference, ordering,
+freshness, identity, and revocation checks apply independently of the
+curator-provided schema.
 The common encoding, unsupported-feature, and exact-byte digest rules apply.
 
 | Field | Contract |

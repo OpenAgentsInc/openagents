@@ -1,0 +1,30 @@
+[package]
+name = "plugin-registry"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Curator-signed NIP-REG catalogs with bounded sources and local trust."
+
+[dependencies]
+nostr = { path = "../nostr" }
+nostr-transport = { path = "../nostr-transport" }
+user-home = { path = "../user-home" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+secp256k1 = { version = "0.31.1", features = ["rand"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
+futures-util = "0.3"
+fs2 = "0.4"
+tempfile = "3"
+
+[dev-dependencies]
+rcgen = "0.14"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
+tokio = { version = "1", features = ["net", "io-util", "sync"] }
+pylon = { path = "../pylon", default-features = false, features = ["fixture"] }
+
+[lints]
+workspace = true

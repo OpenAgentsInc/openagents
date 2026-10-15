@@ -208,6 +208,7 @@ Pairing and computers (NIP-HOST, NIP-REACH):
   study        Launch and read Microcoder study runs on a host.
   reach        Owner directory, host presence, and route probes.
   session      Observe a paired computer's chats (NIP-SESS): pair, list, read, tail.
+  registry     Browse signed plugin catalogs and select packages (NIP-REG).
   trajectory   Share private trajectories or explicitly publish them (NIP-ATIF).
 
 Chat:
@@ -529,6 +530,17 @@ fn main() -> ExitCode {
         #[cfg(feature = "verse")]
         "chamber" => chamber::run(&output, &rest),
         "study" => study::run(&output, &rest),
+        "registry" => match runtime().block_on(curated_registry::cli::run(rest)) {
+            Ok(Some(value)) => {
+                output.emit(&value, curated_registry::cli::display);
+                0
+            }
+            Ok(None) => 0,
+            Err(error) => output.fail(
+                "registry",
+                &curated_registry::cli::display(&serde_json::json!({"error":error})),
+            ),
+        },
         "trajectory" => match runtime().block_on(atif_nostr::cli::run(rest)) {
             Ok(Some(value)) => {
                 output.emit(&value, |v| {
