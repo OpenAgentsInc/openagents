@@ -1,6 +1,6 @@
 [package]
 name = "rust-native"
-version = "1.0.0-rc.18"
+version = "1.0.0-rc.19"
 edition = "2024"
 rust-version = "1.97.1"
 publish = false

@@ -1,6 +1,6 @@
 [package]
 name = "paper-mono"
-version = "1.0.0-rc.18"
+version = "1.0.0-rc.19"
 edition = "2024"
 publish = false
 license = "OFL-1.1"
