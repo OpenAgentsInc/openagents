@@ -1643,7 +1643,9 @@ passing checks and remaining acceptance gaps recorded below. Issue:
 ### Design
 
 - **Projections.** Every trunk weight is dequantized to f16 once at load
-  and stays resident in unified memory (13.8 GB for Clef-Flash).
+  and stays resident in unified memory (13.8 GB for Clef-Flash). On a Mac
+  whose GPU working set cannot hold that (16–24 GB), the Q4_K feed-forward
+  weights stay packed instead (`PSIONIC_CLEF_METAL_FFN_WEIGHTS`, #11636).
   - Each projection is one f16 × f16 → f32 GEMM on the Metal Performance
     Primitives `matmul2d` tensor op, which runs on the M5's neural
     accelerators.
@@ -2502,7 +2504,8 @@ batching.
 | `PSIONIC_CLEF_METAL_DELTA` | `sequential` | `block-tensorops` selects the experimental 32-token block recurrence. Additional scratch is `ceil(chunk / 32) × value_heads × 37,120` bytes, at most 256 MiB per scratch allocation. |
 | `PSIONIC_CLEF_METAL_HEAD` | `staged` | `fused-fields` runs the four field layers in one GPU submission. It supports at most 64 questions, adds 294,912 bytes of model vectors for the current Flash/27B heads, and adds up to 2,883,584 bytes of request scratch. This scratch is included in batch reservations. |
 | `PSIONIC_CLEF_CUDA_HEAD` | `device` | `staged` runs the CUDA head step by step (about 25 round trips) instead of in one submission (Round 11). Both give the same answers. |
-| `PSIONIC_CLEF_METAL_FFN_WEIGHTS` | `resident-f16` | `q4k-on-demand` keeps Q4_K feed-forward weights packed and converts one projection at a time into reusable f16 scratch. Other formats retain the resident path. The conversion slot is 96 MiB for Flash and 170 MiB for 27B, with a 256 MiB limit. |
+| `PSIONIC_CLEF_WARMUP` | `4` | On Metal and CUDA, seeded synthetic decisions (short, medium, just over one chunk, one random) run before the server listens, so `/health` answers only once the first-use costs are paid (#11636). `0` turns it off; at most 256. With batching they run concurrently. |
+| `PSIONIC_CLEF_METAL_FFN_WEIGHTS` | automatic: `resident-f16` when the trunk's f16 weights plus 2 GiB fit the GPU's recommended working set, else `q4k-on-demand` (#11636) | `q4k-on-demand` keeps Q4_K feed-forward weights packed and converts one projection at a time into reusable f16 scratch. Other formats retain the resident path. The conversion slot is 96 MiB for Flash and 170 MiB for 27B, with a 256 MiB limit. |
 | `PSIONIC_CLEF_METAL_Q4_GEMM` | unset | With `q4k-on-demand`, `direct` (#11196) or `stationary` (#11481) reads the packed Q4_K feed-forward weights in the GEMM instead of converting them; any other value stops loading. Both are slower than resident f16 on the M5 Max. |
 | `PSIONIC_CLEF_METAL_WEIGHT_UPLOAD` | `mapped-copy` | `positional` reads packed matrices through the original open file into the existing upload buffer, avoiding bulk reads from mapped pages. It requires `resident-f16` and a memory-mapped source; conversion and inference arithmetic stay unchanged. The 27B text and image checks pass within the 52 GiB process cap at chunk size 512; this does not establish latency acceptance. |
 | `PSIONIC_CLEF_PREFIX_CACHE_BYTES` | `0` (CUDA sm_90: a 32nd of the device, at most 2 GiB) | Metal: enables one exact prefix snapshot when nonzero; maximum 536,870,912 bytes, including its token key. CUDA: an LRU of snapshots within the budget (at most 32 GiB and a quarter of the device); on by default where reuse is exact (Round 9), `0` turns it off. |

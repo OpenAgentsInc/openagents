@@ -149,6 +149,78 @@ each REAX technique onto it:
 Issue [#11636](https://github.com/OpenAgentsInc/openagents/issues/11636)
 carries the Psionic items with these measurements as the baseline.
 
+### Measured on the Clef lane (#11636, 2026-10-14)
+
+Each candidate was measured against `origin/main` `01634ccd92` on the M5
+Max (128 GB, Metal, Clef-Flash Q4_K_M), on a machine shared with other
+agents' work (load average 15–40), so absolute times are upper bounds and
+A/B runs were interleaved. Requests are the 37 parseable e2e fixture
+requests (`crates/psionic/fixtures/clef/e2e/requests.jsonl`, 1–5
+questions, 186–1,006 tokens) with a fresh nonce each ("short"), and the
+same padded to about 4,200 tokens ("long"). Items are answered questions.
+Peak memory is the process's peak footprint (`/usr/bin/time -l`).
+
+**Landed: warm-up before `/health` (item 1).** `PSIONIC_CLEF_WARMUP`
+(default 4) runs seeded synthetic decisions (about 48, 200 and 2,560
+prompt words, one random; every question type) before the server
+listens, then clears the logit cache. Four fresh starts per arm:
+
+| Fresh server, Metal | First short request | Its prefill | Steady short request (2nd, 3rd) | First long request prefill | Steady long prefill | Time to `/health` |
+| --- | --- | --- | --- | --- | --- | --- |
+| main | 631 ms | 382 ms | 341–370 ms (prefill 206–211) | 3,532 ms | 3,272–3,352 ms | 20–40 s |
+| warm-up | 401 ms | 206 ms | 351–352 ms (prefill 203–204) | 3,576 ms | 3,430–3,536 ms | +4.2 s (4 decisions) |
+
+Medians. The first request's prefill drops from 382 to 206 ms, the
+steady value; with the warm-up the first long request is no slower than
+the next ones (on main it was about 180 ms slower). Answers are bitwise
+the same: the 400 calibration items against `metal-a.jsonl` give distance
+0 on every item. The bigger first-use cost REAX saw is CUDA's (kernel
+loading, cuBLAS heuristics); it is not measured here (see below).
+
+**Landed: automatic packed feed-forward weights on small Macs (item 3).**
+The load is already per tensor: each weight is read, uploaded and
+converted to f16 on its own, so the load peak sits about 0.5 GB above the
+loaded footprint. What keeps Clef-Flash off a 16–24 GB Mac is the
+resident f16 trunk itself. `PSIONIC_CLEF_METAL_FFN_WEIGHTS` now defaults
+to `resident-f16` only when the trunk's f16 bytes plus 2 GiB fit the
+GPU's recommended working set, and otherwise to the existing
+`q4k-on-demand` (Q4_K feed-forward weights stay packed and are converted
+one projection at a time). Nothing changes on the M5 Max. Measured by
+forcing each mode, two interleaved rounds:
+
+| Clef-Flash, Metal | Load peak | Footprint at `/health` | Serving peak | Short, concurrency 1 (items/s, p50 / p95) | Short, concurrency 4 (items/s, p50 / p95) | Long, concurrency 1 (items/s, p50) |
+| --- | --- | --- | --- | --- | --- | --- |
+| `resident-f16` (large Macs) | 15.1 GB | 14 GB | 16.2–16.4 GB | 5.2, 429–499 / 890–1,029 ms | 5.3–5.4, 1,917–1,941 / 2,460–2,550 ms | 0.58–0.59, 3,424–3,480 ms |
+| `q4k-on-demand` (now automatic under the working set) | 8.2 GB | 7.7 GB | 9.7–9.9 GB | 4.4, 562–569 / 979–1,069 ms | 4.6–4.7, 2,136–2,234 / 2,816–2,970 ms | 0.55, 3,584–3,719 ms |
+
+On a 16 GB Mac (about 10.7 GB working set) the packed trunk fits and the
+resident one does not; the cost is 15 % of short-request throughput and
+6 % on long ones. The answers are bitwise the same (distance 0 on all 400
+calibration items).
+
+**Not landed:**
+
+| Item | Measurement | Why not |
+| --- | --- | --- |
+| 2. Token-budget packing | The batch worker already packs cohorts under a token budget (`PSIONIC_CLEF_BATCH_TOKENS`) and reserves per-request bytes against `PSIONIC_CLEF_BATCH_BYTES`; cohort scratch is sized from the budget, so activation memory is bounded by tokens. On Metal, concurrency 8, short requests: serial 4.94 items/s, batching 2 4.83, batching 4 4.82 | A single ~500-token request already fills the M5's tensor-op GEMMs, so packing more requests per step gives nothing on Metal; raising the 4-request cap would not either. CUDA batching is measured in [clef-batching.md](../../inference/clef-batching.md) |
+| 4. Static calibrated activation scales | Not built | There is no low-precision activation GEMM in either Clef trunk (Metal and CUDA run f16 × f16 with f32 or f16 accumulation), and Metal projections are not bandwidth-bound: reading 4-bit weights directly was 10–20 % slower than f16 ([clef-native.md](../../inference/clef-native.md)). A static int8/FP8 activation path is new kernel work with no measured gain to justify it; FP8 already failed the per-answer gate in round 10. Retry only with a kernel that wins on its own, gated on [calibration.md](calibration.md) |
+| 5. Two-stream layer overlap (CUDA) | Not measured | The 4080 runs the live decision pylon (6.7 GB of its 16 GB; 6.4 GB free), and a second Clef-Flash needs about as much, so it cannot be measured there without displacing that service. It targets large batches on an H100 |
+| 6. Final-layer row pruning | Audit of the head's inputs | Not applicable: every final row feeds the head. `ClefHeadStream::push` projects `LN(H) W_mem` for every position into the memory rows, and memory attention is unmasked over all of them, so no final-layer MLP row goes unread |
+
+**CUDA commands for the next round** (coderos-4080 when the live pylon can
+be paused, or an H100), from a worktree of this commit:
+
+```sh
+cargo build --release --manifest-path crates/psionic/Cargo.toml -p psionic-serve --bin psionic-openai-server
+# first-use cost with and without the warm-up: fresh start, then the same request shape three times
+PSIONIC_CLEF_WARMUP=0 target/release/psionic-openai-server -m Clef-Flash-Q4_K_M.gguf --port 18396 --decision-device cuda --decision-chunk 2048
+PSIONIC_CLEF_WARMUP=4 target/release/psionic-openai-server -m Clef-Flash-Q4_K_M.gguf --port 18396 --decision-device cuda --decision-chunk 2048
+```
+
+The CUDA calibration on the 400 generated items did run, against the live
+server: median 0.0011, max 0.012, every simulated round passes
+([calibration.md](calibration.md)).
+
 **Licence (verified).** Apache-2.0 with a NOTICE. Its prompt code is itself
 an adaptation of Perplexity's Apache-2.0 reference. We can reuse code with
 attribution and a modification notice. Our engine is Rust (Psionic), so
@@ -398,4 +470,4 @@ as follows. What shipped is in the issues below.
 | 4 | Price decisions and pay pylons on mainnet | Unchanged (owner decision on price and share) |
 | 5 | Desktop Earn switch | Now a thin UI over step 3b's commands |
 | 6–7 | Verse live field; open admission | Unchanged. Open admission now has its gate: self-check plus checked rounds |
-| 8 | Psionic engine work from REAX's engine | New issue [#11636](https://github.com/OpenAgentsInc/openagents/issues/11636) (warm-up, token-budget packing, lazy load, static activation scales) |
+| 8 | Psionic engine work from REAX's engine | [#11636](https://github.com/OpenAgentsInc/openagents/issues/11636): warm-up before `/health` and automatic packed feed-forward weights on small Macs landed; packing, static activation scales, two-stream overlap and last-layer pruning measured or audited and not taken ([above](#measured-on-the-clef-lane-11636-2026-10-14)) |

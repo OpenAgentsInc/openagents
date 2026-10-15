@@ -102,6 +102,10 @@ fn honest_pairs_pass_every_round() {
         ),
         ("cpu vs metal", run_distances("metal-a.jsonl", "cpu.jsonl")),
         (
+            "cuda f16 accumulate vs metal",
+            run_distances("metal-a.jsonl", "cuda.jsonl"),
+        ),
+        (
             "cuda f32 vs cpu",
             fixture_distances("psionic-cpu-q4_k_m.jsonl", "psionic-cuda-f32-q4_k_m.jsonl"),
         ),

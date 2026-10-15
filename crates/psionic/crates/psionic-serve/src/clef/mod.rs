@@ -32,6 +32,7 @@ pub mod json;
 pub mod media;
 pub(crate) mod prefix;
 pub mod remote;
+pub mod warmup;
 mod worker;
 
 use std::path::{Path, PathBuf};

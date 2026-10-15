@@ -59,6 +59,7 @@ mean of 0.05; strike above a mean of 0.15 or any item above 0.5).
 | Metal, the same 400 items again | 400 | 0 | 0 | 0 | 0 | 100 % | 100 % | 0 |
 | Metal with `--decision-accumulate f16` vs f32 | 400 | 0 | 0 | 0 | 0 | 100 % | 100 % | 0 |
 | CPU vs Metal | 64 | 0.0004 | 0.0012 | 0.0023 | 0.0035 | 100 % | 100 % | 0 |
+| CUDA (RTX 4080, f16 accumulation) vs Metal, the 400 generated items | 400 | 0.0011 | 0.0040 | 0.0089 | 0.012 | 99.8 % | 100 % | 0 |
 | CUDA f32 accumulation vs CPU (fixture) | 104 | 0.0007 | 0.0017 | 0.0025 | 0.0037 | n/a | 100 % | 0 |
 | CUDA f16 accumulation vs CPU (fixture) | 104 | 0.0054 | 0.018 | 0.026 | 0.063 | n/a | 100 % | 0 |
 | **Substitutes** | | | | | | | | |
@@ -117,17 +118,25 @@ in the CLI (`crates/pylon/data/selfcheck/clef-flash-q4_k_m.json`, seed
 
 ## Not measured yet (follow-ups)
 
-- **CUDA on generated items.** The CUDA numbers above are the 104 fixture
-  questions, not the 400 generated items. On the RTX 4080 (or an H100), run:
+- **CUDA on generated items: measured 2026-10-14 (#11636).** The 400
+  items against coderos-4080's live Clef server (RTX 4080, the default f16
+  accumulation, build `a9ab2671be`), checked in as
+  `crates/pylon/data/calibration/cuda.jsonl` and asserted in
+  `crates/pylon/tests/calibration.rs`:
 
   ```sh
   openagents pylon calibrate run --decide http://127.0.0.1:18096 --seed 20261014 --count 400 --out cuda.jsonl
   openagents pylon calibrate compare crates/pylon/data/calibration/metal-a.jsonl cuda.jsonl
   ```
 
-  Check it in beside the others. If CUDA with f16 accumulation ever
-  reaches an item near 0.5, raise the item bound rather than strike honest
-  pylons.
+  Median 0.0011, max 0.012 (forty times below the item bound); one item's
+  top answer flips on a near tie; every simulated round passes. That
+  server's GGUF has a different sha256 (`fd3e9060…`) from the Mac's
+  (`36261166…`): the files are the same length and differ only in the
+  first 11 MB, the metadata (an extra `decision-model` tag shifts the
+  header); every 64 MB block of tensor data hashes the same. If CUDA with
+  f16 accumulation ever reaches an item near 0.5, raise the item bound
+  rather than strike honest pylons.
 - **Clef 27B.** It needs its own run and its own `Limits`.
 - **A model distilled on the public generator.** Not measured. The
   generator is public, as REAX's is; the mitigation is a checker-private

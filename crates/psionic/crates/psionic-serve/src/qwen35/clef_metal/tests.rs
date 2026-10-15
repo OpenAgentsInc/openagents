@@ -7,6 +7,33 @@ mod head_blocks;
 mod weight_upload;
 
 #[test]
+fn automatic_ffn_placement_keeps_weights_packed_only_when_f16_does_not_fit() {
+    const GIB: u64 = 1 << 30;
+    // Clef-Flash's resident f16 trunk is about 13 GiB.
+    let flash = 13 * GIB;
+    // M5 Max (128 GB) and a 36 GB Mac: resident f16.
+    assert_eq!(
+        auto_ffn_weights(flash, 107 * GIB),
+        FfnWeightMode::ResidentF16
+    );
+    assert_eq!(
+        auto_ffn_weights(flash, 27 * GIB),
+        FfnWeightMode::ResidentF16
+    );
+    // 16 GB and 24 GB Macs: packed Q4_K feed-forward weights.
+    assert_eq!(
+        auto_ffn_weights(flash, 11 * GIB),
+        FfnWeightMode::Q4KOnDemand
+    );
+    assert_eq!(
+        auto_ffn_weights(flash, 14 * GIB),
+        FfnWeightMode::Q4KOnDemand
+    );
+    // An unknown working set keeps today's default.
+    assert_eq!(auto_ffn_weights(flash, 0), FfnWeightMode::ResidentF16);
+}
+
+#[test]
 fn positional_weight_upload_is_explicit_and_resident_only() {
     assert_eq!(WeightUploadMode::default(), WeightUploadMode::MappedCopy);
     assert_eq!(

@@ -377,6 +377,12 @@ impl ClefMetal {
         &self.name
     }
 
+    /// The device's recommended working set in bytes (0 when unknown).
+    #[must_use]
+    pub fn recommended_working_set_bytes(&self) -> u64 {
+        self.device.recommended_max_working_set_size()
+    }
+
     /// A zeroed shared buffer of `bytes`.
     #[must_use]
     pub fn buffer(&self, bytes: usize) -> ClefMetalBuffer {

@@ -59,6 +59,7 @@ async fn run() -> Result<(), String> {
             "image weights require exactly one decision model",
         ));
     }
+    let warmup_requests = clef::warmup::requests_from_env()?;
     let lanes = decision_paths
         .iter()
         .map(|path| {
@@ -85,6 +86,18 @@ async fn run() -> Result<(), String> {
             }
             if let Some(url) = &decision.worker {
                 lane = lane.with_remote_worker(url)?;
+            }
+            // Before `/health` answers: the first real requests should not
+            // pay first-use costs (#11636).
+            let warm = lane.warm_up(warmup_requests);
+            if warm.requests > 0 {
+                eprintln!(
+                    "{}: warmed up with {} decisions in {:.1} s ({} failed)",
+                    path.display(),
+                    warm.requests,
+                    warm.seconds,
+                    warm.failed
+                );
             }
             Ok::<_, String>(lane)
         })

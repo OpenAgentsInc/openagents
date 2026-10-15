@@ -185,6 +185,60 @@ fn ffn_conversion_bytes(rows: usize, columns: usize) -> Result<usize, String> {
         .ok_or_else(|| String::from("clef FFN weight conversion must fit in 256 MiB"))
 }
 
+/// Bytes the trunk's projections take as resident f16.
+fn resident_f16_bytes(model: &super::CpuQwen35Model) -> u64 {
+    let bytes = |matrix: &HostMatrix| (matrix.rows() as u64) * (matrix.columns() as u64) * 2;
+    model
+        .layers
+        .iter()
+        .map(|layer| {
+            let ffn = layer
+                .ffn_gate_up
+                .parts
+                .iter()
+                .chain(std::iter::once(&layer.ffn_down))
+                .map(bytes)
+                .sum::<u64>();
+            let mixer = match &layer.kind {
+                CpuQwen35LayerKind::Hybrid(hybrid) => {
+                    hybrid
+                        .qkv_gate_alpha_beta
+                        .parts
+                        .iter()
+                        .map(bytes)
+                        .sum::<u64>()
+                        + bytes(&hybrid.ssm_out)
+                }
+                CpuQwen35LayerKind::FullAttention(attention) => {
+                    attention.qkv.parts.iter().map(bytes).sum::<u64>() + bytes(&attention.output)
+                }
+            };
+            ffn + mixer
+        })
+        .sum()
+}
+
+/// Head room kept free beside the weights for request buffers and the head.
+const AUTO_HEADROOM_BYTES: u64 = 2 << 30;
+
+/// Placement when `PSIONIC_CLEF_METAL_FFN_WEIGHTS` is unset: resident f16
+/// (fastest) when it fits the device's recommended working set with
+/// [`AUTO_HEADROOM_BYTES`] to spare, else Q4_K feed-forward weights kept
+/// packed and converted per use (#11636). On a 16–24 GB Mac Clef-Flash's
+/// resident f16 trunk (15.1 GB peak) does not fit; the packed one (8.2 GB
+/// peak) does, and its logits are bitwise the same.
+fn auto_ffn_weights(resident_f16: u64, working_set: u64) -> FfnWeightMode {
+    if working_set == 0 || resident_f16.saturating_add(AUTO_HEADROOM_BYTES) <= working_set {
+        return FfnWeightMode::ResidentF16;
+    }
+    eprintln!(
+        "clef metal: resident f16 weights ({:.1} GiB) do not fit this GPU's {:.1} GiB working set; keeping Q4_K feed-forward weights packed (PSIONIC_CLEF_METAL_FFN_WEIGHTS=q4k-on-demand)",
+        resident_f16 as f64 / f64::from(1u32 << 30),
+        working_set as f64 / f64::from(1u32 << 30),
+    );
+    FfnWeightMode::Q4KOnDemand
+}
+
 fn ffn_workspace_bytes(layers: &[DeviceLayer]) -> Result<usize, String> {
     layers
         .iter()
@@ -492,7 +546,10 @@ impl ClefMetalTrunk {
         let metal = ClefMetal::new_with_execution_options(attention, gemm, delta)?;
         let ffn_weights = match std::env::var("PSIONIC_CLEF_METAL_FFN_WEIGHTS") {
             Ok(value) => value.parse::<FfnWeightMode>()?,
-            Err(std::env::VarError::NotPresent) => FfnWeightMode::default(),
+            Err(std::env::VarError::NotPresent) => auto_ffn_weights(
+                resident_f16_bytes(&cpu.model),
+                metal.recommended_working_set_bytes(),
+            ),
             Err(std::env::VarError::NotUnicode(_)) => {
                 return Err(String::from(
                     "PSIONIC_CLEF_METAL_FFN_WEIGHTS must be valid text",
@@ -516,6 +573,15 @@ impl ClefMetalTrunk {
                     "PSIONIC_CLEF_METAL_WEIGHT_UPLOAD must be valid text",
                 ));
             }
+        };
+        // Positional upload needs resident weights; an explicit choice of it
+        // wins over the automatic placement.
+        let ffn_weights = if weight_upload == WeightUploadMode::Positional
+            && std::env::var_os("PSIONIC_CLEF_METAL_FFN_WEIGHTS").is_none()
+        {
+            FfnWeightMode::ResidentF16
+        } else {
+            ffn_weights
         };
         weight_upload.validate(ffn_weights)?;
         q4_gemm()?;
