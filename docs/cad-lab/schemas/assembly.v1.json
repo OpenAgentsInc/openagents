@@ -108,6 +108,106 @@
       "items": {
         "properties": {
           "axis": {
+            "oneOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 3,
+                "minItems": 3,
+                "type": "array"
+              },
+              {
+                "description": "a mate: {face: name} or {edge: [face, face]} of the instance's part, flip?: true",
+                "properties": {
+                  "edge": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 2,
+                    "minItems": 2,
+                    "type": "array"
+                  },
+                  "face": {
+                    "type": "string"
+                  },
+                  "flip": {
+                    "type": "boolean"
+                  }
+                },
+                "type": "object"
+              }
+            ]
+          },
+          "child": {
+            "pattern": "^[a-z][a-z0-9_-]{0,47}(\\.[a-z][a-z0-9_-]{0,47})*$",
+            "type": "string"
+          },
+          "child_axis": {
+            "oneOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 3,
+                "minItems": 3,
+                "type": "array"
+              },
+              {
+                "description": "a mate: {face: name} or {edge: [face, face]} of the instance's part, flip?: true",
+                "properties": {
+                  "edge": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 2,
+                    "minItems": 2,
+                    "type": "array"
+                  },
+                  "face": {
+                    "type": "string"
+                  },
+                  "flip": {
+                    "type": "boolean"
+                  }
+                },
+                "type": "object"
+              }
+            ]
+          },
+          "child_origin": {
+            "oneOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 3,
+                "minItems": 3,
+                "type": "array"
+              },
+              {
+                "description": "a mate: {face: name} or {edge: [face, face]} of the instance's part, flip?: true",
+                "properties": {
+                  "edge": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 2,
+                    "minItems": 2,
+                    "type": "array"
+                  },
+                  "face": {
+                    "type": "string"
+                  },
+                  "flip": {
+                    "type": "boolean"
+                  }
+                },
+                "type": "object"
+              }
+            ]
+          },
+          "child_x_dir": {
             "items": {
               "type": "number"
             },
@@ -115,7 +215,15 @@
             "minItems": 3,
             "type": "array"
           },
-          "child": {
+          "closes": {
+            "description": "closes a loop: holds parent and child (both already placed) together instead of placing the child; types fastened, revolute, slider, cylindrical, planar, spherical, parallel, or gear (a coupling: driven = ratio × driver)",
+            "type": "boolean"
+          },
+          "drive": {
+            "description": "this joint keeps its value and the other joints of its loops follow",
+            "type": "boolean"
+          },
+          "driven": {
             "pattern": "^[a-z][a-z0-9_-]{0,47}(\\.[a-z][a-z0-9_-]{0,47})*$",
             "type": "string"
           },
@@ -139,12 +247,36 @@
             "type": "array"
           },
           "origin": {
-            "items": {
-              "type": "number"
-            },
-            "maxItems": 3,
-            "minItems": 3,
-            "type": "array"
+            "oneOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 3,
+                "minItems": 3,
+                "type": "array"
+              },
+              {
+                "description": "a mate: {face: name} or {edge: [face, face]} of the instance's part, flip?: true",
+                "properties": {
+                  "edge": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 2,
+                    "minItems": 2,
+                    "type": "array"
+                  },
+                  "face": {
+                    "type": "string"
+                  },
+                  "flip": {
+                    "type": "boolean"
+                  }
+                },
+                "type": "object"
+              }
+            ]
           },
           "parent": {
             "pattern": "^[a-z][a-z0-9_-]{0,47}(\\.[a-z][a-z0-9_-]{0,47})*$",
@@ -162,7 +294,8 @@
               "cylindrical",
               "planar",
               "spherical",
-              "gear"
+              "gear",
+              "parallel"
             ]
           },
           "value": {
@@ -182,8 +315,7 @@
         },
         "required": [
           "id",
-          "type",
-          "child"
+          "type"
         ],
         "type": "object"
       },

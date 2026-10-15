@@ -96,7 +96,38 @@ Z up.
     degrees about `origin`, X then Y then Z); `gear` (no value: turns about
     its own `axis` by `ratio` times its `driver` joint's angle, negative for
     meshing gears, or `ratio` degrees per mm of a slider driver, a rack and
-    pinion). Gears may drive gears; a loop is refused.
+    pinion). Gears may drive gears; a loop is refused. A joint's `origin`
+    and `axis` may be a **mate** instead of numbers: `{"face":
+    "base:+z"}` (a flat face's centre and normal; a round face's axis and
+    the point on it nearest the face's centre) or `{"edge": ["base:+z",
+    "base:+x"]}` (a circle's centre and normal, a straight edge's middle and
+    direction), on the parent's part, `"flip": true` to turn the direction
+    round. They are worked out from the part's named faces on every build
+    (the frames are kept with the built part), so a mate follows its face
+    through edits.
+  - **Mechanisms (loops):** a joint with `"closes": true` places nothing;
+    it holds two instances the tree already places together, closing a
+    loop (a four-bar's last pin, a rocker-bogie pinned at both ends):
+    `origin`/`axis`/`x_dir` in the parent's frame (no `parent`: fastened to
+    the assembly's origin), `child_origin`/`child_axis`/`child_x_dir` in the
+    child's (mates allowed). Its type says what it holds: `fastened`,
+    `revolute`, `slider`, `cylindrical`, `planar`, `spherical`, or
+    `parallel` (axes only); `{"type": "gear", "closes": true, "driver":
+    "a", "driven": "b", "ratio": 2}` couples two joints. The solver
+    (`crates/cad/src/solve.rs`, #11646) takes the values of the joints
+    around each loop as unknowns and runs damped Newton steps
+    (Levenberg–Marquardt) from the values written, inside each joint's
+    limits, so a mechanism keeps the branch it was drawn in; a joint with
+    `"drive": true` keeps its value and the rest follow. The report's
+    `solver` gives each loop's joints, its residual (under 10⁻⁹ in the
+    four-bar test), `mobility` (a four-bar's is 1), `dof` (left once the
+    driven joints are held), and `redundant` equations (a planar linkage
+    written in 3D repeats three). A loop that can't close (a link too
+    short, a joint at its limit, more joints driven than it can take) is
+    refused with the reason, never forced. `cad_assemble drive` sets one
+    joint and saves where the others went; `cad_motion` moves a joint
+    through a range and says where a limit or a dead point stops it
+    (ClassCAD's `moveUnderConstraints`).
   - **Subassemblies:** an instance with `assembly: "bogie"` instead of a
     `part` places a copy of that template. It becomes a group (a frame with
     no solid) and the template's instances, joints and contacts are copied
@@ -175,13 +206,31 @@ nothing is saved:
 1. **The document:** every field, id, reference, joint value and limit, and
    material is valid (`cad::doc::check_assembly`).
 2. **The rebuild:** every feature of every part replays without an error
-   (a missed edge pick, a profile that doesn't close, a boolean that fails).
+   (a missed edge pick, a profile that doesn't close, a boolean that fails),
+   and every loop of joints closes (see Mechanisms below).
 3. **Closed solids:** every solid's shells close and it has volume.
 4. **No interference:** no two instances overlap by more than 1 mm³ unless
-   they are declared contacts or a joint joins them. Overlap is measured on
-   the solids' triangles by sampling the box they share (28³ points), in
-   parallel; the kernel's exact intersection took minutes on touching
-   curved faces, so it isn't used for this.
+   they are declared contacts or a joint joins them. The overlap volume is
+   exact on the solids' triangles (`crates/cad/src/clash.rs`, #11648): the
+   volume inside both is a third of the flux of `x − x0` through the part
+   of each surface inside the other, so each triangle adds its height
+   times its area inside the other solid; triangles nobody crosses take one
+   point-in-solid test, crossed ones the area Green's theorem gives from
+   the cut segments and their own edges' inside pieces, and both meshes'
+   triangles sit in bounding-volume hierarchies. A 0.2 mm slab the old
+   28³ sampler stepped over is caught to the cubic millimetre. Faces
+   resting on each other are **touching**, not interference, and the
+   report lists them (`checks.overlap_check.touching`). Pairs of
+   flat-faced solids that do overlap are measured again by the kernel's
+   B-rep intersection (exact, and quick without curved faces, where it is
+   slow). Each pair's result is remembered by its two meshes' fingerprints
+   while the Lab runs, so an edit measures only the pairs it moved or
+   changed: on the rover (35 instances, 53 pairs whose boxes meet) the
+   whole check takes 10 ms in parallel (the old sampler took 165 ms on 40
+   pairs), the same check again 1 ms, and moving the sample cassette 1 mm
+   re-measures its 13 pairs in 7 ms (`interference_time`, release build).
+   Curved faces are measured on their triangles, which stand off the true
+   surface by at most the display tolerance.
 5. **Mass properties** for every instance and the whole assembly: volume,
    mass from the material's density (in kg and g, six significant digits,
    so a 30 g toy keeps its inertia), centre of mass, and the inertia tensor
@@ -209,7 +258,8 @@ message (workspace rule: no keyword routing).
 | `cad_add_feature(doc, part, features, after?)` | More of a part's history |
 | `cad_edit_feature(doc, part, feature, params? / op? / suppressed? / remove?)` | Change one feature; later ones rebuild from it |
 | `cad_set_part(doc, part, title? / material? / color? / finish? / remove?)` | A part's properties, or remove it and its instances |
-| `cad_assemble(doc, instances?, joints?, contacts?, templates?, remove?)` | Place, move or remove instances of parts or subassemblies; add or move joints; define subassembly templates; declare contacts |
+| `cad_assemble(doc, instances?, joints?, contacts?, templates?, remove?, drive?)` | Place, move or remove instances of parts or subassemblies; add or move joints (loops and mates too); define subassembly templates; declare contacts; drive one joint of a mechanism (`{"joint": "crank", "value": 45}`) with the others following |
+| `cad_motion(doc, joint, from?, to?, steps?)` | Move a joint through a range with every loop closed at each step; where each joint goes and what stops it; nothing saved |
 | `cad_from_json(doc, document)` | A whole document at once (assembly from JSON), templates copied from other documents' versions |
 | `cad_check(doc, version?)` | Rebuild and check a version again |
 | `cad_versions(doc)` | Each version's summary, author, mass and parts |

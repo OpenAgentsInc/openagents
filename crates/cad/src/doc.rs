@@ -309,6 +309,130 @@ fn vec3(v: &Value) -> Option<[f64; 3]> {
     Some(out)
 }
 
+/// A mate: a frame taken from a named face or edge of the instance's part
+/// instead of numbers, `{"face": "pin:side"}` or `{"edge": ["body:top",
+/// "body:side:l1"]}` (the edge between two faces), with `"flip": true` to
+/// turn the direction round. As an origin it is the face's centre (a
+/// cylinder's: the point of its axis nearest the centre) or the edge's
+/// (a circle's centre, a straight edge's middle); as an axis, the face's
+/// normal (a cylinder's axis) or the edge's (a circle's normal, a straight
+/// edge's direction).
+#[must_use]
+pub fn mate(v: &Value) -> bool {
+    v.is_object()
+        && (v["face"].is_string()
+            || v["edge"]
+                .as_array()
+                .is_some_and(|e| e.len() == 2 && e.iter().all(Value::is_string)))
+}
+
+/// A point or direction: three numbers, or a mate.
+fn spot(v: &Value) -> bool {
+    vec3(v).is_some() || mate(v)
+}
+
+/// What's wrong with a joint that closes a loop (see [`crate::solve`]).
+fn closing_problems(
+    joint: &Value,
+    instances: &BTreeMap<String, Option<String>>,
+    doc: &Value,
+) -> Vec<String> {
+    let mut out = Vec::new();
+    let id = joint["id"].as_str().unwrap_or_default();
+    let kind = joint["type"].as_str().unwrap_or_default();
+    if !crate::solve::CLOSURES.contains(&kind) {
+        return vec![format!(
+            "Joint {id} closes a loop, so its type is one of: {}.",
+            crate::solve::CLOSURES.join(", ")
+        )];
+    }
+    for key in ["value", "limits", "drive"] {
+        if !joint[key].is_null() {
+            out.push(format!(
+                "Joint {id} closes a loop: it holds two instances together and takes no {key}; give values to the joints around the loop."
+            ));
+        }
+    }
+    if kind == "gear" {
+        let tree: BTreeMap<&str, &Value> = doc["joints"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|j| !crate::solve::closes(j))
+            .filter_map(|j| Some((j["id"].as_str()?, j)))
+            .collect();
+        for key in ["driver", "driven"] {
+            let named = joint[key].as_str().unwrap_or_default();
+            match tree.get(named).and_then(|j| j["type"].as_str()) {
+                Some("revolute" | "slider" | "cylindrical") => {}
+                Some(other) => out.push(format!(
+                    "Joint {id}'s {key} {named} is {other}; a gear coupling joins revolute, cylindrical or slider joints."
+                )),
+                None => out.push(format!(
+                    "Joint {id} (a gear coupling) needs a {key}: the id of a revolute, cylindrical or slider joint."
+                )),
+            }
+        }
+        if joint["driver"] == joint["driven"] {
+            out.push(format!("Joint {id} couples a joint to itself."));
+        }
+        if !joint["ratio"]
+            .as_f64()
+            .is_some_and(|r| r.is_finite() && r != 0.0)
+        {
+            out.push(format!(
+                "Joint {id} (gear) needs a ratio: how far driven moves per unit of driver."
+            ));
+        }
+        return out;
+    }
+    let child = joint["child"].as_str().unwrap_or_default();
+    if !instances.contains_key(child) {
+        out.push(format!(
+            "Joint {id}'s child \"{child}\" isn't an instance of the assembly."
+        ));
+    }
+    if let Some(parent) = joint["parent"].as_str() {
+        if !instances.contains_key(parent) {
+            out.push(format!(
+                "Joint {id}'s parent \"{parent}\" isn't an instance of the assembly."
+            ));
+        }
+        if parent == child {
+            out.push(format!("Joint {id} joins {child} to itself."));
+        }
+    }
+    let needs_point = kind != "parallel";
+    let needs_axis = kind != "spherical";
+    if needs_point && (!spot(&joint["origin"]) || !spot(&joint["child_origin"])) {
+        out.push(format!(
+            "Joint {id} closes a loop, so it needs origin (in {}'s frame) and child_origin (in {child}'s frame), the points it holds together: three numbers or a face or edge.",
+            joint["parent"].as_str().unwrap_or("the assembly")
+        ));
+    }
+    if needs_axis && !spot(&joint["axis"]) {
+        out.push(format!(
+            "Joint {id} needs an axis in its parent's frame (child_axis in the child's, when it differs)."
+        ));
+    }
+    for key in ["axis", "child_axis", "x_dir", "child_x_dir"] {
+        if !joint[key].is_null() && !spot(&joint[key]) {
+            out.push(format!(
+                "Joint {id}'s {key} must be three numbers or a face or edge."
+            ));
+        }
+        if vec3(&joint[key]).is_some_and(|a| a.iter().map(|x| x * x).sum::<f64>() < 1e-12) {
+            out.push(format!("Joint {id}'s {key} can't be zero."));
+        }
+    }
+    if !joint["child_origin"].is_null() && !spot(&joint["child_origin"]) {
+        out.push(format!(
+            "Joint {id}'s child_origin must be three numbers or a face or edge."
+        ));
+    }
+    out
+}
+
 /// A new empty assembly.
 #[must_use]
 pub fn new_assembly(id: &str, title: &str) -> Value {
@@ -528,7 +652,7 @@ fn expand(
     }
     for joint in template["joints"].as_array().into_iter().flatten() {
         let mut j = joint.clone();
-        for key in ["id", "child", "driver"] {
+        for key in ["id", "child", "driver", "driven"] {
             if let Some(s) = joint[key].as_str() {
                 j[key] = json!(format!("{inner}{s}"));
             }
@@ -1029,6 +1153,20 @@ pub fn check_assembly(doc: &Value) -> Vec<String> {
             ));
         }
         let kind = joint["type"].as_str().unwrap_or_default();
+        if crate::solve::closes(joint) {
+            out.extend(closing_problems(joint, &instances, doc));
+            continue;
+        }
+        if !joint["closes"].is_null() && !joint["closes"].is_boolean() {
+            out.push(format!(
+                "Joint {id}'s closes is true (it closes a loop) or false."
+            ));
+        }
+        if !joint["drive"].is_null() && !joint["drive"].is_boolean() {
+            out.push(format!(
+                "Joint {id}'s drive is true (the loop follows its value) or false."
+            ));
+        }
         let Some((_, values)) = JOINTS.iter().find(|(k, _)| *k == kind) else {
             out.push(format!(
                 "Joint {id}'s type \"{kind}\" isn't one of: {}.",
@@ -1053,14 +1191,19 @@ pub fn check_assembly(doc: &Value) -> Vec<String> {
         if !moved.insert(child.to_owned()) {
             out.push(format!("{child} is the child of two joints."));
         }
+        if joint["drive"] == true && *values == 0 {
+            out.push(format!(
+                "Joint {id} ({kind}) has no value to drive; drive a revolute, slider, cylindrical, planar or spherical joint."
+            ));
+        }
         if kind == "spherical" {
-            if vec3(&joint["origin"]).is_none() {
+            if !spot(&joint["origin"]) {
                 out.push(format!(
                     "Joint {id} needs an origin: the ball's centre, three numbers in its parent's frame."
                 ));
             }
         } else if *values > 0 || kind == "gear" {
-            if vec3(&joint["origin"]).is_none() || vec3(&joint["axis"]).is_none() {
+            if !spot(&joint["origin"]) || !spot(&joint["axis"]) {
                 out.push(format!(
                     "Joint {id} needs an origin and an axis, each three numbers in its parent's frame."
                 ));
@@ -1152,6 +1295,7 @@ fn gear_problems(doc: &Value) -> Vec<String> {
         .as_array()
         .into_iter()
         .flatten()
+        .filter(|j| !crate::solve::closes(j))
         .filter_map(|j| Some((j["id"].as_str()?, j)))
         .collect();
     let mut out = Vec::new();
@@ -1246,6 +1390,8 @@ pub fn triple(v: &Value) -> Option<[f64; 3]> {
 #[must_use]
 pub fn schema() -> Value {
     let vec3 = json!({"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3});
+    let spot_schema = json!({"oneOf": [vec3, {"type": "object", "description": "a mate: {face: name} or {edge: [face, face]} of the instance's part, flip?: true",
+        "properties": {"face": {"type": "string"}, "edge": {"type": "array", "items": {"type": "string"}, "minItems": 2, "maxItems": 2}, "flip": {"type": "boolean"}}}]});
     let id = json!({"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,47}$"});
     let path =
         json!({"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,47}(\\.[a-z][a-z0-9_-]{0,47})*$"});
@@ -1305,16 +1451,20 @@ pub fn schema() -> Value {
                     "pattern": {"type": "object", "description": "copies of this instance (id, id-2, id-3, ...): linear {count, step: [dx,dy,dz], count2?, step2?} or circular {count, axis, origin?, angle? (degrees between copies)}"}}
             }},
             "joints": {"type": "array", "items": {
-                "type": "object", "required": ["id", "type", "child"],
+                "type": "object", "required": ["id", "type"],
                 "properties": {
                     "id": path,
-                    "type": {"enum": JOINTS.map(|(k, _)| k)},
+                    "type": {"enum": JOINTS.map(|(k, _)| k).into_iter().chain(["parallel"]).collect::<Vec<_>>()},
                     "parent": path, "child": path,
-                    "origin": vec3, "axis": vec3, "x_dir": vec3,
+                    "origin": spot_schema, "axis": spot_schema, "x_dir": vec3,
                     "value": {"type": ["number", "array"]},
                     "limits": {"type": "array", "items": {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2}},
                     "ratio": {"type": "number", "description": "gear: turns of the child per turn of the driver"},
-                    "driver": path
+                    "driver": path,
+                    "drive": {"type": "boolean", "description": "this joint keeps its value and the other joints of its loops follow"},
+                    "closes": {"type": "boolean", "description": "closes a loop: holds parent and child (both already placed) together instead of placing the child; types fastened, revolute, slider, cylindrical, planar, spherical, parallel, or gear (a coupling: driven = ratio × driver)"},
+                    "child_origin": spot_schema, "child_axis": spot_schema, "child_x_dir": vec3,
+                    "driven": path
                 }
             }},
             "contacts": {"type": "array", "items": {"type": "array", "items": path, "minItems": 2, "maxItems": 2}}

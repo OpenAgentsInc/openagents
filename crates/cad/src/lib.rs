@@ -18,6 +18,7 @@
 //! [`render`] and [`export`] touch the kernel, so it can be swapped.
 
 pub mod build;
+pub mod clash;
 pub mod doc;
 pub mod dxf;
 pub mod exact;
@@ -27,6 +28,7 @@ pub mod mass;
 pub mod overlap;
 pub mod refs;
 pub mod render;
+pub mod solve;
 pub mod sys;
 pub mod tree;
 pub mod urdf;
@@ -141,6 +143,7 @@ pub fn evaluate_with(document: &Value, cache: &std::path::Path) -> Result<Evalua
             "closed_solids": built.solids.len(),
             "interference": "none beyond declared contacts",
             "contacts": contacts,
+            "overlap_check": built.interference,
         },
         "mass": total.mass().json(),
         "parts": parts,
@@ -156,6 +159,9 @@ pub fn evaluate_with(document: &Value, cache: &std::path::Path) -> Result<Evalua
         "build_ms": started.ms(),
     });
     let mut report = report;
+    if !built.solver.is_null() {
+        report["solver"] = built.solver.clone();
+    }
     // Parts flagged for it: SMLib's exact mass properties must agree.
     let (exact, problems) = exact::cross_check(&built, exact::python().as_deref());
     if !problems.is_empty() {
@@ -902,6 +908,234 @@ mod tests {
             doc::check_assembly(&a)
                 .join(" ")
                 .contains("contains itself")
+        );
+    }
+
+    /// A bar of `length` between its pin holes' centres, 10 wide, 6 thick,
+    /// lying along X from its first pin at the origin, `z` up.
+    fn bar(id: &str, length: f64, z: f64) -> Value {
+        let mut p = doc::new_part(id, id, "Aluminum", None);
+        p["features"] = json!([{"id": "bar", "op": "solid.box", "params": {
+            "length": length + 10.0, "width": 10, "height": 6, "center": [length / 2.0, 0, z + 3.0]}}]);
+        p
+    }
+
+    #[test]
+    fn a_four_bar_of_parts_closes_and_follows_its_driven_crank() {
+        let (a, b, c, d) = (40.0, 120.0, 80.0, 100.0);
+        let mut asm = doc::new_assembly("fourbar", "Four-bar");
+        asm["parts"] = json!({"ground": bar("ground", d, 0.0), "crank": bar("crank", a, 6.0),
+            "coupler": bar("coupler", b, 12.0), "rocker": bar("rocker", c, 6.0)});
+        asm["instances"] = json!([
+            {"id": "ground", "part": "ground"},
+            {"id": "crank", "part": "crank", "parent": "ground"},
+            {"id": "coupler", "part": "coupler", "parent": "crank", "at": [a, 0, 0]},
+            {"id": "rocker", "part": "rocker", "parent": "ground", "at": [d, 0, 0]}
+        ]);
+        asm["joints"] = json!([
+            {"id": "a", "type": "revolute", "parent": "ground", "child": "crank",
+             "origin": [0, 0, 0], "axis": [0, 0, 1], "value": 30, "drive": true, "limits": [[-360, 360]]},
+            {"id": "b", "type": "revolute", "parent": "crank", "child": "coupler",
+             "origin": [a, 0, 0], "axis": [0, 0, 1], "value": 30},
+            {"id": "d", "type": "revolute", "parent": "ground", "child": "rocker",
+             "origin": [d, 0, 0], "axis": [0, 0, 1], "value": 70},
+            {"id": "c", "type": "revolute", "closes": true, "parent": "coupler", "child": "rocker",
+             "origin": [b, 0, 0], "axis": [0, 0, 1], "child_origin": [c, 0, 0]}
+        ]);
+        assert!(
+            doc::check_assembly(&asm).is_empty(),
+            "{:?}",
+            doc::check_assembly(&asm)
+        );
+        let eval = evaluate(&asm).unwrap_or_else(|p| panic!("{p:?}"));
+        let solver = &eval.report["solver"];
+        assert!(solver["residual"].as_f64().unwrap() < 1e-6, "{solver}");
+        assert_eq!(solver["loops"][0]["mobility"], 1, "{solver}");
+        assert_eq!(solver["dof"], 0, "{solver}");
+        // The rocker's middle where the closed-form linkage puts it.
+        let t = 30f64.to_radians();
+        let (bx, by) = (a * t.cos(), a * t.sin());
+        let (dx, dy) = (d - bx, -by);
+        let l = (dx * dx + dy * dy).sqrt();
+        let along = (l * l + b * b - c * c) / (2.0 * l);
+        let h = (b * b - along * along).sqrt();
+        let (cx, cy) = (
+            bx + (along * dx - h * dy) / l,
+            by + (along * dy + h * dx) / l,
+        );
+        let phi = cy.atan2(cx - d);
+        let want = [d + c / 2.0 * phi.cos(), c / 2.0 * phi.sin(), 9.0];
+        assert!(
+            near(com(&eval, "rocker"), want),
+            "{:?} vs {want:?}",
+            com(&eval, "rocker")
+        );
+        // Driving the rocker as well asks too much of a one-degree loop.
+        asm["joints"][2]["drive"] = json!(true);
+        let why = evaluate(&asm).err().unwrap().join(" ");
+        assert!(
+            why.contains("can't close") && why.contains("driven joints"),
+            "{why}"
+        );
+        // A closing joint must say where it holds the child.
+        asm["joints"][2]["drive"] = Value::Null;
+        asm["joints"][3]["child_origin"] = Value::Null;
+        assert!(doc::check_assembly(&asm).join(" ").contains("child_origin"));
+    }
+
+    #[test]
+    fn mates_take_joint_frames_from_named_faces_and_edges() {
+        let mut asm = doc::new_assembly("mates", "Mates");
+        let mut base = doc::new_part("base", "Base", "Aluminum", None);
+        base["features"] = json!([{"id": "base", "op": "solid.box", "params": {"length": 100, "width": 100, "height": 10, "center": [0, 0, 5]}}]);
+        let mut lid = doc::new_part("lid", "Lid", "Aluminum", None);
+        lid["features"] = json!([{"id": "lid", "op": "solid.box", "params": {"length": 100, "width": 100, "height": 4, "center": [0, 0, 2]}}]);
+        let mut post = doc::new_part("post", "Post", "Steel", None);
+        post["features"] = json!([{"id": "post", "op": "solid.cylinder", "params": {"radius": 5, "height": 30, "base": [30, 0, 0]}}]);
+        let mut tab = doc::new_part("tab", "Tab", "Steel", None);
+        tab["features"] = json!([{"id": "tab", "op": "solid.box", "params": {"length": 4, "width": 4, "height": 4, "center": [0, 0, 0]}}]);
+        asm["parts"] = json!({"base": base, "lid": lid, "post": post, "tab": tab});
+        asm["instances"] = json!([
+            {"id": "base", "part": "base"},
+            {"id": "lid", "part": "lid", "parent": "base", "at": [0, 0, 10]},
+            {"id": "post", "part": "post", "at": [0, 200, 0]},
+            {"id": "tab", "part": "tab", "parent": "post", "at": [42, 0, 15]}
+        ]);
+        asm["joints"] = json!([
+            // The lid hinges on the base's top right edge (along Y).
+            {"id": "hinge", "type": "revolute", "parent": "base", "child": "lid",
+             "origin": {"edge": ["base:+z", "base:+x"]}, "axis": {"edge": ["base:+z", "base:+x"]}, "value": 90},
+            // The tab turns about the post's round side.
+            {"id": "swing", "type": "revolute", "parent": "post", "child": "tab",
+             "origin": {"face": "post:side"}, "axis": {"face": "post:side"}, "value": 90}
+        ]);
+        assert!(
+            doc::check_assembly(&asm).is_empty(),
+            "{:?}",
+            doc::check_assembly(&asm)
+        );
+        let eval = evaluate(&asm).unwrap_or_else(|p| panic!("{p:?}"));
+        // About +Y through (50, 0, 10): the lid's centre (0, 0, 12) → (52, 0, 60).
+        assert!(
+            near(com(&eval, "lid"), [52.0, 0.0, 60.0]),
+            "{:?}",
+            com(&eval, "lid")
+        );
+        // A quarter turn about the post's axis (x = 30): (42, 200) → (30, 212).
+        assert!(
+            near(com(&eval, "tab"), [30.0, 212.0, 15.0]),
+            "{:?}",
+            com(&eval, "tab")
+        );
+        // The joint as built has numbers where the mates were.
+        let hinge = &eval.built.assembly["joints"][0];
+        assert!(doc::triple(&hinge["origin"]).is_some(), "{hinge}");
+        asm["joints"][0]["origin"] = json!({"face": "base:nope"});
+        let why = evaluate(&asm).err().unwrap().join(" ");
+        assert!(why.contains("has no face base:nope"), "{why}");
+    }
+
+    #[test]
+    fn a_thin_overlap_is_refused_and_resting_faces_are_contact() {
+        // A 100 mm block, and a bracket whose top plate dips 0.2 mm into it
+        // while its leg runs down beside it: the sampler stepped 3.6 mm
+        // through their shared box and missed the 2000 mm³ slab.
+        let mut asm = doc::new_assembly("sliver", "Sliver");
+        let mut block = doc::new_part("block", "Block", "Steel", None);
+        block["features"] = json!([{"id": "b", "op": "solid.box", "params": {"length": 100, "width": 100, "height": 100, "center": [50, 50, 50]}}]);
+        let mut bracket = doc::new_part("bracket", "Bracket", "Steel", None);
+        bracket["features"] = json!([{"id": "l", "op": "block", "params": {"ops": [
+            {"op": "solid.box", "params": {"length": 111, "width": 100, "height": 10, "center": [55.5, 50, 5]}},
+            {"op": "solid.box", "params": {"length": 10, "width": 100, "height": 100, "center": [106, 50, -50], "operation": "join"}}
+        ]}}]);
+        asm["parts"] = json!({"block": block, "bracket": bracket});
+        asm["instances"] = json!([
+            {"id": "block", "part": "block"},
+            {"id": "bracket", "part": "bracket", "at": [0, 0, 99.8]}
+        ]);
+        let why = evaluate(&asm).err().unwrap().join(" ");
+        assert!(why.contains("overlap by 2000 mm³"), "{why}");
+        // Resting exactly on top: touching, allowed, and said.
+        asm["instances"][1]["at"] = json!([0, 0, 100]);
+        let eval = evaluate(&asm).unwrap_or_else(|p| panic!("{p:?}"));
+        let check = &eval.report["checks"]["overlap_check"];
+        assert_eq!(check["touching"], json!([["block", "bracket"]]), "{check}");
+        // Measured once: the same edit again is remembered.
+        let again = evaluate(&asm).unwrap_or_else(|p| panic!("{p:?}"));
+        let check = &again.report["checks"]["overlap_check"];
+        assert_eq!(check["measured"], 0, "{check}");
+    }
+
+    /// The interference check's time on a real document (the rover):
+    /// `CAD_BENCH_DOC=path/to/doc.json cargo test --release -p cad --lib
+    /// interference_time -- --ignored --nocapture`. Prints the first
+    /// check, the same check again (every pair remembered), an edit that
+    /// moves one instance (only its pairs measured), and the old 28³
+    /// sampler on the same pairs.
+    #[test]
+    #[ignore = "needs CAD_BENCH_DOC"]
+    fn interference_time() {
+        let Some(path) = std::env::var_os("CAD_BENCH_DOC") else {
+            return;
+        };
+        let document: Value =
+            serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+        let mut built = build::build(&document).unwrap_or_else(|p| panic!("{p:?}"));
+        let pairs = |b: &mut Built, label: &str| {
+            let (problems, _) = build::interference(b, &document);
+            println!("{label}: {} problems {problems:?}", b.interference);
+        };
+        pairs(&mut built, "first check");
+        pairs(&mut built, "again");
+        let started = sys::Timer::start();
+        let solids = &built.solids;
+        let mut old = 0;
+        for i in 0..solids.len() {
+            for j in i + 1..solids.len() {
+                if solids[i].instance != solids[j].instance {
+                    let (a, b) = (
+                        overlap::bounds(&solids[i].mesh),
+                        overlap::bounds(&solids[j].mesh),
+                    );
+                    if (0..3).all(|k| a.0[k] < b.1[k] && b.0[k] < a.1[k]) {
+                        let _ = overlap::volume(&solids[i].mesh, &solids[j].mesh);
+                        old += 1;
+                    }
+                }
+            }
+        }
+        println!(
+            "old sampler, one thread: {old} pairs in {} ms",
+            started.ms()
+        );
+        // An edit: one instance moves 1 mm; only the pairs it is in change.
+        let mut moved = document.clone();
+        let assembly = doc::as_assembly(&moved);
+        let pick = std::env::var("CAD_BENCH_MOVE").ok();
+        let last = assembly["instances"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .rev()
+            .find(|i| match &pick {
+                Some(id) => i["id"] == id.as_str(),
+                None => i["part"].is_string() && i["id"].as_str().is_some_and(|s| !s.contains('.')),
+            })
+            .cloned()
+            .unwrap();
+        for i in moved["instances"].as_array_mut().into_iter().flatten() {
+            if i["id"] == last["id"] {
+                let at = doc::triple(&i["at"]).unwrap_or([0.0; 3]);
+                i["at"] = json!([at[0] + 1.0, at[1], at[2]]);
+            }
+        }
+        let started = sys::Timer::start();
+        let mut built = build::build(&moved).unwrap_or_else(|p| panic!("{p:?}"));
+        let build_ms = started.ms();
+        let (problems, _) = build::interference(&mut built, &moved);
+        println!(
+            "edit (moved {} 1 mm): build {build_ms} ms, check {} problems {problems:?}",
+            last["id"], built.interference
         );
     }
 

@@ -321,6 +321,281 @@ pub fn list(s: &mut Session, part: &str) -> Value {
     json!({"solids": solids})
 }
 
+/// Each named face's and edge's frame in the part's own frame, for mates
+/// ([`crate::doc::mate`]): `{"faces": [{name, area, centre, normal?,
+/// axis?}], "edges": [{between, centre, axis?}]}`. A flat face has its
+/// normal; a cylinder-like one (every normal across one direction) its
+/// axis, `centre` then on the axis; a circle or arc edge its centre and
+/// normal, a straight one its middle and direction.
+#[must_use]
+pub fn frames(s: &mut Session, part: &str) -> Value {
+    let features = feature_names(s, part);
+    let state = s.world_state();
+    let mut faces = Vec::new();
+    let mut edges = Vec::new();
+    for b in state
+        .bodies
+        .iter()
+        .filter(|b| !b.body.is_mesh() && s.body_visible(&b.name))
+    {
+        let names: Vec<String> = solidcraft_engine::doc::naming::face_names(b)
+            .iter()
+            .map(|n| translate(n, &features))
+            .collect();
+        let m = b.mesh();
+        // Per face: its triangles' areas, centres and normals.
+        let mut per: Vec<Vec<(f64, [f64; 3], [f64; 3])>> = vec![Vec::new(); names.len()];
+        for (t, f) in m.triangles.iter().zip(&m.tri_face) {
+            let [p, q, r] = t.map(|i| m.positions[i as usize]);
+            let c = (q - p).cross(r - p);
+            let area = c.len() / 2.0;
+            if area <= 1e-12 {
+                continue;
+            }
+            let n = c * (1.0 / c.len());
+            let centre = (p + q + r) / 3.0;
+            if let Some(list) = per.get_mut(*f as usize) {
+                list.push((area, [centre.x, centre.y, centre.z], [n.x, n.y, n.z]));
+            }
+        }
+        for (name, tris) in names.iter().zip(&per) {
+            if let Some(frame) = face_frame(tris) {
+                let mut frame = frame;
+                frame["name"] = json!(name);
+                faces.push(frame);
+            }
+        }
+        for (fs, points) in m.edge_faces.iter().zip(&m.edges) {
+            let between: Vec<&String> = fs.iter().filter_map(|f| names.get(*f as usize)).collect();
+            if let Some(mut frame) = edge_frame(points) {
+                frame["between"] = json!(between);
+                edges.push(frame);
+            }
+        }
+    }
+    json!({"faces": faces, "edges": edges})
+}
+
+fn r4(x: f64) -> f64 {
+    (x * 1e6).round() / 1e6
+}
+
+fn q3(a: [f64; 3]) -> Value {
+    json!([r4(a[0]), r4(a[1]), r4(a[2])])
+}
+
+/// A face's frame from its triangles (area, centre, unit normal).
+fn face_frame(tris: &[(f64, [f64; 3], [f64; 3])]) -> Option<Value> {
+    let total: f64 = tris.iter().map(|t| t.0).sum();
+    if total <= 0.0 {
+        return None;
+    }
+    let mut centre = [0.0; 3];
+    let mut normal = [0.0; 3];
+    let mut m = [[0.0; 3]; 3];
+    for (a, c, n) in tris {
+        for k in 0..3 {
+            centre[k] += a * c[k] / total;
+            normal[k] += a * n[k];
+            for l in 0..3 {
+                m[k][l] += a * n[k] * n[l] / total;
+            }
+        }
+    }
+    let nl = (normal[0].powi(2) + normal[1].powi(2) + normal[2].powi(2)).sqrt();
+    let mut out = json!({"area": r4(total), "centre": q3(centre)});
+    if nl / total > 0.999_99 {
+        out["normal"] = q3(normal.map(|x| x / nl));
+        return Some(out);
+    }
+    // The direction every normal is across: the least eigenvector of
+    // Σ a n nᵀ (power iteration on trace·I − M).
+    let trace = m[0][0] + m[1][1] + m[2][2];
+    let shifted = |v: [f64; 3]| -> [f64; 3] {
+        [0, 1, 2].map(|i| trace * v[i] - (0..3).map(|j| m[i][j] * v[j]).sum::<f64>())
+    };
+    let mut best: Option<([f64; 3], f64)> = None;
+    for start in [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]] {
+        let mut v = start;
+        for _ in 0..200 {
+            let w = shifted(v);
+            let l = (w[0] * w[0] + w[1] * w[1] + w[2] * w[2]).sqrt();
+            if l < 1e-300 {
+                break;
+            }
+            v = w.map(|x| x / l);
+        }
+        let mv: f64 = (0..3)
+            .map(|i| v[i] * (0..3).map(|j| m[i][j] * v[j]).sum::<f64>())
+            .sum();
+        if best.is_none_or(|b| mv < b.1) {
+            best = Some((v, mv));
+        }
+    }
+    let (axis, spread) = best?;
+    if spread > 1e-4 {
+        return Some(out);
+    }
+    // The axis line: the point c with (c − p)·(axis × n) = 0 for every
+    // triangle, nearest the centre along the axis.
+    let mut a = [[0.0; 3]; 3];
+    let mut b = [0.0; 3];
+    for (w, p, n) in tris {
+        let t = [
+            axis[1] * n[2] - axis[2] * n[1],
+            axis[2] * n[0] - axis[0] * n[2],
+            axis[0] * n[1] - axis[1] * n[0],
+        ];
+        let tp = t[0] * p[0] + t[1] * p[1] + t[2] * p[2];
+        for k in 0..3 {
+            b[k] += w * t[k] * tp;
+            for l in 0..3 {
+                a[k][l] += w * t[k] * t[l];
+            }
+        }
+    }
+    let ac = axis[0] * centre[0] + axis[1] * centre[1] + axis[2] * centre[2];
+    for k in 0..3 {
+        b[k] += total * axis[k] * ac;
+        for l in 0..3 {
+            a[k][l] += total * axis[k] * axis[l];
+        }
+    }
+    let point = solve3(a, b)?;
+    out["axis"] = q3(positive(axis));
+    out["centre"] = q3(point);
+    Some(out)
+}
+
+/// An axis or an edge has no way of its own: point its largest component
+/// positive, so the choice is stable through edits (a mate's flip turns it
+/// round).
+fn positive(axis: [f64; 3]) -> [f64; 3] {
+    let k = (0..3)
+        .max_by(|&i, &j| axis[i].abs().total_cmp(&axis[j].abs()))
+        .unwrap_or(2);
+    if axis[k] < 0.0 {
+        axis.map(|x| -x)
+    } else {
+        axis
+    }
+}
+
+/// An edge's frame from its polyline.
+fn edge_frame(points: &[Vec3]) -> Option<Value> {
+    let p: Vec<[f64; 3]> = points.iter().map(|v| [v.x, v.y, v.z]).collect();
+    if p.len() < 2 {
+        return None;
+    }
+    // Newell's normal of the polyline closed back to its start.
+    let mut n = [0.0; 3];
+    for i in 0..p.len() {
+        let (a, b) = (p[i], p[(i + 1) % p.len()]);
+        n[0] += (a[1] - b[1]) * (a[2] + b[2]);
+        n[1] += (a[2] - b[2]) * (a[0] + b[0]);
+        n[2] += (a[0] - b[0]) * (a[1] + b[1]);
+    }
+    let length: f64 = p
+        .windows(2)
+        .map(|w| {
+            (0..3)
+                .map(|k| (w[1][k] - w[0][k]).powi(2))
+                .sum::<f64>()
+                .sqrt()
+        })
+        .sum();
+    let nl = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
+    if p.len() < 3 || nl < 1e-6 * length * length {
+        // Straight: its middle and direction.
+        let (a, b) = (p[0], p[p.len() - 1]);
+        let d = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+        let l = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
+        let mid = halfway(points);
+        let mut out = json!({"centre": q3([mid.x, mid.y, mid.z])});
+        if l > 1e-12 {
+            out["axis"] = q3(positive(d.map(|x| x / l)));
+        }
+        return Some(out);
+    }
+    let n = positive(n.map(|x| x / nl));
+    // A circle in its plane (Kåsa's fit): 2x·cx + 2y·cy + k = x² + y².
+    let u = {
+        let seed = if n[0].abs() < 0.9 {
+            [1.0, 0.0, 0.0]
+        } else {
+            [0.0, 1.0, 0.0]
+        };
+        let d = seed[0] * n[0] + seed[1] * n[1] + seed[2] * n[2];
+        let v = [seed[0] - d * n[0], seed[1] - d * n[1], seed[2] - d * n[2]];
+        let l = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
+        v.map(|x| x / l)
+    };
+    let v = [
+        n[1] * u[2] - n[2] * u[1],
+        n[2] * u[0] - n[0] * u[2],
+        n[0] * u[1] - n[1] * u[0],
+    ];
+    let o = p[0];
+    let flat: Vec<(f64, f64)> = p
+        .iter()
+        .map(|q| {
+            let d = [q[0] - o[0], q[1] - o[1], q[2] - o[2]];
+            (
+                d[0] * u[0] + d[1] * u[1] + d[2] * u[2],
+                d[0] * v[0] + d[1] * v[1] + d[2] * v[2],
+            )
+        })
+        .collect();
+    let mut a = [[0.0; 3]; 3];
+    let mut b = [0.0; 3];
+    for (x, y) in &flat {
+        let row = [2.0 * x, 2.0 * y, 1.0];
+        let rhs = x * x + y * y;
+        for k in 0..3 {
+            b[k] += row[k] * rhs;
+            for l in 0..3 {
+                a[k][l] += row[k] * row[l];
+            }
+        }
+    }
+    let [cx, cy, _] = solve3(a, b)?;
+    let centre = [0, 1, 2].map(|k| o[k] + cx * u[k] + cy * v[k]);
+    Some(json!({"centre": q3(centre), "axis": q3(n)}))
+}
+
+/// Solves a 3×3 system (Cramer's rule); `None` when it is singular.
+fn solve3(a: [[f64; 3]; 3], b: [f64; 3]) -> Option<[f64; 3]> {
+    let det = |m: [[f64; 3]; 3]| {
+        m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1])
+            - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0])
+            + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0])
+    };
+    let d = det(a);
+    let scale = a
+        .iter()
+        .flatten()
+        .fold(0.0f64, |s, x| s.max(x.abs()))
+        .powi(3);
+    if d.abs() <= 1e-12 * scale.max(1e-300) {
+        return None;
+    }
+    let mut out = [0.0; 3];
+    for (k, o) in out.iter_mut().enumerate() {
+        let mut m = a;
+        for r in 0..3 {
+            m[r][k] = b[r];
+        }
+        *o = det(m) / d;
+    }
+    Some(out)
+}
+
+/// Whether a face name answers a mate's reference (as a feature's would).
+#[must_use]
+pub fn names_match(name: &str, reference: &str) -> bool {
+    answers(name, reference)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

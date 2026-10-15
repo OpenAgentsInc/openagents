@@ -295,6 +295,7 @@ impl Lab {
             "cad_render" => self.render(args),
             "cad_from_json" => self.from_json(args),
             "cad_faces" => self.faces(args),
+            "cad_motion" => self.motion(args),
             "cad_solid" => self.solid(args),
             "cad_import_dxf" => self.import_dxf(args),
             "cad_import_step" => self.import_step(args),
@@ -330,7 +331,7 @@ impl Lab {
 
     fn saved(&self, id: &str, n: u64, record: &Value) -> Result<Value, String> {
         let report = &record["report"];
-        Ok(json!({
+        let mut out = json!({
             "saved": true,
             "doc": id,
             "version": n,
@@ -342,7 +343,12 @@ impl Lab {
             "contacts": report["checks"]["contacts"],
             "warnings": report["warnings"],
             "card": self.card(id, n, None)?,
-        }))
+        });
+        // Where the joints of each loop went, and the freedom left.
+        if !report["solver"].is_null() {
+            out["solver"] = report["solver"].clone();
+        }
+        Ok(out)
     }
 
     /// A change to the latest (or named) version, saved as the next one.
@@ -623,13 +629,27 @@ impl Lab {
                 ));
             }
         };
+        let drive = match arg_json(args, "drive")? {
+            None => None,
+            Some(d) => {
+                let joint = d["joint"]
+                    .as_str()
+                    .ok_or("drive is {\"joint\": id, \"value\": number or list}.")?
+                    .to_owned();
+                if !(d["value"].is_number() || d["value"].is_array()) {
+                    return Err(format!("Give the value to drive {joint} to."));
+                }
+                Some((joint, d["value"].clone()))
+            }
+        };
         if instances.is_empty()
             && joints.is_empty()
             && contacts.is_empty()
             && remove.is_empty()
             && templates.is_empty()
+            && drive.is_none()
         {
-            return Err("Give instances, joints, contacts, templates or remove.".into());
+            return Err("Give instances, joints, contacts, templates, drive or remove.".into());
         }
         self.change(args, |document| {
             let mut said = Vec::new();
@@ -702,6 +722,13 @@ impl Lab {
                 remove_instances(document, &remove);
                 said.push(format!("removed {}", remove.join(", ")));
             }
+            if let Some((joint, value)) = drive {
+                cad::solve::drive(document, &joint, &value)?;
+                said.push(format!("drove {joint} to {value}"));
+            }
+            // The joints that follow keep where the solver puts them, so the
+            // next move starts from there.
+            cad::solve::settle(document);
             Ok(format!("Assembly: {}", said.join(", ")))
         })
     }
@@ -1218,6 +1245,48 @@ impl Lab {
         Ok(out)
     }
 
+    /// Moves one joint through a range with the loops solved at each step
+    /// (the others following, joint limits held) and says how far it gets;
+    /// nothing is saved.
+    fn motion(&self, args: &Value) -> Result<Value, String> {
+        let (id, n, document, _) = self.pick(args)?;
+        let joint = arg_str(args, "joint").ok_or("Name the joint to move (joint).")?;
+        let built = cad::build::build_with(&document, &self.root.join(".parts"))
+            .map_err(|p| p.join(" "))?;
+        let found = built.assembly["joints"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find(|j| j["id"] == joint && !cad::solve::closes(j))
+            .ok_or_else(|| format!("There's no joint {joint} to move."))?;
+        let number = |key: &str| -> Result<Option<f64>, String> {
+            match &args[key] {
+                Value::Null => Ok(None),
+                Value::Number(x) => Ok(x.as_f64()),
+                Value::String(s) if s.trim().is_empty() => Ok(None),
+                Value::String(s) => s
+                    .trim()
+                    .parse()
+                    .map(Some)
+                    .map_err(|_| format!("{key} is a number (got {s}).")),
+                other => Err(format!("{key} is a number (got {other}).")),
+            }
+        };
+        let current = doc::joint_values(found).first().copied().unwrap_or(0.0);
+        let from = number("from")?.unwrap_or(current);
+        let to = match number("to")? {
+            Some(t) => t,
+            None => found["limits"][0][1]
+                .as_f64()
+                .ok_or_else(|| format!("Say where to move {joint} to (to); it has no limits."))?,
+        };
+        let steps = arg_u64(args, "steps").unwrap_or(36).clamp(1, 720) as usize;
+        let mut out = cad::solve::sweep(&built.assembly, joint, from, to, steps);
+        out["doc"] = json!(id);
+        out["version"] = json!(n);
+        Ok(out)
+    }
+
     /// Part and subassembly templates that point at another document's
     /// version, copied in.
     fn resolve_templates(&self, document: &mut Value) -> Result<(), String> {
@@ -1571,11 +1640,13 @@ fn takes(name: &str) -> &'static [&'static str] {
             "contacts",
             "templates",
             "remove",
+            "drive",
             "summary",
             "author",
         ],
         "cad_from_json" => &["doc", "document", "summary", "author"],
         "cad_faces" => &["doc", "version", "part", "after"],
+        "cad_motion" => &["doc", "version", "joint", "from", "to", "steps"],
         "cad_solid" => &["ops", "sketches", "material", "formats"],
         "cad_import_dxf" => &[
             "doc", "part", "feature", "dxf", "plane", "offset", "scale", "at", "after", "summary",
@@ -1677,10 +1748,11 @@ pub fn tools() -> Value {
          "parameters": {"type": "object", "required": ["doc", "summary"], "properties": {
             "doc": doc,
             "instances": {"type": "string", "description": "a JSON array: [{\"id\":\"wheel_lf\",\"part\":\"wheel\",\"parent\":\"bogie_l\",\"at\":[x,y,z],\"rotate\":[rx,ry,rz]}]; {\"assembly\":\"bogie\"} instead of part places a copy of a subassembly template, whose instances are then named by path (bogie_l.wheel); \"pattern\":{\"count\":6,\"step\":[x,y,z]} or {\"count\":6,\"axis\":[0,0,1],\"origin\":[x,y,z]} makes copies id-2, id-3, ... in a row, grid (count2, step2) or ring"},
-            "joints": {"type": "string", "description": "a JSON array: [{\"id\":\"lid_hinge\",\"type\":\"revolute\",\"parent\":\"bay\",\"child\":\"lid\",\"origin\":[x,y,z],\"axis\":[x,y,z],\"value\":0,\"limits\":[[0,110]]}] (origin and axis in the parent's frame; parent must be the child's parent instance). slider: value mm along axis; cylindrical: [deg, mm]; planar: [u mm, v mm, deg] in the plane normal to axis (u along x_dir); spherical: [rx, ry, rz] deg about origin (no axis); gear: no value, follows driver (a joint id) times ratio (negative for meshing gears; degrees per mm when the driver is a slider)"},
+            "joints": {"type": "string", "description": "a JSON array: [{\"id\":\"lid_hinge\",\"type\":\"revolute\",\"parent\":\"bay\",\"child\":\"lid\",\"origin\":[x,y,z],\"axis\":[x,y,z],\"value\":0,\"limits\":[[0,110]]}] (origin and axis in the parent's frame; parent must be the child's parent instance). slider: value mm along axis; cylindrical: [deg, mm]; planar: [u mm, v mm, deg] in the plane normal to axis (u along x_dir); spherical: [rx, ry, rz] deg about origin (no axis); gear: no value, follows driver (a joint id) times ratio (negative for meshing gears; degrees per mm when the driver is a slider). Loops: {\"id\":\"c\",\"type\":\"revolute\",\"closes\":true,\"parent\":\"coupler\",\"child\":\"rocker\",\"origin\":[x,y,z],\"axis\":[0,0,1],\"child_origin\":[x,y,z]} holds two instances the tree already places together (a four-bar's last pin; types fastened, revolute, slider, cylindrical, planar, spherical, parallel; no parent = the assembly's origin), and {\"type\":\"gear\",\"closes\":true,\"driver\":\"a\",\"driven\":\"b\",\"ratio\":2} couples two joints; the joints around a loop then follow, and \"drive\":true on one holds it. Mates: origin, axis, child_origin and child_axis may name a face or edge of that instance's part instead of numbers: {\"face\":\"base:+z\"} (its centre and normal, a round face's axis) or {\"edge\":[\"base:+z\",\"base:+x\"]}, \"flip\":true to turn the direction round"},
             "templates": {"type": "string", "description": "a JSON object of subassembly templates by id: {\"bogie\":{\"instances\":[...],\"joints\":[...],\"contacts\":[...]}} (their instances place this document's parts), or {\"bogie\":{\"from\":{\"doc\":\"bogie\",\"version\":2}}} to copy another document in; null removes one"},
             "contacts": {"type": "string", "description": "a JSON array of instance pairs meant to touch: [[\"a\",\"b\"]]"},
             "remove": {"type": "string", "description": "a JSON array of instance ids to remove"},
+            "drive": {"type": "string", "description": "a JSON object {\"joint\":\"crank\",\"value\":45}: set that joint, hold it, and have the other joints of its loops follow (the report's solver says where each went, the degrees of freedom left, and any loop that can't close)"},
             "summary": summary}}},
         {"name": "cad_from_json", "description": "Make or replace a whole CAD document from JSON in one step: an assembly.v1 with its part templates (parts), subassembly templates (assemblies), instances, joints and contacts, or a single part.v1. A part or subassembly template may be {\"from\":{\"doc\":\"wheel\",\"version\":3,\"part\":\"wheel\"}} to copy it from another document's version. Checked like every edit and saved as the next version.",
          "parameters": {"type": "object", "required": ["doc", "document", "summary"], "properties": {
@@ -1690,6 +1762,12 @@ pub fn tools() -> Value {
         {"name": "cad_faces", "description": "A part's faces and edges by the names features use to pick them (stable through edits, unlike points): faces like body:top, body:start, body:side:l3 (the side swept from sketch curve l3), boss:+z, round:blend:...; edges as the two faces they join. Use it before a fillet, chamfer, shell or draft to name what it works on.",
          "parameters": {"type": "object", "required": ["doc", "part"], "properties": {"doc": doc, "version": version, "part": part,
             "after": {"type": "string", "description": "list them as they stand after this feature (default: after the whole history)"}}}},
+        {"name": "cad_motion", "description": "Move a mechanism: turn or slide one joint through a range with every loop closed at each step (the other joints follow, within their limits) and see how far it gets and where each joint goes; it stops where a limit or a loop that can't close stops it. Nothing is saved; cad_assemble with drive sets a position.",
+         "parameters": {"type": "object", "required": ["doc", "joint"], "properties": {"doc": doc, "version": version,
+            "joint": {"type": "string", "description": "the joint to move, e.g. crank"},
+            "from": {"type": "number", "description": "where to start (default: its value now)"},
+            "to": {"type": "number", "description": "where to end (default: its upper limit)"},
+            "steps": {"type": "integer", "description": "how many steps (default 36)"}}}},
         {"name": "cad_solid", "description": "Direct solid modelling with no document: run direct operations (boxes, cylinders, booleans, moves, extrudes of the sketches given, ...) and get the solid's mass, size and checks back, optionally as files. Nothing is saved as a version. A step may repeat: {\"op\":\"solid.cylinder\",\"repeat\":{\"var\":\"i\",\"from\":0,\"to\":7},\"params\":{\"base\":[\"{i} * 12\",0,0],...}}.",
          "parameters": {"type": "object", "required": ["ops"], "properties": {
             "ops": {"type": "string", "description": "a JSON array of direct steps: [{\"op\":\"solid.box\",\"params\":{...}}, ...]"},
@@ -2033,6 +2111,78 @@ mod tests {
         );
         assert!(
             bad["error"].as_str().unwrap().contains("isn't a STEP file"),
+            "{bad}"
+        );
+    }
+
+    #[test]
+    fn a_linkage_is_driven_and_moved_through_its_range() {
+        let (_dir, lab) = lab();
+        let bar = |id: &str, length: f64, z: f64| {
+            json!({"kind": "part.v1", "id": id, "material": "Aluminum", "features": [{"id": "bar", "op": "solid.box",
+                "params": {"length": length + 10.0, "width": 10, "height": 6, "center": [length / 2.0, 0, z + 3.0]}}]})
+        };
+        let document = json!({
+            "parts": {"ground": bar("ground", 100.0, 0.0), "crank": bar("crank", 40.0, 6.0),
+                      "coupler": bar("coupler", 120.0, 12.0), "rocker": bar("rocker", 80.0, 6.0)},
+            "instances": [
+                {"id": "ground", "part": "ground"},
+                {"id": "crank", "part": "crank", "parent": "ground"},
+                {"id": "coupler", "part": "coupler", "parent": "crank", "at": [40, 0, 0]},
+                {"id": "rocker", "part": "rocker", "parent": "ground", "at": [100, 0, 0]}
+            ],
+            "joints": [
+                {"id": "crank", "type": "revolute", "parent": "ground", "child": "crank", "origin": [0, 0, 0], "axis": [0, 0, 1], "value": 0},
+                {"id": "pin", "type": "revolute", "parent": "crank", "child": "coupler", "origin": [40, 0, 0], "axis": [0, 0, 1], "value": 36},
+                {"id": "rock", "type": "revolute", "parent": "ground", "child": "rocker", "origin": [100, 0, 0], "axis": [0, 0, 1], "value": 63, "limits": [[0, 120]]},
+                {"id": "tip", "type": "revolute", "closes": true, "parent": "coupler", "child": "rocker",
+                 "origin": [120, 0, 0], "axis": [0, 0, 1], "child_origin": [80, 0, 0]}
+            ]
+        });
+        let made = lab.run(
+            "cad_from_json",
+            &json!({"doc": "linkage", "document": document, "summary": "A four-bar"}),
+        );
+        assert_eq!(made["saved"], true, "{made}");
+        assert_eq!(made["solver"]["loops"][0]["mobility"], 1, "{made}");
+        // Drive the crank to 60°: the rocker follows, and is saved there.
+        let driven = lab.run("cad_assemble", &json!({"doc": "linkage", "drive": "{\"joint\":\"crank\",\"value\":60}", "summary": "Crank to 60°"}));
+        assert_eq!(driven["saved"], true, "{driven}");
+        let rock = driven["solver"]["loops"][0]["joints"]["rock"]
+            .as_f64()
+            .unwrap();
+        let opened = lab.run("cad_open", &json!({"doc": "linkage"}));
+        let joints = &opened["document"]["joints"];
+        assert_eq!(joints[0]["drive"], true);
+        assert!(
+            (joints[2]["value"].as_f64().unwrap() - rock).abs() < 1e-9,
+            "{joints}"
+        );
+        // Moving the crank round: the rocker's limit of 120° stops it.
+        let moved = lab.run(
+            "cad_motion",
+            &json!({"doc": "linkage", "joint": "crank", "from": 60, "to": 400, "steps": 34}),
+        );
+        let reached = moved["reached"].as_f64().unwrap_or(f64::NAN);
+        assert!(reached > 60.0 && reached < 400.0, "{moved}");
+        assert!(
+            moved["stopped"]["why"]
+                .as_str()
+                .unwrap()
+                .contains("rock is at its limit"),
+            "{moved}"
+        );
+        // Driving the rocker where the linkage can't reach is refused, not forced.
+        let bad = lab.run(
+            "cad_assemble",
+            &json!({"doc": "linkage",
+            "drive": "{\"joint\":\"rock\",\"value\":10}", "summary": "x"}),
+        );
+        assert!(
+            bad["error"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("can't close"),
             "{bad}"
         );
     }

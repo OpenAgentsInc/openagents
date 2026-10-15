@@ -57,6 +57,11 @@ pub struct Built {
     pub cache: PathBuf,
     /// Each placed part's exact solids, as the STEP file kept for it.
     pub part_steps: BTreeMap<String, PathBuf>,
+    /// The loops the solver closed ([`crate::solve`]); null without any.
+    pub solver: Value,
+    /// How the interference check went: pairs, how many were measured
+    /// afresh, the time, the touching pairs ([`interference`]).
+    pub interference: Value,
 }
 
 fn run(s: &mut Session, op: &str, params: &Value) -> Result<Value, String> {
@@ -411,8 +416,10 @@ pub fn placements(assembly: &Value) -> BTreeMap<String, Xf> {
         .flatten()
         .collect();
     let all_joints: Vec<Value> = assembly["joints"].as_array().cloned().unwrap_or_default();
+    // A joint that closes a loop places nothing; the solver holds it.
     let joints: BTreeMap<String, &Value> = all_joints
         .iter()
+        .filter(|j| !crate::solve::closes(j))
         .filter_map(|j| Some((j["child"].as_str()?.to_owned(), j)))
         .collect();
     let mut out: BTreeMap<String, Xf> = BTreeMap::new();
@@ -635,8 +642,9 @@ pub const KERNEL: &str = "solidcraft@229de148";
 
 /// What a cached part records, versioned: 2 added the colours pattern and
 /// mirror copies take from their sources; 3 matches congruent sources by
-/// the kernel's order; 4 records each sketch's degrees of freedom.
-const BUILD: u32 = 4;
+/// the kernel's order; 4 records each sketch's degrees of freedom; 6 the
+/// frames of its named faces and edges, for mates.
+const BUILD: u32 = 6;
 
 /// Builds one part from its history, or takes it from the cache.
 fn build_part(
@@ -736,7 +744,9 @@ fn build_part(
     )
     .map_err(|e| vec![format!("Part {key} couldn't be written: {e}")])?;
     crate::sys::rename(&temporary, &step).map_err(|e| vec![e])?;
-    let meta = json!({"bodies": bodies, "warnings": warnings, "sketches": sketches});
+    let frames = crate::refs::frames(&mut s, key);
+    let meta =
+        json!({"bodies": bodies, "warnings": warnings, "sketches": sketches, "frames": frames});
     let _ = crate::sys::write(&meta_path, meta.to_string().as_bytes());
     Ok(PartBuild { step, meta })
 }
@@ -1021,7 +1031,20 @@ pub fn build_with(document: &Value, cache: &Path) -> Result<Built, Vec<String>> 
         };
         occurrences.insert(id.to_owned(), occurrence);
     }
-    let placements = placements(&assembly);
+    // Mates named on faces and edges become numbers, then the solver closes
+    // the loops and moves the joints that follow a driven one.
+    let frames: BTreeMap<String, &Value> = built_parts
+        .iter()
+        .map(|(key, _, b)| (key.clone(), &b.meta["frames"]))
+        .collect();
+    let mut kinematic = assembly.clone();
+    resolve_mates(&mut kinematic, &frames)?;
+    let solved = crate::solve::solve(&kinematic);
+    if !solved.problems.is_empty() {
+        return Err(solved.problems);
+    }
+    kinematic["joints"] = Value::Array(solved.joints);
+    let placements = placements(&kinematic);
     for (id, occurrence) in &occurrences {
         let xf = placements[id];
         let (axis, angle) = xf.rotation_axis_angle();
@@ -1095,9 +1118,154 @@ pub fn build_with(document: &Value, cache: &Path) -> Result<Built, Vec<String>> 
             .iter()
             .map(|(key, _, b)| (key.clone(), b.step.clone()))
             .collect(),
-        assembly,
+        assembly: kinematic,
         cache: cache.to_path_buf(),
+        solver: solved.report,
+        interference: Value::Null,
     })
+}
+
+/// A mate's frame on `part`'s faces and edges: its point (`point`) or its
+/// direction.
+fn mate_frame(
+    reference: &Value,
+    part: &str,
+    frames: &Value,
+    point: bool,
+) -> Result<[f64; 3], String> {
+    let pick = |list: &str, matches: &dyn Fn(&Value) -> bool| -> Option<Value> {
+        frames[list]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|f| matches(f))
+            .max_by(|a, b| {
+                a["area"]
+                    .as_f64()
+                    .unwrap_or(0.0)
+                    .total_cmp(&b["area"].as_f64().unwrap_or(0.0))
+            })
+            .cloned()
+    };
+    let found = if let Some(face) = reference["face"].as_str() {
+        pick("faces", &|f| {
+            f["name"]
+                .as_str()
+                .is_some_and(|n| crate::refs::names_match(n, face))
+        })
+        .ok_or_else(|| {
+            let names: Vec<&str> = frames["faces"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|f| f["name"].as_str())
+                .take(16)
+                .collect();
+            format!(
+                "Part {part} has no face {face}; its faces include: {}.",
+                names.join(", ")
+            )
+        })?
+    } else {
+        let want: Vec<&str> = reference["edge"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .collect();
+        pick("edges", &|e| {
+            let names: Vec<&str> = e["between"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+                .collect();
+            names.len() == 2
+                && want.len() == 2
+                && ((names_ok(names[0], want[0]) && names_ok(names[1], want[1]))
+                    || (names_ok(names[0], want[1]) && names_ok(names[1], want[0])))
+        })
+        .ok_or_else(|| {
+            format!(
+                "Part {part} has no edge between {}; cad_faces lists its edges.",
+                want.join(" and ")
+            )
+        })?
+    };
+    let key = if point {
+        "centre"
+    } else if found["normal"].is_array() {
+        "normal"
+    } else {
+        "axis"
+    };
+    let mut v = doc::triple(&found[key]).ok_or_else(|| {
+        format!(
+            "{} of part {part} has no single direction (it is neither flat, round about one axis, nor a circle or a straight edge).",
+            reference
+        )
+    })?;
+    if !point && reference["flip"] == true {
+        v = v.map(|x| -x);
+    }
+    Ok(v)
+}
+
+fn names_ok(name: &str, reference: &str) -> bool {
+    reference == "*" || crate::refs::names_match(name, reference)
+}
+
+/// Every joint frame named by a mate (a face or an edge of the parent's
+/// part for `origin` and `axis`, of the child's for `child_origin` and
+/// `child_axis`), turned into numbers in that instance's frame.
+fn resolve_mates(
+    assembly: &mut Value,
+    frames: &BTreeMap<String, &Value>,
+) -> Result<(), Vec<String>> {
+    let part_of: BTreeMap<String, String> = assembly["instances"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|i| Some((i["id"].as_str()?.to_owned(), i["part"].as_str()?.to_owned())))
+        .collect();
+    let mut problems = Vec::new();
+    for joint in assembly["joints"].as_array_mut().into_iter().flatten() {
+        let id = joint["id"].as_str().unwrap_or_default().to_owned();
+        for (key, owner, point) in [
+            ("origin", "parent", true),
+            ("axis", "parent", false),
+            ("child_origin", "child", true),
+            ("child_axis", "child", false),
+        ] {
+            if !doc::mate(&joint[key]) {
+                continue;
+            }
+            let Some(instance) = joint[owner].as_str().map(str::to_owned) else {
+                problems.push(format!(
+                    "Joint {id}'s {key} names a face, but the joint has no {owner} to find it on."
+                ));
+                continue;
+            };
+            let Some(part) = part_of.get(&instance) else {
+                problems.push(format!(
+                    "Joint {id}'s {key} names a face of {instance}, which places no part (a subassembly's frame has no faces)."
+                ));
+                continue;
+            };
+            let Some(frame) = frames.get(part) else {
+                continue;
+            };
+            match mate_frame(&joint[key], part, frame, point) {
+                Ok(v) => joint[key] = json!(v),
+                Err(e) => problems.push(format!("Joint {id}'s {key}: {e}")),
+            }
+        }
+    }
+    if problems.is_empty() {
+        Ok(())
+    } else {
+        Err(problems)
+    }
 }
 
 /// The check every edit must pass: each solid closed with volume, and no
@@ -1164,14 +1332,18 @@ pub fn interference(built: &mut Built, assembly: &Value) -> (Vec<String>, Vec<Va
             })
     };
     let mut contacts = Vec::new();
-    // Every pair of solids of different instances whose boxes meet,
-    // measured on their triangles (the kernel's exact intersection takes
-    // minutes on touching curved faces), side by side.
+    let started = crate::sys::Timer::start();
+    // Every pair of solids of different instances whose boxes meet (or come
+    // within touching distance), measured exactly on their triangles
+    // ([`crate::clash`]), side by side. A pair measured before with the same
+    // triangles in the same places is remembered, so an edit measures only
+    // the pairs it moved or changed.
     let boxes: Vec<([f64; 3], [f64; 3])> = built
         .solids
         .iter()
         .map(|s| crate::overlap::bounds(&s.mesh))
         .collect();
+    let gap = crate::clash::TOUCH_MM;
     let mut pairs = Vec::new();
     for i in 0..built.solids.len() {
         for j in i + 1..built.solids.len() {
@@ -1179,42 +1351,108 @@ pub fn interference(built: &mut Built, assembly: &Value) -> (Vec<String>, Vec<Va
                 continue;
             }
             let (a, b) = (boxes[i], boxes[j]);
-            if (0..3).all(|k| a.0[k] < b.1[k] && b.0[k] < a.1[k]) {
+            if (0..3).all(|k| a.0[k] <= b.1[k] + gap && b.0[k] <= a.1[k] + gap) {
                 pairs.push((i, j));
             }
         }
     }
     let solids = &built.solids;
-    let measured: Vec<(usize, usize, f64)> =
-        crate::sys::parallel(&pairs, crate::sys::cores(), |&(i, j)| {
-            (
-                i,
-                j,
-                crate::overlap::volume(&solids[i].mesh, &solids[j].mesh),
-            )
-        })
-        .into_iter()
-        .flatten()
-        .collect();
-    for (i, j, volume) in measured {
+    let prints: Vec<u64> = crate::sys::parallel(solids, crate::sys::cores(), |s| {
+        crate::clash::fingerprint(&s.mesh)
+    })
+    .into_iter()
+    .map(Option::unwrap_or_default)
+    .collect();
+    let mut measured: Vec<(usize, usize, crate::clash::Shared, bool)> = Vec::new();
+    let results = crate::sys::parallel(&pairs, crate::sys::cores(), |&(i, j)| {
+        crate::clash::shared_cached(&solids[i].mesh, prints[i], &solids[j].mesh, prints[j])
+    });
+    for (&(i, j), result) in pairs.iter().zip(results) {
+        match result {
+            Some((shared, reused)) => measured.push((i, j, shared, reused)),
+            None => problems.push(format!(
+                "{} and {} couldn't be checked for overlap.",
+                solids[i].instance, solids[j].instance
+            )),
+        }
+    }
+    let reused = measured.iter().filter(|m| m.3).count();
+    let mut touching = Vec::new();
+    let mut exact = 0;
+    for (i, j, shared, _) in measured {
+        let (ia, ib) = (&solids[i].instance, &solids[j].instance);
+        let mut volume = shared.volume;
+        let mut method = "triangles";
+        // Flat-faced solids: the kernel's own intersection, exact on the
+        // B-rep and quick for them (curved faces are where it is slow).
+        if volume > 1e-3
+            && let Some(v) = brep_overlap(&mut built.session, &solids[i].body, &solids[j].body)
+        {
+            volume = v;
+            method = "brep";
+            exact += 1;
+        }
         if volume < crate::overlap::IGNORED_MM3 {
+            if shared.touching {
+                touching.push(json!([ia, ib]));
+            }
             continue;
         }
-        let (ia, ib) = (&solids[i].instance, &solids[j].instance);
         if ok(ia, ib) {
-            contacts.push(json!({"a": ia, "b": ib, "overlap_mm3": volume.round()}));
+            contacts.push(json!({"a": ia, "b": ib, "overlap_mm3": (volume * 10.0).round() / 10.0, "measured": method}));
         } else {
             let (a, b) = (boxes[i], boxes[j]);
             let c: Vec<String> = (0..3)
                 .map(|k| format!("{:.0}", (a.0[k].max(b.0[k]) + a.1[k].min(b.1[k])) / 2.0))
                 .collect();
             problems.push(format!(
-                "{ia} and {ib} overlap by about {volume:.0} mm³ near [{}]; move one, or declare them in contact if they're meant to touch.",
+                "{ia} and {ib} overlap by {} mm³ near [{}]; move one, or declare them in contact if they're meant to touch.",
+                if volume < 10.0 { format!("{volume:.2}") } else { format!("{volume:.0}") },
                 c.join(", ")
             ));
         }
     }
+    touching.sort_by_key(Value::to_string);
+    touching.dedup();
+    built.interference = json!({
+        "pairs": pairs.len(),
+        "measured": pairs.len() - reused,
+        "remembered": reused,
+        "brep": exact,
+        "touching": touching,
+        "ms": started.ms(),
+    });
     (problems, contacts)
+}
+
+/// The volume two flat-faced solids share, by the kernel's B-rep
+/// intersection; `None` when either has a curved face or the kernel can't
+/// say for certain.
+fn brep_overlap(s: &mut Session, a: &str, b: &str) -> Option<f64> {
+    let flat = |s: &Session, name: &str| {
+        let state = s.world_state();
+        state.body(name).is_some_and(|m| {
+            let body = &m.body;
+            !body.is_mesh() && (0..body.face_count()).all(|i| body.planar_face(i).is_some())
+        })
+    };
+    if !flat(s, a) || !flat(s, b) {
+        return None;
+    }
+    let out = s
+        .execute("inspect.interference", &json!({"bodies": [a, b]}))
+        .ok()?;
+    if out["unchecked"].as_array().is_some_and(|u| !u.is_empty()) {
+        return None;
+    }
+    Some(
+        out["interferences"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|h| h["volume_mm3"].as_f64())
+            .sum(),
+    )
 }
 
 /// Vec3 from an array.
