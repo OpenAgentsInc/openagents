@@ -38,3 +38,16 @@ them on.
 
 **Settings → Plan** shows the hours you've used this month, your saved
 storage, and your extra-hours limit.
+
+## Enterprise
+
+For companies and custom deployments: everything in Pro, plus
+
+- deployment on our cloud, your own cloud account, or your own machines
+- single sign-on (SAML) and user provisioning (SCIM)
+- an uptime SLA and priority support
+- audit logs and data retention controls
+- shared billing, invoicing and spend limits
+- a security review and a custom agreement
+
+[Contact sales](/contact?topic=sales) and we'll answer within one business day.
