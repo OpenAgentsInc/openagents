@@ -9,12 +9,17 @@ description = "Shared tensor execution and small model inference for Psionic"
 [lints]
 workspace = true
 
+[features]
+default = []
+ort = ["dep:ort"]
+
 [dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
 thiserror = { workspace = true }
 tokenizers = { version = "=0.23.2", default-features = false, features = ["fancy-regex"] }
+ort = { version = "=2.0.0-rc.13", default-features = false, features = ["std", "load-dynamic", "api-28"], optional = true }
 
 [dev-dependencies]
 tempfile = "3"

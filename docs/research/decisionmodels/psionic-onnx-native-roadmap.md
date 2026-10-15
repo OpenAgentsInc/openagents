@@ -4,8 +4,9 @@ Owner decision, 2026-10-15: add both ONNX Runtime (ORT) and native Psionic
 execution so the same models can be benchmarked on both. Start with
 [`s1-llm-auto-router`](s1-llm-auto-router.md) on CPU. Keep both engines
 available after the comparison, and reuse the ORT integration for other
-models. The shared contract and reference fixtures (#11700) are implemented
-in `psionic-inference`; the remaining milestones are planned.
+models. The shared contract and reference fixtures (#11700) and optional
+ORT CPU execution (#11701) are implemented in `psionic-inference`; the
+remaining milestones are planned.
 
 ## Scope and current evidence
 

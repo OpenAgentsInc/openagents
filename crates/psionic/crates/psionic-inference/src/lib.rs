@@ -4,6 +4,8 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+#[cfg(feature = "ort")]
+pub mod ort_engine;
 pub mod router;
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -94,6 +96,7 @@ pub struct ExecutionIdentity {
     pub precision: String,
     pub threads: usize,
     pub runtime_version: String,
+    pub runtime_sha256: Option<String>,
     /// Actual CPU placement when known; never imply an entire graph ran on GPU.
     pub cpu_fallback: Option<bool>,
 }
