@@ -16,6 +16,9 @@ changes", with a short list of `file:line` rows.
 - Proposed next layer: [a task index built from agent navigation](task-index-roadmap.md),
   with a local Claude/Codex navigation census and a roadmap for source-backed
   extension recipes that cheaper agents can retrieve.
+- Task-index [edit pilot](evaluation-2026-10-15.md): twelve accepted and
+  independently replayed fixture edits, with no promotion or production
+  quality claim.
 
 ## What the graph holds
 

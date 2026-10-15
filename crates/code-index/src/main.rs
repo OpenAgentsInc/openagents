@@ -9,6 +9,85 @@ fn run() -> Result<(), String> {
             .and_then(|at| args.get(at + 1))
             .cloned()
     };
+    if args.first().map(String::as_str) == Some("prepare-evaluation") {
+        let out =
+            PathBuf::from(value("--out").ok_or("Choose a scratch directory with --out DIR.")?);
+        let plan = code_index::evaluation_pilot::prepare_pilot(
+            &out,
+            &value("--strong-model").ok_or("Choose the teacher model with --strong-model NAME.")?,
+            &value("--cheap-model").ok_or("Choose the cheaper model with --cheap-model NAME.")?,
+        )?;
+        println!(
+            "{}",
+            serde_json::json!({"cases":plan.cases.len(),"arms":plan.arms.len(),"planned_trials":plan.cases.len()*plan.arms.len()*plan.repetitions,"build_cost_usd":plan.build_cost_usd})
+        );
+        return Ok(());
+    }
+    if args.first().map(String::as_str) == Some("replay-evaluation") {
+        let plan: code_index::evaluation::Plan = code_index::read_json(std::path::Path::new(
+            &value("--plan").ok_or("Choose a frozen plan with --plan FILE.")?,
+        ))?;
+        let report: code_index::evaluation::Report = code_index::read_json(std::path::Path::new(
+            &value("--report").ok_or("Choose a report with --report FILE.")?,
+        ))?;
+        let run = PathBuf::from(
+            value("--run-dir").ok_or("Choose the original run directory with --run-dir DIR.")?,
+        );
+        let out = PathBuf::from(
+            value("--out").ok_or("Choose a replay scratch directory with --out DIR.")?,
+        );
+        let target = PathBuf::from(
+            value("--target").ok_or("Choose a Cargo target directory with --target DIR.")?,
+        );
+        let mut receipts = Vec::new();
+        for trial in &report.trials {
+            let name = code_index::digest(
+                format!(
+                    "{}:{}:{}:{}",
+                    trial.plan_digest, trial.case, trial.arm, trial.repetition
+                )
+                .as_bytes(),
+            );
+            let patch =
+                std::fs::read(run.join(&name).join("change.patch")).map_err(|e| e.to_string())?;
+            receipts.push(code_index::evaluation::replay_trial(
+                &plan,
+                trial,
+                &patch,
+                &out.join(name),
+                &target,
+            )?);
+        }
+        code_index::private::write(
+            &out,
+            "receipts.json",
+            &serde_json::to_vec(&receipts).map_err(|e| e.to_string())?,
+        )?;
+        println!(
+            "{}",
+            serde_json::json!({"replayed":receipts.len(),"verified":receipts.iter().filter(|r|r.verified).count()})
+        );
+        return Ok(());
+    }
+    if args.first().map(String::as_str) == Some("evaluate") {
+        let plan: code_index::evaluation::Plan = code_index::read_json(std::path::Path::new(
+            &value("--plan").ok_or("Choose a frozen plan with --plan FILE.")?,
+        ))?;
+        let out =
+            PathBuf::from(value("--out").ok_or("Choose a scratch directory with --out DIR.")?);
+        let target = PathBuf::from(
+            value("--target")
+                .or_else(|| std::env::var("CARGO_TARGET_DIR").ok())
+                .ok_or("Choose the existing Cargo target directory with --target DIR.")?,
+        );
+        let report =
+            code_index::evaluation::run(&plan, &out, &target, &mut code_index::evaluation::Claude)?;
+        println!(
+            "{}",
+            serde_json::json!({"promotion_passed":report.promotion_passed,"reasons":report.reasons,"totals":report.totals})
+        );
+        return Ok(());
+    }
     if args.first().map(String::as_str) == Some("fetch") {
         let repo = PathBuf::from(value("--repo").ok_or("Choose a repository with --repo DIR.")?);
         let base = PathBuf::from(value("--store").ok_or("Choose a store with --store DIR.")?);
@@ -233,6 +312,13 @@ fn run() -> Result<(), String> {
                     responses: responses.into(),
                 },
             )?
+        } else if args.iter().any(|a| a == "--claude") {
+            let mut teacher = code_index::builder::ClaudeTeacher {
+                root: repo.clone(),
+                output: out.clone(),
+                sequence: 0,
+            };
+            code_index::builder::build(&context, request, &mut teacher)?
         } else {
             let endpoint =
                 value("--endpoint").ok_or("Choose a model endpoint or frozen responses.")?;

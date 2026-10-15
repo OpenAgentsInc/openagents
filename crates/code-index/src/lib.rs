@@ -3,6 +3,8 @@
 pub mod builder;
 pub mod demand;
 pub mod episodes;
+pub mod evaluation;
+pub mod evaluation_pilot;
 pub mod lookup;
 pub mod pilot;
 pub mod private;

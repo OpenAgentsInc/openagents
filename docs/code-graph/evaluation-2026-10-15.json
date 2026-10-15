@@ -1,0 +1,479 @@
+{
+  "schema": "openagents.task-index-evaluation.v1",
+  "plan_digest": "053d0f9cc3cabc292f35d933c50e9c2f1b7e6730236ed63d5b55dbe75d3f1707",
+  "trials": [
+    {
+      "case": "registry",
+      "family": "registry",
+      "arm": "strong-current",
+      "repetition": 0,
+      "plan_digest": "053d0f9cc3cabc292f35d933c50e9c2f1b7e6730236ed63d5b55dbe75d3f1707",
+      "index_digest": "0f7ded94c93d59e99a5b744d0d494a50d3161bd000ef78501e2cad2a34495855",
+      "base": "1e6d25ba2d704742eafa7958584c24cdc5002b42",
+      "prompt_digest": "4b9788a172a1dfb88df045c7f19353742c110403b09c7d57668861b916594076",
+      "result_tree": "3a70f435860dec210d83398d6381d4843f975143",
+      "diff_digest": "26a737e2f0382bae4806018189c34ed57eb4e02dd7e852a36a17ce52c9587879",
+      "engine": {
+        "origin": "process_observed",
+        "model": "claude-opus-5-5",
+        "exit": 0,
+        "timed_out": false,
+        "usage": [
+          19775,
+          1105
+        ],
+        "model_cost_usd": 0.0548598,
+        "navigation_calls": 3,
+        "output_digest": "751b89f6daf2ab7d729fcf849d5ad7ab0d61e65f17a5c69e7962ce128c85657d",
+        "error": null
+      },
+      "accepted": true,
+      "checks_exit": 0,
+      "checks_digest": "ba947bbf339261517fe63be87acb52d57528b776290caf7345c7a32579a1ec03",
+      "missing_companions": [],
+      "missing_new_paths": [],
+      "elapsed_ms": 12832,
+      "guide_source_bytes": 115,
+      "error": null
+    },
+    {
+      "case": "registry",
+      "family": "registry",
+      "arm": "cheap-current",
+      "repetition": 0,
+      "plan_digest": "053d0f9cc3cabc292f35d933c50e9c2f1b7e6730236ed63d5b55dbe75d3f1707",
+      "index_digest": "0f7ded94c93d59e99a5b744d0d494a50d3161bd000ef78501e2cad2a34495855",
+      "base": "1e6d25ba2d704742eafa7958584c24cdc5002b42",
+      "prompt_digest": "4b9788a172a1dfb88df045c7f19353742c110403b09c7d57668861b916594076",
+      "result_tree": "3a70f435860dec210d83398d6381d4843f975143",
+      "diff_digest": "26a737e2f0382bae4806018189c34ed57eb4e02dd7e852a36a17ce52c9587879",
+      "engine": {
+        "origin": "process_observed",
+        "model": "claude-haiku-5-5",
+        "exit": 0,
+        "timed_out": false,
+        "usage": [
+          36569,
+          898
+        ],
+        "model_cost_usd": 0.0016350600000000002,
+        "navigation_calls": 4,
+        "output_digest": "7124479b7a128f764ee252eda2e1495428047f2217a0b241749de5a86c575bbb",
+        "error": null
+      },
+      "accepted": true,
+      "checks_exit": 0,
+      "checks_digest": "ed1e9f3ed00ec79e468a77a997aa1a5cc6cccad28226c375ae87b196521a3d07",
+      "missing_companions": [],
+      "missing_new_paths": [],
+      "elapsed_ms": 9230,
+      "guide_source_bytes": 115,
+      "error": null
+    },
+    {
+      "case": "registry",
+      "family": "registry",
+      "arm": "cheap-summaries",
+      "repetition": 0,
+      "plan_digest": "053d0f9cc3cabc292f35d933c50e9c2f1b7e6730236ed63d5b55dbe75d3f1707",
+      "index_digest": "0f7ded94c93d59e99a5b744d0d494a50d3161bd000ef78501e2cad2a34495855",
+      "base": "1e6d25ba2d704742eafa7958584c24cdc5002b42",
+      "prompt_digest": "f99e638336a40ebbd6da20f3798fec546d07b39916c2b885a2b621b1cdd43279",
+      "result_tree": "3a70f435860dec210d83398d6381d4843f975143",
+      "diff_digest": "26a737e2f0382bae4806018189c34ed57eb4e02dd7e852a36a17ce52c9587879",
+      "engine": {
+        "origin": "process_observed",
+        "model": "claude-haiku-5-5",
+        "exit": 0,
+        "timed_out": false,
+        "usage": [
+          39464,
+          1517
+        ],
+        "model_cost_usd": 0.00182018,
+        "navigation_calls": 3,
+        "output_digest": "50db5954b9dd4c737397aae3bc97f582fdfcae8bd6b6e3875e63d983eb3a18ae",
+        "error": null
+      },
+      "accepted": true,
+      "checks_exit": 0,
+      "checks_digest": "6f7e96a480241e5822a5a8ca2ca23d0d8094ada777bff83cf35bb1dc267ee13b",
+      "missing_companions": [],
+      "missing_new_paths": [],
+      "elapsed_ms": 9836,
+      "guide_source_bytes": 115,
+      "error": null
+    },
+    {
+      "case": "registry",
+      "family": "registry",
+      "arm": "cheap-capability",
+      "repetition": 0,
+      "plan_digest": "053d0f9cc3cabc292f35d933c50e9c2f1b7e6730236ed63d5b55dbe75d3f1707",
+      "index_digest": "0f7ded94c93d59e99a5b744d0d494a50d3161bd000ef78501e2cad2a34495855",
+      "base": "1e6d25ba2d704742eafa7958584c24cdc5002b42",
+      "prompt_digest": "d4a23ee33675a3dfa6040ae257fc07443e13fa23954e6670f725670aea29b78e",
+      "result_tree": "3a70f435860dec210d83398d6381d4843f975143",
+      "diff_digest": "26a737e2f0382bae4806018189c34ed57eb4e02dd7e852a36a17ce52c9587879",
+      "engine": {
+        "origin": "process_observed",
+        "model": "claude-haiku-5-5",
+        "exit": 0,
+        "timed_out": false,
+        "usage": [
+          30148,
+          1189
+        ],
+        "model_cost_usd": 0.0014562500000000003,
+        "navigation_calls": 2,
+        "output_digest": "9499b09737c97ca531636226b65718e9b178020fb62efd2268b3e61f52b43af9",
+        "error": null
+      },
+      "accepted": true,
+      "checks_exit": 0,
+      "checks_digest": "55cdb5a37ab34db95a208df8de6203eb4b0c3a3dd8eca76958103d39c0831d24",
+      "missing_companions": [],
+      "missing_new_paths": [],
+      "elapsed_ms": 8205,
+      "guide_source_bytes": 115,
+      "error": null
+    },
+    {
+      "case": "registry",
+      "family": "registry",
+      "arm": "cheap-recipes",
+      "repetition": 0,
+      "plan_digest": "053d0f9cc3cabc292f35d933c50e9c2f1b7e6730236ed63d5b55dbe75d3f1707",
+      "index_digest": "0f7ded94c93d59e99a5b744d0d494a50d3161bd000ef78501e2cad2a34495855",
+      "base": "1e6d25ba2d704742eafa7958584c24cdc5002b42",
+      "prompt_digest": "1ca786dee2a054c9c2df7be4560bf02f00ed2acba87d4915bcde5426c9ad461f",
+      "result_tree": "3a70f435860dec210d83398d6381d4843f975143",
+      "diff_digest": "26a737e2f0382bae4806018189c34ed57eb4e02dd7e852a36a17ce52c9587879",
+      "engine": {
+        "origin": "process_observed",
+        "model": "claude-haiku-5-5",
+        "exit": 0,
+        "timed_out": false,
+        "usage": [
+          34149,
+          1291
+        ],
+        "model_cost_usd": 0.00174239,
+        "navigation_calls": 2,
+        "output_digest": "1fb518a528ae1648de9a02db21d1b603dcf69893f9bbf9dae97d93a0985b565e",
+        "error": null
+      },
+      "accepted": true,
+      "checks_exit": 0,
+      "checks_digest": "8fd1c2f3ad5eb933cecdd9ee4103c4813346e7ddc3df620da29f1c9c05a8a267",
+      "missing_companions": [],
+      "missing_new_paths": [],
+      "elapsed_ms": 8478,
+      "guide_source_bytes": 115,
+      "error": null
+    },
+    {
+      "case": "registry",
+      "family": "registry",
+      "arm": "cheap-reviewed",
+      "repetition": 0,
+      "plan_digest": "053d0f9cc3cabc292f35d933c50e9c2f1b7e6730236ed63d5b55dbe75d3f1707",
+      "index_digest": "0f7ded94c93d59e99a5b744d0d494a50d3161bd000ef78501e2cad2a34495855",
+      "base": "1e6d25ba2d704742eafa7958584c24cdc5002b42",
+      "prompt_digest": "a2ba6f0e892321c11733289c8b1f27617b2aadbabed1b2347e9c8593d280ebf2",
+      "result_tree": "3a70f435860dec210d83398d6381d4843f975143",
+      "diff_digest": "26a737e2f0382bae4806018189c34ed57eb4e02dd7e852a36a17ce52c9587879",
+      "engine": {
+        "origin": "process_observed",
+        "model": "claude-haiku-5-5",
+        "exit": 0,
+        "timed_out": false,
+        "usage": [
+          31264,
+          676
+        ],
+        "model_cost_usd": 0.00119742,
+        "navigation_calls": 2,
+        "output_digest": "3808a9ec86d064f74955f3f6766639cbf692b39e1b8b76f2d3903c80b5f59c97",
+        "error": null
+      },
+      "accepted": true,
+      "checks_exit": 0,
+      "checks_digest": "ff8808c1c4e7636609a2262f69db9ef579ea68b4755610702f18e7e9a60d4613",
+      "missing_companions": [],
+      "missing_new_paths": [],
+      "elapsed_ms": 8355,
+      "guide_source_bytes": 115,
+      "error": null
+    },
+    {
+      "case": "new-module",
+      "family": "new-module",
+      "arm": "strong-current",
+      "repetition": 0,
+      "plan_digest": "053d0f9cc3cabc292f35d933c50e9c2f1b7e6730236ed63d5b55dbe75d3f1707",
+      "index_digest": "4da7e6d37e7d2d8f62aabbdac19ff1334a2534113d3c6098d113f5485e5c5926",
+      "base": "938dcb59cd17f0459fdd6ffaec1e0da33e8d88f5",
+      "prompt_digest": "3bbc4058f772778605e227dc251903731ace8bed491c27bb91d00805fe136237",
+      "result_tree": "c9bc79860463e95bfaa90b0158d76a77f75ac4d8",
+      "diff_digest": "1f2925d7686e6ef866d46b0f5ed1c7f90b1469ac7f4b4715ccdd69a9f51e3b12",
+      "engine": {
+        "origin": "process_observed",
+        "model": "claude-opus-5-5",
+        "exit": 0,
+        "timed_out": false,
+        "usage": [
+          19649,
+          1128
+        ],
+        "model_cost_usd": 0.0488908,
+        "navigation_calls": 2,
+        "output_digest": "f1d4375022e5ede391b50536b812613128c5cbae52c4543654cea0ddf30a3331",
+        "error": null
+      },
+      "accepted": true,
+      "checks_exit": 0,
+      "checks_digest": "16fe0d382fe0582c69e39a2b7e360b30d5568b143d8c30aa935b4dcec03a8e6d",
+      "missing_companions": [],
+      "missing_new_paths": [],
+      "elapsed_ms": 13700,
+      "guide_source_bytes": 75,
+      "error": null
+    },
+    {
+      "case": "new-module",
+      "family": "new-module",
+      "arm": "cheap-current",
+      "repetition": 0,
+      "plan_digest": "053d0f9cc3cabc292f35d933c50e9c2f1b7e6730236ed63d5b55dbe75d3f1707",
+      "index_digest": "4da7e6d37e7d2d8f62aabbdac19ff1334a2534113d3c6098d113f5485e5c5926",
+      "base": "938dcb59cd17f0459fdd6ffaec1e0da33e8d88f5",
+      "prompt_digest": "3bbc4058f772778605e227dc251903731ace8bed491c27bb91d00805fe136237",
+      "result_tree": "f5a140688cd4dab3d93bebbf37cfcf7a5275900b",
+      "diff_digest": "f0931aeb4ee38fdf29db6fa527e2a02e0b53be9209e240d81b150aa0b5d2e307",
+      "engine": {
+        "origin": "process_observed",
+        "model": "claude-haiku-5-5",
+        "exit": 0,
+        "timed_out": false,
+        "usage": [
+          30581,
+          1414
+        ],
+        "model_cost_usd": 0.0016205800000000002,
+        "navigation_calls": 2,
+        "output_digest": "897e02a114c7706dabd34006fdcd932d7e89a38d3671da8418f5d520bbefc7b4",
+        "error": null
+      },
+      "accepted": true,
+      "checks_exit": 0,
+      "checks_digest": "caa6090952ef0c64d2950db28430f2484636e2d152a641928ed4df9b066d3852",
+      "missing_companions": [],
+      "missing_new_paths": [],
+      "elapsed_ms": 9379,
+      "guide_source_bytes": 75,
+      "error": null
+    },
+    {
+      "case": "new-module",
+      "family": "new-module",
+      "arm": "cheap-summaries",
+      "repetition": 0,
+      "plan_digest": "053d0f9cc3cabc292f35d933c50e9c2f1b7e6730236ed63d5b55dbe75d3f1707",
+      "index_digest": "4da7e6d37e7d2d8f62aabbdac19ff1334a2534113d3c6098d113f5485e5c5926",
+      "base": "938dcb59cd17f0459fdd6ffaec1e0da33e8d88f5",
+      "prompt_digest": "23556d8c30e225ccc823e36bf289892024aa3d1f251853e7edd5336657cd13aa",
+      "result_tree": "c9bc79860463e95bfaa90b0158d76a77f75ac4d8",
+      "diff_digest": "1f2925d7686e6ef866d46b0f5ed1c7f90b1469ac7f4b4715ccdd69a9f51e3b12",
+      "engine": {
+        "origin": "process_observed",
+        "model": "claude-haiku-5-5",
+        "exit": 0,
+        "timed_out": false,
+        "usage": [
+          31086,
+          1471
+        ],
+        "model_cost_usd": 0.00168301,
+        "navigation_calls": 3,
+        "output_digest": "8d1a3892ec98fc2db6c051b42723f2a347b458f7042e4d3c2fe80eb6e7ace406",
+        "error": null
+      },
+      "accepted": true,
+      "checks_exit": 0,
+      "checks_digest": "8dfcbe58f97429251c99fe366dde1c2a7bfc8a67e42fe4879053823cd70d0a32",
+      "missing_companions": [],
+      "missing_new_paths": [],
+      "elapsed_ms": 10060,
+      "guide_source_bytes": 75,
+      "error": null
+    },
+    {
+      "case": "new-module",
+      "family": "new-module",
+      "arm": "cheap-capability",
+      "repetition": 0,
+      "plan_digest": "053d0f9cc3cabc292f35d933c50e9c2f1b7e6730236ed63d5b55dbe75d3f1707",
+      "index_digest": "4da7e6d37e7d2d8f62aabbdac19ff1334a2534113d3c6098d113f5485e5c5926",
+      "base": "938dcb59cd17f0459fdd6ffaec1e0da33e8d88f5",
+      "prompt_digest": "3531e4d5c8438132579ecec601c9ab24c8a4369506750970f2edbe25d5885ced",
+      "result_tree": "c9bc79860463e95bfaa90b0158d76a77f75ac4d8",
+      "diff_digest": "1f2925d7686e6ef866d46b0f5ed1c7f90b1469ac7f4b4715ccdd69a9f51e3b12",
+      "engine": {
+        "origin": "process_observed",
+        "model": "claude-haiku-5-5",
+        "exit": 0,
+        "timed_out": false,
+        "usage": [
+          28806,
+          769
+        ],
+        "model_cost_usd": 0.00112738,
+        "navigation_calls": 3,
+        "output_digest": "ac85cb88c80ed529b9fb7d41c661504543f28b3c210dc3f7f28752a1bc53cb5a",
+        "error": null
+      },
+      "accepted": true,
+      "checks_exit": 0,
+      "checks_digest": "68f700cb8d3e373c988a21ce3450d6c3a02d1713388a303caad8959ea328c274",
+      "missing_companions": [],
+      "missing_new_paths": [],
+      "elapsed_ms": 8777,
+      "guide_source_bytes": 75,
+      "error": null
+    },
+    {
+      "case": "new-module",
+      "family": "new-module",
+      "arm": "cheap-recipes",
+      "repetition": 0,
+      "plan_digest": "053d0f9cc3cabc292f35d933c50e9c2f1b7e6730236ed63d5b55dbe75d3f1707",
+      "index_digest": "4da7e6d37e7d2d8f62aabbdac19ff1334a2534113d3c6098d113f5485e5c5926",
+      "base": "938dcb59cd17f0459fdd6ffaec1e0da33e8d88f5",
+      "prompt_digest": "e1cf7c26010907848814857e087ff8216b0ba5a94df4ba88a0396ade68dea192",
+      "result_tree": "c9bc79860463e95bfaa90b0158d76a77f75ac4d8",
+      "diff_digest": "1f2925d7686e6ef866d46b0f5ed1c7f90b1469ac7f4b4715ccdd69a9f51e3b12",
+      "engine": {
+        "origin": "process_observed",
+        "model": "claude-haiku-5-5",
+        "exit": 0,
+        "timed_out": false,
+        "usage": [
+          35409,
+          1418
+        ],
+        "model_cost_usd": 0.00190285,
+        "navigation_calls": 2,
+        "output_digest": "ffd057320024077e9297f96400f5d0aa3c52c454a7711226886b77344b1e3ce8",
+        "error": null
+      },
+      "accepted": true,
+      "checks_exit": 0,
+      "checks_digest": "66606c6fc8d1367a92b3dfdbda75ee22bd8e866234aa18e05a1a5af12accf4b6",
+      "missing_companions": [],
+      "missing_new_paths": [],
+      "elapsed_ms": 8526,
+      "guide_source_bytes": 75,
+      "error": null
+    },
+    {
+      "case": "new-module",
+      "family": "new-module",
+      "arm": "cheap-reviewed",
+      "repetition": 0,
+      "plan_digest": "053d0f9cc3cabc292f35d933c50e9c2f1b7e6730236ed63d5b55dbe75d3f1707",
+      "index_digest": "4da7e6d37e7d2d8f62aabbdac19ff1334a2534113d3c6098d113f5485e5c5926",
+      "base": "938dcb59cd17f0459fdd6ffaec1e0da33e8d88f5",
+      "prompt_digest": "467819c95bca6085bbcffe1732374051b1d83572845e054ec095bd6e357ec55a",
+      "result_tree": "c9bc79860463e95bfaa90b0158d76a77f75ac4d8",
+      "diff_digest": "1f2925d7686e6ef866d46b0f5ed1c7f90b1469ac7f4b4715ccdd69a9f51e3b12",
+      "engine": {
+        "origin": "process_observed",
+        "model": "claude-haiku-5-5",
+        "exit": 0,
+        "timed_out": false,
+        "usage": [
+          43503,
+          1637
+        ],
+        "model_cost_usd": 0.00207352,
+        "navigation_calls": 2,
+        "output_digest": "d472d310f9d2c30ff994d7a508815068dc000b43f911350402cec7502b6fde37",
+        "error": null
+      },
+      "accepted": true,
+      "checks_exit": 0,
+      "checks_digest": "5e00a03aeb26da1c4f852f0c6a28a0e38e49d6c78f1201a634b23f4c01a3d3fd",
+      "missing_companions": [],
+      "missing_new_paths": [],
+      "elapsed_ms": 10780,
+      "guide_source_bytes": 75,
+      "error": null
+    }
+  ],
+  "promotion_passed": false,
+  "reasons": [
+    "Too few independent task families for promotion.",
+    "Complete cost per accepted task does not meet the frozen target."
+  ],
+  "quality_delta": 0.0,
+  "paired_quality_interval": [
+    0.0,
+    0.0
+  ],
+  "cost_ratio": null,
+  "totals": {
+    "cheap-capability": {
+      "trials": 2,
+      "accepted": 2,
+      "model_cost_usd": 0.0025836300000000004,
+      "navigation_calls": 5,
+      "elapsed_ms": 16982
+    },
+    "cheap-current": {
+      "trials": 2,
+      "accepted": 2,
+      "model_cost_usd": 0.0032556400000000006,
+      "navigation_calls": 6,
+      "elapsed_ms": 18609
+    },
+    "cheap-recipes": {
+      "trials": 2,
+      "accepted": 2,
+      "model_cost_usd": 0.00364524,
+      "navigation_calls": 4,
+      "elapsed_ms": 17004
+    },
+    "cheap-reviewed": {
+      "trials": 2,
+      "accepted": 2,
+      "model_cost_usd": 0.00327094,
+      "navigation_calls": 4,
+      "elapsed_ms": 19135
+    },
+    "cheap-summaries": {
+      "trials": 2,
+      "accepted": 2,
+      "model_cost_usd": 0.0035031899999999998,
+      "navigation_calls": 6,
+      "elapsed_ms": 19896
+    },
+    "strong-current": {
+      "trials": 2,
+      "accepted": 2,
+      "model_cost_usd": 0.1037506,
+      "navigation_calls": 5,
+      "elapsed_ms": 26532
+    }
+  },
+  "replay_summary": {
+    "replayed": 12,
+    "verified": 12
+  },
+  "build_costs": {
+    "failed_format_attempt_provider_usd": 0.054447,
+    "successful_recipe_builds_provider_usd": 0.118247,
+    "total_provider_usd": 0.172694,
+    "machine_and_check_cost_usd": null
+  }
+}

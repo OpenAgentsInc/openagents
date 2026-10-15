@@ -99,5 +99,14 @@ override the store is under the repository's Git common directory in
 Lookups record local hashes, status, coverage, and elapsed time in the store's
 private observations directory; they record no question text or source output.
 
+`prepare-evaluation`, `evaluate`, and `replay-evaluation` freeze and run paired
+edit experiments in isolated worktrees. Independent Cargo integration tests,
+patches, result trees, provider usage, failures, and missing cost are recorded.
+Checks use a temporary home and a target outside the checkout. See the
+[first pilot](../../docs/code-graph/evaluation-2026-10-15.md) for commands and
+the negative promotion verdict. `build --claude` also supports the local
+authenticated CLI teacher with an explicit output schema and no tools or
+saved session.
+
 Run `cargo test -p code-index` and `cargo fmt -p code-index`. See the
 [roadmap](../../docs/code-graph/task-index-roadmap.md) for experiment scope.

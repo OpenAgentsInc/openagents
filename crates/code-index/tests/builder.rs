@@ -134,6 +134,24 @@ fn transport_refuses_remote_plaintext_and_embedded_credentials() {
 }
 
 #[test]
+fn response_schema_requires_real_evidence_objects_and_a_typed_evidence_class() {
+    let schema = response_schema();
+    let recipe = &schema["properties"]["artifact"]["anyOf"][0]["properties"]["recipes"]["items"];
+    assert_eq!(
+        recipe["properties"]["evidence"]["enum"][0],
+        "source_reviewed"
+    );
+    assert_eq!(
+        recipe["properties"]["examples"]["items"]["properties"]["content_digest"]["type"],
+        "string"
+    );
+    assert_eq!(
+        recipe["properties"]["roles"]["items"]["additionalProperties"],
+        false
+    );
+}
+
+#[test]
 fn http_teacher_sends_selected_model_and_decodes_structured_content() {
     use std::io::{Read, Write};
     let dir = common::fixture();
