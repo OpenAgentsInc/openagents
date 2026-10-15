@@ -355,8 +355,9 @@ S = a day or less, M = a few days, L = a week or more.
    CLI and a small admin page.
 10. **Pylon computer driver (L)**, with isolation and sats payouts.
 11. **Kubernetes agent-sandbox driver (L), Firecracker driver (L).** The
-    opt-in [SPACE driver and GCE spike](../../cloud/space.md) evaluate the
-    Firecracker option before production adoption (#11728).
+    opt-in [SPACE driver and GCE spike](../../cloud/space.md) passed Core and
+    Suspend; native snapshot readiness measured 319 ms p50, while the Kind
+    HTTP path still cold-boots. Production adoption remains deferred (#11728).
 
 ## Open questions
 

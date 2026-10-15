@@ -1,0 +1,2564 @@
+{
+  "schema": "openagents.space_spike.v1",
+  "issue": 11728,
+  "date": "2026-10-15",
+  "upstream": {
+    "commit": "de87b436c35dac056564bdd5b2a113c9046e189b",
+    "version": "0.8.0"
+  },
+  "host": {
+    "project": "openagentsgemini",
+    "zone": "us-central1-a",
+    "name": "oa-space-spike-11728",
+    "machine_type": "n2-standard-8",
+    "created_at": "2026-10-15T13:23:58.128-07:00",
+    "nested_virtualization": true,
+    "external_address": null,
+    "service_accounts": [],
+    "local_ssd_gib": 375,
+    "filesystem": "btrfs",
+    "max_runtime_seconds": 21600,
+    "instance_id": "8128972204873124018",
+    "cpu_platform": "Intel Cascade Lake",
+    "boot_disk_gib": 100,
+    "deleted_at": "2026-10-15T14:49:47.671-07:00"
+  },
+  "runtime_source": {
+    "image": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/global/images/oa-coder-main-20261015",
+    "image_id": "7439782163211167699",
+    "mount_mode": "read-only",
+    "copied_files": [
+      "home/coder/.local/bin/coder-cloud-runtime",
+      "usr/local/lib/node_modules/@anthropic-ai/claude-code/bin/claude.exe"
+    ],
+    "coder_sha256": "03c3400f1740854abbfbd5c090c44703ce39b95b6954deae99c528dd3f00ae7d",
+    "claude_sha256": "4503bfe11a6c7fcc1e0b39b5e0d347c04248f750b03b0977b3ad6b531fe6f358",
+    "temporary_disk_deleted": true,
+    "template_base": "SPACE Ubuntu 26.04 seed; Coder and Claude executables only, not the full GCE root filesystem",
+    "manifest": {
+      "schema_version": 2,
+      "execution": {
+        "runtime": {
+          "kind": "firecracker",
+          "version": "1.15.1"
+        },
+        "guest": {
+          "os": "linux",
+          "architecture": "x86_64"
+        },
+        "state_format": {
+          "format": "firecracker-snapshot",
+          "version": "9.0.0"
+        },
+        "components": [
+          {
+            "kind": "kernel",
+            "role": "boot",
+            "version": "legacy-e20e46d0c36c",
+            "digest": "sha256:e20e46d0c36c55c0d1014eb20576171b3f3d922260d9f792017aeff53af3d4f2",
+            "format": "vmlinux"
+          }
+        ]
+      },
+      "name": "oa-coder-runtime",
+      "content_hash": "sha256:39fcdf4f2c7c74d86c7f34d5ce252b2c72258c91ffee4f2ac445113ea4288698",
+      "build_date": "2026-10-15T21:05:33.659689+00:00",
+      "runtime": "fc",
+      "arch": "x86_64",
+      "config": {},
+      "bootable_artifact": "rootfs.ext4",
+      "files": {
+        "rootfs.ext4": {
+          "digest": "sha256:39fcdf4f2c7c74d86c7f34d5ce252b2c72258c91ffee4f2ac445113ea4288698",
+          "size": 4294967296
+        }
+      }
+    }
+  },
+  "local_checks": {
+    "computer_driver_tests": 5,
+    "conformance_tests": 6,
+    "wire_profile_cases": 10,
+    "postgres_lifecycle_tests": 5,
+    "formatting": "passed",
+    "shell_syntax": "passed",
+    "python_syntax": "passed",
+    "commands": [
+      "cargo test -p computer-driver -p computer-conformance --features space (bwrap isolates /tmp)",
+      "cargo test -p oa-computers --features space (disposable PostgreSQL, keyword DSN)",
+      "cargo fmt -p computer-driver -p computer-conformance -p oa-computers --check",
+      "bash -n deploy/space-host/*.sh; Python ast.parse; git diff --check"
+    ]
+  },
+  "live_checks": {
+    "first_sandbox": {
+      "exit_code": 0,
+      "printed": "Hello from SPACE",
+      "sandbox_deleted": true
+    },
+    "conformance": {
+      "passed": true,
+      "cases": 10,
+      "declared": [
+        "core",
+        "suspend"
+      ],
+      "unsupported": [
+        "snapshot",
+        "fork"
+      ],
+      "stdout": "driver space declares core, suspend\n  ok    core     declaration\n  ok    core     create is idempotent\n  ok    core     exec returns output and code\n  ok    core     secrets reach one command only\n  ok    core     files round-trip\n  ok    core     meter answers\n  ok    core     delete is final\n  ok    suspend  resume keeps files\n  ok    snapshot undeclared is refused\n  ok    fork     undeclared is refused\n10/10 cases passed\n"
+    },
+    "http_cold": {
+      "note": "All twenty create-and-command samples passed. This combined runner later failed its separate memory/wake step before operation completion was awaited; the corrected standalone memory check passed.",
+      "report": {
+        "actual_boot_mode": "cold",
+        "computers": [
+          "sbx_01a14174-6309-7674-8d18-746e6d290798"
+        ],
+        "create_guest": "2\nMemTotal:        1008900 kB\nMemFree:          860872 kB\nMemAvailable:     840704 kB\n",
+        "creates": [
+          {
+            "accepted_ms": 12.0099,
+            "backend": {
+              "boot_mode": "cold",
+              "firecracker_argv": [
+                "/firecracker",
+                "--id",
+                "01a14173-87d9-7113-97d2-74dc0667e656",
+                "--start-time-us",
+                "3600595991",
+                "--start-time-cpu-us",
+                "77",
+                "--parent-cpu-time-us",
+                "6213",
+                "--api-sock",
+                "firecracker.sock",
+                "--config-file",
+                "/vm-config.json",
+                "--log-path",
+                "/fc.log",
+                "--level",
+                "Info",
+                "--show-level",
+                "--metrics-path",
+                "/fc-metrics.fifo"
+              ],
+              "host_pid": 1364400,
+              "sandbox_id": "01a14173-87d9-7113-97d2-74dc0667e656"
+            },
+            "computer": "sbx_01a14173-87d9-7113-97d2-74dc0667e656",
+            "first_command_ms": 2045.8158420000002,
+            "running_ms": 770.272653
+          },
+          {
+            "accepted_ms": 9.577603,
+            "backend": {
+              "boot_mode": "cold",
+              "firecracker_argv": [
+                "/firecracker",
+                "--id",
+                "01a14173-94d2-72b2-b012-693296c3cab6",
+                "--start-time-us",
+                "3603914329",
+                "--start-time-cpu-us",
+                "66",
+                "--parent-cpu-time-us",
+                "7830",
+                "--api-sock",
+                "firecracker.sock",
+                "--config-file",
+                "/vm-config.json",
+                "--log-path",
+                "/fc.log",
+                "--level",
+                "Info",
+                "--show-level",
+                "--metrics-path",
+                "/fc-metrics.fifo"
+              ],
+              "host_pid": 1366291,
+              "sandbox_id": "01a14173-94d2-72b2-b012-693296c3cab6"
+            },
+            "computer": "sbx_01a14173-94d2-72b2-b012-693296c3cab6",
+            "first_command_ms": 2159.913019,
+            "running_ms": 1475.007255
+          },
+          {
+            "accepted_ms": 6.6965710000000005,
+            "backend": {
+              "boot_mode": "cold",
+              "firecracker_argv": [
+                "/firecracker",
+                "--id",
+                "01a14173-a052-7740-9025-b20c9b153850",
+                "--start-time-us",
+                "3607088359",
+                "--start-time-cpu-us",
+                "83",
+                "--parent-cpu-time-us",
+                "6614",
+                "--api-sock",
+                "firecracker.sock",
+                "--config-file",
+                "/vm-config.json",
+                "--log-path",
+                "/fc.log",
+                "--level",
+                "Info",
+                "--show-level",
+                "--metrics-path",
+                "/fc-metrics.fifo"
+              ],
+              "host_pid": 1368248,
+              "sandbox_id": "01a14173-a052-7740-9025-b20c9b153850"
+            },
+            "computer": "sbx_01a14173-a052-7740-9025-b20c9b153850",
+            "first_command_ms": 2205.7840899999997,
+            "running_ms": 1528.832328
+          },
+          {
+            "accepted_ms": 8.453793,
+            "backend": {
+              "boot_mode": "cold",
+              "firecracker_argv": [
+                "/firecracker",
+                "--id",
+                "01a14173-abdf-70e5-a79c-8708ca80a257",
+                "--start-time-us",
+                "3609806128",
+                "--start-time-cpu-us",
+                "84",
+                "--parent-cpu-time-us",
+                "6470",
+                "--api-sock",
+                "firecracker.sock",
+                "--config-file",
+                "/vm-config.json",
+                "--log-path",
+                "/fc.log",
+                "--level",
+                "Info",
+                "--show-level",
+                "--metrics-path",
+                "/fc-metrics.fifo"
+              ],
+              "host_pid": 1369883,
+              "sandbox_id": "01a14173-abdf-70e5-a79c-8708ca80a257"
+            },
+            "computer": "sbx_01a14173-abdf-70e5-a79c-8708ca80a257",
+            "first_command_ms": 2049.3818730000003,
+            "running_ms": 575.0264980000001
+          },
+          {
+            "accepted_ms": 7.294687000000001,
+            "backend": {
+              "boot_mode": "cold",
+              "firecracker_argv": [
+                "/firecracker",
+                "--id",
+                "01a14173-b6da-716f-a880-c6e7989394b8",
+                "--start-time-us",
+                "3612654762",
+                "--start-time-cpu-us",
+                "58",
+                "--parent-cpu-time-us",
+                "6456",
+                "--api-sock",
+                "firecracker.sock",
+                "--config-file",
+                "/vm-config.json",
+                "--log-path",
+                "/fc.log",
+                "--level",
+                "Info",
+                "--show-level",
+                "--metrics-path",
+                "/fc-metrics.fifo"
+              ],
+              "host_pid": 1371946,
+              "sandbox_id": "01a14173-b6da-716f-a880-c6e7989394b8"
+            },
+            "computer": "sbx_01a14173-b6da-716f-a880-c6e7989394b8",
+            "first_command_ms": 2068.665931,
+            "running_ms": 810.342561
+          },
+          {
+            "accepted_ms": 7.364758,
+            "backend": {
+              "boot_mode": "cold",
+              "firecracker_argv": [
+                "/firecracker",
+                "--id",
+                "01a14173-c1ec-749b-8c27-133f01c36e0b",
+                "--start-time-us",
+                "3615482539",
+                "--start-time-cpu-us",
+                "55",
+                "--parent-cpu-time-us",
+                "5573",
+                "--api-sock",
+                "firecracker.sock",
+                "--config-file",
+                "/vm-config.json",
+                "--log-path",
+                "/fc.log",
+                "--level",
+                "Info",
+                "--show-level",
+                "--metrics-path",
+                "/fc-metrics.fifo"
+              ],
+              "host_pid": 1374091,
+              "sandbox_id": "01a14173-c1ec-749b-8c27-133f01c36e0b"
+            },
+            "computer": "sbx_01a14173-c1ec-749b-8c27-133f01c36e0b",
+            "first_command_ms": 2073.1793930000003,
+            "running_ms": 1002.004847
+          },
+          {
+            "accepted_ms": 10.573156,
+            "backend": {
+              "boot_mode": "cold",
+              "firecracker_argv": [
+                "/firecracker",
+                "--id",
+                "01a14173-cd00-7019-ae5e-dedd067f766b",
+                "--start-time-us",
+                "3618311840",
+                "--start-time-cpu-us",
+                "89",
+                "--parent-cpu-time-us",
+                "5895",
+                "--api-sock",
+                "firecracker.sock",
+                "--config-file",
+                "/vm-config.json",
+                "--log-path",
+                "/fc.log",
+                "--level",
+                "Info",
+                "--show-level",
+                "--metrics-path",
+                "/fc-metrics.fifo"
+              ],
+              "host_pid": 1375869,
+              "sandbox_id": "01a14173-cd00-7019-ae5e-dedd067f766b"
+            },
+            "computer": "sbx_01a14173-cd00-7019-ae5e-dedd067f766b",
+            "first_command_ms": 2001.6719659999999,
+            "running_ms": 1139.6450360000001
+          },
+          {
+            "accepted_ms": 7.0281340000000005,
+            "backend": {
+              "boot_mode": "cold",
+              "firecracker_argv": [
+                "/firecracker",
+                "--id",
+                "01a14173-d7ca-71a9-8153-f5a0758f5f89",
+                "--start-time-us",
+                "3621067323",
+                "--start-time-cpu-us",
+                "64",
+                "--parent-cpu-time-us",
+                "6345",
+                "--api-sock",
+                "firecracker.sock",
+                "--config-file",
+                "/vm-config.json",
+                "--log-path",
+                "/fc.log",
+                "--level",
+                "Info",
+                "--show-level",
+                "--metrics-path",
+                "/fc-metrics.fifo"
+              ],
+              "host_pid": 1377904,
+              "sandbox_id": "01a14173-d7ca-71a9-8153-f5a0758f5f89"
+            },
+            "computer": "sbx_01a14173-d7ca-71a9-8153-f5a0758f5f89",
+            "first_command_ms": 1934.944993,
+            "running_ms": 1472.9634899999999
+          },
+          {
+            "accepted_ms": 6.339151,
+            "backend": {
+              "boot_mode": "cold",
+              "firecracker_argv": [
+                "/firecracker",
+                "--id",
+                "01a14173-e243-707d-aa44-abb469914485",
+                "--start-time-us",
+                "3623739192",
+                "--start-time-cpu-us",
+                "81",
+                "--parent-cpu-time-us",
+                "5692",
+                "--api-sock",
+                "firecracker.sock",
+                "--config-file",
+                "/vm-config.json",
+                "--log-path",
+                "/fc.log",
+                "--level",
+                "Info",
+                "--show-level",
+                "--metrics-path",
+                "/fc-metrics.fifo"
+              ],
+              "host_pid": 1379403,
+              "sandbox_id": "01a14173-e243-707d-aa44-abb469914485"
+            },
+            "computer": "sbx_01a14173-e243-707d-aa44-abb469914485",
+            "first_command_ms": 2009.648311,
+            "running_ms": 738.353455
+          },
+          {
+            "accepted_ms": 6.738874,
+            "backend": {
+              "boot_mode": "cold",
+              "firecracker_argv": [
+                "/firecracker",
+                "--id",
+                "01a14173-ed32-72cf-b831-836ddf92b0be",
+                "--start-time-us",
+                "3626546721",
+                "--start-time-cpu-us",
+                "83",
+                "--parent-cpu-time-us",
+                "5512",
+                "--api-sock",
+                "firecracker.sock",
+                "--config-file",
+                "/vm-config.json",
+                "--log-path",
+                "/fc.log",
+                "--level",
+                "Info",
+                "--show-level",
+                "--metrics-path",
+                "/fc-metrics.fifo"
+              ],
+              "host_pid": 1381147,
+              "sandbox_id": "01a14173-ed32-72cf-b831-836ddf92b0be"
+            },
+            "computer": "sbx_01a14173-ed32-72cf-b831-836ddf92b0be",
+            "first_command_ms": 2027.849067,
+            "running_ms": 961.566993
+          },
+          {
+            "accepted_ms": 7.317472,
+            "backend": {
+              "boot_mode": "cold",
+              "firecracker_argv": [
+                "/firecracker",
+                "--id",
+                "01a14173-f809-7329-b59e-c3dcd3841337",
+                "--start-time-us",
+                "3629311679",
+                "--start-time-cpu-us",
+                "71",
+                "--parent-cpu-time-us",
+                "6215",
+                "--api-sock",
+                "firecracker.sock",
+                "--config-file",
+                "/vm-config.json",
+                "--log-path",
+                "/fc.log",
+                "--level",
+                "Info",
+                "--show-level",
+                "--metrics-path",
+                "/fc-metrics.fifo"
+              ],
+              "host_pid": 1382807,
+              "sandbox_id": "01a14173-f809-7329-b59e-c3dcd3841337"
+            },
+            "computer": "sbx_01a14173-f809-7329-b59e-c3dcd3841337",
+            "first_command_ms": 1872.875378,
+            "running_ms": 1210.9777100000001
+          },
+          {
+            "accepted_ms": 6.200742,
+            "backend": {
+              "boot_mode": "cold",
+              "firecracker_argv": [
+                "/firecracker",
+                "--id",
+                "01a14174-024e-75ec-8558-6b15999791e0",
+                "--start-time-us",
+                "3631915976",
+                "--start-time-cpu-us",
+                "90",
+                "--parent-cpu-time-us",
+                "6105",
+                "--api-sock",
+                "firecracker.sock",
+                "--config-file",
+                "/vm-config.json",
+                "--log-path",
+                "/fc.log",
+                "--level",
+                "Info",
+                "--show-level",
+                "--metrics-path",
+                "/fc-metrics.fifo"
+              ],
+              "host_pid": 1384531,
+              "sandbox_id": "01a14174-024e-75ec-8558-6b15999791e0"
+            },
+            "computer": "sbx_01a14174-024e-75ec-8558-6b15999791e0",
+            "first_command_ms": 2053.423589,
+            "running_ms": 577.573631
+          },
+          {
+            "accepted_ms": 5.655159,
+            "backend": {
+              "boot_mode": "cold",
+              "firecracker_argv": [
+                "/firecracker",
+                "--id",
+                "01a14174-0d3f-76df-ac75-6afba0f53923",
+                "--start-time-us",
+                "3634748350",
+                "--start-time-cpu-us",
+                "72",
+                "--parent-cpu-time-us",
+                "6219",
+                "--api-sock",
+                "firecracker.sock",
+                "--config-file",
+                "/vm-config.json",
+                "--log-path",
+                "/fc.log",
+                "--level",
+                "Info",
+                "--show-level",
+                "--metrics-path",
+                "/fc-metrics.fifo"
+              ],
+              "host_pid": 1386632,
+              "sandbox_id": "01a14174-0d3f-76df-ac75-6afba0f53923"
+            },
+            "computer": "sbx_01a14174-0d3f-76df-ac75-6afba0f53923",
+            "first_command_ms": 2087.9028599999997,
+            "running_ms": 817.744007
+          },
+          {
+            "accepted_ms": 4.998146,
+            "backend": {
+              "boot_mode": "cold",
+              "firecracker_argv": [
+                "/firecracker",
+                "--id",
+                "01a14174-1853-73b2-8a27-42e0035100d5",
+                "--start-time-us",
+                "3637577196",
+                "--start-time-cpu-us",
+                "75",
+                "--parent-cpu-time-us",
+                "6520",
+                "--api-sock",
+                "firecracker.sock",
+                "--config-file",
+                "/vm-config.json",
+                "--log-path",
+                "/fc.log",
+                "--level",
+                "Info",
+                "--show-level",
+                "--metrics-path",
+                "/fc-metrics.fifo"
+              ],
+              "host_pid": 1388671,
+              "sandbox_id": "01a14174-1853-73b2-8a27-42e0035100d5"
+            },
+            "computer": "sbx_01a14174-1853-73b2-8a27-42e0035100d5",
+            "first_command_ms": 2031.748134,
+            "running_ms": 968.394762
+          },
+          {
+            "accepted_ms": 6.452249,
+            "backend": {
+              "boot_mode": "cold",
+              "firecracker_argv": [
+                "/firecracker",
+                "--id",
+                "01a14174-2341-746e-a570-3139716a93c4",
+                "--start-time-us",
+                "3640378437",
+                "--start-time-cpu-us",
+                "71",
+                "--parent-cpu-time-us",
+                "6077",
+                "--api-sock",
+                "firecracker.sock",
+                "--config-file",
+                "/vm-config.json",
+                "--log-path",
+                "/fc.log",
+                "--level",
+                "Info",
+                "--show-level",
+                "--metrics-path",
+                "/fc-metrics.fifo"
+              ],
+              "host_pid": 1390722,
+              "sandbox_id": "01a14174-2341-746e-a570-3139716a93c4"
+            },
+            "computer": "sbx_01a14174-2341-746e-a570-3139716a93c4",
+            "first_command_ms": 1897.3099470000002,
+            "running_ms": 1218.057964
+          },
+          {
+            "accepted_ms": 5.640857,
+            "backend": {
+              "boot_mode": "cold",
+              "firecracker_argv": [
+                "/firecracker",
+                "--id",
+                "01a14174-2d95-719e-a670-49e6a608f01b",
+                "--start-time-us",
+                "3643002042",
+                "--start-time-cpu-us",
+                "67",
+                "--parent-cpu-time-us",
+                "5775",
+                "--api-sock",
+                "firecracker.sock",
+                "--config-file",
+                "/vm-config.json",
+                "--log-path",
+                "/fc.log",
+                "--level",
+                "Info",
+                "--show-level",
+                "--metrics-path",
+                "/fc-metrics.fifo"
+              ],
+              "host_pid": 1392292,
+              "sandbox_id": "01a14174-2d95-719e-a670-49e6a608f01b"
+            },
+            "computer": "sbx_01a14174-2d95-719e-a670-49e6a608f01b",
+            "first_command_ms": 2054.866751,
+            "running_ms": 574.976358
+          },
+          {
+            "accepted_ms": 7.099471,
+            "backend": {
+              "boot_mode": "cold",
+              "firecracker_argv": [
+                "/firecracker",
+                "--id",
+                "01a14174-388a-7018-9fc2-ffb2b88d9e9a",
+                "--start-time-us",
+                "3645841114",
+                "--start-time-cpu-us",
+                "52",
+                "--parent-cpu-time-us",
+                "6478",
+                "--api-sock",
+                "firecracker.sock",
+                "--config-file",
+                "/vm-config.json",
+                "--log-path",
+                "/fc.log",
+                "--level",
+                "Info",
+                "--show-level",
+                "--metrics-path",
+                "/fc-metrics.fifo"
+              ],
+              "host_pid": 1394122,
+              "sandbox_id": "01a14174-388a-7018-9fc2-ffb2b88d9e9a"
+            },
+            "computer": "sbx_01a14174-388a-7018-9fc2-ffb2b88d9e9a",
+            "first_command_ms": 1872.048441,
+            "running_ms": 809.7700629999999
+          },
+          {
+            "accepted_ms": 6.902419,
+            "backend": {
+              "boot_mode": "cold",
+              "firecracker_argv": [
+                "/firecracker",
+                "--id",
+                "01a14174-42c6-725b-8df6-234c95927fc6",
+                "--start-time-us",
+                "3648440291",
+                "--start-time-cpu-us",
+                "88",
+                "--parent-cpu-time-us",
+                "7380",
+                "--api-sock",
+                "firecracker.sock",
+                "--config-file",
+                "/vm-config.json",
+                "--log-path",
+                "/fc.log",
+                "--level",
+                "Info",
+                "--show-level",
+                "--metrics-path",
+                "/fc-metrics.fifo"
+              ],
+              "host_pid": 1395634,
+              "sandbox_id": "01a14174-42c6-725b-8df6-234c95927fc6"
+            },
+            "computer": "sbx_01a14174-42c6-725b-8df6-234c95927fc6",
+            "first_command_ms": 1852.209457,
+            "running_ms": 1196.239437
+          },
+          {
+            "accepted_ms": 9.254686999999999,
+            "backend": {
+              "boot_mode": "cold",
+              "firecracker_argv": [
+                "/firecracker",
+                "--id",
+                "01a14174-4cf9-702a-919d-35bf1d2e6b76",
+                "--start-time-us",
+                "3651068143",
+                "--start-time-cpu-us",
+                "67",
+                "--parent-cpu-time-us",
+                "5855",
+                "--api-sock",
+                "firecracker.sock",
+                "--config-file",
+                "/vm-config.json",
+                "--log-path",
+                "/fc.log",
+                "--level",
+                "Info",
+                "--show-level",
+                "--metrics-path",
+                "/fc-metrics.fifo"
+              ],
+              "host_pid": 1397482,
+              "sandbox_id": "01a14174-4cf9-702a-919d-35bf1d2e6b76"
+            },
+            "computer": "sbx_01a14174-4cf9-702a-919d-35bf1d2e6b76",
+            "first_command_ms": 2095.217193,
+            "running_ms": 627.780384
+          },
+          {
+            "accepted_ms": 8.010513,
+            "backend": {
+              "boot_mode": "cold",
+              "firecracker_argv": [
+                "/firecracker",
+                "--id",
+                "01a14174-5814-771d-9901-3245f29f3d7f",
+                "--start-time-us",
+                "3653920381",
+                "--start-time-cpu-us",
+                "79",
+                "--parent-cpu-time-us",
+                "7164",
+                "--api-sock",
+                "firecracker.sock",
+                "--config-file",
+                "/vm-config.json",
+                "--log-path",
+                "/fc.log",
+                "--level",
+                "Info",
+                "--show-level",
+                "--metrics-path",
+                "/fc-metrics.fifo"
+              ],
+              "host_pid": 1399433,
+              "sandbox_id": "01a14174-5814-771d-9901-3245f29f3d7f"
+            },
+            "computer": "sbx_01a14174-5814-771d-9901-3245f29f3d7f",
+            "first_command_ms": 2079.404248,
+            "running_ms": 812.796105
+          }
+        ],
+        "error": "SPACE: the command stream could not finish",
+        "first_command_p50_ms": 2045.8158420000002,
+        "first_command_p50_under_2s": false,
+        "first_command_p90_ms": 2095.217193,
+        "leftovers": [],
+        "memory_guest": {
+          "meminfo": "MemTotal:        4034212 kB\nMemFree:         3954452 kB\nMemAvailable:    3849168 kB\n",
+          "size": "medium"
+        },
+        "passed": false,
+        "pending_operation": "space-spike-cold-59c14cfc-0b32-4484-a278-72542fd109fe-19",
+        "requested_arm": "cold",
+        "schema": "openagents.space_spike.v1",
+        "template": "oa-coder-runtime@sha256:39fcdf4f2c7c74d86c7f34d5ce252b2c72258c91ffee4f2ac445113ea4288698",
+        "upstream": "de87b436c35dac056564bdd5b2a113c9046e189b",
+        "versions": "coder-cloud-runtime 1.0.0-rc.15 (de62a5acd36097d4bac505c5db2ffcbcfd58b474 unknown)\n2.1.295 (Claude Code)\n"
+      }
+    },
+    "http_snapshot_attempt": {
+      "actual_boot_mode": "cold",
+      "computers": [
+        "sbx_01a14183-3290-7747-9190-96e12cc37376"
+      ],
+      "creates": [],
+      "error": "Actual boot mode differs from the requested arm.",
+      "leftovers": [],
+      "passed": false,
+      "pending_operation": "space-spike-snapshot-4312bda4-5bfc-4ec8-a3fb-e097bb454e25-0",
+      "rejected_sample": {
+        "accepted_ms": 10.060082999999999,
+        "backend": {
+          "boot_mode": "cold",
+          "firecracker_argv": [
+            "/firecracker",
+            "--id",
+            "01a14183-3290-7747-9190-96e12cc37376",
+            "--start-time-us",
+            "4627349687",
+            "--start-time-cpu-us",
+            "89",
+            "--parent-cpu-time-us",
+            "5588",
+            "--api-sock",
+            "firecracker.sock",
+            "--config-file",
+            "/vm-config.json",
+            "--log-path",
+            "/fc.log",
+            "--level",
+            "Info",
+            "--show-level",
+            "--metrics-path",
+            "/fc-metrics.fifo"
+          ],
+          "host_pid": 1987128,
+          "sandbox_id": "01a14183-3290-7747-9190-96e12cc37376"
+        },
+        "computer": "sbx_01a14183-3290-7747-9190-96e12cc37376",
+        "first_command_ms": 1949.281193,
+        "running_ms": 1087.594605
+      },
+      "requested_arm": "snapshot",
+      "schema": "openagents.space_spike.v1",
+      "template": "oa-coder-runtime@sha256:39fcdf4f2c7c74d86c7f34d5ce252b2c72258c91ffee4f2ac445113ea4288698",
+      "upstream": "de87b436c35dac056564bdd5b2a113c9046e189b"
+    },
+    "native_cold": {
+      "schema": "openagents.space_native_spike.v1",
+      "requested_arm": "cold",
+      "upstream": "de87b436c35dac056564bdd5b2a113c9046e189b",
+      "template_digest": "sha256:39fcdf4f2c7c74d86c7f34d5ce252b2c72258c91ffee4f2ac445113ea4288698",
+      "node": "space-local-worker2",
+      "measurement": "docker CLI invocation to blocking guest readiness; no command",
+      "creates": [
+        {
+          "computer_label": "4a19eacd",
+          "ready_ms": 1663.345855999978,
+          "actual_boot_mode": "cold",
+          "create_stdout": "Sandbox:   4a19eacd\nPID:       486362\nGuest IP:  169.254.0.21\nNamespace: sns-000000\nBoot mode: cold\nLog:       tail -f /space/run/firecracker/sandboxes/01a14186-a2ad-722a-8905-76f04a19eacd/fc.log\n",
+          "backend": {
+            "sandbox_id": "01a14186-a2ad-722a-8905-76f04a19eacd",
+            "host_pid": 2122220,
+            "boot_mode": "cold",
+            "firecracker_argv": [
+              "/firecracker",
+              "--id",
+              "01a14186-a2ad-722a-8905-76f04a19eacd",
+              "--start-time-us",
+              "4852359310",
+              "--start-time-cpu-us",
+              "63",
+              "--parent-cpu-time-us",
+              "5835",
+              "--api-sock",
+              "firecracker.sock",
+              "--config-file",
+              "/vm-config.json",
+              "--log-path",
+              "/fc.log",
+              "--level",
+              "Info",
+              "--show-level",
+              "--metrics-path",
+              "/fc-metrics.fifo"
+            ]
+          }
+        },
+        {
+          "computer_label": "b1abd4c6",
+          "ready_ms": 1721.5973410002334,
+          "actual_boot_mode": "cold",
+          "create_stdout": "Sandbox:   b1abd4c6\nPID:       486944\nGuest IP:  169.254.0.21\nNamespace: sns-000001\nBoot mode: cold\nLog:       tail -f /space/run/firecracker/sandboxes/01a14186-ac19-727e-ba80-c9bfb1abd4c6/fc.log\n",
+          "backend": {
+            "sandbox_id": "01a14186-ac19-727e-ba80-c9bfb1abd4c6",
+            "host_pid": 2123904,
+            "boot_mode": "cold",
+            "firecracker_argv": [
+              "/firecracker",
+              "--id",
+              "01a14186-ac19-727e-ba80-c9bfb1abd4c6",
+              "--start-time-us",
+              "4854782439",
+              "--start-time-cpu-us",
+              "101",
+              "--parent-cpu-time-us",
+              "5983",
+              "--api-sock",
+              "firecracker.sock",
+              "--config-file",
+              "/vm-config.json",
+              "--log-path",
+              "/fc.log",
+              "--level",
+              "Info",
+              "--show-level",
+              "--metrics-path",
+              "/fc-metrics.fifo"
+            ]
+          }
+        },
+        {
+          "computer_label": "ec1ddac6",
+          "ready_ms": 1673.8534279993473,
+          "actual_boot_mode": "cold",
+          "create_stdout": "Sandbox:   ec1ddac6\nPID:       487352\nGuest IP:  169.254.0.21\nNamespace: sns-000002\nBoot mode: cold\nLog:       tail -f /space/run/firecracker/sandboxes/01a14186-b59c-77da-8a08-f9f2ec1ddac6/fc.log\n",
+          "backend": {
+            "sandbox_id": "01a14186-b59c-77da-8a08-f9f2ec1ddac6",
+            "host_pid": 2125648,
+            "boot_mode": "cold",
+            "firecracker_argv": [
+              "/firecracker",
+              "--id",
+              "01a14186-b59c-77da-8a08-f9f2ec1ddac6",
+              "--start-time-us",
+              "4857205719",
+              "--start-time-cpu-us",
+              "78",
+              "--parent-cpu-time-us",
+              "6235",
+              "--api-sock",
+              "firecracker.sock",
+              "--config-file",
+              "/vm-config.json",
+              "--log-path",
+              "/fc.log",
+              "--level",
+              "Info",
+              "--show-level",
+              "--metrics-path",
+              "/fc-metrics.fifo"
+            ]
+          }
+        },
+        {
+          "computer_label": "c25c11e3",
+          "ready_ms": 1719.81205999964,
+          "actual_boot_mode": "cold",
+          "create_stdout": "Sandbox:   c25c11e3\nPID:       487882\nGuest IP:  169.254.0.21\nNamespace: sns-000003\nBoot mode: cold\nLog:       tail -f /space/run/firecracker/sandboxes/01a14186-bef8-7281-bf4c-509fc25c11e3/fc.log\n",
+          "backend": {
+            "sandbox_id": "01a14186-bef8-7281-bf4c-509fc25c11e3",
+            "host_pid": 2127415,
+            "boot_mode": "cold",
+            "firecracker_argv": [
+              "/firecracker",
+              "--id",
+              "01a14186-bef8-7281-bf4c-509fc25c11e3",
+              "--start-time-us",
+              "4859623129",
+              "--start-time-cpu-us",
+              "74",
+              "--parent-cpu-time-us",
+              "6695",
+              "--api-sock",
+              "firecracker.sock",
+              "--config-file",
+              "/vm-config.json",
+              "--log-path",
+              "/fc.log",
+              "--level",
+              "Info",
+              "--show-level",
+              "--metrics-path",
+              "/fc-metrics.fifo"
+            ]
+          }
+        },
+        {
+          "computer_label": "15b248a5",
+          "ready_ms": 1664.6071140003187,
+          "actual_boot_mode": "cold",
+          "create_stdout": "Sandbox:   15b248a5\nPID:       488289\nGuest IP:  169.254.0.21\nNamespace: sns-000004\nBoot mode: cold\nLog:       tail -f /space/run/firecracker/sandboxes/01a14186-c868-75c9-8e48-28bb15b248a5/fc.log\n",
+          "backend": {
+            "sandbox_id": "01a14186-c868-75c9-8e48-28bb15b248a5",
+            "host_pid": 2129027,
+            "boot_mode": "cold",
+            "firecracker_argv": [
+              "/firecracker",
+              "--id",
+              "01a14186-c868-75c9-8e48-28bb15b248a5",
+              "--start-time-us",
+              "4862026033",
+              "--start-time-cpu-us",
+              "84",
+              "--parent-cpu-time-us",
+              "6438",
+              "--api-sock",
+              "firecracker.sock",
+              "--config-file",
+              "/vm-config.json",
+              "--log-path",
+              "/fc.log",
+              "--level",
+              "Info",
+              "--show-level",
+              "--metrics-path",
+              "/fc-metrics.fifo"
+            ]
+          }
+        },
+        {
+          "computer_label": "ee698cb3",
+          "ready_ms": 1679.0979160005008,
+          "actual_boot_mode": "cold",
+          "create_stdout": "Sandbox:   ee698cb3\nPID:       488716\nGuest IP:  169.254.0.21\nNamespace: sns-000005\nBoot mode: cold\nLog:       tail -f /space/run/firecracker/sandboxes/01a14186-d1b2-748f-816a-2c81ee698cb3/fc.log\n",
+          "backend": {
+            "sandbox_id": "01a14186-d1b2-748f-816a-2c81ee698cb3",
+            "host_pid": 2130436,
+            "boot_mode": "cold",
+            "firecracker_argv": [
+              "/firecracker",
+              "--id",
+              "01a14186-d1b2-748f-816a-2c81ee698cb3",
+              "--start-time-us",
+              "4864399317",
+              "--start-time-cpu-us",
+              "80",
+              "--parent-cpu-time-us",
+              "5448",
+              "--api-sock",
+              "firecracker.sock",
+              "--config-file",
+              "/vm-config.json",
+              "--log-path",
+              "/fc.log",
+              "--level",
+              "Info",
+              "--show-level",
+              "--metrics-path",
+              "/fc-metrics.fifo"
+            ]
+          }
+        },
+        {
+          "computer_label": "65befc21",
+          "ready_ms": 1625.4012549998151,
+          "actual_boot_mode": "cold",
+          "create_stdout": "Sandbox:   65befc21\nPID:       489174\nGuest IP:  169.254.0.21\nNamespace: sns-000006\nBoot mode: cold\nLog:       tail -f /space/run/firecracker/sandboxes/01a14186-db0e-729b-9f10-e35065befc21/fc.log\n",
+          "backend": {
+            "sandbox_id": "01a14186-db0e-729b-9f10-e35065befc21",
+            "host_pid": 2131941,
+            "boot_mode": "cold",
+            "firecracker_argv": [
+              "/firecracker",
+              "--id",
+              "01a14186-db0e-729b-9f10-e35065befc21",
+              "--start-time-us",
+              "4866791152",
+              "--start-time-cpu-us",
+              "79",
+              "--parent-cpu-time-us",
+              "5972",
+              "--api-sock",
+              "firecracker.sock",
+              "--config-file",
+              "/vm-config.json",
+              "--log-path",
+              "/fc.log",
+              "--level",
+              "Info",
+              "--show-level",
+              "--metrics-path",
+              "/fc-metrics.fifo"
+            ]
+          }
+        },
+        {
+          "computer_label": "89134086",
+          "ready_ms": 1652.8932279998116,
+          "actual_boot_mode": "cold",
+          "create_stdout": "Sandbox:   89134086\nPID:       489625\nGuest IP:  169.254.0.21\nNamespace: sns-000007\nBoot mode: cold\nLog:       tail -f /space/run/firecracker/sandboxes/01a14186-e441-7314-af45-f5ef89134086/fc.log\n",
+          "backend": {
+            "sandbox_id": "01a14186-e441-7314-af45-f5ef89134086",
+            "host_pid": 2133431,
+            "boot_mode": "cold",
+            "firecracker_argv": [
+              "/firecracker",
+              "--id",
+              "01a14186-e441-7314-af45-f5ef89134086",
+              "--start-time-us",
+              "4869147811",
+              "--start-time-cpu-us",
+              "54",
+              "--parent-cpu-time-us",
+              "6608",
+              "--api-sock",
+              "firecracker.sock",
+              "--config-file",
+              "/vm-config.json",
+              "--log-path",
+              "/fc.log",
+              "--level",
+              "Info",
+              "--show-level",
+              "--metrics-path",
+              "/fc-metrics.fifo"
+            ]
+          }
+        },
+        {
+          "computer_label": "20883947",
+          "ready_ms": 1641.665570999976,
+          "actual_boot_mode": "cold",
+          "create_stdout": "Sandbox:   20883947\nPID:       490072\nGuest IP:  169.254.0.21\nNamespace: sns-000008\nBoot mode: cold\nLog:       tail -f /space/run/firecracker/sandboxes/01a14186-ed85-71dc-b10f-15ee20883947/fc.log\n",
+          "backend": {
+            "sandbox_id": "01a14186-ed85-71dc-b10f-15ee20883947",
+            "host_pid": 2135116,
+            "boot_mode": "cold",
+            "firecracker_argv": [
+              "/firecracker",
+              "--id",
+              "01a14186-ed85-71dc-b10f-15ee20883947",
+              "--start-time-us",
+              "4871517665",
+              "--start-time-cpu-us",
+              "122",
+              "--parent-cpu-time-us",
+              "6090",
+              "--api-sock",
+              "firecracker.sock",
+              "--config-file",
+              "/vm-config.json",
+              "--log-path",
+              "/fc.log",
+              "--level",
+              "Info",
+              "--show-level",
+              "--metrics-path",
+              "/fc-metrics.fifo"
+            ]
+          }
+        },
+        {
+          "computer_label": "1f4e1219",
+          "ready_ms": 1698.4358999998221,
+          "actual_boot_mode": "cold",
+          "create_stdout": "Sandbox:   1f4e1219\nPID:       490684\nGuest IP:  169.254.0.21\nNamespace: sns-000009\nBoot mode: cold\nLog:       tail -f /space/run/firecracker/sandboxes/01a14186-f6cf-7062-b613-2bbc1f4e1219/fc.log\n",
+          "backend": {
+            "sandbox_id": "01a14186-f6cf-7062-b613-2bbc1f4e1219",
+            "host_pid": 2136876,
+            "boot_mode": "cold",
+            "firecracker_argv": [
+              "/firecracker",
+              "--id",
+              "01a14186-f6cf-7062-b613-2bbc1f4e1219",
+              "--start-time-us",
+              "4873897109",
+              "--start-time-cpu-us",
+              "133",
+              "--parent-cpu-time-us",
+              "5974",
+              "--api-sock",
+              "firecracker.sock",
+              "--config-file",
+              "/vm-config.json",
+              "--log-path",
+              "/fc.log",
+              "--level",
+              "Info",
+              "--show-level",
+              "--metrics-path",
+              "/fc-metrics.fifo"
+            ]
+          }
+        },
+        {
+          "computer_label": "2226ff07",
+          "ready_ms": 1698.1750689992623,
+          "actual_boot_mode": "cold",
+          "create_stdout": "Sandbox:   2226ff07\nPID:       491144\nGuest IP:  169.254.0.21\nNamespace: sns-000010\nBoot mode: cold\nLog:       tail -f /space/run/firecracker/sandboxes/01a14187-0038-7114-967a-854e2226ff07/fc.log\n",
+          "backend": {
+            "sandbox_id": "01a14187-0038-7114-967a-854e2226ff07",
+            "host_pid": 2138638,
+            "boot_mode": "cold",
+            "firecracker_argv": [
+              "/firecracker",
+              "--id",
+              "01a14187-0038-7114-967a-854e2226ff07",
+              "--start-time-us",
+              "4876311364",
+              "--start-time-cpu-us",
+              "75",
+              "--parent-cpu-time-us",
+              "5881",
+              "--api-sock",
+              "firecracker.sock",
+              "--config-file",
+              "/vm-config.json",
+              "--log-path",
+              "/fc.log",
+              "--level",
+              "Info",
+              "--show-level",
+              "--metrics-path",
+              "/fc-metrics.fifo"
+            ]
+          }
+        },
+        {
+          "computer_label": "83cd931d",
+          "ready_ms": 1693.082174000665,
+          "actual_boot_mode": "cold",
+          "create_stdout": "Sandbox:   83cd931d\nPID:       491612\nGuest IP:  169.254.0.21\nNamespace: sns-000011\nBoot mode: cold\nLog:       tail -f /space/run/firecracker/sandboxes/01a14187-09a9-70b5-b546-214d83cd931d/fc.log\n",
+          "backend": {
+            "sandbox_id": "01a14187-09a9-70b5-b546-214d83cd931d",
+            "host_pid": 2140272,
+            "boot_mode": "cold",
+            "firecracker_argv": [
+              "/firecracker",
+              "--id",
+              "01a14187-09a9-70b5-b546-214d83cd931d",
+              "--start-time-us",
+              "4878725869",
+              "--start-time-cpu-us",
+              "77",
+              "--parent-cpu-time-us",
+              "6239",
+              "--api-sock",
+              "firecracker.sock",
+              "--config-file",
+              "/vm-config.json",
+              "--log-path",
+              "/fc.log",
+              "--level",
+              "Info",
+              "--show-level",
+              "--metrics-path",
+              "/fc-metrics.fifo"
+            ]
+          }
+        },
+        {
+          "computer_label": "3db944ff",
+          "ready_ms": 1669.7540249997473,
+          "actual_boot_mode": "cold",
+          "create_stdout": "Sandbox:   3db944ff\nPID:       492086\nGuest IP:  169.254.0.21\nNamespace: sns-000012\nBoot mode: cold\nLog:       tail -f /space/run/firecracker/sandboxes/01a14187-1311-7206-8801-adfc3db944ff/fc.log\n",
+          "backend": {
+            "sandbox_id": "01a14187-1311-7206-8801-adfc3db944ff",
+            "host_pid": 2142097,
+            "boot_mode": "cold",
+            "firecracker_argv": [
+              "/firecracker",
+              "--id",
+              "01a14187-1311-7206-8801-adfc3db944ff",
+              "--start-time-us",
+              "4881139097",
+              "--start-time-cpu-us",
+              "90",
+              "--parent-cpu-time-us",
+              "6843",
+              "--api-sock",
+              "firecracker.sock",
+              "--config-file",
+              "/vm-config.json",
+              "--log-path",
+              "/fc.log",
+              "--level",
+              "Info",
+              "--show-level",
+              "--metrics-path",
+              "/fc-metrics.fifo"
+            ]
+          }
+        },
+        {
+          "computer_label": "a03713cd",
+          "ready_ms": 1665.1054280000608,
+          "actual_boot_mode": "cold",
+          "create_stdout": "Sandbox:   a03713cd\nPID:       492520\nGuest IP:  169.254.0.21\nNamespace: sns-000013\nBoot mode: cold\nLog:       tail -f /space/run/firecracker/sandboxes/01a14187-1c6b-723a-b775-4beea03713cd/fc.log\n",
+          "backend": {
+            "sandbox_id": "01a14187-1c6b-723a-b775-4beea03713cd",
+            "host_pid": 2143465,
+            "boot_mode": "cold",
+            "firecracker_argv": [
+              "/firecracker",
+              "--id",
+              "01a14187-1c6b-723a-b775-4beea03713cd",
+              "--start-time-us",
+              "4883522427",
+              "--start-time-cpu-us",
+              "56",
+              "--parent-cpu-time-us",
+              "6366",
+              "--api-sock",
+              "firecracker.sock",
+              "--config-file",
+              "/vm-config.json",
+              "--log-path",
+              "/fc.log",
+              "--level",
+              "Info",
+              "--show-level",
+              "--metrics-path",
+              "/fc-metrics.fifo"
+            ]
+          }
+        },
+        {
+          "computer_label": "2adab450",
+          "ready_ms": 1646.7534189996513,
+          "actual_boot_mode": "cold",
+          "create_stdout": "Sandbox:   2adab450\nPID:       492998\nGuest IP:  169.254.0.21\nNamespace: sns-000014\nBoot mode: cold\nLog:       tail -f /space/run/firecracker/sandboxes/01a14187-25c0-710a-91d8-8bf72adab450/fc.log\n",
+          "backend": {
+            "sandbox_id": "01a14187-25c0-710a-91d8-8bf72adab450",
+            "host_pid": 2145095,
+            "boot_mode": "cold",
+            "firecracker_argv": [
+              "/firecracker",
+              "--id",
+              "01a14187-25c0-710a-91d8-8bf72adab450",
+              "--start-time-us",
+              "4885915639",
+              "--start-time-cpu-us",
+              "98",
+              "--parent-cpu-time-us",
+              "5964",
+              "--api-sock",
+              "firecracker.sock",
+              "--config-file",
+              "/vm-config.json",
+              "--log-path",
+              "/fc.log",
+              "--level",
+              "Info",
+              "--show-level",
+              "--metrics-path",
+              "/fc-metrics.fifo"
+            ]
+          }
+        },
+        {
+          "computer_label": "04cad603",
+          "ready_ms": 1700.2102309998008,
+          "actual_boot_mode": "cold",
+          "create_stdout": "Sandbox:   04cad603\nPID:       493421\nGuest IP:  169.254.0.21\nNamespace: sns-000000\nBoot mode: cold\nLog:       tail -f /space/run/firecracker/sandboxes/01a14187-2efe-746e-a8bc-771e04cad603/fc.log\n",
+          "backend": {
+            "sandbox_id": "01a14187-2efe-746e-a8bc-771e04cad603",
+            "host_pid": 2146491,
+            "boot_mode": "cold",
+            "firecracker_argv": [
+              "/firecracker",
+              "--id",
+              "01a14187-2efe-746e-a8bc-771e04cad603",
+              "--start-time-us",
+              "4888285327",
+              "--start-time-cpu-us",
+              "72",
+              "--parent-cpu-time-us",
+              "5777",
+              "--api-sock",
+              "firecracker.sock",
+              "--config-file",
+              "/vm-config.json",
+              "--log-path",
+              "/fc.log",
+              "--level",
+              "Info",
+              "--show-level",
+              "--metrics-path",
+              "/fc-metrics.fifo"
+            ]
+          }
+        },
+        {
+          "computer_label": "50fbc43f",
+          "ready_ms": 1736.847358999512,
+          "actual_boot_mode": "cold",
+          "create_stdout": "Sandbox:   50fbc43f\nPID:       493870\nGuest IP:  169.254.0.21\nNamespace: sns-000001\nBoot mode: cold\nLog:       tail -f /space/run/firecracker/sandboxes/01a14187-3889-7313-b1b6-e15350fbc43f/fc.log\n",
+          "backend": {
+            "sandbox_id": "01a14187-3889-7313-b1b6-e15350fbc43f",
+            "host_pid": 2148198,
+            "boot_mode": "cold",
+            "firecracker_argv": [
+              "/firecracker",
+              "--id",
+              "01a14187-3889-7313-b1b6-e15350fbc43f",
+              "--start-time-us",
+              "4890736351",
+              "--start-time-cpu-us",
+              "72",
+              "--parent-cpu-time-us",
+              "7467",
+              "--api-sock",
+              "firecracker.sock",
+              "--config-file",
+              "/vm-config.json",
+              "--log-path",
+              "/fc.log",
+              "--level",
+              "Info",
+              "--show-level",
+              "--metrics-path",
+              "/fc-metrics.fifo"
+            ]
+          }
+        },
+        {
+          "computer_label": "568defa5",
+          "ready_ms": 1728.7004210002124,
+          "actual_boot_mode": "cold",
+          "create_stdout": "Sandbox:   568defa5\nPID:       494371\nGuest IP:  169.254.0.21\nNamespace: sns-000002\nBoot mode: cold\nLog:       tail -f /space/run/firecracker/sandboxes/01a14187-4221-70f9-b1ef-3f2c568defa5/fc.log\n",
+          "backend": {
+            "sandbox_id": "01a14187-4221-70f9-b1ef-3f2c568defa5",
+            "host_pid": 2149762,
+            "boot_mode": "cold",
+            "firecracker_argv": [
+              "/firecracker",
+              "--id",
+              "01a14187-4221-70f9-b1ef-3f2c568defa5",
+              "--start-time-us",
+              "4893208336",
+              "--start-time-cpu-us",
+              "72",
+              "--parent-cpu-time-us",
+              "6076",
+              "--api-sock",
+              "firecracker.sock",
+              "--config-file",
+              "/vm-config.json",
+              "--log-path",
+              "/fc.log",
+              "--level",
+              "Info",
+              "--show-level",
+              "--metrics-path",
+              "/fc-metrics.fifo"
+            ]
+          }
+        },
+        {
+          "computer_label": "17c0c1ed",
+          "ready_ms": 1693.5302290003165,
+          "actual_boot_mode": "cold",
+          "create_stdout": "Sandbox:   17c0c1ed\nPID:       494865\nGuest IP:  169.254.0.21\nNamespace: sns-000003\nBoot mode: cold\nLog:       tail -f /space/run/firecracker/sandboxes/01a14187-4bac-7413-a931-10cc17c0c1ed/fc.log\n",
+          "backend": {
+            "sandbox_id": "01a14187-4bac-7413-a931-10cc17c0c1ed",
+            "host_pid": 2151617,
+            "boot_mode": "cold",
+            "firecracker_argv": [
+              "/firecracker",
+              "--id",
+              "01a14187-4bac-7413-a931-10cc17c0c1ed",
+              "--start-time-us",
+              "4895624716",
+              "--start-time-cpu-us",
+              "71",
+              "--parent-cpu-time-us",
+              "6541",
+              "--api-sock",
+              "firecracker.sock",
+              "--config-file",
+              "/vm-config.json",
+              "--log-path",
+              "/fc.log",
+              "--level",
+              "Info",
+              "--show-level",
+              "--metrics-path",
+              "/fc-metrics.fifo"
+            ]
+          }
+        },
+        {
+          "computer_label": "adcfe454",
+          "ready_ms": 1672.2985139995217,
+          "actual_boot_mode": "cold",
+          "create_stdout": "Sandbox:   adcfe454\nPID:       495279\nGuest IP:  169.254.0.21\nNamespace: sns-000004\nBoot mode: cold\nLog:       tail -f /space/run/firecracker/sandboxes/01a14187-551a-7258-b07a-0868adcfe454/fc.log\n",
+          "backend": {
+            "sandbox_id": "01a14187-551a-7258-b07a-0868adcfe454",
+            "host_pid": 2153171,
+            "boot_mode": "cold",
+            "firecracker_argv": [
+              "/firecracker",
+              "--id",
+              "01a14187-551a-7258-b07a-0868adcfe454",
+              "--start-time-us",
+              "4898038089",
+              "--start-time-cpu-us",
+              "91",
+              "--parent-cpu-time-us",
+              "6238",
+              "--api-sock",
+              "firecracker.sock",
+              "--config-file",
+              "/vm-config.json",
+              "--log-path",
+              "/fc.log",
+              "--level",
+              "Info",
+              "--show-level",
+              "--metrics-path",
+              "/fc-metrics.fifo"
+            ]
+          }
+        }
+      ],
+      "computers": [],
+      "leftovers": [],
+      "network_pool_before": {
+        "networkPoolStatus": "NETWORK_POOL_STATUS_HEALTHY",
+        "networkSlotsTotal": 300,
+        "networkPoolSchemaVersion": 4,
+        "networkPoolMaxSlots": 300,
+        "sandboxCgroupMemoryMib": "8320",
+        "sandboxGuestMemoryMaxMib": "8192",
+        "sandboxMemoryHeadroomMib": "128",
+        "sandboxCgroupTotalMemoryMib": "2496000"
+      },
+      "network_pool_configured": {
+        "config": {
+          "maxSlots": 300,
+          "targetReadySlots": 2,
+          "minReadySlots": 1,
+          "retainedReadySlots": 2
+        }
+      },
+      "network_pool_ready": {
+        "networkPoolStatus": "NETWORK_POOL_STATUS_HEALTHY",
+        "networkPoolTarget": 2,
+        "networkPoolMinReady": 1,
+        "networkSlotsTotal": 300,
+        "networkSlotsReady": 2,
+        "networkPoolSchemaVersion": 4,
+        "networkPoolMaxSlots": 300,
+        "networkPoolRetainedReady": 2,
+        "sandboxCgroupMemoryMib": "8320",
+        "sandboxGuestMemoryMaxMib": "8192",
+        "sandboxMemoryHeadroomMib": "128",
+        "sandboxCgroupTotalMemoryMib": "2496000"
+      },
+      "machine_config": {
+        "vcpu_count": 2,
+        "mem_size_mib": 2048,
+        "smt": false,
+        "track_dirty_pages": false,
+        "huge_pages": "None"
+      },
+      "p50_ms": 1673.8534279993473,
+      "p90_ms": 1721.5973410002334,
+      "p50_under_2s": true,
+      "passed": true
+    },
+    "native_snapshot": {
+      "schema": "openagents.space_native_spike.v1",
+      "requested_arm": "snapshot",
+      "upstream": "de87b436c35dac056564bdd5b2a113c9046e189b",
+      "template_digest": "sha256:39fcdf4f2c7c74d86c7f34d5ce252b2c72258c91ffee4f2ac445113ea4288698",
+      "node": "space-local-worker2",
+      "measurement": "docker CLI invocation to blocking guest readiness; no command",
+      "creates": [
+        {
+          "computer_label": "123cb31b",
+          "ready_ms": 344.7610399998666,
+          "actual_boot_mode": "base-snapshot",
+          "create_stdout": "Sandbox:   123cb31b\nPID:       499105\nGuest IP:  169.254.0.21\nNamespace: sns-000005\nBoot mode: base-snapshot\nLog:       tail -f /space/run/firecracker/sandboxes/01a14187-ab9e-73f6-9cac-6f23123cb31b/fc.log\n",
+          "backend": {
+            "sandbox_id": "01a14187-ab9e-73f6-9cac-6f23123cb31b",
+            "host_pid": 2167571,
+            "boot_mode": "snapshot",
+            "firecracker_argv": [
+              "/firecracker",
+              "--id",
+              "01a14187-ab9e-73f6-9cac-6f23123cb31b",
+              "--start-time-us",
+              "4920207688",
+              "--start-time-cpu-us",
+              "72",
+              "--parent-cpu-time-us",
+              "6410",
+              "--api-sock",
+              "firecracker.sock",
+              "--log-path",
+              "/fc.log",
+              "--level",
+              "Info",
+              "--show-level",
+              "--metrics-path",
+              "/fc-metrics.fifo"
+            ]
+          }
+        },
+        {
+          "computer_label": "fa66cd32",
+          "ready_ms": 316.42859100065834,
+          "actual_boot_mode": "base-snapshot",
+          "create_stdout": "Sandbox:   fa66cd32\nPID:       499428\nGuest IP:  169.254.0.21\nNamespace: sns-000006\nBoot mode: base-snapshot\nLog:       tail -f /space/run/firecracker/sandboxes/01a14187-afdc-758a-b324-4855fa66cd32/fc.log\n",
+          "backend": {
+            "sandbox_id": "01a14187-afdc-758a-b324-4855fa66cd32",
+            "host_pid": 2168468,
+            "boot_mode": "snapshot",
+            "firecracker_argv": [
+              "/firecracker",
+              "--id",
+              "01a14187-afdc-758a-b324-4855fa66cd32",
+              "--start-time-us",
+              "4921284045",
+              "--start-time-cpu-us",
+              "88",
+              "--parent-cpu-time-us",
+              "6167",
+              "--api-sock",
+              "firecracker.sock",
+              "--log-path",
+              "/fc.log",
+              "--level",
+              "Info",
+              "--show-level",
+              "--metrics-path",
+              "/fc-metrics.fifo"
+            ]
+          }
+        },
+        {
+          "computer_label": "be77888e",
+          "ready_ms": 320.40419800068776,
+          "actual_boot_mode": "base-snapshot",
+          "create_stdout": "Sandbox:   be77888e\nPID:       499624\nGuest IP:  169.254.0.21\nNamespace: sns-000000\nBoot mode: base-snapshot\nLog:       tail -f /space/run/firecracker/sandboxes/01a14187-b3ef-71cc-b328-224ebe77888e/fc.log\n",
+          "backend": {
+            "sandbox_id": "01a14187-b3ef-71cc-b328-224ebe77888e",
+            "host_pid": 2169131,
+            "boot_mode": "snapshot",
+            "firecracker_argv": [
+              "/firecracker",
+              "--id",
+              "01a14187-b3ef-71cc-b328-224ebe77888e",
+              "--start-time-us",
+              "4922326788",
+              "--start-time-cpu-us",
+              "66",
+              "--parent-cpu-time-us",
+              "6836",
+              "--api-sock",
+              "firecracker.sock",
+              "--log-path",
+              "/fc.log",
+              "--level",
+              "Info",
+              "--show-level",
+              "--metrics-path",
+              "/fc-metrics.fifo"
+            ]
+          }
+        },
+        {
+          "computer_label": "daff743d",
+          "ready_ms": 329.50976800020726,
+          "actual_boot_mode": "base-snapshot",
+          "create_stdout": "Sandbox:   daff743d\nPID:       499941\nGuest IP:  169.254.0.21\nNamespace: sns-000007\nBoot mode: base-snapshot\nLog:       tail -f /space/run/firecracker/sandboxes/01a14187-b813-7373-aafe-ef98daff743d/fc.log\n",
+          "backend": {
+            "sandbox_id": "01a14187-b813-7373-aafe-ef98daff743d",
+            "host_pid": 2169877,
+            "boot_mode": "snapshot",
+            "firecracker_argv": [
+              "/firecracker",
+              "--id",
+              "01a14187-b813-7373-aafe-ef98daff743d",
+              "--start-time-us",
+              "4923383419",
+              "--start-time-cpu-us",
+              "96",
+              "--parent-cpu-time-us",
+              "6485",
+              "--api-sock",
+              "firecracker.sock",
+              "--log-path",
+              "/fc.log",
+              "--level",
+              "Info",
+              "--show-level",
+              "--metrics-path",
+              "/fc-metrics.fifo"
+            ]
+          }
+        },
+        {
+          "computer_label": "5293fda4",
+          "ready_ms": 330.2948820000893,
+          "actual_boot_mode": "base-snapshot",
+          "create_stdout": "Sandbox:   5293fda4\nPID:       500165\nGuest IP:  169.254.0.21\nNamespace: sns-000001\nBoot mode: base-snapshot\nLog:       tail -f /space/run/firecracker/sandboxes/01a14187-bc1f-75a8-943d-2b155293fda4/fc.log\n",
+          "backend": {
+            "sandbox_id": "01a14187-bc1f-75a8-943d-2b155293fda4",
+            "host_pid": 2170550,
+            "boot_mode": "snapshot",
+            "firecracker_argv": [
+              "/firecracker",
+              "--id",
+              "01a14187-bc1f-75a8-943d-2b155293fda4",
+              "--start-time-us",
+              "4924417303",
+              "--start-time-cpu-us",
+              "80",
+              "--parent-cpu-time-us",
+              "5631",
+              "--api-sock",
+              "firecracker.sock",
+              "--log-path",
+              "/fc.log",
+              "--level",
+              "Info",
+              "--show-level",
+              "--metrics-path",
+              "/fc-metrics.fifo"
+            ]
+          }
+        },
+        {
+          "computer_label": "a22b2d5d",
+          "ready_ms": 318.98601000011695,
+          "actual_boot_mode": "base-snapshot",
+          "create_stdout": "Sandbox:   a22b2d5d\nPID:       500503\nGuest IP:  169.254.0.21\nNamespace: sns-000008\nBoot mode: base-snapshot\nLog:       tail -f /space/run/firecracker/sandboxes/01a14187-c044-75b4-9fec-5c6da22b2d5d/fc.log\n",
+          "backend": {
+            "sandbox_id": "01a14187-c044-75b4-9fec-5c6da22b2d5d",
+            "host_pid": 2171489,
+            "boot_mode": "snapshot",
+            "firecracker_argv": [
+              "/firecracker",
+              "--id",
+              "01a14187-c044-75b4-9fec-5c6da22b2d5d",
+              "--start-time-us",
+              "4925487322",
+              "--start-time-cpu-us",
+              "103",
+              "--parent-cpu-time-us",
+              "5987",
+              "--api-sock",
+              "firecracker.sock",
+              "--log-path",
+              "/fc.log",
+              "--level",
+              "Info",
+              "--show-level",
+              "--metrics-path",
+              "/fc-metrics.fifo"
+            ]
+          }
+        },
+        {
+          "computer_label": "8606697d",
+          "ready_ms": 318.95147599971096,
+          "actual_boot_mode": "base-snapshot",
+          "create_stdout": "Sandbox:   8606697d\nPID:       500804\nGuest IP:  169.254.0.21\nNamespace: sns-000002\nBoot mode: base-snapshot\nLog:       tail -f /space/run/firecracker/sandboxes/01a14187-c460-7100-abc0-2a4c8606697d/fc.log\n",
+          "backend": {
+            "sandbox_id": "01a14187-c460-7100-abc0-2a4c8606697d",
+            "host_pid": 2172206,
+            "boot_mode": "snapshot",
+            "firecracker_argv": [
+              "/firecracker",
+              "--id",
+              "01a14187-c460-7100-abc0-2a4c8606697d",
+              "--start-time-us",
+              "4926527817",
+              "--start-time-cpu-us",
+              "48",
+              "--parent-cpu-time-us",
+              "6253",
+              "--api-sock",
+              "firecracker.sock",
+              "--log-path",
+              "/fc.log",
+              "--level",
+              "Info",
+              "--show-level",
+              "--metrics-path",
+              "/fc-metrics.fifo"
+            ]
+          }
+        },
+        {
+          "computer_label": "6b2748d2",
+          "ready_ms": 304.92578399935155,
+          "actual_boot_mode": "base-snapshot",
+          "create_stdout": "Sandbox:   6b2748d2\nPID:       501125\nGuest IP:  169.254.0.21\nNamespace: sns-000009\nBoot mode: base-snapshot\nLog:       tail -f /space/run/firecracker/sandboxes/01a14187-c874-71be-8b2e-4eab6b2748d2/fc.log\n",
+          "backend": {
+            "sandbox_id": "01a14187-c874-71be-8b2e-4eab6b2748d2",
+            "host_pid": 2172992,
+            "boot_mode": "snapshot",
+            "firecracker_argv": [
+              "/firecracker",
+              "--id",
+              "01a14187-c874-71be-8b2e-4eab6b2748d2",
+              "--start-time-us",
+              "4927570453",
+              "--start-time-cpu-us",
+              "79",
+              "--parent-cpu-time-us",
+              "6138",
+              "--api-sock",
+              "firecracker.sock",
+              "--log-path",
+              "/fc.log",
+              "--level",
+              "Info",
+              "--show-level",
+              "--metrics-path",
+              "/fc-metrics.fifo"
+            ]
+          }
+        },
+        {
+          "computer_label": "436b0af7",
+          "ready_ms": 323.53077300012956,
+          "actual_boot_mode": "base-snapshot",
+          "create_stdout": "Sandbox:   436b0af7\nPID:       501480\nGuest IP:  169.254.0.21\nNamespace: sns-000010\nBoot mode: base-snapshot\nLog:       tail -f /space/run/firecracker/sandboxes/01a14187-cc95-74f4-a0d0-18b8436b0af7/fc.log\n",
+          "backend": {
+            "sandbox_id": "01a14187-cc95-74f4-a0d0-18b8436b0af7",
+            "host_pid": 2173799,
+            "boot_mode": "snapshot",
+            "firecracker_argv": [
+              "/firecracker",
+              "--id",
+              "01a14187-cc95-74f4-a0d0-18b8436b0af7",
+              "--start-time-us",
+              "4928635852",
+              "--start-time-cpu-us",
+              "96",
+              "--parent-cpu-time-us",
+              "7445",
+              "--api-sock",
+              "firecracker.sock",
+              "--log-path",
+              "/fc.log",
+              "--level",
+              "Info",
+              "--show-level",
+              "--metrics-path",
+              "/fc-metrics.fifo"
+            ]
+          }
+        },
+        {
+          "computer_label": "346a341e",
+          "ready_ms": 304.60131900053966,
+          "actual_boot_mode": "base-snapshot",
+          "create_stdout": "Sandbox:   346a341e\nPID:       501668\nGuest IP:  169.254.0.21\nNamespace: sns-000003\nBoot mode: base-snapshot\nLog:       tail -f /space/run/firecracker/sandboxes/01a14187-d0ad-7745-a6b2-46b5346a341e/fc.log\n",
+          "backend": {
+            "sandbox_id": "01a14187-d0ad-7745-a6b2-46b5346a341e",
+            "host_pid": 2174507,
+            "boot_mode": "snapshot",
+            "firecracker_argv": [
+              "/firecracker",
+              "--id",
+              "01a14187-d0ad-7745-a6b2-46b5346a341e",
+              "--start-time-us",
+              "4929673928",
+              "--start-time-cpu-us",
+              "73",
+              "--parent-cpu-time-us",
+              "6494",
+              "--api-sock",
+              "firecracker.sock",
+              "--log-path",
+              "/fc.log",
+              "--level",
+              "Info",
+              "--show-level",
+              "--metrics-path",
+              "/fc-metrics.fifo"
+            ]
+          }
+        },
+        {
+          "computer_label": "c802cffd",
+          "ready_ms": 346.8510579996291,
+          "actual_boot_mode": "base-snapshot",
+          "create_stdout": "Sandbox:   c802cffd\nPID:       502018\nGuest IP:  169.254.0.21\nNamespace: sns-000011\nBoot mode: base-snapshot\nLog:       tail -f /space/run/firecracker/sandboxes/01a14187-d4b8-746d-8d23-8a89c802cffd/fc.log\n",
+          "backend": {
+            "sandbox_id": "01a14187-d4b8-746d-8d23-8a89c802cffd",
+            "host_pid": 2175536,
+            "boot_mode": "snapshot",
+            "firecracker_argv": [
+              "/firecracker",
+              "--id",
+              "01a14187-d4b8-746d-8d23-8a89c802cffd",
+              "--start-time-us",
+              "4930727131",
+              "--start-time-cpu-us",
+              "66",
+              "--parent-cpu-time-us",
+              "8025",
+              "--api-sock",
+              "firecracker.sock",
+              "--log-path",
+              "/fc.log",
+              "--level",
+              "Info",
+              "--show-level",
+              "--metrics-path",
+              "/fc-metrics.fifo"
+            ]
+          }
+        },
+        {
+          "computer_label": "2e142432",
+          "ready_ms": 293.9959629993609,
+          "actual_boot_mode": "base-snapshot",
+          "create_stdout": "Sandbox:   2e142432\nPID:       502235\nGuest IP:  169.254.0.21\nNamespace: sns-000004\nBoot mode: base-snapshot\nLog:       tail -f /space/run/firecracker/sandboxes/01a14187-d8d5-7537-bdf6-ca532e142432/fc.log\n",
+          "backend": {
+            "sandbox_id": "01a14187-d8d5-7537-bdf6-ca532e142432",
+            "host_pid": 2176186,
+            "boot_mode": "snapshot",
+            "firecracker_argv": [
+              "/firecracker",
+              "--id",
+              "01a14187-d8d5-7537-bdf6-ca532e142432",
+              "--start-time-us",
+              "4931763519",
+              "--start-time-cpu-us",
+              "55",
+              "--parent-cpu-time-us",
+              "5813",
+              "--api-sock",
+              "firecracker.sock",
+              "--log-path",
+              "/fc.log",
+              "--level",
+              "Info",
+              "--show-level",
+              "--metrics-path",
+              "/fc-metrics.fifo"
+            ]
+          }
+        },
+        {
+          "computer_label": "569d6af9",
+          "ready_ms": 337.6475049999499,
+          "actual_boot_mode": "base-snapshot",
+          "create_stdout": "Sandbox:   569d6af9\nPID:       502592\nGuest IP:  169.254.0.21\nNamespace: sns-000012\nBoot mode: base-snapshot\nLog:       tail -f /space/run/firecracker/sandboxes/01a14187-dcf6-755c-a8af-c725569d6af9/fc.log\n",
+          "backend": {
+            "sandbox_id": "01a14187-dcf6-755c-a8af-c725569d6af9",
+            "host_pid": 2177149,
+            "boot_mode": "snapshot",
+            "firecracker_argv": [
+              "/firecracker",
+              "--id",
+              "01a14187-dcf6-755c-a8af-c725569d6af9",
+              "--start-time-us",
+              "4932830760",
+              "--start-time-cpu-us",
+              "81",
+              "--parent-cpu-time-us",
+              "7223",
+              "--api-sock",
+              "firecracker.sock",
+              "--log-path",
+              "/fc.log",
+              "--level",
+              "Info",
+              "--show-level",
+              "--metrics-path",
+              "/fc-metrics.fifo"
+            ]
+          }
+        },
+        {
+          "computer_label": "94034870",
+          "ready_ms": 313.4942639999281,
+          "actual_boot_mode": "base-snapshot",
+          "create_stdout": "Sandbox:   94034870\nPID:       502907\nGuest IP:  169.254.0.21\nNamespace: sns-000013\nBoot mode: base-snapshot\nLog:       tail -f /space/run/firecracker/sandboxes/01a14187-e117-7026-beb0-a25094034870/fc.log\n",
+          "backend": {
+            "sandbox_id": "01a14187-e117-7026-beb0-a25094034870",
+            "host_pid": 2177951,
+            "boot_mode": "snapshot",
+            "firecracker_argv": [
+              "/firecracker",
+              "--id",
+              "01a14187-e117-7026-beb0-a25094034870",
+              "--start-time-us",
+              "4933874071",
+              "--start-time-cpu-us",
+              "73",
+              "--parent-cpu-time-us",
+              "5917",
+              "--api-sock",
+              "firecracker.sock",
+              "--log-path",
+              "/fc.log",
+              "--level",
+              "Info",
+              "--show-level",
+              "--metrics-path",
+              "/fc-metrics.fifo"
+            ]
+          }
+        },
+        {
+          "computer_label": "af9bf401",
+          "ready_ms": 355.7665660000566,
+          "actual_boot_mode": "base-snapshot",
+          "create_stdout": "Sandbox:   af9bf401\nPID:       503217\nGuest IP:  169.254.0.21\nNamespace: sns-000014\nBoot mode: base-snapshot\nLog:       tail -f /space/run/firecracker/sandboxes/01a14187-e521-71c6-ac43-c270af9bf401/fc.log\n",
+          "backend": {
+            "sandbox_id": "01a14187-e521-71c6-ac43-c270af9bf401",
+            "host_pid": 2178854,
+            "boot_mode": "snapshot",
+            "firecracker_argv": [
+              "/firecracker",
+              "--id",
+              "01a14187-e521-71c6-ac43-c270af9bf401",
+              "--start-time-us",
+              "4934932095",
+              "--start-time-cpu-us",
+              "81",
+              "--parent-cpu-time-us",
+              "7947",
+              "--api-sock",
+              "firecracker.sock",
+              "--log-path",
+              "/fc.log",
+              "--level",
+              "Info",
+              "--show-level",
+              "--metrics-path",
+              "/fc-metrics.fifo"
+            ]
+          }
+        },
+        {
+          "computer_label": "7a97fc06",
+          "ready_ms": 309.3387729995811,
+          "actual_boot_mode": "base-snapshot",
+          "create_stdout": "Sandbox:   7a97fc06\nPID:       503475\nGuest IP:  169.254.0.21\nNamespace: sns-000015\nBoot mode: base-snapshot\nLog:       tail -f /space/run/firecracker/sandboxes/01a14187-e966-771f-9efc-61b47a97fc06/fc.log\n",
+          "backend": {
+            "sandbox_id": "01a14187-e966-771f-9efc-61b47a97fc06",
+            "host_pid": 2179805,
+            "boot_mode": "snapshot",
+            "firecracker_argv": [
+              "/firecracker",
+              "--id",
+              "01a14187-e966-771f-9efc-61b47a97fc06",
+              "--start-time-us",
+              "4936011981",
+              "--start-time-cpu-us",
+              "93",
+              "--parent-cpu-time-us",
+              "5727",
+              "--api-sock",
+              "firecracker.sock",
+              "--log-path",
+              "/fc.log",
+              "--level",
+              "Info",
+              "--show-level",
+              "--metrics-path",
+              "/fc-metrics.fifo"
+            ]
+          }
+        },
+        {
+          "computer_label": "5abfe7ae",
+          "ready_ms": 311.33725699965,
+          "actual_boot_mode": "base-snapshot",
+          "create_stdout": "Sandbox:   5abfe7ae\nPID:       503764\nGuest IP:  169.254.0.21\nNamespace: sns-000016\nBoot mode: base-snapshot\nLog:       tail -f /space/run/firecracker/sandboxes/01a14187-ed67-7248-8cf3-34825abfe7ae/fc.log\n",
+          "backend": {
+            "sandbox_id": "01a14187-ed67-7248-8cf3-34825abfe7ae",
+            "host_pid": 2180577,
+            "boot_mode": "snapshot",
+            "firecracker_argv": [
+              "/firecracker",
+              "--id",
+              "01a14187-ed67-7248-8cf3-34825abfe7ae",
+              "--start-time-us",
+              "4937038160",
+              "--start-time-cpu-us",
+              "87",
+              "--parent-cpu-time-us",
+              "7244",
+              "--api-sock",
+              "firecracker.sock",
+              "--log-path",
+              "/fc.log",
+              "--level",
+              "Info",
+              "--show-level",
+              "--metrics-path",
+              "/fc-metrics.fifo"
+            ]
+          }
+        },
+        {
+          "computer_label": "0d8defe5",
+          "ready_ms": 328.2886699998926,
+          "actual_boot_mode": "base-snapshot",
+          "create_stdout": "Sandbox:   0d8defe5\nPID:       504048\nGuest IP:  169.254.0.21\nNamespace: sns-000017\nBoot mode: base-snapshot\nLog:       tail -f /space/run/firecracker/sandboxes/01a14187-f173-7756-b285-e78c0d8defe5/fc.log\n",
+          "backend": {
+            "sandbox_id": "01a14187-f173-7756-b285-e78c0d8defe5",
+            "host_pid": 2181376,
+            "boot_mode": "snapshot",
+            "firecracker_argv": [
+              "/firecracker",
+              "--id",
+              "01a14187-f173-7756-b285-e78c0d8defe5",
+              "--start-time-us",
+              "4938066942",
+              "--start-time-cpu-us",
+              "82",
+              "--parent-cpu-time-us",
+              "6081",
+              "--api-sock",
+              "firecracker.sock",
+              "--log-path",
+              "/fc.log",
+              "--level",
+              "Info",
+              "--show-level",
+              "--metrics-path",
+              "/fc-metrics.fifo"
+            ]
+          }
+        },
+        {
+          "computer_label": "cdd3e145",
+          "ready_ms": 306.5053390000685,
+          "actual_boot_mode": "base-snapshot",
+          "create_stdout": "Sandbox:   cdd3e145\nPID:       504330\nGuest IP:  169.254.0.21\nNamespace: sns-000018\nBoot mode: base-snapshot\nLog:       tail -f /space/run/firecracker/sandboxes/01a14187-f583-743c-ab13-0102cdd3e145/fc.log\n",
+          "backend": {
+            "sandbox_id": "01a14187-f583-743c-ab13-0102cdd3e145",
+            "host_pid": 2182167,
+            "boot_mode": "snapshot",
+            "firecracker_argv": [
+              "/firecracker",
+              "--id",
+              "01a14187-f583-743c-ab13-0102cdd3e145",
+              "--start-time-us",
+              "4939107816",
+              "--start-time-cpu-us",
+              "67",
+              "--parent-cpu-time-us",
+              "6183",
+              "--api-sock",
+              "firecracker.sock",
+              "--log-path",
+              "/fc.log",
+              "--level",
+              "Info",
+              "--show-level",
+              "--metrics-path",
+              "/fc-metrics.fifo"
+            ]
+          }
+        },
+        {
+          "computer_label": "a8ebdc9c",
+          "ready_ms": 334.71041600023455,
+          "actual_boot_mode": "base-snapshot",
+          "create_stdout": "Sandbox:   a8ebdc9c\nPID:       504622\nGuest IP:  169.254.0.21\nNamespace: sns-000019\nBoot mode: base-snapshot\nLog:       tail -f /space/run/firecracker/sandboxes/01a14187-f99c-7646-871e-5c44a8ebdc9c/fc.log\n",
+          "backend": {
+            "sandbox_id": "01a14187-f99c-7646-871e-5c44a8ebdc9c",
+            "host_pid": 2183172,
+            "boot_mode": "snapshot",
+            "firecracker_argv": [
+              "/firecracker",
+              "--id",
+              "01a14187-f99c-7646-871e-5c44a8ebdc9c",
+              "--start-time-us",
+              "4940162974",
+              "--start-time-cpu-us",
+              "85",
+              "--parent-cpu-time-us",
+              "7332",
+              "--api-sock",
+              "firecracker.sock",
+              "--log-path",
+              "/fc.log",
+              "--level",
+              "Info",
+              "--show-level",
+              "--metrics-path",
+              "/fc-metrics.fifo"
+            ]
+          }
+        }
+      ],
+      "computers": [],
+      "leftovers": [],
+      "network_pool_before": {
+        "networkPoolStatus": "NETWORK_POOL_STATUS_HEALTHY",
+        "networkPoolTarget": 2,
+        "networkPoolMinReady": 1,
+        "networkSlotsTotal": 300,
+        "networkSlotsReady": 2,
+        "networkSlotsDirty": 6,
+        "networkPoolSchemaVersion": 4,
+        "networkPoolMaxSlots": 300,
+        "networkPoolRetainedReady": 2,
+        "sandboxCgroupMemoryMib": "8320",
+        "sandboxGuestMemoryMaxMib": "8192",
+        "sandboxMemoryHeadroomMib": "128",
+        "sandboxCgroupTotalMemoryMib": "2496000"
+      },
+      "network_pool_configured": {
+        "config": {
+          "maxSlots": 300,
+          "targetReadySlots": 2,
+          "minReadySlots": 1,
+          "retainedReadySlots": 2
+        }
+      },
+      "network_pool_ready": {
+        "networkPoolStatus": "NETWORK_POOL_STATUS_HEALTHY",
+        "networkPoolTarget": 2,
+        "networkPoolMinReady": 1,
+        "networkSlotsTotal": 300,
+        "networkSlotsReady": 2,
+        "networkSlotsDirty": 5,
+        "networkSlotsResetting": 1,
+        "networkPoolSchemaVersion": 4,
+        "networkPoolMaxSlots": 300,
+        "networkPoolRetainedReady": 2,
+        "sandboxCgroupMemoryMib": "8320",
+        "sandboxGuestMemoryMaxMib": "8192",
+        "sandboxMemoryHeadroomMib": "128",
+        "sandboxCgroupTotalMemoryMib": "2496000"
+      },
+      "machine_config": {
+        "vcpu_count": 2,
+        "mem_size_mib": 2048,
+        "smt": false,
+        "track_dirty_pages": true,
+        "huge_pages": "None"
+      },
+      "p50_ms": 318.98601000011695,
+      "p90_ms": 344.7610399998666,
+      "p50_under_2s": true,
+      "passed": true
+    },
+    "memory_and_egress": {
+      "actual_boot_mode": "requires_backend_evidence",
+      "computers": [
+        "sbx_01a14181-9c8d-7767-947e-8720e5cfea01"
+      ],
+      "creates": [],
+      "egress": {
+        "blocked_request_bypassed_dns": true,
+        "denied_exit_code": 35,
+        "denied_stderr": "curl: (35) Recv failure: Connection reset by peer\n",
+        "example_blocked": true,
+        "example_ipv4": "104.20.23.154",
+        "github_allowed": true
+      },
+      "leftovers": [],
+      "memory": {
+        "after": "325:1073741824:a2f6ed726809a3eb4978b8425dd59576f8bcc9994002683b9773f6ce7c0b2632",
+        "before": "325:1073741824:a2f6ed726809a3eb4978b8425dd59576f8bcc9994002683b9773f6ce7c0b2632",
+        "bytes": 1073741824,
+        "same_process_and_hash": true,
+        "wake_to_answer_ms": 9293.12655
+      },
+      "memory_before": "325:1073741824:a2f6ed726809a3eb4978b8425dd59576f8bcc9994002683b9773f6ce7c0b2632",
+      "memory_guest": {
+        "meminfo": "MemTotal:        4034212 kB\nMemFree:         3953272 kB\nMemAvailable:    3848136 kB\n",
+        "size": "medium"
+      },
+      "passed": true,
+      "phase": "waking",
+      "requested_arm": "memory",
+      "schema": "openagents.space_spike.v1",
+      "template": "oa-coder-runtime@sha256:39fcdf4f2c7c74d86c7f34d5ce252b2c72258c91ffee4f2ac445113ea4288698",
+      "upstream": "de87b436c35dac056564bdd5b2a113c9046e189b"
+    },
+    "egress_host_control_http_status": 200,
+    "snapshot_policy_for_http_attempt": {
+      "policy": {
+        "template": "oa-coder-runtime",
+        "configured": true,
+        "ensure_base_snapshot": true,
+        "snapshot_vcpu": 2,
+        "snapshot_memory_mib": 1024,
+        "updated_at": "2026-10-15T21:33:33.926317Z"
+      },
+      "reconcile": {
+        "template": "oa-coder-runtime",
+        "fanout_queued": true
+      }
+    },
+    "snapshot_policy_for_native_measurements": {
+      "policy": {
+        "template": "oa-coder-runtime",
+        "configured": true,
+        "ensure_base_snapshot": true,
+        "snapshot_vcpu": 2,
+        "snapshot_memory_mib": 2048,
+        "updated_at": "2026-10-15T21:41:32.304051Z"
+      },
+      "reconcile": {
+        "template": "oa-coder-runtime",
+        "fanout_queued": true
+      }
+    },
+    "template_inventory_after_native_preparation": {
+      "name": "oa-coder-runtime",
+      "description": "Minimal Ubuntu Firecracker seed (local build)",
+      "org_id": null,
+      "desired_state": "present",
+      "created_at": "2026-10-15T21:14:37.151647Z",
+      "built_at": null,
+      "content_hash": null,
+      "runtime": null,
+      "arch": null,
+      "has_base_snapshot": true,
+      "pool_target": null,
+      "pool_current": 0,
+      "artifact_size_bytes": null,
+      "cache_size_bytes": 1104412672,
+      "base_snapshot_size_bytes": 135925760,
+      "snapshots": [
+        {
+          "vcpu": 2,
+          "memory_mib": 2048,
+          "snapshot_hash": "161daf23023f5d3bf365ffe0c56c8805e2ec66b66dbf273baa95875a41034956"
+        }
+      ],
+      "vcpu": null,
+      "memory_mib": null,
+      "disk_size_mb": null,
+      "default_auto_lifecycle": null,
+      "network_policy": {
+        "version": "v1",
+        "egress": {
+          "default_action": "deny",
+          "allow": [
+            {
+              "domain": "api.github.com"
+            },
+            {
+              "cidr": "8.8.8.8/32"
+            },
+            {
+              "cidr": "1.1.1.1/32"
+            }
+          ],
+          "deny": []
+        }
+      },
+      "network_policy_generation": 3,
+      "network_policy_status": {
+        "observed_network_policy": null,
+        "observed_generation": 3,
+        "observed_source": "template",
+        "observed_authority": "cluster",
+        "observed_at": null,
+        "inherited_from_template": null,
+        "source_template": "oa-coder-runtime",
+        "conditions": []
+      }
+    }
+  },
+  "cleanup": {
+    "complete": true,
+    "public_sandboxes_before_host_deletion": [],
+    "native_worker_sandboxes_before_host_deletion": [],
+    "gcp_inventory": {
+      "instances": [],
+      "disks": [],
+      "routers": [],
+      "firewalls": [],
+      "subnets": [],
+      "networks": [],
+      "observed_at": "2026-10-15T21:51:33.879170+00:00"
+    },
+    "deletions": [
+      {
+        "targetLink": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/global/firewalls/oa-space-spike-11728-iap",
+        "operationType": "delete",
+        "status": "DONE",
+        "startTime": "2026-10-15T14:49:59.741-07:00",
+        "endTime": "2026-10-15T14:50:05.795-07:00"
+      },
+      {
+        "targetLink": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/global/networks/oa-space-spike-11728",
+        "operationType": "delete",
+        "status": "DONE",
+        "startTime": "2026-10-15T14:50:22.390-07:00",
+        "endTime": "2026-10-15T14:50:40.553-07:00"
+      },
+      {
+        "targetLink": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/regions/us-central1/routers/oa-space-spike-11728",
+        "operationType": "delete",
+        "status": "DONE",
+        "startTime": "2026-10-15T14:49:54.430-07:00",
+        "endTime": "2026-10-15T14:49:56.246-07:00"
+      },
+      {
+        "targetLink": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/regions/us-central1/subnetworks/oa-space-spike-11728",
+        "operationType": "delete",
+        "status": "DONE",
+        "startTime": "2026-10-15T14:50:10.635-07:00",
+        "endTime": "2026-10-15T14:50:20.228-07:00"
+      },
+      {
+        "targetLink": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-a/disks/oa-space-spike-11728-runtime",
+        "operationType": "delete",
+        "status": "DONE",
+        "startTime": "2026-10-15T13:31:09.191-07:00",
+        "endTime": "2026-10-15T13:31:09.478-07:00"
+      },
+      {
+        "targetLink": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-a/instances/oa-space-spike-11728",
+        "operationType": "delete",
+        "status": "DONE",
+        "startTime": "2026-10-15T14:48:07.848-07:00",
+        "endTime": "2026-10-15T14:49:47.671-07:00"
+      }
+    ]
+  },
+  "cost": {
+    "billed_usd": null,
+    "rates_usd": {
+      "n2_standard_8_per_hour": 0.388472,
+      "local_ssd_per_gib_hour": 0.000109589,
+      "pd_balanced_per_gib_hour": 0.000136986,
+      "nat_gateway_per_hour": 0.0014,
+      "nat_ip_per_hour": 0.005,
+      "nat_processed_per_gib": 0.045
+    },
+    "sources": [
+      "https://cloud.google.com/products/compute/pricing/general-purpose?hl=en",
+      "https://cloud.google.com/compute/disks-image-pricing",
+      "https://cloud.google.com/nat/pricing"
+    ],
+    "method": "List-price estimate from resource lifetimes and NAT byte metrics; excludes discounts and separately billed internet transfer.",
+    "estimated_usd": 0.820789,
+    "components_usd": {
+      "vm": 0.5556814634155556,
+      "local_ssd": 0.05878471539864583,
+      "boot_pd": 0.019594869372166666,
+      "temporary_runtime_pd": 0.0024299642126666666,
+      "nat_gateway": 0.002011889833333333,
+      "nat_ip": 0.007185320833333333,
+      "nat_processed_bytes": 0.17510110101196913
+    },
+    "resource_hours": {
+      "vm_and_boot_disk": 1.430428611111111,
+      "nat_router": 1.4370641666666666,
+      "temporary_200gib_pd": 0.08869388888888889
+    },
+    "temporary_pd_interval": {
+      "created_operation_started_at": "2026-10-15T13:25:50.180-07:00",
+      "deleted_at": "2026-10-15T13:31:09.478-07:00"
+    },
+    "nat_metrics": {
+      "received": {
+        "queried_at": "2026-10-15T21:53:45.843207Z",
+        "latest_point": "2026-10-15T21:51:00Z",
+        "total_bytes": 4168776442
+      },
+      "sent": {
+        "queried_at": "2026-10-15T21:53:45.843207Z",
+        "latest_point": "2026-10-15T21:51:00Z",
+        "total_bytes": 9298571
+      }
+    },
+    "assumptions": [
+      "One auto-allocated NAT IP. VM and boot/local SSD lifetimes conservatively end when instance deletion completes.",
+      "Temporary disk lifetime starts at its creation request; NAT lifetime starts at router creation.",
+      "Uses observed NAT bytes; unreported final intervals, discounts, and separately billed internet transfer are excluded."
+    ]
+  },
+  "measurement_notes": [
+    "Creates are sequential with cached template artifacts. No model inference or full Coder turn is timed.",
+    "Percentiles use nearest rank: sorted sample 10 for p50 and sample 18 for p90, from twenty samples.",
+    "HTTP timing starts before POST and ends after the first successful true command. Default Kind guests used 2 vCPU and 1 GiB.",
+    "Native timing includes docker exec and the unchanged node CLI; --autostart --blocking ends at guest readiness. Both native arms used 2 vCPU and 2 GiB, checked through the Firecracker API.",
+    "Every completed sample retains actual Firecracker launch arguments. The node CLI also reports its actual boot mode after fallback.",
+    "Suspend/wake uses a separate 4 GiB guest and a Python process holding 1 GiB of random bytes in RAM. The same process computes the full SHA-256 before and after a same-host restore.",
+    "Wake time includes operation completion, restored-route readiness, and the buffer hash query. Only read-only queries retry.",
+    "The runtime template copies and checks the two public runtime executables; full compiler/toolchain parity with the GCE image is untested."
+  ],
+  "diagnostic_attempts": [
+    {
+      "report": "cold-first-1gib.json",
+      "error": "Memory process did not become ready.",
+      "samples": 20
+    },
+    {
+      "report": "memory-before-operation-wait.json",
+      "error": "Memory process did not answer after wake.",
+      "samples": 0
+    },
+    {
+      "report": "memory-before-dns-allow.json",
+      "error": "Command exited 28: curl: (28) Resolving timed out after 15001 milliseconds\n",
+      "samples": 0
+    },
+    {
+      "report": "native-cold-no-network-pool.json",
+      "error": "Node CLI failed (1): ERROR: code: 'Some resource has been exhausted', message: \"no ready network slots\"\n",
+      "samples": 0
+    }
+  ],
+  "setup_fixes": [
+    "Raise host inotify instances to 1024 and watches to 1048576 so Kind kube-proxy can keep DNS available.",
+    "Wait for suspend/wake operation success rather than accepting a sandbox state change before teardown finishes.",
+    "Allow SPACE reserved resolver IPs as well as the GitHub domain; verify the denied HTTPS request with DNS bypassed.",
+    "Enable two ready native network slots for the node benchmark; Kind defaults this pool to zero."
+  ],
+  "decision": {
+    "spike_complete": true,
+    "production_adoption": "defer",
+    "production_driver": "boat",
+    "native_snapshot_p50_under_2s": true,
+    "http_snapshot_adoption_gate_met": false,
+    "reason": "Pinned Kind shim sends BOOT_MODE_UNSPECIFIED for HTTP creates; the node falls back to cold. The HTTP boot-mode guard rejected that sample instead of counting it as a snapshot.",
+    "upstream_sources": [
+      "https://github.com/perplexityai/SPACE/blob/de87b436c35dac056564bdd5b2a113c9046e189b/shim/space.go#L2307",
+      "https://github.com/perplexityai/SPACE/blob/de87b436c35dac056564bdd5b2a113c9046e189b/crates/libs/sbx/mgr/server/src/service/reconcile.rs#L1044"
+    ]
+  },
+  "retained_artifacts": {
+    "cold-first-1gib.json": "773bdca96e68f59c794cff7b471e033a806575a986649b32839a96e2d11e6856",
+    "cold-first-1gib.log": "0e57d6c570790573fb8722ee029328a37a03bfb2615a4f24e886a67ff1a18705",
+    "cold.json": "6609ec7d2264dd3f2ad2ca36027e1f3a469d97d90edf54119854265bbaaf9f21",
+    "cold.log": "a797ec7fbd9c0308d00b9bb81ca5210234f68c980ae91c6ecf9be0800b30219e",
+    "conformance-before-operation-wait.txt": "73144dc7d23f9a3af8ad3929c049fb589706a447a85911d4794f56b5d2d89904",
+    "conformance.txt": "73144dc7d23f9a3af8ad3929c049fb589706a447a85911d4794f56b5d2d89904",
+    "first-sandbox.log": "7e68900673874cc64398512f42cc373002fd15a9b32c50d42c3713f4894bba0c",
+    "inspect-template.json": "254aa20f7a51d313530260e32f2a4f24150922ad2d29813749577d944c05b6cc",
+    "memory-before-dns-allow.json": "04b17db99a05dbaaa829e6bd12a946b2cf3ee96602813489b18dc6c4d9281763",
+    "memory-before-dns-allow.log": "62ae64575ec7413096e448471cab8b3f2903f1be28bbe2c69dafc7a102b977ad",
+    "memory-before-operation-wait.json": "242a112d71ae72d89031d0e1f0140e92afbb7b03af17d550be7d1c479ddf5ea7",
+    "memory-before-operation-wait.log": "62ae64575ec7413096e448471cab8b3f2903f1be28bbe2c69dafc7a102b977ad",
+    "memory-host-example-control.txt": "c11e3f4837efde2441e23a7b9da02131f53bf59fddeb7147c4ab81afe400460f",
+    "memory.json": "b7bc6dcc4fb3b57b8daca7f30ce6b1954207624879af123a28a51e2af463a460",
+    "memory.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "native-cold-no-network-pool.json": "21db4814f21a425ee226919656aab7be0f8c625fb7fa7823137e688e4e12cb46",
+    "native-cold-no-network-pool.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "native-cold.json": "59bceda00a19a8ddcf9b70362e7f40421d747ce37d24bb2a913759f219df7b5c",
+    "native-cold.log": "dc29435a59e26f037909f9a09a40d50a4a1c76c3b65bc202b9e60f5dee135857",
+    "native-snapshot.json": "bc7cea1131a4dcdc0804b93d1d5d7b3c26ec0cb3b84d63420b4862124daa4f97",
+    "native-snapshot.log": "6f8b820774741abc2e25c539dc82b960288e36ae651e3fa66c5eced3599f8640",
+    "prepare-cold-template.json": "49d550d5683255b4c8da7eed865c7a9450961a5a445fb32ddb671d4ecb30b652",
+    "prepare-cold.json": "373d946135dfbe8f7b31ece9dbe23532dbdd9dcba9dab0a295ac28616028eb4c",
+    "prepare-native-template.json": "d0e2cac8b366f44d6af367fb7e597e78849e543a8f2a00201145dc92699e9a58",
+    "prepare-native.json": "1c135a378564b8beb95871e0dae21250fda1c33792ff8da297b5fcfcc484da48",
+    "prepare-snapshot-template.json": "3388b173669698fd7c0b54c7f60e8676d71a4f9cd15633ef01de8ffdfb816555",
+    "prepare-snapshot.json": "ab693782db19483c0f2886c400929cb133d3b612ade8ac3178c790cfc1853074",
+    "runtime-binaries.sha256": "096e13784acb0e7345582c13a8a557bb2f46f6a497ce5bc89ec81790f67bbd88",
+    "runtime-manifest.json": "340e321a690824c2521b3954d7fc1137ed645667e73b538886a7a201e01011aa",
+    "runtime-publication.log": "28c191356ee94d19d74383a9187fb0520c89238b595334e853d23585827eb83a",
+    "snapshot-first-attempt.json": "a4ea5e4609a4c2f6a809a885319dbb15660f631e7c45f91e307c6292faa5b70d",
+    "snapshot-first-attempt.log": "ccd59f1b7b52f4ce1e9ba9a15bea3209cf3e40cdfd9bf661dc3f571031705527",
+    "snapshot-host-example-control.txt": "c11e3f4837efde2441e23a7b9da02131f53bf59fddeb7147c4ab81afe400460f",
+    "snapshot.json": "51ded9c887cddfd014289a593bacf4e067afe04156f14806e8a47082555cbde6",
+    "snapshot.log": "ccd59f1b7b52f4ce1e9ba9a15bea3209cf3e40cdfd9bf661dc3f571031705527"
+  }
+}

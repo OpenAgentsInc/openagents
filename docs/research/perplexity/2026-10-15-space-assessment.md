@@ -7,6 +7,11 @@ commits) in a scratch directory and deleted it afterwards. We built and
 ran nothing: SPACE needs a Linux x86_64 host with KVM, and this review
 ran on a Mac.
 
+Follow-up: the [GCE spike and driver](../../cloud/space.md) now have live
+measurements in [#11728](https://github.com/OpenAgentsInc/openagents/issues/11728).
+Native snapshot readiness measured 319 ms p50; the pinned Kind HTTP path
+still cold-boots, so production remains on Boat.
+
 ## Plain summary
 
 - **What it is.** SPACE (Sandboxed Platform for Agentic Code Execution)

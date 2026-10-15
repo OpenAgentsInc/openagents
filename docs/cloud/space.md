@@ -6,6 +6,30 @@ defines the measured spike. SPACE runs as a separate service, pinned to
 [`de87b436`](https://github.com/perplexityai/SPACE/commit/de87b436c35dac056564bdd5b2a113c9046e189b).
 Production continues to use Boat.
 
+## Measured result
+
+The [2026-10-15 evidence](evidence/2026-10-space-spike.json) records twenty
+samples per completed arm, using cached template artifacts and nearest-rank
+percentiles. The node measurements end at guest readiness; the HTTP
+measurement includes the first successful command.
+
+| Path | Guest | p50 | p90 |
+| --- | --- | --- | --- |
+| HTTP cold, first command | 2 vCPU, 1 GiB | 2,045.8 ms | 2,095.2 ms |
+| Node cold, ready | 2 vCPU, 2 GiB | 1,673.9 ms | 1,721.6 ms |
+| Node snapshot, ready | 2 vCPU, 2 GiB | 319.0 ms | 344.8 ms |
+
+All ten live conformance cases passed. Coder `1.0.0-rc.15` and Claude Code
+`2.1.295` ran inside the template. A separate 4 GiB guest kept the same
+process and full 1 GiB buffer hash across suspend/wake; wake-to-answer was
+9.293 seconds. GitHub access succeeded, while a DNS-bypassed request to a
+host-verified `example.com` address was reset.
+
+The Kind HTTP path still cold-boots when base snapshots are enabled. Its
+boot-mode guard correctly failed. Native snapshots meet the two-second
+target, but the HTTP driver's adoption gate remains unmet. A production
+driver needs a deployment path that actually selects those snapshots.
+
 ## Driver
 
 Build `oa-computers` with `--features space`, set
@@ -138,3 +162,9 @@ deploy/space-host/host.sh destroy
 Teardown deletes the VM, its disks, router, firewall, subnet, and network,
 then lists any remaining spike instances or disks. Retain evidence before
 deleting the host's local SSD.
+
+The measured run deleted all six resource types and verified empty GCP
+inventories. Its list-price cost estimate is **$0.82**, including observed
+NAT processing. The evidence records lifetimes, rates, metric timestamps,
+and assumptions; billed cost, discounts, and separate internet transfer
+charges were unavailable.
