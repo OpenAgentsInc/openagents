@@ -148,10 +148,13 @@ async fn settings(
     let links = tokens(&app.config.chat_store, &scope, &doc)
         .await
         .unwrap_or_default();
+    let offers = super::sales::listings(&app.config.chat_store, &scope, &doc)
+        .await
+        .unwrap_or_default();
     let action = format!("/cad/{doc}/configurator");
     let mut response = crate::ui_page::UiPage::new("Share a configurable design").head(html!{link rel="stylesheet" href=(crate::cad_lab::ASSET_CSS);script type="module" src=(SCRIPT) {}}).content(PageColumn::new(html!{
         h1 {"Share " (&entry.title)}
-        p {"Choose up to eight sliders and their limits. Anyone with the link can see and download this version. Their changes stay in their browser."}
+        p {"Choose up to eight sliders and their limits. Create a free link or list this version for sale."}
         form method="post" action=(&action) hx-boost="false" data-cad-config-form="" {
             input type="hidden" name="csrf" value=(&csrf);input type="hidden" name="project" value=(scope.project.as_deref().unwrap_or(""));input type="hidden" name="version" value=(version);input type="hidden" name="controls";
             @for option in options {
@@ -164,8 +167,20 @@ async fn settings(
                     label {"Step " input type="number" step="any" min="0.000001" data-config-step="" value="0.1";}
                 }
             }
-            (Button::new("Create link").kind(ButtonType::Submit).disabled(true))
+            (Button::new("Create link").kind(ButtonType::Submit).attr("name","mode").attr("value","free").disabled(true))
+            details {
+                summary {"Sell this version"}
+                label {"Price (sats) " input type="number" name="sats" min="1" max="10000000" step="1";}
+                label {"Your Lightning address " input type="text" name="lightning" maxlength="256" placeholder="you@your-wallet.com";}
+                p {"Payments go directly to this address. Your wallet must support payment checks."}
+                (Button::new("List for sale").kind(ButtonType::Submit).attr("name","mode").attr("value","sell").disabled(true))
+            }
         }
+        @if !offers.is_empty(){h2 {"For sale"}}
+        @for (id,title,sats) in offers {div.oa-cad-config-option {
+            a href=(format!("/cad-shop/{id}")) {(title) " · " (sats) " sats"}
+            form method="post" action=(format!("/cad/{doc}/unlist")) {input type="hidden" name="csrf" value=(&csrf);input type="hidden" name="project" value=(scope.project.as_deref().unwrap_or(""));input type="hidden" name="token" value=(id);(Button::new("Stop selling").kind(ButtonType::Submit).variant(ButtonVariant::Outline))}
+        }}
         @if !links.is_empty() {h2 {"Shared links"}}
         @for token in links {
             div.oa-cad-config-option {
@@ -190,6 +205,12 @@ struct Publish {
     project: String,
     version: u64,
     controls: String,
+    #[serde(default)]
+    mode: String,
+    #[serde(default)]
+    sats: String,
+    #[serde(default)]
+    lightning: String,
 }
 async fn publish(
     State(app): State<App>,
@@ -249,6 +270,25 @@ async fn publish(
         Err(error) => return (StatusCode::BAD_REQUEST, error).into_response(),
     };
     let data = json!({"title":result["document"]["title"].as_str().unwrap_or(&doc),"version":form.version,"document":result["document"],"controls":result["controls"],"values":result["values"],"assets":assets,"view":view});
+    if form.mode == "sell" {
+        let sats = match form.sats.parse::<u64>() {
+            Ok(sats) => sats,
+            Err(_) => return (StatusCode::BAD_REQUEST, "Enter a price in sats.").into_response(),
+        };
+        return match super::sales::create(
+            &app.config.chat_store,
+            &scope,
+            &doc,
+            data,
+            sats,
+            &form.lightning,
+        )
+        .await
+        {
+            Ok(id) => Redirect::to(&format!("/cad-shop/{id}")).into_response(),
+            Err(error) => (StatusCode::BAD_REQUEST, error).into_response(),
+        };
+    }
     let saved = save(&app.config.chat_store, &scope, &doc, data).await;
     match saved {
         Ok(token) => Redirect::to(&format!("/cad-config/{token}")).into_response(),

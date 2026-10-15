@@ -1,8 +1,8 @@
-## Deploy project uploads and CAD updates (#11679, #11661, #11662, #11663, #11664, #11665)
+## Deploy project uploads and CAD updates (#11679, #11661, #11662, #11663, #11664, #11665, #11666)
 
 The resumable server, CLI, checked CAD face pulls, shared configurators,
-STEP/STL uploads, print/CNC checks, and Robot Lab/Verse handoffs are implemented
-on `main`. This Linux session
+STEP/STL uploads, print/CNC checks, Robot Lab/Verse handoffs, and paid
+configurable parts are implemented on `main`. This Linux session
 cannot deploy them: the default Google Cloud login requires reauthentication,
 and the documented automation configuration is absent on this machine.
 Refresh the deployment login, then use `scripts/deploy/web.sh stage --keep-spec`,
@@ -28,6 +28,14 @@ version to Everglade and Robot Lab, check its joint pose preview, and download
 the URDF archive. The image includes the updated Everglade and Robot Lab WASM
 builds; no Mac Lab service is required for these CAD handoffs. The isolated local
 browser check covers mouse and touch; it does not establish a production deploy.
+
+For #11666, use two dedicated test accounts and separately funded test wallets.
+List a low-price bracket with a Lightning address whose wallet supports LUD-21,
+pay its invoice, confirm the designer receives that amount, and download the
+chosen STEP, STL, and drawings. Stop selling it and confirm the buyer can still
+download. The local walkthrough uses signed test invoices and controlled
+settlement; it moves no money. No receiving credentials or payout key are
+needed on the web server.
 
 ## Show cloud environment issue runs on openagents.com and the phone (#11228)
 

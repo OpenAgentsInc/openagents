@@ -11623,6 +11623,7 @@ dependencies = [
  "atif",
  "axum 0.8.9",
  "base64 0.22.1",
+ "bitcoin",
  "boat",
  "coder",
  "coder-access",
@@ -11652,6 +11653,7 @@ dependencies = [
  "inference",
  "jev",
  "libc",
+ "lightning-invoice 0.34.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "mac-jobs",
  "markdown-stream",
  "maud",
@@ -11669,6 +11671,7 @@ dependencies = [
  "openui-lang",
  "pay-ledger",
  "pulldown-cmark",
+ "qrcodegen",
  "receipts",
  "reqwest 0.12.28",
  "resvg",
@@ -11694,6 +11697,7 @@ dependencies = [
  "url",
  "user-home",
  "workbench",
+ "zip 3.0.0",
 ]
 
 [[package]]

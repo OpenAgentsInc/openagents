@@ -319,6 +319,7 @@ impl Lab {
             "cad_check" => self.check(args),
             "cad_manufacture" => self.manufacture(args),
             "cad_robot" => self.robot(args),
+            "cad_product" => self.product(args),
             "cad_versions" => self.versions_tool(args),
             "cad_compare" => self.compare(args),
             "cad_export" => self.export(args),
@@ -1227,6 +1228,68 @@ impl Lab {
         Ok(out)
     }
 
+    fn product(&self, args: &Value) -> Result<Value, String> {
+        use std::io::Write as _;
+        let (id, n, document, _) = self.pick(args)?;
+        let controls: Vec<cad::configure::Control> =
+            serde_json::from_value(arg_json(args, "controls")?.unwrap_or(Value::Null))
+                .map_err(|_| "Check the slider settings.")?;
+        let values: Vec<f64> =
+            serde_json::from_value(arg_json(args, "values")?.unwrap_or(Value::Null))
+                .map_err(|_| "Choose one value for each slider.")?;
+        let document = cad::configure::apply(&document, &controls, Some(&values))?;
+        let mut eval =
+            cad::evaluate_with(&document, &self.root.join(".parts")).map_err(|p| p.join(" "))?;
+        let view = cad::view::model(&eval.built);
+        if args["preview"] == true {
+            return Ok(json!({"doc":id,"version":n,"view":view,"values":values}));
+        }
+        let order = arg_str(args, "order")
+            .filter(|o| {
+                o.len() == 48
+                    && o.bytes()
+                        .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+            })
+            .ok_or("Choose an order before preparing files.")?;
+        let drawing = cad::drawing::of_document(&document, &json!({}), &self.root.join(".parts"))
+            .map_err(|p| p.join(" "))?;
+        let file = format!("purchase-{order}.zip");
+        let out = self.version_dir(&id, n).join("out");
+        std::fs::create_dir_all(&out).map_err(|_| "The design files couldn't be prepared.")?;
+        let path = out.join(&file);
+        let mut zip = zip::ZipWriter::new(
+            std::fs::File::create(&path).map_err(|_| "The design files couldn't be prepared.")?,
+        );
+        let options = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated);
+        for (name, bytes) in [
+            ("design.step", cad::export::bytes(&mut eval.built, "step")?),
+            ("design.stl", cad::export::bytes(&mut eval.built, "stl")?),
+            ("drawing.pdf", drawing.bytes("pdf")?),
+            ("drawing.dxf", drawing.bytes("dxf")?),
+        ] {
+            if bytes.len() > 15 << 20 {
+                return Err(
+                    "These dimensions make a file too large. Choose a smaller part.".into(),
+                );
+            }
+            zip.start_file(name, options)
+                .map_err(|_| "The design files couldn't be prepared.")?;
+            zip.write_all(&bytes)
+                .map_err(|_| "The design files couldn't be prepared.")?;
+        }
+        zip.finish()
+            .map_err(|_| "The design files couldn't be prepared.")?;
+        if std::fs::metadata(&path)
+            .map_err(|_| "The design files couldn't be read.")?
+            .len()
+            > 15 << 20
+        {
+            return Err("These files are too large for a purchase. Choose a smaller part.".into());
+        }
+        Ok(json!({"doc":id,"version":n,"file":file,"view":view,"values":values}))
+    }
+
     fn robot(&self, args: &Value) -> Result<Value, String> {
         use base64::Engine as _;
         let (id, n, document, record) = self.pick(args)?;
@@ -1899,6 +1962,7 @@ fn takes(name: &str) -> &'static [&'static str] {
         "cad_add_feature" => &["doc", "part", "features", "after", "summary", "author"],
         "cad_manufacture" => &["doc", "version", "profile"],
         "cad_robot" => &["doc", "version"],
+        "cad_product" => &["doc", "version", "controls", "values", "preview", "order"],
         "cad_config_options" => &["doc", "version"],
         "cad_configure" => &["doc", "version", "controls"],
         "cad_drag_face" => &["doc", "part", "face", "delta", "summary", "author"],
@@ -2117,6 +2181,7 @@ pub fn tools() -> Value {
             "hidden": {"type": "boolean", "description": "false leaves the hidden lines out"},
             "dimensions": {"type": "string", "description": "a JSON array of distances between two parallel flat faces, named like cad_faces names them, e.g. [{\"part\":\"plate\",\"faces\":[\"body:start\",\"body:top\"],\"view\":\"front\",\"label\":\"H\"}]"},
             "formats": {"type": "string", "description": "a JSON array of svg, pdf, dxf; default all three"}}}},
+        {"name":"cad_product","description":"Prepare a configured copy for a purchase without changing its source. preview true returns the view; otherwise order is a 48-digit lowercase hex id and the result names a ZIP with STEP, STL, PDF and DXF files.","parameters":{"type":"object","required":["doc","controls","values"],"properties":{"doc":{"type":"string"},"version":{"type":"integer"},"controls":{"type":"string","description":"JSON slider controls"},"values":{"type":"string","description":"JSON numeric values"},"preview":{"type":"boolean"},"order":{"type":"string"}}}},
         {"name":"cad_robot","description":"Send this exact CAD version to Robot Lab for inspection and joint posing. Imports the URDF with its mass, inertia, joint limits, mesh files and source hashes. Does not start simulation.","parameters":{"type":"object","required":["doc"],"properties":{"doc":{"type":"string"},"version":{"type":"integer"}}}},
         {"name":"cad_manufacture","description":"Check whether a part can be 3D printed or milled in one 3-axis setup. Measures wall thickness, print overhang angle, unsupported bridges, holes smaller than the nozzle, inside corners smaller than the cutter, and faces blocked from the tool. Returns named faces for the viewport. Checks sample the surface. For a print question, use the default print profile unless the person gave settings.",
          "parameters":{"type":"object","required":["doc"],"properties":{"doc":doc,"version":version,"profile":{"type":"string","description":"Optional JSON object: process print (default), cnc, or both; min_wall_mm (0.8), overhang_degrees (45), bridge_mm (10), nozzle_mm (0.4), tool_radius_mm (3), up [0,0,1] (build direction / tool approach)."}}}},
@@ -2164,6 +2229,60 @@ mod tests {
             .as_nanos();
         let path = std::env::temp_dir().join(format!("cad-lab-test-{n}-{}", std::process::id()));
         (Dir(path.clone()), Lab::open(path).unwrap())
+    }
+
+    #[test]
+    fn purchases_prepare_real_files_for_chosen_dimensions_without_a_new_version() {
+        use std::io::Read as _;
+        let (_dir, lab) = lab();
+        assert_eq!(lab.run("cad_new_part",&json!({"doc":"bracket","part":"plate","features":[{"id":"body","op":"solid.box","params":{"length":30,"width":20,"height":3}}]}))["saved"],true);
+        let options = lab.run("cad_config_options", &json!({"doc":"bracket"}));
+        let path = options["options"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|o| o["path"].as_str().unwrap().ends_with("/height"))
+            .unwrap()["path"]
+            .clone();
+        let order = "a".repeat(48);
+        let result=lab.run("cad_product",&json!({"doc":"bracket","version":1,"controls":[{"path":path,"label":"Thickness","min":1,"max":10,"step":1}],"values":[6],"order":order}));
+        assert!(result["error"].is_null(), "{result}");
+        let path = lab
+            .version_dir("bracket", 1)
+            .join("out")
+            .join(result["file"].as_str().unwrap());
+        let mut zip = zip::ZipArchive::new(std::fs::File::open(path).unwrap()).unwrap();
+        for (name, header) in [
+            ("design.step", b"ISO-10303-21".as_slice()),
+            ("drawing.pdf", b"%PDF".as_slice()),
+            ("drawing.dxf", b"".as_slice()),
+        ] {
+            let mut b = Vec::new();
+            zip.by_name(name).unwrap().read_to_end(&mut b).unwrap();
+            if name == "drawing.dxf" {
+                assert!(std::str::from_utf8(&b).unwrap().contains("SECTION"));
+            } else {
+                assert!(b.starts_with(header), "{name}");
+            }
+        }
+        let mut stl = Vec::new();
+        zip.by_name("design.stl")
+            .unwrap()
+            .read_to_end(&mut stl)
+            .unwrap();
+        let count = u32::from_le_bytes(stl[80..84].try_into().unwrap()) as usize;
+        let mut lo = f32::INFINITY;
+        let mut hi = f32::NEG_INFINITY;
+        for t in 0..count {
+            for v in 0..3 {
+                let at = 84 + t * 50 + 12 + v * 12 + 8;
+                let z = f32::from_le_bytes(stl[at..at + 4].try_into().unwrap());
+                lo = lo.min(z);
+                hi = hi.max(z);
+            }
+        }
+        assert!((hi - lo - 6.).abs() < 0.001);
+        assert_eq!(lab.run("cad_open", &json!({"doc":"bracket"}))["version"], 1);
     }
 
     #[test]

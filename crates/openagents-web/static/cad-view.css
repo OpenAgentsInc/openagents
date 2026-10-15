@@ -39,3 +39,5 @@
 .oa-cad-view img[hidden],.oa-cad-canvas[hidden]{display:none}
 .oa-cad-findings{display:flex;flex-direction:column;gap:8px;margin-top:12px;padding:12px;border:1px solid rgba(180,90,20,.45);border-radius:8px}.oa-cad-findings h3,.oa-cad-findings p{margin:0}.oa-cad-finding-group summary{cursor:pointer;padding:8px 0}.oa-cad-finding-group li{margin:6px 0}.oa-cad-finding-group li span{font-size:13px}
 .oa-cad-findings[hidden]{display:none}
+
+.oa-cad-payment-qr{display:block;max-width:100%;background:#fff;border-radius:12px;margin:16px 0}[data-shop-invoice]{display:block;width:100%;max-width:36rem;overflow-wrap:anywhere;font:12px monospace}[data-shop-form] .oa-slider{margin:16px 0}[data-cad-shop] .oa-cad-viewer{margin:20px 0}

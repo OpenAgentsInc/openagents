@@ -250,3 +250,30 @@ async fn serve_cad_handoff() {
     std::fs::write(std::env::var_os("OA_CAD_CAPTURE").unwrap(),serde_json::to_vec(&json!({"url":format!("{}/cad/robot?v=1",world.origin()),"origin":world.origin(),"robot":robot["robot"]["href"],"verse":placed["verse"]["href"],"cookies":browser.0,"other_cookies":other.0})).unwrap()).unwrap();
     axum::serve(listener, world.site).await.unwrap();
 }
+
+#[tokio::test]
+#[ignore = "serves an isolated CAD shop and signed test invoices; needs a native CAD build"]
+async fn serve_cad_sales() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    HOST_OVERRIDE.set(format!("127.0.0.1:{port}")).unwrap();
+    let wallet = crate::cad_web::fake_sale_wallet().await;
+    let world = world_at(
+        port,
+        Options {
+            cad: Some(std::env::var_os("OA_CAD_BROWSER").unwrap().into()),
+            ..Options::default()
+        },
+    )
+    .await;
+    let mut seller = Browser::default();
+    seller.sign_in(&world, "octo-local").await;
+    let mut buyer = Browser::default();
+    buyer.sign_in(&world, "quiet-local").await;
+    let scope = crate::cad_web::Scope::personal(&account_owner_of(&world, "octo-local")).unwrap();
+    let engine = crate::cad_web::engine().unwrap();
+    let made=engine.run(&world.store,&scope,"cad_new_part",&json!({"doc":"bracket","part":"plate","material":"PLA","features":[{"id":"body","op":"solid.box","params":{"length":30,"width":20,"height":3}}]})).await;
+    assert_eq!(made["saved"], true, "{made}");
+    std::fs::write(std::env::var_os("OA_CAD_CAPTURE").unwrap(),serde_json::to_vec(&json!({"url":format!("{}/cad/bracket/configurator?v=1",world.origin()),"origin":world.origin(),"seller_cookies":seller.0,"buyer_cookies":buyer.0,"wallet":wallet.endpoint})).unwrap()).unwrap();
+    axum::serve(listener, world.site).await.unwrap();
+}

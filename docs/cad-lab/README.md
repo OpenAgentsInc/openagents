@@ -348,7 +348,7 @@ the opposite face fixed. Cuts, formulas, and unsupported faces stay editable
 through chat. Viewers cannot pull faces, and a page based on an older version
 must be reloaded before saving ([#11661](https://github.com/OpenAgentsInc/openagents/issues/11661)).
 
-**Share with sliders** opens the owner's configurator settings. Choose up to
+**Share or sell with sliders** opens the owner's configurator settings. Choose up to
 eight numeric feature fields or literal part parameters, name their sliders,
 and set limits and steps. The link shares that version's complete design;
 visitors can rebuild it while signed out and download STEP, STL, PDF, or DXF
@@ -367,6 +367,37 @@ STEP imports support exact solid features. STL imports stay triangle meshes
 in millimeters, must have closed edges, and occupy their own part; their page
 offers GLB, STL, and 3MF files. Imported files are also available to browser
 rebuilds and shared configurators ([#11663](https://github.com/OpenAgentsInc/openagents/issues/11663)).
+
+## Paid configurable parts (#11666)
+
+Open **Share or sell with sliders**, choose dimensions and their limits, then
+open **Sell this version**. Enter a price in sats and your Lightning address.
+**List for sale** publishes the selected version at `/cad-shop`; **Stop selling**
+removes it from new checkouts. A listing keeps its version and price. Create a
+new listing to change either one.
+
+Buyers sign in, choose dimensions, update the preview, and buy the resulting
+STEP, STL, PDF, and DXF files. The server checks and prepares the files before
+it offers an invoice. The buyer pays the designer's address directly and selects
+**Check payment** to unlock the files. `/cad-purchases` keeps their orders;
+previously issued invoices and paid downloads keep working after unlisting.
+The preview sends display geometry, without the feature history or prepared
+files. Changing a slider does not change the designer's document.
+
+Receiving wallets must implement [LNURL-pay](https://github.com/lnurl/luds/blob/luds/06.md)
+and [LUD-21 payment verification](https://github.com/lnurl/luds/blob/luds/21.md).
+The adapter accepts mainnet Bitcoin invoices only, checks the signed amount,
+metadata hash, and expiry, then verifies the matching invoice and payment
+preimage. A payment hash belongs to one order; repeating checkout reuses its
+issued invoice. The service holds no payout key or balance. Wallet requests use
+public HTTPS addresses, pinned DNS results, no redirects, bounded replies, and
+at most four concurrent requests.
+
+Limits: 20 active listings per design, 500 in the shop, prices from 1 to
+10,000,000 sats, and a 15 MiB ZIP with at most 15 MiB per included file. Native
+`cad_product` builds the configured copy; web purchase files and payment records
+are private to the buyer. Tests use signed invoices from an isolated test
+service; a funded purchase and production deployment remain owner checks.
 
 ## In the browser
 

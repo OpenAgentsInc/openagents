@@ -41,6 +41,9 @@
 mod configurator;
 mod handoff;
 mod imports;
+mod sales;
+#[cfg(test)]
+pub(crate) use sales::tests::fake_wallet as fake_sale_wallet;
 
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
@@ -1109,6 +1112,7 @@ pub(crate) async fn delete(store: &Store, scope: &Scope, doc: &str) -> Result<()
 
 async fn delete_now(store: &Store, scope: &Scope, doc: &str) -> Result<(), String> {
     configurator::purge(store, scope, doc).await?;
+    sales::purge(store, scope, doc).await?;
     update_index(store, scope, |index| {
         index.docs.remove(doc);
     })
@@ -1209,6 +1213,7 @@ pub(crate) fn routes() -> Router<App> {
         .merge(configurator::routes())
         .merge(imports::routes())
         .merge(handoff::routes())
+        .merge(sales::routes())
         // `{file}`, as /cad/{file} names the same segment (pages::cad).
         .route("/cad/{file}/file", get(file))
         .route("/cad/{file}/delete", post(delete_form))
@@ -1409,6 +1414,7 @@ pub(crate) fn doc_content(
             data-cad-csrf=[csrf] data-cad-project=(scope.project.as_deref().unwrap_or("")) {
             (MarkdownRoot::new(html! {
                 h1 id="cad-doc-title" { (entry.title) }
+                a href="/cad-shop" {"Browse parts"} " · " a href="/cad-purchases" {"Your purchases"}
                 p.oa-page-lead {
                     "Version " (version) " of " (entry.versions)
                     @if let Some(summary) = record["summary"].as_str() { " · " (summary) }
@@ -1461,7 +1467,7 @@ pub(crate) fn doc_content(
                 p.oa-cad-meta data-cad-download-status="" aria-live="polite" { "Loading the CAD engine for the files\u{2026}" }
             }
             @if engine_in_browser && csrf.is_some() && scope.home == scope.actor && record["report"]["mesh_bodies"].as_u64().unwrap_or(0)<record["report"]["solids"].as_u64().unwrap_or(1) {
-                (ButtonLink::new("Share with sliders", format!("/cad/{doc}/configurator?v={version}&project={}",scope.project.as_deref().unwrap_or(""))).variant(ButtonVariant::Outline))
+                (ButtonLink::new("Share or sell with sliders", format!("/cad/{doc}/configurator?v={version}&project={}",scope.project.as_deref().unwrap_or(""))).variant(ButtonVariant::Outline))
             }
             h2 { "Versions" }
             ol.oa-cad-versions reversed {

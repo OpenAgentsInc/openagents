@@ -8,6 +8,8 @@ description = "The OpenAgents website: public pages, legal documents, the instal
 default-run = "openagents-web"
 
 [dependencies]
+qrcodegen = "1.8"
+zip = { version = "3", default-features = false, features = ["deflate"] }
 robot-lab = { path = "../robot-lab" }
 user-home = { path = "../user-home" }
 openagents-ui = { path = "../openagents-ui" }
@@ -79,6 +81,8 @@ url = "2"
 workbench = { path = "../workbench" }
 
 [dev-dependencies]
+lightning-invoice = "0.34.1"
+bitcoin = "0.32"
 oa-connections = { path = "../oa-connections", features = ["fake"] }
 oa-copy = { path = "../oa-copy" }
 # The browser vault's client core, driving the vault API in tests (#11240).

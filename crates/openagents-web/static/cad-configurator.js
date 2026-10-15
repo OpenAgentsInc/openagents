@@ -7,8 +7,8 @@ if(form) form.addEventListener('submit',()=>{
       min:Number(row.querySelector('[data-config-min]').value),max:Number(row.querySelector('[data-config-max]').value),step:Number(row.querySelector('[data-config-step]').value)})));
 });
 if(form){
-  const submit=form.querySelector('button[type=submit]');submit.disabled=false;
-  for(const name of ['aria-disabled','tabindex','data-disabled'])submit.removeAttribute(name);
+  for(const submit of form.querySelectorAll('button[type=submit]')){submit.disabled=false;
+    for(const name of ['aria-disabled','tabindex','data-disabled'])submit.removeAttribute(name);}
   form.dataset.ready='1';
 }
 const page=document.querySelector('[data-cad-config-public]');
