@@ -8,6 +8,8 @@ description = "The OpenAgents website: public pages, legal documents, the instal
 default-run = "openagents-web"
 
 [dependencies]
+# Referral links and campaign words for attribution (#11698).
+tenancy = { path = "../tenancy" }
 verse = { path = "../verse", default-features = false }
 glam = "0.30.10"
 snap-share = { path = "../snap-share" }
@@ -107,7 +109,6 @@ coder-project = { path = "../coder-project" }
 coder-pty = { path = "../coder-pty", default-features = false }
 coder-scheduler = { path = "../coder-scheduler" }
 oa-auth = { path = "../oa-auth", features = ["fake", "local"] }
-tenancy = { path = "../tenancy" }
 tempfile = "3"
 tower = { version = "0.5", features = ["util"] }
 tokio-tungstenite = { version = "0.30", features = ["rustls-tls-webpki-roots"] }
