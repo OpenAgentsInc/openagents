@@ -48,6 +48,8 @@
 //!   did any work is a refusal for the capacity book.
 //! - **Cancellation**: a cancelled task stops the `claude` process group.
 
+mod live;
+
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -149,6 +151,7 @@ pub(crate) enum Decision {
     /// Outside the worktree: refused, and the turn ends asking the person.
     Asked,
     /// Another request after the turn asked: refused while it ends.
+    #[cfg(test)]
     Waiting,
 }
 
@@ -158,6 +161,8 @@ struct GateState {
     denied: Option<Request>,
     asked: Option<Pending>,
     log: Vec<(String, Value, Decision)>,
+    native: HashMap<(String, Option<String>), Request>,
+    question: Option<route_contract::pending::Questionnaire>,
 }
 
 /// The host's side of Claude Code's permission callback for one turn.
@@ -188,6 +193,7 @@ impl Gate {
     }
 
     /// The answer to Claude Code's request to run `tool` with `input`.
+    #[cfg(test)]
     pub(crate) fn decide(&self, tool: &str, input: &Value) -> PermissionResult {
         let request = Request::of(tool, input);
         let mut state = self.state();
@@ -223,9 +229,10 @@ impl Gate {
     /// directory), on nothing a floor names (`coder_sdk::floors`: a secret
     /// file is the person's to open).
     fn inside(&self, tool: &str, input: &Value) -> bool {
-        coder_sdk::worktree::FILE_TOOLS.contains(&tool)
-            && self.guard.refusal(tool, input).is_none()
-            && coder_sdk::floors::classify(tool, input).is_none()
+        tool == live::ASK_TOOL
+            || coder_sdk::worktree::FILE_TOOLS.contains(&tool)
+                && self.guard.refusal(tool, input).is_none()
+                && coder_sdk::floors::classify(tool, input).is_none()
     }
 
     /// The request this turn stopped to ask about, if it did.
@@ -587,6 +594,7 @@ struct Attempt {
 /// The worktree gate as a Coder SDK floor (#11496): `can_use_tool` runs it
 /// through the Claude Code backend's permission channel. An allow keeps the
 /// request's input; a refusal that interrupts ends the turn.
+#[cfg(test)]
 fn gate_hook(gate: &Arc<Gate>) -> coder_sdk::Hook {
     let gate = gate.clone();
     coder_sdk::Hook::floor(
@@ -615,6 +623,7 @@ fn gate_hook(gate: &Arc<Gate>) -> coder_sdk::Hook {
 }
 
 /// The `can_use_tool` callback for a session gated by `gate`.
+#[cfg(test)]
 fn sdk_handler(gate: &Arc<Gate>) -> Arc<dyn claude_agent_sdk::PermissionHandler> {
     let mut registry = coder_sdk::Registry::new();
     let _ = registry.register(gate_hook(gate));
@@ -635,10 +644,19 @@ async fn attempt(
     transcript: &Transcript<'_>,
 ) -> Attempt {
     let mut attempt = Attempt::default();
-    let handler = sdk_handler(gate);
+    let service = match host.pending(transcript.observations.borrow().scope()) {
+        Ok(service) => service,
+        Err(error) => {
+            attempt.error = Some(error.to_string());
+            return attempt;
+        }
+    };
+    let handler = live::handler(gate, &service);
+    let options = options.sdk_mcp_server(live::questions(gate, &service));
     let mut query = match claude_agent_sdk::query_with_permissions(prompt, options, handler).await {
         Ok(query) => query,
         Err(error) => {
+            let _ = service.close();
             attempt.error = Some(format!("Claude Code didn't start: {error}"));
             return attempt;
         }
@@ -653,7 +671,7 @@ async fn attempt(
     let mut asked_at: Option<Instant> = None;
     loop {
         transcript.decisions(gate);
-        if asked_at.is_none() && gate.asked().is_some() {
+        if asked_at.is_none() && (gate.asked().is_some() || gate.state().question.is_some()) {
             asked_at = Some(Instant::now());
         }
         if asked_at.is_some_and(|at| at.elapsed() > ASK_GRACE) {
@@ -740,6 +758,7 @@ async fn attempt(
     transcript.decisions(gate);
     // The CLI waits for more input after its result: stop it, and every
     // process it started.
+    let _ = service.close();
     let _ = query.kill().await;
     if let Some(session) = attempt
         .finished
@@ -1066,6 +1085,27 @@ pub(crate) async fn turn(
                 ended.stats.insert("num_turns".into(), f64::from(turns));
             }
         }
+    }
+    let question = gate.state().question.clone();
+    if let Some(form) = question {
+        ended.reply = form
+            .questions
+            .iter()
+            .map(|q| {
+                let options = q
+                    .choices
+                    .iter()
+                    .enumerate()
+                    .map(|(i, c)| format!("{}. {}", i + 1, c.label))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                format!("{}\n\n{}", q.text, options)
+            })
+            .collect::<Vec<_>>()
+            .join("\n\n");
+        ended.asked = Some(interaction::Kind::Question);
+        ended.stop = Some(StopReason::EndTurn);
+        return Turn::Ended(ended);
     }
     let asked = gate.asked();
     let _ = host.append(
@@ -1536,6 +1576,56 @@ done
         assert!(trace.contains("\"kind\":\"claude_sdk\""), "{trace}");
         assert!(trace.contains("\"cost_usd\":0.004"), "{trace}");
         waiting
+    }
+
+    #[tokio::test]
+    async fn a_live_desktop_reply_completes_the_same_turn_and_follower() {
+        let (_root, store, grant) = fixture_with(MODEL, sdk_route);
+        let (dir, program) = fake();
+        let local = coder::task::local::Local::here(store.clone());
+        let viewer = async {
+            for _ in 0..500 {
+                if let Some(snapshot) = local.pending_view("fixture").unwrap()
+                    && let Some(entry) = snapshot
+                        .entries
+                        .iter()
+                        .find(|entry| entry.resolution.is_none())
+                {
+                    let request = &entry.request;
+                    local
+                        .respond(
+                            "fixture",
+                            &route_contract::pending::Reply {
+                                request: request.id.clone(),
+                                scope: request.scope.clone(),
+                                input_digest: request.input_digest.clone(),
+                                answer: route_contract::pending::Answer::AllowOnce,
+                            },
+                        )
+                        .unwrap();
+                    return;
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+            panic!("the desktop did not receive an approval");
+        };
+        let (task, ()) = tokio::join!(run_turn(&store, &grant, &program), viewer);
+        assert_eq!(task.turn(), 1);
+        assert_eq!(task.status, task::Status::Finished);
+        assert_eq!(permission_reply(&dir)["behavior"], "allow");
+        assert_eq!(last_reply(&store, 1), "The checks pass.");
+        let mut follow = local.follow("fixture", None, None);
+        let (lines, state) = follow.poll().unwrap();
+        assert_eq!(state, coder::task::local::State::Ended);
+        assert!(lines.iter().any(|line| matches!(
+            &line.event,
+            openagents_chat::coder_events::CoderEvent::Result(_)
+        )));
+        assert!(!lines.iter().any(|line| matches!(
+            &line.event,
+            openagents_chat::coder_events::CoderEvent::Approval(_)
+        )));
+        assert!(!local.pending_view("fixture").unwrap().unwrap().active);
     }
 
     #[tokio::test]

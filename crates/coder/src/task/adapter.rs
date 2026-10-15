@@ -1558,6 +1558,31 @@ impl Host {
         })
     }
 
+    /// Bind waiting SDK requests to this owner's grant and checkout.
+    pub fn pending(
+        &self,
+        scope: &coder_sdk::observation::Scope,
+    ) -> Result<super::pending::Service, Error> {
+        if scope.host != super::local::LOCAL_HOST
+            || scope.task != self.task.task_id
+            || scope.turn != self.task.turn()
+            || scope.generation == 0
+            || scope.generation != self.observation_generation.get()
+        {
+            return Err(Error::InvalidCommand("this request is for another run"));
+        }
+        super::pending::Service::begin(
+            &self.owner.dir,
+            scope.clone(),
+            route_contract::pending::Authority {
+                intent: self.task.intent_digest.clone(),
+                grant: self.admission.grant_digest.clone(),
+                checkout: self.workspace().to_string_lossy().into_owned(),
+                target: super::pending::target_identity(self.workspace())?,
+            },
+        )
+    }
+
     /// Persist observations in the same bounded trace as task execution.
     pub fn observe(&self, observation: &coder_sdk::observation::Observation) -> Result<(), Error> {
         if !observation.applies_to(

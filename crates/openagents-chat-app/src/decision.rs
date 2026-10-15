@@ -188,6 +188,8 @@ pub struct Flow {
     page: usize,
     picked: Vec<Option<usize>>,
     typed: Vec<String>,
+    form: Option<route_contract::pending::Questionnaire>,
+    selected: Vec<Vec<usize>>,
 }
 
 /// A panel's view, and what each of its control keys does.
@@ -237,6 +239,45 @@ impl Flow {
         flow
     }
 
+    /// Present the owner's typed questions without interpreting labels as IDs.
+    pub fn structured(form: &route_contract::pending::Questionnaire) -> Option<Self> {
+        if !form.valid() {
+            return None;
+        }
+        let mut flow = Self::new(
+            Kind::Question,
+            form.questions
+                .iter()
+                .map(|q| Page {
+                    prompt: q.text.clone(),
+                    options: q.choices.iter().map(|c| c.label.clone()).collect(),
+                })
+                .collect(),
+        );
+        flow.form = Some(form.clone());
+        Some(flow)
+    }
+
+    pub fn structured_answer(&self) -> Option<route_contract::pending::Answer> {
+        use route_contract::pending::{Answer, QuestionAnswer};
+        let form = self.form.as_ref()?;
+        let answers: Vec<_> = form
+            .questions
+            .iter()
+            .enumerate()
+            .map(|(i, q)| QuestionAnswer {
+                question: q.id.clone(),
+                choices: self.selected[i]
+                    .iter()
+                    .map(|at| q.choices[*at].id.clone())
+                    .collect(),
+                text: (!self.typed[i].is_empty()).then(|| self.typed[i].clone()),
+            })
+            .collect();
+        form.accepts(&answers)
+            .then_some(Answer::Questions { answers })
+    }
+
     fn new(kind: Kind, pages: Vec<Page>) -> Self {
         let count = pages.len();
         Self {
@@ -246,6 +287,8 @@ impl Flow {
             page: 0,
             picked: vec![None; count],
             typed: vec![String::new(); count],
+            form: None,
+            selected: vec![Vec::new(); count],
         }
     }
 
@@ -319,6 +362,19 @@ impl Flow {
         if index >= self.current().options.len() {
             return Step::Stay;
         }
+        if let Some(form) = &self.form {
+            let picks = &mut self.selected[self.page];
+            if form.questions[self.page].multiple {
+                if let Some(at) = picks.iter().position(|at| *at == index) {
+                    picks.remove(at);
+                } else {
+                    picks.push(index);
+                    picks.sort_unstable();
+                }
+                return Step::Moved;
+            }
+            *picks = vec![index];
+        }
         self.picked[self.page] = Some(index);
         self.typed[self.page].clear();
         self.advance()
@@ -338,22 +394,43 @@ impl Flow {
     /// no answer on a page without one.
     pub fn answer_typed(&mut self, text: &str) -> Step {
         let text = text.trim();
+        if self.form.as_ref().is_some_and(|f| {
+            !f.questions[self.page].free_text || text.len() > route_contract::pending::MAX_ANSWER
+        }) {
+            return Step::Stay;
+        }
         if text.is_empty() && self.picked[self.page].is_none() {
             return Step::Stay;
         }
         if !text.is_empty() {
             text.clone_into(&mut self.typed[self.page]);
             self.picked[self.page] = None;
+            if self
+                .form
+                .as_ref()
+                .is_some_and(|f| !f.questions[self.page].multiple)
+            {
+                self.selected[self.page].clear();
+            }
         }
         self.advance()
     }
 
     /// Go to the next page, or, on the last page, finish with the answer.
     pub fn advance(&mut self) -> Step {
+        if self.form.is_some()
+            && self.selected[self.page].is_empty()
+            && self.typed[self.page].is_empty()
+        {
+            return Step::Stay;
+        }
         if self.page + 1 < self.pages.len() {
             self.page += 1;
             Step::Moved
         } else {
+            if self.form.is_some() && self.structured_answer().is_none() {
+                return Step::Stay;
+            }
             Step::Done(self.answer())
         }
     }
@@ -470,7 +547,11 @@ impl Flow {
             controls.push((option_key.clone(), Control::Pick(index)));
             options.push(button(
                 &option_key,
-                label,
+                &if self.selected[self.page].contains(&index) {
+                    format!("✓ {label}")
+                } else {
+                    label.clone()
+                },
                 Some((index + 1).to_string()),
                 enabled,
             ));
@@ -506,13 +587,20 @@ impl Flow {
                     "Always allow saves the rule above on your computer. Risky steps still ask every time."
                 }
                 Kind::Approval => {
-                    "You can also answer in your own words below."
+                    "Choose whether to allow this step."
                 }
+                Kind::Question if self.form.as_ref().is_some_and(|f| f.questions[self.page].multiple) => "Choose one or more options, then select Next or Send answers.",
+                Kind::Question if self.form.as_ref().is_some_and(|f| !f.questions[self.page].free_text) => "Pick an option or press its number.",
                 Kind::Question if page.options.is_empty() => "Answer below.",
                 Kind::Question => "Pick an option or press its number, or type your own answer below.",
             },
         ));
-        if self.pages.len() > 1 {
+        if self.pages.len() > 1
+            || self
+                .form
+                .as_ref()
+                .is_some_and(|f| f.questions[self.page].multiple)
+        {
             let mut paging = Vec::new();
             if self.page > 0 {
                 let back = format!("{key}-back");

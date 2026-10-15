@@ -221,6 +221,16 @@ pub struct Claude {
     hooks: Hooks,
 }
 
+/// Native call identity kept separate from the hook's final tool input.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PermissionIdentity {
+    pub native_call: String,
+    pub child: Option<String>,
+}
+
+/// Bind each waiting callback to its own native call before resolving Ask.
+pub type AskerFactory = Arc<dyn Fn(PermissionIdentity) -> Asker + Send + Sync>;
+
 impl Claude {
     /// The backend for one session's `registry`.
     ///
@@ -300,9 +310,30 @@ impl Claude {
     /// The `can_use_tool` callback that runs the `PreToolUse` hooks.
     #[must_use]
     pub fn permission_handler(&self) -> Arc<dyn claude_agent_sdk::PermissionHandler> {
+        self.handler(None)
+    }
+
+    /// The same runner, with a separately bound asker for each native call.
+    pub fn permission_handler_with_asker(
+        &self,
+        factory: AskerFactory,
+    ) -> Arc<dyn claude_agent_sdk::PermissionHandler> {
+        self.handler(Some(factory))
+    }
+
+    fn handler(
+        &self,
+        factory: Option<AskerFactory>,
+    ) -> Arc<dyn claude_agent_sdk::PermissionHandler> {
         let backend = self.clone();
         claude_agent_sdk::permission_handler(move |request| {
-            let backend = backend.clone();
+            let mut backend = backend.clone();
+            if let Some(factory) = &factory {
+                backend.hooks = backend.hooks.asking(factory(PermissionIdentity {
+                    native_call: request.tool_use_id.clone(),
+                    child: request.agent_id.clone(),
+                }));
+            }
             async move {
                 let applied = backend
                     .fire(Call::tool(

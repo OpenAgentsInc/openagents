@@ -61,6 +61,7 @@ pub mod harness;
 pub mod lifecycle;
 pub mod observation;
 pub mod offer;
+pub mod pending;
 pub mod placement;
 pub mod price_book;
 pub mod qualify;

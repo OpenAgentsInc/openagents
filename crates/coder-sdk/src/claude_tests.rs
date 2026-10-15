@@ -215,6 +215,49 @@ fn the_permission_channel_carries_rewrites_and_interrupts_on_end() {
 }
 
 #[test]
+fn each_native_ask_keeps_its_call_identity_and_final_rewritten_input() {
+    let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let capture = seen.clone();
+    let factory: AskerFactory = Arc::new(move |identity| {
+        let capture = capture.clone();
+        Arc::new(move |applied| {
+            let capture = capture.clone();
+            let identity = identity.clone();
+            Box::pin(async move {
+                capture.lock().unwrap().push((identity, applied));
+                Permission::NoOpinion
+            })
+        })
+    });
+    let handler = backend().permission_handler_with_asker(factory);
+    let result = block(handler.can_use_tool(
+        "Bash",
+        &json!({"command":"cargo test && deploy"}),
+        None,
+        None,
+        None,
+        "call-42",
+        Some("child-1".into()),
+    ))
+    .unwrap();
+    assert_eq!(
+        serde_json::to_value(result).unwrap(),
+        serde_json::to_value(PermissionResult::allow(
+            json!({"command":"squeeze -- cargo test && deploy"})
+        ))
+        .unwrap()
+    );
+    let seen = seen.lock().unwrap();
+    assert_eq!(seen.len(), 1);
+    assert_eq!(seen[0].0.native_call, "call-42");
+    assert_eq!(seen[0].0.child.as_deref(), Some("child-1"));
+    assert_eq!(
+        seen[0].1.input["command"],
+        "squeeze -- cargo test && deploy"
+    );
+}
+
+#[test]
 fn the_box_applies_the_recipe_row() {
     let options = SessionBox {
         system_prompt: Some("You are lean.".into()),

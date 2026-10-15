@@ -81,6 +81,7 @@ pub mod local;
 pub mod local_checks;
 pub mod media;
 pub mod owner;
+pub mod pending;
 pub mod publish;
 pub mod recent;
 pub mod remote;

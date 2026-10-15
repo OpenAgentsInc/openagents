@@ -541,6 +541,8 @@ fn session_descriptor(
                 observe: adapter != "unknown",
                 stop: adapter != "unknown",
                 images: matches!(provider, "claude" | "codex"),
+                approvals: adapter == "claude-sdk",
+                questions: adapter == "claude-sdk",
                 ..NativeSupport::default()
             },
         )
@@ -880,6 +882,24 @@ impl Local {
     #[must_use]
     pub fn store(&self) -> &Path {
         &self.store
+    }
+
+    /// Read live questions that this desktop can answer.
+    pub fn pending_view(
+        &self,
+        task: &str,
+    ) -> Result<Option<route_contract::pending::Snapshot>, String> {
+        super::pending::view(&self.store, task)
+            .map_err(|_| "Coder's questions could not be loaded. Try again.".into())
+    }
+
+    pub fn respond(
+        &self,
+        task: &str,
+        reply: &route_contract::pending::Reply,
+    ) -> Result<route_contract::pending::Receipt, String> {
+        super::pending::reply(&self.store, task, reply)
+            .map_err(|_| "This request has changed or ended. Check Coder's latest question.".into())
     }
 
     fn policy(&self, label: &str) -> Result<Policy, String> {

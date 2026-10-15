@@ -25,6 +25,8 @@
 //! ("ran 3 commands") when the turn ends. The question or approval the run
 //! waits on is the paged decision panel ([`crate::decision`]).
 
+mod native;
+
 use crate::attention::Activity;
 use crate::coder_tab::{Choice, Mode};
 use openagents_chat::coder_events::{self, CoderEvent, Line, StepKind};
@@ -69,6 +71,11 @@ pub enum Request {
     Stop { task: String },
     /// Answer the question, or continue the ended task, with `text`.
     Continue { task: String, text: String },
+    /// Reply to one live SDK callback without starting another turn.
+    Respond {
+        task: String,
+        reply: route_contract::pending::Reply,
+    },
     /// Ask the person for a project folder.
     Choose,
     /// What the finished turn changed, at exact revisions
@@ -106,10 +113,12 @@ pub enum Answer {
         why: String,
     },
     Lines {
+        native: Option<route_contract::pending::Snapshot>,
         lines: Vec<Line>,
         state: State,
     },
     Stopping,
+    Responded(route_contract::pending::Receipt),
     Continued,
     /// The folder the person chose, or `None` when they cancelled.
     Folder(Option<String>),
@@ -136,6 +145,11 @@ pub enum Action {
     Deny,
     /// A decision panel control ([`crate::decision`]).
     Decide(crate::decision::Control),
+    NativeDecision {
+        request: route_contract::Digest,
+        control: crate::decision::Control,
+    },
+    NativeCancel(route_contract::Digest),
     Retry,
     ChooseFolder,
     RemoveQueued(usize),
@@ -239,6 +253,7 @@ pub struct Run {
     /// The question or approval the run waits on: the asking event's
     /// `seq`, and the decision panel's state.
     decision: Option<(u64, crate::decision::Flow)>,
+    native: native::Pending,
 }
 
 impl Run {
@@ -314,6 +329,7 @@ impl Run {
             reviewed_seq: None,
             plan: crate::plan_panel::Panel::default(),
             decision: None,
+            native: native::Pending::default(),
         }
     }
 
@@ -414,7 +430,7 @@ impl Run {
         self.supports(|controls| controls.continue_task)
     }
     fn can_answer(&self) -> bool {
-        self.supports(|controls| controls.answer)
+        self.native.ready() || self.supports(|controls| controls.answer)
     }
 
     /// Whether Send can submit through this task's current composer mode.
@@ -422,7 +438,7 @@ impl Run {
         match self.mode() {
             Mode::Send => true,
             Mode::Queue => self.can_queue() || self.steer_choice().is_some(),
-            Mode::Answer => self.can_answer(),
+            Mode::Answer => self.can_answer() && self.native_typed(),
         }
     }
 
@@ -483,9 +499,49 @@ impl Run {
         self.bind.take()
     }
 
+    /// Bind a keyboard choice to the question currently displayed.
+    pub fn decision_action(&self, control: crate::decision::Control) -> Action {
+        self.native
+            .request()
+            .map_or(Action::Decide(control), |request| Action::NativeDecision {
+                request: request.id.clone(),
+                control,
+            })
+    }
+
+    /// Whether the current question offers a text answer.
+    pub fn native_typed(&self) -> bool {
+        let Some(request) = self.native.request() else {
+            return true;
+        };
+        match &request.form {
+            route_contract::pending::Form::Questions { form } => {
+                self.native.ready()
+                    && self
+                        .native
+                        .flow()
+                        .is_some_and(|flow| form.questions[flow.page()].free_text)
+            }
+            route_contract::pending::Form::Approval => false,
+        }
+    }
+
+    /// A separate editing lifetime for each live question and page.
+    pub fn answer_context(&self) -> Option<String> {
+        let request = self.native.request()?;
+        Some(format!(
+            "{}-{}",
+            request.id.as_str(),
+            self.native.flow()?.page()
+        ))
+    }
+
     /// What the composer's control does now.
     #[must_use]
     pub fn mode(&self) -> Mode {
+        if self.native.request().is_some() {
+            return Mode::Answer;
+        }
         match (&self.phase, self.state) {
             (Phase::Following, State::Waiting) => Mode::Answer,
             (Phase::Following, State::Ended) => Mode::Send,
@@ -611,6 +667,9 @@ impl Run {
     /// approval.
     #[must_use]
     pub fn decision(&self) -> Option<&crate::decision::Flow> {
+        if let Some(flow) = self.native.flow() {
+            return Some(flow);
+        }
         let (seq, ..) = self.asking()?;
         self.decision
             .as_ref()
@@ -637,6 +696,9 @@ impl Run {
 
     fn supports_request(&self, request: &Request) -> bool {
         match request {
+            Request::Respond { task, reply } => {
+                self.task.as_ref() == Some(task) && self.native.accepts(reply)
+            }
             Request::Stop { .. } => self.can_stop(),
             Request::Continue { .. } if self.state == State::Waiting => self.can_answer(),
             Request::Continue { .. } => self.can_continue(),
@@ -875,11 +937,17 @@ impl Run {
             (Request::Start { .. }, Answer::NeedsProject { why }) => {
                 self.phase = Phase::NeedsProject(why);
             }
-            (Request::Poll { task }, Answer::Lines { lines, state })
-                if self.task.as_ref() == Some(task) =>
-            {
+            (
+                Request::Poll { task },
+                Answer::Lines {
+                    lines,
+                    state,
+                    native,
+                },
+            ) if self.task.as_ref() == Some(task) => {
+                let native_changed = self.native.update(native, task, state);
                 let mut last = self.cursor;
-                let mut changed = false;
+                let mut changed = native_changed;
                 for mut line in lines {
                     // A new follower replays from the first event; keep one
                     // copy of each.
@@ -1006,6 +1074,13 @@ impl Run {
                 }
                 return false;
             }
+            (Request::Respond { reply, .. }, Answer::Responded(receipt))
+                if reply.request == receipt.request =>
+            {
+                self.native.ack(&reply.request);
+                self.poll = now;
+                accepted = true;
+            }
             (Request::Stop { .. }, Answer::Stopping) => {
                 self.notice = Some("Asked Coder to stop. Its turn ends as stopped.".into());
                 self.poll = now;
@@ -1067,6 +1142,28 @@ impl Run {
                 (self.state == State::Running).then_some(())?;
                 self.request(Request::Stop { task })
             }
+            Action::NativeDecision { request, control } => {
+                if self.busy() {
+                    return None;
+                }
+                let answer = self.native.control(&request, control);
+                self.revision += 1;
+                if let Some(reply) = answer {
+                    let task = self.task.clone()?;
+                    return self.request(Request::Respond { task, reply });
+                }
+                None
+            }
+            Action::NativeCancel(id) => {
+                if self.busy() {
+                    return None;
+                }
+                let reply = self
+                    .native
+                    .reply(&id, route_contract::pending::Answer::Cancel)?;
+                let task = self.task.clone()?;
+                self.request(Request::Respond { task, reply })
+            }
             Action::Approve | Action::Deny => {
                 if !self.asking_approval() || !self.can_answer() {
                     return None;
@@ -1094,6 +1191,18 @@ impl Run {
                 self.decided(step)
             }
             Action::Send | Action::Queue | Action::Steer => {
+                if action == Action::Send && self.native.request().is_some() {
+                    if self.busy() {
+                        return None;
+                    }
+                    let reply = self.native.typed(text);
+                    self.revision += 1;
+                    if let Some(reply) = reply {
+                        let task = self.task.clone()?;
+                        return self.request(Request::Respond { task, reply });
+                    }
+                    return None;
+                }
                 if text.is_empty() || text.len() > MAX_MESSAGE {
                     return None;
                 }
@@ -1389,6 +1498,29 @@ impl Run {
                 None => rows.push(panel.node),
             }
         }
+        if let Some(request) = self.native.request().cloned() {
+            let prefix = format!("coder-native-{}", request.id.as_str());
+            let flow = self.native.flow().expect("a pending request has a flow");
+            let panel = flow.view(&prefix, self.native.ready() && !self.busy());
+            for (key, control) in panel.controls {
+                self.actions.insert(
+                    key,
+                    Action::NativeDecision {
+                        request: request.id.clone(),
+                        control,
+                    },
+                );
+            }
+            rows.push(panel.node);
+            rows.push(self.buttons(
+                &format!("{prefix}-cancel-row"),
+                &[(
+                    &format!("{prefix}-cancel"),
+                    "Cancel request",
+                    Action::NativeCancel(request.id),
+                )],
+            ));
+        }
         if self.active() && self.task.is_some() && self.can_stop() {
             rows.push(self.buttons(
                 "coder-stop-row",
@@ -1445,6 +1577,17 @@ impl Run {
                 self.actions.insert((*key).into(), action.clone());
                 let supported = match action {
                     Action::Stop => self.can_stop(),
+                    Action::NativeCancel(id) => {
+                        self.native.ready()
+                            && self
+                                .native
+                                .request()
+                                .is_some_and(|request| &request.id == id)
+                    }
+                    Action::Retry => self
+                        .failed
+                        .as_ref()
+                        .is_some_and(|request| self.supports_request(request)),
                     Action::SendQueuedNow(_) if self.state == State::Running => {
                         self.steer_choice().is_some()
                     }

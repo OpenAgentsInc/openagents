@@ -85,6 +85,7 @@ pub struct Panel {
     session: Session,
     ids: BTreeMap<String, u64>,
     fields: BTreeMap<String, Field>,
+    run_drafts: BTreeMap<(String, String), String>,
     submissions: BTreeMap<String, (String, Submission)>,
     tasks: BTreeMap<String, task_chat::Session>,
     task_submissions: BTreeMap<(String, String), Submission>,
@@ -230,6 +231,7 @@ impl Panel {
             session: Session::new(now),
             ids: BTreeMap::new(),
             fields: BTreeMap::new(),
+            run_drafts: BTreeMap::new(),
             submissions: BTreeMap::new(),
             tasks: BTreeMap::new(),
             task_submissions: BTreeMap::new(),
@@ -978,7 +980,10 @@ impl Panel {
         }
         if let Some(submission) = submission {
             match &requested {
-                Some((ticket, coder_run::Request::Continue { .. })) => {
+                Some((
+                    ticket,
+                    coder_run::Request::Continue { .. } | coder_run::Request::Respond { .. },
+                )) => {
                     self.run_submissions
                         .insert((chat.clone(), *ticket), submission);
                 }
@@ -2483,7 +2488,11 @@ impl Panel {
             .and_then(Run::decision)
             .is_some_and(|flow| flow.takes_number(number))
         {
-            self.run_action(RunAction::Decide(Control::Pick(number - 1)), view)
+            let action = self
+                .run()
+                .expect("a displayed decision")
+                .decision_action(Control::Pick(number - 1));
+            self.run_action(action, view)
         } else {
             return false;
         };
@@ -3934,8 +3943,55 @@ impl Panel {
         });
         field.set_placeholder(placeholder);
         field.set_unframed(true);
+        let composer_token = if let Some(task) = task {
+            format!(
+                "task-{}-{}",
+                task.binding.task,
+                self.task_editor.get(&id).copied().unwrap_or(0)
+            )
+        } else if let Some(context) = run.and_then(Run::answer_context) {
+            format!("chat-{id}-answer-{context}")
+        } else {
+            format!("chat-{id}")
+        };
+        let changed_context = self
+            .fields
+            .get(&id)
+            .and_then(|field| field.draft.stamp().ok())
+            .filter(|stamp| stamp.token != composer_token);
+        if let Some(stamp) = &changed_context {
+            self.run_drafts.insert(
+                (id.clone(), stamp.token.clone()),
+                self.fields[&id].text().into(),
+            );
+        }
+        while self
+            .run_drafts
+            .keys()
+            .filter(|(chat, _)| chat == &id)
+            .count()
+            > 16
+        {
+            let oldest = self
+                .run_drafts
+                .keys()
+                .find(|(chat, token)| {
+                    chat == &id && token != &format!("chat-{id}") && token != &composer_token
+                })
+                .cloned();
+            if let Some(key) = oldest {
+                self.run_drafts.remove(&key);
+            } else {
+                break;
+            }
+        }
         let draft = self.fields.get(&id).map(|field| {
-            if field.draft.editor().is_none() {
+            if changed_context.is_some() {
+                self.run_drafts
+                    .get(&(id.clone(), composer_token.clone()))
+                    .cloned()
+                    .unwrap_or_default()
+            } else if field.draft.editor().is_none() {
                 task.and_then(task_chat::Session::editing_text)
                     .unwrap_or(field.text())
                     .to_owned()
@@ -3962,18 +4018,10 @@ impl Panel {
             key: "chat-composer".into(),
             style: Style::default(),
             element: Element::Composer {
-                token: if let Some(task) = task {
-                    format!(
-                        "task-{}-{}",
-                        task.binding.task,
-                        self.task_editor.get(&id).copied().unwrap_or(0)
-                    )
-                } else {
-                    format!("chat-{id}")
-                },
+                token: composer_token,
                 placeholder: placeholder.into(),
                 max_bytes: 32 * 1024,
-                enabled: true,
+                enabled: run.is_none_or(Run::native_typed),
                 busy: busy && !answering,
                 stop: run.is_none_or(Run::can_stop).then_some(Intent::Chat {
                     action: Action::Stop,
@@ -4764,6 +4812,7 @@ mod start_setting_tests {
             run.outcome(
                 ticket,
                 Ok(coder_run::Answer::Lines {
+                    native: None,
                     lines: lines.clone(),
                     state: coder_run::State::Ended,
                 }),
@@ -5949,5 +5998,86 @@ mod answering_tests {
         assert_eq!(panel.session.held_here().len(), 1);
         panel.action(Action::RemoveHeld { index: 0 }, &view, now);
         assert!(panel.session.held_here().is_empty());
+    }
+}
+
+#[cfg(test)]
+mod live_sdk_tests {
+    use super::*;
+    use coder::task::pending;
+    use serde_json::json;
+    use std::time::Duration;
+
+    fn snapshot(generation: u64) -> pending::Snapshot {
+        let mut request: pending::Request = serde_json::from_value(json!({
+            "schema":"openagents.coder.pending.v1", "id":format!("sha256:{}","0".repeat(64)),
+            "scope":{"host":"local","task":"task","turn":1,"generation":generation},
+            "authority":{"intent":"intent","grant":"grant","checkout":"/project","target":"target"},
+            "native_call":"question","tool":"ask_user","input":{},"input_digest":format!("sha256:{}","0".repeat(64)),
+            "prompt":{"command":"","reason":"","risk":"low"},
+            "form":{"kind":"questions","form":{"questions":[{"id":"notes","text":"Any notes?","free_text":true}]}},
+            "expires_at":100
+        })).unwrap();
+        request.seal();
+        serde_json::from_value(json!({"schema":"openagents.coder.pending-snapshot.v1","scope":request.scope,"revision":1,"active":true,"entries":[{"request":request,"resolution":null,"answer":null}]})).unwrap()
+    }
+
+    fn poll(panel: &mut Panel, native: Option<pending::Snapshot>, at: Instant) {
+        let run = panel.runs.get_mut("chat").unwrap();
+        let (ticket, _) = run.tick(at).unwrap();
+        run.outcome(
+            ticket,
+            Ok(coder_run::Answer::Lines {
+                lines: vec![],
+                state: coder_run::State::Running,
+                native,
+            }),
+            at,
+        );
+    }
+
+    fn mount(panel: &mut Panel, revision: u64) {
+        let view = rust_native::View::new("native-question", revision, panel.footer())
+            .validate()
+            .unwrap();
+        panel.mounted(&view);
+    }
+
+    #[test]
+    fn live_questions_keep_separate_drafts_and_restore_the_queued_message() {
+        let now = Instant::now();
+        let mut panel = Panel::new(now);
+        panel.session.select("chat");
+        panel.selected_changed(None);
+        panel
+            .runs
+            .insert("chat".into(), Run::follow("chat", "task", None, now));
+        mount(&mut panel, 1);
+        panel.input(TextInput::Commit("For the next turn"), now);
+        poll(&mut panel, Some(snapshot(1)), now);
+        mount(&mut panel, 2);
+        assert_eq!(panel.draft(), "");
+        panel.input(TextInput::Commit("First answer"), now);
+        poll(&mut panel, None, now + Duration::from_secs(2));
+        mount(&mut panel, 3);
+        assert_eq!(
+            panel.draft(),
+            "First answer",
+            "disconnect keeps this question's draft"
+        );
+        poll(&mut panel, Some(snapshot(2)), now + Duration::from_secs(4));
+        mount(&mut panel, 4);
+        assert_eq!(
+            panel.draft(),
+            "",
+            "a new request cannot submit the old answer"
+        );
+        let mut closed = snapshot(2);
+        closed.active = false;
+        closed.revision += 1;
+        closed.entries[0].resolution = Some(pending::Resolution::Cancelled);
+        poll(&mut panel, Some(closed), now + Duration::from_secs(6));
+        mount(&mut panel, 5);
+        assert_eq!(panel.draft(), "For the next turn");
     }
 }

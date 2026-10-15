@@ -662,7 +662,9 @@ impl CoderLane {
                 let follow = self.follows.get_mut(&task).expect("a follower");
                 let (lines, state) = follow.poll()?;
                 dump(&lines);
+                let native = self.local().pending_view(&task).unwrap_or(None);
                 Ok(Answer::Lines {
+                    native,
                     lines,
                     state: match state {
                         State::Running => coder_run::State::Running,
@@ -670,6 +672,9 @@ impl CoderLane {
                         State::Ended => coder_run::State::Ended,
                     },
                 })
+            }
+            Request::Respond { task, reply } => {
+                self.local().respond(&task, &reply).map(Answer::Responded)
             }
             Request::Stop { task } => self.local().stop(&task).map(|()| Answer::Stopping),
             Request::Continue { task, text } => {
@@ -1187,7 +1192,12 @@ mod tests {
             std::fs::read_to_string(store.join("local/last-project")).unwrap(),
             top.canonicalize().unwrap().display().to_string()
         );
-        let Ok(Answer::Lines { lines, state }) = ask(Run::Poll { task: task.clone() }) else {
+        let Ok(Answer::Lines {
+            lines,
+            state,
+            native: None,
+        }) = ask(Run::Poll { task: task.clone() })
+        else {
             panic!("poll")
         };
         assert_eq!(state, State::Running);
@@ -1214,7 +1224,15 @@ mod tests {
         let now = std::time::Instant::now();
         let mut projection = openagents_chat_app::coder_run::Run::follow(&chat, &task, None, now);
         let (ticket, _) = projection.tick(now).unwrap();
-        projection.outcome(ticket, Ok(Answer::Lines { lines, state }), now);
+        projection.outcome(
+            ticket,
+            Ok(Answer::Lines {
+                lines,
+                state,
+                native: None,
+            }),
+            now,
+        );
         assert!(projection.can_stop());
         assert!(projection.session_label().unwrap().contains(&started.model));
         assert!(
@@ -1224,7 +1242,12 @@ mod tests {
                 .any(|row| row.key == "coder-session")
         );
         assert_eq!(ask(Run::Stop { task: task.clone() }), Ok(Answer::Stopping));
-        let Ok(Answer::Lines { lines, state }) = ask(Run::Poll { task: task.clone() }) else {
+        let Ok(Answer::Lines {
+            lines,
+            state,
+            native: None,
+        }) = ask(Run::Poll { task: task.clone() })
+        else {
             panic!("poll")
         };
         assert_eq!(state, State::Ended);

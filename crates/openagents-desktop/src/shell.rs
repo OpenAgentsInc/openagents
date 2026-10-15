@@ -6506,6 +6506,7 @@ mod coder_events {
                         chat.clone(),
                         ticket,
                         Ok(Answer::Lines {
+                            native: None,
                             lines: lines.to_vec(),
                             state,
                         }),
@@ -6854,6 +6855,7 @@ mod coder_events {
                             chat,
                             ticket,
                             Ok(Answer::Lines {
+                                native: None,
                                 lines: vec![],
                                 state: RunState::Ended,
                             }),

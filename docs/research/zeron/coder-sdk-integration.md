@@ -1,8 +1,9 @@
 # Coder SDK intersections with the desktop app
 
 Assessment date: 2026-10-15. Source baseline:
-`ed027bcaa6c70511dbd2be11e8060325b95ed626`. This is a source review and proposed
-integration sequence, not an implementation or live-provider certification.
+`ed027bcaa6c70511dbd2be11e8060325b95ed626`. This source review defines the
+integration sequence. Linked issue updates below describe implementations that
+landed after that baseline; live provider compatibility requires separate checks.
 The [Zeron parity analysis](README.md) supplies the workflow requirements and
 gap IDs referenced below.
 
@@ -225,6 +226,40 @@ Typed user questions need their own schema, including multiple questions,
 choices, multi-select, and free text. They are not the same as permission to
 execute a tool, even when both temporarily pause a turn.
 
+The host-owned request bridge is implemented in
+[#11707](https://github.com/OpenAgentsInc/openagents/issues/11707) for the local
+Claude SDK execution path. `route_contract::pending` defines bounded approval
+and questionnaire records. `coder::task::pending` persists them before exposure,
+binds them to the task owner's grant and physical checkout, and serializes
+answer consumption against task cancellation. Identical replies are idempotent;
+a changed final input, old generation, expired request, stopped task, missing
+viewer, or replaced checkout cannot grant permission. Provider continuation
+callbacks stay in memory and are cancelled when the attempt closes.
+
+The desktop polls these records through `Local::pending_view` alongside the
+existing follower and sends `Request::Respond` through its existing worker.
+Approvals show the reviewed command and offer Allow once, Deny, and Cancel.
+Structured questions support multiple pages, stable choice IDs, multi-select,
+and explicitly offered free text. Each request and page has its own composer
+editing lifetime; reconnects keep selections while disabling unavailable
+responses. A live answer continues the same provider turn. Older headless
+clients retain the existing turn-ending approval flow.
+
+The Claude adapter attaches an SDK `Asker` per native tool call, runs the policy
+runner once, and commits permission against the final rewritten input. Its
+in-process `openagents.ask_user` tool uses the same owner registry for questions
+and returns structured answers rather than interpreting prose as permission.
+The tool server is ungated because Claude already runs the permission channel.
+This implementation advertises native approvals and questions only for the
+Claude SDK adapter. It does not add these controls to remote hosts or other
+provider adapters.
+
+Checks use temporary task stores, a fake Claude control process, persistence
+and expiry cases, and the shared desktop projection. They exercise live replies,
+one-time consumption, retries, stale generations, cancellation, changed inputs,
+missing viewers, checkout replacement, and typed answers without a provider
+login. A real-provider or visible-window run is separate validation.
+
 There is a concrete integration distinction in current code: `Hooks::fire`
 can await an attached asker, while a `ToolServer::gated` call uses the runner
 and returns an error for an unanswerable Ask. If common tool approvals are
@@ -341,7 +376,7 @@ in `coder-sdk`.
 | --- | --- | --- | --- |
 | 1 · [#11694](https://github.com/OpenAgentsInc/openagents/issues/11694) | Read-only capability/session descriptor projected through the existing task/desktop worker path. | `coder-sdk`/`coder-delegate`, current task services, `openagents-chat-app`, desktop worker. | A scripted/local task shows requested/resolved provider/model and correct supported actions; old/unknown capabilities stay unavailable. |
 | 2 · [#11697](https://github.com/OpenAgentsInc/openagents/issues/11697) | Observation bridge into current `CoderEvent` and bounded shared projections. | SDK backend adapters, task event mapper, shared chat presentation. | Equivalent fixture output displays once across initial load, follow, reconnect, completion, and chat switch. Existing exact-review state stays intact. |
-| 3 | Host-owned pending approval and SDK `Asker` bridge on one supported backend. | SDK callback/backend, task/control service, shared decision UI. | Allow once, deny, cancel, stop, stale answer, duplicate answer, no UI, and rewritten-input cases reach exactly the intended request. |
+| 3 · [#11707](https://github.com/OpenAgentsInc/openagents/issues/11707) | Host-owned pending approval and SDK `Asker` bridge on one supported backend. | SDK callback/backend, task/control service, shared decision UI. | Allow once, deny, cancel, stop, stale answer, duplicate answer, no UI, and rewritten-input cases reach exactly the intended request. |
 | 4 | Explicit provider/model/reasoning configuration and native-resume request through the task owner. | Session facade/adapters, task configuration, shared composer and desktop picker. | A subsequent turn uses the recorded choices; missing native resume is explicit; no silent account/payer/target switch. |
 | 5 | One authorized workspace read/search service plus a `ToolServer` adapter for it. | Host workspace service and SDK tool integration. | A viewer and permitted agent get consistent results for the same authorized checkout; wrong host, denied path, and stale checkout are refused. |
 | 6 | Delegation projection with inspectable child transcript. | SDK delegation, host transcript service, shared subagent model, desktop surface host. | Child start/progress/end/failure stays attached to its parent and is readable without granting control over another task. |
@@ -379,8 +414,8 @@ The next implementation work needs focused coverage for:
 Use formatting and tests for changed crates and affected consumers when code
 changes. Provider protocol or native behavior that cannot be established with
 fixtures needs a separate explicit run, using isolated state and the repository's
-test-account rules. This documentation review required no provider call,
-production session, runtime test, or Rust build.
+test-account rules. The original review used static inspection. Each implemented
+slice records its targeted checks in the linked issue.
 
 Source relationships were checked with the code graph and then source reads.
 The review confirms available contracts and integration boundaries; it does

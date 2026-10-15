@@ -12,6 +12,9 @@ pub struct Recorder {
 }
 
 impl Recorder {
+    pub fn scope(&self) -> &Scope {
+        &self.scope
+    }
     pub fn new(scope: Scope) -> Self {
         Self {
             scope,
@@ -85,6 +88,9 @@ pub struct Claude {
 }
 
 impl Claude {
+    pub fn scope(&self) -> &Scope {
+        self.recorder.scope()
+    }
     pub fn new(recorder: Recorder) -> Self {
         Self {
             recorder,
