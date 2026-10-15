@@ -1,7 +1,9 @@
 # NIP-SOV — Sovereign Agents
 
-`draft` `optional` — v1, 2026-09-26. **Designed; no SOV host, custody
-adapter, guardian service, or treasury is implemented by this specification.**
+`draft` `optional` — v1, 2026-09-26. **Partly implemented:** `openagents sov` validates
+profiles and runs a finite local lifecycle with explicit local-key custody.
+Treasury, guardians, remote custody, and portable recovery remain unfinished
+([backlog](https://github.com/OpenAgentsInc/openagents/issues/11729)).
 The [shared contracts](contracts.md) are normative. SOV composes durable agent
 identity, bounded initiative, private state, key custody, and economic activity
 using existing contracts. It allocates no event kinds.

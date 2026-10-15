@@ -118,24 +118,32 @@ Read the spec before the code. The files you need most often:
 - `docs/protocol/block-nips.md` — what the relay does with each Block NIP,
   including what it deliberately doesn't advertise.
 
-The OpenAgents lane contains 30 NIPs plus the shared contracts. X402, SESS, WS,
-WORK, AUTO, ENV, LIVE, and SOV are **Designed** drafts, as are POL's learned
-preference lifecycle and EXT's import/component-set assessment additions.
+The OpenAgents lane contains 33 NIPs plus the shared contracts. Status is
+role-specific: SESS has a retained-history observer, WS has activity summaries,
+ENV has SSH host management, AUTO has local standing jobs, and SOV has a
+bounded local no-spend lifecycle. Their wider protocol roles, WORK, LIVE, and
+POL/EXT lifecycle additions remain unfinished. The index, glossary, and older
+introductions are not substitutes for current runtime evidence. The remaining
+Rust work is tracked in #11729.
+
 REG is a **Designed** profile using inert EXT catalogs and existing release/head
 kinds; no registry client is implemented. These profiles allocate no new event
 kinds: private artifacts use `3188`, remote host operations use admitted CAP/CJ
 profiles, and effects leave RUN evidence.
 Keeping an encrypted envelope does not implement the contract inside it.
-SOV does not restore the legacy `392xx` allocations or imply working key
-custody, guardians, or payments. REACH has a narrower `coder-reach`
+SOV does not restore the legacy `392xx` allocations. Its local-key custody
+does not imply remote custody, guardian approval, portable recovery, or payments.
+REACH has a narrower `coder-reach`
 implementation; consult its role limits before treating reachability as
 availability or controller-transfer authority.
 ATIF is a **Designed** draft that does allocate kinds: public trajectory
 declarations `3198` and chunks `3199`; private trajectories ride `3188`. It
 replaces historical `39230`/`39231`; no component publishes trajectories yet.
 MKT/LAB has a bounded free-order host in `crates/coder-labor`, with retained relay
-and process fixtures. Paid settlement, independently operated service delivery,
-and broader market roles remain unfinished. CTRL has a bounded local-owner bridge in `crates/coder-control`; read
+and process fixtures. Explicit paid fulfillment has fake-fund fixtures;
+independently operated service delivery, general rework/resolver roles, and
+live settlement remain unfinished. CTRL has a bounded local-owner bridge in
+`crates/coder-control`; read
 `docs/coder/runtime/nostr-task-control.md` for its rights, expiry, exact retry,
 and disclosure limits. It does not complete mobile control or a cross-device
 product. Check the [glossary](../../../docs/glossary.md#nostr-and-shared-protocols)
@@ -147,8 +155,9 @@ before adding a payment adapter. NIP-X402 preserves upstream `http:1` and
 explicit facilitator support. It pays before execution; MKT/LAB pays after
 acceptance. NWC is wallet transport, not purchase authority. Zap invoices hash
 the zap request, while x402 invoices hash the bound operation; do not reuse
-one invoice as both. L402/LSAT is a distinct macaroon-based protocol. These
-paths have no operational OpenAgents wallet or settlement adapter. Pure
+one invoice as both. L402/LSAT is a distinct macaroon-based protocol. Rust X402 HTTP/MCP/native roles include proof consumption, policy and
+recovery; Pylon has direct and brokered paid fixtures. Check the selected
+wallet and service's runtime evidence before claiming live support. Pure
 validation components do not consume proofs or authorize spending.
 
 Read the [teardown integration plan](../../../docs/coder/design/teardown-nostr-integration.md)

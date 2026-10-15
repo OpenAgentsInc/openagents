@@ -1,17 +1,19 @@
 # Nostr protocol implementation plan
 
-Status: implementation in progress, reviewed 2026-09-26. Start with the
+Status: implementation in progress; Rust role inventory reviewed 2026-10-15. Start with the
 [protocol index](README.md) for source pins, current roles, and historical reviews. The [current coverage report](2026-09-26-nip-implementation-coverage.md)
 separates implemented components from remaining host and client work. The
 [OpenAgents protocol set](../../nips/openagents/README.md) contains standalone
 v1 specifications for general agent infrastructure. Coding is the first domain
 profile. The [consolidated proposed issues](../optimization/proposed-issues.md)
 define the unfiled backlog for full semantic-programming and optimization
-integration. This plan creates no GitHub issues.
+integration. The [Dhruv Rust backlog](https://github.com/OpenAgentsInc/openagents/issues/11729)
+tracks the remaining ATIF, REG, WS, WORK, AUTO, ENV, SESS, LIVE, SOV, VAULT,
+ATT, labor, and economic integration roles.
 
 The [free labor runtime](../coder/runtime/free-labor.md) completes a bounded
-MKT/LAB host rehearsal with encrypted loopback transport and retained buyer and
-provider state. The workstream table below describes the wider target; it does
+MKT/LAB host with encrypted transport, retained buyer/provider state, and an
+explicit paid fixture. The workstream table below describes the wider target; it does
 not reset that evidence or claim an independent paid market.
 
 ## Scope and boundaries
@@ -80,7 +82,7 @@ name and its distinct wire identity.
 | WS | Resource/document versions, conditional mutations, worktrees/checkpoints, finite projection cuts/pages/deltas, and command visibility. | Stale edits conflict; cross-store failures retain reconciliation; every client can distinguish stale, partial, inaccessible, and current views. |
 | WORK | Native tracked work, planning graph, admitted revisions, delegation, evidence, disposition, imports, and attention. | Two clients agree on exact accepted revisions; reassignment cannot duplicate execution; issue close, verification, commercial acceptance, and payment stay distinct. |
 | AUTO | Finite plans, schedule slots, verified source observations, checker continuation, counters, controls, and aggregate accounting. | Sleep, duplicates, cancellation, missing checkers, and uncertain effects produce bounded retained outcomes without automatic backlog bursts. |
-| [SOV](../../nips/openagents/NIP-SOV.md) — Designed | Compose identity and custody declarations, bounded AUTO lifecycle, WORK goals, POL guardians, treasury reservations, MKT/LAB settlement, X402 purchases, and retained RUN evidence. | Role-specific admission, custody/recovery limits, shared spending reservations, expired or revoked approvals, runner loss, and unknown effects remain correct across restart. The historical SA restoration supplies no runtime, threshold signer, or wallet implementation. |
+| [SOV](../../nips/openagents/NIP-SOV.md) — local subset implemented | Compose identity and custody declarations, bounded AUTO lifecycle, WORK goals, POL guardians, treasury reservations, MKT/LAB settlement, X402 purchases, and retained RUN evidence. | Role-specific admission, custody/recovery limits, shared spending reservations, expired or revoked approvals, runner loss, and unknown effects remain correct across restart. The current local no-spend host does not implement portable recovery, remote custody, guardians, or treasury. |
 | ENV | Allocation/adoption, exact materialization, participant closure, lease admission, required CJ binding, expiry, and cleanup. | No dispatch before attachment admission; unknown create/destroy outcomes retain resource and spending obligations; changed recipients require new admission. |
 | LIVE | Participant/consent admission, transport epochs, input/speaking floors, capture anchors, and observation-bound device input. | Wrong-room audio, stale screenshots, revoked participants, lost stop acknowledgments, and cross-context disclosure refuse or remain explicitly unknown. |
 | MV | World definitions, entity state, ephemeral poses/gestures, and scoped chat. | Preserve the standalone world's fixtures; this role does not imply physical-control or coding-task authority. |

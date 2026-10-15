@@ -11,20 +11,17 @@ for accepted results. The existing contracts supply capability, execution,
 evidence, and authority. [NIP-MKT](NIP-MKT.md) now specifies negotiated
 offerings, orders, and payment evidence; [NIP-LAB](NIP-LAB.md) specifies
 bounded agent labor and acceptance. [NIP-CTRL](NIP-CTRL.md) adds scoped task
-control from another client. These are drafts awaiting implementation, not
-claims of a deployed market or synchronized Coder clients. The
+control from another client. Rust supports bounded MKT/LAB orders and a local-owner CTRL bridge;
+independent market and complete client roles remain unfinished. The
 [coverage review](../../docs/protocol/2026-09-26-openagents-gap-review.md)
 explains the gaps and reuse across all three NIP lanes. Episodes 213–215,
 266–267, and 275–281 are design inputs, not wire contracts.
 
-[NIP-X402](NIP-X402.md) adds a **Designed** draft for Lightning-paid
-operations before execution. It preserves upstream x402 `http:1` and `mcp:1`
-bindings and defines an opt-in `nostr:openagents:1` extension, which is not an
-upstream profile. It leaves MKT/LAB payment after acceptance unchanged. The
-[integration assessment](../../docs/coder/design/x402-lightning-nostr-integration.md)
-separates wallet transport through NWC, social zaps, and the distinct L402
-protocol from this payment contract. No payment adapter is implemented by
-the draft.
+[NIP-X402](NIP-X402.md) has Rust HTTP, MCP, and native Nostr purchase
+implementations in `crates/x402`, with durable proof consumption, spending
+policy, and recovery. Pylon exercises the native binding with fake funds.
+Deployment and live-wallet evidence are separate from these supported roles;
+see the [payment guide](../../docs/payments/agent-payments.md).
 
 LAB keeps its name because OpenAgents already published a different
 [NIP-LBR v1 contract](https://github.com/OpenAgentsInc/openagents/blob/8f84d05896ef14edee491621bf977ee5315cc8ed/docs/nips/LBR.md)
@@ -33,21 +30,16 @@ profile uses private `3188` artifacts with MKT/CJ/RUN and claims no legacy
 wire compatibility. See [LAB's provenance note](NIP-LAB.md) and the
 [upstream sync review](../../docs/protocol/2026-09-26-upstream-nip-sync.md).
 
-[NIP-SOV](NIP-SOV.md) restores the historical NIP-SA sovereign-agent design
-as a **Designed** composition profile: durable identity, custody and recovery,
-private state, bounded initiative, guardians, agent labor, and purchases.
-It replaces the old `392xx` records with the current contracts and private
-`3188` artifacts. The new name distinguishes this wire format from historical
-SA; it allocates no kinds and implements no custody, wallet, or autonomous
-host. The [source and migration map](NIP-SOV.md#provenance-and-migration)
-retain the original draft and explain the changes.
+[NIP-SOV](NIP-SOV.md) has profile validation and a bounded local lifecycle in
+`openagents sov`: local-key custody, signed admission, finite activation, and
+checkpoints. Treasury, guardians, remote custody, and portable recovery remain
+unfinished. See the [CLI guide](../../docs/cli/README.md#sovereign-agents-nip-sov).
 
-[NIP-PYLON](NIP-PYLON.md) is a **Designed** draft for compute providers in
-public: a provider's opt-in beacon for one machine, buyer-signed receipts for
-the jobs it served, and pool aggregates any reader can recompute. Verse draws
-its Pylon Field and Wellspring only from these records, as the
-[Verse compute plan](../../docs/compute/verse-compute.md) describes. It
-allocates `30200`, `30201`, and `3201` and implements no publisher yet.
+[NIP-PYLON](NIP-PYLON.md) has beacon, service receipt, pool, checker, text-job,
+and decision-job implementations in `crates/nostr` and `crates/pylon`, with
+Verse consumers. Receipt, aggregate, and policy v2 keep payment proofs private
+and count paid claims only from explicitly trusted issuers. Live-wallet
+qualification and additional projection/relay roles remain unfinished.
 
 [NIP-ATIF](NIP-ATIF.md) is a **Designed** draft for carrying agent trajectories
 in the Agent Trajectory Interchange Format that Coder already records. Trajectories
@@ -70,18 +62,18 @@ sets. These reuse private artifacts and existing execution kinds. The
 [Coder integration plan](../../docs/coder/design/teardown-nostr-integration.md)
 defines implementation order and the evidence required before shipping them.
 
-[NIP-VAULT](NIP-VAULT.md) and [NIP-ATT](NIP-ATT.md) are **Designed** drafts
-for sensitive personal data. VAULT fixes the object format, per-object keys,
-key slots (passkey PRF, device, Nostr, recovery code), and three honestly
-labelled tiers: only the person's devices, only an attested workload while the
-person's client supplies its share, or an operator key logged at every use.
-ATT lets a client verify that a program is an exact, publicly logged release
-running in a hardware TEE before sealing work to its key: releases `3202`,
-release heads `30202`, attested endpoints `30203`, and the
-`openagents.attested.v1` feature for CJ/DEC jobs. See the
-[vault](../../docs/security/sensitive-data-vault.md) and
-[private inference](../../docs/security/private-inference.md) designs. Nothing
-is implemented yet.
+[NIP-VAULT](NIP-VAULT.md)'s device-only `user` tier is implemented in
+`crates/oa-vault`, its browser client, and `openagents vault`. The `sealed` and
+`operator` tiers remain designed. [NIP-ATT](NIP-ATT.md) supports Google
+Confidential Space on Intel TDX, including its NVIDIA H100 submodule, through
+`crates/oa-att` and Pylon's attested serving mode. Other platform verifiers,
+HPKE, transparency/rebuild evidence, personal approvals, streamed output,
+gift wrapping, and public sealed-job receipts remain unfinished.
+
+The [Rust implementation backlog](https://github.com/OpenAgentsInc/openagents/issues/11729)
+tracks the remaining roles referenced by the Dhruv proposal. Each issue needs
+actual producers, consumers, enforcement, and recovery evidence; generic schema
+validation and private-envelope storage alone do not complete a runtime.
 
 ## Why this exists
 
@@ -277,7 +269,7 @@ conformance requires validation and enforcement for each advertised role.
 | [NIP-HOST](NIP-HOST.md) | Host-wide device enrollment by invitation or approved short code, closed scoped rights, delegation, revocation epochs, device listing, and typed task creation, steering, and cancellation. Draft with a bounded host and client in `crates/coder-access`, served by the resident host in [`coder-host`](../../crates/coder-host/README.md) over relay artifacts, direct channels, and CAP operations over CJ execution. The 2026-09-29 amendment designs, but does not implement, `openagents-connect:` QR codes, enrollment over an iroh ALPN, the local operator socket, and planned nearby approval. | Shared `3188`; direct artifacts, or CAP operations over CJ. |
 | [NIP-MKT](NIP-MKT.md) | Immutable offerings, private negotiation, accepted orders, cancellation, and attributable Bitcoin settlement. | `3192`, `30192`; private records on shared `3188`. |
 | [NIP-LAB](NIP-LAB.md) | Agent-labor terms, execution linkage, deliverables, verification, acceptance, rework, disputes, and rights. | Shared `3188`; MKT agreements and CJ/RUN execution. |
-| [NIP-X402](NIP-X402.md) | Designed Lightning-paid operations: standard HTTP/MCP bindings, an opt-in native Nostr binding, spending admission, private evidence, and recovery. | No new kinds; CAP discovery and shared `3188` native records with POL/CJ/RUN admission. |
+| [NIP-X402](NIP-X402.md) | Partially implemented Lightning-paid operations: standard HTTP/MCP bindings, an opt-in native Nostr binding, spending admission, private evidence, and recovery. | No new kinds; CAP discovery and shared `3188` native records with POL/CJ/RUN admission. |
 | [NIP-SESS](NIP-SESS.md) | Engine capability, persistent sessions, durable input queues, steering, interactions, and native history/imports. | Shared `3188`; CAP/CJ operations and RUN records. |
 | [NIP-WS](NIP-WS.md) | Workspace resources, exact document versions, conditional changes, worktrees, checkpoints, bounded projections, and audience-bound activity summaries. | Shared `3188`; CAP/CJ operations and RUN records; Block PL wakes. |
 | [NIP-WORK](NIP-WORK.md) | Tracked objectives, planning relations, assignments, revision admission, disposition, source imports, and attention. | Shared `3188`; CAP/CJ operations and WS projections. |
@@ -286,12 +278,12 @@ conformance requires validation and enforcement for each advertised role.
 | [NIP-LIVE](NIP-LIVE.md) | Media participants and consent, input/speaking floors, capture anchors, and observation-bound device input. | Shared `3188`; CAP/CJ operations and admitted media transports. |
 | [NIP-REACH](NIP-REACH.md) | Owner host directory, host presence with bounded telemetry and receipt-time freshness, reachability hints without loopback fallback, authenticated direct channels bound to a grant and host generation, and placement. Implemented in [`coder-reach`](../../crates/coder-reach/README.md) with synthetic loopback-socket tests over TCP and WebSocket; [`coder-host`](../../crates/coder-host/README.md) publishes presence and hints and serves TCP and WebSocket direct channels, `ws` or TLS-terminated `wss`, with the real grant store. The 2026-09-29 amendment designs, but does not implement, `iroh` hints in a v2 hints record and the channel over an iroh stream. | Shared `3188`; no new kinds. |
 | [NIP-TERM](NIP-TERM.md) | Interactive terminal sessions: open, attach, detach, input, resize, signal, and close under the `terminal` right; per-terminal output sequence numbers, bounded replay with explicit gaps, idle expiry, and `lost` after a host restart. Implemented in [`coder-pty`](../../crates/coder-pty/README.md) with real-PTY tests on macOS; [`coder-host`](../../crates/coder-host/README.md) wires NIP-HOST rights, NIP-REACH channels, and `3188` sealing. | Shared `3188` or NIP-REACH data frames; no new kinds. |
-| [NIP-SOV](NIP-SOV.md) | Designed successor to historical SA: durable agent identity, admitted custody, bounded lifecycle, guardians, treasury policy, market participation, and retained recovery evidence. | Shared `3188`; existing AUTO/CAP/CJ/COORD/RUN contracts; no new kinds. |
+| [NIP-SOV](NIP-SOV.md) | Partially implemented successor to historical SA: durable agent identity, admitted custody, bounded lifecycle, guardians, treasury policy, market participation, and retained recovery evidence. | Shared `3188`; existing AUTO/CAP/CJ/COORD/RUN contracts; no new kinds. |
 | [NIP-ATIF](NIP-ATIF.md) | Designed carriage of ATIF agent trajectories: exact-byte and ATIF-rule step digests, owner-encrypted private carriage, public declarations with ordered chunks, and links to Coder tasks, RUN runs, delegated sub-agents, and continued segments. Maps Block AO/AM/AE onto ATIF steps. | `3198`, `3199`; private manifests and chunks on shared `3188`. |
 | [NIP-MV](NIP-MV.md) | Shared 3D worlds: ephemeral pose frames and gestures, durable entity state, world definitions, and cell-scoped subscriptions. Its optional runtime-loaded scene manifest and rules profile are Designed; Verse's curated local zones are not general world discovery. Standalone: it depends on no other contract here. | `23300`, `23301`, `23302`, `33300`, `33301`. |
-| [NIP-PYLON](NIP-PYLON.md) | Designed compute pylons and pools: a provider's opt-in public beacon with coarse class and free slots, buyer-signed service receipts with digests and proof-free seller/broker payment acknowledgments, recomputable pool aggregates, NIP-32 check verdicts, and the rules a world follows to draw them. | `30200`, `30201`, `3201`; NIP-32 `1985` labels. |
-| [NIP-ATT](NIP-ATT.md) | Designed attested workloads: public releases with measurements, sources, rebuilds, and Rekor entries; release heads with notice delays and rollback refusal; attested endpoint keys bound into TEE evidence; evidence-computed levels (`open`, `hardened`, `tee`, `tee-cloud`); sealed CJ/DEC jobs with ciphertext-digest receipts. | `3202`, `30202`, `30203`; sealed jobs on CJ/DEC. |
-| [NIP-VAULT](NIP-VAULT.md) | Designed sealed personal data: chunked AES-256-GCM objects, `user` / `sealed` (HPKE mode_psk to an attested system key plus the person's share) / `operator` wraps, key slots, key indexes for crypto-shredding, and session, request, lease, and revoke formats. | No new kinds; blobs by digest; slots and leases on shared `3188`. |
+| [NIP-PYLON](NIP-PYLON.md) | Partially implemented compute pylons and pools: a provider's opt-in public beacon with coarse class and free slots, buyer-signed service receipts with digests and proof-free seller/broker payment acknowledgments, recomputable pool aggregates, NIP-32 check verdicts, and the rules a world follows to draw them. | `30200`, `30201`, `3201`; NIP-32 `1985` labels. |
+| [NIP-ATT](NIP-ATT.md) | Confidential Space implementation of attested workloads; other roles remain designed: public releases with measurements, sources, rebuilds, and Rekor entries; release heads with notice delays and rollback refusal; attested endpoint keys bound into TEE evidence; evidence-computed levels (`open`, `hardened`, `tee`, `tee-cloud`); sealed CJ/DEC jobs with ciphertext-digest receipts. | `3202`, `30202`, `30203`; sealed jobs on CJ/DEC. |
+| [NIP-VAULT](NIP-VAULT.md) | Device-only `user` tier implemented; `sealed` and `operator` tiers designed: chunked AES-256-GCM objects, `user` / `sealed` (HPKE mode_psk to an attested system key plus the person's share) / `operator` wraps, key slots, key indexes for crypto-shredding, and session, request, lease, and revoke formats. | No new kinds; blobs by digest; slots and leases on shared `3188`. |
 
 Discovery heads are mutable. Exact signed records and artifact digests pin
 execution. Publication, installation, enablement, selection, grants, admission,

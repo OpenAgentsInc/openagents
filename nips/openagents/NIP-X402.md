@@ -1,7 +1,9 @@
 # NIP-X402 — Lightning Payments
 
 `draft` `optional` — v1. The [shared contracts](contracts.md) are normative.
-This specification is **Designed**, not implemented. It assigns no event
+Rust implements supported HTTP, MCP, and native Nostr roles in
+`crates/x402`, including durable proof consumption and purchase recovery.
+This does not claim every wallet adapter or live deployment. It assigns no event
 kinds. It combines x402 Lightning payments with Nostr capability discovery,
 host spending policy, private purchase records, and recoverable execution.
 It does not change [MKT](NIP-MKT.md) or [LAB](NIP-LAB.md) payment timing.

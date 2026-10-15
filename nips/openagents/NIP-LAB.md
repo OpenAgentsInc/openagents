@@ -2,8 +2,10 @@
 
 `draft` `optional` — v1. The [shared contracts](contracts.md) and
 [NIP-MKT](NIP-MKT.md) are normative. This is the
-`openagents.labor.v1` market profile, not an implemented worker or payment
-service. It assigns no new event kinds.
+`openagents.labor.v1` market profile, with a bounded Rust host and explicit
+paid fulfillment in `crates/coder-labor`. See the
+[runtime guide](../../docs/coder/runtime/free-labor.md) for fixture limits and
+remaining rework, resolver, and independent-operation roles. It assigns no new event kinds.
 
 **Name provenance:** OpenAgents already used
 [NIP-LBR v1](https://github.com/OpenAgentsInc/openagents/blob/8f84d05896ef14edee491621bf977ee5315cc8ed/docs/nips/LBR.md)

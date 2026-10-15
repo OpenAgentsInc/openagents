@@ -80,11 +80,11 @@ subset of that composition before proposing another NIP or allocating kinds.
 Most remaining gaps are host enforcement, application bindings, and evidence
 that independent participants can complete the whole flow.
 
-The index and several specification introductions retain older implementation
-summaries. For example, the index calls ATT and VAULT unimplemented, while
-their own status sections describe supported portions. Read a contract's
-requirements separately from its status and use current runtime evidence for
-each implemented role. This review maps the documents; it does not certify
+The [implementation backlog](https://github.com/OpenAgentsInc/openagents/issues/11729)
+tracks remaining Rust roles and their dependencies. The status inventory was
+corrected in #11730: X402, PYLON, ATT, device-only VAULT, and the bounded local
+SOV lifecycle have implementations. Read a contract's requirements separately
+from the supported role and its runtime evidence; this review does not certify
 deployed conformance.
 
 ### Contracts for the first economic loop

@@ -1,8 +1,10 @@
 # NIP-MKT — Markets
 
 `draft` `optional` — v1. The [shared contracts](contracts.md) are normative.
-This is a new specification in this repository, not a claim of implemented
-market or payment support. It does not reproduce the earlier Immortal wire.
+Rust implements bounded offerings, negotiated orders, and explicit paid
+fulfillment in `crates/coder-labor`; the [runtime guide](../../docs/coder/runtime/free-labor.md)
+states its supported roles and fixture limits. Wider market roles and live
+commercial qualification remain unfinished. This does not reproduce the earlier Immortal wire.
 
 This NIP defines provider offerings and a private negotiation among a buyer
 and provider. They agree on an exact service, price, deadlines, and acceptance
