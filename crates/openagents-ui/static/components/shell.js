@@ -30,12 +30,43 @@
 // ([data-oa-composer-busy="<form id>"]). Without this script it stays
 // enabled and the server rejects an empty message.
 //
-// Composer (form[data-oa-composer]): Enter submits, Shift+Enter inserts a
-// line, IME composition is left alone. A page adapter that already handled
-// the key (event.defaultPrevented) wins. A click on the composer card that
-// is not on a control focuses the text box.
+// Composer (form[data-oa-composer]), #11685: Enter sends now; Ctrl+Enter
+// (Cmd+Enter on a Mac) queues the message for later; Shift+Enter inserts a
+// line; IME composition is left alone. A page adapter that already handled
+// the key (event.defaultPrevented) wins. A web answer can't be stopped or
+// read mid-answer, so Enter while one is being written puts the message
+// first in line: it goes the moment the answer ends. The queue
+// (ol[data-oa-composer-queue]) shows above the text box; each message can
+// be edited in place or removed, and they send in order, one per answer,
+// to the chat they were written in. The hint (p[data-oa-composer-hint])
+// says ⌘ instead of Ctrl on a Mac. A click on the composer card that is
+// not on a control focuses the text box.
 (function () {
   "use strict";
+
+  // The send rule (#11685), kept pure for node's tests
+  // (tests/js/composer.test.js): what Enter does in a composer. `key` holds
+  // the event's key and modifier flags; `free` says no answer is being
+  // written and no send is in flight; `queued` counts the chat's queued
+  // messages. "send" sends now, "first" puts the message first in line (an
+  // answer is being written and can't be stopped), "last" queues it for
+  // later, "" leaves the key alone (a new line, IME, or another key).
+  function sendAction(key, free, queued) {
+    if (key.key !== "Enter" || key.shiftKey || key.altKey) return "";
+    if (key.isComposing || key.keyCode === 229) return "";
+    if (key.ctrlKey || key.metaKey) return "last";
+    return free && !queued ? "send" : "first";
+  }
+
+  // The hint as a Mac says it: ⌘ for Ctrl.
+  function macHint(text) {
+    return text.replace("Ctrl+Enter", "\u2318+Enter");
+  }
+
+  if (typeof module === "object" && module.exports) {
+    module.exports = { sendAction: sendAction, macHint: macHint };
+    return;
+  }
   var COOKIE = "oa_sidebar";
   var MAX_AGE = 60 * 60 * 24 * 365;
   var WIDE = "(min-width: 48rem)";
@@ -221,23 +252,226 @@
     syncAllSends();
   }
 
-  document.addEventListener("keydown", function (event) {
-    if (event.defaultPrevented || event.key !== "Enter" || event.shiftKey) return;
-    if (event.isComposing || event.keyCode === 229) return;
-    var input = event.target;
-    if (!input || input.tagName !== "TEXTAREA") return;
-    var form = input.form;
-    if (!form || !form.hasAttribute("data-oa-composer")) return;
-    event.preventDefault();
-    if (!input.value.trim()) return;
-    // Nothing while a send is in flight or an answer is being written.
-    var send = composerParts(form).send;
-    if (send && send.disabled) return;
+  // Queue (#11685). Each item remembers the chat (the form's address) it
+  // was written for; only that chat's items show and send.
+  var MAC = /Mac|iPhone|iPad/.test(
+    (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || ""
+  );
+
+  function address(form) {
+    return form.getAttribute("hx-post") || form.getAttribute("action") || "";
+  }
+
+  function queueList(form) {
+    return form.querySelector("[data-oa-composer-queue]");
+  }
+
+  function queueItems(form) {
+    var list = queueList(form);
+    if (!list) return [];
+    var here = address(form);
+    var all = list.querySelectorAll("[data-oa-queued]");
+    var items = [];
+    for (var i = 0; i < all.length; i++) {
+      if (all[i].getAttribute("data-oa-queued") === here) items.push(all[i]);
+    }
+    return items;
+  }
+
+  function syncQueue(form) {
+    var list = queueList(form);
+    if (!list) return;
+    var here = address(form);
+    var all = list.querySelectorAll("[data-oa-queued]");
+    var shown = 0;
+    for (var i = 0; i < all.length; i++) {
+      var mine = all[i].getAttribute("data-oa-queued") === here;
+      all[i].hidden = !mine;
+      if (mine) shown++;
+    }
+    list.hidden = shown === 0;
+  }
+
+  function enqueue(form, text, first) {
+    var list = queueList(form);
+    if (!list) return false;
+    var item = document.createElement("li");
+    item.className = "oa-composer-queue-item";
+    item.setAttribute("data-oa-queued", address(form));
+    var box = document.createElement("textarea");
+    box.className = "oa-composer-queue-text";
+    box.rows = 1;
+    box.value = text;
+    box.setAttribute("aria-label", "Queued message");
+    var remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "oa-composer-queue-remove";
+    remove.setAttribute("data-oa-queue-remove", "");
+    remove.textContent = "Remove";
+    item.appendChild(box);
+    item.appendChild(remove);
+    var mine = queueItems(form);
+    if (first && mine.length) {
+      list.insertBefore(item, mine[0]);
+    } else {
+      list.appendChild(item);
+    }
+    syncQueue(form);
+    return true;
+  }
+
+  // Free to send: no answer is being written and no send is in flight.
+  function idle(form) {
+    var parts = composerParts(form);
+    return !busy(form) && !form.classList.contains("htmx-request") &&
+      !(parts.input && parts.input.disabled);
+  }
+
+  function submit(form) {
     if (typeof form.requestSubmit === "function") {
       form.requestSubmit();
     } else {
       form.submit();
     }
+  }
+
+  // Sends the chat's first queued message when it is free. The draft being
+  // typed stays: it goes back in the box once the queued message is sent.
+  function drain(form) {
+    if (form._oaQueuedSend !== undefined || !idle(form)) return;
+    var item = queueItems(form)[0];
+    if (!item) return;
+    var text = item.querySelector("textarea").value;
+    item.parentNode.removeChild(item);
+    syncQueue(form);
+    if (!text.trim()) return drain(form);
+    var input = composerParts(form).input;
+    if (!input) return;
+    form._oaQueuedSend = input.value;
+    input.value = text;
+    var send = composerParts(form).send;
+    if (send) send.disabled = false;
+    submit(form);
+    // A plain (non-HTMX) form leaves the page; nothing to put back.
+  }
+
+  function drainAll() {
+    var forms = document.querySelectorAll("form[data-oa-composer]");
+    for (var i = 0; i < forms.length; i++) {
+      syncQueue(forms[i]);
+      drain(forms[i]);
+    }
+  }
+
+  // After a queued message's send, its draft comes back.
+  document.addEventListener("htmx:afterRequest", function (event) {
+    var form = event.detail && event.detail.elt;
+    if (!form || !form.hasAttribute || !form.hasAttribute("data-oa-composer")) return;
+    var draft = form._oaQueuedSend;
+    if (draft === undefined) return;
+    var sent = composerParts(form).input;
+    var failed = !event.detail.successful || refused(event);
+    setTimeout(function () {
+      form._oaQueuedSend = undefined;
+      var input = composerParts(form).input;
+      if (!input) return;
+      // A refused message goes back to the front of the line.
+      if (failed && sent && sent.value.trim() && sent.value !== draft) {
+        enqueue(form, sent.value, true);
+      }
+      input.value = draft;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    }, 0);
+  });
+
+  document.addEventListener("click", function (event) {
+    var target = event.target;
+    var remove = target && target.closest ? target.closest("[data-oa-queue-remove]") : null;
+    if (!remove) return;
+    event.preventDefault();
+    var item = remove.closest("[data-oa-queued]");
+    var form = remove.closest("form");
+    if (item) item.parentNode.removeChild(item);
+    if (form) {
+      syncQueue(form);
+      var input = composerParts(form).input;
+      if (input) input.focus();
+    }
+  });
+
+  function hints() {
+    if (!MAC) return;
+    var all = document.querySelectorAll("[data-oa-composer-hint]");
+    for (var i = 0; i < all.length; i++) {
+      all[i].textContent = macHint(all[i].textContent);
+    }
+  }
+
+  var draining = false;
+  function soon() {
+    if (draining) return;
+    draining = true;
+    setTimeout(function () {
+      draining = false;
+      drainAll();
+    }, 0);
+  }
+  ["htmx:afterRequest", "htmx:afterSettle", "htmx:oobAfterSwap", "htmx:load", "htmx:sseMessage"].forEach(function (name) {
+    document.addEventListener(name, soon);
+  });
+  window.addEventListener("pageshow", function () {
+    var forms = document.querySelectorAll("form[data-oa-composer]");
+    for (var i = 0; i < forms.length; i++) forms[i]._oaQueuedSend = undefined;
+    soon();
+  });
+  if (window.MutationObserver) {
+    // The busy mark goes when the answer ends, however the page learns it.
+    new MutationObserver(soon)
+      .observe(document.documentElement, {
+        subtree: true,
+        attributes: true,
+        attributeFilter: ["data-oa-composer-busy"],
+        childList: true
+      });
+  }
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", hints);
+  } else {
+    hints();
+  }
+  document.addEventListener("htmx:load", hints);
+
+  document.addEventListener("keydown", function (event) {
+    if (event.defaultPrevented || event.key !== "Enter" || event.shiftKey || event.altKey) return;
+    if (event.isComposing || event.keyCode === 229) return;
+    var input = event.target;
+    if (!input || input.tagName !== "TEXTAREA") return;
+    var form = input.form;
+    if (!form || !form.hasAttribute("data-oa-composer")) return;
+    // Enter in a queued message's box finishes editing it.
+    if (input.closest && input.closest("[data-oa-queued]")) {
+      event.preventDefault();
+      var main = composerParts(form).input;
+      if (main) main.focus();
+      return;
+    }
+    event.preventDefault();
+    var text = input.value;
+    if (!text.trim()) return;
+    var action = sendAction(event, idle(form), queueItems(form).length);
+    if (action === "send") {
+      submit(form);
+      return;
+    }
+    // Ctrl+Enter: last in line. Enter while an answer is being written:
+    // first in line, sent the moment it ends.
+    if (!enqueue(form, text, action === "first")) {
+      if (idle(form)) submit(form);
+      return;
+    }
+    input.value = "";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    drain(form);
   });
 
   // Chat list (ChatSearch, RowRename, ChatList's [data-oa-chat-rows]):

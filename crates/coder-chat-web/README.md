@@ -18,7 +18,12 @@ opens at the newest message, follows a reply while the reader is at the end,
 stops following when they scroll up, and holds still when earlier messages
 load above.
 
-Enter submits and Shift+Enter inserts a line. Composition input never submits.
+Enter submits when the chat is free, and Shift+Enter or Alt+Enter inserts a
+line. Composition input never submits. Ctrl+Enter or Cmd+Enter (queue for
+later), and Enter while a send is in flight or an answer is being written
+(first in line), are left to the page shell's queue in
+`openagents-ui/static/components/shell.js` (#11685), which shows queued
+messages above the text box and sends them in order after each answer.
 A successful HTMX form POST clears the submitted draft if it is still current;
 failed requests and text typed while a request runs remain intact. Transcript
 updates preserve the textarea. Selecting another chat restores its draft and

@@ -962,3 +962,43 @@ fn manage_projects_is_a_button_on_the_projects_heading() {
     assert!(heading < button && button < group);
     assert_eq!(html.matches("oa-section-action").count(), 1);
 }
+
+/// #11685: every composer shows the send keys' hint and an empty queue the
+/// page script fills, above the text box, hidden until something waits.
+#[test]
+fn composer_shows_the_send_hint_and_a_hidden_queue_for_later() {
+    let html = chat_composer().render().into_string();
+    assert!(html.contains("Enter to send, Ctrl+Enter to queue for later"));
+    assert_eq!(SEND_HINT, "Enter to send, Ctrl+Enter to queue for later");
+    assert!(html.contains(r#"data-oa-composer-hint="""#));
+    let queue = html
+        .find(r#"<ol class="oa-composer-queue" data-oa-composer-queue="" aria-label="Queued for later" hidden"#)
+        .expect("queue list");
+    assert!(queue < html.find(r#"id="chat-card""#).unwrap());
+    let script = crate::script();
+    assert!(script.contains("data-oa-composer-queue") && script.contains("data-oa-queue-remove"));
+    assert!(
+        script.contains("event.ctrlKey || event.metaKey")
+            || script.contains("key.ctrlKey || key.metaKey")
+    );
+}
+
+/// The send rule's pure helper under node's test runner, when node is
+/// installed.
+#[test]
+fn composer_send_rule_passes_node_tests() {
+    let crate_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    match std::process::Command::new("node")
+        .arg("--test")
+        .arg(crate_dir.join("tests/js/composer.test.js"))
+        .output()
+    {
+        Ok(out) => assert!(
+            out.status.success(),
+            "{}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        ),
+        Err(_) => eprintln!("node is not installed; tests/js/composer.test.js did not run"),
+    }
+}

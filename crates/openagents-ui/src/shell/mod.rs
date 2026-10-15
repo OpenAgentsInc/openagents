@@ -45,7 +45,7 @@ pub use breadcrumb::{AccountMenu, BREADCRUMB_ID, Breadcrumb};
 pub use chat_row::{ChatSearch, RowAction, RowMenu, RowRename};
 pub use composer::{
     Composer, ComposerAction, ComposerDropdown, ComposerPanel, HxGet, ModelPickerTrigger,
-    composer_panel_host,
+    SEND_HINT, composer_panel_host,
 };
 pub use layout::{
     AppShell, ChatGroup, ChatList, Document, GROUP_ROWS, LegalLinks, MainMode, NavItem,

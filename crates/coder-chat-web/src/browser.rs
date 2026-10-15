@@ -13,6 +13,8 @@ use web_sys::{
 };
 use zeroize::{Zeroize, Zeroizing};
 
+use crate::{EnterAction, action_for_enter};
+
 const MAX_CHATS: usize = 256;
 const MAX_DRAFT_BYTES: usize = 64 * 1024;
 type Listener = (EventTarget, &'static str, bool, Closure<dyn FnMut(Event)>);
@@ -539,14 +541,30 @@ impl Runtime {
                 if let Some(key) = event.dyn_ref::<KeyboardEvent>()
                     && key.key() == "Enter"
                     && !key.shift_key()
+                    && !key.alt_key()
                     && !key.is_composing()
                     && key.key_code() != 229
                     && !self.composing.get()
+                    // Only the chat's own text box: a queued message's box
+                    // belongs to the page shell (#11685).
+                    && event
+                        .target()
+                        .and_then(|target| target.dyn_into::<Element>().ok())
+                        .is_some_and(|target| target.id() == self.input.id())
                 {
-                    event.prevent_default();
-                    // Enter does nothing while a send is in flight or an
-                    // answer is being written (the send button is off).
-                    if !self.input.value().trim().is_empty() && !self.sending() {
+                    if self.input.value().trim().is_empty() {
+                        event.prevent_default();
+                        return;
+                    }
+                    // Enter sends now when the chat is free. Ctrl+Enter
+                    // (Cmd+Enter) queues for later, and Enter while a send
+                    // is in flight or an answer is being written goes first
+                    // in line: both are the page shell's queue (#11685),
+                    // so the key is left to it.
+                    if action_for_enter(key.ctrl_key() || key.meta_key(), self.sending())
+                        == EnterAction::Send
+                    {
+                        event.prevent_default();
                         let _ = self.form.request_submit();
                     }
                 }

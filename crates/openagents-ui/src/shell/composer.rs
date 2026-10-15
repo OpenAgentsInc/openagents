@@ -511,6 +511,10 @@ impl Composer {
     }
 }
 
+/// The hint every composer shows under its text box (#11685): Enter sends
+/// now, Ctrl+Enter (⌘+Enter on a Mac) queues the message for later.
+pub const SEND_HINT: &str = "Enter to send, Ctrl+Enter to queue for later";
+
 impl Render for Composer {
     fn render(&self) -> Markup {
         let input_id = self.input_dom_id();
@@ -536,6 +540,11 @@ impl Render for Composer {
                     @if let Some(selectors) = &self.selectors {
                         div class="oa-composer-selectors" { (selectors) }
                     }
+                    // Messages queued for later (#11685): the page script
+                    // fills it, each one editable and removable, and sends
+                    // them in order once the current answer ends.
+                    ol class="oa-composer-queue" data-oa-composer-queue=""
+                        aria-label="Queued for later" hidden {}
                     div id=(body_id) class="oa-composer-body" data-composer-body="" {
                         @if let Some(attachments) = &self.attachments {
                             div class="oa-composer-attachments" { (attachments) }
@@ -570,6 +579,8 @@ impl Render for Composer {
                             }
                         }
                     }
+                    // The send keys (#11685); the page script says ⌘ on a Mac.
+                    p class="oa-composer-hint" data-oa-composer-hint="" { (SEND_HINT) }
                     div id=(self.status_id()) class="oa-composer-status" role="status"
                         aria-live="polite" {
                         @if let Some(status) = &self.status { (status) }

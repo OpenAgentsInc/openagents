@@ -501,6 +501,76 @@
 }
 
 /* Status: failure messages; empty takes no space. */
+/* The send keys' hint under the text box (#11685). A touch screen has no
+   Enter key to speak of, so the hint stays off there. */
+.oa-composer-hint {
+  margin: calc(var(--spacing) * 1) 0 0;
+  padding: 0 calc(var(--spacing) * 3);
+  color: var(--color-text-secondary);
+  font-size: var(--font-text-xs-size, var(--font-text-sm-size));
+}
+@media (hover: none) and (pointer: coarse) {
+  .oa-composer-hint {
+    display: none;
+  }
+}
+
+/* Messages queued for later (#11685), above the text box: each one can be
+   edited in place or removed, and they send in order. */
+.oa-composer-queue {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--spacing) * 1);
+  margin: 0 0 calc(var(--spacing) * 2);
+  padding: 0;
+  list-style: none;
+}
+.oa-composer-queue[hidden] {
+  display: none;
+}
+.oa-composer-queue-item {
+  display: flex;
+  align-items: flex-start;
+  gap: calc(var(--spacing) * 2);
+  padding: calc(var(--spacing) * 1.5) calc(var(--spacing) * 2) calc(var(--spacing) * 1.5) calc(var(--spacing) * 3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg, 0.75rem);
+  background: var(--color-background-secondary, transparent);
+}
+.oa-composer-queue-item[hidden] {
+  display: none;
+}
+.oa-composer-queue-text {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  font-size: var(--font-text-sm-size);
+  resize: none;
+  field-sizing: content;
+  outline: none;
+}
+.oa-composer-queue-remove {
+  flex: none;
+  padding: 0 calc(var(--spacing) * 1);
+  border: 0;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: var(--font-text-sm-size);
+  cursor: pointer;
+}
+.oa-composer-queue-remove:hover {
+  color: var(--color-text);
+}
+.oa-composer-queue-remove:focus-visible {
+  box-shadow: 0 0 0 2px var(--color-ring);
+}
+
 .oa-composer-status {
   padding: 0 calc(var(--spacing) * 3);
   color: var(--color-text-danger-ghost, var(--color-text-secondary));
