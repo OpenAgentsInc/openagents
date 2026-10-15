@@ -1,6 +1,7 @@
 //! Reproducible model benchmarks; each invocation runs one engine.
 
 use std::{
+    io::{self, Write},
     path::PathBuf,
     process::Command,
     sync::{Arc, Barrier},
@@ -93,6 +94,8 @@ struct Timings {
     tokens: usize,
     start: Instant,
     end: Instant,
+    // Keep all model instances loaded through the process memory snapshot.
+    _engine: Box<dyn ModelEngine>,
 }
 
 impl Worker {
@@ -134,6 +137,7 @@ impl Worker {
             tokens,
             start,
             end: Instant::now(),
+            _engine: self.engine,
         })
     }
 }
@@ -154,7 +158,7 @@ fn percentile(sorted: &[f64], p: f64) -> f64 {
         .saturating_sub(1)
         .min(sorted.len() - 1)]
 }
-fn summarize(timings: Vec<Timings>) -> Statistics {
+fn summarize(timings: &[Timings]) -> Statistics {
     let start = timings
         .iter()
         .map(|x| x.start)
@@ -163,7 +167,10 @@ fn summarize(timings: Vec<Timings>) -> Statistics {
     let end = timings.iter().map(|x| x.end).max().unwrap_or(start);
     let wall = end.duration_since(start).as_secs_f64();
     let tokens: usize = timings.iter().map(|x| x.tokens).sum();
-    let mut values: Vec<f64> = timings.into_iter().flat_map(|x| x.values).collect();
+    let mut values: Vec<f64> = timings
+        .iter()
+        .flat_map(|x| x.values.iter().copied())
+        .collect();
     values.sort_by(f64::total_cmp);
     Statistics {
         samples: values.len(),
@@ -383,7 +390,7 @@ fn run(args: Args, process_start: Instant) -> Result<serde_json::Value> {
                 .map_err(|_| Error("Benchmark worker stopped unexpectedly".into()))?
         })
         .collect::<Result<Vec<_>>>()?;
-    let statistics = summarize(timings);
+    let statistics = summarize(&timings);
     let exe = std::env::current_exe()?;
     let model_bytes = manifest.files.values().map(|x| x.bytes).sum::<u64>();
     Ok(serde_json::json!({
@@ -392,7 +399,7 @@ fn run(args: Args, process_start: Instant) -> Result<serde_json::Value> {
         "engine":identity,"mode":args.mode,"bucket":args.bucket,"total_threads":args.threads,"concurrency":args.concurrency,
         "warmup_per_worker":args.warmup,"token_counts":counts,"corpus_sha256":corpus_sha256,"statistics":statistics,
         "startup":{"session_load_ms":load_ms,"process_to_ready_ms":ready_ms,"first_inference_ms":first_inference_ms,"artifact_cache":"warm"},
-        "memory":memory(),"package":{"executable_bytes":exe.metadata()?.len(),"executable_sha256":file_sha256(&exe)?,
+        "memory":memory(),"memory_models_loaded":true,"package":{"executable_bytes":exe.metadata()?.len(),"executable_sha256":file_sha256(&exe)?,
             "ort_library_bytes":args.ort_library.as_ref().and_then(|p|p.metadata().ok()).map(|m|m.len()),"source_model_bytes":model_bytes},
         "reference":{"cases":100,"maximum_centered_distance":maximum_centered_distance},
         "environment":{"os":std::env::consts::OS,"arch":std::env::consts::ARCH,"cpu":cpu_model(),
@@ -407,11 +414,14 @@ fn main() -> std::process::ExitCode {
     let start = Instant::now();
     match run(Args::parse(), start) {
         Ok(report) => {
-            println!("{report}");
-            std::process::ExitCode::SUCCESS
+            if writeln!(io::stdout(), "{report}").is_ok() {
+                std::process::ExitCode::SUCCESS
+            } else {
+                std::process::ExitCode::FAILURE
+            }
         }
         Err(error) => {
-            eprintln!("{error}");
+            let _ = writeln!(io::stderr(), "{error}");
             std::process::ExitCode::FAILURE
         }
     }
