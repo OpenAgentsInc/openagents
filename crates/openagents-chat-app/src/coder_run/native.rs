@@ -18,6 +18,12 @@ impl Pending {
         task: &str,
         state: super::State,
     ) -> bool {
+        if state != super::State::Running {
+            let changed = self.available || self.current.is_some();
+            self.available = false;
+            self.current = None;
+            return changed;
+        }
         let before = (self.snapshot.clone(), self.available);
         if let Some(candidate) = &snapshot
             && let Some(old) = &self.snapshot
@@ -33,9 +39,6 @@ impl Pending {
             }
         }
         self.available = false;
-        if state != super::State::Running {
-            self.current = None;
-        }
         if let Some(snapshot) =
             snapshot.filter(|s| s.valid() && s.scope.task == task && s.scope.host == super::LOCAL)
         {
@@ -229,7 +232,7 @@ mod tests {
         let latest = pending.request().unwrap().id.clone();
         pending.update(Some(snapshot(1)), "task", super::super::State::Running);
         assert_eq!(pending.request().unwrap().id, latest);
-        pending.update(Some(snapshot(2)), "task", super::super::State::Ended);
+        pending.update(Some(snapshot(1)), "task", super::super::State::Ended);
         assert!(pending.request().is_none());
     }
 
