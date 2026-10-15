@@ -288,8 +288,8 @@ fn stop_steer_queue_and_answers_go_to_the_runner() {
     let now = Instant::now();
     let mut run = fed(&whole[..8], State::Running);
 
-    // Sending while Coder works queues the message for the next turn.
-    assert!(run.action(Action::Send, "also cover spaces").is_none());
+    // Ctrl+Enter while Coder works queues the message for later (#11685).
+    assert!(run.action(Action::Queue, "also cover spaces").is_none());
     assert_eq!(run.queued(), 1);
     // Stop and send: a stop, then the message once the turn ends.
     let (ticket, stop) = run.action(Action::Steer, "use pytest instead").unwrap();
@@ -569,10 +569,8 @@ fn a_finished_run_routes_followups_and_continues_on_a_dispatch() {
     let task = whole[0].task.clone();
     let mut working = fed(&whole[..8], State::Running);
     assert!(!working.routes_followups());
-    assert_eq!(
-        working.placeholder(),
-        "Queue a message for Coder's next turn…"
-    );
+    // The send control sends now while Coder works (#11685).
+    assert_eq!(working.placeholder(), "Message Coder…");
     assert!(working.result().is_none());
     assert!(!working.continue_with("now add a test"));
 
@@ -744,4 +742,20 @@ fn a_running_task_that_records_a_plan_shows_the_plan_panel() {
     let mut plain = fed(&lines[..1], State::Running);
     assert!(plain.plan_items().is_none());
     assert!(!text_of(&plain.rows()).contains("Plan ·"));
+}
+
+/// #11685: Enter sends now while Coder works (the turn stops and the
+/// message continues it); Ctrl+Enter queues it for after the turn.
+#[test]
+fn enter_sends_now_and_ctrl_enter_queues_while_coder_works() {
+    let whole = &tasks(QUESTION_THEN_RESULT)[0];
+    let task = whole[0].task.clone();
+    let mut run = fed(&whole[..8], State::Running);
+    let (_, stop) = run.action(Action::Send, "use pytest instead").unwrap();
+    assert_eq!(stop, Request::Stop { task });
+    assert_eq!(run.queued(), 0);
+    let mut run = fed(&whole[..8], State::Running);
+    assert!(run.action(Action::Queue, "later please").is_none());
+    assert_eq!(run.queued(), 1);
+    assert!(!run.busy());
 }

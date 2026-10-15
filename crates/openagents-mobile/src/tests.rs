@@ -534,8 +534,8 @@ fn live_coder_chat_creates_a_task() {
             "{text:?}"
         );
         assert_eq!(nodes_of(&chat, "transcript").len(), 1);
-        // A running chat offers stop, and its composer queues, with the
-        // other ways to send on a long press.
+        // A running chat offers stop, and its composer sends now, with
+        // queueing for later on a long press (#11685).
         assert!(key_for(&chat, "Stop").is_some(), "{text:?}");
         let composer = &nodes_of(&chat, "composer")[0]["element"]["props"];
         let choices: Vec<&str> = composer["choices"]
@@ -1004,7 +1004,12 @@ fn live_coder_chat_edits_its_queue() {
         )
         .coder
         .unwrap();
-        send_as(app, &running, None, "Reply with only the word two.");
+        send_as(
+            app,
+            &running,
+            Some("Queue for next turn"),
+            "Reply with only the word two.",
+        );
         let listed = until(app, deadline, |chat, _| {
             key_for(chat, "Edit queue").is_some()
         });

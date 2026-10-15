@@ -786,12 +786,24 @@ fn choice_labels(view: &Value) -> Vec<String> {
 
 #[test]
 fn a_long_press_offers_queue_or_stop_and_send_while_coder_works() {
+    // #11685: a tap on Send (or Enter) sends now while Coder works; the
+    // long press (or Ctrl+Enter) queues for later.
     use coder_host::CommandAction;
     use nostr::activity_summary::{Attention, Phase};
     let (mut fixture, script, chat) = Fixture::scripted(Phase::Running, Attention::None);
     assert_eq!(
         choice_labels(&chat),
         ["Queue for next turn", "Stop and send"]
+    );
+    // Ctrl+Enter sends with the choice marked for later.
+    let choices = &node(&chat, "coder-composer").unwrap()["element"]["props"]["choices"];
+    assert_eq!(choices[0]["later"], true);
+    assert!(choices[1].get("later").is_none());
+    assert!(
+        node(&chat, "coder-composer").unwrap()["element"]["props"]["placeholder"]
+            .as_str()
+            .unwrap()
+            .starts_with("Message Coder on ")
     );
     // The Rust-drawn steer switch is gone; Stop stays.
     assert!(node(&chat, "coder-steer").is_none());
@@ -802,7 +814,7 @@ fn a_long_press_offers_queue_or_stop_and_send_while_coder_works() {
     assert_eq!(
         script.lock().unwrap().commands,
         [
-            (CommandAction::Queue, "Then the changelog.".into(), false),
+            (CommandAction::Steer, "Then the changelog.".into(), true),
             (CommandAction::Steer, "Only the parser.".into(), true),
             (CommandAction::Queue, "And the docs.".into(), false),
         ]

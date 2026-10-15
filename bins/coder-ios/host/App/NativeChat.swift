@@ -9,6 +9,7 @@
 // paints each row; these SwiftUI views draw the same elements elsewhere.
 import SwiftUI
 import UIKit
+import GameController
 
 // MARK: - Decoded properties
 
@@ -44,6 +45,9 @@ struct NativeComposerProps: Equatable {
 struct NativeComposerChoice: Decodable, Equatable, Hashable {
     let token: String
     let label: String
+    /// This choice queues the message for later: Ctrl+Enter or Cmd+Enter
+    /// on a hardware keyboard sends with it (#11685).
+    var later: Bool? = nil
 }
 
 /// One inline run of parsed Markdown. A link opens only when its
@@ -887,6 +891,11 @@ private struct NativeComposer: View {
     let submit: NativeChat.Submit
     let activate: (String) -> Void
     @State private var text = ""
+    /// A hardware keyboard is attached: the send keys' hint shows.
+    @State private var hardwareKeyboard = GCKeyboard.coalesced != nil
+
+    /// The send keys on a hardware keyboard (#11685).
+    static let sendHint = "Enter to send, Ctrl+Enter to queue for later"
 
     private var canSend: Bool {
         props.enabled && !props.busy && submit != nil
@@ -894,9 +903,28 @@ private struct NativeComposer: View {
             && text.utf8.count <= props.maxBytes
     }
 
+    var body: some View {
+        VStack(spacing: 0) {
+            capsule
+            if hardwareKeyboard && props.enabled && submit != nil {
+                Text(Self.sendHint)
+                    .font(.paper(12))
+                    .foregroundStyle(.secondary)
+                    .padding(.bottom, 4)
+                    .accessibilityIdentifier("\(key)-hint")
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .GCKeyboardDidConnect)) { _ in
+            hardwareKeyboard = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .GCKeyboardDidDisconnect)) { _ in
+            hardwareKeyboard = GCKeyboard.coalesced != nil
+        }
+    }
+
     // One capsule, as in Zeron's resting composer: the text between the
     // capsule's ends and a round send control inside its trailing end.
-    var body: some View {
+    private var capsule: some View {
         HStack(alignment: .bottom, spacing: 8) {
             if attaches {
                 Button(action: attach) {
@@ -914,7 +942,8 @@ private struct NativeComposer: View {
             }
             NativeComposerField(text: $text, token: props.token, placeholder: props.placeholder,
                                 maxBytes: props.maxBytes, enabled: props.enabled, draft: props.draft,
-                                focusToken: props.focus ? props.token : nil, send: send)
+                                focusToken: props.focus ? props.token : nil, send: send,
+                                queue: queue)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .overlay(alignment: .topLeading) {
                     if text.isEmpty {
@@ -992,6 +1021,12 @@ private struct NativeComposer: View {
     }
 
     private func send() { send(as: props.token) }
+
+    /// Ctrl+Enter or Cmd+Enter: the choice that queues for later while
+    /// Coder works; with nothing running there is none, and it sends.
+    private func queue() {
+        send(as: props.choices.first(where: { $0.later == true })?.token ?? props.token)
+    }
 
     /// The draft stays until Rust accepts it: the next composer's new token
     /// clears the shared draft, and a refused send keeps the words.
@@ -1145,6 +1180,7 @@ private struct NativeComposerField: UIViewRepresentable {
     /// The composer token to focus the field for, once, when it first shows.
     let focusToken: String?
     let send: () -> Void
+    let queue: () -> Void
 
     private static let font = UIFontMetrics(forTextStyle: .body).scaledFont(for: .paper(16))
     private static let maxLines: CGFloat = 6
@@ -1179,7 +1215,10 @@ private struct NativeComposerField: UIViewRepresentable {
     func updateUIView(_ view: NativeComposerTextView, context: Context) {
         let coordinator = context.coordinator
         coordinator.parent = self
-        view.onCommandReturn = { [weak coordinator] in coordinator?.parent.send() }
+        // A hardware keyboard's Enter sends now; Ctrl+Enter or Cmd+Enter
+        // queues for later (#11685).
+        view.onReturn = { [weak coordinator] in coordinator?.parent.send() }
+        view.onQueue = { [weak coordinator] in coordinator?.parent.queue() }
         if coordinator.editor.mount(token: token, maxBytes: maxBytes, draft: draft),
            let state = coordinator.editor.state {
             coordinator.show(state, in: view)
@@ -1304,7 +1343,10 @@ private struct NativeComposerField: UIViewRepresentable {
 }
 
 final class NativeComposerTextView: UITextView {
-    var onCommandReturn: (() -> Void)?
+    /// A hardware keyboard's Enter: send now.
+    var onReturn: (() -> Void)?
+    /// Ctrl+Enter or Cmd+Enter: queue for later.
+    var onQueue: (() -> Void)?
     /// Handles the delete key; false lets the text view delete, as while an
     /// IME composes.
     var onDeleteBackward: (() -> Bool)?
@@ -1313,15 +1355,25 @@ final class NativeComposerTextView: UITextView {
     override var undoManager: UndoManager? { undo }
 
     override var keyCommands: [UIKeyCommand]? {
-        let send = UIKeyCommand(title: "Send", action: #selector(commandReturn), input: "\r",
-                                modifierFlags: .command)
+        // A hardware keyboard only: the on-screen Return still adds a line.
+        let send = UIKeyCommand(title: "Send", action: #selector(plainReturn), input: "\r",
+                                modifierFlags: [])
         send.wantsPriorityOverSystemBehavior = true
+        let newline = UIKeyCommand(title: "New Line", action: #selector(newLine), input: "\r",
+                                   modifierFlags: .shift)
+        newline.wantsPriorityOverSystemBehavior = true
+        let queue = UIKeyCommand(title: "Queue for Later", action: #selector(queueReturn), input: "\r",
+                                 modifierFlags: .command)
+        queue.wantsPriorityOverSystemBehavior = true
+        let queueControl = UIKeyCommand(action: #selector(queueReturn), input: "\r",
+                                        modifierFlags: .control)
+        queueControl.wantsPriorityOverSystemBehavior = true
         let undo = UIKeyCommand(title: "Undo", action: #selector(undoDraft), input: "z", modifierFlags: .command)
         undo.wantsPriorityOverSystemBehavior = true
         let redo = UIKeyCommand(title: "Redo", action: #selector(redoDraft), input: "z",
                                 modifierFlags: [.command, .shift])
         redo.wantsPriorityOverSystemBehavior = true
-        return (super.keyCommands ?? []) + [send, undo, redo]
+        return (super.keyCommands ?? []) + [send, newline, queue, queueControl, undo, redo]
     }
 
     override func deleteBackward() {
@@ -1336,7 +1388,22 @@ final class NativeComposerTextView: UITextView {
         return super.canPerformAction(action, withSender: sender)
     }
 
-    @objc private func commandReturn() { onCommandReturn?() }
+    /// Enter: an IME composition is committed, never sent.
+    @objc private func plainReturn() {
+        if markedTextRange != nil {
+            unmarkText()
+            return
+        }
+        onReturn?()
+    }
+    @objc private func newLine() {
+        guard markedTextRange == nil else { unmarkText(); return }
+        insertText("\n")
+    }
+    @objc private func queueReturn() {
+        guard markedTextRange == nil else { return }
+        onQueue?()
+    }
     @objc private func undoDraft() { undo.undo() }
     @objc private func redoDraft() { undo.redo() }
 }

@@ -410,6 +410,8 @@ impl Run {
     pub fn placeholder(&self) -> &'static str {
         match self.mode() {
             Mode::Send => PLACEHOLDER,
+            // The send control sends now while a turn runs (#11685).
+            Mode::Queue if self.steer_choice().is_some() => "Message Coder…",
             Mode::Queue => "Queue a message for Coder's next turn…",
             Mode::Answer => "Answer Coder…",
         }
@@ -879,6 +881,17 @@ impl Run {
                 if text.is_empty() || text.len() > MAX_MESSAGE {
                     return None;
                 }
+                // Enter sends now (#11685): while Coder works the send
+                // control stops the turn and continues with the message;
+                // Ctrl+Enter ([`Action::Queue`]) queues it for later.
+                let action = if action == Action::Send
+                    && self.mode() == Mode::Queue
+                    && self.steer_choice().is_some()
+                {
+                    Action::Steer
+                } else {
+                    action
+                };
                 let mode = if action == Action::Send {
                     self.mode()
                 } else {

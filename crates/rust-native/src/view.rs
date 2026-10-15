@@ -229,6 +229,10 @@ pub const MAX_COMPOSER_CHOICES: usize = 4;
 pub struct ComposerChoice {
     pub token: String,
     pub label: String,
+    /// This choice queues the message for later: Ctrl+Enter (Cmd+Enter on
+    /// Apple keyboards) sends with it, while Enter sends now (#11685).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub later: bool,
 }
 
 /// A glyph a button draws. An adapter that cannot draw it shows the

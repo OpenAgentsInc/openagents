@@ -317,6 +317,16 @@ impl Choice {
         }
     }
 
+    /// What the send control does while a turn runs (#11685): send now,
+    /// steering a turn that has not started or stopping a running one;
+    /// only where neither applies does it queue.
+    pub fn send_now(phase: Option<Phase>) -> Choice {
+        Choice::offered(phase)
+            .into_iter()
+            .find(|choice| *choice != Choice::Queue)
+            .unwrap_or(Choice::Queue)
+    }
+
     /// The choices a busy chat offers: a turn that has not started takes new
     /// instructions; a running one stops for the message.
     pub fn offered(phase: Option<Phase>) -> Vec<Choice> {
@@ -2590,7 +2600,10 @@ impl CoderTab {
             Some(choice) => choice.command(),
             None => match Mode::of(phase, attention) {
                 Mode::Send => (CommandAction::Send, false),
-                Mode::Queue => (CommandAction::Queue, false),
+                // Enter and the send control send now while Coder works
+                // (#11685): the turn's own way to take a message now;
+                // Ctrl+Enter and the long press queue for later.
+                Mode::Queue => Choice::send_now(phase).command(),
                 Mode::Answer => (CommandAction::Answer, false),
             },
         };
@@ -3134,6 +3147,7 @@ impl CoderTab {
                     .map(|(token, choice)| ComposerChoice {
                         token,
                         label: choice.label().into(),
+                        later: choice == Choice::Queue,
                     })
                     .collect(),
                 draft,
@@ -4193,6 +4207,9 @@ impl CoderTab {
                 "Message OpenAgents…".to_owned()
             }
             (false, Mode::Send) => format!("Message Coder on {label}"),
+            (false, Mode::Queue) if Choice::send_now(phase) != Choice::Queue => {
+                format!("Message Coder on {label}")
+            }
             (false, Mode::Queue) => "Queue a message for Coder's next turn".to_owned(),
             (false, Mode::Answer) => "Answer Coder".to_owned(),
         };

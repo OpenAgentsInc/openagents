@@ -23,14 +23,18 @@ and it follows the run from the start. From a shell:
 
 ## Send more while it works
 
-- **Send** while Coder works queues your message for its next turn. On the
-  Mac, the queue shows each message with **Send now** and **Remove**; on
-  the phone, **Edit queue** changes what's waiting.
-- **Stop and send** stops the current turn and continues with your
-  message.
-- **Steer now** sends it before the next turn starts.
+Enter to send, Ctrl+Enter to queue for later (⌘+Enter on the Mac).
 
-On the phone, long-press send to choose between these.
+- **Send** (or Enter) sends now, even while Coder works: it stops the
+  current turn and continues with your message, or, before a turn starts,
+  steers it.
+- **Queue** (or Ctrl+Enter) keeps your message for after the current turn.
+  On the Mac, the queue shows each message with **Send now** and
+  **Remove**; on the phone, **Edit queue** changes what's waiting.
+- Shift+Enter adds a line.
+
+On the phone, long-press send and choose **Queue for next turn** to queue.
+With a hardware keyboard, the phone takes the same keys.
 
 ## Answer a question
 

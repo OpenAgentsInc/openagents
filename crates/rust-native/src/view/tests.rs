@@ -719,6 +719,7 @@ mod conversation {
         let choice = |token: &str, label: &str| ComposerChoice {
             token: token.into(),
             label: label.into(),
+            later: token.starts_with("queue"),
         };
         let view = composer(
             vec![

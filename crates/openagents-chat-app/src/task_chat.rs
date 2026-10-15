@@ -180,6 +180,7 @@ impl Session {
         }
         match self.mode() {
             Mode::Send => "Message Coder…",
+            Mode::Queue if self.steer_choice().is_some() => "Message Coder…",
             Mode::Queue => "Queue a message for Coder's next turn…",
             Mode::Answer => "Answer Coder…",
         }
@@ -450,8 +451,11 @@ impl Session {
             }));
         }
         let summary = self.summary.as_ref()?;
+        // Enter sends now (#11685): while a turn runs the send control
+        // steers it, or stops it and sends; Ctrl+Enter queues for later.
         let action = choice.unwrap_or(match self.mode() {
             Mode::Send => CommandAction::Send,
+            Mode::Queue if self.steer_choice().is_some() => CommandAction::Steer,
             Mode::Queue => CommandAction::Queue,
             Mode::Answer => CommandAction::Answer,
         });
@@ -1185,7 +1189,11 @@ mod tests {
             })
             .unwrap();
         let (ticket, request) = session
-            .submit("keep these spaces  ", None, unix_now())
+            .submit(
+                "keep these spaces  ",
+                Some(CommandAction::Queue),
+                unix_now(),
+            )
             .unwrap();
         assert_eq!(command(&request).action, CommandAction::Queue);
         assert_eq!(command(&request).based_on, 4);
@@ -1282,6 +1290,29 @@ mod tests {
         let rows = session.rows();
         assert!(rows.iter().any(|row| row.key == "task-state"));
         assert!(session.decision().is_none());
+    }
+    /// #11685: Enter (the send control) sends now while a turn runs: it
+    /// steers a turn that has not started, and stops a running one and
+    /// sends; Ctrl+Enter ([`Action::Queue`]) queues it for later.
+    #[test]
+    fn enter_sends_now_and_ctrl_enter_queues_while_a_turn_runs() {
+        let mut session = session();
+        assert_eq!(session.placeholder(), "Message Coder…");
+        let (_, sent) = session
+            .action(Action::Send, "Now this.", unix_now())
+            .unwrap();
+        assert_eq!(command(&sent).action, CommandAction::Steer);
+        assert!(command(&sent).emulate);
+        let mut session = self::session();
+        session.summary = Some(summary(4, Phase::Queued, Attention::None));
+        let (_, sent) = session
+            .action(Action::Send, "Now this.", unix_now())
+            .unwrap();
+        assert_eq!(command(&sent).action, CommandAction::Steer);
+        assert!(!command(&sent).emulate);
+        let mut session = self::session();
+        let (_, queued) = session.action(Action::Queue, "Later.", unix_now()).unwrap();
+        assert_eq!(command(&queued).action, CommandAction::Queue);
     }
     #[test]
     fn stop_and_steer_keep_the_observed_revision_and_emulated_steering_choice() {

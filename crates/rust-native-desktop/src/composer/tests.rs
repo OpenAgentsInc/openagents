@@ -15,6 +15,7 @@ fn node(token: &str, draft: &str, enabled: bool, busy: bool) -> Node<String> {
             choices: vec![ComposerChoice {
                 token: format!("{token}-queue"),
                 label: "Send after this".into(),
+                later: true,
             }],
             draft: Some(draft.into()),
             focus: true,
