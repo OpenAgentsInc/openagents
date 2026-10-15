@@ -338,7 +338,7 @@ impl App {
         let pick = self.current_pick();
         // A Coder-loop pin from a /models pick belongs to its chat, as the
         // model does (#11556): the new chat starts on Auto.
-        let pick = if self.live.model_chosen
+        let pick = if self.live.person_chose
             && pick == crate::harness_pick::Pick::Harness(crate::harness_plugin::Harness::CoderLoop)
         {
             crate::harness_pick::Pick::Auto

@@ -109,6 +109,12 @@ impl App {
 
     /// The chat leaves its harness, agent and door for Auto.
     fn leave_for_auto(&mut self) {
+        // A chat the person pinned that Auto had to take over stays on
+        // Auto's answer: it never moves on again to another harness
+        // (#11696, pins hold).
+        if self.live.pinned || self.live.agent.is_some() {
+            self.live.person_chose = true;
+        }
         self.live.agent = None;
         self.live.pinned = false;
         self.live.pinned_model = None;

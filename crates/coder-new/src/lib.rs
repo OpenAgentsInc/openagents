@@ -456,11 +456,11 @@ impl App {
                     Pick::Auto | Pick::Harness(Harness::CoderLoop)
                 )
             {
-                self.live.model_chosen = true;
+                self.live.person_chose = true;
                 self.next_pick = Some(Pick::Harness(Harness::CoderLoop));
             }
-        } else if self.live.model_chosen {
-            self.live.model_chosen = false;
+        } else if self.live.person_chose {
+            self.live.person_chose = false;
             if self.current_pick() == Pick::Harness(Harness::CoderLoop) {
                 self.next_pick = Some(Pick::Auto);
             }
@@ -977,7 +977,7 @@ impl App {
                 && *id != claude::choice().model
             {
                 // The person chose a model: the chat stays where it is.
-                self.live.model_chosen = true;
+                self.live.person_chose = true;
                 self.rail_notice(MODEL_LOCKED_HINT, RAIL_NOTICE_TTL);
                 return true;
             }
@@ -3548,7 +3548,7 @@ impl App {
                         // The pick can't change the model now, but the
                         // person chose one: the chat is pinned where it
                         // runs, and Auto never moves it on (#11696).
-                        self.live.model_chosen = true;
+                        self.live.person_chose = true;
                         self.rail_notice(MODEL_LOCKED_HINT, RAIL_NOTICE_TTL);
                         return true;
                     }

@@ -1709,7 +1709,7 @@ mod tests {
                 key(&mut app, KeyCode::Enter);
             }
         }
-        assert!(app.live.model_chosen);
+        assert!(app.live.person_chose);
         assert_eq!(app.rail_notice_text(), Some(crate::MODEL_LOCKED_HINT));
         // The router sends the next message to Claude Code: it stays.
         for _ in 0..2 {
@@ -1760,7 +1760,7 @@ mod tests {
         );
         app.apply_pick();
         assert_eq!(app.live.runs_on, Some(Harness::CoderLoop));
-        assert!(app.live.pinned && app.live.model_chosen);
+        assert!(app.live.pinned && app.live.person_chose);
         assert_eq!(app.routing_rule, Some(Rule::Pin));
         // Its turns run the pick, not the cheap model.
         app.live.cheap = true;
@@ -1776,13 +1776,13 @@ mod tests {
         assert_eq!(app.current_pick(), Pick::Harness(Harness::CoderLoop));
         app.pin_coder_pick(false);
         assert_eq!(app.current_pick(), Pick::Auto);
-        assert!(!app.live.model_chosen);
+        assert!(!app.live.person_chose);
 
         // A new chat doesn't keep the pick's pin.
         app.pin_coder_pick(true);
         ctrl_n(&mut app);
         assert_eq!(app.current_pick(), Pick::Auto);
-        assert!(!app.live.model_chosen);
+        assert!(!app.live.person_chose);
     }
 
     /// A model picked in one chat never carries into the next (#11556).

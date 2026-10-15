@@ -432,6 +432,24 @@ fn a_picked_harness_that_fails_falls_back_to_auto() {
         assert_eq!(app.notice.as_deref(), Some(line), "{harness:?}");
         assert!(app.live.notice.is_none(), "{harness:?}");
         assert_eq!(answers(&app), 1, "{harness:?}");
+        // The rc.19 gate (devin-cli/one-lane): a pinned chat Auto took
+        // over then moved on to OpenCode. Pins hold: it stays (#11696).
+        assert!(app.live.person_chose, "{harness:?}");
+        app.routed = Some(crate::router::Routed {
+            harness: Harness::Codex,
+            model: None,
+            rule: crate::routing_record::Rule::Router,
+            probabilities: Vec::new(),
+            trace: crate::router::Trace {
+                question_set: String::new(),
+                policy: String::new(),
+                step: Some("plan-work".into()),
+                follow_up: true,
+                ms: 0,
+                missing: None,
+            },
+        });
+        assert_eq!(app.route_turn(), Harness::CoderLoop, "{harness:?}");
     }
     computer(false, false);
 }
