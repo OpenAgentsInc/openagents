@@ -3,8 +3,17 @@
 The [homepage](/) has a message box. Type what you want to ask and send it.
 The site opens a new chat at an address under `/chat/`.
 
-Enter sends the message. Shift+Enter inserts a line. Without scripts, use
-**Send**. The [download](/download) link still works either way.
+Enter sends the message. Ctrl+Enter (⌘+Enter on a Mac) queues it for
+later, and Shift+Enter inserts a line. The hint under the message box says
+so: "Enter to send, Ctrl+Enter to queue for later".
+
+Queued messages show above the message box. Click one to change its words,
+or press **Remove** to drop it. They send in order, one after each answer.
+A reply can't be stopped partway, so Enter while one is being written puts
+your message first in line: it sends the moment the reply ends.
+
+Without scripts, use **Send**. The [download](/download) link still works
+either way.
 
 ## What it doesn't do
 

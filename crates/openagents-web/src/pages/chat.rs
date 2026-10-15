@@ -3378,8 +3378,9 @@ fn unavailable(error: Error) -> Response {
 }
 /// The homepage and chat share one composer: a stable text box
 /// (`#chat-input` in `#chat-card`, which the browser adapter binds; Enter
-/// sends, Shift+Enter adds a line, through the adapter or else the shell
-/// script), the selector row above it when there is one (`row`,
+/// sends, Ctrl+Enter or Cmd+Enter queues for later, Shift+Enter adds a line,
+/// through the adapter or else the shell script, with the hint and the
+/// queue under and above it, #11685), the selector row above it when there is one (`row`,
 /// [`crate::composer_row`], replaced out of band as `#composer-row`),
 /// the panel host they load into (`#composer-panel`), and `after` under the
 /// form. The chat posts with HTMX and keeps the draft until the server

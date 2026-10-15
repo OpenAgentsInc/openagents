@@ -911,6 +911,9 @@ async fn the_homepage_composer_is_the_design_language_component() {
     }
     assert_eq!(home.matches("class=\"oa-suggestion-chip\"").count(), 4);
     assert!(home.contains("id=\"chat-card\" class=\"oa-composer-body\""));
+    // The send keys' hint and the queue for later (#11685).
+    assert!(home.contains("Enter to send, Ctrl+Enter to queue for later"));
+    assert!(home.contains("data-oa-composer-queue=\"\""));
     assert!(home.contains("placeholder=\"Ask OpenAgents anything\""));
     assert!(home.contains("maxlength=\"4000\""));
     assert!(
@@ -951,6 +954,8 @@ async fn the_homepage_composer_is_the_design_language_component() {
     for rule in [
         ".oa-home-stage",
         ".oa-composer-body",
+        ".oa-composer-hint",
+        ".oa-composer-queue-item",
         ".oa-composer-panel",
         ".oa-message",
     ] {

@@ -1,4 +1,5 @@
-// The homepage and chat composer. Enter sends; Shift+Enter inserts a line.
+// The homepage and chat composer. Enter sends; Shift+Enter inserts a line;
+// Ctrl+Enter (Cmd+Enter) is left to the page shell's queue for later (#11685).
 // A click anywhere on the card that isn't a control focuses the text box.
 // On a chat page the thread opens scrolled to the newest message.
 (function () {
@@ -10,6 +11,7 @@
   if (!form || !input) return;
   input.addEventListener("keydown", function (event) {
     if (event.key !== "Enter" || event.shiftKey || event.isComposing) return;
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
     event.preventDefault();
     if (input.value.trim()) form.requestSubmit();
   });
