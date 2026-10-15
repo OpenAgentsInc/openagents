@@ -469,8 +469,9 @@ impl ModelEngine for ModernBertEngine {
         let mut report = serde_json::json!({"placement":"CPU","activation_cache_limit_bytes":64*1024*1024,"activation_cache_max_buffers":128,"cached_activation_bytes":self.buffers.cached_bytes(),"cached_activation_buffers":self.buffers.cached_buffers(),"worker_cpus":self.pool.broadcast(|_|crate::cpu::affinity()),"rotary":"cached position tables","final_layer_query_rows":1,"projection":"gemm 0.19 f32","erf":"libm f32"});
         #[cfg(target_arch = "x86_64")]
         if simd::available() {
-            report["projection"] =
-                serde_json::json!("AVX2/FMA packed 3x24 short and 16x6 long kernels");
+            report["projection"] = serde_json::json!(
+                "AVX2/FMA packed 3x24 short and 16x6 long kernels; cache-blocked large activations"
+            );
             report["erf"] = serde_json::json!(
                 "f32 degree-10 piecewise polynomial; dense-domain and model-reference checks"
             );

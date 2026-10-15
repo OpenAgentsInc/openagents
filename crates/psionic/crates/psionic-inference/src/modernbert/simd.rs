@@ -112,20 +112,33 @@ impl Packed {
                 }
             });
         let mut tiles = buffers.take(self.cols.div_ceil(6) * 6 * padded_rows);
+        // Reuse a small activation panel across neighboring weight panels. A full
+        // long-sequence MLP input can exceed a core's L2 cache.
+        let grouped = rows * self.inner > 256 * 1024;
+        let group_tiles = if grouped { 4 } else { 1 };
+        let block_rows = if grouped { 64 } else { padded_rows };
         tiles
-            .par_chunks_mut(6 * padded_rows)
+            .par_chunks_mut(6 * padded_rows * group_tiles)
             .enumerate()
-            .for_each(|(tile, out)| {
-                // SAFETY: packed activations have sixteen rows per block, six padded weights per depth,
-                // and each task owns six complete output columns.
-                unsafe {
-                    kernel_long(
-                        &activations,
-                        &self.long_values[tile * self.inner * 6..(tile + 1) * self.inner * 6],
-                        out,
-                        padded_rows,
-                        self.inner,
-                    );
+            .for_each(|(group, out)| {
+                for first in (0..padded_rows).step_by(block_rows) {
+                    let count = block_rows.min(padded_rows - first);
+                    for (local, tile_out) in out.chunks_mut(6 * padded_rows).enumerate() {
+                        let tile = group * group_tiles + local;
+                        // SAFETY: every row panel is a multiple of sixteen. Each task
+                        // owns complete output columns; the stride remains the full height.
+                        unsafe {
+                            kernel_long(
+                                &activations[first * self.inner..],
+                                &self.long_values
+                                    [tile * self.inner * 6..(tile + 1) * self.inner * 6],
+                                &mut tile_out[first..],
+                                count,
+                                self.inner,
+                                padded_rows,
+                            );
+                        }
+                    }
                 }
             });
         let mut output = buffers.take(rows * self.cols);
@@ -304,6 +317,7 @@ mod tests {
             (7, 17, 25),
             (65, 33, 49),
             (129, 64, 48),
+            (257, 1152, 49),
         ] {
             let input: Vec<_> = (0..rows * k)
                 .map(|i| ((i * 17 % 101) as f32 - 50.0) / 53.0)
@@ -317,7 +331,9 @@ mod tests {
                     let expected: f64 = (0..k)
                         .map(|i| input[row * k + i] as f64 * weights[i * cols + col] as f64)
                         .sum();
-                    assert!((actual[row * cols + col] as f64 - expected).abs() < 1e-5);
+                    // Longer float32 sums accumulate more rounding error than the f64 oracle.
+                    let tolerance = if k > 256 { 1e-4 } else { 1e-5 };
+                    assert!((actual[row * cols + col] as f64 - expected).abs() < tolerance);
                 }
             }
         }
@@ -516,7 +532,14 @@ pub(super) unsafe fn rotate(values: &mut [f32], dim: usize, rotary: &[f32], scal
 }
 
 #[target_feature(enable = "avx2,fma")]
-unsafe fn kernel_long(input: &[f32], weights: &[f32], out: &mut [f32], rows: usize, k: usize) {
+unsafe fn kernel_long(
+    input: &[f32],
+    weights: &[f32],
+    out: &mut [f32],
+    rows: usize,
+    k: usize,
+    stride: usize,
+) {
     for block in 0..rows / 16 {
         let mut a00 = _mm256_setzero_ps();
         let mut a01 = _mm256_setzero_ps();
@@ -555,28 +578,28 @@ unsafe fn kernel_long(input: &[f32], weights: &[f32], out: &mut [f32], rows: usi
             a51 = _mm256_fmadd_ps(x1, w, a51);
         }
         unsafe {
-            _mm256_storeu_ps(out.as_mut_ptr().add(0 * rows + block * 16), a00);
-            _mm256_storeu_ps(out.as_mut_ptr().add(0 * rows + block * 16 + 8), a01);
+            _mm256_storeu_ps(out.as_mut_ptr().add(0 * stride + block * 16), a00);
+            _mm256_storeu_ps(out.as_mut_ptr().add(0 * stride + block * 16 + 8), a01);
         }
         unsafe {
-            _mm256_storeu_ps(out.as_mut_ptr().add(1 * rows + block * 16), a10);
-            _mm256_storeu_ps(out.as_mut_ptr().add(1 * rows + block * 16 + 8), a11);
+            _mm256_storeu_ps(out.as_mut_ptr().add(1 * stride + block * 16), a10);
+            _mm256_storeu_ps(out.as_mut_ptr().add(1 * stride + block * 16 + 8), a11);
         }
         unsafe {
-            _mm256_storeu_ps(out.as_mut_ptr().add(2 * rows + block * 16), a20);
-            _mm256_storeu_ps(out.as_mut_ptr().add(2 * rows + block * 16 + 8), a21);
+            _mm256_storeu_ps(out.as_mut_ptr().add(2 * stride + block * 16), a20);
+            _mm256_storeu_ps(out.as_mut_ptr().add(2 * stride + block * 16 + 8), a21);
         }
         unsafe {
-            _mm256_storeu_ps(out.as_mut_ptr().add(3 * rows + block * 16), a30);
-            _mm256_storeu_ps(out.as_mut_ptr().add(3 * rows + block * 16 + 8), a31);
+            _mm256_storeu_ps(out.as_mut_ptr().add(3 * stride + block * 16), a30);
+            _mm256_storeu_ps(out.as_mut_ptr().add(3 * stride + block * 16 + 8), a31);
         }
         unsafe {
-            _mm256_storeu_ps(out.as_mut_ptr().add(4 * rows + block * 16), a40);
-            _mm256_storeu_ps(out.as_mut_ptr().add(4 * rows + block * 16 + 8), a41);
+            _mm256_storeu_ps(out.as_mut_ptr().add(4 * stride + block * 16), a40);
+            _mm256_storeu_ps(out.as_mut_ptr().add(4 * stride + block * 16 + 8), a41);
         }
         unsafe {
-            _mm256_storeu_ps(out.as_mut_ptr().add(5 * rows + block * 16), a50);
-            _mm256_storeu_ps(out.as_mut_ptr().add(5 * rows + block * 16 + 8), a51);
+            _mm256_storeu_ps(out.as_mut_ptr().add(5 * stride + block * 16), a50);
+            _mm256_storeu_ps(out.as_mut_ptr().add(5 * stride + block * 16 + 8), a51);
         }
     }
 }

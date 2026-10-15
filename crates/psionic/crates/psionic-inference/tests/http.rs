@@ -238,7 +238,30 @@ async fn paired_cuda_http_latency_and_answers() {
             let mut sorted = timings.clone();
             sorted.sort_by(f64::total_cmp);
             let binary = std::env::current_exe().unwrap();
-            let record = serde_json::json!({"schema":"psionic.router.http.cuda.benchmark.v1","repetition":repetition,"samples":1000,"reference_cases":100,"http_answer_matches":1100,"concurrency":1,"execution":identity,"p50_ms":sorted[499],"p95_ms":sorted[949],"p99_ms":sorted[989],"requests_per_second":requests_per_second,"timings_ms":timings,"binary_sha256":file_sha256(&binary).unwrap(),"binary_bytes":binary.metadata().unwrap().len(),"source_commit":std::process::Command::new("git").args(["rev-parse","HEAD"]).output().ok().map(|r|String::from_utf8_lossy(&r.stdout).trim().to_string()),"rustc":std::process::Command::new("rustc").arg("--version").output().ok().map(|r|String::from_utf8_lossy(&r.stdout).trim().to_string()),"host":std::process::Command::new("uname").arg("-a").output().ok().map(|r|String::from_utf8_lossy(&r.stdout).trim().to_string()),"scope":"Production RouterService and Axum routes hosted by an integration test; serial reqwest client, JSON encoding and decoding included, loopback only. Warm model and shape caches. Separate processes provide model memory evidence in the tensor studies."});
+            let mut record = serde_json::json!({"schema":"psionic.router.http.cuda.benchmark.v1","repetition":repetition,"samples":1000,"reference_cases":100,"http_answer_matches":1100,"concurrency":1,"execution":identity,"p50_ms":sorted[499],"p95_ms":sorted[949],"p99_ms":sorted[989],"requests_per_second":requests_per_second,"timings_ms":timings,"binary_sha256":file_sha256(&binary).unwrap(),"binary_bytes":binary.metadata().unwrap().len(),"source_commit":std::process::Command::new("git").args(["rev-parse","HEAD"]).output().ok().map(|r|String::from_utf8_lossy(&r.stdout).trim().to_string()),"rustc":std::process::Command::new("rustc").arg("--version").output().ok().map(|r|String::from_utf8_lossy(&r.stdout).trim().to_string()),"host":std::process::Command::new("uname").arg("-a").output().ok().map(|r|String::from_utf8_lossy(&r.stdout).trim().to_string()),"scope":"Production RouterService and Axum routes hosted by an integration test; serial reqwest client, JSON encoding and decoding included, loopback only. Warm model and shape caches. Separate processes provide model memory evidence in the tensor studies."});
+            record["cpu_affinity"] = serde_json::json!(
+                std::fs::read_to_string("/proc/self/status")
+                    .ok()
+                    .and_then(|status| status.lines().find_map(|line| line
+                        .strip_prefix("Cpus_allowed_list:")
+                        .map(|value| value.trim().to_string())))
+            );
+            record["model"] =
+                serde_json::to_value(psionic_inference::router::pinned_manifest().unwrap())
+                    .unwrap();
+            record["native_weights_sha256"] =
+                serde_json::json!(file_sha256(&root.join("native.safetensors")).unwrap());
+            record["cuda_environment"] = serde_json::json!({"NVIDIA_TF32_OVERRIDE":std::env::var("NVIDIA_TF32_OVERRIDE").ok(),"CUDA_MODULE_LOADING":std::env::var("CUDA_MODULE_LOADING").ok(),"CUDA_MODULE_DATA_LOADING":std::env::var("CUDA_MODULE_DATA_LOADING").ok()});
+            record["gpu"] = serde_json::json!(
+                std::process::Command::new("nvidia-smi")
+                    .args([
+                        "--query-gpu=name,uuid,driver_version",
+                        "--format=csv,noheader"
+                    ])
+                    .output()
+                    .ok()
+                    .map(|r| String::from_utf8_lossy(&r.stdout).trim().to_string())
+            );
             serde_json::to_writer(&mut output, &record).unwrap();
             writeln!(output).unwrap();
             output.flush().unwrap();
