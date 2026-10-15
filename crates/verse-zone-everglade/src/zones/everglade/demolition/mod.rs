@@ -163,9 +163,11 @@ impl Demolition {
         Ok(demolition)
     }
 
-    #[cfg(test)]
     pub fn site(&self) -> &Site {
         &self.site
+    }
+    pub fn site_mut(&mut self) -> &mut Site {
+        &mut self.site
     }
 
     /// Swings with the player's character's chop `track` from now on,

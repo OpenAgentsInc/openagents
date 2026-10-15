@@ -517,3 +517,34 @@ impulse) and energy (the parts carry off less than half the
 meteor's), a 1 kPa blast that breaks nothing, the blast alone tearing the wings off
 at 1 m but not at 4 m, a direct hit that shatters what it strikes, and
 determinism.
+
+## Placed CAD bodies (#11680)
+
+`everglade::cad_physics` now owns the CAD solid parser, full inertia
+integration, body builder, bolt capacities, and Kinney–Graham/Friedlander
+blast curves. `meteor_rover` re-exports the blast API and uses that builder;
+its staged meteor flight and direct-hit fragmentation remain there.
+Ordinary `cad_place` copies register in the town's existing `Site` world,
+with the same standing-load margin (four times the measured load), fine
+21 µs blast steps, and a ten-step load window. Connected solids exclude
+internal contacts; separated pieces collide once their overlapping bounds
+clear. Other copies, houses, debris, terrain, and force spells share contacts.
+
+The native proof is `cad_physics_capture OUT_DIR`, built with
+`--no-default-features --features capture,dev-destruction`. It places two
+copies of the committed rover at `[-2.5,0,-28]` and `[2.5,0,-28]`, walks into
+one, casts and ends Reverse Gravity, then casts a Mega Thunderbolt. It writes
+an MP4, second-by-second PNGs, and per-frame body measurements. `--measure`
+runs the same actions without a renderer. Saved placement ids, versions,
+replacement, and removal work on native and browser clients; live physics
+is local to each view until #11682 supplies shared object authority.
+
+The [12-second native capture](captures/cad-physics/cad-physics.mp4) was
+checked across all 144 frames. Each copy has 51 bodies and weighs 87.938 kg.
+The push moves the first chassis 0.628 m; Reverse Gravity lifts it to 20.710 m.
+Landing breaks six joints, and the blast raises that count to 57. Every body
+position stays finite. The [measurements](captures/cad-physics/summary.json)
+include the source GLB hash and one sample per second. Stills show the
+[push](captures/cad-physics/push.png), [lift](captures/cad-physics/lift.png),
+[blast](captures/cad-physics/blast.png), and
+[loose parts](captures/cad-physics/aftermath.png).

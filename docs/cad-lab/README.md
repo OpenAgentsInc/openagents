@@ -451,19 +451,36 @@ once built; its drawing takes 75 ms.
 `$VERSE_CAD_PLACEMENTS` moves it). The zone loads that file
 (`crates/verse/src/zones/cad_place.rs`): every placement named for it
 stands on the ground, its lowest point resting there, and a change to the
-file shows within a second. One placement per document and zone, keeping
-its version, so placing v39 replaces v38. With no `at`, the model stands
+file shows within a second. Each copy has a placement id, defaulting to the document name. Use
+`placement: "rover-left"` in the tool, or `--placement rover-left` in the CLI,
+to keep several copies of one document. Placing v39 with the same id replaces
+that copy of v38. With no `at`, the model stands
 in front of where the player arrives.
 
 On the web, the same tool saves a private copy for the signed-in person's
 world. Open its link to Everglade, Meteor Showcase, or Meteor Stress Test;
 the Rust browser loader reads that account's placements and GLB files.
-Placing a newer version replaces the earlier one for that design and zone;
+Placing a newer version replaces that named copy;
 `remove: true` removes it. Reload an already-open browser world after changing
 its placements. A world accepts 20 CAD placements, with the existing CAD file
-limit per model, 32 MiB of models total, and 150,000 triangles in the rendered scene. These placements
-are visual models; dynamic CAD bodies are tracked in #11680.
+limit per model, 32 MiB of models total, and 150,000 triangles in the rendered scene. The solids are physical (#11680): triangle-derived mass and full inertia,
+bounded convex collision hulls, hinges with limits, and breakable bolts share the
+zone's demolition world. They fall, rest on terrain and debris, move when
+pushed, and respond to Reverse Gravity, Wind Wall, and meteor pressure waves.
+Unchanged copies keep moving when another copy is replaced; removal removes
+its bodies. Native and browser builds use the same Rust path. New GLB exports
+carry material densities and joint frames; older GLBs without that data use
+aluminium and fixed seams. The committed rover also loads its checked report.
+
+Physics runs locally in each visitor's view, as town debris currently does;
+ongoing poses and broken joints are not shared between visitors. #11682 tracks
+shared authority and updates. The placement list still belongs to the
+signed-in account.
 `cad_place_capture OUT.png` (a `verse` example) photographs a native placement.
+The [native physics capture](../verse/captures/cad-physics/cad-physics.mp4)
+shows two copies, a push, Reverse Gravity, and a blast; the
+[handoff](../verse/meteor-showcase-handoff.md#placed-cad-bodies-11680)
+records its measurements.
 
 ## Robot Lab and Lagrange 2 (#11643)
 

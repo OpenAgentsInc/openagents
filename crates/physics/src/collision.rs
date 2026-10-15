@@ -864,7 +864,7 @@ impl World {
             for j in (i + 1)..colliders.len() {
                 stats.candidate_pairs += 1;
                 let (a, b) = (&colliders[i], &colliders[j]);
-                if a.body == b.body || !a.filter.allows(b.filter) {
+                if !self.pair_collides(a.body, b.body) || !a.filter.allows(b.filter) {
                     continue;
                 }
                 // Two bodies that cannot respond (fixed, kinematic, or asleep)
@@ -1006,7 +1006,7 @@ impl World {
         let this = &*self;
         let tested = crate::parallel::map(&pairs, 128, |&(i, j)| {
             let (a, b) = (&this.colliders()[i], &this.colliders()[j]);
-            if a.body == b.body
+            if !this.pair_collides(a.body, b.body)
                 || !a.filter.allows(b.filter)
                 || (!this[a.body].responds() && !this[b.body].responds())
             {

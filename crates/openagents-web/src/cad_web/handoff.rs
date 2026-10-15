@@ -90,8 +90,17 @@ pub(super) async fn place(
         }
         put(store, &me.key(&file).map_err(|e| e.to_string())?, bytes).await?;
     }
+    let copy = args["placement"].as_str().unwrap_or(doc);
+    if copy.is_empty()
+        || copy.len() > 80
+        || !copy
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c))
+    {
+        return Err("Choose a short name for the placed copy.".into());
+    }
     let id = format!(
-        "{}:{doc}:{}",
+        "{}:{copy}:{}",
         scope.local(),
         settings["zone"].as_str().unwrap_or_default()
     );

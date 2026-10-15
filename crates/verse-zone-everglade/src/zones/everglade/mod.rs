@@ -18,6 +18,7 @@
 pub mod baked;
 pub mod boards;
 pub mod boats;
+pub mod cad_physics;
 pub mod compute;
 pub mod demolition;
 pub mod detail;
@@ -167,6 +168,7 @@ pub struct Everglade {
     watch: unstick::Watch,
     pub solids: solids::Solids,
     spells: spells::Spells,
+    loose_cad: Option<Box<demolition::site::Site>>,
     rendered: Mesh,
     cast: Option<player::Cast>,
     /// The static scene's light bake while it runs.
@@ -185,6 +187,7 @@ pub struct Everglade {
     /// Blocks another zone's rules add to the spells' own, such as the
     /// Grove's training dummies, each a footprint and its top, m.
     extra_blocks: Vec<(crate::controller::Footprint, f32)>,
+    cad_blocks: Vec<(crate::controller::Footprint, f32)>,
     /// The demolition yard, when Everglade opened as one (`--demolition`).
     demolition: Option<Box<demolition::Demolition>>,
     /// The town's destructible buildings, once the zone's static scene is
@@ -353,6 +356,7 @@ impl Everglade {
             watch: unstick::Watch::default(),
             solids,
             spells: spells::Spells::default(),
+            loose_cad: None,
             rendered: Mesh {
                 neon: Some(Self::glade_stage(0.0, &time_of_day::Light::at_hours(10.5))),
                 ..Mesh::default()
@@ -367,6 +371,7 @@ impl Everglade {
             relight_from: None,
             relight: None,
             extra_blocks: Vec::new(),
+            cad_blocks: Vec::new(),
             demolition: None,
             town: None,
             figure_scene: None,
@@ -1213,6 +1218,7 @@ impl Everglade {
     fn refresh_blocks(&mut self) {
         let mut blocks = self.spells.blocks();
         blocks.extend(self.extra_blocks.iter().copied());
+        blocks.extend(self.cad_blocks.iter().copied());
         self.solids.set_spell_blocks(blocks);
     }
 
@@ -1406,6 +1412,26 @@ impl Everglade {
 
     /// Advances the clock and the spells, poses the player's character for
     /// `at`, and poses each of the studio's `seats`.
+    /// The existing destruction world, or the same empty site in a bare zone.
+    pub fn cad_site(&self) -> Option<&demolition::site::Site> {
+        self.town
+            .as_ref()
+            .map(|t| t.site())
+            .or_else(|| self.demolition.as_ref().map(|d| d.site()))
+            .or(self.loose_cad.as_deref())
+    }
+
+    pub fn cad_site_mut(&mut self) -> &mut demolition::site::Site {
+        if let Some(town) = &mut self.town {
+            return town.site_mut();
+        }
+        if let Some(yard) = &mut self.demolition {
+            return yard.site_mut();
+        }
+        self.loose_cad
+            .get_or_insert_with(|| Box::new(demolition::site::Site::new(Vec::new(), 0)))
+    }
+
     pub fn tick(&mut self, dt: f32, at: &PlayerController, seats: &[studio::SeatFigure]) {
         self.elapsed = (self.elapsed + dt) % 1000.0;
         self.advance_clock();
@@ -1475,6 +1501,17 @@ impl Everglade {
             afloat.prepare(scene);
             cast_scene = afloat.joined(scene).or(cast_scene);
         }
+        let gravity = self.spells.reverse_gravity().copied();
+        let push = at.forward() * at.ahead + Vec3::new(at.yaw.cos(), 0., -at.yaw.sin()) * at.side;
+        let winds: Vec<_> = self.spells.wind_walls().cloned().collect();
+        if let Some(town) = &mut self.town {
+            town.site_mut().cad_forces(gravity, winds, at.pos, push, dt);
+        } else if let Some(yard) = &mut self.demolition {
+            yard.site_mut().cad_forces(gravity, winds, at.pos, push, dt);
+        } else if let Some(site) = &mut self.loose_cad {
+            site.cad_forces(gravity, winds, at.pos, push, dt);
+            site.tick(dt);
+        }
         let solids = self.town.as_mut().and_then(|town| {
             town.tick(dt, at);
             town.take_solids()
@@ -1504,6 +1541,14 @@ impl Everglade {
         }
         if let Some(yard) = &mut self.demolition {
             yard.prepare(self.cast.as_ref().map(|cast| cast.figure().scene).as_ref());
+        }
+        let cad_blocks = self
+            .cad_site()
+            .map(|s| s.cad_blocks(at.pos))
+            .unwrap_or_default();
+        if !cad_blocks.is_empty() || !self.cad_blocks.is_empty() {
+            self.cad_blocks = cad_blocks;
+            self.refresh_blocks();
         }
         self.poll_bake();
         if let Some(town) = &mut self.town {

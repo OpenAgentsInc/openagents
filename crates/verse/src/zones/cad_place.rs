@@ -13,11 +13,11 @@
 //! ```
 //!
 //! `at` is x and z in the zone (metres) and a height above the ground; left
-//! out, the model stands in front of where the player arrives. A document
-//! has one placement per zone, keeping its version, so placing a newer
-//! version replaces the old one; the zone sees the change within a second
+//! out, the model stands in front of where the player arrives. A copy
+//! has a stable id, defaulting to its document. A newer version with the
+//! same id replaces that copy; the zone sees the change within a second
 //! ([`Placements::due`]). The glTF is CAD Lab's (metres, Y up, a node per
-//! solid), read as [`super::meteor_rover`] reads the rover's; the
+//! solid), read by the shared CAD physics module; the
 //! model's lowest point rests on the ground.
 //!
 //! Native callers poll the file. Browser callers pass authenticated model
@@ -27,9 +27,12 @@ use std::path::PathBuf;
 #[cfg(not(target_arch = "wasm32"))]
 use std::{path::Path, time::SystemTime};
 
+use super::everglade::cad_physics::Model;
 use glam::{Quat, Vec3};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
+use std::sync::Arc;
 
 #[cfg(not(target_arch = "wasm32"))]
 use super::ZoneId;
@@ -52,8 +55,11 @@ pub fn ahead(spawn: Vec3, yaw: f32) -> Vec3 {
 }
 
 /// One model in one zone.
-#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct Placement {
+    /// Separate copies use different ids; older files use the document id.
+    #[serde(default)]
+    pub id: Option<String>,
     /// The CAD Lab document, e.g. `rover`.
     pub doc: String,
     pub version: u64,
@@ -70,6 +76,12 @@ pub struct Placement {
     pub heading_deg: f32,
     #[serde(default = "one")]
     pub scale: f32,
+}
+
+impl Placement {
+    pub fn key(&self) -> &str {
+        self.id.as_deref().unwrap_or(&self.doc)
+    }
 }
 
 fn one() -> f32 {
@@ -199,6 +211,9 @@ pub struct Placed {
     pub size: Vec3,
     /// Its triangles in the world, lit physically.
     pub vertices: Vec<LitVertex>,
+    pub model: Arc<Model>,
+    pub fingerprint: String,
+    pub geometry: String,
 }
 
 /// Stands `placement` in the world: on `ground(x, z)`, or at `default_at`
@@ -233,6 +248,7 @@ pub fn stand_bytes(
     if bytes.len() as u64 > MAX_GLB_BYTES {
         return Err("This CAD model is too large.".into());
     }
+    let mut model = Model::read(bytes)?;
     let solids = parse_glb(bytes)
         .filter(|s| !s.is_empty())
         .ok_or("This file is not a CAD Lab model.")?;
@@ -291,7 +307,37 @@ pub fn stand_bytes(
             }
         }
     }
+    if bytes == include_bytes!("../../../../assets/verse/cad/rover.glb") {
+        let mut spec: Value =
+            serde_json::from_str(include_str!("../../../../assets/verse/cad/rover.json"))
+                .map_err(|e| e.to_string())?;
+        for joint in spec["joints"].as_array_mut().into_iter().flatten() {
+            let (limits, servo) = super::everglade::cad_physics::rover_joint_settings(
+                joint["id"].as_str().unwrap_or_default(),
+            );
+            if let Some(l) = limits {
+                joint["limits"] = serde_json::json!([l.lower.to_degrees(), l.upper.to_degrees()]);
+            }
+            if let Some(s) = servo {
+                joint["servo"] = serde_json::to_value(s).map_err(|e| e.to_string())?;
+            }
+            joint["pin_radius_m"] =
+                serde_json::json!(super::everglade::cad_physics::rover_pin_radius(
+                    joint["id"].as_str().unwrap_or_default()
+                ));
+        }
+        model.solids = super::everglade::cad_physics::parse_glb(bytes, &spec)
+            .ok_or("This rover has no solids.")?;
+        model.spec = spec;
+    }
+    let mut hash = Sha256::new();
+    hash.update(bytes);
+    let geometry = format!("{:x}", hash.clone().finalize());
+    hash.update(serde_json::to_vec(placement).map_err(|e| e.to_string())?);
     Ok(Placed {
+        model: Arc::new(model),
+        fingerprint: format!("{:x}", hash.finalize()),
+        geometry,
         placement: placement.clone(),
         origin,
         size: (hi - lo) * scale,
@@ -304,7 +350,10 @@ pub fn stand_bytes(
 pub struct Placements {
     /// What was last read: the zone and the file's time and length.
     #[cfg(not(target_arch = "wasm32"))]
-    seen: Option<(ZoneId, Option<SystemTime>, u64)>,
+    seen: Option<(ZoneId, PathBuf, Option<SystemTime>, u64)>,
+    #[cfg(not(target_arch = "wasm32"))]
+    pub source: Option<PathBuf>,
+    pub supplied: bool,
     clock: f32,
     pub placed: Vec<Placed>,
     /// Placements that couldn't stand, in plain words.
@@ -332,13 +381,16 @@ impl Placements {
         ground: impl Fn(f32, f32) -> f32,
         default_at: Vec3,
     ) -> bool {
+        self.source = Some(file.to_owned());
+        self.supplied = false;
         let meta = std::fs::metadata(file).ok();
         let stamp = (
             zone,
+            file.to_owned(),
             meta.as_ref().and_then(|m| m.modified().ok()),
             meta.as_ref().map_or(0, std::fs::Metadata::len),
         );
-        if self.seen == Some(stamp) {
+        if self.seen.as_ref() == Some(&stamp) {
             return false;
         }
         self.seen = Some(stamp);
@@ -352,9 +404,18 @@ impl Placements {
             }
         };
         let mut triangles = 0;
+        let mut keys = std::collections::BTreeSet::new();
         for placement in list.iter().filter(|p| p.zone == zone.world_id()) {
+            if keys.len() >= 20 || !keys.insert(placement.key().to_owned()) {
+                self.problems
+                    .push("Use different names for up to 20 placed models.".into());
+                continue;
+            }
             match stand(placement, &ground, default_at) {
-                Ok(placed) if triangles + placed.vertices.len() / 3 <= MAX_TRIANGLES => {
+                Ok(mut placed) if triangles + placed.vertices.len() / 3 <= MAX_TRIANGLES => {
+                    if let Some(same) = self.placed.iter().find(|p| p.geometry == placed.geometry) {
+                        placed.model = same.model.clone();
+                    }
                     triangles += placed.vertices.len() / 3;
                     self.placed.push(placed);
                 }
@@ -423,6 +484,69 @@ mod tests {
         assert!(stand_bytes(&placement, &bytes, |_, _| 0., Vec3::ZERO).is_err());
         placement.scale = 1.;
         assert!(stand_bytes(&placement, b"broken", |_, _| 0., Vec3::ZERO).is_err());
+    }
+
+    #[test]
+    fn runtime_keeps_copies_moving_and_removes_replaced_bodies() {
+        let mut runtime = crate::runtime::WorldRuntime::new();
+        runtime.install_everglade(super::super::everglade_tests::pack());
+        let bytes = std::fs::read(ROVER).unwrap();
+        let p:Placement=serde_json::from_value(serde_json::json!({"id":"copy","doc":"rover","version":1,"zone":"verse-everglade","glb":"remote","at":[0.,3.,-28.]})).unwrap();
+        runtime
+            .install_cad_models(vec![(p.clone(), bytes.clone())])
+            .unwrap();
+        let initial = runtime.cad_report("copy").unwrap().positions[0][1];
+        for _ in 0..15 {
+            runtime.tick(&crate::controller::InputState::default(), 1. / 120.);
+        }
+        let falling = runtime.cad_report("copy").unwrap().positions;
+        assert!(falling[0][1] < initial - 0.02);
+        runtime
+            .install_cad_models(vec![(p.clone(), bytes.clone())])
+            .unwrap();
+        assert_eq!(runtime.cad_report("copy").unwrap().positions, falling);
+        let mut newer = p;
+        newer.version = 2;
+        runtime.install_cad_models(vec![(newer, bytes)]).unwrap();
+        assert!(runtime.cad_report("copy").unwrap().positions[0][1] > falling[0][1] + 0.02);
+        runtime.install_cad_models(Vec::new()).unwrap();
+        assert!(runtime.cad_report("copy").is_none());
+        assert_eq!(runtime.cad_placed().len(), 0);
+    }
+
+    #[test]
+    fn two_rovers_stand_at_the_requested_spawn_positions() {
+        let mut runtime = crate::runtime::WorldRuntime::new();
+        runtime.install_everglade(super::super::everglade_tests::pack());
+        let bytes = std::fs::read(ROVER).unwrap();
+        let models=[-2.5,2.5].into_iter().enumerate().map(|(i,x)| {
+            let p:Placement=serde_json::from_value(serde_json::json!({"id":format!("copy-{i}"),"doc":"rover","version":38,"zone":"verse-everglade","glb":"remote","at":[x,0.,-28.]})).unwrap();(p,bytes.clone())
+        }).collect();
+        runtime.install_cad_models(models).unwrap();
+        for _ in 0..120 {
+            runtime.tick(&crate::controller::InputState::default(), 1. / 60.);
+        }
+        for id in ["copy-0", "copy-1"] {
+            assert_eq!(runtime.cad_report(id).unwrap().broken, 0, "{id}");
+            let placed = runtime
+                .cad_placed()
+                .iter()
+                .find(|p| p.placement.key() == id)
+                .unwrap();
+            let index = placed
+                .model
+                .solids
+                .iter()
+                .position(|s| s.instance == "chassis")
+                .unwrap();
+            let rotation =
+                glam::DQuat::from_array(runtime.cad_report(id).unwrap().orientations[index])
+                    * placed.model.solids[index].frame.inverse();
+            assert!(
+                (rotation * glam::DVec3::Y).y > 0.8,
+                "{id} tipped over without a load"
+            );
+        }
     }
 
     #[test]

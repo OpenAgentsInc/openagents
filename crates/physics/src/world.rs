@@ -63,6 +63,9 @@ pub struct World {
     #[serde(default)]
     pub solver: SolverSettings,
     bodies: Vec<Body>,
+    /// Connected assembly solids can overlap without generating contacts.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeSet::is_empty")]
+    excluded_pairs: std::collections::BTreeSet<(u32, u32)>,
     #[serde(default)]
     colliders: Vec<Collider>,
     #[serde(skip)]
@@ -154,6 +157,7 @@ impl World {
             tick: 0,
             solver: SolverSettings::default(),
             bodies: Vec::new(),
+            excluded_pairs: Default::default(),
             colliders: Vec::new(),
             collision_index: Default::default(),
             #[cfg(test)]
@@ -309,6 +313,8 @@ impl World {
     /// colliding, and its joints are removed, waking what they held. Its id
     /// stays valid and is not reused.
     pub fn remove_body(&mut self, id: BodyId) {
+        self.excluded_pairs
+            .retain(|(a, b)| *a != id.0 && *b != id.0);
         let joints: Vec<crate::joint::JointId> = self
             .joints()
             .filter(|(_, j)| j.a == id || j.b == id)
@@ -330,6 +336,22 @@ impl World {
         body.torque = DVec3::ZERO;
         body.sleeping = false;
         body.removed = true;
+    }
+
+    /// Enables or disables contacts for one body pair. Other pairs are unchanged.
+    pub fn set_pair_collision(&mut self, a: BodyId, b: BodyId, enabled: bool) {
+        assert!((a.0 as usize) < self.bodies.len() && (b.0 as usize) < self.bodies.len());
+        let pair = (a.0.min(b.0), a.0.max(b.0));
+        if enabled {
+            self.excluded_pairs.remove(&pair);
+        } else {
+            self.excluded_pairs.insert(pair);
+        }
+    }
+
+    /// Whether a pair can generate contacts before collider group filtering.
+    pub fn pair_collides(&self, a: BodyId, b: BodyId) -> bool {
+        a != b && !self.excluded_pairs.contains(&(a.0.min(b.0), a.0.max(b.0)))
     }
 
     /// Wake a body.
@@ -454,7 +476,7 @@ impl World {
             for index in indices {
                 candidates += 1;
                 let other = &self.colliders[index];
-                if other.body == mover.body
+                if !self.pair_collides(other.body, mover.body)
                     || !self[other.body].sleeping
                     || !mover.filter.allows(other.filter)
                 {
@@ -675,5 +697,45 @@ mod tests {
         let mut world = scene();
         world.version = 99;
         assert!(world.check_version().is_err());
+    }
+}
+
+#[cfg(test)]
+mod assembly_pair_tests {
+    use super::*;
+    use crate::Shape;
+    #[test]
+    fn pair_exclusions_preserve_other_contacts_and_checkpoint_state() {
+        let mut w = World::new(1. / 120.);
+        let mut ids = Vec::new();
+        for _ in 0..3 {
+            let id = w.add(Body::new(1., DVec3::ONE, DVec3::ZERO));
+            w.add_collider(Collider::new(
+                id,
+                Shape::Cuboid {
+                    half: DVec3::splat(0.5),
+                },
+            ));
+            ids.push(id);
+        }
+        w.set_pair_collision(ids[0], ids[1], false);
+        let contacts = w.detect(&|_, _| 0.01);
+        assert_eq!(contacts.len(), 2);
+        let bytes = serde_json::to_vec(&w).unwrap();
+        let mut restored: World = serde_json::from_slice(&bytes).unwrap();
+        assert!(!restored.pair_collides(ids[0], ids[1]));
+        assert!(restored.pair_collides(ids[0], ids[2]));
+        assert_eq!(restored.detect(&|_, _| 0.01).len(), 2);
+        let margins = vec![0.; 3];
+        assert_eq!(
+            restored
+                .detect_motion_with_margin(0.01, &margins, &|_, _| 0.01)
+                .unwrap()
+                .0
+                .len(),
+            2
+        );
+        restored.set_pair_collision(ids[0], ids[1], true);
+        assert_eq!(restored.detect(&|_, _| 0.01).len(), 3);
     }
 }

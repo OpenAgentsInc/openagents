@@ -1,8 +1,8 @@
-## Deploy project uploads and CAD updates (#11679, #11661, #11662, #11663, #11664, #11665, #11666)
+## Deploy project uploads and CAD updates (#11679, #11661, #11662, #11663, #11664, #11665, #11666, #11680)
 
 The resumable server, CLI, checked CAD face pulls, shared configurators,
 STEP/STL uploads, print/CNC checks, Robot Lab/Verse handoffs, and paid
-configurable parts are implemented on `main`. This Linux session
+configurable parts and physical Verse placements are implemented on `main`. This Linux session
 cannot deploy them: the default Google Cloud login requires reauthentication,
 and the documented automation configuration is absent on this machine.
 Refresh the deployment login, then use `scripts/deploy/web.sh stage --keep-spec`,
@@ -36,6 +36,11 @@ chosen STEP, STL, and drawings. Stop selling it and confirm the buyer can still
 download. The local walkthrough uses signed test invoices and controlled
 settlement; it moves no money. No receiving credentials or payout key are
 needed on the web server.
+
+For #11680, deploy the rebuilt Everglade WASM and place two named copies with
+a dedicated test account. Check pushing, Reverse Gravity, and replacement or
+removal. Physics runs locally in each visitor’s view; #11682 tracks sharing
+ongoing motion and broken joints.
 
 ## Show cloud environment issue runs on openagents.com and the phone (#11228)
 

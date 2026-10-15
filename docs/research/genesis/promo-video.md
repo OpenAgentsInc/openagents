@@ -349,7 +349,7 @@ Not a strong Genesis beat; the torn foam is the only one. It is our strength.
 - **Have:**
   - The Meteor Showcase (`crates/verse/src/zones/meteor_showcase.rs`).
   - The CAD rover as 51 bodies with shear-breaking pins and a blast-wave model
-    (`crates/verse/src/zones/meteor_rover.rs`, `meteor_rover/blast.rs`).
+    (`crates/verse/src/zones/meteor_rover.rs`, `crates/verse-zone-everglade/src/zones/everglade/cad_physics/blast.rs`).
   - The demolition support graph.
   - Lagrange 1 (`crates/verse-lagrange`, `docs/verse/lagrange-1.md`).
   - Lagrange 2's servoed arm factory fed by CAD mass properties

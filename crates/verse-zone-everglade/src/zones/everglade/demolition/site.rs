@@ -16,8 +16,7 @@
 use glam::{DQuat, DVec3, Mat4, Vec3};
 use physics::water::{Water, WaterSet};
 use physics::{
-    Body, BodyId, BodyKind, Collider, Filter, Joint, JointId, JointKind, Material, Shape, Uniform,
-    World,
+    Body, BodyId, BodyKind, Collider, Filter, Joint, JointId, JointKind, Material, Shape, World,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -409,6 +408,12 @@ pub struct Blow {
 pub struct Site {
     specs: Vec<PieceSpec>,
     world: World,
+    /// CAD assemblies share contacts and solver steps with the town's debris.
+    cad: BTreeMap<String, super::super::cad_physics::Rig>,
+    cad_gravity: Option<verse_world::reverse_gravity::Gravity>,
+    cad_winds: Vec<verse_world::wind_wall::WindWall>,
+    cad_height: Option<fn(f32, f32) -> f32>,
+    cad_ground: BTreeMap<(i32, i32), Option<BodyId>>,
     pieces: Vec<Piece>,
     /// The piece each body is, by body ID, while it stands or is loose.
     owner: Vec<Option<usize>>,
@@ -467,12 +472,195 @@ pub struct Site {
 }
 
 impl Site {
+    /// The zone's existing ground height, sampled into static distance grids
+    /// near CAD bodies so parts also meet slopes beyond the flat clearing.
+    pub fn set_cad_terrain(&mut self, height: fn(f32, f32) -> f32) {
+        self.cad_height = Some(height);
+    }
+
+    fn cad_terrain(&mut self) {
+        let Some(height) = self.cad_height else {
+            return;
+        };
+        let mut wanted = BTreeSet::new();
+        for id in self.cad.values().flat_map(|r| &r.bodies) {
+            let at = self.world[*id].pos;
+            let (x, z) = ((at.x / 32.).floor() as i32, (at.z / 32.).floor() as i32);
+            for dx in -1..=1 {
+                for dz in -1..=1 {
+                    wanted.insert((x + dx, z + dz));
+                }
+            }
+        }
+        self.cad_ground.retain(|key, body| {
+            if wanted.contains(key) {
+                true
+            } else {
+                if let Some(body) = body {
+                    self.world.remove_body(*body);
+                }
+                false
+            }
+        });
+        for key in wanted {
+            if self.cad_ground.contains_key(&key) {
+                continue;
+            }
+            let center = DVec3::new(
+                f64::from(key.0) * 32. + 16.,
+                0.,
+                f64::from(key.1) * 32. + 16.,
+            );
+            let mut levels = Vec::new();
+            for z in 0..33 {
+                for x in 0..33 {
+                    levels.push(height(
+                        (center.x - 16. + f64::from(x)) as f32,
+                        (center.z - 16. + f64::from(z)) as f32,
+                    ));
+                }
+            }
+            if levels.iter().all(|h| h.abs() < 1e-6)
+                && center.x.abs() + 16. <= self.ground_half
+                && center.z.abs() + 16. <= self.ground_half
+            {
+                self.cad_ground.insert(key, None);
+                continue;
+            }
+            let mut values = Vec::with_capacity(33 * 33 * 33);
+            for z in 0..33 {
+                for y in 0..33 {
+                    for x in 0..33 {
+                        values.push(y as f32 - 16. - levels[z * 33 + x]);
+                    }
+                }
+            }
+            let Ok(grid) =
+                physics::collision::sdf::SdfGrid::new(DVec3::splat(-16.), 1., [33, 33, 33], values)
+            else {
+                continue;
+            };
+            let body = self
+                .world
+                .add(Body::new(1., DVec3::ONE, center).with_kind(BodyKind::Static));
+            self.world.add_collider(
+                Collider::new(
+                    body,
+                    Shape::Sdf {
+                        grid: physics::collision::sdf::SdfRef::new(grid),
+                    },
+                )
+                .with_material(MATERIAL),
+            );
+            self.cad_ground.insert(key, Some(body));
+        }
+    }
+
+    /// Adds or replaces one CAD placement, leaving unchanged copies moving.
+    pub fn put_cad(
+        &mut self,
+        id: &str,
+        fingerprint: &str,
+        model: std::sync::Arc<super::super::cad_physics::Model>,
+        origin: DVec3,
+        heading: f64,
+        scale: f64,
+    ) {
+        if self
+            .cad
+            .get(id)
+            .is_some_and(|r| r.fingerprint == fingerprint)
+        {
+            return;
+        }
+        if let Some(old) = self.cad.remove(id) {
+            old.remove(&mut self.world);
+        }
+        let rig = super::super::cad_physics::Rig::insert(
+            &mut self.world,
+            model,
+            origin,
+            heading,
+            scale,
+            fingerprint.into(),
+        );
+        self.cad.insert(id.into(), rig);
+    }
+
+    /// Removes bodies belonging to placements no longer listed.
+    pub fn retain_cad(&mut self, ids: &BTreeSet<String>) {
+        self.cad.retain(|id, r| {
+            if ids.contains(id) {
+                true
+            } else {
+                r.remove(&mut self.world);
+                false
+            }
+        });
+    }
+
+    pub fn cad_report(&self, id: &str) -> Option<super::super::cad_physics::Report> {
+        self.cad.get(id).map(|r| r.report(&self.world))
+    }
+
+    pub fn cad_blocks(&self, feet: Vec3) -> Vec<(crate::controller::Footprint, f32)> {
+        self.cad
+            .values()
+            .flat_map(|r| r.blocks(&self.world, feet))
+            .collect()
+    }
+
+    pub fn cad_vertices(&self, id: &str) -> Option<Vec<crate::pbr::LitVertex>> {
+        self.cad.get(id).map(|r| r.vertices(&self.world))
+    }
+
+    /// Uses the zone's live spell and the player's contact push.
+    pub fn cad_forces(
+        &mut self,
+        gravity: Option<verse_world::reverse_gravity::Gravity>,
+        winds: Vec<verse_world::wind_wall::Wall>,
+        player: Vec3,
+        push: Vec3,
+        dt: f32,
+    ) {
+        self.cad_gravity = gravity;
+        self.cad_winds = winds
+            .into_iter()
+            .map(|wall| verse_world::wind_wall::WindWall {
+                wall,
+                bodies: Vec::new(),
+                until: f64::INFINITY,
+                seed: 0,
+                inside: BTreeSet::new(),
+                ended: false,
+            })
+            .collect();
+        let direction = push.as_dvec3().normalize_or_zero();
+        if direction == DVec3::ZERO {
+            return;
+        }
+        for rig in self.cad.values() {
+            let contacts = rig.avatar_contacts(&self.world, player, direction);
+            let impulse =
+                direction * 400. * f64::from(dt.clamp(0., 0.05)) / contacts.len().max(1) as f64;
+            for id in contacts {
+                self.world.wake(id);
+                self.world[id].apply_impulse_at(impulse, player.as_dvec3() + DVec3::Y * 0.5);
+            }
+        }
+    }
+
     /// Raises every piece in `specs`, intact and standing.
     #[must_use]
     pub fn new(specs: Vec<PieceSpec>, seed: u64) -> Self {
         let mut site = Self {
             specs,
             world: World::new(STEP),
+            cad: BTreeMap::new(),
+            cad_gravity: None,
+            cad_winds: Vec::new(),
+            cad_height: None,
+            cad_ground: BTreeMap::new(),
             pieces: Vec::new(),
             owner: Vec::new(),
             members: BTreeMap::new(),
@@ -708,7 +896,12 @@ impl Site {
     }
 
     fn raise(&mut self) {
-        self.world = self.ground();
+        let fresh = self.ground();
+        let old = std::mem::replace(&mut self.world, fresh);
+        for rig in self.cad.values_mut() {
+            rig.rehome(&old, &mut self.world);
+        }
+        self.cad_ground.clear();
         self.pieces = Vec::with_capacity(self.specs.len());
         self.owner.clear();
         for index in 0..self.specs.len() {
@@ -866,6 +1059,10 @@ impl Site {
         }
         let fresh = self.ground();
         let old = std::mem::replace(&mut self.world, fresh);
+        for rig in self.cad.values_mut() {
+            rig.rehome(&old, &mut self.world);
+        }
+        self.cad_ground.clear();
         let then = old.time();
         let now = self.world.time();
         let specs = std::mem::take(&mut self.specs);
@@ -1245,6 +1442,20 @@ impl Site {
         let face = face.as_dvec3().normalize_or_zero();
         self.last_blast = Some(c);
         let (radius, speed) = (f64::from(radius), f64::from(speed));
+        let now = self.world.time();
+        for rig in self.cad.values_mut() {
+            rig.blast(&self.world, c, radius, speed / 17., now);
+        }
+        let cad_bodies: Vec<_> = self
+            .cad
+            .values()
+            .flat_map(|r| r.bodies.iter().copied())
+            .collect();
+        for id in cad_bodies {
+            if self.world[id].pos.distance(c) < radius * 4. {
+                self.throw(id);
+            }
+        }
         let mut blows = Vec::new();
         for (piece, distance, point) in self.near(c, radius) {
             let k = 1.0 - distance / radius;
@@ -2224,14 +2435,16 @@ impl Site {
 
     /// Advances the yard by `dt` seconds of wall time.
     pub fn tick(&mut self, dt: f32) {
+        self.cad_terrain();
         self.steps = StepCost::default();
         self.age_dust(dt);
         self.hold_frozen();
-        let any_moving = self.pieces.iter().any(|p| match p.status {
-            Status::Standing => false,
-            Status::Loose => true,
-            Status::Broken => p.chunks.iter().any(|c| !c.gone),
-        });
+        let any_moving = !self.cad.is_empty()
+            || self.pieces.iter().any(|p| match p.status {
+                Status::Standing => false,
+                Status::Loose => true,
+                Status::Broken => p.chunks.iter().any(|c| !c.gone),
+            });
         if !any_moving {
             self.pending = 0.0;
             return;
@@ -2250,9 +2463,70 @@ impl Site {
 
     /// One physics step, then impact damage, tilt breaks, and chunk ends.
     fn step(&mut self) {
-        let gravity = Uniform(DVec3::new(0.0, -9.81, 0.0));
+        let reverse = self.cad_gravity;
+        if let Some(g) = reverse {
+            for id in self.cad.values().flat_map(|r| &r.bodies) {
+                if g.cylinder.contains(self.world[*id].pos) {
+                    self.world.wake(*id);
+                }
+            }
+        }
+        let gravity = |p, v| reverse.map_or(DVec3::new(0., -9.81, 0.), |g| g.at(p, v));
+        for id in self.cad.values().flat_map(|r| &r.bodies) {
+            let body = self.world[*id];
+            for wind in &self.cad_winds {
+                if wind.wall.contains(body.pos, 0.) {
+                    self.world.wake(*id);
+                    let force = wind.updraft(&body, *id, self.world.time()) * body.mass;
+                    self.world[*id].apply_force(force);
+                }
+            }
+        }
         self.wet_debris();
-        self.world.step(&gravity);
+        let now = self.world.time();
+        let tick = self.world.tick;
+        let fine = self.cad.values().any(|r| r.needs_fine(now));
+        let count = if fine { 400 } else { 1 };
+        let h = STEP / f64::from(count);
+        let erp = self.world.solver.erp;
+        let forces: Vec<_> = if fine {
+            self.world
+                .bodies()
+                .iter()
+                .enumerate()
+                .filter(|(_, b)| b.force != DVec3::ZERO || b.torque != DVec3::ZERO)
+                .map(|(i, b)| (BodyId(i as u32), b.force, b.torque))
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let (mut detect, mut solve) = (std::time::Duration::ZERO, std::time::Duration::ZERO);
+        self.world.dt = h;
+        if fine {
+            self.world.solver.erp = 0.;
+        }
+        for step in 0..count {
+            if step > 0 {
+                for (id, force, torque) in &forces {
+                    self.world[*id].force = *force;
+                    self.world[*id].torque = *torque;
+                }
+            }
+            for rig in self.cad.values_mut() {
+                rig.press(&mut self.world, now + f64::from(step) * h, h);
+            }
+            self.world.step(&gravity);
+            detect += self.world.stats.detect;
+            solve += self.world.stats.solve;
+            for rig in self.cad.values_mut() {
+                rig.after_step(&mut self.world);
+            }
+        }
+        self.world.dt = STEP;
+        self.world.tick = tick + 1;
+        self.world.solver.erp = erp;
+        self.world.stats.detect = detect;
+        self.world.stats.solve = solve;
         let stats = &self.world.stats;
         self.steps.steps += 1;
         self.steps.detect_ms += stats.detect.as_secs_f32() * 1000.0;
@@ -2284,6 +2558,11 @@ impl Site {
                 }
             }
         }
+        let cad_bodies: BTreeSet<_> = self
+            .cad
+            .values()
+            .flat_map(|r| r.bodies.iter().map(|b| b.0))
+            .collect();
         for (index, body) in self.world.bodies_mut().iter_mut().enumerate() {
             if body.kind == BodyKind::Dynamic {
                 let thrown = self
@@ -2310,7 +2589,7 @@ impl Site {
                     body.vel *= SETTLE_DAMPING;
                     body.omega *= SETTLE_DAMPING;
                 }
-                if debris {
+                if debris && !cad_bodies.contains(&(index as u32)) {
                     // Debris in the water drifts on the current as fast as
                     // rubble settles, so it freezes only once lodged: all
                     // but still against a bank or on the bed.
@@ -2445,6 +2724,12 @@ impl Site {
                 }
             }
         }
+        let cad_bodies: BTreeSet<_> = self
+            .cad
+            .values()
+            .flat_map(|r| r.bodies.iter().map(|b| b.0))
+            .collect();
+        moving.extend(cad_bodies.iter().map(|id| (*id, Matter::Brick)));
         moving.retain(|id, _| {
             self.world
                 .bodies()
@@ -2525,7 +2810,13 @@ impl Site {
             tick,
             STEP,
             &physics::water::Settings::default(),
-            |id| lift.get(&id.0).copied(),
+            |id| {
+                if cad_bodies.contains(&id.0) {
+                    Some(1.)
+                } else {
+                    lift.get(&id.0).copied()
+                }
+            },
         );
     }
 

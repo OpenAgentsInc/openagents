@@ -563,6 +563,16 @@ async fn world_delivery_is_private_replaces_versions_and_requires_edit_rights() 
     for tool in ["cad_robot", "cad_place"] {
         assert!(admitted(&viewer, tool, &json!({"doc":"bracket"})).is_err());
     }
+    handoff::place(
+        &f.store,
+        &me,
+        &json!({"placement":"second"}),
+        "bracket",
+        2,
+        Some(b"glTF".to_vec()),
+    )
+    .await
+    .unwrap();
     handoff::place(&f.store, &me, &json!({"remove":true}), "bracket", 2, None)
         .await
         .unwrap();
@@ -573,7 +583,19 @@ async fn world_delivery_is_private_replaces_versions_and_requires_edit_rights() 
         .unwrap()
         .unwrap()
         .0;
-    assert_eq!(serde_json::from_slice::<Value>(&bytes).unwrap(), json!([]));
+    let remaining: Vec<Value> = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(remaining.len(), 1);
+    assert!(remaining[0]["id"].as_str().unwrap().contains(":second:"));
+    handoff::place(
+        &f.store,
+        &me,
+        &json!({"placement":"second","remove":true}),
+        "bracket",
+        2,
+        None,
+    )
+    .await
+    .unwrap();
     assert!(handoff::place_settings(&json!({"at":[1.,2.,3.,4.]})).is_err());
     assert!(handoff::place_settings(&json!({"scale":0.})).is_err());
 }

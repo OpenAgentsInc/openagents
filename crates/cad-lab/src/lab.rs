@@ -255,8 +255,11 @@ impl Lab {
         let n = self.latest(id).unwrap_or(0) + 1;
         let dir = self.version_dir(id, n);
         std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-        std::fs::write(dir.join("model.glb"), cad::export::glb(&eval.built.solids))
-            .map_err(|e| e.to_string())?;
+        std::fs::write(
+            dir.join("model.glb"),
+            cad::export::assembly_glb(&eval.built),
+        )
+        .map_err(|e| e.to_string())?;
         std::fs::write(
             dir.join("view.json"),
             cad::view::model(&eval.built).to_string(),
@@ -1020,11 +1023,25 @@ impl Lab {
         let mut file =
             read_json(&path).unwrap_or_else(|| json!({"kind": PLACEMENTS, "placements": []}));
         let mut list: Vec<Value> = file["placements"].as_array().cloned().unwrap_or_default();
+        let copy = args["placement"].as_str().unwrap_or(&id);
+        if copy.is_empty()
+            || copy.len() > 80
+            || !copy
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c))
+        {
+            return Err(
+                "Use a short name with letters, numbers, dashes, or dots for the placed copy."
+                    .into(),
+            );
+        }
         let before = list.len();
-        list.retain(|p| !(p["doc"] == id.as_str() && p["zone"] == zone));
+        list.retain(|p| {
+            !(p["id"].as_str().or_else(|| p["doc"].as_str()) == Some(copy) && p["zone"] == zone)
+        });
         let replaced = list.len() < before;
         let placement = json!({
-            "doc": id, "version": n, "zone": zone, "glb": glb,
+            "id":copy, "doc": id, "version": n, "zone": zone, "glb": glb,
             "at": at, "heading_deg": heading, "scale": scale,
             "placed": now(), "author": Self::author(args),
         });
@@ -2033,7 +2050,15 @@ fn takes(name: &str) -> &'static [&'static str] {
         "cad_compare" => &["doc", "a", "b"],
         "cad_export" => &["doc", "version", "formats"],
         "cad_place" => &[
-            "doc", "version", "zone", "at", "heading", "scale", "remove", "author",
+            "doc",
+            "version",
+            "zone",
+            "at",
+            "heading",
+            "scale",
+            "remove",
+            "author",
+            "placement",
         ],
         "cad_render" => &[
             "doc", "version", "view", "focus", "yaw", "pitch", "zoom", "width", "height",
@@ -2195,11 +2220,12 @@ pub fn tools() -> Value {
         {"name": "cad_export", "description": "Export a version as files: glb (glTF, for the web and Verse), 3mf (for printing), step (exact solids for other CAD), stl, urdf (a robot for Robot Lab: a link per instance with its mass and inertia, the joints with their limits) and feed (the mass-properties record for Lagrange 2's spacecraft document). Default: glb, 3mf and step.",
          "parameters": {"type": "object", "required": ["doc"], "properties": {"doc": doc, "version": version,
             "formats": {"type": "string", "description": "a JSON array of formats, e.g. [\"step\",\"3mf\",\"glb\",\"urdf\",\"feed\"]"}}}},
-        {"name": "cad_place", "description": "Put a version in a Verse zone (Everglade, Meteor Showcase or Meteor Stress Test): its glTF stands on the ground there at a place and heading. Placing another version of the same document in the same zone replaces it; remove takes it out.",
+        {"name": "cad_place", "description": "Put a version in a Verse zone (Everglade, Meteor Showcase or Meteor Stress Test): its solids fall, collide, and react to spells. Use placement to name independent copies; placing that name again replaces it, and remove takes it out.",
          "parameters": {"type": "object", "required": ["doc"], "properties": {"doc": doc, "version": version,
             "zone": {"type": "string", "description": "everglade (default), meteor-showcase or meteor-stress-test"},
             "at": {"type": "string", "description": "where, as JSON [x, z] or [x, y, z] in metres (y above the ground); in front of where you arrive when left out"},
             "heading": {"type": "number", "description": "which way it faces, degrees about the vertical (0 faces +X)"},
+            "placement": {"type":"string","description":"name of this copy; defaults to the document name"},
             "scale": {"type": "number", "description": "1 is life size"},
             "remove": {"type": "boolean", "description": "take it out of the zone"}}}},
         {"name": "cad_render", "description": "A picture of a version from a view: hero, rear, plan, front, side, iso, under or detail; focus frames some instances (e.g. [\"camera_head\"]). The card shows it.",
@@ -2481,13 +2507,41 @@ mod tests {
         assert!(
             lab.run("cad_place", &json!({"doc": "cart", "zone": "plaza"}))["error"].is_string()
         );
+        let copy = lab.run(
+            "cad_place",
+            &json!({"doc":"cart","placement":"cart-two","at":[-3.,0.,-28.]}),
+        );
+        assert_eq!(copy["placement"]["id"], "cart-two", "{copy}");
+        let glb = std::fs::read(lab.version_dir("cart", 5).join("model.glb")).unwrap();
+        let len = u32::from_le_bytes(glb[12..16].try_into().unwrap()) as usize;
+        let gltf: Value = serde_json::from_slice(&glb[20..20 + len]).unwrap();
+        let physics = &gltf["extras"]["physics"];
+        assert!(
+            physics["instances"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|i| i["density_g_cm3"].as_f64().is_some())
+        );
+        assert!(physics.get("parts").is_none());
         let removed = lab.run("cad_place", &json!({"doc": "cart", "remove": true}));
         assert!(
             removed["summary"].as_str().unwrap().contains("Took"),
             "{removed}"
         );
         let file = read_json(&placements_path(&lab.root)).unwrap();
-        assert!(file["placements"].as_array().unwrap().is_empty());
+        assert_eq!(file["placements"].as_array().unwrap().len(), 1);
+        assert_eq!(file["placements"][0]["id"], "cart-two");
+        lab.run(
+            "cad_place",
+            &json!({"doc":"cart","placement":"cart-two","remove":true}),
+        );
+        assert!(
+            read_json(&placements_path(&lab.root)).unwrap()["placements"]
+                .as_array()
+                .unwrap()
+                .is_empty()
+        );
         let rendered = lab.run("cad_render", &json!({"doc": "cart", "view": "plan", "focus": "[\"w1\"]", "width": 320, "height": 200}));
         assert!(
             rendered["card"]["render"]["file"]

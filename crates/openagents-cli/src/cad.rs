@@ -25,7 +25,7 @@ pub(crate) const USAGE: &str = "usage: openagents cad COMMAND [DOC] [options]
                  version (urdf: a robot for Robot Lab; feed: its mass
                  properties for Lagrange 2).
   place DOC [--zone everglade|meteor-showcase|meteor-stress-test]
-                 [--at X,Z] [--heading DEG] [--scale S] [--version N] [--remove]
+                 [--at X,Z] [--placement NAME] [--heading DEG] [--scale S] [--version N] [--remove]
                  Put a version in a Verse zone; a newer one replaces it.
   drawing DOC [--views front,top,right,iso] [--sections front@0]
                  [--angle third|first] [--sheet A4|A3|A2] [--title TEXT]
@@ -139,7 +139,7 @@ pub(crate) fn request(words: &[String]) -> Result<(String, Value), String> {
         "compare" => &["a", "b"],
         "render" => &["view", "focus", "version", "width", "height", "zoom", "yaw"],
         "export" => &["formats", "version"],
-        "place" => &["zone", "at", "heading", "scale", "version"],
+        "place" => &["zone", "at", "heading", "scale", "version", "placement"],
         "drawing" => &[
             "views", "sections", "angle", "sheet", "title", "formats", "version",
         ],
@@ -377,6 +377,8 @@ mod tests {
         );
         let (_, call) = request(&words("place rover --remove")).unwrap();
         assert_eq!(call["remove"], true);
+        let (_, copy) = request(&words("place rover --placement left --remove")).unwrap();
+        assert_eq!(copy["placement"], "left");
         assert!(request(&words("place rover --at north")).is_err());
         assert!(request(&words("open rover --remove")).is_err());
         let (tool, call) = request(&words(

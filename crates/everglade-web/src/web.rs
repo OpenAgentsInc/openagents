@@ -867,6 +867,13 @@ impl Page {
                 offline_light,
                 water,
             );
+            if frames.count == 0 && !self.runtime.cad_placed().is_empty() {
+                let models:Vec<_>=self.runtime.cad_placed().iter().map(|p|serde_json::json!({"id":p.placement.key(),"doc":p.placement.doc,"version":p.placement.version,"state":self.runtime.cad_report(p.placement.key())})).collect();
+                web_sys::console::info_1(&JsValue::from_str(&format!(
+                    "Everglade CAD physics {}",
+                    serde_json::json!({"models":models})
+                )));
+            }
         }
     }
 

@@ -531,6 +531,7 @@ impl WorldRuntime {
         self.zone_state
             .cad
             .refresh(zone, file, super::everglade::land, ahead);
+        self.sync_cad_bodies();
         self.zone_state.cad.placed.len()
     }
 
@@ -549,23 +550,85 @@ impl WorldRuntime {
             super::everglade::land(arrive.x, arrive.z),
             arrive.z,
         );
-        let mut placed = Vec::new();
+        let mut placed: Vec<super::cad_place::Placed> = Vec::new();
         let mut triangles = 0;
         for (placement, bytes) in models {
             if placement.zone != self.zone.world_id() {
                 continue;
             }
-            let model =
+            let mut model =
                 super::cad_place::stand_bytes(&placement, &bytes, super::everglade::land, ahead)?;
             triangles += model.vertices.len() / 3;
             if triangles > super::cad_place::MAX_TRIANGLES {
                 return Err("There are too many CAD triangles in this place.".into());
             }
+            if let Some(same) = placed.iter().find(|p| p.geometry == model.geometry) {
+                model.model = same.model.clone();
+            }
             placed.push(model);
         }
+        let mut keys = std::collections::BTreeSet::new();
+        if placed
+            .iter()
+            .any(|p| !keys.insert(p.placement.key().to_owned()))
+            || placed.len() > 20
+        {
+            return Err("Choose different names for up to 20 placed models.".into());
+        }
         self.zone_state.cad.placed = placed;
+        self.zone_state.cad.supplied = true;
+        self.sync_cad_bodies();
         self.zone_revision = self.zone_revision.wrapping_add(1);
         Ok(self.zone_state.cad.placed.len())
+    }
+
+    fn sync_cad_bodies(&mut self) {
+        let Some(glade) = &mut self.zone_state.everglade else {
+            return;
+        };
+        let site = glade.cad_site_mut();
+        if self.zone == ZoneId::Everglade {
+            site.set_cad_terrain(super::everglade::height);
+        }
+        let ids = self
+            .zone_state
+            .cad
+            .placed
+            .iter()
+            .map(|p| p.placement.key().to_owned())
+            .collect();
+        site.retain_cad(&ids);
+        for placed in &self.zone_state.cad.placed {
+            site.put_cad(
+                placed.placement.key(),
+                &placed.fingerprint,
+                placed.model.clone(),
+                placed.origin.as_dvec3(),
+                f64::from(placed.placement.heading_deg.to_radians()),
+                f64::from(placed.placement.scale),
+            );
+        }
+    }
+
+    fn pose_cad_bodies(&mut self) {
+        let Some(glade) = &mut self.zone_state.everglade else {
+            return;
+        };
+        let site = glade.cad_site_mut();
+        for placed in &mut self.zone_state.cad.placed {
+            if let Some(vertices) = site.cad_vertices(placed.placement.key()) {
+                placed.vertices = vertices;
+            }
+        }
+    }
+
+    /// The bodies and joint failures of one placed copy, in world metres.
+    pub fn cad_report(&self, id: &str) -> Option<super::everglade::cad_physics::Report> {
+        self.zone_state
+            .everglade
+            .as_ref()?
+            .cad_site()?
+            .cad_report(id)
     }
 
     fn cad_arrival(&self) -> Vec3 {
@@ -3131,8 +3194,14 @@ impl WorldRuntime {
         self.zone_state.elapsed = (self.zone_state.elapsed + dt) % 1000.0;
         // CAD Lab models placed here, kept in step with their file.
         #[cfg(not(target_arch = "wasm32"))]
-        if self.zone_state.cad.due(dt) {
-            self.refresh_cad_placements();
+        if !self.zone_state.cad.supplied && self.zone_state.cad.due(dt) {
+            let file = self
+                .zone_state
+                .cad
+                .source
+                .clone()
+                .unwrap_or_else(super::cad_place::path);
+            self.refresh_cad_placements_from(&file);
         }
         if let Some(lagrange) = &mut self.zone_state.lagrange {
             lagrange.tick();
@@ -3146,6 +3215,7 @@ impl WorldRuntime {
         if let Some(room) = &mut self.zone_state.robot_lab {
             room.tick(dt);
         }
+        self.sync_cad_bodies();
         let state = &mut self.zone_state;
         if let (Some(glade), Some(coast)) = (&mut state.everglade, &mut state.coast) {
             coast.tick = unix_water_tick();
@@ -3249,6 +3319,7 @@ impl WorldRuntime {
             }
             everglade.tick(dt, &self.player, &seats);
         }
+        self.pose_cad_bodies();
     }
     pub(crate) fn zone_dynamic_mesh(&self) -> crate::mesh::Mesh {
         let elapsed = self.zone_state.elapsed;

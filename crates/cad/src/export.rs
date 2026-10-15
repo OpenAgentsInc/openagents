@@ -22,7 +22,7 @@ pub fn write(built: &mut Built, format: &str, path: &Path) -> Result<u64, String
     }
     match format {
         "glb" => {
-            let bytes = glb(&built.solids);
+            let bytes = assembly_glb(built);
             std::fs::write(path, &bytes).map_err(|e| e.to_string())?;
             Ok(bytes.len() as u64)
         }
@@ -72,7 +72,7 @@ pub fn write(built: &mut Built, format: &str, path: &Path) -> Result<u64, String
 /// The format is unknown, or the kernel refused.
 pub fn bytes(built: &mut Built, format: &str) -> Result<Vec<u8>, String> {
     match format {
-        "glb" => Ok(glb(&built.solids)),
+        "glb" => Ok(assembly_glb(built)),
         "step" => crate::tree::step(built).map(String::into_bytes),
         "3mf" => crate::tree::threemf(built),
         "stl" => {
@@ -109,6 +109,50 @@ fn pad4(bytes: &mut Vec<u8>, with: u8) {
 /// finish (a finish sets the roughness: glossy plastic shines).
 #[must_use]
 pub fn glb(solids: &[Solid]) -> Vec<u8> {
+    glb_with_physics(solids, &Value::Null)
+}
+
+/// Exports a checked assembly with material densities, joint frames and limits.
+pub fn assembly_glb(built: &Built) -> Vec<u8> {
+    let mut physics =
+        json!({"instances":built.assembly["instances"],"joints":built.assembly["joints"]});
+    for i in physics["instances"].as_array_mut().into_iter().flatten() {
+        let part = built
+            .solids
+            .iter()
+            .find(|s| Some(s.instance.as_str()) == i["id"].as_str())
+            .map(|s| s.part.as_str())
+            .unwrap_or_else(|| i["part"].as_str().unwrap_or_default());
+        let material = built.assembly["parts"][part]["material"]
+            .as_str()
+            .unwrap_or("Aluminum");
+        i["material"] = json!(material);
+        i["density_g_cm3"] = json!(crate::doc::density(material).unwrap_or(2.7));
+    }
+    for joint in physics["joints"].as_array_mut().into_iter().flatten() {
+        let parent = joint["parent"].as_str().unwrap_or_default();
+        let xf = built
+            .placements
+            .get(parent)
+            .copied()
+            .unwrap_or(crate::xf::Xf::IDENTITY);
+        let xyz = |v: &Value| [0, 1, 2].map(|k| v[k].as_f64().unwrap_or(0.));
+        joint["origin_mm"] = json!(xf.apply(xyz(&joint["origin"])));
+        joint["axis"] = json!(xf.rotate(xyz(&joint["axis"])));
+        // Physical limits are relative to the exported rest pose.
+        if let (Some(lo), Some(hi), Some(value)) = (
+            joint["limits"][0].as_f64(),
+            joint["limits"][1].as_f64(),
+            joint["value"].as_f64(),
+        ) {
+            joint["limits"] = json!([lo - value, hi - value]);
+        }
+    }
+    glb_with_physics(&built.solids, &physics)
+}
+
+/// Exports the checked assembly's material and joint data with its triangles.
+pub fn glb_with_physics(solids: &[Solid], physics: &Value) -> Vec<u8> {
     let mut bin: Vec<u8> = Vec::new();
     let mut views = Vec::new();
     let mut accessors = Vec::new();
@@ -195,6 +239,7 @@ pub fn glb(solids: &[Solid]) -> Vec<u8> {
     pad4(&mut bin, 0);
     let gltf = json!({
         "asset": {"version": "2.0", "generator": "OpenAgents CAD Lab"},
+        "extras": {"physics": physics},
         "scene": 0,
         "scenes": [{"nodes": node_ids}],
         "nodes": nodes,
