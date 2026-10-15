@@ -9,6 +9,27 @@ fn run() -> Result<(), String> {
             .and_then(|at| args.get(at + 1))
             .cloned()
     };
+    if args.first().map(String::as_str) == Some("pilot") {
+        let repo = PathBuf::from(value("--repo").ok_or("Choose a repository with --repo DIR.")?);
+        let out =
+            PathBuf::from(value("--out").ok_or("Choose an output directory with --out DIR.")?);
+        let context = code_index::recipes::Context::open(
+            &repo,
+            &value("--rev").unwrap_or_else(|| "HEAD".into()),
+            &value("--workspace").unwrap_or_else(|| "local".into()),
+        )?;
+        let artifact = code_index::pilot::compile(&context)?;
+        code_index::private::write(
+            &out,
+            "task-index.json",
+            &serde_json::to_vec(&artifact).map_err(|e| e.to_string())?,
+        )?;
+        println!(
+            "{}",
+            serde_json::json!({"recipes":artifact.recipes.len(),"commit":artifact.snapshot.commit})
+        );
+        return Ok(());
+    }
     if args.first().map(String::as_str) == Some("demand") {
         let input =
             PathBuf::from(value("--input").ok_or("Choose investigations with --input FILE.")?);

@@ -31,5 +31,13 @@ once per family. `--assumptions FILE` supplies future uses, avoidable fraction,
 unit navigation cost, build cost, and refresh cost. Missing assumptions
 produce no monetary estimate. Grouping and demand files remain private.
 
+`code-index pilot --repo DIR --rev COMMIT --workspace NAME --out DIR`
+compiles twenty source-reviewed extension recipes against committed Git
+objects. It validates paths, symbol spans, full-file digests, new-file
+integration points, and Cargo check packages. Dirty source cannot change the
+frozen evidence. Recipes cover 3D assets and authoring, Coder plugins and
+tools, CLI wiring, world wire/client/server changes, and agent history.
+Source verification does not establish successful edits or model quality.
+
 Run `cargo test -p code-index` and `cargo fmt -p code-index`. See the
 [roadmap](../../docs/code-graph/task-index-roadmap.md) for experiment scope.

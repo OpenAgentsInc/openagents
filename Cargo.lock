@@ -3153,6 +3153,7 @@ version = "1.0.0-rc.20"
 dependencies = [
  "atif",
  "base64 0.22.1",
+ "code-graph",
  "coder-history",
  "serde",
  "serde_json",

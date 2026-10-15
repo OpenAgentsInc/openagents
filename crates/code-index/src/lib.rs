@@ -2,7 +2,9 @@
 
 pub mod demand;
 pub mod episodes;
+pub mod pilot;
 pub mod private;
+pub mod recipes;
 
 pub fn read_json<T: serde::de::DeserializeOwned>(path: &std::path::Path) -> Result<T, String> {
     use std::io::Read;
