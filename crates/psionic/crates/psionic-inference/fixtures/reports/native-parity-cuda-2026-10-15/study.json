@@ -1,0 +1,103 @@
+{
+  "schema": "psionic.native.parity.study.v1",
+  "issue": 11722,
+  "date": "2026-10-15",
+  "hardware": "RTX 4080, Intel i7-14700K, four P cores (0,2,4,6), driver 595.71.05",
+  "protocol": "Two alternating A/B rounds per input bucket, 1000 timings/run, one process/engine, four CPU threads, warm model and filesystem caches, TF32 disabled. Every run checks all 100 reference cases before timing. GPU/OS shared with existing desktop applications; no other session was stopped. No own builds overlapped timing.",
+  "timed_calls": 8000,
+  "summary": [
+    {
+      "bucket": "full",
+      "engine": "native",
+      "runs": 2,
+      "timed_cases": 100,
+      "p50_ms": 0.4990145,
+      "p99_range_ms": [
+        1.955216,
+        1.971596
+      ],
+      "requests_per_second": 1787.5476320139587,
+      "max_reference_logit_error": 3.814697265625e-06,
+      "resident_bytes_range": [
+        1648517120,
+        1648652288
+      ]
+    },
+    {
+      "bucket": "full",
+      "engine": "ort",
+      "runs": 2,
+      "timed_cases": 100,
+      "p50_ms": 1.2684435,
+      "p99_range_ms": [
+        2.694785,
+        2.702957
+      ],
+      "requests_per_second": 746.979037019888,
+      "max_reference_logit_error": 3.337860107421875e-06,
+      "resident_bytes_range": [
+        4122025984,
+        4133969920
+      ]
+    },
+    {
+      "bucket": "512",
+      "engine": "native",
+      "runs": 2,
+      "timed_cases": 2,
+      "p50_ms": 1.9691450000000001,
+      "p99_range_ms": [
+        2.203069,
+        2.254496
+      ],
+      "requests_per_second": 499.2032705959023,
+      "max_reference_logit_error": 3.814697265625e-06,
+      "resident_bytes_range": [
+        1650450432,
+        1652342784
+      ]
+    },
+    {
+      "bucket": "512",
+      "engine": "ort",
+      "runs": 2,
+      "timed_cases": 2,
+      "p50_ms": 2.716359,
+      "p99_range_ms": [
+        3.092398,
+        3.158381
+      ],
+      "requests_per_second": 360.55425946476635,
+      "max_reference_logit_error": 3.337860107421875e-06,
+      "resident_bytes_range": [
+        4123213824,
+        4125409280
+      ]
+    }
+  ],
+  "correctness": "All 100 reference decisions match. Maximum native raw-logit error 3.814697265625e-6. Separate repeated GPU kernel and full-model tests cover masks, local boundaries, all-masked rows, and graph replay across mixed sequence lengths.",
+  "native_execution": "All tensor computation runs on CUDA. Persistent buffers; uint8 embedding table; exact-erf GeGLU; f32 cuBLAS and attention; combined heads. Last layer computes only the query/output row consumed by first-token pooling. Batched GEMMs implement long attention. CUDA graphs use a 64-length LRU cache; first use of a length captures a graph. Only int32 token IDs/masks and 22 f32 logits cross the host boundary.",
+  "build": "Rust 1.97.1, release opt3/thin-LTO/codegen-units1/debug0; features ort,native-cuda. CUDA 13.2 compiler, ORT 1.28.0, cuDNN 9.20.0.48; eager module/data loading.",
+  "source_note": "Runs record the implementation commit and uncommitted documentation/report paths. Exact source hashes identify the tested implementation; later rebases can change the commit ID without changing these sources.",
+  "source_sha256": {
+    "crates/psionic/crates/psionic-inference/src/modernbert.rs": "38d02e6723e3a3a09e9a876aae4677cfaec15e21fcf3d69104340088c7bbfe9d",
+    "crates/psionic/crates/psionic-inference/src/modernbert/cuda.rs": "703b85ea122370ea6f82a8235d255dd4e7974bcabb3b76fae77208971b1cbb1f",
+    "crates/psionic/crates/psionic-backend-cuda/src/encoder.rs": "201408537958d2cd2250cd3d487782676d249332d8b8776fef8a551ea134eb5a",
+    "crates/psionic/crates/psionic-backend-cuda/src/kernels/encoder.cu": "73f87b9f1e252ef3eb35efaf9d9bdbdcb233ddf69d70f9dc59b42a1995dd0f74",
+    "crates/psionic/crates/psionic-backend-cuda/src/kernels/encoder_stub.c": "ff53bec95dd14450c064b527b7f0569ed230d3bf09a5027a1134b9a2b20f6e4e",
+    "crates/psionic/crates/psionic-backend-cuda/src/clef_prefill.rs": "1ba63f29fede56afbcd6b4f67b39db7df181d9ff4ad024058405803f066f5169",
+    "crates/psionic/crates/psionic-backend-cuda/src/lib.rs": "37ea4ec58ea7f6b8c38c0d62c31ddaffde2c39941e3daa4cdb7c144b0ec59890",
+    "crates/psionic/crates/psionic-backend-cuda/build.rs": "32bbb42c25b5319a835d90ea190f06d4a45c2b7b5aeb31c450f44da663aaba1c",
+    "crates/psionic/crates/psionic-inference/src/bin/psionic-small-model-bench.rs": "835484bb70e963a0eb7708ffa9766f7fa73bc55d0c4f5d27d937e728250c546c",
+    "scripts/dev/psionic-accelerator-bench.py": "c03e7873f03f500d11b99a40aa22e898aec8015ebf24ac78e4eb9f1a0195d6b3"
+  },
+  "remaining": [
+    "Native CPU parity and the absolute CPU 512-token target (#11723)",
+    "Native device-resident digit inference (#11724)",
+    "Native Metal parity and Apple qualification (#11725)",
+    "Accelerator HTTP serving (#11726)",
+    "Peak VRAM and cold-cache qualification; these RSS records are host-process memory, not GPU memory.",
+    "Routing quality and product adoption remain separate."
+  ],
+  "implementation_commit": "8d617bc2471542592ea48d657652cf53a5328866"
+}

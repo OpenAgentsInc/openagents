@@ -203,16 +203,21 @@ even when ORT reports a Core ML graph partition.
 
 For native execution, enable `native-cuda` or `native-metal` and call
 `router::load_native_on()` or `models::load_native_on()` with a
-`DeviceChoice`. ModernBERT and MNIST use the existing Psionic CUDA/cuBLAS
-or Metal GEMMs with weights loaded once. Other operations remain on CPU.
-Every GEMM writes a host input, waits for completion, and reads its output.
-This is mixed execution. Potion's native path currently supports CPU only;
-unsupported explicit choices return an error.
+`DeviceChoice`. ModernBERT on CUDA now keeps the full encoder and heads on
+the device, with persistent weights and activations. It transfers token IDs and
+masks in and 22 logits out. A bounded CUDA graph cache removes repeated launch
+setup; the first call at each sequence length captures a graph. The last layer
+computes only the output row used by first-token pooling.
+
+ModernBERT on Metal and MNIST accelerators still use device GEMMs between CPU
+operations. Each GEMM writes a host input, waits, and reads its output. Their
+remaining work is tracked in #11724 and #11725. Potion's native path supports
+CPU only; unsupported explicit choices return an error.
 
 Device contexts and buffers stay on one dedicated worker thread, which
 shuts down when its model drops. The Rayon setting bounds model CPU work;
 the GPU control worker is one additional thread. `execution_report()`
-records GEMM calls, loaded weight bytes, and logical buffer transfers.
+records placement, logical buffer transfers, and execution counters.
 On unified-memory Metal, those bytes do not imply physical bus copies.
 The CUDA comparison driver sets `NVIDIA_TF32_OVERRIDE=0`.
 
@@ -287,3 +292,11 @@ compares native CPU, full ORT, and reduced ORT on identical fixtures.
 explicit lazy-loaded libraries, and transitive Linux shared dependencies.
 It lists ordinary system libraries and NVIDIA driver/compiler libraries
 separately. Use the recorded commands to reproduce each inventory.
+
+The [native CUDA parity report](fixtures/reports/native-parity-cuda-2026-10-15/study.json)
+records the device-resident router: native p50 is 0.50 ms versus ORT 1.27 ms
+on the full reference mix, with p99 1.96–1.97 ms versus 2.70 ms. At exactly
+512 tokens, native p50 is 1.97 ms versus 2.72 ms and p99 2.20–2.25 ms versus
+3.09–3.16 ms. These are CUDA results, not the four-core CPU target. Use
+`--families router` and `--min-tokens 512 --max-tokens 512` on the paired
+accelerator runner to reproduce the separate long-input bucket.

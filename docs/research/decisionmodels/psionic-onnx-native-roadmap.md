@@ -11,6 +11,28 @@ implemented. Embeddings and digit vision (#11705) also have both engines;
 explicit CUDA/Core ML and native CUDA/Metal paths are implemented in
 #11706. Device measurements and package qualification are recorded below.
 
+## Native performance work
+
+The seven initial milestones establish executable models and comparisons.
+They do not establish native performance parity, complete native GPU execution,
+or qualified Apple/mobile deployments. The owner requested native parity or
+better on 2026-10-15. Keep both engines selectable and compare the same precision,
+inputs, hardware, and thread budget after every optimization.
+
+| Priority | Issue | Status | Work | Acceptance |
+| --- | --- | --- | --- | --- |
+| 1 | [#11722](https://github.com/OpenAgentsInc/openagents/issues/11722) | Complete | Keep the ModernBERT encoder on CUDA, including attention and elementwise operations | All reference cases pass; no intermediate host transfers; paired short and long input measurements, with remaining ORT gaps explicit |
+| 2 | [#11723](https://github.com/OpenAgentsInc/openagents/issues/11723) | Open | Improve native CPU router and digit inference | Correctness unchanged; matched ORT/native measurements; separate relative parity from the 512-token absolute target |
+| 3 | [#11724](https://github.com/OpenAgentsInc/openagents/issues/11724) | Open | Keep native digit inference on GPU | Persistent buffers and GPU convolution/activation/pooling; paired CUDA evidence |
+| 4 | [#11725](https://github.com/OpenAgentsInc/openagents/issues/11725) | Open | Complete device-resident native Metal encoder execution | Build and reference parity, then measured Metal/Core ML comparisons on Apple hardware |
+| 5 | [#11726](https://github.com/OpenAgentsInc/openagents/issues/11726) | Open | Expose accelerator serving and publish the parity status | Explicit server device selection; direct/HTTP correctness; current benchmark and platform gaps visible here |
+
+Apple CPU/Metal/Core ML measurements and mobile build, memory, startup, and
+thermal qualification remain in `NEEDS_OWNER.md`. They remain unqualified until
+measured. Native CPU/CUDA optimization and accelerator serving are engineering
+work tracked above. Router quality evaluation and routing promotion follow the
+separate router experiment plan; faster inference does not establish model quality.
+
 ## Scope and current evidence
 
 ONNX describes a computation graph, weights, input and output tensors,
@@ -311,6 +333,33 @@ Apple's SDK. Apple Silicon and mobile build/device qualification remain
 in `NEEDS_OWNER.md`. Fixed x86 CPU ORT exports do not qualify mobile,
 Core ML, CUDA, or arbitrary models. No routing policy or product model
 promotion follows from these execution comparisons.
+
+## Native CUDA parity results (2026-10-15, #11722)
+
+The [new paired study](../../../crates/psionic/crates/psionic-inference/fixtures/reports/native-parity-cuda-2026-10-15/study.json)
+replaces the router's mixed CUDA implementation with device-resident float32
+execution. Embeddings, norms, RoPE, attention, GeGLU, residuals, and heads stay
+on GPU. Inputs and final logits are the only host transfers. Long attention uses
+batched GEMMs; short attention uses a fused kernel. A bounded 64-length CUDA
+graph cache replays repeated shapes. The final layer computes only the output
+row consumed by pooling. Model precision and pinned weights are unchanged.
+
+| CUDA router workload | ORT p50 | Native p50 | ORT p99 | Native p99 |
+| --- | --- | --- | --- | --- |
+| Full 100-case reference mix | 1.27 ms | 0.50 ms | 2.70 ms | 1.96–1.97 ms |
+| Exactly 512 tokens | 2.72 ms | 1.97 ms | 3.09–3.16 ms | 2.20–2.25 ms |
+
+Each bucket has two alternating 1,000-sample runs per engine on the same RTX
+4080 and four-core affinity. Every process first checks all 100 reference cases;
+native maximum raw-logit error is 0.00000382 and all reference decisions match.
+Native is faster at both median and p99 in this comparison. These warm CUDA
+measurements do not satisfy or replace the absolute four-core CPU target.
+The source hashes, binary hashes, dependency configuration, exact commands,
+individual timings, and host RSS are retained. Peak VRAM remains unmeasured.
+
+The earlier accelerator table describes the previous mixed router and remains
+historical evidence. Native MNIST, CPU optimization, Metal, accelerated HTTP
+serving, and Apple/mobile qualification remain separate open work above.
 
 ## References
 

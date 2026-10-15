@@ -43,7 +43,10 @@ tracks optional ONNX Runtime execution alongside native Psionic models.
 The `psionic-inference` crate implements both CPU engines for
 `s1-llm-auto-router`, Potion embeddings, and MNIST digit vision, with
 shared fixtures and benchmark runners. It also exposes ORT CUDA/Core ML
-and mixed native CUDA/Metal execution for the router and digit model.
+and native CUDA/Metal execution for the router and digit model. The CUDA
+router keeps all tensor computation on GPU and beats ORT in the retained
+paired median and p99 measurements; Metal and digit execution still mix
+CPU and GPU operations.
 The existing `psionic-openai-server` serves the fixed router through
 `--router-model-dir` and an explicit `--router-engine native|ort`. The
 roadmap records CPU, HTTP, CUDA, and package comparisons. Apple and mobile
