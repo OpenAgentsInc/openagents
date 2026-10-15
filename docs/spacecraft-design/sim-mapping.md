@@ -14,9 +14,12 @@ Lagrange 2's first pass has landed; see
 - The orbit tests are in `verse-lagrange` (`earth_moon_tests.rs`).
 - The document, factory, assembly, and burn tests are in `verse-lagrange2`
   (`tests.rs`), under the names below where they match.
-- Still open: `arms_match_mujoco_for_a_reference_move`,
+- The second pass ([#11650](https://github.com/OpenAgentsInc/openagents/issues/11650))
+  added `arms_match_mujoco_for_a_reference_move`,
   `assembly_is_frame_rate_independent`, `the_burn_rings_the_truss`,
-  `solar_event_quiet_hold`, and `debris_avoidance_hold`.
+  `solar_event_quiet_hold`, and `debris_avoidance_hold`, and the sample
+  ship's parts now come from the CAD Lab mass feed
+  (`the_parts_mass_properties_come_from_cad`).
 
 ## What exists
 
@@ -26,7 +29,7 @@ Lagrange 2's first pass has landed; see
 | `verse-lagrange` `station` | The construction sandbox: parts with real mass properties, grab, latch, collisions, ropes, plumes, flexible arrays, the momentum ledger, save, restore, replay, two clocks | Built around one astronaut; no arms; linearizes the field about Sun–Earth L1 |
 | [`physics`](../../crates/physics/) | Rigid bodies (`body`), contacts, joints including servoed `Hinge` and `Slider` with limits, `ThrusterSet` allocation and `Pid`, flexible `Mode`s, `Ledger`, ropes, plumes, sensors, fixed stepping | No CMG or reaction wheel model; no articulated-chain solver beyond joints; no generalized Jacobian helper |
 | [`robot-description`](../../crates/robot-description/) | URDF import (with each link's inertial) and pinned SO-101 | Industrial-arm descriptions for the factory |
-| [`cad`](../../crates/cad/) `feed` | `cad-mass-feed.v1`: a CAD Lab version's parts with measured mass, centre of mass, inertia and joint ports, SI (`cad_export` `feed`, #11643) | The spacecraft document that reads it |
+| [`cad`](../../crates/cad/) `feed` | `cad-mass-feed.v1`: a CAD Lab version's parts with measured mass, centre of mass, inertia and joint ports, SI (`cad_export` `feed`, #11643); `verse_lagrange2::cad_feed` reads it and the sample ship is built from it (#11650) | None for the sample; other ships need their own CAD documents |
 | [`robot-lab`](../../crates/robot-lab/) | Versioned, checked lab documents (robot, scene, joints, inertials) and private storage | No spacecraft document kind |
 | [`robot-sim`](../../crates/robot-sim/) | MuJoCo 3.3.7 runner, native and Linux-qualified, used as a reference for joints (#11607) | Not available on phone or web, so it can check our physics but not run the zone |
 | [`verse-zone-lagrange`](../../crates/verse-zone-lagrange/) | Scene, input, and rendering for Lagrange 1, physical sky, PBR | A Lagrange 2 scene with the Moon large in the sky |

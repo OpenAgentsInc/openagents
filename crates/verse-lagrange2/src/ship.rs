@@ -17,6 +17,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use glam::{DMat3, DQuat, DVec3};
 use serde::{Deserialize, Serialize};
 
+use crate::cad_feed::{self, MassFeed};
+
 /// Standard gravity, m/s^2 (exact by definition).
 pub const G0: f64 = 9.806_65;
 /// The document's schema tag, as Robot Lab's `robot.v1` and its siblings.
@@ -138,6 +140,26 @@ pub struct Part {
     #[serde(default)]
     pub yaw: f64,
     pub attach: Attach,
+    /// The dry structure's measured mass properties, when the part was
+    /// built in CAD Lab: then `position` is its measured center of mass and
+    /// its inertia is the measured tensor rather than the shape's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cad: Option<CadMass>,
+}
+
+/// A part's dry mass properties as CAD Lab measured them
+/// (`cad-mass-feed.v1`, [`crate::cad_feed`]).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct CadMass {
+    /// `cad:DOC/vN#INSTANCE`.
+    pub source: String,
+    /// The CAD document version's SHA-256.
+    pub digest: String,
+    /// The measured dry mass, kg; the inertia scales with `dry_mass_kg`
+    /// over this if an edit changes the mass.
+    pub mass_kg: f64,
+    /// Inertia about the center of mass, part frame, kg m^2, rows.
+    pub inertia_kg_m2: [[f64; 3]; 3],
 }
 
 impl Part {
@@ -164,7 +186,25 @@ impl Part {
     #[must_use]
     pub fn inertia_at(&self, mass: f64) -> DMat3 {
         let r = DMat3::from_quat(self.orientation());
-        r * DMat3::from_diagonal(self.shape.inertia(mass)) * r.transpose()
+        r * self.local_inertia(mass) * r.transpose()
+    }
+
+    /// Inertia tensor about the part's center at mass `mass`, part frame.
+    /// A part built in CAD carries its measured dry tensor (scaled to the
+    /// document's dry mass); propellant, and every part without CAD
+    /// numbers, takes its shape's solid inertia.
+    #[must_use]
+    pub fn local_inertia(&self, mass: f64) -> DMat3 {
+        match &self.cad {
+            Some(cad) if cad.mass_kg > 0.0 => {
+                let rows = cad.inertia_kg_m2;
+                let measured =
+                    DMat3::from_cols_array_2d(&rows).transpose() * (self.dry_mass_kg / cad.mass_kg);
+                let fluid = (mass - self.dry_mass_kg).max(0.0);
+                measured + DMat3::from_diagonal(self.shape.inertia(fluid))
+            }
+            _ => DMat3::from_diagonal(self.shape.inertia(mass)),
+        }
     }
 }
 
@@ -258,181 +298,232 @@ pub enum Edit {
     RemovePart { part: String },
 }
 
+/// What a part is beyond its measured mass: its role, propellant or
+/// engine, maturity, the envelope the arms grasp and clear, and its
+/// latch's rating. [`Spacecraft::from_feed`] joins it to a CAD feed.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PartSpec {
+    /// The CAD instance's id.
+    pub id: String,
+    pub kind: PartKind,
+    pub subsystem: Subsystem,
+    pub maturity: Maturity,
+    pub shape: Shape,
+    pub rated_force_n: f64,
+    pub rated_moment_nm: f64,
+}
+
+/// The sample tug's parts table.
+#[must_use]
+pub fn sample_parts() -> Vec<PartSpec> {
+    let spec = |id: &str,
+                kind: PartKind,
+                subsystem: Subsystem,
+                maturity: Maturity,
+                shape: Shape,
+                force: f64,
+                moment: f64| PartSpec {
+        id: id.into(),
+        kind,
+        subsystem,
+        maturity,
+        shape,
+        rated_force_n: force,
+        rated_moment_nm: moment,
+    };
+    let keel = Shape::Box {
+        size: DVec3::new(16.0, 2.4, 2.4),
+    };
+    let tank = Shape::Cylinder {
+        radius: 2.0,
+        length: 10.0,
+    };
+    let tank_kind = PartKind::Tank {
+        propellant_kg: 22_000.0,
+    };
+    use Maturity::{Flown, Modified, New};
+    use Subsystem::{Habitat, Power, Propulsion, Structure, Thermal};
+    vec![
+        spec(
+            "keel-aft",
+            PartKind::Truss,
+            Structure,
+            Modified,
+            keel,
+            600_000.0,
+            900_000.0,
+        ),
+        spec(
+            "keel-fwd",
+            PartKind::Truss,
+            Structure,
+            Modified,
+            keel,
+            300_000.0,
+            600_000.0,
+        ),
+        spec(
+            "engine",
+            PartKind::Engine {
+                thrust_n: 120_000.0,
+                isp_s: 330.0,
+            },
+            Propulsion,
+            Flown,
+            Shape::Cylinder {
+                radius: 2.2,
+                length: 6.0,
+            },
+            300_000.0,
+            600_000.0,
+        ),
+        spec(
+            "tank-port",
+            tank_kind,
+            Propulsion,
+            Modified,
+            tank,
+            150_000.0,
+            250_000.0,
+        ),
+        spec(
+            "tank-starboard",
+            tank_kind,
+            Propulsion,
+            Modified,
+            tank,
+            150_000.0,
+            250_000.0,
+        ),
+        spec(
+            "habitat",
+            PartKind::Module,
+            Habitat,
+            New,
+            Shape::Cylinder {
+                radius: 2.5,
+                length: 10.0,
+            },
+            150_000.0,
+            250_000.0,
+        ),
+        spec(
+            "power",
+            PartKind::Module,
+            Power,
+            Modified,
+            Shape::Box {
+                size: DVec3::new(6.0, 2.0, 4.0),
+            },
+            80_000.0,
+            150_000.0,
+        ),
+        spec(
+            "radiator",
+            PartKind::Module,
+            Thermal,
+            Modified,
+            Shape::Box {
+                size: DVec3::new(6.0, 0.6, 4.0),
+            },
+            80_000.0,
+            150_000.0,
+        ),
+    ]
+}
+
 impl Spacecraft {
-    /// The checked-in sample: a 99 t tug with two tanks, an engine, a
+    /// The checked-in sample: a 98 t tug with two tanks, an engine, a
     /// habitat, and power and radiator panels on a two-piece keel.
+    ///
+    /// Its parts' dry masses, centers of mass, inertia tensors, latch
+    /// points, and attachment tree come from CAD Lab: the document
+    /// `cad/lagrange-tug.json` and its feed ([`cad_feed::TUG_FEED`]).
+    /// [`sample_parts`] adds what CAD does not know.
     #[must_use]
     pub fn sample() -> Self {
-        let attach = |parent: Option<&str>, at: DVec3, force: f64, moment: f64| Attach {
-            parent: parent.map(str::to_owned),
-            at,
-            rated_force_n: force,
-            rated_moment_nm: moment,
-        };
-        let part = |id: &str,
-                    kind: PartKind,
-                    subsystem: Subsystem,
-                    maturity: Maturity,
-                    dry: f64,
-                    shape: Shape,
-                    position: DVec3,
-                    attach: Attach| Part {
-            id: id.into(),
-            kind,
-            subsystem,
-            maturity,
-            dry_mass_kg: dry,
-            shape,
-            position,
-            yaw: 0.0,
-            attach,
-        };
-        let keel = Shape::Box {
-            size: DVec3::new(16.0, 2.4, 2.4),
-        };
-        let tank = Shape::Cylinder {
-            radius: 2.0,
-            length: 10.0,
-        };
-        Self {
-            schema: SCHEMA.into(),
-            name: "Lagrange tug".into(),
-            revision: 1,
-            requirements: Requirements {
+        Self::from_feed(
+            &MassFeed::tug(),
+            "Lagrange tug",
+            Requirements {
                 max_mass_kg: 115_000.0,
                 max_thrust_offset_m: 0.25,
                 test_burn_m_s: 150.0,
             },
-            parts: vec![
-                part(
-                    "keel-aft",
-                    PartKind::Truss,
-                    Subsystem::Structure,
-                    Maturity::Modified,
-                    7_000.0,
-                    keel,
-                    DVec3::new(-8.0, 0.0, 0.0),
-                    attach(None, DVec3::new(-8.0, -1.2, 0.0), 600_000.0, 900_000.0),
-                ),
-                part(
-                    "keel-fwd",
-                    PartKind::Truss,
-                    Subsystem::Structure,
-                    Maturity::Modified,
-                    7_000.0,
-                    keel,
-                    DVec3::new(8.0, 0.0, 0.0),
-                    attach(Some("keel-aft"), DVec3::ZERO, 300_000.0, 600_000.0),
-                ),
-                part(
-                    "engine",
-                    PartKind::Engine {
-                        thrust_n: 120_000.0,
-                        isp_s: 330.0,
-                    },
-                    Subsystem::Propulsion,
-                    Maturity::Flown,
-                    9_000.0,
-                    Shape::Cylinder {
-                        radius: 2.2,
-                        length: 6.0,
-                    },
-                    DVec3::new(-19.0, 0.0, 0.0),
-                    attach(
-                        Some("keel-aft"),
-                        DVec3::new(-16.0, 0.0, 0.0),
-                        300_000.0,
-                        600_000.0,
-                    ),
-                ),
-                part(
-                    "tank-port",
-                    PartKind::Tank {
-                        propellant_kg: 22_000.0,
-                    },
-                    Subsystem::Propulsion,
-                    Maturity::Modified,
-                    2_500.0,
-                    tank,
-                    DVec3::new(-8.0, 0.0, -4.4),
-                    attach(
-                        Some("keel-aft"),
-                        DVec3::new(-8.0, 0.0, -1.2),
-                        150_000.0,
-                        250_000.0,
-                    ),
-                ),
-                part(
-                    "tank-starboard",
-                    PartKind::Tank {
-                        propellant_kg: 22_000.0,
-                    },
-                    Subsystem::Propulsion,
-                    Maturity::Modified,
-                    2_500.0,
-                    tank,
-                    DVec3::new(-8.0, 0.0, 4.4),
-                    attach(
-                        Some("keel-aft"),
-                        DVec3::new(-8.0, 0.0, 1.2),
-                        150_000.0,
-                        250_000.0,
-                    ),
-                ),
-                part(
-                    "habitat",
-                    PartKind::Module,
-                    Subsystem::Habitat,
-                    Maturity::New,
-                    18_000.0,
-                    Shape::Cylinder {
-                        radius: 2.5,
-                        length: 10.0,
-                    },
-                    DVec3::new(21.0, 0.0, 0.0),
-                    attach(
-                        Some("keel-fwd"),
-                        DVec3::new(16.0, 0.0, 0.0),
-                        150_000.0,
-                        250_000.0,
-                    ),
-                ),
-                part(
-                    "power",
-                    PartKind::Module,
-                    Subsystem::Power,
-                    Maturity::Modified,
-                    6_000.0,
-                    Shape::Box {
-                        size: DVec3::new(6.0, 2.0, 4.0),
-                    },
-                    DVec3::new(8.0, 0.0, 3.2),
-                    attach(
-                        Some("keel-fwd"),
-                        DVec3::new(8.0, 0.0, 1.2),
-                        80_000.0,
-                        150_000.0,
-                    ),
-                ),
-                part(
-                    "radiator",
-                    PartKind::Module,
-                    Subsystem::Thermal,
-                    Maturity::Modified,
-                    2_500.0,
-                    Shape::Box {
-                        size: DVec3::new(6.0, 0.6, 4.0),
-                    },
-                    DVec3::new(8.0, 0.0, -3.2),
-                    attach(
-                        Some("keel-fwd"),
-                        DVec3::new(8.0, 0.0, -1.2),
-                        80_000.0,
-                        150_000.0,
-                    ),
-                ),
-            ],
+            &sample_parts(),
+            DVec3::new(-8.0, -1.2, 0.0),
+        )
+        .expect("the sample ship's feed matches its parts table")
+    }
+
+    /// A ship built from a CAD mass feed: one part per feed instance, in
+    /// the order of `specs`, each with the feed's dry mass, center of mass
+    /// (the part's position), and inertia; a part latches to the instance
+    /// its CAD joint names as parent, at that joint's origin. The one part
+    /// with no parent latches to the factory's cradle at `cradle_latch`.
+    ///
+    /// # Errors
+    /// The feed and the table name different parts, or a part has more
+    /// than one parent.
+    pub fn from_feed(
+        feed: &MassFeed,
+        name: &str,
+        requirements: Requirements,
+        specs: &[PartSpec],
+        cradle_latch: DVec3,
+    ) -> Result<Self, String> {
+        if feed.parts.len() != specs.len() {
+            return Err(format!(
+                "the feed has {} parts and the table {}",
+                feed.parts.len(),
+                specs.len()
+            ));
         }
+        let mut parts = Vec::new();
+        for spec in specs {
+            let measured = feed
+                .part(&spec.id)
+                .ok_or_else(|| format!("the feed has no part {}", spec.id))?;
+            let mut parents = measured.ports.iter().filter(|p| !p.parent);
+            let (parent, at) = match (parents.next(), parents.next()) {
+                (None, _) => (None, cradle_latch),
+                (Some(port), None) => (Some(port.mate.clone()), cad_feed::to_ship(port.origin_m)),
+                _ => return Err(format!("{} has two parents", spec.id)),
+            };
+            let inertia = cad_feed::tensor_to_ship(measured.mass.inertia_kg_m2);
+            parts.push(Part {
+                id: spec.id.clone(),
+                kind: spec.kind,
+                subsystem: spec.subsystem,
+                maturity: spec.maturity,
+                dry_mass_kg: measured.mass.mass_kg,
+                shape: spec.shape,
+                position: cad_feed::to_ship(measured.mass.center_of_mass_m),
+                yaw: 0.0,
+                attach: Attach {
+                    parent,
+                    at,
+                    rated_force_n: spec.rated_force_n,
+                    rated_moment_nm: spec.rated_moment_nm,
+                },
+                cad: Some(CadMass {
+                    source: format!(
+                        "cad:{}/v{}#{}",
+                        feed.source.doc, feed.source.version, measured.id
+                    ),
+                    digest: feed.source.digest.clone(),
+                    mass_kg: measured.mass.mass_kg,
+                    inertia_kg_m2: inertia.transpose().to_cols_array_2d(),
+                }),
+            });
+        }
+        Ok(Self {
+            schema: SCHEMA.into(),
+            name: name.into(),
+            revision: 1,
+            requirements,
+            parts,
+        })
     }
 
     #[must_use]
@@ -496,7 +587,7 @@ impl Spacecraft {
 
     /// The parts on the side of `part`'s latch away from the engine: the
     /// mass that latch has to push during a burn.
-    fn pushed_side(&self, part: usize) -> BTreeSet<usize> {
+    pub(crate) fn pushed_side(&self, part: usize) -> BTreeSet<usize> {
         let mut subtree = BTreeSet::from([part]);
         loop {
             let before = subtree.len();

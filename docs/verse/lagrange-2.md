@@ -94,7 +94,7 @@ is refused with the requirement's name:
 Each accepted edit bumps `revision`, and `version()` is a content hash of
 the document.
 
-**The sample ship** is a 98.5 t tug, 105 t with contingency against a
+**The sample ship** is a 98.4 t tug, 105 t with contingency against a
 115 t budget. It has:
 - a two-piece keel;
 - two 24.5 t tanks;
@@ -103,6 +103,21 @@ the document.
 - a power box and a radiator.
 
 It carries about 1.9 km/s of Δv.
+
+**Its parts come from CAD.** The structure is a CAD Lab assembly,
+`crates/verse-lagrange2/cad/lagrange-tug.json`: a 17 mm aluminium square
+tube for each keel, thin-walled tanks and habitat hull, a steel engine
+shell, and box tubes for the power and radiator panels, joined by
+fastened joints at the latch points. Its mass feed (`cad-mass-feed.v1`,
+`lagrange-tug.mass.json`, written as `cad_export` `feed` does, by
+`cargo run -p cad --example mass_feed`) gives each part's dry mass,
+center of mass, and inertia tensor, and each joint's origin.
+`Spacecraft::from_feed` builds the document from it; a small typed table
+adds what CAD does not know: each part's role, propellant, engine,
+maturity, the envelope the arms grasp, and its latch rating. Propellant
+adds a solid fill's inertia to a tank's measured shell. The `cad` crate's
+test `the_lagrange_tug_feed_is_its_documents` keeps the checked-in feed
+equal to what CAD measures for the document.
 
 ## The arms
 
@@ -197,8 +212,41 @@ and the [Aether AI plan](../research/aether-ai/README.md).
   starts while the link is down. The stage under way finishes, and the
   sequence resumes on reconnect.
 
+**Hold points.** No stage starts while anything holds it; the sequence
+resumes from a fresh simulation of the next stage.
+- **A solar particle event warning** makes the factory go quiet within
+  15 factory minutes (`QUIET_WITHIN`): a stage that has not grasped its
+  part stops, backs off the rack, and parks, leaving the part on its rack;
+  a part already in an arm is latched and released first, the shortest
+  way to a secured state. Then every arm is parked, every part is on a
+  rack or latched, and nothing moves until the all clear
+  (`solar_event_quiet_hold`).
+- **A collision-avoidance burn** from the ground waits for the next hold
+  point: the stage under way finishes. The deck's thrusters then push
+  10 kN until the whole factory's center of mass has the requested
+  velocity change, the arms, racks, and latched work riding on their
+  joints. After a 10 s coast the latched parts must still be within their
+  pose tolerance with no latch at its rating (`debris_avoidance_hold`).
+
+**Frame rate.** Hosts pace the factory with one clock
+(`assembly::frame_clock`): frame time times the speed-up becomes whole
+1/30 s steps, the rest carried to the next frame, at most 240 steps a
+frame. The assembly at 30, 60, and 144 frames a second matches stepping
+the same count exactly (`assembly_is_frame_rate_independent`).
+
 **How long it takes.** The sample ship takes 8 stages and about 67 factory
 minutes. The CMGs peak at a few hundred kN m s, well under their capacity.
+
+**The arms against MuJoCo.** `oracle.rs` writes the factory arm, carrying
+a loaded 24.5 t tank, as MuJoCo XML with the same bodies, joints, limits,
+and servo law. MuJoCo 3.3.7 runs a 40 s move from the parking pose to the
+transit height through Robot Lab's native runner
+(`cargo run -p robot-sim --features mujoco --example lagrange2_arm_oracle -- EXECUTION.json crates/verse-lagrange2/oracle/arm-reference.json`)
+and records `oracle/arm-reference.json`. `physics` replays the same
+targets; on an Apple M-series Mac the largest joint difference is
+1.5 × 10⁻⁵ rad, against #11607's 0.025 rad tolerance
+(`arms_match_mujoco_for_a_reference_move`). The test fails if the arm
+changes without a new reference.
 
 ## The test burn
 
@@ -215,6 +263,16 @@ to the midpoint rule's error.
 
 **Attitude.** The gimbal aims through a lagged estimate of the center of
 mass, and reaction-control thrusters hold attitude.
+
+**The keel rings.** The ship's first axial mode is a two-mass lumped
+model: the parts forward of the keel joint ride on a spring `E A / d`,
+with the keel's section from its CAD mass (`A = m / (ρ L)`) and `d` the
+distance between the two halves' centers of mass, at 1% damping
+(`physics::Mode`). It sits near 23 Hz. Ignition is a step load: the keel
+joint overshoots to 1.97 times its static 41 kN, and at cutoff the keel
+rings down at its damping (`the_burn_rings_the_truss`). The 80 kN peak is
+inside the joint's 300 kN latch rating, which the static check alone
+would not show.
 
 **Departure.** After 150 m/s, the velocity is handed to the three-body
 integrator. The ship is more than 20,000 km off the halo three days later,
@@ -286,8 +344,8 @@ The still views are `aft`, `wide`, `close`, `display`, `moon`, and `burn`.
 - **During the burn**, which takes about two minutes, the ship flies in the
   station's local frame, and its velocity is then handed to the
   three-body integrator.
-- **Tank inertia** scales with propellant mass. The ship has no slosh and
-  no structural modes.
-- **The arms' MuJoCo cross-check** (sim-mapping's
-  `arms_match_mujoco_for_a_reference_move`) is not run. Robot Lab's
-  oracle checks the SO-101 itself at its own scale.
+- **Propellant** adds a solid fill's inertia to each tank's measured
+  shell. The ship has no slosh.
+- **Structural modes.** Only the keel's first axial mode is modelled, as
+  two lumped halves (see the test burn above). Bending, the tanks' latch
+  modes, and slosh are left out.

@@ -18,8 +18,13 @@ fn the_sample_ship_passes_every_check() {
     let ship = Spacecraft::sample();
     assert_eq!(ship.check(), Vec::new());
     let report = ship.report();
-    // 98.5 t loaded, 105 t with contingency against a 115 t budget.
-    assert!((report.mass.mass - 98_500.0).abs() < 1e-6);
+    // About 98.4 t loaded (CAD's measured dry masses plus 44 t of
+    // propellant), 105 t with contingency against a 115 t budget.
+    assert!(
+        (98_300.0..98_500.0).contains(&report.mass.mass),
+        "{}",
+        report.mass.mass
+    );
     assert!(report.mass_margin > 0.05, "{}", report.mass_margin);
     // Two tanks of 22 t at Isp 330 s give about 1.9 km/s.
     assert!((1_850.0..1_950.0).contains(&report.delta_v_m_s));
@@ -32,12 +37,67 @@ fn the_sample_ship_passes_every_check() {
 }
 
 #[test]
+fn the_parts_mass_properties_come_from_cad() {
+    use crate::cad_feed::{self, MassFeed};
+    let feed = MassFeed::tug();
+    let ship = Spacecraft::sample();
+    // Every part is CAD's instance: its measured mass, center of mass, and
+    // tensor, in ship axes, from the version the feed names.
+    for part in &ship.parts {
+        let measured = feed.part(&part.id).unwrap();
+        let cad = part.cad.as_ref().unwrap();
+        assert_eq!(cad.digest, feed.source.digest);
+        assert!(cad.source.ends_with(&format!("#{}", part.id)));
+        assert_eq!(part.dry_mass_kg, measured.mass.mass_kg);
+        assert_eq!(
+            part.position,
+            cad_feed::to_ship(measured.mass.center_of_mass_m)
+        );
+    }
+    // The dry ship's mass properties are the feed's own total: the
+    // document's parallel-axis sum agrees with CAD's.
+    let mut dry = ship.clone();
+    for p in &mut dry.parts {
+        if let PartKind::Tank { propellant_kg } = &mut p.kind {
+            *propellant_kg = 0.0;
+        }
+    }
+    let mp = dry.mass_properties();
+    assert!((mp.mass - feed.total.mass_kg).abs() < 1e-9 * mp.mass);
+    assert!((mp.com - cad_feed::to_ship(feed.total.center_of_mass_m)).length() < 1e-9);
+    let total = cad_feed::tensor_to_ship(feed.total.inertia_kg_m2);
+    let norm = total.x_axis.length();
+    for (a, b) in mp.inertia.to_cols_array().iter().zip(total.to_cols_array()) {
+        assert!((a - b).abs() < 1e-9 * norm, "{a} vs {b}");
+    }
+    // The CAD walls were sized for the old typed list's dry masses; the
+    // measured ones land within 1%.
+    for (id, kg) in [
+        ("keel-aft", 7_000.0),
+        ("engine", 9_000.0),
+        ("habitat", 18_000.0),
+    ] {
+        let m = ship.part(id).unwrap().dry_mass_kg;
+        assert!((m - kg).abs() < 0.01 * kg, "{id}: {m}");
+    }
+    // Every latch is a CAD joint's origin; the keels meet at the origin.
+    let fwd = ship.part("keel-fwd").unwrap();
+    assert_eq!(fwd.attach.parent.as_deref(), Some("keel-aft"));
+    assert!(fwd.attach.at.length() < 1e-12);
+}
+
+#[test]
 fn mass_properties_are_the_sum_of_parts() {
     // Two parts by hand: a 2 t keel box at the origin and a 1 t engine
-    // cylinder 3 m forward and 1 m up.
+    // cylinder 3 m forward and 1 m up, with their shapes' inertia.
     let mut ship = Spacecraft::sample();
+    for p in &mut ship.parts {
+        p.cad = None;
+    }
     ship.parts.truncate(1);
-    let mut second = Spacecraft::sample().parts[2].clone();
+    let mut second = ship.parts[0].clone();
+    second.id = "engine".into();
+    second.shape = Spacecraft::sample().parts[2].shape;
     second.dry_mass_kg = 1_000.0;
     second.position = DVec3::new(3.0, 1.0, 0.0);
     second.attach.parent = Some(ship.parts[0].id.clone());
@@ -121,22 +181,28 @@ fn latch_loads_follow_the_burn_acceleration() {
     let ship = Spacecraft::sample();
     let report = ship.report();
     let a = report.acceleration_m_s2;
-    // A tank's latch pushes the tank: 24.5 t times the acceleration, with
-    // the tank's center 3.2 m outboard of its latch.
+    // A tank's latch pushes the loaded tank (about 24.5 t) at the
+    // acceleration, with the tank's center about 3.2 m outboard of its
+    // latch.
+    let part = ship.part("tank-port").unwrap();
     let tank = report
         .latch_loads
         .iter()
         .find(|l| l.part == "tank-port")
         .unwrap();
-    assert!((tank.force_n - 24_500.0 * a).abs() < 1e-6);
-    assert!((tank.moment_nm - 24_500.0 * a * 3.2).abs() < 1e-6);
+    assert!((tank.force_n - part.mass() * a).abs() < 1e-6);
+    let arm = part.position - part.attach.at;
+    let lever = arm.y.hypot(arm.z);
+    assert!((3.1..3.3).contains(&lever), "{lever}");
+    assert!((tank.moment_nm - part.mass() * a * lever).abs() < 1e-6);
     // The engine's latch pushes everything but the engine.
     let engine = report
         .latch_loads
         .iter()
         .find(|l| l.part == "engine")
         .unwrap();
-    assert!((engine.force_n - (98_500.0 - 9_000.0) * a).abs() < 1e-6);
+    let rest = report.mass.mass - ship.part("engine").unwrap().mass();
+    assert!((engine.force_n - rest * a).abs() < 1e-6);
     // Doubling a tank's propellant overloads its latch at ignition.
     let mut heavy = ship.clone();
     heavy.requirements.max_mass_kg = 1e6;
@@ -194,6 +260,65 @@ fn the_arm_is_the_so101_scaled_up() {
         (spec.forearm - forearm * arm::SCALE).abs() < 0.05,
         "{forearm}"
     );
+}
+
+#[test]
+fn arms_match_mujoco_for_a_reference_move() {
+    use crate::oracle::{Reference, ReferenceMove, TOLERANCE};
+    use physics::{Body, BodyKind, Joint, NoField};
+    let reference = Reference::checked_in().unwrap();
+    let r = ReferenceMove::sample();
+    assert_eq!(
+        reference.model_xml,
+        r.mjcf(),
+        "the arm changed: regenerate oracle/arm-reference.json (robot-sim's lagrange2_arm_oracle)"
+    );
+    assert_eq!(reference.mujoco, "3.3.7");
+    assert_eq!(reference.timestep, factory::DT);
+    assert_eq!(reference.angles.len(), r.steps / r.record_every);
+    // The factory's own arm and servos on a fixed pedestal, holding the
+    // loaded tank in its grapple.
+    let mut world = physics::World::new(factory::DT);
+    world.sleep.enabled = false;
+    let base = world.add(Body::new(1.0, DVec3::ONE, DVec3::ZERO).with_kind(BodyKind::Static));
+    let arm = factory::build_arm(&mut world, base, r.spec, r.motion.from).unwrap();
+    let tool = arm.links[4];
+    let tip = world[tool].to_world(DVec3::Y * factory::TOOL / 2.0);
+    let held = world[tool].orientation * arm::nominal_grip();
+    let center = world[tool].to_world(DVec3::Y * (factory::TOOL / 2.0 + r.payload_drop));
+    let mut payload = Body::new(r.payload_kg, r.payload_inertia, center);
+    payload.orientation = held;
+    payload.prev_orientation = held;
+    let payload = world.add(payload);
+    world.add_joint(Joint::weld_here(&world, tool, payload, tip));
+    let mut worst = [0.0_f64; 5];
+    let mut moved = 0.0_f64;
+    for k in 0..r.steps {
+        let target = r.target(k);
+        for (i, &q) in target.iter().enumerate() {
+            world.set_joint_target(arm.joints[i], q).unwrap();
+        }
+        world.step(&NoField);
+        if (k + 1) % r.record_every == 0 {
+            let want = reference.angles[(k + 1) / r.record_every - 1];
+            for i in 0..5 {
+                let got = world
+                    .joint(arm.joints[i])
+                    .unwrap()
+                    .coordinate(&world)
+                    .unwrap();
+                worst[i] = worst[i].max((got - want[i]).abs());
+                moved = moved.max((want[i] - r.motion.from[i]).abs());
+            }
+        }
+    }
+    eprintln!(
+        "largest joint differences from MuJoCo 3.3.7, rad: {worst:?} over a move of up to {moved:.2} rad"
+    );
+    assert!(moved > 0.3, "the reference actually moves");
+    for (i, w) in worst.iter().enumerate() {
+        assert!(*w < TOLERANCE, "{}: {w} rad", arm::JOINTS[i]);
+    }
 }
 
 #[test]
@@ -593,6 +718,155 @@ fn reset_resumes_from_last_check() {
     );
 }
 
+/// The factory time `ahead` seconds after the sample's stage `stage`
+/// reaches `phase`.
+fn when(stage: usize, phase: Phase, ahead: f64) -> f64 {
+    let mut probe = Assembly::sample();
+    probe.approve();
+    while probe
+        .run
+        .as_ref()
+        .is_none_or(|r| r.stage != stage || r.phase != phase)
+    {
+        probe.step();
+        assert!(!probe.finished(), "{}", probe.caption());
+    }
+    probe.factory.time() + ahead
+}
+
+/// Run a solar event from `warning` to `clear`; returns the assembly at
+/// the all clear and when the factory was quiet.
+fn quiet_through(warning: f64, clear: f64) -> (Assembly, f64) {
+    use crate::assembly::QUIET_WITHIN;
+    let mut a = Assembly::sample();
+    a.faults.solar_events = vec![(warning, clear)];
+    a.approve();
+    let mut quiet_at = None;
+    while a.factory.time() < clear - 1.0 {
+        a.step();
+        assert!(a.factory.all_restrained(), "nothing floats free");
+        let f = &a.factory;
+        let parked = a.arms_idle()
+            && f.arms.iter().enumerate().all(|(i, arm)| {
+                let q = f.measured(i);
+                (0..5).all(|j| (q[j] - arm.home[j]).abs() < 0.01)
+            });
+        let secured = f
+            .parts
+            .iter()
+            .all(|p| matches!(p.holder, Holder::Rack(_) | Holder::Latched(_)));
+        let holding = a.status == Status::Holding("solar particle event".into());
+        let quiet = parked && secured && holding;
+        if quiet && quiet_at.is_none() {
+            quiet_at = Some(f.time());
+        }
+        // Once quiet, it stays quiet until the all clear.
+        if quiet_at.is_some() {
+            assert!(quiet, "{} at {:.0} s", a.caption(), f.time());
+        }
+    }
+    let quiet_at = quiet_at.expect("the factory went quiet");
+    eprintln!(
+        "warning at {warning:.0} s; quiet {:.0} s later",
+        quiet_at - warning
+    );
+    assert!(quiet_at - warning <= QUIET_WITHIN, "{}", quiet_at - warning);
+    // No stage was simulated or started during the event.
+    assert!(
+        !a.events
+            .iter()
+            .any(|e| e.time > warning && e.text.starts_with("simulated"))
+    );
+    (a, quiet_at)
+}
+
+#[test]
+fn solar_event_quiet_hold() {
+    // A warning while arm 1 carries the aft keel: it latches the keel
+    // first (a part in a grapple is not yet secured), then parks.
+    let carrying = when(0, Phase::Transfer, 10.0);
+    let (a, _) = quiet_through(carrying, carrying + 1_800.0);
+    assert!(
+        a.events
+            .iter()
+            .any(|e| e.text.contains("latching keel-aft first"))
+    );
+    assert!(matches!(a.factory.parts[0].holder, Holder::Latched(_)));
+    // After the all clear the next stage is simulated and the work goes
+    // on, every check passing.
+    let a = run_stages(a, 2);
+    assert_eq!(a.passed, 2, "{}", a.caption());
+    assert!(a.events.iter().any(|e| e.text.contains("all clear")));
+
+    // A warning while an arm reaches for a part: it stops before the
+    // grasp, backs off, and parks; the part stays on its rack.
+    let reaching = when(1, Phase::Descend, 5.0);
+    let (a, _) = quiet_through(reaching, reaching + 1_200.0);
+    assert!(
+        a.events
+            .iter()
+            .any(|e| e.text.contains("stopping before the grasp"))
+    );
+    assert!(matches!(a.factory.parts[1].holder, Holder::Rack(_)));
+    assert_eq!(a.passed, 1);
+    let a = run_stages(a, 2);
+    assert_eq!(a.passed, 2, "{}", a.caption());
+}
+
+#[test]
+fn debris_avoidance_hold() {
+    use crate::assembly::POSE_TOLERANCE;
+    // The ground asks for a 5 cm/s avoidance burn while arm 2 carries the
+    // forward keel.
+    let request = when(1, Phase::Transfer, 10.0);
+    let dv = DVec3::new(0.0, 0.03, 0.04);
+    let mut a = Assembly::sample();
+    a.faults.avoidance = vec![(request, dv)];
+    a.approve();
+    let end = 4.0 * 3600.0;
+    while !a.finished() && a.passed < 3 && a.factory.time() < end {
+        a.step();
+        assert!(a.factory.all_restrained(), "nothing floats free");
+        if a.avoidance.is_some() {
+            // No stage moves during the burn, and the latched work does
+            // not shift on its latches.
+            assert!(a.run.is_none());
+            for i in 0..a.factory.parts.len() {
+                if matches!(a.factory.parts[i].holder, Holder::Latched(_)) {
+                    let (position, angle) = a.factory.placement_error(i);
+                    assert!(
+                        position < POSE_TOLERANCE.0 && angle < POSE_TOLERANCE.1,
+                        "{i}: {position} {angle}"
+                    );
+                    assert!(!a.factory.latch_joint(i).unwrap().saturated);
+                }
+            }
+        }
+    }
+    assert_eq!(a.passed, 3, "{}", a.caption());
+    assert_eq!(a.avoidances.len(), 1);
+    let flown = &a.avoidances[0];
+    // It waited for the stage under way to finish: the next hold point.
+    let checked = a
+        .events
+        .iter()
+        .find(|e| e.text == "keel-fwd checked")
+        .unwrap()
+        .time;
+    assert!(flown.started >= checked && flown.started > request);
+    eprintln!(
+        "requested at {request:.0} s, flown at {:.0} s: {:.4} m/s",
+        flown.started,
+        flown.achieved.length()
+    );
+    // The whole factory's center of mass changed velocity as asked.
+    assert!(
+        (flown.achieved - dv).length() < 0.01 * dv.length(),
+        "{} vs {dv}",
+        flown.achieved
+    );
+}
+
 #[test]
 fn cmg_saturation_is_a_named_failure() {
     let mut a = Assembly::sample();
@@ -659,6 +933,55 @@ fn assembly_replays_bit_for_bit() {
 }
 
 #[test]
+fn assembly_is_frame_rate_independent() {
+    // The zone's pacing: frame time at 8x through the frame clock, at 30,
+    // 60, and 144 frames a second, for ten real seconds and more (80
+    // factory seconds, into the first stage's act after its simulation).
+    let paced = |fps: f64| {
+        let mut a = Assembly::sample();
+        a.approve();
+        let mut clock = crate::assembly::frame_clock();
+        let mut steps = 0u64;
+        while steps < 2_400 {
+            for _ in 0..clock.advance(8.0 / fps) {
+                a.step();
+                steps += 1;
+            }
+        }
+        (a, steps)
+    };
+    let exact = |steps: u64| {
+        let mut a = Assembly::sample();
+        a.approve();
+        for _ in 0..steps {
+            a.step();
+        }
+        a
+    };
+    for fps in [30.0, 60.0, 144.0] {
+        let (a, steps) = paced(fps);
+        // 144 fps frames are 1.67 steps long: the run ends on or just past
+        // 2,400 steps; every rate matches stepping that count exactly.
+        assert!((2_400..2_402).contains(&steps), "{fps}: {steps}");
+        assert_eq!(a, exact(steps), "{fps} fps");
+        assert!(
+            a.events
+                .iter()
+                .any(|e| e.text.starts_with("simulated keel-aft"))
+        );
+    }
+    let (at30, _) = paced(30.0);
+    let (at60, _) = paced(60.0);
+    assert_eq!(at30, at60);
+    // A long frame (a stalled tab) runs at most its cap and counts the
+    // rest as dropped, rather than freezing the page to catch up.
+    let mut clock = crate::assembly::frame_clock();
+    let steps = clock.advance(10.0 * 64.0);
+    assert_eq!(steps, crate::assembly::MAX_FRAME_STEPS);
+    assert!((clock.dropped - (640.0 - f64::from(steps) * factory::DT)).abs() < 1e-6);
+}
+
+#[test]
 fn the_plan_is_a_typed_document() {
     let f = Factory::sample();
     let plan = Plan::new(&f).unwrap();
@@ -716,6 +1039,73 @@ fn the_gimbal_tracks_the_center_of_mass() {
         frozen.step();
     }
     assert!(frozen.peak_rate > 2.0 * burn.peak_rate);
+}
+
+#[test]
+fn the_burn_rings_the_truss() {
+    use crate::burn::KEEL_DAMPING;
+    let ship = Spacecraft::sample();
+    let report = ship.report();
+    let mut burn = Burn::new(ship.clone(), 150.0);
+    let keel = burn.keel.clone().expect("the tug has a keel joint");
+    assert_eq!(keel.joint, "keel-fwd");
+    // The static load is the keel joint's latch load at ignition: the
+    // forward half pushed at the burn's acceleration.
+    let latch = report
+        .latch_loads
+        .iter()
+        .find(|l| l.part == "keel-fwd")
+        .unwrap();
+    let f = keel.mode.frequency;
+    eprintln!(
+        "keel axial mode {f:.1} Hz, static load {:.1} kN",
+        latch.force_n / 1e3
+    );
+    assert!((5.0..60.0).contains(&f), "{f}");
+    // A step thrust overshoots to 1 + e^(-zeta pi / sqrt(1 - zeta^2)) of
+    // the static load in the first half period.
+    for _ in 0..30 {
+        burn.step();
+    }
+    let zeta = KEEL_DAMPING;
+    let overshoot = 1.0 + (-zeta * std::f64::consts::PI / (1.0 - zeta * zeta).sqrt()).exp();
+    let peak = burn.keel.as_ref().unwrap().peak_load;
+    eprintln!(
+        "ignition peak {:.1} kN, {:.3} x static",
+        peak / 1e3,
+        peak / latch.force_n
+    );
+    assert!(
+        ((peak / latch.force_n) - overshoot).abs() < 0.005 * overshoot,
+        "{} vs {overshoot}",
+        peak / latch.force_n
+    );
+    // At cutoff the keel springs back and rings down at its damping:
+    // the amplitude falls as e^(-zeta omega t) (within 1%: the energy
+    // measure wobbles by about zeta within a period).
+    while burn.firing {
+        burn.step();
+    }
+    burn.step();
+    let a0 = burn.keel.as_ref().unwrap().amplitude(0.0);
+    assert!(a0 > 0.0, "the cutoff rings the keel");
+    let w = burn.keel.as_ref().unwrap().mode.omega();
+    for _ in 0..60 {
+        burn.step();
+    }
+    let a1 = burn.keel.as_ref().unwrap().amplitude(0.0);
+    let expected = (-zeta * w * 60.0 * crate::burn::DT).exp();
+    assert!(
+        ((a1 / a0) - expected).abs() < 0.01 * expected,
+        "{} vs {expected}",
+        a1 / a0
+    );
+    // The check: the dynamic peak stays inside the keel joint's latch
+    // rating, which the static check alone would not show.
+    let peak = burn.keel.as_ref().unwrap().peak_load;
+    let rating = ship.part("keel-fwd").unwrap().attach.rated_force_n;
+    assert!(peak < rating, "{peak} N against {rating} N");
+    assert!(peak > 1.9 * latch.force_n);
 }
 
 #[test]

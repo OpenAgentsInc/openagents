@@ -1,0 +1,535 @@
+{
+  "kind": "cad-mass-feed.v1",
+  "source": {
+    "doc": "lagrange-tug",
+    "version": 1,
+    "digest": "cc71199f423725708f7e460d2deaa035d36e83ea9da4db9e0607ca1194b304ed"
+  },
+  "total": {
+    "mass_kg": 54430.509999999995,
+    "center_of_mass_m": [
+      4.31526730137197,
+      -0.20476429304079655,
+      0.0007122251840006645
+    ],
+    "inertia_kg_m2": [
+      [
+        402551.63390201953,
+        41942.64916913917,
+        477.42325811142604
+      ],
+      [
+        41942.64916913917,
+        12561475.127435895,
+        -5.941318880164153
+      ],
+      [
+        477.42325811142604,
+        -5.941318880164153,
+        12754983.631797502
+      ]
+    ]
+  },
+  "parts": [
+    {
+      "id": "keel-aft",
+      "part": "keel",
+      "title": "Keel truss",
+      "material": "Aluminum",
+      "mass_kg": 7000.3,
+      "center_of_mass_m": [
+        -8.0,
+        0.0,
+        0.0
+      ],
+      "inertia_kg_m2": [
+        [
+          13251.5,
+          2.16e-11,
+          0.0
+        ],
+        [
+          2.16e-11,
+          155966.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          155966.0
+        ]
+      ],
+      "ports": [
+        {
+          "joint": "keel-joint",
+          "kind": "fastened",
+          "mate": "keel-fwd",
+          "parent": true,
+          "origin_m": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "axis": [
+            1.0,
+            0.0,
+            0.0
+          ],
+          "values": [],
+          "limits": []
+        },
+        {
+          "joint": "engine-mount",
+          "kind": "fastened",
+          "mate": "engine",
+          "parent": true,
+          "origin_m": [
+            -16.0,
+            0.0,
+            0.0
+          ],
+          "axis": [
+            1.0,
+            0.0,
+            0.0
+          ],
+          "values": [],
+          "limits": []
+        },
+        {
+          "joint": "tank-port-latch",
+          "kind": "fastened",
+          "mate": "tank-port",
+          "parent": true,
+          "origin_m": [
+            -8.0,
+            1.2,
+            0.0
+          ],
+          "axis": [
+            0.0,
+            1.0,
+            0.0
+          ],
+          "values": [],
+          "limits": []
+        },
+        {
+          "joint": "tank-starboard-latch",
+          "kind": "fastened",
+          "mate": "tank-starboard",
+          "parent": true,
+          "origin_m": [
+            -8.0,
+            -1.2,
+            0.0
+          ],
+          "axis": [
+            0.0,
+            -1.0,
+            0.0
+          ],
+          "values": [],
+          "limits": []
+        }
+      ]
+    },
+    {
+      "id": "keel-fwd",
+      "part": "keel",
+      "title": "Keel truss",
+      "material": "Aluminum",
+      "mass_kg": 7000.3,
+      "center_of_mass_m": [
+        8.0,
+        0.0,
+        0.0
+      ],
+      "inertia_kg_m2": [
+        [
+          13251.5,
+          -2.16e-11,
+          0.0
+        ],
+        [
+          -2.16e-11,
+          155966.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          155966.0
+        ]
+      ],
+      "ports": [
+        {
+          "joint": "keel-joint",
+          "kind": "fastened",
+          "mate": "keel-aft",
+          "parent": false,
+          "origin_m": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "axis": [
+            1.0,
+            0.0,
+            0.0
+          ],
+          "values": [],
+          "limits": []
+        },
+        {
+          "joint": "habitat-latch",
+          "kind": "fastened",
+          "mate": "habitat",
+          "parent": true,
+          "origin_m": [
+            16.0,
+            0.0,
+            0.0
+          ],
+          "axis": [
+            1.0,
+            0.0,
+            0.0
+          ],
+          "values": [],
+          "limits": []
+        },
+        {
+          "joint": "power-latch",
+          "kind": "fastened",
+          "mate": "power",
+          "parent": true,
+          "origin_m": [
+            8.0,
+            -1.2,
+            0.0
+          ],
+          "axis": [
+            0.0,
+            -1.0,
+            0.0
+          ],
+          "values": [],
+          "limits": []
+        },
+        {
+          "joint": "radiator-latch",
+          "kind": "fastened",
+          "mate": "radiator",
+          "parent": true,
+          "origin_m": [
+            8.0,
+            1.2,
+            0.0
+          ],
+          "axis": [
+            0.0,
+            1.0,
+            0.0
+          ],
+          "values": [],
+          "limits": []
+        }
+      ]
+    },
+    {
+      "id": "engine",
+      "part": "engine",
+      "title": "Main engine",
+      "material": "Steel",
+      "mass_kg": 8987.64,
+      "center_of_mass_m": [
+        -19.0,
+        -0.0,
+        0.0
+      ],
+      "inertia_kg_m2": [
+        [
+          43158.9,
+          3.93319e-9,
+          -3.42504e-9
+        ],
+        [
+          3.93319e-9,
+          48542.7,
+          -1.21282
+        ],
+        [
+          -3.42504e-9,
+          -1.21282,
+          48543.5
+        ]
+      ],
+      "ports": [
+        {
+          "joint": "engine-mount",
+          "kind": "fastened",
+          "mate": "keel-aft",
+          "parent": false,
+          "origin_m": [
+            -16.0,
+            0.0,
+            0.0
+          ],
+          "axis": [
+            1.0,
+            0.0,
+            0.0
+          ],
+          "values": [],
+          "limits": []
+        }
+      ]
+    },
+    {
+      "id": "tank-port",
+      "part": "tank",
+      "title": "Propellant tank",
+      "material": "Aluminum",
+      "mass_kg": 2485.05,
+      "center_of_mass_m": [
+        -8.0,
+        4.411,
+        0.0078
+      ],
+      "inertia_kg_m2": [
+        [
+          9846.54,
+          5.67188e-9,
+          -3.4821e-11
+        ],
+        [
+          5.67188e-9,
+          25652.2,
+          0.890174
+        ],
+        [
+          -3.4821e-11,
+          0.890174,
+          25651.6
+        ]
+      ],
+      "ports": [
+        {
+          "joint": "tank-port-latch",
+          "kind": "fastened",
+          "mate": "keel-aft",
+          "parent": false,
+          "origin_m": [
+            -8.0,
+            1.2,
+            0.0
+          ],
+          "axis": [
+            0.0,
+            1.0,
+            0.0
+          ],
+          "values": [],
+          "limits": []
+        }
+      ]
+    },
+    {
+      "id": "tank-starboard",
+      "part": "tank",
+      "title": "Propellant tank",
+      "material": "Aluminum",
+      "mass_kg": 2485.05,
+      "center_of_mass_m": [
+        -8.0,
+        -4.389,
+        0.0078
+      ],
+      "inertia_kg_m2": [
+        [
+          9846.54,
+          -3e-9,
+          4.4861e-11
+        ],
+        [
+          -3e-9,
+          25652.2,
+          0.890174
+        ],
+        [
+          4.4861e-11,
+          0.890174,
+          25651.6
+        ]
+      ],
+      "ports": [
+        {
+          "joint": "tank-starboard-latch",
+          "kind": "fastened",
+          "mate": "keel-aft",
+          "parent": false,
+          "origin_m": [
+            -8.0,
+            -1.2,
+            0.0
+          ],
+          "axis": [
+            0.0,
+            -1.0,
+            0.0
+          ],
+          "values": [],
+          "limits": []
+        }
+      ]
+    },
+    {
+      "id": "habitat",
+      "part": "habitat",
+      "title": "Habitat",
+      "material": "Aluminum",
+      "mass_kg": 17971.6,
+      "center_of_mass_m": [
+        21.0,
+        -0.0,
+        0.0
+      ],
+      "inertia_kg_m2": [
+        [
+          110236.0,
+          -1.00137e-9,
+          1.379e-9
+        ],
+        [
+          -1.00137e-9,
+          204874.0,
+          1.85564
+        ],
+        [
+          1.379e-9,
+          1.85564,
+          204872.0
+        ]
+      ],
+      "ports": [
+        {
+          "joint": "habitat-latch",
+          "kind": "fastened",
+          "mate": "keel-fwd",
+          "parent": false,
+          "origin_m": [
+            16.0,
+            0.0,
+            0.0
+          ],
+          "axis": [
+            1.0,
+            0.0,
+            0.0
+          ],
+          "values": [],
+          "limits": []
+        }
+      ]
+    },
+    {
+      "id": "power",
+      "part": "power",
+      "title": "Power box",
+      "material": "Aluminum",
+      "mass_kg": 6000.3,
+      "center_of_mass_m": [
+        8.0,
+        -3.2,
+        -0.0
+      ],
+      "inertia_kg_m2": [
+        [
+          17630.5,
+          3.125e-10,
+          -2.0081e-11
+        ],
+        [
+          3.125e-10,
+          22531.0,
+          3.712e-12
+        ],
+        [
+          -2.0081e-11,
+          3.712e-12,
+          31101.3
+        ]
+      ],
+      "ports": [
+        {
+          "joint": "power-latch",
+          "kind": "fastened",
+          "mate": "keel-fwd",
+          "parent": false,
+          "origin_m": [
+            8.0,
+            -1.2,
+            0.0
+          ],
+          "axis": [
+            0.0,
+            -1.0,
+            0.0
+          ],
+          "values": [],
+          "limits": []
+        }
+      ]
+    },
+    {
+      "id": "radiator",
+      "part": "radiator",
+      "title": "Radiator",
+      "material": "Aluminum",
+      "mass_kg": 2500.27,
+      "center_of_mass_m": [
+        8.0,
+        3.2,
+        0.0
+      ],
+      "inertia_kg_m2": [
+        [
+          4344.49,
+          2.26563e-10,
+          1.255e-12
+        ],
+        [
+          2.26563e-10,
+          7695.31,
+          2.32e-13
+        ],
+        [
+          1.255e-12,
+          2.32e-13,
+          11650.8
+        ]
+      ],
+      "ports": [
+        {
+          "joint": "radiator-latch",
+          "kind": "fastened",
+          "mate": "keel-fwd",
+          "parent": false,
+          "origin_m": [
+            8.0,
+            1.2,
+            0.0
+          ],
+          "axis": [
+            0.0,
+            1.0,
+            0.0
+          ],
+          "values": [],
+          "limits": []
+        }
+      ]
+    }
+  ]
+}

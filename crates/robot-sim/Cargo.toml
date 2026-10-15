@@ -10,6 +10,10 @@ description = "Bounded Robot Lab experiments with an optional native MuJoCo back
 name = "so101_run"
 required-features = ["mujoco"]
 
+[[example]]
+name = "lagrange2_arm_oracle"
+required-features = ["mujoco"]
+
 [features]
 default = []
 mujoco = ["dep:libloading", "dep:roxmltree"]
@@ -30,6 +34,8 @@ roxmltree = { version = "0.21.1", optional = true }
 [dev-dependencies]
 tempfile = "3"
 oa-copy = { path = "../oa-copy" }
+# The Lagrange 2 arm's MuJoCo reference (examples/lagrange2_arm_oracle.rs).
+verse-lagrange2 = { path = "../verse-lagrange2" }
 
 [lints]
 workspace = true

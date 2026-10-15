@@ -47,6 +47,30 @@ pub const PROOF_LOAD: f64 = 5_000.0;
 pub const POSE_TOLERANCE: (f64, f64) = (0.005, 0.0035);
 /// Prediction steps per real step while a stage is being simulated.
 pub const PREDICT_RATE: usize = 8;
+/// After a solar particle event warning, every arm is parked and every
+/// part secured (on its rack or latched, none in a grapple) within this
+/// long, s. Proton warnings come tens of minutes to hours ahead of the
+/// particles (docs/spacecraft-design/autonomy-and-environment.md); 15
+/// minutes is this factory's requirement, set to cover the longest
+/// grasp-to-park remainder of a stage.
+pub const QUIET_WITHIN: f64 = 900.0;
+/// The factory's thrust for a collision-avoidance burn, N: about 1 cm/s
+/// per 10 s on its 950 t.
+pub const AVOIDANCE_THRUST: f64 = 10_000.0;
+/// Coast after an avoidance burn before the latched work is checked, s.
+pub const AVOIDANCE_SETTLE: f64 = 10.0;
+/// The most factory steps one rendered frame runs; time beyond them is
+/// dropped and counted, and the factory slows.
+pub const MAX_FRAME_STEPS: u32 = 240;
+
+/// The clock a host paces the factory with: frame time times the factory's
+/// speed-up becomes whole [`DT`] steps, the remainder carried to the next
+/// frame, so the assembly depends only on how much time passed, never on
+/// the frame rate.
+#[must_use]
+pub fn frame_clock() -> physics::FixedStep {
+    physics::FixedStep::new(DT, MAX_FRAME_STEPS)
+}
 
 /// One stage of the plan.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -147,6 +171,15 @@ pub struct Faults {
     pub link_loss: Vec<(f64, f64)>,
     /// Controller resets: (arm, time).
     pub resets: Vec<(usize, f64)>,
+    /// Solar particle event warnings: (warning, all clear), s of factory
+    /// time. Not faults of the robot, but events the real factory meets
+    /// and the prediction never sees.
+    #[serde(default)]
+    pub solar_events: Vec<(f64, f64)>,
+    /// Collision-avoidance burn requests from the ground: (time, velocity
+    /// change in the factory frame, m/s).
+    #[serde(default)]
+    pub avoidance: Vec<(f64, DVec3)>,
 }
 
 impl Faults {
@@ -171,6 +204,9 @@ pub enum Phase {
     Proof,
     Retreat,
     Home,
+    /// Back up off the rack before parking, when a stage is stopped
+    /// before its grasp.
+    Abort,
     Done,
 }
 
@@ -191,6 +227,7 @@ impl Phase {
             Self::Proof => "proof load",
             Self::Retreat => "retreating",
             Self::Home => "parking",
+            Self::Abort => "backing off the rack",
             Self::Done => "done",
         }
     }
@@ -225,6 +262,10 @@ pub struct StageRun {
     pub waypoints: Waypoints,
     proof_start: DVec3,
     ticks: u64,
+    /// Stopped before its grasp: the arm parks and the part stays on its
+    /// rack; the stage runs again later.
+    #[serde(default)]
+    pub aborted: bool,
 }
 
 /// Something worth telling the ground.
@@ -294,6 +335,47 @@ pub struct Assembly {
     pub cmg_peak: f64,
     /// Prediction steps per real step while a stage is being simulated.
     pub predict_rate: usize,
+    /// The all-clear time of the solar particle event under way, s.
+    #[serde(default)]
+    pub quiet_until: Option<f64>,
+    /// A collision-avoidance velocity change waiting for the next hold
+    /// point, factory frame, m/s.
+    #[serde(default)]
+    pub avoidance_pending: Option<DVec3>,
+    /// The avoidance burn under way.
+    #[serde(default)]
+    pub avoidance: Option<AvoidanceBurn>,
+    /// Avoidance burns flown.
+    #[serde(default)]
+    pub avoidances: Vec<AvoidanceRecord>,
+}
+
+/// A collision-avoidance burn under way: the factory's thrusters push the
+/// deck, and the arms, racks, and latched work ride along on their joints.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AvoidanceBurn {
+    /// Requested velocity change, factory frame, m/s.
+    pub dv: DVec3,
+    /// Impulse still to deliver, N s.
+    pub impulse_left: f64,
+    pub started: f64,
+    /// The system's velocity when the burn started, world frame.
+    pub start_velocity: DVec3,
+    /// When the coast after the burn ends and the check runs.
+    pub settle_until: Option<f64>,
+    /// What the sequencer was doing when the burn started.
+    pub before: Status,
+}
+
+/// One flown avoidance burn.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AvoidanceRecord {
+    pub started: f64,
+    pub finished: f64,
+    /// Requested and achieved velocity change of the whole factory's
+    /// center of mass, factory frame, m/s.
+    pub requested: DVec3,
+    pub achieved: DVec3,
 }
 
 impl Plan {
@@ -385,7 +467,28 @@ impl StageRun {
             waypoints: waypoints(factory, part)?,
             proof_start: DVec3::ZERO,
             ticks: 0,
+            aborted: false,
         })
+    }
+
+    /// Whether the stage can still stop without moving its part: the arm
+    /// has not closed on it.
+    #[must_use]
+    pub fn before_grasp(&self) -> bool {
+        matches!(self.phase, Phase::ToRack | Phase::Descend)
+            || (self.phase == Phase::Grasp && !self.started)
+    }
+
+    /// Stop before the grasp: back up off the rack if the arm is on its way
+    /// down, then park.
+    pub fn abort(&mut self, f: &Factory) {
+        self.aborted = true;
+        let next = if self.phase == Phase::ToRack {
+            Phase::Home
+        } else {
+            Phase::Abort
+        };
+        self.next(f, next);
     }
 
     fn name(&self, f: &Factory) -> String {
@@ -410,6 +513,7 @@ impl StageRun {
             Phase::StepBack | Phase::Retreat => (w.above_target, 1.0),
             Phase::Insert => (w.at_target, 0.3),
             Phase::Home => (w.home, 1.0),
+            Phase::Abort => (w.above_rack, 0.6),
             _ => return None,
         })
     }
@@ -490,7 +594,7 @@ impl StageRun {
                 Phase::Lower => Phase::Insert,
                 Phase::Insert => Phase::Latch,
                 Phase::StepBack => Phase::Insert,
-                Phase::Retreat => Phase::Home,
+                Phase::Retreat | Phase::Abort => Phase::Home,
                 _ => Phase::Done,
             };
             self.next(f, next);
@@ -679,6 +783,10 @@ impl Assembly {
             passed: 0,
             cmg_peak: 0.0,
             predict_rate: PREDICT_RATE,
+            quiet_until: None,
+            avoidance_pending: None,
+            avoidance: None,
+            avoidances: Vec::new(),
         }
     }
 
@@ -735,19 +843,243 @@ impl Assembly {
         for arm in resets {
             self.factory.reset_controller(arm);
         }
+        let fresh = |at: f64| at > t - DT / 2.0 && at <= t + DT / 2.0;
+        let warnings: Vec<f64> = self
+            .faults
+            .solar_events
+            .iter()
+            .filter(|&&(warning, _)| fresh(warning))
+            .map(|&(_, clear)| clear)
+            .collect();
+        for clear in warnings {
+            self.solar_warning(clear);
+        }
+        let requests: Vec<DVec3> = self
+            .faults
+            .avoidance
+            .iter()
+            .filter(|&&(at, _)| fresh(at))
+            .map(|&(_, dv)| dv)
+            .collect();
+        for dv in requests {
+            self.say(
+                None,
+                format!(
+                    "collision-avoidance burn of {:.2} m/s requested; waiting for the next hold point",
+                    dv.length()
+                ),
+            );
+            self.avoidance_pending = Some(self.avoidance_pending.unwrap_or(DVec3::ZERO) + dv);
+        }
+        if self.avoidance.is_some() {
+            self.avoid();
+        } else if self.avoidance_pending.is_some() && self.at_hold_point() {
+            self.start_avoidance();
+        }
         match self.status.clone() {
             Status::Predicting => self.predict(),
-            Status::Holding(_) => {
-                if self.faults.link_up(t) {
-                    self.say(None, "ground link back; resuming".into());
-                    self.status = Status::Predicting;
-                }
-            }
+            Status::Holding(why) => self.resume_if_clear(&why),
             Status::Acting => self.act(),
             _ => {}
         }
         self.factory.step();
         self.cmg_peak = self.cmg_peak.max(self.factory.cmg.h.length());
+    }
+
+    /// Why no new stage may start now, if anything stops it.
+    #[must_use]
+    pub fn hold_reason(&self) -> Option<String> {
+        let t = self.factory.time();
+        if self.avoidance.is_some() || self.avoidance_pending.is_some() {
+            Some("collision-avoidance burn".into())
+        } else if self.quiet_until.is_some_and(|clear| t < clear) {
+            Some("solar particle event".into())
+        } else if !self.faults.link_up(t) {
+            Some("ground link lost".into())
+        } else {
+            None
+        }
+    }
+
+    /// Whether every arm has finished its last move.
+    #[must_use]
+    pub fn arms_idle(&self) -> bool {
+        let t = self.factory.time();
+        self.factory
+            .arms
+            .iter()
+            .all(|a| a.motion.is_none_or(|m| m.done(t)))
+    }
+
+    /// A hold point: no stage is moving the real factory and every arm is
+    /// still.
+    fn at_hold_point(&self) -> bool {
+        self.run.is_none()
+            && self.arms_idle()
+            && matches!(
+                self.status,
+                Status::AwaitingApproval
+                    | Status::Predicting
+                    | Status::Holding(_)
+                    | Status::Complete
+            )
+    }
+
+    fn resume_if_clear(&mut self, why: &str) {
+        if self.avoidance.is_some() || !self.arms_idle() {
+            return;
+        }
+        match self.hold_reason() {
+            None => {
+                let text = match why {
+                    "ground link lost" => "ground link back; resuming".to_owned(),
+                    "solar particle event" => "solar event all clear; resuming".to_owned(),
+                    other => format!("{other} over; resuming"),
+                };
+                self.say(None, text);
+                self.quiet_until = None;
+                self.status = Status::Predicting;
+            }
+            Some(reason) if reason != why => self.status = Status::Holding(reason),
+            Some(_) => {}
+        }
+    }
+
+    /// A solar particle event warning: go quiet. No new stage starts; a
+    /// stage that has not grasped its part stops and its arm parks; a part
+    /// already in an arm is latched and released, as the stage's shortest
+    /// way to a secured state, and that arm then parks.
+    fn solar_warning(&mut self, clear: f64) {
+        self.quiet_until = Some(self.quiet_until.map_or(clear, |c| c.max(clear)));
+        let hold = Status::Holding("solar particle event".into());
+        match self.status {
+            Status::Predicting => {
+                self.predicting = None;
+                self.say(
+                    Some(self.stage),
+                    "solar particle event warning: holding; the arms are parked".into(),
+                );
+                self.status = hold;
+            }
+            Status::Acting => {
+                let factory = &self.factory;
+                let Some(run) = self.run.as_mut() else {
+                    return;
+                };
+                if run.before_grasp() {
+                    run.abort(factory);
+                    let part = self.plan.stages[self.stage].part.clone();
+                    self.say(
+                        Some(self.stage),
+                        format!(
+                            "solar particle event warning: stopping before the grasp; {part} stays on its rack and the arm parks"
+                        ),
+                    );
+                } else {
+                    let part = self.plan.stages[self.stage].part.clone();
+                    self.say(
+                        Some(self.stage),
+                        format!(
+                            "solar particle event warning: latching {part} first, then parking"
+                        ),
+                    );
+                }
+            }
+            Status::Holding(_) => {
+                self.say(None, "solar particle event warning: holding".into());
+                self.status = hold;
+            }
+            _ => {}
+        }
+    }
+
+    fn start_avoidance(&mut self) {
+        let Some(dv) = self.avoidance_pending else {
+            return;
+        };
+        self.predicting = None;
+        let system = self.factory.system();
+        self.say(
+            None,
+            format!(
+                "hold point: flying the {:.2} m/s avoidance burn",
+                dv.length()
+            ),
+        );
+        self.avoidance = Some(AvoidanceBurn {
+            dv,
+            impulse_left: system.mass * dv.length(),
+            started: self.factory.time(),
+            start_velocity: system.vel,
+            settle_until: None,
+            before: self.status.clone(),
+        });
+        self.status = Status::Holding("collision-avoidance burn".into());
+    }
+
+    /// Thrust on the deck until the impulse is delivered, coast, then check
+    /// that the latched work did not move.
+    fn avoid(&mut self) {
+        let t = self.factory.time();
+        let Some(burn) = self.avoidance.as_mut() else {
+            return;
+        };
+        if burn.impulse_left > 0.0 {
+            let force = AVOIDANCE_THRUST.min(burn.impulse_left / DT);
+            burn.impulse_left -= force * DT;
+            let deck = self.factory.body;
+            let direction = self.factory.world[deck].orientation * burn.dv.normalize_or_zero();
+            self.factory.world[deck].apply_force(direction * force);
+            if burn.impulse_left <= 1e-9 {
+                burn.impulse_left = 0.0;
+                burn.settle_until = Some(t + AVOIDANCE_SETTLE);
+            }
+            return;
+        }
+        if burn.settle_until.is_some_and(|end| t < end) {
+            return;
+        }
+        let burn = self.avoidance.take().unwrap_or_else(|| unreachable!());
+        self.avoidance_pending = None;
+        // The latched work rode the burn on its latches.
+        for i in 0..self.factory.parts.len() {
+            if !matches!(self.factory.parts[i].holder, Holder::Latched(_)) {
+                continue;
+            }
+            let (position, angle) = self.factory.placement_error(i);
+            let saturated = self.factory.latch_joint(i).is_none_or(|j| j.saturated);
+            if position > POSE_TOLERANCE.0 || angle > POSE_TOLERANCE.1 || saturated {
+                let part = self.factory.ship.parts[self.factory.parts[i].index]
+                    .id
+                    .clone();
+                self.make_safe(Failure::CheckFailed {
+                    part,
+                    detail: format!("moved {:.1} mm in the avoidance burn", position * 1e3),
+                });
+                return;
+            }
+        }
+        let system = self.factory.system();
+        let achieved = self.factory.world[self.factory.body].orientation.inverse()
+            * (system.vel - burn.start_velocity);
+        self.avoidances.push(AvoidanceRecord {
+            started: burn.started,
+            finished: t,
+            requested: burn.dv,
+            achieved,
+        });
+        self.say(
+            None,
+            format!(
+                "avoidance burn done: {:.3} m/s; latched work held",
+                achieved.length()
+            ),
+        );
+        self.status = match burn.before {
+            Status::Complete => Status::Complete,
+            Status::AwaitingApproval => Status::AwaitingApproval,
+            _ => Status::Holding("collision-avoidance burn".into()),
+        };
     }
 
     fn predict(&mut self) {
@@ -758,13 +1090,14 @@ impl Assembly {
         }
         let t = self.factory.time();
         if self.predicting.is_none() {
-            // A hold point: no stage starts without the ground.
-            if !self.faults.link_up(t) {
+            // A hold point: no stage starts without the ground, during a
+            // solar event, or with an avoidance burn to fly.
+            if let Some(reason) = self.hold_reason() {
                 self.say(
                     Some(self.stage),
-                    "ground link lost; holding before the next stage".into(),
+                    format!("{reason}; holding before the next stage"),
                 );
-                self.status = Status::Holding("ground link lost".into());
+                self.status = Status::Holding(reason);
                 return;
             }
             let part = self.stage;
@@ -812,12 +1145,12 @@ impl Assembly {
                     };
                     self.prediction = Some(prediction);
                     self.predicting = None;
-                    if !self.faults.link_up(self.factory.time()) {
+                    if let Some(reason) = self.hold_reason() {
                         self.say(
                             Some(self.stage),
-                            "ground link lost; holding before the next stage".into(),
+                            format!("{reason}; holding before the next stage"),
                         );
-                        self.status = Status::Holding("ground link lost".into());
+                        self.status = Status::Holding(reason);
                         return;
                     }
                     let stage = self.stage;
@@ -863,6 +1196,16 @@ impl Assembly {
         self.events.append(&mut events);
         match result {
             Ok(false) => {}
+            Ok(true) if run.aborted => {
+                // Parked with the part still on its rack: hold, and run the
+                // stage again from its simulation once clear.
+                self.run = None;
+                let reason = self
+                    .hold_reason()
+                    .unwrap_or_else(|| "solar particle event".into());
+                self.say(Some(self.stage), format!("parked; holding: {reason}"));
+                self.status = Status::Holding(reason);
+            }
             Ok(true) => match self.check() {
                 Ok(()) => {
                     let part = self.plan.stages[self.stage].part.clone();

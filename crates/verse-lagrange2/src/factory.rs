@@ -175,7 +175,8 @@ pub struct Factory {
 }
 
 const LINK_NAMES: [&str; 5] = ["turret", "upper arm", "forearm", "wrist", "tool"];
-const LINK_MASS_WIDTH: f64 = 0.9;
+/// Width of the arm links' mass boxes, m.
+pub const LINK_MASS_WIDTH: f64 = 0.9;
 
 impl Factory {
     /// The factory with `ship`'s parts on its racks. Parts go to the arm
@@ -278,7 +279,12 @@ impl Factory {
                 .unwrap_or(0.0);
             let orientation = DQuat::from_rotation_y(rack_yaw);
             let mass = part.mass();
-            let mut pb = Body::new(mass, part.shape.inertia(mass), rack);
+            // The parts are symmetric about their own axes: the measured
+            // tensor's off-diagonal terms are tessellation residue, under
+            // 1e-4 of the diagonal.
+            let local = part.local_inertia(mass);
+            let principal = DVec3::new(local.x_axis.x, local.y_axis.y, local.z_axis.z);
+            let mut pb = Body::new(mass, principal, rack);
             pb.orientation = orientation;
             pb.prev_orientation = orientation;
             let pid = world.add(pb);
@@ -751,6 +757,17 @@ impl Factory {
         }
     }
 
+    /// Every body together: the deck, the arms, and the parts.
+    #[must_use]
+    pub fn system(&self) -> physics::Composite {
+        let mut bodies: Vec<&Body> = vec![&self.world[self.body]];
+        for arm in &self.arms {
+            bodies.extend(arm.links.iter().map(|&b| &self.world[b]));
+        }
+        bodies.extend(self.parts.iter().map(|p| &self.world[p.body]));
+        physics::Composite::of(bodies.iter().copied())
+    }
+
     /// The factory's attitude error from its target, rad.
     #[must_use]
     pub fn attitude_error(&self) -> f64 {
@@ -760,7 +777,9 @@ impl Factory {
     }
 }
 
-fn link_lengths(spec: &ArmSpec) -> [f64; 5] {
+/// Lengths of the five arm bodies: turret, upper arm, forearm, wrist, tool.
+#[must_use]
+pub fn link_lengths(spec: &ArmSpec) -> [f64; 5] {
     [
         spec.shoulder,
         spec.upper,
@@ -772,12 +791,12 @@ fn link_lengths(spec: &ArmSpec) -> [f64; 5] {
 
 /// The arm's parking pose: the tool 8 m out toward the cradle and 18 m
 /// above the deck, pointing down.
-fn home_pose(spec: &ArmSpec) -> Result<Pose, String> {
+pub(crate) fn home_pose(spec: &ArmSpec) -> Result<Pose, String> {
     let heading = DQuat::from_rotation_y(spec.yaw) * DVec3::X;
     spec.solve(spec.base + heading * 8.0 + DVec3::Y * 16.0, spec.yaw)
 }
 
-fn build_arm(
+pub(crate) fn build_arm(
     world: &mut physics::World,
     factory: BodyId,
     spec: ArmSpec,

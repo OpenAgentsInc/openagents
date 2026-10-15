@@ -214,3 +214,59 @@ pub fn feed(source: Source, document: &Value, report: &Value) -> Result<MassFeed
         parts,
     })
 }
+
+/// Builds and measures `document`, then writes its feed, naming it
+/// version `version` with `digest`: for documents kept outside a CAD Lab
+/// store, such as Lagrange 2's sample ship.
+///
+/// # Errors
+/// The document doesn't build or check.
+pub fn from_document(document: &Value, version: u64, digest: &str) -> Result<MassFeed, String> {
+    let eval = crate::evaluate(document).map_err(|p| p.join(" "))?;
+    let source = Source {
+        doc: document["id"].as_str().unwrap_or_default().to_owned(),
+        version,
+        digest: digest.to_owned(),
+    };
+    feed(source, document, &eval.report)
+}
+
+#[cfg(test)]
+mod tests {
+    use sha2::{Digest, Sha256};
+
+    /// Lagrange 2's sample ship reads its parts' mass properties from this
+    /// checked-in feed; it must be what CAD measures for the checked-in
+    /// document (regenerate with `examples/mass_feed.rs`).
+    #[test]
+    fn the_lagrange_tug_feed_is_its_documents() {
+        let doc = include_bytes!("../../verse-lagrange2/cad/lagrange-tug.json");
+        let checked_in: super::MassFeed = serde_json::from_str(include_str!(
+            "../../verse-lagrange2/cad/lagrange-tug.mass.json"
+        ))
+        .unwrap();
+        let value: serde_json::Value = serde_json::from_slice(doc).unwrap();
+        let digest = format!("{:x}", Sha256::digest(doc));
+        assert_eq!(
+            checked_in.source.digest, digest,
+            "the document changed; regenerate its feed"
+        );
+        let fresh = super::from_document(&value, checked_in.source.version, &digest).unwrap();
+        assert_eq!(fresh.parts.len(), checked_in.parts.len());
+        for (a, b) in fresh.parts.iter().zip(&checked_in.parts) {
+            assert_eq!(a.id, b.id);
+            assert_eq!(a.ports, b.ports);
+            assert!((a.mass.mass_kg - b.mass.mass_kg).abs() < 1e-6 * b.mass.mass_kg);
+            for k in 0..3 {
+                assert!((a.mass.center_of_mass_m[k] - b.mass.center_of_mass_m[k]).abs() < 1e-6);
+                for j in 0..3 {
+                    let scale = b.mass.inertia_kg_m2[k][k].abs();
+                    assert!(
+                        (a.mass.inertia_kg_m2[k][j] - b.mass.inertia_kg_m2[k][j]).abs()
+                            < 1e-6 * scale
+                    );
+                }
+            }
+        }
+    }
+}

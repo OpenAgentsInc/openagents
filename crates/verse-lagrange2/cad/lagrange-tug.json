@@ -1,0 +1,78 @@
+{
+  "kind": "assembly.v1",
+  "id": "lagrange-tug",
+  "title": "Lagrange tug",
+  "units": "mm",
+  "note": "The sample ship's structure for Lagrange 2 (crates/verse-lagrange2): every part's dry mass, centre of mass and inertia come from this document through cad_export feed. Walls are sized for the dry masses: a 17 mm square keel tube, 7.4 mm tank walls, a 42.8 mm habitat hull, a 13.9 mm steel engine shell, and box tubes for the power and radiator panels.",
+  "parameters": [],
+  "parts": {
+    "keel": {
+      "kind": "part.v1", "id": "keel", "title": "Keel truss", "material": "Aluminum", "parameters": [],
+      "features": [
+        {"id": "outer", "op": "solid.box", "params": {"length": 16000, "width": 2400, "height": 2400, "center": [0, 0, 0]}},
+        {"id": "bore", "op": "solid.box", "params": {"length": 16200, "width": 2366, "height": 2366, "center": [0, 0, 0], "operation": "cut"}}
+      ]
+    },
+    "engine": {
+      "kind": "part.v1", "id": "engine", "title": "Main engine", "material": "Steel", "parameters": [],
+      "features": [
+        {"id": "shell", "op": "solid.cylinder", "params": {"radius": 2200, "height": 6000, "axis": "X", "base": [-3000, 0, 0]}},
+        {"id": "bore", "op": "solid.cylinder", "params": {"radius": 2186.13, "height": 6200, "axis": "X", "base": [-3100, 0, 0], "operation": "cut"}}
+      ]
+    },
+    "tank": {
+      "kind": "part.v1", "id": "tank", "title": "Propellant tank", "material": "Aluminum", "parameters": [],
+      "features": [
+        {"id": "shell", "op": "solid.cylinder", "params": {"radius": 2000, "height": 10000, "axis": "X", "base": [-5000, 0, 0]}},
+        {"id": "bore", "op": "solid.cylinder", "params": {"radius": 1992.62, "height": 10200, "axis": "X", "base": [-5100, 0, 0], "operation": "cut"}}
+      ]
+    },
+    "habitat": {
+      "kind": "part.v1", "id": "habitat", "title": "Habitat", "material": "Aluminum", "parameters": [],
+      "features": [
+        {"id": "hull", "op": "solid.cylinder", "params": {"radius": 2500, "height": 10000, "axis": "X", "base": [-5000, 0, 0]}},
+        {"id": "bore", "op": "solid.cylinder", "params": {"radius": 2457.19, "height": 10200, "axis": "X", "base": [-5100, 0, 0], "operation": "cut"}}
+      ]
+    },
+    "power": {
+      "kind": "part.v1", "id": "power", "title": "Power box", "material": "Aluminum", "parameters": [],
+      "features": [
+        {"id": "outer", "op": "solid.box", "params": {"length": 6000, "width": 4000, "height": 2000, "center": [0, 0, 0]}},
+        {"id": "bore", "op": "solid.box", "params": {"length": 6200, "width": 3937.62, "height": 1937.62, "center": [0, 0, 0], "operation": "cut"}}
+      ]
+    },
+    "radiator": {
+      "kind": "part.v1", "id": "radiator", "title": "Radiator", "material": "Aluminum", "parameters": [],
+      "features": [
+        {"id": "outer", "op": "solid.box", "params": {"length": 6000, "width": 4000, "height": 600, "center": [0, 0, 0]}},
+        {"id": "bore", "op": "solid.box", "params": {"length": 6200, "width": 3966.2, "height": 566.2, "center": [0, 0, 0], "operation": "cut"}}
+      ]
+    }
+  },
+  "instances": [
+    {"id": "keel-aft", "part": "keel", "at": [-8000, 0, 0]},
+    {"id": "keel-fwd", "part": "keel", "parent": "keel-aft", "at": [16000, 0, 0]},
+    {"id": "engine", "part": "engine", "parent": "keel-aft", "at": [-11000, 0, 0]},
+    {"id": "tank-port", "part": "tank", "parent": "keel-aft", "at": [0, 4400, 0]},
+    {"id": "tank-starboard", "part": "tank", "parent": "keel-aft", "at": [0, -4400, 0]},
+    {"id": "habitat", "part": "habitat", "parent": "keel-fwd", "at": [13000, 0, 0]},
+    {"id": "power", "part": "power", "parent": "keel-fwd", "at": [0, -3200, 0]},
+    {"id": "radiator", "part": "radiator", "parent": "keel-fwd", "at": [0, 3200, 0]}
+  ],
+  "joints": [
+    {"id": "keel-joint", "type": "fastened", "parent": "keel-aft", "child": "keel-fwd", "origin": [8000, 0, 0], "axis": [1, 0, 0]},
+    {"id": "engine-mount", "type": "fastened", "parent": "keel-aft", "child": "engine", "origin": [-8000, 0, 0], "axis": [1, 0, 0]},
+    {"id": "tank-port-latch", "type": "fastened", "parent": "keel-aft", "child": "tank-port", "origin": [0, 1200, 0], "axis": [0, 1, 0]},
+    {"id": "tank-starboard-latch", "type": "fastened", "parent": "keel-aft", "child": "tank-starboard", "origin": [0, -1200, 0], "axis": [0, -1, 0]},
+    {"id": "habitat-latch", "type": "fastened", "parent": "keel-fwd", "child": "habitat", "origin": [8000, 0, 0], "axis": [1, 0, 0]},
+    {"id": "power-latch", "type": "fastened", "parent": "keel-fwd", "child": "power", "origin": [0, -1200, 0], "axis": [0, -1, 0]},
+    {"id": "radiator-latch", "type": "fastened", "parent": "keel-fwd", "child": "radiator", "origin": [0, 1200, 0], "axis": [0, 1, 0]}
+  ],
+  "contacts": [
+    ["keel-aft", "keel-fwd"],
+    ["keel-aft", "engine"],
+    ["keel-fwd", "habitat"],
+    ["keel-fwd", "power"],
+    ["keel-fwd", "radiator"]
+  ]
+}

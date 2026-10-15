@@ -56,8 +56,6 @@ pub const ORBIT_CLOCK: f64 = 60.0;
 const BURN_COUNTDOWN: f64 = 40.0;
 /// The test burn's velocity change, m/s.
 pub const TEST_BURN: f64 = 150.0;
-/// The most physics steps one frame runs; beyond it the factory slows.
-const MAX_STEPS: usize = 240;
 /// Where the orbit display floats, and its scale: meters per kilometer.
 const DISPLAY_AT: Vec3 = Vec3::new(-6.0, 34.0, -30.0);
 const DISPLAY_SCALE: f32 = 0.000_35;
@@ -88,7 +86,9 @@ pub struct Lagrange2 {
     countdown: f64,
     /// Burn time when the engine stopped, s.
     burn_end: f64,
-    carry: f64,
+    /// Turns frame time into whole factory steps
+    /// (`verse_lagrange2::assembly::frame_clock`).
+    pub clock: verse_lagrange2::physics::FixedStep,
     rendered: Mesh,
     light: light::Light,
     halo: Vec<DVec3>,
@@ -117,7 +117,7 @@ impl Lagrange2 {
             neutral: false,
             countdown: BURN_COUNTDOWN,
             burn_end: 0.0,
-            carry: 0.0,
+            clock: verse_lagrange2::assembly::frame_clock(),
             rendered: Mesh::default(),
             light: light::Light::new(structure()),
             halo: light::halo_loop(160),
@@ -186,15 +186,8 @@ impl Lagrange2 {
         if self.paused || !dt.is_finite() || dt <= 0.0 {
             return;
         }
-        self.carry += dt * self.speed;
-        let mut steps = 0;
-        while self.carry >= DT && steps < MAX_STEPS {
+        for _ in 0..self.clock.advance(dt * self.speed) {
             self.step();
-            self.carry -= DT;
-            steps += 1;
-        }
-        if steps == MAX_STEPS {
-            self.carry = 0.0;
         }
     }
 

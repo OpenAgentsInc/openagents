@@ -17,7 +17,11 @@ networking, or I/O. The orbit itself is `verse_lagrange::earth_moon`.
   back or makes safe on failure. It survives a lost link, a stuck latch,
   and a controller reset.
 - `burn`: the finished ship's test burn, momentum-exact against its
-  exhaust.
+  exhaust, with the keel's axial mode rung by the engine.
+- `cad_feed`: CAD Lab's mass feed, read without the CAD kernel. The sample
+  ship's parts come from `cad/lagrange-tug.json` and its feed.
+- `oracle`: the arm as MuJoCo XML and the recorded MuJoCo 3.3.7 reference
+  move in `oracle/arm-reference.json`.
 
 To run the tests:
 
@@ -34,6 +38,10 @@ The tests cover:
 - nonholonomy, and mirrored arms cancelling each other;
 - named failures for collisions, motor limits, and CMG saturation;
 - the full four-arm assembly;
-- stuck latches, link loss, and controller resets;
-- bit-for-bit replay;
-- the rocket equation, the gimbal, and the departure from L2.
+- stuck latches, link loss, controller resets, solar-event and
+  collision-avoidance holds;
+- bit-for-bit replay and frame-rate independence;
+- the arm against MuJoCo 3.3.7;
+- the parts' mass properties against the CAD feed;
+- the rocket equation, the gimbal, the keel's ringing, and the departure
+  from L2.
