@@ -1,8 +1,10 @@
 # Snap Station
 
-Status: design 2026-10-14; the MVP (jobs 1 to 5) is built as a browser
-game first (see [Implementation status](#implementation-status)). Numbers
-marked *tunable* are starting values for playtests, not measured results.
+Source status, 2026-10-15: the browser game has twenty checked jobs, the Crew
+Deck, controller input, and accessibility choices (see
+[Implementation status](#implementation-status)). Newer builds still need
+deployment as recorded in `NEEDS_OWNER.md`. Numbers marked *tunable* are
+starting values for playtests, not measured results.
 
 Snap Station is a building game for kids about 5 to 12. They snap
 together colourful magnetic pieces (squares, triangles, panels, struts,
@@ -223,15 +225,20 @@ tick (60 a second) is 12 steps of semi-implicit Euler.
 | Magnets grab, but strong joins need a bolt | A magnet join lets go when either of its springs carries more than 3 N; a bolted join never does |
 | The solar storm | Gusts push each piece by its sail area, up then down, every half second |
 | The cargo ship | Flies in on its own track; stops short if it runs into a piece; in its berth, ties to the nearest corners of the dock and tugs on them |
+| A hinge | Holds the middle of the joined sides together and turns freely, with soft stops at 90° each way |
+| A spring | A softer, damped join absorbs a bump instead of locking both sides rigidly |
+| A tether | Has 0.25 m of slack and exerts tension only; compression never pushes |
+| A reaction wheel | Spins on a central axle; the motor applies equal opposite torque to the wheel and its hull |
+| A cargo arm | A stiff two-metre boom with a damped pivot holds its rest angle; while towing, the ship’s 40 kg is carried at its two mooring points |
 
-Values are *tunable*. All of them are in `crates/snap-rules/src/sim.rs`
+Values are *tunable*. They are in `crates/snap-rules/src/sim.rs` and `mechanism.rs`,
 and in the rules digest, so a change shows up in every receipt.
 
 **Why a truss, not rigid bodies.** The shared `physics` crate is a 3D
-rigid-body engine (`glam` `f32`, contacts, joints with limits). A rigid
+rigid-body engine with contacts and limited joints. A rigid
 body can't rack, and racking is the lesson; a truss gets it, and triangle
 stiffness and the bracing that fixes it, with no special cases. It is
-about 500 lines of `sim.rs` and needs nothing else. When a Verse
+kept in `snap-rules` and needs no renderer. When a Verse
 host draws the game (S10), the truss stays the authority and drives
 `physics` bodies for the client's debris effects only.
 
@@ -291,7 +298,7 @@ pointer can play every job.
 
 ## Difficulty and level list
 
-Four sets of five jobs. Values are *tunable*; jobs 1 to 5 ship in the MVP.
+Four sets of five jobs. Values are *tunable*. All twenty jobs ship in the source build.
 
 | # | Job | Crew | New idea | Pieces |
 | --- | --- | --- | --- | --- |
@@ -302,10 +309,10 @@ Four sets of five jobs. Values are *tunable*; jobs 1 to 5 ship in the MVP.
 | 5 | Cargo Dock | Captain Cog | A berth that fits, and holds when the ship tugs | Squares, triangles, struts, bolts |
 | 6 | Two Rings | Tock | Push a crate through two beacons: turn with an off-centre burn | Thrusters, panels |
 | 7 | Heavy Middle | Rivet | Spin with crates aboard: heavy in the middle spins faster and holds | Crates, bolts |
-| 8 | Solar Farm | Nova | Wings catch the wind; brace a long wing array | Solar wings, triangles |
+| 8 | Solar Farm | Nova | Wings catch the wind; lock a long array together | Solar wings, bolts |
 | 9 | Full Ring | Rivet | A closed ring of squares and triangles that spins | Triangles, squares |
-| 10 | Tug Boat | Captain Cog | Push a docked ship with a frame around it | Thrusters, struts |
-| 11 | Counter Spin | Tock | Stop a spinning wreck with thrusters | Thrusters |
+| 10 | Tug Boat | Captain Cog | Dock with cargo arms, then push the moored ship | Cargo arms, thrusters |
+| 11 | Counter Spin | Tock | Transfer the hull’s spin into a reaction wheel | Reaction wheel |
 | 12 | Long Bridge | Pip | Span eight metres with the fewest pieces | Triangles, half squares |
 | 13 | Storm Season | Nova | Three storms in a row; repair between them | Bolts |
 | 14 | Greenhouse Wheel | Rivet | Four pods, one band, two speeds | Pods, thrusters |
@@ -415,7 +422,7 @@ flowchart TB
 unchanged. As with Grow Little Bunny, the browser client draws with WebGL2
 directly rather than through `verse-pbr` (which brings wgpu, naga and
 glTF, several megabytes of wasm, for a few hundred flat shapes): the whole
-game is about 130 KB of compressed wasm.
+game is about 190 KB of compressed wasm.
 
 ### The page
 
@@ -530,7 +537,7 @@ Blue Rush Studios domain. Epic:
 | S5 | [#11673](https://github.com/OpenAgentsInc/openagents/issues/11673) | Done, 38357711ac and fcb6cf7b51 |
 | S6 | [#11674](https://github.com/OpenAgentsInc/openagents/issues/11674) | Done: Crew Deck, four boards, stars, and saved builds |
 | S7 | [#11675](https://github.com/OpenAgentsInc/openagents/issues/11675) | Implemented; physical devices need the owner |
-| S8 | [#11676](https://github.com/OpenAgentsInc/openagents/issues/11676) | Planned |
+| S8 | [#11676](https://github.com/OpenAgentsInc/openagents/issues/11676) | Done: twenty checked jobs and moving pieces |
 | S9 | [#11677](https://github.com/OpenAgentsInc/openagents/issues/11677) | Planned |
 | S10 | [#11678](https://github.com/OpenAgentsInc/openagents/issues/11678) | Planned |
 
@@ -629,6 +636,41 @@ from physical devices; captures show the [phone tray](../captures/snap-access/ph
 [matching piece marks](../captures/snap-access/phone-marked-build.png), and
 [tablet](../captures/snap-access/tablet-access.png). Physical phone, tablet,
 and controller checks are in `NEEDS_OWNER.md`.
+
+### S8: twenty jobs and moving joins
+
+All twenty jobs have three-star reference builds that the validator runs and
+replays. `cargo run -p snap-rules --bin snap-validate` checks them; pass a job
+file path to check a draft. Job files can contain a route of beacons or several
+tests of the same build. The game waits for Go between tests, allows repairs,
+and awards stars after the last test. Ships visit their berths in turn.
+Storms in a sequence apply during the connecting tests. Towing uses fixed ship
+axes and adds the ship’s mass at the moorings; it is not a separate rigid hull.
+
+Hinges, springs, and tethers drop onto an existing join. Removing its piece
+returns the tool. Reaction wheels use one central axle and cargo arms have
+one pivot at their base. Needed parts must stay in their named group; dropping
+cargo or a wheel cannot satisfy that job. The Full Ring must close even when
+the hub is removed from its connection graph. The Crew Deck has five jobs per
+board and space for all twenty saved builds; miniature meshes are made when
+the build is saved, rather than rebuilding each frame.
+
+The rules version is 2. Earlier run receipts are refused because the rules
+and state changed; device-local construction saves still reopen. Native and
+WASM tests pin the same state and cover wrong and right builds, wheel momentum,
+ship mass, spring settling, and all twenty solutions and replays. The checks
+pass with 44 rules tests on native and WASM, 21 client tests, and three web
+page/guide tests. [Bot results](../captures/snap-station-jobs/bot-check.txt)
+and [browser results](../captures/snap-station-jobs/browser.json) are kept.
+Browser captures cover nine distinct later jobs and every stage of the
+multi-test jobs; production-build pointer checks cover the door, spring catch,
+and both steps of towing. Stills show the
+[hinge](../captures/snap-station-jobs/hinge.png),
+[phone spring catch](../captures/snap-station-jobs/spring-phone.png),
+[towing](../captures/snap-station-jobs/towing.png),
+[reaction wheel](../captures/snap-station-jobs/reaction-wheel.png),
+[ring](../captures/snap-station-jobs/ring.png), and
+[Grand Station result](../captures/snap-station-jobs/grand-station.png).
 
 ## Out of scope
 

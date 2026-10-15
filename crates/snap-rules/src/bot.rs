@@ -31,7 +31,7 @@ impl Bot {
         }
         let input = self.plan.get(self.next).copied();
         self.next += 1;
-        input
+        input.or_else(|| (game.phase > 0).then_some(Input::Go))
     }
 
     /// The whole plan, ending with Go.
@@ -282,12 +282,41 @@ fn tagged(level: &Level, tag: char) -> usize {
 /// A plan that does `level`'s job, ending with Go, if the bot finds one.
 #[must_use]
 pub fn solve(level: &Level) -> Option<Vec<Input>> {
+    if !level.solution.is_empty() {
+        let game = play_plan(level, &level.solution);
+        return (game.status == Status::Won).then(|| level.solution.clone());
+    }
     match level.job {
         Job::Connect(a, b) => connect(level, tagged(level, a), tagged(level, b)),
         Job::Push(c) => push(level, tagged(level, c)),
         Job::Spin(h) => spin(level, tagged(level, h)),
         Job::Dock(b) => dock(level, tagged(level, b)),
+        Job::Stop(_) | Job::Swing(_) | Job::Tow(_) => None,
     }
+}
+
+/// Plays construction inputs and each test through the same public rules.
+pub fn play_plan(level: &Level, plan: &[Input]) -> Game {
+    record_plan(level, plan).0
+}
+
+/// The bot's run, including each Go between tests, as a checkable receipt.
+pub fn record_plan(level: &Level, plan: &[Input]) -> (Game, crate::receipt::Receipt) {
+    let mut game = Game::new(level.clone());
+    let mut recorder = crate::receipt::Recorder::new();
+    for input in plan {
+        recorder.step(&mut game, &[*input]);
+    }
+    let budget = (level.run + 2) * level.tests.len() as u32 + 8;
+    for _ in 0..budget {
+        match game.status {
+            Status::Running => recorder.step(&mut game, &[]),
+            Status::Building if game.phase > 0 => recorder.step(&mut game, &[Input::Go]),
+            _ => break,
+        }
+    }
+    let receipt = recorder.finish(&game);
+    (game, receipt)
 }
 
 fn connect(level: &Level, a: usize, b: usize) -> Option<Vec<Input>> {
@@ -424,17 +453,7 @@ mod tests {
 
     /// Plays `plan` the way the page does, one input a tick, to the end.
     fn play(level: &Level, plan: &[Input]) -> Game {
-        let mut game = Game::new(level.clone());
-        for input in plan {
-            game.step(&[*input]);
-        }
-        for _ in 0..level.run + 2 {
-            if game.status != Status::Running {
-                break;
-            }
-            game.step(&[]);
-        }
-        game
+        play_plan(level, plan)
     }
 
     #[test]

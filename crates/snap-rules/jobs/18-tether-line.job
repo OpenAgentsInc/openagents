@@ -1,0 +1,15 @@
+snap.level.v1
+name Tether Line
+number 18
+crew nova
+job connect A B
+area -3 -4 6 5
+give module 0.5 0.5 0 A
+give cargo 2.5 0.5 0 B
+tray panel 1 tether 1 bolt 1
+par 3
+run 6
+burn 0
+need tether 1 A
+nudge B 20 0 0.5 2.5
+solution P/panel/1500/500/0 P/tether/2000/500/0 P/bolt/1000/500/0 G

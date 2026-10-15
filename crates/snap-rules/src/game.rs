@@ -51,6 +51,11 @@ pub enum Fail {
     NoMooring,
     /// Something in the dock let go or popped.
     Broke,
+    MissingParts,
+    OpenRing,
+    StillSpinning,
+    DoorStuck,
+    TowMissed,
 }
 
 /// Where the game is.
@@ -76,6 +81,7 @@ pub enum Event {
     /// A piece went back to the tray.
     Removed(PieceKind),
     Go,
+    FixReady,
     /// The storm came by itself.
     StormCame,
     Broke(V),
@@ -107,6 +113,8 @@ pub struct Game {
     pub in_band: u32,
     /// Stars for the win, 1 to 3.
     pub stars: u8,
+    pub phase: usize,
+    pub waypoint: usize,
 }
 
 impl Game {
@@ -114,7 +122,7 @@ impl Game {
     pub fn new(level: Level) -> Self {
         let build = level.start();
         let tray = level.tray.clone();
-        Self {
+        let mut game = Self {
             level,
             build,
             tray,
@@ -126,7 +134,11 @@ impl Game {
             runs: 0,
             in_band: 0,
             stars: 0,
-        }
+            phase: 0,
+            waypoint: 0,
+        };
+        game.configure_phase();
+        game
     }
 
     /// How many of `kind` are left in the tray.
@@ -173,6 +185,9 @@ impl Game {
     /// player is building.
     #[must_use]
     pub fn storm_left(&self) -> Option<u32> {
+        if self.level.tests.len() > 1 && !matches!(self.level.job, Job::Connect(_, _)) {
+            return None;
+        }
         let storm = self.level.storm?;
         (self.status == Status::Building).then(|| storm.clock.saturating_sub(self.clock))
     }
@@ -186,7 +201,9 @@ impl Game {
         }
         match self.status {
             Status::Building => {
-                if let Some(storm) = self.level.storm {
+                if let Some(storm) = self.level.storm.filter(|_| {
+                    self.level.tests.len() == 1 || matches!(self.level.job, Job::Connect(_, _))
+                }) {
                     self.clock += 1;
                     if self.clock >= storm.clock {
                         self.events.push(Event::StormCame);
@@ -210,6 +227,12 @@ impl Game {
                     self.give_back(back.kind, 1);
                     self.give_back(PieceKind::Strut, back.struts);
                     self.give_back(PieceKind::Bolt, back.bolts);
+                    for (kind, count) in [PieceKind::Hinge, PieceKind::Spring, PieceKind::Tether]
+                        .into_iter()
+                        .zip(back.links)
+                    {
+                        self.give_back(kind, count);
+                    }
                     self.events.push(Event::Removed(back.kind));
                 }
             }
@@ -238,6 +261,20 @@ impl Game {
                 }
                 None => self.events.push(Event::NoSnap),
             },
+            PieceKind::Hinge | PieceKind::Spring | PieceKind::Tether => {
+                match self.build.link_target(at) {
+                    Some(seam) => {
+                        self.take(kind);
+                        self.build.seams[seam].coupling = match kind {
+                            PieceKind::Hinge => crate::mechanism::Coupling::Hinge,
+                            PieceKind::Spring => crate::mechanism::Coupling::Spring,
+                            _ => crate::mechanism::Coupling::Tether,
+                        };
+                        self.events.push(Event::Bolted(seam));
+                    }
+                    None => self.events.push(Event::NoSnap),
+                }
+            }
             PieceKind::Bolt => match self.build.bolt_target(at) {
                 Some(seam) => {
                     self.take(kind);
@@ -257,7 +294,34 @@ impl Game {
         }
     }
 
+    fn configure_phase(&mut self) {
+        self.level.job = self.level.tests[self.phase];
+        if let Some(burn) = self.level.burns.get(self.phase).copied() {
+            self.level.burn = burn;
+        }
+        if let Some(band) = self.level.bands.get(self.phase).copied() {
+            self.level.gravity = band;
+        }
+        if matches!(self.level.job, Job::Dock(_) | Job::Tow(_)) {
+            let n = self.level.tests[..=self.phase]
+                .iter()
+                .filter(|t| matches!(t, Job::Dock(_)))
+                .count()
+                .saturating_sub(1);
+            self.level.ship = self.level.ships.get(n).copied().or(self.level.ship);
+        } else {
+            self.level.ship = None;
+        }
+        if matches!(self.level.job, Job::Tow(_)) {
+            if let Some(ship) = &mut self.level.ship {
+                ship.start = ship.berth;
+            }
+        }
+    }
+
     fn go(&mut self) {
+        self.configure_phase();
+        self.waypoint = 0;
         self.world = Some(World::new(&self.build, &self.level));
         self.status = Status::Running;
         self.in_band = 0;
@@ -279,6 +343,16 @@ impl Game {
             });
         }
         if let Some(verdict) = self.judge() {
+            if verdict == Status::Won && self.phase + 1 < self.level.tests.len() {
+                self.phase += 1;
+                self.configure_phase();
+                self.status = Status::Building;
+                self.world = None;
+                self.clock = 0;
+                self.in_band = 0;
+                self.events.push(Event::FixReady);
+                return;
+            }
             self.status = verdict;
             match verdict {
                 Status::Won => {
@@ -311,6 +385,41 @@ impl Game {
     fn judge(&mut self) -> Option<Status> {
         let world = self.world.as_ref()?;
         let over = world.tick >= self.level.run;
+        if self.level.required.iter().any(|need| {
+            if self
+                .level
+                .tray_count(need.kind)
+                .saturating_sub(self.left(need.kind))
+                < need.count
+            {
+                return true;
+            }
+            let Some(tag) = need.tag else {
+                return false;
+            };
+            let group = world.group_of(self.tagged(tag));
+            let present = if need.kind.is_tile() {
+                group
+                    .iter()
+                    .filter(|p| self.build.pieces[**p].kind == need.kind)
+                    .count()
+            } else {
+                let coupling = match need.kind {
+                    PieceKind::Hinge => crate::mechanism::Coupling::Hinge,
+                    PieceKind::Spring => crate::mechanism::Coupling::Spring,
+                    PieceKind::Tether => crate::mechanism::Coupling::Tether,
+                    _ => return false,
+                };
+                world
+                    .joints
+                    .iter()
+                    .filter(|j| !j.broken && j.coupling == coupling && group.contains(&j.pieces.0))
+                    .count()
+            };
+            present < (need.count as usize)
+        }) {
+            return over.then_some(Status::Failed(Fail::MissingParts));
+        }
         match self.level.job {
             Job::Connect(a, b) => {
                 let (a, b) = (self.tagged(a), self.tagged(b));
@@ -328,8 +437,18 @@ impl Game {
                 let crate_ = self.tagged(tag);
                 let group = world.group_of(crate_);
                 let (_, _, omega) = world.motion(&group);
-                let (beacon, radius) = self.level.beacon.expect("the level checks it");
+                let (beacon, radius) = self
+                    .level
+                    .beacons
+                    .get(self.waypoint)
+                    .copied()
+                    .or(self.level.beacon)
+                    .expect("the level checks it");
                 if (world.centre(crate_) - beacon).len() <= radius {
+                    if self.waypoint + 1 < self.level.beacons.len() {
+                        self.waypoint += 1;
+                        return None;
+                    }
                     return Some(if omega.abs() <= self.level.spin_max {
                         Status::Won
                     } else {
@@ -354,7 +473,27 @@ impl Game {
                     .iter()
                     .map(|p| world.spin_gravity(&group, *p))
                     .collect();
-                let in_band = !lost && felt.iter().all(|g| *g >= low && *g <= high);
+                let cycle = if self.level.ring {
+                    let outside: Vec<_> = group.iter().copied().filter(|p| *p != hub).collect();
+                    let links: Vec<_> = world
+                        .joints
+                        .iter()
+                        .filter(|j| {
+                            !j.broken
+                                && outside.contains(&j.pieces.0)
+                                && outside.contains(&j.pieces.1)
+                        })
+                        .map(|j| j.pieces)
+                        .collect();
+                    let groups =
+                        crate::build::groups(self.build.pieces.len(), links.iter().copied());
+                    outside.len() >= 3
+                        && links.len() >= outside.len()
+                        && outside.iter().all(|p| groups[*p] == groups[outside[0]])
+                } else {
+                    true
+                };
+                let in_band = !lost && cycle && felt.iter().all(|g| *g >= low && *g <= high);
                 if world.tick > self.level.burn && in_band {
                     self.in_band += 1;
                 } else {
@@ -368,7 +507,9 @@ impl Game {
                 }
                 over.then(|| {
                     let mean = felt.iter().sum::<f64>() / felt.len().max(1) as f64;
-                    Status::Failed(if lost {
+                    Status::Failed(if !cycle {
+                        Fail::OpenRing
+                    } else if lost {
                         Fail::PodLost
                     } else if mean < low {
                         Fail::TooLight
@@ -376,6 +517,55 @@ impl Game {
                         Fail::TooHeavy
                     })
                 })
+            }
+            Job::Stop(tag) => {
+                let (_, _, omega) = world.motion(&[self.tagged(tag)]);
+                if world.tick > self.level.burn && omega.abs() <= self.level.spin_max {
+                    self.in_band += 1;
+                } else {
+                    self.in_band = 0;
+                }
+                if self.in_band >= self.level.hold {
+                    return Some(Status::Won);
+                }
+                over.then_some(Status::Failed(Fail::StillSpinning))
+            }
+            Job::Swing(tag) => {
+                let p = self.tagged(tag);
+                let swung = world.joints.iter().any(|j| {
+                    if j.broken
+                        || j.coupling != crate::mechanism::Coupling::Hinge
+                        || !(j.pieces.0 == p || j.pieces.1 == p)
+                    {
+                        return false;
+                    }
+                    let [(a0, b0), (a1, b1)] = j.nodes;
+                    let a = (world.pos[a1] - world.pos[a0]).unit();
+                    let b = (world.pos[b1] - world.pos[b0]).unit();
+                    a.cross(b).abs() > 0.5
+                });
+                if swung {
+                    self.in_band += 1;
+                } else {
+                    self.in_band = 0;
+                }
+                if self.in_band >= self.level.hold {
+                    return Some(Status::Won);
+                }
+                over.then_some(Status::Failed(Fail::DoorStuck))
+            }
+            Job::Tow(tag) => {
+                let p = self.tagged(tag);
+                let (beacon, radius) = self.level.beacon?;
+                let moored = world.ship.is_some_and(|s| s.parked && s.moorings.is_some());
+                if moored && (world.centre(p) - beacon).len() <= radius {
+                    return Some(Status::Won);
+                }
+                over.then_some(Status::Failed(if moored {
+                    Fail::TowMissed
+                } else {
+                    Fail::NoMooring
+                }))
             }
             Job::Dock(tag) => {
                 // A beat after the bump, so the bump is seen.
@@ -420,6 +610,8 @@ impl Game {
         let mut hash = Sha256::new();
         hash.update(self.tick.to_le_bytes());
         hash.update(self.clock.to_le_bytes());
+        hash.update((self.phase as u32).to_le_bytes());
+        hash.update((self.waypoint as u32).to_le_bytes());
         hash.update(format!("{:?} {}", self.status, self.runs));
         for piece in &self.build.pieces {
             hash.update(piece.kind.word());
@@ -434,6 +626,7 @@ impl Game {
                 "{} {} {} {} {}",
                 seam.a, seam.a_side, seam.b, seam.b_side, seam.bolted
             ));
+            hash.update([seam.coupling as u8]);
         }
         for (kind, n) in &self.tray {
             hash.update(format!("{} {n}", kind.word()));

@@ -1,0 +1,156 @@
+{
+  "scope": "Local Chrome. Autoplay is a capture-only build; pointer runs use the production build. These are not physical-device runs.",
+  "autoplay": [
+    {
+      "job": 6,
+      "viewport": [
+        1200,
+        800
+      ],
+      "autoplay_capture_build": true,
+      "won": true,
+      "phases": [],
+      "exceptions": 0
+    },
+    {
+      "job": 9,
+      "viewport": [
+        1200,
+        800
+      ],
+      "autoplay_capture_build": true,
+      "won": true,
+      "phases": [],
+      "exceptions": 0
+    },
+    {
+      "job": 10,
+      "viewport": [
+        390,
+        844
+      ],
+      "autoplay_capture_build": true,
+      "won": true,
+      "phases": [
+        "1/2",
+        "2/2"
+      ],
+      "exceptions": 0
+    },
+    {
+      "job": 11,
+      "viewport": [
+        1200,
+        800
+      ],
+      "autoplay_capture_build": true,
+      "won": true,
+      "phases": [],
+      "exceptions": 0
+    },
+    {
+      "job": 15,
+      "viewport": [
+        1200,
+        800
+      ],
+      "autoplay_capture_build": true,
+      "won": true,
+      "phases": [
+        "1/2",
+        "2/2"
+      ],
+      "exceptions": 0
+    },
+    {
+      "job": 16,
+      "viewport": [
+        390,
+        844
+      ],
+      "autoplay_capture_build": true,
+      "won": true,
+      "phases": [],
+      "exceptions": 0
+    },
+    {
+      "job": 17,
+      "viewport": [
+        390,
+        844
+      ],
+      "autoplay_capture_build": true,
+      "won": true,
+      "phases": [],
+      "exceptions": 0
+    },
+    {
+      "job": 18,
+      "viewport": [
+        390,
+        844
+      ],
+      "autoplay_capture_build": true,
+      "won": true,
+      "phases": [],
+      "exceptions": 0
+    },
+    {
+      "job": 20,
+      "viewport": [
+        1200,
+        800
+      ],
+      "autoplay_capture_build": true,
+      "won": true,
+      "phases": [
+        "1/4",
+        "2/4",
+        "3/4",
+        "4/4"
+      ],
+      "exceptions": 0
+    }
+  ],
+  "pointer": [
+    {
+      "job": 16,
+      "viewport": [
+        1200,
+        800
+      ],
+      "touch": false,
+      "production_build": true,
+      "real_pointer_input": true,
+      "won": true,
+      "manual_second_go": false,
+      "exceptions": 0
+    },
+    {
+      "job": 17,
+      "viewport": [
+        390,
+        844
+      ],
+      "touch": true,
+      "production_build": true,
+      "real_pointer_input": true,
+      "won": true,
+      "manual_second_go": false,
+      "exceptions": 0
+    },
+    {
+      "job": 10,
+      "viewport": [
+        1200,
+        800
+      ],
+      "touch": false,
+      "production_build": true,
+      "real_pointer_input": true,
+      "won": true,
+      "manual_second_go": true,
+      "exceptions": 0
+    }
+  ]
+}

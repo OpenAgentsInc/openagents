@@ -38,12 +38,27 @@ pub const FORMAT: &str = "snap.level.v1";
 pub const CREW: [&str; 5] = ["cog", "pip", "rivet", "nova", "tock"];
 
 /// The jobs that ship with the game, in order.
-pub const JOBS: [&str; 5] = [
+pub const JOBS: [&str; 20] = [
     include_str!("../jobs/01-hello-magnets.job"),
     include_str!("../jobs/02-straight-push.job"),
     include_str!("../jobs/03-storm-bridge.job"),
     include_str!("../jobs/04-garden-spin.job"),
     include_str!("../jobs/05-cargo-dock.job"),
+    include_str!("../jobs/06-two-rings.job"),
+    include_str!("../jobs/07-heavy-middle.job"),
+    include_str!("../jobs/08-solar-farm.job"),
+    include_str!("../jobs/09-full-ring.job"),
+    include_str!("../jobs/10-tug-boat.job"),
+    include_str!("../jobs/11-counter-spin.job"),
+    include_str!("../jobs/12-long-bridge.job"),
+    include_str!("../jobs/13-storm-season.job"),
+    include_str!("../jobs/14-greenhouse-wheel.job"),
+    include_str!("../jobs/15-berth-two.job"),
+    include_str!("../jobs/16-hinge-door.job"),
+    include_str!("../jobs/17-spring-catch.job"),
+    include_str!("../jobs/18-tether-line.job"),
+    include_str!("../jobs/19-station-core.job"),
+    include_str!("../jobs/20-grand-station.job"),
 ];
 
 /// How many jobs ship.
@@ -72,6 +87,12 @@ pub enum Job {
     Spin(char),
     /// Give the cargo ship a berth that fits it and holds when it tugs.
     Dock(char),
+    /// Stop the tagged hull while its reaction wheel takes the spin.
+    Stop(char),
+    /// Swing a hinged panel while its pivot stays attached.
+    Swing(char),
+    /// Move a moored cargo ship with the tagged station.
+    Tow(char),
 }
 
 /// A piece the job starts with.
@@ -87,6 +108,7 @@ pub struct Given {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Nudge {
     pub tag: char,
+    pub kind: Option<PieceKind>,
     pub force: V,
     pub from: u32,
     pub until: u32,
@@ -128,6 +150,14 @@ impl Ship {
     }
 }
 
+/// A piece that must stay attached to the named part of the build.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Required {
+    pub kind: PieceKind,
+    pub count: u32,
+    pub tag: Option<char>,
+}
+
 /// A parsed job.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Level {
@@ -135,6 +165,17 @@ pub struct Level {
     pub number: u8,
     pub crew: &'static str,
     pub job: Job,
+    /// Tests of this same build, in order; repairs are allowed between tests.
+    pub tests: Vec<Job>,
+    pub beacons: Vec<(V, f64)>,
+    pub ships: Vec<Ship>,
+    pub burns: Vec<u32>,
+    pub bands: Vec<(f64, f64)>,
+    pub initial_spin: Vec<(char, f64)>,
+    /// A reference builder, always checked by running the normal rules.
+    pub solution: Vec<crate::Input>,
+    pub required: Vec<Required>,
+    pub ring: bool,
     pub area: (V, V),
     pub given: Vec<Given>,
     pub tray: Vec<(PieceKind, u32)>,
@@ -236,6 +277,15 @@ pub fn parse(text: &str) -> Result<Level, String> {
     let mut number_ = None;
     let mut crew = None;
     let mut job = None;
+    let mut tests = Vec::new();
+    let mut beacons = Vec::new();
+    let mut ships = Vec::new();
+    let mut burns = Vec::new();
+    let mut bands = Vec::new();
+    let mut initial_spin = Vec::new();
+    let mut solution = Vec::new();
+    let mut required = Vec::new();
+    let mut ring = false;
     let mut area = None;
     let mut given = Vec::new();
     let mut tray = Vec::new();
@@ -272,13 +322,18 @@ pub fn parse(text: &str) -> Result<Level, String> {
             }
             "job" => {
                 let a = args(rest, 2, line)?;
-                job = Some(match a[0] {
+                let test = match a[0] {
                     "connect" => Job::Connect(tag(a[1])?, tag(args(rest, 3, line)?[2])?),
                     "push" => Job::Push(tag(a[1])?),
                     "spin" => Job::Spin(tag(a[1])?),
                     "dock" => Job::Dock(tag(a[1])?),
+                    "stop" => Job::Stop(tag(a[1])?),
+                    "swing" => Job::Swing(tag(a[1])?),
+                    "tow" => Job::Tow(tag(a[1])?),
                     other => return Err(format!("no such job: {other}")),
-                });
+                };
+                job.get_or_insert(test);
+                tests.push(test);
             }
             "area" => {
                 let a = args(rest, 4, line)?;
@@ -327,20 +382,55 @@ pub fn parse(text: &str) -> Result<Level, String> {
                 let a = args(rest, 5, line)?;
                 nudges.push(Nudge {
                     tag: tag(a[0])?,
+                    kind: None,
                     force: V::new(number(a[1])?, number(a[2])?),
                     from: seconds(a[3])?,
                     until: seconds(a[4])?,
                 });
             }
-            "burn" => burn = seconds(args(rest, 1, line)?[0])?,
+            "nudge-kind" => {
+                let a = args(rest, 5, line)?;
+                nudges.push(Nudge {
+                    tag: '?',
+                    kind: Some(PieceKind::from_word(a[0]).ok_or("unknown pushed piece")?),
+                    force: V::new(number(a[1])?, number(a[2])?),
+                    from: seconds(a[3])?,
+                    until: seconds(a[4])?,
+                });
+            }
+            "burn" => {
+                burns.push(seconds(args(rest, 1, line)?[0])?);
+                burn = burns[0];
+            }
+            "spin" => {
+                let a = args(rest, 2, line)?;
+                initial_spin.push((tag(a[0])?, number(a[1])?));
+            }
+            "need" => {
+                let a = args(rest, 2, line)?;
+                let kind = PieceKind::from_word(a[0]).ok_or("unknown required piece")?;
+                required.push(Required {
+                    kind,
+                    count: a[1].parse().map_err(|_| "bad required count")?,
+                    tag: a.get(2).map(|t| tag(t)).transpose()?,
+                });
+            }
+            "ring" => ring = true,
+            "solution" => {
+                for code in rest {
+                    solution.push(crate::receipt::decode_input(code)?);
+                }
+            }
             "beacon" => {
                 let a = args(rest, 3, line)?;
-                beacon = Some((V::new(number(a[0])?, number(a[1])?), number(a[2])?));
+                beacons.push((V::new(number(a[0])?, number(a[1])?), number(a[2])?));
+                beacon = beacons.first().copied();
             }
             "spin-max" => spin_max = number(args(rest, 1, line)?[0])?,
             "gravity" => {
                 let a = args(rest, 2, line)?;
-                gravity = (number(a[0])?, number(a[1])?);
+                bands.push((number(a[0])?, number(a[1])?));
+                gravity = bands[0];
             }
             "hold" => hold = seconds(args(rest, 1, line)?[0])?,
             "storm" => {
@@ -358,7 +448,7 @@ pub fn parse(text: &str) -> Result<Level, String> {
                 if speed <= 0.0 {
                     return Err(format!("the ship must move: {line}"));
                 }
-                ship = Some(Ship {
+                ships.push(Ship {
                     start: number(a[0])?,
                     y: number(a[1])?,
                     length: number(a[2])?,
@@ -366,6 +456,7 @@ pub fn parse(text: &str) -> Result<Level, String> {
                     speed,
                     berth: number(a[5])?,
                 });
+                ship = ships.first().copied();
             }
             "moor" => {
                 let a = args(rest, 2, line)?;
@@ -376,26 +467,54 @@ pub fn parse(text: &str) -> Result<Level, String> {
     }
     let job = job.ok_or("no job")?;
     let tags: Vec<char> = given.iter().filter_map(|g| g.tag).collect();
-    let needs: Vec<char> = match job {
-        Job::Connect(a, b) => vec![a, b],
-        Job::Push(t) | Job::Spin(t) | Job::Dock(t) => vec![t],
-    };
+    let needs: Vec<char> = tests
+        .iter()
+        .flat_map(|job| match *job {
+            Job::Connect(a, b) => vec![a, b],
+            Job::Push(t)
+            | Job::Spin(t)
+            | Job::Dock(t)
+            | Job::Stop(t)
+            | Job::Swing(t)
+            | Job::Tow(t) => vec![t],
+        })
+        .chain(initial_spin.iter().map(|(tag, _)| *tag))
+        .chain(required.iter().filter_map(|r| r.tag))
+        .collect();
     if let Some(missing) = needs.iter().find(|t| !tags.contains(t)) {
         return Err(format!("no given piece is tagged {missing}"));
     }
-    match job {
-        Job::Push(_) if beacon.is_none() => return Err("a push job needs a beacon".into()),
-        Job::Spin(_) if gravity.1 <= gravity.0 => {
-            return Err("a spin job needs a gravity band".into());
+    for job in &tests {
+        match job {
+            Job::Push(_) | Job::Tow(_) if beacon.is_none() => {
+                return Err("a moving job needs a beacon".into());
+            }
+            Job::Spin(_) if gravity.1 <= gravity.0 => {
+                return Err("a spin job needs a gravity band".into());
+            }
+            Job::Dock(_) | Job::Tow(_) if ship.is_none() => {
+                return Err("a dock job needs a ship".into());
+            }
+            _ => {}
         }
-        Job::Dock(_) if ship.is_none() => return Err("a dock job needs a ship".into()),
-        _ => {}
+    }
+    if tests.len() > 8 || beacons.len() > 8 || ships.len() > 4 || solution.len() > 512 {
+        return Err("too many job steps".into());
     }
     Ok(Level {
         name: name.ok_or("no name")?,
         number: number_.ok_or("no number")?,
         crew: crew.ok_or("no crew")?,
         job,
+        tests,
+        beacons,
+        ships,
+        burns,
+        bands,
+        initial_spin,
+        solution,
+        required,
+        ring,
         area: area.ok_or("no area")?,
         given,
         tray,

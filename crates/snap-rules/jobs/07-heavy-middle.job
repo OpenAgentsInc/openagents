@@ -1,0 +1,19 @@
+snap.level.v1
+# Job 4: spin the garden so the plant pods feel gravity. Spinning pulls
+# hard on the joins out at the pods.
+name Heavy Middle
+number 7
+crew rivet
+job spin H
+area -6 -4 7 5
+give module 0.5 0.5 0 H
+give pod 3.5 0.5 0
+give pod -2.5 0.5 0
+tray cargo 2 square 6 strut 4 bolt 8 thruster 4
+par 21
+run 9
+burn 2.5
+gravity 0.7 3.5
+hold 2
+need cargo 2 H
+solution P/square/1500/500/9 P/strut/1500/500/10 P/square/2500/500/9 P/strut/2500/500/10 P/square/-500/500/3 P/strut/-500/500/4 P/square/-1500/500/3 P/strut/-1500/500/4 P/bolt/1000/500/0 P/bolt/2000/500/0 P/bolt/3000/500/0 P/bolt/0/500/0 P/bolt/-1000/500/0 P/bolt/-2000/500/0 P/thruster/3500/-250/6 P/thruster/-2500/1250/0 P/thruster/2500/-250/6 P/cargo/500/1500/0 P/cargo/500/-500/0 P/bolt/500/1000/0 P/bolt/500/0/0 G

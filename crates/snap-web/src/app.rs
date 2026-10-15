@@ -795,6 +795,7 @@ impl App {
                 Event::Moored(true) => self.sound.play(Effect::Bolt),
                 Event::Moored(false) => self.sound.play(Effect::Nope),
                 Event::Won => self.sound.play(Effect::Won),
+                Event::FixReady => self.sound.play(Effect::Bolt),
                 Event::Failed(_) => self.sound.play(Effect::Failed),
             }
         }
@@ -960,7 +961,7 @@ impl App {
                 .board
                 .map_or(copy::TITLE, |b| deck::BOARDS[b].title)
                 .to_owned(),
-            crew: Some(Crew::Cog),
+            crew: Some(self.board.map_or(Crew::Cog, |b| deck::BOARDS[b].crew)),
             lines: vec![copy::JOBS.to_owned()],
             stars: None,
             link: None,
@@ -1148,6 +1149,11 @@ impl App {
         let crew = self.crew();
         let number = self.snap.game.level.number;
         self.hud.set_job(number, crew);
+        self.hud.set_test(
+            self.snap.game.phase,
+            self.snap.game.level.tests.len(),
+            self.snap.game.level.job,
+        );
         self.hud
             .set_playing(self.overlay != Overlay::Jobs && !self.options.kit);
         let tray = self.snap.game.tray.clone();
@@ -1333,6 +1339,9 @@ impl App {
             self.pending.push(*input);
             *next += 1;
             *at = time + 0.35;
+        } else if self.snap.game.phase > 0 {
+            self.pending.push(Input::Go);
+            *at = time + 0.35;
         }
     }
 
@@ -1389,6 +1398,10 @@ impl App {
                 &format!("{:.3} {:.3}", self.deck.at.x, self.deck.at.y),
             );
         }
+        let _ = self.canvas.set_attribute("data-job", &self.job.to_string());
+        let _ = self
+            .canvas
+            .set_attribute("data-phase", &self.snap.game.phase.to_string());
         let visual_time = if self.access.reduced {
             0.
         } else {

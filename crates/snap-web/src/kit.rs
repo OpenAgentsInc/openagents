@@ -24,6 +24,11 @@ pub fn colour(kind: PieceKind) -> u32 {
         PieceKind::Module => 0xE9EEF5,
         PieceKind::Strut => 0xF2F2F2,
         PieceKind::Bolt => 0xC8CDD6,
+        PieceKind::Hinge => 0xF0D676,
+        PieceKind::Spring => 0xBF8BF5,
+        PieceKind::Tether => 0xECE9CC,
+        PieceKind::Wheel => 0x7BE0FF,
+        PieceKind::CargoArm => 0xF2A04B,
     }
 }
 
@@ -227,6 +232,33 @@ pub fn tile(mesh: &mut Mesh, kind: PieceKind, corners: &[Vec2], style: Style) {
             mesh.disc(m, 0.24, 14, 0.0, z + 0.22, z + 0.26, tint(SILVER, style));
             mesh.disc(m, 0.18, 14, 0.0, z + 0.26, z + 0.28, tint(WINDOW, style));
         }
+        PieceKind::Wheel => {
+            let at = middle(corners);
+            mesh.annulus(at, 0.28, 0.46, 16, z - 0.1, z + 0.16, base);
+            mesh.disc(at, 0.15, 12, 0., z - 0.12, z + 0.2, tint(SILVER, style));
+            for p in corners {
+                mesh.rod(at, *p * 0.5 + at * 0.5, 0.07, z, z + 0.1, base);
+            }
+        }
+        PieceKind::CargoArm => {
+            for i in 0..corners.len() {
+                mesh.rod(
+                    corners[i],
+                    corners[(i + 1) % corners.len()],
+                    0.12,
+                    z - 0.08,
+                    z + 0.08,
+                    base,
+                );
+            }
+            let a = corners[0].lerp(corners[1], 0.5);
+            let b = corners[3].lerp(corners[4], 0.5);
+            mesh.rod(a, b, 0.16, z, z + 0.12, base);
+            mesh.disc(a, 0.2, 12, 0., z, z + 0.2, tint(SILVER, style));
+        }
+        PieceKind::Hinge | PieceKind::Spring | PieceKind::Tether => {
+            connector(mesh, kind, middle(corners), middle(corners), style)
+        }
         PieceKind::Strut | PieceKind::Bolt => {}
     }
     if style.marks {
@@ -247,23 +279,67 @@ pub fn tile(mesh: &mut Mesh, kind: PieceKind, corners: &[Vec2], style: Style) {
     }
 }
 
-/// A four-dot pattern that stays distinct without colour.
+/// A six-dot pattern that stays distinct without colour.
 pub fn mark_pattern(kind: PieceKind) -> u8 {
     PieceKind::ALL.iter().position(|k| *k == kind).unwrap_or(0) as u8 + 1
 }
 
 fn mark(mesh: &mut Mesh, kind: PieceKind, at: Vec2, z: f32) {
-    mesh.disc(at, 0.18, 8, 0., z, z + 0.01, [1.; 3]);
+    mesh.disc(at, 0.22, 8, 0., z, z + 0.01, [1.; 3]);
     let code = mark_pattern(kind);
-    for bit in 0..4 {
+    for bit in 0..6 {
         if code & (1 << bit) != 0 {
             let p = at
                 + Vec2::new(
                     if bit % 2 == 0 { -0.065 } else { 0.065 },
-                    if bit / 2 == 0 { 0.065 } else { -0.065 },
+                    0.1 - (bit / 2) as f32 * 0.1,
                 );
             mesh.disc(p, 0.04, 8, 0., z + 0.01, z + 0.02, [0.; 3]);
         }
+    }
+}
+
+/// A join's visible hinge, spring, or line, following its moving endpoints.
+pub fn connector(mesh: &mut Mesh, kind: PieceKind, a: Vec2, b: Vec2, style: Style) {
+    let z = style.lift + 0.4;
+    let colour = tint(colour(kind), style);
+    let at = (a + b) * 0.5;
+    if style.marks {
+        mark(mesh, kind, at, z + 0.2);
+    }
+    match kind {
+        PieceKind::Hinge => {
+            mesh.annulus(at, 0.09, 0.22, 12, z, z + 0.1, colour);
+            mesh.disc(at, 0.06, 8, 0., z, z + 0.13, rgb(DARK));
+        }
+        PieceKind::Spring => {
+            let mut d = b - a;
+            if d.length() < 0.35 {
+                d = Vec2::X * 0.35;
+            }
+            let start = at - d * 0.5;
+            let side = d.normalize().perp() * 0.12;
+            let mut prev = start;
+            for i in 1..=8 {
+                let p = start
+                    + d * (i as f32 / 8.)
+                    + if i == 8 {
+                        Vec2::ZERO
+                    } else if i % 2 == 0 {
+                        side
+                    } else {
+                        -side
+                    };
+                mesh.rod(prev, p, 0.05, z, z + 0.04, colour);
+                prev = p;
+            }
+        }
+        PieceKind::Tether => {
+            let mid = at - Vec2::Y * (0.25 - (b - a).length()).max(0.);
+            mesh.rod(a, mid, 0.045, z, z + 0.04, colour);
+            mesh.rod(mid, b, 0.045, z, z + 0.04, colour);
+        }
+        _ => {}
     }
 }
 

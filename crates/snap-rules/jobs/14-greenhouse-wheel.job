@@ -1,0 +1,23 @@
+snap.level.v1
+# Job 4: spin the garden so the plant pods feel gravity. Spinning pulls
+# hard on the joins out at the pods.
+name Greenhouse Wheel
+number 14
+crew rivet
+job spin H
+job spin H
+area -5 -5 6 6
+give module 0.5 0.5 0 H
+give pod 3.5 0.5 0
+give pod -2.5 0.5 0
+give pod 0.5 3.5 0
+give pod 0.5 -2.5 0
+tray square 10 strut 8 bolt 14 thruster 8
+par 33
+run 9
+burn 2
+burn 2.5
+gravity 0.7 3.5
+gravity 1.2 5
+hold 2
+solution P/square/1500/500/9 P/strut/1500/500/10 P/square/2500/500/9 P/strut/2500/500/10 P/square/-500/500/3 P/strut/-500/500/4 P/square/-1500/500/3 P/strut/-1500/500/4 P/bolt/1000/500/0 P/bolt/2000/500/0 P/bolt/3000/500/0 P/bolt/0/500/0 P/bolt/-1000/500/0 P/bolt/-2000/500/0 P/thruster/3500/-250/6 P/thruster/-2500/1250/0 P/thruster/2500/-250/6 P/square/500/1500/0 P/strut/500/1500/1 P/square/500/2500/0 P/strut/500/2500/1 P/square/500/-500/0 P/strut/500/-500/1 P/square/500/-1500/0 P/strut/500/-1500/1 P/bolt/500/1000/0 P/bolt/500/2000/0 P/bolt/500/3000/0 P/bolt/500/0/0 P/bolt/500/-1000/0 P/bolt/500/-2000/0 P/thruster/1250/3500/9 P/thruster/-250/-2500/3 G

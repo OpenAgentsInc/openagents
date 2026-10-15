@@ -834,7 +834,7 @@ const SNAP_SECTIONS: [(&str, &str); 10] = [
     ("pieces", "The pieces"),
     ("go", "Press Go"),
     ("strong", "Make it strong"),
-    ("jobs", "The five jobs"),
+    ("jobs", "The jobs"),
     ("stars", "Stars"),
     ("tips", "Tips"),
 ];
@@ -981,6 +981,7 @@ fn render_snap_guide(site: &Site) -> Markup {
                             p { "When something breaks, the robot tells you what happened and what to try. Press " strong { "Fix it" } " and change your build." }
                         }, Some(shot(site, "snap-storm.jpg", "The solar storm blowing: a bare square bridge has come apart and a square drifts away", "In the storm, bare squares pop."))))
                         (step("jobs", 8, html! {
+                            p { "Twenty jobs come from four boards: Dock Yard, Garden Ring, Storm Watch, and Deep Space. These five teach the first steps:" }
                             ul class="br-list" {
                                 li { strong { "1. Hello, Magnets" } " (Pip): join two modules with a row of pieces." }
                                 li { strong { "2. Straight Push" } " (Tock): push a crate into the green ring without spinning it." }
@@ -988,12 +989,13 @@ fn render_snap_guide(site: &Site) -> Markup {
                                 li { strong { "4. Garden Spin" } " (Rivet): spin the garden until the plant gravity meter sits in the green, and keep the pods on." }
                                 li { strong { "5. Cargo Dock" } " (Captain Cog): build arms that fit around the cargo ship's outline. It flies in, ties up to the ends of your arms, and tugs." }
                             }
+                            p { "Later jobs add hinges that turn, springs that soften bumps, tethers that only pull, reaction wheels that take spin, and cargo arms for towing. Some test the same build several ways: fix anything you want between tests, then press Go again." }
                             p { "Finishing a job opens the next one." }
                         }, Some(shot(site, "snap-dock.jpg", "Two braced, bolted arms around the cargo ship's outline in its berth", "A berth that fits the ship."))))
                         (step("stars", 9, html! {
                             p { "Every job done earns stars. Use as few pieces as the robot crew would, struts and bolts included, for three stars. The star board on the Crew Deck shows your best." }
                             p { "Your stars stay in this browser. Choose Save and visit Crew Deck to keep your build too. Your builds reopens it, ready to change or run again." }
-                        }, Some(shot(site, "snap-done.jpg", "The Job done card with three stars, Next job, Try again and All jobs", "Job done, three stars!"))))
+                        }, Some(shot(site, "snap-done.jpg", "The Job done card with three stars and a button to save the build on the Crew Deck", "Job done, three stars!"))))
                         (step("tips", 10, html! {
                             ul class="br-list" {
                                 li { "Watch what breaks: a flash of sparks shows where." }

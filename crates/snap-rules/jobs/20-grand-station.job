@@ -1,0 +1,35 @@
+snap.level.v1
+name Grand Station
+number 20
+crew cog
+job connect A B
+job push C
+job spin H
+job dock D
+area -11 -8 18 11
+give module -7.5 -4.5 0 A
+give module -3.5 -4.5 0 B
+give solar -3.5 -3.0 0
+give solar -3.5 -6.0 0
+give module 0.5 5.5 0 H
+give pod 3.5 5.5 0
+give pod -2.5 5.5 0
+give module 4.5 -5.5 0
+give module 4.5 -4.5 0 D
+give module 4.5 -3.5 0
+give cargo -7.5 2.5 0 C
+tray square 18 strut 13 bolt 20 thruster 5
+par 46
+run 11
+burn 0
+burn 2.5
+burn 2
+burn 0
+gravity 1 3
+hold 2
+storm 40 4 10 0.5
+ship 14 -4.5 2.6 0.8 1.6 5.15
+moor 3 1.5
+beacon -7.5 8.5 0.8
+spin-max 0.3
+solution P/square/-6500/-4500/9 P/strut/-6500/-4500/10 P/square/-5500/-4500/9 P/strut/-5500/-4500/10 P/square/-4500/-4500/9 P/strut/-4500/-4500/10 P/bolt/-7000/-4500/0 P/bolt/-6000/-4500/0 P/bolt/-5000/-4500/0 P/bolt/-4000/-4500/0 P/square/1500/5500/9 P/strut/1500/5500/10 P/square/2500/5500/9 P/strut/2500/5500/10 P/square/-500/5500/3 P/strut/-500/5500/4 P/square/-1500/5500/3 P/strut/-1500/5500/4 P/bolt/1000/5500/0 P/bolt/2000/5500/0 P/bolt/3000/5500/0 P/bolt/0/5500/0 P/bolt/-1000/5500/0 P/bolt/-2000/5500/0 P/thruster/3500/4750/6 P/thruster/-2500/6250/0 P/thruster/2500/4750/6 P/square/5500/-3500/9 P/strut/5500/-3500/10 P/square/6500/-3500/9 P/strut/6500/-3500/10 P/square/7500/-3500/9 P/strut/7500/-3500/10 P/square/5500/-5500/9 P/strut/5500/-5500/10 P/square/6500/-5500/9 P/strut/6500/-5500/10 P/square/7500/-5500/9 P/strut/7500/-5500/10 P/bolt/5000/-3500/0 P/bolt/6000/-3500/0 P/bolt/7000/-3500/0 P/bolt/5000/-5500/0 P/bolt/6000/-5500/0 P/bolt/7000/-5500/0 P/thruster/-7500/1750/6 G

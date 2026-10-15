@@ -1,0 +1,16 @@
+snap.level.v1
+name Counter Spin
+number 11
+crew tock
+job stop H
+area -3 -4 6 5
+give module 0.5 0.5 0 H
+tray wheel 1
+par 1
+run 9
+burn 6
+need wheel 1 H
+spin H 0.3
+spin-max 0.05
+hold 1
+solution P/wheel/500/-500/6 G

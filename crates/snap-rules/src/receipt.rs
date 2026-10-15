@@ -30,7 +30,7 @@ use crate::sim;
 pub const FORMAT: &str = "snap.run-receipt.v1";
 pub const GAME: &str = "snap-station";
 /// Bumped whenever a rule changes how a run plays out.
-pub const RULES_VERSION: u32 = 1;
+pub const RULES_VERSION: u32 = 2;
 
 /// SHA-256 over the rules' version and their numbers, so a receipt made
 /// under other rules is refused rather than replayed wrongly.
@@ -61,6 +61,10 @@ pub fn rules_digest() -> [u8; 32] {
         crate::build::SNAP_COS,
         crate::build::JOIN_GAP,
     ));
+    hash.update(sim::SHIP_MASS.to_bits().to_le_bytes());
+    for value in crate::mechanism::PARAMETERS {
+        hash.update(value.to_bits().to_le_bytes());
+    }
     for kind in PieceKind::ALL {
         hash.update(format!("{} {} {}\n", kind.word(), kind.mass(), kind.sail()));
     }
@@ -365,5 +369,5 @@ mod tests {
         assert_eq!(hex(&game.state_digest()), PINNED);
     }
 
-    const PINNED: &str = "44761e7b1d2e6fe265583b3fe0403940f7f7e19f7d50510f3768f39976bd3954";
+    const PINNED: &str = "6c523c7a6801dcefb8160f05517c32ef0d7453b078677d1d41fe1d5213253129";
 }

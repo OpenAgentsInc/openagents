@@ -78,6 +78,11 @@ pub fn piece(kind: PieceKind) -> &'static str {
         PieceKind::Module => "Module",
         PieceKind::Strut => "Strut",
         PieceKind::Bolt => "Bolt",
+        PieceKind::Hinge => "Hinge",
+        PieceKind::Spring => "Spring",
+        PieceKind::Tether => "Tether",
+        PieceKind::Wheel => "Reaction wheel",
+        PieceKind::CargoArm => "Cargo arm",
     }
 }
 
@@ -90,6 +95,19 @@ pub fn crew(crew: Crew) -> &'static str {
         Crew::Rivet => "Rivet",
         Crew::Nova => "Nova",
         Crew::Tock => "Tock",
+    }
+}
+
+/// The current test of a build, including later jobs with several tests.
+pub fn test_goal(job: snap_rules::Job) -> &'static str {
+    match job {
+        snap_rules::Job::Connect(_, _) => "Join the modules",
+        snap_rules::Job::Push(_) => "Move through the rings",
+        snap_rules::Job::Spin(_) => "Spin the garden",
+        snap_rules::Job::Dock(_) => "Dock the cargo ship",
+        snap_rules::Job::Stop(_) => "Stop the station spinning",
+        snap_rules::Job::Swing(_) => "Swing the door",
+        snap_rules::Job::Tow(_) => "Move the cargo ship",
     }
 }
 
@@ -114,7 +132,22 @@ pub fn goal(job: u8) -> &'static str {
         3 => "Join them before the storm",
         4 => "Spin the garden for the plants",
         5 => "Give the cargo ship a berth",
-        _ => "Do the job",
+        6 => "Move through both rings",
+        7 => "Keep the heavy cargo near the middle",
+        8 => "Build a solar farm that holds",
+        9 => "Close the ring and spin it",
+        10 => "Dock, then move the cargo ship",
+        11 => "Stop the station spinning",
+        12 => "Build a long bridge",
+        13 => "Hold through three storms",
+        14 => "Give four pods gravity at two speeds",
+        15 => "Build berths for two ships",
+        16 => "Build a door that swings",
+        17 => "Catch the bump with a spring",
+        18 => "Keep the cargo on a tether",
+        19 => "Join, spin, and dock",
+        20 => "Pass all four station tests",
+        _ => "Choose a job",
     }
 }
 
@@ -129,6 +162,27 @@ pub fn ask(job: u8) -> &'static str {
         }
         4 => "Spin my garden so the plants feel gravity. Not too little, not too much!",
         5 => "A cargo ship is coming in. Build it a berth that fits, and hold on tight!",
+        6 => "Can you move my crate through both rings? Put the push off the middle so it turns.",
+        7 => "Keep both crates close to the middle, bolt them on, and spin my garden.",
+        8 => "Join my modules with three solar wings. Lock the joins before the wind comes.",
+        9 => "Build a closed ring around my hub, then spin all four plant pods.",
+        10 => {
+            "Give my ship two cargo arms to dock in. Then press Go again to tow it into the ring."
+        }
+        11 => "My station is spinning. Add a reaction wheel to take the spin.",
+        12 => "Can you bridge this big gap? Brace it so it holds when I pull.",
+        13 => "Three storms are coming. After each one, fix anything you want and press Go again.",
+        14 => "Give all four pods gravity. We will test the garden at two speeds.",
+        15 => "Two ships need different berths. Build both, then press Go for each visit.",
+        16 => "Build a panel door with a hinge. I will push it to see if it swings.",
+        17 => "Join my crate with a spring to soften its bump. Bolt the other join.",
+        18 => "Join my cargo with a tether so it stays close when I pull. Bolt the other join.",
+        19 => {
+            "Make a station that holds through a storm, spins a garden, and docks a ship. Press Go for each test."
+        }
+        20 => {
+            "Can your station join, move cargo, spin a garden, and dock a ship? Press Go for each test."
+        }
         _ => "Can you help me build something?",
     }
 }
@@ -137,6 +191,13 @@ pub fn ask(job: u8) -> &'static str {
 #[must_use]
 pub fn fail(why: Fail) -> &'static str {
     match why {
+        Fail::MissingParts => "Add the pieces the crew asked for, and keep them joined.",
+        Fail::OpenRing => "The ring is open. Join its ends before you spin it.",
+        Fail::StillSpinning => {
+            "It is still spinning. Give the reaction wheel time to take the spin."
+        }
+        Fail::DoorStuck => "The door did not swing. Put a hinge on its join.",
+        Fail::TowMissed => "The ship did not reach the ring. Add a thruster to push it.",
         Fail::CameApart => "It came apart. Bolts lock magnets, and a strut stops a square leaning.",
         Fail::Missed => "The crate missed the ring. Push it harder toward the ring.",
         Fail::Spun => "It spun around. Push through the middle so it goes straight.",
@@ -326,6 +387,9 @@ mod tests {
         }
         for job in 1..=snap_rules::level::COUNT as u8 {
             all.push(goal(job).to_owned());
+            for test in snap_rules::level::job(job as usize).tests {
+                all.push(test_goal(test).to_owned());
+            }
             all.push(ask(job).to_owned());
             all.push(job_button(
                 job,
@@ -342,6 +406,11 @@ mod tests {
             Fail::NoRoom,
             Fail::NoMooring,
             Fail::Broke,
+            Fail::MissingParts,
+            Fail::OpenRing,
+            Fail::StillSpinning,
+            Fail::DoorStuck,
+            Fail::TowMissed,
         ] {
             all.push(fail(why).to_owned());
         }

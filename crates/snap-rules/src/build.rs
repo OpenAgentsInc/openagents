@@ -16,6 +16,7 @@
 //! strut braces a square from corner to corner so it can't lean.
 
 use crate::kinds::{PieceKind, side_len};
+use crate::mechanism::Coupling;
 use crate::{COS, SIN, V};
 
 /// How close, middle to middle, a held side must come to a free side to
@@ -87,6 +88,7 @@ pub struct Seam {
     pub b: usize,
     pub b_side: usize,
     pub bolted: bool,
+    pub coupling: Coupling,
 }
 
 impl Seam {
@@ -115,6 +117,8 @@ pub struct Returned {
     pub kind: PieceKind,
     pub struts: u32,
     pub bolts: u32,
+    /// Hinges, springs, and tethers installed on the removed joins.
+    pub links: [u32; 3],
 }
 
 /// Whether `point` is inside the convex anticlockwise outline `shape`, by
@@ -317,6 +321,17 @@ impl Build {
                     b: index,
                     b_side: *side,
                     bolted: false,
+                    coupling: if self.pieces[index].kind == PieceKind::Wheel
+                        || self.pieces[other].kind == PieceKind::Wheel
+                    {
+                        Coupling::Wheel
+                    } else if self.pieces[index].kind == PieceKind::CargoArm
+                        || self.pieces[other].kind == PieceKind::CargoArm
+                    {
+                        Coupling::CargoArm
+                    } else {
+                        Coupling::Magnet
+                    },
                 });
             }
         }
@@ -368,6 +383,21 @@ impl Build {
         best.map(|(_, index)| index)
     }
 
+    /// A plain join that can take a hinge, spring, or tether.
+    pub fn link_target(&self, at: V) -> Option<usize> {
+        self.seams
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| {
+                s.coupling == Coupling::Magnet
+                    && !(self.pieces[s.a].given && self.pieces[s.b].given)
+            })
+            .map(|(i, s)| ((s.middle(self) - at).len2(), i))
+            .filter(|(d, _)| *d <= BOLT_REACH * BOLT_REACH)
+            .min_by(|a, b| a.0.total_cmp(&b.0))
+            .map(|(_, i)| i)
+    }
+
     /// The piece at `at` that may be taken off: the last placed one under
     /// the point that the job didn't give.
     #[must_use]
@@ -382,8 +412,17 @@ impl Build {
     pub fn remove(&mut self, index: usize) -> Returned {
         let piece = self.pieces.remove(index);
         let mut bolts = 0;
+        let mut links = [0; 3];
         self.seams.retain(|s| {
             let gone = s.a == index || s.b == index;
+            if gone {
+                match s.coupling {
+                    Coupling::Hinge => links[0] += 1,
+                    Coupling::Spring => links[1] += 1,
+                    Coupling::Tether => links[2] += 1,
+                    _ => {}
+                }
+            }
             if gone && s.bolted {
                 bolts += 1;
             }
@@ -401,6 +440,7 @@ impl Build {
             kind: piece.kind,
             struts: u32::from(piece.strut.is_some()),
             bolts,
+            links,
         }
     }
 
@@ -427,7 +467,17 @@ impl Build {
             .iter()
             .filter(|s| s.bolted && !(self.pieces[s.a].given && self.pieces[s.b].given))
             .count();
-        (pieces + struts + bolts) as u32
+        let links = self
+            .seams
+            .iter()
+            .filter(|s| {
+                matches!(
+                    s.coupling,
+                    Coupling::Hinge | Coupling::Spring | Coupling::Tether
+                )
+            })
+            .count();
+        (pieces + struts + bolts + links) as u32
     }
 }
 
@@ -598,7 +648,8 @@ mod tests {
             Returned {
                 kind: PieceKind::Square,
                 struts: 1,
-                bolts: 1
+                bolts: 1,
+                links: [0; 3],
             }
         );
         assert!(build.seams.is_empty());

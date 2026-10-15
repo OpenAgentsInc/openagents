@@ -1,0 +1,19 @@
+snap.level.v1
+name Full Ring
+number 9
+crew rivet
+job spin H
+area -3 -3 6 6
+give module 1.5 1.5 0 H
+give pod 0.5 0.5 0
+give pod 2.5 0.5 0
+give pod 0.5 2.5 0
+give pod 2.5 2.5 0
+tray square 4 strut 4 bolt 12 thruster 2 triangle 4
+par 22
+run 10
+burn 4.5
+gravity 0.6 1.8
+hold 2
+ring
+solution P/square/1500/500/0 P/strut/1500/500/1 P/square/500/1500/0 P/strut/500/1500/1 P/square/2500/1500/0 P/strut/2500/1500/1 P/square/1500/2500/0 P/strut/1500/2500/1 P/bolt/1500/1000/0 P/bolt/1000/500/0 P/bolt/2000/500/0 P/bolt/1000/1500/0 P/bolt/500/1000/0 P/bolt/500/2000/0 P/bolt/2000/1500/0 P/bolt/2500/1000/0 P/bolt/2500/2000/0 P/bolt/1500/2000/0 P/bolt/1000/2500/0 P/bolt/2000/2500/0 P/thruster/-250/500/3 P/thruster/3250/2500/9 G

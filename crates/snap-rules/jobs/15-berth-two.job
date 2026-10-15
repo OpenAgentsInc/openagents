@@ -1,0 +1,22 @@
+snap.level.v1
+# Job 5: build a berth that fits the cargo ship and holds when it tugs
+# on its moorings.
+name Berth Two
+number 15
+crew cog
+job dock B
+job dock B
+area -2 -3 5 7
+give module -0.5 -0.5 0
+give module -0.5 0.5 0 B
+give module -0.5 1.5 0
+give module -0.5 2.5 0
+give module -0.5 3.5 0
+give module -0.5 4.5 0
+tray square 16 triangle 4 strut 12 bolt 16
+par 36
+run 11
+ship 9 0.5 2.6 0.8 1.6 0.15
+ship 10 3.5 3.2 0.8 1.6 0.15
+moor 3 1.5
+solution P/square/500/1500/9 P/strut/500/1500/10 P/square/1500/1500/9 P/strut/1500/1500/10 P/square/2500/1500/9 P/strut/2500/1500/10 P/square/500/-500/9 P/strut/500/-500/10 P/square/1500/-500/9 P/strut/1500/-500/10 P/square/2500/-500/9 P/strut/2500/-500/10 P/bolt/0/1500/0 P/bolt/1000/1500/0 P/bolt/2000/1500/0 P/bolt/0/-500/0 P/bolt/1000/-500/0 P/bolt/2000/-500/0 P/square/500/4500/9 P/strut/500/4500/10 P/square/1500/4500/9 P/strut/1500/4500/10 P/square/2500/4500/9 P/strut/2500/4500/10 P/square/500/2500/9 P/strut/500/2500/10 P/square/1500/2500/9 P/strut/1500/2500/10 P/square/2500/2500/9 P/strut/2500/2500/10 P/bolt/0/4500/0 P/bolt/1000/4500/0 P/bolt/2000/4500/0 P/bolt/0/2500/0 P/bolt/1000/2500/0 P/bolt/2000/2500/0 G

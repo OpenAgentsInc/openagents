@@ -226,7 +226,14 @@ impl SnapGame {
             }
         }
         let mut dots = Vec::new();
-        if let Some((beacon, _)) = self.game.level.beacon {
+        for (beacon, _) in self
+            .game
+            .level
+            .beacons
+            .iter()
+            .copied()
+            .filter(|_| matches!(self.game.level.job, Job::Push(_) | Job::Tow(_)))
+        {
             let (x, y) = at(beacon);
             dots.push(MapDot {
                 x,

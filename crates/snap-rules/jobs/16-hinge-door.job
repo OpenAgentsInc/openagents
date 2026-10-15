@@ -1,0 +1,16 @@
+snap.level.v1
+name Hinge Door
+number 16
+crew pip
+job swing A
+area -3 -4 6 5
+give module 0.5 0.5 0 A
+tray panel 1 hinge 1
+par 2
+run 6
+burn 0
+need panel 1
+need hinge 1 A
+hold 0.4
+nudge-kind panel 0 2 0.5 2.5
+solution P/panel/1500/500/0 P/hinge/1000/500/0 G

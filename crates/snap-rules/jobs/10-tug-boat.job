@@ -1,0 +1,20 @@
+snap.level.v1
+name Tug Boat
+number 10
+crew cog
+job dock B
+job tow B
+area -3 -3 5 4
+give module -0.5 -0.5 0
+give module -0.5 0.5 0 B
+give module -0.5 1.5 0
+tray cargo-arm 2 thruster 1
+need cargo-arm 2 B
+par 3
+run 11
+burn 0
+burn 8
+ship 9 0.5 1.8 0.8 1.6 0.15
+moor 3 1.5
+beacon 0.5 0.5 0.2
+solution P/cargo-arm/1000/1500/9 P/cargo-arm/1000/-500/9 P/thruster/-1250/500/3 G

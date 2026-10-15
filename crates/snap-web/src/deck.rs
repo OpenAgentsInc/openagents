@@ -51,13 +51,9 @@ pub const BOARDS: [Board; 4] = [
 /// The introductory jobs keep their original order; later jobs come in sets.
 pub fn set_for(job: usize) -> usize {
     match job {
-        1 | 5 => 0,
-        4 => 1,
-        3 => 2,
-        2 => 3,
-        6..=8 => 0,
-        9..=12 => 1,
-        13..=16 => 2,
+        1 | 5 | 10 | 12 | 15 => 0,
+        4 | 7 | 9 | 14 | 19 => 1,
+        3 | 8 | 13 | 16 | 18 => 2,
         _ => 3,
     }
 }
@@ -92,6 +88,7 @@ impl Deck {
 pub struct Saved {
     pub job: usize,
     pub inputs: Vec<Input>,
+    preview: Mesh,
 }
 
 impl Saved {
@@ -123,9 +120,9 @@ impl Library {
     pub fn exhibit_at(&self, at: Vec2) -> Option<usize> {
         self.builds
             .iter()
-            .take(5)
+            .take(20)
             .enumerate()
-            .find(|(i, _)| at.distance(Vec2::new(-3.6 + *i as f32 * 1.8, -3.5)) < 0.8)
+            .find(|(i, _)| at.distance(exhibit_spot(*i)) < 0.8)
             .map(|(_, b)| b.job)
     }
 
@@ -135,9 +132,12 @@ impl Library {
         }
         let job = usize::from(game.game.level.number);
         self.builds.retain(|b| b.job != job);
+        let mut preview = Mesh::new();
+        miniature(&mut preview, &game.game, Vec2::ZERO);
         self.builds.push(Saved {
             job,
             inputs: game.construction.clone(),
+            preview,
         });
         self.builds.sort_by_key(|b| b.job);
     }
@@ -178,13 +178,21 @@ impl Library {
             let Ok(inputs) = inputs else {
                 continue;
             };
-            let saved = Saved { job, inputs };
+            let saved = Saved {
+                job,
+                inputs,
+                preview: Mesh::new(),
+            };
             if let Some(game) = saved.game() {
                 out.keep(&game);
             }
         }
         out
     }
+}
+
+fn exhibit_spot(i: usize) -> Vec2 {
+    Vec2::new(-3.6 + (i % 5) as f32 * 1.8, -3.5 - (i / 5) as f32 * 0.95)
 }
 
 fn pad(mesh: &mut Mesh, at: Vec2, radius: f32, colour: u32) {
@@ -241,11 +249,14 @@ pub fn draw(deck: &Deck, progress: &Progress, library: &Library, time: f32) -> D
                 .tri(at.extend(0.04), corner(i), corner(i + 1), rgb(colour));
         }
     }
-    for (i, saved) in library.builds.iter().take(5).enumerate() {
-        let at = Vec2::new(-3.6 + i as f32 * 1.8, -3.5);
-        pad(&mut out.lit, at, 0.75, 0x506583);
-        if let Some(game) = saved.game() {
-            miniature(&mut out.lit, &game.game, at);
+    for (i, saved) in library.builds.iter().take(20).enumerate() {
+        let at = exhibit_spot(i);
+        pad(&mut out.lit, at, 0.55, 0x506583);
+        let start = out.lit.data.len();
+        out.lit.data.extend_from_slice(&saved.preview.data);
+        for v in out.lit.data[start..].chunks_exact_mut(crate::mesh::STRIDE) {
+            v[0] += at.x;
+            v[1] += at.y;
         }
     }
     out.lit.sphere(
@@ -291,9 +302,30 @@ fn miniature(mesh: &mut Mesh, game: &Game, at: Vec2) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn twenty_saved_builds_fit_the_decks_mesh_budget() {
+        let mut library = Library::default();
+        for n in 1..=level::COUNT {
+            let level = level::job(n);
+            let plan = snap_rules::bot::solve(&level).unwrap();
+            let mut game = SnapGame::new(level);
+            for input in plan.into_iter().filter(|i| !matches!(i, Input::Go)) {
+                game.step_rules(&[input]);
+            }
+            library.keep(&game);
+        }
+        assert_eq!(library.builds.len(), 20);
+        let drawn = draw(&Deck::default(), &Progress::default(), &library, 0.);
+        let triangles = drawn.lit.triangles() + drawn.glow.triangles();
+        assert!(triangles < 40_000, "{triangles} triangles");
+    }
     #[test]
     fn all_jobs_have_one_board_and_the_deck_stays_bounded() {
         let all: Vec<_> = (0..4).flat_map(jobs).collect();
+        for board in 0..4 {
+            assert_eq!(jobs(board).len(), 5);
+        }
         assert_eq!(all.len(), level::COUNT);
         for n in 1..=level::COUNT {
             assert_eq!(all.iter().filter(|j| **j == n).count(), 1);

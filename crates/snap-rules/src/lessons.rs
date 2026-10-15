@@ -187,3 +187,140 @@ fn job_5_the_ship_needs_arms_long_enough_and_strong_enough() {
     put(&mut blocked, PieceKind::Square, 0.5, 0.5, 0);
     assert_eq!(try_it(&mut blocked), Status::Failed(Fail::NoRoom));
 }
+
+#[test]
+fn the_two_ring_route_needs_its_off_centre_push() {
+    let level = level::job(6);
+    let mut plan = level.solution.clone();
+    for input in &mut plan {
+        if let Input::Place {
+            kind: PieceKind::Panel,
+            y,
+            ..
+        } = input
+        {
+            *y = -500;
+        }
+    }
+    let wrong = crate::bot::play_plan(&level, &plan);
+    assert_eq!(wrong.status, Status::Failed(Fail::Missed));
+    assert_eq!(
+        crate::bot::play_plan(&level, &level.solution).status,
+        Status::Won
+    );
+}
+
+#[test]
+fn cargo_at_the_middle_spins_more_easily_than_cargo_at_the_ends() {
+    let level = level::job(7);
+    let mut plan = level.solution.clone();
+    for input in &mut plan {
+        if let Input::Place { kind, x, y, .. } = input {
+            if *kind == PieceKind::Cargo {
+                *x = if *y > 500 { 4500 } else { -3500 };
+                *y = 500;
+            } else if *kind == PieceKind::Bolt && *x == 500 && (*y == 0 || *y == 1000) {
+                *x = if *y == 1000 { 4000 } else { -3000 };
+                *y = 500;
+            }
+        }
+    }
+    let wrong = crate::bot::play_plan(&level, &plan);
+    assert_eq!(wrong.status, Status::Failed(Fail::TooLight));
+    assert_eq!(
+        crate::bot::play_plan(&level, &level.solution).status,
+        Status::Won
+    );
+}
+
+#[test]
+fn a_ring_must_close_around_the_hub() {
+    let level = level::job(9);
+    let plan: Vec<_> = level
+        .solution
+        .iter()
+        .copied()
+        .filter(|i| {
+            !matches!(
+                i,
+                Input::Place {
+                    kind: PieceKind::Square,
+                    x: 1500,
+                    y: 500,
+                    ..
+                }
+            )
+        })
+        .collect();
+    let open = crate::bot::play_plan(&level, &plan);
+    assert_eq!(open.status, Status::Failed(Fail::OpenRing));
+}
+
+#[test]
+fn a_hinge_really_turns_and_soft_joins_hold_when_plain_magnets_cannot() {
+    for (n, tool, why) in [
+        (16, PieceKind::Hinge, Fail::DoorStuck),
+        (17, PieceKind::Spring, Fail::CameApart),
+        (18, PieceKind::Tether, Fail::CameApart),
+    ] {
+        let mut level = level::job(n);
+        level.required.clear();
+        let plan: Vec<_> = level
+            .solution
+            .iter()
+            .copied()
+            .filter(|i| !matches!(i,Input::Place {kind,..}if *kind==tool))
+            .collect();
+        let wrong = crate::bot::play_plan(&level, &plan);
+        assert_eq!(wrong.status, Status::Failed(why), "job {n}");
+        let right = crate::bot::play_plan(&level, &level.solution);
+        assert_eq!(right.status, Status::Won);
+        assert!(
+            right
+                .world
+                .as_ref()
+                .unwrap()
+                .joints
+                .iter()
+                .all(|j| !j.broken)
+        );
+    }
+}
+
+#[test]
+fn a_reaction_wheel_stops_the_hull_while_the_wheel_keeps_spinning() {
+    let level = level::job(11);
+    let right = crate::bot::play_plan(&level, &level.solution);
+    let w = right.world.as_ref().unwrap();
+    let hull = right.build.tagged('H').unwrap();
+    let wheel = w.kinds.iter().position(|k| *k == PieceKind::Wheel).unwrap();
+    assert!(w.motion(&[hull]).2.abs() < 0.05);
+    assert!(w.motion(&[wheel]).2.abs() > 1.);
+    let mut unpowered = level.clone();
+    unpowered.burns = vec![0];
+    let wrong = crate::bot::play_plan(&unpowered, &unpowered.solution);
+    assert_eq!(wrong.status, Status::Failed(Fail::StillSpinning));
+}
+
+#[test]
+fn each_storm_waits_for_another_go_and_only_the_last_one_awards_stars() {
+    let level = level::job(13);
+    let mut game = Game::new(level.clone());
+    for input in &level.solution {
+        game.step(&[*input]);
+    }
+    while game.status == Status::Running {
+        game.step(&[]);
+    }
+    assert_eq!(game.phase, 1);
+    assert_eq!(game.status, Status::Building);
+    assert_eq!(game.stars, 0);
+    for _ in 0..120 {
+        game.step(&[]);
+    }
+    assert_eq!(game.phase, 1);
+    let (finished, receipt) = crate::bot::record_plan(&level, &level.solution);
+    assert_eq!(finished.phase, 2);
+    assert_eq!(finished.stars, 3);
+    receipt.verify(&level).unwrap();
+}

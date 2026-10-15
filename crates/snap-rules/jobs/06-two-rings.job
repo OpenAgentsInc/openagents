@@ -1,0 +1,16 @@
+snap.level.v1
+name Two Rings
+number 6
+crew tock
+job push C
+area -4 -4 10 8
+give cargo 0.5 0.5 0 C
+tray panel 1 thruster 1
+par 2
+run 8
+burn 2.5
+beacon 1.4 0.56 0.18
+beacon 5 1.25 0.18
+spin-max 2
+need panel 1 C
+solution P/panel/500/1500/0 P/thruster/-250/500/3 G

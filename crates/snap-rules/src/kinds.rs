@@ -37,10 +37,15 @@ pub enum PieceKind {
     Strut,
     /// A bolt: dropped on a magnet join, it locks it so it can't let go.
     Bolt,
+    Hinge,
+    Spring,
+    Tether,
+    Wheel,
+    CargoArm,
 }
 
 impl PieceKind {
-    pub const ALL: [Self; 11] = [
+    pub const ALL: [Self; 16] = [
         Self::Square,
         Self::Triangle,
         Self::Wedge,
@@ -52,6 +57,11 @@ impl PieceKind {
         Self::Module,
         Self::Strut,
         Self::Bolt,
+        Self::Hinge,
+        Self::Spring,
+        Self::Tether,
+        Self::Wheel,
+        Self::CargoArm,
     ];
 
     /// The word level files and receipts use.
@@ -69,6 +79,11 @@ impl PieceKind {
             Self::Module => "module",
             Self::Strut => "strut",
             Self::Bolt => "bolt",
+            Self::Hinge => "hinge",
+            Self::Spring => "spring",
+            Self::Tether => "tether",
+            Self::Wheel => "wheel",
+            Self::CargoArm => "cargo-arm",
         }
     }
 
@@ -81,7 +96,10 @@ impl PieceKind {
     /// dropped onto tiles and joins instead.
     #[must_use]
     pub fn is_tile(self) -> bool {
-        !matches!(self, Self::Strut | Self::Bolt)
+        !matches!(
+            self,
+            Self::Strut | Self::Bolt | Self::Hinge | Self::Spring | Self::Tether
+        )
     }
 
     /// The outline, anticlockwise, in metres.
@@ -105,12 +123,14 @@ impl PieceKind {
         ];
         const THRUSTER: [V; 3] = [V::new(0.0, 0.0), V::new(1.0, 0.0), V::new(0.5, 0.75)];
         match self {
-            Self::Square | Self::Panel | Self::Cargo | Self::Pod | Self::Module => &SQUARE,
+            Self::Square | Self::Panel | Self::Cargo | Self::Pod | Self::Module | Self::Wheel => {
+                &SQUARE
+            }
             Self::Triangle => &TRIANGLE,
             Self::Wedge => &WEDGE,
-            Self::Solar => &SOLAR,
+            Self::Solar | Self::CargoArm => &SOLAR,
             Self::Thruster => &THRUSTER,
-            Self::Strut | Self::Bolt => &[],
+            Self::Strut | Self::Bolt | Self::Hinge | Self::Spring | Self::Tether => &[],
         }
     }
 
@@ -119,11 +139,11 @@ impl PieceKind {
     #[must_use]
     pub fn snap_sides(self) -> &'static [usize] {
         match self {
-            Self::Thruster => &[0],
+            Self::Thruster | Self::CargoArm | Self::Wheel => &[0],
             Self::Triangle | Self::Wedge => &[0, 1, 2],
             Self::Solar => &[0, 1, 2, 3, 4, 5],
             Self::Square | Self::Panel | Self::Cargo | Self::Pod | Self::Module => &[0, 1, 2, 3],
-            Self::Strut | Self::Bolt => &[],
+            Self::Strut | Self::Bolt | Self::Hinge | Self::Spring | Self::Tether => &[],
         }
     }
 
@@ -132,8 +152,8 @@ impl PieceKind {
     #[must_use]
     pub fn inner_bars(self) -> &'static [(usize, usize)] {
         match self {
-            Self::Panel | Self::Cargo | Self::Pod | Self::Module => &[(0, 2), (1, 3)],
-            Self::Solar => &[(0, 2), (1, 5), (5, 2), (5, 3), (2, 4)],
+            Self::Panel | Self::Cargo | Self::Pod | Self::Module | Self::Wheel => &[(0, 2), (1, 3)],
+            Self::Solar | Self::CargoArm => &[(0, 2), (1, 5), (5, 2), (5, 3), (2, 4)],
             _ => &[],
         }
     }
@@ -158,7 +178,9 @@ impl PieceKind {
             Self::Pod => 3.0,
             Self::Module => 4.0,
             Self::Strut => 0.3,
-            Self::Bolt => 0.0,
+            Self::Bolt | Self::Hinge | Self::Spring | Self::Tether => 0.0,
+            Self::Wheel => 1.4,
+            Self::CargoArm => 2.2,
         }
     }
 
@@ -172,7 +194,9 @@ impl PieceKind {
             Self::Panel | Self::Cargo | Self::Pod | Self::Module => 1.0,
             Self::Solar => 2.0,
             Self::Thruster => 0.3,
-            Self::Strut | Self::Bolt => 0.0,
+            Self::Strut | Self::Bolt | Self::Hinge | Self::Spring | Self::Tether => 0.0,
+            Self::Wheel => 0.2,
+            Self::CargoArm => 0.3,
         }
     }
 

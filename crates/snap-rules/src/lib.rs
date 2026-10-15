@@ -27,9 +27,11 @@ pub mod build;
 pub mod game;
 pub mod kinds;
 pub mod level;
+pub mod mechanism;
 pub mod progress;
 pub mod receipt;
 pub mod sim;
+pub mod validate;
 
 #[cfg(test)]
 mod lessons;

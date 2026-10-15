@@ -24,6 +24,7 @@ use sha2::{Digest, Sha256};
 use crate::build::{Build, groups, inside};
 use crate::kinds::PieceKind;
 use crate::level::{Job, Level};
+use crate::mechanism::{self, Coupling};
 use crate::{HZ, SUBSTEPS, V, ticks};
 
 /// A bar's stiffness, newtons a metre.
@@ -52,6 +53,8 @@ pub const RAMP: f64 = 0.25;
 pub const MOOR_REACH: f64 = 0.6;
 /// How long the dock settles after the ship's tug before it is judged.
 pub const SETTLE: f64 = 1.5;
+/// Cargo mass carried at the two mooring points while towing, kg.
+pub const SHIP_MASS: f64 = 40.;
 
 const DT: f64 = 1.0 / (HZ as f64 * SUBSTEPS as f64);
 
@@ -74,6 +77,7 @@ pub struct Joint {
     /// The two corner-to-corner joins, as node pairs.
     pub nodes: [(usize, usize); 2],
     pub bolted: bool,
+    pub coupling: Coupling,
     pub broken: bool,
 }
 
@@ -100,6 +104,8 @@ pub struct ShipState {
     pub blocked: bool,
     /// The nodes its mooring lines hold, once parked.
     pub moorings: Option<[usize; 2]>,
+    pub moored_at: Option<V>,
+    pub rise: f64,
 }
 
 /// A running build.
@@ -152,6 +158,8 @@ impl World {
                 parked: false,
                 blocked: false,
                 moorings: None,
+                moored_at: None,
+                rise: 0.,
             }),
             parked_at: None,
             blocked_at: None,
@@ -214,8 +222,21 @@ impl World {
                     (world.first[a1.0] + a1.1, world.first[b1.0] + b1.1),
                 ],
                 bolted: seam.bolted,
+                coupling: seam.coupling,
                 broken: false,
             });
+        }
+        for (tag, omega) in &level.initial_spin {
+            if let Some(p) = build.tagged(*tag) {
+                let group = world.group_of(p);
+                let (centre, _, _) = world.motion(&group);
+                for piece in group {
+                    for n in world.nodes(piece) {
+                        let r = world.pos[n] - centre;
+                        world.vel[n] += V::new(-r.y, r.x) * *omega;
+                    }
+                }
+            }
         }
         world
     }
@@ -319,6 +340,9 @@ impl World {
     /// The storm's push now, up or down, per square metre of sail.
     #[must_use]
     pub fn wind(&self, level: &Level) -> f64 {
+        if level.tests.len() > 1 && !matches!(level.job, Job::Connect(_, _)) {
+            return 0.;
+        }
         let Some(storm) = level.storm else {
             return 0.0;
         };
@@ -342,9 +366,58 @@ impl World {
     pub fn ship_box(&self, level: &Level) -> Option<(V, V)> {
         let (state, ship) = (self.ship?, level.ship?);
         Some((
-            V::new(state.nose, ship.y - ship.height / 2.0),
-            V::new(state.nose + ship.length, ship.y + ship.height / 2.0),
+            V::new(state.nose, ship.y + state.rise - ship.height / 2.0),
+            V::new(
+                state.nose + ship.length,
+                ship.y + state.rise + ship.height / 2.0,
+            ),
         ))
+    }
+
+    /// Distributes a force at a point, including its moment about the piece.
+    fn force_at(&self, force: &mut [V], piece: usize, point: V, value: V) {
+        let centre = self.centre(piece);
+        let range = self.nodes(piece);
+        let n = range.len() as f64;
+        let moment = (point - centre).cross(value);
+        let inertia = range
+            .clone()
+            .map(|i| (self.pos[i] - centre).len2())
+            .sum::<f64>()
+            .max(1e-9);
+        for i in range {
+            let r = self.pos[i] - centre;
+            force[i] += value * (1. / n) + V::new(-r.y, r.x) * (moment / inertia);
+        }
+    }
+    fn torque_on(&self, force: &mut [V], piece: usize, torque: f64) {
+        let centre = self.centre(piece);
+        let range = self.nodes(piece);
+        let inertia = range
+            .clone()
+            .map(|i| (self.pos[i] - centre).len2())
+            .sum::<f64>()
+            .max(1e-9);
+        for i in range {
+            let r = self.pos[i] - centre;
+            force[i] += V::new(-r.y, r.x) * (torque / inertia);
+        }
+    }
+    fn wheel_mount(&self, joint: Joint) -> (usize, usize, V, V) {
+        let wheel_is_a = self.kinds[joint.pieces.0] == PieceKind::Wheel;
+        let (wheel, base) = if wheel_is_a {
+            joint.pieces
+        } else {
+            (joint.pieces.1, joint.pieces.0)
+        };
+        let [(a0, b0), (a1, b1)] = joint.nodes;
+        let edge = if wheel_is_a {
+            self.pos[b0].mid(self.pos[b1])
+        } else {
+            self.pos[a0].mid(self.pos[a1])
+        };
+        let anchor = edge + (edge - self.centre(base)).unit() * 0.5;
+        (wheel, base, self.centre(wheel), anchor)
     }
 
     /// Advances one tick.
@@ -372,9 +445,21 @@ impl World {
             if self.tick < nudge.from || self.tick >= nudge.until {
                 continue;
             }
-            if let Some((_, piece)) = tags.iter().find(|(t, _)| *t == nudge.tag) {
-                let range = self.nodes(*piece);
-                let share = nudge.force * (1.0 / range.len() as f64);
+            let pieces: Vec<usize> = if let Some(kind) = nudge.kind {
+                self.kinds
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(i, k)| (*k == kind).then_some(i))
+                    .collect()
+            } else {
+                tags.iter()
+                    .find(|(t, _)| *t == nudge.tag)
+                    .map(|(_, p)| vec![*p])
+                    .unwrap_or_default()
+            };
+            for piece in pieces {
+                let range = self.nodes(piece);
+                let share = nudge.force * (1. / range.len() as f64);
                 for i in range {
                     outside[i] += share;
                 }
@@ -408,6 +493,41 @@ impl World {
                 if joint.broken {
                     continue;
                 }
+                if joint.coupling == Coupling::Wheel {
+                    let (wheel, base, at, anchor) = self.wheel_mount(*joint);
+                    let (centre, velocity, spin) = self.motion(&[base]);
+                    let r = anchor - centre;
+                    let at_velocity = velocity + V::new(-r.y, r.x) * spin;
+                    let wheel_velocity = self.motion(&[wheel]).1;
+                    let f = (at - anchor) * mechanism::K_PIVOT
+                        + (wheel_velocity - at_velocity) * mechanism::C_PIVOT;
+                    self.force_at(&mut force, base, anchor, f);
+                    self.force_at(&mut force, wheel, at, f * (-1.));
+                    self.torque_on(&mut force, wheel, mechanism::WHEEL_TORQUE * throttle);
+                    self.torque_on(&mut force, base, -mechanism::WHEEL_TORQUE * throttle);
+                    continue;
+                }
+                if joint.coupling != Coupling::Magnet {
+                    let [(a0, b0), (a1, b1)] = joint.nodes;
+                    let drive = if self.kinds[joint.pieces.0] == PieceKind::Wheel {
+                        throttle
+                    } else {
+                        -throttle
+                    };
+                    let f = mechanism::forces(
+                        joint.coupling,
+                        [self.pos[a0], self.pos[a1]],
+                        [self.pos[b0], self.pos[b1]],
+                        [self.vel[a0], self.vel[a1]],
+                        [self.vel[b0], self.vel[b1]],
+                        drive,
+                    );
+                    force[a0] += f[0][0];
+                    force[a1] += f[0][1];
+                    force[b0] += f[1][0];
+                    force[b1] += f[1][1];
+                    continue;
+                }
                 for (a, b) in joint.nodes {
                     let f = (self.pos[b] - self.pos[a]) * K_MAGNET
                         + (self.vel[b] - self.vel[a]) * C_MAGNET;
@@ -430,6 +550,15 @@ impl World {
         self.bump(level, &mut happened);
         self.park(level, tags, &mut happened);
         self.check_breaks(&mut happened);
+        if matches!(level.job, Job::Tow(_)) {
+            if let (Some(state), Some(ship)) = (&mut self.ship, level.ship) {
+                if let (Some(nodes), Some(at)) = (state.moorings, state.moored_at) {
+                    let moved = self.pos[nodes[0]].mid(self.pos[nodes[1]]) - at;
+                    state.nose = ship.berth + moved.x;
+                    state.rise = moved.y;
+                }
+            }
+        }
         happened
     }
 
@@ -458,6 +587,9 @@ impl World {
 
     /// The ship's pull on its moorings now, if it is tugging.
     fn tug(&self, level: &Level) -> Option<([usize; 2], f64)> {
+        if matches!(level.job, Job::Tow(_)) {
+            return None;
+        }
         let at = self.parked_at?;
         let nodes = self.ship?.moorings?;
         let (force, length) = level.moor;
@@ -477,7 +609,7 @@ impl World {
         // The ship ties up to the base's group: the nearest node to each of
         // its back corners.
         let base = match level.job {
-            Job::Dock(tag) => tags.iter().find(|(t, _)| *t == tag).map(|(_, p)| *p),
+            Job::Dock(tag) | Job::Tow(tag) => tags.iter().find(|(t, _)| *t == tag).map(|(_, p)| *p),
             _ => None,
         };
         let group = base.map(|b| self.group_of(b)).unwrap_or_default();
@@ -504,6 +636,15 @@ impl World {
             _ => None,
         };
         happened.push(Happened::Moored(state.moorings.is_some()));
+        if matches!(level.job, Job::Tow(_)) {
+            if let Some(nodes) = state.moorings {
+                state.moored_at = Some(self.pos[nodes[0]].mid(self.pos[nodes[1]]));
+                for n in nodes {
+                    self.mass[n] += SHIP_MASS / 2.;
+                    self.inv[n] = 1. / self.mass[n];
+                }
+            }
+        }
         self.ship = Some(state);
         self.parked_at = Some(self.tick);
     }
@@ -516,10 +657,29 @@ impl World {
             if joint.broken || joint.bolted {
                 continue;
             }
-            let stretched = joint
-                .nodes
-                .iter()
-                .any(|(a, b)| (self.pos[*b] - self.pos[*a]).len2() > limit2);
+            let stretched = match joint.coupling {
+                Coupling::Magnet => joint
+                    .nodes
+                    .iter()
+                    .any(|(a, b)| (self.pos[*b] - self.pos[*a]).len2() > limit2),
+                Coupling::Spring => joint
+                    .nodes
+                    .iter()
+                    .any(|(a, b)| (self.pos[*b] - self.pos[*a]).len2() > 4.),
+                Coupling::Wheel => {
+                    let (_, _, at, anchor) = self.wheel_mount(joint);
+                    (at - anchor).len2() > 0.05 * 0.05
+                }
+                Coupling::Tether => joint
+                    .nodes
+                    .iter()
+                    .any(|(a, b)| (self.pos[*b] - self.pos[*a]).len2() > 0.75 * 0.75),
+                _ => {
+                    let [(a0, b0), (a1, b1)] = joint.nodes;
+                    (self.pos[a0].mid(self.pos[a1]) - self.pos[b0].mid(self.pos[b1])).len2()
+                        > 0.05 * 0.05
+                }
+            };
             if stretched {
                 self.joints[index].broken = true;
                 let (a, b) = joint.nodes[0];
@@ -579,6 +739,11 @@ impl World {
         }
         if let Some(ship) = self.ship {
             hash.update(ship.nose.to_bits().to_le_bytes());
+            hash.update(ship.rise.to_bits().to_le_bytes());
+            if let Some(at) = ship.moored_at {
+                hash.update(at.x.to_bits().to_le_bytes());
+                hash.update(at.y.to_bits().to_le_bytes());
+            }
             hash.update([u8::from(ship.parked), u8::from(ship.blocked)]);
         }
         hash.finalize().into()
@@ -640,6 +805,56 @@ mod tests {
             all.extend(world.step(level, &[('A', 0)]));
         }
         all
+    }
+
+    #[test]
+    fn wheel_torque_stays_inside_the_station_and_towing_carries_the_ship_mass() {
+        let level = crate::level::job(11);
+        let mut game = crate::Game::new(level.clone());
+        for input in &level.solution {
+            game.step(&[*input]);
+        }
+        let momentum = |w: &World| {
+            let all: Vec<_> = (0..w.first.len()).collect();
+            let centre = w.motion(&all).0;
+            w.pos
+                .iter()
+                .zip(&w.vel)
+                .zip(&w.mass)
+                .map(|((p, v), m)| (*p - centre).cross(*v) * m)
+                .sum::<f64>()
+        };
+        let before = momentum(game.world.as_ref().unwrap());
+        while game.status == crate::Status::Running {
+            game.step(&[]);
+        }
+        let after = momentum(game.world.as_ref().unwrap());
+        assert!(
+            (after - before).abs() < before.abs() * 0.001,
+            "{before} -> {after}"
+        );
+        let level = crate::level::job(10);
+        let game = crate::bot::play_plan(&level, &level.solution);
+        assert_eq!(game.status, crate::Status::Won);
+        let world = game.world.unwrap();
+        let parts = game.build.pieces.iter().map(|p| p.kind.mass()).sum::<f64>();
+        assert!((world.mass.iter().sum::<f64>() - parts - SHIP_MASS).abs() < 1e-8);
+        assert!(world.ship.unwrap().nose > level.ships[0].berth + 0.5);
+    }
+
+    #[test]
+    fn a_spring_catch_settles_after_the_bump_and_taking_it_off_returns_the_tool() {
+        let level = crate::level::job(17);
+        let game = crate::bot::play_plan(&level, &level.solution);
+        let world = game.world.as_ref().unwrap();
+        let a = game.build.tagged('A').unwrap();
+        let b = game.build.tagged('B').unwrap();
+        assert!((world.motion(&[a]).1 - world.motion(&[b]).1).len() < 0.02);
+        let mut build = game.build.clone();
+        let panel = build.pieces.iter().position(|p| !p.given).unwrap();
+        let back = build.remove(panel);
+        assert_eq!(back.links, [0, 1, 0]);
+        assert_eq!(back.bolts, 1);
     }
 
     #[test]

@@ -194,6 +194,60 @@ fn piece_icon(document: &Document, kind: PieceKind, size: u32) -> Element {
         );
     };
     match kind {
+        PieceKind::Hinge => {
+            solid("8,10 32,10 32,30 8,30", &fill);
+            shape(
+                document,
+                &svg,
+                "circle",
+                &[("cx", "20"), ("cy", "20"), ("r", "7"), ("fill", "#17223b")],
+            );
+        }
+        PieceKind::Spring => {
+            shape(
+                document,
+                &svg,
+                "polyline",
+                &[
+                    ("points", "3,20 8,10 14,30 20,10 26,30 32,10 37,20"),
+                    ("fill", "none"),
+                    ("stroke", &fill),
+                    ("stroke-width", "4"),
+                ],
+            );
+        }
+        PieceKind::Tether => {
+            shape(
+                document,
+                &svg,
+                "polyline",
+                &[
+                    ("points", "4,10 14,29 26,29 36,10"),
+                    ("fill", "none"),
+                    ("stroke", &fill),
+                    ("stroke-width", "4"),
+                ],
+            );
+        }
+        PieceKind::Wheel => {
+            shape(
+                document,
+                &svg,
+                "circle",
+                &[
+                    ("cx", "20"),
+                    ("cy", "20"),
+                    ("r", "14"),
+                    ("fill", "none"),
+                    ("stroke", &fill),
+                    ("stroke-width", "5"),
+                ],
+            );
+        }
+        PieceKind::CargoArm => {
+            solid("16,5 24,5 24,28 16,28", &fill);
+            frame("7,24 7,34 33,34 33,24");
+        }
         PieceKind::Square => frame("8,8 32,8 32,32 8,32"),
         PieceKind::Triangle => frame("6,33 34,33 20,9"),
         PieceKind::Wedge => frame("8,32 32,32 8,8"),
@@ -1040,6 +1094,15 @@ impl Hud {
         )));
     }
 
+    pub fn set_test(&self, phase: usize, count: usize, job: snap_rules::Job) {
+        if count > 1 {
+            let words = format!("Test {}/{} · {}", phase + 1, count, copy::test_goal(job));
+            if self.job_goal.text_content().as_deref() != Some(&words) {
+                self.job_goal.set_text_content(Some(&words));
+            }
+        }
+    }
+
     /// The tray's pieces and how many are left; `focus` outlines the slot
     /// the keyboard has picked.
     pub fn set_tray(&mut self, tray: &[(PieceKind, u32)], focus: Option<usize>) {
@@ -1077,7 +1140,7 @@ impl Hud {
                     "circle",
                     &[("cx", "20"), ("cy", "20"), ("r", "19"), ("fill", "white")],
                 );
-                for bit in 0..4 {
+                for bit in 0..6 {
                     if kit::mark_pattern(kind) & (1 << bit) != 0 {
                         shape(
                             &self.document,
@@ -1085,7 +1148,14 @@ impl Hud {
                             "circle",
                             &[
                                 ("cx", if bit % 2 == 0 { "12" } else { "28" }),
-                                ("cy", if bit / 2 == 0 { "12" } else { "28" }),
+                                (
+                                    "cy",
+                                    match bit / 2 {
+                                        0 => "10",
+                                        1 => "20",
+                                        _ => "30",
+                                    },
+                                ),
                                 ("r", "5"),
                                 ("fill", "black"),
                             ],

@@ -1,0 +1,19 @@
+snap.level.v1
+# Job 3: connect two modules before the solar storm. Squares lean and
+# pop in the gusts unless braced; magnets let go unless bolted.
+name Storm Season
+number 13
+crew nova
+job connect A B
+job connect A B
+job connect A B
+area -2 -3 7 4
+give module 0.5 0.5 0 A
+give module 4.5 0.5 0 B
+give solar 4.5 2 0
+give solar 4.5 -1 0
+tray square 4 wedge 4 strut 3 bolt 4
+par 10
+run 6
+storm 40 4 10 0.5
+solution P/square/1500/500/9 P/strut/1500/500/10 P/square/2500/500/9 P/strut/2500/500/10 P/square/3500/500/9 P/strut/3500/500/10 P/bolt/1000/500/0 P/bolt/2000/500/0 P/bolt/3000/500/0 P/bolt/4000/500/0 G

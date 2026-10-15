@@ -125,6 +125,41 @@ pub fn draw(frame: &Frame) -> Drawn {
     }
     for (index, seam) in game.build.seams.iter().enumerate() {
         let broken = world.is_some_and(|w| w.joints[index].broken);
+        if !broken && seam.coupling != snap_rules::mechanism::Coupling::Magnet {
+            use snap_rules::mechanism::Coupling;
+            let a = &all[seam.a];
+            let b = &all[seam.b];
+            let midpoint = a[seam.a_side].lerp(a[(seam.a_side + 1) % a.len()], 0.5);
+            if matches!(seam.coupling, Coupling::Wheel | Coupling::CargoArm) {
+                let at = if seam.coupling == Coupling::Wheel {
+                    let p = if game.build.pieces[seam.a].kind == PieceKind::Wheel {
+                        seam.a
+                    } else {
+                        seam.b
+                    };
+                    kit::middle(&all[p])
+                } else {
+                    midpoint
+                };
+                out.lit.rod(midpoint, at, 0.09, 0.2, 0.3, rgb(0xC8CDD6));
+                out.lit
+                    .annulus(at, 0.07, 0.14, 12, 0.25, 0.35, rgb(0xC8CDD6));
+            } else {
+                let kind = match seam.coupling {
+                    Coupling::Hinge => PieceKind::Hinge,
+                    Coupling::Spring => PieceKind::Spring,
+                    Coupling::Tether => PieceKind::Tether,
+                    _ => unreachable!(),
+                };
+                kit::connector(
+                    &mut out.lit,
+                    kind,
+                    midpoint,
+                    b[seam.b_side].lerp(b[(seam.b_side + 1) % b.len()], 0.5),
+                    base,
+                );
+            }
+        }
         if !seam.bolted || broken {
             continue;
         }
@@ -150,8 +185,15 @@ pub fn draw(frame: &Frame) -> Drawn {
             storm(&mut out.glow, game, wind, frame.time);
         }
     }
-    if let Some((beacon, r)) = game.level.beacon {
-        kit::beacon(&mut out.glow, v2(beacon), r as f32, frame.time);
+    if matches!(game.level.job, Job::Push(_) | Job::Tow(_)) {
+        for (i, (beacon, r)) in game.level.beacons.iter().enumerate() {
+            let mesh = if i == game.waypoint {
+                &mut out.glow
+            } else {
+                &mut out.ghost
+            };
+            kit::beacon(mesh, v2(*beacon), *r as f32, frame.time);
+        }
     }
     if let Some(ship) = game.level.ship {
         match world.and_then(|w| w.ship_box(&game.level)) {
@@ -225,6 +267,19 @@ fn hand(out: &mut Drawn, game: &Game, held: Held, time: f32, base: Style) {
                 out.glow.rod(v2(a), v2(b), 0.1, 0.3, 0.36, glow);
             }
         }
+        kind @ (PieceKind::Hinge | PieceKind::Spring | PieceKind::Tether) => {
+            kit::connector(
+                &mut out.ghost,
+                kind,
+                v2(held.at) - Vec2::X * 0.2,
+                v2(held.at) + Vec2::X * 0.2,
+                lifted,
+            );
+            if let Some(seam) = game.build.link_target(held.at) {
+                let at = v2(game.build.seams[seam].middle(&game.build));
+                out.glow.annulus(at, 0.16, 0.25, 16, 0.3, 0.34, glow);
+            }
+        }
         PieceKind::Bolt => {
             kit::bolt(&mut out.ghost, v2(held.at), lifted);
             if let Some(seam) = game.build.bolt_target(held.at) {
@@ -283,7 +338,13 @@ pub fn bounds(game: &Game) -> (Vec2, Vec2) {
             take(p);
         }
     }
-    if let Some((beacon, r)) = game.level.beacon {
+    for (beacon, r) in game
+        .level
+        .beacons
+        .iter()
+        .copied()
+        .filter(|_| matches!(game.level.job, Job::Push(_) | Job::Tow(_)))
+    {
         let r = r as f32 + 0.5;
         take(v2(beacon) - Vec2::splat(r));
         take(v2(beacon) + Vec2::splat(r));
@@ -297,7 +358,7 @@ pub fn bounds(game: &Game) -> (Vec2, Vec2) {
     }
     if matches!(
         game.level.job,
-        Job::Connect(..) | Job::Spin(_) | Job::Dock(_)
+        Job::Connect(..) | Job::Spin(_) | Job::Dock(_) | Job::Stop(_) | Job::Swing(_) | Job::Tow(_)
     ) && game.status == Status::Building
     {
         // Room to build in, while building.
@@ -308,8 +369,9 @@ pub fn bounds(game: &Game) -> (Vec2, Vec2) {
         take(mid + (b - mid) * 0.55);
     }
     take(crew_spot(game) + Vec2::new(-0.6, 0.6));
-    let margin = Vec2::splat(0.6);
-    (low - margin, high + margin)
+    let middle = (low + high) * 0.5;
+    let size = (high - low + Vec2::splat(1.2)).max(Vec2::new(4.2, 3.2));
+    (middle - size * 0.5, middle + size * 0.5)
 }
 
 #[cfg(test)]
