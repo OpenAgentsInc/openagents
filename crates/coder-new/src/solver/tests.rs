@@ -805,14 +805,17 @@ fn the_engine_order_is_claude_code_opencode_then_the_coder_loop() {
     assert_eq!(options.model, crate::opencode_chat::model(None));
 }
 
-/// A stand-in `opencode run`: for four tool calls it asks the session's
-/// hook host in OpenCode's terms, as Coder's plugin does before each tool,
-/// and reports each as OpenCode would (an error when refused), then ends
-/// with a reply.
+/// A stand-in `opencode acp` (#11684): an ACP agent that, for four tool
+/// calls, asks the session's hook host in OpenCode's terms, as Coder's
+/// plugin does before each tool, reports each as OpenCode's ACP server does
+/// (failed when refused), then streams its reply. `debug config` (Coder's
+/// one-time setup) just ends.
 #[cfg(unix)]
 const OPENCODE_STAND_IN: &str = r#"#!/bin/sh
+[ "$1" = "debug" ] && exit 0
 exec node --input-type=module -e '
 import net from "node:net";
+import readline from "node:readline";
 const ask = (call) => new Promise((resolve) => {
   const socket = net.createConnection(process.env.CODER_HOOK_SOCKET);
   let out = "";
@@ -823,6 +826,8 @@ const ask = (call) => new Promise((resolve) => {
   socket.on("error", () => resolve({ deny: "no host" }));
   socket.write(JSON.stringify({ format: "opencode", input: call }) + "\n");
 });
+const send = (message) => process.stdout.write(JSON.stringify({ jsonrpc: "2.0", ...message }) + "\n");
+const update = (u) => send({ method: "session/update", params: { sessionId: "ses_1", update: u } });
 const cwd = process.cwd();
 const calls = [
   ["bash", { command: "gh pr merge 5 --squash" }],
@@ -830,14 +835,29 @@ const calls = [
   ["bash", { command: "echo hi > /tmp/opencode-hand-outside.txt" }],
   ["write", { filePath: cwd + "/notes.md", content: "x" }],
 ];
-for (const [tool, args] of calls) {
-  const reply = await ask({ tool, sessionID: "ses_1", callID: "c1", args, cwd });
-  const state = reply && reply.deny
-    ? { status: "error", input: args, error: reply.deny }
-    : { status: "completed", input: args, output: "ok" };
-  console.log(JSON.stringify({ type: "tool_use", sessionID: "ses_1", part: { tool, state } }));
+for await (const line of readline.createInterface({ input: process.stdin })) {
+  const request = JSON.parse(line);
+  if (request.method === "initialize") {
+    send({ id: request.id, result: { protocolVersion: 1, agentCapabilities: { loadSession: true }, authMethods: [] } });
+  } else if (request.method === "session/new" || request.method === "session/load") {
+    send({ id: request.id, result: { sessionId: "ses_1" } });
+  } else if (request.method === "session/prompt") {
+    let n = 0;
+    for (const [tool, args] of calls) {
+      const id = "c" + ++n;
+      update({ sessionUpdate: "tool_call", toolCallId: id, title: tool, kind: "execute", status: "pending", rawInput: {} });
+      const reply = await ask({ tool, sessionID: "ses_1", callID: id, args, cwd });
+      const failed = reply && reply.deny;
+      update({ sessionUpdate: "tool_call_update", toolCallId: id, status: failed ? "failed" : "completed", rawInput: args,
+        content: [{ type: "content", content: { type: "text", text: failed ? reply.deny : "ok" } }] });
+    }
+    update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "Do" } });
+    update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "ne." } });
+    send({ id: request.id, result: { stopReason: "end_turn", usage: { inputTokens: 10, outputTokens: 2 } } });
+  } else if (request.id !== undefined) {
+    send({ id: request.id, result: {} });
+  }
 }
-console.log(JSON.stringify({ type: "text", sessionID: "ses_1", part: { text: "Done." } }));
 '
 "#;
 

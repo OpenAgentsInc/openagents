@@ -1870,6 +1870,13 @@ fn run_with_provider(
                         alive.store(true, Ordering::Relaxed);
                         let _ = sender.send(Update::OpenCodeSession { id, session: session.to_owned(), model: model.clone() });
                     };
+                    // OpenCode's one-time setup of Coder's plugin folder
+                    // (installing its plugin package) comes first, outside
+                    // the start limit: on a fresh computer it is silent and
+                    // slower than the limit (#11683).
+                    if let Some(program) = crate::opencode_chat::binary() {
+                        crate::opencode_chat::prepare(&program).await;
+                    }
                     // OpenCode names its session within seconds of starting,
                     // so one that hasn't after 20 s won't: hand the message
                     // to Auto then rather than after a minute of Working.

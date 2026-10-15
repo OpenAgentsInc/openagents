@@ -381,138 +381,6 @@ impl Turn {
     }
 }
 
-/// What one line of `opencode run --format json` says.
-#[derive(Clone, Debug, PartialEq)]
-pub enum Line {
-    /// The session the turn runs in.
-    Session(String),
-    Text(String),
-    /// A finished reasoning part: `opencode run --thinking` prints the
-    /// model's thinking whole, once the part ends (#11552).
-    Thinking(String),
-    /// A finished tool: its name and input as Claude Code names them, and
-    /// its output (`error` when it failed or was refused).
-    Tool {
-        name: String,
-        input: Value,
-        output: Value,
-    },
-    /// One model step's usage.
-    Usage {
-        prompt: u64,
-        completion: u64,
-        reasoning: u64,
-        cost: Option<f64>,
-    },
-    /// The turn failed.
-    Error(String),
-}
-
-/// The events one JSON line carries, in order.
-#[must_use]
-pub fn read_line(line: &str) -> Vec<Line> {
-    let Ok(event) = serde_json::from_str::<Value>(line) else {
-        return Vec::new();
-    };
-    let mut lines = Vec::new();
-    if let Some(session) = event["sessionID"].as_str() {
-        lines.push(Line::Session(session.to_owned()));
-    }
-    let part = &event["part"];
-    match event["type"].as_str().unwrap_or_default() {
-        "text" => {
-            if let Some(text) = part["text"].as_str().filter(|text| !text.is_empty()) {
-                lines.push(Line::Text(text.to_owned()));
-            }
-        }
-        "reasoning" => {
-            if let Some(text) = part["text"]
-                .as_str()
-                .map(str::trim)
-                .filter(|text| !text.is_empty())
-            {
-                lines.push(Line::Thinking(text.to_owned()));
-            }
-        }
-        "tool_use" => {
-            let tool = part["tool"].as_str().unwrap_or_default();
-            let state = &part["state"];
-            let output = match state["status"].as_str() {
-                Some("error") => json!({"error": state["error"]}),
-                _ => {
-                    let mut output = json!({"output": state["output"]});
-                    if let Some(exit) = state["metadata"]["exit"].as_i64() {
-                        output["exit"] = json!(exit);
-                    }
-                    output
-                }
-            };
-            lines.push(Line::Tool {
-                name: coder_sdk::opencode::tool_name(tool),
-                input: coder_sdk::opencode::args_to_claude(tool, &state["input"]),
-                output,
-            });
-        }
-        "step_finish" => {
-            let tokens = &part["tokens"];
-            let number = |value: &Value| value.as_u64().unwrap_or(0);
-            lines.push(Line::Usage {
-                prompt: number(&tokens["input"]) + number(&tokens["cache"]["read"]),
-                completion: number(&tokens["output"]),
-                reasoning: number(&tokens["reasoning"]),
-                cost: part["cost"].as_f64().filter(|cost| *cost > 0.0),
-            });
-        }
-        "error" => {
-            let error = &event["error"];
-            let message = error["data"]["message"]
-                .as_str()
-                .or_else(|| error["message"].as_str())
-                .or_else(|| error["name"].as_str())
-                .unwrap_or("OpenCode reported an error.");
-            lines.push(Line::Error(plain_error(message)));
-        }
-        _ => {}
-    }
-    lines
-}
-
-/// OpenCode's major version (`opencode --version`, e.g. `1.18.26` or
-/// `2.0.27`), asked once per program; `None` when it doesn't say.
-fn major_version(program: &Path) -> Option<u32> {
-    use std::collections::HashMap;
-    use std::sync::{Mutex, OnceLock};
-    static SEEN: OnceLock<Mutex<HashMap<PathBuf, Option<u32>>>> = OnceLock::new();
-    let seen = SEEN.get_or_init(|| Mutex::new(HashMap::new()));
-    if let Some(known) = seen.lock().ok().and_then(|seen| seen.get(program).copied()) {
-        return known;
-    }
-    let mut command = acp_client::process::command(program);
-    command
-        .arg("--version")
-        .stdin(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null());
-    let major = command
-        .output()
-        .ok()
-        .and_then(|output| parse_major(&String::from_utf8_lossy(&output.stdout)));
-    if let Ok(mut seen) = seen.lock() {
-        seen.insert(program.to_path_buf(), major);
-    }
-    major
-}
-
-/// The major number at the start of a version line (`v2.0.27` → 2).
-fn parse_major(text: &str) -> Option<u32> {
-    let text = text
-        .trim()
-        .trim_start_matches(|c: char| !c.is_ascii_digit());
-    text.split(|c: char| !c.is_ascii_digit())
-        .next()?
-        .parse()
-        .ok()
-}
-
 /// Runs `turn` on OpenCode, reporting its text, tools and usage as it goes
 /// and the session as soon as OpenCode names it.
 ///
@@ -530,9 +398,58 @@ pub async fn run(
     run_with(&program, turn, registry, cancel, on_event, on_session).await
 }
 
+/// Has OpenCode finish setting up Coder's configuration folder (install
+/// its plugin package, `coder_sdk::opencode::plugin_ready`) before a turn
+/// counts the time OpenCode takes to start (#11683): on a fresh computer
+/// that install is silent and can outlast the start limit. Quick once done.
+/// False when it still isn't set up; the turn runs anyway.
+pub async fn prepare(program: &Path) -> bool {
+    static SETTING_UP: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+    let Ok(dir) = config_dir() else {
+        return false;
+    };
+    if coder_sdk::opencode::plugin_ready(&dir) {
+        return true;
+    }
+    let _one = SETTING_UP.lock().await;
+    if coder_sdk::opencode::plugin_ready(&dir) {
+        return true;
+    }
+    let mut command = acp_client::process::command_async(program);
+    acp_client::process::non_interactive_async(&mut command);
+    command
+        .args(coder_sdk::opencode::SETUP_ARGUMENTS)
+        .current_dir(&dir)
+        .env("OPENCODE_CONFIG_DIR", &dir)
+        .env("OPENCODE_DISABLE_AUTOUPDATE", "1")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .kill_on_drop(true);
+    let finished = match command.spawn() {
+        Ok(mut child) => tokio::time::timeout(std::time::Duration::from_secs(300), child.wait())
+            .await
+            .is_ok(),
+        Err(_) => false,
+    };
+    let ready = coder_sdk::opencode::plugin_ready(&dir);
+    if !ready {
+        eprintln!(
+            "coder: OpenCode didn't finish setting up its plugin folder (finished: {finished})"
+        );
+    }
+    ready
+}
+
 /// [`run`] on OpenCode's `program`, under `registry`'s hooks: an issue
 /// run's or a Solver hand's session adds the worktree guard and its own
 /// fence (#11533).
+///
+/// The turn is an ACP session on `opencode acp` (#11684): it streams the
+/// answer and the thinking as the model writes them, where `opencode run
+/// --format json` prints each part only once it is whole. Coder's plugin
+/// (`coder_sdk::opencode`) checks every tool before it runs, as before,
+/// through the checks host this turn starts.
 ///
 /// # Errors
 /// As [`run`].
@@ -544,8 +461,6 @@ pub async fn run_with(
     on_event: &mut (dyn FnMut(RuntimeEvent) + Send),
     on_session: &mut (dyn FnMut(&str) + Send),
 ) -> Result<Streamed, String> {
-    use tokio::io::AsyncBufReadExt;
-
     if let Err(refused) = coder_sdk::check_backend(&registry, coder_sdk::HookBackend::OpenCode) {
         return Err(refused
             .into_iter()
@@ -553,6 +468,7 @@ pub async fn run_with(
             .collect::<Vec<_>>()
             .join(" "));
     }
+    prepare(program).await;
     let runner = coder_sdk::Runner::new(registry, coder_sdk::Budget::default());
     let host = coder_sdk::bridge::Host::start(Arc::new(std::sync::Mutex::new(runner)))
         .map_err(|_| "Coder could not start its checks for OpenCode.".to_owned())?;
@@ -562,177 +478,249 @@ pub async fn run_with(
     let config = config(&turn.model, turn.tools.then_some((&this, &turn.cwd)));
     let prompt = turn.prompt();
 
-    // An npm `opencode.cmd` runs as OpenCode's own binary (or Node and
-    // its launcher), never through `cmd.exe`, which refuses the prompt's
-    // line breaks (#11645).
-    if let Some(why) = acp_client::process::refusal(program, &[&prompt]) {
-        return Err(format!("OpenCode could not start: {why}."));
+    let mut environment: Vec<(String, String)> = std::env::vars()
+        .filter(|(name, _)| {
+            !matches!(
+                name.as_str(),
+                "OPENCODE_CONFIG_DIR" | "OPENCODE_DISABLE_AUTOUPDATE"
+            ) && name != acp_client::opencode::CONFIG_VAR
+                && name != coder_sdk::bridge::SOCKET_VAR
+                && name != coder_sdk::opencode::PROGRAM_VAR
+        })
+        .collect();
+    environment.extend([
+        (
+            "OPENCODE_CONFIG_DIR".to_owned(),
+            config_dir.display().to_string(),
+        ),
+        (
+            acp_client::opencode::CONFIG_VAR.to_owned(),
+            config.to_string(),
+        ),
+        ("OPENCODE_DISABLE_AUTOUPDATE".to_owned(), "1".to_owned()),
+        (
+            coder_sdk::bridge::SOCKET_VAR.to_owned(),
+            host.path().display().to_string(),
+        ),
+        (
+            coder_sdk::opencode::PROGRAM_VAR.to_owned(),
+            this.display().to_string(),
+        ),
+    ]);
+    // A delegated child's place in the tree (#11511).
+    for (name, value) in crate::bundled_runtime::child_env() {
+        let (name, value) = (
+            name.to_string_lossy().into_owned(),
+            value.to_string_lossy().into_owned(),
+        );
+        environment.retain(|(held, _)| *held != name);
+        environment.push((name, value));
     }
-    let mut command = acp_client::process::command_async(program);
-    acp_client::process::non_interactive_async(&mut command);
-    command.arg("run");
-    if major_version(program).is_some_and(|major| major >= 2) {
-        // OpenCode 2 sends `run` to a shared background service by default,
-        // which keeps the settings it started with (an earlier turn's config
-        // folder and checks connection); `--standalone` gives this turn a
-        // private server with its own. 2 has no `--dir`: the turn's folder
-        // is the working directory set below.
-        command.arg("--standalone");
-    } else {
-        command.arg("--dir").arg(&turn.cwd);
-    }
-    command
-        // `--thinking` prints the model's reasoning parts (#11552).
-        .args(["--format", "json", "--thinking"])
-        .args(["-m", &turn.model]);
-    if let Some(session) = &turn.session {
-        command.args(["--session", session]);
-    }
-    command
-        .arg("--")
-        .arg(&prompt)
-        .current_dir(&turn.cwd)
-        .env("OPENCODE_CONFIG_DIR", &config_dir)
-        .env(acp_client::opencode::CONFIG_VAR, config.to_string())
-        .env("OPENCODE_DISABLE_AUTOUPDATE", "1")
-        .env(coder_sdk::bridge::SOCKET_VAR, host.path())
-        .env(coder_sdk::opencode::PROGRAM_VAR, &this)
-        // A delegated child's place in the tree (#11511).
-        .envs(crate::bundled_runtime::child_env())
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .kill_on_drop(true);
-    #[cfg(unix)]
-    command.process_group(0);
+    let opening = acp_client::Opening {
+        spec: acp_client::process::Spec {
+            program: program.to_owned(),
+            arguments: acp_client::opencode::arguments(),
+            cwd: turn.cwd.clone(),
+            environment,
+        },
+        resume: turn.session.clone(),
+        meta: None,
+        mode: None,
+        authenticate: None,
+    };
+    let stopped = || cancel.load(Ordering::Relaxed);
     let started = std::time::Instant::now();
-    let mut child = command
-        .spawn()
-        .map_err(|error| format!("OpenCode could not start: {error}."))?;
-    let pid = child.id();
-    let stdout = child.stdout.take().ok_or("OpenCode gave no output.")?;
-    let stderr = child.stderr.take();
-    let tail = tokio::spawn(async move {
-        let mut tail = String::new();
-        if let Some(stderr) = stderr {
-            let mut lines = tokio::io::BufReader::new(stderr).lines();
-            while let Ok(Some(line)) = lines.next_line().await {
-                tail.push_str(&line);
-                tail.push('\n');
-                if tail.len() > 4000 {
-                    tail.drain(..tail.len() - 2000);
-                }
+    on_event(RuntimeEvent::Model(turn.model.clone()));
+    let mut session = acp_client::Session::open(&opening, &stopped)
+        .await
+        .map_err(|failure| {
+            if stopped() {
+                "Stopped.".to_owned()
+            } else {
+                format!("OpenCode could not start: {failure}")
             }
-        }
-        tail
-    });
-    let mut lines = tokio::io::BufReader::new(stdout).lines();
+        })?;
+    on_session(session.id());
+    let mut events = Events {
+        emit: on_event,
+        started,
+        text: String::new(),
+        first_text_ms: None,
+        thought: crate::claude_stream::Thought::default(),
+        tools: std::collections::BTreeMap::new(),
+        tokens: 0,
+    };
+    let result = session
+        .prompt(
+            &prompt,
+            std::time::Duration::from_secs(300),
+            &stopped,
+            std::time::Duration::from_secs(2),
+            &mut events,
+        )
+        .await;
+    events.end_thought();
+    let tail = session.stderr_tail().join("\n");
+    session.close(std::time::Duration::from_secs(2)).await;
+    drop(host);
+    if stopped() {
+        return Err("Stopped.".into());
+    }
     let mut reply = Streamed {
         model: turn.model.clone(),
+        text: events.text,
+        first_text_ms: events.first_text_ms,
+        milliseconds: started.elapsed().as_millis() as u64,
         ..Streamed::default()
     };
-    let mut told_session = false;
-    let mut error: Option<String> = None;
-    let mut stopped = false;
-    on_event(RuntimeEvent::Model(turn.model.clone()));
-    let mut tick = tokio::time::interval(std::time::Duration::from_millis(100));
-    loop {
-        tokio::select! {
-            line = lines.next_line() => {
-                let Ok(Some(line)) = line else { break };
-                for event in read_line(&line) {
-                    match event {
-                        Line::Session(session) if !told_session => {
-                            told_session = true;
-                            on_session(&session);
-                        }
-                        Line::Session(_) => {}
-                        Line::Text(text) => {
-                            let text = if reply.text.is_empty() {
-                                text
-                            } else {
-                                format!("\n\n{text}")
-                            };
-                            if reply.first_text_ms.is_none() {
-                                reply.first_text_ms =
-                                    Some(started.elapsed().as_millis() as u64);
-                            }
-                            reply.text.push_str(&text);
-                            on_event(RuntimeEvent::Text(text));
-                        }
-                        Line::Thinking(text) => {
-                            on_event(RuntimeEvent::Thinking(true));
-                            on_event(RuntimeEvent::Tool {
-                                name: crate::claude_stream::THINKING.into(),
-                                input: Value::Null,
-                                output: json!({"text": text}),
-                                running: false,
-                            });
-                            on_event(RuntimeEvent::Thinking(false));
-                        }
-                        Line::Tool { name, input, output } => {
-                            on_event(RuntimeEvent::Tool {
-                                name: name.clone(),
-                                input: input.clone(),
-                                output: Value::Null,
-                                running: true,
-                            });
-                            on_event(RuntimeEvent::Tool { name, input, output, running: false });
-                        }
-                        Line::Usage { prompt, completion, reasoning, cost } => {
-                            reply.usage.prompt_tokens += prompt;
-                            reply.usage.completion_tokens += completion;
-                            reply.usage.total_tokens += prompt + completion;
-                            on_event(RuntimeEvent::Usage(Box::new(RoundUsage { fell_back: None,
-                                model: turn.model.clone(),
-                                prompt_tokens: prompt,
-                                completion_tokens: completion,
-                                reasoning_tokens: (reasoning > 0).then_some(reasoning),
-                                cost,
-                                milliseconds: started.elapsed().as_millis() as u64,
-                                first_token_ms: reply.first_text_ms,
-                                cached_tokens: None,
-                                cache_write_tokens: None,
-                            })));
-                        }
-                        Line::Error(message) => error = Some(message),
-                    }
-                }
+    let prompted = match result {
+        Ok(prompted) => prompted,
+        Err(error) => {
+            if reply.text.trim().is_empty() {
+                return Err(format!("OpenCode: {}", plain_error(&error.to_string())));
             }
-            _ = tick.tick() => {
-                if cancel.load(Ordering::Relaxed) {
-                    stopped = true;
-                    if let Some(pid) = pid {
-                        let _ = std::process::Command::new("kill")
-                            .args(["-TERM", &format!("-{pid}")])
-                            .status();
-                    }
-                    let _ = child.start_kill();
-                    break;
-                }
-            }
+            return Ok(reply);
         }
+    };
+    if let Some(usage) = prompted.usage {
+        let prompt_tokens = usage.input_tokens.unwrap_or(0) + usage.cached_read_tokens.unwrap_or(0);
+        let completion = usage.output_tokens.unwrap_or(0);
+        reply.usage.prompt_tokens = prompt_tokens;
+        reply.usage.completion_tokens = completion;
+        reply.usage.total_tokens = prompt_tokens + completion;
+        (events.emit)(RuntimeEvent::Usage(Box::new(RoundUsage {
+            fell_back: None,
+            model: turn.model.clone(),
+            prompt_tokens,
+            completion_tokens: completion,
+            reasoning_tokens: None,
+            cost: None,
+            milliseconds: reply.milliseconds,
+            first_token_ms: reply.first_text_ms,
+            cached_tokens: usage.cached_read_tokens,
+            cache_write_tokens: None,
+        })));
     }
-    let status = child.wait().await.ok();
-    let tail = tail.await.unwrap_or_default();
-    drop(host);
-    reply.milliseconds = started.elapsed().as_millis() as u64;
     // An OpenCode model on a free or the person's own provider: no dollars
     // reach the chat's totals.
     reply.usage.cost = None;
-    if stopped {
-        return Err("Stopped.".into());
-    }
-    if let Some(error) = error {
-        if reply.text.trim().is_empty() {
-            return Err(format!("OpenCode: {error}"));
-        }
-    }
     if reply.text.trim().is_empty() {
-        let failed = status.is_some_and(|status| !status.success());
-        return Err(no_answer(failed, &tail));
+        return Err(no_answer(true, &tail));
     }
     Ok(reply)
+}
+
+/// One OpenCode turn's ACP updates as Coder's events: the answer and the
+/// thinking as they stream, each tool under Claude Code's name for it.
+struct Events<'a> {
+    emit: &'a mut (dyn FnMut(RuntimeEvent) + Send),
+    started: std::time::Instant,
+    text: String,
+    first_text_ms: Option<u64>,
+    thought: crate::claude_stream::Thought,
+    /// Each tool call's name and input so far, by its id.
+    tools: std::collections::BTreeMap<String, (String, String, Value)>,
+    tokens: u64,
+}
+
+impl Events<'_> {
+    fn end_thought(&mut self) {
+        for event in self.thought.end(None) {
+            (self.emit)(event);
+        }
+    }
+}
+
+impl acp_client::Handler for Events<'_> {
+    fn update(&mut self, update: acp_client::Update) {
+        use acp_client::Update;
+        if matches!(
+            update,
+            Update::AgentText(_) | Update::ToolCall { .. } | Update::ToolCallUpdate { .. }
+        ) {
+            self.end_thought();
+        }
+        match update {
+            Update::AgentText(text) if !text.is_empty() => {
+                if self.first_text_ms.is_none() {
+                    self.first_text_ms = Some(self.started.elapsed().as_millis() as u64);
+                }
+                self.text.push_str(&text);
+                (self.emit)(RuntimeEvent::Text(text));
+            }
+            Update::Thought(text) => {
+                for event in self.thought.piece(&text) {
+                    (self.emit)(event);
+                }
+            }
+            Update::Usage(usage) if !usage.subagent => {
+                let tokens = usage
+                    .input_tokens
+                    .unwrap_or(0)
+                    .saturating_add(usage.output_tokens.unwrap_or(0));
+                if tokens > self.tokens {
+                    self.tokens = tokens;
+                    (self.emit)(RuntimeEvent::Tokens(tokens));
+                }
+            }
+            Update::ToolCall {
+                id,
+                title,
+                status,
+                raw_input,
+                tool,
+                ..
+            } => {
+                let own = tool.unwrap_or_else(|| title.clone());
+                let name = coder_sdk::opencode::tool_name(&own);
+                let input = coder_sdk::opencode::args_to_claude(&own, &raw_input);
+                self.tools.insert(id, (own, name.clone(), raw_input));
+                (self.emit)(RuntimeEvent::Tool {
+                    name,
+                    input,
+                    output: Value::Null,
+                    running: status != "completed" && status != "failed",
+                });
+            }
+            Update::ToolCallUpdate {
+                id,
+                title,
+                status,
+                text,
+                raw_input,
+            } => {
+                let (own, name, held) = self.tools.entry(id.clone()).or_insert_with(|| {
+                    let own = title.unwrap_or(id);
+                    (own.clone(), coder_sdk::opencode::tool_name(&own), json!({}))
+                });
+                // OpenCode sends the command and its description here,
+                // after the call opened.
+                if let Some(Value::Object(fields)) = raw_input {
+                    if !held.is_object() {
+                        *held = json!({});
+                    }
+                    if let Some(object) = held.as_object_mut() {
+                        object.extend(fields);
+                    }
+                }
+                let failed = status.as_deref() == Some("failed");
+                let output = match text {
+                    Some(text) if failed => json!({"error": text}),
+                    Some(text) => json!({"output": text}),
+                    None => Value::Null,
+                };
+                (self.emit)(RuntimeEvent::Tool {
+                    name: name.clone(),
+                    input: coder_sdk::opencode::args_to_claude(own, held),
+                    output,
+                    running: status
+                        .as_deref()
+                        .is_none_or(|status| status != "completed" && status != "failed"),
+                });
+            }
+            _ => {}
+        }
+    }
 }
 
 /// Why an OpenCode turn that ended without words failed: the error line
@@ -757,14 +745,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_major_version_is_read_from_the_version_line() {
-        assert_eq!(parse_major("1.18.26\n"), Some(1));
-        assert_eq!(parse_major("v2.0.27"), Some(2));
-        assert_eq!(parse_major("opencode 2.1.0"), Some(2));
-        assert_eq!(parse_major(""), None);
-    }
-
-    #[test]
     fn a_turn_without_words_says_what_opencode_printed() {
         assert_eq!(
             no_answer(true, "booting\nError: no provider configured\n"),
@@ -778,74 +758,95 @@ mod tests {
         assert_eq!(no_answer(false, ""), "OpenCode returned no answer.");
     }
 
-    /// Lines OpenCode 1.18.26 printed for one turn (`--format json`).
-    const TURN: &str = r#"{"type":"step_start","timestamp":1,"sessionID":"ses_1","part":{"type":"step-start"}}
-{"type":"tool_use","timestamp":2,"sessionID":"ses_1","part":{"type":"tool","tool":"read","callID":"c1","state":{"status":"completed","input":{"filePath":"/r/a.txt"},"output":"1: hello","metadata":{"preview":"hello"}}}}
-{"type":"tool_use","timestamp":3,"sessionID":"ses_1","part":{"type":"tool","tool":"bash","callID":"c2","state":{"status":"error","input":{"command":"rm a.txt"},"error":"Held for the person: this would delete files (rm a.txt)."}}}
-{"type":"tool_use","timestamp":4,"sessionID":"ses_1","part":{"type":"tool","tool":"bash","callID":"c3","state":{"status":"completed","input":{"command":"cargo test"},"output":"ok","metadata":{"exit":0}}}}
-{"type":"step_finish","timestamp":5,"sessionID":"ses_1","part":{"type":"step-finish","reason":"tool-calls","tokens":{"total":20855,"input":20411,"output":21,"reasoning":350,"cache":{"write":0,"read":73}},"cost":0}}
-{"type":"text","timestamp":6,"sessionID":"ses_1","part":{"type":"text","text":"hello"}}"#;
-
+    /// #11684: the answer and the thinking reach the chat as OpenCode's
+    /// ACP updates arrive, piece by piece, before the turn ends; each tool
+    /// shows under Claude Code's name with its input, and a refused one
+    /// shows its reason.
     #[test]
-    fn a_turns_lines_read_as_coders_events() {
-        let read: Vec<Line> = TURN.lines().flat_map(read_line).collect();
-        assert_eq!(read[0], Line::Session("ses_1".into()));
-        assert!(read.contains(&Line::Tool {
-            name: "Read".into(),
-            input: json!({"file_path": "/r/a.txt"}),
-            output: json!({"output": "1: hello"}),
-        }));
-        assert!(read.contains(&Line::Tool {
-            name: "Bash".into(),
-            input: json!({"command": "rm a.txt"}),
-            output: json!({"error": "Held for the person: this would delete files (rm a.txt)."}),
-        }));
-        assert!(read.contains(&Line::Tool {
-            name: "Bash".into(),
-            input: json!({"command": "cargo test"}),
-            output: json!({"output": "ok", "exit": 0}),
-        }));
-        assert!(read.contains(&Line::Usage {
-            prompt: 20484,
-            completion: 21,
-            reasoning: 350,
-            cost: None,
-        }));
-        assert_eq!(read.last(), Some(&Line::Text("hello".into())));
-        assert!(read_line("not json").is_empty());
-        // #11552: `opencode run --format json --thinking` (opencode 1.18.26,
-        // recorded 2026-10-13 on opencode/cat-jam-free) prints the
-        // reasoning part whole, ahead of the answer.
-        let path = format!(
-            "{}/fixtures/thinking/opencode-run.jsonl",
-            env!("CARGO_MANIFEST_DIR")
-        );
-        let lines: Vec<Line> = std::fs::read_to_string(path)
-            .unwrap()
-            .lines()
-            .flat_map(read_line)
-            .collect();
-        let thinking = lines.iter().position(|line| {
-            matches!(line, Line::Thinking(text) if text.starts_with("The user is asking whether 9991 is prime."))
+    fn a_turns_updates_stream_as_coders_events() {
+        use acp_client::{Handler, Update};
+        let mut seen: Vec<RuntimeEvent> = Vec::new();
+        let mut emit = |event: RuntimeEvent| seen.push(event);
+        let mut events = Events {
+            emit: &mut emit,
+            started: std::time::Instant::now(),
+            text: String::new(),
+            first_text_ms: None,
+            thought: crate::claude_stream::Thought::default(),
+            tools: std::collections::BTreeMap::new(),
+            tokens: 0,
+        };
+        events.update(Update::Thought("Checking ".into()));
+        events.update(Update::Thought("the file.".into()));
+        events.update(Update::ToolCall {
+            id: "c1".into(),
+            title: "read".into(),
+            kind: "read".into(),
+            status: "pending".into(),
+            raw_input: json!({"filePath": "/r/a.txt"}),
+            tool: Some("read".into()),
         });
-        let text = lines
+        events.update(Update::ToolCallUpdate {
+            id: "c1".into(),
+            title: None,
+            status: Some("completed".into()),
+            text: Some("1: hello".into()),
+            raw_input: None,
+        });
+        events.update(Update::ToolCall {
+            id: "c2".into(),
+            title: "bash".into(),
+            kind: "execute".into(),
+            status: "pending".into(),
+            raw_input: json!({}),
+            tool: Some("bash".into()),
+        });
+        events.update(Update::ToolCallUpdate {
+            id: "c2".into(),
+            title: None,
+            status: Some("failed".into()),
+            text: Some("Held for the person: this would delete files (rm a.txt).".into()),
+            raw_input: Some(json!({"command": "rm a.txt"})),
+        });
+        events.update(Update::AgentText("Hel".into()));
+        let first = events.first_text_ms;
+        events.update(Update::AgentText("lo.".into()));
+        events.end_thought();
+        assert!(first.is_some());
+        assert_eq!(events.text, "Hello.");
+        let texts: Vec<&str> = seen
             .iter()
-            .position(|line| matches!(line, Line::Text(text) if text.contains("97")));
-        assert!(thinking.is_some() && thinking < text, "{lines:?}");
-        let failed = read_line(
-            r#"{"type":"error","sessionID":"ses_1","error":{"name":"APIError","data":{"message":"Rate limit exceeded"}}}"#,
+            .filter_map(|event| match event {
+                RuntimeEvent::Text(text) => Some(text.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(texts, ["Hel", "lo."], "the answer streams in pieces");
+        assert!(
+            seen.iter()
+                .any(|event| matches!(event, RuntimeEvent::Thinking(true)))
         );
-        assert_eq!(failed[1], Line::Error("Rate limit exceeded".into()));
+        assert!(seen.iter().any(|event| matches!(
+            event,
+            RuntimeEvent::Tool { name, input, output, running: false }
+                if name == "Read" && input == &json!({"file_path": "/r/a.txt"}) && output == &json!({"output": "1: hello"})
+        )), "{seen:?}");
+        assert!(
+            seen.iter().any(|event| matches!(
+                event,
+                RuntimeEvent::Tool { name, input, output, running: false }
+                    if name == "Bash" && input == &json!({"command": "rm a.txt"})
+                        && output["error"].as_str().is_some_and(|error| error.starts_with("Held"))
+            )),
+            "{seen:?}"
+        );
         // A provider that answers with its own JSON (Cursor's "Update
         // Required", owner's gate 2026-10-13) reads as its message.
-        let cursor = read_line(
-            r#"{"type":"error","sessionID":"ses_1","error":{"name":"UnknownError","data":{"message":"{\"message\":\"Update Required Your version of Cursor is no longer supported. Please update to the latest version at cursor.com/downloads to continue.\",\"type\":\"cursor_error\",\"code\":\"cursor_stream_error\"}"}}}"#,
-        );
         assert_eq!(
-            cursor[1],
-            Line::Error(
-                "Update Required Your version of Cursor is no longer supported. Please update to the latest version at cursor.com/downloads to continue.".into()
-            )
+            plain_error(
+                r#"{"message":"Update Required Your version of Cursor is no longer supported.","type":"cursor_error"}"#
+            ),
+            "Update Required Your version of Cursor is no longer supported."
         );
         assert_eq!(plain_error("plain words"), "plain words");
     }
@@ -1031,4 +1032,60 @@ mod tests {
         crate::harness_plugin::sign_in_claude(false);
         install_for_test(false);
     }
+}
+
+/// A real turn on the OpenCode installed here, on its free model, timing
+/// each piece of the answer: they arrive while the model writes (#11684).
+/// Run by hand: `cargo test -p coder-new --lib live_opencode_streams -- --ignored --nocapture`.
+#[cfg(test)]
+#[tokio::test]
+#[ignore = "runs the installed OpenCode and a model"]
+async fn live_opencode_streams() {
+    let program = binary().expect("OpenCode installed");
+    let dir = tempfile::tempdir().unwrap();
+    let turn = Turn {
+        messages: vec![Message::user(
+            "Write a 300-word story about a lighthouse keeper. No tools.",
+        )],
+        cwd: dir.path().to_owned(),
+        session: None,
+        last_model: None,
+        briefing: None,
+        model: auto_model().to_owned(),
+        tools: false,
+    };
+    let started = std::time::Instant::now();
+    let mut pieces: Vec<(u128, usize)> = Vec::new();
+    let mut on_event = |event: RuntimeEvent| {
+        if let RuntimeEvent::Text(text) = event {
+            pieces.push((started.elapsed().as_millis(), text.len()));
+        }
+    };
+    let mut on_session = |_: &str| {};
+    let cancel = Arc::new(AtomicBool::new(false));
+    let (registry, _) = crate::sdk_hooks::opencode_registry(dir.path());
+    let reply = run_with(
+        &program,
+        turn,
+        registry,
+        &cancel,
+        &mut on_event,
+        &mut on_session,
+    )
+    .await
+    .expect("OpenCode answered");
+    eprintln!(
+        "pieces {} first {:?} last {:?} total {} ms",
+        pieces.len(),
+        pieces.first(),
+        pieces.last(),
+        reply.milliseconds
+    );
+    assert!(pieces.len() > 3, "{pieces:?}");
+    let (first, _) = pieces[0];
+    let (last, _) = pieces[pieces.len() - 1];
+    assert!(
+        last - first > 500,
+        "the answer arrived all at once: {pieces:?}"
+    );
 }

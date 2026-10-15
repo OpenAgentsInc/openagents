@@ -112,6 +112,30 @@ pub fn write_plugin(dir: &std::path::Path) -> std::io::Result<()> {
     Ok(())
 }
 
+/// The package OpenCode installs into a configuration directory that has
+/// plugins, before anything else on its first run there (#11683).
+pub const PLUGIN_PACKAGE: &str = "@opencode-ai/plugin";
+
+/// The command that has OpenCode set up a configuration directory (install
+/// [`PLUGIN_PACKAGE`]) and stop, with no model call: `opencode debug
+/// config`, run with `OPENCODE_CONFIG_DIR` naming the directory.
+pub const SETUP_ARGUMENTS: [&str; 2] = ["debug", "config"];
+
+/// Whether OpenCode has set up the configuration directory `dir`: its
+/// plugin package is installed. Until it is, OpenCode's first run there
+/// installs it silently, which took 23 s by hand on a fresh Windows
+/// computer and longer under Coder (#11683), so a turn should set it up
+/// first ([`SETUP_ARGUMENTS`]) rather than count that time against
+/// OpenCode starting.
+#[must_use]
+pub fn plugin_ready(dir: &std::path::Path) -> bool {
+    PLUGIN_PACKAGE
+        .split('/')
+        .fold(dir.join("node_modules"), |path, part| path.join(part))
+        .join("package.json")
+        .is_file()
+}
+
 /// OpenCode's tool name as Claude Code names the same tool, so the floors,
 /// the worktree fence and command hooks written for Claude Code read it.
 /// Coder's own MCP tools (`coder_agent`) become `mcp__coder__agent`.
@@ -240,6 +264,18 @@ pub fn reply(call: &Value, output: Option<&Value>) -> Option<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_folder_is_ready_once_the_plugin_package_is_installed() {
+        let dir = tempfile::tempdir().unwrap();
+        write_plugin(dir.path()).unwrap();
+        assert!(!plugin_ready(dir.path()));
+        let package = dir.path().join("node_modules/@opencode-ai/plugin");
+        std::fs::create_dir_all(&package).unwrap();
+        assert!(!plugin_ready(dir.path()));
+        std::fs::write(package.join("package.json"), "{}").unwrap();
+        assert!(plugin_ready(dir.path()));
+    }
 
     #[test]
     fn opencode_calls_read_as_claude_code_tools() {
