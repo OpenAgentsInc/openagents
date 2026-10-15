@@ -968,7 +968,8 @@ async fn pool(
         args.words.remove(0);
     }
     let slug = args.value("--pool")?.unwrap_or_else(|| "everglade".into());
-    let mut policy = PoolPolicy::open(&slug, pool::SLICES);
+    let mut policy =
+        PoolPolicy::open(&slug, pool::SLICES).trusting_payments(crate::paid::trusted_issuers());
     if args.flag("--checked") {
         if checkers.is_empty() {
             return Err("--checked needs a trusted checker (--checker NPUB)".into());

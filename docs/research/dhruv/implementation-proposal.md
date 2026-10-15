@@ -101,7 +101,7 @@ deployed conformance.
 | [DEC](../../../nips/openagents/NIP-DEC.md), [OPT](../../../nips/openagents/NIP-OPT.md), and [EVAL](../../../nips/openagents/NIP-EVAL.md) | Typed decisions, frozen implementation studies, protected confirmation, complete cost accounting, and scoped adoption evidence. | Measure the actual routing policy on new task groups. Keep acceptance, permissions, and protected checkers outside optimization. A decision probability, report, or selected candidate cannot approve payment or activate itself. |
 | [KB](../../../nips/openagents/NIP-KB.md), [EXT](../../../nips/openagents/NIP-EXT.md), and [REG](../../../nips/openagents/NIP-REG.md) | Versioned knowledge, exact signed releases, licenses, dependencies, revocation, and independently curated discovery. EXT already carries a signed per-call `fee_msat` and payout destination. | Reuse the supported plugin payment path. A registry recommendation does not install or grant execution. A paid software license or general knowledge royalty needs an explicit terms/fulfillment profile; these contracts do not create one automatically. |
 | [ATIF](../../../nips/openagents/NIP-ATIF.md) | Exact trajectory bytes, parent/child links, private carriage, and separately authorized public derivatives. | Link local traces first; add a Nostr publisher only when distribution needs it. Schema/fixture support is distinct from a running publisher. RUN remains authoritative for effects, LAB for commercial acceptance, and wallet evidence for settlement. |
-| [PYLON](../../../nips/openagents/NIP-PYLON.md) | Opt-in compute beacons, service receipts, recomputable pool totals, trusted check verdicts, and a public representation of useful supply. | Qualify the selected service and wallet path, resolve the public-proof conflict below, and preserve network distinctions. A buyer's `accepted` service receipt is not signed LAB acceptance, verified worker income, or proof of profit. |
+| [PYLON](../../../nips/openagents/NIP-PYLON.md) | Opt-in compute beacons, service receipts, recomputable pool totals, trusted check verdicts, and a public representation of useful supply. | Qualify the selected service and wallet path, use the proof-free acknowledgment profile below, and preserve network distinctions. A buyer's `accepted` service receipt is not signed LAB acceptance, verified worker income, or proof of profit. |
 
 The [shared contracts](../../../nips/openagents/contracts.md) supply exact
 references, closed schemas, explicit effects and units, versioned required
@@ -145,18 +145,17 @@ an ambiguous payment.
    real but the callback or credit acknowledgment is lost. Keep proof
    consumption, credit creation, usage, and payout separate. A new invoice,
    callback retry, or restored host must not create another credit or charge.
-3. **Resolve public Pylon proofs before paid publication.** PYLON's
-   [service receipt](../../../nips/openagents/NIP-PYLON.md#service-receipt--kind-3201)
-   requires a preimage for `x402-exact` paid work, while X402's
-   [payment rules](../../../nips/openagents/NIP-X402.md#payment-settlement-and-execution-state)
-   and [receipt rules](../../../nips/openagents/NIP-X402.md#bounds-receipts-and-conformance)
-   prohibit public bearer proofs. These requirements conflict. Propose a
-   versioned proof-free public receipt linked to private settlement evidence,
-   then review its validators, pool totals, and world consumers together.
-   Until resolved, omit paid public Pylon receipts and retain private evidence;
-   do not fabricate a free receipt for a paid job. A public hash/preimage pair
-   establishes knowledge of a secret, not who paid, actual collection, or
-   independent customer demand.
+3. **Use the proof-free Pylon receipt.**
+   [#11721](https://github.com/OpenAgentsInc/openagents/issues/11721) resolves
+   the PYLON/X402 conflict: receipt, aggregate, and policy v2 require a signed
+   seller/broker acknowledgment, keep proofs private, and count reported paid
+   amounts only from explicitly trusted issuers, once per settlement reference.
+   Direct sellers acknowledge the exact receipt against their private purchase
+   and job store; brokers supply the private payment hash separately for
+   facilitator lookup before financial settlement. The old public-proof format
+   is replaced without compatibility support. Qualify the real wallet path
+   separately; a signature remains an issuer's claim rather than independent
+   proof of collection, quality, or customer demand.
 4. **Make the economic statement a typed view.** The existing
    [payment receipt schema](../../../nips/openagents/schemas/payment-receipt.v1.json)
    intentionally excludes invoices and preimages. It describes a payment, not
@@ -180,9 +179,9 @@ an ambiguous payment.
    with unknown liabilities, and restored or competing controllers. A signer
    or NWC adapter without required fee/recovery support must refuse that role.
 
-The protocol changes needed now are narrow supported schemas and the public
-receipt compatibility review. General escrow, additional currencies, threshold
-custody, a new agent-credit token, and a global reputation oracle remain outside
+The protocol changes needed now are narrow supported schemas and qualification
+of the public receipt profile that excludes payment proofs. General escrow,
+additional currencies, threshold custody, a new agent-credit token, and a global reputation oracle remain outside
 this first loop. SOV already distinguishes guardians from key custody; ordinary
 operator-held custody with explicit limits is sufficient for the first profile.
 
@@ -368,7 +367,8 @@ Choose the next input from actual bottlenecks. For inference, qualify the
 existing Pylon paid path for a suitable workload and compare it with the
 current API path, including checks, retries, availability, and provider costs.
 Keep text inference, decision quality, and coding labor as separate products.
-Resolve the PYLON/X402 public-proof conflict before publishing paid receipts.
+Use PYLON v2 and explicitly configure trusted payment issuers before publishing
+and counting paid receipts.
 
 For reusable knowledge or a plugin, pin its release and rights, compare with
 and without it on tasks outside its source groups, and price the author's fee
@@ -459,8 +459,8 @@ work and use those earnings to buy what its next task needs.
 3. Connect confirmed worker payouts to narrowly authorized API-credit purchases,
    with concurrent-budget, lost-reply, and credit-callback recovery fixtures.
    Then qualify and record one real earn/receive/buy/work cycle through the
-   existing owners. Review the PYLON public-receipt profile separately before
-   adding paid compute publication.
+   existing owners. Qualify the PYLON v2 acknowledgment path separately before
+   adding real paid compute publication.
 
 Those changes address the missing connection first. Subsequent work should
 follow measured cost and customer demand, with the current

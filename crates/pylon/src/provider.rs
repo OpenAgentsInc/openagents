@@ -978,6 +978,13 @@ impl Provider {
                 state.seen.remove(&old);
             }
         }
+        if let Some(result) = seller.acknowledge(&self.identity, &self.config.pylon, &event, now())
+        {
+            if let Ok(reply) = result {
+                let _ = self.outbound.try_send(reply);
+            }
+            return;
+        }
         let Some((record, signed)) = paid::open_record(&self.identity, &event) else {
             return;
         };

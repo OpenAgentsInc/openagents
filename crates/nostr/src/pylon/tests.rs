@@ -197,22 +197,72 @@ fn a_receipt_round_trips_and_refuses_each_validation_rule() {
             .contains("`p`")
     );
 
-    // A preimage that does not hash to its payment hash.
     let mut paid = body.clone();
     paid.payment = Some(Payment {
         profile: "lightning-bolt11".into(),
         network: "regtest".into(),
         amount_msat: 2_000,
-        payment_hash: sha256_hex(&[7; 32]),
-        preimage: "08".repeat(32),
+        settlement: "07".repeat(32),
+        acknowledgment: None,
     });
     assert!(
         receipt_event(&buyer, &paid, NOW)
             .unwrap_err()
-            .contains("preimage")
+            .contains("acknowledgment")
     );
-    paid.payment.as_mut().unwrap().preimage = "07".repeat(32);
-    assert!(receipt_event(&buyer, &paid, NOW).is_ok());
+    acknowledge_payment(&provider, &mut paid).unwrap();
+    let signed = receipt_event(&buyer, &paid, NOW).unwrap();
+    assert_eq!(parse_receipt(&signed, None).unwrap(), paid);
+    assert!(!signed.content.contains("preimage"));
+    assert!(!signed.content.contains("payment_hash"));
+    let mut changed = paid.clone();
+    changed.request = "cd".repeat(32);
+    assert!(receipt_event(&buyer, &changed, NOW).is_err());
+    changed = paid.clone();
+    changed.payment.as_mut().unwrap().amount_msat += 1;
+    assert!(receipt_event(&buyer, &changed, NOW).is_err());
+    changed = paid.clone();
+    changed.outcome = Outcome::Failed;
+    assert!(receipt_event(&buyer, &changed, NOW).is_err());
+    assert!(acknowledge_payment(&owner, &mut changed).is_err());
+    changed = paid.clone();
+    let ack = changed
+        .payment
+        .as_mut()
+        .unwrap()
+        .acknowledgment
+        .as_mut()
+        .unwrap();
+    ack.content.push(' ');
+    assert!(receipt_event(&buyer, &changed, NOW).is_err());
+    changed = paid.clone();
+    let ack = changed
+        .payment
+        .as_mut()
+        .unwrap()
+        .acknowledgment
+        .as_mut()
+        .unwrap();
+    *ack = owner.sign(
+        ack.created_at,
+        ack.kind,
+        ack.tags.clone(),
+        ack.content.clone(),
+    );
+    assert!(receipt_event(&buyer, &changed, NOW).is_err());
+    for field in ["network", "settlement"] {
+        changed = paid.clone();
+        let payment = changed.payment.as_mut().unwrap();
+        if field == "network" {
+            payment.network = "bitcoin".into();
+        } else {
+            payment.settlement = "08".repeat(32);
+        }
+        assert!(receipt_event(&buyer, &changed, NOW).is_err());
+    }
+    let mut legacy = serde_json::to_value(&paid).unwrap();
+    legacy["payment"]["preimage"] = serde_json::json!("07".repeat(32));
+    assert!(serde_json::from_value::<Receipt>(legacy).is_err());
 }
 
 fn pool_inputs() -> (RelaySigner, Vec<Event>, Vec<Event>) {
@@ -234,9 +284,10 @@ fn pool_inputs() -> (RelaySigner, Vec<Event>, Vec<Event>) {
         profile: "lightning-bolt11".into(),
         network: "regtest".into(),
         amount_msat: 2_000,
-        payment_hash: sha256_hex(&[7; 32]),
-        preimage: "07".repeat(32),
+        settlement: "07".repeat(32),
+        acknowledgment: None,
     });
+    acknowledge_payment(&provider, &mut paid).unwrap();
     receipts.push(receipt_event(&buyer, &paid, to - 20).unwrap());
     (signer(9), beacons, receipts)
 }
@@ -244,7 +295,8 @@ fn pool_inputs() -> (RelaySigner, Vec<Event>, Vec<Event>) {
 #[test]
 fn an_aggregate_recomputes_and_refuses_tampering() {
     let (aggregator, beacons, receipts) = pool_inputs();
-    let policy = PoolPolicy::open("everglade", 12);
+    let policy =
+        PoolPolicy::open("everglade", 12).trusting_payments([signer(1).pubkey().to_string()]);
     let to = 1_791_400_200;
     let window = Window {
         from: to - 3_600,
@@ -567,4 +619,45 @@ fn a_failed_check_from_a_trusted_checker_leaves_the_pools_admission() {
     assert_eq!(aggregate.totals.checks, CheckTotals::default());
     assert_eq!(aggregate.totals.pylons_online, 1);
     assert!(!serde_json::to_string(&open).unwrap().contains("checkers"));
+}
+
+#[test]
+fn paid_totals_require_trusted_issuers_and_deduplicate_settlements() {
+    let (aggregator, beacons, mut receipts) = pool_inputs();
+    let to = 1_791_400_200;
+    let mut duplicate = parse_receipt(receipts.last().unwrap(), None).unwrap();
+    duplicate.request = "f1".repeat(32);
+    acknowledge_payment(&signer(1), &mut duplicate).unwrap();
+    receipts.push(receipt_event(&signer(3), &duplicate, to - 15).unwrap());
+    let inputs = AggregateInputs {
+        beacons: &beacons,
+        receipts: &receipts,
+        checks: &[],
+    };
+    let window = Window {
+        from: to - 3_600,
+        to,
+    };
+    let open = PoolPolicy::open("everglade", 12);
+    let plain = compute_aggregate(aggregator.pubkey(), &open, window, &inputs, to).unwrap();
+    assert_eq!(plain.totals.paid_msat.regtest, 0);
+    let trusted = open.trusting_payments([signer(1).pubkey().to_string()]);
+    let counted = compute_aggregate(aggregator.pubkey(), &trusted, window, &inputs, to).unwrap();
+    assert_eq!(counted.totals.paid_msat.regtest, 2_000);
+    assert_ne!(counted.policy, plain.policy);
+    // A buyer may sign as a broker, but trusting the provider does not trust that buyer.
+    acknowledge_payment(&signer(3), &mut duplicate).unwrap();
+    let events = [receipt_event(&signer(3), &duplicate, to - 15).unwrap()];
+    let inputs = AggregateInputs {
+        receipts: &events,
+        ..inputs
+    };
+    assert_eq!(
+        compute_aggregate(aggregator.pubkey(), &trusted, window, &inputs, to)
+            .unwrap()
+            .totals
+            .paid_msat
+            .regtest,
+        0
+    );
 }

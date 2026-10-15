@@ -4,8 +4,8 @@
 //! - Direct: three priced pylons sell each job under NIP-X402's native
 //!   records on testnet: the buyer buys the job (request, challenge, paid
 //!   claim, admitted status) before it sends it, every receipt carries a
-//!   preimage that hashes to its payment hash, every purchase ends
-//!   `completed`, and the pool's aggregate counts the sats under
+//!   signed seller acknowledgment without a public payment proof, and every
+//!   purchase ends `completed`, and the pool's aggregate counts the sats under
 //!   `testnet`, never `bitcoin`.
 //! - Brokered: 1,000 jobs across three pylons, each paid by a customer's
 //!   x402 payment to OpenAgents that the broker's facilitator settles
@@ -25,7 +25,7 @@ use std::time::Duration;
 
 use nostr::domain::Event;
 use nostr::pylon::check::{Verdict, check_event};
-use nostr::pylon::{Payment, PoolPolicy, parse_receipt};
+use nostr::pylon::{PoolPolicy, parse_receipt};
 use pay_ledger::payout::{Invoice, Lookup, Outcome, Rails};
 use pay_ledger::{Ledger, Payee};
 use pylon::broker::{Broker, party};
@@ -33,6 +33,7 @@ use pylon::client::{self, Ask, Pay};
 use pylon::engine::Echo;
 use pylon::fixture::{Oracle, relay};
 use pylon::identity::Identity;
+use pylon::paid::PaymentProof as Payment;
 use pylon::paid::{Grant, Network, Payer, Price, Receiver, TestLightning, pay};
 use pylon::pool;
 use pylon::provider::{Config, Provider};
@@ -218,10 +219,12 @@ async fn priced_pylons_sell_direct_jobs_under_nip_x402_on_testnet() {
         let payment = receipt.payment.unwrap();
         assert_eq!(payment.network, "testnet");
         assert_eq!(payment.profile, "x402-exact");
-        assert!(pylon::paid::preimage_matches(
-            &payment.preimage,
-            &payment.payment_hash
-        ));
+        assert_eq!(
+            payment.acknowledgment.as_ref().unwrap().pubkey,
+            receipt.provider
+        );
+        assert!(!event.content.contains("preimage"));
+        assert!(!event.content.contains("payment_hash"));
     }
 
     // Every purchase ran once and ended completed, in each pylon's ledger.
@@ -271,7 +274,8 @@ async fn priced_pylons_sell_direct_jobs_under_nip_x402_on_testnet() {
     assert_eq!(net.paid(), (9, 27_000));
 
     // The pool counts the sats under testnet and never under bitcoin.
-    let policy = PoolPolicy::open("everglade", pool::SLICES);
+    let policy = PoolPolicy::open("everglade", pool::SLICES)
+        .trusting_payments(keys.iter().map(|k| k.pubkey().to_string()));
     let (aggregate, _) = pool::aggregate(&Identity::generate(), &url, &policy, 60, false)
         .await
         .unwrap();
@@ -366,7 +370,7 @@ async fn brokered_jobs(
     count: usize,
     receiver: Arc<TestLightning>,
     book: Arc<Mutex<Broker>>,
-) -> Vec<String> {
+) -> Vec<(String, String)> {
     let mut out = Vec::new();
     for n in 0..count {
         let sale = format!("{}-{n}", &pylon[..12]);
@@ -377,13 +381,13 @@ async fn brokered_jobs(
                 &url,
                 &home,
                 Some(pylon.clone()),
-                Some(Pay::Brokered(payment)),
+                Some(Pay::Brokered(payment.clone())),
             ),
         )
         .await
         .unwrap();
         assert_eq!(answer.text.as_deref(), Some("Hi."));
-        out.push(answer.receipt.unwrap());
+        out.push((answer.receipt.unwrap(), payment.payment_hash));
     }
     out
 }
@@ -459,6 +463,7 @@ async fn a_thousand_brokered_jobs_settle_through_balance_sweeps() {
     // Two halves, a sweep between them.
     let start_at = pylon::now() as i64;
     let mut receipts: Vec<String> = Vec::new();
+    let mut private_hashes = BTreeMap::new();
     for half in 0..2 {
         let mut tasks = Vec::new();
         for (key, count) in keys.iter().zip([167, 167, 166]) {
@@ -477,15 +482,16 @@ async fn a_thousand_brokered_jobs_settle_through_balance_sweeps() {
             batch.extend(task.await.unwrap());
         }
         let stored = hub.lock().await.stored.clone();
-        for id in &batch {
+        for (id, hash) in &batch {
+            private_hashes.insert(id.clone(), hash.clone());
             let event = stored.iter().find(|e| &e.id == id).unwrap();
             // What reached the receiver: the whole price, no LSP fee here.
             book.lock()
                 .unwrap()
-                .settle(event, None, 10_000, start_at, None)
+                .settle(event, None, hash, 10_000, start_at, None)
                 .unwrap();
         }
-        receipts.extend(batch);
+        receipts.extend(batch.into_iter().map(|(id, _)| id));
         if half == 0 {
             // Every provider is owed over 1,000 sats: the sweep pays all three.
             let steps = sweep(&mut book.lock().unwrap(), start_at + 1);
@@ -569,7 +575,11 @@ async fn a_thousand_brokered_jobs_settle_through_balance_sweeps() {
         let receipt = parse_receipt(&by_id[id], None).unwrap();
         let payment = receipt.payment.unwrap();
         let row = rows[id.as_str()];
-        assert_eq!(row.settlement, payment.payment_hash);
+        assert_eq!(row.settlement, private_hashes[id]);
+        assert_eq!(
+            payment.settlement,
+            nostr::pylon::settlement_reference("testnet", &row.settlement)
+        );
         assert_eq!(row.received_msat, 10_000);
         assert_eq!(row.provider, party(&receipt.provider, None));
         assert_eq!(row.provider_msat, 8_500);
@@ -610,7 +620,14 @@ async fn a_thousand_brokered_jobs_settle_through_balance_sweeps() {
     // A testnet receipt never settles in the mainnet book.
     assert!(
         mainnet
-            .settle(&by_id[&receipts[0]], None, 10_000, start_at, None)
+            .settle(
+                &by_id[&receipts[0]],
+                None,
+                &private_hashes[&receipts[0]],
+                10_000,
+                start_at,
+                None
+            )
             .unwrap_err()
             .contains("testnet")
     );
@@ -645,32 +662,29 @@ async fn a_thousand_brokered_jobs_settle_through_balance_sweeps() {
 /// A receipt the broker signs for a job on `provider` paid by `payment`.
 fn sold(broker: &Identity, provider: &str, n: u8, payment: Payment) -> Event {
     let at = pylon::now();
-    nostr::pylon::receipt_event(
-        broker.signer(),
-        &nostr::pylon::Receipt {
-            v: nostr::pylon::RECEIPT_V.into(),
-            requires: Vec::new(),
-            meta: None,
-            buyer: broker.pubkey().into(),
-            provider: provider.into(),
-            pylon: "pylon-0".into(),
-            lane: nostr::pylon::Lane::CjConversation,
-            capability: Config::capability(provider),
-            request: format!("{n:02x}").repeat(32),
-            request_digest: nostr::pylon::sha256_hex(&[n]),
-            result_digest: Some(nostr::pylon::sha256_hex(&[n, n])),
-            started_at: at,
-            finished_at: at,
-            units: nostr::pylon::Units {
-                kind: nostr::pylon::UnitKind::Jobs,
-                count: 1,
-            },
-            outcome: nostr::pylon::Outcome::Accepted,
-            payment: Some(payment),
+    let mut receipt = nostr::pylon::Receipt {
+        v: nostr::pylon::RECEIPT_V.into(),
+        requires: Vec::new(),
+        meta: None,
+        buyer: broker.pubkey().into(),
+        provider: provider.into(),
+        pylon: "pylon-0".into(),
+        lane: nostr::pylon::Lane::CjConversation,
+        capability: Config::capability(provider),
+        request: format!("{n:02x}").repeat(32),
+        request_digest: nostr::pylon::sha256_hex(&[n]),
+        result_digest: Some(nostr::pylon::sha256_hex(&[n, n])),
+        started_at: at,
+        finished_at: at,
+        units: nostr::pylon::Units {
+            kind: nostr::pylon::UnitKind::Jobs,
+            count: 1,
         },
-        at,
-    )
-    .unwrap()
+        outcome: nostr::pylon::Outcome::Accepted,
+        payment: Some(payment.public()),
+    };
+    nostr::pylon::acknowledge_payment(broker.signer(), &mut receipt).unwrap();
+    nostr::pylon::receipt_event(broker.signer(), &receipt, at).unwrap()
 }
 
 #[test]
@@ -697,6 +711,19 @@ fn a_brokered_sale_settles_only_a_payment_the_facilitator_consumed() {
             .unwrap_err()
             .contains("duplicate_settlement")
     );
+    assert!(
+        broker
+            .settle(
+                &sold(&broker_key, provider.pubkey(), 0, payment.clone()),
+                None,
+                &"00".repeat(32),
+                10_000,
+                0,
+                None,
+            )
+            .unwrap_err()
+            .contains("private payment evidence")
+    );
     // A receipt naming a payment the facilitator never consumed sells
     // nothing, whatever its preimage.
     let preimage = "07".repeat(32);
@@ -706,12 +733,14 @@ fn a_brokered_sale_settles_only_a_payment_the_facilitator_consumed() {
         amount_msat: 10_000,
         payment_hash: nostr::pylon::sha256_hex(&[7; 32]),
         preimage,
+        purchase: None,
     };
     assert!(
         broker
             .settle(
-                &sold(&broker_key, provider.pubkey(), 1, forged),
+                &sold(&broker_key, provider.pubkey(), 1, forged.clone()),
                 None,
+                &forged.payment_hash,
                 10_000,
                 0,
                 None
@@ -729,6 +758,7 @@ fn a_brokered_sale_settles_only_a_payment_the_facilitator_consumed() {
             .settle(
                 &sold(&broker_key, provider.pubkey(), 2, inflated),
                 None,
+                &payment.payment_hash,
                 20_000,
                 0,
                 None
@@ -739,8 +769,9 @@ fn a_brokered_sale_settles_only_a_payment_the_facilitator_consumed() {
     // The consumed payment settles, with a plugin author's fee first.
     let recorded = broker
         .settle(
-            &sold(&broker_key, provider.pubkey(), 3, payment),
+            &sold(&broker_key, provider.pubkey(), 3, payment.clone()),
             None,
+            &payment.payment_hash,
             10_000,
             pylon::now() as i64,
             Some(pay_ledger::PluginFee {

@@ -237,7 +237,7 @@ async fn brokered(
             publish_receipt: true,
             home: home.to_path_buf(),
             checkers: BTreeSet::new(),
-            pay: Some(Pay::Brokered(payment)),
+            pay: Some(Pay::Brokered(payment.clone())),
         },
     )
     .await?;
@@ -246,6 +246,7 @@ async fn brokered(
     book.lock().map_err(|e| e.to_string())?.settle(
         &receipt,
         None,
+        &payment.payment_hash,
         COMPUTE_MSAT,
         pylon::now() as i64,
         None,

@@ -12,7 +12,7 @@
 //! (`openagents_x402::native`). Only then does the pylon run the CJ job
 //! whose plaintext matches the admitted purchase's input; its status
 //! records follow the job to `completed` or `failed`. The buyer's `3201`
-//! receipt carries the payment hash and the preimage.
+//! receipt carries only a signed payment acknowledgment.
 //!
 //! x402's `exact` Lightning method names `bitcoin` and `testnet` only, so
 //! a priced pylon runs on one of those. Test networks first:
@@ -29,7 +29,7 @@ use std::sync::{Arc, Mutex};
 use nostr::contracts::{digest_bytes, jcs, parse_strict};
 use nostr::domain::Event;
 use nostr::private_artifact;
-use nostr::pylon::{Payment, sha256_hex};
+use nostr::pylon::{Payment, Receipt, acknowledge_payment, settlement_reference, sha256_hex};
 use openagents_x402::FileReplayStore;
 use openagents_x402::facilitator::Facilitator;
 use openagents_x402::native::{
@@ -42,6 +42,62 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::identity::Identity;
+
+/// Private payment evidence; never serialized into a public receipt or answer.
+#[derive(Clone)]
+pub struct PaymentProof {
+    pub profile: String,
+    pub network: String,
+    pub amount_msat: u64,
+    pub payment_hash: String,
+    pub preimage: String,
+    pub purchase: Option<String>,
+}
+
+impl std::fmt::Debug for PaymentProof {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PaymentProof")
+            .field("network", &self.network)
+            .field("amount_msat", &self.amount_msat)
+            .finish_non_exhaustive()
+    }
+}
+
+impl PaymentProof {
+    /// The public claim, still requiring the seller or broker's signature.
+    #[must_use]
+    pub fn public(&self) -> Payment {
+        Payment {
+            profile: self.profile.clone(),
+            network: self.network.clone(),
+            amount_msat: self.amount_msat,
+            settlement: settlement_reference(&self.network, &self.payment_hash),
+            acknowledgment: None,
+        }
+    }
+}
+
+pub(crate) const ACK_REQUEST: &str = "openagents.pylon-payment-request.v1";
+pub(crate) const ACK_RESPONSE: &str = "openagents.pylon-payment-ack.v1";
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct AcknowledgmentRequest {
+    pub v: String,
+    pub requires: Vec<String>,
+    pub purchase: String,
+    pub receipt: Receipt,
+}
+
+/// Payment acknowledgment issuers this reader trusts, empty by default.
+#[must_use]
+pub fn trusted_issuers() -> std::collections::BTreeSet<String> {
+    std::env::var("OPENAGENTS_PYLON_PAYMENT_ISSUERS")
+        .unwrap_or_default()
+        .split(',')
+        .filter_map(|key| crate::identity::hex_pubkey(key.trim()))
+        .collect()
+}
 
 /// The settlement profile a priced pylon advertises and its receipts name.
 pub const PROFILE: &str = "x402-exact";
@@ -336,7 +392,7 @@ pub fn pay(
     invoice: &Invoice,
     network: Network,
     max_msat: u64,
-) -> Result<Payment, String> {
+) -> Result<PaymentProof, String> {
     if network != payer.network() {
         return Err(format!(
             "the pylon asks for {} sats; this wallet is on {}",
@@ -354,12 +410,13 @@ pub fn pay(
     if !preimage_matches(&preimage, &invoice.payment_hash) {
         return Err("the wallet returned a preimage that does not match".into());
     }
-    Ok(Payment {
+    Ok(PaymentProof {
         profile: PROFILE.into(),
         network: network.as_str().into(),
         amount_msat: invoice.amount_msat,
         payment_hash: invoice.payment_hash.clone(),
         preimage,
+        purchase: None,
     })
 }
 
@@ -437,7 +494,18 @@ pub fn seal_record(
     record: &Value,
     now: u64,
 ) -> Result<Event, String> {
-    let bytes = jcs(record).map_err(|e| e.to_string())?;
+    seal_artifact(me, to, purchase, RECORD_SCHEMA, record, now)
+}
+
+pub(crate) fn seal_artifact(
+    me: &Identity,
+    to: &str,
+    mailbox: &str,
+    schema: &str,
+    value: &Value,
+    now: u64,
+) -> Result<Event, String> {
+    let bytes = jcs(value).map_err(|e| e.to_string())?;
     let body = json!({
         "v": "openagents.artifact-envelope.v1",
         "requires": [],
@@ -445,9 +513,9 @@ pub fn seal_record(
             "digest": digest_bytes(&bytes),
             "size": bytes.len(),
             "media_type": "application/json",
-            "schema": RECORD_SCHEMA,
+            "schema": schema,
         },
-        "inline": record,
+        "inline": value,
         "issued_at": now,
         "retain_until": now + RETAIN,
     });
@@ -458,7 +526,7 @@ pub fn seal_record(
         &body,
         me.secret(),
         &recipient,
-        purchase,
+        mailbox,
         now,
         secp256k1::rand::random(),
     )
@@ -594,6 +662,83 @@ impl Seller {
                 .unwrap_or_default(),
             _ => Vec::new(),
         }
+    }
+
+    /// Acknowledge a public receipt only from the retained paid purchase and job.
+    pub(crate) fn acknowledge(
+        &self,
+        identity: &Identity,
+        pylon: &str,
+        event: &Event,
+        now: u64,
+    ) -> Option<Result<Event, String>> {
+        let opened = private_artifact::open(event, identity.secret()).ok()?;
+        if opened.artifact().schema.as_deref() != Some(ACK_REQUEST) {
+            return None;
+        }
+        Some((|| {
+            let _held = self.lock.lock().unwrap_or_else(|e| e.into_inner());
+            let mut request: AcknowledgmentRequest = serde_json::from_slice(
+                opened
+                    .inline_bytes()
+                    .ok_or("acknowledgment request has no body")?,
+            )
+            .map_err(|e| e.to_string())?;
+            if request.v != ACK_REQUEST
+                || !request.requires.is_empty()
+                || !is_hex64(&request.purchase)
+            {
+                return Err("unsupported acknowledgment request".into());
+            }
+            let receipt = &mut request.receipt;
+            let purchase = self
+                .store
+                .get(&event.pubkey, &request.purchase)
+                .map_err(|e| e.to_string())?
+                .ok_or("paid purchase is unavailable")?;
+            let settled = purchase
+                .settlement
+                .as_ref()
+                .filter(|s| s.success)
+                .ok_or("purchase is not settled")?;
+            let input = purchase.request.value().map_err(str::to_string)?;
+            let payment = receipt.payment.as_ref().ok_or("receipt has no payment")?;
+            if receipt.buyer != event.pubkey
+                || receipt.provider != self.pubkey
+                || identity.pubkey() != self.pubkey
+                || receipt.pylon != pylon
+                || receipt.capability != crate::provider::Config::capability(&self.pubkey)
+                || receipt.lane != nostr::pylon::Lane::CjConversation
+                || purchase.job().and_then(|j| j["request"].as_str())
+                    != Some(receipt.request.as_str())
+                || input["body"]["input"]["digest"].as_str()
+                    != Some(format!("sha256:{}", receipt.request_digest).as_str())
+                || payment.profile != PROFILE
+                || payment.network != self.price.network.as_str()
+                || payment.amount_msat != self.price.msat
+                || payment.settlement
+                    != settlement_reference(self.price.network.as_str(), &settled.transaction)
+                || settled.amount.as_deref() != Some(self.price.msat.to_string().as_str())
+                || Some(settled.network.as_str()) != self.price.network.x402()
+                || payment.acknowledgment.is_some()
+            {
+                return Err("receipt does not match the paid purchase and job".into());
+            }
+            acknowledge_payment(identity.signer(), receipt)?;
+            let ack = receipt
+                .payment
+                .as_ref()
+                .and_then(|p| p.acknowledgment.as_ref())
+                .ok_or("acknowledgment is missing")?;
+            seal_artifact(
+                identity,
+                &event.pubkey,
+                &request.purchase,
+                ACK_RESPONSE,
+                &serde_json::to_value(ack).map_err(|e| e.to_string())?,
+                now,
+            )
+        })())
     }
 
     /// Start the CJ job `request` (its event ID) from `buyer` whose
@@ -854,8 +999,176 @@ mod tests {
         let payment = pay(&net, &invoice, Network::Testnet, 2_000).unwrap();
         assert!(net.settled(&invoice.payment_hash));
         assert!(preimage_matches(&payment.preimage, &payment.payment_hash));
+        let debug = format!("{payment:?}");
+        assert!(!debug.contains(&payment.preimage));
+        assert!(!debug.contains(&payment.payment_hash));
         assert_eq!(net.paid(), (1, 2_000));
         assert!(!preimage_matches(&"0".repeat(64), &payment.payment_hash));
+    }
+
+    #[test]
+    fn seller_acknowledgments_bind_private_purchases_and_survive_restart() {
+        let home = tempfile::tempdir().unwrap();
+        let provider = Identity::generate();
+        let buyer = Identity::generate();
+        let other = Identity::generate();
+        let receiver = Arc::new(TestLightning::new(Network::Testnet).unwrap());
+        let price = Price {
+            msat: 2_000,
+            network: Network::Testnet,
+        };
+        let open = || {
+            Seller::open(
+                home.path(),
+                provider.pubkey(),
+                price,
+                receiver.clone(),
+                None,
+            )
+            .unwrap()
+        };
+        let seller = open();
+        let at = crate::now();
+        let purchase_id = "11".repeat(32);
+        let hash = "22".repeat(32);
+        let request_id = "33".repeat(32);
+        let input = plaintext_ref("job", INPUT_SCHEMA);
+        let mut purchase = native::Purchase {
+            buyer: buyer.pubkey().into(),
+            purchase: purchase_id.clone(),
+            request: Signed::new(&json!({"body": {"input": input}})).unwrap(),
+            request_hash: "44".repeat(32),
+            valid_until: at + 300,
+            execute_until: at + 300,
+            recover_until: at + RETAIN,
+            challenge: None,
+            required: None,
+            claim: None,
+            settlement: None,
+            run: None,
+            statuses: Vec::new(),
+        };
+        let receipt = Receipt {
+            v: nostr::pylon::RECEIPT_V.into(),
+            requires: Vec::new(),
+            meta: None,
+            buyer: buyer.pubkey().into(),
+            provider: provider.pubkey().into(),
+            pylon: "test".into(),
+            lane: nostr::pylon::Lane::CjConversation,
+            capability: crate::provider::Config::capability(provider.pubkey()),
+            request: request_id.clone(),
+            request_digest: sha256_hex(b"job"),
+            result_digest: Some(sha256_hex(b"result")),
+            started_at: at,
+            finished_at: at,
+            units: nostr::pylon::Units {
+                kind: nostr::pylon::UnitKind::Jobs,
+                count: 1,
+            },
+            outcome: nostr::pylon::Outcome::Accepted,
+            payment: Some(Payment {
+                profile: PROFILE.into(),
+                network: "testnet".into(),
+                amount_msat: price.msat,
+                settlement: settlement_reference("testnet", &hash),
+                acknowledgment: None,
+            }),
+        };
+        let request = |sender: &Identity, nonce: &str, receipt: &Receipt| {
+            let value = serde_json::to_value(AcknowledgmentRequest {
+                v: ACK_REQUEST.into(),
+                requires: Vec::new(),
+                purchase: nonce.into(),
+                receipt: receipt.clone(),
+            })
+            .unwrap();
+            seal_artifact(
+                sender,
+                provider.pubkey(),
+                &purchase_id,
+                ACK_REQUEST,
+                &value,
+                at,
+            )
+            .unwrap()
+        };
+        let event = request(&buyer, &purchase_id, &receipt);
+        assert!(
+            seller
+                .acknowledge(&provider, "test", &event, at)
+                .unwrap()
+                .is_err()
+        );
+        seller.store.put(&purchase).unwrap();
+        assert!(
+            seller
+                .acknowledge(&provider, "test", &event, at)
+                .unwrap()
+                .is_err()
+        );
+        purchase.settlement = Some(openagents_x402::wire::SettlementResponse {
+            success: true,
+            error_reason: None,
+            transaction: hash,
+            network: Network::Testnet.x402().unwrap().into(),
+            amount: Some(price.msat.to_string()),
+        });
+        seller.store.put(&purchase).unwrap();
+        // Payment alone is insufficient: a dispatched job must bind this request.
+        assert!(
+            seller
+                .acknowledge(&provider, "test", &event, at)
+                .unwrap()
+                .is_err()
+        );
+        purchase.run = Some(json!({"job": {"request": request_id}}));
+        seller.store.put(&purchase).unwrap();
+        drop(seller);
+        let seller = open();
+        for field in ["buyer", "request", "request_digest", "amount", "settlement"] {
+            let mut changed = receipt.clone();
+            match field {
+                "buyer" => changed.buyer = other.pubkey().into(),
+                "request" => changed.request = "55".repeat(32),
+                "request_digest" => changed.request_digest = sha256_hex(b"different job"),
+                "amount" => changed.payment.as_mut().unwrap().amount_msat += 1,
+                _ => changed.payment.as_mut().unwrap().settlement = "66".repeat(32),
+            }
+            let event = request(&buyer, &purchase_id, &changed);
+            assert!(
+                seller
+                    .acknowledge(&provider, "test", &event, at)
+                    .unwrap()
+                    .is_err(),
+                "{field}"
+            );
+        }
+        for event in [
+            request(&other, &purchase_id, &receipt),
+            request(&buyer, "../purchase", &receipt),
+        ] {
+            assert!(
+                seller
+                    .acknowledge(&provider, "test", &event, at)
+                    .unwrap()
+                    .is_err()
+            );
+        }
+        for _ in 0..2 {
+            let reply = seller
+                .acknowledge(&provider, "test", &event, at)
+                .unwrap()
+                .unwrap();
+            let opened = private_artifact::open(&reply, buyer.secret()).unwrap();
+            assert_eq!(opened.artifact().schema.as_deref(), Some(ACK_RESPONSE));
+            let mut acknowledged = receipt.clone();
+            acknowledged.payment.as_mut().unwrap().acknowledgment =
+                Some(serde_json::from_slice(opened.inline_bytes().unwrap()).unwrap());
+            acknowledged.validate().unwrap();
+        }
+        assert_eq!(receiver.paid(), (0, 0));
+        assert_eq!(seller.store.list().unwrap().len(), 1);
     }
 
     struct Mainnet(Mutex<u32>);

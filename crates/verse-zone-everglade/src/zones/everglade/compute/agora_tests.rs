@@ -64,7 +64,7 @@ fn the_counter_and_the_wall_read_the_market_and_mark_test_sats() {
     assert_eq!(counter[1], "1 PYLONS  1 SLOTS FREE");
     assert_eq!(counter[2], "12 JOBS TODAY  4 SOLD");
     // Test sats are marked and never summed with mainnet.
-    assert_eq!(counter[3..], ["30 SATS PAID TEST".to_string()]);
+    assert_eq!(counter[3..], ["REPORTED PAYMENTS 30 SATS TEST".to_string()]);
     assert_eq!(agora::wall_lines(&market())[1], "plan-review 25 SATS TEST");
     assert_eq!(
         agora::wall_lines(&Market::default())[1],

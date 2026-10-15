@@ -1,8 +1,9 @@
 //! A paid Pylon Field on testnet for captures: an in-process relay, three
 //! priced pylons of different classes on fake engines, and a buyer that
 //! buys each job under NIP-X402 from an in-memory test-sat wallet
-//! (`TestLightning`), one job every second, round-robin. Every receipt carries a preimage that
-//! hashes to its payment hash, so Verse lights each pylon's TEST coin.
+//! (`TestLightning`), one job every second, round-robin. Every receipt carries
+//! a signed seller acknowledgment.
+//! Trust the printed payment issuers to light each pylon's TEST coin.
 //! Nothing touches a wallet or a live relay.
 //!
 //! ```sh
@@ -65,6 +66,13 @@ async fn main() -> Result<(), String> {
         keys.push(key);
     }
     println!("RELAY {url}");
+    println!(
+        "OPENAGENTS_PYLON_PAYMENT_ISSUERS={}",
+        keys.iter()
+            .map(Identity::pubkey)
+            .collect::<Vec<_>>()
+            .join(",")
+    );
     let buyer = Identity::generate();
     let until = std::time::Instant::now() + Duration::from_secs(seconds);
     let mut n = 0_usize;

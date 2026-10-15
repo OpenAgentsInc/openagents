@@ -67,10 +67,10 @@ pub fn counter_lines(market: &Market, pylons: &[State]) -> Vec<String> {
         format!("{} JOBS TODAY  {} SOLD", market.jobs, market.sales),
     ];
     if mainnet > 0 || test == 0 {
-        lines.push(format!("{} SATS PAID", mainnet / 1_000));
+        lines.push(format!("REPORTED PAYMENTS {} SATS", mainnet / 1_000));
     }
     if test > 0 {
-        lines.push(format!("{} SATS PAID TEST", test / 1_000));
+        lines.push(format!("REPORTED PAYMENTS {} SATS TEST", test / 1_000));
     }
     lines
 }

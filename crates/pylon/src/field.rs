@@ -146,8 +146,7 @@ pub struct Pylon {
     /// From trusted verdicts: `Passing` draws the sigil.
     pub standing: Standing,
     /// The newest paid receipt for this pylon, which lights its coin. Only
-    /// a receipt whose preimage hashes to its payment hash ever verifies,
-    /// so nothing else can.
+    /// a receipt acknowledged by a trusted payment issuer can light it.
     pub coin: Option<Coin>,
 }
 
@@ -188,7 +187,7 @@ pub struct Market {
     pub jobs: u64,
     /// Of those, the jobs a trusted broker bought: sales and agent orders.
     pub sales: u64,
-    /// Paid on the pool's receipts over the last day, by network.
+    /// Payments reported by trusted issuers over the last day, by network.
     pub paid_msat: pylon::PaidMsat,
     /// A trusted broker's jobs that finished in the last
     /// [`THREAD_SECS`]: each draws a thread from the Agora to its pylon.
@@ -212,8 +211,8 @@ struct Counted {
     finished_at: u64,
     address: String,
     accepted: bool,
-    /// `(network, amount_msat)` for a paid receipt.
-    paid: Option<(String, u64)>,
+    /// A verified acknowledgment, still subject to this reader's trust policy.
+    paid: Option<pylon::Payment>,
 }
 
 /// The newest pool aggregate and whether it recomputed.
@@ -248,6 +247,7 @@ pub struct Live {
     checks: Vec<(Event, Check)>,
     /// Brokers whose jobs count as sales.
     brokers: BTreeSet<String>,
+    payment_issuers: BTreeSet<String>,
     /// Verified agent-service offerings, by event ID.
     offerings: BTreeMap<String, crate::market::Listing>,
     /// Whether the subscription has caught up with the relay.
@@ -270,6 +270,13 @@ impl Live {
     #[must_use]
     pub fn trusting(mut self, checkers: BTreeSet<String>) -> Self {
         self.checkers = checkers;
+        self
+    }
+
+    /// Count reported payments only from these acknowledgment issuers.
+    #[must_use]
+    pub fn trusting_payments(mut self, issuers: BTreeSet<String>) -> Self {
+        self.payment_issuers = issuers;
         self
     }
 
@@ -323,10 +330,7 @@ impl Live {
                         finished_at: receipt.finished_at,
                         address: receipt.address(),
                         accepted: receipt.outcome == Outcome::Accepted,
-                        paid: receipt
-                            .payment
-                            .as_ref()
-                            .map(|p| (p.network.clone(), p.amount_msat)),
+                        paid: receipt.payment.clone(),
                     },
                 );
                 if receipt.finished_at + MAX_WINDOW_SECS >= now
@@ -430,7 +434,8 @@ impl Live {
                 checks: &checks,
             };
             // The open policy, or one that counts this reader's checkers.
-            let open = PoolPolicy::open(&held.body.pool, slices);
+            let open = PoolPolicy::open(&held.body.pool, slices)
+                .trusting_payments(self.payment_issuers.iter().cloned());
             let checked = open.clone().checked(self.checkers.iter().cloned());
             held.verified = Some(
                 verify_aggregate(&held.event, &open, &inputs).is_ok()
@@ -446,6 +451,7 @@ impl Live {
         let mut jobs: BTreeMap<&str, u64> = BTreeMap::new();
         let mut paid: BTreeMap<&str, pylon::PaidMsat> = BTreeMap::new();
         let mut coins: BTreeMap<&str, Coin> = BTreeMap::new();
+        let mut paid_seen = BTreeSet::new();
         for ((buyer, _), counted) in &self.receipts {
             if counted.finished_at + RECEIPT_WINDOW_SECS < now
                 || self.book.self_dealt(buyer, &counted.address)
@@ -455,7 +461,17 @@ impl Live {
             if counted.accepted {
                 *jobs.entry(counted.address.as_str()).or_default() += 1;
             }
-            if let Some((network, amount_msat)) = &counted.paid {
+            if let Some(payment) = &counted.paid
+                && let Some(ack) = &payment.acknowledgment
+                && self.payment_issuers.contains(&ack.pubkey)
+                && paid_seen.insert((
+                    ack.pubkey.clone(),
+                    payment.network.clone(),
+                    payment.settlement.clone(),
+                ))
+            {
+                let network = &payment.network;
+                let amount_msat = &payment.amount_msat;
                 add_paid(
                     paid.entry(counted.address.as_str()).or_default(),
                     network,
@@ -514,6 +530,7 @@ impl Live {
     #[must_use]
     pub fn market(&self, now: u64) -> Market {
         let mut out = Market::default();
+        let mut paid_seen = BTreeSet::new();
         for ((buyer, _), counted) in &self.receipts {
             if counted.finished_at + RECEIPT_WINDOW_SECS < now
                 || counted.finished_at > now + MAX_FUTURE_SKEW_SECS
@@ -521,8 +538,18 @@ impl Live {
             {
                 continue;
             }
-            if let Some((network, amount_msat)) = &counted.paid {
-                add_paid(&mut out.paid_msat, network, *amount_msat);
+            let reported_payment = counted.paid.as_ref().filter(|p| {
+                p.acknowledgment.as_ref().is_some_and(|ack| {
+                    self.payment_issuers.contains(&ack.pubkey)
+                        && paid_seen.insert((
+                            ack.pubkey.clone(),
+                            p.network.clone(),
+                            p.settlement.clone(),
+                        ))
+                })
+            });
+            if let Some(payment) = reported_payment {
+                add_paid(&mut out.paid_msat, &payment.network, payment.amount_msat);
             }
             if !counted.accepted {
                 continue;
@@ -534,7 +561,7 @@ impl Live {
                     out.threads.push(Thread {
                         pylon: counted.address.clone(),
                         finished_at: counted.finished_at,
-                        mainnet: counted.paid.as_ref().is_some_and(|(n, _)| n == "bitcoin"),
+                        mainnet: reported_payment.is_some_and(|p| p.network == "bitcoin"),
                     });
                 }
             }

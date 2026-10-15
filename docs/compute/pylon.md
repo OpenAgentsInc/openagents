@@ -342,19 +342,23 @@ proof exactly once, and sends the `admitted` status. Only then does the
 buyer send the CJ request, and the pylon runs it only if its plaintext
 matches an admitted purchase's input; the purchase moves to `running`,
 then `completed` or `failed`, and a second job for one purchase is
-refused. The buyer's `3201` receipt carries `{profile, network,
-amount_msat, payment_hash, preimage}`. x402 names `bitcoin` and `testnet`
-only, so a priced pylon on `signet` or `regtest` refuses to start.
+refused. After the job, the buyer requests the seller's signed acknowledgment
+over the complete proof-free receipt through private `3188` artifacts. Its public `3201`
+receipt carries `{profile, network, amount_msat, settlement, acknowledgment}`;
+invoices, payment hashes, and preimages stay private. A missing acknowledgment
+prevents publication; it never turns paid work into a free receipt. x402 names
+`bitcoin` and `testnet` only, so a priced pylon on `signet` or `regtest` refuses to start.
 
 **Brokered.** A customer pays OpenAgents by an x402 payment or a compute
 balance debit. OpenAgents' broker issues `http:1` terms on its own
 receiver (`Broker::quote`) and settles the customer's proof through the
 embedded x402 facilitator and its replay store before it buys anything
-(`Broker::admit`). The broker key then buys the job (`Pay::Brokered` puts
-the customer's x402 payment in the receipt) and `pylon::broker::Broker`
+(`Broker::admit`). The broker key then buys the job (`Pay::Brokered` signs
+an acknowledgment without payment proofs in the receipt) and `pylon::broker::Broker`
 settles it in the central split ledger (`crates/pay-ledger`) under rule
 v2, but only for a payment the facilitator consumed, at the amount it
-consumed; a receipt alone never creates a sale. The provider (the pylon's
+consumed, with the private payment hash supplied separately; a receipt alone
+never creates a sale. The provider (the pylon's
 NIP-OA owner, else its key) gets `provider_bps` = 8,500 of the net
 receipts, OpenAgents the rest, and the settlement names the receipt it
 pays (`pay_ledger::pylon`, one settlement per receipt). When the job used
@@ -397,9 +401,21 @@ runs a paid testnet field for captures.
 
 In Verse, a pylon whose newest paid receipt finished in the last 15 seconds
 shows a coin of light over its point: gold for mainnet sats, pale and
-marked **TEST** for test sats. Only a receipt whose preimage hashes to its
-payment hash verifies, so nothing else lights it. The pylon's world state
+marked **TEST** for test sats. Only a valid acknowledgment from a payment issuer
+this reader explicitly trusts lights it. These are reported payments, not
+independent transfer proof. The pylon's world state
 carries its paid msat per network, test networks apart from `bitcoin`.
+
+Public receipts, aggregates, and pool policies now use v2; beacons remain v1.
+There is no old-format compatibility producer. Set
+`OPENAGENTS_PYLON_PAYMENT_ISSUERS` to the comma-separated npubs or hex keys of
+sellers and brokers whose payment reports this reader trusts. The list is empty
+by default: free-job counts still work, but no paid amounts or coins appear.
+`openagents pylon pool`, pool verification, and Verse use that same list. Code
+can set `PoolPolicy::trusting_payments` or `field::Live::trusting_payments`.
+Repeated `(issuer, network, settlement)` references count once. The paid-field
+example prints the issuer list to pass to a separate viewer. Public receipts
+never create account credit, earnings, a payout, or a spending allowance.
 
 ## Serve the OpenAgents API
 

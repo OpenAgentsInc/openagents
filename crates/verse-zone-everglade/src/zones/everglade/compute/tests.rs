@@ -761,7 +761,7 @@ fn the_coin_light_burns_only_while_a_paid_receipt_is_fresh() {
 
 #[cfg(feature = "pylon-relay")]
 #[test]
-fn only_a_receipt_with_a_valid_preimage_lights_a_relay_pylons_coin() {
+fn only_a_receipt_acknowledged_by_a_trusted_issuer_lights_a_relay_pylons_coin() {
     use nostr::domain::RelaySigner;
     use nostr::pylon as np;
     let provider = RelaySigner::from_secret_hex(&"01".repeat(32)).unwrap();
@@ -794,8 +794,7 @@ fn only_a_receipt_with_a_valid_preimage_lights_a_relay_pylons_coin() {
         settlement: vec!["lightning-bolt11".into()],
         pools: vec!["everglade".into()],
     };
-    let preimage = [7_u8; 32];
-    let receipt = |request: &str, preimage_hex: String| np::Receipt {
+    let receipt = |request: &str| np::Receipt {
         v: np::RECEIPT_V.into(),
         requires: Vec::new(),
         meta: None,
@@ -818,21 +817,31 @@ fn only_a_receipt_with_a_valid_preimage_lights_a_relay_pylons_coin() {
             profile: "lightning-bolt11".into(),
             network: "regtest".into(),
             amount_msat: 3_000,
-            payment_hash: np::sha256_hex(&preimage),
-            preimage: preimage_hex,
+            settlement: "07".repeat(32),
+            acknowledgment: None,
         }),
     };
     let mut live = pylon::field::Live::new(Some("everglade"));
     assert!(live.offer(np::beacon_event(&provider, &beacon).unwrap(), NOW));
-    // A receipt whose preimage doesn't hash to its payment hash never signs.
-    assert!(np::receipt_event(&buyer, &receipt(&"c".repeat(64), "0".repeat(64)), NOW).is_err());
+    assert!(np::receipt_event(&buyer, &receipt(&"c".repeat(64)), NOW).is_err());
+    let mut good = receipt(&"d".repeat(64));
+    np::acknowledge_payment(&provider, &mut good).unwrap();
+    assert!(live.offer(np::receipt_event(&buyer, &good, NOW).unwrap(), NOW));
     let unlit = super::relay::sample(live.pylons(NOW).remove(0), NOW);
     assert!(unlit.coin.is_none() && unlit.paid_msat.is_empty());
-    let good = receipt(&"d".repeat(64), "07".repeat(32));
-    assert!(live.offer(np::receipt_event(&buyer, &good, NOW).unwrap(), NOW));
+    live = live.trusting_payments(std::collections::BTreeSet::from([provider.pubkey().into()]));
     let lit = super::relay::sample(live.pylons(NOW).remove(0), NOW);
     assert_eq!(lit.coin, Some(Coin { test: true }));
     assert_eq!(lit.paid_msat.get("regtest"), Some(&3_000));
+    assert_eq!(live.market(NOW).paid_msat.regtest, 3_000);
+    // Another signed job claim cannot count the same settlement twice.
+    let mut duplicate = good.clone();
+    duplicate.request = "e".repeat(64);
+    np::acknowledge_payment(&provider, &mut duplicate).unwrap();
+    assert!(live.offer(np::receipt_event(&buyer, &duplicate, NOW).unwrap(), NOW));
+    let counted = super::relay::sample(live.pylons(NOW).remove(0), NOW);
+    assert_eq!(counted.paid_msat.get("regtest"), Some(&3_000));
+    assert_eq!(live.market(NOW).paid_msat.regtest, 3_000);
     assert!(!lit.paid_msat.contains_key("bitcoin"));
     // The coin goes out once the receipt is older than COIN_SECS.
     let later = NOW + COIN_SECS + 5;

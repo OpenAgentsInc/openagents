@@ -542,7 +542,7 @@ fn draw_sigil(glows: &mut Glows, base: Vec3, look: &PylonLook, time: f32, eye: V
 const TEST_COIN: [f32; 3] = [0.72, 0.78, 0.86];
 
 /// A pylon's coin-light: a coin of light rising off its point while a
-/// receipt with a valid preimage paid it in the last `COIN_SECS`. Gold for
+/// trusted seller or broker acknowledged payment in the last `COIN_SECS`. Gold for
 /// mainnet sats; pale and marked TEST for test sats.
 #[allow(clippy::too_many_arguments)]
 fn draw_coin(

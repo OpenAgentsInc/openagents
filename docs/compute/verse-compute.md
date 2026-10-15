@@ -43,9 +43,9 @@ the [agent sales floor](../sales/agent-sales-floor.md), the
   Agora sells compute and agent work, agents hire each other in the agent
   market, and the Gym measures quality.
 - **The rule.** Nothing is drawn that a reader can't check. Pylons come from
-  provider-signed beacons, work comes from buyer-signed receipts with payment
-  preimages, and the Wellspring comes from pool aggregates that any client
-  recomputes from their inputs.
+  provider-signed beacons, work comes from buyer-signed receipts with proof-free
+  payment acknowledgments, and the Wellspring comes from pool aggregates that
+  any client recomputes from their inputs.
 - **The protocol.** Jobs travel over NIP-CJ (with NIP-90 kind `5050` as a
   public compatibility lane), offers and terms over NIP-MKT, upfront payment
   over NIP-X402, reputation over NIP-XP and NIP-32, and world state over
@@ -151,7 +151,7 @@ pool. You walk up to it and press `F` to inspect it.
 | Bands of light round its base, one band per tenfold step in jobs served | Receipt-backed accepted jobs in this pool |
 | A glow that breathes while the pylon is online and burns steady while it works | Beacon `status`, and `slots.total − slots.free` |
 | Moss and lichen climbing the base | Uptime from beacon `since` |
-| A small coin-light at the crown that flares when a payment lands | A new receipt with a valid preimage |
+| A small coin-light at the crown that flares when a payment lands | A valid payment acknowledgment from a reader-trusted seller or broker |
 | Grey and still, with a question mark in the inspect panel | A stale beacon: **unknown**, never online |
 
 The inspect panel shows the pylon's label, its owner if the beacon carries a
@@ -225,7 +225,7 @@ Every visual has a data source, and no source is invented.
 | --- | --- | --- |
 | A pylon | A fresh, valid beacon | No pylon |
 | A pylon's glow | Beacon status and slots | Grey and still |
-| Job bands and the coin-light | Receipts, with preimages for paid work | No bands |
+| Job bands and the coin-light | Receipts, with trusted payment acknowledgments for paid work | No bands |
 | The Wellspring's brightness and ripples | A recomputed pool aggregate | A dim basin and an **unverified** plinth |
 | A beam to an agent | The agent's own state naming a job, plus its progress | No beam |
 | A sigil | A check verdict from a trusted checker | No sigil |
@@ -358,7 +358,8 @@ default.
 4. The pylon streams progress (`27000` or `27020`) and returns the result
    (`26900` or `26920`).
 5. The buyer publishes a `3201` receipt with digests of the request and
-   result, the outcome, and, for paid work, the payment hash and preimage.
+   result, the outcome, and, for paid work, the seller or broker's signed
+   acknowledgment. Payment proofs stay private.
 6. The aggregator counts the receipt in the next pool aggregate.
 
 The NIP-90 lane (`5050` requests, `6050` results, `7000` feedback) stays
@@ -724,7 +725,7 @@ Issue: #10923.
 Acceptance: on a test network, 1,000 paid jobs across three pylons settle
 through balance sweeps with ledger rows matching receipts; a failed check
 forfeits the unpaid share; the coin-light flares only for receipts with a
-valid preimage; capture `pylon-field-paid-test.png`.
+trusted payment acknowledgment; capture `pylon-field-paid-test.png`.
 
 **Built (2026-10-08), on test sats.** See [Paid jobs](pylon.md#paid-jobs-p3-test-sats).
 
@@ -741,8 +742,8 @@ valid preimage; capture `pylon-field-paid-test.png`.
   `3188` purchase records; the seller settles the buyer's claim through
   the embedded x402 facilitator and its replay store and runs only the CJ
   job an admitted purchase names. Buyers pay under a ceiling and publish
-  the preimage in the receipt. `TestLightning` is the in-memory testnet
-  that signs real BOLT11 invoices.
+  only a signed seller acknowledgment in the public receipt. `TestLightning`
+  is the in-memory testnet that signs real BOLT11 invoices.
 - The broker settles a customer's x402 payment through the same
   facilitator before it buys the job, and records only a payment the
   facilitator consumed. A priced plugin's author fee comes first in a
@@ -756,7 +757,7 @@ valid preimage; capture `pylon-field-paid-test.png`.
   matching its receipt; ten failed jobs swept already are recorded losses
   and ten unswept ones are forfeited.
 - Everglade lights a pylon's coin for 15 seconds after a receipt with a
-  valid preimage, pale and marked TEST on test networks.
+  trusted payment acknowledgment, pale and marked TEST on test networks.
 
 Not yet: a paid job on a live wallet, and mainnet, both of which wait on
 the owner (`NEEDS_OWNER.md`).

@@ -194,7 +194,8 @@ impl Broker {
 
     /// Settle the x402 sale that paid for the job in `event`: the receipt
     /// carries the customer's payment (`x402-exact`, this book's network),
-    /// whose hash is the settlement key, and the facilitator must already
+    /// whose private `payment_hash` is supplied separately as the settlement key,
+    /// and the facilitator must already
     /// have consumed that payment ([`Broker::admit`]) for the same amount;
     /// `received_msat` is what reached the receiver after its
     /// service-provider fee. `owner` is the pylon's verified NIP-OA owner,
@@ -207,10 +208,12 @@ impl Broker {
     /// was not accepted, or whose payment is missing, on another network,
     /// under another profile, or never settled through the facilitator;
     /// and ledger refusals.
+    #[allow(clippy::too_many_arguments)]
     pub fn settle(
         &mut self,
         event: &Event,
         owner: Option<&str>,
+        payment_hash: &str,
         received_msat: u64,
         at: i64,
         plugin: Option<PluginFee>,
@@ -220,6 +223,10 @@ impl Broker {
             .payment
             .as_ref()
             .ok_or("a brokered x402 sale's receipt names its payment")?;
+        if payment.settlement != nostr::pylon::settlement_reference(&payment.network, payment_hash)
+        {
+            return Err("private payment evidence does not match the receipt".into());
+        }
         if payment.profile != "x402-exact" {
             return Err("a brokered sale is paid by x402".into());
         }
@@ -240,7 +247,7 @@ impl Broker {
         let consumed = self
             .facilitator
             .store()
-            .get(&format!("{network}:{}", payment.payment_hash))
+            .get(&format!("{network}:{}", payment_hash))
             .map_err(|e| e.to_string())?
             .ok_or("the facilitator never settled this payment")?;
         if consumed.amount_msat != payment.amount_msat {
@@ -249,7 +256,7 @@ impl Broker {
         let price = i64::try_from(payment.amount_msat).map_err(|e| e.to_string())?;
         self.ledger
             .record_settlement(SettlementInput {
-                key: payment.payment_hash.clone(),
+                key: payment_hash.to_string(),
                 resource: pay_ledger::pylon::RESOURCE.into(),
                 plugin_id: plugin.as_ref().map(|p| p.plugin_id.clone()),
                 release_id: None,

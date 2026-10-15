@@ -88,10 +88,10 @@ pub struct PylonSample {
     /// A trusted checker's verdicts pass it and none fails it: it carries
     /// the sigil (P2).
     pub sigil: bool,
-    /// Paid on its receipts of the last day, msat by network (P3); test
+    /// Payments reported by trusted issuers over the last day, msat by network; test
     /// networks never sum with `bitcoin`.
     pub paid_msat: BTreeMap<String, u64>,
-    /// The coin-light: a receipt whose preimage hashes to its payment hash
+    /// The coin-light: a receipt acknowledged by a trusted payment issuer
     /// paid this pylon in the last [`COIN_SECS`] (P3).
     pub coin: Option<Coin>,
 }

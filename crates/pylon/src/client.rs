@@ -10,8 +10,8 @@ use std::time::{Duration, Instant};
 use nostr::domain::Event;
 use nostr::domain::Tag;
 use nostr::pylon::{
-    self, BEACON_MARKER, Beacon, BeaconBook, Freshness, Lane, Outcome, Payment, RECEIPT_V, Receipt,
-    Status, UnitKind, Units, parse_beacon, receipt_event, sha256_hex,
+    self, BEACON_MARKER, Beacon, BeaconBook, Freshness, Lane, Outcome, RECEIPT_V, Receipt, Status,
+    UnitKind, Units, parse_beacon, receipt_event, sha256_hex,
 };
 use openagents_x402::PaymentPayload;
 use openagents_x402::native::{self, Phase, RecordType, Signed, parse_status};
@@ -21,7 +21,7 @@ use serde_json::{Map, Value, json};
 use crate::identity::Identity;
 use crate::job;
 use crate::now;
-use crate::paid::{self, Network, Payer};
+use crate::paid::{self, Network, Payer, PaymentProof};
 use crate::relay::{self, Frame, LIFETIME};
 
 /// Fetch and verify the beacons on a relay, keeping the newest per pylon.
@@ -123,14 +123,14 @@ pub enum Pay {
     /// Brokered: the customer already paid OpenAgents (an x402 payment);
     /// the broker, which is the buyer here, records that payment in the
     /// receipt, and the pylon serves the broker without terms.
-    Brokered(Payment),
+    Brokered(PaymentProof),
 }
 
 impl std::fmt::Debug for Pay {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Wallet { max_msat, .. } => write!(f, "Pay::Wallet {{ max_msat: {max_msat} }}"),
-            Self::Brokered(payment) => write!(f, "Pay::Brokered({})", payment.payment_hash),
+            Self::Brokered(payment) => f.debug_tuple("Pay::Brokered").field(payment).finish(),
         }
     }
 }
@@ -317,7 +317,7 @@ pub async fn ask_conversation(
     let tokens = usage
         .as_ref()
         .map(|u| u["input"].as_u64().unwrap_or(0) + u["output"].as_u64().unwrap_or(0));
-    let receipt = Receipt {
+    let mut receipt = Receipt {
         v: RECEIPT_V.into(),
         requires: Vec::new(),
         meta: None,
@@ -344,12 +344,35 @@ pub async fn ask_conversation(
         outcome,
         // A direct payment the job never earned (it failed after paying)
         // still settled, so its receipt still names it.
-        payment,
+        payment: payment.as_ref().map(PaymentProof::public),
     };
     let mut receipt_id = None;
     let mut receipt_error = None;
     let mut signed = None;
-    if ask.publish_receipt {
+    if ask.publish_receipt
+        && let Some(proof) = &payment
+    {
+        let result = match &ask.pay {
+            Some(Pay::Brokered(_)) => {
+                nostr::pylon::acknowledge_payment(buyer.signer(), &mut receipt)
+            }
+            _ => {
+                acknowledge(
+                    &mut conn,
+                    buyer,
+                    &beacon.provider,
+                    proof,
+                    &mut receipt,
+                    ask.wait,
+                )
+                .await
+            }
+        };
+        if let Err(error) = result {
+            receipt_error = Some(error);
+        }
+    }
+    if ask.publish_receipt && receipt_error.is_none() {
         match receipt_event(buyer.signer(), &receipt, now()) {
             Ok(event) => {
                 match relay::publish(&mut conn, &event).await {
@@ -383,7 +406,7 @@ pub async fn ask_conversation(
         receipt: receipt_id,
         receipt_error,
         receipt_event: signed,
-        paid_msat: receipt.payment.as_ref().map(|p| p.amount_msat),
+        paid_msat: payment.as_ref().map(|p| p.amount_msat),
     })
 }
 
@@ -400,7 +423,7 @@ async fn buy(
     payer: &Arc<dyn Payer>,
     max_msat: u64,
     wait: Duration,
-) -> Result<Payment, String> {
+) -> Result<PaymentProof, String> {
     let nonce: [u8; 32] = secp256k1::rand::random();
     let purchase: String = nonce.iter().map(|b| format!("{b:02x}")).collect();
     let at = now();
@@ -429,7 +452,7 @@ async fn buy(
     let mut sent = vec![event.id.clone()];
     conn.send(json!(["EVENT", event])).await?;
     let deadline = tokio::time::Instant::now() + wait.min(Duration::from_secs(60));
-    let mut payment: Option<Payment> = None;
+    let mut payment: Option<PaymentProof> = None;
     let result = loop {
         let frame = match tokio::time::timeout_at(deadline, conn.next()).await {
             Err(_) => {
@@ -502,7 +525,8 @@ async fn buy(
                 let status = parse_status(&record.body)?;
                 match status.phase {
                     Phase::Admitted | Phase::Running | Phase::Completed => {
-                        if let Some(paid) = payment.take() {
+                        if let Some(mut paid) = payment.take() {
+                            paid.purchase = Some(purchase.clone());
                             break Ok(paid);
                         }
                     }
@@ -525,6 +549,82 @@ async fn buy(
         }
     };
     let _ = conn.send(json!(["CLOSE", "purchase"])).await;
+    result
+}
+
+async fn acknowledge(
+    conn: &mut nostr_transport::Connection,
+    buyer: &Identity,
+    provider: &str,
+    proof: &PaymentProof,
+    receipt: &mut Receipt,
+    wait: Duration,
+) -> Result<(), String> {
+    let purchase = proof
+        .purchase
+        .as_deref()
+        .ok_or("payment has no purchase identity")?;
+    conn.send(json!([
+        "REQ",
+        "payment-ack",
+        paid::inbox(buyer.pubkey(), now().saturating_sub(5))
+    ]))
+    .await?;
+    let request = paid::AcknowledgmentRequest {
+        v: paid::ACK_REQUEST.into(),
+        requires: Vec::new(),
+        purchase: purchase.into(),
+        receipt: receipt.clone(),
+    };
+    let event = paid::seal_artifact(
+        buyer,
+        provider,
+        purchase,
+        paid::ACK_REQUEST,
+        &serde_json::to_value(request).map_err(|e| e.to_string())?,
+        now(),
+    )?;
+    conn.send(json!(["EVENT", event])).await?;
+    let deadline = tokio::time::Instant::now() + wait.min(Duration::from_secs(10));
+    let result = loop {
+        let frame =
+            match tokio::time::timeout_at(deadline, conn.next()).await {
+                Ok(Ok(value)) => Frame::parse(value),
+                _ => break Err(
+                    "the seller has not acknowledged the payment; no public receipt was published"
+                        .into(),
+                ),
+            };
+        let Frame::Event { sub, event } = frame else {
+            continue;
+        };
+        if sub != "payment-ack" || event.pubkey != provider {
+            continue;
+        }
+        let Ok(opened) = nostr::private_artifact::open(&event, buyer.secret()) else {
+            continue;
+        };
+        if opened.artifact().schema.as_deref() != Some(paid::ACK_RESPONSE) {
+            continue;
+        }
+        let Some(bytes) = opened.inline_bytes() else {
+            continue;
+        };
+        let Ok(ack) = serde_json::from_slice::<Event>(bytes) else {
+            continue;
+        };
+        let mut candidate = receipt.clone();
+        candidate
+            .payment
+            .as_mut()
+            .ok_or("receipt has no payment")?
+            .acknowledgment = Some(ack);
+        if candidate.validate().is_ok() {
+            *receipt = candidate;
+            break Ok(());
+        }
+    };
+    let _ = conn.send(json!(["CLOSE", "payment-ack"])).await;
     result
 }
 

@@ -1,6 +1,7 @@
 # NIP-PYLON — Compute Pylons and Pools
 
-`draft` `optional` — v1, 2026-10-07. **Partly implemented** for free work:
+`draft` `optional` — receipts, pool aggregates, and pool policies v2,
+2026-10-15. Beacons remain v1. **Partly implemented**:
 see [Implementation status](#implementation-status). The [shared contracts](contracts.md) are
 normative. The [Verse compute vision and spec](../../docs/compute/verse-compute.md)
 is the design this profile serves.
@@ -18,7 +19,7 @@ Three records carry it:
   its free slots.
 - A **receipt** (`3201`): a buyer's signed statement that a pylon completed
   one job, with digests of the request and result and, for paid work,
-  the payment hash and preimage.
+  a signed seller or broker acknowledgment with no payment proof.
 - A **pool aggregate** (`30201`): an aggregator's totals over one time
   window, with the digests of the exact beacon and receipt sets it counted.
 
@@ -39,7 +40,7 @@ claims count.
 | [CJ](NIP-CJ.md) | The job transport. Paid and private work travels as `25920` execution or `25900` conversation jobs (NIP-CJ), encrypted with NIP-44. |
 | [NIP-90](../official/90.md) | A compatibility lane for public text jobs (`5050`). Its optional parameter encryption uses NIP-04, so private work uses CJ instead. |
 | [NIP-89](../official/89.md) | A `31990` handler record may list a pylon's NIP-90 kinds for clients that discover through NIP-89. |
-| [X402](NIP-X402.md) | Upfront Lightning payment for one operation. A receipt records the payment hash it settled with. |
+| [X402](NIP-X402.md) | Upfront Lightning payment for one operation. A public receipt carries an acknowledgment; settlement evidence stays private. |
 | [REACH](NIP-REACH.md) | Private host presence to the owner's own devices. A beacon is a separate, public, opt-in record; a host never copies REACH telemetry into it. |
 | [XP](NIP-XP.md) | Reputation for verified work. XP never converts to sats, and nothing here pays XP. |
 | [EVAL](NIP-EVAL.md) | Spot-check suites and Gym results that grade a pylon's answers. |
@@ -75,7 +76,7 @@ These are OpenAgents draft assignments, not upstream registrations. The
 | `3201` | Regular | Service receipt, one per completed job. |
 | `1985` | Regular (NIP-32) | Optional check verdict that points at a receipt. |
 
-Every body is JCS JSON with `v`, `requires` (the empty list in v1), and
+Every body is JCS JSON with `v`, `requires` (the empty list in these versions), and
 optional inert `meta`, plus exactly the fields listed. Unknown versions,
 required features, fields, or enumeration values refuse. Keys are lowercase
 64-hex x-only public keys. Times are Unix seconds. Every event carries
@@ -188,16 +189,16 @@ and the pylon gets no public credit for that job.
   "tags": [
     ["p", "<pylon key>"],
     ["a", "30200:<pylon key>:studio-mac"],
-    ["t", "oa:pylon-receipt:v1"],
+    ["t", "oa:pylon-receipt:v2"],
     ["x", "<sha256 of content>"]
   ],
-  "content": "{\"v\":\"openagents.pylon-receipt.v1\",\"requires\":[],\"buyer\":\"<buyer key>\",\"provider\":\"<pylon key>\",\"pylon\":\"studio-mac\",\"lane\":\"cj-execution\",\"capability\":\"<CAP DefinitionRef>\",\"request\":\"<64-hex event ID>\",\"request_digest\":\"<sha256 of request plaintext>\",\"result_digest\":\"<sha256 of result plaintext>\",\"started_at\":1791400100,\"finished_at\":1791400118,\"units\":{\"kind\":\"tokens\",\"count\":812},\"outcome\":\"accepted\",\"payment\":{\"profile\":\"lightning-bolt11\",\"network\":\"regtest\",\"amount_msat\":2000,\"payment_hash\":\"<64-hex>\",\"preimage\":\"<64-hex>\"}}"
+  "content": "{\"v\":\"openagents.pylon-receipt.v2\",\"requires\":[],\"buyer\":\"<buyer key>\",\"provider\":\"<pylon key>\",\"pylon\":\"studio-mac\",\"lane\":\"cj-execution\",\"capability\":\"<CAP DefinitionRef>\",\"request\":\"<64-hex event ID>\",\"request_digest\":\"<sha256 of request plaintext>\",\"result_digest\":\"<sha256 of result plaintext>\",\"started_at\":1791400100,\"finished_at\":1791400118,\"units\":{\"kind\":\"tokens\",\"count\":812},\"outcome\":\"accepted\",\"payment\":null}"
 }
 ```
 
 | Field | Meaning |
 | --- | --- |
-| `v` | `openagents.pylon-receipt.v1`. |
+| `v` | `openagents.pylon-receipt.v2`. |
 | `buyer` | The signer. |
 | `provider`, `pylon` | The pylon that did the work; equal to the `p` tag and the `a` tag's address. |
 | `lane` | The lane the job used, from the beacon's list. |
@@ -207,12 +208,49 @@ and the pylon gets no public credit for that job.
 | `started_at`, `finished_at` | The buyer's clock; `finished_at` is not earlier than `started_at`. |
 | `units` | `{kind, count}`. `kind` is `tokens`, `seconds`, or `jobs`; `count` is a whole number. |
 | `outcome` | `accepted`, `rejected` (a result arrived and the buyer refused it), `failed` (the pylon reported an error), or `timeout`. |
-| `payment` | Null for free work. Otherwise `{profile, network, amount_msat, payment_hash, preimage}`. `profile` is `lightning-bolt11` or `x402-exact`. `network` is `bitcoin`, `testnet`, `signet`, or `regtest`. `preimage` is 64-hex and its SHA-256 equals `payment_hash`. |
+| `payment` | Null when no separate Lightning payment funded this job. Otherwise `{profile, network, amount_msat, settlement, acknowledgment}`. Profile is `lightning-bolt11` or `x402-exact`; amount is positive integer msat. Network is `bitcoin`, `testnet`, `signet`, or `regtest`, with X402 restricted to `bitcoin` or `testnet`. Settlement is an opaque 64-hex reference, never an invoice, payment hash, preimage, or reusable proof. Acknowledgment is the nested signed event below. |
 
-A buyer publishes the preimage only after the payment settled. Publishing
-it reveals nothing the payee did not already know, and lets any reader
-check that an invoice with that hash was paid. It does not prove who paid
-whom; [Abuse](#abuse) covers what that leaves open.
+A paid receipt requires a seller or broker acknowledgment. It is a nested
+NIP-01 event, not separately published: kind `3201`, exactly the tags
+`["t", "oa:pylon-payment-ack:v1"]` and `["x", "<content digest>"]`, and
+`created_at` equal to the receipt's `finished_at`. Its canonical content is the complete receipt
+with only `payment.acknowledgment` set to null. Its signer must be the provider
+(seller) or buyer (broker). Verify the signature, exact content, kind, tags,
+time, network, amount, and settlement reference before accepting the receipt.
+Nonempty receipt `meta` is unsupported in this version. Older receipt and
+aggregate formats are refused; no compatibility producer is required.
+
+The direct seller issues this acknowledgment only after its private X402
+purchase store binds the paid purchase to this exact buyer, CJ request and
+input, and price. The buyer requests it after constructing the receipt, through
+an authenticated encrypted `3188` artifact with schema
+`openagents.pylon-payment-request.v1`: exactly `{v, requires: [], purchase,
+receipt}`, where `v` equals that schema and `purchase` is the private
+64-hex purchase nonce. The reply is a private artifact with
+schema `openagents.pylon-payment-ack.v1` whose inline value is the nested event.
+The purchase nonce stays private. This is a Pylon-specific application exchange,
+not another X402 record type or an extension hidden in CJ metadata.
+
+The settlement reference is a domain-separated SHA-256 commitment to the
+private network/payment identity. It is stable across acknowledgment retries
+and reveals no bearer proof. In this implementation it is SHA-256 of UTF-8
+`openagents.pylon-settlement.v1:NETWORK:PAYMENT_HASH`. The broker retains the
+private payment hash separately for facilitator lookup and financial settlement;
+it cannot recover or infer a payment from this public commitment.
+
+Readers count paid amounts only from acknowledgment issuers in their explicit
+`payment_issuers` trust set, empty by default. For each issuer/network/settlement
+reference, count at most one amount. A trusted issuer can still lie: these are
+reported payments, not independent proof of a transfer or correct work. Public
+records never create income, account credit, a payable share, or spending
+allowance. Those require authenticated private payment evidence. A paid job
+without an acknowledgment publishes no public receipt; it must not be relabeled
+free. Record the missing acknowledgment and payment outcome privately.
+
+Invoices, preimages, wallet lookups, and payment proofs remain in protected
+payment records and encrypted purchase messages. They must not appear in public
+receipt bodies, nested events, tags, aggregate inputs, logs, or exports. A
+hash/preimage pair alone would not establish who paid or actual collection.
 
 A receipt names a request ID, so a reader can tell that two receipts claim
 one job. The first receipt per `(buyer, request)` counts; later ones are
@@ -249,24 +287,24 @@ the listed inputs before drawing it.
   "created_at": 1791400200,
   "tags": [
     ["d", "everglade"],
-    ["t", "oa:pylon-pool:v1"],
+    ["t", "oa:pylon-pool:v2"],
     ["x", "<sha256 of content>"],
     ["expiration", "1791400500"]
   ],
-  "content": "{\"v\":\"openagents.pylon-pool.v1\",\"requires\":[],\"aggregator\":\"<aggregator key>\",\"pool\":\"everglade\",\"policy\":\"<sha256 of the pool policy document>\",\"window\":{\"from\":1791396600,\"to\":1791400200},\"inputs\":{\"beacons\":{\"count\":12,\"digest\":\"<64-hex>\"},\"receipts\":{\"count\":340,\"digest\":\"<64-hex>\"},\"checks\":{\"count\":9,\"digest\":\"<64-hex>\"}},\"totals\":{\"pylons_online\":11,\"slots_total\":19,\"slots_free\":7,\"by_family\":{\"unified-memory\":8,\"gpu\":3,\"cpu\":0},\"jobs\":{\"accepted\":322,\"rejected\":6,\"failed\":8,\"timeout\":4},\"units\":{\"tokens\":281000,\"seconds\":0,\"jobs\":0},\"paid_msat\":{\"bitcoin\":0,\"testnet\":0,\"signet\":0,\"regtest\":644000},\"checks\":{\"pass\":8,\"fail\":1,\"inconclusive\":0}},\"rate\":[3,5,6,4,7,9,8,6,5,6,7,8],\"generated_at\":1791400200,\"valid_until\":1791400500}"
+  "content": "{\"v\":\"openagents.pylon-pool.v2\",\"requires\":[],\"aggregator\":\"<aggregator key>\",\"pool\":\"everglade\",\"policy\":\"<sha256 of the pool policy document>\",\"window\":{\"from\":1791396600,\"to\":1791400200},\"inputs\":{\"beacons\":{\"count\":12,\"digest\":\"<64-hex>\"},\"receipts\":{\"count\":340,\"digest\":\"<64-hex>\"},\"checks\":{\"count\":9,\"digest\":\"<64-hex>\"}},\"totals\":{\"pylons_online\":11,\"slots_total\":19,\"slots_free\":7,\"by_family\":{\"unified-memory\":8,\"gpu\":3,\"cpu\":0},\"jobs\":{\"accepted\":322,\"rejected\":6,\"failed\":8,\"timeout\":4},\"units\":{\"tokens\":281000,\"seconds\":0,\"jobs\":0},\"paid_msat\":{\"bitcoin\":0,\"testnet\":0,\"signet\":0,\"regtest\":644000},\"checks\":{\"pass\":8,\"fail\":1,\"inconclusive\":0}},\"rate\":[3,5,6,4,7,9,8,6,5,6,7,8],\"generated_at\":1791400200,\"valid_until\":1791400500}"
 }
 ```
 
 | Field | Meaning |
 | --- | --- |
-| `v` | `openagents.pylon-pool.v1`. |
+| `v` | `openagents.pylon-pool.v2`. |
 | `aggregator`, `pool` | The signer, and the slug equal to `d`. |
-| `policy` | SHA-256 of the pool's policy document: which pylons it admits, which buyers' receipts and which checkers' labels it counts, and its exclusions (such as dropping pylons a counted `check-fail` names). The aggregator serves the document beside the pool. |
+| `policy` | SHA-256 of the pool's policy document: which pylons it admits, which buyers' receipts, payment acknowledgment issuers, and checkers' labels it counts, and its exclusions (such as dropping pylons a counted `check-fail` names). The aggregator serves the document beside the pool. |
 | `window` | `{from, to}`, whole minutes, `0 < to − from ≤ 3600`. |
 | `inputs` | For beacons, receipts, and check labels: `{count, digest}`. The digest is the SHA-256 of the sorted, newline-joined lowercase event IDs the aggregator counted, with no trailing newline. |
 | `totals.pylons_online`, `slots_total`, `slots_free`, `by_family` | From the newest fresh `online` or `draining` beacon of each counted pylon at `window.to`. |
 | `totals.jobs`, `units` | From counted receipts whose `finished_at` falls in the window. |
-| `totals.paid_msat` | Sum of `amount_msat` per network over counted receipts with a valid preimage. Test networks are never added to `bitcoin`. |
+| `totals.paid_msat` | Sum of reported `amount_msat` per network over counted receipts with a valid acknowledgment from a policy-trusted issuer, once per `(issuer, network, settlement)`. Test networks are never added to `bitcoin`. |
 | `totals.checks` | Counted verdicts by result. |
 | `rate` | Accepted jobs per equal slice of the window, oldest first, 1 to 60 entries. |
 | `generated_at`, `valid_until` | `valid_until` is at most 300 seconds after `generated_at`. |
@@ -304,7 +342,8 @@ Rules:
   workstation state names a job request ID whose receipt or CJ progress the
   client can see, and for at most 120 seconds without a newer progress event.
 - Test-network amounts are drawn with a visible test mark and never summed
-  with `bitcoin`.
+  with `bitcoin`. Paid figures and coin lights represent reported payments
+  from explicitly trusted acknowledgment issuers, not independent transfer proof.
 
 ## Validation
 
@@ -319,7 +358,7 @@ A reader refuses:
   without one is valid and shows no owner.
 - A receipt whose `buyer` is not the signer, whose `buyer` equals its
   `provider` or the beacon's NIP-OA owner, whose `p` and `a` tags disagree
-  with the body, or whose preimage does not hash to its payment hash.
+  with the body, or whose payment acknowledgment is missing, forged, or bound to another receipt.
 - An aggregate whose recomputed digests or totals differ, or whose window
   breaks the bounds.
 - Any event whose `x` tag does not match its content.
@@ -330,7 +369,7 @@ A reader refuses:
 | --- | --- |
 | **Fake capacity**: a beacon claims a class or slots it lacks. | Beacons carry no earnings and grant nothing. Buyers route on checks and receipts, and a pylon that times out or fails checks loses future work. A pool policy may admit only pylons with passing checks. |
 | **Sybil pylons**: one machine publishes many beacons. | Keys can't be tied to machines. A pool policy can require a NIP-OA owner and cap pylons per owner; checks reveal pylons that share one machine's latency and answers. Uptime alone never earns sats. |
-| **Wash trading**: a provider's second key buys from its own pylon to inflate receipts. | A receipt from the provider or its NIP-OA owner never counts. Beyond that, keys can't be linked, so a pool counts receipts only from buyers on its policy's trust list, and readers can apply their own list. Real Lightning fees make large wash volume cost something; test sats make it free, which is why test-network totals are shown apart. |
+| **Wash trading**: a provider's second key buys from its own pylon to inflate receipts. | A receipt from the provider or its NIP-OA owner never counts. Beyond that, keys can't be linked, so a pool counts receipts only from buyers on its policy's trust list, and readers can apply their own list. Signed acknowledgments remain issuer claims and cannot establish independent demand; test sats make it free, which is why test-network totals are shown apart. |
 | **Fabricated receipts**: a buyer claims jobs that never happened. | A fabricated receipt only flatters the pylon it names, so it reduces to wash trading. A false `failed` receipt from an untrusted buyer counts nowhere. |
 | **Replay**: republishing old receipts or beacons. | One receipt per `(buyer, request)`; beacons obey generation and freshness rules. |
 | **Aggregate inflation**: an aggregator overstates totals. | Readers recompute from the listed inputs. An aggregate that doesn't recompute is refused, and the reader can drop that aggregator. |
@@ -383,11 +422,12 @@ the buyer seals a `request` whose input is the digest of the CJ request
 plaintext, pays the pylon's `challenge`, and sends the CJ request only
 after the pylon's `admitted` status; the pylon runs a CJ request only when
 its plaintext matches an admitted purchase's input, once per purchase. The
-buyer's receipt then carries the payment with its preimage. Brokered sales
-carry the customer's `x402-exact` payment, settled through the broker's
-x402 facilitator, in the broker's receipt. Readers
+buyer's receipt carries the seller's signed acknowledgment; proofs stay private.
+Brokered sales carry the broker's signed acknowledgment of the customer's
+`x402-exact` payment. The broker's facilitator and private payment evidence
+establish settlement. Readers
 sum paid amounts per network and light a pylon's coin only for receipts
-that verify.
+that verify and whose acknowledgment issuer the reader trusts.
 
 Decisions (2026-10-10, #11225): `nostr::pylon::Lane::CjDecision`;
 `crates/pylon` answers NIP-DEC jobs with a local System One server
@@ -397,8 +437,15 @@ advertises `pylon/decision` with its served identity; the OpenAgents
 gateway's `POST /v1/systemone` reads these beacons and sends each decision
 to a pylon with a free slot (NIP-DEC, "The OpenAgents decision API").
 
+Revision #11721 (2026-10-15): public receipt, aggregate, and policy v2 replace
+the proof-bearing format. `nostr::pylon` validates signed acknowledgments;
+`crates/pylon` obtains direct seller acknowledgments over private artifacts,
+signs broker acknowledgments, and keeps payment evidence private. Pool/field
+paid totals use explicit issuer trust and settlement deduplication. This is
+fixture-backed implementation, not qualification of a live payment.
+
 Not implemented: mainnet paid receipts, a `wellspring` projection from an
-aggregate, and the `nip-pylon-v1` relay extension. A service's `capability` is a qualified ID
+aggregate, and the `nip-pylon-v2` relay extension. A service's `capability` is a qualified ID
 (`<pylon key>:pylon/text-generation`) rather than a full DefinitionRef.
 
 ## Conformance
@@ -406,11 +453,12 @@ aggregate, and the `nip-pylon-v1` relay extension. A service's `capability` is a
 Fixtures must cover a valid beacon, receipt, label, and aggregate; each
 refusal under [Validation](#validation); beacons that are stale, from the
 future, or rolled back a generation; a receipt from the provider's own key
-and from its NIP-OA owner; two receipts for one request; a preimage that
-does not hash to its payment hash; an aggregate whose digest or totals do
+and from its NIP-OA owner; two receipts for one request; a missing, forged, wrong-issuer, or changed-receipt acknowledgment;
+untrusted issuers and repeated settlement references excluded from paid totals;
+no payment secret in public serialization; an aggregate whose digest or totals do
 not recompute; test-network amounts kept apart from `bitcoin`; and the
 world projection of each fixture to its `pylon` or `wellspring` state.
 
-Advertise `nip-pylon-v1` in NIP-11 `supported_extensions` only for a relay
+Advertise `nip-pylon-v2` in NIP-11 `supported_extensions` only for a relay
 that stores `30200`, `30201`, and `3201` and applies the beacon rate limit.
 Keep this draft name out of numeric `supported_nips`.

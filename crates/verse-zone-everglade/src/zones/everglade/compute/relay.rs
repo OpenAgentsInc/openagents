@@ -58,6 +58,7 @@ impl RelaySource {
             live: Arc::new(Mutex::new(
                 Live::new(Some(POOL))
                     .trusting(checkers)
+                    .trusting_payments(pylon::paid::trusted_issuers())
                     .trusting_brokers(pylon::market::brokers()),
             )),
             stop: Arc::new(AtomicBool::new(false)),

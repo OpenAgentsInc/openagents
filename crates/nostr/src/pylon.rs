@@ -23,10 +23,12 @@ use crate::contracts::jcs;
 use crate::domain::{Event, MintedOwnerAttestation, RelaySigner, Tag, verify_owner_attestation};
 
 pub mod check;
+mod payment;
 pub use check::{
     CHECK_KIND, CHECK_NAMESPACE, Check, Record, Standing, Verdict, bind_check, check_event,
     counted, parse_check, standings,
 };
+pub use payment::{acknowledge_payment, settlement_reference};
 
 /// The beacon kind (addressable).
 pub const BEACON_KIND: u16 = 30_200;
@@ -38,18 +40,18 @@ pub const RECEIPT_KIND: u16 = 3_201;
 /// The beacon body version.
 pub const BEACON_V: &str = "openagents.pylon-beacon.v1";
 /// The receipt body version.
-pub const RECEIPT_V: &str = "openagents.pylon-receipt.v1";
+pub const RECEIPT_V: &str = "openagents.pylon-receipt.v2";
 /// The pool aggregate body version.
-pub const POOL_V: &str = "openagents.pylon-pool.v1";
+pub const POOL_V: &str = "openagents.pylon-pool.v2";
 /// The pool policy document version.
-pub const POLICY_V: &str = "openagents.pylon-pool-policy.v1";
+pub const POLICY_V: &str = "openagents.pylon-pool-policy.v2";
 
 /// The beacon's `t` marker.
 pub const BEACON_MARKER: &str = "oa:pylon-beacon:v1";
 /// The receipt's `t` marker.
-pub const RECEIPT_MARKER: &str = "oa:pylon-receipt:v1";
+pub const RECEIPT_MARKER: &str = "oa:pylon-receipt:v2";
 /// The pool aggregate's `t` marker.
-pub const POOL_MARKER: &str = "oa:pylon-pool:v1";
+pub const POOL_MARKER: &str = "oa:pylon-pool:v2";
 
 /// A beacon or aggregate is valid for at most this long after its sample.
 pub const MAX_VALIDITY_SECS: u64 = 300;
@@ -213,8 +215,10 @@ pub struct Payment {
     pub profile: String,
     pub network: String,
     pub amount_msat: u64,
-    pub payment_hash: String,
-    pub preimage: String,
+    /// Opaque reference to private settlement evidence.
+    pub settlement: String,
+    /// Seller or broker signature over this complete receipt.
+    pub acknowledgment: Option<Event>,
 }
 
 /// The `3201` receipt body.
@@ -357,6 +361,8 @@ pub struct PoolPolicy {
     pub pylons: Option<BTreeSet<String>>,
     pub buyers: Option<BTreeSet<String>>,
     pub slices: u32,
+    /// Issuers whose signed payment acknowledgments count in paid totals.
+    pub payment_issuers: BTreeSet<String>,
     /// The checkers whose verdicts count. Empty counts no verdicts.
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub checkers: BTreeSet<String>,
@@ -377,9 +383,17 @@ impl PoolPolicy {
             pylons: None,
             buyers: None,
             slices,
+            payment_issuers: BTreeSet::new(),
             checkers: BTreeSet::new(),
             exclude_failed: false,
         }
+    }
+
+    /// Count reported payments from these acknowledgment issuers.
+    #[must_use]
+    pub fn trusting_payments(mut self, issuers: impl IntoIterator<Item = String>) -> Self {
+        self.payment_issuers.extend(issuers);
+        self
     }
 
     /// This policy, also counting verdicts from `checkers` and dropping
@@ -407,6 +421,9 @@ impl PoolPolicy {
         slug(&self.pool, "pool")?;
         if self.slices == 0 || self.slices as usize > MAX_RATE_SLICES {
             return Err("a pool policy has 1 to 60 rate slices".into());
+        }
+        for issuer in &self.payment_issuers {
+            hex64(issuer, "payment issuer")?;
         }
         for checker in &self.checkers {
             hex64(checker, "checker")?;
@@ -764,26 +781,15 @@ impl Receipt {
         if self.capability.is_empty() || self.capability.len() > 256 {
             return Err("capability is empty or too long".into());
         }
+        if self
+            .meta
+            .as_ref()
+            .is_some_and(|v| v.as_object().is_none_or(|m| !m.is_empty()))
+        {
+            return Err("receipt metadata is unsupported".into());
+        }
         if let Some(payment) = &self.payment {
-            if !matches!(payment.profile.as_str(), "lightning-bolt11" | "x402-exact") {
-                return Err("unknown payment profile".into());
-            }
-            if !matches!(
-                payment.network.as_str(),
-                "bitcoin" | "testnet" | "signet" | "regtest"
-            ) {
-                return Err("unknown payment network".into());
-            }
-            hex64(&payment.payment_hash, "payment_hash")?;
-            hex64(&payment.preimage, "preimage")?;
-            let mut raw = [0_u8; 32];
-            for (i, byte) in raw.iter_mut().enumerate() {
-                *byte = u8::from_str_radix(&payment.preimage[2 * i..2 * i + 2], 16)
-                    .map_err(|e| e.to_string())?;
-            }
-            if sha256_hex(&raw) != payment.payment_hash {
-                return Err("preimage does not hash to the payment hash".into());
-            }
+            payment::validate(self, payment)?;
         }
         Ok(())
     }
@@ -995,6 +1001,7 @@ pub fn compute_aggregate(
     sorted.sort_by(|a, b| (a.created_at, &a.id).cmp(&(b.created_at, &b.id)));
     let mut seen = BTreeSet::new();
     let mut receipt_ids = Vec::new();
+    let mut paid_seen = BTreeSet::new();
     let span = window_.to - window_.from;
     let slices = u64::from(policy.slices);
     let mut rate = vec![0_u64; policy.slices as usize];
@@ -1035,7 +1042,15 @@ pub fn compute_aggregate(
             UnitKind::Seconds => totals.units.seconds += receipt.units.count,
             UnitKind::Jobs => totals.units.jobs += receipt.units.count,
         }
-        if let Some(payment) = &receipt.payment {
+        if let Some(payment) = &receipt.payment
+            && let Some(ack) = &payment.acknowledgment
+            && policy.payment_issuers.contains(&ack.pubkey)
+            && paid_seen.insert((
+                ack.pubkey.clone(),
+                payment.network.clone(),
+                payment.settlement.clone(),
+            ))
+        {
             let slot = match payment.network.as_str() {
                 "bitcoin" => &mut totals.paid_msat.bitcoin,
                 "testnet" => &mut totals.paid_msat.testnet,
