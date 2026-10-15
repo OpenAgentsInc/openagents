@@ -14,6 +14,17 @@ trademark of TypeSafe AI. Decision Models is not affiliated with TypeSafe."
 
 Source-by-source notes, with links, are in [evidence.md](evidence.md).
 
+Files in this folder:
+
+- [evidence.md](evidence.md): source-by-source notes, with links.
+- [reax.md](reax.md): REAX's three repositories, read in depth.
+- [calibration.md](calibration.md): decision-check limits for Clef-Flash.
+- [s1-llm-auto-router.md](s1-llm-auto-router.md) (2026-10-15): their open
+  router model. It is an 11-layer mmBERT-small encoder (120M parameters,
+  ONNX, a few ms on CPU) answering seven fixed routing questions. The note
+  compares it with Clef on our `route-v1` fixture and sizes the Psionic
+  port (an encoder family, about size M).
+
 ## Summary
 
 - **Who.** Decision Models (decisionmodels.io) and REAX (reax.co, reax.dev)
