@@ -66,3 +66,22 @@ snapshot, verify the new release, and rehearse it on regtest before starting
 it. Never start from an older channel database or run a second copy of this
 wallet. If current state is lost, stop the node and use the seed-plus-SCB
 recovery procedure from #11753. A disk snapshot is not that procedure.
+
+## Deployment record
+
+On 2026-10-15, LND `v0.21.1-beta` was installed from its verified signed
+release. The host uses `10.128.0.103` for the pay host, `10.42.0.192` for
+Bitcoin Core, and `34.45.182.173:9735` for public peers. It reached block
+971,623 with chain sync complete. Its node id is
+`03bb4d4950167daf3f9693c6cdb70cbe160ebbd19afacc1ea509116b2d716c4acd`.
+The seed and per-role credential secrets each have an enabled first version;
+the seed was not read back. The health binary built from `43d39e8195` has
+SHA-256 `6ac3dcbdfb8e1e203fbc9b20aa5572454d4e11e886b5bd0b1d3ed8e6d93b8086`.
+
+Verification: the pay host reached private gRPC; a public probe reached 9735
+and could not reach 10009. The health timer ran and its failure alert reached
+the journal. Rust tests forced each of the five alert conditions. The
+unfunded node reports its missing channels and inbound liquidity as expected.
+A service restart fetched the wrapped password again, unlocked the wallet,
+and preserved the same node identity. Binary password fetches use
+`gcloud secrets versions access --out-file` to preserve ciphertext bytes.
