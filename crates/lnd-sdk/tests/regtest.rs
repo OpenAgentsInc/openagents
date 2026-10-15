@@ -119,7 +119,19 @@ fn invoice_payment_lookup_and_reconnect() {
         config.endpoint = format!("https://{proxy_address}");
         let bob = Client::connect(&config, macaroon).await.unwrap();
         assert!(alice.balance().await.unwrap().lightning_total_sats > 0);
-        for (payer, receiver) in [(&alice, &bob), (&bob, &alice)] {
+        let invoice_credential = bob
+            .bake_macaroon(lnd_sdk::macaroon::Role::Invoice, 501)
+            .await
+            .unwrap();
+        let invoicer = Client::connect(&config, invoice_credential).await.unwrap();
+        let forbidden = alice.create_invoice(2000, [5; 32], 600).await.unwrap();
+        assert_eq!(
+            invoicer
+                .pay(&forbidden.bolt11, 1000, Duration::from_secs(5))
+                .await,
+            Err(lnd_sdk::Error::PermissionDenied)
+        );
+        for (payer, receiver) in [(&alice, &invoicer), (&bob, &alice)] {
             let hint_deadline = std::time::Instant::now() + Duration::from_secs(30);
             let hints = loop {
                 match receiver.private_route_hints().await {
