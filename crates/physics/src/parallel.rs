@@ -13,6 +13,28 @@ pub(crate) const MOST: usize = 8;
 #[cfg(test)]
 pub(crate) static SERIAL: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
+#[cfg(not(target_arch = "wasm32"))]
+thread_local! {
+    /// Set on a batch worker ([`crate::batch`]): its world steps on its own
+    /// thread, since the batch already fills the cores.
+    static NESTED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Run `f` with this thread's steps kept on this thread.
+pub(crate) fn serial_here<R>(f: impl FnOnce() -> R) -> R {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let before = NESTED.with(|n| n.replace(true));
+        let out = f();
+        NESTED.with(|n| n.set(before));
+        out
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        f()
+    }
+}
+
 /// How many threads to split `work` units across, at least `per_thread`
 /// units each: one when the work is small or threads are unavailable.
 pub(crate) fn threads(work: usize, per_thread: usize) -> usize {
@@ -27,7 +49,7 @@ pub(crate) fn threads(work: usize, per_thread: usize) -> usize {
         if SERIAL.load(std::sync::atomic::Ordering::Relaxed) {
             return 1;
         }
-        if work < per_thread.saturating_mul(2) {
+        if work < per_thread.saturating_mul(2) || NESTED.with(std::cell::Cell::get) {
             return 1;
         }
         let cores = std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get);

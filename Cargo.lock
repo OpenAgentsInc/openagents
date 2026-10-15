@@ -14028,6 +14028,7 @@ dependencies = [
  "glam",
  "libloading",
  "oa-copy",
+ "physics",
  "robot-description",
  "robot-lab",
  "roxmltree",

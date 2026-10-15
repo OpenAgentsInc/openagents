@@ -2,6 +2,7 @@
 //!
 //! - [`body`]: rigid bodies with principal inertia, quaternion attitude,
 //!   momentum-conserving rotation, and force, torque, and impulse inputs.
+//! - [`batch`]: many independent worlds stepped together across threads.
 //! - [`world`]: bodies advanced together in fixed steps under a
 //!   caller-supplied acceleration [`Field`].
 //! - [`collision`]: sphere, capsule, and box colliders with bitmask filters
@@ -32,6 +33,8 @@
 //! - [`thrusters`]: body-mounted thrusters, a bounded allocator from a wanted
 //!   force and torque to throttles, and a vector PID controller.
 //! - [`trace`]: sampled states and a tolerance comparison for replay tests.
+//! - [`fluid`]: a deterministic position-based particle liquid with
+//!   surface tension, adhesion, and two-way coupling to bodies.
 //! - [`water`]: water bodies, a deterministic Gerstner surface, currents,
 //!   and buoyancy and drag on colliders.
 //!
@@ -39,6 +42,7 @@
 //! own their rules (fields, controls, part definitions) and consume these
 //! mechanisms. See `docs/physics/2026-09-27-genesis-port-roadmap.md`.
 
+pub mod batch;
 pub mod body;
 mod broadphase;
 pub mod character;
@@ -46,6 +50,7 @@ pub mod clock;
 pub mod collision;
 pub mod contact;
 pub mod continuous;
+pub mod fluid;
 pub mod joint;
 pub mod kinematic;
 pub mod ledger;

@@ -14,6 +14,10 @@ required-features = ["mujoco"]
 name = "lagrange2_arm_oracle"
 required-features = ["mujoco"]
 
+[[example]]
+name = "batch_bench"
+required-features = ["mujoco"]
+
 [features]
 default = []
 mujoco = ["dep:libloading", "dep:roxmltree"]
@@ -33,6 +37,8 @@ roxmltree = { version = "0.21.1", optional = true }
 
 [dev-dependencies]
 tempfile = "3"
+# The batch benchmark's native 50-body pile (examples/batch_bench.rs).
+physics = { path = "../physics" }
 oa-copy = { path = "../oa-copy" }
 # The Lagrange 2 arm's MuJoCo reference (examples/lagrange2_arm_oracle.rs).
 verse-lagrange2 = { path = "../verse-lagrange2" }

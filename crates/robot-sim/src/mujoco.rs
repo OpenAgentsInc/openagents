@@ -27,6 +27,8 @@ use crate::{Error, Result, require};
 #[path = "mujoco_ffi.rs"]
 mod ffi;
 
+pub mod batch;
+
 const VERSION: i32 = 337;
 const MAX_INPUT_BYTES: u64 = 64 << 20;
 static COMPILER: Mutex<()> = Mutex::new(());
@@ -60,6 +62,8 @@ struct Api {
     save: SaveXml,
     free_xml: unsafe extern "C" fn(),
     id_name: IdName,
+    copy_model: unsafe extern "C" fn(*mut ffi::mjModel, *const ffi::mjModel) -> *mut ffi::mjModel,
+    set_const: unsafe extern "C" fn(*mut ffi::mjModel, *mut ffi::mjData),
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -141,6 +145,14 @@ impl Runtime {
             save: symbol!("mj_saveLastXML", SaveXml),
             free_xml: symbol!("mj_freeLastXML", unsafe extern "C" fn()),
             id_name: symbol!("mj_id2name", IdName),
+            copy_model: symbol!(
+                "mj_copyModel",
+                unsafe extern "C" fn(*mut ffi::mjModel, *const ffi::mjModel) -> *mut ffi::mjModel
+            ),
+            set_const: symbol!(
+                "mj_setConst",
+                unsafe extern "C" fn(*mut ffi::mjModel, *mut ffi::mjData)
+            ),
             _library: library,
         };
         Ok(Self {
