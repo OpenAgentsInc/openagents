@@ -73,13 +73,45 @@ async fn measurements(
         let ready_ms = start.elapsed().as_secs_f64() * 1000.;
         sh(driver, &id, "true").await?;
         let command_ready_ms = start.elapsed().as_secs_f64() * 1000.;
+        let backend = if let Ok(observer) = std::env::var("SPACE_BOOT_OBSERVER") {
+            let output = tokio::time::timeout(
+                Duration::from_secs(10),
+                tokio::process::Command::new(observer)
+                    .arg(&id)
+                    .kill_on_drop(true)
+                    .output(),
+            )
+            .await
+            .map_err(|_| "Boot observer timed out.")?
+            .map_err(|_| "Couldn't run the boot observer.")?;
+            if !output.status.success() {
+                return Err("Boot observer failed.".into());
+            }
+            let observed: Value =
+                serde_json::from_slice(&output.stdout).map_err(|_| "Invalid boot observation.")?;
+            if observed["boot_mode"] != arm {
+                return Err("Actual boot mode differs from the requested arm.".into());
+            }
+            report["actual_boot_mode"] = json!(arm);
+            observed
+        } else {
+            Value::Null
+        };
         report["creates"]
             .as_array_mut()
             .unwrap()
-            .push(json!({"computer":id,"accepted_ms":accepted_ms,"running_ms":ready_ms,"first_command_ms":command_ready_ms}));
+            .push(json!({"computer":id,"accepted_ms":accepted_ms,"running_ms":ready_ms,"first_command_ms":command_ready_ms,"backend":backend}));
         if i == 0 {
             report["versions"] =
                 json!(sh(driver, &id, "coder --version && claude --version").await?);
+            report["create_guest"] = json!(
+                sh(
+                    driver,
+                    &id,
+                    "getconf _NPROCESSORS_ONLN; head -n 3 /proc/meminfo"
+                )
+                .await?
+            );
         }
         done(driver.delete(&id).await)?;
         reach(driver, &id, State::Gone).await?;
@@ -109,7 +141,9 @@ async fn measurements(
         driver
             .create(&CreateRequest {
                 operation: format!("space-memory-{}", uuid::Uuid::new_v4()),
-                size: Some("small".into()),
+                // Leave room for the 1 GiB buffer and the guest OS. This
+                // memory check is separate from the small-create samples.
+                size: Some("medium".into()),
                 ..Default::default()
             })
             .await,
@@ -117,6 +151,8 @@ async fn measurements(
     report["computers"].as_array_mut().unwrap().push(json!(id));
     save(path, report);
     reach(driver, &id, State::Running).await?;
+    report["memory_guest"] =
+        json!({"size":"medium","meminfo":sh(driver, &id, "head -n 3 /proc/meminfo").await?});
     // A private socket asks the same live Python process to hash its memory
     // before and after suspension. There is no saved buffer to reload.
     let python = r#"import hashlib,os,socket
