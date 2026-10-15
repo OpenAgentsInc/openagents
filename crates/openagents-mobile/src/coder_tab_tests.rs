@@ -859,8 +859,8 @@ fn a_question_is_answered_and_an_approval_has_its_own_controls() {
 fn the_queue_panel_edits_reorders_and_removes_under_the_lease() {
     use nostr::activity_summary::{Attention, Phase};
     let (mut fixture, script, chat) = Fixture::scripted(Phase::Running, Attention::None);
-    let chat = fixture.send(&chat, None, "First queued.");
-    let chat = fixture.send(&chat, None, "Second queued.");
+    let chat = fixture.send(&chat, Some("Queue for next turn"), "First queued.");
+    let chat = fixture.send(&chat, Some("Queue for next turn"), "Second queued.");
     // The queue shows once the computer lists it.
     let chat = fixture.tap(
         &keys(&chat)
@@ -986,7 +986,7 @@ fn a_sent_message_shows_in_the_chat_at_once() {
     assert!(notes(&chat).iter().all(|(text, _)| text == "Follow up."));
     // Queued while Coder works: it shows as queued.
     let (mut fixture, _, chat) = Fixture::scripted(Phase::Running, Attention::None);
-    let chat = fixture.send(&chat, None, "And the docs.");
+    let chat = fixture.send(&chat, Some("Queue for next turn"), "And the docs.");
     assert_eq!(notes(&chat), [("And the docs.".into(), "Queued".into())]);
     // A stop is not a message.
     let chat = fixture.tap("coder-stop");
