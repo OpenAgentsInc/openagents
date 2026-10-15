@@ -438,7 +438,10 @@ impl App {
     /// agent it runs on stays (#11556).
     #[must_use]
     pub fn chat_started(&self) -> bool {
-        self.live.user_count() > 0 || self.live.busy || self.request.is_some()
+        self.live.user_count() > 0
+            || self.live.busy
+            || self.request.is_some()
+            || self.routing_pending()
     }
 
     /// The openagents.com sign-in this chat's state holds, if any: it

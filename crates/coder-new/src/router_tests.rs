@@ -716,7 +716,9 @@ fn a_held_message_shows_at_once() {
     app.draft.text = "What is a trait object?".into();
     app.submit_live();
     assert!(app.routing_pending());
+    assert!(app.chat_started());
     let shown = screen(&mut app);
+    assert!(!shown.contains("OpenAgents Coder"), "{shown}");
     assert!(shown.contains("What is a trait object?"), "{shown}");
     assert!(shown.contains("Working"), "{shown}");
     app.poll_route();

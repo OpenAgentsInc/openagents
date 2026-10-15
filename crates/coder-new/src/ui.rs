@@ -715,6 +715,7 @@ fn new_chat_heading(app: &App) -> bool {
         && app.live.entries.is_empty()
         && app.live.partial.is_empty()
         && !app.live.busy
+        && !app.routing_pending()
 }
 
 fn header_view(frame: &mut Frame, area: Rect, app: &App) {
