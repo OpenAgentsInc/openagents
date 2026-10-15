@@ -4943,12 +4943,14 @@ dependencies = [
 name = "psionic-inference"
 version = "1.0.0-rc.18"
 dependencies = [
+ "axum",
  "clap",
  "libc",
  "libm",
  "matrixmultiply",
  "ort",
  "rayon",
+ "reqwest",
  "safetensors 0.7.0",
  "serde",
  "serde_json",
@@ -4956,6 +4958,8 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "tokenizers",
+ "tokio",
+ "tower",
 ]
 
 [[package]]
@@ -5186,6 +5190,7 @@ dependencies = [
  "psionic-core",
  "psionic-data",
  "psionic-eval",
+ "psionic-inference",
  "psionic-ir",
  "psionic-models",
  "psionic-net",

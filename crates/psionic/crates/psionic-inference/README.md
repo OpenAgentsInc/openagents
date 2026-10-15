@@ -94,3 +94,43 @@ checksums, and remaining platform coverage. Each run uses at least 1,000
 samples by default; the driver alternates engine order and never runs the
 two engines at the same time. Filesystem caches are warm. Pin CPU affinity
 with `--cpus` on Linux; report other system load separately.
+
+## Shared service and HTTP
+
+`service::RouterService` exposes the same model in process. Load the
+selected engine, call `warm_up()` before latency-sensitive work, and pass
+a System One request to `decide()`. `service::questions()` returns the
+seven supported question definitions; callers can request a subset.
+Changing a question's instructions, type, or options returns
+`not_admitted` before inference. This fixed model cannot answer arbitrary
+decision questions.
+
+The state is either request text or an object with `request` and optional
+`context`. The response includes normal Choice, Score, and Noul answers,
+input usage, and the actual execution engine and artifact identities.
+
+The existing server has a router-only mode:
+
+```sh
+cargo build --manifest-path crates/psionic/Cargo.toml -p psionic-serve \
+  --bin psionic-openai-server --features router-ort
+psionic-openai-server --router-model-dir /path/to/models/s1-router \
+  --router-engine native --router-threads 4 --host 127.0.0.1 --port 8080
+```
+
+For ORT, select `--router-engine ort` and provide `--ort-library FILE`
+and `--ort-sha256 HASH`. A build without `router-ort` refuses that engine.
+Run GGUF models in a separate server. Exact browser origins can use the
+existing `--allow-origin` option.
+
+`GET /v1/models` includes the model's question definitions and execution
+identity. `POST /v1/systemone` uses the in-process service. The model warms
+up before the listener binds and `/health` becomes available. Requests
+are limited to 128 KiB and `--router-max-queue` bounds active and waiting
+work; a full queue returns `busy` with `Retry-After: 1`.
+
+The explicit `http` integration test checks real loopback HTTP against
+direct Rust calls for both engines. `scripts/dev/psionic-http-bench.py`
+benchmarks the existing server on ephemeral ports and stops every server
+it starts. Record the server build profile; a development build is not
+the release CPU baseline.

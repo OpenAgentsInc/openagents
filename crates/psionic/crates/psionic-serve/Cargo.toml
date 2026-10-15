@@ -15,6 +15,7 @@ path = "src/lib.rs"
 
 [features]
 default = []
+router-ort = ["psionic-inference/ort"]
 tokio-runtime-telemetry = ["psionic-observe/tokio-runtime-telemetry"]
 tokio-runtime-telemetry-cpu = [
   "tokio-runtime-telemetry",
@@ -46,6 +47,7 @@ psionic-compiler = { path = "../psionic-compiler" }
 psionic-core = { path = "../psionic-core" }
 psionic-eval = { path = "../psionic-eval" }
 psionic-ir = { path = "../psionic-ir" }
+psionic-inference = { path = "../psionic-inference", features = ["http"] }
 psionic-models = { path = "../psionic-models" }
 psionic-net = { path = "../psionic-net" }
 psionic-observe = { path = "../psionic-observe" }

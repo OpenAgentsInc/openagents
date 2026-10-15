@@ -47,6 +47,7 @@ mod psion_served_evidence;
 mod psion_served_output_claim_posture;
 mod pylon_release_manifest;
 mod qwen35;
+pub mod small_models;
 mod tassadar;
 mod tassadar_article_cross_machine_reproducibility_publication;
 mod tassadar_article_route_minimality_publication_verdict;

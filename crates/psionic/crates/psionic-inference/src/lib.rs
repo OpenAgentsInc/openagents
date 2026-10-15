@@ -4,10 +4,13 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+#[cfg(feature = "http")]
+pub mod http;
 pub mod modernbert;
 #[cfg(feature = "ort")]
 pub mod ort_engine;
 pub mod router;
+pub mod service;
 
 pub type Result<T> = std::result::Result<T, Error>;
 

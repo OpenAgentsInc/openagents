@@ -12,6 +12,7 @@ workspace = true
 [features]
 default = []
 ort = ["dep:ort"]
+http = ["dep:axum", "dep:tokio"]
 
 [dependencies]
 serde = { workspace = true }
@@ -24,8 +25,12 @@ matrixmultiply = "=0.3.10"
 libm = "0.2"
 clap = { version = "4", features = ["derive"] }
 libc = "0.2"
+axum = { version = "0.8", optional = true }
+tokio = { workspace = true, optional = true }
 tokenizers = { version = "=0.23.2", default-features = false, features = ["fancy-regex"] }
 ort = { version = "=2.0.0-rc.13", default-features = false, features = ["std", "load-dynamic", "api-28"], optional = true }
 
 [dev-dependencies]
 tempfile = "3"
+tower = { version = "0.5", features = ["util"] }
+reqwest = { workspace = true }

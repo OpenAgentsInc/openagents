@@ -6,8 +6,8 @@ execution so the same models can be benchmarked on both. Start with
 available after the comparison, and reuse the ORT integration for other
 models. The shared contract and fixtures (#11700), optional ORT CPU
 execution (#11701), native ModernBERT CPU execution (#11702), and CPU
-benchmarks (#11703) are implemented in `psionic-inference`. The remaining
-milestones are planned.
+benchmarks (#11703), and shared in-process/HTTP serving (#11704) are
+implemented. Other model families and accelerators remain planned.
 
 ## Scope and current evidence
 

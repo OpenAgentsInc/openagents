@@ -165,7 +165,10 @@ pub struct RouterTokenizer {
 
 impl RouterTokenizer {
     pub fn load(path: &Path) -> Result<Self> {
-        let mut tokenizer = Tokenizer::from_file(path).map_err(|e| Error(e.to_string()))?;
+        Self::from_tokenizer(Tokenizer::from_file(path).map_err(|e| Error(e.to_string()))?)
+    }
+
+    pub fn from_tokenizer(mut tokenizer: Tokenizer) -> Result<Self> {
         tokenizer
             .with_truncation(Some(TruncationParams {
                 max_length: MAX_TOKENS,

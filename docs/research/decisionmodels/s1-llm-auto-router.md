@@ -216,7 +216,13 @@ asks only once every few calls.
 **Short answer:** add two selectable execution engines: optional ORT for
 the published ONNX graph, and native Psionic for the same model. Share the
 tokenizer and answer processing, then compare correctness, speed, memory,
-and package size. Both CPU engines are now implemented in `psionic-inference` (#11701, #11702). The native path agrees on every decision in the 100-case ORT reference set; maximum centered logit distance is 0.00000763. Serving and benchmark integration follow the roadmap.
+and package size. Both CPU engines are implemented in `psionic-inference`
+(#11701, #11702). The native path agrees on every decision in the 100-case
+ORT reference set; maximum centered logit distance is 0.00000763. The
+[roadmap](psionic-onnx-native-roadmap.md#cpu-results-2026-10-15-11703)
+records the CPU measurements (#11703). Shared in-process and HTTP serving
+are implemented in #11704; routing adoption still requires the application
+evaluation below.
 
 **What Psionic does today.**
 

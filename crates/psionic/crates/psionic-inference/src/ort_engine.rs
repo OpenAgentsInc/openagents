@@ -15,7 +15,7 @@ use crate::{
     router::file_sha256,
 };
 
-static LIBRARY: Mutex<Option<PathBuf>> = Mutex::new(None);
+static LIBRARY: Mutex<Option<(PathBuf, String)>> = Mutex::new(None);
 
 #[derive(Clone, Debug)]
 pub struct OrtOptions {
@@ -49,7 +49,7 @@ impl OrtEngine {
                 .lock()
                 .map_err(|_| Error("Cannot initialize ONNX Runtime".into()))?;
             match loaded.as_ref() {
-                Some(path) if path != &library => {
+                Some((path, loaded_hash)) if path != &library || loaded_hash != &hash => {
                     return Err(Error(
                         "This process already loaded a different ONNX Runtime library".into(),
                     ));
@@ -57,7 +57,7 @@ impl OrtEngine {
                 Some(_) => {}
                 None => {
                     ort::init_from(&library).map_err(ort_error)?.commit();
-                    *loaded = Some(library);
+                    *loaded = Some((library, hash.clone()));
                 }
             }
         }
