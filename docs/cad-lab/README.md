@@ -525,6 +525,36 @@ web image includes the Rust player under `/srv/robot`; a local server can set
   (SI, assembly axes) and a port per joint on both sides (origin, axis,
   kind, values, limits), with the parallel-axis total.
 
+## Part of Pro (#11693)
+
+On openagents.com CAD Lab is a Pro feature
+(`crates/openagents-web/src/cad_gate.rs`). The check is made on the
+server, with the same plan meter `/pricing` uses (`plan::on_pro`): a
+signed-in account on Pro (its paid or trial month), a site admin, or an
+account in `OPENAGENTS_WEB_PRO_TEST_ACCOUNTS` (the production test
+account) passes.
+
+- **Without Pro**, `/cad` shows "CAD Lab is part of Pro." with
+  **Start 3-day free trial** (Settings, Plan) and, signed out, **Log in**,
+  above the person's own designs. A design's page keeps the 3D view, the
+  files, the versions and Delete, and shows the same upsell in place of
+  every edit.
+- **Routes**: `POST /cad/{doc}/pull`, `/import`, `/send` (except taking a
+  part out of Everglade), `/configurator`, and the print and CNC checks
+  need Pro; the API answers `402` with
+  `{"error": {"code": "plan_required", "plan": "pro", "upgrade_url", "message"}}`.
+- **Chats** (web, phone and terminal through `/v1/threads`): a turn whose
+  sender isn't on Pro is offered no `cad_*` tools, and the model is told
+  to say once that CAD Lab is part of Pro, with the trial link.
+- **Open to everyone**: reading and downloading existing designs, chat
+  cards of models already made, the shop and shared configurator links,
+  and walking a Verse world with placed parts.
+- **Tests**: a test run (`X-OpenAgents-Test: 1`) with
+  `X-OpenAgents-Test-Plan: free` counts as Free, so the test account can
+  check both sides; the header can only take Pro away.
+- A server that signs no one in (local development) has no plans, so CAD
+  Lab is open there, and so is `cad-lab` on your own computer.
+
 ## Where it runs
 
 - `cad-lab serve [--port 8794] [--dir DIR]` binds to loopback only. The web

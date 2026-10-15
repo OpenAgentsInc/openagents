@@ -449,10 +449,13 @@ async fn start(State(app): State<App>, headers: HeaderMap, Form(prompt): Form<Pr
         .await;
         let instructions = picked.project.as_ref().and_then(|p| p.instructions.clone());
         // CAD Lab's models (#11653): the project's, else the person's own.
-        let cad = crate::cad_web::Scope::for_turn(
-            &owner,
-            loaded.conversation.project.as_deref(),
-            picked.project.as_ref(),
+        let cad = crate::cad_gate::TurnCad::new(
+            crate::cad_gate::plan(&app, &headers).await,
+            crate::cad_web::Scope::for_turn(
+                &owner,
+                loaded.conversation.project.as_deref(),
+                picked.project.as_ref(),
+            ),
         );
         spawn_answer(app.clone(), loaded, admitted_at, repo, instructions, cad);
     }
@@ -475,6 +478,7 @@ pub(crate) async fn start_from_app(
     text: String,
     files: Vec<crate::chat_files::FileRef>,
     project: Option<(oa_auth::repos::Project, Option<String>)>,
+    cad_plan: crate::cad_gate::Plan,
 ) -> AppSent {
     if text.trim().is_empty() || text.chars().count() > 4_000 || !valid_id(id) {
         return AppSent::Invalid;
@@ -524,10 +528,13 @@ pub(crate) async fn start_from_app(
     match store.create(&record).await {
         Ok(loaded) => {
             note_shared(app, shared.as_ref(), owner, &loaded.conversation).await;
-            let cad = crate::cad_web::Scope::for_turn(
-                owner,
-                loaded.conversation.project.as_deref(),
-                shared.as_ref(),
+            let cad = crate::cad_gate::TurnCad::new(
+                cad_plan,
+                crate::cad_web::Scope::for_turn(
+                    owner,
+                    loaded.conversation.project.as_deref(),
+                    shared.as_ref(),
+                ),
             );
             spawn_answer(app.clone(), loaded, admitted_at, repo, instructions, cad);
             AppSent::Answering
@@ -1837,10 +1844,13 @@ async fn follow(
             .or(loaded.conversation.branch.as_deref());
         let repo = repo_read(&app, &headers, project, branch).await;
         let instructions = project.and_then(|p| p.instructions.clone());
-        let cad = crate::cad_web::Scope::for_turn(
-            &owner,
-            loaded.conversation.project.as_deref(),
-            project,
+        let cad = crate::cad_gate::TurnCad::new(
+            crate::cad_gate::plan(&app, &headers).await,
+            crate::cad_web::Scope::for_turn(
+                &owner,
+                loaded.conversation.project.as_deref(),
+                project,
+            ),
         );
         spawn_answer(
             app.clone(),
@@ -1881,6 +1891,7 @@ pub(crate) async fn follow_from_app(
     request_id: &str,
     text: &str,
     files: Vec<crate::chat_files::FileRef>,
+    cad_plan: crate::cad_gate::Plan,
 ) -> AppSent {
     let Some(text) = normalize(text) else {
         return AppSent::Invalid;
@@ -1978,10 +1989,13 @@ pub(crate) async fn follow_from_app(
         Ok(saved) => {
             // An app's own token reaches no GitHub connection here. CAD
             // models: the sender's own outside a project.
-            let cad = crate::cad_web::Scope::for_turn(
-                payer.unwrap_or(owner),
-                saved.conversation.project.as_deref(),
-                None,
+            let cad = crate::cad_gate::TurnCad::new(
+                cad_plan,
+                crate::cad_web::Scope::for_turn(
+                    payer.unwrap_or(owner),
+                    saved.conversation.project.as_deref(),
+                    None,
+                ),
             );
             spawn_answer(app.clone(), saved, admitted_at, None, None, cad);
             AppSent::Answering
@@ -2153,7 +2167,7 @@ fn spawn_answer(
     admitted_at: u64,
     repo: Option<crate::repo_snapshot::RepoRead>,
     instructions: Option<String>,
-    cad: Option<crate::cad_web::Scope>,
+    cad: crate::cad_gate::TurnCad,
 ) {
     tokio::spawn(async move {
         answer(app, loaded, admitted_at, repo, instructions, cad).await;
@@ -2213,7 +2227,7 @@ async fn answer(
     admitted_at: u64,
     repo: Option<crate::repo_snapshot::RepoRead>,
     instructions: Option<String>,
-    cad: Option<crate::cad_web::Scope>,
+    cad: crate::cad_gate::TurnCad,
 ) {
     let chat = &loaded.conversation;
     let owner = chat.owner.clone();
@@ -2317,6 +2331,15 @@ async fn answer(
     } else {
         Vec::new()
     };
+    // CAD Lab is part of Pro (#11693): a sender without it gets no CAD
+    // tools this turn, and the model is told to say so once.
+    let (cad, cad_allowed) = match cad {
+        crate::cad_gate::TurnCad::Offered(scope) => (scope, true),
+        crate::cad_gate::TurnCad::NeedsPro => (None, false),
+    };
+    if !cad_allowed && door.is_some() && crate::cad_lab::available() {
+        memory.push(crate::cad_gate::chat_note());
+    }
     // The chat's project's instructions, as the person wrote them, first.
     if let Some(instructions) = instructions.filter(|_| door.is_some()) {
         memory.insert(
@@ -2385,6 +2408,7 @@ async fn answer(
                 if payer == owner { &payer } else { "" },
                 chat.project.as_deref(),
                 cad,
+                cad_allowed,
             )
             .await
         }

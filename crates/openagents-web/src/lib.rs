@@ -48,6 +48,7 @@ mod door_route;
 mod environments;
 /// Staging's stand-in for a GitHub App (#11226).
 pub use environments::push::StandIn as StagingPush;
+mod cad_gate;
 mod cad_lab;
 mod cad_web;
 mod game_lab;

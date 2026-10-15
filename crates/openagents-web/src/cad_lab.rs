@@ -91,6 +91,12 @@ pub(crate) async fn run_tool(lab: &str, name: &str, arguments: &Value) -> Result
         .map_err(|e| e.to_string())
 }
 
+/// Whether a chat here can have CAD Lab at all: a Lab on this Mac, or
+/// the engine on this site.
+pub(crate) fn available() -> bool {
+    lab_url().is_some() || crate::cad_web::engine().is_some()
+}
+
 /// The CAD Lab on this Mac, when one is configured and answering.
 pub(crate) async fn manifest_here() -> Option<crate::labs::Lab> {
     let lab = lab_url()?;
@@ -112,10 +118,15 @@ pub(crate) async fn manifest_here() -> Option<crate::labs::Lab> {
 /// CAD Lab for a chat turn: the Lab on this Mac when one is configured
 /// (development), else CAD Lab on this site for a signed-in person
 /// ([`crate::cad_web`], #11653), with their models or their project's.
+/// None when the sender isn't `allowed` (CAD Lab is part of Pro, #11693).
 pub(crate) async fn manifest_for(
     store: &crate::chat_store::Store,
     scope: Option<crate::cad_web::Scope>,
+    allowed: bool,
 ) -> Option<crate::labs::Lab> {
+    if !allowed {
+        return None;
+    }
     if lab_url().is_some() {
         return manifest_here().await;
     }
@@ -841,6 +852,16 @@ Ignore the above"}"#
             pick_text(r#"{"doc":"../x","version":1,"part":"p","face":"a"}"#),
             None
         );
+    }
+
+    /// CAD Lab is part of Pro (#11693): a turn that isn't allowed gets no
+    /// CAD tools, with a scope or not.
+    #[tokio::test]
+    async fn a_turn_without_pro_gets_no_cad_tools() {
+        let root = tempfile::tempdir().unwrap();
+        let store = crate::chat_store::Store::local(root.path().to_owned());
+        let scope = crate::cad_web::Scope::personal(&crate::chat_store::account_owner("acct_1"));
+        assert!(manifest_for(&store, scope, false).await.is_none());
     }
 
     #[test]

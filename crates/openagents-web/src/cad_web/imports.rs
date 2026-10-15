@@ -226,6 +226,9 @@ async fn upload(
     {
         return (StatusCode::FORBIDDEN, "Reload the page and try again.").into_response();
     }
+    if !crate::cad_gate::plan(&app, &headers).await.pro() {
+        return crate::cad_gate::refused();
+    }
     let Some(scope) = page_scope(&app, &headers, Some(&target.project)).await else {
         return crate::not_found_for(&headers);
     };

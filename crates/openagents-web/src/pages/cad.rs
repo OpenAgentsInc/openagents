@@ -163,6 +163,12 @@ fn unavailable(headers: &HeaderMap) -> Response {
 }
 
 async fn page(State(app): State<App>, headers: HeaderMap) -> Response {
+    // CAD Lab is part of Pro (#11693): without it, the upsell and the
+    // person's own designs, which stay theirs to open and download.
+    let plan = crate::cad_gate::plan(&app, &headers).await;
+    if !plan.pro() {
+        return upsell(&app, &headers, plan).await;
+    }
     if build(&app).is_none() {
         return unavailable(&headers);
     }
@@ -194,6 +200,41 @@ async fn page(State(app): State<App>, headers: HeaderMap) -> Response {
         HeaderValue::from_static(CAD_POLICY),
     );
     response
+}
+
+/// `/cad` without Pro: what CAD Lab is, the trial and Log in, and the
+/// person's designs.
+async fn upsell(app: &App, headers: &HeaderMap, plan: crate::cad_gate::Plan) -> Response {
+    let designs = crate::cad_web::designs(app, headers).await;
+    UiPage::new(TITLE)
+        .path(CAD_PATH)
+        .description("Change a part and watch it rebuild, check and draw itself in your browser.")
+        .scriptless()
+        .content(
+            PageColumn::new(upsell_content(
+                plan,
+                designs
+                    .as_ref()
+                    .map(|(scope, index)| crate::cad_web::designs_list(scope, index)),
+            ))
+            .wide(),
+        )
+        .respond(headers)
+}
+
+fn upsell_content(plan: crate::cad_gate::Plan, designs: Option<Markup>) -> Markup {
+    html! {
+        section.cad-page aria-labelledby="cad-title" {
+            (MarkdownRoot::new(html! { h1 id="cad-title" { (TITLE) } }))
+            (crate::cad_gate::upsell(plan, CAD_PATH))
+        }
+        @if let Some(designs) = designs {
+            section.cad-designs aria-labelledby="cad-designs-title" {
+                h2 id="cad-designs-title" { "Your designs" }
+                (designs)
+            }
+        }
+    }
 }
 
 async fn build_file(
@@ -232,6 +273,23 @@ async fn build_file(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn without_pro_the_page_is_the_upsell_and_the_designs() {
+        use crate::cad_gate::Plan;
+        let out = upsell_content(Plan::SignedOut, None).into_string();
+        assert!(out.contains(crate::cad_gate::TITLE));
+        assert!(out.contains("Start 3-day free trial"));
+        assert!(out.contains("Log in"));
+        assert!(!out.contains("cad-form"), "no tool without Pro");
+        crate::copy_guard::assert_plain(CAD_PATH, &out);
+        let list = html! { ul { li { a href="/cad/bracket" { "Bracket" } } } };
+        let out = upsell_content(Plan::Free, Some(list)).into_string();
+        assert!(out.contains("Your designs"));
+        assert!(out.contains("href=\"/cad/bracket\""));
+        assert!(!out.contains("Log in"));
+        crate::copy_guard::assert_plain(CAD_PATH, &out);
+    }
 
     #[test]
     fn every_control_starts_waiting_for_the_engine() {

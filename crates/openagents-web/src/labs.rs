@@ -170,13 +170,14 @@ pub(crate) async fn door(
     owner: &str,
     project: Option<&str>,
     cad: Option<crate::cad_web::Scope>,
+    cad_allowed: bool,
 ) -> Option<LabsDoor> {
     let store = &app.config.chat_store;
     let (video, game, robot, cad, ship) = tokio::join!(
         crate::lab::manifest_here(),
         crate::game_lab::manifest_here(),
         crate::robot_lab::manifest_here(owner, project),
-        crate::cad_lab::manifest_for(store, cad),
+        crate::cad_lab::manifest_for(store, cad, cad_allowed),
         crate::ship_lab::manifest_here()
     );
     let labs: Vec<Lab> = [video, game, robot, cad, ship]

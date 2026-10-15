@@ -302,8 +302,17 @@ fn the_page_lists_versions_and_files() {
         ],
     };
     let record = json!({"summary": "bracket: changed body", "report": {"mass": {"mass_kg": 0.026, "center_of_mass_mm": [0, 0, 3]}}});
-    let html =
-        doc_content(&scope, "bracket", &entry, 2, &record, Some("token"), true).into_string();
+    let html = doc_content(
+        &scope,
+        "bracket",
+        &entry,
+        2,
+        &record,
+        Some("token"),
+        true,
+        crate::cad_gate::Plan::Pro,
+    )
+    .into_string();
     assert!(
         html.contains("/cad/bracket/file?v=2&amp;name=view.json&amp;project=prj_1"),
         "{html}"
@@ -322,11 +331,43 @@ fn the_page_lists_versions_and_files() {
     assert!(violations.is_empty(), "{violations:?}");
     // A viewer sees no delete, and without the browser engine no buttons
     // that can't work.
-    let plain = doc_content(&scope, "bracket", &entry, 2, &record, None, false).into_string();
+    let plain = doc_content(
+        &scope,
+        "bracket",
+        &entry,
+        2,
+        &record,
+        None,
+        false,
+        crate::cad_gate::Plan::Pro,
+    )
+    .into_string();
     assert!(!plain.contains("Delete this design"));
     assert!(!plain.contains("data-cad-download"));
     assert!(!plain.contains("data-cad-pull-save"));
     assert!(plain.contains("download=1"));
+    // Without Pro (#11693): still viewable, downloadable and deletable,
+    // with the upsell in place of every edit.
+    let free = doc_content(
+        &scope,
+        "bracket",
+        &entry,
+        2,
+        &record,
+        Some("token"),
+        true,
+        crate::cad_gate::Plan::Free,
+    )
+    .into_string();
+    assert!(free.contains(crate::cad_gate::TITLE), "{free}");
+    assert!(free.contains("Start 3-day free trial"));
+    assert!(free.contains("data-cad-download=\"step\""));
+    assert!(free.contains("download=1"));
+    assert!(free.contains("Delete this design"));
+    assert!(!free.contains("data-cad-pull="));
+    assert!(!free.contains("data-cad-pull-save"));
+    assert!(!free.contains("Share or sell with sliders"));
+    crate::copy_guard::assert_plain("/cad/bracket", &free);
 }
 
 /// The real engine end to end (`OPENAGENTS_CAD_ENGINE=target/release/cad-lab

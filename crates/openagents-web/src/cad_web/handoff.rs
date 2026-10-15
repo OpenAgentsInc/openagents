@@ -243,11 +243,12 @@ struct Send {
     version: u64,
     target: String,
 }
-pub(super) fn form(scope: &Scope, doc: &str, n: u64, csrf: &str) -> Markup {
+/// Where a design can go. Without Pro (#11693), only out of Everglade.
+pub(super) fn form(scope: &Scope, doc: &str, n: u64, csrf: &str, pro: bool) -> Markup {
     html! {form method="post" action=(format!("/cad/{doc}/send")) {
         input type="hidden" name="csrf" value=(csrf);input type="hidden" name="project" value=(scope.project.as_deref().unwrap_or(""));input type="hidden" name="version" value=(n);
         div.oa-cad-files {
-            @for (target,label) in [("verse","Put in Everglade"),("remove","Remove from Everglade"),("robot","Open in Robot Lab"),("urdf","URDF and meshes")] {
+            @for (target,label) in [("verse","Put in Everglade"),("remove","Remove from Everglade"),("robot","Open in Robot Lab"),("urdf","URDF and meshes")].into_iter().filter(|(target,_)|pro || *target=="remove") {
                 (Button::new(label).kind(ButtonType::Submit).variant(ButtonVariant::Outline).attr("name","target").attr("value",target))
             }
         }
@@ -264,6 +265,11 @@ async fn send(
         .is_err()
     {
         return StatusCode::FORBIDDEN.into_response();
+    }
+    // Taking a placed part out of a world needs no plan; everything else
+    // here makes something from the design (#11693).
+    if form.target != "remove" && !crate::cad_gate::plan(&app, &headers).await.pro() {
+        return crate::cad_gate::refused();
     }
     let Some(scope) = page_scope(&app, &headers, Some(&form.project))
         .await

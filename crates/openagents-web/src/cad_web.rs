@@ -229,7 +229,7 @@ impl Scope {
         (scope.folder == folder).then_some(scope)
     }
 
-    fn key(&self, rest: &str) -> Result<String, StoreError> {
+    pub(crate) fn key(&self, rest: &str) -> Result<String, StoreError> {
         Store::owner_key(&self.home, &format!("{}/{rest}", self.folder))
     }
 
@@ -1283,6 +1283,9 @@ async fn pull_form(
     {
         return (StatusCode::FORBIDDEN, "Reload the page and try again.").into_response();
     }
+    if !crate::cad_gate::plan(&app, &headers).await.pro() {
+        return crate::cad_gate::refused();
+    }
     let Some(scope) = page_scope(&app, &headers, Some(&form.project)).await else {
         return crate::not_found().await;
     };
@@ -1399,7 +1402,11 @@ pub(crate) fn doc_content(
     record: &Value,
     csrf: Option<&str>,
     engine_in_browser: bool,
+    plan: crate::cad_gate::Plan,
 ) -> Markup {
+    // CAD Lab's edits are part of Pro (#11693); a design stays viewable
+    // and downloadable without it.
+    let pro = plan.pro();
     let card = json!({
         "title": entry.title, "version": version,
         "mass": record["report"]["mass"], "size_mm": record["report"]["size_mm"],
@@ -1411,7 +1418,7 @@ pub(crate) fn doc_content(
         section.oa-cad-doc aria-labelledby="cad-doc-title"
             data-cad-doc-page="" data-cad-doc=(doc) data-cad-version=(version) data-cad-findings=[record.get("manufacturing").map(|r|r["findings"].to_string())]
             data-cad-document=(file_url(scope, doc, version, "doc.json"))
-            data-cad-pull=[(engine_in_browser && csrf.is_some()).then(|| format!("/cad/{doc}/pull"))]
+            data-cad-pull=[(pro && engine_in_browser && csrf.is_some()).then(|| format!("/cad/{doc}/pull"))]
             data-cad-csrf=[csrf] data-cad-project=(scope.project.as_deref().unwrap_or("")) {
             (MarkdownRoot::new(html! {
                 h1 id="cad-doc-title" { (entry.title) }
@@ -1428,7 +1435,10 @@ pub(crate) fn doc_content(
                 doc,
                 version,
             ))
-            @if engine_in_browser && csrf.is_some() {
+            @if !pro {
+                (crate::cad_gate::upsell(plan, &scope.page(doc, Some(version))))
+            }
+            @if pro && engine_in_browser && csrf.is_some() {
                 div.oa-cad-pull data-cad-pull-panel="" hidden {
                     p data-cad-pull-label="" {}
                     label { "Move face (mm) " input type="number" step="0.1" value="0" data-cad-pull-delta=""; }
@@ -1444,11 +1454,11 @@ pub(crate) fn doc_content(
                 p.oa-cad-meta {"STL mesh · dimensions in millimeters"}
             }
             @if let Some(csrf) = csrf.filter(|_|engine().is_some()) {
-                (imports::form(scope,doc,csrf,record))
-                (handoff::form(scope,doc,version,csrf))
+                @if pro { (imports::form(scope,doc,csrf,record)) }
+                (handoff::form(scope,doc,version,csrf,pro))
             }
             @if let Some(report)=record.get("manufacturing") {(crate::cad_lab::manufacturing(report))}
-            @if engine().is_some() && record["report"]["mesh_bodies"].as_u64().unwrap_or(0)<record["report"]["solids"].as_u64().unwrap_or(1) {
+            @if pro && engine().is_some() && record["report"]["mesh_bodies"].as_u64().unwrap_or(0)<record["report"]["solids"].as_u64().unwrap_or(1) {
                 div.oa-cad-files {
                     @for (process,label) in [("print","Print checks"),("cnc","CNC checks")] {
                         (ButtonLink::new(label,format!("{}&check={process}",scope.page(doc,Some(version)))).variant(ButtonVariant::Outline))
@@ -1467,7 +1477,7 @@ pub(crate) fn doc_content(
             @if engine_in_browser {
                 p.oa-cad-meta data-cad-download-status="" aria-live="polite" { "Loading the CAD engine for the files\u{2026}" }
             }
-            @if engine_in_browser && csrf.is_some() && scope.home == scope.actor && record["report"]["mesh_bodies"].as_u64().unwrap_or(0)<record["report"]["solids"].as_u64().unwrap_or(1) {
+            @if pro && engine_in_browser && csrf.is_some() && scope.home == scope.actor && record["report"]["mesh_bodies"].as_u64().unwrap_or(0)<record["report"]["solids"].as_u64().unwrap_or(1) {
                 (ButtonLink::new("Share or sell with sliders", format!("/cad/{doc}/configurator?v={version}&project={}",scope.project.as_deref().unwrap_or(""))).variant(ButtonVariant::Outline))
             }
             h2 { "Versions" }
@@ -1522,6 +1532,7 @@ pub(crate) async fn doc_page(
         .v
         .filter(|v| (1..=entry.versions).contains(v))
         .unwrap_or(entry.versions);
+    let plan = crate::cad_gate::plan(app, headers).await;
     let mut record = read_file(store, &scope, doc, version, "version.json")
         .await
         .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
@@ -1530,7 +1541,7 @@ pub(crate) async fn doc_page(
         query
             .check
             .as_deref()
-            .filter(|p| matches!(*p, "print" | "cnc")),
+            .filter(|p| plan.pro() && matches!(*p, "print" | "cnc")),
         engine(),
     ) {
         let checked = engine
@@ -1557,7 +1568,7 @@ pub(crate) async fn doc_page(
         link rel="stylesheet" href=(crate::cad_lab::ASSET_CSS);
         script src=(crate::cad_lab::ASSET_JS) defer {}
         @if engine_in_browser { script type="module" src=(DOC_JS) {} }
-        @if scope.edits && engine().is_some() {script type="module" src=(imports::SCRIPT) {}}
+        @if plan.pro() && scope.edits && engine().is_some() {script type="module" src=(imports::SCRIPT) {}}
     };
     let mut response = crate::ui_page::UiPage::new(entry.title.clone())
         .path(format!("/cad/{doc}"))
@@ -1571,6 +1582,7 @@ pub(crate) async fn doc_page(
                 &record,
                 csrf.as_deref(),
                 engine_in_browser,
+                plan,
             ))
             .wide(),
         )

@@ -25,6 +25,9 @@ mod account_export;
 #[path = "connections_api_tests.rs"]
 mod connections_api;
 
+#[path = "cad_gate_tests.rs"]
+mod cad_gate;
+
 const HOST: &str = "127.0.0.1:4300";
 const ORIGIN: &str = "http://127.0.0.1:4300";
 const CANARY: &str = "synthetic-native-private-canary";
@@ -59,6 +62,8 @@ struct Native {
     expiry: u64,
     /// Plan checkouts and billing pages opened: (workspace, what).
     billing: Vec<(String, String)>,
+    /// Accounts the service names as site admins.
+    admins: BTreeSet<String>,
 }
 
 fn acting(headers: &HeaderMap, state: &Native) -> Option<&'static str> {
@@ -126,7 +131,8 @@ async fn native_details(State(state): State<Arc<Mutex<Native>>>, headers: Header
     } else {
         vec![json!({"id":"bob-personal","name":"Bob personal","role":"owner"})]
     };
-    Json(json!({"account":{"id":account,"label":format!("{account} <account>"),"principals":[CANARY]},"workspaces":workspaces})).into_response()
+    let admin = state.admins.contains(account);
+    Json(json!({"account":{"id":account,"label":format!("{account} <account>"),"principals":[CANARY],"admin":admin},"workspaces":workspaces})).into_response()
 }
 
 async fn native_workspace(

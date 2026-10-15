@@ -410,6 +410,7 @@ async fn reply(
                 );
             }
             let starter = loaded.conversation.owner.clone();
+            let cad_plan = crate::cad_gate::plan(&app, &headers).await;
             return sent_answer(
                 follow_from_app(
                     &app,
@@ -419,6 +420,7 @@ async fn reply(
                     &sent.request_id,
                     text,
                     Vec::new(),
+                    cad_plan,
                 )
                 .await,
             );
@@ -472,7 +474,20 @@ async fn reply(
         Ok(files) => files,
         Err(message) => return refused(StatusCode::BAD_REQUEST, "files", message),
     };
-    sent_answer(follow_from_app(&app, &owner, None, &id, &sent.request_id, text, files).await)
+    let cad_plan = crate::cad_gate::plan(&app, &headers).await;
+    sent_answer(
+        follow_from_app(
+            &app,
+            &owner,
+            None,
+            &id,
+            &sent.request_id,
+            text,
+            files,
+            cad_plan,
+        )
+        .await,
+    )
 }
 
 /// The answer to a reply an app sent.
@@ -548,7 +563,8 @@ async fn start(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Respo
         Ok(files) => files,
         Err(message) => return refused(StatusCode::BAD_REQUEST, "files", message),
     };
-    match start_from_app(&app, &owner, &id, text.to_owned(), files, project).await {
+    let cad_plan = crate::cad_gate::plan(&app, &headers).await;
+    match start_from_app(&app, &owner, &id, text.to_owned(), files, project, cad_plan).await {
         AppSent::Answering => answer(
             if existed {
                 StatusCode::OK

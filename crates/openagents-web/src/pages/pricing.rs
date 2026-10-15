@@ -82,12 +82,11 @@ async fn pricing(State(app): State<App>, headers: HeaderMap) -> Response {
 
 /// Whether the signed-in viewer has a paid Pro month running here.
 async fn on_pro(app: &App, headers: &HeaderMap) -> bool {
-    let (Some(service), Some(plans)) = (app.config.cloud.as_deref(), app.config.plan.as_deref())
-    else {
+    let Some(service) = app.config.cloud.as_deref() else {
         return false;
     };
     match service.authenticate(headers).await {
-        Ok(viewer) => plans.active(&viewer.account_id, crate::cloud::session::now() as i64),
+        Ok(viewer) => crate::plan::on_pro(app, &viewer.account_id),
         Err(_) => false,
     }
 }

@@ -2195,7 +2195,15 @@ async fn work_in_a_chat_stays_in_the_chat_with_coder_online() {
         .create(&pending(CHAT, "Push a README to AtlantisPleb/finances"))
         .await
         .unwrap();
-    answer(app.clone(), loaded, now(), None, None, None).await;
+    answer(
+        app.clone(),
+        loaded,
+        now(),
+        None,
+        None,
+        crate::cad_gate::TurnCad::Offered(None),
+    )
+    .await;
     let chat = store
         .load(&owner, CHAT)
         .await
@@ -2225,7 +2233,15 @@ async fn work_in_a_chat_stays_in_the_chat_with_coder_online() {
         .create(&pending(NEXT, "Push a README to AtlantisPleb/finances"))
         .await
         .unwrap();
-    answer(app.clone(), loaded, now(), None, None, None).await;
+    answer(
+        app.clone(),
+        loaded,
+        now(),
+        None,
+        None,
+        crate::cad_gate::TurnCad::Offered(None),
+    )
+    .await;
     assert_eq!(
         *seen.lock().unwrap(),
         Some((true, basic_coder::INSTRUCTIONS_WEB_CODER))

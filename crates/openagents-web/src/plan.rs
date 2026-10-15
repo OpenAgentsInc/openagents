@@ -117,6 +117,16 @@ impl Plans {
     }
 }
 
+/// Whether `account` is on Pro now on this server: the one check
+/// `/pricing` and the CAD Lab gate ([`crate::cad_gate`]) both make.
+/// False without a plan meter.
+pub(crate) fn on_pro(app: &crate::App, account: &str) -> bool {
+    app.config
+        .plan
+        .as_deref()
+        .is_some_and(|plans| plans.active(account, crate::cloud::session::now() as i64))
+}
+
 /// One account's plan section.
 pub(crate) struct View {
     pub terms: EnvironmentPlan,

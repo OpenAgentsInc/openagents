@@ -50,6 +50,9 @@ yet. When it is, **Settings → Plan** shows how to subscribe.
 
 Unused hours don't roll over to the next month.
 
+Without Pro, designs you already made in CAD Lab stay yours to open and
+download; making or changing a part needs Pro.
+
 ## Extra hours
 
 When the month's 100 hours run out, setups stop until the next month

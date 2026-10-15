@@ -122,21 +122,28 @@ async fn settings(
         .v
         .filter(|v| *v > 0 && *v <= entry.versions)
         .unwrap_or(entry.versions);
-    let Some(engine) = engine().filter(|_| app.config.cad.is_some()) else {
-        return (
-            StatusCode::SERVICE_UNAVAILABLE,
-            "The CAD engine isn't available. Try again later.",
-        )
-            .into_response();
+    // Sharing or selling a design with sliders is part of CAD Lab, so of
+    // Pro (#11693); links and listings already made can still be stopped.
+    let plan = crate::cad_gate::plan(&app, &headers).await;
+    let result = if plan.pro() {
+        let Some(engine) = engine().filter(|_| app.config.cad.is_some()) else {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "The CAD engine isn't available. Try again later.",
+            )
+                .into_response();
+        };
+        engine
+            .run(
+                &app.config.chat_store,
+                &scope,
+                "cad_config_options",
+                &json!({"doc":doc,"version":version}),
+            )
+            .await
+    } else {
+        json!({"options": []})
     };
-    let result = engine
-        .run(
-            &app.config.chat_store,
-            &scope,
-            "cad_config_options",
-            &json!({"doc":doc,"version":version}),
-        )
-        .await;
     let Some(options) = result["options"].as_array() else {
         return (
             StatusCode::CONFLICT,
@@ -154,6 +161,9 @@ async fn settings(
     let action = format!("/cad/{doc}/configurator");
     let mut response = crate::ui_page::UiPage::new("Share a configurable design").head(html!{link rel="stylesheet" href=(crate::cad_lab::ASSET_CSS);script type="module" src=(SCRIPT) {}}).content(PageColumn::new(html!{
         h1 {"Share " (&entry.title)}
+        @if !plan.pro() {
+            (crate::cad_gate::upsell(plan, &scope.page(&doc, Some(version))))
+        } @else {
         p {"Choose up to eight sliders and their limits. Create a free link or list this version for sale."}
         form method="post" action=(&action) hx-boost="false" data-cad-config-form="" {
             input type="hidden" name="csrf" value=(&csrf);input type="hidden" name="project" value=(scope.project.as_deref().unwrap_or(""));input type="hidden" name="version" value=(version);input type="hidden" name="controls";
@@ -175,6 +185,7 @@ async fn settings(
                 p {"Payments go directly to this address. Your wallet must support payment checks."}
                 (Button::new("List for sale").kind(ButtonType::Submit).attr("name","mode").attr("value","sell").disabled(true))
             }
+        }
         }
         @if !offers.is_empty(){h2 {"For sale"}}
         @for (id,title,sats) in offers {div.oa-cad-config-option {
@@ -223,6 +234,9 @@ async fn publish(
         .is_err()
     {
         return (StatusCode::FORBIDDEN, "Reload the page and try again.").into_response();
+    }
+    if !crate::cad_gate::plan(&app, &headers).await.pro() {
+        return crate::cad_gate::refused();
     }
     let Some(scope) = page_scope(&app, &headers, Some(&form.project))
         .await

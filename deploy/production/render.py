@@ -111,6 +111,9 @@ def main():
         # The production test account (#11601): the site forwards the
         # operator's sign-up so checks never run as the owner.
         plain("OPENAGENTS_WEB_API_OPERATOR_SIGNUP", "1"),
+        # CAD Lab is part of Pro (#11693): the test account passes, and
+        # checks the Free side with X-OpenAgents-Test-Plan: free.
+        plain("OPENAGENTS_WEB_PRO_TEST_ACCOUNTS", "acct_83d16a35955ef908"),
     ] + ([] if args.files else [
         # The actor runtime (#11253, docs/deployment/actors.md) in the
         # account database. Mac jobs go through it only while the live
