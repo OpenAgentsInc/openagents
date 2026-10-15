@@ -8,6 +8,12 @@
 //! The fence lives in the Coder SDK (#11532) so every surface that starts a
 //! session registers the same one ([`hook`]): Coder chat, issue runs, the
 //! briefed agent and Coder One's delegations.
+//!
+//! Scope (owner, #11720): a chat's fence protects only the shared checkout.
+//! Writes elsewhere on the disk (the temp folder, `~/.cargo`, tool caches,
+//! global Git config) stay free, on every platform and harness. A task
+//! session (Solver and issue-run hands) fences the whole disk instead, by
+//! naming `/` as its shared side ([`Boundary::protects`]).
 
 use std::path::{Component, Path, PathBuf};
 
@@ -1194,6 +1200,36 @@ mod tests {
         ] {
             assert!(b.run_refusal(command, wt).is_none(), "{command}");
         }
+    }
+
+    /// #11720 (owner): a chat's fence covers the shared checkout only. The
+    /// rc.20 check's writes: one outside the repository stays free, on
+    /// purpose; one into the shared checkout is refused.
+    #[cfg(windows)]
+    #[test]
+    fn a_chat_fence_is_the_shared_checkout_only() {
+        let b = Boundary {
+            worktree: PathBuf::from("C:\\repo\\.coder\\worktrees\\chat-abc"),
+            shared: PathBuf::from("C:\\repo"),
+            branch: "chat/abc".into(),
+        };
+        let wt = Path::new("C:\\repo\\.coder\\worktrees\\chat-abc");
+        assert!(
+            b.run_refusal("cmd /c \"echo x > %TEMP%\\..\\..\\outside.txt\"", wt)
+                .is_none()
+        );
+        assert!(
+            b.file_refusal("Write", "D:\\elsewhere\\notes.txt", wt)
+                .is_none()
+        );
+        let refused = b
+            .run_refusal("cmd /c \"echo x > %CD%\\..\\..\\..\\shared.txt\"", wt)
+            .expect("a write into the shared checkout is refused");
+        assert!(refused.starts_with("Refused:"), "{refused}");
+        assert!(
+            b.run_refusal("cmd /c \"echo x > C:\\repo\\shared.txt\"", wt)
+                .is_some()
+        );
     }
 
     #[test]

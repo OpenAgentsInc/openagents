@@ -59,3 +59,5 @@ ssh USER@ADDRESS "powershell -Command \"coder --version; opencode --version\""
 
 Undo: `Stop-Service sshd; Set-Service sshd -StartupType Disabled`, and remove
 the key line from `administrators_authorized_keys`.
+
+What to check on each Windows RC: [Windows release-candidate checks](windows-rc-checks.md).
