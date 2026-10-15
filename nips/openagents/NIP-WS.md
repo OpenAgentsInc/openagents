@@ -3,7 +3,11 @@
 `draft` `optional` — v1, 2026-09-26. The [shared contracts](contracts.md)
 are normative. This profile binds projects, resources, documents, checkpoints,
 and client views to the authority that owns their actual state. It introduces
-no event kinds and describes target behavior, not a shipped workbench.
+no event kinds. [`workspace-host`](../../crates/workspace-host/README.md)
+implements Rust core contracts, a conditional Git document owner, scoped
+projections, checkpoints/restoration, and native client reads. The full graphical
+workbench and other domain adapters remain separate. Existing activity summaries
+continue through their resident host owner.
 
 ## Boundaries and existing protocols
 
@@ -21,6 +25,9 @@ an organizational link, not an execution root. A WORK planning project and a
 Block MP repository grouping can both reference a workspace without becoming
 its authority. Equal repository URLs or matching basenames cannot prove that
 two checkouts, worktrees, documents, or workspaces are the same resource.
+
+The [workspace schemas](schemas/workspace.v1.json) describe the core wire
+records. Hosts also enforce the semantic and authority checks below.
 
 All new records contain `v`, `requires: []`, and optional inert `meta`, plus
 exactly their stated fields. Use common IDs, pubkeys, timestamps, bounds,
@@ -516,3 +523,34 @@ attention, unknown members and versions, duplicate keys, a signer or
 recipient mismatch, stale and forked sequences, and a revoked device that gets
 neither new summaries nor wakes. Real APNs and FCM delivery needs installed
 devices and gateway credentials; fixtures do not establish it.
+
+## Rust Git document profile
+
+The initial Rust host profile treats a registered Git branch/file pair as a
+document source. It changes Git refs with an exact expected commit, never the
+worktree index or files. Its encoding is `openagents.git-blob-utf8.v1`. Ref
+history must be enabled and retained: projection positions bind the complete
+reflog prefix by byte length and digest. Missing, rewritten, or excessive
+history requires a new snapshot; a temporary ref change cannot disappear merely
+because the branch returned to the same commit. The host disables repository
+hooks and bounds Git subprocess time and output.
+
+Native authenticated reads use `openagents.ws-resource-read.v1` with `requires`
+and `resource`; retained projection fetches use
+`openagents.ws-projection-fetch.v1` with `requires`, `projection`, `artifact`,
+and `max_bytes`. Callers sign private `3188` requests. These operation inputs
+are closed and do not establish authority from an actor field.
+
+The bounded checkpoint manifest, `openagents.ws-git-checkpoint-manifest.v1`,
+contains `requires`, `binding`, `documents` (ordered `{resource, snapshot}`
+rows), and `exclusions`. Its selection contains at most 16 Git documents. A restoration plan accepts at
+most one document per Git ref; a same-ref batch needs a separate admitted
+operation and refuses before dispatch in this profile.
+Exclusions explicitly name worktree files, staged, untracked, and ignored
+content, engine history, credentials, and processes. Complete coverage means
+complete for that declared document selection. It is a version vector, not a
+cross-store atomic capture. Restoration uses the core plan/admission records
+and an independently captured safety checkpoint. Each exact Git ref change
+leaves its own result; partial restoration retains completed changes and
+unknown outcomes. A restart reconciles attempted steps and does not dispatch
+unattempted destructive steps automatically.

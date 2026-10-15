@@ -11500,6 +11500,7 @@ dependencies = [
  "verse-lagrange",
  "verse-net",
  "verse-world",
+ "workspace-host",
  "world-tree",
  "zeroize",
 ]
@@ -20111,6 +20112,19 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "tokio",
+]
+
+[[package]]
+name = "workspace-host"
+version = "1.0.0-rc.22"
+dependencies = [
+ "fs2",
+ "nostr",
+ "secp256k1 0.31.1",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "workbench",
 ]
 
 [[package]]

@@ -189,8 +189,9 @@ fn apply(
         })?;
         let target = pointer_lookup(target_document, &pointer)?;
         stack.push(frame);
-        apply(closure, &next_document, target, instance, stack)?;
+        let result = apply(closure, &next_document, target, instance, stack);
         stack.pop();
+        result?;
     }
     if let Some(kind) = object.get("type") {
         check_type(kind, instance)?;

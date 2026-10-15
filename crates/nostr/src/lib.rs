@@ -46,5 +46,6 @@ pub mod pylon;
 pub mod read_state_snapshot;
 pub mod run;
 pub mod thread_window;
+pub mod workspace;
 pub mod x402;
 pub mod xp;

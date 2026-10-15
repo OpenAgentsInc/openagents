@@ -2057,3 +2057,11 @@ selected member release and dependency closure. Use `--help` for commands and
 [the registry guide](../../crates/plugin-registry/README.md) for source and policy
 files. Selection is inert; installation and execution keep their existing
 permission checks.
+
+## Workspace documents and views
+
+`openagents workspace` registers explicit Git document sources, reads exact
+versions, prepares conditional changes, and serves scoped finite views. It also
+captures document checkpoints and prepares separately admitted restorations. See
+[the workspace guide](../../crates/workspace-host/README.md) for source
+requirements, limits, and the distinction between a Git ref and worktree files.

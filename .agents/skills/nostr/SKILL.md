@@ -119,7 +119,9 @@ Read the spec before the code. The files you need most often:
   including what it deliberately doesn't advertise.
 
 The OpenAgents lane contains 33 NIPs plus the shared contracts. Status is
-role-specific: SESS has a retained-history observer, WS has activity summaries,
+role-specific: SESS has a retained-history observer; WS has source-owned Git
+documents, conditional changes, checkpoints/restoration, scoped native views,
+and a portable client in `workspace-host`, alongside activity summaries.
 ENV has SSH host management, AUTO has local standing jobs, and SOV has a
 bounded local no-spend lifecycle. Their wider protocol roles, WORK, LIVE, and
 POL/EXT lifecycle additions remain unfinished. The index, glossary, and older
