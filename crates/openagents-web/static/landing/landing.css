@@ -1,0 +1,142 @@
+/* /landing: the homepage in progress (pages/landing.rs). */
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body.landing {
+  background: #000;
+  color: #fff;
+  font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+.landing a { color: inherit; }
+
+.landing-main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  align-items: center;
+  gap: 6vw;
+  padding: 8vh 6vw 4vh;
+  max-width: 1600px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.landing-copy p {
+  font-size: clamp(1.25rem, 1.9vw, 1.75rem);
+  line-height: 1.35;
+  margin: 0 0 1.4em;
+  letter-spacing: -0.01em;
+}
+.landing-lead { display: flex; align-items: center; gap: 0.5em; }
+.landing-mark { width: 1.1em; height: 1.1em; flex: none; }
+.landing-copy .landing-research {
+  font-size: clamp(0.95rem, 1.1vw, 1.1rem);
+  color: rgba(255, 255, 255, 0.8);
+  margin-top: 2.6em;
+}
+.landing-research a { text-decoration: underline; text-underline-offset: 0.25em; }
+.landing-download {
+  display: inline-block;
+  background: #fff;
+  color: #000 !important;
+  text-decoration: none;
+  font-size: clamp(1rem, 1.3vw, 1.3rem);
+  padding: 0.75em 1.6em;
+  border-radius: 999px;
+  margin-top: 0.4em;
+}
+.landing-download:hover { background: #e6e6e6; }
+.landing-download:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+
+/* The shots: stacked, each shown in turn for 6 s. */
+.landing-stage { position: relative; aspect-ratio: 1440 / 1180; }
+.landing-slide {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  opacity: 0;
+  animation: landing-cycle 18s infinite;
+}
+.landing-slide-1 { animation-delay: 6s; }
+.landing-slide-2 { animation-delay: 12s; }
+.landing-frame {
+  flex: 1;
+  min-height: 0;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #111;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.landing-frame img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.landing-slide figcaption { padding-top: 1.1em; display: flex; flex-direction: column; gap: 0.35em; }
+.landing-caption-title { font-size: 1.1rem; }
+.landing-caption-line { color: rgba(255, 255, 255, 0.75); font-size: 1rem; }
+
+@keyframes landing-cycle {
+  0% { opacity: 0; }
+  3% { opacity: 1; }
+  30% { opacity: 1; }
+  34% { opacity: 0; }
+  100% { opacity: 0; }
+}
+
+.landing-dots { display: flex; gap: 6px; justify-content: flex-end; margin-top: -2.6em; height: 2px; }
+.landing-dot {
+  width: 48px;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.25);
+  border-radius: 2px;
+  position: relative;
+  overflow: hidden;
+}
+.landing-dot::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: #fff;
+  transform: scaleX(0);
+  transform-origin: left;
+  animation: landing-fill 18s infinite linear;
+}
+.landing-dot-1::after { animation-delay: 6s; }
+.landing-dot-2::after { animation-delay: 12s; }
+@keyframes landing-fill {
+  0% { transform: scaleX(0); opacity: 1; }
+  33.3% { transform: scaleX(1); opacity: 1; }
+  33.4% { opacity: 0; }
+  100% { transform: scaleX(1); opacity: 0; }
+}
+
+.landing-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 2.5vh 6vw 4vh;
+  font-size: 1rem;
+  color: rgba(255, 255, 255, 0.85);
+  flex-wrap: wrap;
+}
+.landing-badges, .landing-links { display: flex; gap: 1.6rem; align-items: center; flex-wrap: wrap; }
+.landing-footer a { text-decoration: none; }
+.landing-footer a:hover { text-decoration: underline; }
+
+/* Phones and narrow windows: one column, shots under the words. */
+@media (max-width: 900px) {
+  .landing-main { grid-template-columns: 1fr; padding-top: 6vh; gap: 8vh; }
+  .landing-dots { margin-top: 0.8em; }
+}
+
+/* No motion: the first shot stays. */
+@media (prefers-reduced-motion: reduce) {
+  .landing-slide, .landing-dot::after { animation: none; }
+  .landing-slide-0 { opacity: 1; }
+  .landing-dots { display: none; }
+}

@@ -15,6 +15,7 @@ mod everglade;
 pub(crate) mod home;
 mod icecream;
 mod icecream_guide;
+mod landing;
 pub(crate) mod live;
 mod pricing;
 pub(crate) mod profile;
@@ -66,6 +67,7 @@ pub(crate) use stats::utc;
 pub(crate) fn routes() -> Router<App> {
     Router::new()
         .merge(home::routes())
+        .merge(landing::routes())
         .merge(blue_rush::routes())
         .merge(chat::routes())
         .merge(cloud::routes())

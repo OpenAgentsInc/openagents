@@ -235,10 +235,16 @@ async fn every_public_page_answers_in_development() {
         // `/chat/game/card.js`, `/chat/cad/card.js`, #11627), since an
         // answer's card arrives as a fragment. (The Robot Lab's script loads
         // only where a Robot Lab is set up, which this test's server isn't.)
+        // The download page also loads the shell's scripts (the design kit's
+        // among them, for the install commands' Copy buttons).
         let script = uri == "/" || uri == "/live" || uri == "/download";
         assert_eq!(
             scripts(&lower),
-            if uri == "/" { 12 } else { usize::from(script) },
+            match uri {
+                "/" => 12,
+                "/download" => 4,
+                _ => usize::from(script),
+            },
             "{uri} runs a script"
         );
         if uri == "/" || uri == "/download" {
