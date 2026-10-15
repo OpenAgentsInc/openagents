@@ -147,7 +147,7 @@ impl<'a> ClefOperand<'a> {
     }
 }
 
-fn span(
+pub(crate) fn span(
     buffer: &CudaBuffer,
     offset: usize,
     extent: usize,
@@ -176,7 +176,7 @@ fn span(
     }
 }
 
-fn f32s<'a>(buffer: &'a CudaBuffer, extent: usize, what: &str) -> Result<*mut c_void, RuntimeError> {
+pub(crate) fn f32s<'a>(buffer: &'a CudaBuffer, extent: usize, what: &str) -> Result<*mut c_void, RuntimeError> {
     span(buffer, 0, extent, 4, what)
 }
 
@@ -324,13 +324,13 @@ pub const fn hopper_takes(format: ClefWeightFormat, rows: usize, k: usize) -> bo
     rows > 0 && k % 256 == 0 && matches!(format, ClefWeightFormat::Q8_0 | ClefWeightFormat::Q4K)
 }
 
-fn int(value: usize, what: &str) -> Result<i32, RuntimeError> {
+pub(crate) fn int(value: usize, what: &str) -> Result<i32, RuntimeError> {
     i32::try_from(value)
         .map_err(|_| RuntimeError::Backend(format!("clef prefill {what} exceeds i32")))
 }
 
 impl CudaSubmission {
-    fn clef_launch(&mut self, code: i32, operation: &str) -> Result<(), RuntimeError> {
+    pub(crate) fn clef_launch(&mut self, code: i32, operation: &str) -> Result<(), RuntimeError> {
         self.platform.check_raw(code, operation)?;
         self.encoded_operations += 1;
         Ok(())

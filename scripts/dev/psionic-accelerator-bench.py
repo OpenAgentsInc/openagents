@@ -9,6 +9,9 @@ from pathlib import Path
 import subprocess
 
 parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("--families",nargs="+",choices=["router","mnist"],default=["mnist","router"])
+parser.add_argument("--min-tokens",type=int,default=1)
+parser.add_argument("--max-tokens",type=int,default=512)
 parser.add_argument("--binary",type=Path,required=True)
 parser.add_argument("--models",type=Path,required=True)
 parser.add_argument("--ort-library",type=Path,required=True)
@@ -42,13 +45,13 @@ env["CUDA_MODULE_LOADING"]="EAGER"
 env["CUDA_MODULE_DATA_LOADING"]="EAGER"
 if cuda_stack:env["LD_LIBRARY_PATH"]=str(args.cudnn_library.resolve().parent)+":"+env.get("LD_LIBRARY_PATH","")
 with args.output.open("x") as output:
- for family in ["mnist","router"]:
+ for family in args.families:
   for repetition in range(args.rounds):
    for engine in (["ort","native"] if repetition%2==0 else ["native","ort"]):
     device="cuda" if args.platform=="cuda" else ("metal" if engine=="native" else "coreml")
     command=[str(args.binary.resolve()),"--family",family,"--engine",engine,"--device",device,
        "--model-dir",str((args.models/("s1-router" if family=="router" else family)).resolve()),
-       "--threads","4","--samples",str(args.samples),"--ort-library",str(args.ort_library.resolve()),
+       "--threads","4","--samples",str(args.samples),"--min-tokens",str(args.min_tokens),"--max-tokens",str(args.max_tokens),"--ort-library",str(args.ort_library.resolve()),
        "--ort-sha256",args.ort_sha256]
     if engine=="ort":command += ["--allow-cpu-fallback","--profile",str((args.profiles/f"{family}-{repetition}").resolve())]
     if args.cpus:command=["taskset","-c",args.cpus]+command

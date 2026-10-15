@@ -19183,6 +19183,7 @@ mod platform {
 }
 
 pub mod clef_prefill;
+pub mod encoder;
 
 #[cfg(test)]
 mod tests {

@@ -51,10 +51,16 @@ struct Head {
     bias: Vec<f32>,
 }
 
+#[cfg(feature = "native-cuda")]
+mod cuda;
+
 pub struct ModernBertEngine {
+    #[cfg(feature = "native-cuda")]
+    cuda: Option<cuda::Encoder>,
     accelerator: Option<std::sync::Mutex<crate::dense_accelerator::DenseAccelerator>>,
     config: ModernBertConfig,
     embedding: Vec<u8>,
+    vocabulary: usize,
     embedding_norm: Vec<f32>,
     final_norm: Vec<f32>,
     layers: Vec<Layer>,
@@ -176,7 +182,10 @@ impl ModernBertEngine {
             );
         }
         Ok(Self {
+            #[cfg(feature = "native-cuda")]
+            cuda: None,
             accelerator: None,
+            vocabulary: embedding.len() / h,
             embedding,
             embedding_norm: floats(&tensors, "embedding_norm", &[h])?,
             final_norm: floats(&tensors, "final_norm", &[h])?,
@@ -202,6 +211,15 @@ impl ModernBertEngine {
 
     pub fn load_on(root: &Path, threads: usize, device: crate::DeviceChoice) -> Result<Self> {
         let mut model = Self::load(root, threads)?;
+        #[cfg(feature = "native-cuda")]
+        if device == crate::DeviceChoice::Cuda {
+            let encoder = cuda::Encoder::load(&mut model)?;
+            model.identity.provider = "psionic-cuda-encoder".into();
+            model.identity.device = encoder.device.clone();
+            model.identity.cpu_fallback = Some(false);
+            model.cuda = Some(encoder);
+            return Ok(model);
+        }
         if device != crate::DeviceChoice::Cpu {
             let weights: Vec<_> = model
                 .layers
@@ -243,7 +261,7 @@ impl ModernBertEngine {
         }
     }
 
-    fn forward(&self, inputs: &Tensors) -> Result<Tensors> {
+    fn inputs<'a>(&self, inputs: &'a Tensors) -> Result<(&'a [i64], &'a [i64])> {
         if inputs.len() != 2 {
             return Err(Error(
                 "The encoder requires input_ids and attention_mask".into(),
@@ -269,6 +287,17 @@ impl ModernBertEngine {
         if mask.iter().any(|v| ![0, 1].contains(v)) {
             return Err(Error("Attention masks must contain zero or one".into()));
         }
+        if ids
+            .iter()
+            .any(|id| usize::try_from(*id).map_or(true, |id| id >= self.vocabulary))
+        {
+            return Err(Error("Token ID is outside the model vocabulary".into()));
+        }
+        Ok((ids, mask))
+    }
+
+    fn forward(&self, inputs: &Tensors) -> Result<Tensors> {
+        let (ids, mask) = self.inputs(inputs)?;
         let h = self.config.hidden;
         let n = ids.len();
         let mut hidden = Vec::with_capacity(n * h);
@@ -331,6 +360,10 @@ impl ModernBertEngine {
 
 impl ModelEngine for ModernBertEngine {
     fn execution_report(&self) -> serde_json::Value {
+        #[cfg(feature = "native-cuda")]
+        if let Some(cuda) = &self.cuda {
+            return cuda.report();
+        }
         self.accelerator.as_ref().and_then(|a| a.lock().ok()).map_or(serde_json::Value::Null, |a| {
             let mut report=a.report();report["cpu_operations"]=serde_json::json!("embedding gather/dequantization, norms, RoPE, attention, GeGLU, residuals, and head biases");report
         })
@@ -340,6 +373,13 @@ impl ModelEngine for ModernBertEngine {
         &self.identity
     }
     fn run(&mut self, inputs: &Tensors) -> Result<Tensors> {
+        #[cfg(feature = "native-cuda")]
+        {
+            let (ids, mask) = self.inputs(inputs)?;
+            if let Some(cuda) = &mut self.cuda {
+                return cuda.run(ids, mask);
+            }
+        }
         self.pool.install(|| self.forward(inputs))
     }
 }

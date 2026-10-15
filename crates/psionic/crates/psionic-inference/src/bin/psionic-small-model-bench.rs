@@ -36,6 +36,11 @@ enum Units {
 }
 #[derive(Parser)]
 struct Args {
+    /// Time only router cases within this inclusive token interval; preflight still checks all cases.
+    #[arg(long, default_value_t = 1)]
+    min_tokens: usize,
+    #[arg(long, default_value_t = 512)]
+    max_tokens: usize,
     /// Explicit converted ORT-format model for a reduced runtime comparison.
     #[arg(long)]
     ort_model: Option<PathBuf>,
@@ -235,15 +240,28 @@ fn run(args: Args) -> Result<serde_json::Value> {
             "Reference distance {max_distance} exceeds {tolerance}"
         )));
     }
+    let cases: Vec<_> = reference
+        .cases
+        .iter()
+        .filter(|case| {
+            family.is_some()
+                || case.inputs.get("input_ids").is_some_and(|ids| {
+                    ids.shape[1] >= args.min_tokens && ids.shape[1] <= args.max_tokens
+                })
+        })
+        .collect();
+    if cases.is_empty() || args.min_tokens > args.max_tokens {
+        return Err(Error("No reference cases match the token interval".into()));
+    }
     let placement = engine.finish_profiling()?;
     for i in 0..args.warmup {
-        std::hint::black_box(engine.run(&reference.cases[i % reference.cases.len()].inputs)?);
+        std::hint::black_box(engine.run(&cases[i % cases.len()].inputs)?);
     }
     let start = Instant::now();
     let mut durations = Vec::with_capacity(args.samples);
     for i in 0..args.samples {
         let tick = Instant::now();
-        std::hint::black_box(engine.run(&reference.cases[i % reference.cases.len()].inputs)?);
+        std::hint::black_box(engine.run(&cases[i % cases.len()].inputs)?);
         durations.push(tick.elapsed().as_secs_f64() * 1000.0);
     }
     let elapsed = start.elapsed().as_secs_f64();
@@ -262,7 +280,7 @@ fn run(args: Args) -> Result<serde_json::Value> {
     let executable = std::env::current_exe()?;
     Ok(
         json!({"schema":"psionic.small-model.benchmark.v1","model":model,"converted_ort_model_sha256":args.ort_model_sha256,"execution":engine.identity(),"execution_details":engine.execution_report(),"placement_profile":placement,
-        "mode":"engine","samples":args.samples,"warmup":args.warmup,"reference_cases":reference.cases.len(),"max_reference_distance":max_distance,
+        "mode":"engine","min_tokens":args.min_tokens,"max_tokens":args.max_tokens,"timed_cases":cases.len(),"samples":args.samples,"warmup":args.warmup,"reference_cases":reference.cases.len(),"max_reference_distance":max_distance,
         "load_ms":load_ms,"p50_ms":percentile(0.50),"p95_ms":percentile(0.95),"p99_ms":percentile(0.99),
         "requests_per_second":args.samples as f64/elapsed,"timings_ms":durations,
         "resident_bytes":memory("VmRSS:"),"peak_resident_bytes":memory("VmHWM:"),"memory_models_loaded":true,
