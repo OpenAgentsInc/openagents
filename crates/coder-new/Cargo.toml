@@ -27,6 +27,7 @@ coder-delegate = { path = "../coder-delegate" }
 # One host layer in front of every harness: hooks, outcomes, backends, the one Coder tool server (#11495-#11501).
 coder-sdk = { path = "../coder-sdk" }
 code-graph = { path = "../code-graph" }
+code-index = { path = "../code-index" }
 coder-engine-status = { path = "../coder-engine-status" }
 secret-screen = { path = "../secret-screen" }
 code-highlight = { path = "../code-highlight", features = ["grok"] }

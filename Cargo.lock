@@ -3822,6 +3822,7 @@ dependencies = [
  "claude_agent_sdk",
  "code-graph",
  "code-highlight",
+ "code-index",
  "coder",
  "coder-boundary",
  "coder-cloud",

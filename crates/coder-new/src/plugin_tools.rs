@@ -450,6 +450,9 @@ impl ExecutionSettings {
             if crate::code_graph_plugin::offered(&self.cwd) {
                 definitions.extend(crate::code_graph_plugin::definitions());
             }
+            if crate::code_index_plugin::offered(&self.cwd) {
+                definitions.extend(crate::code_index_plugin::definitions());
+            }
             definitions.extend(crate::web_tools::definitions());
             // Media files on this computer (#11172), with the same access as Run.
             definitions.push(crate::media::definition());
@@ -557,6 +560,9 @@ impl ExecutionSettings {
             guidance.push_str(crate::file_tools::INSTRUCTIONS);
             if crate::code_graph_plugin::offered(&self.cwd) {
                 guidance.push_str(crate::code_graph_plugin::INSTRUCTIONS);
+            }
+            if crate::code_index_plugin::offered(&self.cwd) {
+                guidance.push_str(crate::code_index_plugin::INSTRUCTIONS);
             }
             if self.boundary.is_some() {
                 guidance.push_str(crate::checkout_guard::INSTRUCTIONS);
@@ -853,6 +859,12 @@ impl ExecutionSettings {
                     result = crate::connection_tools::execute(account, name, arguments) => result,
                     () = async { while !cancel.load(Ordering::Relaxed) { tokio::time::sleep(std::time::Duration::from_millis(50)).await; } } => Err("The Drive request was canceled.".into()),
                 }
+            }
+            name if crate::code_index_plugin::is_tool(name)
+                && self.shell
+                && crate::code_index_plugin::offered(&self.cwd) =>
+            {
+                crate::code_index_plugin::execute(name, arguments, &self.cwd).await
             }
             name if crate::code_graph_plugin::is_tool(name)
                 && self.shell

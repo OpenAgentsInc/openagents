@@ -7,6 +7,7 @@ pub mod lookup;
 pub mod pilot;
 pub mod private;
 pub mod recipes;
+pub mod runtime;
 pub mod store;
 
 pub fn read_json<T: serde::de::DeserializeOwned>(path: &std::path::Path) -> Result<T, String> {

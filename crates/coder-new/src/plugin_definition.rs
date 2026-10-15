@@ -171,6 +171,15 @@ pub const DEFINITIONS: &[PluginDefinition] = &[
         composer_rails: &[],
     },
     PluginDefinition {
+        id: crate::code_index_plugin::PLUGIN,
+        name: "Code guide",
+        description: crate::code_index_plugin::DESCRIPTION,
+        default_enabled: false,
+        tools: &[],
+        model_provider: None,
+        composer_rails: &[],
+    },
+    PluginDefinition {
         id: crate::code_graph_plugin::PLUGIN,
         name: "Code Graph",
         description: crate::code_graph_plugin::DESCRIPTION,

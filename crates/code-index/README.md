@@ -90,5 +90,14 @@ service's `~/.config/openagents/code-graph.env`; the default is off. Existing
 structural graph publication works independently. Model-quality promotion
 requires the experiment gate, not source verification.
 
+Coder exposes `code_lookup` through its optional **Code guide** plugin. It
+starts off. Enable it in Plugins or with `OPENAGENTS_CODE_INDEX=1` after
+installing an index. `CODE_INDEX_STORE` chooses the store base;
+`CODE_INDEX_WORKSPACE` chooses its workspace (default `local`). Without an
+override the store is under the repository's Git common directory in
+`code-index/`. No tool is offered without a readable installed artifact.
+Lookups record local hashes, status, coverage, and elapsed time in the store's
+private observations directory; they record no question text or source output.
+
 Run `cargo test -p code-index` and `cargo fmt -p code-index`. See the
 [roadmap](../../docs/code-graph/task-index-roadmap.md) for experiment scope.
