@@ -16,7 +16,8 @@
 //! mesh", 2004), and [`principal`] diagonalizes the tensor with a fixed
 //! number of cyclic Jacobi sweeps.
 //!
-//! Hull colliders follow the shape of Genesis's (genesis-world `df30b61a`,
+//! Hull colliders follow the shape of Genesis's
+//! (<https://github.com/Genesis-Embodied-AI/Genesis>, genesis-world `df30b61a`,
 //! Apache-2.0, `genesis/engine/solvers/rigid/collider/`), reimplemented from
 //! the published algorithms; no Genesis code is translated.
 //!

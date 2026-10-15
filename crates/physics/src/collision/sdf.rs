@@ -7,7 +7,8 @@
 //! sphere's center, or points along a capsule's core, each with its
 //! radius. The grid answers the trilinear distance and its gradient, which
 //! is the contact normal. This is the vertex-against-SDF contact of Genesis
-//! (genesis-world `df30b61a`, Apache-2.0, `narrowphase.py`
+//! (<https://github.com/Genesis-Embodied-AI/Genesis>, genesis-world `df30b61a`,
+//! Apache-2.0, `narrowphase.py`
 //! `func_contact_vertex_sdf`, `utils/sdf.py`), reimplemented from the idea;
 //! no Genesis code is translated.
 //!

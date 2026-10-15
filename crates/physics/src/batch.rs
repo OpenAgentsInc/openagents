@@ -1,7 +1,8 @@
 //! Many independent worlds stepped together across threads (issue #11659).
 //!
 //! The idea comes from Genesis's batched scenes (`scene.build(n_envs=...)`,
-//! genesis-world `df30b61a`, Apache-2.0); this is our own code. Each world
+//! <https://github.com/Genesis-Embodied-AI/Genesis>, genesis-world
+//! `df30b61a`, Apache-2.0); this is our own code. Each world
 //! is a full [`World`] with its own bodies, so per-environment parameters
 //! are whatever the builder puts in it. A world never reads another, and
 //! threads only choose which core steps it, so world `i` of a batch is bit

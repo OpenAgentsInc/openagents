@@ -1,7 +1,8 @@
 //! Many independent copies of one MuJoCo scene in one process, stepped across
 //! threads (issue #11659).
 //!
-//! The idea comes from Genesis's `scene.build(n_envs=...)` (genesis-world
+//! The idea comes from Genesis's `scene.build(n_envs=...)`
+//! (<https://github.com/Genesis-Embodied-AI/Genesis>, genesis-world
 //! `df30b61a`, Apache-2.0); nothing here is translated from its code. Every
 //! environment owns its `mjData`. Environments share the loaded `mjModel`
 //! unless their physical parameters are randomised, in which case each gets

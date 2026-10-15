@@ -3,7 +3,9 @@
 // counting-sort grid rebuilt every step, so the order particles are summed
 // in varies between runs: results match the CPU statistically, not bit
 // for bit. Reimplemented from Macklin and Müller, "Position Based Fluids"
-// (2013), and Akinci et al. (2012) boundary particles.
+// (2013), and Akinci et al. (2012) boundary particles. Genesis
+// (https://github.com/Genesis-Embodied-AI/Genesis, Apache-2.0) ships a PBF
+// liquid and is credited as the prompt; none of its code is translated.
 
 struct Params {
     n: u32,

@@ -9,6 +9,12 @@
 //! (`tests::the_gpu_dam_break_matches_the_cpu_reference`). Gameplay stays
 //! on the deterministic CPU solver; this path is for visuals and film.
 //! Surface tension, adhesion and rigid coupling stay CPU-only for now.
+//!
+//! Like the CPU reference, it is reimplemented from the papers (Macklin and
+//! Müller 2013; Akinci et al. 2012). Genesis
+//! (<https://github.com/Genesis-Embodied-AI/Genesis>, genesis-world
+//! `df30b61a`, Apache-2.0) ships a PBF liquid and prompted this module; it
+//! is credited here, and none of its code is translated.
 
 pub mod render;
 #[cfg(test)]

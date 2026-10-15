@@ -6,6 +6,12 @@
 //! when the shapes overlap (van den Bergen, "Proximity Queries and
 //! Penetration Depth Computation on 3D Game Objects", GDC 2001).
 //!
+//! Genesis (<https://github.com/Genesis-Embodied-AI/Genesis>, genesis-world
+//! `df30b61a`, Apache-2.0) has the same GJK and EPA pair in
+//! `genesis/engine/solvers/rigid/collider/` (`gjk.py`, `epa.py`), which is
+//! where this port started (#11656); it is credited here, used as an oracle
+//! for contact sets, and none of its code is translated.
+//!
 //! Each shape is a convex core plus a radius (a sphere is a point, a
 //! capsule a segment, a box or hull radius zero), so rounded shapes cost
 //! nothing extra. Loops run a fixed order with fixed iteration caps and

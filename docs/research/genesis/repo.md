@@ -309,6 +309,22 @@ Issues filed for the top five (all in project 22):
 
   Both would be recorded with their licence when they are added.
 
+**Audit, 2026-10-15 (#11769).** The landed ports (#11656–#11660) credit
+Genesis in their module doc comments: `crates/physics` `collision/hull.rs`,
+`collision/gjk.rs`, `collision/convex.rs`, `collision/sdf.rs`, `cloth.rs`,
+`fluid/mod.rs` and `batch.rs`; `crates/cad/src/collision.rs` (the CoACD and
+grid bake); `crates/robot-sim` `mujoco/batch.rs` and `examples/batch_bench.rs`;
+and `crates/verse-pbr` `fluid/mod.rs` and `fluid/pbf.wgsl`. Each says it was
+reimplemented from papers and behaviour, with no Genesis code translated,
+and a search of those files finds no Genesis kernel or function names
+except the one cited for credit. So no root `NOTICE` entry is needed. No
+Genesis asset is in the repo: comparing the git blob hash of every file
+under the pinned `genesis/assets` (506 files) with every blob in our tree
+matches only the stock Apache-2.0 licence text. The one shared file name,
+`panda_nohand.xml` in `crates/robot-sim/tests/fixtures/franka/`, comes from
+MuJoCo Menagerie at a pinned revision (Apache-2.0, `source.json`), not from
+Genesis.
+
 ## Risks
 
 - **Hull contact is where determinism breaks.** MPR and GJK branch on

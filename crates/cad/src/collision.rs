@@ -12,6 +12,12 @@
 //!   non-convex geometry such as a container or terrain
 //!   ([`physics::SdfGrid`]), in its versioned file format.
 //!
+//! The shape of the bake follows Genesis
+//! (<https://github.com/Genesis-Embodied-AI/Genesis>, genesis-world
+//! `df30b61a`, Apache-2.0): `utils/mesh.py` `convex_decompose` runs CoACD
+//! and caches the pieces, and `utils/sdf.py` precomputes a grid per
+//! geometry. It is credited here; none of its code is translated.
+//!
 //! Both are in metres (the document is in millimetres). The same document
 //! and options give the same bytes: the grid bake is deterministic, and
 //! CoACD runs with a fixed seed.

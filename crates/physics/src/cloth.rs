@@ -12,7 +12,8 @@
 //! Surfaces", 2006): the cotangent-weighted curvature vector of each
 //! four-particle stencil, linear in the positions, which stays stable
 //! where a dihedral-angle constraint flips at a full fold. Genesis's PBD
-//! cloth (genesis-world `df30b61a`, Apache-2.0, `pbd_solver.py`,
+//! cloth (<https://github.com/Genesis-Embodied-AI/Genesis>, genesis-world
+//! `df30b61a`, Apache-2.0, `pbd_solver.py`,
 //! `materials/PBD/cloth.py`) has the same shape; it is credited here and
 //! none of its code is translated.
 //!

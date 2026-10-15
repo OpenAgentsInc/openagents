@@ -15,6 +15,11 @@
 //! Franka chases a new random joint target every half second, the SO-101
 //! runs a grasp cycle against the table cube, and the pile is timed from
 //! the drop with sleep off.
+//!
+//! The metric follows Genesis's batched-environment benchmark
+//! (<https://github.com/Genesis-Embodied-AI/Genesis>, genesis-world
+//! `df30b61a`, Apache-2.0, `tests/test_rigid.py`), with real time per
+//! environment added so idle or tiny scenes cannot inflate it.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
