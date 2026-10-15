@@ -977,3 +977,46 @@ fn the_gateway_judges_the_terminal_bench_tasks() {
         println!("recorded into {}", path.display());
     }
 }
+
+/// #11689: what the OpenCode plugin's description says. With OpenCode on
+/// and Claude Code off, a new chat that opens with a quick question gets a
+/// cheap answer from the Coder loop (and keeps it: a chat never hops,
+/// #11556); one that opens with repository work runs on OpenCode.
+#[test]
+fn a_new_chat_opens_on_opencode_unless_it_starts_with_a_quick_question() {
+    let situation = Situation {
+        admitted: vec![Harness::OpenCode, Harness::CoderLoop],
+        preferred: None,
+        payers: vec![
+            (Harness::OpenCode, Payer::OpenCode),
+            (Harness::CoderLoop, Payer::GatewayCredits),
+        ],
+        current: None,
+        claude_five_hour: None,
+        time_weight: crate::preferences::BALANCED_TIME_WEIGHT,
+        pins: Vec::new(),
+    };
+    let judgment = |kind, needs_repo| Judgment {
+        kind,
+        size: Size::Small,
+        needs_repo,
+        own_tools: false,
+        risk: Risk::Low,
+        new_work: None,
+    };
+    assert_eq!(
+        policy(&judgment(Kind::Answer, false), &situation),
+        Decision {
+            harness: Harness::CoderLoop,
+            step: Step::CheapAnswer
+        }
+    );
+    assert_eq!(
+        policy(&judgment(Kind::RepoChange, true), &situation).harness,
+        Harness::OpenCode
+    );
+    assert_eq!(
+        policy(&judgment(Kind::Answer, true), &situation).harness,
+        Harness::OpenCode
+    );
+}
