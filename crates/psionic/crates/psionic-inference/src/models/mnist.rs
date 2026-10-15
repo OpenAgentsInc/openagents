@@ -13,11 +13,15 @@ mod simd;
 
 #[cfg(feature = "native-cuda")]
 mod cuda;
+#[cfg(feature = "native-metal")]
+mod metal;
 
 pub struct MnistEngine {
     buffers: crate::buffers::Buffers,
     #[cfg(feature = "native-cuda")]
     cuda: Option<cuda::Digit>,
+    #[cfg(feature = "native-metal")]
+    metal: Option<metal::Digit>,
     accelerator: Option<std::sync::Mutex<crate::dense_accelerator::DenseAccelerator>>,
     conv1: Vec<f32>,
     bias1: Vec<f32>,
@@ -39,6 +43,8 @@ impl MnistEngine {
             buffers: crate::buffers::Buffers::default(),
             #[cfg(feature = "native-cuda")]
             cuda: None,
+            #[cfg(feature = "native-metal")]
+            metal: None,
             accelerator: None,
             conv1: floats(&tensors, "conv1.weight", &[8, 1, 5, 5])?,
             bias1: floats(&tensors, "conv1.bias", &[8])?,
@@ -64,6 +70,15 @@ impl MnistEngine {
             model.identity.device = digit.device.clone();
             model.identity.cpu_fallback = Some(false);
             model.cuda = Some(digit);
+            return Ok(model);
+        }
+        #[cfg(feature = "native-metal")]
+        if device == crate::DeviceChoice::Metal {
+            let gpu = metal::Digit::load(&mut model)?;
+            model.identity.provider = "psionic-metal-digit".into();
+            model.identity.device = gpu.device.clone();
+            model.identity.cpu_fallback = Some(false);
+            model.metal = Some(gpu);
             return Ok(model);
         }
         if device != crate::DeviceChoice::Cpu {
@@ -160,10 +175,36 @@ impl MnistEngine {
 
     fn forward(&self, inputs: &Tensors) -> Result<Tensors> {
         let pixels = Self::pixels(inputs)?;
-        let first = self.convolution(pixels, 1, 28, &self.conv1, &self.bias1, 1)?;
-        let pooled = max_pool_cached(&first, 8, 28, 2, &self.buffers);
-        self.buffers.give(first);
-        let first = pooled;
+        #[cfg(target_arch = "x86_64")]
+        let fused = self.accelerator.is_none()
+            && std::arch::is_x86_feature_detected!("avx2")
+            && std::arch::is_x86_feature_detected!("fma");
+        #[cfg(not(target_arch = "x86_64"))]
+        let fused = false;
+        let first = if fused {
+            #[cfg(target_arch = "x86_64")]
+            // SAFETY: both CPU features were checked and this is the pinned 28-to-14 stage.
+            unsafe {
+                simd::conv_relu(
+                    pixels,
+                    1,
+                    28,
+                    &self.conv1,
+                    &self.bias1,
+                    false,
+                    28,
+                    &self.buffers,
+                    true,
+                )
+            }
+            #[cfg(not(target_arch = "x86_64"))]
+            unreachable!()
+        } else {
+            let first = self.convolution(pixels, 1, 28, &self.conv1, &self.bias1, 1)?;
+            let pooled = max_pool_cached(&first, 8, 28, 2, &self.buffers);
+            self.buffers.give(first);
+            pooled
+        };
         let second = self.convolution(&first, 8, 14, &self.conv2, &self.bias2, 2)?;
         self.buffers.give(first);
         let pooled = max_pool_cached(&second, 16, 14, 3, &self.buffers);
@@ -193,6 +234,10 @@ impl MnistEngine {
 
 impl ModelEngine for MnistEngine {
     fn execution_report(&self) -> serde_json::Value {
+        #[cfg(feature = "native-metal")]
+        if let Some(metal) = &self.metal {
+            return metal.report();
+        }
         #[cfg(feature = "native-cuda")]
         if let Some(cuda) = &self.cuda {
             return cuda.report();
@@ -205,7 +250,7 @@ impl ModelEngine for MnistEngine {
                 let simd=std::arch::is_x86_feature_detected!("avx2") && std::arch::is_x86_feature_detected!("fma");
                 #[cfg(not(target_arch="x86_64"))]
                 let simd=false;
-                serde_json::json!({"placement":"CPU","convolution":if simd {"AVX2/FMA with four channels and sixteen spatial pixels per group"} else {"portable scalar"},"requested_thread_budget":self.identity.threads,"convolution_parallelism":if simd {1} else {self.identity.threads},"cached_activation_bytes":self.buffers.cached_bytes()})
+                serde_json::json!({"placement":"CPU","convolution":if simd {"AVX2/FMA with four channels and sixteen spatial pixels per group"} else {"portable scalar"},"requested_thread_budget":self.identity.threads,"convolution_parallelism":if simd {1} else {self.identity.threads},"first_stage_pooling":if simd {"fused with convolution"} else {"separate"},"cached_activation_bytes":self.buffers.cached_bytes()})
             }, |a| {
                 let mut report = a.report();
                 report["cpu_operations"] = serde_json::json!(
@@ -219,6 +264,10 @@ impl ModelEngine for MnistEngine {
         &self.identity
     }
     fn run(&mut self, inputs: &Tensors) -> Result<Tensors> {
+        #[cfg(feature = "native-metal")]
+        if let Some(metal) = &mut self.metal {
+            return metal.run(Self::pixels(inputs)?);
+        }
         #[cfg(feature = "native-cuda")]
         if let Some(cuda) = &mut self.cuda {
             return cuda.run(Self::pixels(inputs)?);
@@ -249,7 +298,7 @@ fn conv_relu(
         // SAFETY: both required CPU features were checked; the pinned model supplies fixed dimensions.
         return unsafe {
             simd::conv_relu(
-                input, channels, width, weights, bias, parallel, rows, buffers,
+                input, channels, width, weights, bias, parallel, rows, buffers, false,
             )
         };
     }
@@ -475,6 +524,39 @@ mod tests {
             }
         }
     }
+    #[cfg(target_arch = "x86_64")]
+    #[test]
+    fn fused_first_stage_matches_scalar_convolution_and_pooling() {
+        if !std::arch::is_x86_feature_detected!("avx2")
+            || !std::arch::is_x86_feature_detected!("fma")
+        {
+            return;
+        }
+        let input: Vec<_> = (0..784)
+            .map(|i| ((i * 13 % 37) as f32 - 18.0) / 19.0)
+            .collect();
+        let weights: Vec<_> = (0..8 * 25)
+            .map(|i| ((i * 7 % 29) as f32 - 14.0) / 31.0)
+            .collect();
+        let bias = vec![-0.1; 8];
+        let buffers = crate::buffers::Buffers::default();
+        let expected = max_pool(&conv_relu_scalar(&input, 1, 28, &weights, &bias), 8, 28, 2);
+        for _ in 0..3 {
+            // SAFETY: features and complete pinned dimensions were checked.
+            let actual = unsafe {
+                simd::conv_relu(&input, 1, 28, &weights, &bias, false, 28, &buffers, true)
+            };
+            assert_eq!(actual.len(), expected.len());
+            assert!(
+                actual
+                    .iter()
+                    .zip(&expected)
+                    .all(|(a, b)| (a - b).abs() < 1e-5)
+            );
+            buffers.give(actual);
+        }
+    }
+
     #[test]
     fn cropped_convolution_preserves_every_pooled_value() {
         let width = 14;

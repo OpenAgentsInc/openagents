@@ -62,9 +62,16 @@ async fn check_engine(
         RouterService::load_on(root, engine, 4, library, checksum, device, false).unwrap();
     let served = RouterService::load_on(root, engine, 4, library, checksum, device, false).unwrap();
     let expected_entry = served.model_entry();
-    if device == DeviceChoice::Cuda && engine == EngineKind::Native {
+    if device != DeviceChoice::Cpu && engine == EngineKind::Native {
         assert_eq!(served.identity().cpu_fallback, Some(false));
-        assert_eq!(served.identity().provider, "psionic-cuda-encoder");
+        assert_eq!(
+            served.identity().provider,
+            if device == DeviceChoice::Cuda {
+                "psionic-cuda-encoder"
+            } else {
+                "psionic-metal-encoder"
+            }
+        );
     }
     let router = psionic_inference::http::router(served, 2).unwrap();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -128,4 +135,13 @@ async fn check_engine(
     );
     server.abort();
     let _ = server.await;
+}
+
+#[cfg(all(feature = "native-metal", target_os = "macos"))]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires pinned router artifacts and an Apple GPU"]
+async fn native_metal_http_matches_in_process_and_reports_no_cpu_fallback() {
+    let root =
+        PathBuf::from(std::env::var_os("PSIONIC_ROUTER_MODEL_DIR").expect("model directory"));
+    check_engine(&root, EngineKind::Native, DeviceChoice::Metal, None, None).await;
 }

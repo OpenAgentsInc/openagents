@@ -60,11 +60,15 @@ struct Head {
 
 #[cfg(feature = "native-cuda")]
 mod cuda;
+#[cfg(feature = "native-metal")]
+mod metal;
 
 pub struct ModernBertEngine {
     buffers: Buffers,
     #[cfg(feature = "native-cuda")]
     cuda: Option<cuda::Encoder>,
+    #[cfg(feature = "native-metal")]
+    metal: Option<metal::Encoder>,
     accelerator: Option<std::sync::Mutex<crate::dense_accelerator::DenseAccelerator>>,
     config: ModernBertConfig,
     embedding: Vec<u8>,
@@ -211,6 +215,8 @@ impl ModernBertEngine {
             buffers: Buffers::default(),
             #[cfg(feature = "native-cuda")]
             cuda: None,
+            #[cfg(feature = "native-metal")]
+            metal: None,
             accelerator: None,
             vocabulary: embedding.len() / h,
             embedding,
@@ -260,6 +266,15 @@ impl ModernBertEngine {
             model.identity.device = encoder.device.clone();
             model.identity.cpu_fallback = Some(false);
             model.cuda = Some(encoder);
+            return Ok(model);
+        }
+        #[cfg(feature = "native-metal")]
+        if device == crate::DeviceChoice::Metal {
+            let gpu = metal::Encoder::load(&mut model)?;
+            model.identity.provider = "psionic-metal-encoder".into();
+            model.identity.device = gpu.device.clone();
+            model.identity.cpu_fallback = Some(false);
+            model.metal = Some(gpu);
             return Ok(model);
         }
         if device != crate::DeviceChoice::Cpu {
@@ -436,6 +451,10 @@ impl ModernBertEngine {
 
 impl ModelEngine for ModernBertEngine {
     fn execution_report(&self) -> serde_json::Value {
+        #[cfg(feature = "native-metal")]
+        if let Some(metal) = &self.metal {
+            return metal.report();
+        }
         #[cfg(feature = "native-cuda")]
         if let Some(cuda) = &self.cuda {
             return cuda.report();
@@ -471,6 +490,13 @@ impl ModelEngine for ModernBertEngine {
         &self.identity
     }
     fn run(&mut self, inputs: &Tensors) -> Result<Tensors> {
+        #[cfg(feature = "native-metal")]
+        {
+            let (ids, mask) = self.inputs(inputs)?;
+            if let Some(metal) = &mut self.metal {
+                return metal.run(ids, mask);
+            }
+        }
         #[cfg(feature = "native-cuda")]
         {
             let (ids, mask) = self.inputs(inputs)?;

@@ -16187,3 +16187,10 @@ mod tests {
         Ok(())
     }
 }
+
+#[cfg(target_os = "macos")]
+pub mod small_models;
+
+#[cfg(not(target_os = "macos"))]
+#[path = "small_models_stub.rs"]
+pub mod small_models;

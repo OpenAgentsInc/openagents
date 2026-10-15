@@ -13,6 +13,7 @@ pub(super) unsafe fn conv_relu(
     parallel: bool,
     rows: usize,
     buffers: &crate::buffers::Buffers,
+    pool_two: bool,
 ) -> Vec<f32> {
     let stride = width.div_ceil(16) * 16 + 4;
     let height = width + 4;
@@ -25,7 +26,13 @@ pub(super) unsafe fn conv_relu(
         }
     }
     assert!(rows > 0 && rows <= width);
-    let mut output = buffers.take(bias.len() * rows * width);
+    assert!(!pool_two || (width == 28 && rows == 28 && bias.len() % 4 == 0));
+    let plane_len = if pool_two {
+        rows * width / 4
+    } else {
+        rows * width
+    };
+    let mut output = buffers.take(bias.len() * plane_len);
     let group = if bias.len() % 4 == 0 { 4 } else { 1 };
     let work = |block: usize, planes: &mut [f32]| {
         let oc = block * group;
@@ -43,6 +50,7 @@ pub(super) unsafe fn conv_relu(
                     oc,
                     &bias[oc..oc + 4],
                     planes,
+                    pool_two,
                 ),
                 _ => convolve_plane(
                     &padded, channels, width, rows, height, stride, weights, oc, bias[oc], planes,
@@ -52,11 +60,11 @@ pub(super) unsafe fn conv_relu(
     };
     if parallel {
         output
-            .par_chunks_mut(group * rows * width)
+            .par_chunks_mut(group * plane_len)
             .enumerate()
             .for_each(|(g, p)| work(g, p));
     } else {
-        for (g, p) in output.chunks_mut(group * rows * width).enumerate() {
+        for (g, p) in output.chunks_mut(group * plane_len).enumerate() {
             work(g, p);
         }
     }
@@ -125,6 +133,7 @@ unsafe fn convolve_four_wide(
     oc: usize,
     bias: &[f32],
     planes: &mut [f32],
+    pool_two: bool,
 ) {
     for y in 0..rows {
         for x in (0..width).step_by(16) {
@@ -181,6 +190,35 @@ unsafe fn convolve_four_wide(
                         _mm256_add_ps(sum, _mm256_set1_ps(bias[plane])),
                         _mm256_setzero_ps(),
                     );
+                    if pool_two {
+                        let pairs = _mm256_max_ps(value, _mm256_permute_ps::<0xb1>(value));
+                        let packed = _mm256_castps256_ps128(_mm256_permutevar8x32_ps(
+                            pairs,
+                            _mm256_setr_epi32(0, 2, 4, 6, 0, 2, 4, 6),
+                        ));
+                        let offset =
+                            plane * (rows / 2) * (width / 2) + (y / 2) * (width / 2) + start / 2;
+                        let count = 8.min(width - start) / 2;
+                        let mask = _mm_set_epi32(0, 0, -1, -1);
+                        // SAFETY: full groups contain four pooled pixels; the final group contains two.
+                        unsafe {
+                            let target = planes.as_mut_ptr().add(offset);
+                            let previous = if y % 2 == 0 {
+                                _mm_setzero_ps()
+                            } else if count == 4 {
+                                _mm_loadu_ps(target)
+                            } else {
+                                _mm_maskload_ps(target, mask)
+                            };
+                            let pooled = _mm_max_ps(packed, previous);
+                            if count == 4 {
+                                _mm_storeu_ps(target, pooled);
+                            } else {
+                                _mm_maskstore_ps(target, mask, pooled);
+                            }
+                        }
+                        continue;
+                    }
                     let offset = plane * rows * width + y * width + start;
                     let count = 8.min(width - start);
                     if count == 8 {
