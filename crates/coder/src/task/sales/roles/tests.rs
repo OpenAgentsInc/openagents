@@ -364,6 +364,7 @@ fn self_referral_and_malformed_sources_enter_bounded_review() {
                 source_only: false,
             }),
             consent_version: Some(CONSENT.into()),
+            campaign: None,
             captured_at: 999,
         },
         accounts_revision: format!("sha256:{}", "0".repeat(64)),
