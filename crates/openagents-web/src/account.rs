@@ -120,7 +120,7 @@ async fn fetch_picture(url: &str, size: u32) -> Option<(String, Vec<u8>)> {
 }
 
 /// The Cloud session cookie ([`crate::cloud::session`]).
-const SESSION_COOKIE: &str = "oa_cloud_session";
+pub(crate) const SESSION_COOKIE: &str = "oa_cloud_session";
 
 /// The visitor's account standing for this page.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -213,7 +213,7 @@ fn wants_html(headers: &HeaderMap) -> bool {
         .is_some_and(|accept| accept.contains("text/html"))
 }
 
-fn has_session(headers: &HeaderMap) -> bool {
+pub(crate) fn has_session(headers: &HeaderMap) -> bool {
     headers
         .get_all(header::COOKIE)
         .iter()

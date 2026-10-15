@@ -10,7 +10,7 @@
 use axum::Router;
 use axum::extract::{Query, State};
 use axum::http::HeaderMap;
-use axum::response::Response;
+use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use maud::{Markup, html};
 use openagents_chat::home_cards::{HOME_CARDS, HomeCard};
@@ -65,15 +65,14 @@ struct Home {
 /// homepage shows the landing page instead.
 pub(crate) const NEW: &str = "/new";
 
-/// Whether `/` shows the landing page (`super::landing`): to a visitor who
-/// isn't signed in. A signed-in person's `/` is their new chat, as before;
-/// a project's "New chat" link (`?project=`) always opens the chat.
-fn shows_landing(account: &crate::account::Account, project: Option<&str>) -> bool {
-    project.is_none()
-        && matches!(
-            account,
-            crate::account::Account::SignedOut | crate::account::Account::Unknown
-        )
+/// Whether `/` shows the landing page (`super::landing`): to a visitor
+/// with no session, decided from the request itself so every kind of
+/// request agrees (an in-page navigation, an API client, a page load).
+/// Anyone with a session gets their new chat, as before; a project's "New
+/// chat" link (`?project=`) always opens the chat. A session that has
+/// expired still gets the chat page, which asks them to log in again.
+fn shows_landing(headers: &HeaderMap, project: Option<&str>) -> bool {
+    project.is_none() && !crate::account::has_session(headers)
 }
 
 async fn new_chat(
@@ -95,7 +94,12 @@ async fn home(
     query: Result<Query<Home>, axum::extract::rejection::QueryRejection>,
 ) -> Response {
     let query = query.map(|q| q.0).unwrap_or_default();
-    if shows_landing(&crate::account::current(), query.project.as_deref()) {
+    if shows_landing(&headers, query.project.as_deref()) {
+        // An in-page navigation (HTMX) can't swap in a page with its own
+        // stylesheet: load it whole.
+        if headers.contains_key("hx-request") {
+            return ([("HX-Redirect", "/")], "").into_response();
+        }
         return super::landing::respond(&headers);
     }
     page(&app, &headers, query.project.as_deref(), None).await
@@ -163,4 +167,32 @@ pub(crate) async fn page(
     let mut response = crate::chat_html::protect(page.respond(&headers));
     super::chat::cookie(&app, &owner, fresh.is_some(), &mut response);
     response
+}
+
+#[cfg(test)]
+mod landing_tests {
+    use super::*;
+    use axum::http::{HeaderValue, header};
+
+    fn with_cookie(cookie: &str) -> HeaderMap {
+        let mut headers = HeaderMap::new();
+        headers.insert(header::COOKIE, HeaderValue::from_str(cookie).unwrap());
+        headers
+    }
+
+    /// `/` is the landing page only to a visitor with no session, whatever
+    /// kind of request it is; a session (even one sent by a client that
+    /// asks for no HTML) gets the chat, and a project link always does.
+    #[test]
+    fn the_landing_page_is_for_visitors_without_a_session() {
+        let session = format!("{}=abc", crate::account::SESSION_COOKIE);
+        assert!(shows_landing(&HeaderMap::new(), None));
+        assert!(shows_landing(&with_cookie("theme=dark"), None));
+        assert!(!shows_landing(&with_cookie(&session), None));
+        assert!(!shows_landing(
+            &with_cookie(&format!("a=b; {session}")),
+            None
+        ));
+        assert!(!shows_landing(&HeaderMap::new(), Some("prj_1")));
+    }
 }
