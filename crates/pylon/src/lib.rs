@@ -43,6 +43,7 @@ pub mod job;
 pub mod league;
 pub mod lease;
 pub mod market;
+pub mod model_id;
 pub mod paid;
 pub mod pool;
 pub mod provider;

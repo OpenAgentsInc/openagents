@@ -59,6 +59,8 @@ Commands:
       --decide URL          The local decision server (default
                             http://127.0.0.1:18096).
       --items N             How many reference items (default 64).
+      --model-file PATH     The GGUF the server loaded, when it is not the
+                            pinned download or ~/.openagents/models' copy.
   calibrate run             Answer seeded decision items and write them as JSON
                             lines, for comparing machines or models.
       --decide URL          The decision server (default http://127.0.0.1:18096).
@@ -453,14 +455,18 @@ async fn serve(
         match clef.refresh().await {
             Ok(found) => {
                 eprintln!("pylon: decisions from {} at {url}", found.advertised());
-                if let Some(digest) = &found.artifact_digest {
-                    match crate::calibrate::may_serve(&home(), digest)? {
+                if let Some(id) = found
+                    .artifact_digest
+                    .as_deref()
+                    .and_then(|digest| crate::setup::model_id_for(digest, None))
+                {
+                    match crate::calibrate::may_serve(&home(), &id)? {
                         Some(check) => eprintln!(
                             "pylon: self-check passed at {} ({:.1}% of simulated rounds)",
                             check.at,
                             check.round_pass * 100.0
                         ),
-                        None if crate::calibrate::shipped_reference(digest).is_some() => {
+                        None if crate::calibrate::shipped_reference(&id).is_some() => {
                             eprintln!(
                                 "pylon: no self-check for this model yet; run `openagents pylon selfcheck --decide {url}` so checkers' rounds pass"
                             );
@@ -1172,7 +1178,15 @@ async fn calibrate(json_out: bool, args: &mut Args) -> Result<(), String> {
             if let Some(extra) = args.words.first() {
                 return Err(format!("unexpected argument `{extra}`"));
             }
-            let server = crate::calibrate::Server::new(&url, &model)?;
+            let mut server = crate::calibrate::Server::new(&url, &model)?;
+            // Stamp the model id the served file resolves to here, so a
+            // reference made from this run keys on the weights.
+            server.model_id = crate::decide::Clef::new(&url, Some(&model))?
+                .refresh()
+                .await
+                .ok()
+                .and_then(|found| found.artifact_digest)
+                .and_then(|digest| crate::setup::model_id_for(&digest, None));
             let mut done = 0u32;
             let run = crate::calibrate::run(&server, seed, count, out.as_deref(), |a| {
                 done += 1;
@@ -1192,6 +1206,7 @@ async fn calibrate(json_out: bool, args: &mut Args) -> Result<(), String> {
             emit(
                 json_out,
                 &json!({"items": run.len(), "unusable": unusable, "seed": seed,
+                        "model_id": server.model_id,
                         "artifact_digest": run.first().and_then(|a| a.artifact_digest.clone()),
                         "backend": run.first().and_then(|a| a.backend.clone()),
                         "mean_ms": ms / run.len().max(1) as u64, "out": out}),
@@ -1267,10 +1282,11 @@ async fn selfcheck(json_out: bool, args: &mut Args) -> Result<(), String> {
         .value("--decide")?
         .unwrap_or_else(|| DEFAULT_DECIDE.into());
     let limit = usize::try_from(args.number("--items", 64)?.clamp(8, 10_000)).unwrap_or(64);
+    let model_file = args.value("--model-file")?.map(PathBuf::from);
     if let Some(extra) = args.words.first() {
         return Err(format!("unexpected argument `{extra}`"));
     }
-    let check = run_selfcheck(&url, limit, json_out).await?;
+    let check = run_selfcheck(&url, limit, json_out, model_file.as_deref()).await?;
     let text = format!(
         "{}: {} items on {} ({}), distance median {:.4}, max {:.4}; simulated rounds {:.2}% pass, {:.2}% strike; {:.2} decisions/s",
         if check.pass { "PASS" } else { "FAIL" },
@@ -1295,21 +1311,31 @@ async fn selfcheck(json_out: bool, args: &mut Args) -> Result<(), String> {
     }
 }
 
-/// Run and keep a self-check of the decision server at `url`.
+/// Run and keep a self-check of the decision server at `url`. The
+/// server names its file's sha256; the reference is looked up by the
+/// model id that file resolves to here (`model_file`, when given, is the
+/// GGUF the server loaded).
 pub(crate) async fn run_selfcheck(
     url: &str,
     limit: usize,
     quiet: bool,
+    model_file: Option<&std::path::Path>,
 ) -> Result<crate::calibrate::SelfCheck, String> {
     let clef = crate::decide::Clef::new(url, None)?;
     let found = clef.refresh().await?;
     let digest = found.artifact_digest.clone().ok_or(
         "the decision server names no artifact digest, so there is nothing to check it against",
     )?;
-    let reference = crate::calibrate::shipped_reference(&digest).ok_or_else(|| {
+    let model_id = crate::setup::model_id_for(&digest, model_file).ok_or_else(|| {
         format!(
-            "no reference set ships for {digest}; the pinned model is Clef-Flash Q4_K_M ({})",
-            crate::setup::CLEF_FLASH_SHA256
+            "the server's model file ({digest}) is not the pinned download and no GGUF here has that hash; \
+             pass the file it loaded with --model-file PATH"
+        )
+    })?;
+    let reference = crate::calibrate::shipped_reference(&model_id).ok_or_else(|| {
+        format!(
+            "no reference set ships for {model_id} (file {digest}); the pinned model is Clef-Flash Q4_K_M ({})",
+            crate::setup::CLEF_FLASH_MODEL_ID
         )
     })?;
     let server = crate::calibrate::Server::new(url, &found.model)?;
@@ -1360,7 +1386,7 @@ async fn setup(json_out: bool, args: &mut Args, update: bool) -> Result<(), Stri
         return Err(format!("unexpected argument `{extra}`"));
     }
     let path = crate::setup::model_path();
-    let mut state = crate::setup::model_state(&path, crate::setup::CLEF_FLASH_SHA256, update);
+    let mut state = crate::setup::model_state(&path, crate::setup::CLEF_FLASH_MODEL_ID, update);
     let fetched = !state.verified;
     if fetched {
         if !json_out {
@@ -1388,11 +1414,18 @@ async fn setup(json_out: bool, args: &mut Args, update: bool) -> Result<(), Stri
             },
         )
         .await?;
-        state = crate::setup::model_state(&path, crate::setup::CLEF_FLASH_SHA256, false);
+        state = crate::setup::model_state(&path, crate::setup::CLEF_FLASH_MODEL_ID, false);
+        if !state.verified {
+            return Err(format!(
+                "the download's tensors are not the pinned model's ({:?}, wanted {})",
+                state.model_id,
+                crate::setup::CLEF_FLASH_MODEL_ID
+            ));
+        }
     }
     let server = crate::setup::find_server();
     let check = if crate::setup::serving(&decide).await.is_some() {
-        Some(run_selfcheck(&decide, 64, json_out).await?)
+        Some(run_selfcheck(&decide, 64, json_out, None).await?)
     } else {
         None
     };
@@ -1405,13 +1438,18 @@ async fn setup(json_out: bool, args: &mut Args, update: bool) -> Result<(), Stri
         json_out,
         &json!({"model": state, "fetched": fetched, "server": server, "selfcheck": check, "next": next}),
         &format!(
-            "model {} ({})\nserver {}\n{}next: {}",
+            "model {} ({}{})\nserver {}\n{}next: {}",
             path.display(),
             if fetched {
                 "downloaded and verified"
             } else {
-                "already the pinned file"
+                "already the pinned model"
             },
+            state
+                .sha256
+                .as_deref()
+                .map(|sha| format!(", file sha256 {}…", &sha[..sha.len().min(8)]))
+                .unwrap_or_default(),
             server
                 .as_ref()
                 .map_or_else(|| "not installed".into(), |p| p.display().to_string()),
@@ -1452,8 +1490,8 @@ async fn start(
             )
         })?;
         let model = crate::setup::model_path();
-        if !crate::setup::model_state(&model, crate::setup::CLEF_FLASH_SHA256, false).verified {
-            return Err("the decision model is missing or not the pinned file; run `openagents pylon setup`".into());
+        if !crate::setup::model_state(&model, crate::setup::CLEF_FLASH_MODEL_ID, false).verified {
+            return Err("the decision model is missing or not the pinned model; run `openagents pylon setup`".into());
         }
         let device = device.unwrap_or_else(|| crate::setup::fit(&crate::setup::host()).device);
         let log = home().join("psionic-decide.log");
@@ -1496,15 +1534,15 @@ async fn start(
             tokio::time::sleep(Duration::from_secs(3)).await;
         }
     }
-    let digest = crate::setup::serving(&url)
+    let model_id = crate::setup::serving(&url)
         .await
-        .and_then(|s| s["artifact_digest"].as_str().map(str::to_string))
+        .and_then(|s| s["model_id"].as_str().map(str::to_string))
         .unwrap_or_default();
-    if crate::calibrate::shipped_reference(&digest).is_some()
-        && crate::calibrate::may_serve(&home(), &digest)?.is_none()
+    if crate::calibrate::shipped_reference(&model_id).is_some()
+        && crate::calibrate::may_serve(&home(), &model_id)?.is_none()
     {
         eprintln!("pylon: self-checking this computer before it serves");
-        let check = run_selfcheck(&url, 64, json_out).await?;
+        let check = run_selfcheck(&url, 64, json_out, None).await?;
         if !check.pass {
             return Err(format!(
                 "the self-check failed ({:.1}% of rounds pass, worst item {:.3}); not serving",

@@ -32842,7 +32842,7 @@
                 ]
               }
             ],
-            "summary": "Answer the shipped reference decisions on this computer and compare them with the reference; serve refuses decisions after a failed self-check. --decide URL          The local decision server (default http://127.0.0.1:18096). --items N             How many reference items (default 64).",
+            "summary": "Answer the shipped reference decisions on this computer and compare them with the reference; serve refuses decisions after a failed self-check. --decide URL          The local decision server (default http://127.0.0.1:18096). --items N             How many reference items (default 64). --model-file PATH     The GGUF the server loaded, when it is not the pinned download or ~/.openagents/models' copy.",
             "effect": "local_write",
             "runs_on": "connected_computer"
           }
@@ -33522,6 +33522,14 @@
           "kind": "option",
           "name": "items",
           "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "model-file",
+          "value": "PATH",
           "open": true,
           "optional": true,
           "repeated": true

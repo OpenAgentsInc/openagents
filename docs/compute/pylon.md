@@ -101,13 +101,17 @@ and the last self-check. Every block comes with the command that fixes it,
 and it writes nothing. A pylon needs no inbound port: it dials out to the
 relay. `setup` downloads `ggml-org/Clef-Flash-GGUF` at revision `6b4fe4c5`
 and checks its size and sha256 (`36261166…6868a2`) before the file takes
-its name in `~/.openagents/models`. `start` runs Psionic's decision lane
+its name in `~/.openagents/models`. A model is identified by its weights,
+not its file: the model id is a sha256 over every tensor's name, shape,
+type and bytes (`gguf-tensors:sha256:2e417b22…`), so a copy whose header
+metadata differs is still the pinned model; `doctor` shows the file's
+sha256 beside it. `start` runs Psionic's decision lane
 on `127.0.0.1:18096` (or uses one already answering there), self-checks it
 when this model has no passing self-check, and then serves decisions only
 with `serve`'s options. `selfcheck` answers the 128 reference decisions
 that ship in the CLI (measured on Metal) and passes when at least 99 % of
 simulated checker rounds would pass and none would strike; `serve --decide`
-refuses to start after a failed self-check for the same artifact. The
+refuses to start after a failed self-check for the same model id. The
 idea comes from REAX's miner kit; see
 `docs/research/decisionmodels/reax.md`.
 

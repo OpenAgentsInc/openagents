@@ -42,9 +42,14 @@ pub struct Answered {
     /// Why the answer is unusable, when it is.
     pub problem: Option<String>,
     pub ms: u64,
-    /// The server's artifact digest and backend, as it reported them.
+    /// The server's artifact digest (its file's sha256) and backend, as
+    /// it reported them.
     pub artifact_digest: Option<String>,
     pub backend: Option<String>,
+    /// The model id ([`crate::model_id`]) that artifact resolved to on
+    /// the computer that ran it, when it did.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_id: Option<String>,
 }
 
 /// A System One server to ask.
@@ -52,6 +57,8 @@ pub struct Server {
     base: String,
     model: String,
     client: reqwest::Client,
+    /// Stamped on every answer, when the caller resolved it.
+    pub model_id: Option<String>,
 }
 
 impl Server {
@@ -68,6 +75,7 @@ impl Server {
                 .timeout(Duration::from_secs(300))
                 .build()
                 .map_err(|e| e.to_string())?,
+            model_id: None,
         })
     }
 
@@ -85,7 +93,9 @@ impl Server {
             Ok(response) => response.json().await.unwrap_or(Value::Null),
             Err(e) => json!({"error": {"message": e.to_string()}}),
         };
-        answered(item, seed, index, &body, ms)
+        let mut one = answered(item, seed, index, &body, ms);
+        one.model_id.clone_from(&self.model_id);
+        one
     }
 }
 
@@ -120,6 +130,7 @@ pub fn answered(item: &Item, seed: u64, index: u32, body: &Value, ms: u64) -> An
         ms,
         artifact_digest: digest,
         backend: body["psionic"]["backend"].as_str().map(str::to_string),
+        model_id: None,
     }
 }
 
@@ -245,7 +256,11 @@ pub struct Reference {
     pub schema: String,
     /// The model it was measured on.
     pub model: String,
-    /// The artifact it was measured on (`sha256:…`).
+    /// The model id it was measured on ([`crate::model_id`]): what
+    /// [`shipped_reference`] looks it up by.
+    #[serde(default)]
+    pub model_id: String,
+    /// The file it was measured on (`sha256:…`), for the record.
     pub artifact_digest: String,
     /// Where it was measured (backend and machine), for the record.
     pub measured_on: String,
@@ -263,10 +278,17 @@ impl Reference {
             .iter()
             .filter_map(|a| a.probabilities.clone().map(|p| (a.index, p)))
             .collect();
+        let artifact_digest = first.artifact_digest.clone().unwrap_or_default();
+        let model_id = first
+            .model_id
+            .clone()
+            .or_else(|| crate::setup::model_id_for(&artifact_digest, None))
+            .unwrap_or_default();
         Some(Self {
-            schema: "openagents-decision-reference/1".into(),
+            schema: REFERENCE_SCHEMA.into(),
             model: model.into(),
-            artifact_digest: first.artifact_digest.clone().unwrap_or_default(),
+            model_id,
+            artifact_digest,
             measured_on: measured_on.into(),
             seed: first.seed,
             items,
@@ -291,22 +313,26 @@ impl Reference {
                     ms: 0,
                     artifact_digest: Some(self.artifact_digest.clone()),
                     backend: None,
+                    model_id: Some(self.model_id.clone()),
                 }
             })
             .collect()
     }
 }
 
+/// The reference set's schema: version 2 keys on the model id.
+pub const REFERENCE_SCHEMA: &str = "openagents-decision-reference/2";
+
 /// The reference set for Clef-Flash Q4_K_M (Hugging Face
-/// `ggml-org/Clef-Flash-GGUF` at `6b4fe4c5`, sha256 `36261166…6868a2`),
-/// measured with Psionic on Metal.
+/// `ggml-org/Clef-Flash-GGUF` at `6b4fe4c5`, model id
+/// [`crate::setup::CLEF_FLASH_MODEL_ID`]), measured with Psionic on Metal.
 pub const CLEF_FLASH_REFERENCE: &str = include_str!("../data/selfcheck/clef-flash-q4_k_m.json");
 
-/// The shipped reference set for `artifact_digest`, if there is one.
+/// The shipped reference set for `model_id`, if there is one.
 #[must_use]
-pub fn shipped_reference(artifact_digest: &str) -> Option<Reference> {
+pub fn shipped_reference(model_id: &str) -> Option<Reference> {
     let reference: Reference = serde_json::from_str(CLEF_FLASH_REFERENCE).ok()?;
-    (reference.artifact_digest == artifact_digest).then_some(reference)
+    (!model_id.is_empty() && reference.model_id == model_id).then_some(reference)
 }
 
 /// A self-check's result, kept in `selfcheck.json` under the pylon home.
@@ -314,6 +340,11 @@ pub fn shipped_reference(artifact_digest: &str) -> Option<Reference> {
 pub struct SelfCheck {
     pub at: u64,
     pub model: String,
+    /// The model id it checked ([`crate::model_id`]); what [`may_serve`]
+    /// matches on.
+    #[serde(default)]
+    pub model_id: String,
+    /// The file the server reported (`sha256:…`), for display.
     pub artifact_digest: String,
     pub backend: Option<String>,
     pub items: usize,
@@ -363,10 +394,15 @@ pub async fn selfcheck(
         && cmp.paired > 0
         && cmp.round_strike == 0.0
         && cmp.round_pass >= SELFCHECK_PASS;
+    let served = answers
+        .iter()
+        .find_map(|a| a.artifact_digest.clone())
+        .unwrap_or_else(|| reference.artifact_digest.clone());
     SelfCheck {
         at: crate::now(),
         model: reference.model.clone(),
-        artifact_digest: reference.artifact_digest.clone(),
+        model_id: reference.model_id.clone(),
+        artifact_digest: served,
         backend,
         items: answers.len(),
         unusable: cmp.unusable,
@@ -395,30 +431,37 @@ pub fn save(home: &Path, check: &SelfCheck) -> Result<(), String> {
     std::fs::rename(&tmp, &path).map_err(|e| e.to_string())
 }
 
-/// The last self-check, if any.
+/// The last self-check, if any. One kept before model ids (no
+/// `model_id`) of the pinned download takes the pinned model id.
 #[must_use]
 pub fn last(home: &Path) -> Option<SelfCheck> {
     let text = std::fs::read_to_string(home.join(SELFCHECK_FILE)).ok()?;
-    serde_json::from_str(&text).ok()
+    let mut check: SelfCheck = serde_json::from_str(&text).ok()?;
+    if check.model_id.is_empty()
+        && check.artifact_digest == format!("sha256:{}", crate::setup::CLEF_FLASH_SHA256)
+    {
+        check.model_id = crate::setup::CLEF_FLASH_MODEL_ID.into();
+    }
+    Some(check)
 }
 
-/// Whether this computer may serve decisions for `artifact_digest`: the
-/// last self-check for that artifact must have passed. `Ok(None)` when
-/// there is no self-check for it (the caller warns), `Err` when the last
-/// one failed.
+/// Whether this computer may serve decisions for `model_id`: the last
+/// self-check for that model must have passed. `Ok(None)` when there is
+/// no self-check for it (the caller warns), `Err` when the last one
+/// failed.
 ///
 /// # Errors
 ///
-/// The last self-check for this artifact failed; the message says what to
+/// The last self-check for this model failed; the message says what to
 /// run.
-pub fn may_serve(home: &Path, artifact_digest: &str) -> Result<Option<SelfCheck>, String> {
+pub fn may_serve(home: &Path, model_id: &str) -> Result<Option<SelfCheck>, String> {
     match last(home) {
-        Some(check) if check.artifact_digest == artifact_digest => {
+        Some(check) if !model_id.is_empty() && check.model_id == model_id => {
             if check.pass {
                 Ok(Some(check))
             } else {
                 Err(format!(
-                    "this computer's last self-check for {artifact_digest} failed \
+                    "this computer's last self-check for {model_id} failed \
                      (simulated rounds: {:.1}% pass, {:.2}% strike, worst item {:.3}); \
                      fix the model server and run `openagents pylon selfcheck` again",
                     check.round_pass * 100.0,
@@ -448,6 +491,7 @@ mod tests {
             ms: 1,
             artifact_digest: Some("sha256:x".into()),
             backend: Some("cpu".into()),
+            model_id: None,
         }
     }
 
@@ -465,15 +509,34 @@ mod tests {
     }
 
     #[test]
-    fn the_shipped_reference_parses_and_names_the_pinned_artifact() {
+    fn the_shipped_reference_parses_and_names_the_pinned_model() {
         let r: Reference = serde_json::from_str(CLEF_FLASH_REFERENCE).unwrap();
+        assert_eq!(r.schema, REFERENCE_SCHEMA);
+        assert_eq!(r.model_id, crate::setup::CLEF_FLASH_MODEL_ID);
         assert_eq!(
             r.artifact_digest,
-            "sha256:3626116623ca8d89641952471fac9ce12af84fb3517520029a2ac6f5146868a2"
+            format!("sha256:{}", crate::setup::CLEF_FLASH_SHA256)
         );
         assert!(r.items.len() >= 64);
-        assert!(shipped_reference(&r.artifact_digest).is_some());
-        assert!(shipped_reference("sha256:other").is_none());
+        assert!(shipped_reference(crate::setup::CLEF_FLASH_MODEL_ID).is_some());
+        // Looked up by model id, not by any file's hash.
+        assert!(shipped_reference(&r.artifact_digest).is_none());
+        assert!(shipped_reference("").is_none());
+        // coderos-4080's copy (one more metadata tag) is the same model.
+        let tagged = "sha256:fd3e90605e8103307dca37cb5a8cdb036267e2fe3cb2d908d80a8ceb9ec0638c";
+        let cuda = crate::calibrate::load(
+            &Path::new(env!("CARGO_MANIFEST_DIR")).join("data/calibration/cuda.jsonl"),
+        )
+        .unwrap();
+        assert!(
+            cuda.iter()
+                .all(|a| a.artifact_digest.as_deref() == Some(tagged))
+        );
+        assert!(
+            cuda.iter()
+                .all(|a| a.model_id.as_deref() == Some(r.model_id.as_str()))
+        );
+        assert!(shipped_reference(cuda[0].model_id.as_deref().unwrap()).is_some());
         // Every stored vector matches its regenerated item's options.
         for (index, p) in &r.items {
             let item = items::item(r.seed, *index);
@@ -489,11 +552,12 @@ mod tests {
     #[test]
     fn may_serve_follows_the_last_selfcheck() {
         let dir = tempfile::tempdir().unwrap();
-        assert!(may_serve(dir.path(), "sha256:a").unwrap().is_none());
+        assert!(may_serve(dir.path(), "id:a").unwrap().is_none());
         let mut check = SelfCheck {
             at: 1,
             model: "clef-flash".into(),
-            artifact_digest: "sha256:a".into(),
+            model_id: "id:a".into(),
+            artifact_digest: "sha256:file".into(),
             backend: None,
             items: 8,
             unusable: 0,
@@ -507,10 +571,22 @@ mod tests {
             pass: true,
         };
         save(dir.path(), &check).unwrap();
-        assert!(may_serve(dir.path(), "sha256:a").unwrap().is_some());
-        assert!(may_serve(dir.path(), "sha256:b").unwrap().is_none());
+        assert!(may_serve(dir.path(), "id:a").unwrap().is_some());
+        assert!(may_serve(dir.path(), "id:b").unwrap().is_none());
+        assert!(may_serve(dir.path(), "sha256:file").unwrap().is_none());
         check.pass = false;
         save(dir.path(), &check).unwrap();
-        assert!(may_serve(dir.path(), "sha256:a").is_err());
+        assert!(may_serve(dir.path(), "id:a").is_err());
+        // A self-check kept before model ids carries over to the pinned id.
+        let mut old = serde_json::to_value(&check).unwrap();
+        old.as_object_mut().unwrap().remove("model_id");
+        old["pass"] = true.into();
+        old["artifact_digest"] = format!("sha256:{}", crate::setup::CLEF_FLASH_SHA256).into();
+        std::fs::write(dir.path().join(SELFCHECK_FILE), old.to_string()).unwrap();
+        assert!(
+            may_serve(dir.path(), crate::setup::CLEF_FLASH_MODEL_ID)
+                .unwrap()
+                .is_some()
+        );
     }
 }

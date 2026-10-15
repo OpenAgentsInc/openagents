@@ -2,9 +2,11 @@
 //! `update`.
 //!
 //! `doctor` reads this computer (system, memory, GPU, disk, the pinned
-//! model and its digest, the Psionic server, outbound reach to the relay,
-//! the last self-check) and says whether it can serve Clef-Flash
+//! model's id and file hash, the Psionic server, outbound reach to the
+//! relay, the last self-check) and says whether it can serve Clef-Flash
 //! decisions, what blocks it, and the one command that fixes each block.
+//! A model is identified by its tensors ([`crate::model_id`]), so a copy
+//! whose header differs from the download is still the pinned model.
 //! `setup` fetches the pinned model and checks its digest. `start` runs
 //! Psionic on loopback, self-checks it, and serves decisions; `update`
 //! re-verifies the model against the pins this build carries and
@@ -29,9 +31,15 @@ pub const CLEF_FLASH_FILE: &str = "Clef-Flash-Q4_K_M.gguf";
 /// Where it comes from: `ggml-org/Clef-Flash-GGUF` at a pinned revision
 /// (Apache-2.0).
 pub const CLEF_FLASH_URL: &str = "https://huggingface.co/ggml-org/Clef-Flash-GGUF/resolve/6b4fe4c59098479652d94f0fe11a40facbebd1ec/Clef-Flash-Q4_K_M.gguf";
-/// Its sha256.
+/// The downloaded file's sha256: what `fetch` checks the download
+/// against. Not the model's identity (see [`CLEF_FLASH_MODEL_ID`]).
 pub const CLEF_FLASH_SHA256: &str =
     "3626116623ca8d89641952471fac9ce12af84fb3517520029a2ac6f5146868a2";
+/// The model's identity: [`crate::model_id`]'s digest of its tensors,
+/// the same for every file with these weights whatever its header says
+/// (coderos-4080's copy hashes to `fd3e9060…` and has this id).
+pub const CLEF_FLASH_MODEL_ID: &str =
+    "gguf-tensors:sha256:2e417b2214d9a0b8736d850a1d80ffa4709be32056673b2f201f59cf8e6d07a3";
 /// Its size in bytes.
 pub const CLEF_FLASH_BYTES: u64 = 6_486_448_288;
 /// The Psionic server program.
@@ -246,14 +254,18 @@ pub fn fit(host: &Host) -> Fit {
 pub struct ModelState {
     pub path: PathBuf,
     pub present: bool,
-    /// `true` when its sha256 is the pinned one (checked once per size and
-    /// modification time, then remembered beside the file).
+    /// `true` when its model id is the pinned one (checked once per size
+    /// and modification time, then remembered beside the file).
     pub verified: bool,
+    /// Its tensor digest ([`crate::model_id`]), when it is a GGUF.
+    pub model_id: Option<String>,
+    /// The file's sha256, for display and for matching a server's
+    /// reported artifact digest to this file.
     pub sha256: Option<String>,
 }
 
 fn marker(path: &Path) -> PathBuf {
-    path.with_extension("gguf.ok")
+    path.with_extension("gguf.id")
 }
 
 fn stamp(path: &Path) -> Option<String> {
@@ -295,39 +307,72 @@ fn hex(bytes: &[u8]) -> String {
     })
 }
 
-/// Check the model at `path` against `sha256`. `rehash` ignores the
-/// remembered result.
+/// Check the model at `path` against the pinned `model_id`. Its model id
+/// and file sha256 are computed once per size and modification time and
+/// remembered beside the file (`*.gguf.id`); `rehash` ignores that.
 #[must_use]
-pub fn model_state(path: &Path, sha256: &str, rehash: bool) -> ModelState {
+pub fn model_state(path: &Path, model_id: &str, rehash: bool) -> ModelState {
     let present = path.is_file();
     let mut state = ModelState {
         path: path.to_path_buf(),
         present,
         verified: false,
+        model_id: None,
         sha256: None,
     };
     if !present {
         return state;
     }
     let now = stamp(path);
-    if !rehash
-        && let (Some(now), Ok(text)) = (&now, std::fs::read_to_string(marker(path)))
-        && text.trim() == format!("{sha256} {now}")
-    {
-        state.verified = true;
-        state.sha256 = Some(sha256.to_string());
-        return state;
-    }
-    if let Ok(got) = sha256_file(path) {
-        state.verified = got == sha256;
-        if state.verified
-            && let Some(now) = now
-        {
-            let _ = std::fs::write(marker(path), format!("{sha256} {now}\n"));
+    let remembered = (!rehash)
+        .then(|| std::fs::read_to_string(marker(path)).ok())
+        .flatten()
+        .and_then(|text| {
+            let mut words = text.split_whitespace();
+            let (id, sha) = (words.next()?, words.next()?);
+            let rest: Vec<&str> = words.collect();
+            (now.as_deref() == Some(rest.join(" ").as_str()))
+                .then(|| (id.to_string(), sha.to_string()))
+        });
+    let (id, sha) = match remembered {
+        Some(both) => both,
+        None => {
+            state.sha256 = sha256_file(path).ok();
+            let (Ok(id), Some(sha)) = (crate::model_id::tensor_digest(path), state.sha256.clone())
+            else {
+                return state;
+            };
+            if let Some(now) = &now {
+                let _ = std::fs::write(marker(path), format!("{id} {sha} {now}\n"));
+            }
+            (id, sha)
         }
-        state.sha256 = Some(got);
-    }
+    };
+    state.verified = id == model_id;
+    state.model_id = Some(id);
+    state.sha256 = Some(sha);
     state
+}
+
+/// The model id of the artifact a decision server reports
+/// (`sha256:<file hash>`): the pinned id when it is the pinned download,
+/// else the id of whichever local GGUF has that file hash (`model`, when
+/// given, then [`model_path`]). `None` when no file here matches.
+#[must_use]
+pub fn model_id_for(artifact_digest: &str, model: Option<&Path>) -> Option<String> {
+    let file = artifact_digest
+        .strip_prefix("sha256:")
+        .unwrap_or(artifact_digest);
+    if file == CLEF_FLASH_SHA256 {
+        return Some(CLEF_FLASH_MODEL_ID.to_string());
+    }
+    let pinned = model_path();
+    model
+        .into_iter()
+        .chain(std::iter::once(pinned.as_path()))
+        .map(|path| model_state(path, CLEF_FLASH_MODEL_ID, false))
+        .find(|state| state.sha256.as_deref() == Some(file))
+        .and_then(|state| state.model_id)
 }
 
 /// Download `url` to `path`, checking `size` and `sha256` before the file
@@ -379,11 +424,7 @@ pub async fn fetch(
             "the download is not the pinned model ({got} bytes, sha256 {digest}; wanted {size} bytes, {sha256})"
         ));
     }
-    std::fs::rename(&part, path).map_err(|e| e.to_string())?;
-    if let Some(now) = stamp(path) {
-        let _ = std::fs::write(marker(path), format!("{sha256} {now}\n"));
-    }
-    Ok(())
+    std::fs::rename(&part, path).map_err(|e| e.to_string())
 }
 
 /// Whether the relay's host answers a TCP connection: a pylon only dials
@@ -488,7 +529,7 @@ pub fn report(
         warnings.push(fit.note.clone());
     }
     match &selfcheck {
-        Some(check) if check.artifact_digest == format!("sha256:{CLEF_FLASH_SHA256}") => {
+        Some(check) if check.model_id == CLEF_FLASH_MODEL_ID => {
             if !check.pass {
                 blocks.push(Block {
                     what: format!(
@@ -550,17 +591,25 @@ pub fn report(
     }
 }
 
-/// The decision server answering at `url`, if one is: its model entry.
+/// The decision server answering at `url`, if one is: its model entry,
+/// with the model id its artifact resolves to here ([`model_id_for`]).
 pub async fn serving(url: &str) -> Option<Value> {
     let clef = crate::decide::Clef::new(url, None).ok()?;
     let found = clef.refresh().await.ok()?;
-    Some(json!({"url": url, "model": found.model, "artifact_digest": found.artifact_digest}))
+    let model_id = found
+        .artifact_digest
+        .as_deref()
+        .and_then(|digest| model_id_for(digest, None));
+    Some(
+        json!({"url": url, "model": found.model, "model_id": model_id,
+                "artifact_digest": found.artifact_digest}),
+    )
 }
 
 /// Read everything `doctor` reports.
 pub async fn doctor(relay: &str, decide: &str, rehash: bool) -> Report {
     let host = host();
-    let model = model_state(&model_path(), CLEF_FLASH_SHA256, rehash);
+    let model = model_state(&model_path(), CLEF_FLASH_MODEL_ID, rehash);
     report(
         host,
         model,
@@ -587,9 +636,17 @@ pub fn render(report: &Report) -> String {
             .map_or_else(|| "unknown".into(), |g| format!("{g:.0} GB")),
         report.fit.note,
         if report.model.verified {
-            format!("{} (pinned digest)", report.model.path.display())
+            format!(
+                "{} (the pinned model{})",
+                report.model.path.display(),
+                file_note(&report.model)
+            )
         } else if report.model.present {
-            format!("{} (digest does not match)", report.model.path.display())
+            format!(
+                "{} (not the pinned model's weights{})",
+                report.model.path.display(),
+                file_note(&report.model)
+            )
         } else {
             "not downloaded".into()
         },
@@ -622,6 +679,15 @@ pub fn render(report: &Report) -> String {
     text.trim_end().to_string()
 }
 
+/// `, file sha256 1234abcd…`, or nothing when the hash is unknown.
+fn file_note(model: &ModelState) -> String {
+    model
+        .sha256
+        .as_deref()
+        .map(|sha| format!(", file sha256 {}…", &sha[..sha.len().min(8)]))
+        .unwrap_or_default()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -645,6 +711,7 @@ mod tests {
             path: PathBuf::from("/m/Clef-Flash-Q4_K_M.gguf"),
             present: true,
             verified: true,
+            model_id: Some(CLEF_FLASH_MODEL_ID.into()),
             sha256: Some(CLEF_FLASH_SHA256.into()),
         }
     }
@@ -709,6 +776,7 @@ mod tests {
                 path: PathBuf::from("/m/x.gguf"),
                 present: false,
                 verified: false,
+                model_id: None,
                 sha256: None,
             },
             None,
@@ -724,17 +792,74 @@ mod tests {
         assert!(r.blocks.iter().all(|b| !b.fix.is_empty()));
     }
 
+    fn weights(meta: &[(&str, &str)]) -> Vec<u8> {
+        crate::model_id::tests::gguf(
+            meta,
+            &[("output.weight", vec![2, 2], vec![1.0, 2.0, 3.0, 4.0])],
+        )
+    }
+
     #[test]
-    fn model_state_remembers_a_verified_digest() {
+    fn model_state_remembers_a_verified_model_id() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("m.gguf");
-        std::fs::write(&path, b"weights").unwrap();
-        let sha = sha256_file(&path).unwrap();
-        assert!(model_state(&path, &sha, false).verified);
+        std::fs::write(&path, weights(&[])).unwrap();
+        let id = crate::model_id::tensor_digest(&path).unwrap();
+        let state = model_state(&path, &id, false);
+        assert!(state.verified);
+        assert_eq!(state.sha256, Some(sha256_file(&path).unwrap()));
         assert!(marker(&path).is_file());
-        assert!(model_state(&path, &sha, false).verified);
-        assert!(!model_state(&path, "00", true).verified);
-        assert!(!model_state(&dir.path().join("none.gguf"), &sha, false).present);
+        assert!(model_state(&path, &id, false).verified);
+        assert!(!model_state(&path, "gguf-tensors:sha256:00", true).verified);
+        assert!(!model_state(&dir.path().join("none.gguf"), &id, false).present);
+        // A file that is not a GGUF has no model id and is never verified.
+        std::fs::write(&path, b"weights plus").unwrap();
+        let state = model_state(&path, &id, false);
+        assert!(!state.verified && state.model_id.is_none() && state.sha256.is_some());
+    }
+
+    #[test]
+    fn files_differing_only_in_a_metadata_key_are_the_same_model() {
+        let dir = tempfile::tempdir().unwrap();
+        let pinned = dir.path().join("pinned.gguf");
+        let tagged = dir.path().join("tagged.gguf");
+        std::fs::write(&pinned, weights(&[("general.name", "Clef-Flash")])).unwrap();
+        std::fs::write(
+            &tagged,
+            weights(&[("general.name", "Clef-Flash"), ("general.source", "mirror")]),
+        )
+        .unwrap();
+        let a = model_state(&pinned, "", false);
+        let b = model_state(&tagged, "", false);
+        assert_ne!(a.sha256, b.sha256);
+        assert!(a.model_id.is_some());
+        assert_eq!(a.model_id, b.model_id);
+        // A server reporting the tagged file's hash resolves to that id.
+        let served = format!("sha256:{}", b.sha256.clone().unwrap());
+        assert_eq!(model_id_for(&served, Some(&tagged)), b.model_id);
+        assert_eq!(model_id_for("sha256:00", Some(&tagged)), None);
+        assert_eq!(
+            model_id_for(&format!("sha256:{CLEF_FLASH_SHA256}"), None).as_deref(),
+            Some(CLEF_FLASH_MODEL_ID)
+        );
+    }
+
+    #[test]
+    fn doctor_names_the_pinned_model_and_its_file_hash() {
+        let r = report(
+            mac(128.0),
+            verified(),
+            None,
+            None,
+            None,
+            "wss://relay.openagents.com",
+            true,
+        );
+        let text = render(&r);
+        assert!(
+            text.contains("(the pinned model, file sha256 36261166…)"),
+            "{text}"
+        );
     }
 
     #[tokio::test]
@@ -760,7 +885,7 @@ mod tests {
         assert!(fetch(&url, &path, 7, "00", |_| {}).await.is_err());
         assert!(!path.exists() && !path.with_extension("gguf.part").exists());
         fetch(&url, &path, 7, &good, |_| {}).await.unwrap();
-        assert!(model_state(&path, &good, false).verified);
+        assert_eq!(sha256_file(&path).unwrap(), good);
     }
 
     #[tokio::test]

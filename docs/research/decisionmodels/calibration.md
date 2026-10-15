@@ -106,7 +106,17 @@ That is why it is 0.05.
 
 `openagents pylon selfcheck` answers the 128 reference decisions that ship
 in the CLI (`crates/pylon/data/selfcheck/clef-flash-q4_k_m.json`, seed
-20261015, measured on Metal) and applies the self-check rule:
+20261015, measured on Metal) and applies the self-check rule.
+
+The reference set and the last self-check key on the **model id**, not the
+file hash (#11652): `gguf-tensors:sha256:2e417b22…d07a3`, a sha256 over
+every tensor's name, shape, type and bytes in name order
+(`crates/pylon/src/model_id.rs`), ignoring header metadata. The server
+reports its file's sha256; the pylon resolves it to a model id (the pinned
+download, `~/.openagents/models`' copy, or `selfcheck --model-file PATH`)
+and keeps the file hash beside it for display. coderos-4080's copy
+(`fd3e9060…`) and the download (`36261166…`) have the same model id.
+Results:
 
 - Metal, the server used for the reference: 128 items, every distance 0,
   pass.
@@ -134,7 +144,8 @@ in the CLI (`crates/pylon/data/selfcheck/clef-flash-q4_k_m.json`, seed
   server's GGUF has a different sha256 (`fd3e9060…`) from the Mac's
   (`36261166…`): the files are the same length and differ only in the
   first 11 MB, the metadata (an extra `decision-model` tag shifts the
-  header); every 64 MB block of tensor data hashes the same. If CUDA with
+  header); every 64 MB block of tensor data hashes the same, and both
+  files have the same model id (above). If CUDA with
   f16 accumulation ever reaches an item near 0.5, raise the item bound
   rather than strike honest pylons.
 - **Clef 27B.** It needs its own run and its own `Limits`.
