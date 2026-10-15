@@ -33,6 +33,8 @@
 //! `settings.json`, `f-{file}.json` (an attached file), `d-{doc}.json` (a
 //! document) and `v-{object}.json` (a vault file).
 
+pub(crate) mod uploads;
+
 use axum::Router;
 use axum::body::Bytes;
 use axum::extract::rejection::JsonRejection;
@@ -67,9 +69,10 @@ const ROOT: &str = "project-files";
 
 pub(crate) fn routes() -> Router<App> {
     Router::new()
+        .merge(uploads::routes())
         .route(
             "/v1/files",
-            axum::routing::post(upload).layer(DefaultBodyLimit::max(MAX_BYTES + 64 * 1024)),
+            axum::routing::post(upload).layer(DefaultBodyLimit::max(16 * 1024 * 1024)),
         )
         .route("/v1/files/{id}", get(file_info).delete(file_delete))
         .route("/v1/files/{id}/content", get(file_content))
@@ -137,6 +140,8 @@ pub(crate) struct FileInfo {
     /// The project it is attached to.
     #[serde(default)]
     project: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    chunks: Option<uploads::Chunks>,
 }
 
 impl FileInfo {
@@ -163,6 +168,7 @@ impl FileInfo {
             "filename": self.filename,
             "mime_type": self.mime_type,
             "size_bytes": self.size_bytes,
+            "sha256": self.sha256,
             "created_at": rfc3339(self.created_unix),
         })
     }
@@ -372,8 +378,7 @@ pub(crate) async fn forget_project(app: &App, account: &str, project: &str) -> R
     let owner = account_owner(account);
     let held = held(store, &owner, project).await?;
     for file in &held.files {
-        remove_key(store, &file_key(&owner, &file.id, "")?).await?;
-        remove_key(store, &file_key(&owner, &file.id, ".json")?).await?;
+        delete_file(store, &owner, file).await?;
     }
     store.remove_folder(&project_folder(&owner, project)?).await
 }
@@ -460,11 +465,17 @@ async fn upload(
     if body.is_empty() {
         return refused(StatusCode::BAD_REQUEST, "empty", "This file is empty.");
     }
-    if body.len() > MAX_BYTES {
+    let limit = match uploads::direct_limit(&app, &headers).await {
+        Ok(limit) => limit,
+        Err(response) => return response,
+    };
+    if body.len() as u64 > limit {
         return refused(
             StatusCode::PAYLOAD_TOO_LARGE,
             "too_large",
-            "Files must be 10 MB or smaller.",
+            &format!(
+                "This upload accepts at most {limit} bytes. Use a resumable project upload for larger files."
+            ),
         );
     }
     let filename = clean_name(
@@ -492,14 +503,19 @@ async fn upload(
             .collect(),
         created_unix: now_unix(),
         project: None,
+        chunks: None,
     };
     let store = &app.config.chat_store;
     let owner = account_owner(&account);
+    if let Err(response) = uploads::reserve_legacy(&app, &owner, &info.id, info.size_bytes).await {
+        return response;
+    }
     let saved = async {
         store
             .write_key(&file_key(&owner, &info.id, "")?, body.to_vec(), None)
             .await?;
-        write_json(store, &file_key(&owner, &info.id, ".json")?, &info, None).await
+        write_json(store, &file_key(&owner, &info.id, ".json")?, &info, None).await?;
+        uploads::finish_legacy(store, &owner, &info.id).await
     }
     .await;
     match saved {
@@ -590,6 +606,9 @@ async fn file_content(
             Ok(found) => found,
             Err(response) => return response,
         };
+    if info.chunks.is_some() {
+        return uploads::content(&app, &owner, &info).await;
+    }
     let bytes = match file_key(&owner, &id, "") {
         Ok(key) => match app.config.chat_store.read_key(&key).await {
             Ok(Some((bytes, _))) => bytes,
@@ -635,8 +654,12 @@ async fn delete_file(store: &Store, owner: &str, info: &FileInfo) -> Result<(), 
         )
         .await?;
     }
+    if let Some(chunks) = &info.chunks {
+        uploads::remove_chunks(store, owner, chunks).await?;
+    }
     remove_key(store, &file_key(owner, &info.id, "")?).await?;
     remove_key(store, &file_key(owner, &info.id, ".json")?).await?;
+    uploads::release(store, owner, &info.id).await?;
     Ok(())
 }
 
@@ -924,6 +947,13 @@ async fn attach(
         }
         None => {}
     }
+    if uploader != owner {
+        if let Err(response) =
+            uploads::reserve_legacy(&app, &owner, &info.id, info.size_bytes).await
+        {
+            return response;
+        }
+    }
     info.project = Some(project.clone());
     let key = match project_key(&owner, &project, &format!("f-{}.json", info.id)) {
         Ok(key) => key,
@@ -952,7 +982,12 @@ async fn attach(
             remove_key(store, &file_key(&uploader, &info.id, ".json")?).await?;
             remove_key(store, &file_key(&uploader, &info.id, "")?).await?;
         }
-        write_json(store, &key, &info, None).await
+        write_json(store, &key, &info, None).await?;
+        uploads::finish_legacy(store, &owner, &info.id).await?;
+        if uploader != owner {
+            uploads::release(store, &uploader, &info.id).await?;
+        }
+        Ok::<_, Error>(())
     }
     .await;
     match saved {

@@ -20,6 +20,8 @@
 //!
 //! GitHub Project boards are `openagents board`, a different thing.
 
+mod transfer;
+
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -98,8 +100,9 @@ pub(crate) const USAGE: &str = "usage: openagents projects COMMAND [--account-di
   files list PROJECT
               The project's files, notes, and Drive sources.
   files add PROJECT PATH... [--protection standard|only_me]
-              Add files, 10 MB each at most. They follow the project's
-              protection unless you pass --protection only_me.
+              Add files. Large uploads resume when the same command is run
+              again, within your account's configured limits. They follow
+              the project's protection unless you pass --protection only_me.
   files get PROJECT FILE [--output PATH]
               Save one of the project's files or notes here.
   files remove PROJECT FILE
@@ -162,7 +165,7 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("sources remove", Effect::Publishes),
 ];
 
-/// The largest file `files add` sends.
+/// Larger files use the resumable project upload API.
 const MAX_FILE: u64 = 10 * 1024 * 1024;
 /// How long one upload or download may take.
 const TRANSFER: Duration = Duration::from_secs(300);
@@ -951,12 +954,12 @@ impl Projects<'_> {
     }
 
     /// Send one file's bytes; the new file.
-    fn upload(&self, path: &Path) -> Result<Value, String> {
+    fn upload(&self, path: &Path, project: &str) -> Result<Value, String> {
         let size = std::fs::metadata(path)
             .map_err(|error| format!("{}: {error}", path.display()))?
             .len();
         if size > MAX_FILE {
-            return Err(format!("{} is bigger than 10 MB.", path.display()));
+            return self.upload_large(path, project);
         }
         let bytes = std::fs::read(path).map_err(|error| format!("{}: {error}", path.display()))?;
         let name = path
@@ -1014,8 +1017,12 @@ impl Projects<'_> {
                 attached["name"] = json!(entry.name);
                 attached
             } else {
-                let file = self.upload(path)?;
-                let mut attached = self.attach(&id, &json!({"file": file["id"]}))?;
+                let file = self.upload(path, &id)?;
+                let mut attached = if file["project"] == id {
+                    file
+                } else {
+                    self.attach(&id, &json!({"file": file["id"]}))?
+                };
                 attached["name"] = attached["filename"].clone();
                 attached
             };
@@ -1068,6 +1075,22 @@ impl Projects<'_> {
         let project_id = id(&project)?.to_owned();
         let file_id = file["id"].as_str().unwrap_or_default().to_owned();
         let name = file["name"].as_str().unwrap_or("file").to_owned();
+        if file["type"] == "file" {
+            let path = self.download_large(
+                &format!(
+                    "/v1/files/{}/content?project={}",
+                    safe(&file_id)?,
+                    encode(&project_id)
+                ),
+                output.map(Path::new),
+                &name,
+                file["size_bytes"].as_u64().ok_or("This file has no size")?,
+                file["sha256"].as_str(),
+            )?;
+            return Ok(
+                json!({"id":file_id,"name":name,"path":path.display().to_string(),"size_bytes":file["size_bytes"]}),
+            );
+        }
         let bytes: zeroize::Zeroizing<Vec<u8>> = match file["type"].as_str() {
             Some("file") => zeroize::Zeroizing::new(
                 self.download(&format!("/v1/files/{}/content", safe(&file_id)?))?,

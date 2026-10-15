@@ -1,3 +1,21 @@
+## Deploy resumable project uploads (#11679)
+
+The resumable server and CLI are implemented on `main`. This Linux session
+cannot deploy them: the default Google Cloud login requires reauthentication,
+and the documented automation configuration is absent on this machine.
+Refresh the deployment login, then use `scripts/deploy/web.sh stage --keep-spec`,
+`promote`, and `shift` as described in
+[the deployment guide](docs/deployment/openagents-web.md). Select the ordinary
+account, admin, and account-storage limits with
+`OPENAGENTS_PROJECT_UPLOAD_CONFIG` before enabling larger ordinary uploads;
+[the upload API](docs/api/projects.md#large-project-files-and-resume) lists the
+settings. Admins can upload beyond 10 MiB with the defaults.
+
+Use the dedicated test account for the deployed check: upload a large file,
+interrupt and resume it, download it, compare its SHA-256, and delete the
+project. The local tests cover those operations with isolated accounts and a
+lost HTTP reply; they do not establish that production has the new routes.
+
 ## Show cloud environment issue runs on openagents.com and the phone (#11228)
 
 `openagents chat work` on `oa-dev-env-1` reports each issue run to the

@@ -280,9 +280,12 @@ pub async fn boat_backend_answers() -> Result<(), String> {
     }
 }
 
+pub use projects::files::uploads::Policy as ProjectUploadPolicy;
+
 /// How the server runs.
 #[derive(Clone)]
 pub struct Config {
+    pub project_uploads: ProjectUploadPolicy,
     /// The local task store `/app` reads. It is never created.
     pub store: PathBuf,
     /// The customer store `/app/purchases` reads (`--customer DIRECTORY`).
@@ -437,6 +440,7 @@ impl Config {
     #[must_use]
     pub fn development(store: PathBuf) -> Self {
         Self {
+            project_uploads: ProjectUploadPolicy::default(),
             chat_store: Arc::new(chat_store::Store::local(store.with_file_name("web-chats"))),
             chat_build: None,
             vault_store: None,

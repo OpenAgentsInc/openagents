@@ -171,6 +171,7 @@ the `Host` headers `127.0.0.1:4300` and `localhost:4300`.
 | `--store DIRECTORY` | `~/.openagents/tasks` | The task store `/app` reads. It is never created. |
 | `--listen ADDRESS` | `127.0.0.1:4300` | The address to bind. |
 | `--public-host HOST` | none | Another `Host` header the public pages answer, such as `openagents.com`. Repeatable. The task browser still answers only the local hosts. |
+| `--project-upload-config FILE` | default policy | Project file limits, account storage quota, and resumable upload lifetime; also `OPENAGENTS_PROJECT_UPLOAD_CONFIG`. See [large project files](../../docs/api/projects.md#large-project-files-and-resume). |
 | `--chat-store DIRECTORY` | A sibling `web-chats` directory next to `--store` | Private, restart-durable public conversation records on one machine. |
 | `--chat-bucket BUCKET` | none | Private shared conversation records and visitor leases in Google Cloud Storage; replaces local chat storage. |
 | `--chat-retention-days DAYS` | off | Remove chats untouched for DAYS days (1 to 3650), from either store, at start and every six hours. Also `OPENAGENTS_WEB_CHAT_RETENTION_DAYS`. |

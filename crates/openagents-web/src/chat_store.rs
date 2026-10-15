@@ -1419,6 +1419,17 @@ impl Store {
     /// [`Self::owner_key`] gives), sorted; none when there is no such
     /// folder. At most [`MAX_FOLDER`].
     pub(crate) async fn folder_keys(&self, folder: &str) -> Result<Vec<String>, Error> {
+        self.folder_keys_limit(folder, MAX_FOLDER).await
+    }
+
+    pub(crate) async fn folder_keys_limit(
+        &self,
+        folder: &str,
+        limit: usize,
+    ) -> Result<Vec<String>, Error> {
+        if limit == 0 || limit > 100_000 {
+            return Err(Error::Invalid("The folder limit is invalid."));
+        }
         valid_key(folder)?;
         match self.0.as_ref() {
             Adapter::Disk(root) => {
@@ -1448,7 +1459,7 @@ impl Store {
                         if valid_key(&key).is_ok() {
                             keys.push(key);
                         }
-                        if keys.len() > MAX_FOLDER {
+                        if keys.len() > limit {
                             return Err(Error::Unavailable("The folder exceeds its limit."));
                         }
                     }
@@ -1457,7 +1468,7 @@ impl Store {
                 })
                 .await
             }
-            Adapter::Gcs(gcs) => gcs.folder_keys(folder).await,
+            Adapter::Gcs(gcs) => gcs.folder_keys(folder, limit).await,
         }
     }
 
@@ -2072,7 +2083,7 @@ impl Gcs {
     }
 
     /// See [`Store::folder_keys`].
-    async fn folder_keys(&self, folder: &str) -> Result<Vec<String>, Error> {
+    async fn folder_keys(&self, folder: &str, limit: usize) -> Result<Vec<String>, Error> {
         let root = format!("{}/", self.prefix);
         let listed = self
             .list_prefix(&format!("{root}{folder}/"), false, true)
@@ -2082,7 +2093,7 @@ impl Gcs {
             .filter_map(|object| object.name.strip_prefix(&root).map(str::to_owned))
             .filter(|key| valid_key(key).is_ok())
             .collect();
-        if keys.len() > MAX_FOLDER {
+        if keys.len() > limit {
             return Err(Error::Unavailable("The folder exceeds its limit."));
         }
         keys.sort();

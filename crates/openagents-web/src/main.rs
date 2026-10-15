@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 const USAGE: &str = "usage: openagents-web [--store DIRECTORY] [--customer DIRECTORY] [--listen ADDRESS] \
 [--pay-host http://HOST:PORT] [--inference http://HOST:PORT] [--public-host HOST]... [--studio-host HOST]... [--upstream http://HOST:PORT] \
-[--chat-store DIRECTORY | --chat-bucket BUCKET] [--vault-bucket BUCKET] [--chat-retention-days DAYS] [--chat-build DIRECTORY] [--everglade DIRECTORY] [--bunny DIRECTORY] [--icecream DIRECTORY] [--snap DIRECTORY] [--att DIRECTORY] [--cad DIRECTORY] [--components-build DIRECTORY] [--cloud-build DIRECTORY] \
+[--project-upload-config JSON] [--chat-store DIRECTORY | --chat-bucket BUCKET] [--vault-bucket BUCKET] [--chat-retention-days DAYS] [--chat-build DIRECTORY] [--everglade DIRECTORY] [--bunny DIRECTORY] [--icecream DIRECTORY] [--snap DIRECTORY] [--att DIRECTORY] [--cad DIRECTORY] [--components-build DIRECTORY] [--cloud-build DIRECTORY] \
 [--cloud-config PRIVATE_JSON] [--cloud-hosts PRIVATE_JSON] [--cloud-byo PRIVATE_DIR [--cloud-byo-keys PRIVATE_JSON]] [--pilot-config PRIVATE_JSON] \
 [--environments PRIVATE_JSON] [--github-oauth PRIVATE_JSON] [--github-app PRIVATE_JSON] [--github-redirect URL] \
 [--plan-meter PRIVATE_FILE] [--plan-checkout PLAN] [--own-runs-token PRIVATE_FILE] [--local-downloads ~/Downloads] \
@@ -21,6 +21,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut upstream = std::env::var("OPENAGENTS_WEB_UPSTREAM").ok();
     // Off unless set: chats untouched this many days are removed.
     let mut chat_retention = std::env::var("OPENAGENTS_WEB_CHAT_RETENTION_DAYS").ok();
+    if let Ok(path) = std::env::var("OPENAGENTS_PROJECT_UPLOAD_CONFIG") {
+        config.project_uploads =
+            openagents_web::ProjectUploadPolicy::read(std::path::Path::new(&path))?;
+    }
     let mut github_oauth: Option<PathBuf> = None;
     let mut github_redirect: Option<String> = None;
     let mut github_app: Option<PathBuf> = None;
@@ -46,6 +50,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ))
             }
             "--chat-bucket" => chat_bucket = Some(value),
+            "--project-upload-config" => {
+                config.project_uploads =
+                    openagents_web::ProjectUploadPolicy::read(std::path::Path::new(&value))?
+            }
             "--vault-bucket" => vault_bucket = Some(value),
             "--chat-retention-days" => chat_retention = Some(value),
             "--chat-build" => config.chat_build = Some(PathBuf::from(value)),

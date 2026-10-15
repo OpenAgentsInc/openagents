@@ -73,7 +73,7 @@ from the code, this is how it works today:
 | `POST /v1/threads` `{"request_id": UUID, "text", "project": ID\|"name:NAME"}` | `201 {id, answering: true}`: a new chat inside the project, answered by OpenAgents with the project's instructions and its primary repository (a project with no repository: a plain chat with its instructions; a project with Drive sources: answered from them, photos and videos included, see [connections.md](connections.md)), as starting a chat in a project on the website does ([#11542](https://github.com/OpenAgentsInc/openagents/issues/11542)). `404 not_found` when the project isn't yours. Read the reply with `GET /v1/threads/{id}` |
 | `PATCH /v1/threads/{id}` `{"project": ID \| "name:NAME" \| null}` | Move the chat into one of your projects, or out of any (`null`): the Thread. Coder's sync files a synced chat under the project holding the chat's own GitHub repository (from its folder's git remote): the one project holding it, else the one where it is the primary; when several have it as primary (or none does), the chat stays unfiled. A person's move stays put (#11541) |
 | `PATCH /v1/projects/{id}` `{"name"?, "instructions"?, "primary_repository"?, "protection"?}` | The Project. `instructions: null` clears them; `primary_repository` must already be in the project. `protection`: `standard` or `only_me` (`sealed` answers `400 not_available`). Repositories are added and removed with the routes above |
-| `POST /v1/files?purpose=project&filename=NAME`, the file's bytes as the body | `201` File: `{id: "file_…", object: "file", filename, mime_type, size_bytes, sha256, created_at, stored_as: "original", project}`. 10 MB at most. Not multipart |
+| `POST /v1/files?purpose=project&filename=NAME`, the file's bytes as the body | `201` File: `{id: "file_…", object: "file", filename, mime_type, size_bytes, sha256, created_at, stored_as: "original", project}`. Account policy sets the file limit; this single-request route accepts at most 16 MiB. Use resumable uploads below for larger files. Not multipart |
 | `GET /v1/files/{id}`, `GET /v1/files/{id}/content`, `DELETE /v1/files/{id}` | The File; its bytes (`Content-Disposition`, `Digest: sha-256=…`); `{id, object: "file.deleted"}` |
 | `GET /v1/projects/{id}/attachments` | `{data: [Attachment], next, protection}`, oldest first: `file`, `document`, `source` (the project's Drive sources), and `vault` |
 | `POST /v1/projects/{id}/attachments` | `{"file": "file_…"}`, `{"document": {"title", "text"}}` (1 MB of text), or `{"vault": "<object id>"}` (an object already in the caller's vault): `201` Attachment. Drive sources attach with `POST /v1/projects/{id}/sources` ([connections.md](connections.md)) |
@@ -357,6 +357,59 @@ bucket in [account storage](../deployment/account-storage.md)), encrypted at
 rest, readable only by the account's own credentials. They are never used to
 train a model, and they are sent to a model only when a turn in that project
 reads them.
+
+### Large project files and resume
+
+`openagents projects files add PROJECT PATH` automatically uses resumable
+uploads above 10 MiB. Run the same command after an interruption: it checks
+the local file again and resumes the same upload. Progress goes to stderr;
+`--json` keeps stdout machine-readable. Downloads stream to a private
+temporary file and replace the destination only after size and SHA-256 checks.
+
+| Route | Request or reply |
+| --- | --- |
+| `POST /v1/files/uploads` | JSON `{request_id, project, filename, size_bytes, sha256}`. `request_id` is 64 lowercase hex characters, stable for retries. Returns `id`, `part_bytes`, `uploaded_bytes`, `next_part`, and `complete`. |
+| `GET /v1/files/uploads/{upload}?project=ID` | Read saved progress. The creating account must still be an editor or owner of the project. |
+| `PUT /v1/files/uploads/{upload}/parts/{number}?project=ID` | Raw bytes, at most 8 MiB, with `X-Part-SHA256`. Send parts in order. An exact part retry changes nothing; different bytes at an existing part are refused. |
+| `POST /v1/files/uploads/{upload}/complete?project=ID` | Check every part and the complete file's SHA-256, then attach it to the project. Exact retries return the same file. |
+| `DELETE /v1/files/uploads/{upload}?project=ID` | Cancel an unfinished upload and release its storage. A finished file is deleted through the file or attachment route. |
+
+Configure the website with `--project-upload-config FILE` or
+`OPENAGENTS_PROJECT_UPLOAD_CONFIG`. For example:
+
+```json
+{
+  "max_file_bytes": 10737418240,
+  "admin_max_file_bytes": null,
+  "account_bytes": 21474836480,
+  "upload_seconds": 604800,
+  "max_files": 10000
+}
+```
+
+The default ordinary-account limit remains 10 MiB; site admins have no
+per-file ceiling. Set either size limit to `null` to allow any file size
+within the account's storage quota. Limits come from the verified account,
+not a request header. The example lets ordinary accounts upload 10 GiB files.
+
+Parts and metadata use the existing private chat store: private local files
+or the configured private GCS bucket. Each upload part is at most 8 MiB, so the
+service does not buffer a multi-GB file. The project's home account pays the
+logical storage quota, including the complete sizes reserved for unfinished
+uploads. Existing files count when that account's quota record is first
+created; small uploads count too. Deleting a file or project releases its
+committed storage. There is no additional payment or per-GB billing path;
+normal bucket costs and its retention settings still apply.
+
+Unfinished uploads expire after seven days by default. Expired uploads are
+cleared when another upload starts; finishing an upload prevents expiry
+cleanup until it has published its file. An interrupted finish can be retried.
+
+`only_me` uses the existing encrypted NIP-VAULT format and its current
+11 MiB object limit, not this plaintext project-file route. A large vault
+file is refused before reading it; the CLI never falls back to a standard
+upload. A future large-vault transport must retain its existing authenticated
+encryption format rather than upload decrypted parts to these routes.
 
 ## Sensitive files: encrypted before they leave your machine
 
