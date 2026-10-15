@@ -9,6 +9,14 @@ apt-get -o DPkg::Lock::Timeout=120 install -y git curl ca-certificates docker.io
 modprobe kvm_intel
 modprobe tun
 modprobe btrfs
+# Kind nodes share host inotify limits. Stock Ubuntu's 128 instances can
+# make kube-proxy fail with EMFILE, leaving cross-node DNS unavailable.
+# https://kind.sigs.k8s.io/docs/user/known-issues/#pod-errors-due-to-too-many-open-files
+cat >/etc/sysctl.d/90-space-spike.conf <<'LIMITS'
+fs.inotify.max_user_instances = 1024
+fs.inotify.max_user_watches = 1048576
+LIMITS
+sysctl -p /etc/sysctl.d/90-space-spike.conf
 [[ -c /dev/kvm && -c /dev/net/tun ]]
 disk=/dev/disk/by-id/google-local-nvme-ssd-0
 [[ -b "$disk" ]]
