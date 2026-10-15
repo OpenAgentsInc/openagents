@@ -32,7 +32,7 @@ sudo cp -a "$mount_dir/etc/resolv.conf" "$out/resolv.conf.original"
 sudo rm -f "$mount_dir/etc/resolv.conf"
 sudo cp -L /etc/resolv.conf "$mount_dir/etc/resolv.conf"
 sudo chroot "$mount_dir" apt-get update
-sudo chroot "$mount_dir" env DEBIAN_FRONTEND=noninteractive apt-get install -y python3 curl ca-certificates
+sudo chroot "$mount_dir" env DEBIAN_FRONTEND=noninteractive apt-get install -y python3 curl ca-certificates git
 sudo rm -f "$mount_dir/etc/resolv.conf"
 sudo cp -a "$out/resolv.conf.original" "$mount_dir/etc/resolv.conf"
 sudo chroot "$mount_dir" coder --version
@@ -64,6 +64,7 @@ kind load docker-image oa-space-runtime-publish:local --name space-local
 kubectl --context kind-space-local -n space get job space-seed-publish -o json |
   python3 -c 'import json,sys
 j=json.load(sys.stdin)
+j.pop("status",None)
 j["metadata"]={"name":"oa-space-runtime-publish","namespace":"space"}
 j["spec"].pop("selector",None)
 j["spec"]["template"]["metadata"]={}

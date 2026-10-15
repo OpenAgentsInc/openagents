@@ -53,6 +53,12 @@ case ${1:-help} in
     ;;
   install)
     owned instances --zone "$ZONE"
+    ready=0
+    for attempt in {1..12}; do
+      if ssh_host --command true >/dev/null 2>&1; then ready=1; break; fi
+      sleep 5
+    done
+    [[ "$ready" == 1 ]] || { echo 'The new host did not become reachable through IAP SSH.' >&2; exit 1; }
     g compute scp "$ROOT/deploy/space-host/install.sh" "space-admin@$NAME:space-install.sh" --zone "$ZONE" --tunnel-through-iap
     # The log stays on the spike's own local SSD. Poll it with `host.sh status`.
     ssh_host --command 'sudo systemd-run --unit=space-spike-install --collect --property=RuntimeMaxSec=18000 /bin/bash "$HOME/space-install.sh"'

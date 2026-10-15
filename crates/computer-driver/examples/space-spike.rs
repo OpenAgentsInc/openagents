@@ -66,6 +66,7 @@ async fn measurements(
                 })
                 .await,
         )?;
+        let accepted_ms = start.elapsed().as_secs_f64() * 1000.;
         report["computers"].as_array_mut().unwrap().push(json!(id));
         save(path, report);
         reach(driver, &id, State::Running).await?;
@@ -75,7 +76,7 @@ async fn measurements(
         report["creates"]
             .as_array_mut()
             .unwrap()
-            .push(json!({"computer":id,"running_ms":ready_ms,"first_command_ms":command_ready_ms}));
+            .push(json!({"computer":id,"accepted_ms":accepted_ms,"running_ms":ready_ms,"first_command_ms":command_ready_ms}));
         if i == 0 {
             report["versions"] =
                 json!(sh(driver, &id, "coder --version && claude --version").await?);
@@ -103,6 +104,7 @@ async fn measurements(
     timings.sort_by(f64::total_cmp);
     report["first_command_p50_ms"] = json!(timings[9]);
     report["first_command_p90_ms"] = json!(timings[17]);
+    report["first_command_p50_under_2s"] = json!(timings[9] < 2000.);
     let id = done(
         driver
             .create(&CreateRequest {
