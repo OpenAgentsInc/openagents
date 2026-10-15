@@ -338,7 +338,8 @@ figure { margin: 0; }
 /* Steps */
 .steps {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  /* Step one holds the install lines: wide enough for them in full. */
+  grid-template-columns: 2.1fr 1fr 1fr;
   gap: 16px;
   margin: 40px 0 0;
   padding: 0;

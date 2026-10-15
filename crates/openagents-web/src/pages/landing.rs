@@ -296,7 +296,7 @@ fn steps_section() -> Markup {
                 li.step {
                     span.step-number { "01" }
                     h3 { "Install" }
-                    p { "One line, with a Copy button:" }
+                    p { "One line in your terminal:" }
                     (CodeBlock::new(CODER_SH).language("bash").title("macOS and Linux"))
                     (CodeBlock::new(CODER_PS1).language("powershell").title("Windows, in PowerShell"))
                 }
