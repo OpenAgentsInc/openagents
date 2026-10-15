@@ -4943,6 +4943,8 @@ dependencies = [
 name = "psionic-inference"
 version = "1.0.0-rc.17"
 dependencies = [
+ "clap",
+ "libc",
  "libm",
  "matrixmultiply",
  "ort",

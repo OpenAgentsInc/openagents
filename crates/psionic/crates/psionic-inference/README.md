@@ -76,3 +76,21 @@ PSIONIC_ROUTER_MODEL_DIR=/path/to/models/s1-router \
 The converter additionally needs `onnx==1.20.1`, `numpy==2.5.4`, and
 `safetensors==0.7.0`. The explicit native test compares all 100 reference
 cases, including long sequences, without loading ONNX Runtime.
+
+## CPU benchmark
+
+`psionic-model-bench` runs one engine per process, checks all reference
+cases before timing, and emits one JSON record. Choose `--engine native`
+or `--engine ort`, `--mode engine` or `--mode text`, and a `--bucket` of
+`short`, `medium`, `long`, or `route-v1`. The long bucket is checked to be
+512 tokens. `--threads` is the total CPU budget; `--concurrency` divides
+it across independent engine instances. A native-only build refuses an
+explicit ORT choice.
+
+Build release binaries with and without `--features ort`, keeping a copy
+of the native-only binary. Run `scripts/dev/psionic-model-bench.py --help`
+for the repeated A/B matrix. It records raw runs, package sizes, binary
+checksums, and remaining platform coverage. Each run uses at least 1,000
+samples by default; the driver alternates engine order and never runs the
+two engines at the same time. Filesystem caches are warm. Pin CPU affinity
+with `--cpus` on Linux; report other system load separately.

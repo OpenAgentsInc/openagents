@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tokenizers::{Tokenizer, TruncationParams, TruncationStrategy};
 
-use crate::{Error, ModelEngine, Result, Tensor, TensorData, Tensors};
+use crate::{EngineKind, Error, ModelEngine, Result, Tensor, TensorData, Tensors};
 
 pub const CATEGORIES: [&str; 9] = [
     "coding",
@@ -28,6 +28,49 @@ pub const FLAGS: [&str; 4] = [
     "follow_up",
 ];
 pub const MAX_TOKENS: usize = 512;
+
+pub fn load_engine(
+    kind: EngineKind,
+    root: &Path,
+    threads: usize,
+    library: Option<&Path>,
+    library_sha256: Option<&str>,
+) -> Result<Box<dyn ModelEngine>> {
+    pinned_manifest()?.verify(root)?;
+    match kind {
+        EngineKind::Native => {
+            verify_native_router(root)?;
+            Ok(Box::new(crate::modernbert::ModernBertEngine::load(
+                root, threads,
+            )?))
+        }
+        EngineKind::Ort => {
+            #[cfg(feature = "ort")]
+            {
+                let options = crate::ort_engine::OrtOptions {
+                    library: library
+                        .ok_or_else(|| Error("Choose an ONNX Runtime library".into()))?
+                        .into(),
+                    library_sha256: library_sha256
+                        .ok_or_else(|| Error("Provide the ONNX Runtime library checksum".into()))?
+                        .into(),
+                    threads,
+                };
+                Ok(Box::new(crate::ort_engine::OrtEngine::load(
+                    &root.join("model.gq.onnx"),
+                    &options,
+                )?))
+            }
+            #[cfg(not(feature = "ort"))]
+            {
+                let _ = (library, library_sha256);
+                Err(Error(
+                    "ONNX Runtime support is not enabled in this build".into(),
+                ))
+            }
+        }
+    }
+}
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Artifact {

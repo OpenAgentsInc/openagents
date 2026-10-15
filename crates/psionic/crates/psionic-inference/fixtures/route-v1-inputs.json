@@ -1,0 +1,168 @@
+{
+  "source": {
+    "path": "crates/coder-new/fixtures/router/route-v1.json",
+    "sha256": "c422e4afcdabb9aa0df23fe4516479f6b952eef0524b8e49d0e1ea4db795eec0"
+  },
+  "rows": [
+    {
+      "id": "first/answer-01",
+      "request": "What is a Rust trait object?",
+      "context": null
+    },
+    {
+      "id": "first/answer-02",
+      "request": "what's the difference between TCP and UDP",
+      "context": null
+    },
+    {
+      "id": "first/answer-03",
+      "request": "Explain what a mutex is in one sentence.",
+      "context": null
+    },
+    {
+      "id": "first/answer-04",
+      "request": "How do I undo my last git commit but keep the changes?",
+      "context": null
+    },
+    {
+      "id": "first/answer-05",
+      "request": "thanks, that's all for now!",
+      "context": null
+    },
+    {
+      "id": "first/answer-06",
+      "request": "Compare Postgres and SQLite for a desktop app's local storage, with the tradeoffs for sync, migrations and backups.",
+      "context": null
+    },
+    {
+      "id": "first/issue-01",
+      "request": "Fix issue #11460",
+      "context": null
+    },
+    {
+      "id": "first/issue-02",
+      "request": "Work on OpenAgentsInc/openagents#11233 and open a PR when the tests pass.",
+      "context": null
+    },
+    {
+      "id": "first/repo-01",
+      "request": "Rename the function parse_args to parse_cli across this repo and update the tests.",
+      "context": null
+    },
+    {
+      "id": "first/repo-02",
+      "request": "Add a --verbose flag to the CLI in src/main.rs",
+      "context": null
+    },
+    {
+      "id": "first/repo-03",
+      "request": "The build fails with error E0502 in crates/ledger, borrowed as mutable while also borrowed as immutable. Fix it.",
+      "context": null
+    },
+    {
+      "id": "first/repo-04",
+      "request": "Split the payment module into three files and keep every test passing.",
+      "context": null
+    },
+    {
+      "id": "first/research-01",
+      "request": "Run the test suite and tell me what fails.",
+      "context": null
+    },
+    {
+      "id": "first/research-02",
+      "request": "Find where we handle websocket reconnects in this codebase and explain how it works.",
+      "context": null
+    },
+    {
+      "id": "first/own-tools-01",
+      "request": "Run my /review skill on the current diff.",
+      "context": null
+    },
+    {
+      "id": "first/own-tools-02",
+      "request": "Use my Linear MCP server to list the tickets assigned to me.",
+      "context": null
+    },
+    {
+      "id": "first/risk-01",
+      "request": "Deploy the worker to production.",
+      "context": null
+    },
+    {
+      "id": "first/signed-out-01",
+      "request": "What is a closure?",
+      "context": null
+    },
+    {
+      "id": "first/signed-out-02",
+      "request": "Fix issue #42",
+      "context": null
+    },
+    {
+      "id": "first/near-limit-01",
+      "request": "Fix the flaky test in tests/api.rs",
+      "context": null
+    },
+    {
+      "id": "first/near-limit-02",
+      "request": "Run my /review skill on the current diff.",
+      "context": null
+    },
+    {
+      "id": "first/leaning-01",
+      "request": "Add input validation to the signup form.",
+      "context": null
+    },
+    {
+      "id": "first/speed-01",
+      "request": "Fix the typo 'recieve' in README.md",
+      "context": null
+    },
+    {
+      "id": "first/speed-02",
+      "request": "Fix the typo 'recieve' in README.md",
+      "context": null
+    },
+    {
+      "id": "follow/continue-01",
+      "request": "Also make it print the config path it loaded.",
+      "context": null
+    },
+    {
+      "id": "follow/continue-02",
+      "request": "looks good, thanks",
+      "context": null
+    },
+    {
+      "id": "follow/continue-03",
+      "request": "That didn't work, it still fails on CI with the same timeout.",
+      "context": null
+    },
+    {
+      "id": "follow/continue-04",
+      "request": "and how is that different from a semaphore?",
+      "context": null
+    },
+    {
+      "id": "follow/continue-05",
+      "request": "keep going",
+      "context": null
+    },
+    {
+      "id": "follow/new-01",
+      "request": "Now fix issue #11460",
+      "context": null
+    },
+    {
+      "id": "follow/new-02",
+      "request": "Unrelated question: what does HTTP status 418 mean?",
+      "context": null
+    },
+    {
+      "id": "follow/new-03",
+      "request": "OK, now split the payment module into three files and keep every test passing.",
+      "context": null
+    }
+  ]
+}
