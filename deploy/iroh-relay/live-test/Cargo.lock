@@ -1322,7 +1322,7 @@ dependencies = [
 
 [[package]]
 name = "iroh-relay-live-test"
-version = "1.0.0"
+version = "1.0.0-rc.16"
 dependencies = [
  "iroh",
  "tokio",
