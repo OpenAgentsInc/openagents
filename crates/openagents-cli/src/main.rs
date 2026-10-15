@@ -144,6 +144,14 @@ mod walkers;
 #[cfg(unix)]
 mod wallet;
 #[cfg(unix)]
+mod work_native;
+#[cfg(not(unix))]
+mod work_native {
+    pub(crate) fn run(args: Vec<String>) -> Result<serde_json::Value, String> {
+        work_host::cli::run(args)
+    }
+}
+#[cfg(unix)]
 mod workflow_template;
 #[cfg(unix)]
 mod worktree;
@@ -210,6 +218,7 @@ Pairing and computers (NIP-HOST, NIP-REACH):
   study        Launch and read Microcoder study runs on a host.
   reach        Owner directory, host presence, and route probes.
   session      Observe a paired computer's chats (NIP-SESS): pair, list, read, tail.
+  work         Track work, proposals, and scoped views (NIP-WORK).
   workspace    Read versioned documents and synchronize scoped views (NIP-WS).
   registry     Browse signed plugin catalogs and select packages (NIP-REG).
   trajectory   Share private trajectories or explicitly publish them (NIP-ATIF).
@@ -533,6 +542,23 @@ fn main() -> ExitCode {
         #[cfg(feature = "verse")]
         "chamber" => chamber::run(&output, &rest),
         "study" => study::run(&output, &rest),
+        "work" => match work_native::run(rest) {
+            Ok(value) => {
+                output.emit(&value, work_host::cli::display);
+                if matches!(
+                    value["status"].as_str(),
+                    Some("conflict" | "refused" | "unknown")
+                ) {
+                    EXIT_FAILURE
+                } else {
+                    0
+                }
+            }
+            Err(error) => output.fail(
+                "work",
+                &work_host::cli::display(&serde_json::json!({"error":error})),
+            ),
+        },
         "workspace" => match workspace_host::cli::run(rest) {
             Ok(Some(value)) => {
                 output.emit(&value, workspace_host::cli::display);

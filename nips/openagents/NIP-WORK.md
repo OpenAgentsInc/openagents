@@ -42,6 +42,9 @@ terms change. Retain and reconcile earlier work rather than rewriting it.
 
 ## Encoding and authentication
 
+The [work schemas](schemas/work.v1.json) describe the wire shapes; hosts also
+enforce the relationships and current authority below.
+
 All bodies below are closed JSON objects with their named `v`, required
 `requires: []`, all listed fields, and optional inert `meta`. Unknown semantic
 fields and enum values refuse. Common ArtifactRef, DefinitionRef, EventRef,
@@ -449,3 +452,56 @@ The first useful proof is one tracked issue through bounded delegated labor,
 independent verification, explicit acceptance and retained payment evidence,
 with two clients reading the same admitted history. Neither the archive that
 motivated this contract nor this draft establishes that proof.
+
+## Rust native authority profile
+
+`work-host` stores one admitted native history. Its `issue` interface uses the
+same IDs, conditional commands, and revisions. Scope administration is local
+and explicit; the default profile uses the host key as owner and authority.
+Private requests use signed `3188` envelopes. A current grant independently
+selects items and the read, create, revise, assign, requirements, evidence,
+dispose, and integrate rights. Retained bytes are not public by digest: a
+command supplies its artifact closure or resolves it through current read
+rights. Scope ownership permits the owner's local retained bytes. Policy and
+administrative grant references remain withheld from the item read closure.
+Commercial source bytes additionally require LAB's recipient and retention
+rights; a WORK read grant cannot widen them.
+
+The native acceptance policy `openagents.work-check-policy.v1` contains
+`requires: []`, `checks` (distinct supported check IDs), and `independent: true`.
+The initial Rust checker supports `exact-output` for the registered pure echo
+operation. A separate verifier key compares the actual output with the frozen
+objective. Its `openagents.work-check-report.v1` contains `requires`, `issuer`,
+`work`, `basis`, `frame`, `acceptance`, `checks`, and `execution` (the admitted
+job ID). Each check is `{id, passed, receipt}`. Its execution receipt binds a
+`openagents.work-check-data.v1` input containing the exact job input, output,
+frame, acceptance policy, and check ID. Receipt component bytes identify the
+registered check. The policy admits verifier identities independently; the
+worker cannot verify itself. A signed report attributes a check; it is not
+remote hardware attestation.
+
+Pure jobs need a separately signed `openagents.work-execution-grant.v1` with
+`issuer`, `scope`, `work`, `delegate`, `frame`, `parent`, `recipients`, `reads`,
+`effects`, `calls`, `wall_ms`, `output_bytes`, and `until`. Parent is an exact
+grant ArtifactRef or null; reads are exact artifact digests. This profile admits
+no effects or spending. Child grants can only narrow, and held child budgets
+remain charged. Preparing a CJ request consumes a call reservation without
+claiming dispatch. Worker intake rechecks the exact request, current grant,
+frame, and delegation before disclosing its frozen input. Reassignment revokes
+future intake; retained active or unknown attempts keep their reservations.
+
+Commercial links use `coder-labor`'s actual admitted book through an explicitly
+mounted WORK port. It checks the confirmed order, worker, frozen LAB frame and
+acceptance policy, and exact CJ linkage. Commercial execution stays with LAB's
+executor. A WORK disposition may cite the book's exact independently validated
+LAB acceptance; it cannot create that acceptance, revise the frozen order, or
+initiate payment. The native authority does not advertise commercial support
+when this port is absent.
+
+GitHub import reads the existing tracker/project snapshot through its owning
+adapter. The observation identifies the repository and GitHub node ID, retains
+the bounded capture, and declares observational consistency. The capture's
+body digest does not supply a missing full body or provider CAS. One-time-copy
+imports preserve their native `(system, subject)` identity. Later source
+changes require an explicit conditional replacement and resolution reason;
+a background refresh cannot overwrite native edits or accept work.

@@ -17,6 +17,7 @@ pub mod paid;
 pub mod records;
 pub mod store;
 pub mod transport;
+pub mod work;
 
 pub type Result<T> = std::result::Result<T, String>;
 

@@ -123,8 +123,11 @@ role-specific: SESS has a retained-history observer; WS has source-owned Git
 documents, conditional changes, checkpoints/restoration, scoped native views,
 and a portable client in `workspace-host`, alongside activity summaries.
 ENV has SSH host management, AUTO has local standing jobs, and SOV has a
-bounded local no-spend lifecycle. Their wider protocol roles, WORK, LIVE, and
-POL/EXT lifecycle additions remain unfinished. The index, glossary, and older
+bounded local no-spend lifecycle. WORK has a native authority, conditional
+commands, explicit pure CJ delegation and independent checks, scoped WS readers,
+GitHub import proposals, and an admitted LAB port in `work-host`. General
+WORK effectful adapters, wider ENV/AUTO/SESS roles, LIVE, and POL/EXT lifecycle
+additions remain unfinished. The index, glossary, and older
 introductions are not substitutes for current runtime evidence. The remaining
 Rust work is tracked in #11729.
 

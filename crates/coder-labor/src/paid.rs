@@ -142,20 +142,27 @@ impl Setup {
         let protected = Path::new(&self.checker.intent.workspace.path)
             .canonicalize()
             .map_err(|_| "protected buyer checker workspace unavailable")?;
+        let comparison = self
+            .checker
+            .program
+            .canonicalize()
+            .map_err(|_| "buyer checker unavailable")?;
+        // Keep the checker on a system-installed cmp, including NixOS's
+        // immutable system profile. Ambient PATH never selects paid authority.
+        let system_comparison = ["/usr/bin/cmp", "/run/current-system/sw/bin/cmp"]
+            .iter()
+            .any(|path| {
+                Path::new(path)
+                    .canonicalize()
+                    .is_ok_and(|path| path == comparison)
+            });
         if protected == provider
             || protected.starts_with(&provider)
             || !self.checker.labor_directory.is_absolute()
             || !self.checker.task_directory.is_absolute()
             || self.checker.wall_seconds == 0
             || self.checker.wall_seconds > 60
-            || self
-                .checker
-                .program
-                .canonicalize()
-                .map_err(|_| "buyer checker unavailable")?
-                != Path::new("/usr/bin/cmp")
-                    .canonicalize()
-                    .map_err(|_| "buyer checker unavailable")?
+            || !system_comparison
             || hex_digest(&self.checker.program_sha256)?
                 != hex_digest(&nostr::contracts::digest_bytes(
                     &std::fs::read(&self.checker.program)

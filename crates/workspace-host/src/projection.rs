@@ -27,21 +27,179 @@ pub(crate) struct Cursor {
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Projection {
-    pub definition: Value,
-    pub reference: Value,
-    pub binding: Value,
-    pub recipient: String,
-    pub grant_epoch: u64,
-    pub resources: BTreeSet<String>,
-    pub images: Vec<Image>,
-    pub deltas: BTreeMap<String, Value>,
-    pub cursors: BTreeMap<String, Cursor>,
-    pub reads: BTreeMap<String, (String, Value)>,
-    pub allowed: BTreeSet<String>,
-    pub expired: bool,
+pub struct Projection {
+    pub(crate) definition: Value,
+    pub(crate) reference: Value,
+    pub(crate) binding: Value,
+    pub(crate) recipient: String,
+    pub(crate) grant_epoch: u64,
+    pub(crate) resources: BTreeSet<String>,
+    pub(crate) images: Vec<Image>,
+    pub(crate) deltas: BTreeMap<String, Value>,
+    pub(crate) cursors: BTreeMap<String, Cursor>,
+    pub(crate) reads: BTreeMap<String, (String, Value)>,
+    pub(crate) allowed: BTreeSet<String>,
+    pub(crate) expired: bool,
 }
 impl Projection {
+    /// Create a view after its source owner independently admits the recipient
+    /// and selection. A definition or cursor alone grants nothing.
+    pub fn new(
+        definition: Value,
+        binding: Value,
+        epoch: u64,
+        resources: BTreeSet<String>,
+        store: &crate::artifact::Artifacts,
+    ) -> Result<Self> {
+        workspace::validate(&definition).map_err(|e| e.to_string())?;
+        if definition["v"] != "openagents.projection-definition.v1" {
+            return Err("projection definition required".into());
+        }
+        let reference = store.put_json(&definition)?;
+        let recipient = definition["recipient"].as_str().ok_or("recipient")?.into();
+        Ok(Self {
+            definition,
+            reference,
+            binding,
+            recipient,
+            grant_epoch: epoch,
+            resources,
+            images: Vec::new(),
+            deltas: BTreeMap::new(),
+            cursors: BTreeMap::new(),
+            reads: BTreeMap::new(),
+            allowed: BTreeSet::new(),
+            expired: false,
+        })
+    }
+    pub fn definition(&self) -> &Value {
+        &self.definition
+    }
+    pub fn reference(&self) -> &Value {
+        &self.reference
+    }
+    pub fn recipient(&self) -> &str {
+        &self.recipient
+    }
+    pub fn authorization_epoch(&self) -> u64 {
+        self.grant_epoch
+    }
+    pub fn cut(&self) -> Result<&Value> {
+        Ok(&self.current()?.cut)
+    }
+    pub fn permitted(&self, digest: &str) -> bool {
+        !self.expired && self.allowed.contains(digest)
+    }
+    pub fn permit(&mut self, reference: &Value) -> Result<()> {
+        self.allow(reference)
+    }
+    pub fn known_read(&self, key: &str, fingerprint: &str) -> Result<Option<Value>> {
+        match self.reads.get(key) {
+            Some((known, result)) if known == fingerprint => Ok(Some(result.clone())),
+            Some(_) => Err("idempotency_conflict: read bytes differ".into()),
+            None => Ok(None),
+        }
+    }
+    pub fn remember_read(&mut self, key: String, fingerprint: String, result: Value) -> Result<()> {
+        if self.reads.len() >= 512 {
+            return Err("view read retention exceeded".into());
+        }
+        self.reads.insert(key, (fingerprint, result));
+        Ok(())
+    }
+    /// Append only source-confirmed rows while the source owner's admission
+    /// transaction is held. The owner supplies authorized retained frontiers.
+    pub fn append(
+        &mut self,
+        store: &crate::artifact::Artifacts,
+        rows: BTreeMap<String, Value>,
+        frontiers: Vec<Value>,
+        coverage: &str,
+        now: u64,
+    ) -> Result<()> {
+        if self.expired || rows.len() > 256 || self.cursors.len() >= 2048 {
+            return Err("projection retention exceeded".into());
+        }
+        let schema = store.get(&self.definition["row_schema"])?;
+        let schema_digest = contracts::digest_bytes(&schema);
+        let closure =
+            contracts::prepare_closure(&BTreeMap::from([(schema_digest.clone(), schema)]))
+                .map_err(|e| e.to_string())?;
+        for (key, row) in &rows {
+            if row["key"] != *key {
+                return Err("row key differs".into());
+            }
+            let value = store.json(&row["value"])?;
+            contracts::validate_instance(&closure, &schema_digest, &value)
+                .map_err(|e| e.to_string())?;
+            self.allow(&row["value"])?;
+            for source in row["sources"].as_array().ok_or("row sources")? {
+                store.get(source)?;
+                self.allow(source)?;
+            }
+        }
+        let previous = self.images.last().cloned();
+        if previous.as_ref().is_some_and(|i| {
+            i.rows == rows
+                && i.cut["frontiers"] == json!(frontiers)
+                && i.cut["coverage"] == coverage
+        }) {
+            return Ok(());
+        }
+        let (epoch, sequence) = if let Some(previous) = &previous {
+            (
+                previous.cut["epoch"]
+                    .as_str()
+                    .ok_or("view epoch")?
+                    .to_string(),
+                previous.cut["sequence"]
+                    .as_u64()
+                    .ok_or("view sequence")?
+                    .checked_add(1)
+                    .ok_or("view counter exhausted")?,
+            )
+        } else {
+            (artifact::token(), 0)
+        };
+        let cut = json!({"v":"openagents.projection-cut.v1","requires":[],"projection":self.reference,"epoch":epoch,"sequence":sequence,"frontiers":frontiers,"consistency":"single_authority","coverage":coverage,"captured_at":now});
+        workspace::validate(&cut).map_err(|e| e.to_string())?;
+        let to = store.put_json(&cut)?;
+        self.allow(&to)?;
+        if let Some(previous) = previous {
+            let from = artifact::json_ref(&previous.cut)?;
+            let mut changes = Vec::new();
+            for (key, row) in &rows {
+                if previous.rows.get(key) != Some(row) {
+                    changes.push(json!({"key":key,"action":"upsert","value":row["value"],"sources":row["sources"]}));
+                }
+            }
+            for key in previous.rows.keys() {
+                if !rows.contains_key(key) {
+                    changes.push(json!({"key":key,"action":"remove","value":null,"sources":[]}));
+                }
+            }
+            let delta = json!({"v":"openagents.projection-delta.v1","requires":[],"projection":self.reference,"from":from,"to":to,"changes":changes});
+            workspace::verify_delta(&delta, &previous.cut, &cut).map_err(|e| e.to_string())?;
+            let reference = store.put_json(&delta)?;
+            self.allow(&reference)?;
+            self.deltas.insert(
+                from["digest"].as_str().ok_or("cut digest")?.into(),
+                reference,
+            );
+        }
+        self.images.push(Image { cut, rows });
+        while self.images.len() > 64 {
+            let old = self.images.remove(0);
+            let reference = artifact::json_ref(&old.cut)?;
+            self.deltas
+                .remove(reference["digest"].as_str().ok_or("old cut")?);
+        }
+        if serde_json::to_vec(self).map_err(|e| e.to_string())?.len() > 8 * MAX_BYTES {
+            self.expired = true;
+            return Err("projection byte retention exceeded".into());
+        }
+        Ok(())
+    }
     fn image(&self, digest: &str) -> Result<&Image> {
         self.images
             .iter()
@@ -55,6 +213,153 @@ impl Projection {
         let r = contracts::parse_artifact(reference).map_err(|e| e.to_string())?;
         self.allowed.insert(r.digest);
         Ok(())
+    }
+    fn new_cursor(&mut self, cursor: Cursor) -> String {
+        let token = artifact::token();
+        self.cursors.insert(token.clone(), cursor);
+        token
+    }
+    pub fn page(
+        &mut self,
+        artifacts: &crate::artifact::Artifacts,
+        actor: &str,
+        request: &Value,
+        reference: &Value,
+    ) -> Result<Value> {
+        let p = self;
+        let mode = request["mode"].as_str().ok_or("mode")?;
+        let max_items = request["max_items"].as_u64().ok_or("max items")? as usize;
+        let max_bytes = request["max_bytes"].as_u64().ok_or("max bytes")? as usize;
+        let current = p.current()?.clone();
+        let current_ref = artifact::json_ref(&current.cut)?;
+        let current_digest = current_ref["digest"]
+            .as_str()
+            .ok_or("cut digest")?
+            .to_string();
+        let cursor = if request["after"].is_null() {
+            if mode != "snapshot" {
+                return Err("missing changes cursor".into());
+            }
+            Cursor {
+                mode: "snapshot".into(),
+                actor: actor.into(),
+                grant_epoch: p.grant_epoch,
+                cut: current_digest.clone(),
+                head: current_digest,
+                index: 0,
+                complete: false,
+            }
+        } else {
+            p.cursors
+                .get(request["after"].as_str().ok_or("cursor")?)
+                .ok_or("stale cursor")?
+                .clone()
+        };
+        if cursor.actor != actor
+            || cursor.grant_epoch != p.grant_epoch
+            || !cursor.complete && cursor.mode != mode
+        {
+            return Err("cursor scope differs".into());
+        }
+        if mode == "snapshot" {
+            if cursor.complete {
+                return Err("completed snapshot cursor is only valid for changes".into());
+            }
+            let image = p.image(&cursor.cut)?.clone();
+            let cut_ref = artifact::json_ref(&image.cut)?;
+            let rows = image.rows.into_values().collect::<Vec<_>>();
+            if cursor.index > rows.len() {
+                return Err("future cursor".into());
+            }
+            let mut supplied = Vec::new();
+            let mut bytes = 1024usize;
+            let mut index = cursor.index;
+            while index < rows.len() && supplied.len() < max_items {
+                let row = &rows[index];
+                let size = contracts::jcs(row).map_err(|e| e.to_string())?.len()
+                    + row["value"]["size"].as_u64().ok_or("row byte size")? as usize;
+                if bytes.saturating_add(size) > max_bytes {
+                    break;
+                }
+                supplied.push(row.clone());
+                bytes += size;
+                index += 1;
+            }
+            if index == cursor.index && index < rows.len() {
+                return Err("limit_exceeded: first row exceeds page bound".into());
+            }
+            let complete = index == rows.len();
+            let token = p.new_cursor(Cursor {
+                index,
+                complete,
+                ..cursor
+            });
+            let page = json!({"v":"openagents.projection-page.v1","requires":[],"request":reference,"cut":cut_ref,"rows":supplied,"next":if complete{None}else{Some(token.clone())},"coverage":image.cut["coverage"],"resume":if complete{Some(token)}else{None}});
+            workspace::validate(&page).map_err(|e| e.to_string())?;
+            if contracts::jcs(&page).map_err(|e| e.to_string())?.len() > max_bytes {
+                return Err("limit_exceeded: snapshot framing exceeds its bound".into());
+            }
+            return Ok(page);
+        }
+        let head = if cursor.complete {
+            current_ref
+        } else {
+            artifact::json_ref(&p.image(&cursor.head)?.cut)?
+        };
+        let from = artifact::json_ref(&p.image(&cursor.cut)?.cut)?;
+        let head_cut = p
+            .image(head["digest"].as_str().ok_or("head digest")?)?
+            .cut
+            .clone();
+        let from_cut = p.image(&cursor.cut)?.cut.clone();
+        if head_cut["epoch"] != from_cut["epoch"] {
+            return Err("projection epoch changed".into());
+        }
+        let mut to = from.clone();
+        let mut deltas = Vec::new();
+        let mut bytes = 1536usize;
+        while to != head && deltas.len() < max_items {
+            let digest = to["digest"].as_str().ok_or("cut digest")?;
+            let delta_ref = p.deltas.get(digest).ok_or("projection history gap")?;
+            let delta = artifacts.json(delta_ref)?;
+            let size = delta_ref["size"].as_u64().ok_or("delta size")? as usize + 256;
+            if bytes.saturating_add(size) > max_bytes {
+                break;
+            }
+            let next_cut = p.image(delta["to"]["digest"].as_str().ok_or("to cut")?)?;
+            workspace::verify_delta(&delta, &p.image(digest)?.cut, &next_cut.cut)
+                .map_err(|e| e.to_string())?;
+            to = delta["to"].clone();
+            deltas.push(delta_ref.clone());
+            bytes += size;
+        }
+        if to == from && to != head {
+            return Err("limit_exceeded: first delta exceeds page bound".into());
+        }
+        let complete = to == head;
+        let token = p.new_cursor(Cursor {
+            mode: "changes".into(),
+            actor: actor.into(),
+            grant_epoch: p.grant_epoch,
+            cut: to["digest"].as_str().ok_or("to cut")?.into(),
+            head: head["digest"].as_str().ok_or("head cut")?.into(),
+            index: 0,
+            complete,
+        });
+        let marker = if complete {
+            let marker = json!({"v":"openagents.projection-marker.v1","requires":[],"projection":p.reference,"cut":head,"state":"caught_up"});
+            let reference = artifacts.put_json(&marker)?;
+            p.allow(&reference)?;
+            Some(reference)
+        } else {
+            None
+        };
+        let page = json!({"v":"openagents.projection-change-page.v1","requires":[],"request":reference,"from":from,"to":to,"head":head,"deltas":deltas,"next":if complete{None}else{Some(token.clone())},"resume":if complete{Some(token)}else{None},"marker":marker});
+        workspace::validate(&page).map_err(|e| e.to_string())?;
+        if contracts::jcs(&page).map_err(|e| e.to_string())?.len() > max_bytes {
+            return Err("limit_exceeded: changes framing exceeds its bound".into());
+        }
+        Ok(page)
     }
 }
 impl Host {
@@ -388,11 +693,6 @@ impl Host {
         workspace::validate(&result).map_err(|e| e.to_string())?;
         Ok(result)
     }
-    fn cursor(&self, p: &mut Projection, cursor: Cursor) -> String {
-        let token = artifact::token();
-        p.cursors.insert(token.clone(), cursor);
-        token
-    }
     fn page(
         &self,
         p: &mut Projection,
@@ -400,145 +700,7 @@ impl Host {
         request: &Value,
         reference: &Value,
     ) -> Result<Value> {
-        let mode = request["mode"].as_str().ok_or("mode")?;
-        let max_items = request["max_items"].as_u64().ok_or("max items")? as usize;
-        let max_bytes = request["max_bytes"].as_u64().ok_or("max bytes")? as usize;
-        let current = p.current()?.clone();
-        let current_ref = artifact::json_ref(&current.cut)?;
-        let current_digest = current_ref["digest"]
-            .as_str()
-            .ok_or("cut digest")?
-            .to_string();
-        let cursor = if request["after"].is_null() {
-            if mode != "snapshot" {
-                return Err("missing changes cursor".into());
-            }
-            Cursor {
-                mode: "snapshot".into(),
-                actor: actor.into(),
-                grant_epoch: p.grant_epoch,
-                cut: current_digest.clone(),
-                head: current_digest,
-                index: 0,
-                complete: false,
-            }
-        } else {
-            p.cursors
-                .get(request["after"].as_str().ok_or("cursor")?)
-                .ok_or("stale cursor")?
-                .clone()
-        };
-        if cursor.actor != actor
-            || cursor.grant_epoch != p.grant_epoch
-            || !cursor.complete && cursor.mode != mode
-        {
-            return Err("cursor scope differs".into());
-        }
-        if mode == "snapshot" {
-            if cursor.complete {
-                return Err("completed snapshot cursor is only valid for changes".into());
-            }
-            let image = p.image(&cursor.cut)?.clone();
-            let cut_ref = artifact::json_ref(&image.cut)?;
-            let rows = image.rows.into_values().collect::<Vec<_>>();
-            if cursor.index > rows.len() {
-                return Err("future cursor".into());
-            }
-            let mut supplied = Vec::new();
-            let mut bytes = 1024usize;
-            let mut index = cursor.index;
-            while index < rows.len() && supplied.len() < max_items {
-                let row = &rows[index];
-                let size = contracts::jcs(row).map_err(|e| e.to_string())?.len()
-                    + row["value"]["size"].as_u64().ok_or("row byte size")? as usize;
-                if bytes.saturating_add(size) > max_bytes {
-                    break;
-                }
-                supplied.push(row.clone());
-                bytes += size;
-                index += 1;
-            }
-            if index == cursor.index && index < rows.len() {
-                return Err("limit_exceeded: first row exceeds page bound".into());
-            }
-            let complete = index == rows.len();
-            let token = self.cursor(
-                p,
-                Cursor {
-                    index,
-                    complete,
-                    ..cursor
-                },
-            );
-            let page = json!({"v":"openagents.projection-page.v1","requires":[],"request":reference,"cut":cut_ref,"rows":supplied,"next":if complete{None}else{Some(token.clone())},"coverage":image.cut["coverage"],"resume":if complete{Some(token)}else{None}});
-            workspace::validate(&page).map_err(|e| e.to_string())?;
-            if contracts::jcs(&page).map_err(|e| e.to_string())?.len() > max_bytes {
-                return Err("limit_exceeded: snapshot framing exceeds its bound".into());
-            }
-            return Ok(page);
-        }
-        let head = if cursor.complete {
-            current_ref
-        } else {
-            artifact::json_ref(&p.image(&cursor.head)?.cut)?
-        };
-        let from = artifact::json_ref(&p.image(&cursor.cut)?.cut)?;
-        let head_cut = p
-            .image(head["digest"].as_str().ok_or("head digest")?)?
-            .cut
-            .clone();
-        let from_cut = p.image(&cursor.cut)?.cut.clone();
-        if head_cut["epoch"] != from_cut["epoch"] {
-            return Err("projection epoch changed".into());
-        }
-        let mut to = from.clone();
-        let mut deltas = Vec::new();
-        let mut bytes = 1536usize;
-        while to != head && deltas.len() < max_items {
-            let digest = to["digest"].as_str().ok_or("cut digest")?;
-            let delta_ref = p.deltas.get(digest).ok_or("projection history gap")?;
-            let delta = self.artifacts.json(delta_ref)?;
-            let size = delta_ref["size"].as_u64().ok_or("delta size")? as usize + 256;
-            if bytes.saturating_add(size) > max_bytes {
-                break;
-            }
-            let next_cut = p.image(delta["to"]["digest"].as_str().ok_or("to cut")?)?;
-            workspace::verify_delta(&delta, &p.image(digest)?.cut, &next_cut.cut)
-                .map_err(|e| e.to_string())?;
-            to = delta["to"].clone();
-            deltas.push(delta_ref.clone());
-            bytes += size;
-        }
-        if to == from && to != head {
-            return Err("limit_exceeded: first delta exceeds page bound".into());
-        }
-        let complete = to == head;
-        let token = self.cursor(
-            p,
-            Cursor {
-                mode: "changes".into(),
-                actor: actor.into(),
-                grant_epoch: p.grant_epoch,
-                cut: to["digest"].as_str().ok_or("to cut")?.into(),
-                head: head["digest"].as_str().ok_or("head cut")?.into(),
-                index: 0,
-                complete,
-            },
-        );
-        let marker = if complete {
-            let marker = json!({"v":"openagents.projection-marker.v1","requires":[],"projection":p.reference,"cut":head,"state":"caught_up"});
-            let reference = self.artifacts.put_json(&marker)?;
-            p.allow(&reference)?;
-            Some(reference)
-        } else {
-            None
-        };
-        let page = json!({"v":"openagents.projection-change-page.v1","requires":[],"request":reference,"from":from,"to":to,"head":head,"deltas":deltas,"next":if complete{None}else{Some(token.clone())},"resume":if complete{Some(token)}else{None},"marker":marker});
-        workspace::validate(&page).map_err(|e| e.to_string())?;
-        if contracts::jcs(&page).map_err(|e| e.to_string())?.len() > max_bytes {
-            return Err("limit_exceeded: changes framing exceeds its bound".into());
-        }
-        Ok(page)
+        p.page(&self.artifacts, actor, request, reference)
     }
     pub fn command_visibility(&self, event: &Event, now: u64) -> Result<Value> {
         let (actor, request) =

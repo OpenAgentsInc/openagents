@@ -4,10 +4,16 @@ use coder::task::{self, RequestedConfiguration, TaskIntent, Workspace};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
+fn tool(name: &str) -> PathBuf {
+    std::env::split_paths(&std::env::var_os("PATH").expect("fixture PATH"))
+        .map(|dir| dir.join(name))
+        .find(|path| path.is_file())
+        .unwrap_or_else(|| panic!("fixture needs {name}"))
+}
 fn git(directory: &Path, args: &[&str]) -> String {
-    let result = std::process::Command::new("/usr/bin/git")
+    let result = std::process::Command::new(tool("git"))
         .env_clear()
-        .env("PATH", "/usr/bin:/bin")
+        .env("PATH", std::env::var_os("PATH").expect("fixture PATH"))
         .env("GIT_CONFIG_NOSYSTEM", "1")
         .env("GIT_CONFIG_GLOBAL", "/dev/null")
         .current_dir(directory)
@@ -360,7 +366,7 @@ async fn roundtrip(paid: bool, failed_check: bool) {
     let checker_grant = make_grant(
         &checker_intent,
         "buyer-check",
-        Path::new("/usr/bin/cmp"),
+        &tool("cmp"),
         vec!["expected.rs".into(), "candidate.rs".into()],
     );
     let checker_directory = root.path().join("buyer-check-tasks");
@@ -552,6 +558,7 @@ async fn roundtrip(paid: bool, failed_check: bool) {
         serde_json::to_vec_pretty(&report).unwrap(),
     )
     .unwrap();
+    work_history(&f, provider, &grant_bytes, root.path());
     if retained.is_some() {
         let path = root.keep();
         eprintln!("Retained synthetic labor evidence at {}", path.display());
@@ -680,9 +687,9 @@ fn paid_setup(
                 checker_workspace,
                 "Compare retained candidate bytes with the frozen buyer acceptance fixture.",
             ),
-            program: Path::new("/usr/bin/cmp").canonicalize().unwrap(),
+            program: tool("cmp").canonicalize().unwrap(),
             program_sha256: hex(&nostr::contracts::digest_bytes(
-                &std::fs::read("/usr/bin/cmp").unwrap(),
+                &std::fs::read(tool("cmp")).unwrap(),
             )),
             expected_file: "expected.rs".into(),
             candidate_file: "candidate.rs".into(),
@@ -1346,7 +1353,17 @@ async fn paid_running_command_stops_on_signed_cancellation_zero_rework_or_curren
         let result = result.unwrap();
         assert_ne!(result.state, "finished", "{mode}");
         assert!(provider.book.records.acceptance.is_none());
-        let actual = task::owner::recover(&tasks, "labor-request").unwrap();
+        let mut attempts = 0;
+        let actual = loop {
+            match task::owner::recover(&tasks, "labor-request") {
+                Ok(task) => break task,
+                Err(task::Error::Busy) if attempts < 50 => {
+                    attempts += 1;
+                    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                }
+                Err(error) => panic!("closed task recovery failed: {error}"),
+            }
+        };
         assert!(
             actual
                 .run
@@ -1530,7 +1547,7 @@ fn cli_paid(
         }
         command
             .env_clear()
-            .env("PATH", "/usr/bin:/bin")
+            .env("PATH", std::env::var_os("PATH").expect("fixture PATH"))
             .env("HOME", &cli_home)
             .env("VERSE_HOME", &keys)
             .env("LABOR_HOME", &books)
@@ -1641,4 +1658,123 @@ fn cli_paid(
     );
     stop.store(true, std::sync::atomic::Ordering::Relaxed);
     serving.join().unwrap();
+}
+
+// Join the real process/checker/funding fixture to one native WORK history.
+fn work_history(f: &Fixture, provider: store::Store, grant_bytes: &[u8], root: &Path) {
+    use work_host::{authority::Authority, market::Market};
+    let work_path = root.join("native-work");
+    let host = Authority::initialize(work_path.clone(), f.buyer).unwrap();
+    let artifacts = workspace_host::artifact::Artifacts::new(work_path.clone()).unwrap();
+    let scope = host.create_scope(Default::default(), f.now).unwrap();
+    let descriptor = artifacts.json(&scope).unwrap();
+    let w =
+        json!({"authority":public(&f.buyer),"scope":descriptor["scope"],"item":"91".repeat(32)});
+    let order = order_value(&provider.book);
+    let frame = artifact_value(&provider.book.labor().task_frame);
+    let policy = artifact_value(&provider.book.labor().acceptance_policy);
+    let accepted = provider.book.records.acceptance.clone().unwrap();
+    let execute = provider
+        .book
+        .records
+        .resolve(provider.book.records.link.as_ref().unwrap())
+        .unwrap()["execute"]
+        .clone();
+    let funding = provider.document.paid.funding_state.clone();
+    let adapter = crate::work::Adapter::new(provider).unwrap();
+    let grant = artifacts
+        .put(grant_bytes, "application/json", None)
+        .unwrap();
+    adapter
+        .execution_grant(&grant, &order, f.now + 250)
+        .unwrap();
+    adapter.reassign(&order).unwrap();
+    let terms = nostr::private_artifact::open(&f.setup.terms, &f.provider).unwrap();
+    artifacts
+        .put_json(&nostr::contracts::parse_strict(terms.inline_bytes().unwrap()).unwrap())
+        .unwrap();
+    for observation in adapter.0.observations() {
+        let opened = nostr::private_artifact::open(&observation.event, &f.provider).unwrap();
+        if let Some(bytes) = opened.inline_bytes() {
+            let value = nostr::contracts::parse_strict(bytes).unwrap();
+            artifacts.put_json(&value).unwrap();
+        }
+    }
+    for value in adapter
+        .0
+        .book
+        .blobs
+        .0
+        .values()
+        .chain(adapter.0.book.records.values.values())
+    {
+        artifacts.put_json(value).unwrap();
+    }
+    let host = host.with_market(Box::new(adapter));
+    let sign = |body: Value, n: u8| {
+        workspace_host::host::request(&key(n), &public(&f.buyer), body, f.now).unwrap()
+    };
+    let mut item = json!({"v":"openagents.work-item.v1","requires":[],"kind":"work","title":"Repair the synthetic Rust file","body":null,"accountable":public(&f.buyer),"state":"open","frame":frame,"acceptance":policy,"delegation":null,"relations":[],"resources":[],"evidence":[],"disposition":null,"labels":[],"due_at":null,"timebox":null});
+    let apply = |host: &Authority, item: &Value, expected: Value, id: u8| {
+        let command = json!({"v":"openagents.work-command.v1","requires":[],"issuer":public(&f.buyer),"command_id":format!("{id:064x}"),"scope":scope,"work":w,"action":if expected.is_null(){"create"}else{"replace"},"expected":expected,"snapshot":artifacts.put_json(item).unwrap(),"source":null,"reason":null,"expires_at":f.now+300});
+        host.command(&sign(command, 1), &Default::default(), f.now)
+            .unwrap_or_else(|error| panic!("WORK command {id}: {error}"))
+    };
+    let initial = apply(&host, &item, Value::Null, 1);
+    let delegation = json!({"v":"openagents.work-delegation.v1","requires":[],"issuer":public(&f.buyer),"work":w,"basis":initial["revision"],"delegate":public(&f.provider),"frame":frame,"grant":grant,"until":f.now+250,"executions":[{"proposal":null,"request":execute,"run":null,"session":null}],"order":order});
+    item["delegation"] = host
+        .submit_declaration(&sign(delegation, 1), f.now)
+        .unwrap();
+    let linked = apply(&host, &item, initial["revision"].clone(), 2);
+    let evidence = json!({"v":"openagents.work-evidence.v1","requires":[],"issuer":public(&f.buyer),"work":w,"basis":linked["revision"],"type":"commercial","artifact":accepted,"sources":[]});
+    let evidence = host.submit_declaration(&sign(evidence, 1), f.now).unwrap();
+    item["evidence"] = json!([evidence]);
+    let evidence_revision = apply(&host, &item, linked["revision"].clone(), 3);
+    let reason = artifacts
+        .put(
+            b"The independently admitted LAB book retains exact acceptance evidence.",
+            "text/plain",
+            None,
+        )
+        .unwrap();
+    let disposition = json!({"v":"openagents.work-disposition.v1","requires":[],"issuer":public(&f.buyer),"work":w,"basis":evidence_revision["revision"],"outcome":"accepted","evidence":[evidence],"successor":null,"reason":reason});
+    item["disposition"] = host
+        .submit_declaration(&sign(disposition, 1), f.now)
+        .unwrap();
+    item["state"] = json!("resolved");
+    let completed = apply(&host, &item, evidence_revision["revision"].clone(), 4);
+    assert_eq!(completed["status"], "accepted");
+    let disposition = json!({"v":"openagents.work-disposition.v1","requires":[],"issuer":public(&f.buyer),"work":w,"basis":completed["revision"],"outcome":"reopened","evidence":[],"successor":null,"reason":reason});
+    item["disposition"] = host
+        .submit_declaration(&sign(disposition, 1), f.now)
+        .unwrap();
+    item["state"] = json!("open");
+    let reopened = apply(&host, &item, completed["revision"].clone(), 5);
+    assert_eq!(reopened["status"], "accepted");
+    for n in [3, 4] {
+        let control = json!({"v":"openagents.work-native-control.v1","requires":[],"issuer":public(&f.buyer),"scope":scope,"actor":public(&key(n)),"roles":["read"],"all":false,"items":[w["item"]],"until":f.now+300,"revoke_scope":false});
+        host.control(&sign(control, 1), f.now).unwrap();
+    }
+    drop(host);
+    let provider = store::Store::open(&root.join("provider"), f.setup.clone(), f.provider).unwrap();
+    assert_eq!(provider.book.records.acceptance.as_ref(), Some(&accepted));
+    assert_eq!(provider.document.paid.funding_state, funding);
+    let host = Authority::open(work_path, f.buyer)
+        .unwrap()
+        .with_market(Box::new(crate::work::Adapter::new(provider).unwrap()));
+    let mut histories = Vec::new();
+    for n in [3, 4] {
+        let request = json!({"v":"openagents.work-history-read.v1","requires":[],"issuer":public(&key(n)),"work":w});
+        let history = host.read_history(&sign(request, n), f.now).unwrap();
+        assert_eq!(history["records"].as_array().unwrap().len(), 5);
+        histories.push(
+            history["records"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|record| record["revision"].clone())
+                .collect::<Vec<_>>(),
+        );
+    }
+    assert_eq!(histories[0], histories[1]);
 }

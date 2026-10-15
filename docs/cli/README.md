@@ -12,7 +12,10 @@ The crate is `crates/openagents-cli`. It adds no protocol logic of its own:
 `coder_computers::live::Live`, the same client the Computers screens use;
 `verse` and `zone` are `verse::net`, `verse::mv`, and `verse-lagrange`;
 `sov` validates NIP-SOV profiles and runs a bounded local no-spend lifecycle;
-`trajectory` shares and verifies ATIF recordings without granting execution.
+`trajectory` shares and verifies ATIF recordings without granting execution;
+`work` uses [`work-host`](../../crates/work-host/README.md) for one admitted
+work/issue history, scoped views, GitHub import proposals, and explicit bounded
+delegation. `work --help` lists signed-bundle commands and optional LAB mounting.
 
 ## Conventions
 

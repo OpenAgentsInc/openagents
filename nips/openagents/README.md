@@ -65,6 +65,14 @@ sets. These reuse private artifacts and existing execution kinds. The
 [Coder integration plan](../../docs/coder/design/teardown-nostr-integration.md)
 defines implementation order and the evidence required before shipping them.
 
+[NIP-WORK](NIP-WORK.md) has native authority, command client, reader, scoped
+WS views, attention, bounded pure CJ execution, and independent check roles in
+[`work-host`](../../crates/work-host/README.md). `openagents work` keeps its
+Issue view on that same history. The existing tracker/project adapter supplies
+GitHub observations, and an explicitly mounted `coder-labor` book validates
+commercial linkage. External writes, session controls, and effectful executors
+keep their owning admission paths.
+
 [NIP-VAULT](NIP-VAULT.md)'s device-only `user` tier is implemented in
 `crates/oa-vault`, its browser client, and `openagents vault`. The `sealed` and
 `operator` tiers remain designed. [NIP-ATT](NIP-ATT.md) supports Google

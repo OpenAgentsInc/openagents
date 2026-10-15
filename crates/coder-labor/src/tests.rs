@@ -138,20 +138,20 @@ fn fixture_with_paid(custom: Option<(Value, Value)>, paid: bool) -> Fixture {
         json!({"v":"openagents.instructions.v1","requires":[],"task":"f".repeat(64),"revision":0,"resolver":resolver,"precedence":precedence,"snapshot":snapshot,"entries":[]}),
         "openagents.instructions.v1",
     );
+    let policy = put(
+        &mut blobs,
+        json!({"v":labor::ACCEPTANCE_POLICY_SCHEMA,"requires":[],"checker":checker,"lock":checker_lock,"criteria":["result"],"rule":"all-pass-v1"}),
+        labor::ACCEPTANCE_POLICY_SCHEMA,
+    );
     let frame = put(
         &mut blobs,
-        json!({"v":"openagents.task-frame.v1","requires":[],"task":"f".repeat(64),"owner":b,"controller":b,"revision":0,"previous":null,"objective":inert,"origin":"user","constraints":[inert],"acceptance":[inert],"snapshot":snapshot,"instructions":instructions,"variables":[],"attempts":[],"unresolved":[],"corrections":[]}),
+        json!({"v":"openagents.task-frame.v1","requires":[],"task":"f".repeat(64),"owner":b,"controller":b,"revision":0,"previous":null,"objective":inert,"origin":"user","constraints":[inert],"acceptance":[policy],"snapshot":snapshot,"instructions":instructions,"variables":[],"attempts":[],"unresolved":[],"corrections":[]}),
         "openagents.task-frame.v1",
     );
     let rights = put(
         &mut blobs,
         json!({"v":labor::RIGHTS_SCHEMA,"requires":[],"license":inert,"input_use":"perform-and-review-order","output_use":"review-only","publication":"deny","training":"deny","evaluation_reuse":"deny","redistribution":"deny","recipients":[b,p,r],"retention":"through-market-retain-until"}),
         labor::RIGHTS_SCHEMA,
-    );
-    let policy = put(
-        &mut blobs,
-        json!({"v":labor::ACCEPTANCE_POLICY_SCHEMA,"requires":[],"checker":checker,"lock":checker_lock,"criteria":["result"],"rule":"all-pass-v1"}),
-        labor::ACCEPTANCE_POLICY_SCHEMA,
     );
     let buyer_operator = if paid {
         "synthetic-buyer-operator"
@@ -671,4 +671,71 @@ fn unknown_execution_cannot_be_delivered_and_dispute_blocks_acceptance() {
             .contains("resolver reconciliation")
     );
     assert!(book.records.acceptance.is_none());
+}
+
+#[test]
+fn work_linker_requires_actual_lab_identity_and_keeps_acceptance_separate() {
+    use work_host::market::Market;
+    let mut f = fixture();
+    let mut book = agreed(&f, f.provider);
+    let order = order_value(&book);
+    let frame = f.setup.admission.task_frame.clone();
+    let policy = artifact_value(&book.labor().acceptance_policy);
+    let worker = public(&f.provider);
+    assert!(
+        book.delegation(&order, &frame, &policy, &public(&key(9)), &[])
+            .is_err()
+    );
+    let mut wrong = order.clone();
+    wrong["order_id"] = json!("wrong-order");
+    assert!(
+        book.delegation(&wrong, &frame, &policy, &worker, &[])
+            .is_err()
+    );
+    assert!(
+        book.delegation(&order, &frame, &policy, &worker, &[])
+            .unwrap()["acceptance"]
+            .is_null()
+    );
+    assert!(book.execution_grant(&frame, &order, 200).is_err());
+    assert!(book.reassign(&order).is_err());
+    deliver(&mut f, &mut book, 200, "passed");
+    assert!(book.records.acceptance.is_none());
+    assert!(
+        book.acceptance(
+            &order,
+            &frame,
+            &policy,
+            &worker,
+            book.records.verification.as_ref().unwrap()
+        )
+        .is_err()
+    );
+    book.receive(&review(&f, &book, "accept"), 200, &f.blobs)
+        .unwrap();
+    let body = json!({"v":records::ACCEPTANCE,"requires":[],"issuer":public(&f.buyer),"order":order,"submission":book.records.submission,"verification":book.records.verification,"outcome":"accepted","basis":"buyer_acceptance","review":book.records.review,"resolution":null,"amount_due_msat":0,"supersedes":[],"evidence":[book.records.delivery]});
+    let event = sealed(&body, records::ACCEPTANCE, &f.buyer, &f.provider, f.now);
+    book.receive(&event, 200, &Blobs::default()).unwrap();
+    let linked = book
+        .acceptance(
+            &order,
+            &frame,
+            &policy,
+            &worker,
+            book.records.acceptance.as_ref().unwrap(),
+        )
+        .unwrap();
+    assert_eq!(
+        linked["acceptance"],
+        *book.records.acceptance.as_ref().unwrap()
+    );
+    assert_eq!(book.market().price_msat, 0);
+    let execution = book
+        .records
+        .resolve(book.records.link.as_ref().unwrap())
+        .unwrap();
+    let links =
+        vec![json!({"proposal":null,"request":execution["execute"],"run":null,"session":null})];
+    book.delegation(&order, &frame, &policy, &worker, &links)
+        .unwrap();
 }

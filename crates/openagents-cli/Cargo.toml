@@ -60,6 +60,7 @@ atif = { path = "../atif" }
 atif-nostr = { path = "../atif-nostr" }
 curated-registry = { package = "plugin-registry", path = "../plugin-registry" }
 workspace-host = { path = "../workspace-host" }
+work-host = { path = "../work-host" }
 coder-host = { path = "../coder-host" }
 coder-link = { path = "../coder-link" }
 # `openagents lease`: the host resource broker's leases.

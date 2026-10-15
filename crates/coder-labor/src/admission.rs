@@ -107,6 +107,12 @@ impl Admission {
         {
             return Err("this labor host requires an original buyer-owned frozen frame".into());
         }
+        if !frame["acceptance"]
+            .as_array()
+            .is_some_and(|refs| refs.contains(&artifact_value(&terms.acceptance_policy)))
+        {
+            return Err("task frame omits the frozen LAB acceptance policy".into());
+        }
         for field in ["objective", "snapshot", "instructions"] {
             self.blobs.get(&frame[field])?;
         }

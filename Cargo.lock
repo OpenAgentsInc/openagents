@@ -3758,6 +3758,8 @@ dependencies = [
  "tempfile",
  "tokio",
  "tokio-tungstenite 0.30.0",
+ "work-host",
+ "workspace-host",
 ]
 
 [[package]]
@@ -11512,6 +11514,7 @@ dependencies = [
  "verse-lagrange",
  "verse-net",
  "verse-world",
+ "work-host",
  "workspace-host",
  "world-tree",
  "zeroize",
@@ -20095,6 +20098,18 @@ dependencies = [
  "thiserror 2.0.20",
  "windows",
  "windows-core",
+]
+
+[[package]]
+name = "work-host"
+version = "1.0.0-rc.22"
+dependencies = [
+ "nostr",
+ "secp256k1 0.31.1",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "workspace-host",
 ]
 
 [[package]]
