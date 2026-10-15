@@ -1,25 +1,9 @@
-//! CPU workers keep their own slots when the caller supplies exactly one CPU per worker.
+//! CPU workers preserve the caller's allowed CPU mask.
 use crate::{Error, Result};
 
 pub(crate) fn pool(threads: usize) -> Result<rayon::ThreadPool> {
-    let cpus = affinity().filter(|cpus| threads > 1 && cpus.len() == threads);
     rayon::ThreadPoolBuilder::new()
         .num_threads(threads)
-        .start_handler(move |index| {
-            if let Some(cpus) = &cpus {
-                #[cfg(target_os = "linux")]
-                {
-                    // SAFETY: IDs came from a CPU_SETSIZE-sized mask. PID zero affects only this worker.
-                    unsafe {
-                        let mut mask: libc::cpu_set_t = std::mem::zeroed();
-                        libc::CPU_SET(cpus[index], &mut mask);
-                        libc::sched_setaffinity(0, std::mem::size_of::<libc::cpu_set_t>(), &mask);
-                    }
-                }
-                #[cfg(not(target_os = "linux"))]
-                let _ = (cpus, index);
-            }
-        })
         .build()
         .map_err(|e| Error(format!("Cannot start model workers: {e}")))
 }
@@ -50,10 +34,35 @@ pub(crate) fn affinity() -> Option<Vec<usize>> {
 mod tests {
     use super::*;
     #[test]
-    fn workers_do_not_change_the_callers_affinity() {
-        let before = affinity();
-        let workers = pool(2).unwrap();
-        workers.install(|| assert_eq!(rayon::current_num_threads(), 2));
-        assert_eq!(affinity(), before);
+    fn workers_preserve_the_callers_allowed_cpu_mask() {
+        let caller = affinity();
+        std::thread::spawn(|| {
+            #[cfg(target_os = "linux")]
+            if let Some(cpus) = affinity() {
+                // SAFETY: narrow only this test thread, using IDs from its current mask.
+                unsafe {
+                    let mut mask: libc::cpu_set_t = std::mem::zeroed();
+                    for cpu in cpus.into_iter().take(4) {
+                        libc::CPU_SET(cpu, &mut mask);
+                    }
+                    assert_eq!(
+                        libc::sched_setaffinity(0, std::mem::size_of::<libc::cpu_set_t>(), &mask),
+                        0
+                    );
+                }
+            }
+            let before = affinity();
+            let count = before.as_ref().map_or(2, |cpus| cpus.len().min(4));
+            let workers = pool(count).unwrap();
+            workers.install(|| assert_eq!(rayon::current_num_threads(), count));
+            assert_eq!(
+                workers.broadcast(|_| affinity()),
+                vec![before.clone(); count]
+            );
+            assert_eq!(affinity(), before);
+        })
+        .join()
+        .unwrap();
+        assert_eq!(affinity(), caller);
     }
 }
