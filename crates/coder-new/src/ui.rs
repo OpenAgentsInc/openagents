@@ -2324,7 +2324,19 @@ impl TranscriptCache {
                 cached.bound_run(width, phase, offset);
             }
         }
-        let streaming = !chat.partial.is_empty();
+        // Waiting for the reply's first words: a spinner (no words) sits
+        // where the reply will appear, as the rail's Working does. A running
+        // step shows its own spinner on its row, so none is added then.
+        let waiting = chat.busy
+            && chat.partial.is_empty()
+            && !matches!(
+                chat.entries.last(),
+                Some(
+                    crate::live::Entry::Tool { running: true, .. }
+                        | crate::live::Entry::Delegation { running: true, .. }
+                )
+            );
+        let streaming = !chat.partial.is_empty() || waiting;
         // A finished run of steps reads as one line in the compact view
         // (#11638); Ctrl+O's verbose view shows every step.
         let wanted = if view == ViewMode::Compact {
@@ -2373,7 +2385,26 @@ impl TranscriptCache {
                 cached.gap_after = false;
             }
         }
-        if chat.partial.is_empty() {
+        if waiting {
+            let entry = crate::live::Entry::Assistant {
+                elapsed_ms: None,
+                text: String::new(),
+                model: None,
+            };
+            let lines = vec![Line::from(span(crate::tools::spinner(phase), t::GRAY))];
+            let mut copy = Vec::new();
+            fill_copy(&lines, &mut copy);
+            self.partial = Some(CachedEntry {
+                width,
+                lines,
+                copy,
+                entry,
+                gap_after: false,
+                run_output: None,
+                run_copy: Vec::new(),
+                fold: None,
+            });
+        } else if chat.partial.is_empty() {
             self.partial = None;
         } else {
             let entry = crate::live::Entry::Assistant {
@@ -4251,6 +4282,55 @@ mod run_viewport_tests {
             output: serde_json::json!({"stdout": (1..=count).map(|n| format!("row {n}\n")).collect::<String>()}),
             running,
         }];
+    }
+
+    /// While a turn waits for its first words, a wordless spinner sits in
+    /// the transcript where the reply will appear; it turns as frames pass,
+    /// gives way to the reply's words, and isn't drawn under a running step
+    /// (which has its own spinner) or once the turn is done.
+    #[test]
+    fn a_waiting_reply_shows_a_spinner_where_it_will_appear() {
+        let mut chat = crate::live::Chat::default();
+        chat.entries.push(crate::live::Entry::User("hi".into()));
+        chat.busy = true;
+        let mut cache = TranscriptCache::default();
+        let last = |cache: &TranscriptCache| {
+            let rows: Vec<String> = cache
+                .blocks()
+                .flat_map(|block| block.lines.iter())
+                .map(|line| line.spans.iter().map(|s| s.content.as_ref()).collect())
+                .collect();
+            rows.last().cloned().unwrap_or_default()
+        };
+        cache.refresh(&chat, 40, 0, ViewMode::Compact);
+        assert_eq!(last(&cache), crate::tools::spinner(0));
+        cache.refresh(&chat, 40, 3, ViewMode::Compact);
+        assert_eq!(last(&cache), crate::tools::spinner(3));
+        // A running step has its own spinner: none below it.
+        chat.entries.push(crate::live::Entry::Tool {
+            name: "Read".into(),
+            input: serde_json::json!({"file_path": "a.rs"}),
+            output: serde_json::Value::Null,
+            running: true,
+        });
+        cache.refresh(&chat, 40, 4, ViewMode::Compact);
+        assert!(cache.partial.is_none());
+        chat.entries.pop();
+        // The first words replace it.
+        chat.partial = "Hello there.\nMore".into();
+        cache.refresh(&chat, 40, 5, ViewMode::Compact);
+        let shown: String = cache
+            .blocks()
+            .flat_map(|block| block.lines.iter())
+            .flat_map(|line| line.spans.iter().map(|s| s.content.to_string()))
+            .collect();
+        assert!(shown.contains("Hello there."), "{shown}");
+        assert!(!shown.contains(crate::tools::spinner(5)), "{shown}");
+        // Done: nothing waits.
+        chat.partial.clear();
+        chat.busy = false;
+        cache.refresh(&chat, 40, 6, ViewMode::Compact);
+        assert!(cache.partial.is_none());
     }
 
     #[test]
