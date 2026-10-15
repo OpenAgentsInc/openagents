@@ -71,6 +71,121 @@ below when choosing work.
 | Reuse | [Shared KB](../../coder/design/knowledge-base.md), [signed bundles](../../coder/runtime/knowledge-bundles.md), [frozen studies](../../coder/runtime/knowledge-studies.md), and plugin release/evaluation work. | Demonstrate benefit on new tasks and agree on compensation before paid use. Historical KB screening cannot authorize automatic promotion. |
 | Commercial operation | [Revenue roadmap](../../sales/revenue-roadmap.md), [later-market profiles](../../payments/later-markets.md), and [owner qualification work](../../../NEEDS_OWNER.md). | Find a consenting buyer and an outside provider, qualify the chosen payment path, and measure repeat use and complete costs. Existing plans already own these requirements. |
 
+## Relevant NIPs and remaining contract work
+
+Review, 2026-10-15: the [OpenAgents NIP directory](../../../nips/openagents/README.md)
+contains 33 specifications plus shared contracts and JSON schemas. Together
+they already describe most of this proposal. We should implement a supported
+subset of that composition before proposing another NIP or allocating kinds.
+Most remaining gaps are host enforcement, application bindings, and evidence
+that independent participants can complete the whole flow.
+
+The index and several specification introductions retain older implementation
+summaries. For example, the index calls ATT and VAULT unimplemented, while
+their own status sections describe supported portions. Read a contract's
+requirements separately from its status and use current runtime evidence for
+each implemented role. This review maps the documents; it does not certify
+deployed conformance.
+
+### Contracts for the first economic loop
+
+| Contract | What we can reuse | What the implementation must supply |
+| --- | --- | --- |
+| [SOV: treasury, earnings, and purchases](../../../nips/openagents/NIP-SOV.md#treasury-earnings-and-purchases) | The existing composition for a durable agent that earns, buys resources, retains goals, and declares custody. The profile already references governance, custody, disclosure, and treasury policies. | A supported treasury-policy schema and adapter binding the agent, account, authorizer, destinations, payment profiles, exact units, fees, limits, and reconciliation authority. Verified income changes allowance only if that policy explicitly permits it. A null treasury permits no spending. |
+| [MKT](../../../nips/openagents/NIP-MKT.md) and [LAB](../../../nips/openagents/NIP-LAB.md) | Immutable offerings, private RFQ/quote/order/confirmation, exact labor terms, independently pinned checking, buyer acceptance, payment instructions, and payment evidence. | Connect the useful-job profile to current execution and settlement owners. Keep provider, worker, reviewer, resolver, and payment receiver identities explicit. The central-receive route must retain its admitted receiver/payee relationship; a generic provider listing cannot authorize it. |
+| [X402](../../../nips/openagents/NIP-X402.md) | Upfront purchase of an exact operation, a pinned receiver, separate price/fee reservations, durable proof consumption, and paid-result recovery. Standard HTTP, MCP, and native Nostr bindings are distinct. | Use the existing HTTP top-up resource first. X402 pays for that operation; the account service separately creates credit after verifying its callback. The protocol itself defines no credit balance. Native `nostr:openagents:1` requires explicit support from buyer, provider, and facilitator. |
+| [CAP](../../../nips/openagents/NIP-CAP.md), [PRG](../../../nips/openagents/NIP-PRG.md), and [CJ](../../../nips/openagents/NIP-CJ.md) | Exact operation descriptions, separate host bindings and grants, locked typed workflows, and conversation/decision/execution jobs. | Publish only supported interfaces, retain the complete executable closure, and independently admit execution and `spend`. CJ events are ephemeral; retain authoritative job state elsewhere. PRG's bounded acyclic workflow is not an indefinite agent lifecycle or a generic wait for commercial payment. |
+| [CTX](../../../nips/openagents/NIP-CTX.md) and [POL](../../../nips/openagents/NIP-POL.md) | Task/source revisions, recipient-specific evidence, immutable action subjects, single-use approvals, routing, and actual-versus-estimated usage records. | Bind the credited account and purchase to the exact approved action. Check provider eligibility before disclosure. Record failed routes and escalation costs, and keep learned preferences from widening permissions. Device pairing is not purchase approval. |
+| [COORD](../../../nips/openagents/NIP-COORD.md) and [RUN](../../../nips/openagents/NIP-RUN.md) | Shared reservations, atomic claims, dispatcher fencing, one authoritative controller, ordered outcomes, and unknown-effect recovery. | Cover every participating child, host, and wallet under the authoritative allowance. Preserve reservations through crashes, period changes, and migration. RUN explicitly makes no exactly-once execution claim; durable identities and reconciliation prevent an unknown effect from becoming permission to repeat it. |
+| [WORK](../../../nips/openagents/NIP-WORK.md), [AUTO](../../../nips/openagents/NIP-AUTO.md), and [ENV](../../../nips/openagents/NIP-ENV.md) | Persistent objectives, finite scheduled/source-triggered/checked continuation, actual environment materialization, execution attachments, and cleanup accounting. | Start with an explicitly operated order. Add unattended work only under a finite admitted plan, an independent continuation check, current execution attachment, and aggregate budget. Unresolved effects block continuation; earning money does not renew an expired plan. |
+| [DEC](../../../nips/openagents/NIP-DEC.md), [OPT](../../../nips/openagents/NIP-OPT.md), and [EVAL](../../../nips/openagents/NIP-EVAL.md) | Typed decisions, frozen implementation studies, protected confirmation, complete cost accounting, and scoped adoption evidence. | Measure the actual routing policy on new task groups. Keep acceptance, permissions, and protected checkers outside optimization. A decision probability, report, or selected candidate cannot approve payment or activate itself. |
+| [KB](../../../nips/openagents/NIP-KB.md), [EXT](../../../nips/openagents/NIP-EXT.md), and [REG](../../../nips/openagents/NIP-REG.md) | Versioned knowledge, exact signed releases, licenses, dependencies, revocation, and independently curated discovery. EXT already carries a signed per-call `fee_msat` and payout destination. | Reuse the supported plugin payment path. A registry recommendation does not install or grant execution. A paid software license or general knowledge royalty needs an explicit terms/fulfillment profile; these contracts do not create one automatically. |
+| [ATIF](../../../nips/openagents/NIP-ATIF.md) | Exact trajectory bytes, parent/child links, private carriage, and separately authorized public derivatives. | Link local traces first; add a Nostr publisher only when distribution needs it. Schema/fixture support is distinct from a running publisher. RUN remains authoritative for effects, LAB for commercial acceptance, and wallet evidence for settlement. |
+| [PYLON](../../../nips/openagents/NIP-PYLON.md) | Opt-in compute beacons, service receipts, recomputable pool totals, trusted check verdicts, and a public representation of useful supply. | Qualify the selected service and wallet path, resolve the public-proof conflict below, and preserve network distinctions. A buyer's `accepted` service receipt is not signed LAB acceptance, verified worker income, or proof of profit. |
+
+The [shared contracts](../../../nips/openagents/contracts.md) supply exact
+references, closed schemas, explicit effects and units, versioned required
+features, and the encrypted private artifact envelope (`3188`). New
+account/purchase bindings can use pinned schemas behind CAP operations and
+private artifacts. Do not put execution restrictions in inert `meta`, add
+unchecked fields to closed CJ/SOV bodies, or make a public balance tag.
+
+### Relevant supporting contracts
+
+| Contract | When it matters | Boundary to preserve |
+| --- | --- | --- |
+| [HOST](../../../nips/openagents/NIP-HOST.md), [CTRL](../../../nips/openagents/NIP-CTRL.md), and [REACH](../../../nips/openagents/NIP-REACH.md) | Existing clients inspect, steer, or stop the worker; a permitted client locates its host. | Enrollment, observation, and reachability neither appoint a POL approver nor grant spending. SOV controller transfer additionally needs real dispatcher fencing; finding another host cannot transfer authority. |
+| [SESS](../../../nips/openagents/NIP-SESS.md), [WS](../../../nips/openagents/NIP-WS.md), and [TERM](../../../nips/openagents/NIP-TERM.md) | Reuse engine adapters, retain histories, expose repairable views, or inspect a worker interactively. | A session, work item, execution, commercial order, and wallet purchase keep separate identities. A screen or terminal status cannot establish acceptance or settlement. The first loop needs no new terminal protocol. |
+| [MV](../../../nips/openagents/NIP-MV.md) and [XP](../../../nips/openagents/NIP-XP.md) | Project useful work into Verse and recognize checked contributions. | World state and XP are presentation/reputation. Neither funds a wallet nor proves earnings, task quality, or independent demand. |
+| [ATT](../../../nips/openagents/NIP-ATT.md#implementation-status) | A later job's disclosure policy requires an attested inference workload. Its status records Google Confidential Space/Intel TDX support, with specific remaining gaps. | Verify the exact release and endpoint evidence under the supported platform. Attestation does not establish answer correctness or wallet custody. Public sealed-job receipts and several verification/publication features remain unfinished. |
+| [VAULT](../../../nips/openagents/NIP-VAULT.md#implementation-status) | A later workflow needs private stored customer inputs. Device-only tier `user` is implemented; `sealed` and `operator` tiers are designed. | Do not assume the device-only vault permits unattended remote agents to decrypt inputs. Complete and qualify the required key-release tier and disclosure policy before admitting that workflow. |
+| [LIVE](../../../nips/openagents/NIP-LIVE.md) | Future jobs use screen, audio, camera, or device input. | Media consent and fresh observations require their own admitted profile. They are not prerequisites for a public-repository repair or text inference purchase. |
+
+Block OA/AA/AE/AM and official NIP-01/42/44/47 remain the underlying identity,
+encryption, memory, metrics, and wallet-transport pieces referenced by these
+contracts. They do not fill the application gaps themselves. In particular,
+NWC connectivity does not prove a wallet can enforce a fee ceiling or recover
+an ambiguous payment.
+
+### Missing bindings and compatibility work
+
+1. **Define the private account and treasury binding.** SOV states the required
+   relationships but does not define our API-account-to-worker-earnings mapping
+   or a concrete reinvestment policy. Pin a supported schema that identifies
+   the agent and current policy revision, verified API-account control, worker
+   beneficiary, wallet/account adapter, allowed top-up resource, exact caps,
+   expiry, and revocation/recovery authority. Each owning service verifies its
+   side. Specify whether confirmed income can replenish a finite allowance;
+   default to no automatic increase. Publish fixtures and exact CAP interfaces
+   for the supported profile without claiming full SOV conformance.
+2. **Join settlement to credit fulfillment.** Link the accepted LAB obligation,
+   authenticated receive, worker payout attempt, confirmed wallet income,
+   X402 purchase, account-credit callback, and metered use through their
+   original identities. Define the top-up recovery response when payment is
+   real but the callback or credit acknowledgment is lost. Keep proof
+   consumption, credit creation, usage, and payout separate. A new invoice,
+   callback retry, or restored host must not create another credit or charge.
+3. **Resolve public Pylon proofs before paid publication.** PYLON's
+   [service receipt](../../../nips/openagents/NIP-PYLON.md#service-receipt--kind-3201)
+   requires a preimage for `x402-exact` paid work, while X402's
+   [payment rules](../../../nips/openagents/NIP-X402.md#payment-settlement-and-execution-state)
+   and [receipt rules](../../../nips/openagents/NIP-X402.md#bounds-receipts-and-conformance)
+   prohibit public bearer proofs. These requirements conflict. Propose a
+   versioned proof-free public receipt linked to private settlement evidence,
+   then review its validators, pool totals, and world consumers together.
+   Until resolved, omit paid public Pylon receipts and retain private evidence;
+   do not fabricate a free receipt for a paid job. A public hash/preimage pair
+   establishes knowledge of a secret, not who paid, actual collection, or
+   independent customer demand.
+4. **Make the economic statement a typed view.** The existing
+   [payment receipt schema](../../../nips/openagents/schemas/payment-receipt.v1.json)
+   intentionally excludes invoices and preimages. It describes a payment, not
+   worker acceptance, an earnings allocation, or a spendable account balance.
+   Define the private statement's source references, units, observation cut,
+   coverage, and unknowns. Its projection must not create another ledger.
+   Apply separate consent to a public export; plaintext prompt digests can
+   disclose guessable inputs. For sealed work, ATT requires ciphertext digests.
+5. **Specify paid component terms where existing fees do not fit.** EXT's
+   plugin per-call fee is already part of its signed release; reuse it.
+   SOV explicitly leaves general software licensing and royalty fulfillment
+   to a supported domain profile. If we sell a KB bundle or an improvement,
+   pin license, delivery, price, beneficiary, attribution, and acceptance under
+   that profile and the existing later-market owners. EVAL success and XP
+   alone create no financial obligation.
+6. **Complete the cross-contract recovery fixtures.** MKT's Lightning profile
+   admits `regtest`; X402 v1 admits only Bitcoin mainnet and testnet. Choose a
+   common supported network for the loop rather than aliasing one into another.
+   Test income spoofing, duplicate credit, wrong beneficiaries, concurrent
+   children, fee-cap refusal, lost wallet/callback replies, period rollover
+   with unknown liabilities, and restored or competing controllers. A signer
+   or NWC adapter without required fee/recovery support must refuse that role.
+
+The protocol changes needed now are narrow supported schemas and the public
+receipt compatibility review. General escrow, additional currencies, threshold
+custody, a new agent-credit token, and a global reputation oracle remain outside
+this first loop. SOV already distinguishes guardians from key custody; ordinary
+operator-held custody with explicit limits is sufficient for the first profile.
+
 ## Implementation shape
 
 Use a small Rust coordinator over the existing owners. Start with a private
@@ -165,7 +280,7 @@ Escrow and automated dispute resolution are separate work. Buyer acceptance
 connects payment to the agreed result; it does not establish that the buyer's
 goal benefits everyone. Execution permissions and human control still matter.
 
-Use the current exact-once accounting and recovery paths rather than inferring
+Use the current durable accounting and recovery paths rather than inferring
 success from a relay acknowledgment. A crash may leave execution or payment
 unknown. Keep its reservation until the owning subsystem resolves it. Changing
 relays must preserve the job, terms, artifact, and payment identities.
@@ -182,7 +297,9 @@ Build the identity binding and private joined statement first. Select one
 buyer-needed public-repository task and freeze its deliverable, acceptance,
 price, provider expense ceiling, and payment terms. Record opening capital and
 any free-tier use. Inspect the chosen deployment's credit availability and
-existing owner qualification requirements.
+existing owner qualification requirements. Implement the supported SOV/POL
+treasury-policy and account-binding schemas described above; income must not
+silently raise a spending limit.
 
 Done when synthetic fixtures connect an order, acceptance, funded earnings,
 payout, credit purchase, and inference usage without changing any balance twice.
@@ -213,6 +330,8 @@ existing owner process. Then run one small funded order. Confirm the worker's
 payout at its wallet before enabling the bounded inference-credit purchase.
 The same dedicated agent uses the resulting credit for a subsequent admitted
 job. Keep initial expenses funded by declared opening capital or the free tier.
+Use the explicitly authorized reinvestment rule and original purchase identity;
+recover a lost credit callback before considering another purchase.
 
 Done when real incoming and outgoing payments settle, the credit lands once,
 actual usage is charged once, and the second job's records link back to the
@@ -249,6 +368,7 @@ Choose the next input from actual bottlenecks. For inference, qualify the
 existing Pylon paid path for a suitable workload and compare it with the
 current API path, including checks, retries, availability, and provider costs.
 Keep text inference, decision quality, and coding labor as separate products.
+Resolve the PYLON/X402 public-proof conflict before publishing paid receipts.
 
 For reusable knowledge or a plugin, pin its release and rights, compare with
 and without it on tasks outside its source groups, and price the author's fee
@@ -276,6 +396,9 @@ provider earnings justify it. Exercise a second relay operator, and eventually
 a compatible second client, without making these a new market launch. Follow
 the [revenue roadmap](../../sales/revenue-roadmap.md) for acquisition and
 customer support rather than building a separate sales system for this study.
+Before enabling unattended continuation, add the supported finite AUTO/SOV
+lifecycle, ENV execution attachment, and RUN/COORD recovery for this profile.
+Keep an expired or unresolved plan stopped even when its wallet has funds.
 
 ## Experiments and decisions
 
@@ -328,13 +451,16 @@ work and use those earnings to buy what its next task needs.
 
 ## First changes to make
 
-1. Add the private identity binding and read-only per-agent economic statement,
-   with synthetic joins and recovery checks over existing books.
+1. Add the supported SOV/POL treasury policy, private identity binding, and
+   read-only per-agent economic statement, with synthetic joins and recovery
+   checks over existing books.
 2. Extend one labor execution/checker profile for a buyer-needed public Rust
    repair and ship an independent-operator no-spend rehearsal.
 3. Connect confirmed worker payouts to narrowly authorized API-credit purchases,
-   with concurrent-budget and lost-reply recovery fixtures. Then qualify and
-   record one real earn/receive/buy/work cycle through the existing owners.
+   with concurrent-budget, lost-reply, and credit-callback recovery fixtures.
+   Then qualify and record one real earn/receive/buy/work cycle through the
+   existing owners. Review the PYLON public-receipt profile separately before
+   adding paid compute publication.
 
 Those changes address the missing connection first. Subsequent work should
 follow measured cost and customer demand, with the current
