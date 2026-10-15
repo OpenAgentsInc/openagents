@@ -24,6 +24,7 @@ use maud::{DOCTYPE, Markup, html};
 
 use crate::App;
 use crate::pages::download::{CODER_PS1, CODER_SH};
+use openagents_ui::content::CodeBlock;
 
 const CSS: &str = include_str!("../../static/landing/landing.css");
 const CSS_PATH: &str = "/landing/landing.css";
@@ -295,10 +296,9 @@ fn steps_section() -> Markup {
                 li.step {
                     span.step-number { "01" }
                     h3 { "Install" }
-                    p { "One line on macOS and Linux:" }
-                    code { (CODER_SH) }
-                    p.muted { "On Windows, in PowerShell:" }
-                    code { (CODER_PS1) }
+                    p { "One line, with a Copy button:" }
+                    (CodeBlock::new(CODER_SH).language("bash").title("macOS and Linux"))
+                    (CodeBlock::new(CODER_PS1).language("powershell").title("Windows, in PowerShell"))
                 }
                 li.step {
                     span.step-number { "02" }
@@ -343,6 +343,18 @@ fn pricing_section() -> Markup {
                         li { "Model usage included each month" }
                     }
                     (button("See plans", "/pricing", "3d"))
+                }
+                div.price-card data-slot="card" {
+                    h3 { "Enterprise" }
+                    p.price { "Custom" }
+                    ul {
+                        li { "Everything in Pro" }
+                        li { "Deploy on our cloud, your cloud, or your own machines" }
+                        li { "SAML single sign-on and SCIM" }
+                        li { "Uptime SLA and priority support" }
+                        li { "Audit logs, invoicing, and a security review" }
+                    }
+                    (button("Contact sales", "/contact?topic=sales", "outline"))
                 }
             }
         }
@@ -427,6 +439,8 @@ pub(crate) fn page(theme: Option<openagents_ui::shell::Theme>) -> Markup {
                 meta name="description" content="Coder sits in front of every coding agent you use, and sends each step to the model it needs.";
                 link rel="icon" type="image/svg+xml" href="/favicon.svg";
                 (maud::PreEscaped(crate::theme::style_tag()))
+                // The design kit's script, for the install lines' Copy buttons.
+                (maud::PreEscaped(crate::theme::script_tags()))
                 link rel="stylesheet" href=(CSS_PATH);
             }
             body.landing {
@@ -504,6 +518,7 @@ mod tests {
         // Pro's price is the one /pricing sells.
         let plan = retail_cloud::environment::plan();
         assert!(page.contains(&retail_cloud::environment::usd(plan.price_usd_micros)));
+        assert!(page.contains("Enterprise") && page.contains("href=\"/contact?topic=sales\""));
         // Every link goes somewhere: in-page ones to a section that exists.
         for anchor in ["how", "agents", "pricing", "faq"] {
             assert!(page.contains(&format!("href=\"#{anchor}\"")));
@@ -511,7 +526,11 @@ mod tests {
         }
         assert!(!page.contains("href=\"#\""));
         // No inline styles or scripts: the site's policy allows neither.
-        assert!(!page.contains("<script") && !page.contains("style="));
+        // Scripts load from the site's own files only (the Copy buttons).
+        assert!(!page.contains("style="));
+        assert!(!page.contains("<script>"));
+        assert!(page.matches("<script").count() == page.matches("<script src=\"/static/").count());
+        assert!(page.contains("data-oa-copy") || page.contains("Copy"));
         crate::copy_guard::assert_plain("/landing", &page);
         // The site's Coder Light / Coder Noir stylesheet, and the chosen
         // theme pinned like every other page.
