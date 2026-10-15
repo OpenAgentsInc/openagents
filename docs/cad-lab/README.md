@@ -103,6 +103,12 @@ Z up.
     under it, named by path (`bogie_l.wheel`, `bogie_l.spin`), to any depth.
     Outer joints and contacts reach inner instances by path; a contact or
     joint naming a group covers everything inside it.
+  - **Instance patterns:** an instance's `pattern` places copies of it
+    (and of a subassembly's whole tree): a row or grid (`{"count": 3,
+    "step": [60, 0, 0], "count2": 2, "step2": [0, 80, 0]}`) or a ring
+    about an axis (`{"count": 6, "axis": [0, 0, 1], "origin": [0, 0, 0]}`,
+    `angle` between copies optional). The first copy keeps the id; the
+    rest are `id-2`, `id-3`, ...
   - **Templates from other documents:** `cad_from_json` and `cad_assemble`
     take `{"from": {"doc": "wheel", "version": 3, "part": "wheel"}}` for a
     part or subassembly template; it's copied in at that version and keeps a

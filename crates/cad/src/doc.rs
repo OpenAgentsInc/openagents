@@ -451,6 +451,24 @@ fn expand(
     contacts: &mut Vec<Value>,
     problems: &mut Vec<String>,
 ) {
+    // A patterned instance is its copies, each placed like any instance.
+    if !instance["pattern"].is_null() {
+        match pattern_copies(instance) {
+            Ok(copies) => {
+                for copy in &copies {
+                    expand(
+                        copy, prefix, group, templates, stack, instances, joints, contacts,
+                        problems,
+                    );
+                }
+            }
+            Err(why) => problems.push(format!(
+                "Instance {prefix}{}'s pattern: {why}",
+                instance["id"].as_str().unwrap_or_default()
+            )),
+        }
+        return;
+    }
     let path = |id: &str| format!("{prefix}{id}");
     let mut flat = instance.clone();
     let id = instance["id"].as_str().unwrap_or_default();
@@ -534,6 +552,87 @@ fn expand(
         contacts.push(Value::Array(mapped));
     }
     stack.pop();
+}
+
+/// The copies an instance's `pattern` makes, the first being the instance
+/// itself and the rest `id-2`, `id-3`, ...:
+///
+/// - linear: `{"count": 4, "step": [60, 0, 0]}`, and optionally a second
+///   direction `"count2"`, `"step2"` for a grid (in the parent's frame);
+/// - circular: `{"count": 6, "axis": [0, 0, 1], "origin": [0, 0, 0],
+///   "angle": 60}` (degrees between copies; a full turn shared out when
+///   left out), turning the whole placement about the axis.
+///
+/// # Errors
+/// A pattern that isn't well formed or makes too many copies.
+pub fn pattern_copies(instance: &Value) -> Result<Vec<Value>, String> {
+    let p = &instance["pattern"];
+    let count = |key: &str| -> Result<usize, String> {
+        match p.get(key) {
+            None => Ok(1),
+            Some(v) => v
+                .as_u64()
+                .filter(|n| (1..=MAX_REPEAT as u64).contains(n))
+                .map(|n| n as usize)
+                .ok_or_else(|| format!("{key} is a whole number from 1 to {MAX_REPEAT}")),
+        }
+    };
+    let (n1, n2) = (count("count")?, count("count2")?);
+    if n1 * n2 > MAX_REPEAT {
+        return Err(format!(
+            "it makes {} copies; {MAX_REPEAT} is the most",
+            n1 * n2
+        ));
+    }
+    let id = instance["id"].as_str().unwrap_or_default();
+    let (at, rotate) = placement(instance);
+    let local = crate::xf::Xf::translate(at).mul(&crate::xf::Xf::rotate_xyz(rotate));
+    let mut base = instance.clone();
+    if let Some(o) = base.as_object_mut() {
+        o.remove("pattern");
+    }
+    let mut out = Vec::new();
+    let mut place = |k: usize, xf: crate::xf::Xf| {
+        let mut copy = base.clone();
+        if k > 0 {
+            copy["id"] = json!(format!("{id}-{}", k + 1));
+        }
+        let round = |x: f64| (x * 1e9).round() / 1e9;
+        copy["at"] = json!(xf.translation().map(round));
+        copy["rotate"] = json!(xf.to_xyz_degrees().map(round));
+        out.push(copy);
+    };
+    if let Some(axis) = vec3(&p["axis"]) {
+        let len = axis.iter().map(|x| x * x).sum::<f64>().sqrt();
+        if len < 1e-12 || !p["step"].is_null() {
+            return Err("a circular pattern has a non-zero axis (and no step)".into());
+        }
+        let unit = axis.map(|x| x / len);
+        let origin = vec3(&p["origin"]).unwrap_or([0.0; 3]);
+        let angle = p["angle"].as_f64().unwrap_or(360.0 / n1 as f64);
+        for k in 0..n1 {
+            let turn = crate::xf::Xf::translate(origin)
+                .mul(&crate::xf::Xf::axis_angle(
+                    unit,
+                    (angle * k as f64).to_radians(),
+                ))
+                .mul(&crate::xf::Xf::translate(origin.map(|x| -x)));
+            place(k, turn.mul(&local));
+        }
+    } else {
+        let step = vec3(&p["step"]).ok_or("give step [dx, dy, dz] (linear) or axis (circular)")?;
+        let step2 = match p.get("step2") {
+            Some(v) => vec3(v).ok_or("step2 is [dx, dy, dz]")?,
+            None => [0.0; 3],
+        };
+        for j in 0..n2 {
+            for i in 0..n1 {
+                let shift = [0, 1, 2].map(|c| step[c] * i as f64 + step2[c] * j as f64);
+                place(j * n1 + i, crate::xf::Xf::translate(shift).mul(&local));
+            }
+        }
+    }
+    Ok(out)
 }
 
 /// An instance or joint id: an id, or a path of ids through subassemblies
@@ -1202,7 +1301,8 @@ pub fn schema() -> Value {
                     "instances": {"type": "array"}, "joints": {"type": "array"}, "contacts": {"type": "array"}}}},
             "instances": {"type": "array", "items": {
                 "type": "object", "required": ["id"], "additionalProperties": false,
-                "properties": {"id": path, "part": id, "assembly": id, "group": id, "parent": path, "at": vec3, "rotate": vec3, "note": {"type": "string"}}
+                "properties": {"id": path, "part": id, "assembly": id, "group": id, "parent": path, "at": vec3, "rotate": vec3, "note": {"type": "string"},
+                    "pattern": {"type": "object", "description": "copies of this instance (id, id-2, id-3, ...): linear {count, step: [dx,dy,dz], count2?, step2?} or circular {count, axis, origin?, angle? (degrees between copies)}"}}
             }},
             "joints": {"type": "array", "items": {
                 "type": "object", "required": ["id", "type", "child"],

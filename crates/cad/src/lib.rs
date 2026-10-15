@@ -790,6 +790,40 @@ mod tests {
     }
 
     #[test]
+    fn instance_patterns_place_rows_grids_and_rings() {
+        let mut a = cubes();
+        a["assemblies"] = json!({"pair": {"instances": [
+            {"id": "low", "part": "cube"}, {"id": "high", "part": "cube", "at": [0, 0, 10]}]}});
+        a["instances"] = json!([
+            {"id": "row", "part": "cube", "at": [0, -100, 0], "pattern": {"count": 3, "step": [20, 0, 0], "count2": 2, "step2": [0, -20, 0]}},
+            {"id": "ring", "part": "cube", "at": [40, 0, 0], "pattern": {"count": 4, "axis": [0, 0, 1]}},
+            {"id": "stacks", "assembly": "pair", "at": [0, 100, 0], "pattern": {"count": 2, "step": [30, 0, 0]}}
+        ]);
+        let eval = evaluate(&a).unwrap_or_else(|p| panic!("{p:?}"));
+        assert_eq!(
+            eval.report["instances"].as_array().unwrap().len(),
+            6 + 4 + 4
+        );
+        assert!(
+            near(com(&eval, "row-6"), [40.0, -120.0, 5.0]),
+            "{:?}",
+            com(&eval, "row-6")
+        );
+        // The ring turns each copy about Z: the second sits at (0, 40).
+        assert!(
+            near(com(&eval, "ring-2"), [0.0, 40.0, 5.0]),
+            "{:?}",
+            com(&eval, "ring-2")
+        );
+        assert!(near(com(&eval, "ring-3"), [-40.0, 0.0, 5.0]));
+        // A patterned subassembly copies its whole tree.
+        assert!(near(com(&eval, "stacks-2.high"), [30.0, 100.0, 15.0]));
+        a["instances"][1]["pattern"]["count"] = json!(0);
+        let why = doc::check_assembly(&a).join(" ");
+        assert!(why.contains("ring's pattern"), "{why}");
+    }
+
+    #[test]
     fn subassembly_templates_place_copies_with_their_own_joints() {
         let mut a = cubes();
         // A hinge: a cube with a lid cube on it, opened by a revolute.

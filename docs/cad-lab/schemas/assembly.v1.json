@@ -84,6 +84,10 @@
             "pattern": "^[a-z][a-z0-9_-]{0,47}$",
             "type": "string"
           },
+          "pattern": {
+            "description": "copies of this instance (id, id-2, id-3, ...): linear {count, step: [dx,dy,dz], count2?, step2?} or circular {count, axis, origin?, angle? (degrees between copies)}",
+            "type": "object"
+          },
           "rotate": {
             "items": {
               "type": "number"

@@ -118,6 +118,23 @@ impl Xf {
         )
     }
 
+    /// The rotation as degrees about X, then Y, then Z (fixed axes), the
+    /// inverse of [`Xf::rotate_xyz`].
+    #[must_use]
+    pub fn to_xyz_degrees(&self) -> [f64; 3] {
+        let r = &self.r;
+        let sy = (-r[2][0]).clamp(-1.0, 1.0);
+        let y = sy.asin();
+        let (x, z) = if sy.abs() < 1.0 - 1e-12 {
+            (r[2][1].atan2(r[2][2]), r[1][0].atan2(r[0][0]))
+        } else {
+            // Gimbal lock: Y is ±90°, so only X − Z (or X + Z) is fixed;
+            // Z is taken as 0.
+            ((-r[1][2]).atan2(r[1][1]), 0.0)
+        };
+        [x.to_degrees(), y.to_degrees(), z.to_degrees()]
+    }
+
     #[must_use]
     pub fn rotation_axis_angle(&self) -> ([f64; 3], f64) {
         Xf::axis_angle_of(&self.r)
@@ -143,6 +160,19 @@ mod tests {
             let xf = Xf::rotate_xyz(degrees);
             let (axis, angle) = xf.rotation_axis_angle();
             let again = Xf::axis_angle(axis, angle);
+            for p in [[1.0, 2.0, 3.0], [-4.0, 0.5, 2.0]] {
+                assert!(close(xf.apply(p), again.apply(p)), "{degrees:?}");
+            }
+        }
+        // And back to degrees, gimbal lock included.
+        for degrees in [
+            [10.0, 20.0, 30.0],
+            [-150.0, 45.0, 170.0],
+            [30.0, 90.0, 40.0],
+            [30.0, -90.0, 40.0],
+        ] {
+            let xf = Xf::rotate_xyz(degrees);
+            let again = Xf::rotate_xyz(xf.to_xyz_degrees());
             for p in [[1.0, 2.0, 3.0], [-4.0, 0.5, 2.0]] {
                 assert!(close(xf.apply(p), again.apply(p)), "{degrees:?}");
             }
