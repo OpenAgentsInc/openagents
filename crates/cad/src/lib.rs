@@ -17,6 +17,7 @@
 pub mod build;
 pub mod doc;
 pub mod dxf;
+pub mod exact;
 pub mod export;
 pub mod mass;
 pub mod overlap;
@@ -130,6 +131,15 @@ pub fn evaluate_with(document: &Value, cache: &std::path::Path) -> Result<Evalua
         "sketches": built.sketches,
         "build_ms": started.elapsed().as_millis() as u64,
     });
+    let mut report = report;
+    // Parts flagged for it: SMLib's exact mass properties must agree.
+    let (exact, problems) = exact::cross_check(&built, exact::python().as_deref());
+    if !problems.is_empty() {
+        return Err(problems);
+    }
+    if !exact.is_empty() {
+        report["exact_mass"] = json!(exact);
+    }
     Ok(Evaluation { built, report })
 }
 
@@ -564,6 +574,46 @@ mod tests {
                 .contains("isn't in this Lab")
         );
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn flagged_parts_cross_check_their_mass_against_smlib() {
+        // A wheel: a tyre with a bore, turned 30° and lifted, so the centre
+        // and the inertia have to come into the assembly's axes.
+        let mut a = doc::new_assembly("cart", "Cart");
+        a["parts"]["wheel"] = doc::new_part("wheel", "Wheel", "Rubber", None);
+        a["parts"]["wheel"]["exact_mass"] = json!(true);
+        a["parts"]["wheel"]["features"] = json!([
+            {"id": "tyre", "op": "solid.cylinder", "params": {"radius": 30, "height": 12, "axis": "Y", "base": [0, -6, 0]}},
+            {"id": "bore", "op": "solid.cylinder", "params": {"radius": 4, "height": 20, "axis": "Y", "base": [6, -10, 0], "operation": "cut"}}
+        ]);
+        a["instances"] =
+            json!([{"id": "w", "part": "wheel", "at": [10, 20, 40], "rotate": [0, 0, 30]}]);
+        let eval = evaluate(&a).unwrap_or_else(|p| panic!("{p:?}"));
+        // Where SMLib is installed (CAD_SMLIB_PYTHON or python3), the check
+        // ran and agreed; elsewhere it says it didn't run.
+        let entry = &eval.report["exact_mass"][0];
+        assert_eq!(entry["part"], "wheel", "{entry}");
+        let Some(python) = exact::python() else {
+            assert_eq!(entry["checked"], false, "{entry}");
+            assert!(entry["why"].as_str().unwrap().contains("smlibpy"));
+            eprintln!("SMLib isn't installed here; the exact cross-check was skipped.");
+            return;
+        };
+        assert_eq!(entry["agrees"], true, "{entry}");
+        let v = entry["exact"]["volume_cm3"].as_f64().unwrap() * 1000.0;
+        let pi = std::f64::consts::PI;
+        assert!((v - pi * (900.0 - 16.0) * 12.0).abs() < 0.01, "{v}");
+        // A tolerance tighter than the triangles can meet refuses the edit.
+        let (_, problems) = exact::cross_check(
+            &{
+                let mut b = eval.built;
+                b.assembly["parts"]["wheel"]["exact_mass"] = json!({"tolerance": 1e-9});
+                b
+            },
+            Some(&python),
+        );
+        assert!(problems.join(" ").contains("disagree"), "{problems:?}");
     }
 
     #[test]

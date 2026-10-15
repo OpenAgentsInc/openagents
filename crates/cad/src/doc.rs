@@ -704,6 +704,7 @@ pub fn part_problems(key: &str, part: &Value) -> Vec<String> {
                     | "parameters"
                     | "features"
                     | "source"
+                    | "exact_mass"
                     | "note"
             ) {
                 out.push(format!("Part {key} has an unknown field {field}."));
@@ -1167,6 +1168,7 @@ pub fn schema() -> Value {
             "color": {"type": "string", "pattern": "^#[0-9a-fA-F]{6}$"},
             "finish": {"enum": FINISHES.map(|(n, _)| n)},
             "note": {"type": "string"}, "source": {"type": "object", "description": "the document and version this part template was copied from"},
+            "exact_mass": {"type": ["boolean", "object"], "description": "cross-check the mass properties against SMLib's exact ones on every edit: true (1%) or {tolerance: 0.002}"},
             "parameters": parameters,
             "features": {"type": "array", "items": {
                 "type": "object", "required": ["id", "op"], "additionalProperties": false,

@@ -77,7 +77,8 @@ version.
    wait on a faster kernel intersection for touching curved faces.
 5. **Mass from triangles:** exact for the triangles; curved parts differ from
    the exact solid by the display tolerance (well under 1% on the rover's
-   parts). SMLib's exact integrals are the planned cross-check.
+   parts). Parts flagged `exact_mass` are cross-checked against SMLib's
+   exact integrals on every edit when `smlibpy` is installed (#11628).
 6. **Verse:** the glTF is ready for it; placing a version in a Verse zone is
    a follow-up.
 7. **Browser builds:** the engine compiles for wasm32; the Lab runs it

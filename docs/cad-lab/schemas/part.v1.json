@@ -6,6 +6,13 @@
       "pattern": "^#[0-9a-fA-F]{6}$",
       "type": "string"
     },
+    "exact_mass": {
+      "description": "cross-check the mass properties against SMLib's exact ones on every edit: true (1%) or {tolerance: 0.002}",
+      "type": [
+        "boolean",
+        "object"
+      ]
+    },
     "features": {
       "items": {
         "additionalProperties": false,

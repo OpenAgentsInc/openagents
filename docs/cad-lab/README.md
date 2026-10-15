@@ -118,6 +118,27 @@ Lab folder, never in git:
 ~/work/film-out/lab/cad/.parts/<digest>.step built parts, reused while unchanged
 ```
 
+## Exact mass, cross-checked
+
+Mass properties come from the solids' triangles, so a curved part is off
+its exact value by the display tolerance (a 60 mm wheel: 0.14% in volume,
+0.28% in inertia). A part with `"exact_mass": true` (or `{"tolerance":
+0.002}`; `cad_set_part exact_mass`) also has SMLib, the open NURBS kernel
+(Apache-2.0), integrate over the exact surfaces of the part's STEP model on
+every edit; when the two disagree by more than the tolerance (1% unless
+the part says) in volume, centre of mass (against the part's size) or
+inertia (against its largest moment), the edit is refused. The report's
+`exact_mass` gives SMLib's numbers and the differences
+(`crates/cad/src/exact.rs`).
+
+SMLib runs through its Python binding `smlibpy` (MIT) in a separate
+process with a short script of ours; nothing of it is linked or copied.
+Install it with `python3 -m pip install smlibpy` (Python 3.10 or newer) and
+point `CAD_SMLIB_PYTHON` at that Python if `python3` isn't it. Without it a
+flagged part's entry says the exact check didn't run, and edits aren't
+refused for that. Results are kept beside the part's STEP file, so an
+unchanged part isn't measured again.
+
 ## Naming faces and edges
 
 A fillet, chamfer, shell, draft or face colour names what it works on by

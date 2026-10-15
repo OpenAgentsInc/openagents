@@ -55,6 +55,8 @@ pub struct Built {
     pub assembly: Value,
     /// Where its parts are kept (and its imported files).
     pub cache: PathBuf,
+    /// Each placed part's exact solids, as the STEP file kept for it.
+    pub part_steps: BTreeMap<String, PathBuf>,
 }
 
 fn run(s: &mut Session, op: &str, params: &Value) -> Result<Value, String> {
@@ -1107,6 +1109,10 @@ pub fn build_with(document: &Value, cache: &Path) -> Result<Built, Vec<String>> 
         occurrences,
         warnings,
         sketches,
+        part_steps: built_parts
+            .iter()
+            .map(|(key, _, b)| (key.clone(), b.step.clone()))
+            .collect(),
         assembly,
         cache: cache.to_path_buf(),
     })

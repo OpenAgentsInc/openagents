@@ -558,6 +558,15 @@ impl Lab {
                     found[key] = json!(v);
                 }
             }
+            if let Some(flag) = arg_json(args, "exact_mass")? {
+                if flag == false {
+                    if let Some(o) = found.as_object_mut() {
+                        o.remove("exact_mass");
+                    }
+                } else {
+                    found["exact_mass"] = flag;
+                }
+            }
             if let Some(params) = arg_json(args, "parameters")? {
                 found["parameters"] = params;
             }
@@ -1351,6 +1360,7 @@ fn takes(name: &str) -> &'static [&'static str] {
             "parameters",
             "remove",
             "from_version",
+            "exact_mass",
             "summary",
             "author",
         ],
@@ -1452,12 +1462,13 @@ pub fn tools() -> Value {
             "params": {"type": "string", "description": "a JSON object of params to change"},
             "op": {"type": "string"}, "suppressed": {"type": "boolean"}, "remove": {"type": "boolean"},
             "summary": summary}}},
-        {"name": "cad_set_part", "description": "Change a part's title, material, colour or finish, bring a part back to how it was in an earlier version (from_version), or remove the part and its instances (remove: true).",
+        {"name": "cad_set_part", "description": "Change a part's title, material, colour or finish, have its mass checked against SMLib's exact one on every edit (exact_mass), bring a part back to how it was in an earlier version (from_version), or remove the part and its instances (remove: true).",
          "parameters": {"type": "object", "required": ["doc", "part", "summary"], "properties": {
             "doc": doc, "part": part, "title": {"type": "string"}, "material": {"type": "string", "description": materials},
             "color": {"type": "string", "description": "#rrggbb"}, "finish": finish,
             "remove": {"type": "boolean"},
             "from_version": {"type": "integer", "description": "bring the part back to how it was in this version"},
+            "exact_mass": {"type": "string", "description": "true to cross-check this part's mass properties against SMLib's exact ones on every edit (1%), {\"tolerance\":0.002} for another bound, false to stop"},
             "summary": summary}}},
         {"name": "cad_assemble", "description": "Place, move or remove instances of parts or subassemblies, add or set joints (fastened, revolute, slider, cylindrical, planar, spherical, gear; a joint's value opens a lid or turns a wheel), define subassembly templates, and declare contacts between instances that are meant to touch. Instances and joints with an existing id are updated (only the fields given). Checked like every edit: overlaps between instances that aren't declared contacts or joined by a joint are refused.",
          "parameters": {"type": "object", "required": ["doc", "summary"], "properties": {
