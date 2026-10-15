@@ -273,6 +273,9 @@ pub struct Hud {
     splats: Vec<HtmlElement>,
     /// Whether the hot bar ends with a Next button.
     has_next: bool,
+    /// The top row's layout last set: narrow (a phone held upright) or
+    /// not.
+    narrow: Option<bool>,
 }
 
 /// The touch controls.
@@ -1025,7 +1028,42 @@ impl Hud {
             scare_flash,
             splats,
             has_next: next.is_some(),
+            narrow: None,
         }
+    }
+
+    /// Lays the top row out for a screen `width` CSS pixels wide. On a
+    /// narrow screen (a phone held upright) Health and Menu fill the top
+    /// row, so the timer goes under Menu and the boss bar and the message
+    /// line drop below both rows; wide, the timer sits beside Menu and the
+    /// message line between Health and Menu. Changes only when it flips.
+    pub fn layout(&mut self, width: f32) {
+        let narrow = width < 640.0;
+        if self.narrow == Some(narrow) {
+            return;
+        }
+        self.narrow = Some(narrow);
+        let top = |px: u32| format!("calc({px}px + env(safe-area-inset-top))");
+        let right = |px: u32| format!("calc({px}px + env(safe-area-inset-right))");
+        let (timer_top, timer_right, boss_top, toast_top) = if narrow {
+            (64, 12, 112, 160)
+        } else {
+            (12, 118, 64, 14)
+        };
+        css(
+            &self.timer,
+            &[("top", &top(timer_top)), ("right", &right(timer_right))],
+        );
+        css(&self.boss, &[("top", &top(boss_top))]);
+        css(
+            &self.toast,
+            &[
+                ("top", &top(toast_top)),
+                ("max-width", if narrow { "88vw" } else { "70vw" }),
+                ("white-space", if narrow { "normal" } else { "nowrap" }),
+                ("text-align", "center"),
+            ],
+        );
     }
 
     /// The speedrun clock's text, `None` to hide it.

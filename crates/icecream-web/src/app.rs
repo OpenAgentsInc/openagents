@@ -2115,6 +2115,7 @@ impl App {
         let clock =
             (self.settings.timer && !game.free_roam).then(|| settings::clock(game.seconds()));
         self.hud.timer(clock.as_deref());
+        self.hud.layout(self.canvas.client_width() as f32);
         match self.phase {
             Phase::Ending(t) if game.status == Status::Scooped => {
                 self.hud.scare(Some(t), self.settings.jumpscares);

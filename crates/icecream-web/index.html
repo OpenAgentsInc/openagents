@@ -4,10 +4,15 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
     <title>The Ice Cream Man</title>
+    <style>
+      html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #2b1a12; touch-action: none; }
+    </style>
   </head>
   <body>
-    <!-- A local test page; the site serves its own. Without a canvas, the
-         game makes one that fills the window. -->
+    <!-- A page for the build on its own: a local test, or the iPhone and
+         iPad app, which sets the canvas's data-version for the menu. The
+         website serves its own page. -->
+    <canvas id="icecream-canvas" tabindex="0" aria-label="The Airbnb, where the Ice Cream Man is"></canvas>
     <script type="module" src="./start.js"></script>
   </body>
 </html>

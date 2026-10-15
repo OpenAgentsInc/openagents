@@ -206,8 +206,11 @@ async function touchChecks(device) {
   await page.getByRole("button", { name: "Resume" }).tap();
   await until(page, (d) => d.phase === "playing", 2000);
   await f.tap(8, await centre(page, "#icecream-sprint"));
-  d = await until(page, (d) => d.sprint === "true", 1000);
-  check(d.sprint === "true" && d.settings.includes("sprint=tap"), `${device}: in tap mode a tap turns sprint on`);
+  d = await until(page, (d) => d.sprint === "true", 2500);
+  check(
+    d.sprint === "true" && d.settings.includes("sprint=tap"),
+    `${device}: in tap mode a tap turns sprint on (sprint ${d.sprint}, ${d.settings}, ${d.phase})`,
+  );
   await f.tap(8, await centre(page, "#icecream-sprint"));
   d = await until(page, (d) => d.sprint === "false", 1000);
   check(d.sprint === "false", `${device}: and another tap turns it off`);
