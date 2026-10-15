@@ -4671,7 +4671,7 @@ dependencies = [
 
 [[package]]
 name = "psionic-adapters"
-version = "1.0.0-rc.13"
+version = "1.0.0-rc.14"
 dependencies = [
  "hex",
  "psionic-core",
@@ -4686,7 +4686,7 @@ dependencies = [
 
 [[package]]
 name = "psionic-apple-fm"
-version = "1.0.0-rc.13"
+version = "1.0.0-rc.14"
 dependencies = [
  "futures-util",
  "psionic-runtime",
@@ -4703,7 +4703,7 @@ dependencies = [
 
 [[package]]
 name = "psionic-array"
-version = "1.0.0-rc.13"
+version = "1.0.0-rc.14"
 dependencies = [
  "psionic-backend-cuda",
  "psionic-backend-metal",
@@ -4720,7 +4720,7 @@ dependencies = [
 
 [[package]]
 name = "psionic-backend-cpu"
-version = "1.0.0-rc.13"
+version = "1.0.0-rc.14"
 dependencies = [
  "psionic-backend-tests",
  "psionic-compiler",
@@ -4731,7 +4731,7 @@ dependencies = [
 
 [[package]]
 name = "psionic-backend-cuda"
-version = "1.0.0-rc.13"
+version = "1.0.0-rc.14"
 dependencies = [
  "cc",
  "half",
@@ -4750,7 +4750,7 @@ dependencies = [
 
 [[package]]
 name = "psionic-backend-metal"
-version = "1.0.0-rc.13"
+version = "1.0.0-rc.14"
 dependencies = [
  "metal 0.33.0",
  "objc",
@@ -4764,7 +4764,7 @@ dependencies = [
 
 [[package]]
 name = "psionic-backend-tests"
-version = "1.0.0-rc.13"
+version = "1.0.0-rc.14"
 dependencies = [
  "hex",
  "psionic-core",
@@ -4776,7 +4776,7 @@ dependencies = [
 
 [[package]]
 name = "psionic-catalog"
-version = "1.0.0-rc.13"
+version = "1.0.0-rc.14"
 dependencies = [
  "hex",
  "libc",
@@ -4791,7 +4791,7 @@ dependencies = [
 
 [[package]]
 name = "psionic-cluster"
-version = "1.0.0-rc.13"
+version = "1.0.0-rc.14"
 dependencies = [
  "ed25519-dalek",
  "hex",
@@ -4809,7 +4809,7 @@ dependencies = [
 
 [[package]]
 name = "psionic-collectives"
-version = "1.0.0-rc.13"
+version = "1.0.0-rc.14"
 dependencies = [
  "hex",
  "psionic-runtime",
@@ -4821,7 +4821,7 @@ dependencies = [
 
 [[package]]
 name = "psionic-compiler"
-version = "1.0.0-rc.13"
+version = "1.0.0-rc.14"
 dependencies = [
  "hex",
  "psionic-core",
@@ -4839,7 +4839,7 @@ dependencies = [
 
 [[package]]
 name = "psionic-core"
-version = "1.0.0-rc.13"
+version = "1.0.0-rc.14"
 dependencies = [
  "half",
  "hex",
@@ -4850,7 +4850,7 @@ dependencies = [
 
 [[package]]
 name = "psionic-data"
-version = "1.0.0-rc.13"
+version = "1.0.0-rc.14"
 dependencies = [
  "fancy-regex 0.16.2",
  "hex",
@@ -4866,7 +4866,7 @@ dependencies = [
 
 [[package]]
 name = "psionic-datastream"
-version = "1.0.0-rc.13"
+version = "1.0.0-rc.14"
 dependencies = [
  "hex",
  "psionic-runtime",
@@ -4877,7 +4877,7 @@ dependencies = [
 
 [[package]]
 name = "psionic-environments"
-version = "1.0.0-rc.13"
+version = "1.0.0-rc.14"
 dependencies = [
  "hex",
  "psionic-data",
@@ -4890,7 +4890,7 @@ dependencies = [
 
 [[package]]
 name = "psionic-eval"
-version = "1.0.0-rc.13"
+version = "1.0.0-rc.14"
 dependencies = [
  "hex",
  "psionic-adapters",
@@ -4922,7 +4922,7 @@ dependencies = [
 
 [[package]]
 name = "psionic-ir"
-version = "1.0.0-rc.13"
+version = "1.0.0-rc.14"
 dependencies = [
  "hex",
  "psionic-core",
@@ -4936,7 +4936,7 @@ dependencies = [
 
 [[package]]
 name = "psionic-models"
-version = "1.0.0-rc.13"
+version = "1.0.0-rc.14"
 dependencies = [
  "candle-core",
  "candle-nn",
@@ -4964,7 +4964,7 @@ dependencies = [
 
 [[package]]
 name = "psionic-net"
-version = "1.0.0-rc.13"
+version = "1.0.0-rc.14"
 dependencies = [
  "base64 0.22.1",
  "ed25519-dalek",
@@ -4982,7 +4982,7 @@ dependencies = [
 
 [[package]]
 name = "psionic-nn"
-version = "1.0.0-rc.13"
+version = "1.0.0-rc.14"
 dependencies = [
  "hex",
  "psionic-core",
@@ -4993,7 +4993,7 @@ dependencies = [
 
 [[package]]
 name = "psionic-observe"
-version = "1.0.0-rc.13"
+version = "1.0.0-rc.14"
 dependencies = [
  "dial9-tokio-telemetry",
  "serde",
@@ -5004,7 +5004,7 @@ dependencies = [
 
 [[package]]
 name = "psionic-optimize"
-version = "1.0.0-rc.13"
+version = "1.0.0-rc.14"
 dependencies = [
  "hex",
  "serde",
@@ -5016,7 +5016,7 @@ dependencies = [
 
 [[package]]
 name = "psionic-provider"
-version = "1.0.0-rc.13"
+version = "1.0.0-rc.14"
 dependencies = [
  "ed25519-dalek",
  "hex",
@@ -5039,7 +5039,7 @@ dependencies = [
 
 [[package]]
 name = "psionic-research"
-version = "1.0.0-rc.13"
+version = "1.0.0-rc.14"
 dependencies = [
  "burn-core",
  "burn-ndarray",
@@ -5066,7 +5066,7 @@ dependencies = [
 
 [[package]]
 name = "psionic-router"
-version = "1.0.0-rc.13"
+version = "1.0.0-rc.14"
 dependencies = [
  "hex",
  "psionic-compiler",
@@ -5084,7 +5084,7 @@ dependencies = [
 
 [[package]]
 name = "psionic-runtime"
-version = "1.0.0-rc.13"
+version = "1.0.0-rc.14"
 dependencies = [
  "ed25519-dalek",
  "hex",
@@ -5110,7 +5110,7 @@ dependencies = [
 
 [[package]]
 name = "psionic-sandbox"
-version = "1.0.0-rc.13"
+version = "1.0.0-rc.14"
 dependencies = [
  "hex",
  "psionic-compiler",
@@ -5126,7 +5126,7 @@ dependencies = [
 
 [[package]]
 name = "psionic-serve"
-version = "1.0.0-rc.13"
+version = "1.0.0-rc.14"
 dependencies = [
  "axum",
  "base64 0.22.1",
@@ -5175,7 +5175,7 @@ dependencies = [
 
 [[package]]
 name = "psionic-train"
-version = "1.0.0-rc.13"
+version = "1.0.0-rc.14"
 dependencies = [
  "ed25519-dalek",
  "flate2",
@@ -5212,7 +5212,7 @@ dependencies = [
 
 [[package]]
 name = "psionic-transformer"
-version = "1.0.0-rc.13"
+version = "1.0.0-rc.14"
 dependencies = [
  "psionic-array",
  "psionic-core",
