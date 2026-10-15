@@ -428,7 +428,7 @@ fn footer() -> Markup {
             nav.footer-columns aria-label="Footer" {
                 div { h3 { "Product" } a href="/download" { "Download" } a href="/pricing" { "Pricing" } a href="/efficiency" { "Efficiency" } }
                 div { h3 { "Resources" } a href="/docs" { "Docs" } a href=(RESEARCH) { "Research" } a href=(GITHUB) { "GitHub" } a href=(X) { "X (Twitter)" } }
-                div { h3 { "Legal" } a href="/privacy" { "Privacy" } a href="/terms" { "Terms" } }
+                div { h3 { "Legal" } a href="/privacy" { "Privacy" } a href="/terms" { "Terms" } a href=(crate::pages::AFFILIATES) { "Affiliates" } }
                 div { h3 { "Contact" } a href="/contact" { "Contact us" } a href=(format!("mailto:{}", crate::agent_ready::CONTACT)) { "Email" } }
             }
         }

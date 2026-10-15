@@ -84,9 +84,16 @@ two features share only the bucket.
   each paid month (start or renewal) of an account that came through a
   link, and a reversal for a full refund or lost dispute, to
   `attribution-conversions.jsonl` in its state directory
-  (`crates/gateway/src/conversions.rs`). No commission is computed or paid
-  yet.
+  (`crates/gateway/src/conversions.rs`). Commission on those sales follows
+  the published affiliate terms (<https://openagents.com/affiliates>,
+  `tenancy::accounts::referrals::affiliate`).
 - **Scoreboard:** <https://openagents.com/admin/attribution>, for the same
   people and key as the analytics dashboard: clicks, sign-ups and
   sign-ups per click per code, affiliate and series, per week, for 8
-  weeks.
+  weeks. Under a site admin's sign-in (not the key) it also shows each
+  affiliate's commission (earned, waiting, ready to pay, paid, taken back)
+  and the payouts due, from `GET /v1/admin/affiliates`. Nothing is sent
+  from the page: each monthly payout needs the owner's approval.
+- **Affiliate's own numbers:** Settings shows "Your affiliate earnings" to
+  an account with an affiliate link (`GET /v1/account/affiliate`, plus its
+  links' clicks and sign-ups for the last 90 days).

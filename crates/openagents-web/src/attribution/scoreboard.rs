@@ -30,7 +30,23 @@ pub(super) async fn show(State(app): State<App>, headers: HeaderMap) -> Response
             (MarkdownRoot::new(html! { h1 { "Links" } p { "The numbers couldn't be read. Try again in a minute." } }))
         },
     };
+    let commission = commission_report(&app, &headers).await;
+    let content = html! {
+        (content)
+        (super::commission::admin_section(commission.as_ref()))
+    };
     guarded(page(&headers, content))
+}
+
+/// Every affiliate's commission, asked of the account service under the
+/// admin's sign-in. `None` with the dashboard key (no sign-in to ask
+/// with) or when it can't be read.
+async fn commission_report(app: &App, headers: &HeaderMap) -> Option<super::commission::Report> {
+    if headers.contains_key(axum::http::header::AUTHORIZATION) {
+        return None;
+    }
+    let service = app.config.cloud.as_deref()?;
+    super::commission::Report::parse(service.affiliates(headers, true).await?)
 }
 
 fn page(headers: &HeaderMap, content: Markup) -> Response {

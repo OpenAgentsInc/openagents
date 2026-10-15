@@ -399,6 +399,20 @@ impl CloudSession {
         self.project_call_as(&token, method, path, body).await
     }
 
+    /// The affiliate numbers under the request's session (#11698): the
+    /// signed-in account's own (`GET /v1/account/affiliate`), or every
+    /// affiliate's for a site admin (`GET /v1/admin/affiliates`).
+    pub(crate) async fn affiliates(&self, headers: &HeaderMap, admin: bool) -> Option<Value> {
+        let path = if admin {
+            "/v1/admin/affiliates"
+        } else {
+            "/v1/account/affiliate"
+        };
+        self.account_call(headers, Method::GET, path, None)
+            .await
+            .ok()
+    }
+
     /// One account-service call under the request's session cookie.
     async fn account_call(
         &self,

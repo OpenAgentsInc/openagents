@@ -1,5 +1,6 @@
 //! The public pages, one module per section.
 
+pub(crate) mod affiliates;
 pub(crate) mod api_docs;
 mod att;
 mod blue_rush;
@@ -28,6 +29,7 @@ use axum::Router;
 
 use crate::App;
 
+pub(crate) use affiliates::AFFILIATES;
 #[cfg(test)]
 pub(crate) use api_docs::API_DOCS;
 #[cfg(test)]
@@ -76,6 +78,7 @@ pub(crate) fn routes() -> Router<App> {
         .merge(live::routes())
         .merge(stats::routes())
         .merge(efficiency::routes())
+        .merge(affiliates::routes())
         .merge(everglade::routes())
         .merge(bunny::routes())
         .merge(icecream::routes())

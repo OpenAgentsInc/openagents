@@ -522,6 +522,7 @@ fn legal() -> LegalLinks {
         .link("Promises", PROMISES)
         .link("Terms", "/terms")
         .link("Privacy", "/privacy")
+        .link("Affiliates", crate::pages::AFFILIATES)
         .link("Contact", format!("mailto:{}", crate::agent_ready::CONTACT))
         .link("GitHub", GITHUB)
         .link("X (Twitter)", X)

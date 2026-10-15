@@ -124,7 +124,8 @@ of these keeps a cookie in your browser, so we can credit who sent you.
   count that a link was followed. Agents and crawlers never get the
   cookie.
 - **Who sees it:** we do. Someone who shares a referral link may see
-  totals for their own link, never who you are.
+  totals for their own link, never who you are. What we pay them is in
+  [our affiliate terms](/affiliates).
 
 ## Your computer
 

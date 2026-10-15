@@ -9,10 +9,10 @@
 //! dispute on that invoice writes a `reversal` of the same amount.
 //!
 //! An account with no click has no conversion: nothing is attributed
-//! without a click. Commission and payouts are not computed here; the
-//! rate and terms are the owner's decision, and payouts run over
-//! Lightning under the published commission terms once they exist. This
-//! journal is what that step will read.
+//! without a click. Commission is not computed here: [`crate::affiliates`]
+//! reads this journal into the affiliate program's ledger
+//! (`tenancy::accounts::referrals::affiliate`), and payouts are only
+//! listed for the owner.
 //!
 //! The journal is `attribution-conversions.jsonl` in the gateway's state
 //! directory, one conversion per line, written once per Stripe event.
@@ -60,6 +60,10 @@ pub struct Conversion {
     /// Cents of `currency`.
     pub amount_cents: u64,
     pub currency: Option<String>,
+    /// The tax inside `amount_cents`, when the invoice named it. Commission
+    /// leaves tax out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tax_cents: Option<u64>,
     pub link: LinkKind,
     /// The `/go` campaign code.
     pub code: Option<String>,
@@ -82,6 +86,7 @@ pub enum Pending {
         period: Option<(i64, i64)>,
         amount_cents: u64,
         currency: Option<String>,
+        tax_cents: Option<u64>,
         first: bool,
     },
     Reversed {
@@ -126,6 +131,17 @@ fn paid_invoice(object: &Value) -> Option<(String, Option<String>, Option<(i64, 
     ))
 }
 
+/// The tax on a paid invoice, in cents: `total_taxes` (2025 API) or
+/// `total_tax_amounts` summed, else `tax`. `None` when it names none.
+fn invoice_tax(object: &Value) -> Option<u64> {
+    for list in ["total_taxes", "total_tax_amounts"] {
+        if let Some(rows) = object[list].as_array() {
+            return Some(rows.iter().filter_map(|r| r["amount"].as_u64()).sum());
+        }
+    }
+    object["tax"].as_u64()
+}
+
 /// The hook point in the webhook: what this event may record once the
 /// book has applied it. Only a paid invoice, a full refund and a lost
 /// dispute can.
@@ -150,6 +166,7 @@ pub fn pending(event: &Value, meaning: &Meaning) -> Option<Pending> {
                 period,
                 amount_cents: object["amount_paid"].as_u64().unwrap_or(0),
                 currency: text(&object["currency"]).map(|c| c.to_ascii_uppercase()),
+                tax_cents: invoice_tax(object),
                 first: object["billing_reason"] == "subscription_create",
             })
         }
@@ -187,6 +204,7 @@ pub fn conversion(
             period,
             amount_cents,
             currency,
+            tax_cents,
             first,
         } => {
             let source = source.filter(|s| &s.account == account)?;
@@ -214,6 +232,7 @@ pub fn conversion(
                 period: *period,
                 amount_cents: *amount_cents,
                 currency: currency.clone(),
+                tax_cents: *tax_cents,
                 link: campaign.link,
                 code: campaign.code.clone(),
                 referrer,
@@ -340,6 +359,7 @@ mod tests {
                 "id": invoice,
                 "amount_paid": 2000,
                 "currency": "usd",
+                "total_taxes": [{"amount": 150}],
                 "billing_reason": reason,
                 "parent": {"subscription_details": {
                     "subscription": "sub_1",
@@ -394,6 +414,7 @@ mod tests {
         assert_eq!(made.code.as_deref(), Some("yt-cost"));
         assert_eq!(made.series.as_deref(), Some("cost"));
         assert_eq!(made.amount_cents, 2000);
+        assert_eq!(made.tax_cents, Some(150));
         assert_eq!(made.currency.as_deref(), Some("USD"));
         assert_eq!(made.period, Some((100, 200)));
         assert_eq!(made.workspace.as_deref(), Some("ws_buyer"));

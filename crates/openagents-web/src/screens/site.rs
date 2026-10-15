@@ -48,6 +48,12 @@ pub(crate) fn screens() -> Vec<Screen> {
             vec![state("default", "As served", privacy)],
         ),
         page(
+            "affiliates",
+            "Affiliates",
+            &["/affiliates"],
+            vec![state("default", "As served", affiliates)],
+        ),
+        page(
             "terms",
             "Terms",
             &["/terms"],
@@ -181,6 +187,10 @@ fn pricing(headers: &HeaderMap) -> Response {
 
 fn privacy(headers: &HeaderMap) -> Response {
     crate::pages::content::privacy_page(headers)
+}
+
+fn affiliates(headers: &HeaderMap) -> Response {
+    crate::pages::affiliates::page(headers)
 }
 
 fn terms(headers: &HeaderMap) -> Response {

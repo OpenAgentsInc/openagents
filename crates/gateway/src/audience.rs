@@ -193,6 +193,8 @@ pub const ROUTES: &[Route] = &[
     route("/v1/account/attribution/policy", FirstParty, "Referrals", &[op("get", "getAttributionPolicy", "The attribution rules.")]),
     route("/v1/account/attribution", FirstParty, "Referrals", &[op("get", "getAttribution", "Who referred the account."), op("post", "proposeAttribution", "Propose who referred the account.")]),
     route("/v1/account/attribution/confirm", FirstParty, "Referrals", &[op("post", "confirmAttribution", "Confirm a proposed attribution.")]),
+    route("/v1/account/affiliate", FirstParty, "Referrals", &[op("get", "getOwnAffiliate", "Your affiliate links and commission.")]),
+    route("/v1/admin/affiliates", FirstParty, "Referrals", &[op("get", "listAffiliates", "Every affiliate's commission and the payouts due, for site admins.")]),
     route("/v1/account/referral-terms", FirstParty, "Referrals", &[op("get", "getReferralTerms", "The referral commission terms.")]),
     route("/v1/account/referral-agreement", FirstParty, "Referrals", &[op("get", "getReferralAgreement", "The referral agreement."), op("post", "acceptReferralAgreement", "Accept the referral agreement.")]),
     route("/v1/workspaces/{workspace}/attribution", FirstParty, "Referrals", &[op("get", "getWorkspaceAttribution", "Who referred the workspace."), op("post", "adoptAttribution", "Adopt an attribution for the workspace.")]),

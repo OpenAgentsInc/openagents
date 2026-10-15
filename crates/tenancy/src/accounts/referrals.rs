@@ -2,6 +2,7 @@
 
 use super::*;
 
+pub mod affiliate;
 pub mod attribution;
 pub mod commission;
 

@@ -1982,6 +1982,11 @@ management successors. These records create no commission, payout, or spend
 authority. Publish exact agreed terms through the local `tenant-referrals`
 operator command before requesting consent, and qualify the intended deployment
 as recorded in [NEEDS_OWNER.md](../../NEEDS_OWNER.md#referral-source-and-attribution-activation-rev-27rev-28-1083410835).
+The affiliate program's terms (#11698, 20% of net Pro revenue for 12 paid
+months, shown at <https://openagents.com/affiliates>) are checked in as
+`tenancy::accounts::referrals::affiliate`; `tenant-referrals publish-affiliate
+--registry DIR` publishes exactly that text as the attribution policy, and
+publishing the same version again changes nothing.
 
 `terms [--digest DIGEST]` reads a separately published commission contract.
 `accept-terms --input FILE` requires explicit `{ "request": "YOUR_REQUEST",

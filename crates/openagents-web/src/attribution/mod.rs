@@ -38,9 +38,15 @@
 //!   code, affiliate and series, per week, to site admins.
 //!
 //! Sales are joined to the account's attribution by the gateway's Stripe
-//! webhook (`gateway::conversions`).
+//! webhook (`gateway::conversions`). Commission on them follows the
+//! published affiliate terms (`/affiliates`,
+//! `tenancy::accounts::referrals::affiliate`): [`commission`] shows each
+//! affiliate's balance and the payouts due on `/admin/attribution`, and an
+//! affiliate's own numbers in Settings. Nothing here sends money; each
+//! monthly payout needs the owner's approval.
 
 pub(crate) mod codes;
+pub(crate) mod commission;
 mod consent;
 pub(crate) mod cookie;
 pub(crate) mod scoreboard;

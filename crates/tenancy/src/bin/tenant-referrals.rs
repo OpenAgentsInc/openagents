@@ -17,12 +17,18 @@ fn run() -> Result<(), String> {
     if words.first().is_some_and(|w| w.starts_with("commission-")) {
         return commission(&words);
     }
+    if words.first().is_some_and(|w| w == "publish-affiliate") {
+        return publish_affiliate(&words);
+    }
     if words.len() != 5
         || words[0] != "publish"
         || words[1] != "--registry"
         || words[3] != "--input"
     {
-        return Err("usage: tenant-referrals publish --registry DIR --input FILE".into());
+        return Err(
+            "usage: tenant-referrals publish --registry DIR --input FILE | publish-affiliate --registry DIR"
+                .into(),
+        );
     }
     let registry = Path::new(&words[2]);
     let input = Path::new(&words[4]);
@@ -41,6 +47,30 @@ fn run() -> Result<(), String> {
     println!(
         "{}",
         serde_json::json!({"version":published.version,"digest":published.digest,"rule":published.rule,"commission_eligibility":false})
+    );
+    Ok(())
+}
+/// Publish the affiliate program's checked-in terms (#11698,
+/// `referrals::affiliate::policy`) as the attribution policy, through the
+/// same publication as `publish`. Publishing the same version again
+/// changes nothing.
+fn publish_affiliate(words: &[String]) -> Result<(), String> {
+    if words.len() != 3 || words[1] != "--registry" {
+        return Err("usage: tenant-referrals publish-affiliate --registry DIR".into());
+    }
+    let registry = Path::new(&words[2]);
+    if !registry.is_absolute() {
+        return Err("Use an absolute account path.".into());
+    }
+    let policy = tenancy::accounts::referrals::affiliate::policy().map_err(|e| e.to_string())?;
+    let accounts = tenancy::Accounts::open(registry)
+        .map_err(|_| "The canonical account store is unavailable.")?;
+    let published = accounts
+        .publish_attribution_policy(&policy)
+        .map_err(|e| e.to_string())?;
+    println!(
+        "{}",
+        serde_json::json!({"version":published.version,"digest":published.digest,"rule":published.rule})
     );
     Ok(())
 }

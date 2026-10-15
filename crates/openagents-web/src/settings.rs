@@ -196,8 +196,10 @@ async fn settings(
         crate::environments::board::rows(&app, &viewer.account_id, Some(&viewer)).await,
     )
     .await;
+    let affiliate = affiliate_section(&app, service, &headers).await;
     let body = html! {
         (settings_content(&viewer.account_label, claude, chats, plan))
+        (affiliate)
         (crate::connections::settings_row(&app, &viewer))
         (computers)
         (agents)
@@ -205,6 +207,29 @@ async fn settings(
         (crate::vault::settings_row())
     };
     page(&headers, service, &viewer, "Settings", PAGE, body)
+}
+
+/// "Your affiliate earnings", for an account with an affiliate link
+/// (#11698). Nothing when it has none or the numbers can't be read.
+async fn affiliate_section(app: &App, service: &CloudSession, headers: &HeaderMap) -> Markup {
+    use crate::attribution::commission::{Report, SETTINGS_DAYS, settings_section};
+    let Some(report) = service
+        .affiliates(headers, false)
+        .await
+        .and_then(Report::parse)
+    else {
+        return html! {};
+    };
+    if report.affiliates.is_empty() {
+        return html! {};
+    }
+    let days = app
+        .config
+        .attribution
+        .load(SETTINGS_DAYS)
+        .await
+        .unwrap_or_default();
+    settings_section(&report, &days)
 }
 
 /// The plan section for the viewer: the server's plan (or the checked-in
