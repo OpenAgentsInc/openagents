@@ -16,11 +16,23 @@ test("Enter sends now when the chat is free", function () {
   assert.strictEqual(shell.sendAction(key({}), true, 0), "send");
 });
 
-test("Enter while an answer is being written goes first in line, never last", function () {
+test("Enter while an answer that can't be stopped is being written goes first in line, never last", function () {
   assert.strictEqual(shell.sendAction(key({}), false, 0), "first");
   assert.strictEqual(shell.sendAction(key({}), false, 3), "first");
   // Messages already waiting: this one goes ahead of them.
   assert.strictEqual(shell.sendAction(key({}), true, 2), "first");
+});
+
+test("Enter while a stoppable answer is being written stops it and sends now", function () {
+  assert.strictEqual(shell.sendAction(key({}), false, 0, true), "stop");
+  // Messages already waiting stay queued for after it.
+  assert.strictEqual(shell.sendAction(key({}), false, 2, true), "stop");
+});
+
+test("Ctrl+Enter still queues while a stoppable answer is being written", function () {
+  assert.strictEqual(shell.sendAction(key({ ctrlKey: true }), false, 0, true), "last");
+  assert.strictEqual(shell.sendAction(key({ metaKey: true }), false, 0, true), "last");
+  assert.strictEqual(shell.sendAction(key({ shiftKey: true }), false, 0, true), "");
 });
 
 test("Ctrl+Enter and Cmd+Enter queue for later", function () {

@@ -692,6 +692,9 @@ pub(crate) enum Outcome {
     Answered,
     Failed,
     Unknown,
+    /// The person stopped the answer while it was being written (#11685):
+    /// what was written so far stays, marked as stopped.
+    Stopped,
 }
 
 /// A generation identifies the bytes that a caller read, not its authority.

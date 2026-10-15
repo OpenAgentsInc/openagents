@@ -2029,6 +2029,74 @@ async fn a_send_while_the_chat_answers_keeps_the_page_and_the_draft() {
 }
 
 #[tokio::test]
+async fn a_send_that_stops_the_answer_keeps_its_words_and_sends_now() {
+    // #11685: Enter while an answer is being written stops it and sends.
+    let fixture = Fixture::new();
+    fixture.answering(THIRD).await;
+    let loaded = fixture.read().await;
+    let mut partial = loaded.conversation.clone();
+    partial.revision += 1;
+    partial.messages.last_mut().unwrap().text = "Half an ans".into();
+    fixture
+        .app
+        .config
+        .chat_store
+        .compare_and_swap(&loaded, &partial)
+        .await
+        .unwrap();
+    // The page marks the answer as one a send can stop.
+    let (_, page_body) = fixture
+        .request(Method::GET, &format!("/chat/{CHAT}"), OWNER, &[])
+        .await;
+    assert!(
+        page_body.contains("data-oa-composer-stops=\"chat-form\""),
+        "{page_body}"
+    );
+    let csrf = csrf(&fixture.app, OWNER);
+    let page = format!("/chat/{CHAT}");
+    let fields = [
+        ("q", "Actually, this instead"),
+        ("request_id", NEXT),
+        ("csrf", csrf.as_str()),
+        ("stop", "1"),
+    ];
+    let (status, headers, body) = fixture.send(&page, &fields, Some(false)).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(!headers.contains_key(REFUSED_HEADER), "{body}");
+    let saved = fixture.read().await.conversation;
+    let outcome = |id: &str| saved.requests.iter().find(|r| r.id == id).unwrap().outcome;
+    assert_eq!(outcome(THIRD), Outcome::Stopped);
+    assert!(saved.requests.iter().any(|r| r.id == NEXT));
+    let texts: Vec<(Role, &str)> = saved
+        .messages
+        .iter()
+        .map(|m| (m.role, m.text.as_str()))
+        .collect();
+    let stopped_at = texts
+        .iter()
+        .position(|m| *m == (Role::Assistant, "Half an ans"))
+        .expect("the words written so far stay");
+    assert_eq!(texts[stopped_at + 1], (Role::Tool, STOPPED));
+    assert_eq!(
+        texts[stopped_at + 2],
+        (Role::User, "Actually, this instead")
+    );
+    // The stopped answer reads as stopped on the page.
+    let (_, page_body) = fixture
+        .request(Method::GET, &format!("/chat/{CHAT}"), OWNER, &[])
+        .await;
+    assert!(page_body.contains(STOPPED), "{page_body}");
+}
+
+#[tokio::test]
+async fn stopping_a_chat_with_no_answer_changes_nothing() {
+    let chat = Fixture::new().record(None).await.conversation;
+    let next = stopped(&chat);
+    assert_eq!(next.revision, chat.revision);
+    assert_eq!(next.messages.len(), chat.messages.len());
+}
+
+#[tokio::test]
 async fn two_rapid_sends_on_a_chat_take_the_message_once() {
     let fixture = Fixture::new();
     fixture.record(None).await;

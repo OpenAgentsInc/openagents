@@ -33,9 +33,12 @@
 // Composer (form[data-oa-composer]), #11685: Enter sends now; Ctrl+Enter
 // (Cmd+Enter on a Mac) queues the message for later; Shift+Enter inserts a
 // line; IME composition is left alone. A page adapter that already handled
-// the key (event.defaultPrevented) wins. A web answer can't be stopped or
-// read mid-answer, so Enter while one is being written puts the message
-// first in line: it goes the moment the answer ends. The queue
+// the key (event.defaultPrevented) wins. Enter (or Send) while an answer
+// the page marks as stoppable is being written
+// ([data-oa-composer-stops="<form id>"]) sends now with stop=1: the server
+// stops that answer, keeping what it wrote, and answers this message.
+// Where no such mark is, Enter while an answer is being written puts the
+// message first in line: it goes the moment the answer ends. The queue
 // (ol[data-oa-composer-queue]) shows above the text box; each message can
 // be edited in place or removed, and they send in order, one per answer,
 // to the chat they were written in. The hint (p[data-oa-composer-hint])
@@ -48,13 +51,16 @@
   // (tests/js/composer.test.js): what Enter does in a composer. `key` holds
   // the event's key and modifier flags; `free` says no answer is being
   // written and no send is in flight; `queued` counts the chat's queued
-  // messages. "send" sends now, "first" puts the message first in line (an
-  // answer is being written and can't be stopped), "last" queues it for
-  // later, "" leaves the key alone (a new line, IME, or another key).
-  function sendAction(key, free, queued) {
+  // messages; `stops` says an answer is being written that a send stops,
+  // with no send in flight. "send" sends now, "stop" stops that answer and
+  // sends now, "first" puts the message first in line (an answer is being
+  // written and can't be stopped), "last" queues it for later, "" leaves
+  // the key alone (a new line, IME, or another key).
+  function sendAction(key, free, queued, stops) {
     if (key.key !== "Enter" || key.shiftKey || key.altKey) return "";
     if (key.isComposing || key.keyCode === 229) return "";
     if (key.ctrlKey || key.metaKey) return "last";
+    if (stops) return "stop";
     return free && !queued ? "send" : "first";
   }
 
@@ -158,14 +164,42 @@
   // A page marks an answer still being written for a composer with
   // data-oa-composer-busy="<form id>" (a live stream updates it): its send
   // button stays off until the mark goes.
-  function busy(form) {
+  function marked(form, name) {
     if (!form.id) return false;
-    var marks = document.querySelectorAll("[data-oa-composer-busy]");
+    var marks = document.querySelectorAll("[" + name + "]");
     for (var i = 0; i < marks.length; i++) {
-      if (marks[i].getAttribute("data-oa-composer-busy") === form.id) return true;
+      if (marks[i].getAttribute(name) === form.id) return true;
     }
     return false;
   }
+
+  function busy(form) {
+    return marked(form, "data-oa-composer-busy");
+  }
+
+  // The answer being written can be stopped by a send (#11685): the page
+  // marks it with data-oa-composer-stops="<form id>". Its Send stays on.
+  function stops(form) {
+    return busy(form) && marked(form, "data-oa-composer-stops");
+  }
+
+  // A send while a stoppable answer is being written carries stop=1, as
+  // the form is sent (Enter or Send), so the server stops that answer and
+  // answers this message now.
+  document.addEventListener("submit", function (event) {
+    var form = event.target;
+    if (!form || !form.hasAttribute || !form.hasAttribute("data-oa-composer")) return;
+    if (!stops(form) || form.querySelector("input[data-oa-composer-stop]")) return;
+    var field = document.createElement("input");
+    field.type = "hidden";
+    field.name = "stop";
+    field.value = "1";
+    field.setAttribute("data-oa-composer-stop", "");
+    form.appendChild(field);
+    setTimeout(function () {
+      if (field.parentNode) field.parentNode.removeChild(field);
+    }, 0);
+  }, true);
 
   // A refused send is answered with its error status and this header; its
   // body puts the reason in the composer's status region (out of band), so
@@ -185,7 +219,7 @@
     var parts = composerParts(form);
     if (!parts.input || !parts.send) return;
     var empty = !parts.input.value.trim();
-    if (empty || parts.input.disabled || busy(form)) {
+    if (empty || parts.input.disabled || (busy(form) && !stops(form))) {
       parts.send.disabled = true;
     } else if (!form.classList.contains("htmx-request")) {
       parts.send.disabled = false;
@@ -430,7 +464,7 @@
       .observe(document.documentElement, {
         subtree: true,
         attributes: true,
-        attributeFilter: ["data-oa-composer-busy"],
+        attributeFilter: ["data-oa-composer-busy", "data-oa-composer-stops"],
         childList: true
       });
   }
@@ -458,8 +492,9 @@
     event.preventDefault();
     var text = input.value;
     if (!text.trim()) return;
-    var action = sendAction(event, idle(form), queueItems(form).length);
-    if (action === "send") {
+    var inFlight = form.classList.contains("htmx-request");
+    var action = sendAction(event, idle(form), queueItems(form).length, stops(form) && !inFlight);
+    if (action === "send" || action === "stop") {
       submit(form);
       return;
     }

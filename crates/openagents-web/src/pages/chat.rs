@@ -90,9 +90,19 @@ struct Prompt {
     /// [`crate::cad_lab::pick_text`]). Empty for none.
     #[serde(default)]
     cad_pick: String,
+    /// "1" when the message was sent while an answer is being written
+    /// (#11685): that answer stops, keeping what it wrote, and this message
+    /// sends now. Without it the send is refused while an answer runs.
+    #[serde(default)]
+    stop: String,
 }
 
 impl Prompt {
+    /// Whether this send stops the answer being written ([`stop_answer`]).
+    fn stops(&self) -> bool {
+        self.stop == "1"
+    }
+
     fn wanted(&self) -> crate::composer_row::Wanted {
         crate::composer_row::Wanted {
             project: self.project.clone().unwrap_or_default(),
@@ -1649,18 +1659,32 @@ async fn follow(
             "Your repository or environment changed. Reload the chat and send again.",
         );
     }
-    if loaded.conversation.pending.is_some() {
-        return refusal(
-            StatusCode::CONFLICT,
-            "OpenAgents is still answering your previous message.",
-        );
-    }
-    if loaded.conversation.messages.len() + 2 > MAX_MESSAGES {
+    if loaded.conversation.messages.len() + 2 + usize::from(loaded.conversation.pending.is_some())
+        > MAX_MESSAGES
+    {
         return refusal(
             StatusCode::BAD_REQUEST,
             "This chat is full. Start a new chat to keep going.",
         );
     }
+    // Enter while an answer is being written (#11685): the answer stops,
+    // keeping what it wrote, and this message sends now.
+    let loaded = if loaded.conversation.pending.is_none() {
+        loaded
+    } else if !prompt.stops() {
+        return refusal(
+            StatusCode::CONFLICT,
+            "OpenAgents is still answering your previous message.",
+        );
+    } else {
+        match stop_answer(&app, &store_owner, &prompt.request_id, loaded).await {
+            Ok(stopped) => stopped,
+            Err(Error::Conflict) => {
+                return refusal(StatusCode::CONFLICT, "This chat just changed. Try again.");
+            }
+            Err(e) => return unavailable(e),
+        }
+    };
     let picked = match crate::composer_row::checked(&app, &headers, &owner, &prompt.wanted()).await
     {
         Ok(picked) => picked,
@@ -2221,6 +2245,83 @@ pub(crate) fn repo_read_with(
     })
 }
 
+/// What a stopped answer says under what it wrote (#11685).
+pub(crate) const STOPPED: &str = "You stopped this answer.";
+
+/// How often an answer that has nothing new to write checks whether it was
+/// stopped ([`stop_answer`]), so a quiet model call ends soon after.
+const STOP_CHECK: Duration = Duration::from_secs(2);
+
+/// `chat` with its answer being written stopped (#11685): what it wrote
+/// stays, its request reads Stopped, and a line under it says so. A chat
+/// with no answer being written is returned as it is.
+pub(crate) fn stopped(chat: &Conversation) -> Conversation {
+    let mut next = chat.clone();
+    let Some(pending) = next.pending.take() else {
+        return next;
+    };
+    next.revision += 1;
+    next.updated_unix = now();
+    if let Some(request) = next
+        .requests
+        .iter_mut()
+        .find(|r| r.id == pending.request_id)
+    {
+        request.outcome = Outcome::Stopped;
+    }
+    next.messages.push(Message {
+        role: Role::Tool,
+        text: STOPPED.into(),
+        request_id: Some(pending.request_id),
+    });
+    next
+}
+
+/// Stop the answer being written in `loaded` (#11685), on this server or
+/// another: the stop is saved with the chat, the answer's next write or
+/// check ([`STOP_CHECK`]) sees it and ends its model call, and its lease is
+/// released so the next message can be answered at once. A chat changing
+/// under the stop (the answer writing more words) is read again and the
+/// stop tried again; the newest words stay. An answer to `sending` itself
+/// (the same message sent twice) is never stopped.
+pub(crate) async fn stop_answer(
+    app: &App,
+    owner: &str,
+    sending: &str,
+    mut loaded: Loaded,
+) -> Result<Loaded, Error> {
+    let store = &app.config.chat_store;
+    for _ in 0..6 {
+        if loaded.conversation.requests.iter().any(|r| r.id == sending) {
+            return Ok(loaded);
+        }
+        let Some(request_id) = loaded
+            .conversation
+            .pending
+            .as_ref()
+            .map(|p| p.request_id.clone())
+        else {
+            return Ok(loaded);
+        };
+        let next = stopped(&loaded.conversation);
+        match store.compare_and_swap(&loaded, &next).await {
+            Ok(saved) => {
+                let _ = store.release(owner, &request_id).await;
+                return Ok(saved);
+            }
+            Err(Error::Conflict) => {
+                loaded = store
+                    .load(owner, &loaded.conversation.id)
+                    .await?
+                    .filter(|loaded| !loaded.conversation.deleted())
+                    .ok_or(Error::Conflict)?;
+            }
+            Err(e) => return Err(e),
+        }
+    }
+    Err(Error::Conflict)
+}
+
 async fn answer(
     app: App,
     mut loaded: Loaded,
@@ -2519,6 +2620,7 @@ async fn answer(
     let mut asked = door_unavailable;
     let mut shown = String::new();
     let mut settled = false;
+    let mut checked = tokio::time::Instant::now();
     loop {
         if let Some(job) = &mut job {
             tokio::select! { ()=job,if !asked=>asked=true, ()=tokio::time::sleep(Duration::from_millis(400))=>{} }
@@ -2555,6 +2657,24 @@ async fn answer(
         };
         let expired = tokio::time::Instant::now() >= deadline;
         let ended = done || failure.is_some() || asked || expired;
+        // Nothing new to write: was it stopped (#11685)? Ending here drops
+        // the model call.
+        if !ended && text == shown && checked.elapsed() >= STOP_CHECK {
+            checked = tokio::time::Instant::now();
+            if let Ok(Some(current)) = app
+                .config
+                .chat_store
+                .load(&owner, &loaded.conversation.id)
+                .await
+                && current
+                    .conversation
+                    .requests
+                    .iter()
+                    .any(|r| r.id == request_id && r.outcome != Outcome::Pending)
+            {
+                break;
+            }
+        }
         if text != shown || ended {
             let mut next = loaded.conversation.clone();
             if next
@@ -3029,7 +3149,9 @@ fn messages_from(
         // The chat's agents (#11164): they load themselves.
         @if before.is_none() { (agents::slot(chat)) }
         div #chat-status.oa-thread-status role="status" aria-live="polite"
-            data-oa-composer-busy=[(chat.working() || work::running(chat)).then_some("chat-form")] {
+            data-oa-composer-busy=[(chat.working() || work::running(chat)).then_some("chat-form")]
+            // An answer being written that a send can stop (#11685).
+            data-oa-composer-stops=[(chat.pending.is_some() && !work::running(chat)).then_some("chat-form")] {
             @if chat.working() {(openagents_ui::actions::Busy::new("Working"))}
             @else if let Some(terminal) = chat.terminal.as_ref().filter(|t| !t.replies.is_empty()) {"Waiting for Coder on " (terminal.computer) "."}
             @else if chat.requests.last().is_some_and(|r|r.outcome==Outcome::Unknown) {"We couldn't confirm your last message went through. Try asking again."}

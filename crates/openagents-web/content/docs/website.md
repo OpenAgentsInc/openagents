@@ -9,8 +9,11 @@ so: "Enter to send, Ctrl+Enter to queue for later".
 
 Queued messages show above the [message box](/new). Click one to change its words,
 or press **Remove** to drop it. They send in order, one after each answer.
-A reply can't be stopped partway, so Enter while one is being written puts
-your message first in line: it sends the moment the reply ends.
+
+`Enter` (or **Send**) while a reply is being written stops that reply and
+sends your message now. What the reply wrote so far stays in the chat, with
+"You stopped this answer." under it. Use `Ctrl+Enter` instead to let the
+reply finish and send your message after it.
 
 Without scripts, use **Send**. The [download](/download) link still works
 either way.
