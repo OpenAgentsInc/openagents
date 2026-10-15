@@ -66,6 +66,26 @@ impl lnrpc::lightning_server::Lightning for Mock {
             ..Default::default()
         }))
     }
+    async fn list_channels(
+        &self,
+        _: Request<lnrpc::ListChannelsRequest>,
+    ) -> std::result::Result<Response<lnrpc::ListChannelsResponse>, Status> {
+        Ok(Response::new(lnrpc::ListChannelsResponse {
+            channels: vec![lnrpc::Channel {
+                chan_id: 1,
+                active: true,
+                private: true,
+                ..Default::default()
+            }],
+            ..Default::default()
+        }))
+    }
+    async fn get_chan_info(
+        &self,
+        _: Request<lnrpc::ChanInfoRequest>,
+    ) -> std::result::Result<Response<lnrpc::ChannelEdge>, Status> {
+        Err(Status::not_found("channel update is not in the graph yet"))
+    }
     async fn list_invoices(
         &self,
         _: Request<lnrpc::ListInvoiceRequest>,
@@ -228,6 +248,13 @@ async fn pinned_tls_credentials_version_and_single_send_recovery() {
         Client::connect(&config, credential()).await,
         Err(Error::VersionMismatch)
     ));
+    task.abort();
+}
+#[tokio::test]
+async fn active_private_channel_waits_for_its_graph_entry() {
+    let (config, _, task) = server(21).await;
+    let client = Client::connect(&config, credential()).await.unwrap();
+    assert_eq!(client.private_route_hints().await, Err(Error::NotSynced));
     task.abort();
 }
 #[derive(Default)]
