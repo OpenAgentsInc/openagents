@@ -110,6 +110,9 @@ puts the files back as they were before it.
 | [Sync, share, and export](/docs/coder-sync) | Your chats on openagents.com and your phone, and saving them to files. |
 | [Coder from scripts](/docs/coder-scripts) | `openagents coder` for scripts and other agents. |
 
+New to Coder? [Start here](/docs/start-here) walks through a first task,
+and the [tutorials](/docs#tutorials) cover everyday tasks step by step.
+
 Found a problem? [Report it on GitHub](https://github.com/OpenAgentsInc/openagents/issues)
 with your system, Coder's version (from the version command above), and
 what you saw. Leave out keys and

@@ -49,4 +49,4 @@ Why we built it this way is in two essays:
 and
 [Test-Time Capabilities](https://github.com/OpenAgentsInc/openagents/blob/main/docs/essays/2026-09-29-test-time-capabilities.md).
 
-Next: [Download](/docs/download).
+Next: [Start here](/docs/start-here).

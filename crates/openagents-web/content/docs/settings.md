@@ -81,4 +81,4 @@ They're saved in the same file, under `app`.
 | `OPENAGENTS_NO_LAUNCH=1` | For the installer: don't open the Terminal afterward. |
 | `NO_COLOR` | OpenAgents Terminal draws with no color. |
 
-Next: [Troubleshooting](/docs/troubleshooting).
+Next: [Keyboard shortcuts](/docs/keyboard-shortcuts).

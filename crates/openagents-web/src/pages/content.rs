@@ -28,11 +28,12 @@ pub(crate) const TERMS: &str = include_str!("../../content/legal/terms.md");
 pub(crate) const PRIVACY: &str = include_str!("../../content/legal/privacy.md");
 
 /// The docs, by slug, in reading order.
-pub(crate) const DOCS: [(&str, &str); 41] = [
+pub(crate) const DOCS: [(&str, &str); 54] = [
     (
         "what-is-openagents",
         include_str!("../../content/docs/what-is-openagents.md"),
     ),
+    ("start-here", include_str!("../../content/docs/start-here.md")),
     ("download", include_str!("../../content/docs/download.md")),
     ("website", include_str!("../../content/docs/website.md")),
     ("mac", include_str!("../../content/docs/mac.md")),
@@ -101,6 +102,42 @@ pub(crate) const DOCS: [(&str, &str); 41] = [
         include_str!("../../content/docs/ship-from-your-phone.md"),
     ),
     (
+        "fix-a-failing-test",
+        include_str!("../../content/docs/fix-a-failing-test.md"),
+    ),
+    (
+        "use-claude-code-or-codex",
+        include_str!("../../content/docs/use-claude-code-or-codex.md"),
+    ),
+    (
+        "pin-a-model",
+        include_str!("../../content/docs/pin-a-model.md"),
+    ),
+    (
+        "queue-messages",
+        include_str!("../../content/docs/queue-messages.md"),
+    ),
+    (
+        "share-a-project",
+        include_str!("../../content/docs/share-a-project.md"),
+    ),
+    (
+        "design-a-part",
+        include_str!("../../content/docs/design-a-part.md"),
+    ),
+    (
+        "follow-from-your-phone",
+        include_str!("../../content/docs/follow-from-your-phone.md"),
+    ),
+    (
+        "coder-on-windows",
+        include_str!("../../content/docs/coder-on-windows.md"),
+    ),
+    (
+        "export-and-share-a-chat",
+        include_str!("../../content/docs/export-and-share-a-chat.md"),
+    ),
+    (
         "connect-a-computer",
         include_str!("../../content/docs/connect-a-computer.md"),
     ),
@@ -135,6 +172,18 @@ pub(crate) const DOCS: [(&str, &str); 41] = [
     ("wallet", include_str!("../../content/docs/wallet.md")),
     ("decks", include_str!("../../content/docs/decks.md")),
     ("settings", include_str!("../../content/docs/settings.md")),
+    (
+        "keyboard-shortcuts",
+        include_str!("../../content/docs/keyboard-shortcuts.md"),
+    ),
+    (
+        "slash-commands",
+        include_str!("../../content/docs/slash-commands.md"),
+    ),
+    (
+        "command-reference",
+        include_str!("../../content/docs/command-reference.md"),
+    ),
     ("pricing", include_str!("../../content/docs/pricing.md")),
     (
         "troubleshooting",
@@ -148,10 +197,10 @@ pub(crate) const DOCS: [(&str, &str); 41] = [
 /// The docs index's sections: each one's title, a line saying what it
 /// covers, and the slug of its first guide. A section runs until the next
 /// one's first guide, in [`DOCS`] order.
-pub(crate) const SECTIONS: [(&str, &str, &str); 9] = [
+pub(crate) const SECTIONS: [(&str, &str, &str); 10] = [
     (
         "Getting started",
-        "What OpenAgents is, and how to get it.",
+        "What OpenAgents is, your first task with Coder, and how to get it.",
         "what-is-openagents",
     ),
     (
@@ -170,6 +219,11 @@ pub(crate) const SECTIONS: [(&str, &str, &str); 9] = [
         "coder",
     ),
     (
+        "Tutorials",
+        "Step-by-step guides to everyday tasks with Coder and OpenAgents.",
+        "fix-a-failing-test",
+    ),
+    (
         "Computers",
         "Connect a computer to your account or your phone, and manage them.",
         "connect-a-computer",
@@ -186,7 +240,7 @@ pub(crate) const SECTIONS: [(&str, &str, &str); 9] = [
     ),
     (
         "Reference",
-        "Settings, pricing, fixes for common problems, and running your own copy.",
+        "Settings, keys, commands, pricing, fixes for common problems, and running your own copy.",
         "settings",
     ),
     (

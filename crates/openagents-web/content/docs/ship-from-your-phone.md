@@ -51,4 +51,4 @@ and validates the app without uploading.
 If something fails, Coder reports the script's last line. Ask it to fix
 the cause and try again in the same chat.
 
-Next: [Connect a computer](/docs/connect-a-computer).
+Next: [Fix a failing test](/docs/fix-a-failing-test).

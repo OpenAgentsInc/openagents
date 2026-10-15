@@ -24,6 +24,29 @@ Open a new terminal: the installer added `~/.openagents/bin` to your
 export PATH="$HOME/.openagents/bin:$PATH"
 ```
 
+## Logging in
+
+- **The browser didn't open.** Over SSH, or with no browser, `coder login`
+  prints the address and the code instead. Open
+  [openagents.com/device](https://openagents.com/device) on any device and
+  enter the code.
+- **The codes don't match.** Don't approve. Close the page and run
+  `coder login` again; approve only when the page shows the same code as
+  your terminal.
+- **The code ran out.** A code works for 10 minutes. Run `coder login`
+  again for a new one.
+- **"Login is already waiting for you on the website."** You started a
+  login inside Coder that you haven't approved yet. Approve it at
+  [openagents.com/device](https://openagents.com/device).
+- **No browser at all.** Make a login key in
+  [Settings](https://openagents.com/settings/sign-in-keys), then run
+  `coder login --key` and paste it.
+- **"Coder couldn't find your user folder to keep your login in."** Set
+  `HOME` (on Windows, `USERPROFILE`) to your user folder, or start Coder
+  with `--state DIR`.
+
+To log this computer out, run `coder logout`.
+
 ## Coder has nobody to answer
 
 Coder needs at least one of these on the computer: Claude Code or Codex
@@ -39,6 +62,45 @@ Until it resets, press `Shift+Tab` to answer with Claude Code or Codex
 on your own plan, or turn on OpenRouter BYOK and pick a model on your own
 key in `/models`. The allowance starts again
 at midnight UTC.
+
+## OpenCode's first chat is slow, or Auto answered instead
+
+The first time a chat runs on OpenCode, Coder sets up its checks inside
+OpenCode, and the working line says "Setting up OpenCode (first time
+only)". This can take a few minutes, since OpenCode may download what it
+needs; later chats start at once.
+
+If the setup doesn't finish, the chat still gets an answer: a grey line
+says "OpenCode didn't start, so Auto answered", with OpenCode's own
+reason, such as a network timeout. To fix it:
+
+1. Check that OpenCode runs on its own: run `opencode` in a terminal, and
+   quit it.
+2. Check your network, then start a new chat (`Ctrl+N`) and pick OpenCode
+   with `Shift+Tab`. The setup tries again.
+3. To start every new chat on OpenCode, run
+   `openagents coder models set opencode`.
+
+## `Ctrl+Enter` sends instead of queueing
+
+Many terminals send `Ctrl+Enter` as a plain `Enter`. Press `Ctrl+Q` (or
+`Ctrl+J`) to queue instead; the hint under Coder's input names the key
+that works in your terminal. Kitty, Ghostty, foot, and Windows Terminal
+tell `Ctrl+Enter` apart.
+
+## Windows
+
+- **`coder` isn't found.** Close PowerShell and open a new window: the
+  installer added `%USERPROFILE%\.openagents\bin` to your user `PATH`, and
+  only new windows see it.
+- **An agent won't start.** Run it once on its own in PowerShell, such as
+  `claude` or `codex`, and log in. Agents installed with `npm install -g`
+  start from Coder on Windows.
+- **Background automation isn't there.** Background automation and local
+  task services need macOS or Linux for now. Coder, its chats, and the
+  `openagents` command work on Windows.
+
+More in [Use Coder on Windows](/docs/coder-on-windows).
 
 ## My computer's chats don't show on the website
 

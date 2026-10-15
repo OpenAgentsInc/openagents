@@ -45,6 +45,47 @@ Yes. In Coder, `Shift+Tab` chooses who answers (Auto, Claude Code, Codex,
 OpenCode, or another agent), and `/models` chooses the model. See
 [Choose who answers](/docs/coder-agents).
 
+## Which coding agents does Coder work with?
+
+Claude Code, Codex, OpenCode, Grok Build, Devin CLI, and Cursor, each on
+its own login, plus Coder's own loop on our models. A new chat starts on
+Auto, which picks for you; `Shift+Tab` picks yourself. See
+[Use your Claude Code or Codex](/docs/use-claude-code-or-codex).
+
+## What's the difference between Free, Pro, and Enterprise?
+
+Free is OpenAgents on your own computer, with your own agents, models,
+and subscriptions; we never charge for those. Pro, $20 a month, is for
+work on our machines: cloud environments, model usage included, and CAD
+Lab. Enterprise is Pro for a company, deployed where you need it. See
+[Pricing](/docs/pricing), or [contact us](/contact).
+
+## Is CAD free?
+
+CAD on your own computer is free. CAD Lab on openagents.com, where you
+design parts by talking in a chat, is part of Pro. See
+[Design a part in CAD Lab](/docs/design-a-part).
+
+## Can my teammate see my project?
+
+Only if you share it. Invite them by GitHub username from the project's
+page or with `openagents projects invite PROJECT --github USER`, and they
+press **Join** on their Projects page. See
+[Share a project with a teammate](/docs/share-a-project).
+
+## Can I follow Coder from my phone?
+
+Yes. Log in with `coder login`, turn on `/sync on`, and open the chat on
+[openagents.com](/) in your phone's browser. You can reply while Coder is
+open on your computer. See
+[Follow a run from your phone](/docs/follow-from-your-phone).
+
+## How do I reach you?
+
+Use the [contact form](/contact); sales questions get an answer within
+one business day. To report a bug, open an issue on
+[GitHub](https://github.com/OpenAgentsInc/openagents/issues).
+
 ## Can I attach a photo or a file?
 
 In Coder, yes: paste a screenshot, drop in the path of an image or a PDF,
