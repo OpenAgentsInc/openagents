@@ -1,0 +1,30 @@
+[
+  {
+    "role": "publisher",
+    "code": "YF35-5993-1Q75",
+    "real_pointer_run": true,
+    "won": true,
+    "downloaded_signed_build": true,
+    "gallery_opt_in": true,
+    "tampered_post_rejected": true,
+    "exceptions": 0,
+    "csp_violations": 0
+  },
+  {
+    "role": "recipient",
+    "fresh_profile": true,
+    "viewport": [
+      390,
+      844
+    ],
+    "opened_friend_link": true,
+    "won_with_imported_build": true,
+    "opened_signed_file": true,
+    "changed_file_rejected": true,
+    "private_key_not_transferred": true,
+    "phone_tray_under_csp": true,
+    "big_share_buttons_under_csp": true,
+    "exceptions": 0,
+    "csp_violations": 0
+  }
+]

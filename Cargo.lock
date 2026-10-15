@@ -11687,6 +11687,8 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
+ "snap-rules",
+ "snap-share",
  "tempfile",
  "tenancy",
  "tokio",
@@ -15277,6 +15279,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "snap-share"
+version = "1.0.0-rc.15"
+dependencies = [
+ "ed25519-dalek",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "snap-rules",
+]
+
+[[package]]
 name = "snap-web"
 version = "1.0.0-rc.15"
 dependencies = [
@@ -15284,9 +15297,12 @@ dependencies = [
  "glam",
  "js-sys",
  "oa-copy",
+ "serde_json",
  "snap-rules",
+ "snap-share",
  "verse-game",
  "wasm-bindgen",
+ "wasm-bindgen-futures",
  "web-sys",
 ]
 

@@ -4137,6 +4137,7 @@ async fn the_snap_station_page_serves_the_game_build() {
         "import init from \"./snap_web.js\";",
     )
     .unwrap();
+    std::fs::write(build.join("style.css"), ".snap-hud { color: white; }").unwrap();
     let mut config = config(root.path().join("tasks"));
     config.snap = Some(build.clone());
     let (status, headers, html) = get_with(router(config.clone()), pages::SNAP_PATH, LOCAL).await;
@@ -4154,6 +4155,7 @@ async fn the_snap_station_page_serves_the_game_build() {
         (pages::SNAP_GLUE, "text/javascript; charset=utf-8"),
         (pages::SNAP_START, "text/javascript; charset=utf-8"),
         (pages::SNAP_WASM, "application/wasm"),
+        ("style.css", "text/css; charset=utf-8"),
     ] {
         let uri = format!("/games/snap-station/{file}");
         let (status, headers, _) = get_bytes(router(config.clone()), &uri).await;

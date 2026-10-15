@@ -109,7 +109,8 @@ RUN CARGO_TARGET_DIR=/build/target scripts/build-robot-web.sh /build/robot \
 RUN scripts/build-snap-web.sh /build/snap \
     && test -s /build/snap/snap_web.js \
     && test -s /build/snap/snap_web_bg.wasm \
-    && test -s /build/snap/start.js
+    && test -s /build/snap/start.js \
+    && test -s /build/snap/style.css
 
 # The sealed-inference demo, which /att serves (crates/att-web): the glue,
 # the module, the start script, the stylesheet, and gzip copies of each.

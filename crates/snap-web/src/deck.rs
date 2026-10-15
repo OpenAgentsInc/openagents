@@ -106,7 +106,9 @@ impl Saved {
         if game.game.status != Status::Building {
             return None;
         }
-        game.game.clock = 0;
+        if game.game.level.storm.is_some() {
+            game.step_rules(&[Input::Go, Input::Fix]);
+        }
         Some(game)
     }
 }

@@ -538,7 +538,7 @@ Blue Rush Studios domain. Epic:
 | S6 | [#11674](https://github.com/OpenAgentsInc/openagents/issues/11674) | Done: Crew Deck, four boards, stars, and saved builds |
 | S7 | [#11675](https://github.com/OpenAgentsInc/openagents/issues/11675) | Implemented; physical devices need the owner |
 | S8 | [#11676](https://github.com/OpenAgentsInc/openagents/issues/11676) | Done: twenty checked jobs and moving pieces |
-| S9 | [#11677](https://github.com/OpenAgentsInc/openagents/issues/11677) | Planned |
+| S9 | [#11677](https://github.com/OpenAgentsInc/openagents/issues/11677) | Implemented; deployment needs the owner |
 | S10 | [#11678](https://github.com/OpenAgentsInc/openagents/issues/11678) | Planned |
 
 ### S1: the rules
@@ -671,6 +671,35 @@ and both steps of towing. Stills show the
 [reaction wheel](../captures/snap-station-jobs/reaction-wheel.png),
 [ring](../captures/snap-station-jobs/ring.png), and
 [Grand Station result](../captures/snap-station-jobs/grand-station.png).
+
+### Sharing (S9)
+
+After a run, **Share build** downloads a signed build file or saves a
+12-character code. A friend can open the link, enter the code in **Shared
+builds**, or choose the downloaded file. **Build from this** opens the parts
+in the editor; stars still require playing the job. The public gallery is
+opt-in and shows a thumbnail only after both the server and browser replay
+the run successfully. The signature identifies this browser's sharing key,
+not a person's account. Unlisted codes and downloaded files can be forwarded.
+
+`snap-share` binds the job, run receipt, browser public key, random nonce, and
+gallery choice with Ed25519. `snap-rules` bounds input count, file size,
+physics ticks, and total ticks before replay. Finished receipts freeze when
+the run ends, so waiting at the result screen does not change them. Shares
+use the web store's local or Cloud Storage adapter and survive a restart.
+The game stylesheet is a same-origin file, including the phone tray and
+piece marks, so it works under the game's existing security policy.
+
+Checks pass with 45 rules tests, two signing tests, 22 client tests, and the
+focused web tests. Two fresh browser profiles used the served production
+build and its security policy: one played, downloaded, and published a run;
+the other opened the link and file, won with the imported parts, and refused
+a modified file. The phone tray and big sharing buttons also passed under
+that policy. [Results](../captures/snap-sharing/browser.json), the
+[gallery](../captures/snap-sharing/gallery.png), the
+[friend's phone](../captures/snap-sharing/friend-phone.png), and the
+[changed-file refusal](../captures/snap-sharing/changed-file-refused.png)
+are retained.
 
 ## Out of scope
 

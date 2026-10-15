@@ -1,0 +1,9 @@
+
+.snap-hud[data-big=true] button, .snap-hud[data-big=true] ~ #snap-sharing button { min-width:64px!important; min-height:64px!important; font-size:18px!important; }
+.snap-hud .snap-mark { display:none; position:absolute; left:2px; top:2px; }
+.snap-hud[data-marks=true] .snap-mark { display:block; }
+@media(max-width:600px) {
+ .snap-hud .snap-tray { flex-wrap:wrap; justify-content:flex-end; }
+ .snap-hud .snap-hint { bottom:calc(176px + env(safe-area-inset-bottom))!important; }
+ .snap-hud .snap-tray-pieces { flex:0 0 100%!important; padding-bottom:4px; }
+}

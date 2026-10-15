@@ -8,6 +8,9 @@ description = "The OpenAgents website: public pages, legal documents, the instal
 default-run = "openagents-web"
 
 [dependencies]
+snap-share = { path = "../snap-share" }
+snap-rules = { path = "../snap-rules" }
+
 qrcodegen = "1.8"
 zip = { version = "3", default-features = false, features = ["deflate"] }
 robot-lab = { path = "../robot-lab" }

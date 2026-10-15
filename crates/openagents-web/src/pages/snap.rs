@@ -52,6 +52,7 @@ const TITLE: &str = "Snap Station";
 
 pub(crate) fn routes() -> Router<App> {
     Router::new()
+        .merge(super::snap_shares::routes())
         .route(SNAP_PATH, get(page))
         .route("/games/snap-station/{file}", get(build_file))
 }
@@ -70,7 +71,7 @@ fn build(app: &App) -> Option<&Path> {
 /// The heading is for screen readers only.
 fn body() -> String {
     format!(
-        "<h1 class=\"unseen\">{TITLE}</h1>\
+        "<link rel=\"stylesheet\" href=\"{SNAP_PATH}/style.css\"><h1 class=\"unseen\">{TITLE}</h1>\
 <div class=\"glade\" id=\"snap\">\
 <canvas id=\"{SNAP_CANVAS}\" tabindex=\"0\" aria-label=\"Snap Station: build in space with magnetic pieces\"></canvas>\
 <p class=\"glade-status\" id=\"snap-status\" aria-live=\"polite\">Loading\u{2026}</p>\
@@ -117,8 +118,14 @@ async fn build_file(
     UrlPath(file): UrlPath<String>,
     request: HeaderMap,
 ) -> Response {
-    let (Some(directory), Some(content_type)) = (build(&app), super::everglade::build_type(&file))
-    else {
+    let (Some(directory), Some(content_type)) = (
+        build(&app),
+        if file == "style.css" {
+            Some("text/css; charset=utf-8")
+        } else {
+            super::everglade::build_type(&file)
+        },
+    ) else {
         return crate::not_found().await;
     };
     super::everglade::serve_build(directory, &file, content_type, &request).await

@@ -19,6 +19,7 @@ pub(crate) mod live;
 mod pricing;
 pub(crate) mod profile;
 mod snap;
+mod snap_shares;
 pub(crate) mod stats;
 
 use axum::Router;

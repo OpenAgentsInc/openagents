@@ -39,6 +39,7 @@ pub enum Action {
     NextJob,
     AllJobs,
     Menu,
+    Sharing,
     Resume,
     Restart,
     ToggleBig,
@@ -525,18 +526,6 @@ impl Hud {
         let actions = Rc::new(RefCell::new(Vec::new()));
         let root = element(document, "div");
         root.set_class_name("snap-hud");
-        let access_style = element(document, "style");
-        access_style.set_text_content(Some(r#"
-.snap-hud[data-big=true] button { min-width:64px!important; min-height:64px!important; font-size:18px!important; }
-.snap-hud .snap-mark { display:none; }
-.snap-hud[data-marks=true] .snap-mark { display:block; }
-@media(max-width:600px) {
- .snap-hud .snap-tray { flex-wrap:wrap; justify-content:flex-end; }
- .snap-hud .snap-hint { bottom:calc(176px + env(safe-area-inset-bottom))!important; }
- .snap-hud .snap-tray-pieces { flex:0 0 100%!important; padding-bottom:4px; }
-}
-"#));
-        let _ = root.append_child(&access_style);
         css(
             &root,
             &[
@@ -1133,7 +1122,6 @@ impl Hud {
                 let _ = b.append_child(&piece_icon(&self.document, kind, 50));
                 let mark = svg(&self.document, 24);
                 let _ = mark.set_attribute("class", "snap-mark");
-                let _ = mark.set_attribute("style", "position:absolute;left:2px;top:2px");
                 shape(
                     &self.document,
                     &mark,

@@ -15,6 +15,8 @@ autoplay = []
 
 [dependencies]
 snap-rules = { path = "../snap-rules" }
+snap-share = { path = "../snap-share" }
+serde_json = "1"
 verse-game = { path = "../verse-game" }
 glam = "0.30.10"
 
@@ -25,8 +27,10 @@ glam = "0.30.10"
 # version Cargo.lock resolves here; the script checks.
 wasm-bindgen = "0.2.128"
 js-sys = "0.3"
+wasm-bindgen-futures = "0.4"
 console_error_panic_hook = "0.1.7"
 web-sys = { version = "0.3", features = [
+    "Blob", "BlobPropertyBag", "Crypto", "File", "FileList", "HtmlInputElement", "HtmlAnchorElement", "Url", "Request", "RequestInit", "Response", "Headers",
     "AudioBuffer",
     "AudioBufferSourceNode",
     "AudioContext",
@@ -55,7 +59,7 @@ web-sys = { version = "0.3", features = [
     "KeyboardEvent",
     "Location",
     "MediaQueryList",
-    "Node",
+    "Node", "Text",
     "OscillatorNode",
     "OscillatorType",
     "Performance",

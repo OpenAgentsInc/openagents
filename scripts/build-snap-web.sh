@@ -70,7 +70,8 @@ else
 fi
 
 cp crates/snap-web/start.js "$out/start.js"
-for file in snap_web.js snap_web_bg.wasm start.js; do
+cp crates/snap-web/style.css "$out/style.css"
+for file in snap_web.js snap_web_bg.wasm start.js style.css; do
   gzip -9 -n -c "$out/$file" > "$out/$file.gz"
 done
 

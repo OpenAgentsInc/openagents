@@ -29,6 +29,11 @@ use crate::sim;
 
 pub const FORMAT: &str = "snap.run-receipt.v1";
 pub const GAME: &str = "snap-station";
+/// Limits for a run received from another builder.
+pub const MAX_BYTES: usize = 256 * 1024;
+pub const MAX_INPUTS: usize = 8192;
+pub const MAX_TICKS: u32 = 1_000_000;
+pub const MAX_ACTIVE_TICKS: u32 = 100_000;
 /// Bumped whenever a rule changes how a run plays out.
 pub const RULES_VERSION: u32 = 2;
 
@@ -209,6 +214,9 @@ impl Receipt {
     ///
     /// A malformed or missing line.
     pub fn decode(text: &str) -> Result<Self, String> {
+        if text.len() > MAX_BYTES {
+            return Err("run is too large".into());
+        }
         let mut lines = text.lines();
         if lines.next() != Some(FORMAT) {
             return Err(format!("not a {FORMAT}"));
@@ -236,12 +244,18 @@ impl Receipt {
         let mut inputs = Vec::new();
         for item in field("inputs")?.split_whitespace() {
             let (tick, code) = item.split_once(':').ok_or("an input without a tick")?;
+            if inputs.len() >= MAX_INPUTS {
+                return Err("too many inputs".into());
+            }
             inputs.push((tick.parse().map_err(|_| "a bad tick")?, decode_input(code)?));
         }
         let ticks = field("ticks")?.parse().map_err(|_| "bad ticks")?;
         let outcome = field("outcome")?;
         let stars = field("stars")?.parse().map_err(|_| "bad stars")?;
         let state = unhex(&field("state")?)?;
+        if lines.any(|l| !l.is_empty()) {
+            return Err("extra run fields".into());
+        }
         Ok(Self {
             rules,
             level,
@@ -260,6 +274,24 @@ impl Receipt {
     ///
     /// Other rules, another job, or a different ending.
     pub fn verify(&self, level: &Level) -> Result<(), String> {
+        self.replay(level).map(|_| ())
+    }
+
+    /// Replays a bounded run and returns its checked final game.
+    pub fn replay(&self, level: &Level) -> Result<Game, String> {
+        self.replay_build(level).map(|(game, _)| game)
+    }
+
+    /// Returns the checked game and only the inputs made in its editor.
+    pub fn replay_build(&self, level: &Level) -> Result<(Game, Vec<Input>), String> {
+        if self.ticks > MAX_TICKS || self.inputs.len() > MAX_INPUTS {
+            return Err("run is too large".into());
+        }
+        if self.inputs.iter().any(|(t, _)| *t == 0 || *t > self.ticks)
+            || self.inputs.windows(2).any(|p| p[0].0 > p[1].0)
+        {
+            return Err("inputs out of range or order".into());
+        }
         if self.rules != rules_digest() {
             return Err("made under other rules".into());
         }
@@ -268,6 +300,8 @@ impl Receipt {
         }
         let mut game = Game::new(level.clone());
         let mut next = 0;
+        let mut active = 0;
+        let mut construction = Vec::new();
         while game.tick < self.ticks {
             let tick = game.tick + 1;
             let mut now = Vec::new();
@@ -278,7 +312,29 @@ impl Receipt {
             if next < self.inputs.len() && self.inputs[next].0 < tick {
                 return Err("inputs out of order".into());
             }
+            if game.status == Status::Running
+                || (game.status == Status::Building && now.contains(&Input::Go))
+            {
+                active += 1;
+                if active > MAX_ACTIVE_TICKS {
+                    return Err("run is too long".into());
+                }
+            }
+            let mut editing = game.status == Status::Building;
+            for input in &now {
+                match input {
+                    Input::Place { .. } | Input::Remove { .. } if editing => {
+                        construction.push(*input)
+                    }
+                    Input::Go if editing => editing = false,
+                    Input::Fix => editing = true,
+                    _ => {}
+                }
+            }
             game.step(&now);
+        }
+        if next != self.inputs.len() {
+            return Err("unused run inputs".into());
         }
         if outcome_word(game.status) != self.outcome || game.stars != self.stars {
             return Err(format!("it ends {} instead", outcome_word(game.status)));
@@ -286,7 +342,7 @@ impl Receipt {
         if game.state_digest() != self.state {
             return Err("it ends in another state".into());
         }
-        Ok(())
+        Ok((game, construction))
     }
 }
 
@@ -332,6 +388,32 @@ mod tests {
         let read = Receipt::decode(&text).unwrap();
         assert_eq!(read, receipt);
         read.verify(&level::job(1)).unwrap();
+    }
+
+    #[test]
+    fn shared_runs_reject_unused_inputs_and_ignore_running_editor_commands() {
+        let (game, recorder) = fixed_run();
+        let receipt = recorder.finish(&game);
+        let mut bad = receipt.clone();
+        bad.inputs.push((bad.ticks + 1, Input::Go));
+        assert!(bad.verify(&level::job(1)).is_err());
+        let mut bad = receipt.clone();
+        bad.ticks = MAX_TICKS + 1;
+        assert!(bad.verify(&level::job(1)).is_err());
+        assert!(Receipt::decode(&(receipt.encode() + "extra field\n")).is_err());
+        let mut harmless = receipt.clone();
+        harmless.inputs.push((
+            10,
+            Input::Place {
+                kind: PieceKind::Panel,
+                x: 0,
+                y: 0,
+                turn: 0,
+            },
+        ));
+        harmless.inputs.sort_by_key(|(t, _)| *t);
+        let (_, construction) = harmless.replay_build(&level::job(1)).unwrap();
+        assert_eq!(construction.len(), 3);
     }
 
     #[test]

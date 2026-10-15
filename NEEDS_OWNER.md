@@ -42,12 +42,14 @@ a dedicated test account. Check pushing, Reverse Gravity, and replacement or
 removal. Physics runs locally in each visitor’s view; #11682 tracks sharing
 ongoing motion and broken joints.
 
-## Deploy Snap Station and check devices (#11674, #11675, #11676)
+## Deploy Snap Station and check devices (#11674, #11675, #11676, #11677)
 
 Refresh the cloud deployment login described above, build the Snap Station
 WASM with `scripts/build-snap-web.sh`, and include it in the web image.
 Check the Crew Deck, four boards, twenty jobs, stars, and saved builds on the deployed
-page. Local mouse and emulated-touch checks pass; production has not been
+page. Check sharing a completed run by code and file, opening it on a second
+browser, and opting into the gallery. Include the same-origin `style.css`.
+Local mouse and emulated-touch checks pass; production has not been
 deployed from this session.
 
 For #11675, use an iPhone/Safari, an Android phone/Chrome, and a tablet in

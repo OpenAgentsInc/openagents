@@ -45,6 +45,10 @@ pub struct SnapGame {
     pub slot: usize,
     pub carrying: Option<PieceKind>,
     turn: Option<u8>,
+    recorder: receipt::Recorder,
+    recorded_inputs: usize,
+    recording: bool,
+    finished_run: Option<receipt::Receipt>,
 }
 
 impl SnapGame {
@@ -59,6 +63,10 @@ impl SnapGame {
             slot: 0,
             carrying: None,
             turn: None,
+            recorder: receipt::Recorder::new(),
+            recorded_inputs: 0,
+            recording: true,
+            finished_run: None,
         }
     }
 
@@ -179,8 +187,27 @@ impl SnapGame {
                     .filter(|i| matches!(i, Input::Place { .. } | Input::Remove { .. })),
             );
         }
-        self.game.step(inputs);
+        self.recorded_inputs = self.recorded_inputs.saturating_add(inputs.len());
+        if self.recorded_inputs > receipt::MAX_INPUTS || self.game.tick >= receipt::MAX_TICKS {
+            self.recording = false;
+        }
+        if self.recording {
+            self.recorder.step(&mut self.game, inputs);
+        } else {
+            self.game.step(inputs);
+        }
+        if matches!(self.game.status, Status::Won | Status::Failed(_)) {
+            if self.finished_run.is_none() && self.recording {
+                self.finished_run = Some(self.recorder.finish(&self.game));
+            }
+        } else {
+            self.finished_run = None;
+        }
         self.after_step();
+    }
+
+    pub fn finished_run(&self) -> Option<&receipt::Receipt> {
+        self.finished_run.as_ref()
     }
 
     fn after_step(&mut self) {
@@ -389,6 +416,54 @@ mod tests {
         assert_eq!(game.game.build.used(), 1);
         assert!(game.carrying.is_none());
         assert!(game.turn.is_none());
+    }
+
+    #[test]
+    fn finished_runs_freeze_and_saved_builds_can_be_shared_again() {
+        for n in 1..=level::COUNT {
+            let level = level::job(n);
+            let plan = snap_rules::bot::solve(&level).unwrap();
+            let mut snap = SnapGame::new(level.clone());
+            for input in plan {
+                snap.step_rules(&[input]);
+            }
+            let mut ticks = 0;
+            while !matches!(snap.game.status, Status::Won | Status::Failed(_)) && ticks < 100_000 {
+                let input = if snap.game.status == Status::Building {
+                    vec![Input::Go]
+                } else {
+                    vec![]
+                };
+                snap.step_rules(&input);
+                ticks += 1;
+            }
+            assert_eq!(snap.game.status, Status::Won, "job {n}");
+            let run = snap.finished_run().unwrap().clone();
+            for _ in 0..20 {
+                snap.step_rules(&[]);
+            }
+            assert_eq!(snap.finished_run(), Some(&run));
+            let shared = snap_share::Shared::sign(n, &run, &[3; 32], &[5; 16], false).unwrap();
+            let checked = shared.check().unwrap();
+            let mut restored = SnapGame::new(level.clone());
+            for input in checked.construction {
+                restored.step_rules(&[input]);
+            }
+            if restored.game.level.storm.is_some() {
+                restored.step_rules(&[Input::Go, Input::Fix]);
+            }
+            restored.step_rules(&[Input::Go]);
+            while !matches!(restored.game.status, Status::Won | Status::Failed(_)) {
+                let input = if restored.game.status == Status::Building {
+                    vec![Input::Go]
+                } else {
+                    vec![]
+                };
+                restored.step_rules(&input);
+            }
+            assert_eq!(restored.game.status, Status::Won, "restored job {n}");
+            restored.finished_run().unwrap().verify(&level).unwrap();
+        }
     }
 
     fn press(game: &mut SnapGame, replay: &mut Replay, inputs: &[GameInput]) {

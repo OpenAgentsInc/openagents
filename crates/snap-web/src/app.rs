@@ -230,6 +230,7 @@ struct App {
     gpu: Gpu,
     hud: Hud,
     sound: Sound,
+    sharing: crate::sharing::Sharing,
     options: Options,
     backdrop: (GpuMesh, GpuMesh),
     lit: GpuMesh,
@@ -452,6 +453,11 @@ impl App {
                     self.overlay = Overlay::None;
                 }
             }
+            Action::Sharing => {
+                self.overlay = Overlay::Menu;
+                self.sharing
+                    .menu(self.job, self.snap.finished_run().cloned());
+            }
             Action::Restart => self.start_job(self.job, false),
             Action::ToggleBig | Action::ToggleMotion | Action::ToggleMarks => {
                 match action {
@@ -621,6 +627,9 @@ impl App {
     }
 
     fn key(&mut self, event: &KeyboardEvent) {
+        if self.sharing.active() {
+            return;
+        }
         self.sound.wake();
         let key = event.key();
         if self.tour.is_some() {
@@ -831,6 +840,7 @@ impl App {
             Button::new(self.access.big_words(), Action::ToggleBig, false),
             Button::new(self.access.motion_words(), Action::ToggleMotion, false),
             Button::new(self.access.mark_words(), Action::ToggleMarks, false),
+            Button::new("Shared builds", Action::Sharing, false),
             Button::new(copy::HOW_TO_PLAY, Action::Tour, false),
             Button::new(copy::sound(self.progress.sound), Action::ToggleSound, false),
             Button::new(
@@ -1084,6 +1094,7 @@ impl App {
                         Action::Fix,
                         self.job >= level::COUNT,
                     ));
+                    buttons.push(Button::new("Share build", Action::Sharing, false));
                     buttons.push(Button::new(copy::ALL_JOBS, Action::AllJobs, false));
                     Card {
                         title: copy::JOB_DONE.to_owned(),
@@ -1261,7 +1272,25 @@ impl App {
         };
         self.last = now;
         self.time += dt;
-        self.poll_pad();
+        if !self.sharing.active() {
+            self.poll_pad();
+        }
+        for (job, inputs) in self.sharing.take() {
+            self.start_job(job, false);
+            for input in inputs {
+                if self.snap.game.status != Status::Building {
+                    self.snap.step_rules(&[Input::Fix]);
+                }
+                self.snap.step_rules(&[input]);
+            }
+            if self.snap.game.status != Status::Building {
+                self.snap.step_rules(&[Input::Fix]);
+            }
+            if self.snap.game.level.storm.is_some() {
+                self.snap.step_rules(&[Input::Go, Input::Fix]);
+            }
+            self.library.keep(&self.snap);
+        }
         for action in self.hud.take() {
             self.act(action);
         }
@@ -1654,6 +1683,7 @@ pub fn start() {
         gpu,
         hud,
         sound,
+        sharing: crate::sharing::Sharing::new(&parent),
         options,
         backdrop,
         lit,
@@ -1709,6 +1739,18 @@ pub fn start() {
         app.options.kit,
     ) {
         app.tour = Some(Tour::new());
+    }
+    // A share link always loads its code, including when the recipient has
+    // already played another job in this browser.
+    let query = window.location().search().unwrap_or_default();
+    if let Some(code) = query
+        .trim_start_matches('?')
+        .split('&')
+        .find_map(|s| s.strip_prefix("share="))
+    {
+        app.tour = None;
+        app.overlay = Overlay::Menu;
+        app.sharing.open_code(code);
     }
     let app = Rc::new(RefCell::new(app));
 
