@@ -733,6 +733,7 @@ async fn group_settles(group: Option<i32>, wait: Duration, every: Duration) -> b
 
 /// A single task owner. It is deliberately neither serializable nor cloneable.
 pub struct Host {
+    workspace_target: String,
     target: Option<super::targets::Lease>,
     /// Where software the run's agent installs lands (#10336): a private
     /// prefix for a full-access run, removed when the run ends.
@@ -843,6 +844,13 @@ impl Host {
             (owner, task)
         };
         let workspace = Path::new(&task.intent.workspace.path).canonicalize()?;
+        let workspace_target = super::pending::target_identity(&workspace)?;
+        if super::local::record(directory, &task.task_id)
+            .and_then(|record| record.workspace_target)
+            .is_some_and(|target| target != workspace_target)
+        {
+            return Err(Error::UnsafePath);
+        }
         if let Some(context) = configuration
             .session
             .as_ref()
@@ -1175,6 +1183,7 @@ impl Host {
         };
         let trace_bytes = std::fs::metadata(trace.path())?.len() as usize;
         Ok(Self {
+            workspace_target,
             target,
             installs,
             owner,
@@ -1287,7 +1296,11 @@ impl Host {
 
     /// A stable directory identity used to bind saved provider conversations.
     pub fn workspace_identity(&self) -> Result<String, Error> {
-        super::pending::target_identity(self.workspace())
+        let current = super::pending::target_identity(self.workspace())?;
+        if current != self.workspace_target {
+            return Err(Error::UnsafePath);
+        }
+        Ok(current)
     }
 
     pub fn configuration(&self) -> &Configuration {
@@ -1646,7 +1659,7 @@ impl Host {
                 intent: self.task.intent_digest.clone(),
                 grant: self.admission.grant_digest.clone(),
                 checkout: self.workspace().to_string_lossy().into_owned(),
-                target: super::pending::target_identity(self.workspace())?,
+                target: self.workspace_identity()?,
             },
         )
     }

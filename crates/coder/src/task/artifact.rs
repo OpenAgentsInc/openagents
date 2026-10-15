@@ -280,13 +280,20 @@ pub(super) fn confined_file(_root: &Path, _relative: &Path) -> std::io::Result<F
 /// at every level. A renamed parent cannot redirect a subsequent child open.
 #[cfg(unix)]
 pub(super) fn confined_file(root: &Path, relative: &Path) -> std::io::Result<File> {
-    use std::os::fd::{AsRawFd, FromRawFd};
-    use std::os::unix::ffi::OsStrExt;
-    use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
-    let mut directory = OpenOptions::new()
+    use std::os::unix::fs::OpenOptionsExt;
+    let directory = OpenOptions::new()
         .read(true)
         .custom_flags(libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC)
         .open(root)?;
+    confined_at(directory, relative)
+}
+
+/// Read relative to a directory handle the caller has already authenticated.
+#[cfg(unix)]
+pub(super) fn confined_at(mut directory: File, relative: &Path) -> std::io::Result<File> {
+    use std::os::fd::{AsRawFd, FromRawFd};
+    use std::os::unix::ffi::OsStrExt;
+    use std::os::unix::fs::MetadataExt;
     let components: Vec<_> = relative.components().collect();
     if components.is_empty() {
         return Err(std::io::Error::other("empty artifact path"));

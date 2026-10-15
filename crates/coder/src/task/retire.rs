@@ -193,6 +193,10 @@ pub fn restore(store: &Path, record: &mut Record) -> Result<(), String> {
             commit: archived.commit.clone(),
         })
         .map_err(|why| format!("Coder could not recreate the task's worktree: {why}"))?;
+        record.workspace_target = Some(
+            super::pending::target_identity(Path::new(&record.worktree))
+                .map_err(|_| "This task folder could not be restored.")?,
+        );
         // A recreated worktree is made ready as a fresh one is (#10297).
         let ran = super::worktree_hooks::setup(
             Path::new(&record.checkout),
@@ -337,6 +341,7 @@ mod tests {
                 project: "checkout".into(),
                 checkout: checkout.display().to_string(),
                 worktree: worktree.display().to_string(),
+                workspace_target: None,
                 base: base.clone(),
                 turns: Vec::new(),
                 ends: Default::default(),

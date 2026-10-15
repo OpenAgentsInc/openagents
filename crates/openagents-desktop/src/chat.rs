@@ -49,6 +49,7 @@ const MAX_PENDING_DROPS: usize = 16;
 
 pub const COMMAND_QUERY: &str = "composer:command-query";
 pub const SEARCH: &str = "composer:chat-search";
+pub const WORKSPACE_QUERY: &str = "composer:workspace-query";
 pub const RENAME: &str = "composer:chat-rename";
 
 pub struct Panel {
@@ -69,6 +70,7 @@ pub struct Panel {
     menu_point: Option<(f32, f32)>,
     menu_navigation: bool,
     search: Field,
+    workspace_query: Field,
     rename: Option<(String, Field)>,
     rename_pending: Option<(u64, String, String)>,
     rename_focus: usize,
@@ -82,6 +84,7 @@ pub struct Panel {
     feedback: Option<FeedbackDialog>,
     feedback_sender: crate::feedback::Sender,
     aux_rect: Option<PxRect>,
+    workspace_rect: Option<PxRect>,
     session: Session,
     ids: BTreeMap<String, u64>,
     fields: BTreeMap<String, Field>,
@@ -219,6 +222,11 @@ impl Panel {
             menu_point: None,
             menu_navigation: false,
             search: search_field(),
+            workspace_query: {
+                let mut field = search_field();
+                field.set_placeholder("Search this folder");
+                field
+            },
             rename: None,
             rename_pending: None,
             rename_focus: 0,
@@ -231,6 +239,7 @@ impl Panel {
                 crate::feedback::live()
             },
             aux_rect: None,
+            workspace_rect: None,
             session: Session::new(now),
             ids: BTreeMap::new(),
             fields: BTreeMap::new(),
@@ -441,6 +450,7 @@ impl Panel {
     }
     pub fn start(&mut self, waker: rust_native_desktop::Waker) {
         self.search.start(waker.clone());
+        self.workspace_query.start(waker.clone());
         self.command_query.start(waker.clone());
         for field in self.fields.values_mut() {
             field.start(waker.clone());
@@ -720,6 +730,15 @@ impl Panel {
         self.poll_images(at_ms);
         self.text_only();
         self.search.poll_clipboard(at_ms);
+        if self.workspace_query.poll_clipboard(at_ms) {
+            let text = self.workspace_query.text().to_owned();
+            if let Some(chat) = &self.session.selected
+                && let Some(run) = self.runs.get_mut(chat)
+            {
+                run.workspace_query(&text);
+            }
+            self.rows_dirty = true;
+        }
         self.command_query.poll_clipboard(at_ms);
         if let Some((_, field)) = &mut self.rename {
             field.poll_clipboard(at_ms);
@@ -1397,6 +1416,7 @@ impl Panel {
     }
     fn selected_changed(&mut self, previous: Option<String>) {
         self.search.input(TextInput::FocusLost, 0);
+        self.workspace_query.input(TextInput::FocusLost, 0);
         self.rename = None;
         self.rename_pending = None;
         self.feedback = None;
@@ -1452,7 +1472,11 @@ impl Panel {
         let fields = self
             .fields
             .values_mut()
-            .chain([&mut self.search, &mut self.command_query])
+            .chain([
+                &mut self.search,
+                &mut self.command_query,
+                &mut self.workspace_query,
+            ])
             .chain(self.rename.as_mut().map(|(_, field)| field));
         for field in fields {
             field.set_colors(visual.text, visual.faint, visual.accent);
@@ -1831,6 +1855,7 @@ impl Panel {
     }
     pub fn mounted(&mut self, view: &ValidatedView<Intent>) {
         let _ = self.search.draft.mount(view, "chat-search");
+        let _ = self.workspace_query.draft.mount(view, "workspace-query");
         let _ = self.command_query.draft.mount(view, "command-query");
         if let Some((_, field)) = &mut self.rename {
             let _ = field.draft.mount(view, "chat-rename");
@@ -1849,6 +1874,12 @@ impl Panel {
         now: Instant,
     ) -> Option<Request> {
         match &action {
+            Action::Workspace { target } => {
+                if target.control == coder_run::workspace::Control::Close {
+                    self.workspace_query.input(TextInput::FocusLost, 0);
+                }
+                return self.run_action(RunAction::Workspace(target.clone()), view);
+            }
             Action::CodingSettings => return self.coding_settings(),
             Action::CodingChoice { target } => {
                 if self.run().is_some() {
@@ -1955,7 +1986,7 @@ impl Panel {
         }
         let id = self.session.selected.clone()?;
         match action {
-            Action::CodingSettings | Action::CodingChoice { .. } => None,
+            Action::Workspace { .. } | Action::CodingSettings | Action::CodingChoice { .. } => None,
             Action::SavedSelect { .. }
             | Action::SavedRefresh
             | Action::SavedMore
@@ -2274,6 +2305,7 @@ impl Panel {
         self.commands.kind.is_some() || self.rename.is_some()
     }
     pub fn focus_composer(&mut self) {
+        self.workspace_query.input(TextInput::FocusLost, 0);
         if let Some(field) = self.field() {
             field.focused = true;
         }
@@ -2282,7 +2314,7 @@ impl Panel {
         self.search.focused
     }
     pub fn aux_focused(&self) -> bool {
-        self.modal() || self.search.focused
+        self.modal() || self.search.focused || self.workspace_query.focused
     }
     /// The shared command registry as the window shows it now, for the
     /// native menu bar (`appmenu`), whose items run these same commands.
@@ -2537,6 +2569,9 @@ impl Panel {
         view: &ValidatedView<Intent>,
         now: Instant,
     ) -> bool {
+        if self.workspace_query.focused && !self.modal() {
+            return false;
+        }
         let TextInput::Key {
             key,
             command,
@@ -2749,6 +2784,28 @@ impl Panel {
         Some(request)
     }
     pub fn input(&mut self, event: TextInput<'_>, now: Instant) -> FieldAction {
+        if self.workspace_query.focused && !self.modal() {
+            let at = now.duration_since(self.born).as_millis() as u64;
+            let result = self.workspace_query.input(event, at);
+            let text = self.workspace_query.text().to_owned();
+            if let Some(chat) = &self.session.selected
+                && let Some(run) = self.runs.get_mut(chat)
+            {
+                run.workspace_query(&text);
+                if result == FieldAction::Send {
+                    let target = run
+                        .workspace()
+                        .target(coder_run::workspace::Control::Search);
+                    run.action(RunAction::Workspace(target), "");
+                }
+            }
+            self.rows_dirty = true;
+            return if result == FieldAction::Send {
+                FieldAction::Edited
+            } else {
+                result
+            };
+        }
         if self.saved_visible && !self.modal() && !self.search.focused {
             return FieldAction::Unhandled;
         }
@@ -2918,6 +2975,9 @@ impl Panel {
     pub fn surface(&mut self, resource: &str, event: SurfaceInput, now: Instant) -> bool {
         if matches!(event, SurfaceInput::Down { .. }) {
             let at = now.duration_since(self.born).as_millis() as u64;
+            if resource != WORKSPACE_QUERY {
+                self.workspace_query.input(TextInput::FocusLost, at);
+            }
             if resource != SEARCH {
                 self.search.input(TextInput::FocusLost, at);
             }
@@ -2932,9 +2992,15 @@ impl Panel {
                 field.input(TextInput::FocusLost, at);
             }
         }
-        if resource == COMMAND_QUERY || resource == SEARCH || resource == RENAME {
+        if resource == COMMAND_QUERY
+            || resource == SEARCH
+            || resource == RENAME
+            || resource == WORKSPACE_QUERY
+        {
             let field = if resource == COMMAND_QUERY {
                 Some(&mut self.command_query)
+            } else if resource == WORKSPACE_QUERY {
+                Some(&mut self.workspace_query)
             } else if resource == SEARCH {
                 Some(&mut self.search)
             } else {
@@ -3098,6 +3164,7 @@ impl Panel {
             COMMAND_QUERY => Some(self.command_query.version()),
             resource if command_panel::is_surface(resource) => Some(0),
             SEARCH => Some(self.search.version()),
+            WORKSPACE_QUERY => Some(self.workspace_query.version()),
             RENAME => self.rename.as_ref().map(|(_, field)| field.version()),
             TRANSCRIPT => Some(self.transcript.version()),
             CHANGES => Some(
@@ -3149,7 +3216,7 @@ impl Panel {
             .and_then(|id| self.fields.get(id))
             .map_or(56.0, |field| field.height(available));
         match resource {
-            SEARCH => Some((available, 28.0)),
+            SEARCH | WORKSPACE_QUERY => Some((available, 28.0)),
             COMMAND_QUERY => Some((available, 28.0)),
             resource if command_panel::is_surface(resource) => {
                 command_panel::surface_size(resource, available, cfg!(target_os = "macos"))
@@ -3224,9 +3291,15 @@ impl Panel {
             );
             return true;
         }
-        if resource == COMMAND_QUERY || resource == SEARCH || resource == RENAME {
+        if resource == COMMAND_QUERY
+            || resource == SEARCH
+            || resource == RENAME
+            || resource == WORKSPACE_QUERY
+        {
             let field = if resource == COMMAND_QUERY {
                 Some(&mut self.command_query)
+            } else if resource == WORKSPACE_QUERY {
+                Some(&mut self.workspace_query)
             } else if resource == SEARCH {
                 Some(&mut self.search)
             } else {
@@ -3234,7 +3307,11 @@ impl Panel {
             };
             if let Some(field) = field {
                 field.paint(frame, rect, scale, &mut self.fonts);
-                self.aux_rect = Some(rect);
+                if resource == WORKSPACE_QUERY {
+                    self.workspace_rect = Some(rect);
+                } else {
+                    self.aux_rect = Some(rect);
+                }
                 return true;
             }
         }
@@ -3298,13 +3375,19 @@ impl Panel {
         }
         let aux = if self.commands.kind.is_some() {
             Some(&self.command_query)
+        } else if self.workspace_query.focused {
+            Some(&self.workspace_query)
         } else if self.search.focused {
             Some(&self.search)
         } else {
             self.rename.as_ref().map(|(_, f)| f).filter(|f| f.focused)
         };
         if let Some(field) = aux {
-            let rect = self.aux_rect?;
+            let rect = if self.workspace_query.focused && self.commands.kind.is_none() {
+                self.workspace_rect?
+            } else {
+                self.aux_rect?
+            };
             let scale = self.viewport.2;
             return Some((
                 (rect.x / scale + field.caret.0) as f64,
@@ -4412,6 +4495,32 @@ impl Panel {
                     !self.coding_waiting.contains(&id),
                 )
             }));
+        }
+        if task.is_none()
+            && cfg!(unix)
+            && let Some(run) = run
+        {
+            let search = Node {
+                key: "workspace-query".into(),
+                style: Style::default(),
+                element: Element::Composer {
+                    token: format!("workspace:{id}"),
+                    placeholder: "Search this folder".into(),
+                    max_bytes: 256,
+                    enabled: true,
+                    busy: false,
+                    stop: None,
+                    choices: vec![],
+                    draft: Some(run.workspace().query.clone()),
+                    focus: self.workspace_query.focused,
+                    attach: None,
+                },
+            };
+            if let Some(inspector) = run.workspace_view(Some(search), |target| Intent::Chat {
+                action: Action::Workspace { target },
+            }) {
+                content.push(inspector);
+            }
         }
         content.push(card);
         let mut footer = stack("chat-footer", Axis::Vertical, content);
@@ -6274,6 +6383,88 @@ mod live_sdk_tests {
             .validate()
             .unwrap();
         panel.mounted(&view);
+    }
+
+    #[test]
+    fn workspace_search_uses_its_own_field_and_never_sends_the_chat_draft() {
+        use coder_run::workspace::Control;
+        use route_contract::{digest_of, workspace as wire};
+        let now = Instant::now();
+        let mut panel = Panel::new(now);
+        panel.session.select("chat");
+        panel.selected_changed(None);
+        panel
+            .runs
+            .insert("chat".into(), Run::follow("chat", "task", None, now));
+        mount(&mut panel, 1);
+        panel.input(TextInput::Commit("Keep my chat draft"), now);
+        poll(&mut panel, None, now);
+        let target = panel.runs["chat"].workspace().target(Control::Open);
+        let view = rust_native::View::new("workspace-test", 2, panel.footer())
+            .validate()
+            .unwrap();
+        panel.mounted(&view);
+        panel.action(Action::Workspace { target }, &view, now);
+        let (ticket, request) = panel.runs.get_mut("chat").unwrap().tick(now).unwrap();
+        assert!(matches!(request, coder_run::Request::WorkspaceOpen { .. }));
+        let mut reference = wire::Reference {
+            schema: wire::SCHEMA.into(),
+            id: digest_of(&()),
+            host: "local".into(),
+            task: "task".into(),
+            turn: 1,
+            authority: route_contract::pending::Authority {
+                intent: "intent".into(),
+                grant: "grant".into(),
+                checkout: "/fixture".into(),
+                target: "inode".into(),
+            },
+        };
+        reference.seal();
+        panel.run_outcome(
+            "chat".into(),
+            ticket,
+            Ok(coder_run::Answer::WorkspaceReference(reference.clone())),
+        );
+        let (ticket, request) = panel.runs.get_mut("chat").unwrap().tick(now).unwrap();
+        let coder_run::Request::WorkspaceRead { request, .. } = request else {
+            panic!("list")
+        };
+        let output = wire::Output {
+            reference: reference.id.clone(),
+            operation: request.operation.id(),
+            rows: vec![],
+            text: None,
+            content: None,
+            truncated: false,
+        };
+        panel.run_outcome(
+            "chat".into(),
+            ticket,
+            Ok(coder_run::Answer::WorkspaceRead(output)),
+        );
+        mount(&mut panel, 3);
+        panel.fields.get_mut("chat").unwrap().focused = false;
+        panel.workspace_query.focused = true;
+        panel.input(TextInput::Commit("needle"), now);
+        panel.input(
+            TextInput::Key {
+                key: "Enter",
+                text: None,
+                shift: false,
+                command: false,
+                control: false,
+                alt: false,
+            },
+            now,
+        );
+        assert_eq!(panel.runs["chat"].workspace().query, "needle");
+        assert_eq!(panel.draft(), "Keep my chat draft");
+        let (_, request) = panel.runs.get_mut("chat").unwrap().tick(now).unwrap();
+        assert!(
+            matches!(request,coder_run::Request::WorkspaceRead{request,..} if matches!(&request.operation,wire::Operation::Search{query,..} if query=="needle"))
+        );
+        assert_eq!(panel.workspace_query.text(), "needle");
     }
 
     #[test]

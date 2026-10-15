@@ -420,6 +420,7 @@ fn local_record() -> Record {
         project: "app".into(),
         checkout: "/fixture".into(),
         worktree: "/fixture".into(),
+        workspace_target: None,
         base: "main".into(),
         turns: Vec::new(),
         ends: Default::default(),

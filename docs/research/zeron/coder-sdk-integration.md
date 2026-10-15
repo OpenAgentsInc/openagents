@@ -342,6 +342,45 @@ COM-01–03/10/15, RUN-05/07/15, TRN-13, and REM-04/06.
 
 ### 5. Share service-backed tools and delegation observations
 
+The first workspace service is implemented in
+[#11750](https://github.com/OpenAgentsInc/openagents/issues/11750).
+`route_contract::workspace` defines owner references, relative operations, and
+bounded results. `coder::task::workspace::Service` supplies directory listings,
+UTF-8 text reads, and case-sensitive literal searches. Both the desktop worker
+and `coder_sdk::workspace` tools call that service. The SDK adapter translates
+its provider-neutral results into MCP replies and never accepts a root folder,
+host, task, or authority from tool arguments.
+
+A local task records the physical worktree identity when the owner creates it.
+The runtime also captures the identity at admission. Every read checks the task,
+turn, grant, owner, and folder identity. Agent calls additionally require the
+current, live SDK attempt and retain the existing secret-file restrictions.
+Viewers act as the local owner and can read an ended task's folder. Refreshing
+cannot authorize a replacement directory at the same path. An explicit owner
+restoration records its newly created worktree; older records without the
+original identity remain unavailable to this browser.
+
+The Unix reader opens the root and descendants through directory handles,
+refuses links, traversal, `.git`, multiply linked files, and special files, and
+never runs a shell or model to decide access. Reads return at most 64 KiB of
+text. Listings and searches return at most 128 rows; searches visit at most
+4,096 entries, scan at most 8 MiB of file prefixes, stop descending after 16 levels, and check a
+500 ms traversal budget. The bounds apply to content retained or scanned by the
+service; individual filesystem calls can still wait on the filesystem. Results
+identify the exact request and content returned, and report truncation.
+
+The desktop's **Browse workspace** flow provides folder navigation, paged text
+previews, and a separate search field. Search does not send or clear the chat
+draft. References, row targets, and responses remain bound to the current task
+and request; old results and changed queries cannot replace newer inspection
+state. The local Claude SDK server exposes `workspace_list`, `workspace_read`,
+and `workspace_search` through the same owner service and native tool policy.
+
+This slice supports the local Unix desktop and Claude SDK path. Windows
+browsing, remote workspace grants and transport, editing, recursive watchers,
+Git operations, and child transcript access are separate work. The generic SDK
+contract contains no desktop objects, credentials, or filesystem implementation.
+
 Use `ToolServer` to offer permitted host capabilities to agents after those
 services exist. Examples include read-only workspace search, permitted file
 reads, current diff inspection, scoped child-chat operations, and bounded
@@ -417,7 +456,7 @@ in `coder-sdk`.
 | 2 · [#11697](https://github.com/OpenAgentsInc/openagents/issues/11697) | Observation bridge into current `CoderEvent` and bounded shared projections. | SDK backend adapters, task event mapper, shared chat presentation. | Equivalent fixture output displays once across initial load, follow, reconnect, completion, and chat switch. Existing exact-review state stays intact. |
 | 3 · [#11707](https://github.com/OpenAgentsInc/openagents/issues/11707) | Host-owned pending approval and SDK `Asker` bridge on one supported backend. | SDK callback/backend, task/control service, shared decision UI. | Allow once, deny, cancel, stop, stale answer, duplicate answer, no UI, and rewritten-input cases reach exactly the intended request. |
 | 4 · [#11709](https://github.com/OpenAgentsInc/openagents/issues/11709) | Explicit provider/model/reasoning configuration and native-resume request through the task owner. | Session facade/adapters, task configuration, shared composer and desktop picker. | A subsequent turn uses the recorded choices; missing native resume is explicit; no silent account/payer/target switch. |
-| 5 | One authorized workspace read/search service plus a `ToolServer` adapter for it. | Host workspace service and SDK tool integration. | A viewer and permitted agent get consistent results for the same authorized checkout; wrong host, denied path, and stale checkout are refused. |
+| 5 · [#11750](https://github.com/OpenAgentsInc/openagents/issues/11750) | One authorized workspace read/search service plus a `ToolServer` adapter for it. | Host workspace service and SDK tool integration. | A viewer and permitted agent get consistent results for the same authorized checkout; wrong host, denied path, and stale checkout are refused. |
 | 6 | Delegation projection with inspectable child transcript. | SDK delegation, host transcript service, shared subagent model, desktop surface host. | Child start/progress/end/failure stays attached to its parent and is readable without granting control over another task. |
 | 7 | Attachment/resource references and complete scripted-session fixture. | SDK input/output adapters, host artifact storage, shared queue/media presentation. | Image-bearing follow-up and queue behavior handles acknowledgment loss, unsupported provider, owner offline, stale loads, and bounded decoding. |
 

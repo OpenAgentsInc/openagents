@@ -57,6 +57,7 @@ fn scratch() -> (tempfile::TempDir, PathBuf, PathBuf, PathBuf) {
             project: "checkout".into(),
             checkout: checkout.display().to_string(),
             worktree: worktree.display().to_string(),
+            workspace_target: None,
             base,
             turns: Vec::new(),
             ends: BTreeMap::new(),

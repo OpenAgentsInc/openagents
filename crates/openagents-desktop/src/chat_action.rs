@@ -23,6 +23,9 @@ pub enum Action {
     Command {
         key: String,
     },
+    Workspace {
+        target: openagents_chat_app::coder_run::workspace::Target,
+    },
     CodingSettings,
     CodingChoice {
         target: openagents_chat_app::coder_run::configuration::Target,

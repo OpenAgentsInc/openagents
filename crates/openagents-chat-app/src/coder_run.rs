@@ -27,6 +27,7 @@
 
 pub mod configuration;
 mod native;
+pub mod workspace;
 
 use crate::attention::Activity;
 use crate::coder_tab::{Choice, Mode};
@@ -77,12 +78,26 @@ pub enum Request {
         text: String,
         configuration: route_contract::session::control::Request,
     },
+    WorkspaceOpen {
+        task: String,
+    },
+    WorkspaceRead {
+        task: String,
+        request: route_contract::workspace::Request,
+    },
     /// The task's events since the last poll.
-    Poll { task: String },
+    Poll {
+        task: String,
+    },
     /// Stop the running turn.
-    Stop { task: String },
+    Stop {
+        task: String,
+    },
     /// Answer the question, or continue the ended task, with `text`.
-    Continue { task: String, text: String },
+    Continue {
+        task: String,
+        text: String,
+    },
     /// Reply to one live SDK callback without starting another turn.
     Respond {
         task: String,
@@ -92,7 +107,9 @@ pub enum Request {
     Choose,
     /// What the finished turn changed, at exact revisions
     /// ([`crate::changes::Need::Read`]).
-    Review { task: String },
+    Review {
+        task: String,
+    },
     /// Publish the reviewed change once ([`crate::changes::Need::Publish`]).
     Publish {
         task: String,
@@ -125,6 +142,8 @@ pub enum Answer {
         why: String,
     },
     Options(route_contract::session::control::Offer),
+    WorkspaceReference(route_contract::workspace::Reference),
+    WorkspaceRead(route_contract::workspace::Output),
     Lines {
         configuration: Option<route_contract::session::control::Offer>,
         native: Option<route_contract::pending::Snapshot>,
@@ -165,6 +184,7 @@ pub enum Action {
     },
     NativeCancel(route_contract::Digest),
     Configure(configuration::Target),
+    Workspace(workspace::Target),
     Retry,
     ChooseFolder,
     RemoveQueued(usize),
@@ -273,6 +293,8 @@ pub struct Run {
     start_configuration: Option<route_contract::session::control::Request>,
     consumed_input: bool,
     configuration_due: bool,
+    workspace: workspace::Inspector,
+    workspace_due: Option<workspace::Need>,
 }
 
 impl Run {
@@ -353,6 +375,8 @@ impl Run {
             start_configuration: None,
             consumed_input: false,
             configuration_due: false,
+            workspace: workspace::Inspector::default(),
+            workspace_due: None,
         }
     }
 
@@ -422,6 +446,42 @@ impl Run {
         )
     }
 
+    pub fn workspace(&self) -> &workspace::Inspector {
+        &self.workspace
+    }
+    pub fn workspace_query(&mut self, query: &str) {
+        self.workspace.set_query(query);
+        self.revision += 1;
+    }
+    pub fn workspace_view<I>(
+        &self,
+        search: Option<Node<I>>,
+        intent: impl Fn(workspace::Target) -> I,
+    ) -> Option<Node<I>> {
+        self.task.as_ref()?;
+        Some(self.workspace.view(
+            "workspace",
+            !self.busy()
+                && !self.pending.values().any(|p| {
+                    matches!(
+                        p,
+                        Request::WorkspaceOpen { .. } | Request::WorkspaceRead { .. }
+                    )
+                }),
+            search,
+            intent,
+        ))
+    }
+    fn workspace_request(&self, need: &workspace::Need) -> Option<Request> {
+        let task = self.task.clone()?;
+        Some(match need {
+            workspace::Need::Reference => Request::WorkspaceOpen { task },
+            workspace::Need::Read(request) => Request::WorkspaceRead {
+                task,
+                request: request.clone(),
+            },
+        })
+    }
     fn continuation(&self, text: String) -> Result<Request, String> {
         let task = self
             .task
@@ -863,6 +923,14 @@ impl Run {
         {
             return self.request(due);
         }
+        if !self.pending.values().any(|request| !mutation(request))
+            && let Some(need) = self.workspace_due.clone()
+            && let Some(request) = self.workspace_request(&need)
+            && let Some(request) = self.request(request)
+        {
+            self.workspace_due = None;
+            return Some(request);
+        }
         if self.configuration_due && !self.pending.values().any(|request| !mutation(request)) {
             self.configuration_due = false;
             return self.request(Request::Options {
@@ -992,7 +1060,7 @@ impl Run {
     /// When the run next wants a tick.
     #[must_use]
     pub fn next_wake(&self, now: Instant) -> Instant {
-        if self.due.is_some() {
+        if self.due.is_some() || self.workspace_due.is_some() {
             return now;
         }
         self.poll.max(now + Duration::from_millis(100))
@@ -1014,6 +1082,11 @@ impl Run {
                 match &request {
                     // The card says why; the result card still names every
                     // file.
+                    Request::WorkspaceOpen { .. } | Request::WorkspaceRead { .. } => {
+                        self.workspace.fail(error);
+                        self.revision += 1;
+                        return false;
+                    }
                     Request::Review { .. } => {
                         self.reviewer
                             .read(Err(crate::changes::ReadFailure::Failed(error)), now);
@@ -1108,6 +1181,14 @@ impl Run {
                                 .is_some_and(|state| state.turn() > started.turn)
                             {
                                 continue;
+                            }
+                            if self
+                                .workspace()
+                                .reference_turn()
+                                .is_some_and(|turn| turn != started.turn)
+                            {
+                                self.workspace.reset();
+                                self.workspace_due = None;
                             }
                             self.session = started.session.as_ref().map(|session| {
                                 if session.applies_to(task, started.turn)
@@ -1233,10 +1314,29 @@ impl Run {
                 self.poll = now;
             }
             (Request::Continue { .. } | Request::ContinueConfigured { .. }, Answer::Continued) => {
+                self.workspace.reset();
+                self.workspace_due = None;
                 self.state = State::Running;
                 self.poll = now;
                 self.heard = now;
                 accepted = true;
+            }
+            (Request::WorkspaceOpen { task }, Answer::WorkspaceReference(reference)) => {
+                if self
+                    .session()
+                    .is_some_and(|session| session.turn > reference.turn)
+                {
+                    self.workspace
+                        .fail("This workspace changed. Refresh the files.".into());
+                } else {
+                    self.workspace_due = self.workspace.referenced(reference, task);
+                }
+            }
+            (Request::WorkspaceRead { request, .. }, Answer::WorkspaceRead(output)) => {
+                if !self.workspace.received(request, output) {
+                    self.workspace
+                        .fail("These files changed. Refresh the workspace.".into());
+                }
             }
             (Request::Options { task, .. }, Answer::Options(offer)) if offer.task == *task => {
                 self.configuration.update(Some(offer));
@@ -1292,6 +1392,16 @@ impl Run {
                 let task = self.task.clone()?;
                 (self.state == State::Running).then_some(())?;
                 self.request(Request::Stop { task })
+            }
+            Action::Workspace(target) => {
+                let need = self.workspace.apply(&target);
+                if !self.workspace.visible {
+                    self.workspace_due = None;
+                } else if let Some(need) = need {
+                    self.workspace_due = Some(need);
+                }
+                self.revision += 1;
+                None
             }
             Action::Configure(target) => {
                 if self.busy() {
@@ -1808,7 +1918,9 @@ impl Run {
 fn mutation(request: &Request) -> bool {
     !matches!(
         request,
-        Request::Poll { .. }
+        Request::WorkspaceOpen { .. }
+            | Request::WorkspaceRead { .. }
+            | Request::Poll { .. }
             | Request::Options { .. }
             | Request::Choose
             | Request::Review { .. }

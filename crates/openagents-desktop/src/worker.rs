@@ -737,6 +737,14 @@ impl CoderLane {
                     },
                 })
             }
+            Request::WorkspaceOpen { task } => self
+                .local()
+                .workspace_reference(&task)
+                .map(Answer::WorkspaceReference),
+            Request::WorkspaceRead { task, request } => self
+                .local()
+                .read_workspace(&task, &request)
+                .map(Answer::WorkspaceRead),
             Request::Respond { task, reply } => {
                 self.local().respond(&task, &reply).map(Answer::Responded)
             }

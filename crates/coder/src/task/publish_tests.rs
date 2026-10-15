@@ -98,6 +98,7 @@ impl Scratch {
             project: "checkout".into(),
             checkout: checkout.display().to_string(),
             worktree: worktree.display().to_string(),
+            workspace_target: None,
             base: base.clone(),
             turns: Vec::new(),
             ends: Default::default(),

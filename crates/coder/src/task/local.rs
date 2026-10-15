@@ -438,6 +438,9 @@ pub struct Record {
     pub project: String,
     pub checkout: String,
     pub worktree: String,
+    /// Physical identity captured when this owner creates the worktree.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace_target: Option<String>,
     pub base: String,
     pub turns: Vec<TurnStart>,
     /// Each finished turn's ending event, by turn.
@@ -1564,6 +1567,10 @@ impl Local {
             project: checkout.name.clone(),
             checkout: checkout.top.display().to_string(),
             worktree: worktree.display().to_string(),
+            workspace_target: Some(
+                super::pending::target_identity(&worktree)
+                    .map_err(|_| "This task folder changed before Coder started.")?,
+            ),
             base: checkout.head.clone(),
             turns: Vec::new(),
             ends: BTreeMap::new(),
@@ -3265,6 +3272,173 @@ mod tests {
                 .iter()
                 .any(|model| model.adapter == "claude-sdk" && model.available)
         );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn workspace_viewer_and_sdk_share_bounded_results_and_current_authority() {
+        use super::super::workspace::{Kind, Operation, Output, Request, Service};
+        let dir = tempfile::tempdir().unwrap();
+        let top = repo_with_file(dir.path(), "needle in a file\nsecond line\n");
+        let local = local(dir.path(), only_claude).with_launcher(Box::new(Held));
+        let record = local
+            .start_requested(
+                &top,
+                "Workspace",
+                "Inspect the fixture",
+                None,
+                &[],
+                Some(Provider::Claude),
+            )
+            .unwrap();
+        let grant = std::fs::read(
+            local
+                .store()
+                .join("local/grants")
+                .join(format!("{}-1.grant.json", record.task)),
+        )
+        .unwrap();
+        let host = adapter::Host::admit(local.store(), &grant).await.unwrap();
+        let scope = host.observations().scope().clone();
+        let pending = host.pending(&scope).unwrap();
+        let agent = Service::for_agent(local.store(), pending);
+        let viewer = Service::for_viewer(local.store(), &record.task).unwrap();
+        assert_eq!(agent.reference(), viewer.reference());
+        std::fs::write(
+            Path::new(&record.worktree).join("nonportable:name"),
+            "not exposed",
+        )
+        .unwrap();
+        for operation in [
+            Operation::List {
+                path: String::new(),
+            },
+            Operation::Read {
+                path: "a.txt".into(),
+            },
+            Operation::Search {
+                path: String::new(),
+                query: "needle".into(),
+            },
+        ] {
+            let request = Request {
+                reference: viewer.reference().clone(),
+                operation,
+            };
+            let seen = viewer.read(&request).unwrap();
+            assert!(seen.valid_for(&request));
+            assert_eq!(seen, agent.read(&request).unwrap());
+            if matches!(request.operation, Operation::Search { .. }) {
+                assert_eq!(seen.rows.len(), 1);
+                assert_eq!(seen.rows[0].line, Some(1));
+                assert_eq!(seen.rows[0].kind, Kind::Match);
+            }
+        }
+        let request = Request {
+            reference: viewer.reference().clone(),
+            operation: Operation::Read {
+                path: "a.txt".into(),
+            },
+        };
+        let server = coder_sdk::workspace::tools(
+            coder_sdk::ToolServer::new("openagents", "1"),
+            agent.reference().clone(),
+            std::sync::Arc::new(agent.clone()),
+        )
+        .in_process();
+        let reply=server.handle_message(&serde_json::json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"workspace_read","arguments":{"path":"a.txt"}}})).await;
+        let via_tool: Output =
+            serde_json::from_value(reply["result"]["structuredContent"].clone()).unwrap();
+        assert_eq!(via_tool, viewer.read(&request).unwrap());
+        let outside = dir.path().join("outside.txt");
+        std::fs::write(&outside, "outside needle").unwrap();
+        std::os::unix::fs::symlink(&outside, Path::new(&record.worktree).join("escape")).unwrap();
+        std::os::unix::fs::symlink(dir.path(), Path::new(&record.worktree).join("escape-dir"))
+            .unwrap();
+        use std::os::unix::ffi::OsStrExt;
+        let pipe = std::ffi::CString::new(
+            Path::new(&record.worktree)
+                .join("pipe")
+                .as_os_str()
+                .as_bytes(),
+        )
+        .unwrap();
+        // SAFETY: the NUL-terminated path is inside this test's private folder.
+        assert_eq!(unsafe { libc::mkfifo(pipe.as_ptr(), 0o600) }, 0);
+        for path in [
+            "../outside.txt",
+            "/etc/passwd",
+            ".git",
+            "escape",
+            "escape-dir/outside.txt",
+            "pipe",
+        ] {
+            let mut bad = request.clone();
+            bad.operation = Operation::Read { path: path.into() };
+            assert!(viewer.read(&bad).is_err(), "{path}");
+            assert!(agent.read(&bad).is_err(), "{path}");
+        }
+        for field in ["host", "target", "grant"] {
+            let mut bad = request.clone();
+            match field {
+                "host" => bad.reference.host = "other-host".into(),
+                "target" => bad.reference.authority.target = "other-directory".into(),
+                _ => bad.reference.authority.grant = "other-grant".into(),
+            };
+            bad.reference.seal();
+            assert!(viewer.read(&bad).is_err());
+            assert!(agent.read(&bad).is_err());
+        }
+        std::fs::write(Path::new(&record.worktree).join(".env"), "private needle").unwrap();
+        let secret = Request {
+            reference: request.reference.clone(),
+            operation: Operation::Read {
+                path: ".env".into(),
+            },
+        };
+        assert!(viewer.read(&secret).is_ok());
+        assert!(agent.read(&secret).is_err());
+        let search = Request {
+            reference: request.reference.clone(),
+            operation: Operation::Search {
+                path: String::new(),
+                query: "needle".into(),
+            },
+        };
+        let matches = agent.read(&search).unwrap();
+        assert_eq!(matches.rows.len(), 1);
+        assert_eq!(matches.rows[0].path, "a.txt");
+        let injected=server.handle_message(&serde_json::json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"workspace_read","arguments":{"path":"a.txt","reference":{"checkout":"/elsewhere"}}}})).await;
+        assert_eq!(injected["result"]["isError"], true);
+
+        std::fs::write(
+            Path::new(&record.worktree).join("large.txt"),
+            "x".repeat(128 * 1024),
+        )
+        .unwrap();
+        let large = Request {
+            reference: request.reference.clone(),
+            operation: Operation::Read {
+                path: "large.txt".into(),
+            },
+        };
+        let large = viewer.read(&large).unwrap();
+        assert!(large.truncated);
+        assert_eq!(large.text.unwrap().len(), 64 * 1024);
+        // A new provider attempt invalidates the previous agent service.
+        host.pending(host.observations().scope()).unwrap();
+        assert!(agent.read(&request).is_err());
+        assert!(viewer.read(&request).is_ok());
+        host.finish("model_finished", true, serde_json::json!({}))
+            .unwrap();
+        assert!(viewer.read(&request).is_ok());
+        // Replacing the folder cannot redirect an old viewer to new bytes.
+        let moved = dir.path().join("moved");
+        std::fs::rename(&record.worktree, &moved).unwrap();
+        std::fs::create_dir(&record.worktree).unwrap();
+        std::fs::write(Path::new(&record.worktree).join("a.txt"), "replacement").unwrap();
+        assert!(viewer.read(&request).is_err());
+        assert!(Service::for_viewer(local.store(), &record.task).is_err());
     }
 
     #[test]

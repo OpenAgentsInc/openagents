@@ -72,6 +72,7 @@ pub mod session;
 pub mod snapshot;
 pub mod studio;
 pub mod view;
+pub mod workspace;
 
 pub use digest::{Digest, digest_of};
 pub use lifecycle::{Lifecycle, Projection, TaskDisposition};

@@ -400,6 +400,10 @@ pub fn prepare(
             .map_or_else(String::new, |name| name.to_string_lossy().into_owned()),
         checkout: top.to_string_lossy().into_owned(),
         worktree: at,
+        workspace_target: Some(
+            crate::task::pending::target_identity(&path)
+                .map_err(|_| "This task folder changed before Coder started.")?,
+        ),
         base,
         turns: Vec::new(),
         ends: std::collections::BTreeMap::new(),

@@ -42,6 +42,7 @@ pub mod search_guard;
 pub mod session;
 pub mod system_one;
 pub mod tools;
+pub mod workspace;
 pub mod worktree;
 
 pub use admission::{Admission, DisclosureRefused};

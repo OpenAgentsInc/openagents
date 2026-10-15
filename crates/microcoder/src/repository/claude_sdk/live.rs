@@ -161,10 +161,14 @@ pub(super) fn handler(
     })
 }
 
-pub(super) fn questions(gate: &Arc<Gate>, service: &Service) -> claude_agent_sdk::SdkMcpServer {
+pub(super) fn questions(
+    gate: &Arc<Gate>,
+    service: &Service,
+    workspace: Option<coder::task::workspace::Service>,
+) -> claude_agent_sdk::SdkMcpServer {
     let gate = gate.clone();
     let service = service.clone();
-    coder_sdk::tools::ToolServer::new("openagents", "1")
+    let server = coder_sdk::tools::ToolServer::new("openagents", "1")
         .timeout_ms(125_000)
         .add(coder_sdk::tools::Tool::new("ask_user", "Ask the person one or more questions and wait for their answers. Use stable request and choice IDs. This does not approve tool execution.", json!({
             "type":"object", "required":["request_id","questions"], "additionalProperties":false,
@@ -195,7 +199,13 @@ pub(super) fn questions(gate: &Arc<Gate>, service: &Service) -> claude_agent_sdk
                     }
                 }
             }
-        })).in_process()
+        }));
+    if let Some(workspace) = workspace.filter(|_| coder::task::workspace::Service::supported()) {
+        let reference = workspace.reference().clone();
+        coder_sdk::workspace::tools(server, reference, Arc::new(workspace)).in_process()
+    } else {
+        server.in_process()
+    }
 }
 
 #[cfg(all(test, unix))]
@@ -434,9 +444,34 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn workspace_tools_use_the_current_owner_and_expire_with_the_attempt() {
+        let (_root, store, host, service, gate) = setup().await;
+        std::fs::write(host.workspace().join("shared.txt"), "workspace fixture").unwrap();
+        let workspace = coder::task::workspace::Service::for_agent(&store, service.clone());
+        let server = questions(&gate, &service, Some(workspace));
+        let message = json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"workspace_read","arguments":{"path":"shared.txt"}}});
+        let reply = server.handle_message(&message).await;
+        assert_eq!(
+            reply["result"]["structuredContent"]["text"],
+            "workspace fixture"
+        );
+        assert!(gate.inside(
+            "mcp__openagents__workspace_read",
+            &json!({"path":"shared.txt"})
+        ));
+        assert!(!gate.inside(
+            "mcp__openagents__workspace_delete",
+            &json!({"path":"shared.txt"})
+        ));
+        host.pending(host.observations().scope()).unwrap();
+        let reply = server.handle_message(&message).await;
+        assert_eq!(reply["result"]["isError"], true);
+    }
+
+    #[tokio::test]
     async fn typed_question_tool_returns_choice_ids_and_never_permission() {
         let (_root, store, _host, service, gate) = setup().await;
-        let server = questions(&gate, &service);
+        let server = questions(&gate, &service, None);
         let input = json!({"request_id":"question-1","questions":[{"id":"targets","text":"Which targets?","multiple":true,"free_text":true,"choices":[{"id":"linux","label":"Linux"},{"id":"mac","label":"Mac"}]}]});
         // Exercise the actual in-process MCP dispatch.
         let message = json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ask_user","arguments":input}});

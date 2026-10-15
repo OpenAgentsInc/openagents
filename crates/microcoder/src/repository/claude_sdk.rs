@@ -231,6 +231,7 @@ impl Gate {
     /// file is the person's to open).
     fn inside(&self, tool: &str, input: &Value) -> bool {
         tool == live::ASK_TOOL
+            || (coder::task::workspace::Service::supported() && coder_sdk::workspace::is_tool(tool))
             || coder_sdk::worktree::FILE_TOOLS.contains(&tool)
                 && self.guard.refusal(tool, input).is_none()
                 && coder_sdk::floors::classify(tool, input).is_none()
@@ -655,7 +656,8 @@ async fn attempt(
         }
     };
     let handler = live::handler(gate, &service);
-    let options = options.sdk_mcp_server(live::questions(gate, &service));
+    let workspace = coder::task::workspace::Service::for_agent(host.store(), service.clone());
+    let options = options.sdk_mcp_server(live::questions(gate, &service, Some(workspace)));
     let mut query = match claude_agent_sdk::query_with_permissions(prompt, options, handler).await {
         Ok(query) => query,
         Err(error) => {
