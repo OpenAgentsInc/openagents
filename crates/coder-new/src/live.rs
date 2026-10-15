@@ -58,6 +58,9 @@ pub struct Chat {
     /// since the epoch: the end of its wall time (#11580).
     pub last_ms: u64,
     pub open_tools: std::collections::BTreeSet<usize>,
+    /// How each finished Coder-loop tool call went to the model, by entry
+    /// index (#11654): see [`Chat::wire_messages`].
+    pub wire: std::collections::BTreeMap<usize, serde_json::Value>,
     /// The model's thinking is streaming in now, so the input's rail says
     /// `Thinking` beside `Working`.
     pub thinking: bool,
@@ -353,6 +356,7 @@ impl Chat {
             }
         }
         self.tool_ms.retain(|index, _| *index < self.entries.len());
+        self.wire.retain(|index, _| *index < self.entries.len());
         self.tool_ends
             .retain(|index, _| *index < self.entries.len());
         self.open_tools.retain(|index| *index < self.entries.len());
@@ -430,6 +434,139 @@ impl Chat {
     }
 
     pub fn messages(&self) -> Vec<Message> {
+        self.indexed_messages()
+            .into_iter()
+            .map(|(_, message)| message)
+            .collect()
+    }
+
+    /// Notes how a finished tool call went to the model (#11654), on the
+    /// newest still-running call of that name: the finished event follows.
+    pub fn tool_wire(&mut self, wire: serde_json::Value) {
+        let Some(name) = wire.get("name").and_then(serde_json::Value::as_str) else {
+            return;
+        };
+        if let Some(index) = self.entries.iter().rposition(|entry| {
+            matches!(entry, Entry::Tool { name: called, running: true, .. } if called == name)
+        }) {
+            self.wire.insert(index, wire);
+        }
+    }
+
+    /// What the Coder loop sends the model for this chat, as the provider's
+    /// wire messages (#11654): [`Chat::messages`], except that each round
+    /// of tool calls whose wire the loop recorded goes back as it went out
+    /// the first time (the assistant's calls, with their ids and thought
+    /// signatures, then each observation). Sent this way, the next turn's
+    /// prompt starts with exactly the previous turn's last request, and the
+    /// prompt cache holds; the flattened "Tool observation" text changed
+    /// every earlier tool call and turned a 111,000-token cache hit into 0.
+    #[must_use]
+    pub fn wire_messages(&self) -> Vec<serde_json::Value> {
+        use serde_json::{Value, json};
+        let flat = |message: &Message| json!({"role": message.role, "content": message.content});
+        let indexed = self.indexed_messages();
+        let elide_before = if self.elide_old_outputs {
+            crate::long_session::verbatim_start(&self.entries)
+        } else {
+            0
+        };
+        let reported = reported_cards(&self.entries);
+        let mut out: Vec<Value> = Vec::new();
+        let mut skip = std::collections::BTreeSet::new();
+        // Messages that belong to no entry (the plan) come first.
+        let mut items = indexed.iter().peekable();
+        while let Some((None, message)) = items.peek() {
+            out.push(flat(message));
+            items.next();
+        }
+        let by_index: std::collections::BTreeMap<usize, &Message> = indexed
+            .iter()
+            .filter_map(|(index, message)| index.map(|index| (index, message)))
+            .collect();
+        for index in crate::long_session::context_start(&self.entries)..self.entries.len() {
+            if skip.contains(&index) {
+                continue;
+            }
+            if let Some(round) = self.wire_round(index, elide_before, &reported) {
+                let assistant = &self.wire[&index]["assistant"];
+                let said = assistant["content"].as_str().unwrap_or_default().trim();
+                if !said.is_empty()
+                    && out.last().is_some_and(|last| {
+                        last["role"] == "assistant"
+                            && last.get("tool_calls").is_none()
+                            && last["content"].as_str().map(str::trim) == Some(said)
+                    })
+                {
+                    out.pop();
+                }
+                out.push(assistant.clone());
+                for (call, at) in round {
+                    let Entry::Tool { output, .. } = &self.entries[at] else {
+                        continue;
+                    };
+                    let content = self.wire[&at]
+                        .get("content")
+                        .and_then(Value::as_str)
+                        .map_or_else(|| output.to_string(), str::to_owned);
+                    out.push(json!({"role":"tool","tool_call_id":call,"content":content}));
+                    skip.insert(at);
+                }
+                continue;
+            }
+            if let Some(message) = by_index.get(&index) {
+                out.push(flat(message));
+            }
+        }
+        out
+    }
+
+    /// The calls of the round of tool calls starting at `index` (each
+    /// call's id and entry), when every one of them is recorded, finished,
+    /// shown to the model whole, and nothing the model reads sits between
+    /// them.
+    fn wire_round(
+        &self,
+        index: usize,
+        elide_before: usize,
+        reported: &std::collections::HashSet<usize>,
+    ) -> Option<Vec<(String, usize)>> {
+        let wire = self.wire.get(&index)?;
+        let calls = wire["assistant"]["tool_calls"].as_array()?;
+        if wire.get("call").and_then(serde_json::Value::as_u64) != Some(0) || calls.is_empty() {
+            return None;
+        }
+        let mut round = Vec::new();
+        let mut at = index;
+        while round.len() < calls.len() {
+            let entry = self.entries.get(at)?;
+            match entry {
+                Entry::Tool {
+                    name,
+                    running: false,
+                    ..
+                } if self.wire.get(&at).is_some_and(|wire| {
+                    wire["name"] == name.as_str()
+                        && wire.get("call").and_then(serde_json::Value::as_u64)
+                            == Some(round.len() as u64)
+                }) =>
+                {
+                    if at < elide_before {
+                        return None;
+                    }
+                    let id = calls[round.len()]["id"].as_str()?.to_owned();
+                    round.push((id, at));
+                }
+                Entry::Tool { name, .. } if crate::long_session::hidden_from_model(name) => {}
+                Entry::Delegation { .. } if reported.contains(&at) => {}
+                _ => return None,
+            }
+            at += 1;
+        }
+        Some(round)
+    }
+
+    fn indexed_messages(&self) -> Vec<(Option<usize>, Message)> {
         let newest_brainstorm = self.entries.iter().rposition(|entry| matches!(entry,
             Entry::Tool { name, output, running: false, .. } if crate::brainstorm::is_tool(name) && (output.get("observation").is_some() || output.get("error").is_some())));
         // A compacted chat (#11179): the model reads from the newest
@@ -454,79 +591,85 @@ impl Chat {
         let reported = reported_cards(&self.entries);
         current_plan
             .into_iter()
+            .map(|message| (None, message))
             .chain(
                 self.entries
                     .iter()
                     .enumerate()
                     .skip(start)
                     .filter_map(|(index, entry)| {
-                        if reported.contains(&index) {
-                            return None;
-                        }
-                        if let Entry::Tool { name, .. } = entry
-                            && (crate::long_session::hidden_from_model(name)
-                                || name == crate::plan::TOOL)
-                        {
-                            return None;
-                        }
-                        if let Entry::Tool {
-                            name,
-                            output,
-                            running: false,
-                            ..
-                        } = entry
-                        {
-                            if name == crate::long_session::COMPACT_TOOL {
-                                return crate::long_session::summary_message(output);
+                        (|| {
+                            if reported.contains(&index) {
+                                return None;
                             }
-                            if crate::brainstorm::is_tool(name) {
-                                if newest_brainstorm != Some(index) {
-                                    return None;
-                                }
-                                return crate::brainstorm::context(output).map(|content| Message {
-                                    role: "assistant".into(),
-                                    content,
-                                });
+                            if let Entry::Tool { name, .. } = entry
+                                && (crate::long_session::hidden_from_model(name)
+                                    || name == crate::plan::TOOL)
+                            {
+                                return None;
                             }
-                        }
-                        Some(match entry {
-                            Entry::User(text) => Message::user(text.clone()),
-                            Entry::Assistant { text, .. } => Message {
-                                role: "assistant".into(),
-                                content: text.clone(),
-                            },
-                            Entry::Tool {
+                            if let Entry::Tool {
                                 name,
-                                input,
                                 output,
-                                running,
-                            } => Message {
-                                role: "assistant".into(),
-                                content: match (index < elide_before && !*running)
-                                    .then(|| crate::long_session::stub(name, input, output))
-                                    .flatten()
-                                {
-                                    Some(stub) => stub,
-                                    None => format!(
-                                        "Tool observation from {name} ({}): {output}",
+                                running: false,
+                                ..
+                            } = entry
+                            {
+                                if name == crate::long_session::COMPACT_TOOL {
+                                    return crate::long_session::summary_message(output);
+                                }
+                                if crate::brainstorm::is_tool(name) {
+                                    if newest_brainstorm != Some(index) {
+                                        return None;
+                                    }
+                                    return crate::brainstorm::context(output).map(|content| {
+                                        Message {
+                                            role: "assistant".into(),
+                                            content,
+                                        }
+                                    });
+                                }
+                            }
+                            Some(match entry {
+                                Entry::User(text) => Message::user(text.clone()),
+                                Entry::Assistant { text, .. } => Message {
+                                    role: "assistant".into(),
+                                    content: text.clone(),
+                                },
+                                Entry::Tool {
+                                    name,
+                                    input,
+                                    output,
+                                    running,
+                                } => Message {
+                                    role: "assistant".into(),
+                                    content: match (index < elide_before && !*running)
+                                        .then(|| crate::long_session::stub(name, input, output))
+                                        .flatten()
+                                    {
+                                        Some(stub) => stub,
+                                        None => format!(
+                                            "Tool observation from {name} ({}): {output}",
+                                            if *running { "running" } else { "finished" }
+                                        ),
+                                    },
+                                },
+                                Entry::Delegation {
+                                    name,
+                                    task,
+                                    running,
+                                    output,
+                                    ..
+                                } => Message {
+                                    role: "assistant".into(),
+                                    content: format!(
+                                        "Delegation to {name}: {task} ({}): {output}",
                                         if *running { "running" } else { "finished" }
                                     ),
                                 },
-                            },
-                            Entry::Delegation {
-                                name,
-                                task,
-                                running,
-                                output,
-                                ..
-                            } => Message {
-                                role: "assistant".into(),
-                                content: format!(
-                                    "Delegation to {name}: {task} ({}): {output}",
-                                    if *running { "running" } else { "finished" }
-                                ),
-                            },
-                        })
+                            })
+                        })()
+                        .map(|message| (Some(index), message))
                     }),
             )
             .collect()
@@ -736,6 +879,12 @@ pub enum Update {
         id: u64,
         attempt: crate::bundled_runtime::ModelAttempt,
     },
+    /// How a finished tool call went to the model
+    /// ([`crate::bundled_runtime::RuntimeEvent::ToolWire`], #11654).
+    ToolWire {
+        id: u64,
+        wire: serde_json::Value,
+    },
     Delegation {
         id: u64,
         delegation: String,
@@ -797,7 +946,7 @@ impl Update {
     #[must_use]
     pub fn progress(&self) -> bool {
         match self {
-            Self::Attempt { .. } | Self::Model { .. } => false,
+            Self::Attempt { .. } | Self::Model { .. } | Self::ToolWire { .. } => false,
             Self::Tool { name, .. } => name != crate::long_session::LIMIT_TOOL,
             _ => true,
         }
@@ -810,6 +959,7 @@ impl Update {
             | Self::CheckedJev { id, .. }
             | Self::Tool { id, .. }
             | Self::Attempt { id, .. }
+            | Self::ToolWire { id, .. }
             | Self::Delegation { id, .. }
             | Self::Delta { id, .. }
             | Self::Usage { id, .. }
@@ -1590,6 +1740,9 @@ fn run_with_provider(
             RuntimeEvent::Attempt(attempt) => {
                 let _ = sender.send(Update::Attempt { id, attempt: *attempt });
             },
+            RuntimeEvent::ToolWire(wire) => {
+                let _ = sender.send(Update::ToolWire { id, wire: *wire });
+            },
             RuntimeEvent::Delegation { id: delegation, name, task, event } => {
                 let _ = sender.send(Update::Delegation { id, delegation, name, task, event: *event });
             },
@@ -2187,6 +2340,7 @@ fn sign_of_life(event: &RuntimeEvent) -> bool {
         RuntimeEvent::Progress { .. }
         | RuntimeEvent::Model(_)
         | RuntimeEvent::Harness(_)
+        | RuntimeEvent::ToolWire(_)
         | RuntimeEvent::Plan(_) => false,
     }
 }
@@ -2552,6 +2706,7 @@ async fn local_turn(
         | RuntimeEvent::Progress { .. }
         | RuntimeEvent::Plan(_)
         | RuntimeEvent::Attempt(_)
+        | RuntimeEvent::ToolWire(_)
         | RuntimeEvent::Thinking(_) => event_callback(event),
     };
     let result = async {

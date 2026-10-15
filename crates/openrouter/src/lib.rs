@@ -1007,6 +1007,34 @@ pub struct Streamed {
     pub first_text_ms: Option<u64>,
     /// Milliseconds the call took.
     pub milliseconds: u64,
+    /// The model the OpenAgents gateway tried first, when another one
+    /// answered instead (the answer's `openagents.attempts`, #11654).
+    pub fell_back: Option<FellBack>,
+}
+
+/// A model the OpenAgents gateway tried before the one that answered.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct FellBack {
+    /// The model tried first, such as `google/gemini-4-argon`.
+    pub model: String,
+    /// Why it was passed over, in the gateway's words, such as
+    /// `first_token_deadline`, `server` or `network`.
+    pub reason: String,
+}
+
+impl FellBack {
+    /// The first attempt that fell back, from an answer's `openagents`
+    /// object, when a later attempt answered.
+    #[must_use]
+    pub fn of(openagents: &Value) -> Option<Self> {
+        let attempts = openagents.get("attempts")?.as_array()?;
+        let answered = attempts.iter().any(|attempt| attempt["outcome"] == "ok");
+        let first = attempts.first()?;
+        (answered && first["outcome"] != "ok").then(|| Self {
+            model: first["model"].as_str().unwrap_or_default().to_owned(),
+            reason: first["reason"].as_str().unwrap_or("failed").to_owned(),
+        })
+    }
 }
 
 /// One complete function call requested by a streamed reply.
@@ -1334,6 +1362,9 @@ impl StreamReader {
         {
             self.reply.model = model.to_string();
             model_sink(model);
+        }
+        if let Some(fell_back) = chunk.get("openagents").and_then(FellBack::of) {
+            self.reply.fell_back = Some(fell_back);
         }
         let choice = &chunk["choices"][0];
         if let Some(tools) = &mut self.tools
@@ -1667,6 +1698,24 @@ fn strip_fence(text: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_gateway_fallback_is_read_from_the_answer() {
+        let fell = serde_json::json!({"attempts":[
+            {"model":"google/gemini-4-argon","upstream":"vertex","outcome":"fallback","ms":20000,"reason":"first_token_deadline"},
+            {"model":"google/gemini-3.8-flash","upstream":"vertex","outcome":"ok","ms":4000}
+        ]});
+        assert_eq!(
+            FellBack::of(&fell),
+            Some(FellBack {
+                model: "google/gemini-4-argon".into(),
+                reason: "first_token_deadline".into(),
+            })
+        );
+        let first = serde_json::json!({"attempts":[{"model":"google/gemini-4-argon","outcome":"ok","ms":3000}]});
+        assert_eq!(FellBack::of(&first), None);
+        assert_eq!(FellBack::of(&serde_json::json!({})), None);
+    }
 
     /// #11040: a no-retention request denies data collection and asks for
     /// zero retention, alongside a structured request's own preference.

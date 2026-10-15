@@ -627,6 +627,7 @@ impl App {
         match event {
             bundled_runtime::RuntimeEvent::Tokens(tokens) => child.chat.tokens = tokens,
             bundled_runtime::RuntimeEvent::Usage(usage) => child.chat.round(*usage),
+            bundled_runtime::RuntimeEvent::ToolWire(wire) => child.chat.tool_wire(*wire),
             bundled_runtime::RuntimeEvent::Harness(run) => child.chat.harness = Some(*run),
             bundled_runtime::RuntimeEvent::Thinking(on) => child.chat.thinking = on,
             bundled_runtime::RuntimeEvent::ThinkingText(text) => child.chat.think(&text),
@@ -1257,6 +1258,9 @@ impl App {
             live::Update::Attempt { attempt, .. } if self.live.busy => {
                 self.live.attempt(attempt);
             }
+            live::Update::ToolWire { wire, .. } if self.live.busy => {
+                self.live.tool_wire(wire);
+            }
             live::Update::Usage { usage, .. } if self.live.busy => {
                 // The totals move as each call ends, not only when the turn
                 // finishes.
@@ -1266,6 +1270,11 @@ impl App {
                 self.live.cost_usd += cost;
                 self.live.turn_counted.0 = self.live.turn_counted.0.saturating_add(tokens);
                 self.live.turn_counted.1 += cost;
+                // The gateway answered with another model: one grey line
+                // says which and why (#11654); the rail follows the model.
+                if let Some(line) = usage.fallback_line() {
+                    self.notice = Some(line);
+                }
                 self.live.round(usage);
             }
             live::Update::Harness { run, .. } if self.live.busy => {
@@ -2493,6 +2502,8 @@ impl App {
         execution.instructions = self.live.instructions.clone();
         // One briefing for every harness (#11473).
         execution.briefing = self.live.briefing.clone();
+        // The chat as it went out before, so the prompt cache holds (#11654).
+        execution.wire_history = Some(self.live.wire_messages());
         execution.prompt_inbox = Some(self.prompt_inbox.clone());
         execution.boundary = self.boundary.clone();
         // Google Drive through the signed-in account's Connections (#11238).

@@ -1466,6 +1466,7 @@ fn finish(result: SdkResultMessage) -> Result<Streamed, String> {
     let prompt_tokens = counted_input(&usage);
     let completion_tokens = usage.output_tokens;
     Ok(Streamed {
+        fell_back: None,
         text,
         model,
         finish_reason: Some("stop".into()),

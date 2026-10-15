@@ -102,6 +102,11 @@ pub fn document(chat: &Chat, id: &str, model: &str, cwd: &Path) -> Value {
                 if let Some(ended) = chat.tool_ends.get(&index) {
                     extra.insert("ended_at".into(), json!(atif::iso(*ended)));
                 }
+                // How the call went to the model, so a resumed chat sends
+                // the same prompt and its cache holds (#11654).
+                if let Some(wire) = chat.wire.get(&index) {
+                    extra.insert("wire".into(), wire.clone());
+                }
                 Step::called(Call {
                     id: format!("call-{}", index + 1),
                     name: name.clone(),
@@ -156,6 +161,17 @@ pub fn document(chat: &Chat, id: &str, model: &str, cwd: &Path) -> Value {
         // The model calls whose output starts at this entry.
         for (_, usage) in chat.rounds.iter().filter(|(first, _)| *first == index) {
             step = with_round(step, usage);
+        }
+        // Each step names the model that ran it (#11654), not the chat's
+        // newest model: a turn the gateway moved to another model labelled
+        // every earlier step with that one.
+        // A reply's own label keeps its reasoning level (`model:low`).
+        let base = |model: &str| model.split(':').next().unwrap_or_default().to_owned();
+        if step.source == Source::Agent
+            && let Some(model) = ran_by(chat, index)
+            && step.model.as_deref().map(base) != Some(base(&model))
+        {
+            step.model = Some(model);
         }
         if session.directive.is_empty() && step.source == Source::User {
             session.directive = step.message.clone();
@@ -314,6 +330,46 @@ pub fn document(chat: &Chat, id: &str, model: &str, cwd: &Path) -> Value {
     result
 }
 
+/// The model that produced entry `index`, from the turn's model calls: the
+/// call whose output starts there, else the newest earlier call in the same
+/// turn (a round's later tool calls), else the turn's next call (thinking
+/// streams before its call's output). `None` when the turn recorded no
+/// call.
+fn ran_by(chat: &Chat, index: usize) -> Option<String> {
+    let turn_start = chat.entries[..=index.min(chat.entries.len().saturating_sub(1))]
+        .iter()
+        .rposition(|entry| matches!(entry, Entry::User(_)))
+        .unwrap_or(0);
+    let turn_end = chat.entries[index.min(chat.entries.len())..]
+        .iter()
+        .position(|entry| matches!(entry, Entry::User(_)))
+        .map_or(usize::MAX, |at| index + at);
+    let model = |at: usize| {
+        chat.rounds
+            .iter()
+            .rev()
+            .find(|(first, usage)| *first == at && !usage.model.is_empty())
+            .map(|(_, usage)| usage.model.clone())
+    };
+    let thinking = matches!(chat.entries.get(index),
+        Some(Entry::Tool { name, .. }) if name == crate::claude_stream::THINKING);
+    let earlier = || (turn_start..=index).rev().find_map(model);
+    let later = || {
+        chat.rounds
+            .iter()
+            .filter(|(first, usage)| *first > index && *first < turn_end && !usage.model.is_empty())
+            .min_by_key(|(first, _)| *first)
+            .map(|(_, usage)| usage.model.clone())
+    };
+    model(index).or_else(|| {
+        if thinking {
+            later().or_else(earlier)
+        } else {
+            earlier().or_else(later)
+        }
+    })
+}
+
 /// One model call's usage on the step it produced: tokens as ATIF metrics,
 /// the rest as evidence beside them. Two calls on one step add up.
 fn with_round(mut step: Step, usage: &crate::bundled_runtime::RoundUsage) -> Step {
@@ -343,6 +399,12 @@ fn with_round(mut step: Step, usage: &crate::bundled_runtime::RoundUsage) -> Ste
     }
     if let Some(written) = usage.cache_write_tokens {
         call["cache_write_tokens"] = json!(written);
+    }
+    // The model the gateway tried first, when this one answered instead
+    // (#11654).
+    if let Some(fell) = &usage.fell_back {
+        call["fell_back_from"] = json!(fell.model);
+        call["fell_back_reason"] = json!(fell.reason);
     }
     let mut calls = step
         .extensions
@@ -791,6 +853,9 @@ pub fn from_document(value: &Value) -> Result<Chat, String> {
                         output,
                         running: false,
                     });
+                    if let Some(wire) = call.pointer("/extra/wire") {
+                        chat.wire.insert(chat.entries.len() - 1, wire.clone());
+                    }
                     chat.entries.extend(card);
                 }
             }
@@ -1449,5 +1514,129 @@ mod tests {
         );
         assert_eq!(main["subagent_trajectories"].as_array().unwrap().len(), 4);
         assert!(atif::validate(&main).is_empty());
+    }
+
+    #[test]
+    fn a_gateway_fallback_is_said_and_each_step_names_the_model_that_ran_it() {
+        // #11654: Argon ran the tool calls, then missed its first-token
+        // deadline on a long prompt and 3.8 Flash answered, silently; the
+        // export labelled every step Flash.
+        const ARGON: &str = "google/gemini-4-argon";
+        const FLASH: &str = "google/gemini-3.8-flash";
+        let mut app = App {
+            mode: crate::Mode::Live,
+            ..App::default()
+        };
+        app.submit("what do you know about microcoder", Path::new("."));
+        let id = app.request.take().unwrap().id;
+        let round =
+            |model: &str, fell_back: Option<openrouter::FellBack>| crate::live::Update::Usage {
+                id,
+                usage: crate::bundled_runtime::RoundUsage {
+                    model: model.into(),
+                    prompt_tokens: 4_000,
+                    completion_tokens: 50,
+                    fell_back,
+                    ..Default::default()
+                },
+            };
+        let tool =
+            |name: &str, input: Value, output: Value, running: bool| crate::live::Update::Tool {
+                id,
+                name: name.into(),
+                input,
+                output,
+                running,
+                at: None,
+            };
+        let calls = json!([
+            {"id":"call_1","type":"function","function":{"name":"Glob","arguments":"{\"pattern\":\"*micro*\"}"},
+             "extra_content":{"google":{"thought_signature":"c2ln"}}},
+            {"id":"call_2","type":"function","function":{"name":"Grep","arguments":"{\"pattern\":\"micro\"}"}}
+        ]);
+        let assistant = json!({"role":"assistant","content":"","tool_calls":calls});
+        app.apply_update(round(ARGON, None));
+        for (position, (name, input, output)) in [
+            (
+                "Glob",
+                json!({"pattern":"*micro*"}),
+                json!({"files":"a.md"}),
+            ),
+            (
+                "Grep",
+                json!({"pattern":"micro"}),
+                json!({"matches":"a.md:1:micro"}),
+            ),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            app.apply_update(tool(name, input.clone(), Value::Null, true));
+            let mut wire = json!({"name": name, "call": position});
+            if position == 0 {
+                wire["assistant"] = assistant.clone();
+            }
+            app.apply_update(crate::live::Update::ToolWire { id, wire });
+            app.apply_update(tool(name, input, output, false));
+        }
+        let fell = openrouter::FellBack {
+            model: ARGON.into(),
+            reason: "first_token_deadline".into(),
+        };
+        app.apply_update(round(FLASH, Some(fell)));
+        app.apply_update(crate::live::Update::Model {
+            id,
+            model: FLASH.into(),
+        });
+        app.apply_update(crate::live::Update::Finished {
+            id,
+            result: Ok(openrouter::Streamed {
+                text: "Microcoder is Coder's simple loop.".into(),
+                model: FLASH.into(),
+                ..Default::default()
+            }),
+        });
+        // One grey line says who answered and why; the rail follows.
+        assert_eq!(
+            app.notice.as_deref(),
+            Some("Flash answered: Argon was slow to start")
+        );
+        // Each step names the model that ran it.
+        let exported = document(&app.live, "fallback", "auto", Path::new("/workspace"));
+        let steps = exported["steps"].as_array().unwrap();
+        let named: Vec<(&str, &str)> = steps
+            .iter()
+            .filter(|step| step["source"] == "agent")
+            .map(|step| {
+                (
+                    step["tool_calls"][0]["function_name"]
+                        .as_str()
+                        .unwrap_or("reply"),
+                    step["model_name"].as_str().unwrap(),
+                )
+            })
+            .collect();
+        assert_eq!(named, [("Glob", ARGON), ("Grep", ARGON), ("reply", FLASH)]);
+        let reply = steps.last().unwrap();
+        assert_eq!(reply["extra"]["model_calls"][0]["fell_back_from"], ARGON);
+        assert_eq!(
+            reply["extra"]["model_calls"][0]["fell_back_reason"],
+            "first_token_deadline"
+        );
+        // The next turn sends the round as it first went out: the calls
+        // with their ids and signature, then each observation.
+        let wire = app.live.wire_messages();
+        let text = serde_json::to_string(&wire).unwrap();
+        assert!(!text.contains("Tool observation"), "{text}");
+        assert_eq!(wire[1], assistant);
+        assert_eq!(
+            wire[2],
+            json!({"role":"tool","tool_call_id":"call_1","content":"{\"files\":\"a.md\"}"})
+        );
+        assert_eq!(wire[3]["tool_call_id"], "call_2");
+        assert_eq!(wire[4]["content"], "Microcoder is Coder's simple loop.");
+        // A saved and reopened chat keeps it.
+        let reopened = from_document(&exported).unwrap();
+        assert_eq!(reopened.wire_messages(), wire);
     }
 }

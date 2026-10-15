@@ -452,25 +452,34 @@ impl Provider {
                 crate::attachments::TEXT_ONLY_NOTE
             }}));
         }
-        let mut current_plan = messages
-            .iter()
-            .rev()
-            .find(|m| m.role == "system" && m.content.starts_with(crate::plan::PREFIX))
-            .map(|m| json!({"role":"system","content":m.content}));
-        history.extend(
+        // The chat as it went out before, tool rounds and all, when the app
+        // kept it (#11654): the prompt cache holds across turns.
+        let said: Vec<Value> = execution.wire_history.clone().unwrap_or_else(|| {
             messages
                 .iter()
-                .filter(|m| !(m.role == "system" && m.content.starts_with(crate::plan::PREFIX)))
-                .map(|message| {
-                    match (message.role == "user" && vision)
-                        .then(|| crate::attachments::expand(&message.content))
-                        .flatten()
-                    {
-                        Some(parts) => json!({"role":"user","content":parts}),
-                        None => json!({"role":message.role,"content":message.content}),
-                    }
-                }),
-        );
+                .map(|message| json!({"role":message.role,"content":message.content}))
+                .collect()
+        });
+        let is_plan = |message: &Value| {
+            message["role"] == "system"
+                && message["content"]
+                    .as_str()
+                    .is_some_and(|content| content.starts_with(crate::plan::PREFIX))
+        };
+        let mut current_plan = said.iter().rev().find(|m| is_plan(m)).cloned();
+        history.extend(said.iter().filter(|m| !is_plan(m)).map(|message| {
+            match (message["role"] == "user" && vision)
+                .then(|| {
+                    message["content"]
+                        .as_str()
+                        .and_then(crate::attachments::expand)
+                })
+                .flatten()
+            {
+                Some(parts) => json!({"role":"user","content":parts}),
+                None => message.clone(),
+            }
+        }));
         let started = Instant::now();
         let mut joined = String::new();
         let mut aggregate = Streamed::default();
@@ -802,10 +811,10 @@ impl Provider {
                 json!({"role":"assistant","content":streamed.reply.text,"tool_calls":wire_calls});
             execution.redact(&mut assistant);
             redact_value(&mut assistant, self.key.expose());
-            history.push(assistant);
+            history.push(assistant.clone());
             let mut looks = Vec::new();
             let mut remind = false;
-            for call in streamed.calls {
+            for (position, call) in streamed.calls.into_iter().enumerate() {
                 if cancel.load(Ordering::Relaxed) {
                     return Err("The reply was canceled before its next plugin call.".into());
                 }
@@ -957,15 +966,6 @@ impl Provider {
                 execution.redact(&mut output);
                 redact_value(&mut output, self.key.expose());
                 let safe_input_key = safe_input.clone();
-                emit(RuntimeEvent::Tool {
-                    name: safe_name.clone(),
-                    input: safe_input,
-                    output: output.clone(),
-                    running: false,
-                });
-                if cancel.load(Ordering::Relaxed) {
-                    return Err("The reply was canceled after its plugin call; completed effects were not replayed.".into());
-                }
                 let content = if safe_name == crate::plan::TOOL
                     && crate::plan::text(&output).is_some()
                 {
@@ -981,6 +981,26 @@ impl Provider {
                     json!({"role":"tool","tool_call_id":call.id,"content":content});
                 execution.redact(&mut observation);
                 redact_value(&mut observation, self.key.expose());
+                // How this call went out, for the next turn (#11654).
+                if delegation_name.is_none() {
+                    let mut wire = json!({"name": safe_name, "call": position});
+                    if position == 0 {
+                        wire["assistant"] = assistant.clone();
+                    }
+                    if observation["content"].as_str() != Some(output.to_string().as_str()) {
+                        wire["content"] = observation["content"].clone();
+                    }
+                    emit(RuntimeEvent::ToolWire(Box::new(wire)));
+                }
+                emit(RuntimeEvent::Tool {
+                    name: safe_name.clone(),
+                    input: safe_input,
+                    output: output.clone(),
+                    running: false,
+                });
+                if cancel.load(Ordering::Relaxed) {
+                    return Err("The reply was canceled after its plugin call; completed effects were not replayed.".into());
+                }
                 history.push(observation);
                 match stuck.record(&safe_name, &safe_input_key, &output) {
                     crate::stuck::Verdict::Continue => {}
@@ -1228,6 +1248,7 @@ fn round_usage(reply: &Streamed) -> crate::bundled_runtime::RoundUsage {
             .prompt_tokens_details
             .as_ref()
             .and_then(|details| details.cache_write_tokens),
+        fell_back: reply.fell_back.clone(),
     }
 }
 
@@ -2000,6 +2021,7 @@ mod tests {
             favor: crate::route::Favor::default(),
             routing: None,
             briefing: None,
+            wire_history: None,
             gateway_model: None,
             cheap: None,
             door: None,
@@ -2066,7 +2088,12 @@ mod tests {
                 &mut |_| {},
                 &mut |_| {},
                 &mut |event| {
-                    if !matches!(event, RuntimeEvent::Usage(_) | RuntimeEvent::Attempt(_)) {
+                    if !matches!(
+                        event,
+                        RuntimeEvent::Usage(_)
+                            | RuntimeEvent::Attempt(_)
+                            | RuntimeEvent::ToolWire(_)
+                    ) {
                         events.push(event)
                     }
                 },
@@ -2140,7 +2167,12 @@ mod tests {
                     &mut |_| {},
                     &mut |_| {},
                     &mut |event| {
-                        if !matches!(event, RuntimeEvent::Usage(_) | RuntimeEvent::Attempt(_)) {
+                        if !matches!(
+                            event,
+                            RuntimeEvent::Usage(_)
+                                | RuntimeEvent::Attempt(_)
+                                | RuntimeEvent::ToolWire(_)
+                        ) {
                             events.push(event)
                         }
                     },
@@ -2443,7 +2475,12 @@ mod tests {
                 &mut |delta| text.push_str(delta),
                 &mut |_| {},
                 &mut |event| {
-                    if !matches!(event, RuntimeEvent::Usage(_) | RuntimeEvent::Attempt(_)) {
+                    if !matches!(
+                        event,
+                        RuntimeEvent::Usage(_)
+                            | RuntimeEvent::Attempt(_)
+                            | RuntimeEvent::ToolWire(_)
+                    ) {
                         events.push(event)
                     }
                 },
@@ -2586,7 +2623,7 @@ mod tests {
             &mut |delta| text.push_str(delta),
             &mut |model| models.push(model.to_owned()),
             &mut |event| {
-                    if !matches!(event, RuntimeEvent::Usage(_) | RuntimeEvent::Attempt(_)) {
+                    if !matches!(event, RuntimeEvent::Usage(_) | RuntimeEvent::Attempt(_) | RuntimeEvent::ToolWire(_)) {
                         events.push(event)
                     }
                 },
@@ -2862,7 +2899,12 @@ mod tests {
                 &mut |_| {},
                 &mut |_| {},
                 &mut |event| {
-                    if !matches!(event, RuntimeEvent::Usage(_) | RuntimeEvent::Attempt(_)) {
+                    if !matches!(
+                        event,
+                        RuntimeEvent::Usage(_)
+                            | RuntimeEvent::Attempt(_)
+                            | RuntimeEvent::ToolWire(_)
+                    ) {
                         events.push(event)
                     }
                 },
@@ -3108,7 +3150,12 @@ mod tests {
                 &mut |_| {},
                 &mut |_| {},
                 &mut |event| {
-                    if !matches!(event, RuntimeEvent::Usage(_) | RuntimeEvent::Attempt(_)) {
+                    if !matches!(
+                        event,
+                        RuntimeEvent::Usage(_)
+                            | RuntimeEvent::Attempt(_)
+                            | RuntimeEvent::ToolWire(_)
+                    ) {
                         events.push(event)
                     }
                 },
@@ -3201,7 +3248,12 @@ mod tests {
                         &mut |_| {},
                         &mut |_| {},
                         &mut |event| {
-                            if !matches!(event, RuntimeEvent::Usage(_) | RuntimeEvent::Attempt(_)) {
+                            if !matches!(
+                                event,
+                                RuntimeEvent::Usage(_)
+                                    | RuntimeEvent::Attempt(_)
+                                    | RuntimeEvent::ToolWire(_)
+                            ) {
                                 events.push(event)
                             }
                         },
@@ -3313,7 +3365,12 @@ mod tests {
                 &mut |_| {},
                 &mut |_| {},
                 &mut |event| {
-                    if !matches!(event, RuntimeEvent::Usage(_) | RuntimeEvent::Attempt(_)) {
+                    if !matches!(
+                        event,
+                        RuntimeEvent::Usage(_)
+                            | RuntimeEvent::Attempt(_)
+                            | RuntimeEvent::ToolWire(_)
+                    ) {
                         events.push(event)
                     }
                 },
@@ -3745,7 +3802,12 @@ mod tests {
                 &mut |_| {},
                 &mut |_| {},
                 &mut |event| {
-                    if !matches!(event, RuntimeEvent::Usage(_) | RuntimeEvent::Attempt(_)) {
+                    if !matches!(
+                        event,
+                        RuntimeEvent::Usage(_)
+                            | RuntimeEvent::Attempt(_)
+                            | RuntimeEvent::ToolWire(_)
+                    ) {
                         events.push(event)
                     }
                 },

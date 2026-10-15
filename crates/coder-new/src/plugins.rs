@@ -615,6 +615,7 @@ impl Plugins {
                 .as_ref()
                 .map(|store| crate::routing_preferences::path(store.root())),
             briefing: None,
+            wire_history: None,
             gateway_model: None,
             cheap: None,
             door: None,

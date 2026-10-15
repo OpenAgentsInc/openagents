@@ -370,6 +370,7 @@ mod tests {
             favor: crate::route::Favor::default(),
             routing: Some("fixture-routing.json".into()),
             briefing: None,
+            wire_history: None,
             gateway_model: None,
             cheap: None,
             door: None,

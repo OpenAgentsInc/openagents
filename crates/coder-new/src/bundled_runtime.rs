@@ -214,6 +214,13 @@ pub enum RuntimeEvent {
     /// failed or still-open attempt goes into the export, so a turn that
     /// stopped answering can be diagnosed.
     Attempt(Box<ModelAttempt>),
+    /// How the Coder loop sent a finished tool call to the model (#11654):
+    /// the call as it went out (its id and any thought signature), the
+    /// round's text and call count on a round's first call, and the
+    /// observation's text when it is not the output itself. Sent just
+    /// before the call's finished [`RuntimeEvent::Tool`], so the next turn
+    /// sends the same history and the prompt cache holds.
+    ToolWire(Box<Value>),
 }
 
 /// How one model attempt ended, or that it is still open.
@@ -297,6 +304,46 @@ pub struct RoundUsage {
     pub cached_tokens: Option<u64>,
     /// Prompt tokens written to the provider's prompt cache (#11550).
     pub cache_write_tokens: Option<u64>,
+    /// The model the gateway tried first, when `model` answered instead
+    /// (#11654).
+    pub fell_back: Option<openrouter::FellBack>,
+}
+
+impl RoundUsage {
+    /// The one grey line a gateway fallback shows (#11654), as "Flash
+    /// answered: Argon was slow to start".
+    #[must_use]
+    pub fn fallback_line(&self) -> Option<String> {
+        let fell = self.fell_back.as_ref()?;
+        let why = match fell.reason.as_str() {
+            "first_token_deadline" | "timeout" => "was slow to start",
+            "rate_limited" => "was busy",
+            "server" | "empty_stream" | "stream_failed" => "had a server error",
+            "network" => "couldn't be reached",
+            _ => "couldn't answer",
+        };
+        Some(format!(
+            "{} answered: {} {why}",
+            short_model_name(&self.model),
+            short_model_name(&fell.model)
+        ))
+    }
+}
+
+/// A model's short name for a notice: `google/gemini-4-argon` is "Argon",
+/// `google/gemini-3.8-flash` "Flash".
+#[must_use]
+pub fn short_model_name(model: &str) -> String {
+    let base = model.split(':').next().unwrap_or(model);
+    let bare = base.rsplit('/').next().unwrap_or(base);
+    let word = bare
+        .rsplit('-')
+        .find(|word| word.chars().next().is_some_and(char::is_alphabetic))
+        .unwrap_or(bare);
+    let mut letters = word.chars();
+    letters.next().map_or_else(String::new, |first| {
+        first.to_uppercase().chain(letters).collect()
+    })
 }
 
 impl RuntimeEvent {
@@ -320,6 +367,7 @@ impl RuntimeEvent {
             | Self::Harness(_)
             | Self::Plan(_)
             | Self::Attempt(_)
+            | Self::ToolWire(_)
             | Self::Thinking(_) => {}
             Self::Text(text) | Self::Model(text) | Self::ThinkingText(text) => {
                 *text = redact_text(text, keys);
@@ -3357,6 +3405,7 @@ impl Observer for MicrocoderEvents<'_> {
                 // is the turn's to report.
                 if generated.prompt_tokens > 0 {
                     self.emit.emit(RuntimeEvent::Usage(Box::new(RoundUsage {
+                        fell_back: None,
                         model: self.model.clone().unwrap_or_default(),
                         prompt_tokens: generated.prompt_tokens,
                         completion_tokens: generated.completion_tokens,

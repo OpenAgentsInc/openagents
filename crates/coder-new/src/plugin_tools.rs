@@ -97,6 +97,10 @@ pub struct ExecutionSettings {
     /// Coder loop reads it instead of every instruction file and note, and
     /// a Codex delegation reads it in its task.
     pub briefing: Option<crate::context::Briefing>,
+    /// The chat so far as the Coder loop's wire messages
+    /// ([`crate::live::Chat::wire_messages`], #11654); `None` sends the
+    /// messages it is given.
+    pub wire_history: Option<Vec<Value>>,
     /// The gateway model the person picked in /models (#11526): the
     /// Coder loop's turns run on it through the gateway. `None` is `auto`.
     pub gateway_model: Option<String>,
@@ -1411,6 +1415,7 @@ mod tests {
             favor: crate::route::Favor::default(),
             routing: None,
             briefing: None,
+            wire_history: None,
             gateway_model: None,
             cheap: None,
             door: None,

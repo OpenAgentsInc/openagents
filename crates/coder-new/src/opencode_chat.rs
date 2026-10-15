@@ -638,7 +638,7 @@ pub async fn run_with(
                             reply.usage.prompt_tokens += prompt;
                             reply.usage.completion_tokens += completion;
                             reply.usage.total_tokens += prompt + completion;
-                            on_event(RuntimeEvent::Usage(Box::new(RoundUsage {
+                            on_event(RuntimeEvent::Usage(Box::new(RoundUsage { fell_back: None,
                                 model: turn.model.clone(),
                                 prompt_tokens: prompt,
                                 completion_tokens: completion,

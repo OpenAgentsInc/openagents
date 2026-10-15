@@ -699,6 +699,7 @@ impl ModelCalls {
         let written = field("cache_creation_input_tokens");
         self.started = Some(now);
         Some(crate::bundled_runtime::RoundUsage {
+            fell_back: None,
             model: self.model.clone(),
             prompt_tokens: field("input_tokens").unwrap_or(0)
                 + cached.unwrap_or(0)

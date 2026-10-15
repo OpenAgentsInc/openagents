@@ -32,11 +32,22 @@ pub const MAX_FILE_BYTES: u64 = 10 * 1024 * 1024;
 pub const DEFAULT_LINES: usize = 2000;
 /// A longer line is cut in `Read` and `Grep` output.
 const MAX_LINE_CHARS: usize = 2000;
-/// The most text one `Read` returns; a longer page ends early.
-const MAX_READ_OUTPUT: usize = 256 * 1024;
+/// The most text one `Read` returns (about 12,000 tokens); a longer page
+/// ends early with `next_offset`. Every later model call re-reads a result,
+/// so one whole-file read of a 1,500-line file cost its size once per call
+/// for the rest of the chat (#11654).
+const MAX_READ_OUTPUT: usize = 48 * 1024;
 /// The most `Grep` matches or `Glob` paths returned.
 const DEFAULT_RESULTS: usize = 200;
 const MAX_RESULTS: usize = 1000;
+/// A `Grep` match line is cut at this many characters: a match in a line
+/// of minified JSON needs its place, not the whole line.
+const MAX_MATCH_CHARS: usize = 300;
+/// The most text one `Grep` or `Glob` returns (about 6,000 tokens). One
+/// `Grep microcoder` over the repository's benchmark traces returned
+/// 355,511 characters and pushed a factual question to 150,000 prompt
+/// tokens (#11654).
+const MAX_LIST_OUTPUT: usize = 24 * 1024;
 /// `Grep` skips files larger than this.
 const MAX_GREP_FILE: u64 = 2 * 1024 * 1024;
 /// Diff lines kept in a result.
@@ -71,7 +82,7 @@ pub fn definitions() -> Vec<Value> {
     vec![
         json!({"type":"function","function":{
             "name":"Read",
-            "description":"Read a text file in the workspace. Returns numbered lines (\"N\\ttext\"), up to 2000 from `offset` (1-based). For a longer file, call again with the `next_offset` the result gives. Read a file before you Edit it or overwrite it with Write.",
+            "description":"Read a text file in the workspace. Returns numbered lines (\"N\\ttext\"), up to 2000 from `offset` (1-based) and about 48 KB. For a longer file, call again with the `next_offset` the result gives, or Read only the lines you need. Read a file before you Edit it or overwrite it with Write.",
             "parameters":{"type":"object","additionalProperties":false,"required":["path"],"properties":{
                 "path":{"type":"string","description":"Relative to the working directory, or absolute inside the workspace."},
                 "offset":{"type":"integer","minimum":1,"description":"The first line to return, from 1."},
@@ -98,7 +109,7 @@ pub fn definitions() -> Vec<Value> {
         }}),
         json!({"type":"function","function":{
             "name":"Grep",
-            "description":"Search file contents in the workspace with a regular expression (Rust regex syntax). Skips files .gitignore ignores, hidden files and binary files. Returns \"path:line:text\" matches.",
+            "description":"Search file contents in the workspace with a regular expression (Rust regex syntax). Skips files .gitignore ignores, hidden files and binary files. Returns \"path:line:text\" matches, long lines cut around the match, about 24 KB at most.",
             "parameters":{"type":"object","additionalProperties":false,"required":["pattern"],"properties":{
                 "pattern":{"type":"string","minLength":1},
                 "path":{"type":"string","description":"A folder or file to search. Default: the working directory."},
@@ -120,7 +131,7 @@ pub fn definitions() -> Vec<Value> {
 }
 
 /// What the model reads about these tools.
-pub const INSTRUCTIONS: &str = "Use Read, Edit, Write, Grep and Glob for files instead of shell commands such as cat, sed, grep or find. Read a file before you Edit or Write it. Edit takes an exact string that appears once; give more surrounding lines when it is not unique. Any path on this computer works, including ~/ and files outside the repository. Reads never ask; under an approval policy, Edit and Write ask like any other change.\n";
+pub const INSTRUCTIONS: &str = "Use Read, Edit, Write, Grep and Glob for files instead of shell commands such as cat, sed, grep or find. Read a file before you Edit or Write it. Edit takes an exact string that appears once; give more surrounding lines when it is not unique. Any path on this computer works, including ~/ and files outside the repository. Reads never ask; under an approval policy, Edit and Write ask like any other change. Every result stays in the chat and is read again on each later step, so search narrowly (a path or glob that excludes benchmark traces and generated files) and Read the one or two files that answer the question rather than every match.\n";
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -563,6 +574,8 @@ impl Workspace {
         let mut matches = Vec::new();
         let mut files = 0usize;
         let mut truncated = false;
+        let mut size = 0usize;
+        let mut full = false;
         'files: for entry in walk.flatten() {
             if !entry.file_type().is_some_and(|kind| kind.is_file()) {
                 continue;
@@ -593,9 +606,16 @@ impl Workspace {
                         truncated = true;
                         break 'files;
                     }
+                    let line = match_excerpt(line, &pattern);
+                    let entry = format!("{}:{}:{line}", self.shown(path), index + 1);
+                    if size + entry.len() > MAX_LIST_OUTPUT {
+                        truncated = true;
+                        full = true;
+                        break 'files;
+                    }
                     hit = true;
-                    let line: String = line.chars().take(MAX_LINE_CHARS).collect();
-                    matches.push(format!("{}:{}:{line}", self.shown(path), index + 1));
+                    size += entry.len() + 1;
+                    matches.push(entry);
                 }
             }
             files += usize::from(hit);
@@ -610,9 +630,16 @@ impl Workspace {
         }
         if truncated {
             result["truncated"] = json!(true);
-            result["note"] = json!(format!(
-                "Stopped at {limit} matches. Narrow the pattern, path or glob to see the rest."
-            ));
+            result["note"] = json!(if full {
+                format!(
+                    "Stopped at {} matches, the most one search returns. Narrow the pattern, path or glob to see the rest.",
+                    matches.len()
+                )
+            } else {
+                format!(
+                    "Stopped at {limit} matches. Narrow the pattern, path or glob to see the rest."
+                )
+            });
         }
         Ok(result)
     }
@@ -642,14 +669,25 @@ impl Workspace {
         found.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
         let total = found.len();
         found.truncate(limit);
-        let paths: Vec<String> = found.into_iter().map(|(_, path)| path).collect();
+        let mut size = 0usize;
+        let paths: Vec<String> = found
+            .into_iter()
+            .map(|(_, path)| path)
+            .take_while(|path| {
+                size += path.len() + 1;
+                size <= MAX_LIST_OUTPUT
+            })
+            .collect();
         let mut result = json!({
             "files": if paths.is_empty() { "No files match.".to_string() } else { paths.join("\n") },
             "count": total,
         });
-        if total > limit {
+        if total > paths.len() {
+            let shown = paths.len();
             result["truncated"] = json!(true);
-            result["note"] = json!(format!("Showing the newest {limit} of {total}."));
+            result["note"] = json!(format!(
+                "Showing the newest {shown} of {total}. Narrow the pattern or path to see the rest."
+            ));
         }
         Ok(result)
     }
@@ -729,6 +767,25 @@ fn run_check(mut command: std::process::Command) -> Option<String> {
             _ => None, // Unavailable tools and timeouts are deliberately silent.
         }
     })
+}
+
+/// A matching line as `Grep` returns it: whole when short, else
+/// [`MAX_MATCH_CHARS`] characters around the first match, with `…` where
+/// it was cut.
+fn match_excerpt(line: &str, pattern: &regex::Regex) -> String {
+    if line.chars().count() <= MAX_MATCH_CHARS {
+        return line.to_owned();
+    }
+    let at = pattern.find(line).map_or(0, |found| found.start());
+    let before = line[..at].chars().count();
+    let start = before.saturating_sub(MAX_MATCH_CHARS / 3);
+    let kept: String = line.chars().skip(start).take(MAX_MATCH_CHARS).collect();
+    let cut_end = start + MAX_MATCH_CHARS < line.chars().count();
+    format!(
+        "{}{kept}{}",
+        if start > 0 { "…" } else { "" },
+        if cut_end { "…" } else { "" }
+    )
 }
 
 fn glob_matcher(pattern: &str) -> Result<globset::GlobMatcher, String> {
@@ -1215,6 +1272,50 @@ mod tests {
         );
         // Folders outside the repository can be searched too.
         assert!(run("Glob", json!({"pattern":"*","path":"/etc"}), &root).is_ok());
+    }
+
+    #[test]
+    fn big_searches_and_reads_stay_within_their_budgets() {
+        // #11654: one Grep over trace JSON returned 355,511 characters.
+        let (_dir, root) = workspace();
+        let long = format!("{}needle{}", "x".repeat(5_000), "y".repeat(5_000));
+        for file in 0..60 {
+            let text = std::iter::repeat_n(long.as_str(), 20)
+                .collect::<Vec<_>>()
+                .join("\n");
+            std::fs::write(root.join(format!("trace{file}.json")), text).unwrap();
+        }
+        let found = run(
+            "Grep",
+            json!({"pattern":"needle","max_results":1000}),
+            &root,
+        )
+        .unwrap();
+        let text = found["matches"].as_str().unwrap();
+        assert!(text.len() <= MAX_LIST_OUTPUT, "{}", text.len());
+        assert_eq!(found["truncated"], true);
+        assert!(found["note"].as_str().unwrap().contains("Narrow"));
+        let first = text.lines().next().unwrap();
+        assert!(first.contains("needle") && first.contains('…'), "{first}");
+        assert!(first.chars().count() < MAX_MATCH_CHARS + 40, "{first}");
+
+        for file in 0..2_000 {
+            std::fs::write(
+                root.join(format!("a-rather-long-file-name-number-{file:05}.md")),
+                "",
+            )
+            .unwrap();
+        }
+        let listed = run("Glob", json!({"pattern":"*.md","max_results":1000}), &root).unwrap();
+        assert!(listed["files"].as_str().unwrap().len() <= MAX_LIST_OUTPUT);
+        assert_eq!(listed["count"], 2_000);
+        assert_eq!(listed["truncated"], true);
+
+        let lines: String = (0..2_000).map(|n| format!("{n:0>100}\n")).collect();
+        std::fs::write(root.join("big.txt"), lines).unwrap();
+        let read = run("Read", json!({"path":"big.txt"}), &root).unwrap();
+        assert!(read["content"].as_str().unwrap().len() <= MAX_READ_OUTPUT + 200);
+        assert!(read["next_offset"].as_u64().is_some());
     }
 
     #[test]

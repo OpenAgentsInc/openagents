@@ -494,6 +494,7 @@ impl Thread {
                             Output::Usage(usage) => {
                                 let last = &usage["last"];
                                 let round = RoundUsage {
+                                    fell_back: None,
                                     model: call_model.clone(),
                                     prompt_tokens: last["inputTokens"].as_u64().unwrap_or(0),
                                     completion_tokens: last["outputTokens"].as_u64().unwrap_or(0),
@@ -543,6 +544,7 @@ impl Thread {
                         .error
                         .unwrap_or_else(|| "The Codex turn failed.".into())),
                     Ok(ended) => Ok(Streamed {
+                        fell_back: None,
                         text: ended.text,
                         model: ended.model.unwrap_or_else(|| running_model.clone()),
                         finish_reason: Some("stop".into()),

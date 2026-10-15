@@ -1703,6 +1703,7 @@ fn delegate(
                     // carries it; a delegation's step reaches its row.
                     RuntimeEvent::Progress { .. } | RuntimeEvent::Plan(_) => {}
                     RuntimeEvent::Attempt(attempt) => app.live.attempt(*attempt),
+                    RuntimeEvent::ToolWire(wire) => app.live.tool_wire(*wire),
                     RuntimeEvent::Delegation {
                         id,
                         name,
@@ -1791,6 +1792,8 @@ fn runtime_value(event: &RuntimeEvent) -> Value {
             event["event"] = json!("model_attempt");
             event
         }
+        // The call's wire (ids, thought signatures) stays in the session.
+        RuntimeEvent::ToolWire(wire) => json!({"event":"tool_wire","name":wire["name"]}),
         RuntimeEvent::Tool {
             name,
             input,
