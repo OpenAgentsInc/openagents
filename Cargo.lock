@@ -9313,7 +9313,7 @@ checksum = "11d3d7f243d5c5a8b9bb5d6dd2b1602c0cb0b9db1621bafc7ed66e35ff9fe092"
 
 [[package]]
 name = "lnd-sdk"
-version = "1.0.0-rc.21"
+version = "1.0.0-rc.22"
 dependencies = [
  "async-trait",
  "bitcoin",
