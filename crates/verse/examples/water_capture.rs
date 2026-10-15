@@ -7,7 +7,8 @@
 //! Installs the lab as `verse --water-lab` does after the Everglade pack
 //! loads, then renders fixed cinematic views: the cove at golden hour and
 //! at noon, the shore's foam, the sun's glitter, floating bodies, a splash
-//! frame by frame, the falls, the river, and the view under water. With
+//! frame by frame, the glass tank's dam break (`tank-N.png`, best with
+//! `--only tank`), the falls, the river, and the view under water. With
 //! `--spells` it also casts each water spell and renders it into
 //! `OUT_DIR/spells`. With `--orb` it grows, holds, throws, and splashes a
 //! Water Orb, engulfs a dummy and a crate, strikes the orb and the sea with
@@ -294,6 +295,46 @@ fn main() -> Result<(), String> {
                 Vec3::new(3.0, 0.6, -3.0),
                 0.6,
             )?;
+        }
+    }
+
+    if wanted("tank") {
+        // The glass tank's dam break (#11660), rendered every frame so the
+        // liquid keeps up with the clock: from the start of a round, a
+        // frame every half second. Run it alone (`--only tank`): the
+        // renderer's water policy may drop the scene copies the liquid
+        // draws over after a few hundred offscreen frames.
+        place(&mut runtime, 4.0, 16.0, PI);
+        let time = |runtime: &mut WorldRuntime| runtime.water_lab_mut().map_or(0.0, |l| l.time);
+        // Skip to just before the next round without rendering.
+        let period = water::tank::PERIOD;
+        while period - time(&mut runtime).rem_euclid(period) > 0.1 {
+            run(&mut runtime, 1.0 / 30.0);
+        }
+        let start = water::tank::tank(time(&mut runtime)).round;
+        let [x, z] = water::tank::CENTER;
+        let y = water::tank::floor();
+        let (eye, target) = (
+            Vec3::new(x + 0.6, y + 1.3, z + 2.6),
+            Vec3::new(x, y + 0.2, z),
+        );
+        let mut k = 0;
+        while k < 8 {
+            run(&mut runtime, 1.0 / 30.0);
+            let pixels =
+                renderer.render(view(eye, target, 0.7, aspect), &runtime.dynamic_mesh(), &ui)?;
+            let t = time(&mut runtime);
+            let tank = water::tank::tank(t);
+            if tank.round == start {
+                continue;
+            }
+            let into = t - tank.round as f32 * water::tank::PERIOD;
+            if into >= k as f32 * 0.5 {
+                let path = a.out.join(format!("tank-{k}.png"));
+                write_png(&path, a.width, a.height, &pixels)?;
+                eprintln!("wrote {}", path.display());
+                k += 1;
+            }
         }
     }
 

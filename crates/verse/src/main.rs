@@ -45,7 +45,8 @@
 //! grows a Water Orb that flies where the pointer aims when let go, `7`
 //! calls down a Thunderbolt, `B` drops a crate, a barrel, or a plank to
 //! float, `T` turns the hour, and `F` at the lantern on the beach returns to
-//! the plaza.
+//! the plaza. A glass tank ahead and right of the spawn lets a column of
+//! particle water go every seven seconds (on Medium and High).
 //! `--frame-times` prints one JSON line of frame times per second.
 //! `--everglade` opens straight into Everglade instead of the plaza, and
 //! `--studio-notice <text>` leads Everglade's caption with a notice;

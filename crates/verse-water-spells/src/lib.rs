@@ -34,6 +34,7 @@ pub mod orb;
 pub mod rules;
 pub mod sea;
 pub mod spells;
+pub mod tank;
 pub mod targets;
 pub mod terrain;
 #[cfg(test)]
@@ -558,6 +559,7 @@ impl WaterLab {
                 ));
             }
         }
+        water.tank = Some(tank::tank(self.time));
         water
     }
 
@@ -1214,6 +1216,7 @@ impl WaterLab {
             lit: self.floats.draw(),
             ..Mesh::default()
         };
+        tank::draw(&mut mesh.lit);
         self.orb_liquid(&mut mesh.liquid);
         self.orb_marks(&mut mesh, eye);
         self.bolt_marks(&mut mesh, eye);

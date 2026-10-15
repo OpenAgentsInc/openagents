@@ -21,6 +21,8 @@ struct View {
     blur_scale: f32,
     tint: vec3<f32>,
     thickness_scale: f32,
+    // 1: discard where there is no liquid instead of copying the background.
+    composite: u32,
 }
 
 @group(0) @binding(0) var<uniform> u: View;
@@ -60,10 +62,11 @@ fn depth_fs(in: Sprite) -> DepthOut {
         discard;
     }
     let front = in.center + vec3<f32>(in.corner * u.radius, sqrt(1.0 - r2) * u.radius);
-    let clip = u.proj * vec4<f32>(front, 1.0);
     var out: DepthOut;
     out.depth = -front.z;
-    out.frag = clip.z / clip.w;
+    // Nearest wins by view distance, whatever depth convention the
+    // projection uses (the physical renderer's is reversed).
+    out.frag = clamp(-front.z / u.far, 0.0, 1.0);
     return out;
 }
 
@@ -161,6 +164,9 @@ fn shade_fs(in: Screen) -> @location(0) vec4<f32> {
     let depth = textureLoad(source, p, 0).r;
     let scene = textureLoad(scene_depth, p, 0).r;
     if depth >= u.far || depth > scene {
+        if u.composite != 0u {
+            discard;
+        }
         return vec4<f32>(back, 1.0);
     }
     let limit = vec2<i32>(u.size) - vec2<i32>(1);

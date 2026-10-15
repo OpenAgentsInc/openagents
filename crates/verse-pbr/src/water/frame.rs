@@ -289,6 +289,9 @@ pub struct Water {
     pub rain: super::rain::Rain,
     /// A baked harbor mask for the sea's swell.
     pub shelter: Option<super::shelter::Shelter>,
+    /// A glass tank of particle liquid to step and draw, on the tiers that
+    /// copy the scene ([`crate::fluid::LiquidTank`]).
+    pub tank: Option<crate::fluid::LiquidTank>,
 }
 
 impl Default for Water {
@@ -320,6 +323,7 @@ impl Water {
             eye: None,
             rain: super::rain::Rain::default(),
             shelter: None,
+            tank: None,
         };
         water.set_detail(0.3, 0.12, 2.4, 0.016);
         water

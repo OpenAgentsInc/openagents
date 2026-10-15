@@ -134,3 +134,38 @@ fn the_liquid_shaders_validate() {
         .unwrap_or_else(|e| panic!("{name}: {e:?}"));
     }
 }
+
+/// A zone's tank (the Water Lab's, away from the origin) breaks its dam
+/// and stays a liquid in its tank: finite, inside, and settling.
+#[test]
+fn a_lab_tank_stays_in_its_tank() {
+    for round in [0, 1] {
+        let tank = super::LiquidTank {
+            min: Vec3::new(6.7, 1.2, 11.7),
+            max: Vec3::new(8.3, 1.9, 12.3),
+            radius: 0.025,
+            column: 0.3,
+            height: 0.55,
+            round,
+        };
+        let mut fluid = tank.fluid();
+        assert!(fluid.len() > 1000, "{} particles", fluid.len());
+        let steps = (4.0 / fluid.settings.dt) as usize;
+        for step in 0..steps {
+            fluid.step(None);
+            let lost = fluid
+                .positions()
+                .iter()
+                .filter(|p| {
+                    !p.is_finite()
+                        || p.y < f64::from(tank.min.y) - 0.05
+                        || p.y > f64::from(tank.max.y) + 0.3
+                })
+                .count();
+            assert_eq!(
+                lost, 0,
+                "round {round}: {lost} particles lost by step {step}"
+            );
+        }
+    }
+}

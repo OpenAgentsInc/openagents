@@ -508,7 +508,7 @@ fn vertex(p: Vec3, n: Vec3, local: Vec3, color: [f32; 3], rough: f32, metal: f32
 
 /// A box of half extents `h`, each face cut into `strips` bands colored in
 /// turn from `colors`.
-fn boxed(
+pub(crate) fn boxed(
     out: &mut Vec<LitVertex>,
     at: Vec3,
     q: Quat,

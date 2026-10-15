@@ -46,6 +46,7 @@ use verse_engine::lighting::{
 use verse_engine::quality::{Platform, Probe, Quality, ShadowFilter, Tier};
 use verse_engine::render_graph::{PhotoPass, PhotoPlan};
 
+mod liquid_tank;
 #[cfg(test)]
 mod rain_tests;
 mod water_screen;
@@ -848,6 +849,9 @@ pub struct Photo {
     /// The water pipelines' group 1 (`water_scene` and the rest in
     /// `water/photo.wgsl`).
     water_screen_layout: wgpu::BindGroupLayout,
+    /// The water's glass tank of particle liquid, once a frame carries one
+    /// ([`liquid_tank`]).
+    tank: Option<liquid_tank::TankLiquid>,
     /// One texel each, for the bindings a tier without copies leaves
     /// unread: a color and a depth copy.
     placeholder_color: wgpu::TextureView,
@@ -2132,6 +2136,7 @@ impl Photo {
             water_field,
             water_screen,
             water_screen_layout,
+            tank: None,
             placeholder_color,
             placeholder_depth,
             fx_layout,
@@ -4130,6 +4135,28 @@ impl Photo {
                     .map(|(sum, cost)| sum + cost);
                 self.draw_blended(&mut pass, targets, &opaque);
             }
+        }
+        // The water's glass tank of particle liquid, over everything the
+        // scene drew, refracting and hidden by the opaque scene's copies.
+        if split
+            && let Some((tank, time)) = water.and_then(|w| Some((w.tank?, w.time)))
+            && let Some(water_targets) = &targets.water
+        {
+            liquid_tank::TankLiquid::encode(
+                &mut self.tank,
+                device,
+                queue,
+                encoder,
+                tank,
+                time,
+                drawn,
+                view.eye,
+                targets.size,
+                self.capability.hdr.unwrap_or(self.output_format),
+                &water_targets.copy_view,
+                &water_targets.depth_copy,
+                &targets.scene,
+            );
         }
         if water.is_some() {
             self.water_measurements.gpu_bytes = self.water_bytes(targets, self.water_surface_bytes);

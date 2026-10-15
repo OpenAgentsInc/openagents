@@ -27,6 +27,8 @@ struct Uniform {
     blur_scale: f32,
     tint: [f32; 3],
     thickness_scale: f32,
+    composite: u32,
+    pad: [u32; 3],
 }
 
 /// How to look at and colour the liquid.
@@ -45,6 +47,10 @@ pub struct LiquidView {
     /// Scales summed sphere thickness to an optical depth, about 1/3 for
     /// a liquid drawn with radius equal to the spacing.
     pub thickness_scale: f32,
+    /// Leave pixels without liquid untouched instead of copying the
+    /// background into them, to draw over a scene that has moved on since
+    /// its copy (the physical renderer's water and blended passes).
+    pub composite: bool,
 }
 
 impl LiquidView {
@@ -59,6 +65,7 @@ impl LiquidView {
             absorb: Vec3::new(9.0, 2.6, 1.6),
             tint: Vec3::new(0.25, 0.55, 0.7),
             thickness_scale: 0.5,
+            composite: false,
         }
     }
 }
@@ -335,6 +342,8 @@ impl ScreenSpaceLiquid {
             blur_scale: 2.0 * self.height as f32 * view.proj.y_axis.y * 0.5,
             tint: view.tint.to_array(),
             thickness_scale: view.thickness_scale,
+            composite: u32::from(view.composite),
+            pad: [0; 3],
         };
         let groups = [0, 1].map(|direction| {
             let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {

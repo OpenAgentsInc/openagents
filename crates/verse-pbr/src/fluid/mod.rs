@@ -83,6 +83,57 @@ pub struct GpuFluid {
     pub dt: f32,
 }
 
+/// A glass tank of liquid a zone shows (the Water Lab's): a column of
+/// water standing at one end that the renderer lets go, a dam break that
+/// runs and sloshes. Each new `round` stands the column up again, at the
+/// other end on odd rounds. The physical renderer steps it (on the GPU
+/// where the device computes, else on a CPU thread) and draws it as a
+/// screen-space surface ([`render`]) on the tiers that copy the scene.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct LiquidTank {
+    /// The inside of the tank, world m.
+    pub min: Vec3,
+    pub max: Vec3,
+    /// Particle radius, m.
+    pub radius: f32,
+    /// The column's length along x, as a fraction of the tank's, and its
+    /// height, m.
+    pub column: f32,
+    pub height: f32,
+    pub round: u32,
+}
+
+impl LiquidTank {
+    /// The scene at the start of this round, on the CPU.
+    #[must_use]
+    pub fn fluid(&self) -> Fluid {
+        use glam::DVec3;
+        // Steps of 1/120 s with four density iterations: about one particle
+        // radius a step at the dam break's front, and cheap enough to
+        // step a thousand particles on a CPU core.
+        let settings = physics::fluid::Settings {
+            radius: f64::from(self.radius),
+            dt: 1.0 / 120.0,
+            iterations: 4,
+            ..physics::fluid::Settings::default()
+        };
+        let (min, max) = (self.min.as_dvec3(), self.max.as_dvec3());
+        let mut fluid = Fluid::new(settings, Some(physics::fluid::Tank { min, max }));
+        let length = (max.x - min.x) * f64::from(self.column);
+        let (x0, x1) = if self.round % 2 == 0 {
+            (min.x, min.x + length)
+        } else {
+            (max.x - length, max.x)
+        };
+        fluid.add_block(
+            DVec3::new(x0, min.y, min.z),
+            DVec3::new(x1, min.y + f64::from(self.height), max.z),
+            DVec3::ZERO,
+        );
+        fluid
+    }
+}
+
 /// What a readback returns.
 #[derive(Clone, Debug, Default)]
 pub struct Snapshot {
