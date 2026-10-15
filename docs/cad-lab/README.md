@@ -263,4 +263,6 @@ The `.wasm` is 26 MB before `wasm-opt` and compression.
 - `openagents cad list|open|check|versions|compare|render|export|tool`
   starts the service when it isn't running.
 
-See [mvp.md](mvp.md) for the rover built with it and what is still missing.
+See [mvp.md](mvp.md) for the rover built with it and what is still missing,
+and [parity.md](parity.md) for how the engine covers ClassCAD's documented
+functionality (#11628).

@@ -86,6 +86,23 @@ pub fn evaluate_with(document: &Value, cache: &std::path::Path) -> Result<Evalua
         entry["part"] = instance["part"].clone();
         instances.push(entry);
     }
+    // Each placed subassembly's mass properties: everything inside it.
+    let mut groups = Vec::new();
+    for instance in assembly["instances"].as_array().into_iter().flatten() {
+        let (Some(id), Some(template)) = (instance["id"].as_str(), instance["group"].as_str())
+        else {
+            continue;
+        };
+        let inside = format!("{id}.");
+        let mut sum = mass::Sum::default();
+        for (_, s) in per_instance.iter().filter(|(k, _)| k.starts_with(&inside)) {
+            sum.merge(s);
+        }
+        let mut entry = sum.mass().json();
+        entry["id"] = json!(id);
+        entry["assembly"] = json!(template);
+        groups.push(entry);
+    }
     let mut parts = Vec::new();
     for (key, part) in assembly["parts"].as_object().into_iter().flatten() {
         let count = instances
@@ -128,6 +145,7 @@ pub fn evaluate_with(document: &Value, cache: &std::path::Path) -> Result<Evalua
         "solids": built.solids.len(),
         "triangles": triangles,
         "size_mm": size,
+        "subassemblies": groups,
         "warnings": built.warnings,
         "sketches": built.sketches,
         "build_ms": started.ms(),
@@ -818,6 +836,22 @@ mod tests {
         assert!(near(com(&eval, "ring-3"), [-40.0, 0.0, 5.0]));
         // A patterned subassembly copies its whole tree.
         assert!(near(com(&eval, "stacks-2.high"), [30.0, 100.0, 15.0]));
+        // Each placed subassembly's mass: its two cubes, centred between them.
+        let sub = &eval.report["subassemblies"][1];
+        assert_eq!(sub["id"], "stacks-2", "{sub}");
+        let one = eval.report["instances"][0]["mass_kg"].as_f64().unwrap();
+        assert!(
+            (sub["mass_kg"].as_f64().unwrap() - 2.0 * one).abs() < 1e-6,
+            "{sub}"
+        );
+        let c = &sub["center_of_mass_mm"];
+        assert!(
+            near(
+                [0, 1, 2].map(|k| c[k].as_f64().unwrap()),
+                [30.0, 100.0, 10.0]
+            ),
+            "{c}"
+        );
         a["instances"][1]["pattern"]["count"] = json!(0);
         let why = doc::check_assembly(&a).join(" ");
         assert!(why.contains("ring's pattern"), "{why}");

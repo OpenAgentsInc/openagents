@@ -65,7 +65,7 @@ version.
 1. **No joint solver:** every joint kind moves (fastened, revolute, slider,
    cylindrical, planar, spherical, gear; #11628), but instances are placed
    by their parents' frames, so closed loops and driving by constraint are
-   not solved.
+   not solved (#11646).
 2. **Stable references:** done (#11628): features name faces and edges
    (`body:top`, `{"between": [...]}`), resolved through the kernel's
    persistent naming on every build; points still work.
@@ -74,7 +74,7 @@ version.
    from our joints is #11643.
 4. **Interference by sampling:** overlaps are measured on triangles over a
    28³ grid; slivers thinner than a grid cell can be missed. Exact checks
-   wait on a faster kernel intersection for touching curved faces.
+   wait on a faster kernel intersection for touching curved faces (#11648).
 5. **Mass from triangles:** exact for the triangles; curved parts differ from
    the exact solid by the display tolerance (well under 1% on the rover's
    parts). Parts flagged `exact_mass` are cross-checked against SMLib's
