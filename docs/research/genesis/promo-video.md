@@ -413,32 +413,107 @@ are not copies of the reel's shots.
    truss, flexing with the plume forces that already exist. It is a small first
    cloth demo that needs no gravity.
 
-## Open questions for the repo study
+## Open questions for the repo study, answered
+
+The repo study is [repo.md](repo.md). It pins `genesis-world` at
+`df30b61a07c3bef3e8d53abbfa7f1c367ca77384` (v1.4.4). Each question is kept
+with its answer.
 
 1. **Licence:** what licence covers the physics engine, the renderer
    integrations and the bundled assets and robot models? Is it the same for
    `genesis-world` as for the older `Genesis` repo?
+   - **Answer:** `genesis-world` is the old `Genesis` repo renamed; both URLs
+     resolve to the same history. The engine and Quadrants are Apache-2.0,
+     with no NOTICE file.
+   - The rasteriser is a vendored pyrender. It is MIT upstream, but its notice
+     was dropped.
+   - LuisaRender is BSD-3, Madrona is MIT, and Nyx is a closed binary.
+   - One vendored file (`ext/isaacgym/terrain_utils.py`) carries an NVIDIA
+     proprietary header.
+   - Assets are mixed. The Panda models are Apache-2.0, ANYmal C is BSD-3 and
+     the UR5e is BSD. Go2, Shadow hand, KUKA and the meshes have no licence
+     file.
 2. **Generative interface:** did `gs.generate` (text to scene, camera, force
    and policy) ever ship? Or is it still the narrative in this reel, with only
    the physics engine public? What models drive it?
+   - **Answer:** it never shipped. There is no `gs.generate`, no LLM client
+     and no prompt handling anywhere in the repo.
 3. **Architecture:** how are the solver families (rigid, MPM, SPH, FEM, PBD,
    stable fluid) coupled in one scene, and what decides the coupling order and
    time step?
+   - **Answer:** the simulator steps solvers in a fixed order: tool, rigid,
+     kinematic, MPM, SPH, PBD, FEM, SF.
+   - All solvers share one substep rate, `dt / substeps`.
+   - Each substep runs pre-coupling, then the coupler, then post-coupling.
+   - There are three couplers:
+     - legacy: grid- and particle-level pairs;
+     - SAP: Drake-style, for rigid and implicit FEM;
+     - IPC: through the external libuipc.
 4. **Rigid solver:** is it maximal or reduced coordinates, what is the contact
    model (convex decomposition? SDF?), and how does it compare to MuJoCo on
    our SO-101 and Franka scenes?
+   - **Answer:** reduced coordinates, ported from MuJoCo: CRBA, a sparse
+     LDLᵀ, and the primal Newton or CG soft-constraint solver. Parity tests
+     run against the `mujoco` library.
+   - Contact uses MPR by default, or GJK/EPA. Meshes go through a CoACD convex
+     decomposition. Non-convex pairs and terrain use a precomputed voxel SDF.
+   - Since it tracks MuJoCo, our MuJoCo-backed `robot-sim` is already the
+     closer comparison. We did not run SO-101 or Franka through it.
 5. **GPU backend:** what is the compute layer (a Taichi-style kernel DSL or
    its successor), and is there a Metal/Apple-silicon path at useful speed? We
    ship on M-series Macs and phones.
+   - **Answer:** Quadrants, a June 2025 fork of Taichi with about 393 kernels
+     in Genesis.
+   - Metal works, through SPIR-V and SPIRV-Cross, but it is 32-bit only: no
+     `f64`, no 64-bit atomics, and no bounds checks.
+   - There is no phone back end; iOS and Android were removed.
+   - We did not measure speed.
 6. **Benchmark method:** what does `hibernation` do, how many environments
    were active, and what are the numbers with contact-rich, non-idle scenes?
+   - **Answer:** hibernation sleeps a whole constraint island after 10 steps
+     below 2 mm/s with no applied force. It is experimental and off by
+     default.
+   - The headline number is the comment "43M FPS" in
+     `examples/speed_benchmark/franka.py`. That is env-steps per second over
+     30,000 Franka-on-a-plane environments. At `dt = 0.01` it equals
+     "430,000x real time".
+   - None of the checked-in benchmarks enable hibernation.
+   - `tests/benchmarks/test_rigid.py` gives contact-rich scenes: Go2, G1
+     falls, dexterous hands, table bussing and non-convex spacecraft. The
+     metric is the same. Results go to a dashboard, not the repo.
 7. **Rendering:** which ray tracer produced the beauty shots? Are they real
    time or offline, and how do they get from simulation particles to a liquid
    surface?
+   - **Answer:** the ray tracer is LuisaRender, an offline-grade path tracer
+     on CUDA, DirectX or Metal. It is now joined by the closed, CUDA-only Nyx
+     plugin.
+   - Particles become surfaces through splashsurf (Rust, MIT; the default) or
+     the unlicensed OpenVDB-based ParticleMesher.
 8. **Differentiability:** which solvers support gradients, and with what
    memory cost?
+   - **Answer:** MPM, rigid, explicit FEM and tool only. PBD, SPH and SF are
+     stubs.
+   - Memory is one checkpoint of solver state per step, kept on the device;
+     the backward pass replays substeps from it.
+   - Rigid gradients force GJK and turn off hibernation and the elliptic cone.
 9. **Assets:** where do the articulated object assets in the montage come
    from, and how are they licensed?
+   - **Answer:** the repo ships one PartNet-Mobility object (`urdf/3763`) with
+     no licence file. The montage's drill, laptop and toaster grid is not in
+     the repo. Test robots such as the dexterous hands and G1 come from a
+     Hugging Face dataset.
 10. **Portability:** which pieces could we port into `crates/physics`
     (CPU-first, deterministic, no zone types), and which would only ever be an
     offline oracle like `crates/physics/oracle/genesis_oracle.py`?
+    - **Answer:** port as algorithm reimplementations:
+      - convex-hull narrow phase;
+      - static SDF colliders, with an offline CoACD bake;
+      - XPBD cloth;
+      - PBF liquid, CPU first and then wgpu;
+      - batched environments;
+      - DLS IK;
+      - tactile taxels.
+    - Keep as oracle or reference only: the MuJoCo-port rigid solver (we call
+      MuJoCo), MPM, FEM, the SAP and IPC couplers, differentiability, and every
+      renderer.
+    - See the ranked plan in [repo.md](repo.md).
