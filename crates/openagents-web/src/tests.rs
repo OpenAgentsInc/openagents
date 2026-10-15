@@ -1892,8 +1892,9 @@ async fn the_download_page_offers_every_platform_from_its_table() {
     let root = tempfile::tempdir().unwrap();
     let (status, body) = get(router(config(root.path().into())), "/download").await;
     assert_eq!(status, StatusCode::OK);
-    assert!(body.contains(&format!("<pre><code>{}</code></pre>", pages::CODER_SH)));
-    assert!(body.contains(&format!("<pre><code>{}</code></pre>", pages::CODER_PS1)));
+    // Each install command sits in a code block with its Copy action.
+    assert!(body.contains(&format!("data-oa-copy=\"{}\"", pages::CODER_SH)));
+    assert!(body.contains(&format!("data-oa-copy=\"{}\"", pages::CODER_PS1)));
     assert!(body.contains("Run <code>coder</code> to open the new terminal"));
     for legacy in [
         "1.0.0-rc.2",

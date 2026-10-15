@@ -454,6 +454,11 @@ fn run() -> io::Result<()> {
             }
             report_program_status(&app, &mut status_report)?;
             execute!(io::stdout(), BeginSynchronizedUpdate)?;
+            // Hide the cursor while cells are written, then the draw puts it
+            // back in the input. Terminals that don't honour synchronized
+            // output (Windows Terminal over ConPTY) otherwise show it jumping
+            // to every redrawn cell, such as the Working line, each tick.
+            terminal.hide_cursor()?;
             terminal.draw(|frame| ui::render(frame, &mut app))?;
             execute!(io::stdout(), EndSynchronizedUpdate)?;
             // A message waiting for System One's route is sent as soon as

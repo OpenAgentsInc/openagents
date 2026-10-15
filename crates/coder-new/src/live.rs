@@ -1864,9 +1864,16 @@ fn run_with_provider(
                         }
                     };
                     let mut on_session = |session: &str| {
+                        // OpenCode naming its session is the first sign it
+                        // started; a model that is slow to its first word
+                        // still gets the full limit after this.
+                        alive.store(true, Ordering::Relaxed);
                         let _ = sender.send(Update::OpenCodeSession { id, session: session.to_owned(), model: model.clone() });
                     };
-                    let limit = harness_first_event_limit();
+                    // OpenCode names its session within seconds of starting,
+                    // so one that hasn't after 20 s won't: hand the message
+                    // to Auto then rather than after a minute of Working.
+                    let limit = harness_start_limit();
                     let result = watched(
                         crate::opencode_chat::run(turn, &door_cancel, &mut events, &mut on_session),
                         &cancel, &door_cancel, &alive, limit,
@@ -2287,6 +2294,11 @@ async fn auto_route(
 /// of life before Auto takes the message (#11645): the doors' limit, but
 /// never under a minute, as a harness starting a session is slower than a
 /// model call.
+/// How long OpenCode has to name its session before Auto answers instead.
+fn harness_start_limit() -> Option<std::time::Duration> {
+    crate::route::first_event_limit().map(|limit| limit.max(std::time::Duration::from_secs(20)))
+}
+
 fn harness_first_event_limit() -> Option<std::time::Duration> {
     crate::route::first_event_limit().map(|limit| limit.max(std::time::Duration::from_secs(60)))
 }

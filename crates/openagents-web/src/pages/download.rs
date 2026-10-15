@@ -12,7 +12,7 @@ use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::get;
 use maud::{Markup, html};
 use openagents_ui::actions::TextLink;
-use openagents_ui::content::{MarkdownRoot, PageColumn, Table};
+use openagents_ui::content::{CodeBlock, MarkdownRoot, PageColumn, Table};
 
 use crate::App;
 use crate::ui_page::UiPage;
@@ -200,7 +200,6 @@ pub(crate) fn download_page(headers: &HeaderMap, desktop: bool) -> Response {
         .section("/download")
         .path("/download")
         .description("Coder runs on macOS, Linux, and Windows. One command installs it, and the same command updates it.")
-        .scriptless()
         .head(html! { script src=(crate::analytics::SCRIPT) defer {} })
         .content(page(desktop))
         .respond(headers);
@@ -223,10 +222,8 @@ pub(crate) fn page(desktop: bool) -> PageColumn {
                     @if CODER_VERSION.contains("-rc.") { "Release candidate " } @else { "Version " }
                     (CODER_VERSION) "."
                 }
-                p { "macOS and Linux:" }
-                pre { code { (CODER_SH) } }
-                p { "Windows, in PowerShell:" }
-                pre { code { (CODER_PS1) } }
+                (CodeBlock::new(CODER_SH).language("bash").title("macOS and Linux"))
+                (CodeBlock::new(CODER_PS1).language("powershell").title("Windows, in PowerShell"))
                 p {
                     "Run " code { "coder" } " to open the new terminal. Coder also adds the "
                     code { "openagents" } " command; run " code { "openagents --help" }
@@ -468,6 +465,15 @@ mod tests {
         assert!(!page.contains("phone-title") && !page.contains(TESTFLIGHT_APP));
         assert!(page.contains("Windows may ask you to confirm: More info \u{2192} Run anyway."));
         assert!(page.contains(CODER_SH) && page.contains(CODER_PS1));
+        // Each install command has the design kit's Copy action.
+        assert!(
+            page.contains(&format!("data-oa-copy=\"{CODER_SH}\"")),
+            "{page}"
+        );
+        assert!(
+            page.contains(&format!("data-oa-copy=\"{CODER_PS1}\"")),
+            "{page}"
+        );
         crate::copy_guard::assert_plain("/download", &page);
     }
 
