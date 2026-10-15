@@ -19,7 +19,7 @@ pub const FIX: &str = "Fix it";
 pub const STOP: &str = "Stop";
 pub const TRY_AGAIN: &str = "Try again";
 pub const NEXT_JOB: &str = "Next job";
-pub const ALL_JOBS: &str = "All jobs";
+pub const ALL_JOBS: &str = "Save and visit Crew Deck";
 pub const MENU: &str = "Menu";
 pub const PAUSED: &str = "Paused";
 pub const RESUME: &str = "Back to building";
@@ -265,6 +265,11 @@ mod tests {
     #[test]
     fn every_word_reads_plainly() {
         let mut all: Vec<String> = [
+            crate::deck::TITLE,
+            crate::deck::SAVED,
+            crate::deck::STARS,
+            crate::deck::HINT,
+            crate::deck::EMPTY,
             TITLE,
             TAGLINE,
             JOBS,
@@ -311,6 +316,7 @@ mod tests {
             all.push(piece(kind).to_owned());
             all.push(tray_label(kind, 2));
         }
+        all.extend(crate::deck::BOARDS.iter().map(|b| b.title.to_owned()));
         for member in Crew::ALL {
             all.push(crew(member).to_owned());
             all.push(crew_role(member).to_owned());

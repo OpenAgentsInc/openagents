@@ -912,9 +912,9 @@ fn render_snap_guide(site: &Site) -> Markup {
                     }
                     div class="br-guide br-wrap" {
                         (step("goal", 1, html! {
-                            p { "The robot crew of Snap Station needs a builder. Each job comes from one of them: join two modules, push a crate, spin a garden, or give a cargo ship a place to dock." }
+                            p { "The robot crew of Snap Station needs a builder. Float around the Crew Deck and visit a board to choose a job: join two modules, push a crate, spin a garden, or give a cargo ship a place to dock." }
                             p { "Build with the pieces in your tray, then press " strong { "Go" } ". If your build does the job, you win stars. If it doesn't, fix it and try again. No reading needed: the pictures show the way." }
-                        }, Some(shot(site, "snap-jobs.jpg", "The job list: Captain Cog over five jobs, the first one open", "Pick a job from the robot crew."))))
+                        }, Some(shot(site, "snap-jobs.jpg", "The Crew Deck with all five robots and four job boards", "Float around the Crew Deck and choose a job."))))
                         (step("crew", 2, html! {
                             ul class="br-list" {
                                 li { strong { "Captain Cog" } ", the captain: a round orange robot with gears all around." }
@@ -991,8 +991,8 @@ fn render_snap_guide(site: &Site) -> Markup {
                             p { "Finishing a job opens the next one." }
                         }, Some(shot(site, "snap-dock.jpg", "Two braced, bolted arms around the cargo ship's outline in its berth", "A berth that fits the ship."))))
                         (step("stars", 9, html! {
-                            p { "Every job done earns stars. Use as few pieces as the robot crew would, struts and bolts included, for three stars. The job list shows your best." }
-                            p { "Your stars stay in this browser." }
+                            p { "Every job done earns stars. Use as few pieces as the robot crew would, struts and bolts included, for three stars. The star board on the Crew Deck shows your best." }
+                            p { "Your stars stay in this browser. Choose Save and visit Crew Deck to keep your build too. Your builds reopens it, ready to change or run again." }
                         }, Some(shot(site, "snap-done.jpg", "The Job done card with three stars, Next job, Try again and All jobs", "Job done, three stars!"))))
                         (step("tips", 10, html! {
                             ul class="br-list" {

@@ -19,6 +19,7 @@
 //! when it starts; `scripts/build-snap-web.sh` builds it.
 
 pub mod copy;
+pub mod deck;
 pub mod kit;
 pub mod mesh;
 pub mod options;

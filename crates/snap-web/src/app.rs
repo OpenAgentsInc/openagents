@@ -16,7 +16,6 @@ use web_sys::{
     WebGlBuffer, WebGlProgram, WebGlUniformLocation, WebGlVertexArrayObject, WheelEvent, Window,
 };
 
-use crate::copy;
 use crate::hud::{Action, Button, Card, Hud, Mode, css, element, show};
 use crate::kit::{self, Crew, Mood, Style};
 use crate::mesh::{Mesh, STRIDE};
@@ -25,6 +24,7 @@ use crate::scene::{self, Frame, Held, Spark};
 use crate::sound::{Effect, Sound};
 use crate::tutorial::{self, Tour};
 use crate::zone::{Slot, SnapGame};
+use crate::{copy, deck};
 
 const VERTEX: &str = r"#version 300 es
 layout(location = 0) in vec3 a_position;
@@ -209,6 +209,8 @@ struct Hand {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Overlay {
     Jobs,
+    Stars,
+    Saved,
     Ask,
     Menu,
     Results,
@@ -234,6 +236,10 @@ struct App {
     glow: GpuMesh,
     ghost: GpuMesh,
     progress: Progress,
+    deck: deck::Deck,
+    on_deck: bool,
+    board: Option<usize>,
+    library: deck::Library,
     snap: SnapGame,
     job: usize,
     overlay: Overlay,
@@ -300,6 +306,7 @@ fn turn_of(piece: &snap_rules::Placed) -> u8 {
 
 impl App {
     fn start_job(&mut self, job: usize, ask: bool) {
+        self.on_deck = false;
         self.job = job.clamp(1, level::COUNT);
         self.snap = SnapGame::new(level::job(self.job));
         self.overlay = if ask { Overlay::Ask } else { Overlay::None };
@@ -316,6 +323,19 @@ impl App {
         }
     }
 
+    fn visit_deck(&mut self) {
+        self.library.keep(&self.snap);
+        if let Some(storage) = self.window.local_storage().ok().flatten() {
+            let _ = storage.set_item(deck::SAVE_KEY, &self.library.encode());
+        }
+        self.on_deck = true;
+        self.overlay = Overlay::None;
+        self.hand = None;
+        self.snap.carrying = None;
+        self.pending.clear();
+        self.view_ready = false;
+    }
+
     fn crew(&self) -> Crew {
         scene::crew(&self.snap.game)
     }
@@ -330,6 +350,25 @@ impl App {
             Action::Play(n) => {
                 if self.progress.open(n as u8) {
                     self.start_job(n, true);
+                }
+            }
+            Action::Deck => self.visit_deck(),
+            Action::Board(n) => {
+                self.board = Some(n);
+                self.overlay = Overlay::Jobs;
+            }
+            Action::Stars => self.overlay = Overlay::Stars,
+            Action::Saved => self.overlay = Overlay::Saved,
+            Action::OpenBuild(n) => {
+                if let Some(snap) = self
+                    .library
+                    .builds
+                    .iter()
+                    .find(|b| b.job == n)
+                    .and_then(|b| b.game())
+                {
+                    self.start_job(n, false);
+                    self.snap = snap;
                 }
             }
             Action::Pick(kind, x, y) => {
@@ -396,13 +435,10 @@ impl App {
                 if self.job < level::COUNT {
                     self.start_job(self.job + 1, true);
                 } else {
-                    self.overlay = Overlay::Jobs;
+                    self.visit_deck();
                 }
             }
-            Action::AllJobs => {
-                self.overlay = Overlay::Jobs;
-                self.hand = None;
-            }
+            Action::AllJobs => self.visit_deck(),
             Action::Menu => {
                 if self.overlay == Overlay::None {
                     self.overlay = Overlay::Menu;
@@ -443,9 +479,12 @@ impl App {
                 }
             }
             Action::TourBack => self.tour = self.tour.map(Tour::back),
-            Action::TourEnd(_) => {
+            Action::TourEnd(start) => {
                 self.tour = None;
                 mark_tutorial_seen(&self.window);
+                if start && self.on_deck {
+                    self.start_job(1, true);
+                }
             }
         }
     }
@@ -499,6 +538,18 @@ impl App {
 
     fn pointer_down(&mut self, x: f32, y: f32) {
         self.sound.wake();
+        if self.on_deck && self.overlay == Overlay::None && self.tour.is_none() {
+            let at = v2(self.world(x, y));
+            self.deck.go(at);
+            if let Some(n) = deck::Deck::board_at(at) {
+                self.act(Action::Board(n));
+            } else if at.distance(Vec2::new(0., 2.4)) < 1.5 {
+                self.act(Action::Stars);
+            } else if let Some(job) = self.library.exhibit_at(at) {
+                self.act(Action::OpenBuild(job));
+            }
+            return;
+        }
         if self.overlay != Overlay::None || self.tour.is_some() || !self.building() {
             return;
         }
@@ -571,6 +622,33 @@ impl App {
                 self.act(action);
             }
             return;
+        }
+        if self.on_deck && self.tour.is_none() {
+            if key == "Escape" {
+                self.overlay = Overlay::None;
+                return;
+            }
+            if self.overlay == Overlay::None {
+                let movement = match key.as_str() {
+                    "ArrowLeft" | "a" => Some(Vec2::NEG_X),
+                    "ArrowRight" | "d" => Some(Vec2::X),
+                    "ArrowUp" | "w" => Some(Vec2::Y),
+                    "ArrowDown" | "s" => Some(Vec2::NEG_Y),
+                    _ => None,
+                };
+                if let Some(d) = movement {
+                    event.prevent_default();
+                    self.deck.go(self.deck.target + d);
+                    return;
+                }
+                if key == "Enter" || key == " " {
+                    if let Some(n) = deck::Deck::board_at(self.deck.at) {
+                        self.act(Action::Board(n));
+                    }
+                    event.prevent_default();
+                    return;
+                }
+            }
         }
         if self.overlay != Overlay::None {
             if key == "Escape" && matches!(self.overlay, Overlay::Menu | Overlay::Ask) {
@@ -718,6 +796,9 @@ impl App {
     fn jobs_card(&self) -> Card {
         let mut buttons = Vec::new();
         for n in 1..=level::COUNT {
+            if self.board.is_some_and(|b| deck::set_for(n) != b) {
+                continue;
+            }
             let job = level::job(n);
             let open = self.progress.open(n as u8);
             let stars = self.progress.best(n as u8).map_or(0, |b| b.stars);
@@ -733,11 +814,14 @@ impl App {
             b.enabled = open;
             buttons.push(b);
         }
-        buttons.push(Button::new(copy::HOW_TO_PLAY, Action::Tour, false));
+        buttons.push(Button::new(deck::TITLE, Action::Deck, false));
         Card {
-            title: copy::TITLE.to_owned(),
+            title: self
+                .board
+                .map_or(copy::TITLE, |b| deck::BOARDS[b].title)
+                .to_owned(),
             crew: Some(Crew::Cog),
-            lines: vec![copy::TAGLINE.to_owned(), copy::JOBS.to_owned()],
+            lines: vec![copy::JOBS.to_owned()],
             stars: None,
             link: None,
             buttons,
@@ -775,6 +859,53 @@ impl App {
         match self.overlay {
             Overlay::None => None,
             Overlay::Jobs => Some(self.jobs_card()),
+            Overlay::Stars => Some(Card {
+                title: deck::STARS.to_owned(),
+                crew: Some(Crew::Pip),
+                lines: self
+                    .progress
+                    .jobs
+                    .iter()
+                    .filter(|b| (1..=level::COUNT).contains(&(b.job as usize)))
+                    .map(|b| {
+                        format!(
+                            "{}  {}",
+                            copy::job_button(b.job, &level::job(b.job as usize).name),
+                            copy::stars(b.stars)
+                        )
+                    })
+                    .collect(),
+                buttons: vec![Button::new(deck::TITLE, Action::Deck, true)],
+                ..Card::default()
+            }),
+            Overlay::Saved => Some(Card {
+                title: deck::SAVED.to_owned(),
+                crew: Some(Crew::Tock),
+                lines: if self.library.builds.is_empty() {
+                    vec![deck::EMPTY.to_owned()]
+                } else {
+                    Vec::new()
+                },
+                buttons: self
+                    .library
+                    .builds
+                    .iter()
+                    .map(|b| {
+                        Button::new(
+                            copy::job_button(b.job as u8, &level::job(b.job).name),
+                            Action::OpenBuild(b.job),
+                            false,
+                        )
+                    })
+                    .chain(std::iter::once(Button::new(
+                        deck::TITLE,
+                        Action::Deck,
+                        true,
+                    )))
+                    .collect(),
+                list: true,
+                ..Card::default()
+            }),
             Overlay::Ask => Some(Card {
                 title: game.level.name.clone(),
                 crew: Some(crew),
@@ -872,6 +1003,14 @@ impl App {
     }
 
     fn update_hud(&mut self) {
+        self.hud
+            .set_deck(self.on_deck && !self.options.kit, self.progress.stars());
+        if self.on_deck {
+            self.hud.set_playing(false);
+            self.hud.set_hint("");
+            self.hud.set_card(self.card());
+            return;
+        }
         let crew = self.crew();
         let number = self.snap.game.level.number;
         self.hud.set_job(number, crew);
@@ -931,14 +1070,26 @@ impl App {
         if self.hand.is_some() && self.view_ready {
             return;
         }
-        let (low, high) = if self.options.kit {
+        let (low, high) = if self.on_deck {
+            (Vec2::new(-8., -5.), Vec2::new(8., 5.))
+        } else if self.options.kit {
             (Vec2::new(-1.0, -1.5), Vec2::new(13.0, 8.0))
         } else {
             scene::bounds(&self.snap.game)
         };
         // Below the job card, which wraps taller on a narrow screen.
-        let top = if w < 600.0 { 140.0 } else { 90.0 };
-        let tray = self.hud.tray_top();
+        let top = if self.on_deck {
+            70.0
+        } else if w < 600.0 {
+            140.0
+        } else {
+            90.0
+        };
+        let tray = if self.on_deck {
+            self.hud.deck_nav_top()
+        } else {
+            self.hud.tray_top()
+        };
         let bottom = if tray <= 0.0 {
             40.0
         } else {
@@ -975,7 +1126,13 @@ impl App {
         }
         #[cfg(feature = "autoplay")]
         self.autoplay();
-        let playing = self.overlay == Overlay::None && self.tour.is_none() && !self.options.kit;
+        if self.on_deck {
+            self.deck.step(dt as f32);
+        }
+        let playing = !self.on_deck
+            && self.overlay == Overlay::None
+            && self.tour.is_none()
+            && !self.options.kit;
         if playing {
             self.carry += dt;
             let mut steps = 0;
@@ -987,10 +1144,11 @@ impl App {
             if steps == MAX_STEPS {
                 self.carry = 0.0;
             }
-        } else if !self.pending.is_empty() && self.overlay == Overlay::None {
+        } else if !self.on_deck && !self.pending.is_empty() && self.overlay == Overlay::None {
             self.tick();
         }
-        let over = matches!(self.snap.game.status, Status::Won | Status::Failed(_));
+        let over =
+            !self.on_deck && matches!(self.snap.game.status, Status::Won | Status::Failed(_));
         if over {
             let at = *self.over_at.get_or_insert(self.time);
             if self.time - at > RESULTS_AFTER && self.overlay == Overlay::None {
@@ -1083,8 +1241,19 @@ impl App {
             self.gpu.draw(&self.backdrop.0, false, 1.0);
             self.gpu.draw(&self.backdrop.1, true, 1.0);
         }
+        let _ = self
+            .canvas
+            .set_attribute("data-screen", if self.on_deck { "deck" } else { "job" });
+        if self.on_deck {
+            let _ = self.canvas.set_attribute(
+                "data-deck-position",
+                &format!("{:.3} {:.3}", self.deck.at.x, self.deck.at.y),
+            );
+        }
         let drawn = if self.options.kit {
             kit_sheet(self.time as f32)
+        } else if self.on_deck {
+            deck::draw(&self.deck, &self.progress, &self.library, self.time as f32)
         } else {
             scene::draw(&Frame {
                 game: &self.snap.game,
@@ -1302,6 +1471,7 @@ pub fn start() {
     let glow = gpu.upload(&empty);
     let ghost = gpu.upload(&empty);
     let sound = Sound::new(progress.sound && !options.quiet);
+    let on_deck = options.job.is_none();
     let mut app = App {
         window: window.clone(),
         canvas: canvas.clone(),
@@ -1314,9 +1484,19 @@ pub fn start() {
         glow,
         ghost,
         progress,
+        deck: deck::Deck::default(),
+        on_deck,
+        board: None,
+        library: window
+            .local_storage()
+            .ok()
+            .flatten()
+            .and_then(|s| s.get_item(deck::SAVE_KEY).ok().flatten())
+            .map(|s| deck::Library::decode(&s))
+            .unwrap_or_default(),
         snap: SnapGame::new(level::job(1)),
         job: 1,
-        overlay: Overlay::Jobs,
+        overlay: Overlay::None,
         tour: None,
         hand: None,
         keyboard: false,
@@ -1339,7 +1519,7 @@ pub fn start() {
     };
     match app.options.job {
         Some(job) => app.start_job(job, false),
-        None => app.overlay = Overlay::Jobs,
+        None => app.on_deck = true,
     }
     if app.options.kit {
         app.overlay = Overlay::None;

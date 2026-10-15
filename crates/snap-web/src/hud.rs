@@ -16,11 +16,17 @@ use wasm_bindgen::prelude::*;
 use web_sys::{Document, Element, HtmlElement};
 
 use crate::copy;
+use crate::deck;
 use crate::kit::{self, Crew};
 
 /// What a button asks for.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Action {
+    Deck,
+    Board(usize),
+    Stars,
+    Saved,
+    OpenBuild(usize),
     /// Play job N (1-based).
     Play(usize),
     /// A tray piece pressed, at this screen point.
@@ -419,6 +425,9 @@ pub struct Hud {
     pub root: HtmlElement,
     document: Document,
     play: HtmlElement,
+    deck: HtmlElement,
+    deck_stars: HtmlElement,
+    deck_nav: HtmlElement,
     job_face: HtmlElement,
     job_goal: HtmlElement,
     job_crew: HtmlElement,
@@ -806,6 +815,62 @@ impl Hud {
         let _ = play.append_child(&corner);
         let _ = play.append_child(&tray);
         let _ = root.append_child(&play);
+        let deck_panel = element(document, "div");
+        css(&deck_panel, &[("position", "absolute"), ("inset", "0")]);
+        let deck_stars = element(document, "div");
+        css(&deck_stars, &PANEL);
+        css(
+            &deck_stars,
+            &[
+                ("top", "calc(12px + env(safe-area-inset-top))"),
+                ("left", "12px"),
+                ("font-weight", "750"),
+            ],
+        );
+        let _ = deck_panel.append_child(&deck_stars);
+        let nav = element(document, "nav");
+        let _ = nav.set_attribute("aria-label", deck::TITLE);
+        css(&nav, &PANEL);
+        css(
+            &nav,
+            &[
+                ("left", "12px"),
+                ("right", "12px"),
+                ("bottom", "calc(12px + env(safe-area-inset-bottom))"),
+                ("display", "flex"),
+                ("flex-wrap", "wrap"),
+                ("gap", "8px"),
+                ("justify-content", "center"),
+            ],
+        );
+        for (label, action) in deck::BOARDS
+            .iter()
+            .enumerate()
+            .map(|(i, b)| (b.title, Action::Board(i)))
+            .chain([
+                (deck::STARS, Action::Stars),
+                (deck::SAVED, Action::Saved),
+                (copy::HOW_TO_PLAY, Action::Tour),
+            ])
+        {
+            let b = button(document, label, &actions, action);
+            css(&b, &[("min-height", "48px"), ("padding", "8px 14px")]);
+            let _ = nav.append_child(&b);
+        }
+        let deck_hint = element(document, "p");
+        deck_hint.set_text_content(Some(deck::HINT));
+        css(
+            &deck_hint,
+            &[
+                ("width", "100%"),
+                ("margin", "0"),
+                ("font-size", "13px"),
+                ("text-align", "center"),
+            ],
+        );
+        let _ = nav.append_child(&deck_hint);
+        let _ = deck_panel.append_child(&nav);
+        let _ = root.append_child(&deck_panel);
         let _ = root.append_child(&card);
         let _ = parent.append_child(&root);
         show(&card, false);
@@ -816,6 +881,9 @@ impl Hud {
             root,
             document: document.clone(),
             play,
+            deck: deck_panel,
+            deck_stars,
+            deck_nav: nav,
             job_face,
             job_goal,
             job_crew,
@@ -876,6 +944,16 @@ impl Hud {
 
     pub fn set_playing(&self, visible: bool) {
         show(&self.play, visible);
+    }
+
+    pub fn set_deck(&self, visible: bool, stars: u32) {
+        show(&self.deck, visible);
+        self.deck_stars
+            .set_text_content(Some(&format!("{}  ·  ★ {stars}", deck::TITLE)));
+    }
+
+    pub fn deck_nav_top(&self) -> f32 {
+        self.deck_nav.get_bounding_client_rect().top() as f32
     }
 
     pub fn set_job(&mut self, number: u8, crew: Crew) {

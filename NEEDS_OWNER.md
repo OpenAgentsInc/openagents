@@ -42,6 +42,14 @@ a dedicated test account. Check pushing, Reverse Gravity, and replacement or
 removal. Physics runs locally in each visitor’s view; #11682 tracks sharing
 ongoing motion and broken joints.
 
+## Deploy the Snap Station Crew Deck (#11674)
+
+Refresh the cloud deployment login described above, build the Snap Station
+WASM with `scripts/build-snap-web.sh`, and include it in the web image.
+Check the Crew Deck, four boards, stars, and saved builds on the deployed
+page. Local mouse and emulated-touch checks pass; production has not been
+deployed from this session.
+
 ## Show cloud environment issue runs on openagents.com and the phone (#11228)
 
 `openagents chat work` on `oa-dev-env-1` reports each issue run to the

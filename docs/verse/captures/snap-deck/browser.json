@@ -1,0 +1,26 @@
+[
+  {
+    "viewport": [
+      1440,
+      900
+    ],
+    "touch": false,
+    "pod_moved": true,
+    "won": true,
+    "save_survived_reload": true,
+    "reopened_build_won": true,
+    "exceptions": 0
+  },
+  {
+    "viewport": [
+      390,
+      844
+    ],
+    "touch": true,
+    "pod_moved": true,
+    "won": true,
+    "save_survived_reload": true,
+    "reopened_build_won": true,
+    "exceptions": 0
+  }
+]

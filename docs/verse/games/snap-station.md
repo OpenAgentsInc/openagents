@@ -528,7 +528,7 @@ Blue Rush Studios domain. Epic:
 | S3 | [#11671](https://github.com/OpenAgentsInc/openagents/issues/11671) | Done, 38357711ac |
 | S4 | [#11672](https://github.com/OpenAgentsInc/openagents/issues/11672) | Done, 38357711ac |
 | S5 | [#11673](https://github.com/OpenAgentsInc/openagents/issues/11673) | Done, 38357711ac and fcb6cf7b51 |
-| S6 | [#11674](https://github.com/OpenAgentsInc/openagents/issues/11674) | Planned |
+| S6 | [#11674](https://github.com/OpenAgentsInc/openagents/issues/11674) | Done: Crew Deck, four boards, stars, and saved builds |
 | S7 | [#11675](https://github.com/OpenAgentsInc/openagents/issues/11675) | Planned |
 | S8 | [#11676](https://github.com/OpenAgentsInc/openagents/issues/11676) | Planned |
 | S9 | [#11677](https://github.com/OpenAgentsInc/openagents/issues/11677) | Planned |
@@ -582,7 +582,6 @@ in the autoplay build.
 
 Deviations, and why:
 
-- **A job list stands in for the Crew Deck** (S6).
 - **Made in code, no asset pack**, as Grow Little Bunny's browser build:
   a few hundred flat shapes need no Blender pipeline or pinned pack.
 - **The camera looks straight at the plane**, so a screen point maps
@@ -590,6 +589,23 @@ Deviations, and why:
   perspective.
 - **No gamepad in the browser yet** (S7); the contract's cursor is ready
   for it.
+
+### S6: the Crew Deck
+
+The game opens on the Crew Deck. Tap to float or steer with the arrow keys;
+visit the crew's four boards to choose a job. The star board reads the saved
+progress. **Save and visit Crew Deck** keeps one build per job on this device;
+miniatures appear on the deck, and **Your builds** reopens them with their
+piece counts. The camera leaves room for the buttons on narrow screens.
+
+Checked with mouse input at 1440 × 900 and touch at 390 × 844: float, choose
+job one, build and win, read its stars, return to the deck, reload, reopen
+the build, and win again. Native tests cover board membership, movement
+bounds, save parsing, inventory, and the reopened build's run. Physical
+phone and tablet checks remain part of S7. Captures show the
+[phone deck with a saved build](../captures/snap-deck/phone-saved.png) and
+[earned stars](../captures/snap-deck/desktop-stars.png); the
+[browser results](../captures/snap-deck/browser.json) record both sizes.
 
 ## Out of scope
 

@@ -38,6 +38,8 @@ pub const MAP_CURSOR: u32 = 0xFFFFFF;
 #[derive(Clone, Debug)]
 pub struct SnapGame {
     pub game: Game,
+    /// Construction inputs for reopening a build on the Crew Deck.
+    pub construction: Vec<Input>,
     pub cursor: V,
     /// The slot picked in the tray, an index into [`SnapGame::slots`].
     pub slot: usize,
@@ -51,6 +53,7 @@ impl SnapGame {
         let cursor = start_cursor(&game);
         Self {
             game,
+            construction: Vec::new(),
             cursor,
             slot: 0,
             carrying: None,
@@ -156,6 +159,14 @@ impl SnapGame {
     /// Steps the rules with inputs already in their own terms (from a
     /// pointer), keeping the cursor state in step.
     pub fn step_rules(&mut self, inputs: &[Input]) {
+        if self.game.status == Status::Building {
+            self.construction.extend(
+                inputs
+                    .iter()
+                    .copied()
+                    .filter(|i| matches!(i, Input::Place { .. } | Input::Remove { .. })),
+            );
+        }
         self.game.step(inputs);
         self.after_step();
     }
