@@ -3543,6 +3543,7 @@ fn asked_of(turns: &[Turn]) -> (String, String) {
 /// The turn an event belongs to.
 pub fn turn_of(event: &CoderEvent) -> usize {
     match event {
+        CoderEvent::Observation { observation: e } => e.scope.turn,
         CoderEvent::CoderStarted(e) => e.turn,
         CoderEvent::Step(e) => e.turn,
         CoderEvent::Output(e) => e.turn,

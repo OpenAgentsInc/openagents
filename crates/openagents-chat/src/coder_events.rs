@@ -50,6 +50,10 @@ pub const OWNER_ENDED_MESSAGE: &str = "Coder's process ended unexpectedly.";
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "event", rename_all = "snake_case")]
 pub enum CoderEvent {
+    /// Keep provider sequence numbers inside the task delivery envelope.
+    Observation {
+        observation: route_contract::observation::Observation,
+    },
     CoderStarted(Started),
     Step(Step),
     Output(Output),
@@ -71,6 +75,7 @@ impl CoderEvent {
     #[must_use]
     pub fn name(&self) -> &'static str {
         match self {
+            CoderEvent::Observation { .. } => "observation",
             CoderEvent::CoderStarted(_) => "coder_started",
             CoderEvent::Step(_) => "step",
             CoderEvent::Output(_) => "output",
@@ -880,6 +885,7 @@ pub struct Line {
 /// turn; [`Mapper::end`] makes the event that ends it.
 #[derive(Clone, Debug, Default)]
 pub struct Mapper {
+    observations: Option<crate::observations::Projection>,
     turn: usize,
     /// How to answer a question from the terminal, when there is a way.
     answer: Option<String>,
@@ -909,6 +915,10 @@ pub struct Mapper {
 }
 
 impl Mapper {
+    /// Bind provider observations to the task owner before reading its trace.
+    pub fn bind_observations(&mut self, host: &str, task: &str) {
+        self.observations = Some(crate::observations::Projection::new(host, task, self.turn));
+    }
     /// A mapper for `turn`; `answer` is the command that answers a
     /// question (`openagents chat answer --thread ID TEXT`), if any.
     #[must_use]
@@ -1000,6 +1010,33 @@ impl Mapper {
             .or_else(|| step.get("extensions"))
             .cloned()
             .unwrap_or(Value::Null);
+        if let Some(recorded) = extra.get(route_contract::observation::TRACE_KEY) {
+            let Ok(observation) = serde_json::from_value::<route_contract::observation::Observation>(
+                recorded.clone(),
+            ) else {
+                return Vec::new();
+            };
+            let Some(update) = self
+                .observations
+                .as_mut()
+                .and_then(|state| state.apply(&observation))
+            else {
+                return Vec::new();
+            };
+            if matches!(
+                observation.body,
+                route_contract::observation::Body::Started { .. }
+            ) {
+                self.reply.clear();
+                self.streamed.clear();
+            }
+            if let Some(CoderEvent::Step(step)) = update.event
+                && step.kind == StepKind::Reply
+            {
+                self.reply = step.text;
+            }
+            return vec![CoderEvent::Observation { observation }];
+        }
         let at = step["timestamp"]
             .as_str()
             .and_then(parse_iso)
@@ -1562,6 +1599,21 @@ pub fn text(event: &CoderEvent) -> Option<String> {
         bounded(line.trim(), 200).0
     };
     Some(match event {
+        CoderEvent::Observation { observation } => match &observation.body {
+            route_contract::observation::Body::Text {
+                channel: route_contract::observation::Channel::Text,
+                ..
+            } => return None,
+            route_contract::observation::Body::Text { text, .. } => format!("  · {}", first(text)),
+            route_contract::observation::Body::ToolStarted { name, input } => {
+                format!("  > {name} {}", first(input))
+            }
+            route_contract::observation::Body::ToolResult { text, .. } => first(text),
+            route_contract::observation::Body::Gap { .. } => {
+                "Some earlier output is unavailable.".into()
+            }
+            _ => return None,
+        },
         CoderEvent::CoderStarted(s) => match s.news() {
             Some(news) => format!("{}\n{news}", s.line()),
             None => s.line(),
@@ -1798,7 +1850,7 @@ fn tool_line(call: &Value, extra: &Value) -> String {
 
 /// [`tool_line`]'s line with the call typed (#10117): the same fields
 /// read once, so the line and the [`Call`] always agree.
-fn tool_call(call: &Value, extra: &Value) -> (String, Call) {
+pub(crate) fn tool_call(call: &Value, extra: &Value) -> (String, Call) {
     let arguments = &call["arguments"];
     let field = |names: &[&str]| {
         names

@@ -337,6 +337,7 @@ struct Transcript<'a> {
     reply: RefCell<String>,
     /// Tool uses waiting for their results: their names and inputs.
     calls: RefCell<HashMap<String, (String, Value)>>,
+    observations: RefCell<coder_sdk::observation::Claude>,
     /// The first request the person denied this turn.
     refused: RefCell<Option<String>>,
 }
@@ -348,86 +349,93 @@ impl Transcript<'_> {
         }
     }
 
-    fn assistant(&self, message: &Value) {
-        for block in message
-            .get("content")
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
-        {
-            match block.get("type").and_then(Value::as_str) {
-                Some("text") => {
-                    let text = block.get("text").and_then(Value::as_str).unwrap_or("");
-                    if !text.trim().is_empty() {
-                        let text = bounded(text, SEGMENT);
-                        self.append(&Step::said(Source::Agent, &text).by(&self.model));
-                        *self.reply.borrow_mut() = text;
+    fn observe(&self, observations: Vec<coder_sdk::observation::Observation>) {
+        use coder_sdk::observation::{Body, Channel, TRACE_KEY};
+        for observation in observations {
+            if observation.child.is_some() {
+                if let Err(error) = self.host.observe(&observation) {
+                    self.host.fail(error.to_string());
+                }
+                continue;
+            }
+            let step = match &observation.body {
+                Body::Text {
+                    channel: Channel::Text,
+                    text,
+                    ..
+                } => {
+                    *self.reply.borrow_mut() = text.clone();
+                    Step::said(Source::Agent, text).by(&self.model)
+                }
+                Body::ToolStarted { name, input } => {
+                    if let Some(id) = &observation.item {
+                        self.calls.borrow_mut().insert(
+                            id.clone(),
+                            (
+                                name.clone(),
+                                serde_json::from_str(input).unwrap_or(Value::Null),
+                            ),
+                        );
+                    }
+                    Step::said(Source::System, "")
+                }
+                Body::ToolResult { text, failed, .. } => {
+                    let call = observation
+                        .item
+                        .as_ref()
+                        .and_then(|id| self.calls.borrow_mut().remove(id));
+                    if let Some((name, input)) = call {
+                        self.tool_calls.set(self.tool_calls.get() + 1);
+                        Step::called(Call {
+                            id: format!("{EFFECT}-{}", observation.item.as_deref().unwrap_or("")),
+                            name,
+                            arguments: brief(&input),
+                            output: bounded(text, TOOL_OUTPUT),
+                            outcome: if *failed {
+                                CallOutcome::Failed
+                            } else {
+                                CallOutcome::Completed
+                            },
+                            milliseconds: 0,
+                            purpose: None,
+                            extra: serde_json::Map::new(),
+                        })
+                        .by(&self.model)
+                        .noting("claude_sdk_tool", json!({"is_error": failed}))
+                    } else {
+                        Step::said(Source::System, "")
                     }
                 }
-                Some("tool_use") => {
-                    let id = block.get("id").and_then(Value::as_str).unwrap_or("");
-                    let name = block.get("name").and_then(Value::as_str).unwrap_or("");
-                    let input = block.get("input").cloned().unwrap_or(Value::Null);
-                    self.calls
-                        .borrow_mut()
-                        .insert(id.to_owned(), (name.to_owned(), input));
+                _ => {
+                    if let Err(error) = self.host.observe(&observation) {
+                        self.host.fail(error.to_string());
+                    }
+                    continue;
                 }
-                _ => {}
-            }
+            };
+            self.append(&step.noting(TRACE_KEY, json!(observation)));
         }
     }
 
-    fn user(&self, message: &Value) {
-        for block in message
-            .get("content")
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
-        {
-            if block.get("type").and_then(Value::as_str) != Some("tool_result") {
-                continue;
-            }
-            let id = block
-                .get("tool_use_id")
-                .and_then(Value::as_str)
-                .unwrap_or("");
-            let Some((name, input)) = self.calls.borrow_mut().remove(id) else {
-                continue;
-            };
-            let output = match block.get("content") {
-                Some(Value::String(text)) => text.clone(),
-                Some(Value::Array(parts)) => parts
-                    .iter()
-                    .filter_map(|part| part.get("text").and_then(Value::as_str))
-                    .collect::<Vec<_>>()
-                    .join("\n"),
-                _ => String::new(),
-            };
-            let failed = block
-                .get("is_error")
-                .and_then(Value::as_bool)
-                .unwrap_or(false);
-            self.tool_calls.set(self.tool_calls.get() + 1);
-            let call = Call {
-                id: format!("{EFFECT}-{id}"),
-                name,
-                arguments: brief(&input),
-                output: bounded(&output, TOOL_OUTPUT),
-                outcome: if failed {
-                    CallOutcome::Failed
-                } else {
-                    CallOutcome::Completed
-                },
-                milliseconds: 0,
-                purpose: None,
-                extra: serde_json::Map::new(),
-            };
-            self.append(
-                &Step::called(call)
-                    .by(&self.model)
-                    .noting("claude_sdk_tool", json!({"is_error": failed})),
-            );
+    fn assistant(&self, message: &Value, child: Option<&str>) {
+        let mut observations = self.observations.borrow_mut().assistant(message);
+        for observation in &mut observations {
+            observation.child = child.map(str::to_owned);
         }
+        self.observe(observations);
+    }
+
+    fn user(&self, message: &Value, child: Option<&str>) {
+        let mut observations = self.observations.borrow_mut().user(message);
+        for observation in &mut observations {
+            observation.child = child.map(str::to_owned);
+        }
+        self.observe(observations);
+    }
+
+    fn session(&self, session: &str) {
+        let observation = self.observations.borrow_mut().session(session);
+        self.observe(vec![observation]);
     }
 
     /// Record the gate's decisions since the last call.
@@ -453,10 +461,28 @@ impl Transcript<'_> {
                     "The host refused Claude Code's {tool}: the turn is ending to ask the person."
                 ),
             };
-            self.append(&Step::said(Source::System, &text).noting(
-                "claude_sdk_permission",
-                json!({"tool": tool, "input": input, "decision": decision}),
-            ));
+            let verdict = match decision {
+                Decision::Inside => "allowed",
+                Decision::AllowedOnce => "allowed once",
+                Decision::Denied => "denied",
+                Decision::Asked => "needs approval",
+                Decision::Waiting => "waiting for approval",
+            };
+            let observation = self.observations.borrow_mut().next(
+                None,
+                coder_sdk::observation::Body::Policy {
+                    tool: tool.clone(),
+                    decision: verdict.into(),
+                },
+            );
+            self.append(
+                &Step::said(Source::System, &text)
+                    .noting(
+                        "claude_sdk_permission",
+                        json!({"tool": tool, "input": input, "decision": decision}),
+                    )
+                    .noting(coder_sdk::observation::TRACE_KEY, json!(observation)),
+            );
         }
     }
 }
@@ -659,18 +685,45 @@ async fn attempt(
             }
             Some(Some(Ok(message))) => message,
         };
-        if let Some(session) = query.session_id() {
+        if let Some(session) = query.session_id()
+            && attempt.session.as_deref() != Some(session)
+        {
+            transcript.session(session);
             attempt.session = Some(session.to_owned());
         }
         match message {
             SdkMessage::Assistant(assistant) => {
-                attempt.session = Some(assistant.session_id.clone());
-                transcript.assistant(&assistant.message);
+                let child = assistant
+                    .agent_id
+                    .as_deref()
+                    .or(assistant.parent_tool_use_id.as_deref());
+                if child.is_none() {
+                    if attempt.session.as_deref() != Some(&assistant.session_id) {
+                        transcript.session(&assistant.session_id);
+                    }
+                    attempt.session = Some(assistant.session_id.clone());
+                }
+                let mut message = assistant.message;
+                if message.get("id").is_none() {
+                    message["id"] = json!(assistant.uuid);
+                }
+                transcript.assistant(&message, child);
             }
-            SdkMessage::User(user) => transcript.user(&user.message),
+            SdkMessage::User(user) => {
+                transcript.user(&user.message, user.parent_tool_use_id.as_deref())
+            }
             SdkMessage::RateLimitEvent(event) => {
                 if let Ok(info) = serde_json::to_value(&event.rate_limit_info) {
                     record_window(host.store(), &info, unix_now());
+                    let status = info["status"].as_str().unwrap_or("unknown").to_owned();
+                    let observation = transcript.observations.borrow_mut().next(
+                        None,
+                        coder_sdk::observation::Body::RateLimit {
+                            status,
+                            resets_at: info["resetsAt"].as_u64(),
+                        },
+                    );
+                    transcript.observe(vec![observation]);
                 }
             }
             SdkMessage::Result(result) => {
@@ -693,6 +746,9 @@ async fn attempt(
         .as_ref()
         .and_then(|finished| finished.session.clone())
     {
+        if attempt.session.as_deref() != Some(&session) {
+            transcript.session(&session);
+        }
         attempt.session = Some(session);
     }
     attempt
@@ -867,12 +923,28 @@ pub(crate) async fn turn(
         tool_calls: Cell::new(0),
         reply: RefCell::new(String::new()),
         calls: RefCell::new(HashMap::new()),
+        observations: RefCell::new(coder_sdk::observation::Claude::new(host.observations())),
         refused: RefCell::new(None),
     };
     let mut resume = earlier.clone();
     let mut tries = 0;
     let attempt = loop {
         tries += 1;
+        if tries > 1 {
+            transcript.calls.borrow_mut().clear();
+            transcript.reply.borrow_mut().clear();
+            transcript
+                .observations
+                .replace(coder_sdk::observation::Claude::new(host.observations()));
+        }
+        let started = transcript.observations.borrow_mut().next(
+            None,
+            coder_sdk::observation::Body::Started {
+                provider: "claude".into(),
+                model: route.model.clone(),
+            },
+        );
+        transcript.observe(vec![started]);
         let resumed = resume.is_some();
         let base = super::recipe::agent_prompt(recipe.as_deref(), host, resumed);
         let prompt = match answered {
@@ -911,6 +983,25 @@ pub(crate) async fn turn(
         );
         let attempt = attempt(host, &gate, options, &prompt, &transcript).await;
         let finished = attempt.finished.as_ref();
+        if let Some(usage) = finished.and_then(|finished| finished.usage.as_ref()) {
+            let observation = transcript.observations.borrow_mut().usage(usage);
+            transcript.observe(vec![observation]);
+        }
+        let ending = if attempt.cancelled {
+            coder_sdk::observation::Ending::Interrupted
+        } else if finished.is_some_and(|finished| finished.success) {
+            coder_sdk::observation::Ending::Completed
+        } else {
+            coder_sdk::observation::Ending::Failed
+        };
+        let observation = transcript.observations.borrow_mut().next(
+            None,
+            coder_sdk::observation::Body::Ended {
+                ending,
+                message: attempt.error.clone(),
+            },
+        );
+        transcript.observe(vec![observation]);
         let (uncached, cache_read, cache_write) =
             input_parts(finished.and_then(|finished| finished.usage.as_ref()));
         let observed = json!({"session": attempt.session, "cancelled": attempt.cancelled,
@@ -1448,6 +1539,32 @@ done
     }
 
     #[tokio::test]
+    async fn observations_cannot_claim_another_owner_task_turn_or_generation() {
+        use coder_sdk::observation::Body;
+        let (_root, store, grant) = fixture_with(MODEL, sdk_route);
+        let host = Host::admit(&store, &grant).await.unwrap();
+        let mut recorder = host.observations();
+        let observation = recorder.next(
+            None,
+            Body::Started {
+                provider: "claude".into(),
+                model: MODEL.into(),
+            },
+        );
+        host.observe(&observation).unwrap();
+        for field in ["host", "task", "turn", "generation"] {
+            let mut wrong = observation.clone();
+            match field {
+                "host" => wrong.scope.host = "another-host".into(),
+                "task" => wrong.scope.task = "another-task".into(),
+                "turn" => wrong.scope.turn += 1,
+                _ => wrong.scope.generation += 1,
+            }
+            assert!(host.observe(&wrong).is_err(), "{field}");
+        }
+    }
+
+    #[tokio::test]
     async fn a_bash_request_becomes_an_approval_and_allow_once_continues_the_turn() {
         let (_root, store, grant) = fixture_with(MODEL, sdk_route);
         let waiting = asked(&store, &grant).await;
@@ -1472,6 +1589,43 @@ done
                 .unwrap()
                 .contains("allowed this step once")
         );
+        // The actual SDK adapter records full observations into the task's
+        // durable trace. The normal follower and a new follower replay them
+        // with identical identities and delivery sequences.
+        let local = coder::task::local::Local::new(store.clone());
+        let mut follow = local.follow(&done.task_id, None, None);
+        let (lines, state) = follow.poll().unwrap();
+        assert_eq!(state, coder::task::local::State::Ended);
+        let observations: Vec<_> = lines
+            .iter()
+            .filter_map(|line| match &line.event {
+                openagents_chat::coder_events::CoderEvent::Observation { observation } => {
+                    Some(observation)
+                }
+                _ => None,
+            })
+            .collect();
+        assert!(
+            observations
+                .iter()
+                .any(|observation| observation.native_session.as_deref() == Some("sdk-session-1"))
+        );
+        assert!(observations.iter().any(|observation| matches!(
+            observation.body,
+            coder_sdk::observation::Body::ToolResult { .. }
+        )));
+        assert!(observations.iter().any(|observation| matches!(
+            observation.body,
+            coder_sdk::observation::Body::Usage { .. }
+        )));
+        let mut again = local.follow(&done.task_id, None, None);
+        let (replayed, state) = again.poll().unwrap();
+        assert_eq!(state, coder::task::local::State::Ended);
+        assert_eq!(
+            serde_json::to_value(lines).unwrap(),
+            serde_json::to_value(replayed).unwrap()
+        );
+        assert!(follow.poll().unwrap().0.is_empty());
     }
 
     /// #11527: a file read inside the worktree runs without asking, but a

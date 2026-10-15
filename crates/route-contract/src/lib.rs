@@ -59,6 +59,7 @@ pub mod eval;
 pub mod graph;
 pub mod harness;
 pub mod lifecycle;
+pub mod observation;
 pub mod offer;
 pub mod placement;
 pub mod price_book;

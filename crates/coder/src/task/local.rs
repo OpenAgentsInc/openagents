@@ -2373,6 +2373,10 @@ impl Follow {
                     self.line(started, &mut out);
                 }
                 self.mapper = Some(Mapper::new(self.turn, self.answer.clone()));
+                self.mapper
+                    .as_mut()
+                    .unwrap()
+                    .bind_observations(LOCAL_HOST, &self.task);
                 self.seen = 0;
             }
             let runs: Vec<&owner::Run> = task.earlier.iter().chain(task.run.iter()).collect();

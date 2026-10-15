@@ -209,6 +209,10 @@ pub struct Run {
     delivered: bool,
     lines: VecDeque<Line>,
     session: Option<route_contract::session::Descriptor>,
+    observations: Option<openagents_chat::observations::Projection>,
+    observation_rows: BTreeMap<String, u64>,
+    cursor: u64,
+    history_incomplete: bool,
     state: State,
     queue: VecDeque<String>,
     /// A message to send once the stop it asked for ends the turn.
@@ -290,6 +294,10 @@ impl Run {
             delivered: false,
             lines: VecDeque::new(),
             session: None,
+            observations: None,
+            observation_rows: BTreeMap::new(),
+            cursor: 0,
+            history_incomplete: false,
             state: State::Running,
             queue: VecDeque::new(),
             after_stop: None,
@@ -420,28 +428,40 @@ impl Run {
 
     /// Compact reading information, without adapter or protocol terminology.
     pub fn session_label(&self) -> Option<String> {
-        let session = self.session()?;
-        let selected = &session.resolved.selection;
-        if selected.provider.is_empty() || selected.model.is_empty() {
+        let session = self.session();
+        let (selected_provider, selected_model) = match session {
+            Some(session) => (
+                session.resolved.selection.provider.as_str(),
+                session.resolved.selection.model.as_str(),
+            ),
+            None => {
+                let state = self.observations.as_ref()?;
+                (state.provider.as_deref()?, state.model.as_deref()?)
+            }
+        };
+        if selected_provider.is_empty() || selected_model.is_empty() {
             return None;
         }
-        let provider = coder_events::provider_name(&serde_json::json!(selected.provider));
-        let using = format!("Using {provider} · {}", clip(&selected.model, 120));
-        Some(match &session.requested {
-            Some(requested)
-                if requested.provider != selected.provider
-                    || (!requested.model.is_empty() && requested.model != selected.model) =>
-            {
-                let provider = coder_events::provider_name(&serde_json::json!(requested.provider));
-                let model = if requested.model.is_empty() {
-                    String::new()
-                } else {
-                    format!(" · {}", clip(&requested.model, 120))
-                };
-                format!("Requested {provider}{model} · {using}")
-            }
-            _ => using,
-        })
+        let provider = coder_events::provider_name(&serde_json::json!(selected_provider));
+        let using = format!("Using {provider} · {}", clip(selected_model, 120));
+        Some(
+            match session.and_then(|session| session.requested.as_ref()) {
+                Some(requested)
+                    if requested.provider != selected_provider
+                        || (!requested.model.is_empty() && requested.model != selected_model) =>
+                {
+                    let provider =
+                        coder_events::provider_name(&serde_json::json!(requested.provider));
+                    let model = if requested.model.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" · {}", clip(&requested.model, 120))
+                    };
+                    format!("Requested {provider}{model} · {using}")
+                }
+                _ => using,
+            },
+        )
     }
 
     /// A start, stop, or continue is on its way.
@@ -858,16 +878,28 @@ impl Run {
             (Request::Poll { task }, Answer::Lines { lines, state })
                 if self.task.as_ref() == Some(task) =>
             {
-                let last = self.lines.back().map_or(0, |line| line.seq);
+                let mut last = self.cursor;
                 let mut changed = false;
-                for line in lines {
+                for mut line in lines {
                     // A new follower replays from the first event; keep one
                     // copy of each.
                     if line.seq <= last || line.task != *task {
                         continue;
                     }
+                    if line.seq != last + 1 {
+                        self.history_incomplete = true;
+                    }
+                    last = line.seq;
+                    self.cursor = last;
                     match &line.event {
                         CoderEvent::CoderStarted(started) => {
+                            if self
+                                .observations
+                                .as_ref()
+                                .is_some_and(|state| state.turn() > started.turn)
+                            {
+                                continue;
+                            }
                             self.session = started.session.as_ref().map(|session| {
                                 if session.applies_to(task, started.turn)
                                     && session.resolved.selection.provider == started.provider
@@ -878,6 +910,63 @@ impl Run {
                                     route_contract::session::Descriptor::default()
                                 }
                             });
+                            let host = self
+                                .session()
+                                .map_or(LOCAL, |session| session.owner.as_str());
+                            self.observations =
+                                Some(openagents_chat::observations::Projection::new(
+                                    host,
+                                    task,
+                                    started.turn,
+                                ));
+                        }
+                        CoderEvent::Observation { observation } => {
+                            if self.observations.is_none()
+                                && matches!(
+                                    observation.body,
+                                    route_contract::observation::Body::Started { .. }
+                                )
+                                && observation.applies_to(LOCAL, task, observation.scope.turn)
+                            {
+                                self.observations =
+                                    Some(openagents_chat::observations::Projection::new(
+                                        LOCAL,
+                                        task,
+                                        observation.scope.turn,
+                                    ));
+                            }
+                            let Some(state) = &mut self.observations else {
+                                continue;
+                            };
+                            let Some(update) = state.apply(observation) else {
+                                continue;
+                            };
+                            changed = true;
+                            self.history_incomplete |= state.incomplete;
+                            if let Some(session) = &mut self.session {
+                                if let (Some(provider), Some(model)) =
+                                    (&state.provider, &state.model)
+                                {
+                                    if session.resolved.selection.provider != *provider {
+                                        session.switch_to(Some(&format!("{provider}:{model}")));
+                                    }
+                                    session.resolved.selection.model = model.clone();
+                                }
+                                session.native_session.clone_from(&state.native_session);
+                                session.resolved.version.clone_from(&state.version);
+                            }
+                            let Some(event) = update.event else { continue };
+                            line.event = event;
+                            if let Some(key) = update.key {
+                                if let Some(seq) = self.observation_rows.get(&key)
+                                    && let Some(existing) =
+                                        self.lines.iter_mut().find(|line| line.seq == *seq)
+                                {
+                                    existing.event = line.event;
+                                    continue;
+                                }
+                                self.observation_rows.insert(key, line.seq);
+                            }
                         }
                         CoderEvent::ProviderSwitched(switched) => {
                             if let Some(session) = &mut self.session
@@ -893,7 +982,12 @@ impl Run {
                 }
                 while self.lines.len() > MAX_LINES {
                     self.lines.pop_front();
+                    self.history_incomplete = true;
                 }
+                let retained: std::collections::BTreeSet<_> =
+                    self.lines.iter().map(|line| line.seq).collect();
+                self.observation_rows
+                    .retain(|_, seq| retained.contains(seq));
                 if state != self.state {
                     if state != State::Running {
                         // A stop that was asked for has happened.
@@ -1101,6 +1195,13 @@ impl Run {
     /// `None` when it recorded none or cleared it.
     #[must_use]
     pub fn plan_items(&self) -> Option<Vec<openagents_chat::plan::Item>> {
+        if let Some(items) = self
+            .observations
+            .as_ref()
+            .and_then(|state| state.plan.as_ref())
+        {
+            return Some(items.clone());
+        }
         openagents_chat::plan::latest(self.lines.iter().map(|line| &line.event)).map(<[_]>::to_vec)
     }
 
@@ -1181,6 +1282,36 @@ impl Run {
         let mut rows = Vec::new();
         if let Some(label) = self.session_label() {
             rows.push(status("coder-session", &label));
+        }
+        if let Some(state) = &self.observations {
+            if state.incomplete || self.history_incomplete {
+                rows.push(status(
+                    "coder-history-gap",
+                    "Some earlier output is unavailable.",
+                ));
+            }
+            if let Some((Some(used), capacity)) = state.context {
+                let text = capacity.map_or_else(
+                    || format!("Context: {used} tokens"),
+                    |capacity| format!("Context: {used} of {capacity} tokens"),
+                );
+                rows.push(status("coder-context", &text));
+            }
+            if let Some(usage) = &state.usage {
+                let mut parts = Vec::new();
+                if let Some(input) = usage.input {
+                    parts.push(format!("{input} input tokens"));
+                }
+                if let Some(output) = usage.output {
+                    parts.push(format!("{output} output tokens"));
+                }
+                if !parts.is_empty() {
+                    rows.push(status("coder-usage", &parts.join(" · ")));
+                }
+            }
+            if let Some(policy) = &state.policy {
+                rows.push(status("coder-policy", policy));
+            }
         }
         // The task's plan, above what the run is doing now (#10471).
         if let Some(items) = self.plan_items() {
@@ -1366,6 +1497,7 @@ fn mutation(request: &Request) -> bool {
 #[must_use]
 pub fn turn_of(line: &Line) -> usize {
     match &line.event {
+        CoderEvent::Observation { observation: e } => e.scope.turn,
         CoderEvent::CoderStarted(e) => e.turn,
         CoderEvent::Step(e) => e.turn,
         CoderEvent::Output(e) => e.turn,
@@ -1428,6 +1560,9 @@ struct Rows {
 
 impl Rows {
     fn line(&mut self, line: &Line) {
+        if matches!(line.event, CoderEvent::Observation { .. }) {
+            return;
+        }
         let key = format!("coder-{}", line.seq);
         self.turn = turn_of(line);
         // A later turn's trajectory opens with the conversation it
@@ -1569,7 +1704,7 @@ impl Rows {
                 self.progress = Some(progress.line());
             }
             // The terminal's status line; the run's own rows say the rest.
-            CoderEvent::Status(_) => {}
+            CoderEvent::Status(_) | CoderEvent::Observation { .. } => {}
             CoderEvent::Question(asked) => {
                 self.flush_reply();
                 self.drop_repeated_reply(&asked.text);

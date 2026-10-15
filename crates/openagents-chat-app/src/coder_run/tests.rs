@@ -926,3 +926,320 @@ fn provider_switch_changes_the_label_without_granting_native_operations() {
     assert!(session.resolved.hooks.is_empty());
     assert_eq!(session.requested.as_ref().unwrap().provider, "devin");
 }
+
+fn observation_lines() -> Vec<Line> {
+    use route_contract::observation::{self as wire, Body, Channel, TextMode};
+    let mut lines = described_lines(route_contract::session::Controls {
+        stop: true,
+        ..Default::default()
+    });
+    let bodies = [
+        (
+            None,
+            Body::Started {
+                provider: "claude".into(),
+                model: "observed-model".into(),
+            },
+        ),
+        (
+            Some("call"),
+            Body::ToolStarted {
+                name: "Bash".into(),
+                input: r#"{"command":"cargo test"}"#.into(),
+            },
+        ),
+        (
+            Some("call"),
+            Body::ToolResult {
+                text: "passed".into(),
+                failed: false,
+                truncated: false,
+            },
+        ),
+        (
+            Some("reply"),
+            Body::Text {
+                channel: Channel::Text,
+                mode: TextMode::Snapshot,
+                text: "Hello".into(),
+                complete: false,
+                truncated: false,
+            },
+        ),
+        (
+            Some("reply"),
+            Body::Text {
+                channel: Channel::Text,
+                mode: TextMode::Delta,
+                text: " world".into(),
+                complete: false,
+                truncated: false,
+            },
+        ),
+        (
+            Some("reply"),
+            Body::Text {
+                channel: Channel::Text,
+                mode: TextMode::Snapshot,
+                text: "Hello world".into(),
+                complete: true,
+                truncated: false,
+            },
+        ),
+        (
+            None,
+            Body::Plan {
+                items: vec![wire::PlanItem {
+                    text: "Verify".into(),
+                    status: wire::PlanStatus::Completed,
+                }],
+            },
+        ),
+        (
+            None,
+            Body::Usage {
+                usage: wire::Usage {
+                    output: Some(0),
+                    ..Default::default()
+                },
+            },
+        ),
+        (
+            None,
+            Body::Context {
+                used: Some(120),
+                capacity: Some(1000),
+            },
+        ),
+        (
+            None,
+            Body::Policy {
+                tool: "Read".into(),
+                decision: "allowed".into(),
+            },
+        ),
+        (
+            None,
+            Body::Ended {
+                ending: wire::Ending::Completed,
+                message: None,
+            },
+        ),
+    ];
+    let task = lines[0].task.clone();
+    for (index, (item, body)) in bodies.into_iter().enumerate() {
+        lines.push(Line {
+            seq: index as u64 + 2,
+            task: task.clone(),
+            thread: lines[0].thread.clone(),
+            event: CoderEvent::Observation {
+                observation: wire::Observation {
+                    schema: wire::SCHEMA.into(),
+                    scope: wire::Scope {
+                        host: LOCAL.into(),
+                        task: task.clone(),
+                        turn: 1,
+                        generation: 1,
+                    },
+                    seq: index as u64 + 1,
+                    native_session: Some("native-session".into()),
+                    item: item.map(str::to_owned),
+                    child: None,
+                    body,
+                },
+            },
+        });
+    }
+    lines
+}
+
+fn deliver(run: &mut Run, lines: &[Line], state: State) {
+    let task = run.task.clone().unwrap();
+    let (ticket, _) = run.request(Request::Poll { task }).unwrap();
+    run.outcome(
+        ticket,
+        Ok(Answer::Lines {
+            lines: lines.to_vec(),
+            state,
+        }),
+        Instant::now(),
+    );
+}
+
+#[test]
+fn observations_draw_once_on_load_follow_and_reconnect_and_keep_session_state() {
+    let lines: Vec<Line> =
+        serde_json::from_value(serde_json::to_value(observation_lines()).unwrap()).unwrap();
+    let mut whole = fed(&lines, State::Running);
+    let mut followed = fed(&lines[..1], State::Running);
+    for chunk in lines[1..].chunks(2) {
+        deliver(&mut followed, chunk, State::Running);
+    }
+    assert_eq!(text_of(&whole.rows()), text_of(&followed.rows()));
+    let text = text_of(&followed.rows());
+    assert_eq!(text.matches("Hello world").count(), 1, "{text}");
+    assert_eq!(followed.lines.iter().filter(|line| matches!(&line.event, CoderEvent::Step(step) if step.kind == StepKind::Command)).count(), 1);
+    assert_eq!(
+        followed
+            .lines
+            .iter()
+            .filter(|line| matches!(line.event, CoderEvent::Output(_)))
+            .count(),
+        1
+    );
+    assert!(text.contains("120 of 1000 tokens"), "{text}");
+    assert!(text.contains("0 output tokens"), "{text}");
+    assert!(!text.contains("0 input tokens"), "{text}");
+    assert!(text.contains("Read: allowed"), "{text}");
+    assert_eq!(
+        followed.state(),
+        State::Running,
+        "the provider cannot finish the host task"
+    );
+    assert_eq!(
+        followed.session().unwrap().native_session.as_deref(),
+        Some("native-session")
+    );
+    assert!(followed.session_label().unwrap().contains("observed-model"));
+    let count = followed.lines.len();
+    deliver(&mut followed, &lines, State::Running);
+    assert_eq!(followed.lines.len(), count);
+    assert_eq!(text_of(&followed.rows()), text);
+    followed.lines.clear();
+    deliver(&mut followed, &lines, State::Running);
+    assert!(
+        followed.lines.is_empty(),
+        "row eviction cannot reset the delivery cursor"
+    );
+    assert_eq!(followed.plan_items().unwrap()[0].text, "Verify");
+    assert!(text_of(&followed.rows()).contains("120 of 1000 tokens"));
+}
+
+#[test]
+fn missing_and_foreign_observations_do_not_join_partial_text_or_change_another_chat() {
+    let lines = observation_lines();
+    let mut run = fed(&lines[..5], State::Running);
+    // Leave out the reply delta. The full snapshot recovers the reply,
+    // while the missing-history notice stays visible.
+    deliver(&mut run, &lines[6..], State::Running);
+    let text = text_of(&run.rows());
+    assert_eq!(text.matches("Hello world").count(), 1, "{text}");
+    assert!(
+        text.contains("Some earlier output is unavailable."),
+        "{text}"
+    );
+    let mut other = lines.clone();
+    for line in &mut other {
+        line.task = "another-task".into();
+    }
+    let mut other_chat = Run::follow("other-chat", "another-task", None, Instant::now());
+    deliver(&mut other_chat, &other, State::Running);
+    assert!(!text_of(&other_chat.rows()).contains("Hello world"));
+    assert!(other_chat.session().is_none());
+    // A late outcome with no matching pending request is ignored.
+    assert!(!other_chat.outcome(
+        u64::MAX,
+        Ok(Answer::Lines {
+            lines,
+            state: State::Ended
+        }),
+        Instant::now()
+    ));
+    assert_eq!(other_chat.state(), State::Running);
+}
+
+#[test]
+fn duplicate_observations_in_a_batch_and_repeated_outcomes_do_not_repeat_output() {
+    let lines = observation_lines();
+    let mut run = fed(&lines[..1], State::Running);
+    let task = run.task.clone().unwrap();
+    let (new, _) = run.request(Request::Poll { task }).unwrap();
+    let mut duplicate = Vec::new();
+    for line in &lines[1..] {
+        duplicate.push(line.clone());
+        duplicate.push(line.clone());
+    }
+    run.outcome(
+        new,
+        Ok(Answer::Lines {
+            lines: duplicate,
+            state: State::Ended,
+        }),
+        Instant::now(),
+    );
+    let text = text_of(&run.rows());
+    assert_eq!(text.matches("Hello world").count(), 1, "{text}");
+    run.outcome(
+        new,
+        Ok(Answer::Lines {
+            lines: Vec::new(),
+            state: State::Running,
+        }),
+        Instant::now(),
+    );
+    assert_eq!(run.state(), State::Ended);
+    assert_eq!(text_of(&run.rows()), text);
+}
+
+#[test]
+fn observations_without_a_legacy_start_record_still_bind_to_the_right_task() {
+    let lines = observation_lines();
+    let mut run = Run::follow("chat", &lines[0].task, None, Instant::now());
+    deliver(&mut run, &lines[1..], State::Running);
+    assert!(
+        run.session().is_none(),
+        "observations cannot invent capability declarations"
+    );
+    assert!(run.session_label().unwrap().contains("observed-model"));
+    assert_eq!(text_of(&run.rows()).matches("Hello world").count(), 1);
+}
+
+#[test]
+fn a_task_delivery_gap_stays_visible_even_when_provider_sequences_are_complete() {
+    let mut lines = observation_lines();
+    for line in &mut lines[2..] {
+        line.seq += 1;
+    }
+    let mut run = fed(&lines, State::Running);
+    let text = text_of(&run.rows());
+    assert!(
+        text.contains("Some earlier output is unavailable."),
+        "{text}"
+    );
+    assert_eq!(text.matches("Hello world").count(), 1);
+}
+
+#[test]
+fn the_host_result_replaces_the_streamed_answer_and_keeps_exact_review_data() {
+    let lines = observation_lines();
+    let mut run = fed(&lines, State::Running);
+    let mut result = tasks(QUESTION_THEN_RESULT)
+        .remove(0)
+        .into_iter()
+        .find(|line| matches!(line.event, CoderEvent::Result(_)))
+        .unwrap();
+    result.seq = lines.last().unwrap().seq + 1;
+    result.task = lines[0].task.clone();
+    let CoderEvent::Result(finished) = &mut result.event else {
+        panic!("result")
+    };
+    finished.turn = 1;
+    finished.summary = "Hello world".into();
+    let files = finished.files_changed.clone();
+    deliver(&mut run, &[result], State::Ended);
+    let text = text_of(&run.rows());
+    assert_eq!(text.matches("Hello world").count(), 1, "{text}");
+    assert_eq!(run.state(), State::Ended);
+    let finished = run
+        .lines
+        .iter()
+        .find_map(|line| match &line.event {
+            CoderEvent::Result(finished) => Some(finished),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(finished.files_changed, files);
+    let (_, request) = run.tick(Instant::now()).unwrap();
+    assert!(matches!(request, Request::Review { .. }));
+    assert!(run.reviewer().is_some());
+}

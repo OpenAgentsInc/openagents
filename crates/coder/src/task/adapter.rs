@@ -732,6 +732,7 @@ pub struct Host {
     trace_bytes: Cell<usize>,
     started: Instant,
     sequence: Cell<usize>,
+    observation_generation: Cell<u64>,
     stopped: Cell<bool>,
     group_clear: Cell<bool>,
     output_incomplete: Cell<bool>,
@@ -1132,6 +1133,7 @@ impl Host {
             trace_bytes: Cell::new(trace_bytes),
             started: Instant::now(),
             sequence: Cell::new(0),
+            observation_generation: Cell::new(0),
             stopped: Cell::new(false),
             group_clear: Cell::new(true),
             output_incomplete: Cell::new(false),
@@ -1542,6 +1544,34 @@ impl Host {
         }
         self.trace_bytes.set(self.trace_bytes.get() + bytes);
         Ok(())
+    }
+
+    /// A fresh ordered observation stream for a provider attempt in this turn.
+    pub fn observations(&self) -> coder_sdk::observation::Recorder {
+        let generation = self.observation_generation.get() + 1;
+        self.observation_generation.set(generation);
+        coder_sdk::observation::Recorder::new(coder_sdk::observation::Scope {
+            host: super::local::LOCAL_HOST.into(),
+            task: self.task.task_id.clone(),
+            turn: self.task.turn(),
+            generation,
+        })
+    }
+
+    /// Persist observations in the same bounded trace as task execution.
+    pub fn observe(&self, observation: &coder_sdk::observation::Observation) -> Result<(), Error> {
+        if !observation.applies_to(
+            super::local::LOCAL_HOST,
+            &self.task.task_id,
+            self.task.turn(),
+        ) || observation.scope.generation != self.observation_generation.get()
+        {
+            return Err(Error::InvalidCommand("this run has already moved on"));
+        }
+        self.append(&Step::said(Source::System, "").noting(
+            coder_sdk::observation::TRACE_KEY,
+            serde_json::to_value(observation).map_err(|_| Error::UnsupportedSchema)?,
+        ))
     }
 
     /// Writes to the trace, waiting out a full disk for as long as an owner

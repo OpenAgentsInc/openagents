@@ -32,6 +32,7 @@ pub mod events;
 pub mod floors;
 pub mod git_guard;
 pub mod hooks;
+pub mod observation;
 pub mod opencode;
 pub mod outcome;
 pub mod plugin_hooks;

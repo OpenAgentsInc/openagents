@@ -192,6 +192,20 @@ clipped assistant claims are also unsuitable as the full transcript source.
 session/model state, plans, context usage, and policy outcomes. This addresses
 RUN-06, TRN-04–06/10, REM-05/06, and CUS-16. Stable IDs also prepare child tabs.
 
+The observation bridge is implemented in
+[#11697](https://github.com/OpenAgentsInc/openagents/issues/11697). It adds
+`route_contract::observation`, the SDK's full-message Claude normalizer, and
+the shared `openagents_chat::observations` reducer. The Claude SDK execution
+path records these observations in the existing ATIF trace; `local::Follow`
+replays them through `CoderEvent::Observation` to the desktop's shared run.
+Snapshots replace an item, deltas require complete item history, and a gap
+stays visible after a later snapshot repairs that item. Host, task, turn,
+generation, sequence, and native-session checks reject unrelated or old output.
+The task owner still decides completion and publishing. Unknown measurements
+stay unknown; this adapter does not invent context occupancy or claim that
+other provider paths emit the new contract. Interactive request delivery and
+answers remain slice 3.
+
 ### 3. Bridge interactive approvals and questions through the host
 
 Reuse `Asker` as the SDK callback and the desktop's existing approval/answer
@@ -325,8 +339,8 @@ in `coder-sdk`.
 
 | Order | Concrete change | Primary code owners | Acceptance |
 | --- | --- | --- | --- |
-| 1 | Read-only capability/session descriptor projected through the existing task/desktop worker path. | `coder-sdk`/`coder-delegate`, current task services, `openagents-chat-app`, desktop worker. | A scripted/local task shows requested/resolved provider/model and correct supported actions; old/unknown capabilities stay unavailable. |
-| 2 | Observation bridge into current `CoderEvent` and bounded shared projections. | SDK backend adapters, task event mapper, shared chat presentation. | Equivalent fixture output displays once across initial load, follow, reconnect, completion, and chat switch. Existing exact-review state stays intact. |
+| 1 · [#11694](https://github.com/OpenAgentsInc/openagents/issues/11694) | Read-only capability/session descriptor projected through the existing task/desktop worker path. | `coder-sdk`/`coder-delegate`, current task services, `openagents-chat-app`, desktop worker. | A scripted/local task shows requested/resolved provider/model and correct supported actions; old/unknown capabilities stay unavailable. |
+| 2 · [#11697](https://github.com/OpenAgentsInc/openagents/issues/11697) | Observation bridge into current `CoderEvent` and bounded shared projections. | SDK backend adapters, task event mapper, shared chat presentation. | Equivalent fixture output displays once across initial load, follow, reconnect, completion, and chat switch. Existing exact-review state stays intact. |
 | 3 | Host-owned pending approval and SDK `Asker` bridge on one supported backend. | SDK callback/backend, task/control service, shared decision UI. | Allow once, deny, cancel, stop, stale answer, duplicate answer, no UI, and rewritten-input cases reach exactly the intended request. |
 | 4 | Explicit provider/model/reasoning configuration and native-resume request through the task owner. | Session facade/adapters, task configuration, shared composer and desktop picker. | A subsequent turn uses the recorded choices; missing native resume is explicit; no silent account/payer/target switch. |
 | 5 | One authorized workspace read/search service plus a `ToolServer` adapter for it. | Host workspace service and SDK tool integration. | A viewer and permitted agent get consistent results for the same authorized checkout; wrong host, denied path, and stale checkout are refused. |

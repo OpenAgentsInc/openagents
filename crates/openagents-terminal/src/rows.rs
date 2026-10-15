@@ -145,6 +145,18 @@ fn call_row(shown: &Shown, expanded: bool) -> ToolRow {
 /// line rather than a row per step.
 pub fn run_row(event: &CoderEvent) -> Option<RunRow> {
     Some(match event {
+        CoderEvent::Observation { observation } => {
+            if matches!(
+                observation.body,
+                openagents_chat::observations::Body::Text { .. }
+            ) {
+                return None;
+            }
+            RunRow::Step {
+                mark: '·',
+                text: first_line(&coder_events::text(event)?),
+            }
+        }
         CoderEvent::CoderStarted(_) => return None,
         CoderEvent::Step(step) => {
             let mark = match step.kind {
