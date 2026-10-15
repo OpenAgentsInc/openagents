@@ -1,0 +1,22 @@
+/* The contact form (/contact): one column of fields at a readable width.
+   The trap field is for bots only: off screen, out of the tab order, and
+   hidden from assistive technology. */
+
+.oa-contact-form {
+  display: grid;
+  gap: calc(var(--spacing) * 5);
+  max-width: 560px;
+  margin-top: calc(var(--spacing) * 6);
+}
+
+.oa-contact-form > button {
+  justify-self: start;
+}
+
+.oa-contact-trap {
+  position: absolute;
+  left: -10000px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}

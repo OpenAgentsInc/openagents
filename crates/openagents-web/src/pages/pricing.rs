@@ -26,7 +26,7 @@ pub(crate) const PRICING: &str = "/pricing";
 /// Where Pro is bought and managed.
 const PLAN: &str = "/settings#settings-plan";
 /// Where teams and companies write to us.
-const CONTACT: &str = "mailto:chris@openagents.com?subject=OpenAgents%20for%20teams";
+const CONTACT: &str = "/contact?topic=sales";
 
 pub(crate) fn routes() -> Router<App> {
     Router::new().route(PRICING, get(pricing))
@@ -184,14 +184,19 @@ fn pro(t: &EnvironmentPlan, visitor: Visitor) -> PlanCard {
 }
 
 fn teams() -> PlanCard {
-    PlanCard::new("Teams & companies", "Talk to us")
-        .note("For a whole team")
+    PlanCard::new("Enterprise", "Custom")
+        .note("For companies and custom deployments")
         .lead("Everything in Pro, and:")
-        .item("Shared billing")
-        .item("Single sign-on (SSO)")
-        .item("Spend limits for the team")
-        .item("Priority support")
-        .action("Contact us", CONTACT)
+        .item_with(
+            "Deploy where you need it",
+            ["Our cloud, your own cloud account, or your own machines"],
+        )
+        .item("Single sign-on (SAML) and user provisioning (SCIM)")
+        .item("Uptime SLA and priority support")
+        .item("Audit logs and data retention controls")
+        .item("Shared billing, invoicing and spend limits")
+        .item("Security review and a custom agreement")
+        .action("Contact sales", CONTACT)
 }
 
 /// The questions under the cards.
@@ -261,7 +266,7 @@ mod tests {
             for name in [
                 "aria-label=\"Free\"",
                 "aria-label=\"Pro\"",
-                "aria-label=\"Teams &amp; companies\"",
+                "aria-label=\"Enterprise\"",
             ] {
                 assert!(html.contains(name), "{name}");
             }

@@ -328,7 +328,10 @@ for e in ({"name": "STACK_STATE", "value": "/stack"},
           {"name": "OPENAGENTS_WEB_COMPUTERS_URL",
            "value": "https://oa-computers-157437760789.us-central1.run.app"},
           {"name": "OPENAGENTS_WEB_COMPUTERS_TOKEN",
-           "valueFrom": {"secretKeyRef": {"name": "oa-computers-token", "key": "latest"}}}):
+           "valueFrom": {"secretKeyRef": {"name": "oa-computers-token", "key": "latest"}}},
+          # The contact form's mail to us, through Resend (/contact).
+          {"name": "OPENAGENTS_RESEND_API_KEY",
+           "valueFrom": {"secretKeyRef": {"name": "openagents-resend-api-key", "key": "latest"}}}):
     if e["name"] not in env:
         envs.append(e)
         sys.stderr.write(f"  web env {e['name']} added\n")

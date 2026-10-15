@@ -8,6 +8,7 @@ pub(crate) mod cad;
 pub(crate) mod chat;
 mod cloud;
 pub(crate) mod connect;
+pub(crate) mod contact;
 pub(crate) mod content;
 pub(crate) mod download;
 pub(crate) mod efficiency;
@@ -68,6 +69,7 @@ pub(crate) fn routes() -> Router<App> {
     Router::new()
         .merge(home::routes())
         .merge(landing::routes())
+        .merge(contact::routes())
         .merge(blue_rush::routes())
         .merge(chat::routes())
         .merge(cloud::routes())

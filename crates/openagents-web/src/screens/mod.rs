@@ -93,6 +93,7 @@ pub(crate) struct Screen {
 pub(crate) const NOT_SCREENS: &[(&str, &str)] = &[
     ("/landing", "the homepage in progress, not linked yet"),
     ("/landing/*", "the landing page's stylesheet and pictures"),
+    ("/contact", "the contact form, a public page"),
     ("/static/*", "files"),
     ("/games/snap-station/shares", "shared Snap Station builds"),
     (
