@@ -108,8 +108,10 @@ For an existing deployment, `computer-conformance --space` and
 Use a fresh evidence path for each run. Without `SPACE_BOOT_OBSERVER`, the
 measurement runner marks the actual boot mode as unverified.
 
-At this upstream commit, the Kind shim sends an unspecified create boot
-mode, which the node manager resolves to cold. The snapshot API check
+At this upstream commit, the [Kind shim](https://github.com/perplexityai/SPACE/blob/de87b436c35dac056564bdd5b2a113c9046e189b/shim/space.go#L2307)
+sends an unspecified create boot mode, which the [node manager resolves
+to cold](https://github.com/perplexityai/SPACE/blob/de87b436c35dac056564bdd5b2a113c9046e189b/crates/libs/sbx/mgr/server/src/service/reconcile.rs#L1044).
+The snapshot API check
 therefore fails its boot-mode guard even with a ready base snapshot.
 To measure the available node optimization separately, enable 2 GiB base
 snapshots and use the explicit node CLI:
@@ -122,7 +124,8 @@ deploy/space-host/host.sh check native-snapshot
 deploy/space-host/host.sh check memory
 ```
 
-The native runner verifies the returned boot mode, Firecracker arguments,
+The native runner enables two ready network slots on the disposable worker;
+Kind normally leaves that pool off. It verifies the returned boot mode, Firecracker arguments,
 and actual VM CPU and memory configuration. Its timer includes the Docker
 CLI invocation and ends at guest readiness. It does not run an HTTP
 command, so compare its two arms with each other. A fast native snapshot
