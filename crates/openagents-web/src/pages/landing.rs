@@ -169,7 +169,7 @@ fn problem_section() -> Markup {
     html! {
         section.problem-section data-slot="text-section" {
             p {
-                "Most coding agents send every step to one big model: finding a file, reading it, running a command, writing the fix. You pay big-model prices, and wait big-model times, for work a small model does just as well."
+                "On its own, a coding agent sends most steps to one big model: finding a file, reading it, running a command, writing the fix. You pay big-model prices, and wait big-model times, for work a small model can do."
             }
             p.muted {
                 "Coder sits in front of the agent you already use and decides, step by step, what each one needs. The agent stays the same; the bill and the wait get smaller."

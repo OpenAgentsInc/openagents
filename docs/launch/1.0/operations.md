@@ -291,7 +291,10 @@ In this order. Stop at the first step that fails and roll that platform back.
 9. **iPhone**: the build is in the external group; install it from
    TestFlight on a phone.
 10. **Smoke test** every platform (#11102).
-11. **Owner posts** the launch post (`post.md`) once everything in it is live.
+11. **Owner posts** the launch post (`post.md`) once everything in it is live
+    and it passes the [posting checklist](post.md#posting-checklist): the AI
+    label on AI-made clips, "we" for OpenAgents and "I" for agents, no fake
+    personas.
 12. **Watch** for the next 24 hours: the log checks every 30 minutes for the
     first 4 hours, then every 2 hours.
 

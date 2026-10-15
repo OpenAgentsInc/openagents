@@ -687,7 +687,7 @@ def caption(d, t):
     if args.no_headlines:
         return
     caps = [
-        (*B1_CAPTION, ["Most coding agents loop a big model over its tools:", "every small step goes through the big model."]),
+        (*B1_CAPTION, ["On its own, a coding agent loops a big model over its tools:", "every small step goes through the big model."]),
         (*B2_CAPTION, ["OpenAgents puts System 1 in front: small, fast models.", "Only the hard parts reach the big model."]),
         (*B3_CAPTION, ["Anyone can add to the map,", "and gets paid when it's used."]),
         (*B4_CAPTION, ["System 1 in front.", "System 2 for the hard parts."]),

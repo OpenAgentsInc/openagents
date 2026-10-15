@@ -45,6 +45,78 @@ study rows and isn't in the launch copy.
 | "Saved Claude keys are encrypted" | Release notes (earlier draft) | No public page states it, and it names a vendor | Cut |
 | X post length | Post | Counted: 245 characters with the link at its real length, which X also counts as 23; recounted 2026-10-11 | Keep |
 
+## Landing, pricing, film and posts (#11764)
+
+Every figure on `/` (`crates/openagents-web/src/pages/landing.rs`),
+`/pricing` (`pages/pricing.rs`), [`/docs/pricing`](../../../crates/openagents-web/content/docs/pricing.md),
+the launch film (the captions in `scripts/film/system1-routing.py`,
+`coder-segments.py`, `revenue-sharing.py`, `docs/verse/film/launch.json`,
+`cut.json`, and the Episode 290 script `docs/transcripts/290.md`), and the
+queued posts. Checked 2026-10-15 against `main` at `62cae1223e`.
+
+The queued posts are [post.md](post.md) (checked above) and the Episode 290
+show notes in `290.md`. Sarah's old tweet queue (`docs/sarah/SARAH_TWEET_QUEUE.md`)
+was removed from the repository with the rest of `docs/sarah/`; nothing else
+is queued.
+
+No x401-style line ("agents prove what they're authorized to do", "offline
+verification") is in any of this copy.
+
+### The study numbers
+
+All from [briefed-agent-ab.md](../../inference/briefed-agent-ab.md) (#11211):
+21 closed issues, 3 runs each, the same model (`claude-opus-5-5`) both ways;
+bare Claude Code against the briefed agent.
+
+| Claim | Where | Evidence | Decision |
+| --- | --- | --- | --- |
+| $1.84 instead of $4.00 per accepted fix | `/` hero card and stats; film (routing, savings, revenue sharing); 290.md | "$ per accepted": 4.00 (A) and 1.84 (B0) | Keep |
+| 121 s instead of 284 s (median time) | `/` stats; film; 290.md | "Median s": 284 (A) and 121 (B0) | Keep |
+| 21 real issues, same model both ways; 3 runs each | `/` hero pill and stats; film small print | Headline and Setup | Keep |
+| 19 of 63 fixes accepted both ways | Film (savings, revenue sharing); 290.md | "Accepted": 19/63 each | Keep |
+| Half the cost per fix | `/` hero pill; film; 290.md | 53.9% lower per accepted change, 95% CI [44.3%, 60.4%] | Keep |
+| 2× cheaper, 2× / 2.3× faster, "more than twice as fast" | Film (routing, savings); 290.md | $4.00 / $1.84 = 2.17; 284 s / 121 s = 2.35 | Keep |
+| $2.16 saved per fix | Film (revenue sharing) | $4.00 − $1.84, at list price | Keep |
+| "and nothing worse" | Film (savings caption); 290.md section 5 | The study doesn't rule out a quality cost: the judge accepted 0.889 vs 0.794, CI [-0.254, +0.048], and calls "equal or better" inconclusive | Rewritten: "and as many fixes accepted" (film), "Half the cost, and more than twice as fast." (290.md) |
+| "Same model, same success rate" | Film (revenue sharing small print) | Equal point estimates only; the success difference is inconclusive | Rewritten: "Same model, 19 of 63 accepted both ways." |
+| "for work a small model does just as well" | `/` problem section | No study compares a small model's quality; the measured arm used the same big model | Rewritten: "for work a small model can do" |
+
+The measured saving comes from the brief and the `verify` tool in front of
+the same model, not from small models: no small model ran in the study.
+Copy may put these numbers beside "Coder works out what each step needs" (the
+brief is a System 1 step), but must not say small models produced them.
+
+### Other figures
+
+| Claim | Where | Evidence | Decision |
+| --- | --- | --- | --- |
+| Six agents: Claude Code, Codex, OpenCode, Grok Build, Devin CLI, Cursor | `/`, `/pricing`, `/docs/pricing`, film | `crates/coder-new/src/harness_pick.rs` (Claude Code, Codex, OpenCode, then the ACP agents Devin, Cursor, Grok Build) | Keep; 290.md's recording checklist drops any harness the release gate skips |
+| Free is $0 | `/`, `/pricing`, `/docs/pricing` | No charge for Free in any plan file | Keep |
+| A free daily model allowance, about $1 a day, from midnight UTC | `/`, `/pricing`, `/docs/pricing` | `free_allowance.usd_micros_per_day` 1,000,000 per account per UTC day (`881f380e0b`); live in production since #11631 (`421c30d494`), whose test account hit the $1 cap there | Keep |
+| Pro is $20 a month | `/`, `/pricing`, `/docs/pricing` | `crates/retail-cloud/fixtures/environment-plan.json` `price_usd_micros` 20,000,000; [docs/pro](../../pro/README.md) | Keep. The plan is `proposed`, `/docs/pricing` says Pro isn't on sale yet |
+| 3-day free trial, a reminder the day before it ends | `/pricing`, the CAD Lab gate | [docs/pro](../../pro/README.md) "The 3-day free trial" (Stripe `trial_period_days = 3`, `trial_will_end`); not built yet | Holds once the trial ships. `/pricing` is served only with `OPENAGENTS_PRICING_PAGE=1` until then (`pricing.rs` `served`); don't turn it on before the trial works |
+| 6,000 minutes (100 machine-hours) a month; 2 vCPU, 8 GB; 2 at once; 20 GB, up to 10 saved versions; $0.18 an extra hour; hours don't roll over | `/pricing`, `/docs/pricing` | `environment-plan.json`: `included_machine_hours` 100, `machine` 2 vCPU / 8 GB, `machines_at_once` 2, `storage_gb` 20, `saved_versions` 10, `extra_hour_usd_micros` 180,000, `rollover` false | Keep; `/pricing` reads them from the plan |
+| We answer sales within one business day | `/docs/pricing`, `/contact` | The contact page's own promise (`pages/contact.rs`) | Keep |
+| "Ask for a 40 mm fan bracket" | `/` CAD Lab card | An example request, not a measured figure; CAD Lab is gated to Pro (#11693) | Keep |
+| Mock-up numbers ("+3", "1 failed", "12 passed") | `/` hero and transcript illustrations | Illustrations of one turn, not measurements | Keep |
+| "Plugin authors paid in Bitcoin" | `/` footer; film | Pay-ledger rule v1 (`crates/pay-ledger/rules/v1.toml`): the author gets the plugin's whole fee; the 402 quote ran on production (`docs/payments/2026-10-03-end-to-end-demo.md`) | Keep as how payment works. The first real paid call is the owner's step (`NEEDS_OWNER.md`); until then the film says "demo payments" |
+| 15 sats a call: 5 to OpenAgents, a 10-sat author fee; a 1,000-sat first paid call bonus | Film (revenue sharing); 290.md | The 2026-10-03 production quote (demo doc above); rule v1 `first_paid_call_msat` 1,000,000 | Keep, with "demo payments" on screen |
+| Payouts reach your wallet within a day | 290.md section 8 | [Central receive and splits](../../payments/2026-10-02-central-receive-and-splits.md), "How payouts go out": once a day for anything above 1 sat | Keep; on 290.md's recording checklist |
+| 99.7% and 99.8% of the prompt read from the cache | Film (delegation) | #11511 closing comment: 0.9965 with a delegation, 0.9977 without, from Claude Code's usage records | Keep |
+| Episode 1 on Nov 7, 2023; "three years" | Film (devday); 290.md | [Episode 1](../../transcripts/001.md): upload date 2023-11-07 | Keep |
+| "A six-letter code signs Coder in" | `docs/verse/film/launch.json` caption | The sign-in code is eight letters, `XXXX-XXXX` (`crates/tenancy/src/sessions/device.rs` `USER_CODE_LEN`) | Fixed: "An eight-letter code" |
+
+### Competitor claims removed
+
+| Claim | Where | Decision |
+| --- | --- | --- |
+| "They promised developers revenue sharing", "OpenAI DevDay: revenue sharing promised", "Shared with developers: zero" | Film (`devday` segment); 290.md section 8 | Cut. The segment is now Episode 1 to Coder 1.0, then "We're paying the people." The v2 cut predates this; `290-cut.md` lists the re-render |
+| "Most coding agents send every step to one big model" | `/` problem section; film (routing caption) | Rewritten about an agent on its own (the study's bare arm), not about other products: "On its own, a coding agent sends most steps to one big model" |
+
+The bare Claude Code arm stays in the film ("Claude Code on its own"): it is
+the measured setup, with its public page and scripts in
+[briefed-agent-ab.md](../../inference/briefed-agent-ab.md).
+
 ## Not changed here
 
 - `/download` still lists the phone apps when their links are set. The page

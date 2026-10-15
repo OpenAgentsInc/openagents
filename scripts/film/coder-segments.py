@@ -35,10 +35,10 @@ SEGMENT is one of:
               beat 2 counters, then the two runs side by side: cost per fix
               $4.00 vs $1.84, time per fix 284 s vs 121 s, 19 of 63 fixes
               accepted both ways (docs/inference/briefed-agent-ab.md, #11211).
-  devday      (10.5 s) The promise and the payout (section 8's close): a
-              timeline from OpenAI's DevDay (2023-11-06, revenue sharing
-              promised) and Episode 1 the next day to October 2026, "Shared
-              with developers: zero", then gold running out to plugin authors.
+  devday      (10.5 s) The payout (section 8's close): a timeline from
+              Episode 1 (2023-11-07) to Coder 1.0 (October 2026), then gold
+              running out to plugin authors. It names no other company
+              (#11764: the launch makes no competitor claims).
   delegation  (18.5 s) Delegation across agents. Claude Code hands a piece to
               Codex, Codex hands one to OpenCode (nesting is bounded at 2),
               each in its own worktree; short reports come back (the Report
@@ -1297,7 +1297,7 @@ def seg_savings():
     m_old = font("BerkeleyMono-Regular.ttf", 24)
     CAPS = [
         (0.9, 11.3, ["We measured it: the same big model,", "21 real issues, three runs each."]),
-        (11.6, 99, ["Half the cost, more than twice as fast,", "and nothing worse."]),
+        (11.6, 99, ["Half the cost, more than twice as fast,", "and as many fixes accepted."]),
     ]
     X0, BAR = 520.0, 960.0
     # (label, on its own, with System 1, their labels, full scale, when each bar grows)
@@ -1389,22 +1389,20 @@ def seg_savings():
 
 
 # =============================================================================
-# devday: they promised revenue sharing; we pay the people
+# devday: three years of episodes; we pay the people
 # =============================================================================
-# The series began on 2023-11-07, the day after OpenAI's DevDay, where revenue
-# sharing for builders was announced (docs/transcripts/230.md, 288.md). A
-# timeline: the promise, the first episode, three years of nothing shared,
-# then gold running out to plugin authors.
+# The series began on 2023-11-07 (docs/transcripts/230.md, 288.md). A
+# timeline: the first episode, three years, Coder 1.0, then gold running out
+# to plugin authors. The launch names no other company (#11764), so the
+# earlier DevDay mark and "Shared with developers: zero" are gone.
 def seg_devday():
     SECONDS = 10.5
     CAPS = [
-        (0.5, 5.3, ["They promised developers", "revenue sharing."]),
         (5.6, 99, ["We're paying the people."]),
     ]
     Y, XA, XB = 560.0, 360.0, 1560.0
-    MARKS = [(XA, "Nov 6, 2023", "OpenAI DevDay: revenue sharing promised", 0.8),
-             (XA + 120, "Nov 7, 2023", "Episode 1", 1.6),
-             (XB, "Oct 2026", "Shared with developers: zero", 3.6)]
+    MARKS = [(XA, "Nov 7, 2023", "Episode 1", 0.8),
+             (XB, "Oct 2026", "Coder 1.0", 3.6)]
     AUTHORS = [(1300.0 + 170 * math.cos(a), 330.0 + 120 * math.sin(a)) for a in
                [-2.9, -2.3, -1.7, -1.1, -0.5, 0.1]]
     rng = random.Random(2905)
@@ -1447,14 +1445,12 @@ def seg_devday():
 
     def words(d, t):
         captions(d, t, CAPS)
-        for j, (x, date, what, tm) in enumerate(MARKS):
+        for x, date, what, tm in MARKS:
             kk = fade(t, tm + 0.1, tm + 0.6)
             if kk <= 0:
                 continue
-            dy = 34 if j != 1 else -74
-            d.text((x - 8, Y + dy), date, font=g_small, fill=(*SECONDARY, int(255 * kk)))
-            d.text((x - 8, Y + dy + 24), what, font=g_msg if j != 1 else g_small,
-                   fill=(*CONTENT, int(255 * kk)))
+            d.text((x - 8, Y + 34), date, font=g_small, fill=(*SECONDARY, int(255 * kk)))
+            d.text((x - 8, Y + 58), what, font=g_msg, fill=(*CONTENT, int(255 * kk)))
         ka = fade(t, 5.9, 6.5)
         if ka > 0:
             centered(d, (1300.0, 395.0), "plugin authors, paid in Bitcoin", g_msg, (*SECONDARY, int(255 * ka)))

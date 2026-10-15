@@ -4,6 +4,33 @@ Draft for the owner (#11104). Nothing here is posted. Post only after every
 platform named in it is live; if one slips, take it out of the post rather
 than saying "soon".
 
+## Posting checklist
+
+Check every launch post, clip, and thread against this before it goes out
+(#11768). It applies to the posts below, the Episode 290 upload and its
+show notes, and any later launch clip.
+
+- [ ] **AI label.** Every AI-made clip carries the platform's AI label when
+  posted (X, YouTube, TikTok, Instagram and LinkedIn each have one), and
+  its caption or description says what is AI-made. That includes Verse and
+  Draconia renders, the launch film, and any AI voice (Episode 290's Bella
+  narration).
+- [ ] **Voice.** Captions and post text say "we" for OpenAgents and "I" for
+  an agent speaking in its own clip (Coder, Microcoder, Solver). Never "I"
+  for OpenAgents, never "we" for an agent.
+- [ ] **No fake personas.** No AI character or voice is presented as a real
+  person, no testimonial that didn't happen, no account but our official
+  one. Draconia and our agents appear as what they are: an animated
+  character and agents.
+- [ ] **Claims.** Every number and comparison is in [claims.md](claims.md)
+  with its evidence; no competitor claims.
+- [ ] **Live.** Every platform and feature a post names is live today.
+
+Checked 2026-10-15: the X post and thread below have no clips and no
+agent speaking; they say "we" for OpenAgents and name no persona. The
+Episode 290 script (`docs/transcripts/290.md`) puts this checklist on its
+recording-day list, since its cut uses an AI voice.
+
 ## X (one post, 245 characters)
 
 ```text

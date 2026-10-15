@@ -413,7 +413,7 @@ def meters(d, t):
         d.text((x + m_big.getlength("$2.16") + 12, y + 46), "→ you", font=g_lab, fill=(*CONTENT, int(255 * k)))
     k = fade(t, SAVE + 3.0, SAVE + 3.6) * a
     if k > 0:
-        d.text((LEFT, y + 160), "Same model, same success rate. 21 real issues, 3 runs each.",
+        d.text((LEFT, y + 160), "Same model, 19 of 63 accepted both ways. 21 real issues, 3 runs each.",
                font=g_small, fill=(*SECONDARY, int(255 * k)))
 
 

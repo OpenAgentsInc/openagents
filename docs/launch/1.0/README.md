@@ -6,8 +6,8 @@ been posted or deployed. The launch is web and terminal (Coder) only.
 | File | What it is | State |
 | --- | --- | --- |
 | [release-notes.md](release-notes.md) | Release notes for the web and the terminal | Revised 2026-10-11 against `main`; waiting on owner approval |
-| [post.md](post.md) | X post (245 characters) and a 9-part thread or blog version | Revised 2026-10-11; waiting on owner approval |
-| [claims.md](claims.md) | Every number and comparison in the launch copy, with its evidence or what was cut (#11129) | Checked 2026-10-11 |
+| [post.md](post.md) | X post (245 characters), a 9-part thread or blog version, and the posting checklist (AI labels, we/I voice, no fake personas; #11768) | Revised 2026-10-15; waiting on owner approval |
+| [claims.md](claims.md) | Every number and comparison in the launch copy, with its evidence or what was cut (#11129) | Checked 2026-10-11; the landing page, pricing, film and posts on 2026-10-15 (#11764) |
 | [`whats-new-1.0.md`](../../../crates/openagents-web/content/docs/whats-new-1.0.md) | Docs page "What's new in 1.0" | Revised 2026-10-11; waiting on owner approval; not linked into the site |
 | [operations.md](operations.md) | Rollback per platform, log checks, launch-day checklist, watch rota | Ready; the watch rota is for the owner to fill |
 
