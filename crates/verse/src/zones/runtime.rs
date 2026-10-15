@@ -631,6 +631,9 @@ impl WorldRuntime {
                 f64::from(placed.placement.scale),
             );
         }
+        if self.zone_state.cad.sync.is_some() {
+            site.cad_replica(true);
+        }
     }
 
     fn pose_cad_bodies(&mut self) {
@@ -652,6 +655,76 @@ impl WorldRuntime {
             .as_ref()?
             .cad_site()?
             .cad_report(id)
+    }
+
+    pub fn cad_bindings(&self) -> Vec<super::everglade::cad_physics::sync::Binding> {
+        self.zone_state
+            .cad
+            .placed
+            .iter()
+            .map(|p| super::everglade::cad_physics::sync::Binding {
+                id: p.placement.key().into(),
+                doc: p.placement.doc.clone(),
+                version: p.placement.version,
+                hash: p.geometry.clone(),
+                generation: p.placement.generation.clone(),
+            })
+            .collect()
+    }
+    pub fn enable_cad_sync(&mut self, account: String) {
+        self.zone_state.cad.sync = Some((account, 0));
+        if let Some(glade) = &mut self.zone_state.everglade {
+            glade.cad_site_mut().cad_replica(true);
+        }
+    }
+    pub fn take_cad_inputs(&mut self) -> Option<super::everglade::cad_physics::sync::Inputs> {
+        self.zone_state.cad.sync.as_ref()?;
+        Some(
+            self.zone_state
+                .everglade
+                .as_mut()?
+                .cad_site_mut()
+                .take_cad_inputs(),
+        )
+    }
+    pub fn apply_cad_snapshot(
+        &mut self,
+        snapshot: &super::everglade::cad_physics::sync::Snapshot,
+    ) -> Result<(), String> {
+        let (account, revision) = self
+            .zone_state
+            .cad
+            .sync
+            .as_ref()
+            .ok_or("Open your shared world first.")?;
+        if account != &snapshot.account
+            || snapshot.revision < *revision
+            || snapshot.objects.len() != self.zone_state.cad.placed.len()
+        {
+            return Err("This world's models have changed. Reload the world.".into());
+        }
+        let bindings = self.cad_bindings();
+        if snapshot
+            .objects
+            .iter()
+            .any(|o| !bindings.contains(&o.binding))
+        {
+            return Err("These models have changed. Reload the world.".into());
+        }
+        let states = snapshot
+            .objects
+            .iter()
+            .map(|o| (o.binding.id.clone(), o.state.clone()))
+            .collect();
+        self.zone_state
+            .everglade
+            .as_mut()
+            .ok_or("Open your world first.")?
+            .cad_site_mut()
+            .apply_cad_states(&states, true)?;
+        self.zone_state.cad.sync.as_mut().unwrap().1 = snapshot.revision;
+        self.pose_cad_bodies();
+        Ok(())
     }
 
     fn cad_arrival(&self) -> Vec3 {
@@ -3508,8 +3581,6 @@ impl WorldRuntime {
             if let Some(rover) = &self.zone_state.rover {
                 mesh.lit.extend(rover.lit());
             }
-            // CAD Lab models placed here (`cad_place`).
-            mesh.lit.extend(self.zone_state.cad.lit());
             everglade.see_water_from(&mut mesh, self.view(1.0).eye);
             // The player, and the seats when the pack's character draws them.
             // In first person the player's own character is not drawn.
@@ -3550,6 +3621,9 @@ impl WorldRuntime {
                     mesh.extend(&self.zone_state.sales_floor.mesh());
                 }
             }
+        }
+        for placed in &self.zone_state.cad.placed {
+            mesh.lit.extend_from_slice(&placed.vertices);
         }
         if let (Some(glade), Some(neon)) = (&self.zone_state.everglade, mesh.neon.as_mut()) {
             neon.flash_lamps = glade.flash_lamps(self.view(1.0).eye);

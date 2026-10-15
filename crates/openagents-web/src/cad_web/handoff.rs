@@ -84,11 +84,29 @@ pub(super) async fn place(
     let key = me.key(WORLD).map_err(|e| e.to_string())?;
     let file = world_file(scope, doc, n);
     let byte_count = bytes.as_ref().map_or(0, Vec::len);
+    let hash = bytes.as_ref().map(|b| format!("{:x}", Sha256::digest(b)));
     if let Some(bytes) = bytes {
         if bytes.len() > MAX_FILE_BYTES {
             return Err("This model is too large for your world.".into());
         }
-        put(store, &me.key(&file).map_err(|e| e.to_string())?, bytes).await?;
+        let key = me.key(&file).map_err(|e| e.to_string())?;
+        match store.write_key(&key, bytes.clone(), None).await {
+            Ok(_) => {}
+            Err(StoreError::Conflict) => {
+                if store
+                    .read_key(&key)
+                    .await
+                    .map_err(|e| e.to_string())?
+                    .map(|p| p.0)
+                    != Some(bytes)
+                {
+                    return Err(
+                        "This saved model changed. Save a new version before placing it.".into(),
+                    );
+                }
+            }
+            Err(e) => return Err(e.to_string()),
+        }
     }
     let copy = args["placement"].as_str().unwrap_or(doc);
     if copy.is_empty()
@@ -132,9 +150,11 @@ pub(super) async fn place(
             }
             let mut item = settings.clone();
             item["bytes"] = json!(byte_count);
+            item["sha256"] = json!(hash);
             item["id"] = json!(id);
             item["doc"] = json!(doc);
             item["version"] = json!(n);
+            item["generation"] = json!(format!("{:032x}", secp256k1::rand::random::<u128>()));
             item["file"] = json!(file);
             entries.push(item);
         }
@@ -467,6 +487,7 @@ async fn robot_build(
 pub(super) fn routes() -> Router<App> {
     Router::new()
         .route("/cad/{file}/send", post(send))
+        .merge(super::world_physics::routes())
         .route("/cad-world", get(world))
         .route("/cad-world/{asset}", get(world_asset))
         .route("/cad/{file}/robot/{n}/{project}/play", get(play))

@@ -537,7 +537,18 @@ one, casts and ends Reverse Gravity, then casts a Mega Thunderbolt. It writes
 an MP4, second-by-second PNGs, and per-frame body measurements. `--measure`
 runs the same actions without a renderer. Saved placement ids, versions,
 replacement, and removal work on native and browser clients; live physics
-is local to each view until #11682 supplies shared object authority.
+is shared between signed-in browser views through the account host (#11682);
+standalone native file placements remain local.
+
+The [two-browser check](captures/cad-sync/two-browsers.json) for #11682 uses
+separate browser storage and a synthetic account service. A held keyboard
+push moves the chassis 0.128 m; both clients receive Reverse Gravity and
+blast debris. Reload restores the broken joints, replacement and removal
+reach both views, and an old binding receives HTTP `409`. Server tests also
+check account isolation and recovery of a blast accepted before a restart.
+The [browser view](captures/cad-sync/rover.png) shows the placed rover beside
+the character; its [geometry report](captures/cad-sync/rover.json) records
+203,802 drawn vertices and their world bounds.
 
 The [12-second native capture](captures/cad-physics/cad-physics.mp4) was
 checked across all 144 frames. Each copy has 51 bodies and weighs 87.938 kg.

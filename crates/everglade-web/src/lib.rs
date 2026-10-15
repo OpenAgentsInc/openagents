@@ -13,6 +13,8 @@
 //! A native build of this crate holds only the plain data its tests cover.
 
 #[cfg(target_arch = "wasm32")]
+mod cad_sync;
+#[cfg(target_arch = "wasm32")]
 mod chamber;
 #[cfg(target_arch = "wasm32")]
 mod grid;

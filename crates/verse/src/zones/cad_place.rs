@@ -63,6 +63,8 @@ pub struct Placement {
     /// The CAD Lab document, e.g. `rover`.
     pub doc: String,
     pub version: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub generation: Option<String>,
     /// The zone's world id, e.g. `verse-everglade`.
     pub zone: String,
     /// The version's glTF (`model.glb`).
@@ -354,6 +356,7 @@ pub struct Placements {
     #[cfg(not(target_arch = "wasm32"))]
     pub source: Option<PathBuf>,
     pub supplied: bool,
+    pub sync: Option<(String, u64)>,
     clock: f32,
     pub placed: Vec<Placed>,
     /// Placements that couldn't stand, in plain words.
@@ -601,5 +604,122 @@ mod tests {
         assert!(places.refresh(ZoneId::Everglade, &path, ground, Vec3::ZERO));
         assert!(places.placed.is_empty() && places.problems.len() == 1);
         let _ = std::fs::remove_dir_all(dir);
+    }
+}
+
+#[cfg(test)]
+mod shared_tests {
+    use super::*;
+    use crate::{
+        controller::InputState,
+        runtime::WorldRuntime,
+        zones::{
+            Intent,
+            everglade::cad_physics::sync::{Object, Snapshot},
+        },
+    };
+    fn client() -> WorldRuntime {
+        let mut r = WorldRuntime::new();
+        r.install_everglade(super::super::everglade_tests::pack());
+        let placement=serde_json::from_value(serde_json::json!({"id":"shared-rover","doc":"rover","version":1,"generation":"first","zone":"verse-everglade","glb":"/cad-world/rover.glb","at":[0.,0.,-28.]})).unwrap();
+        r.install_cad_models(vec![(
+            placement,
+            include_bytes!("../../../../assets/verse/cad/rover.glb").to_vec(),
+        )])
+        .unwrap();
+        r
+    }
+    fn snapshot(r: &mut WorldRuntime, revision: u64) -> Snapshot {
+        let bindings = r.cad_bindings();
+        let states = r.everglade_zone_mut().unwrap().cad_site_mut().cad_states();
+        Snapshot {
+            account: "fixture-alice".into(),
+            revision,
+            objects: bindings
+                .into_iter()
+                .map(|binding| Object {
+                    state: states[&binding.id].clone(),
+                    binding,
+                })
+                .collect(),
+        }
+    }
+    #[test]
+    fn two_native_views_follow_each_solid_and_reject_foreign_or_stale_snapshots() {
+        let mut authority = client();
+        let mut a = client();
+        let mut b = client();
+        a.enable_cad_sync("fixture-alice".into());
+        b.enable_cad_sync("fixture-alice".into());
+        authority.set_spawn(Vec3::new(0., 0., -30.), 0.).unwrap();
+        let initial = snapshot(&mut authority, 1);
+        for _ in 0..30 {
+            authority.tick(
+                &InputState {
+                    forward: true,
+                    ..Default::default()
+                },
+                1. / 60.,
+            );
+        }
+        authority.set_spawn(Vec3::new(0., 0., -32.), 0.).unwrap();
+        authority.zone_intent(Intent::ReverseGravity).unwrap();
+        for _ in 0..90 {
+            authority.tick(&InputState::default(), 1. / 60.);
+        }
+        let center = Vec3::from_array(
+            authority.cad_report("shared-rover").unwrap().positions[0].map(|x| x as f32),
+        );
+        authority
+            .everglade_zone_mut()
+            .unwrap()
+            .cad_site_mut()
+            .explode(center, 8., 0, 68.);
+        for _ in 0..10 {
+            authority.tick(&InputState::default(), 1. / 60.);
+        }
+        let shared = snapshot(&mut authority, 2);
+        assert_ne!(shared.objects[0].state, initial.objects[0].state);
+        assert!(shared.objects[0].state.broken.iter().any(|b| *b));
+        for r in [&mut a, &mut b] {
+            r.apply_cad_snapshot(&shared).unwrap();
+            let geometry = &r.cad_placed()[0].vertices;
+            assert!(!geometry.is_empty());
+            assert!(
+                r.dynamic_mesh()
+                    .lit
+                    .windows(geometry.len())
+                    .any(|drawn| drawn == geometry),
+                "the frame must include the CAD solids"
+            );
+            let report = r.cad_report("shared-rover").unwrap();
+            r.tick(&InputState::default(), 1. / 60.);
+            assert_eq!(
+                r.cad_report("shared-rover").unwrap().positions,
+                report.positions
+            );
+            assert!(r.apply_cad_snapshot(&initial).is_err());
+            let mut foreign = shared.clone();
+            foreign.account = "another-account".into();
+            assert!(r.apply_cad_snapshot(&foreign).is_err());
+            let mut stale = shared.clone();
+            stale.objects[0].binding.version = 0;
+            assert!(r.apply_cad_snapshot(&stale).is_err());
+        }
+        assert_eq!(
+            a.cad_report("shared-rover").unwrap().positions,
+            b.cad_report("shared-rover").unwrap().positions
+        );
+        assert_eq!(
+            a.cad_report("shared-rover").unwrap().orientations,
+            b.cad_report("shared-rover").unwrap().orientations
+        );
+        let mut reconnect = client();
+        reconnect.enable_cad_sync("fixture-alice".into());
+        reconnect.apply_cad_snapshot(&shared).unwrap();
+        assert_eq!(
+            reconnect.cad_report("shared-rover").unwrap().positions,
+            a.cad_report("shared-rover").unwrap().positions
+        );
     }
 }

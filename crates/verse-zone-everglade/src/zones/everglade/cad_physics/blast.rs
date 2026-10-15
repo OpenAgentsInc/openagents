@@ -120,7 +120,7 @@ fn decay(p: f64, t: f64, i: f64) -> f64 {
 }
 
 /// The blast wave of `charge` kg TNT where it reaches `distance` m.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Wave {
     /// When the shock arrives, s after the burst.
     pub arrival: f64,

@@ -411,6 +411,8 @@ pub struct Site {
     /// CAD assemblies share contacts and solver steps with the town's debris.
     cad: BTreeMap<String, super::super::cad_physics::Rig>,
     cad_gravity: Option<verse_world::reverse_gravity::Gravity>,
+    cad_remote: bool,
+    cad_inputs: super::super::cad_physics::sync::Inputs,
     cad_winds: Vec<verse_world::wind_wall::WindWall>,
     cad_height: Option<fn(f32, f32) -> f32>,
     cad_ground: BTreeMap<(i32, i32), Option<BodyId>>,
@@ -615,6 +617,52 @@ impl Site {
     }
 
     /// Uses the zone's live spell and the player's contact push.
+    pub fn cad_replica(&mut self, enabled: bool) {
+        self.cad_remote = enabled;
+        for id in self.cad.values().flat_map(|r| &r.bodies) {
+            self.world[*id].kind = if enabled {
+                physics::BodyKind::Static
+            } else {
+                physics::BodyKind::Dynamic
+            };
+        }
+    }
+    pub fn take_cad_inputs(&mut self) -> super::super::cad_physics::sync::Inputs {
+        super::super::cad_physics::sync::Inputs {
+            forces: self.cad_inputs.forces.clone(),
+            blasts: std::mem::take(&mut self.cad_inputs.blasts),
+        }
+    }
+    pub fn cad_states(
+        &self,
+    ) -> std::collections::BTreeMap<String, super::super::cad_physics::sync::State> {
+        self.cad
+            .iter()
+            .map(|(id, rig)| (id.clone(), rig.shared_state(&self.world)))
+            .collect()
+    }
+    pub fn apply_cad_states(
+        &mut self,
+        states: &std::collections::BTreeMap<String, super::super::cad_physics::sync::State>,
+        replica: bool,
+    ) -> Result<(), String> {
+        if states.len() != self.cad.len()
+            || states
+                .iter()
+                .any(|(id, s)| self.cad.get(id).is_none_or(|r| !r.valid_state(s)))
+        {
+            return Err("These models have changed. Reload the world.".into());
+        }
+        for (id, state) in states {
+            self.cad
+                .get_mut(id)
+                .unwrap()
+                .apply_state(&mut self.world, state, replica)?;
+        }
+        self.cad_replica(replica);
+        Ok(())
+    }
+
     pub fn cad_forces(
         &mut self,
         gravity: Option<verse_world::reverse_gravity::Gravity>,
@@ -623,6 +671,15 @@ impl Site {
         push: Vec3,
         dt: f32,
     ) {
+        self.cad_inputs.forces = super::super::cad_physics::sync::Forces {
+            player,
+            push,
+            gravity,
+            winds: winds.clone(),
+        };
+        if self.cad_remote {
+            return;
+        }
         self.cad_gravity = gravity;
         self.cad_winds = winds
             .into_iter()
@@ -658,6 +715,8 @@ impl Site {
             world: World::new(STEP),
             cad: BTreeMap::new(),
             cad_gravity: None,
+            cad_remote: false,
+            cad_inputs: Default::default(),
             cad_winds: Vec::new(),
             cad_height: None,
             cad_ground: BTreeMap::new(),
@@ -1438,13 +1497,24 @@ impl Site {
         speed: f32,
         face: Vec3,
     ) -> Vec<Blow> {
+        if self.cad_remote && self.cad_inputs.blasts.len() < 16 {
+            self.cad_inputs
+                .blasts
+                .push(super::super::cad_physics::sync::Blast {
+                    center,
+                    radius,
+                    speed,
+                });
+        }
         let c = center.as_dvec3();
         let face = face.as_dvec3().normalize_or_zero();
         self.last_blast = Some(c);
         let (radius, speed) = (f64::from(radius), f64::from(speed));
         let now = self.world.time();
-        for rig in self.cad.values_mut() {
-            rig.blast(&self.world, c, radius, speed / 17., now);
+        if !self.cad_remote {
+            for rig in self.cad.values_mut() {
+                rig.blast(&self.world, c, radius, speed / 17., now);
+            }
         }
         let cad_bodies: Vec<_> = self
             .cad
@@ -2513,13 +2583,17 @@ impl Site {
                 }
             }
             for rig in self.cad.values_mut() {
-                rig.press(&mut self.world, now + f64::from(step) * h, h);
+                if !self.cad_remote {
+                    rig.press(&mut self.world, now + f64::from(step) * h, h);
+                }
             }
             self.world.step(&gravity);
             detect += self.world.stats.detect;
             solve += self.world.stats.solve;
             for rig in self.cad.values_mut() {
-                rig.after_step(&mut self.world);
+                if !self.cad_remote {
+                    rig.after_step(&mut self.world);
+                }
             }
         }
         self.world.dt = STEP;

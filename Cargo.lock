@@ -11646,6 +11646,7 @@ dependencies = [
  "discovery",
  "futures-util",
  "github-actions",
+ "glam",
  "hmac 0.12.1",
  "hyper",
  "hyper-util",
@@ -11698,6 +11699,7 @@ dependencies = [
  "ttf-parser",
  "url",
  "user-home",
+ "verse",
  "workbench",
  "zip 3.0.0",
 ]

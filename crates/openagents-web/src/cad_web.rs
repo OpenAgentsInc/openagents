@@ -42,6 +42,7 @@ mod configurator;
 mod handoff;
 mod imports;
 mod sales;
+mod world_physics;
 #[cfg(test)]
 pub(crate) use sales::tests::fake_wallet as fake_sale_wallet;
 

@@ -10,8 +10,11 @@ description = "Snap Station in a browser: drag-and-snap building and the Go run,
 crate-type = ["cdylib", "rlib"]
 
 [features]
+default = ["browser"]
+# Native and Verse hosts reuse meshes without starting a browser app.
+browser = []
 # For captures only: the built-in bot builds each job.
-autoplay = []
+autoplay = ["browser"]
 
 [dependencies]
 snap-rules = { path = "../snap-rules" }

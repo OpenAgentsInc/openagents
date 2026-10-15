@@ -39,8 +39,17 @@ needed on the web server.
 
 For #11680, deploy the rebuilt Everglade WASM and place two named copies with
 a dedicated test account. Check pushing, Reverse Gravity, and replacement or
-removal. Physics runs locally in each visitor’s view; #11682 tracks sharing
-ongoing motion and broken joints.
+removal. Deploy #11682's server and browser changes together to share ongoing
+motion and broken joints.
+
+## Deploy shared CAD physics (#11682)
+
+After refreshing the cloud deployment login, ship the web server and rebuild
+Everglade's WASM with `scripts/build-everglade-web.sh`. Open the same account's
+world in two browsers, push a placed model, cast Reverse Gravity, and check
+that both show the same loose parts. Reload the second browser, then replace
+and remove a copy. Automated checks use an isolated local account service;
+this session does not deploy or use a real account.
 
 ## Deploy Snap Station and check devices (#11674, #11675, #11676, #11677)
 

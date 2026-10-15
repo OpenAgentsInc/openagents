@@ -472,10 +472,14 @@ its bodies. Native and browser builds use the same Rust path. New GLB exports
 carry material densities and joint frames; older GLBs without that data use
 aluminium and fixed seams. The committed rover also loads its checked report.
 
-Physics runs locally in each visitor's view, as town debris currently does;
-ongoing poses and broken joints are not shared between visitors. #11682 tracks
-shared authority and updates. The placement list still belongs to the
-signed-in account.
+The signed-in account's browser worlds share CAD physics through the web
+host. Pushes, Reverse Gravity, wind, and blasts update one simulation; the
+other views receive every solid's position, rotation, velocity, and broken
+joints. Reopening restores the latest saved state. A new model version or
+saved copy replaces its bodies, and removal removes them from every view.
+Updates for another account or an older model are refused. Standalone native
+file placements still run locally; native hosts can use the same bounded
+snapshot and input API when connected to the account host.
 `cad_place_capture OUT.png` (a `verse` example) photographs a native placement.
 The [native physics capture](../verse/captures/cad-physics/cad-physics.mp4)
 shows two copies, a push, Reverse Gravity, and a blast; the

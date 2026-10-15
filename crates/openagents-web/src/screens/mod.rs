@@ -229,6 +229,22 @@ pub(crate) const NOT_SCREENS: &[(&str, &str)] = &[
         "the CAD engine's code and styles, for the CAD page, and a design's page, which shows a person's own model",
     ),
     ("/cad/{file}/file", "a design's files"),
+    (
+        "/cad-config/*",
+        "a live shared CAD configurator and its model",
+    ),
+    ("/cad-order/*", "a person's CAD order and downloads"),
+    ("/cad-purchases", "a person's purchased designs"),
+    ("/cad-shop*", "live listings of CAD designs"),
+    (
+        "/cad-world*",
+        "private CAD models and their shared movement",
+    ),
+    ("/cad/{file}/configurator", "a design's sharing settings"),
+    (
+        "/cad/{file}/robot/*",
+        "a live Robot Lab canvas and its model files",
+    ),
     ("/chat/cad/doc.js", "a design page's script"),
     (
         "/studios/blue-rush*",

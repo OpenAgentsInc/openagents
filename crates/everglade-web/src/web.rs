@@ -225,9 +225,9 @@ fn first_line(error: &str) -> String {
 }
 
 /// Everything the frame loop owns.
-struct Page {
+pub(crate) struct Page {
     canvas: HtmlCanvasElement,
-    runtime: WorldRuntime,
+    pub(crate) runtime: WorldRuntime,
     renderer: Draw,
     input: Input,
     rendered_revision: u64,
@@ -559,6 +559,7 @@ async fn run() -> Result<(), String> {
         draw_atlas: None,
     }));
     listen(&window, &page)?;
+    crate::cad_sync::start(window.clone(), page.clone());
     animate(window, page);
     Ok(())
 }
@@ -646,7 +647,10 @@ async fn run_grid(
 }
 
 /// Loads only the signed-in person's CAD copies, with same-origin credentials.
-async fn load_cad_models(window: &Window, runtime: &mut WorldRuntime) -> Result<(), String> {
+pub(crate) async fn fetch_cad_models(
+    window: &Window,
+    zone: &str,
+) -> Result<Vec<(zones::cad_place::Placement, Vec<u8>)>, String> {
     let init = RequestInit::new();
     init.set_credentials(RequestCredentials::SameOrigin);
     init.set_redirect(RequestRedirect::Error);
@@ -656,7 +660,7 @@ async fn load_cad_models(window: &Window, runtime: &mut WorldRuntime) -> Result<
         .dyn_into()
         .map_err(|_| "Your CAD models couldn't be loaded.")?;
     if !response.ok() {
-        return Ok(());
+        return Ok(Vec::new());
     }
     let text = JsFuture::from(
         response
@@ -678,7 +682,7 @@ async fn load_cad_models(window: &Window, runtime: &mut WorldRuntime) -> Result<
     let mut models = Vec::new();
     let mut total = 0;
     for entry in list {
-        if entry["zone"].as_str() != Some(runtime.zone.world_id()) {
+        if entry["zone"].as_str() != Some(zone) {
             continue;
         }
         let url = entry["glb"]
@@ -711,19 +715,17 @@ async fn load_cad_models(window: &Window, runtime: &mut WorldRuntime) -> Result<
             serde_json::from_value(entry).map_err(|_| "A CAD placement couldn't be read.")?;
         models.push((placement, bytes));
     }
+    Ok(models)
+}
+async fn load_cad_models(window: &Window, runtime: &mut WorldRuntime) -> Result<(), String> {
+    let models = fetch_cad_models(window, runtime.zone.world_id()).await?;
     let count = runtime.install_cad_models(models)?;
-    if count > 0 && query_has(window, "frames") {
-        let models:Vec<_>=runtime.cad_placed().iter().map(|p|serde_json::json!({"doc":p.placement.doc,"version":p.placement.version,"origin":p.origin.to_array(),"size":p.size.to_array(),"triangles":p.vertices.len()/3})).collect();
-        web_sys::console::info_1(&JsValue::from_str(&format!(
-            "Everglade CAD {}",
-            serde_json::json!({"models":models})
-        )));
+    if count > 0 {
+        runtime.enable_cad_sync(String::new());
     }
     Ok(())
 }
 
-/// Fetches the pinned pack from this origin with progress, bounded by its
-/// pinned length. The runtime checks its length and digest on install.
 async fn download(window: &Window) -> Result<Vec<u8>, String> {
     let url = format!(
         "/everglade/pack/{}.{}",
@@ -1599,7 +1601,7 @@ fn on<E: JsCast + 'static>(
 
 /// Shows `text` in the status element, creating it over the canvas when the
 /// page has none.
-fn status(text: &str) {
+pub(crate) fn status(text: &str) {
     let Some(document) = web_sys::window().and_then(|w| w.document()) else {
         return;
     };
@@ -1619,7 +1621,7 @@ fn progress(received: u64, total: u64) {
     ));
 }
 
-fn hide_status(document: &Document) {
+pub(crate) fn hide_status(document: &Document) {
     if let Some(element) = document
         .get_element_by_id(STATUS_ID)
         .and_then(|e| e.dyn_into::<HtmlElement>().ok())

@@ -79,7 +79,7 @@ web-sys = { version = "0.3", features = [
     "Response",
     "Storage",
     "WheelEvent",
-    "Window",
+    "Window", "Crypto", "Headers",
     "console",
 ] }
 

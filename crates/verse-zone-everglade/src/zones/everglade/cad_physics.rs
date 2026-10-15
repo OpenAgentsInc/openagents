@@ -4,6 +4,7 @@
 
 use crate::pbr::LitVertex;
 pub mod blast;
+pub mod sync;
 /// Pin and standing-load settings shared with the meteor scene.
 pub const PIN_EFFICIENCY: f64 = 0.15;
 pub const PIN_LENGTH: f64 = 0.04;
@@ -459,7 +460,7 @@ struct Seam {
     broken: bool,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 struct Load {
     body: usize,
     wave: blast::Wave,
@@ -467,7 +468,7 @@ struct Load {
     clearing: f64,
     direction: DVec3,
 }
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 struct Burst {
     start: f64,
     until: f64,

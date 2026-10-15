@@ -51,7 +51,7 @@ browser-chamber = ["web", "verse-imported/chamber-client", "verse-world/reach-cl
 dev-destruction = ["verse-zone-everglade/dev-destruction"]
 
 [dependencies]
-snap-web = { path = "../snap-web" }
+snap-web = { path = "../snap-web", default-features = false }
 snap-rules = { path = "../snap-rules" }
 verse-game = { path = "../verse-game" }
 robot-lab = { path = "../robot-lab" }
