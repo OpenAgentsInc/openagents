@@ -33,27 +33,11 @@ const HOW: &str = "/docs/coder-how-it-works";
 const GITHUB: &str = "https://github.com/OpenAgentsInc/openagents";
 const X: &str = "https://x.com/OpenAgentsInc";
 
-/// Our screenshots: path, picture, title and line.
-const SHOTS: [(&str, &[u8], &str, &str); 3] = [
-    (
-        "/landing/web-cad.jpg",
-        include_bytes!("../../static/landing/web-cad.jpg"),
-        "Design by talking",
-        "Describe a part, then pick a face and change it.",
-    ),
-    (
-        "/landing/web-measure.jpg",
-        include_bytes!("../../static/landing/web-measure.jpg"),
-        "Every edit checked",
-        "Measure it, cut a section, compare versions.",
-    ),
-    (
-        "/landing/phone-coder.jpg",
-        include_bytes!("../../static/landing/phone-coder.jpg"),
-        "Coder on your phone",
-        "Follow every step it takes, wherever you are.",
-    ),
-];
+/// The one screenshot: an example of what people make with OpenAgents.
+const CAD_SHOT: (&str, &[u8]) = (
+    "/landing/web-cad.jpg",
+    include_bytes!("../../static/landing/web-cad.jpg"),
+);
 
 /// The agents Coder sits in front of, as the docs' diagram names them.
 const AGENTS: [&str; 6] = [
@@ -66,7 +50,8 @@ const AGENTS: [&str; 6] = [
 ];
 
 pub(crate) fn routes() -> Router<App> {
-    let mut router = Router::new()
+    let (path, bytes) = CAD_SHOT;
+    Router::new()
         .route(
             "/landing",
             get(|headers: HeaderMap| async move {
@@ -76,17 +61,13 @@ pub(crate) fn routes() -> Router<App> {
         .route(
             CSS_PATH,
             get(|| async { ([(header::CONTENT_TYPE, "text/css; charset=utf-8")], CSS) }),
-        );
-    for (path, bytes, _, _) in SHOTS {
-        router =
-            router.route(
-                path,
-                get(move || async move {
-                    ([(header::CONTENT_TYPE, "image/jpeg")], bytes).into_response()
-                }),
-            );
-    }
-    router
+        )
+        .route(
+            path,
+            get(move || async move {
+                ([(header::CONTENT_TYPE, "image/jpeg")], bytes).into_response()
+            }),
+        )
 }
 
 /// Initium's Button styles, as a link: `default`, `outline`, and `3d`.
@@ -241,16 +222,56 @@ fn routing_pictures() -> Markup {
     }
 }
 
-fn shots_tray() -> Markup {
+/// A typical Coder turn, step by step, as the transcript shows it: what it
+/// read, what it ran, what it changed, and the check that passed.
+fn transcript_demo() -> Markup {
     html! {
-        div.tray {
-            @for (path, _, title, line) in SHOTS {
-                figure.tray-shot {
-                    img src=(path) alt=(title) loading="lazy";
-                    figcaption { strong { (title) } span { (line) } }
+        div.transcript data-slot="transcript" aria-label="A Coder turn, step by step" {
+            p.transcript-ask { "The total in the cart is off by one. Fix it." }
+            ol.transcript-steps {
+                li.transcript-step {
+                    span.step-mark.step-ok {} span.step-tool { "Read" } code { "src/cart.rs" }
+                    em { "small model" }
+                }
+                li.transcript-step {
+                    span.step-mark.step-fail {} span.step-tool { "Bash" } code { "cargo test cart" }
+                    em { "1 failed" }
+                }
+                li.transcript-step.transcript-open {
+                    span.step-mark.step-ok {} span.step-tool { "Edit" } code { "src/cart.rs" }
+                    em { "big model" }
+                    pre.transcript-diff {
+                        span.diff-del { "-    (0..=items.len()).map(|i| items[i].price).sum()" } "\n"
+                        span.diff-add { "+    items.iter().map(|item| item.price).sum()" }
+                    }
+                }
+                li.transcript-step {
+                    span.step-mark.step-ok {} span.step-tool { "Bash" } code { "cargo test cart" }
+                    em { "12 passed" }
                 }
             }
+            p.transcript-answer { "Fixed: the sum read one item past the end. The cart tests pass." }
         }
+    }
+}
+
+/// The example card: one thing people make with OpenAgents.
+fn cad_example() -> Markup {
+    html! {
+        figure.example-card data-slot="card" {
+            img src=(CAD_SHOT.0) alt="A fan mounting bracket designed in a chat on OpenAgents" loading="lazy";
+            figcaption {
+                span.example-tag { "Example" }
+                strong { "Design a part by talking" }
+                span { "Ask for a 40 mm fan bracket, then pick a face and change it. Every version is kept to compare." }
+            }
+        }
+    }
+}
+
+fn everywhere_pictures() -> Markup {
+    html! {
+        div.everywhere { (transcript_demo()) (cad_example()) }
     }
 }
 
@@ -432,9 +453,9 @@ pub(crate) fn page(theme: Option<openagents_ui::shell::Theme>) -> Markup {
                         diagram("/static/docs/coder-holds.svg", "Hard-to-undo steps wait for you."), false, false,
                     ))
                     (feature_section(
-                        "everywhere", "Everywhere", "On the web and on your phone",
-                        &["Start in the terminal, follow along on your phone, or design and check a part on the web."],
-                        None, shots_tray(), true, true,
+                        "everywhere", "Every step in view", "See what it read, ran, and changed",
+                        &["Each step shows as it happens, with the model that did it. Follow along in the terminal, on the web, or on your phone, and build more than code."],
+                        None, everywhere_pictures(), true, true,
                     ))
                     (steps_section())
                     (pricing_section())
@@ -478,11 +499,8 @@ mod tests {
         ] {
             assert!(page.contains(&format!("/static/docs/{svg}.svg")), "{svg}");
         }
-        for (path, bytes, title, _) in SHOTS {
-            assert!(page.contains(path), "{path}");
-            assert!(page.contains(title), "{title}");
-            assert!(bytes.starts_with(&[0xFF, 0xD8]), "{path} is a JPEG");
-        }
+        assert!(page.contains(CAD_SHOT.0) && CAD_SHOT.1.starts_with(&[0xFF, 0xD8]));
+        assert!(page.contains("data-slot=\"transcript\""));
         // Pro's price is the one /pricing sells.
         let plan = retail_cloud::environment::plan();
         assert!(page.contains(&retail_cloud::environment::usd(plan.price_usd_micros)));
