@@ -930,8 +930,12 @@ pub(crate) fn serve_front<S: ReplayStore + Send + Sync + 'static>(
     openagents_x402::server::serve_with(listener, stop, move |request| {
         let now = openagents_x402::unix_now();
         if let Some(hosted) = &hosted
-            && let Some((response, outcome)) =
-                hosted.answer(request, &front.pay_to(), front.config().network, now)
+            && let Some((response, outcome)) = hosted.answer_for(
+                request,
+                &|resource| front.pay_to_for_resource(&format!("x:{resource}")),
+                front.config().network,
+                now,
+            )
         {
             log(&json!({"method": request.method, "target": request.target,
                         "status": response.status, "outcome": outcome}));

@@ -874,6 +874,11 @@ fn resource_receiver_switch_keeps_original_invoices_and_other_routes() {
         .front
         .with_resource_receiver("api:messages", secondary.clone(), true)
         .unwrap();
+    assert_eq!(
+        f.front.pay_to_for_resource("api:messages"),
+        secondary.pay_to()
+    );
+    assert_eq!(f.front.pay_to_for_resource("api:invoke"), f.node.pay_to());
     let on_lnd = f.front.handle(&request(), NOW).0;
     let terms = decode_payment_required(header(&on_lnd, PAYMENT_REQUIRED).unwrap()).unwrap();
     assert_eq!(terms.accepts[0].pay_to, secondary.pay_to());

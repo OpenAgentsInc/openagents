@@ -494,6 +494,10 @@ impl<S: ReplayStore> Front<S> {
         self.receiver.pay_to()
     }
 
+    pub fn pay_to_for_resource(&self, resource: &str) -> String {
+        self.issuer(resource).pay_to()
+    }
+
     fn requirements(
         &self,
         resource: &str,

@@ -329,10 +329,21 @@ impl Hosted {
     }
 
     /// The registration and key endpoints; `None` for any other request.
+    #[cfg(test)]
     pub(crate) fn answer(
         &self,
         request: &Request,
         pay_to: &str,
+        network: &str,
+        now: u64,
+    ) -> Option<(Response, &'static str)> {
+        self.answer_for(request, &|_| pay_to.to_owned(), network, now)
+    }
+
+    pub(crate) fn answer_for(
+        &self,
+        request: &Request,
+        pay_to: &dyn Fn(&str) -> String,
         network: &str,
         now: u64,
     ) -> Option<(Response, &'static str)> {
@@ -375,7 +386,10 @@ impl Hosted {
         }
         Some(match self.registry.get(name) {
             Some(entry) => (
-                Response::json(200, &self.public(&entry, pay_to, network)),
+                Response::json(
+                    200,
+                    &self.public(&entry, &pay_to(&entry.registration.resource), network),
+                ),
                 "registration",
             ),
             None => (
@@ -404,7 +418,7 @@ impl Hosted {
     fn register(
         &self,
         request: &Request,
-        pay_to: &str,
+        pay_to: &dyn Fn(&str) -> String,
         network: &str,
         now: u64,
     ) -> (Response, &'static str) {
@@ -481,7 +495,10 @@ impl Hosted {
             );
         }
         (
-            Response::json(201, &self.public(&entry, pay_to, network)),
+            Response::json(
+                201,
+                &self.public(&entry, &pay_to(&entry.registration.resource), network),
+            ),
             "registered",
         )
     }
