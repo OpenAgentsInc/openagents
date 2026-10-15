@@ -93,6 +93,14 @@ const VERSION: &[Declared] = &[Declared::computer("", Effect::ReadOnly)];
 const CAPABILITIES: &[Declared] = &[Declared::computer("", Effect::ReadOnly)];
 const MCP: &[Declared] = &[Declared::computer("serve", Effect::LongRunning)];
 const COMPLETIONS: &[Declared] = &[Declared::computer("", Effect::ReadOnly)];
+// Groups whose USAGE isn't in the tree's grammar, declared as a whole
+// at their strongest effect: NIP-WORK and NIP-WS stores on this computer
+// (`--state DIR`) take signed grants (`work control`, `workspace grant`);
+// `registry publish` and `trajectory publish` sign and send.
+const WORK: &[Declared] = &[Declared::computer("", Effect::Grants)];
+const WORKSPACE: &[Declared] = &[Declared::computer("", Effect::Grants)];
+const REGISTRY: &[Declared] = &[Declared::computer("", Effect::Publishes)];
+const TRAJECTORY: &[Declared] = &[Declared::computer("", Effect::Publishes)];
 const PYLON: &[Declared] = &[
     // Decision serving setup (#11635): doctor only reads; setup and update
     // fetch the pinned model; start runs Psionic and serves.
@@ -209,6 +217,10 @@ pub fn help() -> Vec<GroupHelp<'static>> {
             crate::connect::EFFECTS,
         ),
         group("pair", None, PAIR),
+        group("work", None, WORK),
+        group("workspace", None, WORKSPACE),
+        group("registry", None, REGISTRY),
+        group("trajectory", None, TRAJECTORY),
         group(
             "computer",
             Some(crate::computer::USAGE),

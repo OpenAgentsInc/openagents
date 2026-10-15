@@ -3438,6 +3438,86 @@
       ]
     },
     {
+      "name": "work",
+      "summary": "Track work, proposals, and scoped views (NIP-WORK).",
+      "leaf": {
+        "path": [
+          "work"
+        ],
+        "usage": [
+          "openagents work"
+        ],
+        "forms": [
+          {
+            "tokens": []
+          }
+        ],
+        "summary": "Track work, proposals, and scoped views (NIP-WORK).",
+        "effect": "grants",
+        "runs_on": "connected_computer"
+      }
+    },
+    {
+      "name": "workspace",
+      "summary": "Read versioned documents and synchronize scoped views (NIP-WS).",
+      "leaf": {
+        "path": [
+          "workspace"
+        ],
+        "usage": [
+          "openagents workspace"
+        ],
+        "forms": [
+          {
+            "tokens": []
+          }
+        ],
+        "summary": "Read versioned documents and synchronize scoped views (NIP-WS).",
+        "effect": "grants",
+        "runs_on": "connected_computer"
+      }
+    },
+    {
+      "name": "registry",
+      "summary": "Browse signed plugin catalogs and select packages (NIP-REG).",
+      "leaf": {
+        "path": [
+          "registry"
+        ],
+        "usage": [
+          "openagents registry"
+        ],
+        "forms": [
+          {
+            "tokens": []
+          }
+        ],
+        "summary": "Browse signed plugin catalogs and select packages (NIP-REG).",
+        "effect": "publishes",
+        "runs_on": "connected_computer"
+      }
+    },
+    {
+      "name": "trajectory",
+      "summary": "Share private trajectories or explicitly publish them (NIP-ATIF).",
+      "leaf": {
+        "path": [
+          "trajectory"
+        ],
+        "usage": [
+          "openagents trajectory"
+        ],
+        "forms": [
+          {
+            "tokens": []
+          }
+        ],
+        "summary": "Share private trajectories or explicitly publish them (NIP-ATIF).",
+        "effect": "publishes",
+        "runs_on": "connected_computer"
+      }
+    },
+    {
       "name": "chat",
       "summary": "Talk to OpenAgents, the chat router: send a message, continue a thread, list, read, and export threads as ATIF.",
       "children": [
@@ -4355,7 +4435,7 @@
               "chat"
             ],
             "usage": [
-              "chat [-p TEXT | --prompt-file FILE | --stdin] [--session ID] [--delegation ID] [--instructions TEXT | --instructions-file FILE] [--mode auto|coder|codex] [--in-place] [--demo]"
+              "chat [-p TEXT | --prompt-file FILE | --stdin] [--session ID] [--delegation ID] [--instructions TEXT | --instructions-file FILE] [--mode auto|coder|codex|opencode] [--in-place] [--demo]"
             ],
             "forms": [
               {
@@ -4417,11 +4497,12 @@
                   {
                     "kind": "option",
                     "name": "mode",
-                    "value": "auto|coder|codex",
+                    "value": "auto|coder|codex|opencode",
                     "choices": [
                       "auto",
                       "coder",
-                      "codex"
+                      "codex",
+                      "opencode"
                     ],
                     "optional": true
                   },
@@ -5195,7 +5276,7 @@
                     ]
                   }
                 ],
-                "summary": "Choose model and generation settings.",
+                "summary": "Choose model and generation settings. A harness (opencode, opencode/MODEL, claude-code, codex) starts new chats on it, as /models does; auto undoes it.",
                 "effect": "local_write",
                 "runs_on": "connected_computer"
               }
@@ -5801,11 +5882,12 @@
         {
           "kind": "option",
           "name": "mode",
-          "value": "auto|coder|codex",
+          "value": "auto|coder|codex|opencode",
           "choices": [
             "auto",
             "coder",
-            "codex"
+            "codex",
+            "opencode"
           ],
           "optional": true,
           "repeated": true
@@ -31378,7 +31460,7 @@
               "reconcile"
             ],
             "usage": [
-              "reconcile --ledger FILE [--spark-home DIR] [--report-dir DIR] [--resolve]"
+              "reconcile --ledger FILE [--routes FILE] [--spark-home DIR] [--report-dir DIR] [--resolve]"
             ],
             "forms": [
               {
@@ -31392,6 +31474,13 @@
                     "name": "ledger",
                     "value": "FILE",
                     "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "routes",
+                    "value": "FILE",
+                    "open": true,
+                    "optional": true
                   },
                   {
                     "kind": "option",
