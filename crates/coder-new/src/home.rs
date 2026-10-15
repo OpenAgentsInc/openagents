@@ -231,8 +231,11 @@ mod tests {
             "a"
         );
         assert!(new.join("attachments/x.png").is_file());
-        assert!(fs::symlink_metadata(&old).unwrap().is_symlink());
-        assert!(old.join("account.json").is_file());
+        // The link back is made on Unix only (`migrate`), #11695.
+        if cfg!(unix) {
+            assert!(fs::symlink_metadata(&old).unwrap().is_symlink());
+            assert!(old.join("account.json").is_file());
+        }
         assert!(!migrate(root.path()).unwrap());
     }
 

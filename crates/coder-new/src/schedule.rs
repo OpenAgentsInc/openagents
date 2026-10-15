@@ -422,6 +422,8 @@ mod tests {
     use crate::Mode;
 
     #[test]
+    // Schedules run through the Unix background runner (#11695).
+    #[cfg(unix)]
     fn schedules_read_their_words() {
         assert_eq!(
             parse("weekdays 9am triage the new issues").unwrap(),

@@ -505,13 +505,15 @@ pub fn snapshot(cwd: &Path) -> Option<String> {
         &["rev-parse", "--path-format=absolute", "--git-path", "index"],
         None,
     )?;
-    let scratch = tempfile::NamedTempFile::new().ok()?;
-    if std::fs::copy(&real, scratch.path()).is_err() {
-        // A repository with nothing staged yet has no index: start empty.
-        let _ = std::fs::remove_file(scratch.path());
-    }
-    git(&["add", "-A"], Some(scratch.path()))?;
-    git(&["write-tree"], Some(scratch.path()))
+    // A path in a folder of its own, not an open temporary file: Git
+    // replaces the index by renaming over it, which Windows refuses for a
+    // file that is still open (#11695).
+    let scratch = tempfile::tempdir().ok()?;
+    let index = scratch.path().join("index");
+    // A repository with nothing staged yet has no index: start empty.
+    let _ = std::fs::copy(&real, &index);
+    git(&["add", "-A"], Some(&index))?;
+    git(&["write-tree"], Some(&index))
 }
 
 /// The change between two trees: the unified diff, and the per-file line

@@ -3651,7 +3651,11 @@ esac
                 (OsString::from("CARGO_TARGET_DIR"), OsString::from("/t")),
                 (
                     OsString::from("PATH"),
-                    OsString::from("/opt/coder:/old/bin:/bin")
+                    // This platform's separator before the old PATH (#11695).
+                    OsString::from(format!(
+                        "/opt/coder{}/old/bin:/bin",
+                        if cfg!(windows) { ';' } else { ':' }
+                    ))
                 ),
             ]
         );

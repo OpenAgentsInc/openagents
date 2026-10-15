@@ -216,6 +216,9 @@ pub fn dropped_paths(text: &str, cwd: &Path) -> Option<Vec<PathBuf>> {
     let mut chars = text.chars();
     while let Some(c) = chars.next() {
         match (quote, c) {
+            // A Unix shell escapes with `\`; on Windows it separates folders
+            // in a dropped `C:\Users\...` path (#11695).
+            (None, '\\') if cfg!(windows) => current.push(c),
             (None, '\\') => current.push(chars.next()?),
             (None, '\'' | '"') => quote = Some(c),
             (Some(q), c) if c == q => quote = None,
@@ -236,7 +239,21 @@ pub fn dropped_paths(text: &str, cwd: &Path) -> Option<Vec<PathBuf>> {
     let mut paths = Vec::new();
     for word in words {
         let word = match word.strip_prefix("file://") {
-            Some(rest) => percent_decode(rest)?,
+            Some(rest) => {
+                let decoded = percent_decode(rest)?;
+                // `file:///C:/Users/...` names `C:/Users/...` on Windows.
+                let drive = decoded.as_bytes();
+                if cfg!(windows)
+                    && drive.len() > 2
+                    && drive[0] == b'/'
+                    && drive[1].is_ascii_alphabetic()
+                    && drive[2] == b':'
+                {
+                    decoded[1..].to_owned()
+                } else {
+                    decoded
+                }
+            }
             None => word,
         };
         if !attachable_name(&word) {
@@ -407,23 +424,54 @@ mod tests {
         std::fs::write(cwd.join("doc.pdf"), b"%PDF-1.7\n").unwrap();
         std::fs::write(cwd.join("notes.txt"), "x").unwrap();
         let shot = cwd.join("shot one.png");
-        for paste in [
-            format!("{}", cwd.join("shot\\ one.png").display()),
-            format!("'{}'", shot.display()),
-            format!("\"{}\" ", shot.display()),
-            format!("file://{}", shot.display().to_string().replace(' ', "%20")),
-            "shot\\ one.png".to_string(),
-        ] {
+        // As a terminal pastes it: `C:\...` on Windows, not `\\?\C:\...`.
+        let plain = shot.display().to_string();
+        let plain = plain.strip_prefix(r"\\?\").unwrap_or(&plain).to_owned();
+        let mut pastes = vec![
+            format!("'{plain}'"),
+            format!("\"{plain}\" "),
+            format!(
+                "file://{}{}",
+                if cfg!(windows) { "/" } else { "" },
+                plain.replace('\\', "/").replace(' ', "%20")
+            ),
+        ];
+        // A Unix shell escapes the space with a backslash; on Windows the
+        // backslash separates folders, and a dropped path with no space
+        // comes unquoted (#11695).
+        if cfg!(unix) {
+            pastes.push(format!("{}", cwd.join("shot\\ one.png").display()));
+            pastes.push("shot\\ one.png".to_string());
+        } else {
+            std::fs::write(cwd.join("shot.png"), PNG).unwrap();
+            pastes.push(plain.replace("shot one.png", "shot.png"));
+        }
+        let canonical = |paths: Option<Vec<PathBuf>>| {
+            paths.map(|paths| {
+                paths
+                    .into_iter()
+                    .map(|path| path.canonicalize().unwrap())
+                    .collect::<Vec<_>>()
+            })
+        };
+        for paste in pastes {
+            let expected = if paste.contains("shot.png") {
+                cwd.join("shot.png")
+            } else {
+                shot.clone()
+            };
             assert_eq!(
-                dropped_paths(&paste, &cwd),
-                Some(vec![shot.clone()]),
+                canonical(dropped_paths(&paste, &cwd)),
+                Some(vec![expected]),
                 "{paste}"
             );
         }
-        assert_eq!(
-            dropped_paths("shot\\ one.png doc.pdf", &cwd).unwrap().len(),
-            2
-        );
+        let two = if cfg!(unix) {
+            "shot\\ one.png doc.pdf"
+        } else {
+            "\"shot one.png\" doc.pdf"
+        };
+        assert_eq!(dropped_paths(two, &cwd).unwrap().len(), 2);
         for text in [
             "notes.txt",
             "look at shot.png",

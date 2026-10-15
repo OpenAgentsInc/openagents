@@ -1097,10 +1097,13 @@ pub(crate) async fn candidate_tree(root: &Path) -> Option<String> {
         None,
     )
     .await?;
-    let scratch = tempfile::NamedTempFile::new().ok()?;
-    std::fs::copy(&index, scratch.path()).ok()?;
-    git(root, &["add", "-A"], Some(scratch.path())).await?;
-    git(root, &["write-tree"], Some(scratch.path())).await
+    // A path in a folder of its own: Git renames over the index, which
+    // Windows refuses for a temporary file still held open (#11695).
+    let scratch = tempfile::tempdir().ok()?;
+    let copy = scratch.path().join("index");
+    std::fs::copy(&index, &copy).ok()?;
+    git(root, &["add", "-A"], Some(&copy)).await?;
+    git(root, &["write-tree"], Some(&copy)).await
 }
 
 /// The `run_check` tool server over `checks`, and the verdicts it records.

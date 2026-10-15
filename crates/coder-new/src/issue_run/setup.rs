@@ -745,7 +745,7 @@ fn package_checks(
         let manifest = dir
             .join("Cargo.toml")
             .strip_prefix(worktree)
-            .map(|rel| rel.display().to_string())
+            .map(coder_sdk::worktree::slashed)
             .unwrap_or_default();
         let outside = members.is_some_and(|members| {
             !members
@@ -822,10 +822,11 @@ fn workspace_members(worktree: &Path) -> Option<Vec<PathBuf>> {
             .iter()
             .filter_map(|package| package["manifest_path"].as_str())
             .filter_map(|path| {
-                Path::new(path)
-                    .strip_prefix(&root)
-                    .ok()
-                    .map(|rel| worktree.join(rel))
+                // Both sides canonical: on Windows the root reads
+                // `\\?\C:\...` and Cargo's path `C:\...` (#11695).
+                let path = Path::new(path);
+                let path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+                path.strip_prefix(&root).ok().map(|rel| worktree.join(rel))
             })
             .collect(),
     )

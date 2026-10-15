@@ -153,6 +153,29 @@ In both nextest runs the longest test,
 took 189 to 192 seconds; run alone it took 150 seconds under `cargo test`
 and 100 seconds under nextest, at different loads.
 
+## Building and testing on Windows
+
+`cargo test -p coder-new --lib` passes on Windows (#11695). A Windows
+checkout needs three things the Mac and Linux builds don't:
+
+- **`protoc`:** the wallet's `spark-primitives` compiles protobufs. Point
+  `PROTOC` at `protoc.exe` from a
+  [protobuf release](https://github.com/protocolbuffers/protobuf/releases).
+- **Symlinks in a git dependency:** `rust-lightning`'s
+  `lightning-liquidity/src/sync/*` and `utils/async_poll.rs` are symlinks.
+  Git for Windows checks them out as one-line text files unless
+  `core.symlinks` is on (Developer Mode). Then the build fails with
+  `expected item, found ..`. Turn symlinks on before Cargo fetches it, or
+  replace those files in `~/.cargo/git/checkouts/rust-lightning-*` with the
+  files they name.
+- **Line endings:** `.gitattributes` keeps `plugins/` and `programs/` LF,
+  because binaries embed them and the Solver program is pinned by hash.
+  A checkout made before that file existed keeps its CRLF copies until
+  they are checked out again.
+
+Tests that need Unix (shell-script fixtures, symlinks, the background
+scheduler) are `cfg(unix)`.
+
 ## Package policy and compiler version
 
 The workspace compiles on one compiler: **1.97.1**, the version

@@ -369,9 +369,7 @@ impl Workspace {
         path.strip_prefix(&self.root)
             .ok()
             .filter(|relative| !relative.as_os_str().is_empty())
-            .unwrap_or(path)
-            .display()
-            .to_string()
+            .map_or_else(|| path.display().to_string(), coder_sdk::worktree::slashed)
     }
 
     /// A text file's bytes and text.
@@ -1271,7 +1269,10 @@ mod tests {
             0
         );
         // Folders outside the repository can be searched too.
-        assert!(run("Glob", json!({"pattern":"*","path":"/etc"}), &root).is_ok());
+        let outside = tempfile::tempdir().unwrap();
+        std::fs::write(outside.path().join("hosts"), "").unwrap();
+        let path = outside.path().display().to_string();
+        assert!(run("Glob", json!({"pattern":"*","path":path}), &root).is_ok());
     }
 
     #[test]

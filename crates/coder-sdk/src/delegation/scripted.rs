@@ -305,6 +305,9 @@ pub fn init_repo(dir: &Path) -> Result<(), String> {
         vec!["config", "user.email", "test@example.com"],
         vec!["config", "user.name", "Test"],
         vec!["config", "commit.gpgsign", "false"],
+        // Files read back as written, whatever the machine's Git turns
+        // line endings into (Windows `core.autocrlf`, #11695).
+        vec!["config", "core.autocrlf", "false"],
     ] {
         run_git(dir, &args)?;
     }

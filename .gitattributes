@@ -1,0 +1,4 @@
+# Embedded in binaries or pinned by hash: LF in every checkout, Windows
+# with core.autocrlf included (#11695).
+plugins/** text=auto eol=lf
+programs/** text=auto eol=lf

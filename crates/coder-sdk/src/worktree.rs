@@ -111,7 +111,17 @@ pub fn relative(root: &Path, input: &Value) -> Option<Option<String>> {
     };
     let resolved = resolve(root, path);
     let relative = resolved.strip_prefix(root).ok()?;
-    Some(Some(relative.to_string_lossy().into_owned()))
+    Some(Some(slashed(relative)))
+}
+
+/// A relative `path` with `/` between its parts on every platform, as Git
+/// writes paths, so it reads and matches the same on Windows (#11695).
+#[must_use]
+pub fn slashed(path: &Path) -> String {
+    path.components()
+        .map(|part| part.as_os_str().to_string_lossy())
+        .collect::<Vec<_>>()
+        .join("/")
 }
 
 /// Whether `path` lies inside `root`, both lexically and once symbolic
@@ -307,6 +317,8 @@ mod tests {
     use super::*;
 
     #[test]
+    // It makes a symbolic link, which Windows allows only with privileges.
+    #[cfg(unix)]
     fn a_path_leaving_the_worktree_is_refused_through_dots_and_links() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path().join("tree");

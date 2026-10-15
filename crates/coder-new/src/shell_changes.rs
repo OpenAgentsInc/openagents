@@ -201,7 +201,8 @@ impl Snapshot {
             .zip(absolute.file_name())
             .map_or(absolute.clone(), |(parent, name)| parent.join(name));
         if let Ok(relative) = resolved.strip_prefix(&self.root) {
-            let key = relative.to_string_lossy().into_owned();
+            // Keyed as Git names it, `/` on Windows too (#11695).
+            let key = coder_sdk::worktree::slashed(relative);
             self.files.insert(key, read(&resolved));
         }
     }

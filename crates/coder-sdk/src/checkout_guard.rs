@@ -76,7 +76,11 @@ impl Boundary {
         let normal = normalize(&joined);
         let shared = normalize(&self.shared);
         let own = normalize(&self.worktree);
-        normal.starts_with(&shared) && !normal.starts_with(&own)
+        // `/` as the shared side is the whole disk (a task's fence): on
+        // Windows that is every drive, which no `C:\` path starts with
+        // (#11695).
+        let everywhere = self.shared.as_os_str() == "/";
+        (everywhere || normal.starts_with(&shared)) && !normal.starts_with(&own)
     }
 
     /// Why a file tool call is refused, or `None` when it may run.
@@ -684,6 +688,13 @@ fn normalize(path: &Path) -> PathBuf {
             Component::ParentDir => {
                 out.pop();
             }
+            // `\\?\C:\x` and `C:\x` are the same place (#11695).
+            Component::Prefix(prefix) => match prefix.kind() {
+                std::path::Prefix::VerbatimDisk(drive) | std::path::Prefix::Disk(drive) => {
+                    out.push(format!("{}:", char::from(drive).to_ascii_uppercase()));
+                }
+                _ => out.push(component),
+            },
             other => out.push(other),
         }
     }
@@ -997,5 +1008,34 @@ mod tests {
             )
             .is_none()
         );
+    }
+
+    /// #11695: a task's fence (`/` as the shared side) refuses writes on
+    /// any Windows drive outside the session's folder, and reads a plain
+    /// `C:\` path and its `\\?\C:\` form as the same place.
+    #[cfg(windows)]
+    #[test]
+    fn a_task_fence_covers_every_windows_drive() {
+        let b = Boundary {
+            worktree: PathBuf::from(r"\\?\C:\work\.coder\worktrees\task"),
+            shared: PathBuf::from("/"),
+            branch: String::new(),
+        };
+        let cwd = Path::new(r"\\?\C:\work\.coder\worktrees\task");
+        for outside in [
+            r"C:\Windows\hosts",
+            r"D:\elsewhere\x.txt",
+            "/etc/hosts",
+            r"..\..\x.rs",
+        ] {
+            assert!(b.file_refusal("Write", outside, cwd).is_some(), "{outside}");
+        }
+        for inside in [
+            "src/lib.rs",
+            r"C:\work\.coder\worktrees\task\src\lib.rs",
+            r"\\?\C:\work\.coder\worktrees\task\a.rs",
+        ] {
+            assert!(b.file_refusal("Write", inside, cwd).is_none(), "{inside}");
+        }
     }
 }

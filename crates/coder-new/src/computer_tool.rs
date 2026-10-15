@@ -416,7 +416,9 @@ mod tests {
             captures,
         )
         .unwrap();
-        assert_eq!(push, ["computer", "push", "c", "/work/a.txt", "~/a.txt"]);
+        // The local path in this platform's own form (#11695).
+        let local = cwd.join("a.txt").display().to_string();
+        assert_eq!(push, ["computer", "push", "c", local.as_str(), "~/a.txt"]);
         let shot = words(
             &parse(json!({"action":"screenshot","computer":"c","android":true})),
             cwd,

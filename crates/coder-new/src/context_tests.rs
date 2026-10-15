@@ -744,7 +744,11 @@ fn claude_code_reads_the_same_briefing() {
     assert!(append.contains("### Testing") && append.contains("- release:"));
     assert_eq!(
         options.settings,
-        Some(serde_json::json!({"claudeMdExcludes": ["/repo/AGENTS.md", "/repo/CLAUDE.md"]}))
+        // CLAUDE.md is joined in this platform's own form (#11695).
+        Some(serde_json::json!({"claudeMdExcludes": [
+            "/repo/AGENTS.md",
+            std::path::Path::new("/repo").join("CLAUDE.md").display().to_string()
+        ]}))
     );
     // A resumed session keeps Coder's note first.
     let mut resumed = claude_agent_sdk::QueryOptions::new();
