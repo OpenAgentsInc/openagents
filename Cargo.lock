@@ -15260,6 +15260,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "199905e6153d6405f9728fe44daace35f8f837bbf830bb6e85fbd5828709a886"
 
 [[package]]
+name = "snap-rules"
+version = "1.0.0-rc.14"
+dependencies = [
+ "sha2 0.10.9",
+]
+
+[[package]]
+name = "snap-web"
+version = "1.0.0-rc.14"
+dependencies = [
+ "console_error_panic_hook",
+ "glam",
+ "js-sys",
+ "oa-copy",
+ "snap-rules",
+ "verse-game",
+ "wasm-bindgen",
+ "web-sys",
+]
+
+[[package]]
 name = "socket2"
 version = "0.5.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -1,0 +1,13 @@
+[package]
+name = "snap-rules"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Snap Station's rules: magnetic pieces, snapping, bolts and struts, a 2D truss simulation with thrusters, spin gravity, the solar storm and the cargo ship, job files, win checks, run receipts, and a bot."
+
+[dependencies]
+sha2 = "0.10"
+
+[lints]
+workspace = true

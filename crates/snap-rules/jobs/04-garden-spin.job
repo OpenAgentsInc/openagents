@@ -1,0 +1,17 @@
+snap.level.v1
+# Job 4: spin the garden so the plant pods feel gravity. Spinning pulls
+# hard on the joins out at the pods.
+name Garden Spin
+number 4
+crew rivet
+job spin H
+area -5 -3 6 4
+give module 0.5 0.5 0 H
+give pod 3.5 0.5 0
+give pod -2.5 0.5 0
+tray square 6 strut 4 bolt 8 thruster 4
+par 17
+run 9
+burn 2
+gravity 1 3
+hold 2

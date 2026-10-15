@@ -1,0 +1,14 @@
+snap.level.v1
+# Job 2: thrusters push, and a push off the middle spins things.
+name Straight Push
+number 2
+crew tock
+job push C
+area -3 -3 9 4
+give cargo 0.5 0.5 0 C
+tray thruster 2 square 3 panel 2 strut 2
+par 1
+run 9
+burn 2.5
+beacon 6.5 0.5 0.8
+spin-max 0.3

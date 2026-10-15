@@ -1,0 +1,14 @@
+snap.level.v1
+# Job 1: snapping. Two modules float apart; join them.
+name Hello, Magnets
+number 1
+crew pip
+job connect A B
+area -2 -3 7 4
+give module 0.5 0.5 0 A
+give module 4.5 0.5 0 B
+tray square 4 triangle 4
+par 3
+run 4
+# Pip gives the new bridge a gentle shake.
+nudge B 0 0.4 0.5 1.5
