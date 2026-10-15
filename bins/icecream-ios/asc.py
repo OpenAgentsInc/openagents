@@ -101,7 +101,7 @@ def profile():
 def require_app():
     found = app_id()
     if not found:
-        print("no App Store app record for " + BUNDLE_ID + " yet (see ~/work/NEEDS_OWNER.md)")
+        print("no App Store app record for " + BUNDLE_ID + " yet (see NEEDS_OWNER.md in the repository)")
         sys.exit(3)
     return found
 

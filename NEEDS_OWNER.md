@@ -2231,3 +2231,31 @@ reopen **Open run**, reconnect the phone, then stop and open the saved partial
 attempt. Rust and Android compilation run on the contributor machine; iOS native
 compilation and physical device checks need the owner's Apple build machine and
 phones. This feature does not control physical robot hardware.
+
+## Publish The Ice Cream Man on the App Store (#11681)
+
+The standalone iPhone/iPad app, release scripts, store metadata, and six
+Simulator screenshots are committed under `bins/icecream-ios/`. Its bundle
+ID is `com.openagents.icecreamman`; publisher OpenAgents, Inc. This is ready
+for the owner's store steps, not an App Store publication.
+
+1. In App Store Connect, create the iOS app record: **The Ice Cream Man**,
+   English (U.S.), bundle ID `com.openagents.icecreamman`, SKU
+   `icecreamman-ios`, Full Access. The issue reports the signed IPA and
+   provisioning profile are prepared; this Linux host has no signing key.
+2. On the signing Mac, load the existing App Store Connect environment and
+   run `python3 bins/icecream-ios/asc.py app` to confirm the new record.
+   Use `asc.py next-build` to select the build number, then run
+   `ICECREAM_IOS_BUILD_NUMBER=N bins/icecream-ios/build.sh archive`,
+   `bins/icecream-ios/build.sh upload`, and
+   `python3 bins/icecream-ios/asc.py wait-valid --build N`.
+3. Run `python3 bins/icecream-ios/asc.py metadata`. Review the description,
+   screenshots, review notes, and questionnaire answers in
+   `bins/icecream-ios/metadata/review.md`. Complete App Privacy and the age
+   rating questionnaire in App Store Connect. The app runs its bundled
+   game offline; links open Safari.
+4. Test the processed build on iPhone and iPad, then submit it for review.
+   If store review finds a defect, open a new issue with its feedback.
+
+The account record, privacy declarations, rating, and review submission
+remain owner actions. No upload or store submission was made for #11681.

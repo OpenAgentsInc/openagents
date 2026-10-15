@@ -62,7 +62,7 @@ the Cargo.lock-matching `wasm-bindgen` CLI) and copies the output, minus the
     python3 bins/icecream-ios/asc.py metadata     # pushes metadata/*.txt
 
 The app record itself is created by the owner in App Store Connect (the API
-cannot); see `~/work/NEEDS_OWNER.md`. Release, once it exists:
+cannot); see [the owner checklist](../../NEEDS_OWNER.md#publish-the-ice-cream-man-on-the-app-store-11681). Release, once it exists:
 
     ICECREAM_IOS_BUILD_NUMBER=$(python3 bins/icecream-ios/asc.py next-build) bins/icecream-ios/build.sh archive
     bins/icecream-ios/build.sh upload
