@@ -42,7 +42,7 @@ fn segments(command: &str) -> impl Iterator<Item = Vec<String>> + '_ {
 fn git_subcommand(words: &[String]) -> Option<(&str, &[String])> {
     let start = words
         .iter()
-        .position(|word| word == "git" || word.ends_with("/git"))?;
+        .position(|word| crate::floors::program_name(word) == "git")?;
     let mut index = start + 1;
     while let Some(word) = words.get(index) {
         match word.as_str() {

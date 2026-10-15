@@ -125,7 +125,7 @@ fn server(turns: Vec<Script>) -> (Codex, Arc<Mutex<Seen>>, tokio::task::JoinHand
                     // Codex's answer does.
                     "thread/resume" => {
                         let id = message["params"]["threadId"].clone();
-                        let path = id.as_str().filter(|id| id.starts_with('/'));
+                        let path = id.as_str().filter(|id| Path::new(id).is_absolute());
                         json!({"thread": {"id": id, "path": path}, "model": "gpt-6.1-sol"})
                     }
                     "turn/start" => {

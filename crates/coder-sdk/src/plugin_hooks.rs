@@ -163,7 +163,11 @@ pub fn load(id: &str, name: &str, enabled: bool, dir: &Path) -> Result<Plugin, S
         let text = std::fs::read_to_string(&path).map_err(|_| {
             format!("{name} names the hook {hook}, but hooks/{hook}.json isn't there.")
         })?;
-        if text_digest(&text) != pinned {
+        // A checkout that writes CRLF line ends (Git on Windows with
+        // `core.autocrlf`) holds the pinned document with `\r\n` between
+        // lines. A raw CR can only be whitespace in JSON, so that copy
+        // parses to the same hook and matches as the pinned one (#11708).
+        if text_digest(&text) != pinned && text_digest(&text.replace("\r\n", "\n")) != pinned {
             return Err(format!("{name}'s hook {hook} changed since it was pinned."));
         }
         let doc: HookDoc = serde_json::from_str(&text)

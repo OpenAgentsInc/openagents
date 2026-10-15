@@ -112,8 +112,20 @@ impl Boundary {
         for words in segments(command) {
             if let Some(target) = words
                 .iter()
-                .position(|word| word == "cd")
-                .and_then(|index| words.get(index + 1))
+                .position(|word| {
+                    matches!(
+                        word.to_ascii_lowercase().as_str(),
+                        "cd" | "chdir" | "pushd" | "set-location" | "sl"
+                    )
+                })
+                .and_then(|index| {
+                    // `cd /d D:\x` (cmd) and `Set-Location -Path x` name
+                    // the directory after a switch.
+                    words[index + 1..].iter().find(|word| {
+                        !(cfg!(windows) && word.eq_ignore_ascii_case("/d"))
+                            && !word.starts_with('-')
+                    })
+                })
             {
                 // A directory that can't be worked out counts as the
                 // shared checkout.
@@ -172,7 +184,9 @@ impl Boundary {
     fn written_path(&self, words: &[String], here: &Path) -> Option<String> {
         // Redirects: `> path`, `>> path`, `>path`, `2>path`, `tee path`.
         for (index, word) in words.iter().enumerate() {
-            let trimmed = word.trim_start_matches(|c: char| c.is_ascii_digit() || c == '&');
+            // `*>` and `*>>` are PowerShell's every-stream redirects.
+            let trimmed =
+                word.trim_start_matches(|c: char| c.is_ascii_digit() || c == '&' || c == '*');
             let target = if trimmed == ">" || trimmed == ">>" {
                 words.get(index + 1).map(String::as_str)
             } else if let Some(rest) = trimmed
@@ -184,7 +198,7 @@ impl Boundary {
             } else {
                 None
             };
-            if let Some(target) = target
+            if let Some(target) = target.filter(|target| !discarded(target))
                 && (unresolved(target) || self.protects(here, target))
             {
                 return Some(target.to_owned());
@@ -193,19 +207,54 @@ impl Boundary {
         let Some(program) = words.first() else {
             return None;
         };
-        let name = program.rsplit('/').next().unwrap_or(program);
+        let name = crate::floors::program_name(program);
+        let name = name.as_str();
+        // `cmd`'s switches (`copy /Y`, `rd /s /q`) are not operands on
+        // Windows; elsewhere `/x` is a path.
         let operands = words[1..]
             .iter()
-            .filter(|word| !word.starts_with('-'))
+            .filter(|word| !word.starts_with('-') && !(cfg!(windows) && cmd_switch(word)))
             .map(String::as_str)
             .collect::<Vec<_>>();
+        // PowerShell's file cmdlets (#11708), by their names and aliases:
+        // anything given as the written path, or any operand when none is
+        // named, is judged.
+        if let Some((params, last)) = powershell_writer(name) {
+            let named = words[1..]
+                .windows(2)
+                .filter(|pair| {
+                    params
+                        .iter()
+                        .any(|param| pair[0].eq_ignore_ascii_case(param))
+                })
+                .map(|pair| pair[1].as_str())
+                .collect::<Vec<_>>();
+            // Unnamed, a copy's destination follows its first operand,
+            // the source; every later operand is judged.
+            let judged = match (named.is_empty(), last) {
+                (false, _) => named,
+                (true, true) => operands.get(1..).unwrap_or_default().to_vec(),
+                (true, false) => operands,
+            };
+            return judged
+                .into_iter()
+                .find(|path| unresolved(path) || self.protects(here, path))
+                .map(str::to_owned);
+        }
         let candidate = match name {
-            "cp" | "mv" | "ln" | "install" | "rsync" => {
+            "cp" | "mv" | "ln" | "install" | "rsync" | "copy" | "xcopy" | "move" => {
                 operands.last().map(|path| (*path).to_owned())
             }
+            // `robocopy SOURCE DEST [FILES]`.
+            "robocopy" => operands.get(1).map(|path| (*path).to_owned()),
             "tee" | "truncate" | "touch" | "rm" | "rmdir" | "mkdir" | "patch" | "chmod"
-            | "chown" | "chgrp" | "unlink" | "mkfifo" => {
-                operands.first().map(|path| (*path).to_owned())
+            | "chown" | "chgrp" | "unlink" | "mkfifo" | "del" | "erase" | "rd" | "md" | "ren"
+            | "rename" | "attrib" | "icacls" | "mklink" => {
+                // cmd's `del a b` and `rd x y` take several.
+                return operands
+                    .iter()
+                    .find(|path| unresolved(path) || self.protects(here, path))
+                    .map(|path| (*path).to_owned());
             }
             "sed" | "perl" if words.iter().any(|word| word.starts_with("-i")) => {
                 operands.last().map(|path| (*path).to_owned())
@@ -342,13 +391,56 @@ impl Boundary {
 /// (`$NAME`, `${...}`, `$(...)`, backticks), so where it points can't be
 /// told beforehand.
 fn unresolved(word: &str) -> bool {
-    word.contains('$') || word.contains('`')
+    // `%NAME%` is cmd's, filled in when the line is read (#11708).
+    word.contains('$') || word.contains('`') || word.contains('%')
+}
+
+/// Whether a redirect target throws its output away rather than naming a
+/// file: `/dev/null`, cmd's `nul`, PowerShell's `$null`.
+fn discarded(target: &str) -> bool {
+    let target = target.trim_matches(|c| c == '\'' || c == '"');
+    target == "/dev/null"
+        || target.eq_ignore_ascii_case("nul")
+        || target.eq_ignore_ascii_case("$null")
+}
+
+/// A cmd switch (`/Y`, `/s`, `/MIR`, `/XD:x`), not a path.
+fn cmd_switch(word: &str) -> bool {
+    word.strip_prefix('/').is_some_and(|rest| {
+        let name = rest.split(':').next().unwrap_or(rest);
+        !name.is_empty()
+            && name.len() <= 4
+            && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '?')
+            && !rest.contains(['/', '\\'])
+    })
+}
+
+/// How a PowerShell file cmdlet names the path it writes, by the cmdlet's
+/// lowercase name or alias: the parameters that name it, and whether,
+/// unnamed, it follows a first operand that is only read (a copy's
+/// source) rather than being any operand.
+/// `None` for anything else. Aliases that are also Unix programs (`cp`,
+/// `rm`, `tee`) are judged as those.
+fn powershell_writer(name: &str) -> Option<(&'static [&'static str], bool)> {
+    const PATH: &[&str] = &["-path", "-literalpath", "-filepath", "-lp"];
+    const DESTINATION: &[&str] = &["-destination", "-destinationpath"];
+    match name {
+        "set-content" | "add-content" | "clear-content" | "out-file" | "new-item"
+        | "remove-item" | "rename-item" | "set-item" | "tee-object" | "export-csv"
+        | "export-clixml" | "sc" | "ac" | "clc" | "ni" | "ri" | "rni" | "si" => Some((PATH, false)),
+        "copy-item" | "move-item" | "expand-archive" | "compress-archive" | "cpi" | "mi" => {
+            Some((DESTINATION, true))
+        }
+        _ => None,
+    }
 }
 
 /// `command` with `$NAME` and `${NAME}` filled in where the command itself
 /// sets `NAME` once to a plain value (`F=/repo/x`, `export F="/repo/x"`),
-/// or, for `HOME` and `TMPDIR`, from this process. Anything else is left as
-/// written, so [`unresolved`] still sees it.
+/// or, for the home and temporary folders, from this process; cmd's
+/// `%NAME%` and PowerShell's `$env:NAME` are filled in for those folders
+/// too (#11708). Anything else is left as written, so [`unresolved`] still
+/// sees it.
 fn expand_variables(command: &str) -> String {
     let mut values: std::collections::HashMap<String, Option<String>> =
         std::collections::HashMap::new();
@@ -386,15 +478,57 @@ fn expand_variables(command: &str) -> String {
     let lookup = |name: &str| -> Option<String> {
         match values.get(name) {
             Some(value) => value.clone(),
-            None if matches!(name, "HOME" | "TMPDIR") => std::env::var(name).ok(),
-            None => None,
+            None => process_folder(name),
         }
     };
     let mut out = String::with_capacity(command.len());
     let mut rest = command;
-    while let Some(at) = rest.find('$') {
+    while let Some(at) = rest.find(['$', '%']) {
         out.push_str(&rest[..at]);
         let after = &rest[at + 1..];
+        if rest[at..].starts_with('%') {
+            // cmd fills `%NAME%` in before any `set` on the line runs, so
+            // only this process's folders are known.
+            let len = after
+                .bytes()
+                .take_while(|c| c.is_ascii_alphanumeric() || *c == b'_')
+                .count();
+            match (after.as_bytes().get(len) == Some(&b'%'))
+                .then(|| process_folder(&after[..len]))
+                .flatten()
+            {
+                Some(value) => {
+                    out.push_str(&value);
+                    rest = &after[len + 1..];
+                }
+                None => {
+                    out.push('%');
+                    rest = after;
+                }
+            }
+            continue;
+        }
+        if let Some(env) = after
+            .get(..4)
+            .filter(|head| head.eq_ignore_ascii_case("env:"))
+            .map(|_| &after[4..])
+        {
+            let len = env
+                .bytes()
+                .take_while(|c| c.is_ascii_alphanumeric() || *c == b'_')
+                .count();
+            match process_folder(&env[..len]) {
+                Some(value) => {
+                    out.push_str(&value);
+                    rest = &env[len..];
+                }
+                None => {
+                    out.push('$');
+                    rest = after;
+                }
+            }
+            continue;
+        }
         let (name, used) = if let Some(braced) = after.strip_prefix('{') {
             match braced.find('}') {
                 Some(close)
@@ -424,6 +558,29 @@ fn expand_variables(command: &str) -> String {
     }
     out.push_str(rest);
     out
+}
+
+/// The home or temporary folder a well-known variable names, as this
+/// process sees it: `HOME`, `TMPDIR`, and Windows' `USERPROFILE`, `TEMP`
+/// and `TMP`. On Windows, where `HOME` and `TMPDIR` are usually unset, a
+/// POSIX shell (Git Bash) is given the user's folder and the temporary
+/// folder for them (#11708).
+fn process_folder(name: &str) -> Option<String> {
+    let known = ["HOME", "TMPDIR", "USERPROFILE", "TEMP", "TMP"]
+        .into_iter()
+        .find(|known| known.eq_ignore_ascii_case(name))?;
+    // Unix variable names are case-sensitive.
+    if !cfg!(windows) && known != name {
+        return None;
+    }
+    std::env::var(known).ok().or_else(|| {
+        cfg!(windows).then_some(())?;
+        match known {
+            "HOME" => user_home::home_os().map(|home| PathBuf::from(home).display().to_string()),
+            "TMPDIR" => Some(std::env::temp_dir().display().to_string()),
+            _ => None,
+        }
+    })
 }
 
 /// The value an assignment's text starts with, unquoted, and how many
@@ -548,10 +705,10 @@ fn program(words: &[String]) -> Option<String> {
         !assignment
             && !matches!(
                 word.as_str(),
-                "sudo" | "env" | "time" | "nohup" | "command" | "exec"
+                "sudo" | "env" | "time" | "nohup" | "command" | "exec" | "&"
             )
     })?;
-    Some(word.rsplit('/').next().unwrap_or(word).to_owned())
+    Some(crate::floors::program_name(word))
 }
 
 /// Whether `program` (with its `words`) only reads where it runs. Git and
@@ -578,7 +735,14 @@ fn reads_only(program: &str, words: &[String]) -> bool {
         | "false" | "test" | "[" | "which" | "type" | "sort" | "uniq" | "cut" | "tr" | "jq"
         | "xxd" | "od" | "nl" | "column" | "basename" | "dirname" | "realpath" | "readlink"
         | "date" | "sleep" | "exit" | "sed" | "awk" | "gh" | "shasum" | "sha256sum" | "md5"
-        | "md5sum" => true,
+        | "md5sum"
+        // Windows readers (#11708): cmd's, and PowerShell's by name and
+        // alias.
+        | "dir" | "findstr" | "where" | "get-content" | "gc" | "get-childitem"
+        | "gci" | "select-string" | "sls" | "get-item" | "gi" | "test-path" | "resolve-path"
+        | "get-location" | "gl" | "write-output" | "write-host" | "get-filehash"
+        | "set-location" | "chdir" | "measure-object" | "select-object" | "sort-object"
+        | "where-object" | "format-list" | "format-table" | "out-string" | "out-host" => true,
         _ => false,
     }
 }
@@ -603,21 +767,50 @@ fn interpreter(program: &str) -> bool {
                 | "osascript"
                 | "lua"
                 | "eval"
+                | "cmd"
+                | "powershell"
+                | "pwsh"
+                | "cscript"
+                | "wscript"
         )
 }
 
 /// Every path-looking run of characters in `command`, script bodies
-/// included: one that starts with `/`, `~/`, `./` or `../`.
+/// included: one that starts with `/`, `~/`, `./` or `../`, or on Windows
+/// a drive (`C:\\x`, `C:/x`) or `.\\`, `..\\`, `~\\` (#11708).
 fn named_paths(command: &str) -> impl Iterator<Item = &str> {
     command
         .split(|c: char| {
-            !(c.is_alphanumeric() || matches!(c, '/' | '.' | '_' | '-' | '~' | '+' | '@' | '%'))
+            !(c.is_alphanumeric()
+                || matches!(
+                    c,
+                    '/' | '.' | '_' | '-' | '~' | '+' | '@' | '%' | '\\' | ':'
+                ))
+        })
+        .flat_map(|word| {
+            // A drive starts a path even after other text (`f=C:\\x`).
+            let drive = word.char_indices().find_map(|(at, c)| {
+                let rest = &word[at..];
+                (c.is_ascii_alphabetic()
+                    && (at == 0 || !word.as_bytes()[at - 1].is_ascii_alphanumeric())
+                    && (rest[1..].starts_with(":\\") || rest[1..].starts_with(":/")))
+                .then_some(rest)
+            });
+            // Elsewhere `:` parts paths from what's before them
+            // (`file:/x`, `host:/x`).
+            word.split(':').chain(drive)
         })
         .filter(|word| {
             word.starts_with('/')
                 || word.starts_with("~/")
                 || word.starts_with("./")
                 || word.starts_with("../")
+                || word.starts_with(".\\")
+                || word.starts_with("..\\")
+                || word.starts_with("~\\")
+                || (word.len() > 2
+                    && word.as_bytes()[0].is_ascii_alphabetic()
+                    && (word[1..].starts_with(":\\") || word[1..].starts_with(":/")))
         })
 }
 
@@ -638,7 +831,7 @@ fn cargo_dir(words: &[String]) -> Option<PathBuf> {
 fn git_subcommand(words: &[String]) -> Option<(&str, &[String], Option<&str>)> {
     let start = words
         .iter()
-        .position(|word| word == "git" || word.ends_with("/git"))?;
+        .position(|word| crate::floors::program_name(word) == "git")?;
     let mut index = start + 1;
     let mut dir = None;
     while let Some(word) = words.get(index) {
@@ -655,11 +848,13 @@ fn git_subcommand(words: &[String]) -> Option<(&str, &[String], Option<&str>)> {
     None
 }
 
-/// The command split at `;`, `&&`, `||`, `|`, and newlines, as shell words.
+/// The command split at `;`, `&&`, `||`, `|`, newlines, and a lone `&`
+/// (cmd's separator, a POSIX shell's background), as shell words.
 fn segments(command: &str) -> impl Iterator<Item = Vec<String>> + '_ {
     command
         .split(|c| matches!(c, ';' | '\n' | '|' | '(' | ')' | '{' | '}'))
         .flat_map(|part| part.split("&&"))
+        .flat_map(|part| part.split(" & "))
         .map(|part| {
             part.split_whitespace()
                 // A comment (an unquoted `#` starting a word) runs to the end
@@ -850,6 +1045,122 @@ mod tests {
             )
             .is_some()
         );
+    }
+
+    /// Windows shells name the same writes their own way (#11708): cmd's
+    /// `%VAR%`, `&` and `copy`/`del`, PowerShell's `$env:VAR`, `*>` and
+    /// file cmdlets, and the `cmd /c` and `powershell -Command` wrappers
+    /// Codex on Windows runs every command through.
+    #[test]
+    fn windows_shells_are_held_to_the_same_fence() {
+        let b = boundary();
+        let wt = Path::new("/repo/.coder/worktrees/chat-abc");
+        for command in [
+            "echo hi > %F%",
+            "set F=/repo/x & echo hi > %F%",
+            "$env:F = '/repo/x'; Set-Content -Path $env:F -Value hi",
+            "Set-Content -Path /repo/x -Value hi",
+            "Add-Content /repo/notes.md 'x'",
+            "'x' | Out-File -FilePath /repo/out.txt",
+            "New-Item -ItemType File -Path /repo/x.rs",
+            "Remove-Item -Recurse -Force /repo/target",
+            "Copy-Item a.rs /repo/a.rs",
+            "Copy-Item -Path a.rs -Destination /repo/a.rs",
+            "Move-Item a.rs /repo/a.rs",
+            "cargo test *> /repo/out.txt",
+            "copy a.rs /repo/a.rs",
+            "cd /repo & del x.rs",
+            "cd /repo & cargo fmt",
+            "git.exe -C /repo push origin HEAD:main",
+            "C:\\Git\\bin\\git.exe -C /repo commit -am x",
+            "Set-Location /repo; New-Item x.rs",
+        ] {
+            assert!(b.run_refusal(command, wt).is_some(), "{command}");
+        }
+        for command in [
+            "cargo test > $null",
+            "cargo test 2>nul",
+            "cargo test > out.txt 2>&1",
+            "Copy-Item /repo/a.rs a.rs",
+            "Get-Content /repo/README.md",
+            "cd /repo; Get-ChildItem; git status",
+            "Set-Content -Path src/x.rs -Value hi",
+            "printf '%s' x > out.txt",
+        ] {
+            assert!(b.run_refusal(command, wt).is_none(), "{command}");
+        }
+        for command in [
+            serde_json::json!(["cmd.exe", "/c", "copy a.rs /repo/a.rs"]),
+            serde_json::json!([
+                "powershell.exe",
+                "-NoProfile",
+                "-Command",
+                "Remove-Item /repo/x"
+            ]),
+            serde_json::json!([
+                "powershell",
+                "-ExecutionPolicy",
+                "Bypass",
+                "Set-Content /repo/x hi"
+            ]),
+            serde_json::json!("pwsh -c 'Set-Content -Path /repo/x -Value hi'"),
+            serde_json::json!([
+                "powershell.exe",
+                "-Command",
+                "python -c \"open('/repo/x','w')\""
+            ]),
+        ] {
+            assert!(
+                super::tool_refusal(
+                    Some(&b),
+                    "shell",
+                    &serde_json::json!({"command": command}),
+                    wt
+                )
+                .is_some(),
+                "{command}"
+            );
+        }
+        assert!(
+            super::tool_refusal(
+                Some(&b),
+                "shell",
+                &serde_json::json!({"command": ["powershell.exe", "-Command", "cargo test -p x"]}),
+                wt
+            )
+            .is_none()
+        );
+    }
+
+    /// Drive paths on Windows: in redirects, cmdlets and scripts (#11708).
+    #[cfg(windows)]
+    #[test]
+    fn windows_drive_paths_are_fenced() {
+        let b = Boundary {
+            worktree: PathBuf::from("C:\\repo\\.coder\\worktrees\\chat-abc"),
+            shared: PathBuf::from("C:\\repo"),
+            branch: "chat/abc".into(),
+        };
+        let wt = Path::new("C:\\repo\\.coder\\worktrees\\chat-abc");
+        for command in [
+            "echo hi > C:\\repo\\x",
+            "echo hi > C:/repo/x",
+            "Set-Content C:\\repo\\x hi",
+            "python -c \"open(r'C:\\repo\\x','w')\"",
+            "cd /d C:\\repo & del /q x.rs",
+            "rd /s /q C:\\repo\\target",
+        ] {
+            assert!(b.run_refusal(command, wt).is_some(), "{command}");
+        }
+        for command in [
+            "echo hi > C:\\repo\\.coder\\worktrees\\chat-abc\\x",
+            "cargo test > \"$TMPDIR/out.txt\"",
+            "cargo test > %TEMP%\\out.txt",
+            "cargo test > $env:TEMP\\out.txt",
+            "copy /Y a.rs b.rs",
+        ] {
+            assert!(b.run_refusal(command, wt).is_none(), "{command}");
+        }
     }
 
     #[test]

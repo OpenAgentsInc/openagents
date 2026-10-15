@@ -80,6 +80,32 @@ fn the_package_pins_its_hooks_and_module() {
     std::fs::write(dir.path().join("package.json"), only_guard.to_string()).unwrap();
     let error = load("local:x", "X", true, dir.path()).unwrap_err();
     assert!(error.contains("changed since it was pinned"), "{error}");
+    // A CRLF checkout of the pinned hook (Git on Windows) is the same hook;
+    // a changed one is still refused (#11708).
+    std::fs::copy(
+        source.join("wasm/hook-guard.wasm"),
+        dir.path().join("wasm/hook-guard.wasm"),
+    )
+    .unwrap();
+    let guard = std::fs::read_to_string(source.join("hooks/guard.json"))
+        .unwrap()
+        .replace("\r\n", "\n");
+    std::fs::write(
+        dir.path().join("hooks/guard.json"),
+        guard.replace('\n', "\r\n"),
+    )
+    .unwrap();
+    assert!(load("local:x", "X", true, dir.path()).is_ok());
+    std::fs::write(
+        dir.path().join("hooks/guard.json"),
+        guard.replacen('{', "{ ", 1),
+    )
+    .unwrap();
+    let error = load("local:x", "X", true, dir.path()).unwrap_err();
+    assert!(
+        error.contains("hook guard changed since it was pinned"),
+        "{error}"
+    );
 }
 
 /// The issue's first check: a deny hook and a context hook from a plugin

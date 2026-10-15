@@ -223,12 +223,27 @@ fn simple_commands(command: &str) -> Vec<Vec<String>> {
 /// wrappers that run another program (`sudo`, `env`, `time`, `nohup`,
 /// `command`, `exec`, and the package runners `npx`, `bunx`, `pnpx`,
 /// `pnpm exec`/`dlx`, `yarn dlx`).
+/// The program a command word runs, as a plain lowercase name: past its
+/// folder (`/usr/bin/git`, `C:\\Program Files\\Git\\bin\\git.exe`) and a
+/// Windows program suffix (`.exe`, `.cmd`, `.bat`, `.com`), so `git.exe`
+/// and `Git` are judged as `git` (#11708).
+#[must_use]
+pub(crate) fn program_name(word: &str) -> String {
+    let base = word.rsplit(['/', '\\']).next().unwrap_or(word);
+    let lower = base.to_ascii_lowercase();
+    [".exe", ".cmd", ".bat", ".com"]
+        .iter()
+        .find_map(|suffix| lower.strip_suffix(suffix))
+        .filter(|name| !name.is_empty())
+        .map_or_else(|| lower.clone(), str::to_owned)
+}
+
 fn argv(words: &[String]) -> Option<(String, &[String])> {
     let mut at = 0;
     while let Some(word) = words.get(at) {
-        let base = word.rsplit('/').next().unwrap_or(word);
+        let base = program_name(word);
         let wrapper = matches!(
-            base,
+            base.as_str(),
             "sudo" | "env" | "time" | "nohup" | "command" | "exec" | "npx" | "bunx" | "pnpx"
         );
         if matches!(word.as_str(), "pnpm" | "yarn")
@@ -247,7 +262,7 @@ fn argv(words: &[String]) -> Option<(String, &[String])> {
             || assignment
             || (at > 0
                 && word.starts_with('-')
-                && matches!(words[at - 1].rsplit('/').next(), Some("sudo" | "env")))
+                && matches!(program_name(&words[at - 1]).as_str(), "sudo" | "env"))
         {
             at += 1;
             continue;
@@ -255,8 +270,7 @@ fn argv(words: &[String]) -> Option<(String, &[String])> {
         break;
     }
     let program = words.get(at)?;
-    let name = program.rsplit('/').next().unwrap_or(program).to_owned();
-    Some((name, &words[at + 1..]))
+    Some((program_name(program), &words[at + 1..]))
 }
 
 /// The arguments that are not flags.
@@ -434,6 +448,57 @@ pub fn wrapped_script(words: &[String]) -> Option<String> {
     // write one itself, so it is read through like a shell.
     if args.first().map(String::as_str) == Some(SQUEEZE_SUBCOMMAND) {
         return args.get(1).cloned();
+    }
+    // Windows shells (#11708): `cmd /c SCRIPT` and `powershell -Command
+    // SCRIPT` (Codex on Windows runs every command so) run the rest of
+    // their words as the script.
+    if program == "cmd" {
+        let at = args
+            .iter()
+            .position(|arg| matches!(arg.to_ascii_lowercase().as_str(), "/c" | "/k" | "/r"))?;
+        return Some(args[at + 1..].join(" ")).filter(|script| !script.is_empty());
+    }
+    if matches!(program.as_str(), "powershell" | "pwsh") {
+        let mut at = 0;
+        while let Some(arg) = args.get(at) {
+            let flag = arg.to_ascii_lowercase().replacen('/', "-", 1);
+            if flag.len() > 1 && "-command".starts_with(flag.as_str()) {
+                at += 1;
+                break;
+            }
+            if !flag.starts_with('-') {
+                // Windows PowerShell runs its first plain argument as a
+                // command; PowerShell 7 runs it as a script file.
+                if program == "pwsh" {
+                    return None;
+                }
+                break;
+            }
+            let valued = matches!(
+                flag.trim_start_matches('-'),
+                "executionpolicy"
+                    | "ex"
+                    | "ep"
+                    | "windowstyle"
+                    | "w"
+                    | "version"
+                    | "v"
+                    | "inputformat"
+                    | "if"
+                    | "outputformat"
+                    | "of"
+                    | "configurationname"
+                    | "workingdirectory"
+                    | "wd"
+                    | "psconsolefile"
+                    | "settingsfile"
+            );
+            if flag.starts_with("-f") && "-file".starts_with(flag.as_str()) {
+                return None;
+            }
+            at += if valued { 2 } else { 1 };
+        }
+        return Some(args.get(at..)?.join(" ")).filter(|script| !script.is_empty());
     }
     if !matches!(
         program.as_str(),
