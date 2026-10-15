@@ -5,7 +5,7 @@ execution so the same models can be benchmarked on both. Start with
 [`s1-llm-auto-router`](s1-llm-auto-router.md) on CPU. Keep both engines
 available after the comparison, and reuse the ORT integration for other
 models. The shared contract and fixtures (#11700), optional ORT CPU
-execution (#11701), native ModernBERT CPU execution (#11702), and CPU
+execution (#11701), native ModernBERT CPU execution (#11702), CPU
 benchmarks (#11703), and shared in-process/HTTP serving (#11704) are
 implemented. Other model families and accelerators remain planned.
 
@@ -199,8 +199,17 @@ correction and separate probe files.
 Unstripped release executables are 30.7 MB for native-only and 31.8 MB
 with both engines. The CPU ORT library adds 24.3 MB: a combined increment
 of 25.4 MB, excluding model assets and platform libraries. Apple Silicon
-CPU measurements remain in `NEEDS_OWNER.md`; HTTP and accelerator
-measurements follow in later milestones.
+CPU measurements remain in `NEEDS_OWNER.md`; accelerator measurements
+follow in #11706.
+
+The shared HTTP server (#11704) passes direct Rust/HTTP answer parity for
+both engines. Four additional runs retain 4,000 real loopback requests:
+ORT p50 is 4.3–4.5 ms and p99 is 6.7–7.0 ms; native p50 is 15.3–15.4 ms
+and p99 is 19.2–19.3 ms. These HTTP runs use a development server at
+optimization level 1, with four model threads and warm caches. They are
+not the release CPU baseline, so their difference is not a measurement of
+transport overhead. The raw records include the server checksum, build
+profile, command, and engine identity.
 
 ## References
 

@@ -17,12 +17,12 @@
   "remaining_coverage": [
     "Apple Silicon CPU",
     "cold filesystem caches",
-    "accelerators",
-    "HTTP"
+    "accelerators"
   ],
   "incremental_both_engines_bytes": 25443712,
   "timing_source_commit": "f26c309299",
   "memory_source_commit": "a9d226db07",
   "memory_notes": "The 28 baseline timing runs recorded resident memory after model teardown. Do not use that field as serving memory. Their peak RSS remains a process high-water mark. The eight focused probes keep every model instance loaded through the snapshot and are the serving-memory evidence. Their 32 timing samples are not tail-latency evidence.",
-  "scope_notes": "Linux i7-14700K, four distinct P cores selected with taskset, warm filesystem caches, two alternating A/B rounds and 1,000 samples per configuration. Other work on this shared machine was not stopped; retained load observations bound interpretation. Package numbers are unstripped release binaries plus the CPU ORT shared library, excluding model assets and platform-provided libraries. HTTP and accelerator work follows in later issues."
+  "scope_notes": "Linux i7-14700K, four distinct P cores selected with taskset, warm filesystem caches, two alternating A/B rounds and 1,000 samples per configuration. Other work on this shared machine was not stopped; retained load observations bound interpretation. Package numbers are unstripped release binaries plus the CPU ORT shared library, excluding model assets and platform-provided libraries. HTTP and accelerator work follows in later issues.",
+  "http_notes": "Four real server runs of 1,000 loopback requests each. HTTP evidence uses a development opt-level=1/debug=0 server; it must not be used to subtract transport overhead from the release CPU numbers. The direct Rust/HTTP parity test passes for both engines."
 }
