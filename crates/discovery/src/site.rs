@@ -154,31 +154,25 @@ pub fn escape(text: &str) -> String {
         .replace('\'', "&#39;")
 }
 
-/// The A2A agent card for this service. Public website origins advertise
-/// the decision API host; self-hosted services use their own origin. The service answers typed-decision calls
-/// over HTTP+JSON; it does not speak A2A message flows — the card
-/// names what exists, and `capabilities` declines what does not.
+/// The A2A agent card for this service. On the public origins
+/// (`openagents.com`, `api.openagents.com`) it describes OpenAgents: our
+/// API, Decisions, agent self-signup with `oak_` keys, projects, Coder,
+/// the docs MCP server, and Lightning payments, as the `/docs/agents`
+/// pages do. TypeSafe's System One decision API (`api.typesafe.ai`, which
+/// the public card named as its identity before; #10364) stays on it as a
+/// separate service's skill. A self-hosted decision service keeps a card
+/// for its own origin. Neither speaks A2A message flows: the card names
+/// what exists, and `capabilities` declines what does not.
 #[must_use]
 pub fn agent_card(origin: &str) -> Value {
     let public = matches!(
         origin.trim_end_matches('/'),
         "https://openagents.com" | "https://api.openagents.com"
     );
-    let endpoint_origin = if public {
-        "https://api.typesafe.ai"
-    } else {
-        origin.trim_end_matches('/')
-    };
-    // Public origins don't serve `/agents.md` or `/auth.md`; the decision
-    // API's own documentation does.
-    let (documentation, auth_doc) = if public {
-        (
-            "https://docs.typesafe.ai/".to_owned(),
-            "https://docs.typesafe.ai/".to_owned(),
-        )
-    } else {
-        (format!("{origin}/agents.md"), "/auth.md".to_owned())
-    };
+    if public {
+        return public_agent_card();
+    }
+    let origin = origin.trim_end_matches('/');
     json!({
         "name": "OpenAgents decision API",
         "description": "An HTTP service that answers typed questions (yes/no, choice, and score) with probabilities, and classifies batches of text. Calls need an API key.",
@@ -188,10 +182,10 @@ pub fn agent_card(origin: &str) -> Value {
             "organization": "OpenAgents",
             "url": "https://github.com/OpenAgentsInc/openagents",
         },
-        "url": format!("{endpoint_origin}/v1/systemone"),
+        "url": format!("{origin}/v1/systemone"),
         "supportedInterfaces": [
-            {"url": format!("{endpoint_origin}/v1/systemone"), "protocolBinding": "HTTP+JSON", "protocolVersion": "openagents.systemone.v1"},
-            {"url": format!("{endpoint_origin}/v1/classify"), "protocolBinding": "HTTP+JSON", "protocolVersion": "openagents.classify.v1"},
+            {"url": format!("{origin}/v1/systemone"), "protocolBinding": "HTTP+JSON", "protocolVersion": "openagents.systemone.v1"},
+            {"url": format!("{origin}/v1/classify"), "protocolBinding": "HTTP+JSON", "protocolVersion": "openagents.classify.v1"},
         ],
         "capabilities": {
             "streaming": false,
@@ -199,7 +193,7 @@ pub fn agent_card(origin: &str) -> Value {
             "extendedAgentCard": false,
         },
         "securitySchemes": {
-            "bearer": {"type": "http", "scheme": "bearer", "description": format!("An API key in the `oak_<id>.<secret>` format. See {auth_doc} to get one.")}
+            "bearer": {"type": "http", "scheme": "bearer", "description": "An API key in the `oak_<id>.<secret>` format. See /auth.md to get one."}
         },
         "security": [{"bearer": []}],
         "defaultInputModes": ["application/json"],
@@ -210,7 +204,52 @@ pub fn agent_card(origin: &str) -> Value {
             {"id": "durable-jobs", "name": "Durable jobs", "description": "Run a batch as a job that you can check, cancel, and download results from later.", "tags": ["jobs", "batch"]},
             {"id": "documentation", "name": "Bundled documentation", "description": "List, read, and search the OpenAgents documentation. No API key needed.", "tags": ["docs"]},
         ],
-        "documentationUrl": documentation,
+        "documentationUrl": format!("{origin}/agents.md"),
+    })
+}
+
+/// OpenAgents' own card, the same on both public origins.
+fn public_agent_card() -> Value {
+    const SITE: &str = "https://openagents.com";
+    const API: &str = "https://api.openagents.com/v1";
+    json!({
+        "name": "OpenAgents",
+        "description": "Many models through one API (Google's Gemini first, OpenAI-compatible), free typed answers from our Decisions API, projects, files, and chats for the person an agent works for, and Coder, our coding agent. An agent can sign itself up, with no person or card, and get an oak_ key and a free amount each day; past that it pays in bitcoin over Lightning.",
+        "version": env!("CARGO_PKG_VERSION"),
+        "protocolVersion": "openagents.api.v1",
+        "provider": {
+            "organization": "OpenAgents",
+            "url": SITE,
+        },
+        "url": API,
+        "supportedInterfaces": [
+            {"url": format!("{API}/responses"), "protocolBinding": "HTTP+JSON", "protocolVersion": "openresponses.v1"},
+            {"url": format!("{API}/chat/completions"), "protocolBinding": "HTTP+JSON", "protocolVersion": "openai.chat-completions.v1"},
+            {"url": format!("{SITE}/api/v1/decisions"), "protocolBinding": "HTTP+JSON", "protocolVersion": "openagents.decisions.v1"},
+            {"url": format!("{SITE}/mcp/docs"), "protocolBinding": "MCP", "protocolVersion": "2025-06-18"},
+        ],
+        "capabilities": {
+            "streaming": true,
+            "pushNotifications": false,
+            "extendedAgentCard": false,
+        },
+        "securitySchemes": {
+            "bearer": {"type": "http", "scheme": "bearer", "description": format!("An API key, `oak_<id>.<secret>`. An agent gets its own with no person: GET {SITE}/v1/agents/challenge, solve it, then POST {SITE}/v1/agents/register ({SITE}/docs/agents/sign-up). A person makes one at {SITE}/settings/api-keys. Projects, files, and chats take a login key (`oa_sk_`) from {SITE}/settings. Keys and scopes: {SITE}/docs/agents/scopes.")}
+        },
+        "security": [{"bearer": []}],
+        "defaultInputModes": ["application/json", "text/plain"],
+        "defaultOutputModes": ["application/json", "text/event-stream"],
+        "skills": [
+            {"id": "models", "name": "Models", "description": format!("Answer with many models through one API, Google's Gemini first: POST {API}/responses or {API}/chat/completions, one answer or a stream. OpenAI SDKs work with base_url {API}. {SITE}/docs/agents/chat-and-stream"), "tags": ["inference", "models", "streaming"]},
+            {"id": "decisions", "name": "Decisions", "description": format!("Typed answers in a fraction of a second: the chance a condition is true, one choice from a set, or a score. POST {SITE}/api/v1/decisions, no key, free. {SITE}/docs/agents/decisions"), "tags": ["decision", "classification", "routing"]},
+            {"id": "agent-signup", "name": "Sign up as an agent", "description": format!("Make an account with no person, email, or card: solve a proof of work at {SITE}/v1/agents/challenge and register at {SITE}/v1/agents/register for an oak_ key, a claim code for the person you work for, and a daily free amount. {SITE}/docs/agents/sign-up"), "tags": ["signup", "keys"]},
+            {"id": "projects", "name": "Projects, files, and chats", "description": format!("Read and change the projects, files, and chats of the person you work for at {SITE}/v1/projects and {SITE}/v1/threads, with their login key. {SITE}/docs/agents/projects"), "tags": ["projects", "files", "chats"]},
+            {"id": "coder", "name": "Coder", "description": format!("Run Coder, our coding agent, from a script: openagents coder chat -p \"...\" --json. {SITE}/docs/agents/coder-headless"), "tags": ["coding", "cli"]},
+            {"id": "documentation", "name": "Documentation", "description": format!("List, read, and search our docs as MCP tools at {SITE}/mcp/docs, no key. Every page is also Markdown: {SITE}/llms.txt. {SITE}/docs/agents/mcp"), "tags": ["docs", "mcp"]},
+            {"id": "lightning-payments", "name": "Pay in bitcoin", "description": format!("Buy credit over Lightning ({SITE}/docs/agents/buy-credits), or pay each request with no key over x402 ({SITE}/docs/agents/x402)."), "tags": ["payments", "lightning", "x402"]},
+            {"id": "typesafe-system-one", "name": "TypeSafe System One", "description": "A separate service: typed yes/no, choice, and score answers and batch classification from TypeSafe's System One models, at https://api.typesafe.ai/v1/systemone and https://api.typesafe.ai/v1/classify, with a TypeSafe key. https://docs.typesafe.ai/", "tags": ["decision", "classification", "external"]},
+        ],
+        "documentationUrl": format!("{SITE}/docs/agents"),
     })
 }
 
@@ -348,21 +387,53 @@ mod tests {
     use super::*;
 
     #[test]
-    fn public_cards_advertise_the_decision_api_not_the_website() {
+    fn public_cards_describe_openagents_with_typesafe_as_a_separate_skill() {
         for origin in ["https://openagents.com", "https://api.openagents.com"] {
             let card = agent_card(origin);
-            assert_eq!(card["url"], "https://api.typesafe.ai/v1/systemone");
-            assert_eq!(card["supportedInterfaces"][0]["url"], card["url"]);
+            assert_eq!(card["name"], "OpenAgents");
+            assert_eq!(card["url"], "https://api.openagents.com/v1");
+            assert_eq!(card["provider"]["url"], "https://openagents.com");
             assert_eq!(
-                card["supportedInterfaces"][1]["url"],
-                "https://api.typesafe.ai/v1/classify"
+                card["documentationUrl"],
+                "https://openagents.com/docs/agents"
             );
-            assert_eq!(card["documentationUrl"], "https://docs.typesafe.ai/");
+            let interfaces: Vec<&str> = card["supportedInterfaces"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|i| i["url"].as_str().unwrap())
+                .collect();
+            assert_eq!(
+                interfaces,
+                [
+                    "https://api.openagents.com/v1/responses",
+                    "https://api.openagents.com/v1/chat/completions",
+                    "https://openagents.com/api/v1/decisions",
+                    "https://openagents.com/mcp/docs",
+                ]
+            );
+            assert!(interfaces.iter().all(|url| !url.contains("typesafe")));
+            let auth = card["securitySchemes"]["bearer"]["description"]
+                .as_str()
+                .unwrap();
+            assert!(auth.contains("oak_") && auth.contains("/v1/agents/register"));
+            let skills: Vec<&str> = card["skills"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|s| s["id"].as_str().unwrap())
+                .collect();
+            for id in ["models", "decisions", "agent-signup", "projects", "coder"] {
+                assert!(skills.contains(&id), "{id}: {skills:?}");
+            }
+            // TypeSafe is advertised only as a separate service's skill.
+            assert_eq!(skills.last(), Some(&"typesafe-system-one"));
+            let typesafe = &card["skills"][skills.len() - 1]["description"];
             assert!(
-                card["skills"][0]["description"]
+                typesafe
                     .as_str()
                     .unwrap()
-                    .contains("yes/no")
+                    .contains("https://api.typesafe.ai/v1/systemone")
             );
         }
     }

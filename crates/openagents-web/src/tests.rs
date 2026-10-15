@@ -3426,10 +3426,7 @@ async fn the_site_serves_the_agent_discovery_documents_for_its_public_origin() {
     config.public_hosts.push("openagents.com".to_owned());
     let app = router(config);
     for (path, needle) in [
-        (
-            "/.well-known/agent-card.json",
-            "https://api.typesafe.ai/v1/systemone",
-        ),
+        ("/.well-known/agent-card.json", "\"name\":\"OpenAgents\""),
         (
             "/.well-known/agent-skills/index.json",
             "https://openagents.com/.well-known/agent-skills/openagents-decision-api/SKILL.md",

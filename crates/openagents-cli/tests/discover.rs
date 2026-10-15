@@ -28,13 +28,11 @@ fn preview_is_not_the_origins_card() {
     assert!(output.status.success());
     let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(value["source"], "checkout-preview");
+    assert_eq!(value["agent_card"]["name"], "OpenAgents");
+    assert_eq!(value["agent_card"]["url"], "https://api.openagents.com/v1");
     assert_eq!(
-        value["agent_card"]["url"],
-        "https://api.typesafe.ai/v1/systemone"
-    );
-    assert_eq!(
-        value["agent_card"]["supportedInterfaces"][1]["url"],
-        "https://api.typesafe.ai/v1/classify"
+        value["agent_card"]["supportedInterfaces"][2]["url"],
+        "https://openagents.com/api/v1/decisions"
     );
     assert!(value.get("remote").is_none());
 }
