@@ -42,13 +42,24 @@ a dedicated test account. Check pushing, Reverse Gravity, and replacement or
 removal. Physics runs locally in each visitor’s view; #11682 tracks sharing
 ongoing motion and broken joints.
 
-## Deploy the Snap Station Crew Deck (#11674)
+## Deploy Snap Station and check devices (#11674, #11675)
 
 Refresh the cloud deployment login described above, build the Snap Station
 WASM with `scripts/build-snap-web.sh`, and include it in the web image.
 Check the Crew Deck, four boards, stars, and saved builds on the deployed
 page. Local mouse and emulated-touch checks pass; production has not been
 deployed from this session.
+
+For #11675, use an iPhone/Safari, an Android phone/Chrome, and a tablet in
+portrait and landscape. Check dragging from the two-row phone tray, turning,
+removing, Go, the result, saving, and reopening. In Options, check Big buttons,
+Less motion (including the system preference), Piece marks, high contrast,
+and a screen reader's button names and dialog focus. Connect a standard
+Bluetooth or USB gamepad: move through menus and the Crew Deck, finish job one
+with its cursor, hold a direction, unplug while holding it, and reconnect.
+Record device/OS/browser and any overlap or missed gesture. Browser fixtures
+and virtual-controller checks cannot establish physical touch, controller,
+audio, or frame-time behavior.
 
 ## Show cloud environment issue runs on openagents.com and the phone (#11228)
 

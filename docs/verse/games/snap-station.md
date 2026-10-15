@@ -529,7 +529,7 @@ Blue Rush Studios domain. Epic:
 | S4 | [#11672](https://github.com/OpenAgentsInc/openagents/issues/11672) | Done, 38357711ac |
 | S5 | [#11673](https://github.com/OpenAgentsInc/openagents/issues/11673) | Done, 38357711ac and fcb6cf7b51 |
 | S6 | [#11674](https://github.com/OpenAgentsInc/openagents/issues/11674) | Done: Crew Deck, four boards, stars, and saved builds |
-| S7 | [#11675](https://github.com/OpenAgentsInc/openagents/issues/11675) | Planned |
+| S7 | [#11675](https://github.com/OpenAgentsInc/openagents/issues/11675) | Implemented; physical devices need the owner |
 | S8 | [#11676](https://github.com/OpenAgentsInc/openagents/issues/11676) | Planned |
 | S9 | [#11677](https://github.com/OpenAgentsInc/openagents/issues/11677) | Planned |
 | S10 | [#11678](https://github.com/OpenAgentsInc/openagents/issues/11678) | Planned |
@@ -587,8 +587,6 @@ Deviations, and why:
 - **The camera looks straight at the plane**, so a screen point maps
   exactly to the build; depth comes from the pieces' thickness and the
   perspective.
-- **No gamepad in the browser yet** (S7); the contract's cursor is ready
-  for it.
 
 ### S6: the Crew Deck
 
@@ -606,6 +604,31 @@ phone and tablet checks remain part of S7. Captures show the
 [phone deck with a saved build](../captures/snap-deck/phone-saved.png) and
 [earned stars](../captures/snap-deck/desktop-stars.png); the
 [browser results](../captures/snap-deck/browser.json) record both sizes.
+
+### S7: controllers and accessibility
+
+A standard gamepad uses the stick or D-pad for the cursor, A to pick up or
+place a piece, X to turn it, B to put it down or undo, and Start for the menu. Menus use
+the same directions and A; B closes them. Held directions repeat; A, B,
+and Start act once per press. Disconnecting clears held controls.
+
+**Options** has **Big buttons**, **Less motion**, and **Piece marks**. These
+choices stay on the device. Less motion initially follows the system setting;
+it removes camera easing, robot bobbing, sparks, and decorative movement while
+keeping the physical run. Piece marks use the same black-and-white dot patterns
+in the tray and on the build. Big buttons have at least 64 × 64 CSS pixels.
+The phone tray puts tools on a second row. Open cards keep the controls behind
+them out of keyboard navigation.
+
+Native checks pass (31 rules tests and 20 client tests). Local Chrome checks
+at 390 × 844, 1024 × 768, and 1440 × 900 cover settings, 64-pixel targets,
+the phone tray, still frames with Less motion, and a virtual controller
+turning, building, winning, and returning to edit. The
+[results](../captures/snap-access/browser.json) distinguish these fixtures
+from physical devices; captures show the [phone tray](../captures/snap-access/phone-access.png),
+[matching piece marks](../captures/snap-access/phone-marked-build.png), and
+[tablet](../captures/snap-access/tablet-access.png). Physical phone, tablet,
+and controller checks are in `NEEDS_OWNER.md`.
 
 ## Out of scope
 

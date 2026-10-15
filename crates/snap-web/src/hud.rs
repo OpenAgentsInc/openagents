@@ -41,6 +41,9 @@ pub enum Action {
     Menu,
     Resume,
     Restart,
+    ToggleBig,
+    ToggleMotion,
+    ToggleMarks,
     ToggleSound,
     ToggleContrast,
     Home,
@@ -467,6 +470,19 @@ impl Hud {
     pub fn new(document: &Document, parent: &Element, touch: bool) -> Self {
         let actions = Rc::new(RefCell::new(Vec::new()));
         let root = element(document, "div");
+        root.set_class_name("snap-hud");
+        let access_style = element(document, "style");
+        access_style.set_text_content(Some(r#"
+.snap-hud[data-big=true] button { min-width:64px!important; min-height:64px!important; font-size:18px!important; }
+.snap-hud .snap-mark { display:none; }
+.snap-hud[data-marks=true] .snap-mark { display:block; }
+@media(max-width:600px) {
+ .snap-hud .snap-tray { flex-wrap:wrap; justify-content:flex-end; }
+ .snap-hud .snap-hint { bottom:calc(176px + env(safe-area-inset-bottom))!important; }
+ .snap-hud .snap-tray-pieces { flex:0 0 100%!important; padding-bottom:4px; }
+}
+"#));
+        let _ = root.append_child(&access_style);
         css(
             &root,
             &[
@@ -646,6 +662,7 @@ impl Hud {
 
         // The hint line, over the tray.
         let hint = element(document, "div");
+        hint.set_class_name("snap-hint");
         css(
             &hint,
             &[
@@ -665,6 +682,7 @@ impl Hud {
 
         // The tray: pieces, then Turn, Undo and Go.
         let tray = element(document, "div");
+        tray.set_class_name("snap-tray");
         css(&tray, &PANEL);
         css(
             &tray,
@@ -681,6 +699,7 @@ impl Hud {
             ],
         );
         let tray_row = element(document, "div");
+        tray_row.set_class_name("snap-tray-pieces");
         css(
             &tray_row,
             &[
@@ -739,6 +758,9 @@ impl Hud {
 
         // The card.
         let card = element(document, "div");
+        let _ = card.set_attribute("role", "dialog");
+        let _ = card.set_attribute("aria-modal", "true");
+        let _ = card.set_attribute("aria-labelledby", "snap-card-title");
         css(&card, &PANEL);
         css(
             &card,
@@ -762,6 +784,7 @@ impl Hud {
             &[("display", "flex"), ("justify-content", "center")],
         );
         let card_title = element(document, "h2");
+        card_title.set_id("snap-card-title");
         css(&card_title, &[("margin", "6px 0"), ("font-size", "26px")]);
         let card_stars = element(document, "div");
         css(
@@ -851,6 +874,7 @@ impl Hud {
                 (deck::STARS, Action::Stars),
                 (deck::SAVED, Action::Saved),
                 (copy::HOW_TO_PLAY, Action::Tour),
+                (copy::OPTIONS, Action::Menu),
             ])
         {
             let b = button(document, label, &actions, action);
@@ -952,6 +976,51 @@ impl Hud {
             .set_text_content(Some(&format!("{}  ·  ★ {stars}", deck::TITLE)));
     }
 
+    pub fn set_access(&self, access: crate::access::Access) {
+        let _ = self
+            .root
+            .set_attribute("data-big", if access.big { "true" } else { "false" });
+        let _ = self
+            .root
+            .set_attribute("data-marks", if access.marks { "true" } else { "false" });
+        let _ = self.root.set_attribute(
+            "data-reduced",
+            if access.reduced { "true" } else { "false" },
+        );
+    }
+
+    pub fn pad_card(&self, input: verse_game::GameInput) {
+        use verse_game::GameInput;
+        let Ok(nodes) = self
+            .card_buttons
+            .query_selector_all("button:not(:disabled)")
+        else {
+            return;
+        };
+        let buttons: Vec<_> = (0..nodes.length())
+            .filter_map(|n| nodes.item(n).and_then(|n| n.dyn_into::<HtmlElement>().ok()))
+            .collect();
+        if buttons.is_empty() {
+            return;
+        }
+        let active = self.document.active_element();
+        let current = buttons
+            .iter()
+            .position(|b| active.as_ref().is_some_and(|a| a == b.as_ref()));
+        let n = match input {
+            GameInput::Down | GameInput::Right => current.map_or(0, |n| (n + 1) % buttons.len()),
+            GameInput::Up | GameInput::Left => current.map_or(buttons.len() - 1, |n| {
+                (n + buttons.len() - 1) % buttons.len()
+            }),
+            GameInput::Use => {
+                buttons[current.unwrap_or(0)].click();
+                return;
+            }
+            _ => return,
+        };
+        let _ = buttons[n].focus();
+    }
+
     pub fn deck_nav_top(&self) -> f32 {
         self.deck_nav.get_bounding_client_rect().top() as f32
     }
@@ -999,6 +1068,31 @@ impl Hud {
                     ],
                 );
                 let _ = b.append_child(&piece_icon(&self.document, kind, 50));
+                let mark = svg(&self.document, 24);
+                let _ = mark.set_attribute("class", "snap-mark");
+                let _ = mark.set_attribute("style", "position:absolute;left:2px;top:2px");
+                shape(
+                    &self.document,
+                    &mark,
+                    "circle",
+                    &[("cx", "20"), ("cy", "20"), ("r", "19"), ("fill", "white")],
+                );
+                for bit in 0..4 {
+                    if kit::mark_pattern(kind) & (1 << bit) != 0 {
+                        shape(
+                            &self.document,
+                            &mark,
+                            "circle",
+                            &[
+                                ("cx", if bit % 2 == 0 { "12" } else { "28" }),
+                                ("cy", if bit / 2 == 0 { "12" } else { "28" }),
+                                ("r", "5"),
+                                ("fill", "black"),
+                            ],
+                        );
+                    }
+                }
+                let _ = b.append_child(&mark);
                 let badge = element(&self.document, "span");
                 css(
                     &badge,
@@ -1166,6 +1260,13 @@ impl Hud {
     pub fn set_card(&mut self, card: Option<Card>) {
         if self.shown_card == card {
             return;
+        }
+        for background in [&self.play, &self.deck] {
+            if card.is_some() {
+                let _ = background.set_attribute("inert", "");
+            } else {
+                let _ = background.remove_attribute("inert");
+            }
         }
         self.shown_card = card.clone();
         let Some(card) = card else {

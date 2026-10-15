@@ -43,6 +43,8 @@ pub struct Style {
     pub broken: bool,
     /// High contrast: a white rim around every piece.
     pub contrast: bool,
+    /// A matching dot pattern in the tray and on the piece.
+    pub marks: bool,
     /// Raised toward the camera, for a held piece.
     pub lift: f32,
 }
@@ -227,6 +229,9 @@ pub fn tile(mesh: &mut Mesh, kind: PieceKind, corners: &[Vec2], style: Style) {
         }
         PieceKind::Strut | PieceKind::Bolt => {}
     }
+    if style.marks {
+        mark(mesh, kind, middle(corners), z + 0.48);
+    }
     if style.contrast {
         let n = corners.len();
         for i in 0..n {
@@ -242,8 +247,31 @@ pub fn tile(mesh: &mut Mesh, kind: PieceKind, corners: &[Vec2], style: Style) {
     }
 }
 
+/// A four-dot pattern that stays distinct without colour.
+pub fn mark_pattern(kind: PieceKind) -> u8 {
+    PieceKind::ALL.iter().position(|k| *k == kind).unwrap_or(0) as u8 + 1
+}
+
+fn mark(mesh: &mut Mesh, kind: PieceKind, at: Vec2, z: f32) {
+    mesh.disc(at, 0.18, 8, 0., z, z + 0.01, [1.; 3]);
+    let code = mark_pattern(kind);
+    for bit in 0..4 {
+        if code & (1 << bit) != 0 {
+            let p = at
+                + Vec2::new(
+                    if bit % 2 == 0 { -0.065 } else { 0.065 },
+                    if bit / 2 == 0 { 0.065 } else { -0.065 },
+                );
+            mesh.disc(p, 0.04, 8, 0., z + 0.01, z + 0.02, [0.; 3]);
+        }
+    }
+}
+
 /// A strut from corner `a` to corner `b`.
 pub fn strut(mesh: &mut Mesh, a: Vec2, b: Vec2, style: Style) {
+    if style.marks {
+        mark(mesh, PieceKind::Strut, (a + b) * 0.5, style.lift + 0.52);
+    }
     let dir = (b - a).normalize_or_zero() * 0.08;
     let z = style.lift;
     mesh.rod(
@@ -261,6 +289,9 @@ pub fn strut(mesh: &mut Mesh, a: Vec2, b: Vec2, style: Style) {
 
 /// A bolt at a seam's middle.
 pub fn bolt(mesh: &mut Mesh, at: Vec2, style: Style) {
+    if style.marks {
+        mark(mesh, PieceKind::Bolt, at, style.lift + 0.58);
+    }
     let z = style.lift;
     mesh.disc(
         at,

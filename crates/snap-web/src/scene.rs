@@ -38,6 +38,7 @@ pub struct Frame<'a> {
     pub time: f32,
     pub held: Option<Held>,
     pub contrast: bool,
+    pub marks: bool,
     pub sparks: &'a [Spark],
 }
 
@@ -109,6 +110,7 @@ pub fn draw(frame: &Frame) -> Drawn {
     let world = game.world.as_ref();
     let base = Style {
         contrast: frame.contrast,
+        marks: frame.marks,
         ..Style::default()
     };
     for (index, piece) in game.build.pieces.iter().enumerate() {
@@ -334,6 +336,7 @@ mod tests {
                 time: 1.0,
                 held,
                 contrast: false,
+                marks: false,
                 sparks: &[],
             });
             game.step(&[Input::Go]);
@@ -345,6 +348,7 @@ mod tests {
                 time: 1.5,
                 held: None,
                 contrast: true,
+                marks: true,
                 sparks: &[],
             });
             for drawn in [&building, &running] {
@@ -370,6 +374,7 @@ mod tests {
                 turn: 0,
             }),
             contrast: false,
+            marks: false,
             sparks: &[],
         });
         let far = draw(&Frame {
@@ -381,6 +386,7 @@ mod tests {
                 turn: 0,
             }),
             contrast: false,
+            marks: false,
             sparks: &[],
         });
         assert!(

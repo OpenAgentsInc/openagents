@@ -44,6 +44,7 @@ pub struct SnapGame {
     /// The slot picked in the tray, an index into [`SnapGame::slots`].
     pub slot: usize,
     pub carrying: Option<PieceKind>,
+    turn: Option<u8>,
 }
 
 impl SnapGame {
@@ -57,6 +58,7 @@ impl SnapGame {
             cursor,
             slot: 0,
             carrying: None,
+            turn: None,
         }
     }
 
@@ -77,6 +79,9 @@ impl SnapGame {
     /// The turn that snaps `kind` nearest the cursor, if any does.
     #[must_use]
     pub fn best_turn(&self, kind: PieceKind) -> u8 {
+        if let Some(turn) = self.turn {
+            return turn;
+        }
         let build = &self.game.build;
         let mut best: Option<(f64, u8)> = None;
         for turn in 0..TURNS {
@@ -93,6 +98,13 @@ impl SnapGame {
             }
         }
         best.map_or(0, |(_, turn)| turn)
+    }
+
+    /// Turns a piece held by the keyboard or gamepad cursor.
+    pub fn turn_carried(&mut self) {
+        if let Some(kind) = self.carrying {
+            self.turn = Some((self.best_turn(kind) + 1) % TURNS);
+        }
     }
 
     /// The rules' inputs for one generic input, moving the cursor and the
@@ -184,6 +196,9 @@ impl SnapGame {
             && self.game.left(kind) == 0
         {
             self.carrying = None;
+        }
+        if self.carrying.is_none() {
+            self.turn = None;
         }
         let slots = self.slots().len();
         if self.slot >= slots {
@@ -353,6 +368,21 @@ mod tests {
     use super::*;
     use snap_rules::level;
     use verse_game::Replay;
+
+    #[test]
+    fn the_cursor_can_turn_a_piece_and_clears_the_turn_after_placing() {
+        let mut game = SnapGame::new(level::job(1));
+        CommunityGame::step(&mut game, &[GameInput::Use]);
+        for _ in 0..3 {
+            game.turn_carried();
+        }
+        let inputs = game.convert(GameInput::Use);
+        assert!(matches!(inputs.as_slice(), [Input::Place { turn: 3, .. }]));
+        game.step_rules(&inputs);
+        assert_eq!(game.game.build.used(), 1);
+        assert!(game.carrying.is_none());
+        assert!(game.turn.is_none());
+    }
 
     fn press(game: &mut SnapGame, replay: &mut Replay, inputs: &[GameInput]) {
         for input in inputs {

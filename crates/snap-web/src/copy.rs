@@ -20,6 +20,7 @@ pub const STOP: &str = "Stop";
 pub const TRY_AGAIN: &str = "Try again";
 pub const NEXT_JOB: &str = "Next job";
 pub const ALL_JOBS: &str = "Save and visit Crew Deck";
+pub const OPTIONS: &str = "Options";
 pub const MENU: &str = "Menu";
 pub const PAUSED: &str = "Paused";
 pub const RESUME: &str = "Back to building";
@@ -283,6 +284,7 @@ mod tests {
             NEXT_JOB,
             ALL_JOBS,
             MENU,
+            OPTIONS,
             PAUSED,
             RESUME,
             RESTART,

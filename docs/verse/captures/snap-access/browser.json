@@ -1,0 +1,50 @@
+{
+  "scope": "Isolated local Chrome fixtures and a virtual standard gamepad; no physical devices or controller.",
+  "checks": [
+    {
+      "viewport": [
+        390,
+        844
+      ],
+      "touch": true,
+      "buttons_at_least_64px": true,
+      "piece_marks": true,
+      "reduced_motion_still_frame": true,
+      "physics_run_won_with_virtual_controller": true,
+      "choices_survived_reload": true,
+      "phone_two_row_tray": true,
+      "exceptions": 0
+    },
+    {
+      "viewport": [
+        1024,
+        768
+      ],
+      "touch": true,
+      "buttons_at_least_64px": true,
+      "piece_marks": true,
+      "reduced_motion_still_frame": true,
+      "physics_run_won_with_virtual_controller": true,
+      "choices_survived_reload": true,
+      "phone_two_row_tray": false,
+      "exceptions": 0
+    },
+    {
+      "viewport": [
+        1440,
+        900
+      ],
+      "touch": false,
+      "buttons_at_least_64px": true,
+      "piece_marks": true,
+      "reduced_motion_still_frame": true,
+      "physics_run_won_with_virtual_controller": true,
+      "choices_survived_reload": true,
+      "phone_two_row_tray": false,
+      "exceptions": 0
+    },
+    {
+      "system_reduced_motion_default": true
+    }
+  ]
+}

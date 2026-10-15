@@ -18,11 +18,13 @@
 //! container, and optionally a status line `#snap-status` the game clears
 //! when it starts; `scripts/build-snap-web.sh` builds it.
 
+pub mod access;
 pub mod copy;
 pub mod deck;
 pub mod kit;
 pub mod mesh;
 pub mod options;
+pub mod pad;
 pub mod scene;
 pub mod tutorial;
 pub mod zone;

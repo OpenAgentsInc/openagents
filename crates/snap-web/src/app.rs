@@ -24,7 +24,7 @@ use crate::scene::{self, Frame, Held, Spark};
 use crate::sound::{Effect, Sound};
 use crate::tutorial::{self, Tour};
 use crate::zone::{Slot, SnapGame};
-use crate::{copy, deck};
+use crate::{access::Access, copy, deck, pad::Pad};
 
 const VERTEX: &str = r"#version 300 es
 layout(location = 0) in vec3 a_position;
@@ -236,6 +236,8 @@ struct App {
     glow: GpuMesh,
     ghost: GpuMesh,
     progress: Progress,
+    access: Access,
+    pad: Pad,
     deck: deck::Deck,
     on_deck: bool,
     board: Option<usize>,
@@ -451,6 +453,17 @@ impl App {
                 }
             }
             Action::Restart => self.start_job(self.job, false),
+            Action::ToggleBig | Action::ToggleMotion | Action::ToggleMarks => {
+                match action {
+                    Action::ToggleBig => self.access.big = !self.access.big,
+                    Action::ToggleMotion => self.access.reduced = !self.access.reduced,
+                    _ => self.access.marks = !self.access.marks,
+                }
+                if let Some(storage) = self.window.local_storage().ok().flatten() {
+                    let _ = storage.set_item(crate::access::SAVE_KEY, &self.access.encode());
+                }
+                self.view_ready = false;
+            }
             Action::ToggleSound => {
                 self.progress.sound = !self.progress.sound;
                 self.sound.on = self.progress.sound;
@@ -662,6 +675,9 @@ impl App {
         }
         match key.as_str() {
             "r" | "R" => {
+                if self.hand.is_none() {
+                    self.snap.turn_carried();
+                }
                 if let Some(hand) = &mut self.hand {
                     let turns = snap_rules::TURNS;
                     hand.turn = if event.shift_key() {
@@ -793,6 +809,130 @@ impl App {
         self.effects();
     }
 
+    fn menu_buttons(&self) -> Vec<Button> {
+        let mut buttons = if self.on_deck {
+            deck::BOARDS
+                .iter()
+                .enumerate()
+                .map(|(n, b)| Button::new(b.title, Action::Board(n), false))
+                .chain([
+                    Button::new(deck::STARS, Action::Stars, false),
+                    Button::new(deck::SAVED, Action::Saved, false),
+                ])
+                .collect()
+        } else {
+            vec![
+                Button::new(copy::RESUME, Action::Resume, true),
+                Button::new(copy::RESTART, Action::Restart, false),
+            ]
+        };
+        buttons.extend([
+            Button::new(self.access.big_words(), Action::ToggleBig, false),
+            Button::new(self.access.motion_words(), Action::ToggleMotion, false),
+            Button::new(self.access.mark_words(), Action::ToggleMarks, false),
+            Button::new(copy::HOW_TO_PLAY, Action::Tour, false),
+            Button::new(copy::sound(self.progress.sound), Action::ToggleSound, false),
+            Button::new(
+                copy::contrast(self.contrast()),
+                Action::ToggleContrast,
+                false,
+            ),
+            Button::new(copy::ALL_JOBS, Action::AllJobs, false),
+            Button::new(copy::HOME, Action::Home, false),
+        ]);
+        buttons
+    }
+
+    fn poll_pad(&mut self) {
+        let pad = self
+            .window
+            .navigator()
+            .get_gamepads()
+            .ok()
+            .and_then(|pads| {
+                pads.iter()
+                    .filter_map(|p| p.dyn_into::<web_sys::Gamepad>().ok())
+                    .find(|p| p.connected() && p.mapping() == web_sys::GamepadMappingType::Standard)
+            });
+        let Some(pad) = pad else {
+            self.pad.clear();
+            return;
+        };
+        let axes: Vec<_> = pad
+            .axes()
+            .iter()
+            .map(|a| a.as_f64().unwrap_or(0.))
+            .collect();
+        let buttons: Vec<_> = pad
+            .buttons()
+            .iter()
+            .map(|b| {
+                b.dyn_into::<web_sys::GamepadButton>()
+                    .is_ok_and(|b| b.pressed())
+            })
+            .collect();
+        if self
+            .pad
+            .turn_pressed(buttons.get(2).copied().unwrap_or(false))
+            && !self.on_deck
+            && self.overlay == Overlay::None
+            && self.tour.is_none()
+        {
+            self.snap.turn_carried();
+            self.keyboard = true;
+        }
+        for input in self.pad.poll(&axes, &buttons, self.time) {
+            self.sound.wake();
+            if let Some(tour) = self.tour {
+                match input {
+                    GameInput::Use if tour.is_last() => self.act(Action::TourEnd(true)),
+                    GameInput::Use | GameInput::Right => self.act(Action::TourNext),
+                    GameInput::Left => self.act(Action::TourBack),
+                    GameInput::Back | GameInput::Pause => self.act(Action::TourEnd(false)),
+                    _ => {}
+                }
+            } else if self.overlay != Overlay::None {
+                if matches!(input, GameInput::Back | GameInput::Pause) {
+                    if self.on_deck {
+                        self.overlay = Overlay::None;
+                    } else if self.overlay == Overlay::Results {
+                        self.act(Action::Fix);
+                    } else {
+                        self.act(Action::Close);
+                    }
+                } else {
+                    self.hud.pad_card(input);
+                }
+            } else if self.on_deck {
+                let movement = match input {
+                    GameInput::Left => Some(Vec2::NEG_X),
+                    GameInput::Right => Some(Vec2::X),
+                    GameInput::Up => Some(Vec2::Y),
+                    GameInput::Down => Some(Vec2::NEG_Y),
+                    _ => None,
+                };
+                if let Some(d) = movement {
+                    self.deck.go(self.deck.target + d);
+                } else if input == GameInput::Use {
+                    if let Some(n) = deck::Deck::board_at(self.deck.at) {
+                        self.act(Action::Board(n));
+                    } else {
+                        self.act(Action::Menu);
+                    }
+                } else if matches!(input, GameInput::Pause | GameInput::Back) {
+                    self.act(Action::Menu);
+                }
+            } else if input == GameInput::Pause {
+                self.act(Action::Menu);
+            } else {
+                self.keyboard = true;
+                self.hand = None;
+                let inputs = self.snap.convert(input);
+                self.pending.extend(inputs);
+            }
+        }
+    }
+
     fn jobs_card(&self) -> Card {
         let mut buttons = Vec::new();
         for n in 1..=level::COUNT {
@@ -919,24 +1059,17 @@ impl App {
                 list: false,
             }),
             Overlay::Menu => Some(Card {
-                title: copy::PAUSED.to_owned(),
+                title: if self.on_deck {
+                    copy::OPTIONS
+                } else {
+                    copy::PAUSED
+                }
+                .to_owned(),
                 crew: None,
                 lines: Vec::new(),
                 stars: None,
                 link: Some((copy::GUIDE.to_owned(), tutorial::GUIDE.to_owned())),
-                buttons: vec![
-                    Button::new(copy::RESUME, Action::Resume, true),
-                    Button::new(copy::RESTART, Action::Restart, false),
-                    Button::new(copy::HOW_TO_PLAY, Action::Tour, false),
-                    Button::new(copy::sound(self.progress.sound), Action::ToggleSound, false),
-                    Button::new(
-                        copy::contrast(self.contrast()),
-                        Action::ToggleContrast,
-                        false,
-                    ),
-                    Button::new(copy::ALL_JOBS, Action::AllJobs, false),
-                    Button::new(copy::HOME, Action::Home, false),
-                ],
+                buttons: self.menu_buttons(),
                 list: true,
             }),
             Overlay::Results => Some(match game.status {
@@ -1003,6 +1136,7 @@ impl App {
     }
 
     fn update_hud(&mut self) {
+        self.hud.set_access(self.access);
         self.hud
             .set_deck(self.on_deck && !self.options.kit, self.progress.stars());
         if self.on_deck {
@@ -1103,7 +1237,7 @@ impl App {
         // canvas's middle.
         let centre = Vec2::new(mid.x, mid.y + (top - bottom) / 2.0 / scale);
         let target = View { centre, scale };
-        if !self.view_ready {
+        if !self.view_ready || self.access.reduced {
             self.view = target;
             self.view_ready = true;
             return;
@@ -1121,13 +1255,18 @@ impl App {
         };
         self.last = now;
         self.time += dt;
+        self.poll_pad();
         for action in self.hud.take() {
             self.act(action);
         }
         #[cfg(feature = "autoplay")]
         self.autoplay();
         if self.on_deck {
-            self.deck.step(dt as f32);
+            if self.access.reduced {
+                self.deck.at = self.deck.target;
+            } else {
+                self.deck.step(dt as f32);
+            }
         }
         let playing = !self.on_deck
             && self.overlay == Overlay::None
@@ -1250,17 +1389,27 @@ impl App {
                 &format!("{:.3} {:.3}", self.deck.at.x, self.deck.at.y),
             );
         }
+        let visual_time = if self.access.reduced {
+            0.
+        } else {
+            self.time as f32
+        };
         let drawn = if self.options.kit {
-            kit_sheet(self.time as f32)
+            kit_sheet(visual_time)
         } else if self.on_deck {
-            deck::draw(&self.deck, &self.progress, &self.library, self.time as f32)
+            deck::draw(&self.deck, &self.progress, &self.library, visual_time)
         } else {
             scene::draw(&Frame {
                 game: &self.snap.game,
-                time: self.time as f32,
+                time: visual_time,
+                marks: self.access.marks,
                 held: self.held(),
                 contrast,
-                sparks: &self.sparks,
+                sparks: if self.access.reduced {
+                    &[]
+                } else {
+                    &self.sparks
+                },
             })
         };
         self.gpu.refill(&mut self.lit, &drawn.lit);
@@ -1464,6 +1613,20 @@ pub fn start() {
     let hud = Hud::new(&document, &parent, touch);
     let options = Options::parse(&window.location().hash().unwrap_or_default());
     let progress = load_progress(&window);
+    let access = window
+        .local_storage()
+        .ok()
+        .flatten()
+        .and_then(|s| s.get_item(crate::access::SAVE_KEY).ok().flatten())
+        .and_then(|s| Access::decode(&s))
+        .unwrap_or_else(|| Access {
+            reduced: window
+                .match_media("(prefers-reduced-motion: reduce)")
+                .ok()
+                .flatten()
+                .is_some_and(|m| m.matches()),
+            ..Access::default()
+        });
     let (back_lit, back_glow) = kit::backdrop();
     let backdrop = (gpu.upload(&back_lit), gpu.upload(&back_glow));
     let empty = Mesh::new();
@@ -1484,6 +1647,8 @@ pub fn start() {
         glow,
         ghost,
         progress,
+        access,
+        pad: Pad::default(),
         deck: deck::Deck::default(),
         on_deck,
         board: None,
