@@ -222,7 +222,11 @@ Build the binary with `--release --features ort,native-cuda` on Linux,
 or `--release --features ort,native-metal` on a Mac. Provision the matching
 ORT library and provider dependencies before running. Use
 `scripts/dev/psionic-accelerator-bench.py --help` for two alternating
-1,000-sample rounds on the same device. Apple comparisons use Core ML's
+1,000-sample rounds on the same device. The CUDA driver pins cuDNN 9.20.0:
+supply `--cudnn-library FILE --cudnn-sha256 HASH`. It verifies the library
+and requires NVIDIA driver 580.65.06 or newer before starting any runs.
+Other CUDA/cuDNN configurations need their own compatibility check and
+can use the binary directly. Apple comparisons use Core ML's
 CPU-and-GPU setting; an ANE run is a separate hardware configuration.
 The existing router HTTP mode continues to select CPU execution.
 
