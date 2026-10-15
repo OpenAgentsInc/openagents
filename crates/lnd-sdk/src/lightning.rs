@@ -264,9 +264,8 @@ impl LightningRail for Client {
 }
 
 impl Client {
-    /// Read explicit incoming hints for active private channels. This needs an
-    /// operations/read-only credential; an invoice-only service can instead use
-    /// LND's automatic hint selection or operator-provided hints.
+    /// Read explicit incoming hints for active private channels. This needs
+    /// offchain:read, which the receiving service's credential includes.
     pub async fn private_route_hints(&self) -> Result<Vec<lnrpc::RouteHint>> {
         let response = transport::read(|| {
             let mut rpc = self.rpc();

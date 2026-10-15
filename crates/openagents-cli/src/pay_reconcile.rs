@@ -329,6 +329,12 @@ pub(crate) fn reconcile(output: &Output, words: &[String], usage: &str) -> u8 {
             let routes =
                 crate::pay::RouteFile::parse(&text, path.parent().unwrap_or(Path::new(".")))?;
             if let Some(settings) = routes.lnd_receive {
+                if !matches!(
+                    (network.as_ref(), settings.network.as_str()),
+                    (Some(Network::Bitcoin), "mainnet") | (Some(Network::Testnet), "testnet")
+                ) {
+                    return Err("The receiving wallets use different Bitcoin networks.".into());
+                }
                 let wallet = settings.readonly_wallet()?;
                 let records = wallet.payments().map_err(|e| e.to_string())?;
                 let balance = wallet.balance().map_err(|e| e.to_string())?;
