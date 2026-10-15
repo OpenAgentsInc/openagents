@@ -124,6 +124,11 @@ const SPEC: &str = include_str!("../../../../assets/verse/cad/rover.json");
 
 /// The physics step, s.
 pub const STEP: f64 = 1.0 / 240.0;
+/// How close a resting body's lowest point must be to what holds it up, m
+/// ([`Rover::resting`]): the parts collide as boxes (the wheels as
+/// capsules), so a thin or round part may rest a few centimetres off its
+/// box's corner.
+pub const REST_CONTACT: f64 = 0.05;
 /// Gravity, m/s².
 pub const GRAVITY: f64 = 9.81;
 /// The meteor's speed when it reaches the ground, m/s: hypervelocity,
@@ -1516,6 +1521,54 @@ impl Rover {
         }
     }
 
+    /// How each body still in the world rests: its index, instance, its
+    /// lowest point's height above the ground (m; negative is sunk), how
+    /// fast it still moves up or down (m/s; a freed wheel may roll on
+    /// level ground, but nothing settled falls or bounces), and whether
+    /// something holds it up (the ground within [`REST_CONTACT`], or
+    /// another body's box within that of its own).
+    #[must_use]
+    pub fn resting(&self) -> Vec<(usize, String, f64, f64, bool)> {
+        let boxes: Vec<(usize, DVec3, DVec3)> = self
+            .live()
+            .map(|k| {
+                let b = self.body(k);
+                let p = &self.parts[k];
+                let (mut lo, mut hi) = (DVec3::splat(f64::MAX), DVec3::splat(f64::MIN));
+                for &i in p.indices.iter() {
+                    let v = b.pos + b.orientation * (p.positions[i as usize] - p.shift).as_dvec3();
+                    lo = lo.min(v);
+                    hi = hi.max(v);
+                }
+                (k, lo, hi)
+            })
+            .collect();
+        boxes
+            .iter()
+            .map(|&(k, lo, hi)| {
+                let height = lo.y - self.origin.y;
+                let on_ground = height <= REST_CONTACT;
+                let on_part = boxes.iter().any(|&(j, olo, ohi)| {
+                    j != k
+                        && lo.y <= ohi.y + REST_CONTACT
+                        && lo.y >= olo.y - REST_CONTACT
+                        && lo.x <= ohi.x + REST_CONTACT
+                        && hi.x >= olo.x - REST_CONTACT
+                        && lo.z <= ohi.z + REST_CONTACT
+                        && hi.z >= olo.z - REST_CONTACT
+                });
+                let speed = self.body(k).vel.y.abs();
+                (
+                    k,
+                    self.parts[k].instance.clone(),
+                    height,
+                    speed,
+                    on_ground || on_part,
+                )
+            })
+            .collect()
+    }
+
     /// Each solid's color, linear RGB, with its instance.
     #[must_use]
     pub fn colors(&self) -> Vec<(String, [f32; 3])> {
@@ -1855,6 +1908,32 @@ mod tests {
                 "{} {:.2}",
                 l.name,
                 l.peak_use
+            );
+        }
+    }
+
+    #[test]
+    fn after_the_scenes_meteor_every_part_comes_to_rest_on_something() {
+        let mut r = settled();
+        let at = on(&r);
+        r.blast(at.as_vec3(), 5.2);
+        // The chassis's fragments go some 50 m up and fall back; all of
+        // it has landed and settled well within 30 s.
+        for _ in 0..(30 * 60) {
+            r.step(1.0 / 60.0);
+        }
+        for (k, name, height, speed, held) in r.resting() {
+            assert!(
+                height >= -REST_CONTACT,
+                "{name} ({k}) sinks {height:.3} m into the ground"
+            );
+            assert!(
+                held,
+                "{name} ({k}) hangs {height:.3} m up with nothing under it"
+            );
+            assert!(
+                speed < 0.05,
+                "{name} ({k}) still falls or bounces at {speed:.3} m/s"
             );
         }
     }

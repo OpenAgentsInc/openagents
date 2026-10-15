@@ -20,6 +20,12 @@
 //!   (where, its blast's damage radius, and the direction it flew).
 //! - `scene.json`: the rate, the rover's place and heading, the caster's
 //!   place, when the cast went up, and the hardest hit on the rover.
+//! - `rest.csv`: `k,instance,height,speed,held` for every body at the end:
+//!   its lowest point above the ground (m), how fast it still moves up or
+//!   down (a freed wheel may roll on), and whether the
+//!   ground or another part holds it up (`Rover::resting`). The export
+//!   fails if any body ends floating, sunk or still falling: run it long
+//!   enough for the pieces to land (20 s, the default, is).
 //!
 //! `--delay` stages the cast that many seconds in (the showcase's own by
 //! default); `--paint` repaints as `meteor_cast_capture` does.
@@ -57,7 +63,7 @@ fn obj(positions: &[Vec3], normals: &[Vec3], indices: &[u32]) -> String {
 fn main() -> Result<(), String> {
     let mut args = std::env::args().skip(1);
     let out = PathBuf::from(args.next().ok_or("Expected an output directory")?);
-    let (mut rate, mut seconds, mut delay) = (120.0_f64, 12.0_f64, showcase::DELAY);
+    let (mut rate, mut seconds, mut delay) = (120.0_f64, 20.0_f64, showcase::DELAY);
     let mut paint = Vec::new();
     while let Some(arg) = args.next() {
         let mut value = || args.next().ok_or(format!("{arg} needs a value"));
@@ -161,6 +167,24 @@ fn main() -> Result<(), String> {
         &out.join("scene.json"),
         &serde_json::to_string_pretty(&scene).unwrap_or_default(),
     )?;
+    // Every part must end resting on the ground or on another part.
+    let mut rest = String::from("k,instance,height,speed,held\n");
+    let mut bad = Vec::new();
+    for (k, instance, height, speed, held) in rover.resting() {
+        let _ = writeln!(rest, "{k},{instance},{height:.4},{speed:.4},{held}");
+        if height < -verse::zones::meteor_rover::REST_CONTACT || !held || speed > 0.05 {
+            bad.push(format!(
+                "{instance} ({k}): {height:.3} m up, {speed:.3} m/s, held {held}"
+            ));
+        }
+    }
+    write(&out.join("rest.csv"), &rest)?;
     eprintln!("wrote {} bodies to {}", seen.len(), out.display());
+    if !bad.is_empty() {
+        return Err(format!(
+            "Not every part came to rest on something by {seconds} s: {}",
+            bad.join("; ")
+        ));
+    }
     Ok(())
 }
