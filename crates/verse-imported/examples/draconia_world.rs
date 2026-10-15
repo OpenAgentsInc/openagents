@@ -24,20 +24,20 @@
 //! run, Space to jump, F12 for a screenshot in ~/Downloads, Escape to free
 //! the mouse (again to quit).
 use std::collections::HashSet;
-use std::io::{Read, Write};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 
 use glam::{DVec3, Mat4, Quat, Vec2, Vec3};
-use verse_engine::assets::{Bone, Clip, Model, Pack, Placement, Vertex};
+use verse_engine::assets::{Bone, Clip, Model, Pack, Placement};
 use verse_engine::material::Shading;
 use verse_engine::presentation::View;
 use verse_gfx::ui::UiBatch;
 use verse_imported::imported::{
-    Instance, Renderer, chamber, characters, crypt_fight, flat,
+    Instance, Renderer, chamber, characters, crypt_fight, flat, groom,
     lighting::{Light, Lighting},
-    original,
+    original, pack_cache,
 };
 
 /// Bump when the cached pack's layout or the rig's weights change.
@@ -549,193 +549,23 @@ fn rig(model: &mut Model) -> Result<Landmarks, String> {
     Ok(marks)
 }
 
-/// Splits her strand groom (every hair-shaded surface on the strand
-/// texture: the body, the flyaways, the face-framing locks) into its own
-/// model, which fades with distance, and makes the rest of her hair agree
-/// with it:
-///
-/// - the hair cards are tinted so their mean color (by coverage) is the
-///   strands', so the hairstyle keeps its color when the strands dissolve;
-/// - the brows and lashes are lightened and thinned a little: dark,
-///   full-opacity cards read heavy under candlelight.
 fn groom(her: &mut Model, pack: &Pack, dir: &Path) -> Result<Model, String> {
-    let hair = Shading::Hair as u8;
-    let strand_texture = her
-        .surfaces
-        .iter()
-        .filter(|s| s.material.shading == hair)
-        .max_by_key(|s| s.vertices.len())
-        .map(|s| s.texture)
-        .ok_or("Draconia has no hair")?;
-    let mut strands = her.clone();
-    strands
-        .surfaces
-        .retain(|s| s.material.shading == hair && s.texture == strand_texture);
-    for s in &mut strands.surfaces {
-        s.tint = (Vec3::from(s.tint) * HAIR_GRADE).to_array();
-    }
-    her.surfaces
-        .retain(|s| !(s.material.shading == hair && s.texture == strand_texture));
-    let strand_color = mean_color(pack, dir, strand_texture)?;
-    let marks = landmarks(her)?;
-    let eyes_y = (marks.eyes[0].y + marks.eyes[1].y) * 0.5;
-    for s in &mut her.surfaces {
-        if s.material.shading != hair || s.vertices.is_empty() {
-            continue;
-        }
-        let (min, max) = bounds(s.vertices.iter().map(|v| to_body(v.position)));
-        if max.y - min.y > 0.15 {
-            // The cards: the strands' color, card for strand.
-            let card = mean_color(pack, dir, s.texture)?;
-            let ratio = (strand_color / card.max(Vec3::splat(1e-3)))
-                .clamp(Vec3::splat(0.5), Vec3::splat(1.6));
-            s.tint = (Vec3::from(s.tint) * ratio * HAIR_GRADE).to_array();
-        } else if s.texture == 0 {
-            // The painted brow (a solid brow-shaped shell, no map): a soft
-            // fair tone under the brow hairs, not a dark block.
-            s.tint = (Vec3::from(s.tint) * 1.4).min(Vec3::ONE).to_array();
-            s.material.opacity *= 0.35;
-        } else {
-            // Brow hairs and lashes: their cards' own hard cutout (alpha to
-            // coverage turns a lash card's soft alpha into a smudge), the
-            // brows a lighter brown.
-            s.material.shading = Shading::Standard as u8;
-            if (min.y + max.y) * 0.5 > eyes_y + 0.012 {
-                s.tint = (Vec3::from(s.tint) * 1.5).min(Vec3::ONE).to_array();
-            }
-        }
-    }
-    eprintln!("draconia-world: strand color {strand_color:.3}");
-    Ok(strands)
+    groom::split_strands(her, pack, dir, HAIR_GRADE)
 }
 
-/// A level of detail of the strand groom: one clump in `k` (a hashed
-/// choice, so no pattern shows), each widened `k` times about its centre
-/// line, so the hair's coverage stays what it was. The groom is ribbons:
-/// vertices in left/right pairs, quads joining each pair to the next along
-/// a clump. Surfaces of hair finer than 0.2 mm (the flyaways) are left out.
 fn thinned(strands: &Model, k: usize) -> Result<Model, String> {
-    let mut out = strands.clone();
-    out.surfaces.clear();
-    for s in &strands.surfaces {
-        let v = &s.vertices;
-        if v.len() % 2 != 0 || v.is_empty() {
-            return Err("The strand groom is not left/right ribbon pairs".into());
-        }
-        let pairs = v.len() / 2;
-        let width =
-            |p: usize| Vec3::from(v[2 * p].position).distance(Vec3::from(v[2 * p + 1].position));
-        let mut widths: Vec<f32> = (0..pairs).step_by(97).map(width).collect();
-        widths.sort_by(f32::total_cmp);
-        // Model units are yards (`basis`); 0.2 mm.
-        if widths[widths.len() / 2] < 0.0002 / 0.9144 {
-            continue;
-        }
-        let mut link = vec![false; pairs];
-        let mut odd = 0usize;
-        for t in s.indices.chunks_exact(3) {
-            let ps = [t[0] as usize / 2, t[1] as usize / 2, t[2] as usize / 2];
-            let lo = *ps.iter().min().unwrap_or(&0);
-            let hi = *ps.iter().max().unwrap_or(&0);
-            if hi == lo + 1 {
-                link[lo] = true;
-            } else if hi != lo {
-                odd += 1;
-            }
-        }
-        if odd * 20 > s.indices.len() / 3 {
-            return Err("The strand groom's triangles do not join ribbon pairs".into());
-        }
-        let mut keep = vec![false; pairs];
-        let mut strand = 0u32;
-        for p in 0..pairs {
-            if p > 0 && !link[p - 1] {
-                strand += 1;
-            }
-            let hash = strand.wrapping_mul(2_654_435_761) >> 7;
-            keep[p] = hash as usize % k == 0;
-        }
-        let mut map = vec![u32::MAX; pairs];
-        let mut vertices = Vec::new();
-        for p in 0..pairs {
-            if !keep[p] {
-                continue;
-            }
-            map[p] = (vertices.len() / 2) as u32;
-            let (l, r) = (
-                Vec3::from(v[2 * p].position),
-                Vec3::from(v[2 * p + 1].position),
-            );
-            let (c, half) = ((l + r) * 0.5, (r - l) * 0.5 * k as f32);
-            let mut a = v[2 * p].clone();
-            let mut b = v[2 * p + 1].clone();
-            a.position = (c - half).to_array();
-            b.position = (c + half).to_array();
-            vertices.push(a);
-            vertices.push(b);
-        }
-        let mut indices = Vec::new();
-        for t in s.indices.chunks_exact(3) {
-            if t.iter().all(|&i| keep[i as usize / 2]) {
-                indices.extend(t.iter().map(|&i| map[i as usize / 2] * 2 + i % 2));
-            }
-        }
-        let mut surface = s.clone();
-        surface.vertices = vertices;
-        surface.indices = indices;
-        out.surfaces.push(surface);
-    }
-    Ok(out)
+    groom::thinned(strands, k)
 }
 
-/// How much of each strand level to draw `distance` metres from her face:
-/// weights that sum to one, crossing over in the `BANDS`.
+/// How much of each strand level to draw `distance` metres from her face.
 fn strand_levels(distance: f32) -> [f32; 3] {
-    let a = smooth(BANDS[0].0, BANDS[0].1, distance);
-    let b = smooth(BANDS[1].0, BANDS[1].1, distance);
-    [1.0 - a, a * (1.0 - b), b]
+    groom::strand_levels(distance, BANDS)
 }
 
 /// Her platinum under candlelight: the film renders' key is a broad soft
 /// source well to the side, the world's are candles close above, which
 /// light the crown of the updo near white; the world grades the hair down.
 const HAIR_GRADE: f32 = 0.72;
-
-/// A texture's mean linear color, weighted by its alpha.
-fn mean_color(pack: &Pack, dir: &Path, texture: usize) -> Result<Vec3, String> {
-    let file = &pack.textures.get(texture).ok_or("No such texture")?.file;
-    let path = dir.join(file);
-    let decoder = png::Decoder::new(std::io::BufReader::new(
-        std::fs::File::open(&path).map_err(|e| format!("{}: {e}", path.display()))?,
-    ));
-    let mut reader = decoder.read_info().map_err(|e| e.to_string())?;
-    let mut buf = vec![0; reader.output_buffer_size().ok_or("PNG too large")?];
-    let info = reader.next_frame(&mut buf).map_err(|e| e.to_string())?;
-    let channels = info.color_type.samples();
-    if info.bit_depth != png::BitDepth::Eight || channels < 3 {
-        return Err(format!("{}: expected 8-bit RGB(A)", path.display()));
-    }
-    let linear = |c: u8| {
-        let c = f32::from(c) / 255.0;
-        if c <= 0.04045 {
-            c / 12.92
-        } else {
-            ((c + 0.055) / 1.055).powf(2.4)
-        }
-    };
-    let mut sum = Vec3::ZERO;
-    let mut weight = 0.0;
-    for px in buf[..info.buffer_size()].chunks_exact(channels).step_by(7) {
-        let a = if channels == 4 {
-            f32::from(px[3]) / 255.0
-        } else {
-            1.0
-        };
-        sum += Vec3::new(linear(px[0]), linear(px[1]), linear(px[2])) * a;
-        weight += a;
-    }
-    Ok(sum / weight.max(1e-6))
-}
 
 /// Her idle: breathing, a weight shift, blinks, and her gaze.
 struct Idle {
@@ -931,79 +761,12 @@ fn content(a: &Args, dir: &Path) -> Result<(Pack, Option<Landmarks>), String> {
     Ok((pack, marks))
 }
 
-/// The pack as JSON without its geometry, and the geometry as raw
-/// little-endian arrays beside it (JSON of three million vertices would
-/// take a minute to read).
 fn write_pack(dir: &Path, pack: &Pack) -> Result<(), String> {
-    let mut light = pack.clone();
-    let mut bin = std::io::BufWriter::new(
-        std::fs::File::create(dir.join("geometry.bin")).map_err(|e| e.to_string())?,
-    );
-    for model in light.models.values_mut() {
-        for s in &mut model.surfaces {
-            let mut put = |x: u32| bin.write_all(&x.to_le_bytes()).map_err(|e| e.to_string());
-            put(s.vertices.len() as u32)?;
-            put(s.indices.len() as u32)?;
-            for v in &s.vertices {
-                for x in v.position.iter().chain(&v.normal).chain(&v.uv) {
-                    put(x.to_bits())?;
-                }
-                for j in v.joints {
-                    put(j)?;
-                }
-                for w in v.weights {
-                    put(w.to_bits())?;
-                }
-            }
-            for &i in &s.indices {
-                put(i)?;
-            }
-            s.vertices.clear();
-            s.indices.clear();
-        }
-    }
-    bin.flush().map_err(|e| e.to_string())?;
-    let json = serde_json::to_vec(&light).map_err(|e| e.to_string())?;
-    std::fs::write(dir.join("pack.json"), json).map_err(|e| e.to_string())
+    pack_cache::write_pack(dir, pack)
 }
 
 fn read_pack(dir: &Path) -> Result<Pack, String> {
-    let json = std::fs::read(dir.join("pack.json")).map_err(|e| e.to_string())?;
-    let mut pack: Pack = serde_json::from_slice(&json).map_err(|e| e.to_string())?;
-    let mut bytes = Vec::new();
-    std::fs::File::open(dir.join("geometry.bin"))
-        .and_then(|mut f| f.read_to_end(&mut bytes))
-        .map_err(|e| e.to_string())?;
-    let words: Vec<u32> = bytes
-        .chunks_exact(4)
-        .map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]))
-        .collect();
-    let mut at = 0usize;
-    let mut take = |n: usize| -> Result<&[u32], String> {
-        let s = words.get(at..at + n).ok_or("The geometry cache is short")?;
-        at += n;
-        Ok(s)
-    };
-    let f = |x: u32| f32::from_bits(x);
-    for model in pack.models.values_mut() {
-        for s in &mut model.surfaces {
-            let head = take(2)?;
-            let (nv, ni) = (head[0] as usize, head[1] as usize);
-            let raw = take(nv * 16)?;
-            s.vertices = raw
-                .chunks_exact(16)
-                .map(|w| Vertex {
-                    position: [f(w[0]), f(w[1]), f(w[2])],
-                    normal: [f(w[3]), f(w[4]), f(w[5])],
-                    uv: [f(w[6]), f(w[7])],
-                    joints: [w[8], w[9], w[10], w[11]],
-                    weights: [f(w[12]), f(w[13]), f(w[14]), f(w[15])],
-                })
-                .collect();
-            s.indices = take(ni)?.to_vec();
-        }
-    }
-    Ok(pack)
+    pack_cache::read_pack(dir)
 }
 
 // ------------------------------------------------------------- the world

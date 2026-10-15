@@ -11,13 +11,16 @@ pub mod characters;
 pub mod combat;
 pub mod controls;
 pub mod crypt_fight;
+pub mod groom;
 #[cfg(all(feature = "remote-chamber", feature = "imported-desktop"))]
 pub mod giver_panel;
 pub mod icons;
 pub mod inventory;
-mod meteor_swarm;
+pub mod metahuman_rig;
+pub mod meteor_swarm;
 pub mod original;
 pub mod overlay;
+pub mod pack_cache;
 pub mod play;
 pub mod props;
 #[cfg(feature = "chamber-client")]

@@ -2,7 +2,11 @@
 // RigLogic, for Draconia's private import into Verse
 // (docs/verse/draconia/metahuman-study.md).
 //
-//   dna_dump HEAD.dna OUT_DIR [--lod N] [--controls CONTROLS.txt] [--joints JOINTS.txt] [--list-controls]
+//   dna_dump HEAD.dna OUT_DIR [--lod N] [--controls CONTROLS.txt] [--joints JOINTS.txt] [--skin] [--list-controls]
+//
+// --skin also writes OUT_DIR/<mesh>.skin.txt, each vertex's skin weights
+// (joint indices into joints.txt), so an engine can rig the mesh with the
+// DNA's own skeleton (Verse: `verse_imported::imported::metahuman_rig`).
 //
 // Writes OUT_DIR/<mesh>.obj for every mesh in the level of detail (default
 // 0), with positions (centimetres, as the DNA stores them), texture
@@ -98,12 +102,14 @@ int main(int argc, char** argv) {
         return 2;
     }
     std::string path = argv[1], out = argv[2], controls, jointsFile;
+    bool skinOut = false;
     int lod = 0;
     for (int i = 3; i < argc; ++i) {
         std::string a = argv[i];
         if (a == "--lod" && i + 1 < argc) lod = atoi(argv[++i]);
         else if (a == "--controls" && i + 1 < argc) controls = argv[++i];
         else if (a == "--joints" && i + 1 < argc) jointsFile = argv[++i];
+        else if (a == "--skin") skinOut = true;
     }
     auto stream = rl4::makeScoped<rl4::FileStream>(path.c_str(), rl4::FileStream::AccessMode::Read, rl4::FileStream::OpenMode::Binary);
     auto reader = rl4::makeScoped<rl4::BinaryStreamReader>(stream.get());
@@ -255,6 +261,19 @@ int main(int argc, char** argv) {
             f << 'f';
             for (auto l : ls) f << ' ' << lp[l] + 1 << '/' << lt[l] + 1 << '/' << ln[l] + 1;
             f << '\n';
+        }
+        if (skinOut && r->getSkinWeightsCount(m) == xs.size()) {
+            // One line per vertex position (the OBJ's `v` order): its
+            // joint count, then `joint weight` pairs, joints by index in
+            // joints.txt. Engines rig the mesh from this and joints.txt.
+            std::ofstream s(out + "/" + name + ".skin.txt");
+            for (std::size_t i = 0; i < xs.size(); ++i) {
+                auto ws = r->getSkinWeightsValues(m, static_cast<std::uint32_t>(i));
+                auto js = r->getSkinWeightsJointIndices(m, static_cast<std::uint32_t>(i));
+                s << ws.size();
+                for (std::size_t k = 0; k < ws.size(); ++k) s << ' ' << js[k] << ' ' << ws[k];
+                s << '\n';
+            }
         }
         fprintf(stderr, "mesh %s: %zu vertices, %u faces\n", name.c_str(), xs.size(), r->getFaceCount(m));
     }

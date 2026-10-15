@@ -364,6 +364,43 @@ Not adopted in v1:
 
 Each can come later without changing the rig JSON or the material id scheme.
 
+### Body skinning in Verse (2026-10-15)
+
+The exports stay static geometry; Verse rigs them itself with MetaHuman's
+own body skeleton (`verse::imported::metahuman_rig`):
+
+- `dna_dump BODY.dna OUT --joints body_arms_down.txt --skin` writes the body
+  DNA's skeleton (`joints.txt`), the body posed as the export is
+  (`body_lod0_mesh.obj`) and each body vertex's skin weights
+  (`body_lod0_mesh.skin.txt`).
+- `Rig::new` keeps MetaHuman's main skeleton (spine, neck, head, arms, every
+  finger joint, legs: 63 joints, plus two eye and two upper-lid joints found
+  from the eye surfaces). Every other DNA joint (twist, corrective, helper)
+  hands its weight to its nearest kept ancestor.
+- `Rig::skin` transfers weights from the body to every vertex of the export:
+  - clothes take the nearest body vertices' weights;
+  - a garment follows an arm only within a sleeve's reach of the arm's
+    bones (`Rig::sleeve`) and above the wrist;
+  - the head mesh leaves the body for the `head` joint above the body's neck
+    line;
+  - the groom is the head's.
+- A frame check refuses a wrong frame or pose: the export's body skin must
+  lie on the DNA body.
+- Poses are built in the DNA's frame with `Pose::rotate`, `reach` (two-bone
+  IK with a pole), `aim` (neck and head turned toward a point), `curl`
+  (fingers about the palm), `turn_palm` and `look` (eyes).
+  `Rig::palette` gives the matrices for `Renderer::set_pose_override`.
+- Strand levels of detail and the pack cache moved from the world example
+  into `verse::imported::{groom, pack_cache}`.
+- `crates/verse/examples/metahuman_meteor_film.rs` uses all of it: a
+  MetaHuman casting Meteor Swarm at the CAD rover, in one process.
+
+**Limit found.** The parity uniform's robe is a shell cut round the body with
+the arms down, with no separate sleeves. An arm raised above the shoulder
+pulls the robe's side into a sheet. The film keeps the arm below the
+shoulder and frames the cast from behind and in close-up. Real sleeves need a
+robe built with them, which is a job for the private pipeline.
+
 ## Photo-sourced skin: licence options (2026-10-13)
 
 The MakeHuman CC0 mesh plus procedural textures reads as CG. Real pore, wrinkle and albedo variation has to come from photos. Two rules decide which sources we can use. First, Draconia must not look like any real person, so a scanned face is used only for micro/meso detail (high-pass normal, roughness and albedo variation). Its low-frequency shape and colour are never transferred. Second, anything in git must be redistributable under its licence. Everything else lives in an untracked `assets-private/` path and is fetched by a script with an owner-held token. Licence texts were checked on 2026-10-13.

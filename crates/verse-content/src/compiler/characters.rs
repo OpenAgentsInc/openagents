@@ -391,11 +391,12 @@ pub fn import_bytes_with(
                 .read_normals()
                 .ok_or("Missing character normals")?
                 .collect();
-            let uvs: Vec<_> = reader
-                .read_tex_coords(0)
-                .ok_or("Missing character UVs")?
-                .into_f32()
-                .collect();
+            // A primitive with no texture coordinates (an untextured,
+            // flat-colored part, such as a tree's core) samples one texel.
+            let uvs: Vec<_> = match reader.read_tex_coords(0) {
+                Some(uvs) => uvs.into_f32().collect(),
+                None => vec![[0.0, 0.0]; positions.len()],
+            };
             let bone_ids: Vec<_> = if skin.is_some() {
                 reader
                     .read_joints(0)

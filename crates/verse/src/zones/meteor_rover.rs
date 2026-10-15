@@ -129,6 +129,9 @@ pub const STEP: f64 = 1.0 / 240.0;
 /// capsules), so a thin or round part may rest a few centimetres off its
 /// box's corner.
 pub const REST_CONTACT: f64 = 0.05;
+/// The blast radius of each meteor in [`Rover::swarm`], m: the scene's
+/// meteor (`after_the_scenes_meteor_every_part_comes_to_rest_on_something`).
+pub const SWARM_RADIUS: f32 = 5.2;
 /// Gravity, m/s².
 pub const GRAVITY: f64 = 9.81;
 /// The meteor's speed when it reaches the ground, m/s: hypervelocity,
@@ -192,6 +195,13 @@ const PIECE_BITS: u32 = 29;
 /// and only meets the ground: colliding at that speed with the step's
 /// look-ahead throws both apart unphysically.
 const FAST: f64 = 40.0;
+/// The fastest a part may spin, rad/s (about 16 turns a second). A blast
+/// pressing on a thin part's long side gives it a torque its tiny inertia
+/// about its long axis turns into tens of thousands of rad/s, which no real
+/// part survives; and the contact solver turns that spin back into bounces
+/// tens of metres high every time it touches the ground. Tumbling debris
+/// filmed at blasts turns a few to ten times a second.
+const MAX_SPIN: f64 = 100.0;
 const FAST_BIT: u32 = 1 << 31;
 
 fn find(p: &mut [usize], mut i: usize) -> usize {
@@ -1223,23 +1233,45 @@ impl Rover {
             half[u] /= 2.0;
             half[v] /= 2.0;
             let center = part.center + offset;
-            let inside = |p: Vec3| {
-                let d = (p - part.shift).as_dvec3() - part.center;
-                d[u] * su >= 0.0 && d[v] * sv >= 0.0
+            // The fragment's share of the mesh: every triangle clipped to
+            // its quarter, so its mesh stays inside its box (a large face
+            // kept whole would hang out of the box and through the ground).
+            let side = |p: Vec3, axis: usize, sign: f64| {
+                ((p - part.shift).as_dvec3() - part.center)[axis] * sign
             };
-            let indices: Vec<u32> = part
-                .indices
-                .chunks_exact(3)
-                .filter(|t| {
-                    let c = (part.positions[t[0] as usize]
-                        + part.positions[t[1] as usize]
-                        + part.positions[t[2] as usize])
-                        / 3.0;
-                    inside(c)
-                })
-                .flatten()
-                .copied()
-                .collect();
+            let (mut positions, mut normals, mut indices) = (Vec::new(), Vec::new(), Vec::new());
+            for t in part.indices.chunks_exact(3) {
+                let mut poly: Vec<(Vec3, Vec3)> = t
+                    .iter()
+                    .map(|&i| (part.positions[i as usize], part.normals[i as usize]))
+                    .collect();
+                for (axis, sign) in [(u, su), (v, sv)] {
+                    let mut out = Vec::with_capacity(poly.len() + 2);
+                    for i in 0..poly.len() {
+                        let (a, b) = (poly[i], poly[(i + 1) % poly.len()]);
+                        let (da, db) = (side(a.0, axis, sign), side(b.0, axis, sign));
+                        if da >= 0.0 {
+                            out.push(a);
+                        }
+                        if (da >= 0.0) != (db >= 0.0) {
+                            let f = (da / (da - db)) as f32;
+                            out.push((a.0.lerp(b.0, f), a.1.lerp(b.1, f).normalize_or(a.1)));
+                        }
+                    }
+                    poly = out;
+                }
+                if poly.len() < 3 {
+                    continue;
+                }
+                let base = positions.len() as u32;
+                for (p, n) in &poly {
+                    positions.push(*p);
+                    normals.push(*n);
+                }
+                for i in 1..poly.len() as u32 - 1 {
+                    indices.extend([base, base + i, base + i + 1]);
+                }
+            }
             let mass = part.mass / 4.0;
             let inertia = Body::box_inertia(mass, half * 2.0);
             let mut body = Body::new(mass, inertia, pos + orientation * center);
@@ -1273,8 +1305,8 @@ impl Rover {
                 center: DVec3::ZERO,
                 shift: part.shift + center.as_vec3(),
                 half,
-                positions: part.positions.clone(),
-                normals: part.normals.clone(),
+                positions: std::sync::Arc::new(positions),
+                normals: std::sync::Arc::new(normals),
                 indices: std::sync::Arc::new(indices),
                 color: part.color,
                 gone: false,
@@ -1397,6 +1429,16 @@ impl Rover {
         let g = if gravity { GRAVITY } else { 0.0 };
         let field = move |_: DVec3, _: DVec3| DVec3::new(0.0, -g, 0.0);
         self.world.step(&field);
+        for k in 0..self.bodies.len() {
+            if self.parts[k].gone {
+                continue;
+            }
+            let body = &mut self.world.bodies_mut()[self.bodies[k].0 as usize];
+            let spin = body.omega.length();
+            if spin > MAX_SPIN {
+                body.omega *= MAX_SPIN / spin;
+            }
+        }
         self.elapsed += h;
         for k in 0..self.links.len() {
             if self.links[k].broke.is_some() {
@@ -1631,6 +1673,48 @@ impl Rover {
             indices.push(j);
         }
         Some((positions, normals, indices, part.color))
+    }
+
+    /// A whole Meteor Swarm cast at the rover, for a film: the spell's four
+    /// meteors, each as (seconds after the first lands, where it lands,
+    /// its blast radius in m). Three land round it first, some 20 m out
+    /// behind and to either side, rocking it; the last lands squarely on
+    /// the deck ([`Self::deck`]) and breaks it up. The outer blasts may
+    /// shift the rover, so take the last landing from [`Self::deck`] when
+    /// it lands. Nearer, the outer blasts would catch the wreck in the air
+    /// and throw parts a hundred metres up.
+    #[must_use]
+    pub fn swarm(&self) -> Vec<(f32, Vec3, f32)> {
+        let c = self
+            .parts
+            .iter()
+            .position(|p| p.instance == "chassis")
+            .map_or(self.origin, |k| self.body(k).pos);
+        let toward =
+            DVec3::new(self.caster.x - c.x, 0.0, self.caster.z - c.z).normalize_or(DVec3::X);
+        let side = DVec3::new(-toward.z, 0.0, toward.x);
+        let ground = |d: DVec3| DVec3::new(c.x + d.x, self.origin.y, c.z + d.z).as_vec3();
+        vec![
+            (0.0, ground(-toward * 22.0 + side * 8.0), SWARM_RADIUS),
+            (0.3, ground(toward * 4.0 - side * 21.0), SWARM_RADIUS),
+            (0.6, ground(-toward * 12.0 + side * 19.0), SWARM_RADIUS),
+            (0.9, self.deck(), SWARM_RADIUS),
+        ]
+    }
+
+    /// Where a meteor lands squarely on the rover's deck now: on the
+    /// ground under the chassis, just short of its centre on the caster's
+    /// side (as [`Self::blast`] strikes it, flying away from the caster).
+    #[must_use]
+    pub fn deck(&self) -> Vec3 {
+        let c = self
+            .parts
+            .iter()
+            .position(|p| p.instance == "chassis" && !p.gone)
+            .map_or(self.origin, |k| self.body(k).pos);
+        let toward =
+            DVec3::new(self.caster.x - c.x, 0.0, self.caster.z - c.z).normalize_or(DVec3::X);
+        DVec3::new(c.x, self.origin.y, c.z).as_vec3() - (toward * 0.25).as_vec3()
     }
 
     /// Each solid's pose: its instance, position and rotation.
@@ -1935,6 +2019,83 @@ mod tests {
                 speed < 0.05,
                 "{name} ({k}) still falls or bounces at {speed:.3} m/s"
             );
+        }
+    }
+
+    /// Casts a whole swarm at `r` and runs 30 s; panics unless every part
+    /// rests on the ground or on another part.
+    fn swarm_comes_to_rest(mut r: Rover) {
+        for _ in 0..60 {
+            r.step(1.0 / 60.0);
+        }
+        let swarm = r.swarm();
+        assert_eq!(swarm.len(), 4);
+        let mut t = 0.0f32;
+        let mut next = 0;
+        // Everything thrown has landed and settled well within 30 s.
+        for _ in 0..(30 * 60) {
+            while next < swarm.len() && swarm[next].0 <= t {
+                // The last lands on the deck where it is by then.
+                let at = if next + 1 == swarm.len() {
+                    r.deck()
+                } else {
+                    swarm[next].1
+                };
+                r.blast(at, swarm[next].2);
+                next += 1;
+            }
+            r.step(1.0 / 60.0);
+            t += 1.0 / 60.0;
+        }
+        assert_eq!(r.blasts().len(), 4);
+        // The deck's meteor breaks what it strikes first.
+        assert_eq!(r.fragmented().len(), 1, "{:?}", r.fragmented());
+        for (k, name, height, speed, held) in r.resting() {
+            assert!(
+                height >= -REST_CONTACT,
+                "{name} ({k}) sinks {height:.3} m into the ground"
+            );
+            assert!(
+                held,
+                "{name} ({k}) hangs {height:.3} m up with nothing under it"
+            );
+            assert!(
+                speed < 0.05,
+                "{name} ({k}) still falls or bounces at {speed:.3} m/s"
+            );
+        }
+    }
+
+    #[test]
+    fn after_a_whole_swarm_every_part_comes_to_rest_on_something() {
+        swarm_comes_to_rest(rover());
+        // Cast from straight ahead, at 20 m, the rover turned
+        // three-quarters on (`metahuman_meteor_film`).
+        swarm_comes_to_rest(Rover::new(Vec3::new(1.5, 0.0, -20.0), 0.55, Vec3::ZERO));
+    }
+
+    #[test]
+    fn a_fragments_mesh_stays_inside_its_box() {
+        let mut r = settled();
+        let at = on(&r);
+        r.blast(at.as_vec3(), 5.2);
+        r.step(1.0 / 60.0);
+        let fragments: Vec<usize> = (51..r.parts.len()).filter(|&k| !r.parts[k].gone).collect();
+        assert!(!fragments.is_empty());
+        for k in fragments {
+            let p = &r.parts[k];
+            assert!(!p.indices.is_empty());
+            for &i in p.indices.iter() {
+                let local = (p.positions[i as usize] - p.shift).as_dvec3() - p.center;
+                for axis in 0..3 {
+                    assert!(
+                        local[axis].abs() <= p.half[axis] + 1e-4,
+                        "{} fragment {k}: a vertex {:.3} m out along {axis}",
+                        p.instance,
+                        local[axis].abs() - p.half[axis]
+                    );
+                }
+            }
         }
     }
 

@@ -49,84 +49,127 @@ fn decal(model: &str, center: Vec3, radius: f32, opacity: f32, time: f32) -> Ins
     }
 }
 
+/// One falling meteor at `p` moving at `v`: a blazing orb (a fire shell
+/// round a hot core) trailing flame.
+pub fn meteor(p: Vec3, v: Vec3, time: f32) -> Vec<Instance> {
+    let r = METEOR_RADIUS as f32;
+    let flicker = 1.0 + 0.08 * (time * 41.0 + p.x).sin();
+    // Fire sprites add up and read orange only against lit geometry;
+    // each stays well below full strength so they never burn to white.
+    let mut out = vec![
+        particle("effect-impact", p, r * 4.5 * flicker, 0.6, time),
+        particle("effect-impact", p, r * 2.4, 0.6, time),
+    ];
+    for n in 1..=METEOR_TRAIL_INSTANCES {
+        let f = n as f32 / METEOR_TRAIL_INSTANCES as f32;
+        out.push(particle(
+            "effect-impact",
+            p - v * METEOR_TRAIL_SPACING * n as f32,
+            r * (3.6 - 2.4 * f),
+            0.6 * (1.0 - 0.8 * f),
+            time,
+        ));
+    }
+    out
+}
+
+/// A detonation at `center`, `age` seconds after it struck (seeded by
+/// `seed`, so neighbouring blasts' smoke differs): a fireball that swells
+/// to the Sphere with a flash, a rising fire column, and smoke. Empty once
+/// it has burned out.
+pub fn blast(center: Vec3, age: f32, seed: f32, time: f32) -> Vec<Instance> {
+    let mut out = Vec::new();
+    if !(0.0..BLAST_SHOW).contains(&age) {
+        return out;
+    }
+    let radius = RADIUS as f32;
+    let c = center;
+    let swell = (age / BLAST_GROW).min(1.0);
+    let fade = 1.0 - age / BLAST_SHOW;
+    // The fireball fills the Sphere, then burns down.
+    out.push(particle(
+        "effect-impact",
+        c + Vec3::Y * radius * 0.3 * swell,
+        radius * (0.25 + 0.75 * swell.sqrt()),
+        0.5 * fade.powf(0.7),
+        time,
+    ));
+    // The flash at the moment of impact.
+    out.push(particle(
+        "effect-fire",
+        c + Vec3::Y,
+        5.0 * (1.0 - age / 0.35).max(0.0),
+        0.6,
+        time,
+    ));
+    for n in 0..BLAST_COLUMN_INSTANCES {
+        let k = n as f32 / BLAST_COLUMN_INSTANCES as f32;
+        out.push(particle(
+            "effect-fire",
+            c + Vec3::Y * (1.0 + age * (6.0 + 10.0 * k)),
+            3.5 - 1.5 * k,
+            0.5 * fade,
+            time,
+        ));
+    }
+    for n in 0..BLAST_SMOKE_INSTANCES {
+        let angle = n as f32 * 2.1 + seed;
+        out.push(particle(
+            "particle-smoke",
+            c + Vec3::new(angle.cos() * 3.0, 1.5 + age * 5.0, angle.sin() * 3.0),
+            2.5 + age * 4.0,
+            (age / 0.3).min(1.0) * fade * 0.8,
+            time,
+        ));
+    }
+    out
+}
+
+/// The scorch a blast leaves on the ground at `center`.
+pub fn scorch(center: Vec3, time: f32) -> Instance {
+    decal(
+        "effect-grease",
+        Vec3::new(center.x, center.y + 0.03, center.z),
+        3.0,
+        0.9,
+        time,
+    )
+}
+
+/// A detonation's fire light, `age` seconds after it struck.
+#[must_use]
+pub fn blast_light(center: Vec3, age: f32) -> Option<Light> {
+    (0.0..BLAST_SHOW).contains(&age).then(|| Light {
+        position: center + Vec3::Y * 2.0,
+        color: Vec3::new(1.0, 0.32, 0.04),
+        intensity: BLAST_LIGHT * (1.0 - age / BLAST_SHOW).powi(2),
+        range: 2.5 * RADIUS as f32,
+    })
+}
+
+/// A falling meteor's light.
+#[must_use]
+pub fn meteor_light(p: Vec3) -> Light {
+    Light {
+        position: p,
+        color: Vec3::new(1.0, 0.4, 0.06),
+        intensity: METEOR_LIGHT,
+        range: 25.0,
+    }
+}
+
 /// Meteors, fireballs, and scorch marks.
 pub fn instances(game: &Game) -> Vec<Instance> {
     let time = game.time;
     let mut out = Vec::new();
-    let r = METEOR_RADIUS as f32;
     for (pos, vel) in falling(game) {
-        let (p, v) = (pos.as_vec3(), vel.as_vec3());
-        let flicker = 1.0 + 0.08 * (time * 41.0 + p.x).sin();
-        // Fire sprites add up and read orange only against lit geometry;
-        // each stays well below full strength so they never burn to white.
-        out.push(particle("effect-impact", p, r * 4.5 * flicker, 0.6, time));
-        out.push(particle("effect-impact", p, r * 2.4, 0.6, time));
-        for n in 1..=METEOR_TRAIL_INSTANCES {
-            let f = n as f32 / METEOR_TRAIL_INSTANCES as f32;
-            out.push(particle(
-                "effect-impact",
-                p - v * METEOR_TRAIL_SPACING * n as f32,
-                r * (3.6 - 2.4 * f),
-                0.6 * (1.0 - 0.8 * f),
-                time,
-            ));
-        }
+        out.extend(meteor(pos.as_vec3(), vel.as_vec3(), time));
     }
-    let radius = RADIUS as f32;
-    for blast in blasts(game)
-        .into_iter()
-        .filter(|b| (0.0..BLAST_SHOW).contains(&(time - b.at)))
-    {
-        let age = time - blast.at;
-        let c = blast.center.as_vec3();
-        let swell = (age / BLAST_GROW).min(1.0);
-        let fade = 1.0 - age / BLAST_SHOW;
-        // The fireball fills the Sphere, then burns down.
-        out.push(particle(
-            "effect-impact",
-            c + Vec3::Y * radius * 0.3 * swell,
-            radius * (0.25 + 0.75 * swell.sqrt()),
-            0.5 * fade.powf(0.7),
-            time,
-        ));
-        // The flash at the moment of impact.
-        out.push(particle(
-            "effect-fire",
-            c + Vec3::Y,
-            5.0 * (1.0 - age / 0.35).max(0.0),
-            0.6,
-            time,
-        ));
-        for n in 0..BLAST_COLUMN_INSTANCES {
-            let k = n as f32 / BLAST_COLUMN_INSTANCES as f32;
-            out.push(particle(
-                "effect-fire",
-                c + Vec3::Y * (1.0 + age * (6.0 + 10.0 * k)),
-                3.5 - 1.5 * k,
-                0.5 * fade,
-                time,
-            ));
-        }
-        for n in 0..BLAST_SMOKE_INSTANCES {
-            let angle = n as f32 * 2.1 + blast.at;
-            out.push(particle(
-                "particle-smoke",
-                c + Vec3::new(angle.cos() * 3.0, 1.5 + age * 5.0, angle.sin() * 3.0),
-                2.5 + age * 4.0,
-                (age / 0.3).min(1.0) * fade * 0.8,
-                time,
-            ));
-        }
+    for b in blasts(game) {
+        out.extend(blast(b.center.as_vec3(), time - b.at, b.at, time));
     }
-    for blast in blasts(game).iter().rev().take(MAX_SCORCHES) {
-        let c = blast.center.as_vec3();
-        out.push(decal(
-            "effect-grease",
-            Vec3::new(c.x, c.y + 0.03, c.z),
-            3.0,
-            0.9,
-            time,
-        ));
+    for b in blasts(game).iter().rev().take(MAX_SCORCHES) {
+        out.push(scorch(b.center.as_vec3(), time));
     }
     out
 }
@@ -136,23 +179,13 @@ pub fn lights(game: &Game, lighting: &mut Lighting) {
     let time = game.time;
     let mut lights: Vec<Light> = blasts(game)
         .into_iter()
-        .filter(|b| (0.0..BLAST_SHOW).contains(&(time - b.at)))
-        .map(|blast| {
-            let age = time - blast.at;
-            Light {
-                position: blast.center.as_vec3() + Vec3::Y * 2.0,
-                color: Vec3::new(1.0, 0.32, 0.04),
-                intensity: BLAST_LIGHT * (1.0 - age / BLAST_SHOW).powi(2),
-                range: 2.5 * RADIUS as f32,
-            }
-        })
+        .filter_map(|b| blast_light(b.center.as_vec3(), time - b.at))
         .collect();
-    lights.extend(falling(game).into_iter().map(|(pos, _)| Light {
-        position: pos.as_vec3(),
-        color: Vec3::new(1.0, 0.4, 0.06),
-        intensity: METEOR_LIGHT,
-        range: 25.0,
-    }));
+    lights.extend(
+        falling(game)
+            .into_iter()
+            .map(|(pos, _)| meteor_light(pos.as_vec3())),
+    );
     // Meteor Swarm's light outshines the small effects it replaces.
     let room = MAX_LIGHTS.saturating_sub(lights.len());
     lighting.lights.truncate(room);
