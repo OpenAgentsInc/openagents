@@ -727,6 +727,18 @@ impl Panel {
         if outcome.is_some() {
             return outcome;
         }
+        // A message queued for later sends once its chat's answer ends
+        // (#11685).
+        if let Some((ticket, command)) = self
+            .session
+            .next_held(|| uuid::Uuid::new_v4().simple().to_string())
+        {
+            if let Command::Send { chat, request, .. } = &command {
+                self.sent.insert((chat.clone(), request.clone()));
+            }
+            self.rows_dirty = true;
+            return Some(request((ticket, command)));
+        }
         // A task started here is recorded on its thread, so the host's
         // threads (and the phone) show it.
         let bind = self
@@ -1956,6 +1968,11 @@ impl Panel {
                 self.notice = None;
                 None
             }
+            Action::RemoveHeld { index } => {
+                self.session.unhold(index);
+                self.rows_dirty = true;
+                None
+            }
             Action::Queue => {
                 self.text_only();
                 if self.task().is_some_and(task_chat::Session::active) {
@@ -1963,6 +1980,19 @@ impl Panel {
                 }
                 if self.run().is_some_and(Run::active) {
                     return self.run_action(RunAction::Queue, view);
+                }
+                // While OpenAgents answers, the message waits for the
+                // answer to end, shown above the composer (#11685).
+                if self.task().is_none() && self.run().is_none() && self.session.answering() {
+                    let field = self.fields.get_mut(&id)?;
+                    let stamp = field.draft.stamp().ok()?;
+                    let submission = field.draft.submission(view, &stamp, None).ok()?;
+                    if self.session.hold(&submission.text) {
+                        let _ = field.draft.accepted(&submission);
+                        field.focused = true;
+                        self.rows_dirty = true;
+                    }
+                    return None;
                 }
                 self.action(Action::Send, view, now)
             }
@@ -1987,14 +2017,27 @@ impl Panel {
                 // Only the words go to the router; the draft's images stay
                 // here, bound to this message, for the Coder start its
                 // reply may lead to.
-                let command = self
-                    .session
-                    .submit(send_id.clone(), submission.text.clone())?;
+                // While OpenAgents answers, Send and Enter stop the answer,
+                // keeping what it wrote, and send now (#11685): the stop
+                // goes first, the send right after it.
+                let (command, then) = if self.session.answering() {
+                    let [stop, send] = self
+                        .session
+                        .stop_and_submit(send_id.clone(), submission.text.clone())?;
+                    (stop, Some(send))
+                } else {
+                    (
+                        self.session
+                            .submit(send_id.clone(), submission.text.clone())?,
+                        None,
+                    )
+                };
                 if self.session.images.bound(&id) == Some(send_id.as_str()) {
                     self.notice = Some(openagents_chat_app::attachments::HELD_FOR_CODER.into());
                 }
                 self.sent.insert((id.clone(), send_id.clone()));
                 self.submissions.insert(send_id, (id, submission));
+                self.queued.extend(then.map(request));
                 Some(request(command))
             }
             Action::Pin => {
@@ -3911,6 +3954,10 @@ impl Panel {
         );
         let enabled = draft.as_ref().is_some_and(|text| !text.trim().is_empty())
             || (self.attachments && !self.session.images.get(&id).is_empty());
+        // While OpenAgents answers (no Coder run): Send stops the answer
+        // and sends now, Queue keeps the message for after it, and Stop
+        // just stops (#11685). The composer takes a message meanwhile.
+        let answering = task.is_none() && run.is_none() && self.session.answering();
         let composer = Node {
             key: "chat-composer".into(),
             style: Style::default(),
@@ -3927,7 +3974,7 @@ impl Panel {
                 placeholder: placeholder.into(),
                 max_bytes: 32 * 1024,
                 enabled: true,
-                busy,
+                busy: busy && !answering,
                 stop: run.is_none_or(Run::can_stop).then_some(Intent::Chat {
                     action: Action::Stop,
                 }),
@@ -3995,7 +4042,18 @@ impl Panel {
                 false,
             ));
         }
-        buttons.push(if busy && task.is_none() && run.is_none() {
+        if answering {
+            buttons.push(button("chat-queue", "Queue", Action::Queue, enabled));
+            buttons.push(icon_button(
+                "chat-stop",
+                "Stop",
+                Action::Stop,
+                true,
+                Glyph::Stop,
+                false,
+            ));
+        }
+        buttons.push(if busy && task.is_none() && run.is_none() && !answering {
             icon_button(
                 "chat-stop",
                 "Stop",
@@ -4013,7 +4071,7 @@ impl Panel {
                     _ => "Send",
                 },
                 Action::Send,
-                enabled && !busy && task_ready && run.is_none_or(Run::can_send),
+                enabled && (!busy || answering) && task_ready && run.is_none_or(Run::can_send),
                 Glyph::ArrowUp,
                 true,
             )
@@ -4073,8 +4131,47 @@ impl Panel {
         if has_previews {
             content.push(stack("image-previews", Axis::Wrap, previews));
         }
+        // Messages queued for later (#11685): each sends, in order, once
+        // the answer ends; Remove drops one.
+        let held: Vec<_> = self
+            .session
+            .held_here()
+            .iter()
+            .enumerate()
+            .map(|(index, words)| {
+                let mut shown: String = words.chars().take(80).collect();
+                if words.chars().count() > 80 {
+                    shown.push('…');
+                }
+                let mut row = stack(
+                    &format!("held-{index}"),
+                    Axis::Horizontal,
+                    vec![
+                        text(
+                            &format!("held-text-{index}"),
+                            &format!("Queued: {shown}"),
+                            TextRole::Status,
+                        ),
+                        button(
+                            &format!("held-remove-{index}"),
+                            "Remove",
+                            Action::RemoveHeld { index },
+                            true,
+                        ),
+                    ],
+                );
+                row.style.gap = Some(Space::Xs);
+                row
+            })
+            .collect();
+        if !held.is_empty() {
+            let mut list = stack("chat-held", Axis::Vertical, held);
+            list.style.padding_points = Some([0, 4, 0, 4]);
+            content.push(list);
+        }
         let field_width = (self.column_width - 114.0).max(1.0);
         let compact = !has_previews
+            && !answering
             && task.is_none_or(|task| !task.active())
             && run.is_none_or(|run| !run.active())
             && self.fields.get(&id).is_some_and(|field| {
@@ -5744,5 +5841,113 @@ mod sidebar_order_tests {
                 ("quiet".to_owned(), attention::Indicator::Idle),
             ]
         );
+    }
+}
+
+#[cfg(test)]
+mod answering_tests {
+    use super::*;
+    use openagents_chat::service::Snapshot;
+
+    fn answering() -> (Panel, String, Instant) {
+        let now = Instant::now();
+        let chat = "c".repeat(32);
+        let mut panel = Panel::new(now);
+        panel.session.states.insert(
+            chat.clone(),
+            Snapshot {
+                chat: Some(chat.clone()),
+                busy: true,
+                partial: "Half an ans".into(),
+                ..Default::default()
+            },
+        );
+        panel.session.select(&chat);
+        panel.selected_changed(None);
+        (panel, chat, now)
+    }
+
+    fn mount(panel: &mut Panel) -> ValidatedView<Intent> {
+        let view = rust_native::View::new("answering", 1, panel.footer())
+            .validate()
+            .unwrap();
+        panel.mounted(&view);
+        view
+    }
+
+    /// #11685: while OpenAgents answers, Enter (Send) stops the answer and
+    /// sends now: the stop first, the send right after it.
+    #[test]
+    fn enter_while_it_answers_stops_the_answer_and_sends_now() {
+        let (mut panel, chat, now) = answering();
+        let view = mount(&mut panel);
+        let labels = crate::screens::words(&panel.footer());
+        assert!(labels.iter().any(|label| label == "Queue"), "{labels:?}");
+        assert!(labels.iter().any(|label| label == "Send"), "{labels:?}");
+        assert!(labels.iter().any(|label| label == SEND_HINT), "{labels:?}");
+        panel.input(TextInput::Commit("this instead"), now);
+        let Some(Request::Chat { command: stop, .. }) = panel.action(Action::Send, &view, now)
+        else {
+            panic!("a stop")
+        };
+        assert_eq!(stop, Command::Stop { chat: chat.clone() });
+        let then = panel.take_requests();
+        assert!(
+            matches!(
+                then.as_slice(),
+                [Request::Chat { command: Command::Send { chat: to, text, .. }, .. }]
+                    if *to == chat && text == "this instead"
+            ),
+            "{then:?}"
+        );
+    }
+
+    /// #11685: Ctrl+Enter (Queue) while it answers holds the message,
+    /// shown above the composer with Remove, and sends it once the answer
+    /// ends.
+    #[test]
+    fn ctrl_enter_while_it_answers_queues_for_later() {
+        let (mut panel, chat, now) = answering();
+        let view = mount(&mut panel);
+        panel.input(TextInput::Commit("after that"), now);
+        assert!(panel.action(Action::Queue, &view, now).is_none());
+        assert!(panel.take_requests().is_empty());
+        assert_eq!(panel.session.held_here(), ["after that"]);
+        assert_eq!(panel.draft(), "");
+        let labels = crate::screens::words(&panel.footer());
+        assert!(
+            labels.iter().any(|label| label == "Queued: after that"),
+            "{labels:?}"
+        );
+        assert!(labels.iter().any(|label| label == "Remove"), "{labels:?}");
+        // Nothing sends while the answer is being written.
+        assert!(!matches!(
+            panel.tick(now),
+            Some(Request::Chat {
+                command: Command::Send { .. },
+                ..
+            })
+        ));
+        panel.session.states.get_mut(&chat).unwrap().busy = false;
+        let sent = panel.tick(now + std::time::Duration::from_millis(1));
+        assert!(
+            matches!(
+                &sent,
+                Some(Request::Chat { command: Command::Send { text, .. }, .. }) if text == "after that"
+            ),
+            "{sent:?}"
+        );
+        assert!(panel.session.held_here().is_empty());
+    }
+
+    #[test]
+    fn remove_drops_a_queued_message() {
+        let (mut panel, _, now) = answering();
+        let view = mount(&mut panel);
+        panel.input(TextInput::Commit("never mind"), now);
+        panel.action(Action::Queue, &view, now);
+        assert_eq!(panel.session.held_here().len(), 1);
+        panel.action(Action::RemoveHeld { index: 0 }, &view, now);
+        assert!(panel.session.held_here().is_empty());
     }
 }

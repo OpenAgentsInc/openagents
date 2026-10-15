@@ -23,6 +23,9 @@ pasted image is dropped.
 
 | Keys | Does |
 | --- | --- |
+| Enter | Send now. While a reply is being written, it stops the reply, keeps what it wrote, and sends your message |
+| Cmd+Enter | Queue for later: the message shows above the message box, with **Remove**, and sends when the reply ends |
+| Shift+Enter | New line |
 | Cmd+N | New chat |
 | Cmd+F | Search chats |
 | Cmd+K | Commands |

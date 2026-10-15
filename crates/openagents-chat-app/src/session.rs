@@ -26,6 +26,10 @@ pub struct Session {
     /// The last route counts the host answered a [`Command::Routes`] with:
     /// this person's replies per route, counted on their computer (#10085).
     pub routes: Option<BTreeMap<String, u64>>,
+    /// Messages queued for later per chat (#11685, Ctrl+Enter while an
+    /// answer is being written): each sends, in order, once its chat's
+    /// answer ends ([`Self::next_held`]).
+    pub held: BTreeMap<String, Vec<String>>,
     pending: BTreeMap<u64, Command>,
     handoff_errors: BTreeMap<String, String>,
     next_ticket: u64,
@@ -48,6 +52,7 @@ impl Session {
             send: BTreeMap::new(),
             error: None,
             routes: None,
+            held: BTreeMap::new(),
             revision: 0,
             reading: false,
             pending: BTreeMap::new(),
@@ -136,6 +141,83 @@ impl Session {
         if self.busy() || text.trim().is_empty() {
             return None;
         }
+        Some(self.send_to(chat, request, text))
+    }
+    /// Whether the selected chat's answer is being written with no send of
+    /// this window's in flight: a send now stops it
+    /// ([`Self::stop_and_submit`]).
+    pub fn answering(&self) -> bool {
+        self.state().is_some_and(|state| state.busy)
+            && self
+                .selected
+                .as_ref()
+                .is_some_and(|id| !self.send.contains_key(id))
+    }
+    /// Enter while an answer is being written (#11685): stop it, keeping
+    /// what it wrote (marked as stopped), then send `text` now. The stop
+    /// comes first; both go to the host in this order.
+    pub fn stop_and_submit(
+        &mut self,
+        request: String,
+        text: String,
+    ) -> Option<[(u64, Command); 2]> {
+        if !self.answering() || text.trim().is_empty() {
+            return None;
+        }
+        let chat = self.selected.clone()?;
+        let stop = self.request(Command::Stop { chat: chat.clone() });
+        Some([stop, self.send_to(chat, request, text)])
+    }
+    /// Ctrl+Enter while the selected chat's answer is being written
+    /// (#11685): `text` waits, after any held before it, for that answer to
+    /// end. False when there is nothing to hold.
+    pub fn hold(&mut self, text: &str) -> bool {
+        let Some(chat) = self.selected.clone() else {
+            return false;
+        };
+        if text.trim().is_empty() {
+            return false;
+        }
+        self.held.entry(chat).or_default().push(text.to_owned());
+        true
+    }
+    /// The selected chat's messages queued for later, in sending order.
+    pub fn held_here(&self) -> &[String] {
+        self.selected
+            .as_ref()
+            .and_then(|id| self.held.get(id))
+            .map_or(&[], Vec::as_slice)
+    }
+    /// Remove the selected chat's queued message at `index`, giving its words.
+    pub fn unhold(&mut self, index: usize) -> Option<String> {
+        let chat = self.selected.clone()?;
+        let held = self.held.get_mut(&chat)?;
+        let text = (index < held.len()).then(|| held.remove(index));
+        if held.is_empty() {
+            self.held.remove(&chat);
+        }
+        text
+    }
+    /// The next queued message to send: the first held message of a chat
+    /// whose answer has ended and that has no send in flight, sent with a
+    /// `request` id from `id`.
+    pub fn next_held(&mut self, id: impl FnOnce() -> String) -> Option<(u64, Command)> {
+        let chat = self
+            .held
+            .keys()
+            .find(|chat| {
+                self.states.get(*chat).is_some_and(|state| !state.busy)
+                    && !self.send.contains_key(*chat)
+            })?
+            .clone();
+        let held = self.held.get_mut(&chat)?;
+        let text = held.remove(0);
+        if held.is_empty() {
+            self.held.remove(&chat);
+        }
+        Some(self.send_to(chat, id(), text))
+    }
+    fn send_to(&mut self, chat: String, request: String, text: String) -> (u64, Command) {
         self.images.bind(&chat, &request);
         let send = PendingSend {
             chat: chat.clone(),
@@ -144,11 +226,11 @@ impl Session {
         };
         self.send.insert(chat.clone(), send);
         self.error = None;
-        Some(self.request(Command::Send {
+        self.request(Command::Send {
             chat,
             request,
             text,
-        }))
+        })
     }
     pub fn retry(&mut self) -> Option<(u64, Command)> {
         let chat = self.selected.clone()?;
@@ -416,6 +498,66 @@ mod tests {
                 .collect(),
             ..Snapshot::default()
         }
+    }
+
+    /// #11685: Enter while an answer is being written stops it and sends
+    /// now; Ctrl+Enter holds the message until the answer ends.
+    #[test]
+    fn enter_stops_and_sends_and_ctrl_enter_holds_until_the_answer_ends() {
+        let mut session = Session::new(Instant::now());
+        let id = "a".repeat(32);
+        session.select(&id);
+        let mut answering = page(&id, 0, 1);
+        answering.busy = true;
+        answering.partial = "Half an ans".into();
+        session.states.insert(id.clone(), answering.clone());
+        // A plain send waits; a send now stops the answer first.
+        assert!(session.submit("r1".into(), "plain".into()).is_none());
+        assert!(session.answering());
+        let [(_, stop), (send_ticket, send)] = session
+            .stop_and_submit("r2".into(), "this instead".into())
+            .unwrap();
+        assert_eq!(stop, Command::Stop { chat: id.clone() });
+        assert_eq!(
+            send,
+            Command::Send {
+                chat: id.clone(),
+                request: "r2".into(),
+                text: "this instead".into(),
+            }
+        );
+        // Once sent, a second Enter can't stop it again.
+        assert!(!session.answering());
+        assert!(
+            session
+                .stop_and_submit("r3".into(), "again".into())
+                .is_none()
+        );
+        // Ctrl+Enter holds messages in order, visible and removable.
+        assert!(session.hold("first later"));
+        assert!(session.hold("second later"));
+        assert!(session.hold("dropped"));
+        assert!(!session.hold("  "));
+        assert_eq!(session.unhold(2).as_deref(), Some("dropped"));
+        assert_eq!(session.held_here(), ["first later", "second later"]);
+        // Nothing sends while the answer to r2 is being written.
+        assert!(session.next_held(|| "r4".into()).is_none());
+        let mut done = answering.clone();
+        done.busy = false;
+        session.outcome(send_ticket, Ok(done));
+        assert!(session.next_held(|| "r4".into()).is_none(), "r2 in flight");
+        session.send.clear();
+        let (_, next) = session.next_held(|| "r4".into()).unwrap();
+        assert_eq!(
+            next,
+            Command::Send {
+                chat: id.clone(),
+                request: "r4".into(),
+                text: "first later".into(),
+            }
+        );
+        assert_eq!(session.held_here(), ["second later"]);
+        assert!(session.next_held(|| "r5".into()).is_none(), "one at a time");
     }
 
     #[test]

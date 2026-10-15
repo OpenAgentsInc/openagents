@@ -36,6 +36,10 @@ pub enum Action {
     RemoveImage {
         id: String,
     },
+    /// Remove the chat's message queued for later at `index` (#11685).
+    RemoveHeld {
+        index: usize,
+    },
     Stop,
     Retry,
     Archive,

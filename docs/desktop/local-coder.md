@@ -54,7 +54,12 @@ and a changed source refreshes its catalog and cursors.
 The composer uses the phone's Send, Queue, and Answer modes. While a turn
 runs, Send (Enter) sends now, steering a turn that has not started or
 stopping a running one and sending; **Queue** (Ctrl+Enter, ⌘+Enter on
-macOS) keeps the message for after the turn (#11685). Question and approval answers remain task input; they grant no new
+macOS) keeps the message for after the turn (#11685). A plain chat with no
+Coder run does the same while OpenAgents answers: Send (Enter) stops the
+answer, which keeps what it wrote marked as stopped, and sends now; **Queue**
+holds the message above the composer, with **Remove**, and sends it when the
+answer ends (`openagents_chat_app::session::Session::stop_and_submit`,
+`Session::hold`). Question and approval answers remain task input; they grant no new
 execution authority. Queue editing uses the host's lease, renewal, and
 privacy rules. The window displays eight queued messages per page and never
 offers text editing for another sender's withheld message.
