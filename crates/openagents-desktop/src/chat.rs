@@ -28,6 +28,16 @@ use rust_native_desktop::{
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Instant;
+/// The composer's send keys (#11685): Enter sends now, even while a turn
+/// runs; Ctrl+Enter (Cmd+Enter on macOS) queues for later.
+#[cfg(target_os = "macos")]
+pub const SEND_HINT: &str = "Enter to send, ⌘+Enter to queue for later";
+#[cfg(not(target_os = "macos"))]
+pub const SEND_HINT: &str = "Enter to send, Ctrl+Enter to queue for later";
+#[cfg(target_os = "macos")]
+const QUEUE_KEYS: &str = "⌘+Enter";
+#[cfg(not(target_os = "macos"))]
+const QUEUE_KEYS: &str = "Ctrl+Enter";
 
 pub const TRANSCRIPT: &str = "chat-transcript";
 pub const COMPOSER: &str = "composer:chat-composer";
@@ -1946,6 +1956,16 @@ impl Panel {
                 self.notice = None;
                 None
             }
+            Action::Queue => {
+                self.text_only();
+                if self.task().is_some_and(task_chat::Session::active) {
+                    return self.task_action(TaskAction::Queue, view, now);
+                }
+                if self.run().is_some_and(Run::active) {
+                    return self.run_action(RunAction::Queue, view);
+                }
+                self.action(Action::Send, view, now)
+            }
             Action::Send => {
                 // Text only while attachments are off: a restored draft
                 // that still holds images sends its words alone.
@@ -2312,12 +2332,17 @@ impl Panel {
                 return Some(format!(
                     "{} · Enter",
                     self.task().map_or("Send", |task| match task.mode() {
-                        openagents_chat_app::coder_tab::Mode::Queue => "Queue",
+                        openagents_chat_app::coder_tab::Mode::Queue
+                            if task.steer_choice().is_none() =>
+                        {
+                            "Queue"
+                        }
                         openagents_chat_app::coder_tab::Mode::Answer => "Answer",
                         _ => "Send",
                     })
                 ));
             }
+            "chat-queue" => return Some(format!("Queue for later · {QUEUE_KEYS}")),
             _ => {}
         }
         let id = match key {
@@ -3879,6 +3904,11 @@ impl Panel {
             .map(task_chat::Session::mode)
             .or_else(|| run.map(Run::mode));
         let task_ready = task.is_none_or(|task| task.summary.is_some());
+        // While a turn runs the send control sends now when it can (#11685).
+        let sends_now = task.map_or_else(
+            || run.is_some_and(|run| run.steer_choice().is_some()),
+            |task| task.steer_choice().is_some(),
+        );
         let enabled = draft.as_ref().is_some_and(|text| !text.trim().is_empty())
             || (self.attachments && !self.session.images.get(&id).is_empty());
         let composer = Node {
@@ -3921,20 +3951,19 @@ impl Panel {
                 false,
             )
         });
-        let mut buttons = vec![text("chat-toolbar-space", "", TextRole::Status)];
+        // The send keys, on every composer (#11685).
+        let mut buttons = vec![text("chat-toolbar-space", SEND_HINT, TextRole::Status)];
         if let Some(run) = run
             && run.active()
         {
-            if let Some(choice) = run.steer_choice() {
-                buttons.push(button(
-                    "coder-steer",
-                    choice.label(),
-                    Action::Card {
-                        key: "coder-steer".into(),
-                    },
-                    enabled && !busy,
-                ));
-            }
+            // Send sends now, stopping the turn; Queue, as Ctrl+Enter,
+            // keeps the message for after it (#11685).
+            buttons.push(button(
+                "chat-queue",
+                "Queue",
+                Action::Queue,
+                enabled && !busy,
+            ));
             buttons.push(icon_button(
                 "chat-stop",
                 "Stop Coder",
@@ -3947,16 +3976,12 @@ impl Panel {
         if let Some(task) = task
             && task.active()
         {
-            if let Some(choice) = task.steer_choice() {
-                buttons.push(button(
-                    "task-steer",
-                    choice.label(),
-                    Action::Card {
-                        key: "task-steer".into(),
-                    },
-                    enabled && !busy,
-                ));
-            }
+            buttons.push(button(
+                "chat-queue",
+                "Queue",
+                Action::Queue,
+                enabled && !busy,
+            ));
             buttons.push(icon_button(
                 "chat-stop",
                 "Stop Coder",
@@ -3979,7 +4004,7 @@ impl Panel {
             icon_button(
                 "chat-send",
                 match task_mode {
-                    Some(openagents_chat_app::coder_tab::Mode::Queue) => "Queue",
+                    Some(openagents_chat_app::coder_tab::Mode::Queue) if !sends_now => "Queue",
                     Some(openagents_chat_app::coder_tab::Mode::Answer) => "Answer",
                     _ => "Send",
                 },
@@ -5243,9 +5268,13 @@ mod task_tests {
         panel.body();
         let view = mount(&mut panel, 1);
         let labels = crate::screens::words(&view.view().root);
+        // #11685: Send sends now, Queue keeps it for later, and the
+        // composer says which key does which.
+        assert!(labels.iter().any(|label| label == "Send"));
         assert!(labels.iter().any(|label| label == "Queue"));
         assert!(labels.iter().any(|label| label == "Stop Coder"));
-        assert!(labels.iter().any(|label| label == "Stop and send"));
+        assert!(!labels.iter().any(|label| label == "Stop and send"));
+        assert!(labels.iter().any(|label| label == SEND_HINT));
         panel.input(TextInput::Commit("next turn  "), now);
         let Request::TaskChat {
             chat,
@@ -5272,6 +5301,41 @@ mod task_tests {
         assert_eq!(request, same);
         panel.task_outcome(chat, retry, Ok(receipt()));
         assert_eq!(panel.draft(), "");
+    }
+    /// #11685: Enter sends now while Coder works (stop and send);
+    /// Ctrl+Enter (the Queue action) queues for later.
+    #[test]
+    fn enter_sends_now_and_ctrl_enter_queues_while_a_task_runs() {
+        let command = |request: Request| {
+            let Request::TaskChat {
+                request:
+                    task_chat::Request::Operation {
+                        operation: coder_access::protocol::Operation::CommandTask { command },
+                        ..
+                    },
+                ..
+            } = request
+            else {
+                panic!("task command")
+            };
+            (command.action, command.emulate)
+        };
+        let (mut panel, now) = panel();
+        let view = mount(&mut panel, 1);
+        panel.input(TextInput::Commit("now"), now);
+        let sent = panel.action(Action::Send, &view, now).unwrap();
+        assert_eq!(
+            command(sent),
+            (coder_access::protocol::CommandAction::Steer, true)
+        );
+        let (mut panel, now) = self::panel();
+        let view = mount(&mut panel, 1);
+        panel.input(TextInput::Commit("later"), now);
+        let queued = panel.action(Action::Queue, &view, now).unwrap();
+        assert_eq!(
+            command(queued),
+            (coder_access::protocol::CommandAction::Queue, false)
+        );
     }
     #[test]
     fn a_delayed_task_acknowledgment_preserves_edits_and_a_refusal_keeps_the_draft() {

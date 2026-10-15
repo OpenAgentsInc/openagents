@@ -51,9 +51,10 @@ retains at most 240 rows and 160 KiB of projected text, plus a bounded chunk
 buffer for records split across pages. New turns suppress carried messages,
 and a changed source refreshes its catalog and cursors.
 
-The composer uses the phone's Send, Queue, and Answer modes and steering
-choices: **Steer now** before a turn starts, or **Stop and send** while it
-runs. Question and approval answers remain task input; they grant no new
+The composer uses the phone's Send, Queue, and Answer modes. While a turn
+runs, Send (Enter) sends now, steering a turn that has not started or
+stopping a running one and sending; **Queue** (Ctrl+Enter, ⌘+Enter on
+macOS) keeps the message for after the turn (#11685). Question and approval answers remain task input; they grant no new
 execution authority. Queue editing uses the host's lease, renewal, and
 privacy rules. The window displays eight queued messages per page and never
 offers text editing for another sender's withheld message.
@@ -126,9 +127,10 @@ prints:
 | `stopped` | The stop, in a line. |
 
 The controls keep #10016's: **Stop Coder** stops the running turn
-(`Local::stop`); while Coder works, Send queues the message for the next
-turn (up to eight, each with **Send now** and **Remove**) and **Stop and
-send** stops the turn and continues with the message; after a question, an
+(`Local::stop`); while Coder works, Send (Enter) stops the turn and
+continues with the message, and **Queue** (Ctrl+Enter, ⌘+Enter on macOS)
+keeps it for the next turn (up to eight, each with **Send now** and
+**Remove**) (#11685); after a question, an
 approval, or an ended turn, Send continues the task in the same worktree
 (`Local::answer`). Set `OPENAGENTS_DESKTOP_CODER_EVENTS=FILE` to append every
 event the window receives to `FILE` as NDJSON, the lines `openagents --json

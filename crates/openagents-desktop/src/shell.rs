@@ -1799,10 +1799,25 @@ impl App for DesktopApp {
         let Some(chat) = &mut self.chat else {
             return false;
         };
+        // Ctrl+Enter (Cmd+Enter on macOS) queues for later; Enter sends
+        // now (#11685).
+        let later = matches!(
+            event,
+            rust_native_desktop::input::TextInput::Key {
+                key: "Enter",
+                command,
+                control,
+                ..
+            } if command || control
+        );
         let action = chat.input(event, now);
         if action == rust_native_desktop::composer::field::Action::Send {
             let request = chat.action(
-                openagents_desktop::chat_action::Action::Send,
+                if later {
+                    openagents_desktop::chat_action::Action::Queue
+                } else {
+                    openagents_desktop::chat_action::Action::Send
+                },
                 self.presenter.view(),
                 now,
             );

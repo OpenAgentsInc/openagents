@@ -3,7 +3,9 @@ use serde::Serialize;
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(tag = "action", rename_all = "snake_case")]
 pub enum Action {
-    SavedSelect { id: String },
+    SavedSelect {
+        id: String,
+    },
     SavedRefresh,
     SavedMore,
     SavedPrevious,
@@ -11,25 +13,36 @@ pub enum Action {
     SavedContinue,
     SavedRetry,
     SavedList,
-    Card { key: String },
+    Card {
+        key: String,
+    },
     Palette,
     Profile,
     Menu,
     DismissOverlay,
-    Command { key: String },
+    Command {
+        key: String,
+    },
     Send,
+    /// Ctrl+Enter, or Cmd+Enter on macOS (#11685): the composer's message
+    /// waits for the running turn to end. With nothing running it sends.
+    Queue,
     Pin,
     Rename,
     SaveName,
     CancelRename,
     AttachImage,
     PasteImage,
-    RemoveImage { id: String },
+    RemoveImage {
+        id: String,
+    },
     Stop,
     Retry,
     Archive,
     Restore,
     Earlier,
     Latest,
-    Followup { text: String },
+    Followup {
+        text: String,
+    },
 }
