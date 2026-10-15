@@ -6,7 +6,7 @@
 # See docs/deployment/iroh-relay.md.
 [package]
 name = "iroh-relay-live-test"
-version = "1.0.0-rc.21"
+version = "1.0.0-rc.22"
 edition = "2024"
 publish = false
 
