@@ -64,5 +64,31 @@ question and artifact. Retrieval scores are not probabilities. Missing
 conditions and required context remain explicit; a new revision or workspace
 returns `stale` until the artifact is refreshed.
 
+`bind --repo DIR --rev COMMIT --workspace NAME --input FILE --out DIR`
+records source, manifest, directory-discovery, documentation-scope, and graph
+impact dependencies in `bundle.json`. It accepts an artifact or a replayed
+build; private build context keeps the bundle private. `refresh` with the
+same arguments carries forward unchanged recipes and marks changed ones stale.
+`query` accepts these bundles and checks dirty paths and graph dependents.
+
+`install --repo DIR --workspace NAME --input FILE --store DIR` saves a
+content-addressed bundle and activates it. Subsequent installs and `rollback`
+require `--expected HASH`; rollback also takes `--digest HASH`. Stores isolate
+repositories and workspaces, check object digests, and serialize writers.
+`withdraw --repo DIR --workspace NAME --store DIR --source ID --expected HASH`
+removes affected private derived objects, including old rollback targets.
+
+`publish --repo DIR --rev COMMIT --workspace public [--remote origin]`
+publishes the source-only pilot to the parentless `code-index` branch.
+`fetch --repo DIR --workspace public --store DIR [--remote origin]` reads it,
+checks its source dependencies, and installs it locally within a 20-second
+fetch limit. No graph or semantic artifact belongs on `main`.
+
+The existing graph publisher can install and run the semantic publisher with
+`CODE_INDEX_SEMANTIC=1`. Set that value when running its installer and in the
+service's `~/.config/openagents/code-graph.env`; the default is off. Existing
+structural graph publication works independently. Model-quality promotion
+requires the experiment gate, not source verification.
+
 Run `cargo test -p code-index` and `cargo fmt -p code-index`. See the
 [roadmap](../../docs/code-graph/task-index-roadmap.md) for experiment scope.

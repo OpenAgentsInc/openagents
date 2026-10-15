@@ -78,6 +78,7 @@ pub fn artifact(context: &Context) -> Artifact {
             }],
             evidence: EvidenceClass::SourceReviewed,
             limitations: vec![],
+            dependency_scopes: vec![],
         }],
     }
 }

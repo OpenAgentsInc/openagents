@@ -488,7 +488,7 @@ pub fn compile(context: &Context) -> Result<Artifact, String> {
         if seed.capability.starts_with("3d") {
             exclusions.push("inference model registration".into());
         }
-        recipes.push(Recipe {id:seed.id.into(),capability:seed.capability.into(),operation:seed.operation.into(),description:seed.description.into(),aliases,exclusions,conditions:vec![],examples:vec![roles[0].references[0].clone()],roles,new_files:vec![],
+        recipes.push(Recipe {dependency_scopes:if seed.capability.starts_with("3d") {vec!["docs/verse".into()]} else {vec![]},id:seed.id.into(),capability:seed.capability.into(),operation:seed.operation.into(),description:seed.description.into(),aliases,exclusions,conditions:vec![],examples:vec![roles[0].references[0].clone()],roles,new_files:vec![],
             checks:packages.into_iter().map(|p|Check{package:p.into(),manifest:format!("crates/{p}/Cargo.toml"),filter:None,establishes:"Run the affected crate's tests; add a behavior test for the requested change.".into()}).collect(),evidence:EvidenceClass::SourceReviewed,
             limitations:vec!["Source-reviewed starting points; required behavior and additional consumers must be checked for the specific change. No cheaper-agent edit result has been measured for this recipe.".into()]});
     }

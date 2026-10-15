@@ -24,6 +24,9 @@ else
   git -C "$repo" worktree add --detach "$base/src" "$commit"
 fi
 (cd "$base/src" && CARGO_TARGET_DIR="$base/target" nice cargo build --release -p code-graph)
+if [ "${CODE_INDEX_SEMANTIC:-0}" = 1 ]; then
+  (cd "$base/src" && CARGO_TARGET_DIR="$base/target" nice cargo build --release -p code-index)
+fi
 
 if [ ! -d "$base/repo.git" ]; then
   git clone --quiet --bare "$remote" "$base/repo.git"
@@ -32,6 +35,10 @@ fi
 mkdir -p "$bin" "$units"
 install -m 0755 "$base/target/release/code-graph" "$bin/code-graph.new"
 mv "$bin/code-graph.new" "$bin/code-graph"
+if [ "${CODE_INDEX_SEMANTIC:-0}" = 1 ]; then
+  install -m 0755 "$base/target/release/code-index" "$bin/code-index.new"
+  mv "$bin/code-index.new" "$bin/code-index"
+fi
 install -m 0755 "$base/src/deploy/code-graph/publish.sh" "$bin/publish.sh"
 echo "$commit" > "$bin/REVISION"
 install -m 0644 "$base/src/deploy/code-graph/openagents-code-graph.service" "$units/"

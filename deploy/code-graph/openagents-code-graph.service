@@ -6,6 +6,7 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
+EnvironmentFile=-%h/.config/openagents/code-graph.env
 ExecStart=%h/.local/libexec/openagents-code-graph/publish.sh
 TimeoutStartSec=10min
 Nice=10

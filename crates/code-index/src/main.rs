@@ -9,11 +9,137 @@ fn run() -> Result<(), String> {
             .and_then(|at| args.get(at + 1))
             .cloned()
     };
+    if args.first().map(String::as_str) == Some("fetch") {
+        let repo = PathBuf::from(value("--repo").ok_or("Choose a repository with --repo DIR.")?);
+        let base = PathBuf::from(value("--store").ok_or("Choose a store with --store DIR.")?);
+        let id = code_index::store::fetch(
+            &repo,
+            &value("--remote").unwrap_or_else(|| "origin".into()),
+            &value("--workspace").unwrap_or_else(|| "public".into()),
+            &base,
+        )?;
+        println!("{}", serde_json::json!({"active":id}));
+        return Ok(());
+    }
+    if matches!(
+        args.first().map(String::as_str),
+        Some("bind" | "refresh" | "publish" | "install" | "rollback" | "withdraw")
+    ) {
+        let repo = PathBuf::from(value("--repo").ok_or("Choose a repository with --repo DIR.")?);
+        let context = code_index::recipes::Context::open(
+            &repo,
+            &value("--rev").unwrap_or_else(|| "HEAD".into()),
+            &value("--workspace").unwrap_or_else(|| "local".into()),
+        )?;
+        let store = value("--store")
+            .map(|p| code_index::store::Store::new(std::path::Path::new(&p), &context.snapshot));
+        if args[0] == "withdraw" {
+            if let Some(store) = &store {
+                let removed = store.withdraw_source(
+                    &value("--source").ok_or("Choose a source with --source ID.")?,
+                    value("--expected").as_deref(),
+                )?;
+                println!("{}", serde_json::json!({"removed_objects":removed}));
+                return Ok(());
+            }
+        }
+        if args[0] == "rollback" {
+            let store = store.ok_or("Choose a store with --store DIR.")?;
+            store.rollback(
+                &value("--digest").ok_or("Choose an artifact with --digest HASH.")?,
+                value("--expected").as_deref(),
+            )?;
+            println!("Rolled back the task index.");
+            return Ok(());
+        }
+        let bundle = if args[0] == "publish" {
+            code_index::store::bind(
+                &context,
+                &code_index::pilot::compile(&context)?,
+                Default::default(),
+            )?
+        } else {
+            let input =
+                PathBuf::from(value("--input").ok_or("Choose an input with --input FILE.")?);
+            if args[0] == "bind" {
+                let input: serde_json::Value = code_index::read_json(&input)?;
+                if input["schema"] == "openagents.recipe-build.v1" {
+                    let build: code_index::builder::Build = serde_json::from_value(input)
+                        .map_err(|_| "The build record could not be read.")?;
+                    let build = code_index::builder::replay(&context, &build)?;
+                    let sources = build
+                        .requests
+                        .iter()
+                        .filter_map(|r| r.private_context.as_ref())
+                        .map(|v| atif::digest(v))
+                        .collect();
+                    code_index::store::bind(&context, &build.artifact, sources)?
+                } else {
+                    let artifact = serde_json::from_value(input)
+                        .map_err(|_| "The task index could not be read.")?;
+                    code_index::store::bind(&context, &artifact, Default::default())?
+                }
+            } else {
+                let bundle: code_index::store::Bundle = code_index::read_json(&input)?;
+                if args[0] == "refresh" {
+                    code_index::store::refresh(&bundle, &context)?
+                } else if args[0] == "withdraw" {
+                    code_index::store::withdraw(
+                        &bundle,
+                        &value("--source").ok_or("Choose a source with --source ID.")?,
+                    )
+                } else {
+                    bundle
+                }
+            }
+        };
+        if args[0] == "publish" {
+            let commit = code_index::store::publish(&repo, &bundle, value("--remote").as_deref())?;
+            println!(
+                "{}",
+                serde_json::json!({"published":commit,"recipes":bundle.artifact.recipes.len()})
+            );
+        } else if args[0] == "install" {
+            let store = store.ok_or("Choose a store with --store DIR.")?;
+            let mut valid = bundle.artifact.clone();
+            valid.recipes.retain(|r| !bundle.stale.contains_key(&r.id));
+            context.verify(&valid)?;
+            let id = store.install(&bundle, value("--expected").as_deref())?;
+            println!("{}", serde_json::json!({"active":id}));
+        } else {
+            let out =
+                PathBuf::from(value("--out").ok_or("Choose an output directory with --out DIR.")?);
+            code_index::private::write(
+                &out,
+                "bundle.json",
+                &serde_json::to_vec(&bundle).map_err(|e| e.to_string())?,
+            )?;
+            println!(
+                "{}",
+                serde_json::json!({"recipes":bundle.artifact.recipes.len(),"stale":bundle.stale.len()})
+            );
+        }
+        return Ok(());
+    }
     if args.first().map(String::as_str) == Some("query") {
         let repo = PathBuf::from(value("--repo").ok_or("Choose a repository with --repo DIR.")?);
-        let artifact: code_index::recipes::Artifact = code_index::read_json(std::path::Path::new(
+        let input: serde_json::Value = code_index::read_json(std::path::Path::new(
             &value("--index").ok_or("Choose an index with --index FILE.")?,
         ))?;
+        let bundle = if input["schema"] == "openagents.task-index-bundle.v1" {
+            Some(
+                serde_json::from_value::<code_index::store::Bundle>(input.clone())
+                    .map_err(|_| "The index bundle could not be read.")?,
+            )
+        } else {
+            None
+        };
+        let artifact = if let Some(bundle) = &bundle {
+            bundle.artifact.clone()
+        } else {
+            serde_json::from_value::<code_index::recipes::Artifact>(input)
+                .map_err(|_| "The task index could not be read.")?
+        };
         let request = code_index::lookup::Request {
             question: value("--question").ok_or("Choose a question with --question TEXT.")?,
             operation: value("--operation"),
@@ -35,10 +161,25 @@ fn run() -> Result<(), String> {
             recipe_vectors: Default::default(),
             decision: None,
         };
+        let answer = if let Some(bundle) = bundle {
+            let graph = code_graph::store::open(&repo)?;
+            let dirty = code_index::store::dirty(&bundle, &repo, &graph.index)?;
+            code_index::store::query(&bundle, &request, &dirty)?
+        } else {
+            let mut answer = code_index::lookup::query(&artifact, &request)?;
+            if !code_graph::build::code_changes(&repo)?.is_empty() {
+                answer.status = code_index::lookup::Status::Stale;
+                answer.required_roles_complete = false;
+                answer.candidates.clear();
+                answer.next_step =
+                    "Bind this artifact and check the changed source before using its recipes."
+                        .into();
+            }
+            answer
+        };
         println!(
             "{}",
-            serde_json::to_string(&code_index::lookup::query(&artifact, &request)?)
-                .map_err(|e| e.to_string())?
+            serde_json::to_string(&answer).map_err(|e| e.to_string())?
         );
         return Ok(());
     }

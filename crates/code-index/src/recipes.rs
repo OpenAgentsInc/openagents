@@ -86,6 +86,8 @@ pub struct Recipe {
     pub checks: Vec<Check>,
     pub evidence: EvidenceClass,
     pub limitations: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dependency_scopes: Vec<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -122,11 +124,29 @@ pub fn snapshot(root: &Path, rev: &str, workspace: &str) -> Result<Snapshot, Str
     .to_owned();
     let roots = git(root, &["rev-list", "--max-parents=0", &commit])?;
     let remote = git(root, &["config", "--get", "remote.origin.url"]).unwrap_or_default();
+    let remote = normalize_remote(&String::from_utf8_lossy(&remote));
     Ok(Snapshot {
-        repository: crate::digest(&[roots, remote].concat()),
+        repository: crate::digest(&[roots, remote.into_bytes()].concat()),
         commit,
         workspace: workspace.into(),
     })
+}
+
+pub fn normalize_remote(remote: &str) -> String {
+    let remote = remote.trim();
+    let normalized = if let Some(path) = remote.strip_prefix("git@github.com:") {
+        format!("github.com/{path}")
+    } else if let Ok(url) = reqwest::Url::parse(remote) {
+        format!("{}{}", url.host_str().unwrap_or(""), url.path())
+    } else {
+        remote.to_owned()
+    };
+    let normalized = normalized.trim_end_matches('/').trim_end_matches(".git");
+    if normalized.starts_with("github.com/") {
+        normalized.to_ascii_lowercase()
+    } else {
+        normalized.into()
+    }
 }
 
 pub fn relative(path: &str) -> Result<(), String> {
@@ -243,6 +263,22 @@ impl Context {
         let mut verified = artifact.clone();
         let mut ids = BTreeSet::new();
         for recipe in &mut verified.recipes {
+            for scope in &recipe.dependency_scopes {
+                relative(scope)?;
+                if git(
+                    &self.root,
+                    &[
+                        "cat-file",
+                        "-t",
+                        &format!("{}:{scope}", self.snapshot.commit),
+                    ],
+                )? != b"tree\n"
+                {
+                    return Err(
+                        "A recipe discovery scope must be an existing repository directory.".into(),
+                    );
+                }
+            }
             if recipe.id.trim().is_empty()
                 || recipe.description.trim().is_empty()
                 || !ids.insert(recipe.id.clone())
