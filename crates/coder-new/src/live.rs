@@ -2253,54 +2253,127 @@ async fn gateway_turn(
         .redaction_keys
         .push(model_access::ApiKey::new(account.token()));
     let started = AtomicBool::new(false);
-    let result = {
-        let mut text = |delta: &str| {
-            if !delta.is_empty() {
-                started.store(true, Ordering::Relaxed);
-            }
-            text_callback(delta);
+    // A no-harness turn's one model (#11548), else the model the person
+    // picked in /models (#11526), else the gateway's own router.
+    let model = execution
+        .no_harness
+        .as_ref()
+        .map(crate::route::NoHarness::model)
+        .or(execution.gateway_model.as_deref())
+        .or_else(|| {
+            execution
+                .cheap
+                .as_ref()
+                .and_then(|cheap| cheap.gateway_model.as_deref())
+        })
+        .unwrap_or(crate::models::GATEWAY_AUTO)
+        .to_owned();
+    let tries = gateway_tries(&model);
+    let mut result = Err(String::new());
+    for (attempt, (model, wait)) in tries.iter().enumerate() {
+        // A gateway that failed (5xx, a timeout, a dropped connection)
+        // before anything streamed is asked again after a short wait,
+        // then on its quick model, before the route's next door
+        // (#11645).
+        if attempt > 0 && !pause(*wait, cancel).await {
+            break;
+        }
+        result = {
+            let mut text = |delta: &str| {
+                if !delta.is_empty() {
+                    started.store(true, Ordering::Relaxed);
+                }
+                text_callback(delta);
+            };
+            let mut events = |event: RuntimeEvent| {
+                if matches!(
+                    event,
+                    RuntimeEvent::Tool { .. } | RuntimeEvent::Delegation { .. }
+                ) {
+                    started.store(true, Ordering::Relaxed);
+                }
+                event_callback(event);
+            };
+            provider
+                .chat_with_plugins(
+                    model,
+                    &crate::models::GenerationOptions::default(),
+                    messages.to_vec(),
+                    &execution,
+                    &mut text,
+                    model_callback,
+                    &mut events,
+                    cancel,
+                )
+                .await
         };
-        let mut events = |event: RuntimeEvent| {
-            if matches!(
-                event,
-                RuntimeEvent::Tool { .. } | RuntimeEvent::Delegation { .. }
-            ) {
-                started.store(true, Ordering::Relaxed);
-            }
-            event_callback(event);
-        };
-        // A no-harness turn's one model (#11548), else the model the
-        // person picked in /models (#11526), else the gateway's own router.
-        provider
-            .chat_with_plugins(
-                execution
-                    .no_harness
-                    .as_ref()
-                    .map(crate::route::NoHarness::model)
-                    .or(execution.gateway_model.as_deref())
-                    .or_else(|| {
-                        execution
-                            .cheap
-                            .as_ref()
-                            .and_then(|cheap| cheap.gateway_model.as_deref())
-                    })
-                    .unwrap_or(crate::models::GATEWAY_AUTO),
-                &crate::models::GenerationOptions::default(),
-                messages.to_vec(),
-                &execution,
-                &mut text,
-                model_callback,
-                &mut events,
-                cancel,
-            )
-            .await
-    };
+        match &result {
+            Err(error)
+                if !started.load(Ordering::Relaxed)
+                    && !cancel.load(Ordering::Relaxed)
+                    && gateway_unavailable(error) => {}
+            _ => break,
+        }
+    }
     match result {
         Err(error) if !started.load(Ordering::Relaxed) && !cancel.load(Ordering::Relaxed) => {
             Err(error)
         }
         result => Ok(result),
     }
+}
+
+/// The gateway calls one turn may make, with the wait before each (#11645):
+/// `model` now, again after a moment, again after a little longer, then
+/// the gateway's quick model when `model` isn't already it.
+fn gateway_tries(model: &str) -> Vec<(String, std::time::Duration)> {
+    let unit = if cfg!(test) {
+        std::time::Duration::from_millis(1)
+    } else {
+        std::time::Duration::from_secs(1)
+    };
+    let mut tries = vec![
+        (model.to_owned(), std::time::Duration::ZERO),
+        (model.to_owned(), unit),
+        (model.to_owned(), unit * 3),
+    ];
+    if model != crate::models::GATEWAY_FAST {
+        tries.push((crate::models::GATEWAY_FAST.to_owned(), unit));
+    }
+    tries
+}
+
+/// Whether the gateway's `error` says it couldn't answer now (a 5xx, a
+/// timeout, a dropped or refused connection) rather than refusing the
+/// request (a 4xx such as 402 or 401), so asking again may answer.
+pub(crate) fn gateway_unavailable(error: &str) -> bool {
+    let status = error
+        .split("(HTTP ")
+        .nth(1)
+        .and_then(|rest| rest.get(..3))
+        .and_then(|code| code.parse::<u16>().ok());
+    match status {
+        Some(status) => status >= 500,
+        None => {
+            error.contains("timed out")
+                || error.contains("connection failed")
+                || error.contains("could not complete")
+                || error.contains("cut off")
+                || error.contains("incomplete or invalid reply")
+        }
+    }
+}
+
+/// Waits `wait`, or less if the turn is stopped; whether it wasn't.
+async fn pause(wait: std::time::Duration, cancel: &AtomicBool) -> bool {
+    let until = std::time::Instant::now() + wait;
+    while std::time::Instant::now() < until {
+        if cancel.load(Ordering::Relaxed) {
+            return false;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20).min(wait)).await;
+    }
+    !cancel.load(Ordering::Relaxed)
 }
 
 /// A no-harness turn's own-key door (#11548): the no-harness model on the
@@ -2855,6 +2928,181 @@ mod tests {
         format!(
             "data: {{\"model\":\"{model}\",\"choices\":[{{\"delta\":{{\"content\":\"{text}\"}},\"finish_reason\":\"stop\"}}]}}\n\ndata: [DONE]\n\n"
         )
+    }
+
+    /// A gateway that answers each request by `answer(n, model)`: `None`
+    /// drops the connection, `Some((status, body))` replies. It serves
+    /// until it has sent a 200, and returns the models it was asked for.
+    fn flaky_gateway(
+        answer: impl Fn(usize, &str) -> Option<(u16, String)> + Send + 'static,
+    ) -> (String, JoinHandle<Vec<String>>) {
+        let (listener, base) = fixture_listener();
+        let origin = base.trim_end_matches("/api/v1").to_owned();
+        let server = thread::spawn(move || {
+            let mut asked = Vec::new();
+            let mut n = 0;
+            for _ in 0..40 {
+                // A turn that has moved on asks nothing more.
+                let deadline = Instant::now() + Duration::from_secs(3);
+                let mut socket = loop {
+                    match listener.accept() {
+                        Ok((socket, _)) => {
+                            socket.set_nonblocking(false).unwrap();
+                            socket.set_read_timeout(Some(TEST_TIMEOUT)).unwrap();
+                            break Some(socket);
+                        }
+                        Err(_) if Instant::now() < deadline => {
+                            thread::sleep(Duration::from_millis(5));
+                        }
+                        Err(_) => break None,
+                    }
+                };
+                let Some(mut socket) = socket.take() else {
+                    break;
+                };
+                let request = read_request(&mut socket);
+                // Only the model calls count; anything else (the account's
+                // connections) is not found.
+                if !request.starts_with("POST /api/v1/chat/completions") {
+                    write!(
+                        socket,
+                        "HTTP/1.1 404 Not Found\r\ncontent-length: 0\r\nconnection: close\r\n\r\n"
+                    )
+                    .unwrap();
+                    continue;
+                }
+                let body: Value = serde_json::from_str(request.split_once("\r\n\r\n").unwrap().1)
+                    .unwrap_or_default();
+                let model = body["model"].as_str().unwrap_or_default().to_owned();
+                asked.push(model.clone());
+                n += 1;
+                let n = n - 1;
+                if n >= 16 {
+                    break;
+                }
+                match answer(n, &model) {
+                    None => drop(socket),
+                    Some((200, body)) => {
+                        headers(&mut socket, "text/event-stream", body.len());
+                        socket.write_all(body.as_bytes()).unwrap();
+                        break;
+                    }
+                    Some((status, body)) => {
+                        write!(
+                            socket,
+                            "HTTP/1.1 {status} Upstream\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                            body.len()
+                        )
+                        .unwrap();
+                    }
+                }
+            }
+            asked
+        });
+        (origin, server)
+    }
+
+    fn finished_text(receiver: &mpsc::Receiver<Update>) -> Result<String, String> {
+        receiver
+            .try_iter()
+            .find_map(|update| match update {
+                Update::Finished { result, .. } => Some(result.map(|reply| reply.text)),
+                _ => None,
+            })
+            .expect("the turn finished")
+    }
+
+    const UPSTREAM_FAILED: &str = r#"{"error":{"type":"upstream_failed","message":"No model answered before its first words."}}"#;
+
+    /// #11645 (the rc.14 gate's projects chat): a gateway 502 is asked
+    /// again after a moment, and the second answer is the turn's.
+    #[test]
+    fn a_gateway_502_is_retried() {
+        let (origin, server) = flaky_gateway(|n, model| {
+            Some(if n == 0 {
+                (502, UPSTREAM_FAILED.into())
+            } else {
+                (200, reply_stream(model, "After a retry"))
+            })
+        });
+        let (sender, receiver) = mpsc::channel();
+        let (_cancel, canceled) = oneshot::channel();
+        run_with_provider(auto_turn("sess_502", &origin), sender, canceled, |_| {
+            Err("no OpenRouter here".into())
+        });
+        let asked = server.join().unwrap();
+        assert_eq!(finished_text(&receiver).unwrap(), "After a retry");
+        assert!(asked.len() >= 2, "{asked:?}");
+    }
+
+    /// A gateway that keeps answering 503 on the turn's model is asked on
+    /// its quick model before the route moves on.
+    #[test]
+    fn a_gateway_503_falls_back_to_the_quick_model() {
+        let (origin, server) = flaky_gateway(|_, model| {
+            Some(if model == crate::models::GATEWAY_FAST {
+                (200, reply_stream(model, "From the quick model"))
+            } else {
+                (503, UPSTREAM_FAILED.into())
+            })
+        });
+        let (sender, receiver) = mpsc::channel();
+        let (_cancel, canceled) = oneshot::channel();
+        run_with_provider(auto_turn("sess_503", &origin), sender, canceled, |_| {
+            Err("no OpenRouter here".into())
+        });
+        let asked = server.join().unwrap();
+        assert_eq!(finished_text(&receiver).unwrap(), "From the quick model");
+        assert_eq!(
+            asked.last().map(String::as_str),
+            Some(crate::models::GATEWAY_FAST)
+        );
+    }
+
+    /// A connection the gateway drops is asked again.
+    #[test]
+    fn a_reset_gateway_connection_is_retried() {
+        let (origin, server) =
+            flaky_gateway(|n, model| (n > 0).then(|| (200, reply_stream(model, "After a reset"))));
+        let (sender, receiver) = mpsc::channel();
+        let (_cancel, canceled) = oneshot::channel();
+        run_with_provider(auto_turn("sess_reset", &origin), sender, canceled, |_| {
+            Err("no OpenRouter here".into())
+        });
+        server.join().unwrap();
+        assert_eq!(finished_text(&receiver).unwrap(), "After a reset");
+    }
+
+    /// A gateway that stays down ends with the doors' one message, which
+    /// never says to add credit: that is for a 402 only.
+    #[test]
+    fn a_gateway_that_stays_down_never_says_add_credit() {
+        let (origin, server) =
+            flaky_gateway(|n, _| (n < 15).then(|| (502, UPSTREAM_FAILED.into())));
+        let (sender, receiver) = mpsc::channel();
+        let (_cancel, canceled) = oneshot::channel();
+        run_with_provider(auto_turn("sess_down", &origin), sender, canceled, |_| {
+            Err("no OpenRouter here".into())
+        });
+        server.join().unwrap();
+        let why = finished_text(&receiver).unwrap_err();
+        assert!(!why.to_lowercase().contains("credit"), "{why}");
+        assert!(
+            why.contains("/plugins") || why.contains("coder login"),
+            "{why}"
+        );
+        assert!(gateway_unavailable(
+            "OpenAgents could not complete this request (HTTP 502)."
+        ));
+        assert!(gateway_unavailable(
+            "The OpenAgents connection failed. The request was not retried."
+        ));
+        assert!(!gateway_unavailable(
+            "Today's free allowance is used up (HTTP 402)."
+        ));
+        assert!(!gateway_unavailable(
+            "OpenAgents rejected the API key (HTTP 401)."
+        ));
     }
 
     fn auto_turn(token: &str, origin: &str) -> Request {

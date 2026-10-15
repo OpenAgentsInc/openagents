@@ -211,8 +211,8 @@ pub struct Plan {
 /// A turn never ends on one door (#11645): a door the chat is held to (the
 /// one its earlier answers came through, or a gateway model the person
 /// picked) goes first, and every other door that can run follows it, so a
-/// failure falls back instead of ending the turn. Signed out, Coder's own
-/// free answers ([`Lane::FreeTier`]) are always last.
+/// failure falls back instead of ending the turn. Coder's own free answers
+/// ([`Lane::FreeTier`]) are always the last resort.
 #[must_use]
 pub fn plan(execution: &ExecutionSettings, has_key: bool, favor: Favor) -> Plan {
     let mut plan = doors(execution, has_key, favor);
@@ -235,16 +235,17 @@ pub fn plan(execution: &ExecutionSettings, has_key: bool, favor: Favor) -> Plan 
         .connections
         .as_ref()
         .is_some_and(crate::provider::gateway_open);
-    // The free answers are for a signed-out chat only.
-    let first =
-        first.filter(|first| *first != Lane::FreeTier || (execution.free_tier && !signed_in));
+    // The free answers hold a chat only while they are on.
+    let first = first.filter(|first| *first != Lane::FreeTier || execution.free_tier);
     if let Some(first) = first {
         plan.lanes.retain(|lane| *lane != first);
         plan.lanes.insert(0, first);
         plan.held = Some(first);
     }
     plan.signed_in = signed_in;
-    if execution.free_tier && !signed_in && !plan.lanes.contains(&Lane::FreeTier) {
+    // The free answers are the last resort, signed in or not (#11645): a
+    // gateway that is down never ends the turn.
+    if execution.free_tier && !plan.lanes.contains(&Lane::FreeTier) {
         plan.lanes.push(Lane::FreeTier);
     }
     plan
@@ -486,8 +487,10 @@ impl Plan {
                 }
             })
             .collect();
+        // Credit is the fix only for a 402, handled above; a gateway that
+        // is down (5xx) or unreachable needs a moment, not money (#11645).
         let fix = if self.signed_in {
-            "Add credit at openagents.com, or connect another model in /plugins."
+            "Try again in a moment, or connect another model in /plugins."
         } else {
             "Sign in with `coder login` to get answers, or connect another model in /plugins."
         };
@@ -763,7 +766,7 @@ mod tests {
         };
         let said = plan.explain(&["Today's free allowance on OpenAgents is used up (HTTP 402). Add credit at openagents.com, or choose a model in /models.".to_owned()]);
         assert!(!said.contains(".."), "{said}");
-        assert!(said.contains("in /models. Add credit"), "{said}");
+        assert!(said.contains("in /models. Try again"), "{said}");
     }
 
     #[test]

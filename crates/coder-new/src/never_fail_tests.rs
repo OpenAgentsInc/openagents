@@ -65,6 +65,10 @@ enum Outcome {
     Answers,
     FailsToStart,
     Silent,
+    /// The gateway answered 5xx (after its retries).
+    ServerError(u16),
+    /// The connection dropped before an answer.
+    ConnectionReset,
 }
 
 /// The route's invariant over every world: every door that is connected
@@ -115,7 +119,7 @@ fn every_world_answers_or_ends_with_one_actionable_message() {
                                         Lane::OpenCode => opencode,
                                         Lane::OpenRouter => has_key,
                                         Lane::GeminiKey => no_harness == Some(true),
-                                        Lane::FreeTier => free_tier && !open,
+                                        Lane::FreeTier => free_tier,
                                     };
                                     let route = plan(&execution, has_key, Favor::default());
                                     let world = format!(
@@ -143,7 +147,7 @@ fn every_world_answers_or_ends_with_one_actionable_message() {
                                         route.lanes.len(),
                                         "a door twice: {world}"
                                     );
-                                    // The free answers are last, and only signed out.
+                                    // The free answers are the last resort.
                                     if route.lanes.contains(&Lane::FreeTier)
                                         && route.held != Some(Lane::FreeTier)
                                     {
@@ -152,7 +156,6 @@ fn every_world_answers_or_ends_with_one_actionable_message() {
                                             Some(&Lane::FreeTier),
                                             "{world}"
                                         );
-                                        assert!(!open, "{world}");
                                     }
                                     // A held door goes first, never alone when others exist.
                                     if let Some(held) = route.held {
@@ -164,7 +167,13 @@ fn every_world_answers_or_ends_with_one_actionable_message() {
                                         if working.is_some_and(|lane| !connected(lane)) {
                                             continue;
                                         }
-                                        for failing in [Outcome::FailsToStart, Outcome::Silent] {
+                                        for failing in [
+                                            Outcome::FailsToStart,
+                                            Outcome::Silent,
+                                            Outcome::ServerError(502),
+                                            Outcome::ServerError(503),
+                                            Outcome::ConnectionReset,
+                                        ] {
                                             worlds += 1;
                                             let outcome = |lane: Lane| {
                                                 if Some(lane) == working {
@@ -183,6 +192,17 @@ fn every_world_answers_or_ends_with_one_actionable_message() {
                                                     }
                                                     Outcome::Silent => {
                                                         reasons.push(format!("{} didn't start answering within 30 seconds", lane.name()));
+                                                        false
+                                                    }
+                                                    // The gateway's own words for a
+                                                    // 5xx or a dropped connection,
+                                                    // after its retries.
+                                                    Outcome::ServerError(status) => {
+                                                        reasons.push(format!("OpenAgents could not complete this request (HTTP {status})."));
+                                                        false
+                                                    }
+                                                    Outcome::ConnectionReset => {
+                                                        reasons.push("The OpenAgents connection failed. The request was not retried.".into());
                                                         false
                                                     }
                                                 }
@@ -207,8 +227,14 @@ fn every_world_answers_or_ends_with_one_actionable_message() {
                                                     );
                                                     assert!(
                                                         ending.contains("coder login")
+                                                            || ending.contains("/plugins")
                                                             || ending.contains("openagents.com"),
                                                         "no fix in {ending:?}: {world}"
+                                                    );
+                                                    // Credit is the fix only for a 402.
+                                                    assert!(
+                                                        !ending.to_lowercase().contains("credit"),
+                                                        "credit for a failure that isn't a 402: {ending}: {world}"
                                                     );
                                                     if !open && !matches!(signed, Account::Closed) {
                                                         assert!(

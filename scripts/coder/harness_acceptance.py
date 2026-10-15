@@ -180,6 +180,10 @@ def self_test() -> int:
     assert all(c in SEVERITY for c in CHECKS), [c for c in CHECKS if c not in SEVERITY]
     for c in ("chosen-fails-fallback", "signed-out-free-tier", "plugin-disabled-never-chosen"):
         assert blocks(None, c, "fail"), c
+    for line in ("OpenCode couldn't answer, so Auto answered.", "OpenCode didn't start, so Auto answered.",
+                 "OpenCode didn't answer, so Coder's free answers did."):
+        assert FELL_BACK.search(line), line
+    assert not FELL_BACK.search("OpenCode could not start.")
     print("self-test: ok")
     return 0
 
@@ -1715,6 +1719,9 @@ exit 1
 # The free answers' key, kept between gate runs so each run doesn't use up
 # one of this address's five daily sign-ups. Never under ~/.openagents.
 FREE_AGENT_CACHE = REAL_HOME / ".cache" / "coder-harness-gate" / "free-agent.json"
+# The grey line after a fallback (#11645), by meaning: the harness didn't
+# start or couldn't answer, so Auto (or another door) answered.
+FELL_BACK = re.compile(r"OpenCode (didn.t (start|answer)|couldn.t (start|answer)|failed)\b.{0,40}?\bso\b.{0,60}?\b(answered|did)\b", re.I)
 RED_DEAD_ENDS = re.compile(r"could not start\.|couldn.t find a model that can answer|is not signed in", re.I)
 
 
@@ -1759,8 +1766,8 @@ def never_fail_run(coder, root, path, signin, evidence, turn_timeout) -> dict:
                 out["chosen-fails-fallback"] = ["fail", "dead end: " + words(text)[-200:]]
             elif not ans:
                 out["chosen-fails-fallback"] = ["fail", f"no answer in {t['secs']}s: " + words(text)[-200:]]
-            elif not re.search(r"OpenCode didn.t (start|answer)", t["final"]):
-                out["chosen-fails-fallback"] = ["fail", f"answered “{ans[-1][:60]}” but no grey line says OpenCode didn't start"]
+            elif not FELL_BACK.search(" ".join(t["final"].split())):
+                out["chosen-fails-fallback"] = ["fail", f"answered “{ans[-1][:60]}” but no grey line says OpenCode fell back to Auto"]
             else:
                 out["chosen-fails-fallback"] = ["pass", f"OpenCode didn't start; Auto answered “{ans[-1][:60]}”"]
     finally:
