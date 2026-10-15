@@ -150,8 +150,9 @@ pub(crate) enum Decision {
     Denied,
     /// Outside the worktree: refused, and the turn ends asking the person.
     Asked,
-    /// Another request after the turn asked: refused while it ends.
-    #[cfg(test)]
+    /// Another request after the turn asked: refused while it ends. Only
+    /// the test gate makes it since #11707; the answers still name it.
+    #[cfg_attr(not(test), allow(dead_code))]
     Waiting,
 }
 
