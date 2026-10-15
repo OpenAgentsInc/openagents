@@ -30,6 +30,7 @@ the books. No text, figures, or tables are copied from any book.
 | [in-space-assembly.md](in-space-assembly.md) | Robotic assembly in microgravity, free-floating arm dynamics, flight precedents, assembly planning |
 | [sim-mapping.md](sim-mapping.md) | How each topic maps to our crates, and the tests Lagrange 2 needs |
 | [cislunar-strategy.md](cislunar-strategy.md) | A phased station network, construction and transport targets, schedule, and alternative execution plans |
+| [cislunar-shipyard-spec.md](cislunar-shipyard-spec.md) | The largest shipyard today's technology supports: a location trade (LEO, GEO, NRHO, L2, L1, DRO, low lunar orbit), sizing by launch cadence, station and ship specs, cost, gates, and why the biggest yard belongs in LEO until lunar fuel flows |
 | [autonomy-and-environment.md](autonomy-and-environment.md) | Why the robots must close their own loops (light time, coverage), stage-checked assembly, radiation and compute, LEO disposal and restraint rules, and the matching simulation scenarios |
 | [tycho-assessment.md](tycho-assessment.md) | An engineering assessment of a Tycho Station-class mobile shipyard from *The Expanse*: geometry, mass and shielding, power and propulsion, a Belt bootstrap, and the ships it could build |
 

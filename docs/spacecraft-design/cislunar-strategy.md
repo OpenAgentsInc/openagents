@@ -135,6 +135,12 @@ the limb and bright reflections still matter to the owner's visual preference.
 Verify the actual geometry rather than assuming every halo has the desired
 visibility. See [astrodynamics.md](astrodynamics.md).
 
+The [cislunar shipyard spec](cislunar-shipyard-spec.md) works this trade for
+the largest yard today's technology supports. It finds that while propellant
+comes from Earth, the biggest yard belongs in a low-inclination LEO orbit,
+with an NRHO departure port. The L2 halo becomes the heavy yard's home once
+lunar-made fuel, not regolith oxygen alone, is cheaper there.
+
 L1 remains a comparison case for transport cost, even though the visual
 preference rules out a large facility centered there. A NASA infrastructure
 study describes broadly similar orbital access costs for L1 and L2 [V]; our
@@ -262,6 +268,10 @@ and transport requirement, not a forecast of an available launcher's output.
 | --- | --- | --- |
 | 50 t dry plus 150 t propellant | 10 t dry hardware per hardware arrival; 20 t net propellant per tanker arrival | 5 hardware arrivals plus 8 tanker arrivals, rounded up |
 | 250 t dry plus 750 t propellant | Same assumed delivery capability | 25 hardware arrivals plus 38 tanker arrivals, rounded up |
+
+The [cislunar shipyard spec](cislunar-shipyard-spec.md#22-getting-mass-there-from-earth)
+converts these arrivals into Starship launches. Each 100 t delivered to an
+L2 halo or the NRHO costs about 2.7–5.5 launches, counting tankers [C].
 
 An initial cadence of one example 200 t wet ship per year therefore needs
 at least 200 t/year delivered, before other operations. One example 1,000 t
