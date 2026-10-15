@@ -223,7 +223,7 @@ pub const DEFINITIONS: &[PluginDefinition] = &[
 pub const OPENCODE: PluginDefinition = PluginDefinition {
     id: crate::opencode_chat::PLUGIN,
     name: "OpenCode",
-    description: "OpenCode inside Coder on this computer: its free model or the models you set up in OpenCode, with Coder checking every step before it runs. When Claude Code is off, logged out, or out of usage, new chats run on it, except one that starts with a quick question, which Coder answers itself and keeps. To start every new chat on OpenCode, run openagents coder models set opencode.",
+    description: "OpenCode inside Coder on this computer: its free model or the models you set up in OpenCode, with Coder checking every step before it runs. When Claude Code is off, logged out, or out of usage, new chats run on it. A quick question first gets a quick answer from Coder, and the chat moves to OpenCode when the work starts.",
     default_enabled: true,
     tools: &[],
     model_provider: None,

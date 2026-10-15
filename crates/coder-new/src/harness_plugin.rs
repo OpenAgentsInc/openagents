@@ -411,9 +411,29 @@ impl App {
         if let Some(mut routed) = self.routed.take() {
             // A chat never hops (#11556): once its harness answered, Auto
             // keeps it there, on the same path (cheap or not), so one chat
-            // runs on one harness and one provider.
+            // runs on one harness and one provider. The one way out is
+            // forward (#11696): an Auto chat on Coder's own loop moves to
+            // the harness the router picks for work beyond a small answer,
+            // which starts from the conversation so far. A harness never
+            // hands a chat on.
+            let hands_on = self.live.runs_on == Some(Harness::CoderLoop)
+                && routed.harness != Harness::CoderLoop
+                && !self.live.pinned
+                && self.live.agent.is_none();
+            if hands_on && self.live.answered() {
+                self.rail_notice(
+                    format!(
+                        "This chat moves to {} for this work.",
+                        crate::harness_pick::name(&crate::harness_pick::Pick::Harness(
+                            routed.harness
+                        ))
+                    ),
+                    crate::RAIL_NOTICE_TTL,
+                );
+            }
             if let Some(harness) = self.live.runs_on
                 && self.live.answered()
+                && !hands_on
             {
                 self.routing_rule = Some(routed.rule);
                 routed.trace.follow_up = true;

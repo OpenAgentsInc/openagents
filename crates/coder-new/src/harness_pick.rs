@@ -1616,6 +1616,56 @@ mod tests {
         assert!(app.live.cheap, "the same path, so the same payer");
     }
 
+    /// #11696: the one way a chat moves is forward. An Auto chat on Coder's
+    /// own loop moves to the harness the router picks for real work, and
+    /// the rail says so; a pinned Coder-loop chat stays, and a harness chat
+    /// never goes back to the loop.
+    #[test]
+    fn coders_loop_hands_a_chat_to_a_harness_and_never_back() {
+        let routed = |harness| crate::router::Routed {
+            harness,
+            model: None,
+            rule: crate::routing_record::Rule::Router,
+            probabilities: Vec::new(),
+            trace: crate::router::Trace {
+                question_set: String::new(),
+                policy: String::new(),
+                step: Some("standing-order".into()),
+                follow_up: true,
+                ms: 0,
+                missing: None,
+            },
+        };
+        let chat_on = |harness, pinned| {
+            let mut app = crate::App::default();
+            app.set_mode(crate::Mode::Live);
+            app.live.runs_on = Some(harness);
+            app.live.pinned = pinned;
+            app.live.cheap = harness == Harness::CoderLoop;
+            answered(&mut app);
+            app
+        };
+
+        let mut app = chat_on(Harness::CoderLoop, false);
+        app.routed = Some(routed(Harness::OpenCode));
+        assert_eq!(app.route_turn(), Harness::OpenCode);
+        assert_eq!(app.live.runs_on, Some(Harness::OpenCode));
+        assert!(!app.live.cheap, "the work runs on OpenCode's own path");
+        assert_eq!(
+            app.rail_notice_text(),
+            Some("This chat moves to OpenCode for this work.")
+        );
+
+        let mut pinned = chat_on(Harness::CoderLoop, true);
+        pinned.routed = Some(routed(Harness::OpenCode));
+        assert_eq!(pinned.route_turn(), Harness::CoderLoop);
+
+        let mut harness = chat_on(Harness::OpenCode, false);
+        harness.routed = Some(routed(Harness::CoderLoop));
+        assert_eq!(harness.route_turn(), Harness::OpenCode);
+        assert_eq!(harness.rail_notice_text(), None);
+    }
+
     /// A model picked in one chat never carries into the next (#11556).
     #[test]
     fn a_new_chat_starts_on_the_default_model() {

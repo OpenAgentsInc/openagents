@@ -439,8 +439,9 @@ fn a_held_message_runs_where_the_router_sends_it_and_is_recorded() {
     }
     finish(&mut app);
 
-    // A follow-up judged new repository work stays on the chat's harness
-    // and its path: one chat never hops harness or payer (#11556).
+    // A follow-up judged new repository work moves on from Coder's loop to
+    // the harness the router picks, Claude Code here, which starts from
+    // the transcript (#11696). A harness chat never moves again (#11556).
     let mut work = small_answer();
     work.kind = [("repo_change".to_owned(), 0.9), ("answer".to_owned(), 0.1)]
         .into_iter()
@@ -451,18 +452,23 @@ fn a_held_message_runs_where_the_router_sends_it_and_is_recorded() {
     app.draft.text = "Now add a --verbose flag to src/main.rs".into();
     app.submit_live();
     app.poll_route();
-    assert_eq!(app.live.runs_on, Some(Harness::CoderLoop));
-    assert!(app.live.cheap, "the same path as the chat's first turn");
+    assert_eq!(app.live.runs_on, Some(Harness::ClaudeCode));
+    assert!(!app.live.cheap, "the work runs on Claude Code's own path");
+    assert_eq!(
+        app.live.claude_resume(),
+        None,
+        "a new Claude Code session, from the transcript"
+    );
     finish(&mut app);
 
-    // A follow-up judged a continuation stays there too.
+    // A follow-up judged a continuation stays on Claude Code.
     let mut more = small_answer();
     more.new_work = Some(0.1);
     set_test_judge(Some(Some(more)));
     app.draft.text = "also print the config path".into();
     app.submit_live();
     app.poll_route();
-    assert_eq!(app.live.runs_on, Some(Harness::CoderLoop));
+    assert_eq!(app.live.runs_on, Some(Harness::ClaudeCode));
     app.live.busy = false;
     app.record_end(Some(crate::routing_record::Ended::Done), None, None);
 
@@ -499,8 +505,8 @@ fn a_held_message_runs_where_the_router_sends_it_and_is_recorded() {
                 Rule::Router,
                 Some("cheap-answer".into())
             ),
-            (Harness::CoderLoop, Rule::Router, Some("plan-work".into())),
-            (Harness::CoderLoop, Rule::Router, Some("continue".into())),
+            (Harness::ClaudeCode, Rule::Router, Some("plan-work".into())),
+            (Harness::ClaudeCode, Rule::Router, Some("continue".into())),
         ]
     );
     assert_eq!(chose[0].inputs.probabilities.len(), 12);
@@ -513,9 +519,9 @@ fn a_held_message_runs_where_the_router_sends_it_and_is_recorded() {
         "{}",
         named.reason
     );
-    // Later turns stay on the same cheap model (#11556).
+    // Once on Claude Code the work is off the cheap model (#11696).
     for later in &chose[1..] {
-        assert_eq!(
+        assert_ne!(
             later.model.as_ref().map(|named| named.model.as_str()),
             Some(crate::route::CHEAP_CODEX_MODEL)
         );
@@ -1018,5 +1024,58 @@ fn a_new_chat_opens_on_opencode_unless_it_starts_with_a_quick_question() {
     assert_eq!(
         policy(&judgment(Kind::Answer, true), &situation).harness,
         Harness::OpenCode
+    );
+}
+
+/// #11696: a chat on Coder's own loop continues there only for another
+/// small answer; repository work after it is routed and goes to the
+/// harness (OpenCode here). A harness chat continues as before.
+#[test]
+fn coders_loop_continues_only_small_answers() {
+    let situation = |current| Situation {
+        admitted: vec![Harness::OpenCode, Harness::CoderLoop],
+        preferred: None,
+        payers: vec![
+            (Harness::OpenCode, Payer::OpenCode),
+            (Harness::CoderLoop, Payer::GatewayCredits),
+        ],
+        current: Some(current),
+        claude_five_hour: None,
+        time_weight: crate::preferences::BALANCED_TIME_WEIGHT,
+        pins: Vec::new(),
+    };
+    let judgment = |kind, needs_repo| Judgment {
+        kind,
+        size: Size::Small,
+        needs_repo,
+        own_tools: false,
+        risk: Risk::Low,
+        new_work: Some(false),
+    };
+    assert_eq!(
+        policy(
+            &judgment(Kind::Answer, false),
+            &situation(Harness::CoderLoop)
+        ),
+        Decision {
+            harness: Harness::CoderLoop,
+            step: Step::Continue
+        }
+    );
+    let repo = policy(
+        &judgment(Kind::Answer, true),
+        &situation(Harness::CoderLoop),
+    );
+    assert_eq!(repo.harness, Harness::OpenCode, "{repo:?}");
+    assert_ne!(repo.step, Step::Continue);
+    assert_eq!(
+        policy(
+            &judgment(Kind::RepoChange, true),
+            &situation(Harness::OpenCode)
+        ),
+        Decision {
+            harness: Harness::OpenCode,
+            step: Step::Continue
+        }
     );
 }

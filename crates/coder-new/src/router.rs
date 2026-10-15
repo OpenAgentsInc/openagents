@@ -513,9 +513,15 @@ pub fn policy(judgment: &Judgment, situation: &Situation) -> Decision {
             Step::OnlyOne,
         );
     }
+    // On Coder's own loop only a small answer that needs no repository
+    // continues; other work is routed, so it can move to a harness. A
+    // harness never hands a chat on (#11696).
+    let small =
+        judgment.kind == Kind::Answer && judgment.size == Size::Small && !judgment.needs_repo;
     if let Some(current) = situation.current
         && situation.has(current)
         && judgment.new_work == Some(false)
+        && (current != Harness::CoderLoop || small)
     {
         return pick(current, Step::Continue);
     }
