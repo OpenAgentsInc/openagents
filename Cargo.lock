@@ -3148,6 +3148,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "code-index"
+version = "1.0.0-rc.20"
+dependencies = [
+ "atif",
+ "base64 0.22.1",
+ "coder-history",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+]
+
+[[package]]
 name = "coder"
 version = "1.0.0-rc.20"
 dependencies = [

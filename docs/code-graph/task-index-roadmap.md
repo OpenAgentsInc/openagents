@@ -4,6 +4,12 @@ Date: 2026-10-15. Status: proposal, with a local navigation census. The
 semantic index, recipe builder, and cheaper-agent results described below
 are not implemented or measured.
 
+Implementation issues, in dependency order: #11711 (episodes), #11712
+(demand), #11713 (recipes), #11714 (builder), #11715 (lookup), #11716
+(freshness and publication), #11717 (Coder), #11718 (evaluation), and
+#11719 (feedback and distillation). `crates/code-index` provides the first
+Rust history importer; subsequent sections describe the proposed complete system.
+
 Build an index that answers **how to extend a capability**, alongside the
 existing graph of what calls what. A strong model does the expensive work
 ahead of time: it identifies extension points, distinguishes similar tasks,
