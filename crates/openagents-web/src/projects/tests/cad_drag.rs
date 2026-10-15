@@ -201,3 +201,52 @@ async fn serve_cad_manufacture() {
     std::fs::write(out,serde_json::to_vec(&json!({"url":format!("{}/cad/bracket/check-card",world.origin()),"doc_url":format!("{}/cad/bracket?check=print",world.origin()),"cookies":browser.0})).unwrap()).unwrap();
     axum::serve(listener, site).await.unwrap();
 }
+
+#[tokio::test]
+#[ignore = "serves isolated CAD handoffs; needs native CAD, Robot Lab and Everglade builds"]
+async fn serve_cad_handoff() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    HOST_OVERRIDE.set(format!("127.0.0.1:{port}")).unwrap();
+    let world = world_at(
+        port,
+        Options {
+            cad: Some(std::env::var_os("OA_CAD_BROWSER").unwrap().into()),
+            everglade: Some(std::env::var_os("OA_VERSE_BROWSER").unwrap().into()),
+            ..Options::default()
+        },
+    )
+    .await;
+    let mut browser = Browser::default();
+    browser.sign_in(&world, "octo-local").await;
+    let mut other = Browser::default();
+    other.sign_in(&world, "quiet-local").await;
+    let scope = crate::cad_web::Scope::personal(&account_owner_of(&world, "octo-local")).unwrap();
+    let engine = crate::cad_web::engine().unwrap();
+    let made=engine.run(&world.store,&scope,"cad_from_json",&json!({"doc":"robot","document":{"kind":"assembly.v1","id":"robot","title":"Hinged box","parts":{
+        "base":{"kind":"part.v1","id":"base","features":[{"id":"body","op":"solid.box","params":{"length":600,"width":400,"height":200,"center":[0,0,100]}}]},
+        "lid":{"kind":"part.v1","id":"lid","features":[{"id":"body","op":"solid.box","params":{"length":600,"width":400,"height":40,"center":[0,0,240]}}]}},
+        "instances":[{"id":"base","part":"base"},{"id":"lid","part":"lid","parent":"base"}],
+        "joints":[{"id":"hinge","type":"revolute","parent":"base","child":"lid","origin":[-300,0,220],"axis":[0,1,0],"limits":[[0,90]],"value":0}]}})).await;
+    assert_eq!(made["saved"], true, "{made}");
+    let robot = engine
+        .run(
+            &world.store,
+            &scope,
+            "cad_robot",
+            &json!({"doc":"robot","version":1}),
+        )
+        .await;
+    assert!(robot["robot"]["href"].is_string(), "{robot}");
+    let placed = engine
+        .run(
+            &world.store,
+            &scope,
+            "cad_place",
+            &json!({"doc":"robot","version":1}),
+        )
+        .await;
+    assert!(placed["verse"]["href"].is_string(), "{placed}");
+    std::fs::write(std::env::var_os("OA_CAD_CAPTURE").unwrap(),serde_json::to_vec(&json!({"url":format!("{}/cad/robot?v=1",world.origin()),"origin":world.origin(),"robot":robot["robot"]["href"],"verse":placed["verse"]["href"],"cookies":browser.0,"other_cookies":other.0})).unwrap()).unwrap();
+    axum::serve(listener, world.site).await.unwrap();
+}

@@ -193,6 +193,7 @@ How the model works (millimetres and degrees; X forward, Y left, Z up; the groun
 - Subassemblies: cad_assemble templates {"bogie":{"instances":[...],"joints":[...]}} defines one from this document's parts; an instance {"id":"bogie_l","assembly":"bogie"} places a copy, whose instances are then named by path ("bogie_l.wheel"). cad_from_json writes a whole document at once. An instance's "pattern" places copies (id-2, id-3, ...): {"count":6,"step":[x,y,z]} in a row (count2 and step2 for a grid) or {"count":6,"axis":[0,0,1],"origin":[x,y,z]} in a ring.
 - Make each change in as few calls as you can: one cad_assemble can move instances and set joints together. When a check refuses an edit, change only what it names (move the instance it names, or declare the contact), not the parts' histories. To undo changes to a part, cad_set_part with from_version (the version whose part to bring back).
 - Work it out as numbers first: where each part sits, where it touches its neighbours. When a check refuses an overlap, it says which instances and where; move one, or declare the contact if they are meant to touch.
+- Send to Robot Lab: cad_robot {doc, version?} imports that exact version with its URDF, meshes, mass and joints and returns a link. Use it when asked to send or open the CAD design in Robot Lab.
 - To look at it: cad_render {view: hero|rear|plan|front|side|iso|under|detail, focus?: [instance ids]}. To compare: cad_compare (a = the earlier version). Exports: cad_export (glb for the web and Verse, 3mf, step: exact solids; step and 3mf keep the assembly tree); cad_export also writes urdf (a robot for Robot Lab with each part's mass and inertia and the joints) and feed (the mass-properties record for Lagrange 2). To put a version in Verse: cad_place {zone: everglade|meteor-showcase|meteor-stress-test, at?: [x, z] in metres, heading?: degrees}; a newer version replaces the one there. cad_import_step brings a STEP model from other CAD into a part as a feature.
 - Drawings: cad_drawing {views?: front, top, right, left, bottom, back, iso; sections?: [{"view":"front","at":mm}]; dimensions?: [{"part","faces":[two parallel flat faces],"view"}]; sheet?: A4|A3|A2; angle?: third|first} makes a 2D drawing with hidden lines dashed, silhouettes, hatched sections, the overall sizes, hole diameters and a title block, as SVG, PDF and DXF; the card shows it.
 "##;
@@ -468,6 +469,11 @@ pub(crate) fn card_markup(chat: &str, card: &Value) -> Markup {
             p.oa-cad-meta { (mass_line(&card["mass"])) }
             p.oa-cad-meta { (counts_line(card)) }
             @if let Some(report)=card.get("manufacturing") {(manufacturing(report))}
+            @for (kind,label) in [("robot","Open in Robot Lab"),("verse","Open in Verse")] {
+                @if let Some(href)=card[kind]["href"].as_str().filter(|h|h.starts_with("/cad/") || h.starts_with("/everglade?")) {
+                    a.oa-cad-link href=(href) {(label)}
+                }
+            }
             @if let Some(compare) = card["compare"].as_object() {
                 p.oa-cad-dim { "Since v" (compare.get("a").and_then(Value::as_u64).unwrap_or(0)) ":" }
                 ul.oa-cad-list {

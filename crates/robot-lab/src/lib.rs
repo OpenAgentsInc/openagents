@@ -9,6 +9,8 @@ pub use version::{Note, Selection, Version};
 // Storage and its operations touch the disk; the browser build only reads
 // checked documents.
 #[cfg(not(target_arch = "wasm32"))]
+pub mod import;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod operations;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod store;

@@ -99,6 +99,11 @@ RUN scripts/build-icecream-web.sh /build/icecream \
     && test -s /build/icecream/icecream_web_bg.wasm \
     && test -s /build/icecream/start.js
 
+# Robot Lab's Rust player for account-scoped CAD imports.
+RUN CARGO_TARGET_DIR=/build/target scripts/build-robot-web.sh /build/robot \
+    && test -s /build/robot/robot_web.js \
+    && test -s /build/robot/robot_web_bg.wasm
+
 # Snap Station, which /games/snap-station serves the same way, found at
 # /srv/snap without a flag.
 RUN scripts/build-snap-web.sh /build/snap \
@@ -154,6 +159,8 @@ COPY --from=everglade /build/chat /srv/chat
 COPY --from=everglade /build/bunny /srv/bunny
 COPY --from=everglade /build/icecream /srv/icecream
 COPY --from=everglade /build/snap /srv/snap
+COPY --from=everglade /build/robot /srv/robot
+ENV OPENAGENTS_ROBOT_BUILD=/srv/robot
 COPY --from=everglade /build/att /srv/att
 COPY --from=cadweb /build/cad /srv/cad
 

@@ -36,6 +36,8 @@ struct App {
     canvas: HtmlCanvasElement,
     base: String,
     chat: Option<String>,
+    read_only: bool,
+    home_orbit: Option<robot_workbench::view::Orbit>,
     key: String,
     state: State,
     comparison: Option<State>,
@@ -538,6 +540,11 @@ async fn open_gpu(app: &Shared, generation: u64) -> Result<(), String> {
         if !data.state.active() || data.state.generation() != generation {
             return Ok(());
         }
+        if data.read_only && data.home_orbit.is_none() {
+            let orbit = cad_orbit(&model, data.state.bundle())?;
+            data.state.orbit = orbit;
+            data.home_orbit = Some(orbit);
+        }
         data.robot = Some(model);
         data.other_robot = other_model;
         data.canvas.set_hidden(false);
@@ -776,6 +783,46 @@ fn select(
     }
     Ok(select)
 }
+/// Frames CAD geometry on the floor, independently of the SO-101 table camera.
+fn cad_orbit(
+    model: &robot_description::Robot,
+    bundle: &Bundle,
+) -> Result<robot_workbench::view::Orbit, String> {
+    let values: Vec<_> = bundle.scene.robots[0]
+        .joints
+        .iter()
+        .map(|(name, value)| (name.as_str(), *value))
+        .collect();
+    let pose = model.named_pose(&values).map_err(|e| e.to_string())?;
+    let frames = model.forward(&pose).map_err(|e| e.to_string())?;
+    let mut lo = glam::DVec3::splat(f64::INFINITY);
+    let mut hi = glam::DVec3::splat(f64::NEG_INFINITY);
+    for (link, frame) in model.links().iter().zip(frames) {
+        for shape in &link.visuals {
+            if let robot_description::Geometry::Mesh { mesh, scale, .. } = &shape.geometry {
+                let transform = robot_description::z_up_to_y_up() * frame * shape.origin;
+                for x in [mesh.min[0], mesh.max[0]] {
+                    for y in [mesh.min[1], mesh.max[1]] {
+                        for z in [mesh.min[2], mesh.max[2]] {
+                            let p = transform.transform_point3(
+                                glam::DVec3::new(x as f64, y as f64, z as f64) * scale,
+                            );
+                            lo = lo.min(p);
+                            hi = hi.max(p);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    let mut orbit = robot_workbench::view::Orbit::default();
+    if lo.is_finite() && hi.is_finite() {
+        orbit.center = ((lo + hi) * 0.5).as_vec3().to_array();
+        orbit.distance = ((hi - lo).length() * 2.).clamp(0.15, 50.) as f32;
+    }
+    Ok(orbit)
+}
+
 fn apply(app: &Shared, intent: Intent, value: Option<&str>) {
     let began = now(&app.borrow().window);
     let pose = matches!(intent, Intent::JointValue { .. });
@@ -788,7 +835,14 @@ fn apply(app: &Shared, intent: Intent, value: Option<&str>) {
         intent,
         Intent::Seek | Intent::Pause | Intent::ChooseCamera { .. }
     );
+    let reset = matches!(intent, Intent::ResetView);
     let effect = app.borrow_mut().state.apply(intent, value);
+    if reset {
+        let mut data = app.borrow_mut();
+        if let Some(orbit) = data.home_orbit {
+            data.state.orbit = orbit;
+        }
+    }
     match effect {
         Ok(Effect::Draw) => {
             let mut data = app.borrow_mut();
@@ -1238,9 +1292,11 @@ fn controls(app: &Shared) -> Result<(), String> {
                 apply(app, Intent::JointValue { joint }, Some(&target.value()));
             }
         })?;
-        button(app, &controls, "save-pose", "Save pose", |app, _| {
-            apply(app, Intent::ApplyPose, None)
-        })?;
+        if !app.borrow().read_only {
+            button(app, &controls, "save-pose", "Save pose", |app, _| {
+                apply(app, Intent::ApplyPose, None)
+            })?;
+        }
     } else {
         input.set_disabled(true);
         button(app, &controls, "play", "Play", |app, _| {
@@ -1330,9 +1386,11 @@ fn controls(app: &Shared) -> Result<(), String> {
             );
         }
     })?;
-    button(app, &controls, "compare", "Compare versions", |app, _| {
-        apply(app, Intent::Compare, None)
-    })?;
+    if !app.borrow().read_only {
+        button(app, &controls, "compare", "Compare versions", |app, _| {
+            apply(app, Intent::Compare, None)
+        })?;
+    }
     add(
         &document,
         &element(&document, "inspector")?,
@@ -1348,24 +1406,26 @@ fn controls(app: &Shared) -> Result<(), String> {
         "",
     )?;
     let notes = element(&document, "notes")?;
-    let label = add(&document, &notes, "label", "", "Note")?;
-    let note: HtmlInputElement = add(&document, &label, "input", "note", "")?
-        .dyn_into()
-        .map_err(js)?;
-    note.set_max_length(1024);
-    note.set_placeholder("What did you notice?");
-    listen(app, note.unchecked_ref(), "input", |app, event| {
-        if let Some(target) = event
-            .target()
-            .and_then(|t| t.dyn_into::<HtmlInputElement>().ok())
-        {
-            apply(app, Intent::NoteDraft, Some(&target.value()));
-        }
-    })?;
-    button(app, &notes, "save-note", "Save note", |app, _| {
-        apply(app, Intent::AddNote, None)
-    })?;
-    add(&document, &notes, "div", "saved-notes", "")?;
+    if !app.borrow().read_only {
+        let label = add(&document, &notes, "label", "", "Note")?;
+        let note: HtmlInputElement = add(&document, &label, "input", "note", "")?
+            .dyn_into()
+            .map_err(js)?;
+        note.set_max_length(1024);
+        note.set_placeholder("What did you notice?");
+        listen(app, note.unchecked_ref(), "input", |app, event| {
+            if let Some(target) = event
+                .target()
+                .and_then(|t| t.dyn_into::<HtmlInputElement>().ok())
+            {
+                apply(app, Intent::NoteDraft, Some(&target.value()));
+            }
+        })?;
+        button(app, &notes, "save-note", "Save note", |app, _| {
+            apply(app, Intent::AddNote, None)
+        })?;
+        add(&document, &notes, "div", "saved-notes", "")?;
+    }
     if app.borrow().state.bundle().episode.is_none() {
         arm_panel(app)?;
     }
@@ -1444,39 +1504,41 @@ fn arm_panel(app: &Shared) -> Result<(), String> {
             }
         })?;
     }
-    button(app, &panel, "gripper-open", "Open gripper", |app, _| {
-        arm_limit(app, "gripper", true)
-    })?;
-    button(app, &panel, "gripper-close", "Close gripper", |app, _| {
-        arm_limit(app, "gripper", false)
-    })?;
-    button(app, &panel, "reset-pose", "Reset pose", |app, _| {
-        arm_reset(app)
-    })?;
-    let holder = add(&document, &panel, "label", "", "Simulate")?;
-    let toggle: HtmlInputElement = add(&document, &holder, "input", "simulate", "")?
-        .dyn_into()
-        .map_err(js)?;
-    toggle.set_type("checkbox");
-    listen(app, toggle.unchecked_ref(), "change", |app, event| {
-        if let Some(target) = event
-            .target()
-            .and_then(|t| t.dyn_into::<HtmlInputElement>().ok())
-        {
-            if target.checked() {
-                sim_start(app);
-            } else {
-                sim_stop(app);
+    if !app.borrow().read_only {
+        button(app, &panel, "gripper-open", "Open gripper", |app, _| {
+            arm_limit(app, "gripper", true)
+        })?;
+        button(app, &panel, "gripper-close", "Close gripper", |app, _| {
+            arm_limit(app, "gripper", false)
+        })?;
+        button(app, &panel, "reset-pose", "Reset pose", |app, _| {
+            arm_reset(app)
+        })?;
+        let holder = add(&document, &panel, "label", "", "Simulate")?;
+        let toggle: HtmlInputElement = add(&document, &holder, "input", "simulate", "")?
+            .dyn_into()
+            .map_err(js)?;
+        toggle.set_type("checkbox");
+        listen(app, toggle.unchecked_ref(), "change", |app, event| {
+            if let Some(target) = event
+                .target()
+                .and_then(|t| t.dyn_into::<HtmlInputElement>().ok())
+            {
+                if target.checked() {
+                    sim_start(app);
+                } else {
+                    sim_stop(app);
+                }
             }
-        }
-    })?;
-    add(
-        &document,
-        &panel,
-        "p",
-        "",
-        "Keys: Q/A shoulder pan, W/S shoulder lift, E/D elbow, R/F wrist flex, T/G wrist roll, O/C gripper, 0 reset. With Simulate on, moves become joint targets for physics, and the arm can push and grasp the cube.",
-    )?;
+        })?;
+        add(
+            &document,
+            &panel,
+            "p",
+            "",
+            "Keys: Q/A shoulder pan, W/S shoulder lift, E/D elbow, R/F wrist flex, T/G wrist roll, O/C gripper, 0 reset. With Simulate on, moves become joint targets for physics, and the arm can push and grasp the cube.",
+        )?;
+    }
     panel.remove_attribute("hidden").map_err(js)?;
     listen(app, document.unchecked_ref(), "keydown", |app, event| {
         let Ok(event) = event.dyn_into::<web_sys::KeyboardEvent>() else {
@@ -1913,6 +1975,8 @@ async fn open(window: Window, document: Document) -> Result<(), String> {
         canvas,
         base: base.clone(),
         chat: params.get("chat"),
+        read_only: params.get("readonly").as_deref() == Some("1"),
+        home_orbit: None,
         key: params.get("key").unwrap_or_else(|| version.clone()),
         state: initial,
         comparison,
@@ -1950,7 +2014,9 @@ async fn open(window: Window, document: Document) -> Result<(), String> {
         .remove_attribute("hidden")
         .map_err(js)?;
     controls(&app)?;
-    comparison_controls(&app)?;
+    if !app.borrow().read_only {
+        comparison_controls(&app)?;
+    }
     events(&app)?;
     let weak = Rc::downgrade(&app);
     app.borrow_mut().raf = Some(Closure::wrap(Box::new(move |time: f64| {
@@ -1959,10 +2025,12 @@ async fn open(window: Window, document: Document) -> Result<(), String> {
         }
     }) as Box<dyn FnMut(f64)>));
     ROOT.with(|root| *root.borrow_mut() = Some(app.clone()));
-    let notes = app.clone();
-    spawn_local(async move {
-        let _ = load_notes(&notes).await;
-    });
+    if !app.borrow().read_only {
+        let notes = app.clone();
+        spawn_local(async move {
+            let _ = load_notes(&notes).await;
+        });
+    }
     notify(&app.borrow(), "ready", json!({"restored":saved.is_some()}));
     lifecycle(&app);
     Ok(())

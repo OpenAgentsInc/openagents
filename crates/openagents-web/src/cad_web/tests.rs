@@ -103,11 +103,7 @@ fn steps_are_checked_before_the_engine_runs() {
     let refused = admitted(&viewer, "cad_add_feature", &edit).unwrap_err();
     assert!(refused.contains("only its editors"), "{refused}");
     assert!(admitted(&viewer, "cad_open", &json!({"doc": "bracket"})).is_ok());
-    assert!(
-        admitted(&editor, "cad_place", &json!({}))
-            .unwrap_err()
-            .contains("Verse")
-    );
+    assert!(admitted(&editor, "cad_place", &json!({"doc":"a"})).is_ok());
     assert!(admitted(&editor, "cad_import_step", &json!({"path": "/etc/passwd"})).is_err());
     assert!(admitted(&editor, "shell_run", &json!({})).is_err());
     assert!(admitted(&editor, "cad_open", &json!({"doc": "../x"})).is_err());
@@ -117,7 +113,7 @@ fn steps_are_checked_before_the_engine_runs() {
             "cad_export",
             &json!({"doc": "a", "formats": ["urdf"]})
         )
-        .is_err()
+        .is_ok()
     );
     let big = json!({"doc": "a", "features": "x".repeat(MAX_ARGS_BYTES)});
     assert!(
@@ -143,7 +139,7 @@ fn steps_are_checked_before_the_engine_runs() {
 }
 
 #[test]
-fn the_tools_offered_here_leave_out_what_needs_a_mac() {
+fn the_tools_offered_here_include_verse_and_use_uploaded_sources() {
     let tools = hosted_tools(&[
         json!({"name": "cad_list", "description": "List the CAD documents in CAD Lab on this computer.", "parameters": {}}),
         json!({"name": "cad_place", "description": "x", "parameters": {}}),
@@ -151,10 +147,18 @@ fn the_tools_offered_here_leave_out_what_needs_a_mac() {
                "parameters": {"properties": {"path": {}, "step": {}}, "required": ["path"]}}),
     ]);
     let names: Vec<&str> = tools.iter().filter_map(|t| t["name"].as_str()).collect();
-    assert_eq!(names, ["cad_list", "cad_import_step", "cad_import_file"]);
+    assert_eq!(
+        names,
+        [
+            "cad_list",
+            "cad_place",
+            "cad_import_step",
+            "cad_import_file"
+        ]
+    );
     assert_eq!(tools[0]["description"], "List the CAD documents.");
-    assert!(tools[1]["parameters"]["properties"].get("path").is_none());
-    assert_eq!(tools[1]["parameters"]["required"], json!([]));
+    assert!(tools[2]["parameters"]["properties"].get("path").is_none());
+    assert_eq!(tools[2]["parameters"]["required"], json!([]));
 }
 
 #[tokio::test]
@@ -163,7 +167,7 @@ async fn versions_are_kept_per_scope_and_read_back_on_another_server() {
     let me = owner("acct_1");
     let scope = Scope::personal(&me).unwrap();
     let first = engine(&f, "cache-a");
-    assert_eq!(first.tools().await.unwrap().len(), 3);
+    assert_eq!(first.tools().await.unwrap().len(), 4);
     let one = first
         .run(
             &f.store,
@@ -512,4 +516,70 @@ fn manufacturing_cards_offer_named_face_controls_in_plain_words() {
     let failed=crate::cad_lab::manufacturing(&json!({"profile":{"process":"print"},"complete":false,"error":"The model couldn't be checked."})).into_string();
     assert!(!failed.contains("No problems found"));
     assert!(failed.contains("couldn&#39;t") || failed.contains("couldn't"));
+}
+
+#[tokio::test]
+async fn world_delivery_is_private_replaces_versions_and_requires_edit_rights() {
+    let f = fixture();
+    let me = Scope::personal(&owner("acct_1")).unwrap();
+    let other = Scope::personal(&owner("acct_2")).unwrap();
+    for n in [1, 2] {
+        let result = handoff::place(
+            &f.store,
+            &me,
+            &json!({"zone":"everglade","at":[2.,3.]}),
+            "bracket",
+            n,
+            Some(b"glTF".to_vec()),
+        )
+        .await
+        .unwrap();
+        assert!(
+            result["verse"]["href"]
+                .as_str()
+                .unwrap()
+                .starts_with("/everglade?")
+        );
+    }
+    let bytes = f
+        .store
+        .read_key(&me.key("world/index.json").unwrap())
+        .await
+        .unwrap()
+        .unwrap()
+        .0;
+    let list: Vec<Value> = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(list.len(), 1);
+    assert_eq!(list[0]["version"], 2);
+    assert_eq!(list[0]["at"], json!([2., 0., 3.]));
+    assert!(
+        f.store
+            .read_key(&other.key("world/index.json").unwrap())
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let viewer = Scope::project(&me.home, "prj_1", false, &me.home).unwrap();
+    for tool in ["cad_robot", "cad_place"] {
+        assert!(admitted(&viewer, tool, &json!({"doc":"bracket"})).is_err());
+    }
+    handoff::place(&f.store, &me, &json!({"remove":true}), "bracket", 2, None)
+        .await
+        .unwrap();
+    let bytes = f
+        .store
+        .read_key(&me.key("world/index.json").unwrap())
+        .await
+        .unwrap()
+        .unwrap()
+        .0;
+    assert_eq!(serde_json::from_slice::<Value>(&bytes).unwrap(), json!([]));
+    assert!(handoff::place_settings(&json!({"at":[1.,2.,3.,4.]})).is_err());
+    assert!(handoff::place_settings(&json!({"scale":0.})).is_err());
+}
+
+#[test]
+fn private_design_files_are_not_reused_after_switching_accounts() {
+    let reply = file_response("model.glb", b"glTF".to_vec(), None);
+    assert_eq!(reply.headers()[header::CACHE_CONTROL], "private, no-store");
 }

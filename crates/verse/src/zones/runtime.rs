@@ -522,9 +522,7 @@ impl WorldRuntime {
             self.zone_state.cad = super::cad_place::Placements::default();
             return 0;
         }
-        let yaw = Everglade::spawn_yaw();
-        let arrive = Everglade::spawn()
-            + Vec3::new(-yaw.sin(), 0.0, -yaw.cos()) * super::cad_place::AHEAD;
+        let arrive = self.cad_arrival();
         let ahead = Vec3::new(
             arrive.x,
             super::everglade::land(arrive.x, arrive.z),
@@ -536,8 +534,50 @@ impl WorldRuntime {
         self.zone_state.cad.placed.len()
     }
 
+    /// Replaces this view's models with the authenticated account's saved placements.
+    /// Filesystem polling remains a separate native adapter.
+    pub fn install_cad_models(
+        &mut self,
+        models: Vec<(super::cad_place::Placement, Vec<u8>)>,
+    ) -> Result<usize, String> {
+        if self.zone_state.everglade.is_none() {
+            return Err("Open an Everglade zone before placing a model.".into());
+        }
+        let arrive = self.cad_arrival();
+        let ahead = Vec3::new(
+            arrive.x,
+            super::everglade::land(arrive.x, arrive.z),
+            arrive.z,
+        );
+        let mut placed = Vec::new();
+        let mut triangles = 0;
+        for (placement, bytes) in models {
+            if placement.zone != self.zone.world_id() {
+                continue;
+            }
+            let model =
+                super::cad_place::stand_bytes(&placement, &bytes, super::everglade::land, ahead)?;
+            triangles += model.vertices.len() / 3;
+            if triangles > super::cad_place::MAX_TRIANGLES {
+                return Err("There are too many CAD triangles in this place.".into());
+            }
+            placed.push(model);
+        }
+        self.zone_state.cad.placed = placed;
+        self.zone_revision = self.zone_revision.wrapping_add(1);
+        Ok(self.zone_state.cad.placed.len())
+    }
+
+    fn cad_arrival(&self) -> Vec3 {
+        let (spawn, yaw) = match self.zone {
+            ZoneId::MeteorShowcase => (super::meteor_showcase::SPAWN, 0.),
+            ZoneId::MeteorStressTest => (super::meteor_stress::SPAWN, 0.),
+            _ => (Everglade::spawn(), Everglade::spawn_yaw()),
+        };
+        super::cad_place::ahead(spawn, yaw)
+    }
+
     /// The CAD Lab models standing in this zone.
-    #[cfg(not(target_arch = "wasm32"))]
     #[must_use]
     pub fn cad_placed(&self) -> &[super::cad_place::Placed] {
         &self.zone_state.cad.placed
@@ -3294,7 +3334,6 @@ impl WorldRuntime {
                 mesh.lit.extend(rover.lit());
             }
             // CAD Lab models placed here (`cad_place`).
-            #[cfg(not(target_arch = "wasm32"))]
             mesh.lit.extend(self.zone_state.cad.lit());
             everglade.see_water_from(&mut mesh, self.view(1.0).eye);
             // The player, and the seats when the pack's character draws them.

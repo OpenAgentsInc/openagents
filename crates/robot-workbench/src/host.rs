@@ -484,50 +484,7 @@ impl Host {
 
 /// A robot standing on a floor, seen from its front quarter: the scene a
 /// CAD Lab import opens.
-pub fn floor_scene(name: &str, reference: Reference, joints: BTreeMap<String, f64>) -> Scene {
-    let eye = glam::DVec3::new(1.9, 1.3, 1.9);
-    let forward = (glam::DVec3::new(0.0, 0.4, 0.0) - eye).normalize();
-    let right = forward.cross(glam::DVec3::Y).normalize();
-    let down = forward.cross(right);
-    let rotation = glam::DQuat::from_mat3(&glam::DMat3::from_cols(right, down, forward));
-    let size = [6.0, 0.04, 6.0];
-    Scene {
-        name: name.chars().take(120).collect(),
-        robots: vec![RobotInstance {
-            id: "robot".into(),
-            robot: reference,
-            pose: Pose::default(),
-            joints,
-        }],
-        objects: vec![Object {
-            id: "floor".into(),
-            geometry: Geometry {
-                pose: Pose {
-                    position: [0.0, -0.02, 0.0],
-                    ..Pose::default()
-                },
-                shape: Shape::Box { size },
-                rgba: [0.55, 0.53, 0.5, 1.0],
-            },
-            mesh: None,
-            collider: Some(Shape::Box { size }),
-            mass: 0.0,
-            friction: 0.8,
-        }],
-        lights: vec![],
-        cameras: vec![Camera {
-            id: "front".into(),
-            pose: Pose {
-                position: eye.to_array(),
-                rotation: rotation.to_array(),
-            },
-            width: 640,
-            height: 400,
-            intrinsics: [812.0, 812.0, 320.0, 200.0],
-            robot_link: None,
-        }],
-    }
-}
+pub use robot_lab::import::floor_scene;
 
 pub fn table_scene(reference: Reference, joints: BTreeMap<String, f64>) -> Scene {
     let object = |id: &str, position, size, mass, rgba| Object {

@@ -1,7 +1,8 @@
-## Deploy project uploads and CAD updates (#11679, #11661, #11662, #11663, #11664)
+## Deploy project uploads and CAD updates (#11679, #11661, #11662, #11663, #11664, #11665)
 
-The resumable server, CLI, checked CAD face pulls, shared configurators, and
-STEP/STL uploads and print/CNC checks are implemented on `main`. This Linux session
+The resumable server, CLI, checked CAD face pulls, shared configurators,
+STEP/STL uploads, print/CNC checks, and Robot Lab/Verse handoffs are implemented
+on `main`. This Linux session
 cannot deploy them: the default Google Cloud login requires reauthentication,
 and the documented automation configuration is absent on this machine.
 Refresh the deployment login, then use `scripts/deploy/web.sh stage --keep-spec`,
@@ -22,7 +23,10 @@ width, then confirm that the old version is unchanged. Check a shared bracket
 with hole-spacing and thickness sliders while signed out, download its files,
 and stop sharing it. Import STEP and STL files, reopen them, and download
 their files from a second browser session. Ask whether a bracket can be printed,
-select a reported face, and confirm that it turns red. The isolated local
+select a reported face, and confirm that it turns red. Send the selected
+version to Everglade and Robot Lab, check its joint pose preview, and download
+the URDF archive. The image includes the updated Everglade and Robot Lab WASM
+builds; no Mac Lab service is required for these CAD handoffs. The isolated local
 browser check covers mouse and touch; it does not establish a production deploy.
 
 ## Show cloud environment issue runs on openagents.com and the phone (#11228)

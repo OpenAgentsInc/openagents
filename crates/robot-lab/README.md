@@ -2,6 +2,8 @@
 
 `robot-lab` implements the document and storage foundation in
 [`docs/lab/`](../../docs/lab/README.md) ([#11603](https://github.com/OpenAgentsInc/openagents/issues/11603)).
+The native `import` module shares checked URDF imports and the floor scene
+with CAD Lab and the Robot Lab host.
 The renderer, dataset reader, simulation runner, and chat mounting are separate
 delivery slices.
 

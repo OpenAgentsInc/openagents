@@ -415,6 +415,16 @@ async fn run() -> Result<(), String> {
     if query_value(&window, "zone").as_deref() == Some("coast") {
         status("Opening the coast…");
         runtime.install_coast_bytes(&bytes)?;
+    } else if matches!(
+        query_value(&window, "zone").as_deref(),
+        Some("meteor-showcase" | "meteor-stress-test")
+    ) {
+        let pack = everglade_pack::ZonePack::decode_pinned(&bytes)?;
+        if query_value(&window, "zone").as_deref() == Some("meteor-showcase") {
+            runtime.install_meteor_showcase(&pack);
+        } else {
+            runtime.install_meteor_stress_test(&pack);
+        }
     } else if water {
         status("Opening the Water Lab…");
         runtime.install_water_lab_bytes(&bytes)?;
@@ -434,6 +444,9 @@ async fn run() -> Result<(), String> {
         crate::light_proof::export(&runtime)?;
     }
     // The page opens no studio panel, on a keyboard or a touchscreen.
+    if let Err(error) = load_cad_models(&window, &mut runtime).await {
+        web_sys::console::warn_1(&JsValue::from_str(&error));
+    }
     runtime.interact_hint = verse::runtime::InteractHint::None;
     drop(bytes);
     // `?at=X,Z` or `?at=X,Z,YAW` starts the player there, for captures of
@@ -629,6 +642,83 @@ async fn run_grid(
     }));
     listen(&window, &page)?;
     animate(window, page);
+    Ok(())
+}
+
+/// Loads only the signed-in person's CAD copies, with same-origin credentials.
+async fn load_cad_models(window: &Window, runtime: &mut WorldRuntime) -> Result<(), String> {
+    let init = RequestInit::new();
+    init.set_credentials(RequestCredentials::SameOrigin);
+    init.set_redirect(RequestRedirect::Error);
+    let response: Response = JsFuture::from(window.fetch_with_str_and_init("/cad-world", &init))
+        .await
+        .map_err(|_| "Your CAD models couldn't be loaded.")?
+        .dyn_into()
+        .map_err(|_| "Your CAD models couldn't be loaded.")?;
+    if !response.ok() {
+        return Ok(());
+    }
+    let text = JsFuture::from(
+        response
+            .text()
+            .map_err(|_| "Your CAD list couldn't be read.")?,
+    )
+    .await
+    .map_err(|_| "Your CAD list couldn't be read.")?
+    .as_string()
+    .ok_or("Your CAD list couldn't be read.")?;
+    if text.len() > 32 * 1024 {
+        return Err("Your CAD list is too large.".into());
+    }
+    let list: Vec<serde_json::Value> =
+        serde_json::from_str(&text).map_err(|_| "Your CAD list couldn't be read.")?;
+    if list.len() > 20 {
+        return Err("Your world has too many CAD models.".into());
+    }
+    let mut models = Vec::new();
+    let mut total = 0;
+    for entry in list {
+        if entry["zone"].as_str() != Some(runtime.zone.world_id()) {
+            continue;
+        }
+        let url = entry["glb"]
+            .as_str()
+            .filter(|s| s.starts_with("/cad-world/") && !s.contains(['?', '#']))
+            .ok_or("This CAD model has an invalid address.")?;
+        let response: Response = JsFuture::from(window.fetch_with_str_and_init(url, &init))
+            .await
+            .map_err(|_| "A CAD model couldn't be loaded.")?
+            .dyn_into()
+            .map_err(|_| "A CAD model couldn't be loaded.")?;
+        if !response.ok() {
+            return Err("A CAD model couldn't be loaded. Reload to try again.".into());
+        }
+        let bytes = Uint8Array::new(
+            &JsFuture::from(
+                response
+                    .array_buffer()
+                    .map_err(|_| "A CAD model couldn't be read.")?,
+            )
+            .await
+            .map_err(|_| "A CAD model couldn't be read.")?,
+        )
+        .to_vec();
+        total += bytes.len();
+        if total > 32 << 20 {
+            return Err("Your CAD models are too large for this view.".into());
+        }
+        let placement =
+            serde_json::from_value(entry).map_err(|_| "A CAD placement couldn't be read.")?;
+        models.push((placement, bytes));
+    }
+    let count = runtime.install_cad_models(models)?;
+    if count > 0 && query_has(window, "frames") {
+        let models:Vec<_>=runtime.cad_placed().iter().map(|p|serde_json::json!({"doc":p.placement.doc,"version":p.placement.version,"origin":p.origin.to_array(),"size":p.size.to_array(),"triangles":p.vertices.len()/3})).collect();
+        web_sys::console::info_1(&JsValue::from_str(&format!(
+            "Everglade CAD {}",
+            serde_json::json!({"models":models})
+        )));
+    }
     Ok(())
 }
 

@@ -2691,9 +2691,11 @@ dependencies = [
  "axum 0.8.9",
  "base64 0.22.1",
  "cad",
+ "robot-lab",
  "serde_json",
  "sha2 0.10.9",
  "tokio",
+ "zip 3.0.0",
 ]
 
 [[package]]
@@ -13989,7 +13991,10 @@ version = "1.0.0-rc.15"
 dependencies = [
  "base64 0.22.1",
  "fs2",
+ "glam",
  "oa-copy",
+ "robot-description",
+ "roxmltree",
  "schemars 1.2.2",
  "serde",
  "serde_json",

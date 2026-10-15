@@ -318,6 +318,7 @@ impl Lab {
             "cad_assemble" => self.assemble(args),
             "cad_check" => self.check(args),
             "cad_manufacture" => self.manufacture(args),
+            "cad_robot" => self.robot(args),
             "cad_versions" => self.versions_tool(args),
             "cad_compare" => self.compare(args),
             "cad_export" => self.export(args),
@@ -852,7 +853,9 @@ impl Lab {
         let mut files = Vec::new();
         for format in formats {
             if format == "urdf" {
-                let (path, bytes) = self.write_urdf(&id, n, &document, &eval)?;
+                self.write_urdf(&id, n, &document, &eval)?;
+                let path = dir.join(format!("{id}-v{n}.urdf.zip"));
+                let bytes = std::fs::metadata(&path).map_err(|e| e.to_string())?.len();
                 files.push(json!({"format": format, "path": path, "bytes": bytes,
                                   "robot_lab": {"source": format!("cad:{id}/v{n}"), "revision": robot_revision(&document)}}));
                 continue;
@@ -932,6 +935,26 @@ impl Lab {
                 "files": pinned,
             }),
         )?;
+        {
+            use std::io::Write as _;
+            let path = dir
+                .parent()
+                .ok_or("The output folder is missing.")?
+                .join(format!("{id}-v{n}.urdf.zip"));
+            let mut zip =
+                zip::ZipWriter::new(std::fs::File::create(path).map_err(|e| e.to_string())?);
+            let options = zip::write::SimpleFileOptions::default()
+                .compression_method(zip::CompressionMethod::Deflated);
+            for (name, bytes) in &files {
+                zip.start_file(name, options).map_err(|e| e.to_string())?;
+                zip.write_all(bytes).map_err(|e| e.to_string())?;
+            }
+            zip.start_file("source.json", options)
+                .map_err(|e| e.to_string())?;
+            zip.write_all(&std::fs::read(dir.join("source.json")).map_err(|e| e.to_string())?)
+                .map_err(|e| e.to_string())?;
+            zip.finish().map_err(|e| e.to_string())?;
+        }
         let bytes = files[0].1.len() as u64;
         Ok((dir.join(&description), bytes))
     }
@@ -1202,6 +1225,92 @@ impl Lab {
         })?;
         out["steps"] = json!(count);
         Ok(out)
+    }
+
+    fn robot(&self, args: &Value) -> Result<Value, String> {
+        use base64::Engine as _;
+        let (id, n, document, record) = self.pick(args)?;
+        let created = record["created"].as_u64().unwrap_or(1).saturating_mul(1000);
+        let eval =
+            cad::evaluate_with(&document, &self.root.join(".parts")).map_err(|p| p.join(" "))?;
+        let (description, _) = self.write_urdf(&id, n, &document, &eval)?;
+        let root = self.root.join(".robot-imports").join(format!("{id}-v{n}"));
+        let store = robot_lab::Store::open(&root, "cad").map_err(|e| e.to_string())?;
+        let reference = match store.latest("scene") {
+            Ok(r) => r,
+            Err(robot_lab::Error::Missing) => {
+                let mut robot = robot_lab::import::pinned_urdf(
+                    &store,
+                    description.parent().ok_or("The robot folder is missing.")?,
+                )
+                .map_err(|e| e.to_string())?;
+                robot.capabilities = std::collections::BTreeSet::from([
+                    robot_lab::document::Capability::Inspect,
+                    robot_lab::document::Capability::Replay,
+                ]);
+                let joints = robot
+                    .joints
+                    .iter()
+                    .filter(|j| j.kind != robot_lab::document::JointKind::Fixed)
+                    .map(|j| {
+                        (
+                            j.name.clone(),
+                            j.limits.map_or(0., |l| 0.0_f64.clamp(l.lower, l.upper)),
+                        )
+                    })
+                    .collect();
+                let r = store
+                    .save(
+                        "robot",
+                        None,
+                        robot_lab::Document::Robot(robot),
+                        "CAD Lab",
+                        "Imported CAD robot",
+                        created,
+                    )
+                    .map_err(|e| e.to_string())?;
+                let scene = robot_lab::import::floor_scene(&format!("{id} v{n}"), r, joints);
+                store
+                    .save(
+                        "scene",
+                        None,
+                        robot_lab::Document::Scene(scene),
+                        "CAD Lab",
+                        "Opened CAD robot",
+                        created,
+                    )
+                    .map_err(|e| e.to_string())?
+            }
+            Err(e) => return Err(e.to_string()),
+        };
+        let bundle = store.view(&reference)?;
+        let mut assets = std::collections::BTreeMap::new();
+        let mut total = 0;
+        for asset in bundle.robot.source.files.values() {
+            let bytes = store
+                .asset_bytes(asset, 8 << 20)
+                .map_err(|e| e.to_string())?;
+            total += bytes.len();
+            if total > 8 << 20 {
+                return Err("This robot has too many mesh files. Send a smaller assembly.".into());
+            }
+            assets.insert(
+                asset.sha256.clone(),
+                base64::engine::general_purpose::STANDARD.encode(bytes),
+            );
+        }
+        let file = format!("{id}-v{n}.robot.json");
+        let path = self.version_dir(&id, n).join("out").join(&file);
+        write_json(
+            &path,
+            &json!({"schema":"openagents.cad.robot.v1","source":format!("cad:{id}/v{n}"),"revision":robot_revision(&document),"bundle":bundle,"assets":assets}),
+        )?;
+        let _ = std::fs::remove_dir_all(&root);
+        let mut card = self.card(&id, n, None)?;
+        card["robot"] = json!({"file":file,"reference":reference});
+        Ok(
+            json!({"doc":id,"version":n,"summary":format!("{id} v{n} is in Robot Lab."),"robot":card["robot"],"card":card}),
+        )
     }
 
     fn manufacture(&self, args: &Value) -> Result<Value, String> {
@@ -1789,6 +1898,7 @@ fn takes(name: &str) -> &'static [&'static str] {
         ],
         "cad_add_feature" => &["doc", "part", "features", "after", "summary", "author"],
         "cad_manufacture" => &["doc", "version", "profile"],
+        "cad_robot" => &["doc", "version"],
         "cad_config_options" => &["doc", "version"],
         "cad_configure" => &["doc", "version", "controls"],
         "cad_drag_face" => &["doc", "part", "face", "delta", "summary", "author"],
@@ -2007,6 +2117,7 @@ pub fn tools() -> Value {
             "hidden": {"type": "boolean", "description": "false leaves the hidden lines out"},
             "dimensions": {"type": "string", "description": "a JSON array of distances between two parallel flat faces, named like cad_faces names them, e.g. [{\"part\":\"plate\",\"faces\":[\"body:start\",\"body:top\"],\"view\":\"front\",\"label\":\"H\"}]"},
             "formats": {"type": "string", "description": "a JSON array of svg, pdf, dxf; default all three"}}}},
+        {"name":"cad_robot","description":"Send this exact CAD version to Robot Lab for inspection and joint posing. Imports the URDF with its mass, inertia, joint limits, mesh files and source hashes. Does not start simulation.","parameters":{"type":"object","required":["doc"],"properties":{"doc":{"type":"string"},"version":{"type":"integer"}}}},
         {"name":"cad_manufacture","description":"Check whether a part can be 3D printed or milled in one 3-axis setup. Measures wall thickness, print overhang angle, unsupported bridges, holes smaller than the nozzle, inside corners smaller than the cutter, and faces blocked from the tool. Returns named faces for the viewport. Checks sample the surface. For a print question, use the default print profile unless the person gave settings.",
          "parameters":{"type":"object","required":["doc"],"properties":{"doc":doc,"version":version,"profile":{"type":"string","description":"Optional JSON object: process print (default), cnc, or both; min_wall_mm (0.8), overhang_degrees (45), bridge_mm (10), nozzle_mm (0.4), tool_radius_mm (3), up [0,0,1] (build direction / tool approach)."}}}},
         {"name": "cad_check", "description": "Run the checks on a version again: every feature rebuilds, every solid is closed, no undeclared overlaps; with its mass, centre of mass and inertia.",
@@ -2187,6 +2298,25 @@ mod tests {
         assert_eq!(
             robot["files"][0]["robot_lab"]["source"], "cad:cart/v5",
             "{robot}"
+        );
+        let inspected = lab.run("cad_robot", &json!({"doc":"cart","version":5}));
+        assert!(inspected["error"].is_null(), "{inspected}");
+        let artifact =
+            read_json(&lab.version_dir("cart", 5).join("out/cart-v5.robot.json")).unwrap();
+        let bundle: robot_lab::view::Bundle =
+            serde_json::from_value(artifact["bundle"].clone()).unwrap();
+        bundle.validate().unwrap();
+        assert!(!artifact["assets"].as_object().unwrap().is_empty());
+        assert_eq!(artifact["source"], "cad:cart/v5");
+        assert_eq!(
+            lab.run("cad_robot", &json!({"doc":"cart","version":5}))["robot"]["reference"],
+            inspected["robot"]["reference"]
+        );
+        assert!(
+            std::fs::metadata(lab.version_dir("cart", 5).join("out/cart-v5.urdf.zip"))
+                .unwrap()
+                .len()
+                > 100
         );
         let urdf_dir = lab.version_dir("cart", 5).join("out/urdf");
         let pin = read_json(&urdf_dir.join("source.json")).unwrap();

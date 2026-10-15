@@ -21,6 +21,7 @@ pub use verse_zone_lagrange as lagrange;
 pub use verse_zone_lagrange2 as lagrange2;
 #[cfg(test)]
 mod budget_tests;
+pub mod cad_place;
 #[cfg(test)]
 mod coast_tests;
 #[cfg(test)]
@@ -35,8 +36,6 @@ mod grove_tests;
 mod grove_tower_tests;
 #[cfg(test)]
 mod lab_tests;
-#[cfg(not(target_arch = "wasm32"))]
-pub mod cad_place;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod meteor_rover;
 pub mod meteor_showcase;
@@ -463,7 +462,6 @@ pub(crate) struct State {
     #[cfg(not(target_arch = "wasm32"))]
     caster_hidden: bool,
     /// CAD Lab models placed in this zone ([`cad_place`]).
-    #[cfg(not(target_arch = "wasm32"))]
     cad: cad_place::Placements,
 }
 impl Default for State {
@@ -511,7 +509,6 @@ impl Default for State {
             rover: None,
             #[cfg(not(target_arch = "wasm32"))]
             caster_hidden: false,
-            #[cfg(not(target_arch = "wasm32"))]
             cad: cad_place::Placements::default(),
         }
     }

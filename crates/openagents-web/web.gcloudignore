@@ -23,6 +23,7 @@
 !/scripts/build-snap-web.sh
 !/scripts/build-att-web.sh
 !/scripts/build-cad-web.sh
+!/scripts/build-robot-web.sh
 !/scripts/install/
 /scripts/install/*
 !/scripts/install/coder.sh

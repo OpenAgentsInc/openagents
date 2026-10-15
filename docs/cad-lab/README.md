@@ -422,11 +422,32 @@ once built; its drawing takes 75 ms.
 stands on the ground, its lowest point resting there, and a change to the
 file shows within a second. One placement per document and zone, keeping
 its version, so placing v39 replaces v38. With no `at`, the model stands
-in front of where the player arrives. Native Verse only; the browser build
-reads no local files. `cad_place_capture OUT.png` (a `verse` example)
-photographs it.
+in front of where the player arrives.
+
+On the web, the same tool saves a private copy for the signed-in person's
+world. Open its link to Everglade, Meteor Showcase, or Meteor Stress Test;
+the Rust browser loader reads that account's placements and GLB files.
+Placing a newer version replaces the earlier one for that design and zone;
+`remove: true` removes it. Reload an already-open browser world after changing
+its placements. A world accepts 20 CAD placements, with the existing CAD file
+limit per model, 32 MiB of models total, and 150,000 triangles in the rendered scene. These placements
+are visual models; dynamic CAD bodies are tracked in #11680.
+`cad_place_capture OUT.png` (a `verse` example) photographs a native placement.
 
 ## Robot Lab and Lagrange 2 (#11643)
+
+On a web design page, **Put in Everglade**, **Remove from Everglade**,
+**Open in Robot Lab**, and **URDF and meshes** use the selected saved version.
+Project editors can send a design; project viewers can inspect a saved Robot
+Lab import. Placing a project design copies it into the editor's own world.
+
+`cad_robot(doc, version?)` imports a saved version into Robot Lab and returns
+its player link. The import keeps the source revision, checked URDF, mesh
+hashes, mass, inertia, and joint limits. The browser player supports inspection
+and joint pose previews; saving poses and simulation stay with the Robot Lab
+host. The original CAD version and earlier imports remain unchanged. The
+web image includes the Rust player under `/srv/robot`; a local server can set
+`OPENAGENTS_ROBOT_BUILD` to a build from `scripts/build-robot-web.sh`.
 
 - **URDF** (`cad_export` `urdf`, `crates/cad/src/urdf.rs`): a link per
   instance under a massless `base_link` at the ground, each with the
@@ -444,6 +465,8 @@ photographs it.
   no contact shapes for simulation yet). A round-trip test reads it back
   with `robot-description` and gets every link's mass, centre of mass
   (0.06 mm) and inertia (10⁻⁶ relative) and every joint's kind and limits.
+  The export also writes `DOC-vN.urdf.zip` with the whole source folder for
+  download from web chats and design pages.
 - **Mass feed** (`cad_export` `feed`, `cad::feed::MassFeed`,
   `cad-mass-feed.v1`): the typed record Lagrange 2's spacecraft document
   reads: per instance its part, material, mass, centre of mass and inertia

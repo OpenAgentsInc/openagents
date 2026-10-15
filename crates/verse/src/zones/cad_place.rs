@@ -20,15 +20,18 @@
 //! solid), read as [`super::meteor_rover`] reads the rover's; the
 //! model's lowest point rests on the ground.
 //!
-//! Native only: the browser build reads no files on this computer.
+//! Native callers poll the file. Browser callers pass authenticated model
+//! bytes to `stand_bytes` through `WorldRuntime::install_cad_models`.
 
-use std::path::{Path, PathBuf};
-use std::time::SystemTime;
+use std::path::PathBuf;
+#[cfg(not(target_arch = "wasm32"))]
+use std::{path::Path, time::SystemTime};
 
 use glam::{Quat, Vec3};
 use serde::Deserialize;
 use serde_json::Value;
 
+#[cfg(not(target_arch = "wasm32"))]
 use super::ZoneId;
 use crate::pbr::LitVertex;
 
@@ -42,6 +45,11 @@ pub const MAX_TRIANGLES: usize = 150_000;
 pub const POLL_SECONDS: f32 = 1.0;
 /// How far in front of the arrival point an unplaced model stands, m.
 pub const AHEAD: f32 = 8.0;
+
+/// A default placement in front of the zone's arrival point.
+pub fn ahead(spawn: Vec3, yaw: f32) -> Vec3 {
+    spawn + crate::controller::forward(yaw) * AHEAD
+}
 
 /// One model in one zone.
 #[derive(Clone, Debug, Deserialize, PartialEq)]
@@ -68,6 +76,7 @@ fn one() -> f32 {
     1.0
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[derive(Deserialize)]
 struct File {
     kind: String,
@@ -78,6 +87,7 @@ struct File {
 /// The placements file: `$VERSE_CAD_PLACEMENTS`, else
 /// `$CAD_LAB_DIR/.verse/placements.json`, else CAD Lab's own folder
 /// (`~/work/film-out/lab/cad/.verse/placements.json`).
+#[cfg(not(target_arch = "wasm32"))]
 #[must_use]
 pub fn path() -> PathBuf {
     if let Some(file) = std::env::var_os("VERSE_CAD_PLACEMENTS") {
@@ -99,6 +109,7 @@ pub fn path() -> PathBuf {
 ///
 /// # Errors
 /// The file isn't a placements file.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn read(path: &Path) -> Result<Vec<Placement>, String> {
     let text = match std::fs::read_to_string(path) {
         Ok(text) => text,
@@ -195,6 +206,7 @@ pub struct Placed {
 ///
 /// # Errors
 /// The glTF can't be read or holds no solids.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn stand(
     placement: &Placement,
     ground: impl Fn(f32, f32) -> f32,
@@ -208,9 +220,38 @@ pub fn stand(
         return Err(format!("{shown} is larger than {MAX_GLB_BYTES} bytes"));
     }
     let bytes = std::fs::read(&placement.glb).map_err(|e| format!("{shown}: {e}"))?;
-    let solids = parse_glb(&bytes)
+    stand_bytes(placement, &bytes, ground, default_at)
+}
+
+/// Stands an authenticated CAD model supplied by a browser or native caller.
+pub fn stand_bytes(
+    placement: &Placement,
+    bytes: &[u8],
+    ground: impl Fn(f32, f32) -> f32,
+    default_at: Vec3,
+) -> Result<Placed, String> {
+    if bytes.len() as u64 > MAX_GLB_BYTES {
+        return Err("This CAD model is too large.".into());
+    }
+    let solids = parse_glb(bytes)
         .filter(|s| !s.is_empty())
-        .ok_or_else(|| format!("{shown} is not a CAD Lab glTF"))?;
+        .ok_or("This file is not a CAD Lab model.")?;
+    if placement
+        .at
+        .is_some_and(|p| p.iter().any(|v| !v.is_finite() || v.abs() > 5000.))
+        || !placement.heading_deg.is_finite()
+        || !(0.01..=100.).contains(&placement.scale)
+    {
+        return Err("Choose a finite place, heading, and scale for the model.".into());
+    }
+    if solids
+        .iter()
+        .flat_map(|s| s.positions.iter().chain(&s.normals))
+        .any(|p| !p.is_finite())
+        || solids.iter().map(|s| s.indices.len() / 3).sum::<usize>() > MAX_TRIANGLES
+    {
+        return Err("This CAD model has invalid or too many triangles.".into());
+    }
     let scale = if placement.scale.is_finite() && placement.scale > 0.0 {
         placement.scale
     } else {
@@ -262,6 +303,7 @@ pub fn stand(
 #[derive(Default)]
 pub struct Placements {
     /// What was last read: the zone and the file's time and length.
+    #[cfg(not(target_arch = "wasm32"))]
     seen: Option<(ZoneId, Option<SystemTime>, u64)>,
     clock: f32,
     pub placed: Vec<Placed>,
@@ -282,6 +324,7 @@ impl Placements {
 
     /// Reads `file` again when it or the zone changed, standing every
     /// placement for `zone`. Returns whether anything changed.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn refresh(
         &mut self,
         zone: ZoneId,
@@ -356,6 +399,30 @@ mod tests {
         )
         .unwrap();
         path
+    }
+
+    #[test]
+    fn default_placements_are_in_front_of_the_arriving_player() {
+        for yaw in [0., 1., 2., 3.] {
+            let spawn = Vec3::new(0., 0., -20.);
+            let delta = ahead(spawn, yaw) - spawn;
+            assert!((delta.length() - AHEAD).abs() < 1e-5);
+            assert!(delta.dot(crate::controller::forward(yaw)) > 7.99);
+        }
+    }
+
+    #[test]
+    fn supplied_bytes_stand_without_a_local_file_and_refuse_bad_settings() {
+        let bytes = std::fs::read(ROVER).unwrap();
+        let mut placement:Placement=serde_json::from_value(serde_json::json!({"doc":"rover","version":1,"zone":"verse-everglade","glb":"/cad-world/model.glb","at":[3.,0.,4.],"scale":2.})).unwrap();
+        let placed = stand_bytes(&placement, &bytes, |_, _| 1., Vec3::ZERO).unwrap();
+        assert_eq!(placed.origin, Vec3::new(3., 1., 4.));
+        assert!(placed.vertices.len() > 100);
+        assert!((placed.size.y - 2.244).abs() < 0.02);
+        placement.scale = f32::NAN;
+        assert!(stand_bytes(&placement, &bytes, |_, _| 0., Vec3::ZERO).is_err());
+        placement.scale = 1.;
+        assert!(stand_bytes(&placement, b"broken", |_, _| 0., Vec3::ZERO).is_err());
     }
 
     #[test]

@@ -71,6 +71,7 @@ impl World {
 pub(crate) struct Options {
     pub uploads: Option<crate::ProjectUploadPolicy>,
     pub cad: Option<std::path::PathBuf>,
+    pub everglade: Option<std::path::PathBuf>,
     /// Serve a public host (`openagents.test`) instead of the local address.
     pub public: bool,
     /// The account service's invite list (`oa_auth::invite`).
@@ -162,6 +163,7 @@ async fn world_at(port: u16, options: Options) -> World {
     let mut config = crate::Config::development(root.path().join("tasks"));
     config.project_uploads = options.uploads.unwrap_or_default();
     config.cad = options.cad;
+    config.everglade = options.everglade;
     config.port = port;
     let store = Arc::new(Store::local(root.path().join("chats")));
     config.chat_store = store.clone();

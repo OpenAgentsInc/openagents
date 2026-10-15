@@ -18,6 +18,9 @@ thiserror = "2"
 # (wasm32) reads checked documents and never opens a lab on disk.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 fs2 = "0.4.3"
+robot-description = { path = "../robot-description" }
+glam = "0.30.10"
+roxmltree = "0.21.1"
 tempfile = "3"
 
 [dev-dependencies]

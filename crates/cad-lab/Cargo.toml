@@ -8,6 +8,8 @@ description = "CAD Lab: build parts and assemblies by talking. Versioned part.v1
 
 [dependencies]
 cad = { path = "../cad" }
+robot-lab = { path = "../robot-lab" }
+zip = { version = "3", default-features = false, features = ["deflate"] }
 axum = "0.8"
 serde_json = "1"
 base64 = "0.22"

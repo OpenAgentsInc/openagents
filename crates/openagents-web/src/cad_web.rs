@@ -39,6 +39,7 @@
 //! person.
 
 mod configurator;
+mod handoff;
 mod imports;
 
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
@@ -86,7 +87,7 @@ const MAX_FILE_BYTES: usize = 15 * 1024 * 1024;
 const MAX_PARTS_BYTES: u64 = 48 * 1024 * 1024;
 
 /// The tools that change a model (a viewer may not run them).
-const CHANGES: [&str; 11] = [
+const CHANGES: [&str; 13] = [
     "cad_new_part",
     "cad_add_feature",
     "cad_edit_feature",
@@ -98,9 +99,9 @@ const CHANGES: [&str; 11] = [
     "cad_import_step",
     "cad_import_file",
     "cad_import_model",
+    "cad_place",
+    "cad_robot",
 ];
-/// The Lab's tools that need the Mac they run on.
-const LOCAL_ONLY: [&str; 1] = ["cad_place"];
 /// A version's files the viewer and the page read.
 pub(crate) const FILES: [&str; 6] = [
     "doc.json",
@@ -483,7 +484,7 @@ impl Engine {
                 return Err("This design changed. Reload it before pulling a face.".into());
             }
         }
-        if CHANGES.contains(&name) {
+        if CHANGES.contains(&name) && !matches!(name, "cad_place" | "cad_robot") {
             if let Some(doc) = args["doc"].as_str() {
                 if !index.docs.contains_key(doc) && index.docs.len() >= MAX_DOCS {
                     return Err(format!(
@@ -501,6 +502,21 @@ impl Engine {
                 }
             }
         }
+        let placement = if name == "cad_place" {
+            handoff::place_settings(&args)?;
+            let doc = args["doc"].as_str().ok_or("Choose a design.")?;
+            let entry = index.docs.get(doc).ok_or("This design isn't here.")?;
+            let n = args["version"].as_u64().unwrap_or(entry.versions);
+            if !entry.history.iter().any(|v| v.n == n) {
+                return Err("Choose a saved design version.".into());
+            }
+            if args["remove"] == true {
+                return handoff::place(store, scope, &args, doc, n, None).await;
+            }
+            Some((doc.to_owned(), n))
+        } else {
+            None
+        };
         let dir = self.cache.join(scope.local());
         let wanted = named_docs(&args);
         sync(store, scope, &dir, &index, &wanted).await?;
@@ -512,7 +528,16 @@ impl Engine {
                     "We're building another model right now. Try again in a minute.".to_owned()
                 })?
                 .map_err(|_| "The CAD engine stopped.".to_owned())?;
-            self.child(&dir, name, &args).await
+            if let Some((doc, n)) = &placement {
+                self.child(
+                    &dir,
+                    "cad_export",
+                    &json!({"doc":doc,"version":n,"formats":["glb"]}),
+                )
+                .await
+            } else {
+                self.child(&dir, name, &args).await
+            }
         };
         let mut result = match result {
             Ok(result) => result,
@@ -522,6 +547,55 @@ impl Engine {
                 return Err(why);
             }
         };
+        if let Some((doc, n)) = placement.as_ref().filter(|_| result["error"].is_null()) {
+            let bytes = tokio::fs::read(dir.join(doc).join(format!("v{n}/out/{doc}-v{n}.glb")))
+                .await
+                .map_err(|_| "The model couldn't be sent to Verse.")?;
+            let delivery = handoff::place(store, scope, &args, doc, *n, Some(bytes)).await?;
+            result["summary"] = delivery["summary"].clone();
+            result["verse"] = delivery["verse"].clone();
+            result["card"]["verse"] = delivery["verse"].clone();
+        }
+        if name == "cad_export" && result["error"].is_null() {
+            for file in result["files"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter(|f| f["format"] == "urdf")
+            {
+                let path = PathBuf::from(
+                    file["path"]
+                        .as_str()
+                        .ok_or("The URDF archive wasn't written.")?,
+                );
+                let file = path
+                    .file_name()
+                    .and_then(|p| p.to_str())
+                    .filter(|n| valid_out(n))
+                    .ok_or("The URDF archive wasn't written.")?;
+                let doc = result["doc"].as_str().ok_or("Choose a design.")?;
+                let n = result["version"]
+                    .as_u64()
+                    .ok_or("Choose a saved version.")?;
+                let bytes = tokio::fs::read(&path)
+                    .await
+                    .map_err(|_| "The URDF archive couldn't be read.")?;
+                if bytes.len() > MAX_FILE_BYTES {
+                    return Err("This robot archive is too large. Send a smaller assembly.".into());
+                }
+                put(
+                    store,
+                    &scope
+                        .key(&format!("{doc}/v{n}/out/{file}"))
+                        .map_err(|e| e.to_string())?,
+                    bytes,
+                )
+                .await?;
+            }
+        }
+        if name == "cad_robot" && result["error"].is_null() {
+            handoff::robot_saved(store, scope, &dir, &mut result).await?;
+        }
         if result["saved"] == true {
             if let Err(why) = persist(store, scope, &dir, &result).await {
                 let _ = sync(store, scope, &dir, &index, &HashSet::new()).await;
@@ -618,9 +692,6 @@ fn admitted(scope: &Scope, name: &str, args: &Value) -> Result<Value, String> {
     {
         return Err(format!("{name} isn't a CAD tool."));
     }
-    if LOCAL_ONLY.contains(&name) {
-        return Err("Putting a model in Verse works from CAD Lab on a Mac for now.".into());
-    }
     let mut args = match args {
         Value::Object(_) => args.clone(),
         _ => json!({}),
@@ -646,12 +717,6 @@ fn admitted(scope: &Scope, name: &str, args: &Value) -> Result<Value, String> {
             "Give the STEP model's text (step); files on this server can't be read.".into(),
         );
     }
-    if name == "cad_export" {
-        let formats = args["formats"].to_string();
-        if formats.contains("urdf") {
-            return Err("A robot for Robot Lab comes from CAD Lab on a Mac for now.".into());
-        }
-    }
     if name == "cad_render" {
         for (key, most) in [("width", 1600), ("height", 1000)] {
             if args[key].as_u64().is_some_and(|v| v > most) {
@@ -673,11 +738,7 @@ fn admitted(scope: &Scope, name: &str, args: &Value) -> Result<Value, String> {
 fn hosted_tools(tools: &[Value]) -> Vec<Value> {
     tools
         .iter()
-        .filter(|t| {
-            t["name"]
-                .as_str()
-                .is_some_and(|n| n.starts_with("cad_") && !LOCAL_ONLY.contains(&n))
-        })
+        .filter(|t| t["name"].as_str().is_some_and(|n| n.starts_with("cad_")))
         .cloned()
         .map(|mut tool| {
             if let Some(text) = tool["description"].as_str() {
@@ -692,14 +753,6 @@ fn hosted_tools(tools: &[Value]) -> Vec<Value> {
                 }
                 if let Some(required) = tool["parameters"]["required"].as_array_mut() {
                     required.retain(|r| r != "path");
-                }
-            }
-            if tool["name"] == "cad_export" {
-                if let Some(text) =
-                    tool["parameters"]["properties"]["formats"]["description"].as_str()
-                {
-                    tool["parameters"]["properties"]["formats"]["description"] =
-                        json!(format!("{text} (urdf isn't available here)"));
                 }
             }
             tool
@@ -949,7 +1002,7 @@ async fn keep_outputs(store: &Store, scope: &Scope, dir: &Path) {
                     let _ = tokio::fs::remove_dir_all(&path).await;
                     continue;
                 }
-                if valid_out(&name) {
+                if valid_out(&name) && !name.ends_with(".robot.json") {
                     if let Ok(bytes) = tokio::fs::read(&path).await {
                         if bytes.len() <= MAX_FILE_BYTES {
                             if let Ok(key) = scope.key(&format!("{doc_name}/{v}/out/{name}")) {
@@ -1093,7 +1146,7 @@ pub(crate) fn file_response(name: &str, bytes: Vec<u8>, download: Option<&str>) 
             ),
             (
                 header::CACHE_CONTROL,
-                HeaderValue::from_static("private, max-age=600"),
+                HeaderValue::from_static("private, no-store"),
             ),
             (
                 header::X_CONTENT_TYPE_OPTIONS,
@@ -1155,6 +1208,7 @@ pub(crate) fn routes() -> Router<App> {
     Router::new()
         .merge(configurator::routes())
         .merge(imports::routes())
+        .merge(handoff::routes())
         // `{file}`, as /cad/{file} names the same segment (pages::cad).
         .route("/cad/{file}/file", get(file))
         .route("/cad/{file}/delete", post(delete_form))
@@ -1384,6 +1438,7 @@ pub(crate) fn doc_content(
             }
             @if let Some(csrf) = csrf.filter(|_|engine().is_some()) {
                 (imports::form(scope,doc,csrf,record))
+                (handoff::form(scope,doc,version,csrf))
             }
             @if let Some(report)=record.get("manufacturing") {(crate::cad_lab::manufacturing(report))}
             @if engine().is_some() && record["report"]["mesh_bodies"].as_u64().unwrap_or(0)<record["report"]["solids"].as_u64().unwrap_or(1) {
