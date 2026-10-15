@@ -550,6 +550,21 @@ impl WorldRuntime {
         self.zone_state.rover.as_deref()
     }
 
+    /// The rover on the showcase's lot, to repaint it
+    /// ([`super::meteor_rover::Rover::repaint`]).
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn meteor_rover_mut(&mut self) -> Option<&mut super::meteor_rover::Rover> {
+        self.zone_state.rover.as_deref_mut()
+    }
+
+    /// Leaves the Meteor Showcase's staged caster out of the scene (or
+    /// puts them back), so a film can draw its own caster at
+    /// [`super::meteor_showcase::CASTER`]. The cast itself is unchanged.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn hide_meteor_caster(&mut self, hidden: bool) {
+        self.zone_state.caster_hidden = hidden;
+    }
+
     /// Triangles hidden, vertices and probes relit by the last relighting
     /// of what destruction broke, in a zone that relights.
     #[must_use]
@@ -3144,6 +3159,8 @@ impl WorldRuntime {
             if let Some(glade) = &mut state.everglade {
                 // The caster stands only while a film stages the cast.
                 let staged = glade.town().is_some_and(|t| t.bombardment()[0] > 0);
+                #[cfg(not(target_arch = "wasm32"))]
+                let staged = staged && !state.caster_hidden;
                 let figures = if staged {
                     super::meteor_showcase::figures()
                 } else {

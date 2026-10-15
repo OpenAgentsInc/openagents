@@ -458,6 +458,10 @@ pub(crate) struct State {
     /// ([`meteor_rover`]).
     #[cfg(not(target_arch = "wasm32"))]
     rover: Option<Box<meteor_rover::Rover>>,
+    /// The Meteor Showcase's staged caster is left out of the scene: a
+    /// film draws its own caster where they stand.
+    #[cfg(not(target_arch = "wasm32"))]
+    caster_hidden: bool,
     /// CAD Lab models placed in this zone ([`cad_place`]).
     #[cfg(not(target_arch = "wasm32"))]
     cad: cad_place::Placements,
@@ -505,6 +509,8 @@ impl Default for State {
             private_loader: None,
             #[cfg(not(target_arch = "wasm32"))]
             rover: None,
+            #[cfg(not(target_arch = "wasm32"))]
+            caster_hidden: false,
             #[cfg(not(target_arch = "wasm32"))]
             cad: cad_place::Placements::default(),
         }

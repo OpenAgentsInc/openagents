@@ -1909,6 +1909,24 @@ impl Rover {
         out
     }
 
+    /// Repaints the rover: each solid (and any fragment broken from it)
+    /// takes the color `paint` gives for its instance and its CAD color,
+    /// linear RGB. A livery for a film; the physics is untouched.
+    pub fn repaint(&mut self, paint: impl Fn(&str, [f32; 3]) -> [f32; 3]) {
+        for part in &mut self.parts {
+            part.color = paint(&part.instance, part.color);
+        }
+    }
+
+    /// Each solid's color, linear RGB, with its instance.
+    #[must_use]
+    pub fn colors(&self) -> Vec<(String, [f32; 3])> {
+        self.parts
+            .iter()
+            .map(|p| (p.instance.clone(), p.color))
+            .collect()
+    }
+
     /// Each solid's pose: its instance, position and rotation.
     #[must_use]
     pub fn poses(&self) -> Vec<(String, DVec3, DQuat)> {
@@ -1961,6 +1979,32 @@ mod tests {
             r.step(1.0 / 60.0);
         }
         r
+    }
+
+    #[test]
+    fn a_livery_repaints_the_solids_and_leaves_the_physics_alone() {
+        let mut r = rover();
+        let mass = r.mass();
+        r.repaint(|instance, color| {
+            if instance == "chassis" {
+                [0.5, 0.02, 0.02]
+            } else {
+                color
+            }
+        });
+        let colors = r.colors();
+        assert!(
+            colors
+                .iter()
+                .filter(|(i, _)| i == "chassis")
+                .all(|(_, c)| *c == [0.5, 0.02, 0.02])
+        );
+        assert!(
+            colors
+                .iter()
+                .any(|(i, c)| i != "chassis" && *c != [0.5, 0.02, 0.02])
+        );
+        assert_eq!(r.mass(), mass);
     }
 
     #[test]
