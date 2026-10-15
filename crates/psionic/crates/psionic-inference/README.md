@@ -248,3 +248,13 @@ CUDA or Core ML providers, or arbitrary other models. Keep full ORT for
 broader graph support. In the benchmark, select an exported graph with
 `--ort-model FILE --ort-model-sha256 HASH` and supply the reduced runtime
 library and checksum. Every reference case must still pass.
+
+
+Native deployment verification requires converted weights, model metadata,
+licenses, and tokenizers, without requiring the original ONNX weights or
+source test archives. The original hashes stay pinned in the conversion
+receipt. The explicit `native_packages` test loads all three models from
+such bundles. Reference-generation tooling still verifies the full source
+download. The high-level ORT loaders use original ONNX files and a full
+runtime; a minimal ORT-format package uses `OrtEngine` with the exported
+graph and the same shared preparation and output adapters.

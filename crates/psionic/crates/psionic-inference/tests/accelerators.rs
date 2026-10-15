@@ -43,3 +43,79 @@ fn cpu_only_runtime_refuses_explicit_cuda_registration() {
         OrtEngine::load_with_execution(&root.join("model.onnx"), &options, &execution).is_err()
     );
 }
+
+#[cfg(unix)]
+#[test]
+#[ignore = "requires pinned model directories and explicit PSIONIC_PACKAGE_SCRATCH"]
+fn native_packages_load_without_source_onnx_or_test_archives() {
+    use psionic_inference::models::{MnistModel, PotionModel};
+    use std::{os::unix::fs::symlink, path::PathBuf};
+    let source = PathBuf::from(std::env::var_os("PSIONIC_SMALL_MODELS_DIR").expect("model root"));
+    let scratch = std::env::var_os("PSIONIC_PACKAGE_SCRATCH").expect("scratch directory");
+    let package = tempfile::tempdir_in(scratch).unwrap();
+    for (name, files) in [
+        (
+            "s1-router",
+            vec![
+                "meta.json",
+                "LICENSE",
+                "tokenizer/tokenizer.json",
+                "tokenizer/tokenizer_config.json",
+                "native.safetensors",
+                "native.json",
+            ],
+        ),
+        (
+            "potion",
+            vec![
+                "model.safetensors",
+                "tokenizer.json",
+                "config.json",
+                "README.md",
+            ],
+        ),
+        ("mnist", vec!["native.safetensors", "README.md", "LICENSE"]),
+    ] {
+        let root = package.path().join(name);
+        std::fs::create_dir_all(&root).unwrap();
+        for file in files {
+            let target = root.join(file);
+            std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+            symlink(source.join(name).join(file), target).unwrap();
+        }
+    }
+    let mut router = psionic_inference::router::load_native_on(
+        &package.path().join("s1-router"),
+        4,
+        DeviceChoice::Cpu,
+    )
+    .unwrap();
+    let tokenizer = psionic_inference::router::RouterTokenizer::load(
+        &package.path().join("s1-router/tokenizer/tokenizer.json"),
+    )
+    .unwrap();
+    router
+        .run(&tokenizer.prepare("Write a Rust function", None).unwrap())
+        .unwrap();
+    let mut embedding = PotionModel::load(
+        &package.path().join("potion"),
+        psionic_inference::EngineKind::Native,
+        1,
+        None,
+        None,
+    )
+    .unwrap();
+    assert_eq!(
+        embedding.encode(&["Rust memory safety"]).unwrap()[0].len(),
+        64
+    );
+    let mut digit = MnistModel::load(
+        &package.path().join("mnist"),
+        psionic_inference::EngineKind::Native,
+        1,
+        None,
+        None,
+    )
+    .unwrap();
+    assert_eq!(digit.classify(&[0; 784]).unwrap().digit, 5);
+}

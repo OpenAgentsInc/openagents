@@ -55,18 +55,31 @@ pub fn manifest(family: ModelFamily) -> Result<ModelSpec> {
 
 impl ModelSpec {
     pub fn verify(&self, root: &Path, kind: EngineKind) -> Result<()> {
+        if !self.files.contains_key(&self.onnx) {
+            return Err(Error("The model description has no ONNX artifact".into()));
+        }
         let mut files: BTreeMap<String, Artifact> = self
             .files
             .iter()
+            .filter(|(name, _)| {
+                // Source archives are needed by reproducibility tooling, not by inference.
+                if name.as_str() == "tests.tar.gz" {
+                    return false;
+                }
+                if name.as_str() == self.onnx {
+                    return kind == EngineKind::Ort;
+                }
+                if name.as_str() == "model.safetensors" {
+                    return kind == EngineKind::Native;
+                }
+                true
+            })
             .map(|(name, f)| (name.clone(), f.artifact.clone()))
             .collect();
         if kind == EngineKind::Native {
             if let Some(native) = &self.native {
                 files.insert(native.file.clone(), native.artifact.clone());
             }
-        }
-        if !files.contains_key(&self.onnx) {
-            return Err(Error("The model description has no ONNX artifact".into()));
         }
         verify(root, &files)
     }

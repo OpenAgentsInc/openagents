@@ -8,7 +8,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     EngineKind, Error, ExecutionIdentity, ModelEngine, Result, Tensor, TensorData, Tensors,
-    router::file_sha256,
 };
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -130,13 +129,9 @@ impl ModernBertEngine {
                 return Err(Error("Invalid native rotary frequencies".into()));
             }
         }
-        if file_sha256(&root.join("model.gq.onnx"))? != config.source_sha256
-            || file_sha256(&root.join("native.safetensors"))? != config.weights_sha256
-        {
-            return Err(Error(
-                "Native model files do not match their expected checksums".into(),
-            ));
-        }
+        // The pinned conversion receipt binds source identity and every converted value.
+        // Serving the native package does not need the original ONNX weights as well.
+        crate::router::verify_native_router(root)?;
         let bytes = std::fs::read(root.join("native.safetensors"))?;
         let tensors = SafeTensors::deserialize(&bytes).map_err(tensor_error)?;
         let embedding = tensors.tensor("embedding").map_err(tensor_error)?;

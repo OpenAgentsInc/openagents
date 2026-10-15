@@ -36,14 +36,11 @@ pub fn load_engine(
     library: Option<&Path>,
     library_sha256: Option<&str>,
 ) -> Result<Box<dyn ModelEngine>> {
-    pinned_manifest()?.verify(root)?;
+    verify_runtime_artifacts(root, kind)?;
     match kind {
-        EngineKind::Native => {
-            verify_native_router(root)?;
-            Ok(Box::new(crate::modernbert::ModernBertEngine::load(
-                root, threads,
-            )?))
-        }
+        EngineKind::Native => Ok(Box::new(crate::modernbert::ModernBertEngine::load(
+            root, threads,
+        )?)),
         EngineKind::Ort => {
             #[cfg(feature = "ort")]
             {
@@ -72,14 +69,24 @@ pub fn load_engine(
     }
 }
 
+/// Verifies only files required by the selected engine's deployed adapter.
+pub fn verify_runtime_artifacts(root: &Path, kind: EngineKind) -> Result<()> {
+    let manifest = pinned_manifest()?;
+    let files = manifest
+        .files
+        .into_iter()
+        .filter(|(name, _)| kind == EngineKind::Ort || name != "model.gq.onnx")
+        .collect();
+    crate::artifacts::verify(root, &files)
+}
+
 /// Uses the same router artifacts with explicit native CPU, CUDA, or Metal execution.
 pub fn load_native_on(
     root: &Path,
     threads: usize,
     device: crate::DeviceChoice,
 ) -> Result<Box<dyn ModelEngine>> {
-    pinned_manifest()?.verify(root)?;
-    verify_native_router(root)?;
+    verify_runtime_artifacts(root, EngineKind::Native)?;
     Ok(Box::new(crate::modernbert::ModernBertEngine::load_on(
         root, threads, device,
     )?))

@@ -46,6 +46,7 @@ def build(args):
     revision=subprocess.check_output(["git","-C",str(args.source),"rev-parse","HEAD"],text=True).strip()
     if revision!=ORT_REVISION:raise ValueError("ORT source checkout must be pinned to v1.28.0")
     command=[sys.executable,str(args.source/"tools/ci_build/build.py"),"--config","MinSizeRel","--build_dir",str(args.build),"--build_shared_lib","--minimal_build","--include_ops_by_config",str(args.output/"optimized/required_operators_and_types.config"),"--enable_reduced_operator_type_support","--disable_ml_ops","--disable_rtti","--skip_tests","--parallel",str(args.jobs),"--cmake_generator","Ninja","--skip_submodule_sync","--compile_no_warning_as_error"]
+    if sys.platform=="linux":command += ["--cmake_extra_defines","CMAKE_SHARED_LINKER_FLAGS=-Wl,-z,noexecstack"]
     subprocess.run(command,cwd=args.source,check=True)
     (args.output/"build-command.json").write_text(json.dumps(command,indent=2)+"\n")
 
