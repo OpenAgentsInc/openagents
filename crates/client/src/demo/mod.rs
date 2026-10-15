@@ -12,6 +12,7 @@
 mod fixtures;
 mod png;
 mod transcripts;
+mod visuals;
 
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -1065,6 +1066,9 @@ impl DemoHost {
     pub(crate) fn read_attachment(&self, path: &str) -> Result<Arc<Vec<u8>>> {
         if let Some(bytes) = lock(&self.uploads).get(path) {
             return Ok(bytes.clone());
+        }
+        if let Some(bytes) = visuals::read(path) {
+            return Ok(Arc::new(bytes));
         }
         transcripts::DEMO_IMAGES
             .iter()

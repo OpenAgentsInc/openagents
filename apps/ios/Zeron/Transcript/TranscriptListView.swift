@@ -12,6 +12,9 @@ final class TranscriptListView: UIScrollView, RowViewDelegate, UIScrollViewDeleg
     private var visible: [UInt64: RowView] = [:]
     private var pool: [RowView] = []
     private var cache: [ModelKey: RowModel] = [:]
+    /// Agent visuals by id: one live view each, moved between reused rows so
+    /// its painted state survives row reconfigures.
+    private var visuals: [String: VisualView] = [:]
     private var memoryObserver: NSObjectProtocol?
 
     deinit {
@@ -595,6 +598,18 @@ final class TranscriptListView: UIScrollView, RowViewDelegate, UIScrollViewDeleg
 
     func rowView(_ view: RowView, imageFor reference: String, into imageView: UIImageView) {
         imageLoader?(reference, imageView)
+    }
+
+    func rowView(_ view: RowView, visualFor id: String) -> UIView? {
+        if let live = visuals[id] { return live }
+        guard let session = engine.visual(id: id) else { return nil }
+        let live = VisualView(session: session, scale: traitCollection.displayScale)
+        live.openURL = { [weak self, weak live] url in
+            guard let self, let row = live?.superview as? RowView else { return }
+            self.rowView(row, open: url)
+        }
+        visuals[id] = live
+        return live
     }
 
     fileprivate func row(at point: CGPoint) -> RowView? {

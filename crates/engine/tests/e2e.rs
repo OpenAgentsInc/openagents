@@ -3363,3 +3363,141 @@ async fn session_row_counts_running_subagents_until_the_run_ends() {
         "an ended run leaves no subagents counted"
     );
 }
+
+/// `show_visual` end to end below the MCP server: the RPC checks the script,
+/// stores it, and folds a visual part into the chat's live turn, after what
+/// the harness streamed; a broken script or no live turn is refused and
+/// stores nothing.
+#[tokio::test]
+async fn publish_visual_lands_in_the_live_turn() {
+    struct HoldsTurn {
+        events: std::sync::Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<AgentEvent>>>,
+    }
+    #[async_trait]
+    impl Harness for HoldsTurn {
+        fn id(&self) -> HarnessId {
+            HarnessId::Mock
+        }
+        fn display_name(&self) -> &str {
+            "Held turn"
+        }
+        fn supports_steering(&self) -> bool {
+            true
+        }
+        fn steering_mode(&self) -> SteeringMode {
+            SteeringMode::StepBoundary
+        }
+        fn reasoning_levels(&self) -> &[ReasoningLevel] {
+            &[]
+        }
+        async fn models(&self) -> Result<Vec<Model>, HarnessError> {
+            Ok(vec![])
+        }
+        async fn run(
+            &self,
+            request: RunRequest,
+            controls: RunControls,
+        ) -> Result<BoxStream<'static, Result<AgentEvent, HarnessError>>, HarnessError> {
+            let events = self.events.lock().unwrap().take();
+            match events {
+                Some(events) => Ok(futures::stream::unfold(events, |mut rx| async move {
+                    rx.recv().await.map(|event| (Ok(event), rx))
+                })
+                .boxed()),
+                None => {
+                    MockHarness {
+                        script: mock_script(),
+                    }
+                    .run(request, controls)
+                    .await
+                }
+            }
+        }
+    }
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+    let dir = tempfile::tempdir().unwrap();
+    let core = assemble(
+        dir.path(),
+        Arc::new(HoldsTurn {
+            events: std::sync::Mutex::new(Some(rx)),
+        }),
+    );
+    let client = zeron_rpc::memory_client(core.rpc_service());
+    const SCRIPT: &str = r#"return ui.text { "chart", size = "lg" }"#;
+    let publish = |chat: &str, script: &str| {
+        client.call(
+            zeron_rpc::methods::PUBLISH_VISUAL,
+            serde_json::json!({
+                "chatId": chat,
+                "title": "  Latency  ",
+                "script": script,
+            }),
+        )
+    };
+    assert!(publish(CHAT, SCRIPT).await.is_err(), "no live turn yet");
+
+    core.sessions
+        .dispatch(CHAT, HarnessId::Mock, run_request("chart please"), None)
+        .await
+        .unwrap();
+    tx.send(mock_script()[0].clone()).unwrap();
+    tx.send(AgentEvent::TextDelta {
+        text: "Building it.".into(),
+    })
+    .unwrap();
+    wait_for(|| core.sessions.turn_in_flight(CHAT), "turn starts").await;
+    let broken = publish(CHAT, "return ui.text { 'x', color = '#f00' }")
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(broken.contains("theme tokens"), "{broken}");
+    let shown = publish(CHAT, SCRIPT).await.expect("PublishVisual");
+    assert_eq!(shown["title"], "Latency");
+    tx.send(AgentEvent::TextDelta {
+        text: "Uploads dominate.".into(),
+    })
+    .unwrap();
+    tx.send(done(DoneStatus::Completed)).unwrap();
+    wait_for(
+        || {
+            entries(&core).iter().any(|e| {
+                e.parts
+                    .iter()
+                    .any(|p| matches!(p, MessagePart::Visual { .. }))
+            }) && !core.sessions.turn_in_flight(CHAT)
+        },
+        "visual folded",
+    )
+    .await;
+    let parts: Vec<MessagePart> = entries(&core)
+        .into_iter()
+        .filter(|e| e.role == MessageRole::Assistant)
+        .flat_map(|e| e.parts)
+        .collect();
+    let at = parts
+        .iter()
+        .position(|p| matches!(p, MessagePart::Visual { .. }))
+        .unwrap();
+    let MessagePart::Visual { path, title, .. } = &parts[at] else {
+        unreachable!()
+    };
+    assert_eq!(title, "Latency");
+    assert_eq!(std::fs::read_to_string(path).unwrap(), SCRIPT);
+    assert_eq!(
+        parts
+            .iter()
+            .filter(|p| matches!(p, MessagePart::Visual { .. }))
+            .count(),
+        1,
+        "the broken script left no part"
+    );
+    assert!(
+        matches!(&parts[at - 1], MessagePart::Text { text, .. } if text.ends_with("Building it.")),
+        "the page follows what streamed before it: {parts:?}"
+    );
+    assert!(
+        matches!(&parts[at + 1], MessagePart::Text { text, .. } if text == "Uploads dominate."),
+        "{parts:?}"
+    );
+    core.shutdown().await;
+}

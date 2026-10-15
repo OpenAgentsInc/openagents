@@ -13,6 +13,7 @@ zeron-sync.workspace = true
 zeron-harness.workspace = true
 zeron-rpc.workspace = true
 zeron-update.workspace = true
+zeron-visual.workspace = true
 loro.workspace = true
 tokio.workspace = true
 futures.workspace = true

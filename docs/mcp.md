@@ -125,6 +125,7 @@ name (default: the local engine's device).
 | `interrupt_chat`   | `QueueCommand` Interrupt                                  |
 | `respond_to_input` | `QueueCommand` RespondInput                               |
 | `archive_chat`     | `Mutate setChatArchived`                                  |
+| `show_visual`      | `PublishVisual {chatId, title, script, assets}` (origin chat only; assets base64 by name, read by the MCP server from the agent's cwd) |
 
 Watch streams are the engine's only read surface (there is no one-shot "get
 transcript" RPC); a snapshot is "subscribe, take the first item, drop" — drop
@@ -165,6 +166,65 @@ before the send: it returns on a new `last_completed_turn`, an
 edge. A brand-new chat has no session row until the host picks the run up, so
 the wait keeps waiting in that case rather than reporting the unstarted run as
 done (this was the one bug the first live run found).
+
+### Visual replies
+
+`show_visual` is listed only when `ZERON_CHAT_ID` is set: it shows an
+interactive visual (chart, table, dashboard, diagram, simulation, 3D view)
+inline in the calling chat, above the agent's final reply. A visual is a Luau
+script, not a web page. The script builds its data and state once and returns a
+view function; the view returns a tree of `ui.*` nodes (rows, columns, grids,
+text, stats, tables, charts, tabs, toggles, sliders, buttons, links, 2D
+canvases, 3D scenes, and GPU shaders). Controls call the script's handlers, and Zeron renders
+the view again.
+
+`crates/visual` (`zeron-visual`) is the runtime. Scripts run in a Luau sandbox
+with only the `string`, `table`, `math`, `utf8` and `bit32` libraries (no I/O,
+network, or `require`), a 64 MB memory cap, and a time budget per call (250 ms
+for setup, renders and handlers, 60 ms per canvas or scene frame), so a runaway
+script fails with an error instead of freezing the app. `math.random` is
+reseeded from the visual's id before every call, so random data is identical on
+every render and device. The style rules are the API rather than advice: colors
+are theme tokens (`text`, `muted`, `faint`, `accent`, `on-accent`, `success`,
+`warning`, `danger`, `border`, `chart1`…`chart6`), text sizes are steps on the
+transcript's type scale, the font is always the interface font, and layout nodes
+have no fill, border, shadow, padding, or font props; using one is an error that
+names the rule. 3D scenes render on the GPU (`zeron-visual-gpu`: physically
+based materials, shadows, glass with dispersion, glTF models, textures,
+environment maps, sprites and bloom), with the runtime's software rasterizer
+(`raster.rs`) as the fallback where there's no GPU: Zeron frames an orbit
+camera on the geometry and draws it into one transparent image. A visual's
+files (`assets`: at most 16, 8 MB each, 10 MB together) are stored beside its
+script as `{id}-asset-{name}` with an `{id}-assets.json` list, and travel to
+other devices like attachments. `ui.shader` takes Shadertoy-style GLSL
+(`mainImage`, `iResolution`, `iTime`, `iMouse`, plus `iCamera` for an orbit
+camera, named float inputs bound to the script's state, `iNoise`, and up to four
+Shadertoy-style buffer passes read as `iChannel0`-`3`, with feedback from their
+own previous frame); `zeron_visual::shader` wraps each pass in a GLSL 4.50
+program and validates it with naga, so a compile error reaches the agent with
+its pass and line. A shader composites onto the chat by `blend` (`alpha`,
+`light` for emitted light where black is clear, or `opaque`) with optional
+bloom, so it never sits in a black box.
+
+The engine runs every script before showing it (`zeron_visual::check`: setup,
+the first render, every canvas and scene draw, then each tab, toggle, slider
+end, and button once) and returns the first error with its line, so the agent
+fixes it before the reader sees anything. A passing script is stored in uploads
+(`{id}-visual.luau`) and a `visual` doc part is folded into the chat's live turn
+through the run's engine event channel; with no live turn on this device the
+call fails and nothing is stored. The doc carries only the path and title, so
+clients read the script with `ReadAttachmentChunk` like any attachment; old
+clients see an empty part.
+
+The desktop (`crates/ui/src/visuals.rs`) renders the tree with the transcript's
+own GPUI elements: markdown's table treatment, the settings tab, switch, and
+button idioms, canvases as GPUI paths and shaped text in theme colors, and
+scenes and shaders as images. Shaders run offscreen on the GPU through wgpu
+(`crates/visual-gpu`, one shared device, pipelines cached by source) and are
+read back like a scene's image. Nothing foreign is hosted, so a visual scrolls, clips, blurs under
+the glass composer, and takes input like any other row, identically on Linux,
+macOS, and Windows, and it follows theme, appearance, and text-size changes
+without rerunning the script.
 
 ## Selecting a host and project
 

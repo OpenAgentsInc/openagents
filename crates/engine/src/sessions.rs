@@ -1120,6 +1120,20 @@ impl SessionsEngine {
         Ok(true)
     }
 
+    /// Fold an engine-made event (a `show_visual` page) into the chat's live
+    /// run, after whatever the harness streamed so far. Returns `false` when
+    /// the chat has no run on this device.
+    /// Whether the chat has a run on this device (one `inject_event` can reach).
+    pub fn has_run(&self, chat_id: &str) -> bool {
+        lock(&self.inner.runs).contains_key(chat_id)
+    }
+
+    pub fn inject_event(&self, chat_id: &str, event: AgentEvent) -> bool {
+        lock(&self.inner.runs)
+            .get(chat_id)
+            .is_some_and(|h| h.engine_tx.send(event).is_ok())
+    }
+
     /// Resolve a pending `request_input` question set. Returns `false` when no such
     /// request is pending (unknown id, or the run already settled).
     pub fn respond_input(

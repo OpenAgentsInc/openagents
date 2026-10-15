@@ -175,6 +175,16 @@ pub(crate) fn chats() -> Vec<DemoChat> {
             )
         },
         DemoChat {
+            last_ago_ms: 2 * MIN,
+            ..chat(
+                "chat-visuals",
+                None,
+                MAC,
+                "Agent visuals",
+                "A dashboard, a canvas, a scene and a shader.",
+            )
+        },
+        DemoChat {
             last_ago_ms: 10 * MIN,
             ..chat(
                 "chat-cjk",

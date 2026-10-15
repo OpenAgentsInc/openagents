@@ -11,7 +11,10 @@ final class CoreSessionSource: SessionSource {
     private let chatId: String
     private var token: AnyObject?
     private var appToken: AnyObject?
-    private var hostDevice = ""
+    private var hostDevice = "" {
+        didSet { if hostDevice != oldValue { connectVisuals() } }
+    }
+    private weak var engine: TranscriptView?
 
     init(app: AppModel, client: CoreClient, handle: SessionHandle, chatId: String) {
         self.app = app
@@ -25,7 +28,15 @@ final class CoreSessionSource: SessionSource {
 
     func attach(_ engine: TranscriptView) {
         _ = engine.attach(client: client, chatId: chatId)
+        self.engine = engine
+        connectVisuals()
         handle.setViewAttached(attached: true)
+    }
+
+    /// Agent visuals load their scripts from the chat's host device.
+    private func connectVisuals() {
+        guard let engine, !hostDevice.isEmpty else { return }
+        engine.setVisualSource(client: client, deviceId: hostDevice, pixelScale: Float(max(2, UITraitCollection.current.displayScale)))
     }
 
     func detach() {

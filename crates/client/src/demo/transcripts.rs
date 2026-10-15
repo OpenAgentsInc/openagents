@@ -563,6 +563,49 @@ find ~/Downloads -maxdepth 1 -mtime +90 ! -name '_archive-*' \
     ]
 }
 
+fn visuals(host: &str, now: i64) -> Vec<SessionMessageEntry> {
+    let local = super::visuals::local();
+    if !local.is_empty() {
+        let mut parts = Vec::new();
+        for (i, visual) in local.iter().enumerate() {
+            parts.push(text(&format!("t{i}"), &format!("**{}**", visual.title)));
+            parts.push(MessagePart::Visual {
+                id: visual.id.clone(),
+                path: visual.path.clone(),
+                title: visual.title.clone(),
+            });
+        }
+        return vec![
+            user("m1", now - 300_000, "Show the desktop's visuals."),
+            assistant("m2", host, now - 290_000, parts),
+        ];
+    }
+    vec![
+        user("m1", now - 300_000, "Show me what visuals can do."),
+        assistant(
+            "m2",
+            host,
+            now - 290_000,
+            vec![
+                text("t0", "A canvas that follows your finger:"),
+                super::visuals::part(1),
+                text(
+                    "t1",
+                    "A scene you can orbit, with metal, glass and a light:",
+                ),
+                super::visuals::part(2),
+                text("t2", "A shader; drag to move the light."),
+                super::visuals::part(3),
+                text(
+                    "t3",
+                    "And a dashboard: switch the range, scrub the chart, and toggle the table.",
+                ),
+                super::visuals::part(0),
+            ],
+        ),
+    ]
+}
+
 fn cjk(host: &str, now: i64) -> Vec<SessionMessageEntry> {
     vec![
         user(
@@ -619,6 +662,7 @@ pub(crate) fn fixture(chat_id: &str, host: &str, last_activity: i64) -> Vec<Sess
         "chat-ios-scroll" => scroll(host, now),
         "chat-home" => home(host, now),
         "chat-cjk" => cjk(host, now),
+        "chat-visuals" => visuals(host, now),
         "chat-deploy" => short(
             host,
             now,

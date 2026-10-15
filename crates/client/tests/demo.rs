@@ -61,7 +61,13 @@ fn front_page_mirrors_the_desktop_sidebar() {
     // Recency order; archived + child chats never appear.
     assert_eq!(
         ids(&ws.front.recent),
-        ["chat-cjk", "chat-home", "chat-deploy", "chat-blog"]
+        [
+            "chat-visuals",
+            "chat-cjk",
+            "chat-home",
+            "chat-deploy",
+            "chat-blog"
+        ]
     );
     assert_eq!(ids(&ws.archived), ["chat-oklch", "chat-presence"]);
     assert_eq!(ids(ws.children("chat-veil")), ["chat-side"]);
@@ -105,7 +111,7 @@ fn front_page_mirrors_the_desktop_sidebar() {
     let cjk = ws.session("chat-cjk").unwrap();
     assert_eq!(cjk.project.as_ref().unwrap().color_index, zeron.color_index);
     assert_ne!(ws.project("space-edge").unwrap().group_key, zeron.group_key);
-    assert_eq!(ids(&ws.projectless), ["chat-home"]);
+    assert_eq!(ids(&ws.projectless), ["chat-visuals", "chat-home"]);
     assert!(ws.devices.iter().any(|d| d.is_self && d.id == "ios-test"));
     assert!(!ws.device("dev-studio").unwrap().online);
 

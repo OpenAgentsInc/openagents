@@ -43,7 +43,14 @@ Discover hosts with `list_devices`, then `list_projects {device}`, \
 `list_harnesses {device}` and `list_models {device, harness}`. A project fixes \
 its host; with both project and device it must belong to that device. Use listed \
 ids when names/paths repeat. Without project or device, creation uses the local engine. \
-If a chat is `awaitingInput`, answer it with `respond_to_input`.";
+If a chat is `awaitingInput`, answer it with `respond_to_input`.\n\
+\n\
+When a chart, table, diagram, dashboard, or 3D view would say more than prose and \
+`show_visual` is available, write a Luau visual script and show it with `show_visual` before \
+your final reply. Zeron renders it with its own native interface and enforces its style: \
+content sits directly on the chat with no cards or boxed panels, text uses the interface font \
+and type scale, and colors are theme tokens that work on frosted glass or opaque, light or dark. \
+The reader sees the visual above that reply, so don't announce or restate it.";
 
 const PARSE_ERROR: i64 = -32700;
 const INVALID_REQUEST: i64 = -32600;

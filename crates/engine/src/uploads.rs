@@ -529,6 +529,25 @@ mod tests {
     use super::*;
 
     #[test]
+    fn visual_assets_sit_beside_the_script_and_leave_with_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let uploads = Uploads::from_root(dir.path());
+        let assets = vec![
+            ("prism.glb".to_owned(), b"glb".to_vec()),
+            ("sky.hdr".to_owned(), b"hdr".to_vec()),
+        ];
+        uploads.store_visual_assets("v:abc", &assets).unwrap();
+        let script = uploads.store_visual("v:abc", "return ui.text 'hi'").unwrap();
+        let stem = script.strip_suffix("-visual.luau").unwrap();
+        let names: Vec<String> =
+            serde_json::from_slice(&std::fs::read(format!("{stem}-assets.json")).unwrap()).unwrap();
+        assert_eq!(names, ["prism.glb", "sky.hdr"]);
+        assert_eq!(std::fs::read(format!("{stem}-asset-sky.hdr")).unwrap(), b"hdr");
+        uploads.remove_visual("v:abc");
+        assert_eq!(std::fs::read_dir(uploads.dir()).unwrap().count(), 0);
+    }
+
+    #[test]
     fn sanitize_names() {
         assert_eq!(sanitize("../../etc/passwd"), "passwd");
         assert_eq!(sanitize("my photo (1).png"), "my_photo__1_.png");
@@ -879,6 +898,76 @@ fn open_generated_file(
 }
 
 impl Uploads {
+    /// Store an agent's `show_visual` script and return its absolute path.
+    /// It lives beside other attachments, so clients read it the same way.
+    pub fn store_visual(&self, id: &str, script: &str) -> Result<String, EngineError> {
+        use std::io::Write;
+        std::fs::create_dir_all(self.dir())?;
+        let path = self.dir().join(format!("{}-visual.luau", sanitize(id)));
+        let mut temporary = tempfile::NamedTempFile::new_in(self.dir())?;
+        temporary.write_all(script.as_bytes())?;
+        temporary
+            .persist(&path)
+            .map_err(|err| EngineError::Other(err.to_string()))?;
+        Ok(path.to_string_lossy().to_string())
+    }
+
+    /// Store the files a visual's script uses, beside it: each as
+    /// `{id}-asset-{name}`, and `{id}-assets.json` listing their names
+    /// (clients find it from the script's path).
+    pub fn store_visual_assets(&self, id: &str, assets: &[(String, Vec<u8>)]) -> Result<(), EngineError> {
+        use std::io::Write;
+        if assets.is_empty() {
+            return Ok(());
+        }
+        std::fs::create_dir_all(self.dir())?;
+        let id = sanitize(id);
+        let write = |name: &str, bytes: &[u8]| -> Result<(), EngineError> {
+            let mut temporary = tempfile::NamedTempFile::new_in(self.dir())?;
+            temporary.write_all(bytes)?;
+            temporary
+                .persist(self.dir().join(name))
+                .map_err(|err| EngineError::Other(err.to_string()))?;
+            Ok(())
+        };
+        // All or nothing: a failure part way removes what was written.
+        let mut written = Vec::with_capacity(assets.len() + 1);
+        let stored = (|| {
+            let mut names = Vec::with_capacity(assets.len());
+            for (name, bytes) in assets {
+                let name = sanitize(name);
+                let file = format!("{id}-asset-{name}");
+                write(&file, bytes)?;
+                written.push(file);
+                names.push(name);
+            }
+            let manifest = serde_json::to_vec(&names).map_err(|err| EngineError::Other(err.to_string()))?;
+            write(&format!("{id}-assets.json"), &manifest)
+        })();
+        if stored.is_err() {
+            for file in written {
+                let _ = std::fs::remove_file(self.dir().join(file));
+            }
+        }
+        stored
+    }
+
+    /// Remove a visual's script and its assets.
+    pub fn remove_visual(&self, id: &str) {
+        let id = sanitize(id);
+        let _ = std::fs::remove_file(self.dir().join(format!("{id}-visual.luau")));
+        let manifest = self.dir().join(format!("{id}-assets.json"));
+        if let Some(names) = std::fs::read(&manifest)
+            .ok()
+            .and_then(|bytes| serde_json::from_slice::<Vec<String>>(&bytes).ok())
+        {
+            for name in names {
+                let _ = std::fs::remove_file(self.dir().join(format!("{id}-asset-{}", sanitize(&name))));
+            }
+        }
+        let _ = std::fs::remove_file(manifest);
+    }
+
     /// Copy a Codex-owned raster into the active profile without exposing the
     /// original path to the journal, document, RPC readers, or relay.
     pub fn import_generated_image(

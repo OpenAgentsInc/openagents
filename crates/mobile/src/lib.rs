@@ -13,6 +13,7 @@ pub mod layout;
 pub mod caption;
 pub mod orb;
 pub mod wallpaper;
+pub mod visual;
 
 /// Version handshake: the Swift/Kotlin bindings must match the linked library.
 #[uniffi::export]

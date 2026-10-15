@@ -32,6 +32,7 @@ async-trait.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+zeron-visual.workspace = true
 zeron-sync = { workspace = true, features = ["mock-server"] }
 tokio-tungstenite.workspace = true
 async-trait.workspace = true

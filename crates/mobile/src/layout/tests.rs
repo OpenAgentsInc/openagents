@@ -41,7 +41,7 @@ pub(crate) fn text_system() -> Arc<TextSystem> {
 
 fn worker(width: f32) -> Worker {
     let ts = text_system();
-    let mut w = Worker::new(&ts, Arc::new(Shared { frame: Mutex::new(Arc::new(LayoutFrame::empty())) }), Arc::new(Quiet));
+    let mut w = Worker::new(&ts, Arc::new(Shared { frame: Mutex::new(Arc::new(LayoutFrame::empty())) }), Arc::new(Quiet), None);
     w.width = width;
     w
 }
@@ -605,4 +605,46 @@ fn links_get_hit_regions() {
         let links: Vec<_> = (0..frame.row_count()).flat_map(|i| frame.display(i).unwrap().links).collect();
         assert!(!links.is_empty(), "no link hits for {md:?}");
     }
+}
+
+#[test]
+fn visual_rows_take_the_height_their_worker_measures() {
+    struct Ping(Mutex<mpsc::Sender<u64>>);
+    impl LayoutListener for Ping {
+        fn frame_ready(&self, revision: u64) {
+            let _ = self.0.lock().unwrap().send(revision);
+        }
+    }
+    let (tx, frames) = mpsc::channel();
+    let view = TranscriptView::new(text_system(), Arc::new(Ping(Mutex::new(tx))));
+    let script = r#"return ui.column { gap = 10, ui.text "Hello", ui.canvas { height = 200, draw = function(g) end } }"#;
+    view.visuals.set_fetch(Arc::new(move |path: &str| (path == "up/v1-visual.luau").then(|| script.as_bytes().to_vec())), 2.0);
+    view.set_viewport(390.0, 1.0);
+    view.set_input(TranscriptInput {
+        entries: vec![Arc::new(SessionMessageEntry {
+            id: "a1".into(),
+            role: MessageRole::Assistant,
+            parts: vec![MessagePart::Visual { id: "v1".into(), path: "up/v1-visual.luau".into(), title: "Chart".into() }],
+            created_at: 0,
+            device_id: String::new(),
+            status: Some(MessageStatus::Complete),
+            continuation_of: None,
+            duration_ms: None,
+        })],
+        ..Default::default()
+    });
+    // The loading line first, then the laid-out visual (text, gap, canvas).
+    let deadline = Instant::now() + std::time::Duration::from_secs(10);
+    let (frame, row) = loop {
+        let _ = frames.recv_timeout(deadline.saturating_duration_since(Instant::now())).expect("a frame");
+        let frame = view.frame();
+        if let Some(row) = frame.placement(0).filter(|p| p.kind == RowKind::Visual && p.height > 200.0) {
+            break (frame, row);
+        }
+    };
+    let display = frame.display(row.index).unwrap();
+    let widget = display.widgets.iter().find(|w| matches!(&w.kind, display::WidgetKind::Visual { id } if id == "v1")).expect("a visual widget");
+    assert!((widget.y + widget.h - row.height).abs() < 0.5, "the widget fills the row below its gap");
+    assert!(view.visual("v1".into()).is_some());
+    view.close();
 }

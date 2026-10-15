@@ -12,7 +12,7 @@ pub mod display;
 mod markdown;
 mod file_icons;
 mod rows;
-mod style;
+pub(crate) mod style;
 mod tools;
 
 use std::collections::HashMap;
@@ -73,6 +73,19 @@ impl zeron_text::FallbackMeasurer for MeasurerBridge {
     }
 }
 
+/// Faces and fallback measurement for one layout thread (a transcript, a
+/// visual).
+pub(crate) fn typography(text: &TextSystem) -> Typography {
+    let styles = Arc::new(Mutex::new(HashMap::new()));
+    let fallback = text.measurer.clone().map(|platform| {
+        Arc::new(MeasurerBridge {
+            platform,
+            styles: styles.clone(),
+        }) as Arc<dyn zeron_text::FallbackMeasurer>
+    });
+    Typography::new(&text.faces, fallback, styles)
+}
+
 #[derive(uniffi::Record)]
 pub struct FaceData {
     pub role: FaceRole,
@@ -82,7 +95,9 @@ pub struct FaceData {
 /// Registered faces + fallback measurer, shared by every transcript.
 #[derive(uniffi::Object)]
 pub struct TextSystem {
-    faces: Vec<(FaceRole, Arc<Vec<u8>>)>,
+    /// Leaked once here: every transcript and visual measures with the same
+    /// bytes (a font book holds its faces for the process).
+    faces: Vec<(FaceRole, &'static [u8])>,
     measurer: Option<Arc<dyn PlatformMeasurer>>,
 }
 
@@ -91,7 +106,10 @@ impl TextSystem {
     #[uniffi::constructor]
     pub fn new(faces: Vec<FaceData>, measurer: Option<Arc<dyn PlatformMeasurer>>) -> Arc<Self> {
         Arc::new(Self {
-            faces: faces.into_iter().map(|f| (f.role, Arc::new(f.bytes))).collect(),
+            faces: faces
+                .into_iter()
+                .map(|f| (f.role, &*Box::leak(f.bytes.into_boxed_slice())))
+                .collect(),
             measurer,
         })
     }
@@ -120,11 +138,15 @@ struct FrameRow {
     gap: Gap,
     y: f32,
     height: f32,
+    /// A visual's measured-height epoch when the frame was built.
+    epoch: u64,
+    /// The visual's height this frame was measured with (painted the same).
+    visual: Option<f32>,
 }
 
 impl FrameRow {
     fn version(&self) -> u64 {
-        self.core.version ^ ((self.gap as u64 + 1) << 58)
+        self.core.version ^ ((self.gap as u64 + 1) << 58) ^ self.epoch.wrapping_mul(0x9e37_79b9_7f4a_7c15)
     }
 }
 
@@ -205,7 +227,7 @@ impl LayoutFrame {
     pub fn display(&self, index: u32) -> Option<RowDisplay> {
         let r = self.rows.get(index as usize)?;
         let mut out = DisplayBuilder::default();
-        let height = place_row(&r.core, r.gap, Px(self.scale), self.width, Some(&mut out));
+        let height = place_row(&r.core, r.gap, Px(self.scale), self.width, r.visual, Some(&mut out));
         debug_assert!((height - r.height).abs() < 0.01, "paint/measure divergence");
         Some(RowDisplay {
             key: r.core.key,
@@ -331,6 +353,8 @@ enum Msg {
     Viewport { width: f32, scale: f32 },
     Toggle(u64),
     ToggleDetail { row: u64, detail: u64, open: bool },
+    /// A visual row's height changed (its key), or visuals got a source.
+    Visual(Option<u64>),
     Shutdown,
 }
 
@@ -345,6 +369,7 @@ pub struct TranscriptView {
     shared: Arc<Shared>,
     /// Live session subscription (Rust→Rust; rows never cross FFI).
     watch: Mutex<Option<zeron_client::SnapshotWatch>>,
+    visuals: Arc<crate::visual::VisualHub>,
 }
 
 #[uniffi::export]
@@ -355,16 +380,40 @@ impl TranscriptView {
         let shared = Arc::new(Shared {
             frame: Mutex::new(Arc::new(LayoutFrame::empty())),
         });
+        let remeasure = Mutex::new(tx.clone());
+        let visuals = Arc::new(crate::visual::VisualHub::new(
+            text.clone(),
+            Arc::new(move |key| {
+                let _ = remeasure.lock().unwrap().send(Msg::Visual(Some(key)));
+            }),
+        ));
         let worker_shared = shared.clone();
+        let worker_visuals = visuals.clone();
         thread::Builder::new()
             .name("zeron-layout".into())
-            .spawn(move || Worker::new(&text, worker_shared, listener).run(rx))
+            .spawn(move || Worker::new(&text, worker_shared, listener, Some(worker_visuals)).run(rx))
             .expect("spawn layout thread");
         Arc::new(Self {
             tx: Mutex::new(tx),
             shared,
             watch: Mutex::new(None),
+            visuals,
         })
+    }
+
+    /// Where this transcript's visuals load their scripts from (the chat's
+    /// host device), and the screen's pixel density for their frames.
+    pub fn set_visual_source(&self, client: Arc<crate::client_ffi::CoreClient>, device_id: String, pixel_scale: f32) {
+        if device_id.is_empty() {
+            return;
+        }
+        self.visuals.set_source(client.client().clone(), device_id, pixel_scale);
+        self.send(Msg::Visual(None));
+    }
+
+    /// The live visual behind a `WidgetKind::Visual` (by its visual id).
+    pub fn visual(&self, id: String) -> Option<Arc<crate::visual::VisualSession>> {
+        self.visuals.session(&id)
     }
 
     /// Follow a session's transcript: every snapshot (coalesced by the
@@ -424,6 +473,7 @@ impl TranscriptView {
 
     pub fn close(&self) {
         self.watch.lock().unwrap().take();
+        self.visuals.shutdown();
         self.send(Msg::Shutdown);
     }
 }
@@ -441,6 +491,7 @@ impl TranscriptView {
 
 impl Drop for TranscriptView {
     fn drop(&mut self) {
+        self.visuals.shutdown();
         self.send(Msg::Shutdown);
     }
 }
@@ -489,19 +540,18 @@ pub(crate) struct Worker {
     revision: u64,
     shared: Arc<Shared>,
     listener: Option<Arc<dyn LayoutListener>>,
+    visuals: Option<Arc<crate::visual::VisualHub>>,
 }
 
 impl Worker {
-    fn new(text: &TextSystem, shared: Arc<Shared>, listener: Arc<dyn LayoutListener>) -> Self {
-        let styles = Arc::new(Mutex::new(HashMap::new()));
-        let fallback = text.measurer.clone().map(|platform| {
-            Arc::new(MeasurerBridge {
-                platform,
-                styles: styles.clone(),
-            }) as Arc<dyn zeron_text::FallbackMeasurer>
-        });
+    fn new(
+        text: &TextSystem,
+        shared: Arc<Shared>,
+        listener: Arc<dyn LayoutListener>,
+        visuals: Option<Arc<crate::visual::VisualHub>>,
+    ) -> Self {
         Self {
-            typo: Typography::new(&text.faces, fallback, styles),
+            typo: typography(text),
             cache: WidthCache::new(),
             builder: RowBuilder::default(),
             heights: HashMap::new(),
@@ -510,6 +560,7 @@ impl Worker {
             revision: 0,
             shared,
             listener: Some(listener),
+            visuals,
         }
     }
 
@@ -533,6 +584,7 @@ impl Worker {
                             self.builder.expanded = old.expanded;
                             self.builder.collapsed = old.collapsed;
                             self.builder.detail_open = old.detail_open;
+                            self.builder.visual_slots = old.visual_slots;
                             self.heights.clear();
                             self.cache = WidthCache::new();
                         }
@@ -542,6 +594,13 @@ impl Worker {
                     Msg::ToggleDetail { row, detail, open } => {
                         self.builder.detail_open.insert(detail, !open);
                         self.builder.invalidate(row);
+                        dirty = true;
+                    }
+                    Msg::Visual(key) => {
+                        // Its row measures again from the visual's height.
+                        if let Some(key) = key {
+                            self.heights.remove(&key);
+                        }
                         dirty = true;
                     }
                     Msg::Toggle(key) => {
@@ -597,9 +656,22 @@ impl Worker {
         let mut y = 0.0f32;
         let mut live = HashMap::with_capacity(placed.len());
         for p in placed {
+            let (epoch, visual) = match &p.core.content {
+                rows::Content::Visual(slot) => {
+                    if let Some(visuals) = &self.visuals {
+                        visuals.ensure(slot, p.core.key, rows::column_width(px, self.width), self.typo.scale);
+                    }
+                    slot.snapshot()
+                }
+                _ => (0, None),
+            };
             let height = match self.heights.remove(&p.core.key) {
-                Some(m) if Arc::ptr_eq(&m.core, &p.core) && m.gap == p.gap && m.width == self.width => m.height,
-                _ => place_row(&p.core, p.gap, px, self.width, None),
+                Some(m)
+                    if Arc::ptr_eq(&m.core, &p.core) && m.gap == p.gap && m.width == self.width && visual.is_none() =>
+                {
+                    m.height
+                }
+                _ => place_row(&p.core, p.gap, px, self.width, visual, None),
             };
             live.insert(
                 p.core.key,
@@ -615,6 +687,8 @@ impl Worker {
                 gap: p.gap,
                 y,
                 height,
+                epoch,
+                visual,
             });
             y += height;
         }
@@ -641,4 +715,4 @@ impl Worker {
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

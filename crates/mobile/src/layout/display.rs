@@ -193,6 +193,8 @@ pub enum WidgetKind {
     /// underneath; the painter re-draws those runs brighter through a moving
     /// gradient).
     Shimmer,
+    /// An agent visual; `TranscriptView::visual(id)` is its live session.
+    Visual { id: String },
 }
 
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]

@@ -36,6 +36,8 @@ protocol RowViewDelegate: AnyObject {
     func rowView(_ view: RowView, toggleDetail detail: UInt64, open: Bool)
     func rowView(_ view: RowView, open url: URL)
     func rowView(_ view: RowView, imageFor reference: String, into imageView: UIImageView)
+    /// The live view for an agent visual (kept across row reuse).
+    func rowView(_ view: RowView, visualFor id: String) -> UIView?
 }
 
 /// A reusable transcript row: canvas + horizontal scrollers + native widgets.
@@ -53,7 +55,7 @@ final class RowView: UIView {
             textElement?.accessibilityFrameInContainerSpace = bounds
             // Controls and links first: accessibility hit-testing takes the
             // first match, and the row's text element spans the whole row.
-            return widgetViews.filter { $0 is UIControl || $0.gestureRecognizers?.isEmpty == false }
+            return widgetViews.filter { $0 is UIControl || $0 is VisualView || $0.gestureRecognizers?.isEmpty == false }
                 + positionedLinkElements()
                 + (textElement.map { [$0] } ?? [])
         }
@@ -94,6 +96,17 @@ final class RowView: UIView {
     var uploadProgress: Double? {
         didSet { if uploadProgress != oldValue { uploadRings.forEach { $0.progress = uploadProgress } } }
     }
+    /// Pooled rows stay in the list, hidden: their visuals pause.
+    override var isHidden: Bool {
+        didSet { if isHidden != oldValue { updateVisuals() } }
+    }
+
+    private func updateVisuals() {
+        for case let visual as VisualView in widgetViews where visual.superview === self {
+            visual.active = !isHidden
+        }
+    }
+
     var key: UInt64 { model?.display.key ?? 0 }
     var version: UInt64 { model?.display.version ?? 0 }
     var kind: RowKind = .markdown
@@ -150,6 +163,7 @@ final class RowView: UIView {
         case .chip: "row-chip"
         case .image: "row-image"
         case .working: "row-working"
+        case .visual: "row-visual"
         }
         element.accessibilityTraits = .staticText
         element.accessibilityFrameInContainerSpace = bounds
@@ -192,7 +206,11 @@ final class RowView: UIView {
 
     private func layoutWidgets(_ d: RowDisplay) {
         uploadRings.removeAll()
-        for v in widgetViews { v.removeFromSuperview() }
+        // Only views still here: a visual's view moves between rows, and a
+        // row reused later mustn't pull it out of the one showing it now.
+        for v in widgetViews where v.superview === self || scrollers.contains(where: { $0 === v.superview }) {
+            v.removeFromSuperview()
+        }
         widgetViews.removeAll(keepingCapacity: true)
         for w in d.widgets {
             let rect = CGRect(x: CGFloat(w.x), y: CGFloat(w.y), width: CGFloat(w.w), height: CGFloat(w.h))
@@ -277,6 +295,9 @@ final class RowView: UIView {
                 view = b
             case .shimmer:
                 view = ShimmerView(model: model!, rect: rect)
+            case let .visual(id):
+                view = delegate?.rowView(self, visualFor: id) ?? UIView()
+                (view as? VisualView)?.active = !isHidden
             }
             view.frame = rect
             host.addSubview(view)
