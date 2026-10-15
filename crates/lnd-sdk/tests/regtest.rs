@@ -125,12 +125,10 @@ fn invoice_payment_lookup_and_reconnect() {
             .unwrap();
         let invoicer = Client::connect(&config, invoice_credential).await.unwrap();
         let forbidden = alice.create_invoice(2000, [5; 32], 600).await.unwrap();
-        assert!(matches!(
-            invoicer
-                .pay(&forbidden.bolt11, 1000, Duration::from_secs(5))
-                .await,
-            Err(lnd_sdk::Error::PermissionDenied)
-        ));
+        let denied = invoicer
+            .pay(&forbidden.bolt11, 1000, Duration::from_secs(5))
+            .await;
+        assert_eq!(denied.err(), Some(lnd_sdk::Error::PermissionDenied));
         for (payer, receiver) in [(&alice, &invoicer), (&bob, &alice)] {
             let hint_deadline = std::time::Instant::now() + Duration::from_secs(30);
             let hints = loop {

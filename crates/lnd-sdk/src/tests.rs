@@ -287,6 +287,10 @@ fn credentials_and_status_errors_do_not_disclose_bytes() {
     assert!(!format!("{:?}", credential()).contains("queued-test"));
     let e = Error::from(Status::permission_denied("must not appear"));
     assert_eq!(e, Error::PermissionDenied);
+    assert_eq!(
+        Error::from(Status::unknown("permission denied")),
+        Error::PermissionDenied
+    );
     assert!(!e.to_string().contains("must not appear"));
 }
 #[tokio::test]

@@ -38,6 +38,9 @@ impl From<tonic::Status> for Error {
     fn from(status: tonic::Status) -> Self {
         use tonic::Code;
         match status.code() {
+            // LND 0.21 forwards bakery's pre-dispatch denial as Unknown.
+            // Match only its fixed literal; never retain the server message.
+            Code::Unknown if status.message() == "permission denied" => Self::PermissionDenied,
             Code::NotFound => Self::NotFound,
             Code::AlreadyExists => Self::AlreadyPaid,
             Code::PermissionDenied | Code::Unauthenticated => Self::PermissionDenied,
