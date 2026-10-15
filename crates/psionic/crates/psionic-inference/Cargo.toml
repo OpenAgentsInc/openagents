@@ -39,3 +39,7 @@ ort = { version = "=2.0.0-rc.13", default-features = false, features = ["std", "
 tempfile = "3"
 tower = { version = "0.5", features = ["util"] }
 reqwest = { workspace = true }
+
+[[example]]
+name = "ort_lifecycle"
+required-features = ["ort"]

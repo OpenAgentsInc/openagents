@@ -38,6 +38,8 @@ args.output.parent.mkdir(parents=True,exist_ok=True)
 args.profiles.mkdir(parents=True,exist_ok=True)
 env=os.environ.copy()
 env["NVIDIA_TF32_OVERRIDE"]="0"
+env["CUDA_MODULE_LOADING"]="EAGER"
+env["CUDA_MODULE_DATA_LOADING"]="EAGER"
 if cuda_stack:env["LD_LIBRARY_PATH"]=str(args.cudnn_library.resolve().parent)+":"+env.get("LD_LIBRARY_PATH","")
 with args.output.open("x") as output:
  for family in ["mnist","router"]:
@@ -51,7 +53,7 @@ with args.output.open("x") as output:
     if engine=="ort":command += ["--allow-cpu-fallback","--profile",str((args.profiles/f"{family}-{repetition}").resolve())]
     if args.cpus:command=["taskset","-c",args.cpus]+command
     row=json.loads(subprocess.check_output(command,env=env,text=True))
-    row.update(repetition=repetition,cpu_affinity=args.cpus,driver_command=command,other_load=os.getloadavg(),NVIDIA_TF32_OVERRIDE="0",cuda_stack=cuda_stack)
+    row.update(repetition=repetition,cpu_affinity=args.cpus,driver_command=command,other_load=os.getloadavg(),NVIDIA_TF32_OVERRIDE="0",CUDA_MODULE_LOADING="EAGER",CUDA_MODULE_DATA_LOADING="EAGER",cuda_stack=cuda_stack)
     if args.platform=="cuda":row["gpu"]=subprocess.check_output(["nvidia-smi","--query-gpu=name,uuid,driver_version,memory.total,memory.used","--format=csv,noheader"],text=True).strip()
     else:row["apple_hardware"]=subprocess.check_output(["system_profiler","SPHardwareDataType","SPDisplaysDataType"],text=True)
     output.write(json.dumps(row,separators=(",",":"))+"\n");output.flush()

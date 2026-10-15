@@ -190,7 +190,13 @@ existing server's embedding endpoint still uses its existing model.
 `OrtEngine::load_with_execution()` selects CPU, CUDA, or Core ML through
 `OrtExecution`. Provider registration errors stop loading. Accelerator
 CPU partitions require `allow_cpu_fallback: true`; the default refuses
-CPU fallback. CUDA uses device 0 by default and disables TF32. Core ML
+CPU fallback. CUDA uses device 0 by default, disables TF32, and uses the default
+convolution algorithm (the fallback heuristic in cuDNN 9). Before starting
+the process, set `CUDA_MODULE_LOADING=EAGER` and
+`CUDA_MODULE_DATA_LOADING=EAGER`. The adapter refuses lazy loading because
+it triggered an intermittent NVIDIA compiler cleanup abort on this host;
+eager loading passed repeated process-lifecycle checks. Eager loading can
+increase startup time and GPU memory. Core ML
 uses ML Program format and explicitly selects its compute units; the
 default is CPU and GPU. Core ML's internal device placement is unknown,
 even when ORT reports a Core ML graph partition.
@@ -262,3 +268,12 @@ such bundles. Reference-generation tooling still verifies the full source
 download. The high-level ORT loaders use original ONNX files and a full
 runtime; a minimal ORT-format package uses `OrtEngine` with the exported
 graph and the same shared preparation and output adapters.
+
+
+The `ort_lifecycle` example runs 1,000 MNIST calls, optionally ends a
+profiling pass after 100 calls, and drops the session before exit. Pass
+an ORT library and MNIST ONNX path as positional arguments; set
+`PSIONIC_PROBE_PROFILE` to a scratch prefix to include profiling. Run it
+in fresh processes when qualifying a driver/runtime stack. The benchmark
+driver treats a nonzero child exit as a failure even if it printed a
+result before shutdown.

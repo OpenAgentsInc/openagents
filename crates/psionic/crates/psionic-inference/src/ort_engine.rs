@@ -70,6 +70,12 @@ impl OrtEngine {
         execution: &OrtExecution,
     ) -> Result<Self> {
         use crate::DeviceChoice;
+        if execution.device == DeviceChoice::Cuda {
+            validate_cuda_loading(
+                std::env::var("CUDA_MODULE_LOADING").ok().as_deref(),
+                std::env::var("CUDA_MODULE_DATA_LOADING").ok().as_deref(),
+            )?;
+        }
         if execution.device == DeviceChoice::Metal || execution.device_id < 0 {
             return Err(Error(
                 "Choose CPU, CUDA, or Core ML for ONNX Runtime".into(),
@@ -124,6 +130,7 @@ impl OrtEngine {
                     .with_execution_providers([ort::ep::CUDA::default()
                         .with_device_id(execution.device_id)
                         .with_tf32(false)
+                        .with_conv_algorithm_search(ort::ep::cuda::ConvAlgorithmSearch::Default)
                         .build()
                         .error_on_failure()])
                     .map_err(ort_error)?;
@@ -193,7 +200,7 @@ impl OrtEngine {
 
 impl ModelEngine for OrtEngine {
     fn execution_report(&self) -> serde_json::Value {
-        serde_json::json!({"configuration":self.execution,"calls":self.calls,"host_input_bytes":self.host_input_bytes,"host_output_bytes":self.host_output_bytes,
+        serde_json::json!({"configuration":self.execution,"cuda_convolution_search":(self.execution.device==crate::DeviceChoice::Cuda).then_some("default (fallback heuristic)"),"cuda_module_loading":std::env::var("CUDA_MODULE_LOADING").ok(),"cuda_module_data_loading":std::env::var("CUDA_MODULE_DATA_LOADING").ok(),"calls":self.calls,"host_input_bytes":self.host_input_bytes,"host_output_bytes":self.host_output_bytes,
             "placement":"Use the separate profiling report; provider selection alone does not establish placement.",
             "transfer_note":"Host tensor boundary bytes are logical I/O, not measured bus traffic. ORT can copy host I/O outside profiled graph nodes. Core ML internal transfers are unknown."})
     }
@@ -291,6 +298,13 @@ impl ModelEngine for OrtEngine {
     }
 }
 
+fn validate_cuda_loading(modules: Option<&str>, data: Option<&str>) -> Result<()> {
+    if modules != Some("EAGER") || data.is_some_and(|v| v != "EAGER") {
+        return Err(Error("Set CUDA_MODULE_LOADING=EAGER and CUDA_MODULE_DATA_LOADING=EAGER before starting this process; lazy loading failed the CUDA shutdown checks".into()));
+    }
+    Ok(())
+}
+
 fn summarize_profile(events: &[serde_json::Value]) -> serde_json::Value {
     let mut counts = std::collections::BTreeMap::<String, u64>::new();
     let mut operators =
@@ -332,6 +346,19 @@ fn summarize_profile(events: &[serde_json::Value]) -> serde_json::Value {
 }
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn cuda_requires_the_qualified_module_loading_settings() {
+        for settings in [
+            (None, None),
+            (Some("LAZY"), None),
+            (Some("EAGER"), Some("LAZY")),
+        ] {
+            assert!(super::validate_cuda_loading(settings.0, settings.1).is_err());
+        }
+        assert!(super::validate_cuda_loading(Some("EAGER"), None).is_ok());
+        assert!(super::validate_cuda_loading(Some("EAGER"), Some("EAGER")).is_ok());
+    }
+
     #[test]
     fn profile_reports_cpu_partitions_and_copies_without_guessing() {
         let report = super::summarize_profile(&[
