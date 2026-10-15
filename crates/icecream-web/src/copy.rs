@@ -14,7 +14,8 @@ pub const RESUME: &str = "Resume";
 pub const NEW_HOUSE: &str = "New house";
 pub const TRY_AGAIN: &str = "Try again";
 pub const PLAY_AGAIN: &str = "Play again";
-pub const STUDIO: &str = "Back to Blue Rush";
+/// The link home, to openagents.com.
+pub const HOME: &str = "OpenAgents home";
 pub const NO_WEBGL: &str =
     "This browser can't show the game. Try a recent Chrome, Safari, or Firefox.";
 pub const HEALTH: &str = "Health";
@@ -42,6 +43,36 @@ pub const USE: &str = "Use";
 pub const VIEW: &str = "View";
 pub const FIRST_PERSON_TOUCH: &str = "First person. Tap View for third person.";
 pub const THIRD_PERSON_TOUCH: &str = "Third person. Tap View for first person.";
+/// The button at the end of the hot bar that picks the next tool.
+pub const NEXT_ITEM: &str = "Next";
+pub const NEXT_ITEM_LABEL: &str = "Next item";
+
+/// The menu's settings: each button says what it is now.
+pub const TIMER_ON: &str = "Timer: on";
+pub const TIMER_OFF: &str = "Timer: off";
+pub const JUMPSCARES_ON: &str = "Jumpscares: on";
+pub const JUMPSCARES_OFF: &str = "Jumpscares: off";
+pub const SPRINT_HOLD: &str = "Sprint button: hold";
+pub const SPRINT_TAP: &str = "Sprint button: tap";
+pub const NEW_BEST: &str = "New best!";
+
+/// The escape card's time, to a tenth of a second.
+#[must_use]
+pub fn your_time(clock: &str) -> String {
+    format!("Your time: {clock}")
+}
+
+/// The best escape time kept in this browser.
+#[must_use]
+pub fn best_time(clock: &str) -> String {
+    format!("Best: {clock}")
+}
+
+/// The build's version, small at the foot of the menu.
+#[must_use]
+pub fn version_line(version: &str) -> String {
+    format!("Version {version}")
+}
 
 /// Short lines that pop up during a run.
 pub const FOUND_ALL: &str = "All three keys! Get to the front door.";
@@ -191,7 +222,7 @@ pub const TOUR: [TourStep; 4] = [
             "Space jumps. Jump over his sprinkles!",
         ],
         touch: &[
-            "Drag the stick on the left to walk. Tap Sprint to run.",
+            "Drag the stick on the left to walk. Hold Sprint to run. You can make it a tap in the menu.",
             "Tap Jump to jump. Jump over his sprinkles!",
         ],
     },
@@ -209,11 +240,11 @@ pub const TOUR: [TourStep; 4] = [
     TourStep {
         title: "Shoot",
         keys: &[
-            "Click to use your tool. Press 1 for Hot Fudge, 2 for the Fart Launcher, 3 for the Key Ring, and 4 and up for weapons you earn.",
+            "Click to use your tool. Press 1 for Hot Fudge, 2 for the Fart Launcher, 3 for the Key Ring, and 4 and up for weapons you earn. Q picks the next one.",
             "Fudge slows him down, and enough of it freezes him. A fart cloud knocks him back and he forgets where you are.",
         ],
         touch: &[
-            "Tap Fire to use your tool. Tap the bar at the bottom to switch tools.",
+            "Tap Fire to use your tool. To switch tools, tap one in the bar at the bottom, swipe the bar, or tap Next.",
             "Fudge slows him down, and enough of it freezes him. A fart cloud knocks him back and he forgets where you are.",
         ],
     },
@@ -249,7 +280,16 @@ mod tests {
             NEW_HOUSE,
             TRY_AGAIN,
             PLAY_AGAIN,
-            STUDIO,
+            HOME,
+            NEXT_ITEM,
+            NEXT_ITEM_LABEL,
+            TIMER_ON,
+            TIMER_OFF,
+            JUMPSCARES_ON,
+            JUMPSCARES_OFF,
+            SPRINT_HOLD,
+            SPRINT_TAP,
+            NEW_BEST,
             NO_WEBGL,
             HEALTH,
             KEYS,
@@ -313,6 +353,12 @@ mod tests {
             all.push(earned(tool).to_owned());
         }
         all.push(button_lit(2));
+        all.push(your_time("0:26.4"));
+        all.push(best_time("0:24.1"));
+        all.push(version_line("3f9a2c1b"));
+        for text in &all {
+            assert!(!text.contains("Blue Rush"), "no studio name: {text}");
+        }
         all.retain(|t| !t.is_empty());
         for p in [
             Prompt::Hide,

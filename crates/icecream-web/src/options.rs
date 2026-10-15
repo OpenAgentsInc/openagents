@@ -31,6 +31,9 @@ pub struct Options {
     /// An edible cone on the floor two steps ahead at the start
     /// (captures).
     pub cone: bool,
+    /// The bot's escape counts for the best time (tests of the speedrun
+    /// card; otherwise only runs played by hand count).
+    pub count_best: bool,
     /// Pick this hot-bar tool at the start, by name (captures).
     pub tool: Option<String>,
     /// Game Lab's version of the game (`docs/game-lab/README.md`): its
@@ -125,6 +128,7 @@ impl Options {
                 }
                 "fp" => options.first_person = true,
                 "cone" => options.cone = true,
+                "countbest" => options.count_best = true,
                 "tool" => options.tool = Some(value.to_owned()),
                 _ => {
                     if let Some(name) = key.strip_prefix("t.") {
@@ -146,8 +150,9 @@ mod tests {
     #[test]
     fn options_read_from_the_fragment() {
         let o = Options::parse(
-            "#seed=7&bot&speed=4&calm&nofarts&watch&portrait&arm&freeroam&fp&tool=spear&cone",
+            "#seed=7&bot&speed=4&calm&nofarts&watch&portrait&arm&freeroam&fp&tool=spear&cone&countbest",
         );
+        assert!(o.count_best);
         assert_eq!(o.seed, Some(7));
         assert!(o.bot && o.skip && o.calm && o.no_farts && o.watch && o.portrait);
         assert!(o.arm && o.free_roam && o.first_person && o.cone);

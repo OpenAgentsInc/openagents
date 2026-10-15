@@ -125,6 +125,14 @@ body.br {
   text-decoration: none;
   flex: none;
 }
+/* A plain home link, for a guide that isn't the studio's. */
+.br-home {
+  flex: none;
+  font-weight: 800;
+  font-size: 20px;
+  color: var(--br-wing);
+  text-decoration: none;
+}
 .br-wordmark .br-pixel-face { fill: var(--br-wing); }
 .br-wordmark .br-pixel + .br-pixel .br-pixel-face { fill: var(--br-orange); }
 .br-wordmark .br-pixel + .br-pixel .br-pixel-depth { fill: var(--br-navy-700); }

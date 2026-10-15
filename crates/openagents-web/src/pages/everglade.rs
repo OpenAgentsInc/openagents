@@ -282,6 +282,18 @@ pub(super) async fn serve_build(
     content_type: &'static str,
     request: &HeaderMap,
 ) -> Response {
+    serve_build_cached(directory, file, content_type, request, BUILD_CACHE).await
+}
+
+/// [`serve_build`] with its own `Cache-Control`: The Ice Cream Man's
+/// versioned build files are immutable, its unversioned ones `no-cache`.
+pub(super) async fn serve_build_cached(
+    directory: &Path,
+    file: &str,
+    content_type: &'static str,
+    request: &HeaderMap,
+    cache: &'static str,
+) -> Response {
     // The build stage writes compressed copies beside each file; the wasm
     // is about a third of its size gzipped and less again with brotli.
     for (accepted, extension, coding) in [
@@ -296,7 +308,7 @@ pub(super) async fn serve_build(
             .await
             .is_ok_and(|metadata| metadata.is_file())
         {
-            let mut response = serve(compressed, content_type, BUILD_CACHE).await;
+            let mut response = serve(compressed, content_type, cache).await;
             if response.status().is_success() {
                 let headers = response.headers_mut();
                 headers.insert(header::CONTENT_ENCODING, HeaderValue::from_static(coding));
@@ -305,7 +317,7 @@ pub(super) async fn serve_build(
             return response;
         }
     }
-    let mut response = serve(directory.join(file), content_type, BUILD_CACHE).await;
+    let mut response = serve(directory.join(file), content_type, cache).await;
     response
         .headers_mut()
         .insert(header::VARY, HeaderValue::from_static("accept-encoding"));

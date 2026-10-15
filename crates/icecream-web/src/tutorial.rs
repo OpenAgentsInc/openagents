@@ -12,12 +12,11 @@ pub const SEEN_KEY: &str = "icecream.tutorial.v1";
 /// The value stored under [`SEEN_KEY`].
 pub const SEEN: &str = "seen";
 
-/// The written guide on the Blue Rush Studios site. The path is the same
-/// on openagents.com and on the studio's own domain.
-pub const GUIDE: &str = "/studios/blue-rush/the-ice-cream-man/how-to-play";
+/// The written guide, beside the game on openagents.com.
+pub const GUIDE: &str = "/games/the-ice-cream-man/how-to-play";
 
-/// The studio's homepage.
-pub const STUDIO: &str = "/studios/blue-rush";
+/// Where the home link goes: openagents.com's home page.
+pub const HOME: &str = "/";
 
 /// How many steps the tutorial has.
 pub const STEPS: usize = copy::TOUR.len();
@@ -147,8 +146,9 @@ mod tests {
     }
 
     #[test]
-    fn the_guide_is_on_the_studio_site() {
-        assert!(GUIDE.starts_with(STUDIO));
-        assert!(GUIDE.ends_with("/the-ice-cream-man/how-to-play"));
+    fn the_guide_is_beside_the_game() {
+        assert_eq!(GUIDE, "/games/the-ice-cream-man/how-to-play");
+        assert!(!GUIDE.contains("blue-rush"));
+        assert_eq!(HOME, "/");
     }
 }

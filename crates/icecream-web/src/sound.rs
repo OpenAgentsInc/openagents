@@ -57,6 +57,9 @@ pub enum Effect {
     Empty,
     Escape,
     Scooped,
+    /// The jumpscare's sting: a loud, clashing shriek over a thump, made
+    /// here like every other sound.
+    Jumpscare,
 }
 
 impl Sound {
@@ -288,6 +291,21 @@ impl Sound {
                 }
             }
             Effect::Scooped => self.tone(Sine, 900.0, 160.0, 0.9, 0.3, 0.0),
+            Effect::Jumpscare => {
+                // Clashing notes a semitone apart, sliding up as he lunges.
+                for (f, kind) in [
+                    (880.0_f32, Sawtooth),
+                    (932.3, Square),
+                    (1244.5, Sawtooth),
+                    (1318.5, Square),
+                ] {
+                    self.tone(kind, f, f * 1.5, 0.9, 0.22, 0.0);
+                }
+                self.hiss(BiquadFilterType::Bandpass, 4200.0, 700.0, 0.8, 0.9);
+                // The thump as his face hits the screen.
+                self.tone(Sine, 140.0, 38.0, 0.6, 0.9, 0.4);
+                self.tone(Sawtooth, 2093.0, 2637.0, 0.5, 0.2, 0.4);
+            }
         }
     }
 

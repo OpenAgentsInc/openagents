@@ -26,6 +26,7 @@ use crate::hud::{Action, Card, Hold, Hud, css, element};
 use crate::mesh::{Mesh, STRIDE, rgb};
 use crate::options::Options;
 use crate::scene;
+use crate::settings::{self, Settings};
 use crate::sound::{Effect, Sound};
 use crate::tutorial::{self, Tour};
 
@@ -115,6 +116,10 @@ const INK: [f32; 3] = [0.17, 0.11, 0.08];
 const LINE: f32 = 2.5;
 /// How long the end of a run plays before its card, in seconds.
 const ENDING: f32 = 1.8;
+/// How long the jumpscare plays before the scooped card, in seconds.
+const SCARE: f32 = 1.2;
+/// When, in the jumpscare, his face hits the screen.
+const SCARE_HIT: f32 = 0.42;
 
 struct GpuMesh {
     vao: WebGlVertexArrayObject,
@@ -378,9 +383,19 @@ struct App {
     select: Option<Tool>,
     fire: bool,
     sprint_toggle: bool,
+    /// The touch Sprint button held down (hold mode).
+    sprint_held: bool,
     touch_jump: bool,
     touch_fire: bool,
     touch_use: bool,
+    /// The menu's settings, kept in the browser.
+    settings: Settings,
+    /// The best escape time kept in the browser, in seconds.
+    best: Option<f32>,
+    /// Whether the last escape set a new best.
+    new_best: bool,
+    /// The build's version, from the canvas's `data-version`.
+    version: Option<String>,
     /// The right mouse button's drag: the last point.
     orbit: Option<(f32, f32)>,
     /// The mouse over the canvas, in CSS pixels.
@@ -445,8 +460,20 @@ fn tutorial_seen(window: &Window) -> Option<String> {
 }
 
 fn mark_tutorial_seen(window: &Window) {
+    store(window, tutorial::SEEN_KEY, tutorial::SEEN);
+}
+
+fn stored(window: &Window, key: &str) -> Option<String> {
+    window
+        .local_storage()
+        .ok()
+        .flatten()
+        .and_then(|storage| storage.get_item(key).ok().flatten())
+}
+
+fn store(window: &Window, key: &str, value: &str) {
     if let Ok(Some(storage)) = window.local_storage() {
-        let _ = storage.set_item(tutorial::SEEN_KEY, tutorial::SEEN);
+        let _ = storage.set_item(key, value);
     }
 }
 
@@ -643,12 +670,43 @@ impl App {
                     self.hud.toast(copy::FREE_ROAM, now);
                 }
             }
-            Action::SprintToggle => self.sprint_toggle = !self.sprint_toggle,
+            Action::Cycle(back) => {
+                if self.phase == Phase::Playing {
+                    let player = &self.game.player;
+                    let from = self.select.unwrap_or(player.tool);
+                    if let Some(tool) = settings::cycle(&player.owned, from, back) {
+                        self.select = Some(tool);
+                    }
+                }
+            }
+            Action::ToggleTimer => {
+                self.settings.timer = !self.settings.timer;
+                self.save_settings();
+            }
+            Action::ToggleJumpscares => {
+                self.settings.jumpscares = !self.settings.jumpscares;
+                self.save_settings();
+            }
+            Action::ToggleSprintMode => {
+                self.settings.sprint_tap = !self.settings.sprint_tap;
+                self.sprint_toggle = false;
+                self.sprint_held = false;
+                self.save_settings();
+            }
             Action::ToggleView => self.toggle_view(),
             Action::Held(hold, down) => match hold {
                 Hold::Jump => self.touch_jump = down,
                 Hold::Fire => self.touch_fire = down,
                 Hold::Use => self.touch_use = down,
+                Hold::Sprint => {
+                    if self.settings.sprint_tap {
+                        if down {
+                            self.sprint_toggle = !self.sprint_toggle;
+                        }
+                    } else {
+                        self.sprint_held = down;
+                    }
+                }
             },
         }
     }
@@ -662,8 +720,81 @@ impl App {
         self.touch_fire = false;
         self.touch_jump = false;
         self.touch_use = false;
+        self.sprint_held = false;
         self.stick = None;
         self.hud.stick(0.0, 0.0);
+    }
+
+    fn save_settings(&self) {
+        store(
+            &self.window,
+            settings::SETTINGS_KEY,
+            &self.settings.stored(),
+        );
+    }
+
+    /// Whether a run counts for the best time: played by hand, as the
+    /// game comes, not a test or a capture with changed rules.
+    fn counts_for_best(&self) -> bool {
+        let o = &self.options;
+        (!o.bot || o.count_best)
+            && o.speed == 1
+            && !o.calm
+            && !o.arm
+            && !o.free_roam
+            && !o.no_farts
+            && !o.cone
+            && o.tune.is_empty()
+            && !self.game.free_roam
+    }
+
+    /// Whether this ending is the jumpscare: scooped, with jumpscares on.
+    fn scaring(&self) -> bool {
+        self.game.status == Status::Scooped && self.settings.jumpscares
+    }
+
+    /// Seconds into the jumpscare, while it plays.
+    fn scare_time(&self) -> Option<f32> {
+        match self.phase {
+            Phase::Ending(t) if self.scaring() => Some(t),
+            _ => None,
+        }
+    }
+
+    /// The jumpscare's eye, at your head, and the way it looks: at him,
+    /// level.
+    fn scare_eye(&self) -> (Vec3, Vec3) {
+        let player = &self.game.player;
+        let eye = Vec3::new(
+            player.pos.x,
+            player.height + crate::camera::HEAD,
+            player.pos.z,
+        );
+        let to = self.game.man.pos - player.pos;
+        let flat = if to.length() > 0.2 {
+            to.normalized()
+        } else {
+            self.camera.forward()
+        };
+        (eye, Vec3::new(flat.x, 0.0, flat.z).normalize_or(Vec3::Z))
+    }
+
+    /// How long this run's ending plays before its card.
+    fn ending_length(&self) -> f32 {
+        if self.scaring() { SCARE } else { ENDING }
+    }
+
+    /// The run ended: keep an escape's time when it's the best yet.
+    fn finished(&mut self) {
+        self.new_best = false;
+        if self.game.status == Status::Escaped && self.counts_for_best() {
+            let seconds = self.game.seconds();
+            if settings::is_new_best(self.best, seconds) {
+                self.best = Some(seconds);
+                self.new_best = true;
+                store(&self.window, settings::BEST_KEY, &format!("{seconds:.2}"));
+            }
+        }
     }
 
     fn holding(&self, keys: &[&str]) -> bool {
@@ -737,7 +868,7 @@ impl App {
         }
         Input {
             walk,
-            sprint: self.holding(&["shift"]) || self.sprint_toggle,
+            sprint: self.holding(&["shift"]) || self.sprint_toggle || self.sprint_held,
             jump: self.holding(&[" "]) || self.touch_jump,
             fire: self.fire || self.touch_fire || self.taps.iter().any(|k| k == "click"),
             aim,
@@ -779,6 +910,8 @@ impl App {
                     self.phase = Phase::Ending(0.0);
                     self.sound.quiet(true);
                     self.release();
+                    self.sprint_toggle = false;
+                    self.finished();
                     if self
                         .window
                         .document()
@@ -798,7 +931,7 @@ impl App {
         }
         if let Phase::Ending(t) = self.phase {
             let t = t + dt as f32;
-            self.phase = if t >= ENDING {
+            self.phase = if t >= self.ending_length() {
                 Phase::Over
             } else {
                 Phase::Ending(t)
@@ -909,7 +1042,11 @@ impl App {
                     self.hud.toast(copy::MELTED, now);
                 }
             }
-            Event::Scooped => self.sound.play(Effect::Scooped),
+            Event::Scooped => self.sound.play(if self.settings.jumpscares {
+                Effect::Jumpscare
+            } else {
+                Effect::Scooped
+            }),
             Event::Swing(_) => {
                 self.swing = 0.25;
                 self.sound.play(Effect::Jump);
@@ -1127,7 +1264,10 @@ impl App {
         let player = &game.player;
         let mut camera = self.camera;
         let scooped = game.status == Status::Scooped;
-        if let Phase::Ending(t) = self.phase {
+        let scare = self.scare_time();
+        if let Phase::Ending(t) = self.phase
+            && scare.is_none()
+        {
             camera.yaw += t * 0.6;
             camera.zoom = camera.zoom.max(4.0);
             camera.shift_lock = false;
@@ -1142,7 +1282,26 @@ impl App {
             camera.yaw = self.time * 0.15;
             camera.zoom = 6.0;
         }
-        let view = camera.view(player.pos, player.height, &game.house.blocks);
+        let mut view = camera.view(player.pos, player.height, &game.house.blocks);
+        if let Some(t) = scare {
+            // Through your own eyes, at him, shaking once he hits.
+            let (eye, dir) = self.scare_eye();
+            let shake = if t > SCARE_HIT {
+                0.012 + 0.07 * (1.0 - ((t - SCARE_HIT) / 0.6).min(1.0))
+            } else {
+                0.004
+            };
+            let jitter = Vec3::new(
+                (t * 97.0).sin() * shake,
+                (t * 83.0).cos() * shake,
+                (t * 71.0).sin() * shake,
+            );
+            view = View {
+                eye: eye + jitter,
+                target: eye + dir + jitter * 0.4,
+                first_person: true,
+            };
+        }
         let aspect = width / height;
         let matrix = Camera::matrix(&view, aspect);
         self.view = Some((view, matrix));
@@ -1422,7 +1581,7 @@ impl App {
 
     fn draw_man(&self) {
         let game = &self.game;
-        if !game.man_here() {
+        if !game.man_here() && self.scare_time().is_none() {
             return;
         }
         let gpu = &self.gpu;
@@ -1443,9 +1602,28 @@ impl App {
             0.0
         };
         let squash = 1.0 + self.man_hit * 0.4;
-        let base = Mat4::from_translation(Vec3::new(man.pos.x + shake, bob, man.pos.z))
-            * Mat4::from_rotation_y(self.man_yaw)
-            * Mat4::from_scale(Vec3::new(squash, 1.0 / squash, squash));
+        let base = if let Some(t) = self.scare_time() {
+            // The lunge: still for a beat, then straight at your face.
+            let (eye, dir) = self.scare_eye();
+            let lunge = ((t - 0.1) / (SCARE_HIT - 0.1)).clamp(0.0, 1.0);
+            // He stops just short of the lens, his face filling the
+            // screen (any closer and the camera is inside his outline).
+            let dist = 3.6
+                - 2.0 * lunge * lunge * lunge
+                - if t > SCARE_HIT {
+                    0.12 * ((t - SCARE_HIT) * 20.0).sin().abs() * (1.0 - (t - SCARE_HIT)).max(0.0)
+                } else {
+                    0.0
+                };
+            let at = eye + dir * dist;
+            Mat4::from_translation(Vec3::new(at.x, eye.y - 2.45, at.z))
+                * Mat4::from_rotation_y(yaw_of(v(-dir.x, -dir.z)))
+        } else {
+            Mat4::from_translation(Vec3::new(man.pos.x + shake, bob, man.pos.z))
+                * Mat4::from_rotation_y(self.man_yaw)
+                * Mat4::from_scale(Vec3::new(squash, 1.0 / squash, squash))
+        };
+        let scaring = self.scare_time().is_some();
         let (tint, shine) = if frozen {
             ([0.62, 0.42, 0.3], 1.3)
         } else if man.slow > 0.0 {
@@ -1463,7 +1641,9 @@ impl App {
                 * Mat4::from_translation(Vec3::new(side * 0.17, 0.85, 0.0))
                 * Mat4::from_rotation_x(swing * side);
             gpu.draw(&m.man_leg, &leg, tint, light, shine, true);
-            let reach = if man.state == ManState::Chase && !frozen {
+            let reach = if scaring {
+                -1.6 + (self.time * 30.0 + side).sin() * 0.2
+            } else if man.state == ManState::Chase && !frozen {
                 -1.35 + (self.time * 9.0 + side).sin() * 0.15
             } else {
                 -swing * side * 0.7
@@ -1677,7 +1857,7 @@ impl App {
         }
         let links = vec![
             (copy::HOW_TO_PLAY.to_owned(), tutorial::GUIDE.to_owned()),
-            (copy::STUDIO.to_owned(), tutorial::STUDIO.to_owned()),
+            (copy::HOME.to_owned(), tutorial::HOME.to_owned()),
         ];
         match self.phase {
             Phase::Title => Some(Card {
@@ -1693,19 +1873,56 @@ impl App {
                     (copy::HOW_TO_PLAY.to_owned(), Action::Tour, false),
                     (copy::PLAY.to_owned(), Action::Play, true),
                 ],
-                links: vec![(copy::STUDIO.to_owned(), tutorial::STUDIO.to_owned())],
+                links: vec![(copy::HOME.to_owned(), tutorial::HOME.to_owned())],
                 ..Card::default()
             }),
-            Phase::Menu => Some(Card {
-                title: copy::PAUSED.to_owned(),
-                buttons: vec![
+            Phase::Menu => {
+                let s = self.settings;
+                let mut buttons = vec![
                     (copy::HOW_TO_PLAY.to_owned(), Action::Tour, false),
                     (copy::NEW_HOUSE.to_owned(), Action::NewHouse, false),
                     (copy::RESUME.to_owned(), Action::Resume, true),
-                ],
-                links,
-                ..Card::default()
-            }),
+                    (
+                        if s.timer {
+                            copy::TIMER_ON
+                        } else {
+                            copy::TIMER_OFF
+                        }
+                        .to_owned(),
+                        Action::ToggleTimer,
+                        false,
+                    ),
+                    (
+                        if s.jumpscares {
+                            copy::JUMPSCARES_ON
+                        } else {
+                            copy::JUMPSCARES_OFF
+                        }
+                        .to_owned(),
+                        Action::ToggleJumpscares,
+                        false,
+                    ),
+                ];
+                if self.touch {
+                    buttons.push((
+                        if s.sprint_tap {
+                            copy::SPRINT_TAP
+                        } else {
+                            copy::SPRINT_HOLD
+                        }
+                        .to_owned(),
+                        Action::ToggleSprintMode,
+                        false,
+                    ));
+                }
+                Some(Card {
+                    title: copy::PAUSED.to_owned(),
+                    buttons,
+                    links,
+                    version: self.version.as_deref().map(copy::version_line),
+                    ..Card::default()
+                })
+            }
             Phase::Over => {
                 let run = self.game.run_card();
                 let won = run.escaped || self.game.status == Status::Melted;
@@ -1733,7 +1950,18 @@ impl App {
                     )
                 };
                 let mut lines = vec![line.to_owned()];
-                lines.extend(copy::card_lines(&run));
+                if self.game.status == Status::Escaped {
+                    // The speedrun: the time to a tenth, and the best.
+                    lines.push(copy::your_time(&settings::clock(self.game.seconds())));
+                    if self.new_best {
+                        lines.push(copy::NEW_BEST.to_owned());
+                    } else if let Some(best) = self.best {
+                        lines.push(copy::best_time(&settings::clock(best)));
+                    }
+                    lines.extend(copy::card_lines(&run).into_iter().skip(1));
+                } else {
+                    lines.extend(copy::card_lines(&run));
+                }
                 let main = buttons.is_empty();
                 buttons.insert(0, (again.to_owned(), Action::NewHouse, main));
                 Some(Card {
@@ -1797,7 +2025,16 @@ impl App {
             (None, _) => None,
         };
         self.hud.prompt(text, unlock, self.touch);
-        self.hud.sprint(self.sprint_toggle);
+        self.hud.sprint(self.sprint_toggle || self.sprint_held);
+        let clock =
+            (self.settings.timer && !game.free_roam).then(|| settings::clock(game.seconds()));
+        self.hud.timer(clock.as_deref());
+        match self.phase {
+            Phase::Ending(t) if game.status == Status::Scooped => {
+                self.hud.scare(Some(t), self.settings.jumpscares);
+            }
+            _ => self.hud.scare(None, false),
+        }
         let hidden = player.hidden.is_some() && self.phase == Phase::Playing;
         self.hud.tick(now, self.hurt, hidden, self.daylight);
         let card = self.card();
@@ -1852,6 +2089,22 @@ impl App {
                 format!("{:?}", game.player.tool).to_lowercase(),
             ),
             ("data-shift-lock", self.camera.shift_lock.to_string()),
+            ("data-sprinting", game.player.sprinting.to_string()),
+            (
+                "data-sprint",
+                (self.sprint_toggle || self.sprint_held).to_string(),
+            ),
+            (
+                "data-best",
+                self.best.map_or("none".to_owned(), |b| format!("{b:.2}")),
+            ),
+            ("data-new-best", self.new_best.to_string()),
+            (
+                "data-scare",
+                self.scare_time()
+                    .map_or("none".to_owned(), |t| format!("{t:.2}")),
+            ),
+            ("data-settings", self.settings.stored()),
             ("data-hidden", game.player.hidden.is_some().to_string()),
             ("data-clouds", game.clouds.len().to_string()),
             ("data-spotted", self.spotted.to_string()),
@@ -2070,7 +2323,26 @@ pub fn start() {
         .ok()
         .flatten()
         .is_some_and(|query| query.matches());
-    let hud = Hud::new(&document, &parent, touch);
+    // A tablet: a touch screen whose short side is a tablet's.
+    let short = window
+        .inner_width()
+        .ok()
+        .and_then(|w| w.as_f64())
+        .unwrap_or(0.0)
+        .min(
+            window
+                .inner_height()
+                .ok()
+                .and_then(|h| h.as_f64())
+                .unwrap_or(0.0),
+        );
+    let tablet = touch && short >= 700.0;
+    let hud = Hud::new(&document, &parent, touch, tablet);
+    let version = canvas
+        .get_attribute("data-version")
+        .filter(|v| !v.trim().is_empty());
+    let settings = Settings::parse(stored(&window, settings::SETTINGS_KEY).as_deref());
+    let best = settings::best(stored(&window, settings::BEST_KEY).as_deref());
     let options = Options::parse(&window.location().hash().unwrap_or_default());
     let seed = options.seed.unwrap_or(1);
     let mut app = App {
@@ -2093,9 +2365,14 @@ pub fn start() {
         select: None,
         fire: false,
         sprint_toggle: false,
+        sprint_held: false,
         touch_jump: false,
         touch_fire: false,
         touch_use: false,
+        settings,
+        best,
+        new_best: false,
+        version,
         orbit: None,
         mouse: None,
         stick: None,
@@ -2178,6 +2455,10 @@ pub fn start() {
                     if !event.repeat() {
                         app.toggle_view();
                     }
+                }
+                "q" => {
+                    event.prevent_default();
+                    app.act(Action::Cycle(event.shift_key()));
                 }
                 "w" | "a" | "s" | "d" | "arrowup" | "arrowdown" | "arrowleft" | "arrowright"
                 | " " | "shift" | "e" => {

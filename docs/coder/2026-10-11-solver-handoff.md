@@ -193,8 +193,8 @@ not-planned issues itself.
     the #11324 handoff comment.
 - **The Ice Cream Man (#11344, closed):** live at
   https://openagents.com/games/the-ice-cream-man (revision
-  coder-web-45ef160d88-20261011210455). The guide is at
-  /studios/blue-rush/the-ice-cream-man/how-to-play.
+  coder-web-45ef160d88-20261011210455). The guide is now at
+  /games/the-ice-cream-man/how-to-play (#11667).
   - 41dad2ffe4 (a sturdier browser check) ships with the next deploy.
   - After the MVP: a key hint or minimap, the Giant Booger, co-op, and
     the Roblox port.

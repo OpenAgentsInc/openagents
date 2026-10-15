@@ -14,6 +14,7 @@ pub(crate) mod efficiency;
 mod everglade;
 pub(crate) mod home;
 mod icecream;
+mod icecream_guide;
 pub(crate) mod live;
 mod pricing;
 pub(crate) mod profile;
@@ -48,8 +49,11 @@ pub(crate) use everglade::GRID_POLICY;
 pub(crate) use everglade::{CANVAS_ID, EVERGLADE_POLICY, GLUE, WASM};
 #[cfg(test)]
 pub(crate) use icecream::{
-    ICECREAM_CANVAS, ICECREAM_GLUE, ICECREAM_PATH, ICECREAM_POLICY, ICECREAM_START, ICECREAM_WASM,
+    ICECREAM_CANVAS, ICECREAM_GLUE, ICECREAM_PATH, ICECREAM_POLICY, ICECREAM_START,
+    ICECREAM_VERSION_FILE, ICECREAM_WASM,
 };
+#[cfg(test)]
+pub(crate) use icecream_guide::ICECREAM_GUIDE_PATH;
 pub(crate) use pricing::PRICING;
 #[cfg(test)]
 pub(crate) use stats::utc;

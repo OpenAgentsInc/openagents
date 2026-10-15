@@ -499,38 +499,45 @@ async fn the_blue_rush_guide_teaches_grow_little_bunny() {
     assert!(upstream::owned(pages::BLUE_RUSH_GUIDE));
 }
 
-/// The homepage has a card for The Ice Cream Man that leads to the game
-/// and to its guide.
+/// The Ice Cream Man isn't a Blue Rush game: the studio's homepage doesn't
+/// list it, and its old guide address there redirects to the guide beside
+/// the game (to openagents.com from the studio's own domain).
 #[tokio::test]
-async fn the_blue_rush_homepage_has_the_ice_cream_man() {
+async fn the_ice_cream_man_moved_out_of_blue_rush() {
     let root = tempfile::tempdir().unwrap();
     let site = router(config(root.path().join("tasks")));
-    let (status, _, html) = get_with(site, pages::BLUE_RUSH, LOCAL).await;
+    let (status, _, html) = get_with(site.clone(), pages::BLUE_RUSH, LOCAL).await;
     assert_eq!(status, StatusCode::OK);
-    let card = html
-        .split("br-card br-card-new")
-        .nth(1)
-        .and_then(|rest| rest.split("</article>").next())
-        .expect("the Ice Cream Man's card");
-    assert!(card.contains("The Ice Cream Man"), "{card}");
-    assert!(card.contains("href=\"/games/the-ice-cream-man\""), "{card}");
-    assert!(
-        card.contains(&format!("href=\"{}\"", pages::BLUE_RUSH_ICECREAM_GUIDE)),
-        "{card}"
-    );
-    let text = oa_copy::visible_text(card);
-    assert_eq!(oa_copy::violations(&text, &[]), vec![], "{text}");
+    assert!(!html.contains("Ice Cream"));
+    assert!(!html.contains("the-ice-cream-man"));
+    for (host, to) in [
+        (LOCAL, pages::ICECREAM_GUIDE_PATH.to_owned()),
+        (
+            pages::STUDIO_HOSTS[0],
+            format!("https://openagents.com{}", pages::ICECREAM_GUIDE_PATH),
+        ),
+    ] {
+        let path = if host == LOCAL {
+            pages::BLUE_RUSH_ICECREAM_GUIDE
+        } else {
+            "/the-ice-cream-man/how-to-play"
+        };
+        let (status, headers, _) = get_with(site.clone(), path, host).await;
+        assert_eq!(status, StatusCode::PERMANENT_REDIRECT, "{host}");
+        assert_eq!(headers[header::LOCATION], to.as_str(), "{host}");
+    }
 }
 
-/// `/studios/blue-rush/the-ice-cream-man/how-to-play`: the written guide,
-/// with screenshots from the game, no script, and every link answering.
+/// `/games/the-ice-cream-man/how-to-play`: the written guide, beside the
+/// game, with no studio name, screenshots from the game, no script, and
+/// every link answering.
 #[tokio::test]
-async fn the_blue_rush_guide_teaches_the_ice_cream_man() {
+async fn the_guide_teaches_the_ice_cream_man() {
     let root = tempfile::tempdir().unwrap();
     let site = router(config(root.path().join("tasks")));
-    let (status, headers, html) =
-        get_with(site.clone(), pages::BLUE_RUSH_ICECREAM_GUIDE, LOCAL).await;
+    let (status, headers, html) = get_with(site.clone(), pages::ICECREAM_GUIDE_PATH, LOCAL).await;
     assert_eq!(status, StatusCode::OK);
+    assert!(!html.contains("Blue Rush"));
     assert!(html.to_ascii_lowercase().starts_with("<!doctype html>"));
     assert!(html.contains("<h1 class=\"br-guide-title\">How to play The Ice Cream Man</h1>"));
     for words in [
@@ -560,6 +567,13 @@ async fn the_blue_rush_guide_teaches_the_ice_cream_man() {
         "Sugar Launcher",
         "Keep playing with the Sprinkle Staff",
         "The View button",
+        // The second round (#11667).
+        "Hold the Sprint button",
+        "swipe the bar, or tap Next",
+        "Add to Home Screen",
+        "Jumpscares",
+        "New best!",
+        "Zoom back out",
     ] {
         assert!(html.contains(words), "{words}");
     }
@@ -596,34 +610,21 @@ async fn the_blue_rush_guide_teaches_the_ice_cream_man() {
             assert_eq!(status, StatusCode::OK, "links {target}");
         }
     }
-    assert!(upstream::owned(pages::BLUE_RUSH_ICECREAM_GUIDE));
-
-    // On the studio's own domain, at its root.
-    let host = pages::STUDIO_HOSTS[0];
-    let (status, _, guide) = get_with(site.clone(), "/the-ice-cream-man/how-to-play", host).await;
-    assert_eq!(status, StatusCode::OK);
-    assert!(guide.contains("How to play The Ice Cream Man"));
-    assert!(guide.contains("src=\"/static/icecream-hall.jpg\""));
-    assert!(!guide.contains("/studios/blue-rush"), "root paths only");
-    for target in guide.split("href=\"").skip(1) {
-        let target = &target[..target.find('"').unwrap()];
-        if target.starts_with('/') {
-            let path = target.split(['?', '#']).next().unwrap();
-            let (status, _, _) = get_with(site.clone(), path, host).await;
-            assert_eq!(status, StatusCode::OK, "links {target}");
-        }
-    }
-    let (status, headers, _) = get_with(site.clone(), "/games/the-ice-cream-man", host).await;
-    assert_eq!(status, StatusCode::OK);
+    assert!(upstream::owned(pages::ICECREAM_GUIDE_PATH));
+    let css = html
+        .split("href=\"")
+        .skip(1)
+        .map(|rest| &rest[..rest.find('"').unwrap()])
+        .find(|href| href.contains("guide.css"))
+        .expect("the stylesheet");
+    let (status, headers, _) = get_bytes(site, css).await;
+    assert_eq!(status, StatusCode::OK, "{css}");
     assert!(
         headers[header::CONTENT_TYPE]
             .to_str()
             .unwrap()
-            .starts_with("text/html")
+            .starts_with("text/css")
     );
-    let (status, headers, _) = get_with(site, "/static/icecream-man.jpg", host).await;
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(headers[header::CONTENT_TYPE], "image/jpeg");
 }
 
 /// On the studio's own domain the site is Blue Rush Studios: `/` is its
@@ -1735,6 +1736,7 @@ fn with_icecream(root: &std::path::Path) -> Config {
     )
     .unwrap();
     std::fs::write(build.join("index.html"), "not served").unwrap();
+    std::fs::write(build.join(pages::ICECREAM_VERSION_FILE), "b1d2\n").unwrap();
     std::fs::write(root.join("secret.js"), "outside the build").unwrap();
     let mut config = config(root.join("tasks"));
     config.icecream = Some(build);
@@ -1756,10 +1758,14 @@ async fn the_ice_cream_man_page_serves_the_game_build() {
     assert!(html.contains("id=\"icecream-status\""));
     let lower = html.to_ascii_lowercase();
     assert_eq!(scripts(&lower), 1, "one script");
+    // The build's address carries its version, and the page is never kept.
     assert!(html.contains(&format!(
-        "<script type=\"module\" src=\"/games/the-ice-cream-man/{}\"></script>",
+        "<script type=\"module\" src=\"/games/the-ice-cream-man/v/b1d2/{}\"></script>",
         pages::ICECREAM_START
     )));
+    assert!(html.contains("data-version=\"b1d2\""));
+    assert_eq!(headers[header::CACHE_CONTROL], "no-cache");
+    assert!(html.contains("href=\"/games/the-ice-cream-man/manifest.webmanifest\""));
     assert!(!lower.contains(" style=") && !lower.contains("<style"));
     assert_eq!(
         headers[header::CONTENT_SECURITY_POLICY],
@@ -1777,8 +1783,47 @@ async fn the_ice_cream_man_page_serves_the_game_build() {
         let (status, headers, _) = get_bytes(router(config.clone()), &uri).await;
         assert_eq!(status, StatusCode::OK, "{uri}");
         assert_eq!(headers[header::CONTENT_TYPE], content_type, "{uri}");
+        assert_eq!(headers[header::CACHE_CONTROL], "no-cache", "{uri}");
         assert!(upstream::owned(&uri), "{uri}");
+        // This build's version: kept a year. An old one: this build, asked
+        // again every time.
+        for (version, cache) in [
+            ("b1d2", "public, max-age=31536000, immutable"),
+            ("0ld", "no-cache"),
+        ] {
+            let uri = format!("/games/the-ice-cream-man/v/{version}/{file}");
+            let (status, headers, _) = get_bytes(router(config.clone()), &uri).await;
+            assert_eq!(status, StatusCode::OK, "{uri}");
+            assert_eq!(headers[header::CONTENT_TYPE], content_type, "{uri}");
+            assert_eq!(headers[header::CACHE_CONTROL], cache, "{uri}");
+        }
     }
+    // Installable: the manifest, the icons and the service worker, which
+    // may serve the page just above its folder.
+    for (uri, content_type) in [
+        (
+            "/games/the-ice-cream-man/manifest.webmanifest",
+            "application/manifest+json",
+        ),
+        ("/games/the-ice-cream-man/icon-192.png", "image/png"),
+        ("/games/the-ice-cream-man/icon-512.png", "image/png"),
+        ("/games/the-ice-cream-man/icon-180.png", "image/png"),
+        (
+            "/games/the-ice-cream-man/sw.js",
+            "text/javascript; charset=utf-8",
+        ),
+    ] {
+        let (status, headers, _) = get_bytes(router(config.clone()), uri).await;
+        assert_eq!(status, StatusCode::OK, "{uri}");
+        assert_eq!(headers[header::CONTENT_TYPE], content_type, "{uri}");
+    }
+    let (_, headers, _) = get_bytes(router(config.clone()), "/games/the-ice-cream-man/sw.js").await;
+    assert_eq!(
+        headers["service-worker-allowed"],
+        "/games/the-ice-cream-man"
+    );
+    let policy = pages::ICECREAM_POLICY;
+    assert!(policy.contains("manifest-src 'self'") && policy.contains("worker-src 'self'"));
     let response = router(config.clone())
         .oneshot(
             Request::builder()

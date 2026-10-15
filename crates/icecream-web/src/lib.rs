@@ -18,6 +18,7 @@ pub mod copy;
 pub mod mesh;
 pub mod options;
 pub mod scene;
+pub mod settings;
 pub mod tutorial;
 
 #[cfg(target_arch = "wasm32")]

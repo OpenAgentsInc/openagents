@@ -21,6 +21,8 @@ pub enum Hold {
     Jump,
     Fire,
     Use,
+    /// Down and up; the game holds or toggles sprint by the setting.
+    Sprint,
 }
 
 /// What a button asks for.
@@ -36,7 +38,12 @@ pub enum Action {
     /// Close the tutorial: `true` from its last card, `false` from Skip.
     TourEnd(bool),
     Select(Tool),
-    SprintToggle,
+    /// The next tool in the hot bar (`true`: the one before).
+    Cycle(bool),
+    /// The menu's settings.
+    ToggleTimer,
+    ToggleJumpscares,
+    ToggleSprintMode,
     /// First or third person (V on a keyboard).
     ToggleView,
     /// After a win: play on in free roam with the sprinkle staff.
@@ -57,6 +64,8 @@ pub struct Card {
     pub sunny: bool,
     /// The scooped card: a waffle colour behind it.
     pub scooped: bool,
+    /// A tiny line at the foot: the build's version.
+    pub version: Option<String>,
 }
 
 /// A hot-bar slot's width in pixels for `count` slots in `room` pixels:
@@ -107,34 +116,102 @@ const BUTTON: [(&str, &str); 8] = [
     ("box-shadow", "0 3px 0 #3a2418"),
 ];
 
+/// No browser gesture starts on `element`: no double-tap zoom, no pan, no
+/// long-press callout or text selection. iOS Safari ignores the page's
+/// `user-scalable=no`, so every control says so itself. `manipulation`
+/// first, for browsers that don't know `none` (an unknown value is
+/// ignored and the first stays).
+pub fn no_gestures(element: &HtmlElement) {
+    css(element, &[("touch-action", "manipulation")]);
+    css(
+        element,
+        &[
+            ("touch-action", "none"),
+            ("-webkit-tap-highlight-color", "transparent"),
+            ("-webkit-touch-callout", "none"),
+            ("user-select", "none"),
+            ("-webkit-user-select", "none"),
+        ],
+    );
+}
+
+fn listen<E: wasm_bindgen::convert::FromWasmAbi + 'static>(
+    target: &HtmlElement,
+    name: &str,
+    handler: impl FnMut(E) + 'static,
+) {
+    let closure = Closure::<dyn FnMut(E)>::new(handler);
+    let _ = target.add_event_listener_with_callback(name, closure.as_ref().unchecked_ref());
+    closure.forget();
+}
+
+/// A card's button: a click (a tap, a mouse click, Enter or Space).
 fn on_click(target: &HtmlElement, actions: &Rc<RefCell<Vec<Action>>>, action: Action) {
     let actions = actions.clone();
-    let closure = Closure::<dyn FnMut(web_sys::Event)>::new(move |event: web_sys::Event| {
+    listen(target, "click", move |event: web_sys::Event| {
         event.prevent_default();
         event.stop_propagation();
         actions.borrow_mut().push(action);
     });
-    let _ = target.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref());
-    closure.forget();
 }
 
-/// A button held down by a finger: down and up (or the finger leaving).
+/// A button used while playing: it acts the moment a finger or the mouse
+/// goes down. A click only comes after a lone finger lifts without
+/// moving, so a tap made while another finger holds the stick, or that
+/// slides a little, never clicked; `pointerdown` comes for every finger.
+/// Enter or Space on the focused button still clicks (a click with no
+/// pointer has `detail` 0).
+fn on_press(target: &HtmlElement, actions: &Rc<RefCell<Vec<Action>>>, action: Action) {
+    let pressed = actions.clone();
+    listen(target, "pointerdown", move |event: PointerEvent| {
+        if event.button() != 0 {
+            return;
+        }
+        event.prevent_default();
+        pressed.borrow_mut().push(action);
+    });
+    let clicked = actions.clone();
+    listen(target, "click", move |event: web_sys::MouseEvent| {
+        event.prevent_default();
+        event.stop_propagation();
+        if event.detail() == 0 {
+            clicked.borrow_mut().push(action);
+        }
+    });
+}
+
+/// A button held down by a finger: down, then up when that finger lifts
+/// or the browser takes it back. The button captures the finger, so
+/// sliding off it doesn't let go; another finger on it is ignored.
 fn on_hold(target: &HtmlElement, actions: &Rc<RefCell<Vec<Action>>>, hold: Hold) {
-    for (name, down) in [
-        ("pointerdown", true),
-        ("pointerup", false),
-        ("pointercancel", false),
-        ("pointerleave", false),
-    ] {
-        let actions = actions.clone();
-        let closure = Closure::<dyn FnMut(PointerEvent)>::new(move |event: PointerEvent| {
+    let finger: Rc<std::cell::Cell<Option<i32>>> = Rc::new(std::cell::Cell::new(None));
+    {
+        let (actions, finger, element) = (actions.clone(), finger.clone(), target.clone());
+        listen(target, "pointerdown", move |event: PointerEvent| {
             event.prevent_default();
             event.stop_propagation();
-            actions.borrow_mut().push(Action::Held(hold, down));
+            if finger.get().is_some() || event.button() != 0 {
+                return;
+            }
+            finger.set(Some(event.pointer_id()));
+            let _ = element.set_pointer_capture(event.pointer_id());
+            actions.borrow_mut().push(Action::Held(hold, true));
         });
-        let _ = target.add_event_listener_with_callback(name, closure.as_ref().unchecked_ref());
-        closure.forget();
     }
+    for name in ["pointerup", "pointercancel", "lostpointercapture"] {
+        let (actions, finger) = (actions.clone(), finger.clone());
+        listen(target, name, move |event: PointerEvent| {
+            event.stop_propagation();
+            if finger.get() == Some(event.pointer_id()) {
+                finger.set(None);
+                actions.borrow_mut().push(Action::Held(hold, false));
+            }
+        });
+    }
+    listen(target, "click", |event: web_sys::Event| {
+        event.prevent_default();
+        event.stop_propagation();
+    });
 }
 
 fn button(document: &Document, label: &str, main: bool) -> HtmlElement {
@@ -142,6 +219,7 @@ fn button(document: &Document, label: &str, main: bool) -> HtmlElement {
     let _ = b.set_attribute("type", "button");
     b.set_text_content(Some(label));
     css(&b, &BUTTON);
+    no_gestures(&b);
     css(
         &b,
         &[
@@ -182,8 +260,17 @@ pub struct Hud {
     card_lines: HtmlElement,
     card_buttons: HtmlElement,
     card_links: HtmlElement,
+    /// The build's version, small at the foot of the menu card.
+    card_version: HtmlElement,
     shown: Option<Card>,
     toast_until: f64,
+    /// The speedrun clock.
+    timer: HtmlElement,
+    /// The jumpscare's layers: a red flash and strawberry-syrup splats.
+    scare_flash: HtmlElement,
+    splats: Vec<HtmlElement>,
+    /// Whether the hot bar ends with a Next button.
+    has_next: bool,
 }
 
 /// The touch controls.
@@ -193,8 +280,24 @@ pub struct Touch {
     use_button: HtmlElement,
 }
 
+/// Where the syrup splats land and how big they are: left and top in
+/// percent of the screen, size in percent of its shorter side, and how
+/// long after the lunge each lands (seconds).
+/// They ring the screen, so his face stays in the middle.
+const SPLATS: [(f32, f32, f32, f32); 9] = [
+    (2.0, 4.0, 28.0, 0.0),
+    (68.0, 2.0, 30.0, 0.03),
+    (78.0, 54.0, 26.0, 0.06),
+    (3.0, 58.0, 28.0, 0.04),
+    (58.0, 76.0, 18.0, 0.09),
+    (88.0, 30.0, 16.0, 0.08),
+    (20.0, 80.0, 20.0, 0.11),
+    (34.0, 4.0, 14.0, 0.05),
+    (40.0, 84.0, 12.0, 0.1),
+];
+
 impl Hud {
-    pub fn new(document: &Document, parent: &Element, touch: bool) -> Self {
+    pub fn new(document: &Document, parent: &Element, touch: bool, tablet: bool) -> Self {
         let actions = Rc::new(RefCell::new(Vec::new()));
         let root = element(document, "div");
         css(
@@ -210,6 +313,11 @@ impl Hud {
                 ("overflow", "hidden"),
             ],
         );
+        no_gestures(&root);
+        // A long press is a held button, never a menu.
+        listen(&root, "contextmenu", |event: web_sys::Event| {
+            event.prevent_default();
+        });
         let _ = parent.append_child(&root);
 
         let flash = element(document, "div");
@@ -265,8 +373,8 @@ impl Hud {
         css(
             &health,
             &[
-                ("left", "12px"),
-                ("top", "12px"),
+                ("left", "calc(12px + env(safe-area-inset-left))"),
+                ("top", "calc(12px + env(safe-area-inset-top))"),
                 ("display", "flex"),
                 ("align-items", "center"),
                 ("gap", "8px"),
@@ -309,8 +417,8 @@ impl Hud {
         css(
             &keys,
             &[
-                ("left", "12px"),
-                ("top", "60px"),
+                ("left", "calc(12px + env(safe-area-inset-left))"),
+                ("top", "calc(60px + env(safe-area-inset-top))"),
                 ("display", "flex"),
                 ("align-items", "center"),
                 ("gap", "6px"),
@@ -347,7 +455,7 @@ impl Hud {
             &boss,
             &[
                 ("left", "50%"),
-                ("top", "64px"),
+                ("top", "calc(64px + env(safe-area-inset-top))"),
                 ("transform", "translateX(-50%)"),
                 ("display", "none"),
                 ("align-items", "center"),
@@ -388,15 +496,33 @@ impl Hud {
             &menu,
             &[
                 ("position", "absolute"),
-                ("right", "12px"),
-                ("top", "12px"),
+                ("right", "calc(12px + env(safe-area-inset-right))"),
+                ("top", "calc(12px + env(safe-area-inset-top))"),
                 ("padding", "6px 14px"),
                 ("font-size", "16px"),
                 ("margin", "0"),
             ],
         );
-        on_click(&menu, &actions, Action::Menu);
+        let _ = menu.set_attribute("id", "icecream-menu");
+        on_press(&menu, &actions, Action::Menu);
         let _ = playing.append_child(&menu);
+
+        // The speedrun clock, beside the menu button.
+        let timer = element(document, "div");
+        css(&timer, &PANEL);
+        css(
+            &timer,
+            &[
+                ("right", "calc(118px + env(safe-area-inset-right))"),
+                ("top", "calc(12px + env(safe-area-inset-top))"),
+                ("font-weight", "800"),
+                ("font-size", "20px"),
+                ("font-variant-numeric", "tabular-nums"),
+                ("display", "none"),
+            ],
+        );
+        let _ = timer.set_attribute("id", "icecream-timer");
+        let _ = playing.append_child(&timer);
 
         let toast = element(document, "div");
         css(&toast, &PANEL);
@@ -404,7 +530,7 @@ impl Hud {
             &toast,
             &[
                 ("left", "50%"),
-                ("top", "14px"),
+                ("top", "calc(14px + env(safe-area-inset-top))"),
                 ("transform", "translateX(-50%)"),
                 ("font-weight", "800"),
                 ("font-size", "18px"),
@@ -441,7 +567,7 @@ impl Hud {
             &prompt,
             &[
                 ("left", "50%"),
-                ("bottom", "108px"),
+                ("bottom", "calc(112px + env(safe-area-inset-bottom))"),
                 ("transform", "translateX(-50%)"),
                 ("display", "none"),
                 ("align-items", "center"),
@@ -497,12 +623,41 @@ impl Hud {
             &[
                 ("position", "absolute"),
                 ("left", "50%"),
-                ("bottom", "14px"),
+                ("bottom", "calc(4px + env(safe-area-inset-bottom))"),
                 ("transform", "translateX(-50%)"),
                 ("display", "flex"),
                 ("gap", "8px"),
+                // The gaps between slots are the bar's too, not the look
+                // area's, so a tap a little off a slot isn't a look.
+                ("padding", "10px 6px 4px"),
+                ("pointer-events", "auto"),
             ],
         );
+        let _ = bar.set_attribute("id", "icecream-hotbar");
+        // Swipe along the bar to go through the tools: left for the next,
+        // right for the one before.
+        {
+            let start: Rc<std::cell::Cell<Option<(i32, f32)>>> =
+                Rc::new(std::cell::Cell::new(None));
+            let down = start.clone();
+            listen(&bar, "pointerdown", move |event: PointerEvent| {
+                event.prevent_default();
+                event.stop_propagation();
+                down.set(Some((event.pointer_id(), event.client_x() as f32)));
+            });
+            let swiped = actions.clone();
+            listen(&bar, "pointerup", move |event: PointerEvent| {
+                if let Some((id, x)) = start.get()
+                    && id == event.pointer_id()
+                {
+                    start.set(None);
+                    let dx = event.client_x() as f32 - x;
+                    if dx.abs() >= 36.0 {
+                        swiped.borrow_mut().push(Action::Cycle(dx > 0.0));
+                    }
+                }
+            });
+        }
         let slots: Vec<(HtmlElement, HtmlElement, HtmlElement)> = Tool::ALL
             .iter()
             .enumerate()
@@ -549,23 +704,54 @@ impl Hud {
                 for child in [&number, &name, &count] {
                     let _ = slot.append_child(child);
                 }
-                on_click(&slot, &actions, Action::Select(*tool));
+                no_gestures(&slot);
+                for part in [&number, &name, &count] {
+                    css(part, &[("pointer-events", "none")]);
+                }
+                let _ = slot.set_attribute("data-tool", &format!("{tool:?}").to_lowercase());
+                on_press(&slot, &actions, Action::Select(*tool));
                 let _ = bar.append_child(&slot);
                 (slot, number, count)
             })
             .collect();
+        // On a touch screen, a Next button at the end of the bar.
+        let next = touch.then(|| {
+            let next = button(document, copy::NEXT_ITEM, false);
+            let _ = next.set_attribute("aria-label", copy::NEXT_ITEM_LABEL);
+            let _ = next.set_attribute("id", "icecream-next");
+            css(
+                &next,
+                &[
+                    ("width", "64px"),
+                    ("height", "76px"),
+                    ("padding", "4px"),
+                    ("margin", "0"),
+                    ("font-size", "15px"),
+                    ("background", "#c9f0ff"),
+                ],
+            );
+            on_press(&next, &actions, Action::Cycle(false));
+            let _ = bar.append_child(&next);
+            next
+        });
         let _ = playing.append_child(&bar);
 
         let touch = touch.then(|| {
+            // A tablet's buttons are bigger: thumbs sit further apart.
+            let s = if tablet { 1.3_f32 } else { 1.0 };
+            let px = |n: f32| format!("{:.0}px", n * s);
             let stick = element(document, "div");
             css(
                 &stick,
                 &[
                     ("position", "absolute"),
-                    ("left", "28px"),
-                    ("bottom", "110px"),
-                    ("width", "120px"),
-                    ("height", "120px"),
+                    (
+                        "left",
+                        &format!("calc({:.0}px + env(safe-area-inset-left))", 28.0 * s),
+                    ),
+                    ("bottom", "calc(120px + env(safe-area-inset-bottom))"),
+                    ("width", &px(120.0)),
+                    ("height", &px(120.0)),
                     ("border-radius", "50%"),
                     ("border", "3px solid rgba(58, 36, 24, 0.6)"),
                     ("background", "rgba(255, 246, 236, 0.35)"),
@@ -576,10 +762,10 @@ impl Hud {
                 &knob,
                 &[
                     ("position", "absolute"),
-                    ("left", "35px"),
-                    ("top", "35px"),
-                    ("width", "50px"),
-                    ("height", "50px"),
+                    ("left", &px(35.0)),
+                    ("top", &px(35.0)),
+                    ("width", &px(50.0)),
+                    ("height", &px(50.0)),
                     ("border-radius", "50%"),
                     ("background", "rgba(255, 143, 177, 0.9)"),
                     ("border", "3px solid #3a2418"),
@@ -587,38 +773,47 @@ impl Hud {
             );
             let _ = stick.append_child(&knob);
             let _ = playing.append_child(&stick);
-            let round = |label: &str, right: &str, bottom: &str, size: &str| {
+            let round = |label: &str, id: &str, right: f32, bottom: f32, size: f32| {
                 let b = button(document, label, false);
+                let _ = b.set_attribute("id", id);
                 css(
                     &b,
                     &[
                         ("position", "absolute"),
-                        ("right", right),
-                        ("bottom", bottom),
-                        ("width", size),
-                        ("height", size),
+                        (
+                            "right",
+                            &format!("calc({:.0}px + env(safe-area-inset-right))", right * s),
+                        ),
+                        (
+                            "bottom",
+                            &format!(
+                                "calc({:.0}px + env(safe-area-inset-bottom))",
+                                16.0 + bottom * s
+                            ),
+                        ),
+                        ("width", &px(size)),
+                        ("height", &px(size)),
                         ("border-radius", "50%"),
                         ("padding", "0"),
                         ("font-size", "15px"),
                         ("margin", "0"),
-                        ("touch-action", "none"),
                     ],
                 );
                 let _ = playing.append_child(&b);
                 b
             };
-            let fire = round(copy::FIRE, "24px", "120px", "84px");
+            let fire = round(copy::FIRE, "icecream-fire", 24.0, 104.0, 84.0);
             css(&fire, &[("background", "#ff8fb1")]);
-            let jump = round(copy::JUMP, "118px", "104px", "64px");
-            let use_button = round(copy::USE, "34px", "216px", "62px");
-            let sprint = round(copy::SPRINT, "120px", "186px", "58px");
-            let view = round(copy::VIEW, "40px", "292px", "50px");
+            let jump = round(copy::JUMP, "icecream-jump", 118.0, 92.0, 64.0);
+            let use_button = round(copy::USE, "icecream-use", 34.0, 200.0, 62.0);
+            let sprint = round(copy::SPRINT, "icecream-sprint", 120.0, 170.0, 62.0);
+            let view = round(copy::VIEW, "icecream-view", 40.0, 276.0, 50.0);
             css(&view, &[("font-size", "13px")]);
             on_hold(&fire, &actions, Hold::Fire);
             on_hold(&jump, &actions, Hold::Jump);
             on_hold(&use_button, &actions, Hold::Use);
-            on_click(&sprint, &actions, Action::SprintToggle);
-            on_click(&view, &actions, Action::ToggleView);
+            on_hold(&sprint, &actions, Hold::Sprint);
+            on_press(&view, &actions, Action::ToggleView);
             Touch {
                 knob,
                 sprint,
@@ -639,6 +834,7 @@ impl Hud {
                 ("pointer-events", "auto"),
             ],
         );
+        no_gestures(&card);
         let panel = element(document, "div");
         css(&panel, &PANEL);
         css(
@@ -681,16 +877,116 @@ impl Hud {
         css(&card_buttons, &[("margin-top", "12px")]);
         let card_links = element(document, "div");
         css(&card_links, &[("margin-top", "8px"), ("font-size", "15px")]);
+        let card_version = element(document, "p");
+        css(
+            &card_version,
+            &[
+                ("margin", "10px 0 0"),
+                ("font-size", "11px"),
+                ("opacity", "0.6"),
+                ("display", "none"),
+            ],
+        );
+        let _ = card_version.set_attribute("id", "icecream-version");
         for child in [
             &card_title,
             &card_note,
             &card_lines,
             &card_buttons,
             &card_links,
+            &card_version,
         ] {
             let _ = panel.append_child(child);
         }
         let _ = card.append_child(&panel);
+
+        // The jumpscare, over everything but the card: a red flash, then
+        // strawberry syrup and melted ice cream splatting the screen. No
+        // blood: it's syrup, with pink scoops in it.
+        let scare_flash = element(document, "div");
+        css(
+            &scare_flash,
+            &[
+                ("position", "absolute"),
+                ("inset", "0"),
+                (
+                    "background",
+                    "radial-gradient(circle at 50% 45%, rgba(255, 40, 70, 0.0) 0 25%, rgba(150, 0, 20, 0.85) 75%, rgba(60, 0, 8, 0.97) 100%)",
+                ),
+                ("opacity", "0"),
+            ],
+        );
+        let _ = scare_flash.set_attribute("id", "icecream-scare");
+        let _ = root.append_child(&scare_flash);
+        let splats = SPLATS
+            .iter()
+            .enumerate()
+            .map(|(i, (left, top, size, _))| {
+                let splat = element(document, "div");
+                let radius = [
+                    "58% 42% 61% 39% / 47% 55% 45% 53%",
+                    "41% 59% 44% 56% / 60% 38% 62% 40%",
+                    "63% 37% 52% 48% / 39% 61% 41% 59%",
+                ][i % 3];
+                css(
+                    &splat,
+                    &[
+                        ("position", "absolute"),
+                        ("left", &format!("{left}%")),
+                        ("top", &format!("{top}%")),
+                        ("width", &format!("{size}vmin")),
+                        ("height", &format!("{size}vmin")),
+                        ("border-radius", radius),
+                        (
+                            "background",
+                            "radial-gradient(circle at 35% 30%, #ff6f8e 0 12%, #e0102f 30%, #a10018 70%, #6d0010 100%)",
+                        ),
+                        ("box-shadow", "inset -6px -8px 0 rgba(60, 0, 8, 0.45), 0 0 0 3px rgba(255, 200, 215, 0.25)"),
+                        ("opacity", "0"),
+                        ("transform", "scale(0.2)"),
+                    ],
+                );
+                // Drips running down from it, and a pink scoop melting in it.
+                for (j, (x, h)) in [(22.0, 70.0), (55.0, 110.0), (78.0, 55.0)].iter().enumerate() {
+                    if (i + j) % 2 == 1 && j != 1 {
+                        continue;
+                    }
+                    let drip = element(document, "div");
+                    css(
+                        &drip,
+                        &[
+                            ("position", "absolute"),
+                            ("left", &format!("{x}%")),
+                            ("top", "70%"),
+                            ("width", "12%"),
+                            ("height", &format!("{h}%")),
+                            ("border-radius", "0 0 50% 50% / 0 0 30% 30%"),
+                            ("background", "linear-gradient(#a10018, #c8102e 80%, #e0102f)"),
+                        ],
+                    );
+                    let _ = splat.append_child(&drip);
+                }
+                if i % 3 == 0 {
+                    let scoop = element(document, "div");
+                    css(
+                        &scoop,
+                        &[
+                            ("position", "absolute"),
+                            ("left", "30%"),
+                            ("top", "26%"),
+                            ("width", "34%"),
+                            ("height", "30%"),
+                            ("border-radius", "50% 50% 40% 40%"),
+                            ("background", "#ffc2d4"),
+                            ("box-shadow", "inset -4px -4px 0 #f59ab6"),
+                        ],
+                    );
+                    let _ = splat.append_child(&scoop);
+                }
+                let _ = root.append_child(&splat);
+                splat
+            })
+            .collect();
         let _ = root.append_child(&card);
 
         Self {
@@ -720,8 +1016,86 @@ impl Hud {
             card_lines,
             card_buttons,
             card_links,
+            card_version,
             shown: None,
             toast_until: 0.0,
+            timer,
+            scare_flash,
+            splats,
+            has_next: next.is_some(),
+        }
+    }
+
+    /// The speedrun clock's text, `None` to hide it.
+    pub fn timer(&self, text: Option<&str>) {
+        match text {
+            Some(text) => {
+                show(&self.timer, true);
+                self.timer.set_text_content(Some(text));
+            }
+            None => show(&self.timer, false),
+        }
+    }
+
+    /// The jumpscare at `t` seconds after he lunges (`None`: none).
+    /// Scary: a red flash and syrup splats landing hard as he hits the
+    /// screen. Gentle (`scary` false): pink melt drips in slowly.
+    pub fn scare(&self, t: Option<f32>, scary: bool) {
+        let Some(t) = t else {
+            css(&self.scare_flash, &[("opacity", "0")]);
+            for splat in &self.splats {
+                css(splat, &[("opacity", "0")]);
+            }
+            return;
+        };
+        // He reaches the screen at HIT seconds.
+        const HIT: f32 = 0.42;
+        let flash = if scary {
+            if t < HIT {
+                0.0
+            } else {
+                (0.55 + 0.45 * ((t - HIT) / 0.6).min(1.0)).min(1.0)
+            }
+        } else {
+            0.0
+        };
+        css(&self.scare_flash, &[("opacity", &format!("{flash:.2}"))]);
+        for (splat, (_, _, _, delay)) in self.splats.iter().zip(SPLATS) {
+            let (opacity, scale, hue) = if scary {
+                let local = t - HIT - delay;
+                if local < 0.0 {
+                    (0.0, 0.2, 0.0)
+                } else {
+                    // Lands big and fast, overshoots, settles.
+                    let k = (local / 0.09).min(1.0);
+                    let scale =
+                        0.2 + 1.0 * k + 0.12 * (1.0 - ((local - 0.09) / 0.2).clamp(0.0, 1.0)) * k;
+                    (0.95, scale, 0.0)
+                }
+            } else {
+                // Gentle: melted strawberry ice cream, pale pink, fading in.
+                let local = (t - delay * 4.0).max(0.0);
+                (
+                    (local / 1.0).min(0.7),
+                    0.7 + 0.3 * (local / 1.0).min(1.0),
+                    1.0,
+                )
+            };
+            css(
+                splat,
+                &[
+                    ("opacity", &format!("{opacity:.2}")),
+                    ("transform", &format!("scale({scale:.3})")),
+                    (
+                        "filter",
+                        if hue > 0.0 {
+                            "saturate(0.35) brightness(1.6)"
+                        } else {
+                            "none"
+                        },
+                    ),
+                ],
+            );
         }
     }
 
@@ -788,7 +1162,7 @@ impl Hud {
         room: f32,
         count: impl Fn(Tool) -> String,
     ) {
-        let width = slot_width(room, owned.len());
+        let width = slot_width(room, owned.len() + usize::from(self.has_next));
         let size = format!("{width}px");
         let font = if width < 70 { "10px" } else { "13px" };
         for (tool, (slot, number, count_text)) in Tool::ALL.iter().zip(&self.slots) {
@@ -919,6 +1293,13 @@ impl Hud {
                         css(&self.card_note, &[("display", "inline-block")]);
                     }
                     None => show(&self.card_note, false),
+                }
+                match &card.version {
+                    Some(version) => {
+                        self.card_version.set_text_content(Some(version));
+                        show(&self.card_version, true);
+                    }
+                    None => show(&self.card_version, false),
                 }
                 self.card_lines.set_text_content(None);
                 for line in &card.lines {

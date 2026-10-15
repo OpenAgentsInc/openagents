@@ -5,8 +5,12 @@ minions, the sprinkle staff and free roam, the Backrooms, V for first or
 third person) is in the code behind Game Lab settings (#11626); the browser
 MVP is built (`crates/icecream-rules`,
 `crates/icecream-web`, served at `/games/the-ice-cream-man`, guide at
-`/studios/blue-rush/the-ice-cream-man/how-to-play`, #11344), the way
-[Grow Little Bunny](grow-little-bunny.md) was. A Roblox version follows the
+`/games/the-ice-cream-man/how-to-play`, #11344), the way
+[Grow Little Bunny](grow-little-bunny.md) was. The designer's second round
+(#11667: touch sprint and item switching, no zoom, fresh builds, the
+jumpscare, the speedrun timer, install as a web app) is live; see
+[The second round](#the-second-round). The game has no studio: it is
+published by OpenAgents, Inc., on its own pages beside the game. A Roblox version follows the
 Verse one, so controls, camera and feel copy Roblox from the start. Numbers
 marked *tunable* are starting values for playtests, not measured results.
 
@@ -42,6 +46,7 @@ third person camera. See [The designer's revision](#the-designers-revision).
 - [Audio](#audio)
 - [Multiplayer](#multiplayer)
 - [The designer's revision](#the-designers-revision)
+- [The second round](#the-second-round)
 - [MVP scope](#mvp-scope)
 - [After the MVP](#after-the-mvp)
 - [Roblox version](#roblox-version)
@@ -49,8 +54,10 @@ third person camera. See [The designer's revision](#the-designers-revision).
 ## Pillars
 
 1. **Funny, not frightening.** Chases are tense, but every hit is a joke:
-   sprinkles, fudge, fart clouds, a booger. No gore, no jump scares that
-   punish; kid-safe.
+   sprinkles, fudge, fart clouds, a booger. No gore; kid-safe. The one
+   scare is the designer's request: being scooped ends in a cartoon
+   jumpscare with strawberry syrup, never blood, and a menu setting turns
+   it into a gentle ending.
 2. **Roblox feel.** A blocky third-person avatar, WASD and mouse camera,
    a tool bar at the bottom, jump on Space. Anyone who has played Roblox
    knows how to play in five seconds.
@@ -265,6 +272,56 @@ With the man at his original speeds, the rules' own check measures the
 weapons, minions and free roam at 23 of 24, and with the Backrooms at 24
 of 24 (`game-lab` `sim` tests).
 
+## The second round
+
+The designer played v4 on a phone and at school, and is speedrunning it
+(51, 41, 46, then 26 seconds). Their notes, and what changed (#11667):
+
+- **"The sprint button doesn't work on mobile."** It was a tap-to-toggle
+  button that acted on `click`, and a browser only sends a click when a
+  lone finger lifts without moving. With the other thumb on the stick, as
+  it always is when you want to run, no click came. Sprint is now held
+  (`pointerdown` to `pointerup`, the button capturing that finger), and a
+  menu setting makes it a tap that toggles.
+- **"Half the time it won't let me switch items."** The same cause: the hot
+  bar's slots acted on `click`, so a tap while holding the stick, or one
+  that slid a little, was lost. Every in-game button now acts on
+  `pointerdown`, which comes for every finger. The slots are at least
+  44 px, the gaps between them belong to the bar, a swipe along the bar
+  goes through the tools, a Next button ends the bar, and Q picks the next
+  tool on a keyboard.
+- **"When I click a button twice too fast, it zoomed in."** iOS Safari
+  ignores `user-scalable=no`. Every control, the HUD and the cards set
+  `touch-action` (`none`, or `manipulation` where that's all there is);
+  the start script blocks `dblclick`, Safari's `gesture*` events, pinches
+  and a second `touchend` within 350 ms; and if the page is zoomed anyway,
+  a **Zoom back out** button appears and resets it.
+- **The school PC had an old build.** The page loads the build from
+  `/games/the-ice-cream-man/v/{version}/` (the version is the build's
+  SHA-256, `version.txt`), cached for a year, while the page itself is
+  `no-cache`, so a deploy reaches every player at once. The menu shows the
+  version.
+- **"It should be a bloody, scary jumpscare."** Scooped, the camera drops
+  to your eyes, he lunges at it full-screen with his arms out, the screen
+  shakes and a synthesised sting (clashing notes, a hiss and a thump)
+  plays, and red strawberry syrup with melted scoops splats the screen:
+  scary, cartoon, no blood or wounds. It lasts 1.2 s, then the scooped
+  card. **Jumpscares: on/off** in the menu (on by default) swaps in a
+  gentle ending: the slow camera turn and pink drips.
+- **Speedrunning.** A timer at the top right counts the run to a tenth
+  (**Timer: on/off** in the menu). The escape card shows your time and,
+  kept in the browser, your best, with **New best!** when you beat it.
+  Bot runs and runs with changed rules don't count.
+- **"Make it available on the App Store."** The game installs as a web app
+  now: a manifest, icons, full screen, a theme colour, and a service
+  worker that keeps the current build for offline play, so Add to Home
+  Screen gives a full-screen game with no browser bars and no zoom. The
+  native iPhone and iPad app wraps the same build.
+
+`scripts/icecream-touch-check.mjs` checks all of it in headless Chrome at
+a desktop size and on emulated iPhone and Android phones, with two fingers
+down at once.
+
 ## MVP scope
 
 Built first as a browser game in this repository, the way Grow Little Bunny
@@ -273,7 +330,7 @@ rules crate (`crates/icecream-rules`: layout generation from a seed, the
 Ice Cream Man's state machine, combat, health, keys, win and lose) with
 unit tests, and a wasm web crate (`crates/icecream-web`) that draws it with
 the same engine stack as Grow Little Bunny and is served at
-`/games/the-ice-cream-man`, linked from the Blue Rush Studios homepage.
+`/games/the-ice-cream-man`.
 
 The MVP has:
 
@@ -285,7 +342,7 @@ The MVP has:
 - the hot fudge blaster and the fart launcher, ammo pickups;
 - health, hiding in closets, three keys, the front door escape, the
   scooped loss, the run card;
-- the first-run tutorial and a How to play page on the Blue Rush site;
+- the first-run tutorial and a How to play page beside the game;
 - placeholder low-poly art and sounds that read clearly.
 
 Not in the MVP: the Giant Booger (flag), multiplayer, the flashlight,

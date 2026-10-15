@@ -6,6 +6,7 @@
 #   icecream_web.js        the wasm-bindgen glue (an ES module)
 #   icecream_web_bg.wasm   the module
 #   start.js            the page's one script: imports the glue and starts it
+#   version.txt         the build's version, which the site puts in its address
 #   *.gz                a gzip copy of each, which the site sends when asked
 #
 # The site serves them at /games/the-ice-cream-man/ from the directory it was
@@ -68,6 +69,15 @@ else
 fi
 
 cp crates/icecream-web/start.js "$out/start.js"
+# The build's version: the first 12 hex digits of its files' SHA-256. The
+# site puts it in the build's address, so a new build is never cached as
+# an old one, and the game shows it in its menu.
+if command -v sha256sum >/dev/null 2>&1; then
+  digest="$(cat "$out/icecream_web.js" "$out/icecream_web_bg.wasm" "$out/start.js" | sha256sum)"
+else
+  digest="$(cat "$out/icecream_web.js" "$out/icecream_web_bg.wasm" "$out/start.js" | shasum -a 256)"
+fi
+printf '%s\n' "${digest:0:12}" > "$out/version.txt"
 for file in icecream_web.js icecream_web_bg.wasm start.js; do
   gzip -9 -n -c "$out/$file" > "$out/$file.gz"
 done
