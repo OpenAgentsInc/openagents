@@ -1,9 +1,9 @@
 //! Preparation and calibrated answers shared by both router engines.
 
-use std::{collections::BTreeMap, io::Read, path::Path};
+use std::{collections::BTreeMap, path::Path};
 
+pub use crate::artifacts::{Artifact, file_sha256};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use tokenizers::{Tokenizer, TruncationParams, TruncationStrategy};
 
 use crate::{EngineKind, Error, ModelEngine, Result, Tensor, TensorData, Tensors};
@@ -73,12 +73,6 @@ pub fn load_engine(
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct Artifact {
-    pub sha256: String,
-    pub bytes: u64,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct RouterManifest {
     pub model: String,
     pub repository: String,
@@ -115,40 +109,9 @@ pub fn verify_native_router(root: &Path) -> Result<()> {
     Ok(())
 }
 
-pub fn file_sha256(path: &Path) -> Result<String> {
-    let mut file = std::fs::File::open(path)?;
-    let mut hash = Sha256::new();
-    let mut buf = [0_u8; 65536];
-    loop {
-        let n = file.read(&mut buf)?;
-        if n == 0 {
-            break;
-        }
-        hash.update(&buf[..n]);
-    }
-    Ok(format!("{:x}", hash.finalize()))
-}
-
 impl RouterManifest {
     pub fn verify(&self, root: &Path) -> Result<()> {
-        for (name, expected) in &self.files {
-            let path = Path::new(name);
-            if path.is_absolute()
-                || path
-                    .components()
-                    .any(|x| !matches!(x, std::path::Component::Normal(_)))
-            {
-                return Err(Error(
-                    "Model file path must stay inside its directory".into(),
-                ));
-            }
-            let path = root.join(path);
-            if path.metadata()?.len() != expected.bytes || file_sha256(&path)? != expected.sha256 {
-                return Err(Error(format!(
-                    "Model file does not match its expected checksum: {name}"
-                )));
-            }
-        }
+        crate::artifacts::verify(root, &self.files)?;
         for name in ["category", "difficulty", "stakes", "flags"] {
             let temperature = self.temperatures.get(name).copied().unwrap_or(f32::NAN);
             if !temperature.is_finite() || temperature <= 0.0 {

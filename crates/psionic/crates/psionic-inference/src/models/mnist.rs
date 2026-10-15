@@ -1,0 +1,238 @@
+//! Native CNN execution and preprocessing for cropped handwritten digits.
+
+use super::{ModelFamily, floats, identity, load_engine, pool};
+use crate::{
+    EngineKind, Error, ExecutionIdentity, ModelEngine, Result, Tensor, TensorData, Tensors,
+};
+use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
+use std::{collections::BTreeMap, path::Path};
+
+pub struct MnistEngine {
+    conv1: Vec<f32>,
+    bias1: Vec<f32>,
+    conv2: Vec<f32>,
+    bias2: Vec<f32>,
+    fc: Vec<f32>,
+    bias_fc: Vec<f32>,
+    pool: rayon::ThreadPool,
+    identity: ExecutionIdentity,
+}
+
+impl MnistEngine {
+    pub(super) fn load_verified(root: &Path, threads: usize) -> Result<Self> {
+        let pool = pool(threads)?;
+        let bytes = std::fs::read(root.join("native.safetensors"))?;
+        let tensors =
+            safetensors::SafeTensors::deserialize(&bytes).map_err(|e| Error(e.to_string()))?;
+        Ok(Self {
+            conv1: floats(&tensors, "conv1.weight", &[8, 1, 5, 5])?,
+            bias1: floats(&tensors, "conv1.bias", &[8])?,
+            conv2: floats(&tensors, "conv2.weight", &[16, 8, 5, 5])?,
+            bias2: floats(&tensors, "conv2.bias", &[16])?,
+            fc: floats(&tensors, "fc.weight", &[256, 10])?,
+            bias_fc: floats(&tensors, "fc.bias", &[10])?,
+            pool,
+            identity: identity("psionic-mnist-cpu", threads),
+        })
+    }
+
+    fn forward(&self, inputs: &Tensors) -> Result<Tensors> {
+        if inputs.len() != 1 {
+            return Err(Error("The digit model requires one image".into()));
+        }
+        let input = inputs
+            .get("Input3")
+            .ok_or_else(|| Error("Missing digit image".into()))?;
+        if input.shape != [1, 1, 28, 28] {
+            return Err(Error(
+                "The digit model expects a 28 by 28 grayscale image".into(),
+            ));
+        }
+        let pixels = input.floats()?;
+        let first = conv_relu(pixels, 1, 28, &self.conv1, &self.bias1);
+        let first = max_pool(&first, 8, 28, 2);
+        let second = conv_relu(&first, 8, 14, &self.conv2, &self.bias2);
+        let second = max_pool(&second, 16, 14, 3);
+        let mut logits = vec![0.0; 10];
+        for (i, value) in second.iter().enumerate() {
+            for (j, out) in logits.iter_mut().enumerate() {
+                *out += value * self.fc[i * 10 + j];
+            }
+        }
+        for (out, bias) in logits.iter_mut().zip(&self.bias_fc) {
+            *out += bias;
+        }
+        Ok(BTreeMap::from([(
+            "Plus214_Output_0".into(),
+            Tensor {
+                shape: vec![1, 10],
+                data: TensorData::F32(logits),
+            },
+        )]))
+    }
+}
+
+impl ModelEngine for MnistEngine {
+    fn identity(&self) -> &ExecutionIdentity {
+        &self.identity
+    }
+    fn run(&mut self, inputs: &Tensors) -> Result<Tensors> {
+        self.pool.install(|| self.forward(inputs))
+    }
+}
+
+fn conv_relu(
+    input: &[f32],
+    channels: usize,
+    width: usize,
+    weights: &[f32],
+    bias: &[f32],
+) -> Vec<f32> {
+    let mut result = vec![0.0; bias.len() * width * width];
+    result
+        .par_chunks_mut(width * width)
+        .enumerate()
+        .for_each(|(out_channel, plane)| {
+            for y in 0..width {
+                for x in 0..width {
+                    let mut sum = 0.0_f32;
+                    for channel in 0..channels {
+                        for ky in 0..5 {
+                            for kx in 0..5 {
+                                let iy = y as isize + ky as isize - 2;
+                                let ix = x as isize + kx as isize - 2;
+                                if iy >= 0
+                                    && ix >= 0
+                                    && (iy as usize) < width
+                                    && (ix as usize) < width
+                                {
+                                    sum += input[channel * width * width
+                                        + iy as usize * width
+                                        + ix as usize]
+                                        * weights[((out_channel * channels + channel) * 5 + ky)
+                                            * 5
+                                            + kx];
+                                }
+                            }
+                        }
+                    }
+                    plane[y * width + x] = (sum + bias[out_channel]).max(0.0);
+                }
+            }
+        });
+    result
+}
+
+fn max_pool(input: &[f32], channels: usize, width: usize, stride: usize) -> Vec<f32> {
+    let next = width / stride;
+    let mut output = vec![0.0; channels * next * next];
+    for channel in 0..channels {
+        for y in 0..next {
+            for x in 0..next {
+                let mut max = f32::NEG_INFINITY;
+                for ky in 0..stride {
+                    for kx in 0..stride {
+                        max = max.max(
+                            input[channel * width * width
+                                + (y * stride + ky) * width
+                                + x * stride
+                                + kx],
+                        );
+                    }
+                }
+                output[channel * next * next + y * next + x] = max;
+            }
+        }
+    }
+    output
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct DigitPrediction {
+    pub digit: usize,
+    pub logits: Vec<f32>,
+    pub probabilities: Vec<f32>,
+}
+
+pub struct MnistModel {
+    engine: Box<dyn ModelEngine>,
+}
+
+impl MnistModel {
+    pub fn load(
+        root: &Path,
+        kind: EngineKind,
+        threads: usize,
+        library: Option<&Path>,
+        checksum: Option<&str>,
+    ) -> Result<Self> {
+        Ok(Self {
+            engine: load_engine(ModelFamily::Mnist, kind, root, threads, library, checksum)?,
+        })
+    }
+    pub fn identity(&self) -> &ExecutionIdentity {
+        self.engine.identity()
+    }
+    pub fn prepare(pixels: &[u8]) -> Result<Tensors> {
+        if pixels.len() != 28 * 28 {
+            return Err(Error(
+                "Provide 784 grayscale pixels for the digit model".into(),
+            ));
+        }
+        Ok(BTreeMap::from([(
+            "Input3".into(),
+            Tensor {
+                shape: vec![1, 1, 28, 28],
+                data: TensorData::F32(pixels.iter().map(|v| f32::from(*v) / 255.0).collect()),
+            },
+        )]))
+    }
+    pub fn classify(&mut self, pixels: &[u8]) -> Result<DigitPrediction> {
+        let outputs = self.engine.run(&Self::prepare(pixels)?)?;
+        let tensor = outputs
+            .get("Plus214_Output_0")
+            .ok_or_else(|| Error("Missing digit model output".into()))?;
+        if tensor.shape != [1, 10] {
+            return Err(Error("Unexpected digit output dimensions".into()));
+        }
+        let logits = tensor.floats()?.to_vec();
+        let mut digit = 0;
+        for i in 1..10 {
+            if logits[i] > logits[digit] {
+                digit = i;
+            }
+        }
+        let max = logits[digit];
+        let mut probabilities: Vec<f32> = logits.iter().map(|v| (*v - max).exp()).collect();
+        let sum: f32 = probabilities.iter().sum();
+        for p in &mut probabilities {
+            *p /= sum;
+        }
+        Ok(DigitPrediction {
+            digit,
+            logits,
+            probabilities,
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn pooling_uses_floor_dimensions_and_keeps_channels_separate() {
+        let input: Vec<f32> = (0..32).map(|i| i as f32).collect();
+        assert_eq!(
+            max_pool(&input, 2, 4, 2),
+            vec![5.0, 7.0, 13.0, 15.0, 21.0, 23.0, 29.0, 31.0]
+        );
+        assert_eq!(max_pool(&input[..16], 1, 4, 3), vec![10.0]);
+    }
+    #[test]
+    fn image_preparation_scales_bytes_and_refuses_wrong_sizes() {
+        assert!(MnistModel::prepare(&[0; 10]).is_err());
+        let input = MnistModel::prepare(&[255; 784]).unwrap();
+        assert_eq!(input["Input3"].floats().unwrap(), vec![1.0; 784]);
+    }
+}

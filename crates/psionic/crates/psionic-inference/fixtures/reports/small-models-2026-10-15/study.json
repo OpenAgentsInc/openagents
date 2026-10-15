@@ -1,0 +1,41 @@
+{
+  "schema": "psionic.small-model.study.v1",
+  "date": "2026-10-15",
+  "runs": 16,
+  "timed_inferences": 16000,
+  "hardware": "Intel Core i7-14700K",
+  "affinity": "0,2,4,6 (four distinct P cores)",
+  "protocol": "Two alternating rounds per engine/model/thread count; release; warm filesystem caches; same named input tensors; all 100 reference cases checked before each timing run. One engine/process, concurrency 1.",
+  "caveats": [
+    "Shared machine; other work was not stopped; raw runs record system load.",
+    "Tensor execution excludes tokenization, image preparation, and network transport.",
+    "Embedding corpus includes empty bags, batches, Unicode, and a 6,000-token case; mixed workloads are not a single-document latency promise.",
+    "MNIST cases comprise one publisher fixture, one blank image, and 98 seeded noise inputs. Parity does not establish recognition accuracy or product suitability.",
+    "No general OCR, audio support, mobile qualification, or macOS measurements.",
+    "Model downloads, reference generation, and conversion use Python tooling; inference is Rust with optional ORT."
+  ],
+  "parity": {
+    "potion_native_max_absolute_distance": 0.0,
+    "mnist_native_max_absolute_distance": 1.52587890625e-05,
+    "mnist_argmax_agreement": "100/100",
+    "embedding_nonempty_cosine_minimum_test": 0.99999
+  },
+  "records": "runs.jsonl",
+  "implementation_files_sha256": {
+    "crates/psionic/crates/psionic-inference/src/lib.rs": "9a142df7d6e9aab6241ddbb3fd20e36235e7c300eb79cc32da8a6bf699827d4d",
+    "crates/psionic/crates/psionic-inference/src/modernbert.rs": "e0a0e7c50d07d54e494b62323290be3da0f65a808016e64c93cc4cb21bc2a95e",
+    "crates/psionic/crates/psionic-inference/src/router.rs": "4687e96cf064be963b9550bb38f1357948f32652965941d7c54e4532a584353a",
+    "crates/psionic/crates/psionic-inference/src/http.rs": "60b12f931c51a32117b4495eb770e7d9e9593e011b61b07b8d2b9c033873d996",
+    "crates/psionic/crates/psionic-inference/src/ort_engine.rs": "df8ce7fe079bdb4c8bfb4a696f202c78e468038d52e345eb066f392694f04a14",
+    "crates/psionic/crates/psionic-inference/src/service.rs": "b6bf26875ae80b5921c185b2edcc19a9d254106cc09799e7fa1713229abcbbe3",
+    "crates/psionic/crates/psionic-inference/src/artifacts.rs": "fad7846b7a40041383a4f4bc35b55eaf59bef4017f90d295f492227eb36a2dc3",
+    "crates/psionic/crates/psionic-inference/src/bin/psionic-small-model-bench.rs": "289a47b904baad3a0ad86f5c6f9420d685fc3535007d369f1f74cc3db748b0ec",
+    "crates/psionic/crates/psionic-inference/src/bin/psionic-model-bench.rs": "1f1a8e603fb77ee5754f2c52ecbb94af50a798497f6aeaa112f7d85e1667e09d",
+    "crates/psionic/crates/psionic-inference/src/models/mnist.rs": "eb38e7057cb3374d2d9450e8eae371809a23d26aeaa39eab335896128bc6be53",
+    "crates/psionic/crates/psionic-inference/src/models/potion.rs": "0228b17cd4ea981d3b45183264bcabd0a30ddfcfcd8d30346c1c1b90d87f4fd7",
+    "crates/psionic/crates/psionic-inference/src/models/mod.rs": "ccc269d79dd804666352b67f1087a408eb06254be2bf13f95eb6b47ffb2cefc7",
+    "crates/psionic/crates/psionic-inference/Cargo.toml": "c10483206cae9117aa7222b47a78e4cc97afe2be7ce349f2c89dd7b5b76c0f5b",
+    "scripts/dev/psionic-small-models.py": "3626c7ddf8b6451883dd85d20ac9ea81dde0aec05af11e1c033fe237fcc45b89",
+    "scripts/dev/psionic-small-model-bench.py": "ac9a052c4ebfdea0cdd17881cd68eaa807edcd2a3f0e6689b332afb95b979cc1"
+  }
+}

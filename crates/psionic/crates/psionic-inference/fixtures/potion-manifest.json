@@ -1,0 +1,34 @@
+{
+  "model": "potion-base-2M",
+  "revision": "389b9f64be5aa4ae7a6bc6fe95ef20ce485ae5da",
+  "license": "MIT (model card)",
+  "onnx": "onnx/model.onnx",
+  "files": {
+    "onnx/model.onnx": {
+      "url": "https://huggingface.co/minishlab/potion-base-2M/resolve/389b9f64be5aa4ae7a6bc6fe95ef20ce485ae5da/onnx/model.onnx",
+      "sha256": "92d4a7576de7d39055924b4d9d3979c8c3b2de272010f76f99e2ac14c7b2e5a8",
+      "bytes": 7563349
+    },
+    "model.safetensors": {
+      "url": "https://huggingface.co/minishlab/potion-base-2M/resolve/389b9f64be5aa4ae7a6bc6fe95ef20ce485ae5da/model.safetensors",
+      "sha256": "f95ffde02ad06f63ae38eb9d400038cd5ccaf8411ec3cb650c6025113f96cbb8",
+      "bytes": 7559256
+    },
+    "tokenizer.json": {
+      "url": "https://huggingface.co/minishlab/potion-base-2M/resolve/389b9f64be5aa4ae7a6bc6fe95ef20ce485ae5da/tokenizer.json",
+      "sha256": "e67e803f624fb4d67dea1c730d06e1067e1b14d830e2c2202569e3ef0f70bb50",
+      "bytes": 683666
+    },
+    "config.json": {
+      "url": "https://huggingface.co/minishlab/potion-base-2M/resolve/389b9f64be5aa4ae7a6bc6fe95ef20ce485ae5da/config.json",
+      "sha256": "b2a89173391ca774c2d7323090a993a9a1553faa5b40eb37bb7cec6685fbea47",
+      "bytes": 200
+    },
+    "README.md": {
+      "url": "https://huggingface.co/minishlab/potion-base-2M/resolve/389b9f64be5aa4ae7a6bc6fe95ef20ce485ae5da/README.md",
+      "sha256": "38af170acce93b5eb0c4e18659ab0b30581b2f6860f3e12d8ba8b8751e249363",
+      "bytes": 5202
+    }
+  },
+  "native": null
+}

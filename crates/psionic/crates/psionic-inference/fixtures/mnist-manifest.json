@@ -1,0 +1,35 @@
+{
+  "model": "mnist-12",
+  "revision": "c5cae0f1942c8d7727372c7b1f6b485aa39e4421",
+  "license": "MIT (model card); Apache-2.0 (repository LICENSE)",
+  "onnx": "model.onnx",
+  "files": {
+    "model.onnx": {
+      "url": "https://media.githubusercontent.com/media/onnx/models/c5cae0f1942c8d7727372c7b1f6b485aa39e4421/validated/vision/classification/mnist/model/mnist-12.onnx",
+      "sha256": "5c688690f8bacf667d4c2074af5ad0646ca328d7ab03eccf944a65b320171bdd",
+      "bytes": 26143
+    },
+    "README.md": {
+      "url": "https://raw.githubusercontent.com/onnx/models/c5cae0f1942c8d7727372c7b1f6b485aa39e4421/validated/vision/classification/mnist/README.md",
+      "sha256": "6a139e68e87f153c0239b0fbfd8258807fddc59de3ec8f9da96ff2848c5756fc",
+      "bytes": 3702
+    },
+    "LICENSE": {
+      "url": "https://raw.githubusercontent.com/onnx/models/c5cae0f1942c8d7727372c7b1f6b485aa39e4421/LICENSE",
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+      "bytes": 11358
+    },
+    "tests.tar.gz": {
+      "url": "https://media.githubusercontent.com/media/onnx/models/c5cae0f1942c8d7727372c7b1f6b485aa39e4421/validated/vision/classification/mnist/model/mnist-12.tar.gz",
+      "sha256": "a53a59dcaca8804a0f6dfda9a3cf2e082979589391dbde73640b60684f1d24e9",
+      "bytes": 26741
+    }
+  },
+  "native": {
+    "file": "native.safetensors",
+    "sha256": "aff693e737b486936a2aab94128556208fcbf91e33d6a3bf2afdb89ed2e2ad9c",
+    "bytes": 24408,
+    "converter": "psionic-mnist-v1",
+    "converter_sha256": "3626c7ddf8b6451883dd85d20ac9ea81dde0aec05af11e1c033fe237fcc45b89"
+  }
+}

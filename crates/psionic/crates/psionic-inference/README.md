@@ -134,3 +134,53 @@ direct Rust calls for both engines. `scripts/dev/psionic-http-bench.py`
 benchmarks the existing server on ephemeral ports and stops every server
 it starts. Record the server build profile; a development build is not
 the release CPU baseline.
+
+
+## Embeddings and handwritten digits
+
+The same engine interface supports two additional pinned models:
+
+- `models::PotionModel` uses MIT-licensed `minishlab/potion-base-2M` for
+  64-dimensional text embeddings and cosine ranking of local snippets or
+  notes. `encode()` and `rank()` share one tokenizer across engines. It is
+  a static WordPiece embedding model; evaluate retrieval quality on your
+  corpus before using it to select information for an answer.
+- `models::MnistModel` classifies cropped 28 × 28 grayscale handwritten
+  digits. `classify()` accepts 784 bytes, scales them to [0, 1], and
+  returns the digit, raw logits, and probabilities. Use white foreground
+  on a black background. This supports a constrained handwritten-number
+  input; it does not detect text, crop images, or provide general OCR.
+
+Both APIs load with `EngineKind::Native` or `EngineKind::Ort`. Native
+Potion implements mean embedding bags and L2 normalization; native MNIST
+implements two padded convolution/ReLU/pooling stages and a linear head.
+The manifests pin original sources, license documents, tokenizer, and
+native weights. MNIST's model card declares MIT; the source repository
+also supplies an Apache-2.0 license. Preserve both source documents when
+redistributing it. No model weights are committed.
+
+```sh
+python3 scripts/dev/psionic-small-models.py download potion /path/to/models/potion
+python3 scripts/dev/psionic-small-models.py download mnist /path/to/models/mnist
+python3 scripts/dev/psionic-small-models.py prepare mnist /path/to/models/mnist
+PSIONIC_SMALL_MODELS_DIR=/path/to/models \
+PSIONIC_ORT_LIBRARY=/path/to/libonnxruntime.so.1.28.0 \
+  cargo test --manifest-path crates/psionic/Cargo.toml -p psionic-inference \
+  --features ort --test small_models -- --ignored --nocapture
+```
+
+Use the same pinned Python dependencies as the router converter. The
+`fixtures` action regenerates 100 independent ORT cases per family.
+Embedding parity requires maximum element error below 1e-5, cosine above
+0.99999 for nonempty vectors, and exact zero vectors for empty bags.
+MNIST requires identical argmax and maximum logit error below 1e-3.
+The vision fixtures include the publisher's input/output pair, a blank
+image, and 98 seeded noise inputs; they check execution, not accuracy.
+
+Build `psionic-small-model-bench` with `--release --features ort` and run
+`scripts/dev/psionic-small-model-bench.py --help` for the alternating
+CPU comparison. It checks every reference case before timing and keeps
+the model loaded during memory measurement. The
+[retained comparison](fixtures/reports/small-models-2026-10-15/study.json)
+contains 16,000 timed tensor calls. The new APIs run in process; the
+existing server's embedding endpoint still uses its existing model.

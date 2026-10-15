@@ -4,8 +4,10 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+pub mod artifacts;
 #[cfg(feature = "http")]
 pub mod http;
+pub mod models;
 pub mod modernbert;
 #[cfg(feature = "ort")]
 pub mod ort_engine;

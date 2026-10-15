@@ -7,7 +7,8 @@ available after the comparison, and reuse the ORT integration for other
 models. The shared contract and fixtures (#11700), optional ORT CPU
 execution (#11701), native ModernBERT CPU execution (#11702), CPU
 benchmarks (#11703), and shared in-process/HTTP serving (#11704) are
-implemented. Other model families and accelerators remain planned.
+implemented. Embeddings and digit vision (#11705) also have both engines;
+accelerators remain planned.
 
 ## Scope and current evidence
 
@@ -39,8 +40,7 @@ contract. Do not duplicate tokenization or probability processing per
 engine.
 
 Expose an explicit engine choice, `ort` or `native`, independently of the
-device or ORT execution provider. These are proposed values, not existing
-CLI flags. An unavailable explicit choice fails; it never silently
+device or ORT execution provider. The router server and benchmark expose these choices. An unavailable explicit choice fails; it never silently
 selects the other engine. Identify the actual engine, provider, device,
 precision, and any CPU graph fallback in benchmark results. Native is an
 execution engine here, not another ORT provider.
@@ -210,6 +210,33 @@ optimization level 1, with four model threads and warm caches. They are
 not the release CPU baseline, so their difference is not a measurement of
 transport overhead. The raw records include the server checksum, build
 profile, command, and engine identity.
+
+## Other model results (2026-10-15, #11705)
+
+`psionic-inference::models` now includes `PotionModel` for local snippet
+and note search, and `MnistModel` for cropped handwritten-digit input.
+Both share preprocessing and output handling across native and ORT.
+The manifests pin `minishlab/potion-base-2M` and ONNX Model Zoo's
+`mnist-12`, including source revisions, hashes, and license documents.
+Weights stay outside Git. These are in-process APIs; the existing HTTP
+embedding endpoint is unchanged.
+
+The [retained study](../../../crates/psionic/crates/psionic-inference/fixtures/reports/small-models-2026-10-15/study.json)
+contains 16 alternating release runs, each with 1,000 timed tensor calls,
+on the same Linux CPU and affinity as the router. Four-thread p50 is
+0.0077 ms for ORT versus 0.0038 ms for native embeddings, and 0.0156 ms
+versus 0.1107 ms for the digit CNN. Single-thread embeddings are faster
+with native at 0.0024 ms. These small calls exclude preprocessing and
+network transport; the embedding corpus mixes batches and long inputs.
+The result favors keeping both engines.
+
+Each engine passes 100 independent reference cases per model. Native
+embeddings match exactly; native MNIST's maximum logit error is 0.0000153
+with identical argmax on all cases. The vision corpus includes one
+publisher fixture, one blank image, and seeded noise. It establishes
+execution parity, not recognition accuracy. Retrieval quality, product
+image quality, audio models, and device qualification remain separate
+work.
 
 ## References
 
