@@ -91,9 +91,13 @@ pub(crate) struct Screen {
 /// GET address must belong to a screen (see the route test).
 #[cfg_attr(not(test), allow(dead_code))]
 pub(crate) const NOT_SCREENS: &[(&str, &str)] = &[
-    ("/landing", "the homepage in progress, not linked yet"),
+    ("/landing", "its old address, which goes to /"),
     ("/landing/*", "the landing page's stylesheet and pictures"),
     ("/contact", "the contact form, a public page"),
+    (
+        "/new",
+        "a new chat: the homepage's chat screen, for visitors who see the landing page at /",
+    ),
     ("/static/*", "files"),
     ("/games/snap-station/shares", "shared Snap Station builds"),
     (

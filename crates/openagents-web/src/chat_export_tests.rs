@@ -174,7 +174,7 @@ async fn with_chat(site: &Router, host: &str) -> (String, String, String) {
         }
         request.body(Body::empty()).unwrap()
     };
-    let (_, headers, home) = call(site, get("/", None)).await;
+    let (_, headers, home) = call(site, get("/new", None)).await;
     let home = String::from_utf8(home).unwrap();
     let cookie = headers[header::SET_COOKIE]
         .to_str()

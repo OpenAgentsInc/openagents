@@ -22,7 +22,9 @@ use crate::App;
 use crate::ui_page::UiPage;
 
 pub(crate) fn routes() -> Router<App> {
-    Router::new().route("/", get(home))
+    Router::new()
+        .route("/", get(home))
+        .route(NEW, get(new_chat))
 }
 
 /// The new chat's "learn about" cards: the one shared list
@@ -59,6 +61,30 @@ struct Home {
     project: Option<String>,
 }
 
+/// A new chat for anyone, signed in or not: the homepage's chat when the
+/// homepage shows the landing page instead.
+pub(crate) const NEW: &str = "/new";
+
+/// Whether `/` shows the landing page (`super::landing`): to a visitor who
+/// isn't signed in. A signed-in person's `/` is their new chat, as before;
+/// a project's "New chat" link (`?project=`) always opens the chat.
+fn shows_landing(account: &crate::account::Account, project: Option<&str>) -> bool {
+    project.is_none()
+        && matches!(
+            account,
+            crate::account::Account::SignedOut | crate::account::Account::Unknown
+        )
+}
+
+async fn new_chat(
+    State(app): State<App>,
+    headers: HeaderMap,
+    query: Result<Query<Home>, axum::extract::rejection::QueryRejection>,
+) -> Response {
+    let query = query.map(|q| q.0).unwrap_or_default();
+    page(&app, &headers, query.project.as_deref(), None).await
+}
+
 /// The composer docks at the bottom as on a chat page, with the starter
 /// questions over it; the cards fill the middle; the left panel lists the
 /// visitor's recent chats. A signed-in person picks a project, a branch,
@@ -69,6 +95,9 @@ async fn home(
     query: Result<Query<Home>, axum::extract::rejection::QueryRejection>,
 ) -> Response {
     let query = query.map(|q| q.0).unwrap_or_default();
+    if shows_landing(&crate::account::current(), query.project.as_deref()) {
+        return super::landing::respond(&headers);
+    }
     page(&app, &headers, query.project.as_deref(), None).await
 }
 

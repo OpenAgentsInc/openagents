@@ -824,7 +824,11 @@ mod tests {
         assert!(html.contains(
             "<a href=\"https://github.com/OpenAgentsInc/openagents\" rel=\"noopener\">GitHub</a>"
         ));
-        assert!(html.contains("<a href=\"https://x.com/OpenAgentsInc\" rel=\"noopener\">X (Twitter)</a>"));
+        assert!(
+            html.contains(
+                "<a href=\"https://x.com/OpenAgentsInc\" rel=\"noopener\">X (Twitter)</a>"
+            )
+        );
         assert!(html.contains(COPYRIGHT));
     }
 

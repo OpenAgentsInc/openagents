@@ -833,7 +833,7 @@ async fn pick(browser: &mut Browser, world: &World, repository: &str) -> Answer 
 async fn the_composer_reads_github_as_the_person_and_keeps_branch_lists() {
     let world = world().await;
     let mut visitor = Browser::default();
-    visitor.get(&world, "/").await;
+    visitor.get(&world, "/new").await;
     let picked = pick(&mut visitor, &world, "octo-local/hello-world").await;
     assert!(
         picked.body.contains("Selection updated."),

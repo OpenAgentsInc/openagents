@@ -49,7 +49,7 @@ async fn the_row_offers_only_what_works_and_sending_uses_each_pick() {
 
     // Signed out: the plain composer.
     let mut visitor = Browser::default();
-    let home = visitor.get(&world, "/").await;
+    let home = visitor.get(&world, "/new").await;
     assert_eq!(home.status, StatusCode::OK);
     assert!(home.body.contains(r#"id="chat-form""#));
     assert!(!home.body.contains("composer-row"), "{}", home.body);

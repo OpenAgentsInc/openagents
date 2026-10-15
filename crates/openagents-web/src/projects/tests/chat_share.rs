@@ -415,7 +415,7 @@ async fn signed_out_chats_and_only_you_projects_are_never_shared() {
     let world = world().await;
     // A chat kept by a signed-out browser has no Share button.
     let mut visitor = Browser::default();
-    let home = visitor.get(&world, "/").await;
+    let home = visitor.get(&world, "/new").await;
     let browser_owner = visitor
         .0
         .get("oa_visitor")

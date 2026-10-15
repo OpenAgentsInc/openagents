@@ -1,5 +1,7 @@
-//! `/landing`: the homepage we're building to replace `/` when it's ready.
-//! Not linked from anywhere yet.
+//! The homepage for visitors who aren't signed in: `/` shows this page
+//! (`super::home`); a signed-in person's `/` is their new chat, and anyone
+//! can start a chat at `/new`. `/landing`, its address while it was built,
+//! goes to `/`.
 //!
 //! Round one of the UI system plan
 //! (docs/ui/2026-10-15-shadcn-converter-and-ui-system-plan.md): the page
@@ -33,6 +35,8 @@ const RESEARCH: &str =
 const HOW: &str = "/docs/coder-how-it-works";
 const GITHUB: &str = "https://github.com/OpenAgentsInc/openagents";
 const X: &str = "https://x.com/OpenAgentsInc";
+const DESCRIPTION: &str =
+    "Coder sits in front of every coding agent you use, and sends each step to the model it needs.";
 
 /// The one screenshot: an example of what people make with OpenAgents.
 const CAD_SHOT: (&str, &[u8]) = (
@@ -50,14 +54,17 @@ const AGENTS: [&str; 6] = [
     "Cursor",
 ];
 
+/// The page as `/` answers a visitor who isn't signed in.
+pub(crate) fn respond(headers: &HeaderMap) -> axum::response::Response {
+    Html(page(crate::theme::from_headers(headers)).into_string()).into_response()
+}
+
 pub(crate) fn routes() -> Router<App> {
     let (path, bytes) = CAD_SHOT;
     Router::new()
         .route(
             "/landing",
-            get(|headers: HeaderMap| async move {
-                Html(page(crate::theme::from_headers(&headers)).into_string())
-            }),
+            get(|| async { axum::response::Redirect::permanent("/") }),
         )
         .route(
             CSS_PATH,
@@ -97,6 +104,7 @@ fn navbar() -> Markup {
                 a href="/docs" { "Docs" }
                 a href="#faq" { "FAQ" }
             }
+            a.navbar-login href=(super::home::NEW) { "Try it in your browser" }
             a.navbar-login href=(crate::auth::login_href("/", false)) { "Log in" }
             (button("Download Coder", "/download", "3d"))
         }
@@ -421,6 +429,7 @@ fn footer() -> Markup {
                 div { h3 { "Product" } a href="/download" { "Download" } a href="/pricing" { "Pricing" } a href="/efficiency" { "Efficiency" } }
                 div { h3 { "Resources" } a href="/docs" { "Docs" } a href=(RESEARCH) { "Research" } a href=(GITHUB) { "GitHub" } a href=(X) { "X (Twitter)" } }
                 div { h3 { "Legal" } a href="/privacy" { "Privacy" } a href="/terms" { "Terms" } }
+                div { h3 { "Contact" } a href="/contact" { "Contact us" } a href=(format!("mailto:{}", crate::agent_ready::CONTACT)) { "Email" } }
             }
         }
     }
@@ -437,11 +446,19 @@ pub(crate) fn page(theme: Option<openagents_ui::shell::Theme>) -> Markup {
                 meta name="viewport" content="width=device-width, initial-scale=1";
                 meta name="color-scheme" content="light dark";
                 title { "OpenAgents" }
-                meta name="description" content="Coder sits in front of every coding agent you use, and sends each step to the model it needs.";
                 link rel="icon" type="image/svg+xml" href="/favicon.svg";
+                // The metadata every page carries for people and agents:
+                // previews, llms.txt, the Markdown twin, the catalog, and
+                // our contact (`crate::agent_ready::head`).
+                (maud::PreEscaped(crate::agent_ready::head(
+                    "OpenAgents",
+                    Some(DESCRIPTION),
+                    Some("/"),
+                )))
                 (maud::PreEscaped(crate::theme::style_tag()))
                 // The design kit's script, for the install lines' Copy buttons.
                 (maud::PreEscaped(crate::theme::script_tags()))
+                (maud::PreEscaped(crate::agent_ready::webmcp_tag()))
                 link rel="stylesheet" href=(CSS_PATH);
             }
             body.landing {
@@ -530,7 +547,15 @@ mod tests {
         // Scripts load from the site's own files only (the Copy buttons).
         assert!(!page.contains("style="));
         assert!(!page.contains("<script>"));
-        assert!(page.matches("<script").count() == page.matches("<script src=\"/static/").count());
+        // Scripts load from the site's own files; the one inline block is
+        // the structured data every page carries, which runs nothing.
+        assert_eq!(
+            page.matches("<script").count(),
+            page.matches("<script src=\"/static/").count()
+                + page
+                    .matches("<script type=\"application/ld+json\">")
+                    .count()
+        );
         assert!(page.contains("data-oa-copy") || page.contains("Copy"));
         crate::copy_guard::assert_plain("/landing", &page);
         // The site's Coder Light / Coder Noir stylesheet, and the chosen

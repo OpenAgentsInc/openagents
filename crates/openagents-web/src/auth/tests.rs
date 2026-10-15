@@ -234,7 +234,7 @@ fn accounts(world: &World) -> tenancy::Store {
 async fn signed_out_header_offers_log_in_and_sign_up_and_login_offers_github() {
     let world = world(true).await;
     let mut browser = Browser::default();
-    let home = browser.get(&world, "/").await;
+    let home = browser.get(&world, "/new").await;
     assert_eq!(home.status, StatusCode::OK);
     assert!(home.body.contains(">Log in<") && home.body.contains("href=\"/signup\""));
     assert!(home.body.contains("href=\"/login\""));

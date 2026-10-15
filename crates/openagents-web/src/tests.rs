@@ -80,7 +80,7 @@ async fn get(router: Router, uri: &str) -> (StatusCode, String) {
 /// script) don't apply. Its own test below holds it to the same policy
 /// rules: no inline script or style, scripts from this site only.
 const PAGES: [&str; 60] = [
-    "/",
+    "/new",
     "/pricing",
     "/live",
     "/promises",
@@ -237,11 +237,11 @@ async fn every_public_page_answers_in_development() {
         // only where a Robot Lab is set up, which this test's server isn't.)
         // The download page also loads the shell's scripts (the design kit's
         // among them, for the install commands' Copy buttons).
-        let script = uri == "/" || uri == "/live" || uri == "/download";
+        let script = uri == "/new" || uri == "/live" || uri == "/download";
         assert_eq!(
             scripts(&lower),
             match uri {
-                "/" => 12,
+                "/new" => 12,
                 "/download" => 4,
                 _ => usize::from(script),
             },
@@ -274,7 +274,7 @@ async fn every_public_page_answers_in_development() {
         // Only the home page shows the legal links (along its bottom).
         assert_eq!(
             body.contains("class=\"oa-home-legal\""),
-            uri == "/",
+            uri == "/new",
             "{uri}: legal links only on home"
         );
         // The UiPage shell's wordmark (UI-12; the legacy header is gone, UI-13).
@@ -734,7 +734,7 @@ async fn the_legal_pages_carry_the_published_text() {
 async fn the_homepage_links_one_download_page_and_starts_a_chat() {
     let root = tempfile::tempdir().unwrap();
     let site = router(config(root.path().into()));
-    let (_, home) = get(site.clone(), "/").await;
+    let (_, home) = get(site.clone(), "/new").await;
     // Download is a pill link in the header's top-right actions (and, at
     // phone width only, a row in the drawer instead).
     let actions = home.find("class=\"oa-main-header-actions\"").unwrap();
@@ -833,7 +833,7 @@ async fn the_homepage_links_one_download_page_and_starts_a_chat() {
 async fn the_homepage_composer_is_the_design_language_component() {
     let root = tempfile::tempdir().unwrap();
     let site = router(config(root.path().into()));
-    let (_, home) = get(site.clone(), "/").await;
+    let (_, home) = get(site.clone(), "/new").await;
     // UI-09: the homepage renders through `UiPage`, styled by `/static/ui.css`
     // alone; the legacy site, Tailwind and chat stylesheets are not loaded.
     assert!(home.contains("<link rel=\"stylesheet\" href=\"/static/ui.css?v="));
@@ -978,7 +978,7 @@ async fn posting_the_homepage_composer_opens_a_chat_page() {
     let mut configured = config(root.path().join("tasks"));
     configured.chat = Arc::new(OfflineChat);
     let site = router(configured);
-    let (_, home_headers, home) = get_with(site.clone(), "/", LOCAL).await;
+    let (_, home_headers, home) = get_with(site.clone(), "/new", LOCAL).await;
     let visitor = home_headers[header::SET_COOKIE]
         .to_str()
         .unwrap()
@@ -1100,7 +1100,7 @@ async fn posting_the_homepage_composer_opens_a_chat_page() {
         "the conversation list"
     );
     assert!(html.contains("id=\"chat-feedback\""));
-    let (_, home) = get(site.clone(), "/").await;
+    let (_, home) = get(site.clone(), "/new").await;
     assert!(home.contains("class=\"oa-home-legal\""));
     assert!(home.contains("href=\"/terms\"") && home.contains("href=\"/privacy\""));
     // The homepage lists the same visitor's chats as plain links.
@@ -1108,7 +1108,7 @@ async fn posting_the_homepage_composer_opens_a_chat_page() {
         .clone()
         .oneshot(
             Request::builder()
-                .uri("/")
+                .uri("/new")
                 .header(header::HOST, LOCAL)
                 .header(header::COOKIE, visitor)
                 .body(Body::empty())

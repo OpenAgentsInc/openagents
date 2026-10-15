@@ -583,8 +583,9 @@ async fn the_homepage_has_one_heading_a_contact_and_links_to_llms_txt() {
     let root = tempfile::tempdir().unwrap();
     let (status, _, html) = fetch(site(root.path()), "/", Some("text/html")).await;
     assert_eq!(status, StatusCode::OK);
+    // A visitor who isn't signed in gets the landing page: one heading.
     assert_eq!(html.matches("<h1").count(), 1, "{html}");
-    assert!(html.contains("<h1 class=\"oa-visually-hidden\">OpenAgents</h1>"));
+    assert!(html.contains("One Coder in front of every coding agent you use"));
     assert!(html.contains("href=\"mailto:chris@openagents.com\""));
     for file in ["/llms.txt", "/llms-full.txt"] {
         assert!(

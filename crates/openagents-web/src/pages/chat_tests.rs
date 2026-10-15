@@ -1102,7 +1102,7 @@ async fn a_move_in_place_leaves_the_sidebar_list_out() {
             (status, vary, String::from_utf8(bytes.to_vec()).unwrap())
         }
     };
-    for uri in ["/".to_owned(), format!("/chat/{CHAT}")] {
+    for uri in ["/new".to_owned(), format!("/chat/{CHAT}")] {
         let (status, vary, full) = get(uri.clone(), None).await;
         assert_eq!(status, StatusCode::OK, "{uri}");
         assert!(vary.contains("X-OA-Part"), "{uri}: {vary}");
@@ -1122,7 +1122,7 @@ async fn a_move_in_place_leaves_the_sidebar_list_out() {
             );
         }
     }
-    let (_, _, home) = get("/".to_owned(), Some("prefetch")).await;
+    let (_, _, home) = get("/new".to_owned(), Some("prefetch")).await;
     assert!(home.contains(r#"name="request_id""#), "{home}");
     // The page shell loads the script that moves in place.
     assert!(home.contains(r#"src="/static/chat-start.js""#));
@@ -2066,7 +2066,7 @@ async fn two_rapid_sends_on_a_chat_take_the_message_once() {
 async fn the_chat_pages_are_boosted_and_send_once() {
     let fixture = Fixture::new();
     fixture.record(None).await;
-    for uri in ["/".to_owned(), format!("/chat/{CHAT}")] {
+    for uri in ["/new".to_owned(), format!("/chat/{CHAT}")] {
         let (status, body) = fixture.request(Method::GET, &uri, OWNER, &[]).await;
         assert_eq!(status, StatusCode::OK, "{uri}");
         assert!(

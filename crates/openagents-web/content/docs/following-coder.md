@@ -23,7 +23,7 @@ and it follows the run from the start. From a shell:
 
 ## Send more while it works
 
-Enter to send, Ctrl+Enter to queue for later (⌘+Enter on the Mac).
+`Enter` to send, `Ctrl+Enter` to queue for later (`⌘+Enter` on the Mac).
 
 - **Send** (or Enter) sends now, even while Coder works: it stops the
   current turn and continues with your message, or, before a turn starts,

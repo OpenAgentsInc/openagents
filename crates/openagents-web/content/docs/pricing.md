@@ -1,7 +1,28 @@
 # Pricing
 
-Chatting with OpenAgents is free, and so is Coder on your own computer.
-See every plan side by side on [Pricing](/pricing).
+**Free** is OpenAgents on your own computer: Coder in front of the agents
+you already use (Claude Code, Codex, OpenCode, Grok Build, Devin CLI,
+Cursor), running on your own models, keys and subscriptions. We never
+charge for those; you pay their providers as you do today. Chatting with
+OpenAgents on the web and your phone is free too, and Coder's `auto` model
+comes with a free daily allowance (below).
+
+**Pro** ($20 a month) is for work that runs on our machines instead of
+yours: cloud environments and cloud agents that keep working with your
+laptop closed, model usage included each month, uploads, advanced
+projects, and CAD Lab.
+
+**Enterprise** is Pro for a company, deployed where you need it
+([below](#enterprise)).
+
+| | Free | Pro |
+| --- | --- | --- |
+| Runs on | Your computer | Your computer and our cloud |
+| Agents and models | Your own, at no charge from us | Your own, plus model usage included |
+| Coder `auto` | Free daily allowance | Free daily allowance, plus usage included |
+| Cloud environments and agents | No | Yes |
+| CAD Lab | No | Yes |
+| Price | $0 | $20 a month |
 
 ## Free daily allowance
 
