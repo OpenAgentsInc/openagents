@@ -650,7 +650,38 @@ async fn attempt(
     let handler = live::handler(gate, &service);
     let workspace = coder::task::workspace::Service::for_agent(host.store(), service.clone());
     let options = options.sdk_mcp_server(live::questions(gate, &service, Some(workspace)));
-    let mut query = match claude_agent_sdk::query_with_permissions(prompt, options, handler).await {
+    let resources = coder::task::resources::Service::for_agent(host.store(), service.clone());
+    let opened = async {
+        let references = resources
+            .input_references()
+            .map_err(|_| "An attached image is missing or unreadable. Add it again.".to_owned())?;
+        if references.is_empty() {
+            claude_agent_sdk::query_with_permissions(prompt, options, handler)
+                .await
+                .map_err(|error| error.to_string())
+        } else {
+            let content = coder_sdk::resources::claude_content(prompt, &references, &resources)?;
+            for reference in &references {
+                let observation = transcript.observations.borrow_mut().next(
+                    None,
+                    coder_sdk::observation::Body::Resource {
+                        reference: Box::new(reference.clone()),
+                    },
+                );
+                transcript.observe(vec![observation]);
+            }
+            let query = claude_agent_sdk::Query::streaming(options, Some(handler))
+                .await
+                .map_err(|error| error.to_string())?;
+            query
+                .send_user_content(content)
+                .await
+                .map_err(|error| error.to_string())?;
+            Ok(query)
+        }
+    }
+    .await;
+    let mut query = match opened {
         Ok(query) => query,
         Err(error) => {
             let _ = service.close();
@@ -1807,6 +1838,42 @@ done
             task.run.as_ref().unwrap().result.as_ref().unwrap().ending,
             "model_finished"
         );
+    }
+
+    #[tokio::test]
+    async fn sdk_images_reach_native_content_blocks_without_entering_observation_text() {
+        use base64::{Engine as _, engine::general_purpose::STANDARD};
+        let bytes = std::sync::Arc::new(
+            include_bytes!("../../../coder-sdk/fixtures/resources/one-pixel.png").to_vec(),
+        );
+        let image = coder::task::media::wire::Upload::new("fixture.png", bytes.clone()).unwrap();
+        let (_root, store, grant) =
+            super::super::tests::fixture_images(MODEL, sdk_route, &[image], "Inspect this image.");
+        let (dir, program) = fake();
+        let task = run_turn(&store, &grant, &program).await;
+        assert_eq!(
+            interaction::pending(&task),
+            Some(interaction::Kind::Approval)
+        );
+        let input = logged(&dir, "stdin")
+            .iter()
+            .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+            .find(|message| message["type"] == "user")
+            .unwrap();
+        let blocks = input["message"]["content"].as_array().unwrap();
+        let image = blocks
+            .iter()
+            .find(|block| block["type"] == "image")
+            .unwrap();
+        assert_eq!(
+            STANDARD
+                .decode(image["source"]["data"].as_str().unwrap())
+                .unwrap(),
+            *bytes
+        );
+        let trace = std::fs::read_to_string(store.join("fixture.1.atif.jsonl")).unwrap();
+        assert!(trace.contains("openagents.coder.resources.v1"));
+        assert!(!trace.contains(&STANDARD.encode(bytes.as_slice())));
     }
 
     #[tokio::test]

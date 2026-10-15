@@ -1333,9 +1333,16 @@ impl Host {
     /// # Errors
     /// An image is missing or its bytes differ.
     pub fn images(&self) -> Result<Vec<(coder_host::access::media::ImageRef, Vec<u8>)>, Error> {
-        self.task
-            .intent
-            .images
+        let mut references = self.task.intent.images.clone();
+        if let Some(input) = self
+            .task
+            .follow_ups
+            .last()
+            .and_then(|follow| follow.input.as_ref())
+        {
+            references.extend(input.resources.iter().map(super::resources::image_ref));
+        }
+        references
             .iter()
             .map(|reference| {
                 super::media::load(&self.owner.dir, &self.task.task_id, reference)

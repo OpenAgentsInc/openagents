@@ -143,6 +143,7 @@ libc = "0.2"
 background = { path = "../background" }
 
 [dev-dependencies]
+coder-sdk = { path = "../coder-sdk" }
 route-contract = { path = "../route-contract" }
 # The machine-talk guard over the copy people see (#11031).
 oa-copy = { path = "../oa-copy" }

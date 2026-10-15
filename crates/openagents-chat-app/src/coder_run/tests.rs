@@ -1306,7 +1306,7 @@ fn stale_coding_choice_preserves_queue_and_new_draft() {
     offer.seal();
     run.configuration.update(Some(offer));
     assert!(run.action(Action::SendQueuedNow(0), "").is_none());
-    assert_eq!(run.queue.front().unwrap(), "queued message");
+    assert_eq!(run.queue.front().unwrap().text, "queued message");
     assert!(run.action(Action::Send, "new draft").is_none());
     assert!(!run.take_consumed_input());
     assert!(

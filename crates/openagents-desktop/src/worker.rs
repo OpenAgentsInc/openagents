@@ -706,6 +706,20 @@ impl CoderLane {
                     why: "Choose the project folder for Coder.".into(),
                 })
             }
+            Request::ContinueInput {
+                task,
+                message,
+                configuration,
+            } => self
+                .local()
+                .answer_input(
+                    &task,
+                    &message.id,
+                    &message.text,
+                    &message.images,
+                    configuration.as_ref(),
+                )
+                .map(|(input, receipt)| Answer::InputAccepted { input, receipt }),
             Request::ContinueConfigured {
                 task,
                 text,
@@ -738,6 +752,13 @@ impl CoderLane {
                     },
                 })
             }
+            Request::ResourceRead {
+                task, reference, ..
+            } => self
+                .local()
+                .resource(&task, &reference)
+                .and_then(|bound| coder_run::resources::decode(&reference, bound.into_bytes()))
+                .map(Answer::Resource),
             Request::ChildRead { task, read, .. } => self
                 .local()
                 .child_transcript(&task, &read)

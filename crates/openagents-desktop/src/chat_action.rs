@@ -23,6 +23,9 @@ pub enum Action {
     Command {
         key: String,
     },
+    Resource {
+        target: openagents_chat_app::coder_run::resources::Target,
+    },
     Child {
         target: openagents_chat_app::coder_run::children::Target,
     },

@@ -38,6 +38,7 @@ pub mod opencode;
 pub mod outcome;
 pub mod plugin_hooks;
 pub mod registry;
+pub mod resources;
 pub mod scripted;
 pub mod search_guard;
 pub mod session;

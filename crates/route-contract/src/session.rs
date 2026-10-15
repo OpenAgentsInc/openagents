@@ -28,6 +28,8 @@ pub struct NativeSupport {
     pub steer: bool,
     pub fork: bool,
     pub images: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub image_followups: bool,
     pub questions: bool,
     pub approvals: bool,
     pub plans: bool,
@@ -170,4 +172,8 @@ mod tests {
         descriptor.switch_to(None);
         assert!(descriptor.resolved.selection.provider.is_empty());
     }
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }

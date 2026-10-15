@@ -39,6 +39,7 @@
 //! so no device grant is involved; see the INVARIANTS row on local runs.
 //! Nothing here reads or prints a credential.
 
+mod inputs;
 mod sessions;
 
 use std::collections::BTreeMap;
@@ -545,6 +546,7 @@ pub(super) fn describe_backend(
             resume: adapter == "claude-sdk",
             questions: adapter == "claude-sdk",
             children: adapter == "claude-sdk",
+            image_followups: adapter == "claude-sdk",
             ..NativeSupport::default()
         },
     )
@@ -3272,6 +3274,307 @@ mod tests {
                 .models
                 .iter()
                 .any(|model| model.adapter == "claude-sdk" && model.available)
+        );
+    }
+
+    #[tokio::test]
+    async fn published_resources_are_owner_scoped_and_never_open_their_display_names() {
+        use super::super::resources::{MediaType, Service};
+        let root = tempfile::tempdir().unwrap();
+        let top = repo(root.path());
+        let local = local(root.path(), only_claude).with_launcher(Box::new(Held));
+        let record = local
+            .start_requested(
+                &top,
+                "Resources",
+                "Inspect",
+                None,
+                &[],
+                Some(Provider::Claude),
+            )
+            .unwrap();
+        let grant = std::fs::read(
+            local
+                .store()
+                .join("local/grants")
+                .join(format!("{}-1.grant.json", record.task)),
+        )
+        .unwrap();
+        let host = adapter::Host::admit(local.store(), &grant).await.unwrap();
+        let scope = host.observations().scope().clone();
+        let pending = host.pending(&scope).unwrap();
+        let service = Service::for_agent(local.store(), pending.clone());
+        let outside = root.path().join("outside.txt");
+        std::fs::write(&outside, "must not read").unwrap();
+        let reference = service
+            .publish(
+                "result",
+                "../../outside.txt",
+                MediaType::Text,
+                b"Safe preview",
+            )
+            .unwrap();
+        assert_eq!(
+            local.resource(&record.task, &reference).unwrap().bytes(),
+            b"Safe preview"
+        );
+        let stored = super::super::resources::directory(local.store(), &record.task)
+            .unwrap()
+            .join(reference.digest.as_str().trim_start_matches("sha256:"));
+        std::fs::remove_file(&stored).unwrap();
+        assert!(local.resource(&record.task, &reference).is_err());
+        assert_eq!(
+            service
+                .publish(
+                    "result",
+                    "../../outside.txt",
+                    MediaType::Text,
+                    b"Safe preview"
+                )
+                .unwrap(),
+            reference
+        );
+        std::fs::write(&stored, b"partial").unwrap();
+        assert!(local.resource(&record.task, &reference).is_err());
+        assert_eq!(
+            service
+                .publish(
+                    "result",
+                    "../../outside.txt",
+                    MediaType::Text,
+                    b"Safe preview"
+                )
+                .unwrap(),
+            reference
+        );
+        assert_eq!(
+            local.resource(&record.task, &reference).unwrap().bytes(),
+            b"Safe preview"
+        );
+        let mut forged = reference.clone();
+        forged.origin = route_contract::resources::Origin::Produced {
+            scope,
+            item: "unpublished".into(),
+        };
+        forged.seal();
+        assert!(local.resource(&record.task, &forged).is_err());
+        // Bytes left before a book update still count toward the disk bound.
+        let orphan = stored.parent().unwrap().join("orphan");
+        super::super::private_open(&orphan, true, true)
+            .unwrap()
+            .set_len((route_contract::resources::MAX_TASK_BYTES + 2 * 1024 * 1024) as u64)
+            .unwrap();
+        assert!(
+            service
+                .publish("over-limit", "extra.txt", MediaType::Text, b"extra")
+                .is_err()
+        );
+        std::fs::remove_file(&orphan).unwrap();
+        let image = service
+            .publish(
+                "picture",
+                "picture.png",
+                MediaType::Png,
+                include_bytes!("../../../coder-sdk/fixtures/resources/one-pixel.png"),
+            )
+            .unwrap();
+        assert_eq!(image.dimensions.unwrap().width, 1);
+        assert!(
+            service
+                .publish("bad", "bad.png", MediaType::Png, b"not an image")
+                .is_err()
+        );
+        let mut bomb =
+            include_bytes!("../../../coder-sdk/fixtures/resources/one-pixel.png").to_vec();
+        bomb[16..20].copy_from_slice(&100_000u32.to_be_bytes());
+        assert!(
+            service
+                .publish("large", "large.png", MediaType::Png, &bomb)
+                .is_err()
+        );
+        pending.close().unwrap();
+        assert!(
+            service
+                .publish("late", "late.txt", MediaType::Text, b"late")
+                .is_err()
+        );
+        assert_eq!(
+            local.resource(&record.task, &reference).unwrap().bytes(),
+            b"Safe preview"
+        );
+    }
+
+    #[tokio::test]
+    async fn image_followup_retries_keep_one_turn_and_the_original_intent() {
+        use std::sync::{
+            Arc,
+            atomic::{AtomicBool, AtomicUsize, Ordering},
+        };
+        struct Launcher {
+            calls: Arc<AtomicUsize>,
+            fail: Arc<AtomicBool>,
+        }
+        impl Launch for Launcher {
+            fn launch(
+                &self,
+                _: &Engine,
+                _: &Path,
+                _: &Path,
+            ) -> Result<autostart::Launched, String> {
+                self.calls.fetch_add(1, Ordering::SeqCst);
+                if self.fail.load(Ordering::SeqCst) {
+                    Err("The fixture owner is unavailable.".into())
+                } else {
+                    Ok(autostart::Launched {
+                        owner_process: std::process::id(),
+                        grant_digest: "held".into(),
+                    })
+                }
+            }
+        }
+        let root = tempfile::tempdir().unwrap();
+        let top = repo(root.path());
+        let calls = Arc::new(AtomicUsize::new(0));
+        let fail = Arc::new(AtomicBool::new(false));
+        let local = local(root.path(), only_claude)
+            .with_identify(|_| Some("fixture-login".into()))
+            .with_launcher(Box::new(Launcher {
+                calls: calls.clone(),
+                fail: fail.clone(),
+            }));
+        let offer = local.project_session_options(&top).unwrap();
+        let model = offer
+            .models
+            .iter()
+            .find(|model| model.adapter == "claude-sdk")
+            .unwrap();
+        let request = route_contract::session::control::Request {
+            schema: route_contract::session::control::SCHEMA.into(),
+            offer: offer.id.clone(),
+            adapter: model.adapter.clone(),
+            checkout: offer.checkout.clone(),
+            target: offer.target.clone(),
+            selection: model.selection.clone(),
+            mode: route_contract::session::control::Mode::New,
+            resume: None,
+        };
+        let record = local
+            .start_configured(&top, "Images", "Inspect the fixture", None, &[], &request)
+            .unwrap();
+        let grant = std::fs::read(
+            local
+                .store()
+                .join("local/grants")
+                .join(format!("{}-1.grant.json", record.task)),
+        )
+        .unwrap();
+        let host = adapter::Host::admit(local.store(), &grant).await.unwrap();
+        let original = Store::open(local.store())
+            .unwrap()
+            .show(&record.task)
+            .unwrap();
+        host.finish("model_finished", true, serde_json::json!({}))
+            .unwrap();
+        let image = super::super::media::wire::Upload::new(
+            "名.png",
+            Arc::new(
+                include_bytes!("../../../coder-sdk/fixtures/resources/one-pixel.png").to_vec(),
+            ),
+        )
+        .unwrap();
+        fail.store(true, Ordering::SeqCst);
+        assert!(
+            local
+                .answer_input(
+                    &record.task,
+                    "message-1",
+                    "Inspect this image",
+                    &[image.clone()],
+                    None
+                )
+                .is_err()
+        );
+        let queued = Store::open(local.store())
+            .unwrap()
+            .show(&record.task)
+            .unwrap();
+        assert_eq!(queued.turn(), 2);
+        assert_eq!(queued.follow_ups.len(), 1);
+        assert_eq!(queued.intent, original.intent);
+        assert_eq!(queued.intent_digest, original.intent_digest);
+        let input = queued.follow_ups[0].input.clone().unwrap();
+        assert!(
+            local
+                .answer_input(
+                    &record.task,
+                    "message-1",
+                    "Changed text",
+                    &[image.clone()],
+                    None
+                )
+                .is_err()
+        );
+        fail.store(false, Ordering::SeqCst);
+        let (accepted, receipt) = local
+            .answer_input(
+                &record.task,
+                "message-1",
+                "Inspect this image",
+                &[image.clone()],
+                None,
+            )
+            .unwrap();
+        assert_eq!(accepted, input);
+        assert!(receipt.valid_for(&accepted));
+        assert_eq!(calls.load(Ordering::SeqCst), 3);
+        let reopened = Local::new(local.store().to_owned())
+            .with_probe(only_claude)
+            .with_controller(std::env::current_exe().unwrap())
+            .with_identify(|_| Some("fixture-login".into()))
+            .with_opencode_model(|| None)
+            .with_launcher(Box::new(Launcher {
+                calls: calls.clone(),
+                fail: fail.clone(),
+            }));
+        let (_, repeated) = reopened
+            .answer_input(
+                &record.task,
+                "message-1",
+                "Inspect this image",
+                &[image.clone()],
+                None,
+            )
+            .unwrap();
+        assert_eq!(repeated, receipt);
+        assert_eq!(calls.load(Ordering::SeqCst), 3);
+        let bytes = local
+            .resource(&record.task, &accepted.resources[0])
+            .unwrap();
+        assert_eq!(bytes.bytes(), image.bytes.as_slice());
+        let mut foreign = accepted.resources[0].clone();
+        foreign.owner.task = "other".into();
+        foreign.seal();
+        assert!(local.resource(&record.task, &foreign).is_err());
+        assert_eq!(
+            Store::open(local.store())
+                .unwrap()
+                .show(&record.task)
+                .unwrap()
+                .follow_ups
+                .len(),
+            1
+        );
+        local.stop(&record.task).unwrap();
+        assert!(
+            local
+                .answer_input(
+                    &record.task,
+                    "message-1",
+                    "Inspect this image",
+                    &[image],
+                    None
+                )
+                .is_err()
         );
     }
 

@@ -68,6 +68,7 @@ pub mod price_book;
 pub mod qualify;
 pub mod recipe;
 pub mod record;
+pub mod resources;
 pub mod route;
 pub mod session;
 pub mod snapshot;

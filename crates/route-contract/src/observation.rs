@@ -93,6 +93,9 @@ pub struct Usage {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Body {
+    Resource {
+        reference: Box<crate::resources::Reference>,
+    },
     Child {
         parent: Option<String>,
         title: String,

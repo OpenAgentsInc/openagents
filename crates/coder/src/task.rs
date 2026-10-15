@@ -86,6 +86,7 @@ pub mod pending;
 pub mod publish;
 pub mod recent;
 pub mod remote;
+pub mod resources;
 pub mod resume;
 pub mod retire;
 pub mod review;
@@ -261,6 +262,10 @@ pub enum Action {
     Continue {
         prompt: String,
     },
+    ContinueInput {
+        prompt: String,
+        input: route_contract::resources::Input,
+    },
 }
 
 /// A command identity is global to this store, not scoped to a task or action.
@@ -342,6 +347,8 @@ pub struct FollowUp {
     /// The task revision the follow-up created.
     pub revision: u64,
     pub prompt: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input: Option<route_contract::resources::Input>,
 }
 
 /// A retained replacement instruction. Earlier instructions and effects remain visible.
@@ -625,7 +632,15 @@ pub fn parse_command(bytes: &[u8]) -> Result<Command, Error> {
                 ));
             }
         }
-        Action::Continue { prompt } => {
+        Action::Continue { prompt } | Action::ContinueInput { prompt, .. } => {
+            if let Action::ContinueInput { input, .. } = &command.action
+                && (!input.valid_for(&command.task_id, prompt)
+                    || input.owner.host != local::LOCAL_HOST)
+            {
+                return Err(Error::InvalidCommand(
+                    "the attached images do not match this message",
+                ));
+            }
             if command.expected_revision.is_none() || !text(prompt, 32 * 1024, true) {
                 return Err(Error::InvalidCommand(
                     "a follow-up requires a revision and a bounded prompt",
@@ -1648,7 +1663,7 @@ fn transition(
                 }
             }
         }
-        Action::Continue { prompt } => {
+        Action::Continue { prompt } | Action::ContinueInput { prompt, .. } => {
             let task = tasks.get_mut(&command.task_id).ok_or(Error::NotFound)?;
             if command.expected_revision != Some(task.revision) {
                 return Err(Error::RevisionMismatch);
@@ -1663,6 +1678,15 @@ fn transition(
             if task.turn() >= MAX_TURNS {
                 return Err(Error::LimitExceeded);
             }
+            if let Action::ContinueInput { input, .. } = &command.action {
+                if task.follow_ups.len() >= MAX_TURNS - 1 {
+                    return Err(Error::LimitExceeded);
+                }
+                let turn = task.turn() + usize::from(task.run.is_some());
+                if input.turn != turn {
+                    return Err(Error::InvalidTransition);
+                }
+            }
             if let Some(run) = task.run.take() {
                 task.earlier.push(run);
             }
@@ -1674,6 +1698,10 @@ fn transition(
             task.follow_ups.push(FollowUp {
                 revision: task.revision,
                 prompt: prompt.clone(),
+                input: match &command.action {
+                    Action::ContinueInput { input, .. } => Some(input.clone()),
+                    _ => None,
+                },
             });
         }
         Action::Cancel { reason } => {

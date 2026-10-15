@@ -78,6 +78,8 @@ pub struct Model {
     /// Explicitly supported overrides; an empty list keeps the configured value.
     pub efforts: Vec<String>,
     pub available: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub image_followups: bool,
     #[serde(default)]
     pub modes: Vec<Mode>,
     pub account: Option<String>,
@@ -317,6 +319,7 @@ mod tests {
                 adapter: "claude-sdk".into(),
                 efforts: vec!["high".into()],
                 available: true,
+                image_followups: true,
                 modes: vec![
                     Mode::Continue,
                     Mode::New,
@@ -432,4 +435,8 @@ mod tests {
         assert!(start.fresh());
         assert!(!start.strict_resume());
     }
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }

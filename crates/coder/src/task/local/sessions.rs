@@ -114,6 +114,7 @@ impl Local {
                 selection:backend.selection,adapter:backend.adapter.clone(),
                 efforts:coder_sdk::session::efforts(&backend.adapter).iter().map(|s|(*s).into()).collect(),
                 available,
+                image_followups:backend.native.image_followups,
                 modes: if task.is_none() {vec![wire::Mode::New]} else if backend.adapter=="claude-sdk" {vec![wire::Mode::Continue,wire::Mode::New,wire::Mode::ContextTransfer]} else {vec![wire::Mode::Continue]},
                 account:if backend.adapter=="claude-sdk" {self.session_account(route.provider)} else {None},
                 reason:if available {None} else if !can_image {Some("Choose Claude Code or Codex for this task's images.".into())}
@@ -179,7 +180,7 @@ impl Local {
         Ok(offer)
     }
 
-    fn native_session(
+    pub(super) fn native_session(
         &self,
         record: &Record,
         current: &super::super::Task,
@@ -444,7 +445,7 @@ fn same_folder(a: &Path, b: &Path) -> bool {
 
 /// The local owner can explicitly choose live approvals for an admitted Claude
 /// model. This adds no provider, model, filesystem right, or automatic fallback.
-fn session_routes(policy: &Policy) -> Vec<Route> {
+pub(super) fn session_routes(policy: &Policy) -> Vec<Route> {
     let mut routes = policy.routes();
     if policy.engine.access == super::super::adapter::Access::Full {
         for mut route in policy

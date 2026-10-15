@@ -27,7 +27,9 @@
 
 pub mod children;
 pub mod configuration;
+pub mod input;
 mod native;
+pub mod resources;
 pub mod workspace;
 
 use crate::attention::Activity;
@@ -74,10 +76,20 @@ pub enum Request {
         task: Option<String>,
         dirs: Vec<String>,
     },
+    ContinueInput {
+        task: String,
+        message: input::Message,
+        configuration: Option<route_contract::session::control::Request>,
+    },
     ContinueConfigured {
         task: String,
         text: String,
         configuration: route_contract::session::control::Request,
+    },
+    ResourceRead {
+        task: String,
+        generation: u64,
+        reference: route_contract::resources::Reference,
     },
     ChildRead {
         generation: u64,
@@ -148,6 +160,7 @@ pub enum Answer {
         why: String,
     },
     Options(route_contract::session::control::Offer),
+    Resource(resources::Content),
     ChildPage(route_contract::children::Page),
     WorkspaceReference(route_contract::workspace::Reference),
     WorkspaceRead(route_contract::workspace::Output),
@@ -161,6 +174,10 @@ pub enum Answer {
     Stopping,
     Responded(route_contract::pending::Receipt),
     Continued,
+    InputAccepted {
+        input: route_contract::resources::Input,
+        receipt: route_contract::resources::Receipt,
+    },
     /// The folder the person chose, or `None` when they cancelled.
     Folder(Option<String>),
     /// What the task changed, at exact revisions.
@@ -194,7 +211,9 @@ pub enum Action {
     Configure(configuration::Target),
     Workspace(workspace::Target),
     Child(children::Target),
+    Resource(resources::Target),
     Retry,
+    EditFailedInput,
     ChooseFolder,
     RemoveQueued(usize),
     SendQueuedNow(usize),
@@ -218,6 +237,7 @@ impl Action {
                 | Self::SendQueuedNow(_)
                 | Self::RemoveQueued(_)
                 | Self::Plan(_)
+                | Self::Resource(_)
         )
     }
 }
@@ -272,9 +292,12 @@ pub struct Run {
     cursor: u64,
     history_incomplete: bool,
     state: State,
-    queue: VecDeque<String>,
+    queue: VecDeque<input::Message>,
     /// A message to send once the stop it asked for ends the turn.
-    after_stop: Option<String>,
+    after_stop: Option<input::Message>,
+    restored_input: Option<input::Message>,
+    image_ids: Vec<String>,
+    delivered_ids: Vec<String>,
     error: Option<String>,
     notice: Option<String>,
     failed: Option<Request>,
@@ -302,6 +325,8 @@ pub struct Run {
     start_configuration: Option<route_contract::session::control::Request>,
     consumed_input: bool,
     configuration_due: bool,
+    resources: resources::Inspector,
+    resource_due: Option<route_contract::resources::Reference>,
     children: children::Inspector,
     child_due: Option<route_contract::children::Read>,
     workspace: workspace::Inspector,
@@ -342,6 +367,7 @@ impl Run {
         let mut run = Self::new(chat, now);
         run.task = Some(task.into());
         run.children = children::Inspector::new(task);
+        run.resources = resources::Inspector::new(task);
         run.project = project;
         run
     }
@@ -369,6 +395,9 @@ impl Run {
             state: State::Running,
             queue: VecDeque::new(),
             after_stop: None,
+            restored_input: None,
+            image_ids: vec![],
+            delivered_ids: vec![],
             error: None,
             notice: None,
             failed: None,
@@ -387,6 +416,8 @@ impl Run {
             start_configuration: None,
             consumed_input: false,
             configuration_due: false,
+            resources: resources::Inspector::default(),
+            resource_due: None,
             children: children::Inspector::default(),
             child_due: None,
             workspace: workspace::Inspector::default(),
@@ -520,7 +551,23 @@ impl Run {
     }
 
     fn dispatch_continuation(&mut self, text: String) -> Option<(u64, Request)> {
-        match self.continuation(text) {
+        self.dispatch_message(text.into())
+    }
+    fn dispatch_message(&mut self, message: input::Message) -> Option<(u64, Request)> {
+        let request = if message.images.is_empty() {
+            self.continuation(message.text)
+        } else if !self.accepts_images() {
+            Err("Choose Claude Code with live approvals to send these images.".into())
+        } else {
+            self.configuration
+                .request()
+                .map(|configuration| Request::ContinueInput {
+                    task: self.task.clone().unwrap_or_default(),
+                    message,
+                    configuration,
+                })
+        };
+        match request {
             Ok(request) => self.request(request),
             Err(error) => {
                 if self.notice.as_ref() != Some(&error) {
@@ -539,6 +586,99 @@ impl Run {
         std::mem::take(&mut self.delivered)
     }
 
+    pub fn resource_open(&self) -> bool {
+        self.resources.open()
+    }
+    pub fn resource_view<I>(&self, intent: impl Fn(resources::Target) -> I) -> Option<Node<I>> {
+        self.resources.preview_view(|_, target| intent(target))
+    }
+    pub fn resource_preview(&self) -> Option<&resources::Preview> {
+        self.resources.preview()
+    }
+    pub fn with_image_ids(mut self, ids: Vec<String>) -> Self {
+        self.image_ids = ids;
+        self
+    }
+    pub fn take_delivered_ids(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.delivered_ids)
+    }
+    pub fn take_restored_input(&mut self) -> Option<input::Message> {
+        self.restored_input.take()
+    }
+    pub fn accepts_images(&self) -> bool {
+        if let Ok(Some(request)) = self.configuration.request() {
+            return self.configuration.offer().is_some_and(|offer| {
+                offer.models.iter().any(|model| {
+                    model.adapter == request.adapter
+                        && model.selection.provider == request.selection.provider
+                        && model.selection.model == request.selection.model
+                        && model.image_followups
+                })
+            });
+        }
+        self.session().is_some_and(|session| {
+            session.resolved.native.image_followups
+                || self.configuration.offer().is_some_and(|offer| {
+                    offer.models.iter().any(|model| {
+                        model.adapter == session.resolved.adapter
+                            && model.selection.provider == session.resolved.selection.provider
+                            && model.selection.model == session.resolved.selection.model
+                            && model.image_followups
+                    })
+                })
+        })
+    }
+    pub fn held_image_sizes(&self) -> Vec<(String, usize)> {
+        let mut entries = BTreeMap::new();
+        let mut add = |message: &input::Message| {
+            for (index, image) in message.images.iter().enumerate() {
+                let id = message
+                    .drafts
+                    .get(index)
+                    .map(|image| image.id.clone())
+                    .unwrap_or_else(|| format!("{}:{index}", message.id));
+                entries.insert(id, image.bytes.len());
+            }
+        };
+        for message in &self.queue {
+            add(message);
+        }
+        drop(add);
+        for (index, image) in self.images.iter().enumerate() {
+            entries.insert(
+                self.image_ids
+                    .get(index)
+                    .cloned()
+                    .unwrap_or_else(|| format!("start:{index}")),
+                image.bytes.len(),
+            );
+        }
+        let mut add = |message: &input::Message| {
+            for (index, image) in message.images.iter().enumerate() {
+                let id = message
+                    .drafts
+                    .get(index)
+                    .map(|image| image.id.clone())
+                    .unwrap_or_else(|| format!("{}:{index}", message.id));
+                entries.insert(id, image.bytes.len());
+            }
+        };
+        if let Some(message) = &self.after_stop {
+            add(message);
+        }
+        for request in self
+            .pending
+            .values()
+            .chain(self.failed.iter())
+            .chain(self.due.iter())
+        {
+            if let Request::ContinueInput { message, .. } = request {
+                add(message);
+            }
+        }
+        entries.into_iter().collect()
+    }
+
     /// What the row button `key` does now, and to what.
     #[must_use]
     pub fn target(&self, key: &str) -> Option<Target> {
@@ -554,7 +694,7 @@ impl Run {
                 .zip(self.asking())
                 .map(|(flow, (seq, ..))| format!("{seq}:{}", flow.page())),
             Action::SendQueuedNow(index) | Action::RemoveQueued(index) => {
-                self.queue.get(*index).cloned()
+                self.queue.get(*index).map(|message| message.id.clone())
             }
             Action::ChooseFolder => match &self.phase {
                 Phase::NeedsProject(why) => Some(why.clone()),
@@ -942,6 +1082,18 @@ impl Run {
             return self.request(due);
         }
         if !self.pending.values().any(|request| !mutation(request))
+            && let Some(reference) = self.resource_due.clone()
+            && let Some(task) = self.task.clone()
+            && let Some(request) = self.request(Request::ResourceRead {
+                task,
+                generation: self.resources.generation(),
+                reference,
+            })
+        {
+            self.resource_due = None;
+            return Some(request);
+        }
+        if !self.pending.values().any(|request| !mutation(request))
             && let Some(read) = self.child_due.clone()
             && let Some(task) = self.task.clone()
             && let Some(request) = self.request(Request::ChildRead {
@@ -973,19 +1125,20 @@ impl Run {
             return None;
         }
         if self.state != State::Running
+            && !matches!(self.failed, Some(Request::ContinueInput { .. }))
             && self.can_continue()
             && (self.state != State::Waiting || self.can_answer())
             && !self.pending.values().any(|p| !mutation(p))
         {
             if let Some(text) = self.after_stop.clone()
-                && let Some(request) = self.dispatch_continuation(text)
+                && let Some(request) = self.dispatch_message(text)
             {
                 self.after_stop = None;
                 return Some(request);
             }
             if self.state == State::Ended
                 && let Some(text) = self.queue.front().cloned()
-                && let Some(request) = self.dispatch_continuation(text)
+                && let Some(request) = self.dispatch_message(text)
             {
                 self.queue.pop_front();
                 self.revision += 1;
@@ -1090,7 +1243,11 @@ impl Run {
     /// When the run next wants a tick.
     #[must_use]
     pub fn next_wake(&self, now: Instant) -> Instant {
-        if self.due.is_some() || self.workspace_due.is_some() || self.child_due.is_some() {
+        if self.due.is_some()
+            || self.workspace_due.is_some()
+            || self.child_due.is_some()
+            || self.resource_due.is_some()
+        {
             return now;
         }
         self.poll.max(now + Duration::from_millis(100))
@@ -1112,6 +1269,15 @@ impl Run {
                 match &request {
                     // The card says why; the result card still names every
                     // file.
+                    Request::ResourceRead {
+                        generation,
+                        reference,
+                        ..
+                    } => {
+                        self.resources.received(*generation, reference, Err(error));
+                        self.revision += 1;
+                        return false;
+                    }
                     Request::ChildRead {
                         generation, read, ..
                     } => {
@@ -1148,6 +1314,13 @@ impl Run {
                 if matches!(request, Request::Start { .. }) {
                     self.phase = Phase::Failed;
                 }
+                if matches!(self.failed, Some(Request::ContinueInput { .. }))
+                    && !matches!(request, Request::ContinueInput { .. })
+                {
+                    self.notice = Some(error);
+                    self.revision += 1;
+                    return false;
+                }
                 self.error = Some(error);
                 self.failed = Some(request);
                 self.revision += 1;
@@ -1165,11 +1338,14 @@ impl Run {
                 },
             ) => {
                 self.children = children::Inspector::new(&task);
+                self.resources = resources::Inspector::new(&task);
+                self.resource_due = None;
                 self.child_due = None;
                 self.task = Some(task.clone());
                 self.project = Some(project.clone());
                 self.bind = Some((task, project));
                 if !self.images.is_empty() {
+                    self.delivered_ids.extend(self.image_ids.clone());
                     self.images.clear();
                     self.delivered = true;
                 }
@@ -1261,6 +1437,7 @@ impl Run {
                         }
                         CoderEvent::Observation { observation } => {
                             changed |= self.children.activity.consume(observation);
+                            changed |= self.resources.consume(observation);
                             if self.observations.is_none()
                                 && matches!(
                                     observation.body,
@@ -1336,7 +1513,9 @@ impl Run {
                     self.state = state;
                     changed = true;
                 }
-                if self.error.take().is_some() {
+                if !matches!(self.failed, Some(Request::ContinueInput { .. }))
+                    && self.error.take().is_some()
+                {
                     changed = true;
                 }
                 if changed {
@@ -1372,6 +1551,46 @@ impl Run {
                 Answer::ChildPage(page),
             ) => {
                 self.children.received(*generation, read, page);
+            }
+            (
+                Request::ContinueInput {
+                    task,
+                    message,
+                    configuration,
+                },
+                Answer::InputAccepted { input, receipt },
+            ) if self.task.as_ref() == Some(task)
+                && message.acknowledged(task, configuration.as_ref(), &input, &receipt) =>
+            {
+                self.phase = Phase::Following;
+                self.workspace.reset();
+                self.workspace_due = None;
+                self.state = State::Running;
+                self.delivered_ids.extend(message.image_ids());
+                for reference in &input.resources {
+                    self.resources.register(reference);
+                }
+                self.error = None;
+                self.failed = None;
+                self.poll = now;
+                self.heard = now;
+                accepted = true;
+            }
+            (Request::ContinueInput { .. }, _) => {
+                self.failed = Some(request.clone());
+                self.error = Some("These images weren't confirmed. Try again.".into());
+                self.revision += 1;
+                return false;
+            }
+            (
+                Request::ResourceRead {
+                    generation,
+                    reference,
+                    ..
+                },
+                Answer::Resource(content),
+            ) => {
+                self.resources.received(*generation, reference, Ok(content));
             }
             (Request::WorkspaceOpen { task }, Answer::WorkspaceReference(reference)) => {
                 if self
@@ -1416,7 +1635,9 @@ impl Run {
             if self.failed.as_ref() == Some(&request) {
                 self.failed = None;
             }
-            if accepted || !matches!(request, Request::Start { .. }) {
+            if (accepted || !matches!(request, Request::Start { .. }))
+                && !matches!(self.failed, Some(Request::ContinueInput { .. }))
+            {
                 self.error = None;
             }
         }
@@ -1426,9 +1647,71 @@ impl Run {
 
     /// Carry out `action` with the composer's `text`.
     pub fn action(&mut self, action: Action, text: &str) -> Option<(u64, Request)> {
+        self.action_with_images(action, text, vec![], vec![])
+    }
+    pub fn action_with_images(
+        &mut self,
+        action: Action,
+        text: &str,
+        images: Vec<crate::attachments::Upload>,
+        drafts: Vec<crate::attachments::Image>,
+    ) -> Option<(u64, Request)> {
         self.consumed_input = false;
+        if matches!(self.failed, Some(Request::ContinueInput { .. }))
+            && matches!(
+                action,
+                Action::Send | Action::Queue | Action::Steer | Action::SendQueuedNow(_)
+            )
+            && !(action == Action::Send && images.is_empty() && self.native.ready())
+        {
+            self.notice = Some("Retry or edit the earlier image message first.".into());
+            self.revision += 1;
+            return None;
+        }
+        let message = match input::Message::with_images(text.trim(), images, drafts) {
+            Ok(message) => message,
+            Err(error) => {
+                self.notice = Some(error);
+                self.revision += 1;
+                return None;
+            }
+        };
+        if !message.images.is_empty()
+            && matches!(action, Action::Send | Action::Queue | Action::Steer)
+        {
+            let error = if message.text.is_empty() {
+                Some("Write a message to send with these images.")
+            } else if (self.native.request().is_some() && action == Action::Send)
+                || self.state == State::Waiting
+            {
+                Some("Answer the current question before sending images.")
+            } else if !self.accepts_images() {
+                Some("Choose Claude Code with live approvals to send these images.")
+            } else {
+                None
+            };
+            if let Some(error) = error {
+                self.notice = Some(error.into());
+                self.revision += 1;
+                return None;
+            }
+        }
         let text = text.trim();
         match action {
+            Action::EditFailedInput => {
+                if self.state != State::Ended || self.busy() {
+                    return None;
+                }
+                if !matches!(self.failed, Some(Request::ContinueInput { .. })) {
+                    return None;
+                }
+                if let Some(Request::ContinueInput { message, .. }) = self.failed.take() {
+                    self.restored_input = Some(message);
+                    self.error = None;
+                    self.revision += 1;
+                }
+                None
+            }
             Action::Retry => {
                 let failed = self.failed.take()?;
                 self.error = None;
@@ -1444,6 +1727,15 @@ impl Run {
                 let task = self.task.clone()?;
                 (self.state == State::Running).then_some(())?;
                 self.request(Request::Stop { task })
+            }
+            Action::Resource(target) => {
+                if let Some(reference) = self.resources.apply(&target) {
+                    self.resource_due = Some(reference);
+                } else if !self.resources.open() {
+                    self.resource_due = None;
+                }
+                self.revision += 1;
+                None
             }
             Action::Child(target) => {
                 if let Some(read) = self.children.apply(&target) {
@@ -1573,7 +1865,7 @@ impl Run {
                     let task = self.task.clone()?;
                     self.steer_choice()?;
                     let request = self.request(Request::Stop { task })?;
-                    self.after_stop = Some(text.into());
+                    self.after_stop = Some(message.clone());
                     self.notice = Some("Coder stops, then continues with your message.".into());
                     self.revision += 1;
                     self.consumed_input = true;
@@ -1589,7 +1881,7 @@ impl Run {
                                 "Coder holds {MAX_QUEUED} messages for its next turn at most."
                             ));
                         } else {
-                            self.queue.push_back(text.into());
+                            self.queue.push_back(message.clone());
                             self.consumed_input = true;
                             self.notice = None;
                         }
@@ -1611,7 +1903,7 @@ impl Run {
                         let step = self.decision.as_mut()?.1.answer_typed(text);
                         self.decided(step)
                     }
-                    Mode::Answer | Mode::Send => self.dispatch_continuation(text.into()),
+                    Mode::Answer | Mode::Send => self.dispatch_message(message.clone()),
                 }
             }
             Action::RemoveQueued(index) => {
@@ -1634,9 +1926,14 @@ impl Run {
                 }
                 let text = self.queue.get(index)?.clone();
                 let request = if self.state == State::Running {
-                    self.action(Action::Steer, &text)
+                    let task = self.task.clone()?;
+                    let request = self.request(Request::Stop { task });
+                    if request.is_some() {
+                        self.after_stop = Some(text.clone());
+                    }
+                    request
                 } else {
-                    self.dispatch_continuation(text)
+                    self.dispatch_message(text)
                 };
                 if request.is_some() {
                     self.queue.remove(index);
@@ -1874,7 +2171,14 @@ impl Run {
                 &[("coder-stop", "Stop Coder", Action::Stop)],
             ));
         }
-        let queued: Vec<String> = self.queue.iter().cloned().collect();
+        let actions = &mut self.actions;
+        if let Some(view) = self.resources.list_view(|key, target| {
+            actions.insert(key.into(), Action::Resource(target));
+            ()
+        }) {
+            rows.push(view);
+        }
+        let queued: Vec<String> = self.queue.iter().map(ToString::to_string).collect();
         for (index, text) in queued.iter().enumerate() {
             rows.push(status(
                 &format!("coder-queued-{index}"),
@@ -1906,6 +2210,14 @@ impl Run {
                     "coder-retry-row",
                     &[("coder-retry", "Retry", Action::Retry)],
                 ));
+                if self.state == State::Ended
+                    && matches!(&self.failed,Some(Request::ContinueInput {message,..}) if !message.drafts.is_empty())
+                {
+                    rows.push(self.buttons(
+                        "coder-edit-input-row",
+                        &[("coder-edit-input", "Edit message", Action::EditFailedInput)],
+                    ));
+                }
             }
         }
         anchored.extend(rows.into_iter().map(|row| (None, row)));
@@ -1979,7 +2291,8 @@ impl Run {
 fn mutation(request: &Request) -> bool {
     !matches!(
         request,
-        Request::ChildRead { .. }
+        Request::ResourceRead { .. }
+            | Request::ChildRead { .. }
             | Request::WorkspaceOpen { .. }
             | Request::WorkspaceRead { .. }
             | Request::Poll { .. }

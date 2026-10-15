@@ -435,22 +435,50 @@ This addresses RUN-14, NAV-11/12, TRN-06, REM-11, and parts of WRK-04/GIT-04.
 
 ### 6. Extend resources, artifacts, and replay as needed
 
-Add a provider-neutral resource reference for prompt images and produced
-artifacts, with ownership, validated type, size, identity/hash, and permitted
-usage. Host storage/upload services own the bytes, path checks, lifetime, and
-remote reads. SDK adapters translate validated references into provider input
-and report produced references; views load media through the host contract.
+Implemented in [#11773](https://github.com/OpenAgentsInc/openagents/issues/11773).
+The [resource contract](../../../crates/route-contract/src/resources.rs) binds
+references to a host, task, origin, digest, type, size, dimensions, and permitted
+uses. [The owner service](../../../crates/coder/src/task/resources.rs) reads only
+known task inputs and published bytes. Names are display text; provider paths,
+URLs, and `output_file` values grant no read access. Publishing requires an
+active admitted attempt. Known output references remain readable after it ends.
 
-This closes a different layer from clipboard/capture UI. It should support
-attachment-bearing follow-ups and queues without forcing images into a text
-prompt or the hook log. Generated images, tool previews, and future interactive
-visuals need explicit artifact types, not an unbounded JSON/blob event.
+[Image follow-ups](../../../crates/coder/src/task/local/inputs.rs) save an input
+identity, configuration, command, and launch operation before continuing the
+task. Retries reuse that identity and revision. The original task intent stays
+unchanged. Claude's SDK receives exact base64 image content blocks through
+[the resource adapter](../../../crates/coder-sdk/src/resources.rs); observations
+carry references instead of image bytes. Only the exercised `claude-sdk` path
+advertises image follow-ups. Older or unsupported capabilities default to false.
 
-Reuse hook `ScriptedSession` for policy-composition tests. Add a separate
-scripted observation/control source for the host facade: text deltas, plans,
-approval waits, cancellation, child updates, native resume, missing media, and
-late events. Existing fake Codex/Claude/ACP tests remain useful adapter tests;
-their presence does not prove a desktop UI flow was exercised.
+The [shared queue](../../../crates/openagents-chat-app/src/coder_run/input.rs)
+keeps photos with each message, including failed and stopped deliveries.
+Acknowledgments remove only the submitted draft images. An unsupported or
+offline owner keeps the message available for retry or editing. Unaccepted
+queues remain in desktop memory; accepted inputs and owner retry operations
+are durable. [Resource previews](../../../crates/openagents-chat-app/src/coder_run/resources.rs)
+use independent view generations, so a stale read cannot replace a reopened
+preview or change the parent conversation.
+
+Each message allows four PNG/JPEG images totaling 16 MiB, with an 8 MiB and
+4096 × 4096 limit per image. Original task images plus the current follow-up
+allow at most eight images and 32 MiB of provider input. Drafts and held messages
+share a 16 MiB desktop budget. Owner input storage is bounded to 128 MiB per
+task; produced resources have a separate 64-reference, 128 MiB bound. Disk
+accounting includes interrupted writes, with 2 MiB reserved for metadata. Image
+decoding allows 64 MiB and creates previews no larger than 512 × 320. Text
+previews retain at most 64 KiB and display bounded pages.
+
+[Conversation playback](../../../crates/coder-sdk/src/scripted/conversation.rs)
+is separate from hook `ScriptedSession`: it emits observations and waits for
+matching controls without granting execution authority. The
+[desktop replay](../../../crates/openagents-desktop/src/sdk_replay_tests.rs)
+exercises text deltas, plans, questions, approvals, child output, missing media,
+queued photos, lost acknowledgments, native-resume mapping, cancellation, and
+late events. Owner tests separately exercise actual storage, permission checks,
+and duplicate-launch prevention; fake Claude tests verify native image blocks.
+Generated-image services, cross-host resource transport, and a full artifact
+editor remain outside this slice.
 
 **First useful result:** the desktop can replay a complete coding-session
 fixture without a provider login and consume the same observation shapes as a
@@ -487,9 +515,10 @@ in `coder-sdk`.
 | 4 · [#11709](https://github.com/OpenAgentsInc/openagents/issues/11709) | Explicit provider/model/reasoning configuration and native-resume request through the task owner. | Session facade/adapters, task configuration, shared composer and desktop picker. | A subsequent turn uses the recorded choices; missing native resume is explicit; no silent account/payer/target switch. |
 | 5 · [#11750](https://github.com/OpenAgentsInc/openagents/issues/11750) | One authorized workspace read/search service plus a `ToolServer` adapter for it. | Host workspace service and SDK tool integration. | A viewer and permitted agent get consistent results for the same authorized checkout; wrong host, denied path, and stale checkout are refused. |
 | 6 · [#11772](https://github.com/OpenAgentsInc/openagents/issues/11772) | Delegation projection with inspectable child transcript. | SDK delegation, host transcript service, shared subagent model, desktop surface host. | Child start/progress/end/failure stays attached to its parent and is readable without granting control over another task. |
-| 7 | Attachment/resource references and complete scripted-session fixture. | SDK input/output adapters, host artifact storage, shared queue/media presentation. | Image-bearing follow-up and queue behavior handles acknowledgment loss, unsupported provider, owner offline, stale loads, and bounded decoding. |
+| 7 · [#11773](https://github.com/OpenAgentsInc/openagents/issues/11773) | Attachment/resource references and complete scripted-session fixture. | SDK input/output adapters, host artifact storage, shared queue/media presentation. | Image-bearing follow-up and queue behavior handles acknowledgment loss, unsupported provider, owner offline, stale loads, and bounded decoding. |
 
-Slices 1–3 give the desktop useful SDK integration without replacing its whole
+All seven slices above are implemented; each issue records its checks and
+remaining provider limits. Slices 1–3 give the desktop useful SDK integration without replacing its whole
 execution engine. File/editor/browser work can proceed alongside them under the
 [parity delivery plan](delivery-plan.md). Choose one exercised provider path
 first, then add adapters under the same contracts; do not claim every provider
@@ -503,7 +532,7 @@ only when a second consumer needs it; inject the app-specific services.
 
 ## Checks and remaining limits
 
-The next implementation work needs focused coverage for:
+The implemented slices include focused coverage for:
 
 - Existing floor/rewrite precedence, required hook-tier refusal, unadmitted
   disclosure, hook timeout, and unchanged hook-set identity on continuation.
@@ -515,8 +544,8 @@ The next implementation work needs focused coverage for:
   versus context transfer, and stop cleanup before reuse.
 - Child authority narrowing, child/parent transcript separation, and resources
   served only by the correct owner.
-- At least one desktop fixture through the actual worker/service/projection
-  path, rather than a test limited to SDK hook replay.
+- Desktop observation/control replay, worker request mapping, owner storage,
+  and fake-provider adapters, beyond SDK hook replay.
 
 Use formatting and tests for changed crates and affected consumers when code
 changes. Provider protocol or native behavior that cannot be established with
@@ -528,4 +557,5 @@ Source relationships were checked with the code graph and then source reads.
 The review confirms available contracts and integration boundaries; it does
 not establish current live provider compatibility, complete SDK coverage of
 every desktop-selected task backend, or performance of the proposed common
-session facade. Those are acceptance work for the implementation slices above.
+session facade. These broader parity and live-provider checks remain separate from the seven
+completed integration slices.

@@ -3204,6 +3204,7 @@ dependencies = [
  "github-actions",
  "gym",
  "ignore",
+ "image",
  "indexmap 2.14.2",
  "inference",
  "jev",
@@ -4000,6 +4001,7 @@ name = "coder-sdk"
 version = "1.0.0-rc.22"
 dependencies = [
  "acp-client",
+ "base64 0.22.1",
  "claude_agent_sdk",
  "coder-delegate",
  "futures",
@@ -11568,6 +11570,7 @@ dependencies = [
  "coder-history",
  "coder-mobile",
  "coder-pty",
+ "coder-sdk",
  "coder-vt",
  "core-foundation 0.9.4",
  "gym-leaderboard",

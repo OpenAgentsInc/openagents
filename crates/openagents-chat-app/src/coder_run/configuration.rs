@@ -554,6 +554,7 @@ pub(crate) mod tests {
                     adapter: "claude-cli".into(),
                     efforts: vec![],
                     available: true,
+                    image_followups: false,
                     modes: vec![wire::Mode::Continue],
                     account: None,
                     reason: None,
@@ -567,6 +568,7 @@ pub(crate) mod tests {
                     adapter: "claude-sdk".into(),
                     efforts: vec!["high".into()],
                     available: true,
+                    image_followups: true,
                     modes: vec![
                         wire::Mode::Continue,
                         wire::Mode::New,

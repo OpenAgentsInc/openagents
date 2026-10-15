@@ -422,11 +422,15 @@ impl Panel {
         };
         match result {
             crate::chat_images::Result::Image(image) => {
-                let result = self.session.images.add(&chat, image);
+                let result = if self.held_image_bytes().saturating_add(image.bytes.len())
+                    > openagents_chat_app::attachments::MAX_DRAFT_BYTES
+                {
+                    Err("Drafts and queued messages can hold 16 MiB of images. Remove an image or queued message first.".into())
+                } else {
+                    self.session.images.add(&chat, image)
+                };
                 if self.session.selected.as_deref() == Some(&chat) {
-                    self.notice = Some(result.err().unwrap_or_else(|| {
-                        "Image added. It goes to Coder when Coder starts.".into()
-                    }));
+                    self.notice = Some(result.err().unwrap_or_else(|| "Image added.".into()));
                 }
             }
             crate::chat_images::Result::Text(text) => {
@@ -889,7 +893,15 @@ impl Panel {
             images,
             Instant::now(),
         )
-        .requesting(engine);
+        .requesting(engine)
+        .with_image_ids(
+            self.session
+                .images
+                .get(chat)
+                .iter()
+                .map(|image| image.id.clone())
+                .collect(),
+        );
         let run = if let Some(choice) = self.coding_choices.get(chat) {
             match choice.request() {
                 Ok(Some(configuration)) => match run.configured(
@@ -1021,8 +1033,9 @@ impl Panel {
         if revision != run.revision && self.session.selected.as_ref() == Some(&chat) {
             self.rows_dirty = true;
         }
-        if run.take_delivered() {
-            self.session.images.clear(&chat);
+        let _ = run.take_delivered();
+        for id in run.take_delivered_ids() {
+            self.session.images.remove(&chat, &id);
             self.rows_dirty = true;
         }
         let submission = self.run_submissions.remove(&(chat.clone(), ticket));
@@ -1036,10 +1049,38 @@ impl Panel {
     }
     fn run_action(&mut self, action: RunAction, view: &ValidatedView<Intent>) -> Option<Request> {
         let chat = self.session.selected.clone()?;
+        if action == RunAction::EditFailedInput
+            && (!self.draft().is_empty() || !self.session.images.get(&chat).is_empty())
+        {
+            self.notice = Some("Clear this draft before editing the earlier message.".into());
+            return None;
+        }
         let composing = matches!(
             action,
             RunAction::Send | RunAction::Queue | RunAction::Steer
         );
+        let attaching = composing
+            && !(action == RunAction::Send
+                && self
+                    .run()
+                    .is_some_and(|run| run.mode() == openagents_chat_app::coder_tab::Mode::Answer));
+        let drafts = if attaching {
+            self.session.images.get(&chat).to_vec()
+        } else {
+            vec![]
+        };
+        let images = if attaching {
+            match self.session.images.uploads(&chat) {
+                Ok(images) => images,
+                Err(error) => {
+                    self.notice = Some(error);
+                    return None;
+                }
+            }
+        } else {
+            vec![]
+        };
+        let image_ids: Vec<_> = drafts.iter().map(|image| image.id.clone()).collect();
         let submission = if composing {
             let field = self.field()?;
             let stamp = field.draft.stamp().ok()?;
@@ -1056,7 +1097,13 @@ impl Panel {
         };
         let run = self.runs.get_mut(&chat)?;
         let revision = run.revision;
-        let requested = run.action(action, submission.as_ref().map_or("", |s| s.text.as_str()));
+        let requested = run.action_with_images(
+            action,
+            submission.as_ref().map_or("", |s| s.text.as_str()),
+            images,
+            drafts,
+        );
+        let restored = run.take_restored_input();
         let changed = revision != run.revision;
         let consumed = run.take_consumed_input();
         if changed {
@@ -1067,6 +1114,7 @@ impl Panel {
                 Some((
                     ticket,
                     coder_run::Request::Continue { .. }
+                    | coder_run::Request::ContinueInput { .. }
                     | coder_run::Request::ContinueConfigured { .. }
                     | coder_run::Request::Respond { .. },
                 )) => {
@@ -1075,6 +1123,9 @@ impl Panel {
                 }
                 // Queued, or held until the stop ends the turn.
                 _ if consumed => {
+                    for id in &image_ids {
+                        self.session.images.remove(&chat, id);
+                    }
                     if let Some(field) = self.fields.get_mut(&chat) {
                         let _ = field.draft.accepted(&submission);
                         field.focused = true;
@@ -1082,6 +1133,25 @@ impl Panel {
                 }
                 _ => {}
             }
+        }
+        if let Some(message) = restored {
+            if let Some(field) = self.fields.get_mut(&chat)
+                && let Ok(stamp) = field.draft.stamp()
+            {
+                let _ = field.draft.apply(
+                    &stamp,
+                    rust_native_desktop::composer::Input::Paste(&message.text),
+                    0,
+                );
+                field.focused = true;
+            }
+            for mut image in message.drafts {
+                image.id = uuid::Uuid::new_v4().simple().to_string();
+                if let Err(error) = self.session.images.add(&chat, image) {
+                    self.notice = Some(error);
+                }
+            }
+            self.rows_dirty = true;
         }
         let (ticket, request) = requested?;
         Some(Request::CoderRun {
@@ -1358,6 +1428,25 @@ impl Panel {
             ticket,
             request,
         })
+    }
+    fn held_image_bytes(&self) -> usize {
+        let mut images: BTreeMap<String, usize> =
+            self.session.images.image_sizes().into_iter().collect();
+        for run in self.runs.values() {
+            images.extend(run.held_image_sizes());
+        }
+        images.values().sum()
+    }
+    fn image_surface(&self, resource: &str) -> Option<(u32, u32, &[u8])> {
+        let id = resource.strip_prefix("image:")?;
+        if let Some(image) = self.images().iter().find(|image| image.id == id) {
+            return Some((image.preview_width, image.preview_height, &image.preview));
+        }
+        let preview = self
+            .run()?
+            .resource_preview()
+            .filter(|image| image.id == id)?;
+        Some((preview.width, preview.height, &preview.pixels))
     }
     pub fn images(&self) -> &[openagents_chat_app::attachments::Image] {
         self.session
@@ -1874,6 +1963,10 @@ impl Panel {
         now: Instant,
     ) -> Option<Request> {
         match &action {
+            Action::Resource { target } => {
+                self.workspace_query.input(TextInput::FocusLost, 0);
+                return self.run_action(RunAction::Resource(target.clone()), view);
+            }
             Action::Child { target } => {
                 return self.run_action(RunAction::Child(target.clone()), view);
             }
@@ -1989,7 +2082,8 @@ impl Panel {
         }
         let id = self.session.selected.clone()?;
         match action {
-            Action::Child { .. }
+            Action::Resource { .. }
+            | Action::Child { .. }
             | Action::Workspace { .. }
             | Action::CodingSettings
             | Action::CodingChoice { .. } => None,
@@ -2172,7 +2266,9 @@ impl Panel {
                 // While Coder works, or asks, the message is Coder's; once
                 // its turn has ended the router reads it, with the run's
                 // result as context (#10094).
-                if self.run().is_some_and(|run| !run.routes_followups()) {
+                if self.run().is_some_and(|run| {
+                    !run.routes_followups() || !self.session.images.get(&id).is_empty()
+                }) {
                     return self.run_action(RunAction::Send, view);
                 }
                 let field = self.field()?;
@@ -3187,18 +3283,7 @@ impl Panel {
                 .as_ref()
                 .and_then(|id| self.fields.get(id))
                 .map(Field::version),
-            resource if resource.starts_with("image:") => self
-                .session
-                .selected
-                .as_ref()
-                .and_then(|id| {
-                    self.session
-                        .images
-                        .get(id)
-                        .iter()
-                        .find(|image| resource == format!("image:{}", image.id))
-                })
-                .map(|_| 1),
+            resource if resource.starts_with("image:") => self.image_surface(resource).map(|_| 1),
             _ => None,
         }
     }
@@ -3241,18 +3326,12 @@ impl Panel {
             )),
             CHANGES => Some((available, self.changes_viewport())),
             COMPOSER => Some((available, composer_height)),
-            resource if resource.starts_with("image:") => self
-                .session
-                .selected
-                .as_ref()
-                .and_then(|id| {
-                    self.session
-                        .images
-                        .get(id)
-                        .iter()
-                        .find(|image| resource == format!("image:{}", image.id))
+            resource if resource.starts_with("image:") => {
+                self.image_surface(resource).map(|(width, height, _)| {
+                    let fit = (available / width as f32).min(1.0);
+                    (width as f32 * fit, height as f32 * fit)
                 })
-                .map(|image| (image.preview_width as f32, image.preview_height as f32)),
+            }
             _ => None,
         }
     }
@@ -3321,21 +3400,18 @@ impl Panel {
                 return true;
             }
         }
-        if let Some(image) = self.session.selected.as_ref().and_then(|id| {
-            self.session
-                .images
-                .get(id)
-                .iter()
-                .find(|image| resource == format!("image:{}", image.id))
-        }) {
+        if let Some((image_width, image_height, pixels)) = self.image_surface(resource) {
             if let Ok(preview) = rust_native_desktop::image::Image::from_rgba(
-                image.preview_width,
-                image.preview_height,
-                image.preview.to_vec(),
+                image_width,
+                image_height,
+                pixels.to_vec(),
             ) {
+                let fit = (rect.w / (image_width as f32 * scale))
+                    .min(rect.h / (image_height as f32 * scale))
+                    .min(1.0);
                 let size = PxRect {
-                    w: image.preview_width as f32 * scale,
-                    h: image.preview_height as f32 * scale,
+                    w: image_width as f32 * scale * fit,
+                    h: image_height as f32 * scale * fit,
                     ..rect
                 };
                 rust_native_desktop::image::paint(frame, &preview, size);
@@ -4505,6 +4581,7 @@ impl Panel {
         if task.is_none()
             && cfg!(unix)
             && let Some(run) = run
+            && !run.resource_open()
         {
             let search = Node {
                 key: "workspace-query".into(),
@@ -4529,11 +4606,19 @@ impl Panel {
             }
         }
         if let Some(run) = run
+            && !run.resource_open()
             && let Some(children) = run.children_view(|target| Intent::Chat {
                 action: Action::Child { target },
             })
         {
             content.push(children);
+        }
+        if let Some(run) = run
+            && let Some(preview) = run.resource_view(|target| Intent::Chat {
+                action: Action::Resource { target },
+            })
+        {
+            content.push(preview);
         }
         content.push(card);
         let mut footer = stack("chat-footer", Axis::Vertical, content);
@@ -5107,6 +5192,7 @@ mod start_setting_tests {
                 adapter: "claude-sdk".into(),
                 efforts: vec!["high".into()],
                 available: true,
+                image_followups: true,
                 modes: vec![wire::Mode::New],
                 account: Some("login".into()),
                 reason: None,
@@ -6363,7 +6449,7 @@ mod live_sdk_tests {
     use serde_json::json;
     use std::time::Duration;
 
-    fn snapshot(generation: u64) -> pending::Snapshot {
+    pub(super) fn snapshot(generation: u64) -> pending::Snapshot {
         let mut request: pending::Request = serde_json::from_value(json!({
             "schema":"openagents.coder.pending.v1", "id":format!("sha256:{}","0".repeat(64)),
             "scope":{"host":"local","task":"task","turn":1,"generation":generation},
@@ -6582,6 +6668,56 @@ mod live_sdk_tests {
     }
 
     #[test]
+    fn a_live_question_answer_preserves_the_parent_drafts_photos() {
+        let now = Instant::now();
+        let mut panel = Panel::new(now);
+        panel.session.select("chat");
+        panel.selected_changed(None);
+        panel
+            .runs
+            .insert("chat".into(), Run::follow("chat", "task", None, now));
+        mount(&mut panel, 1);
+        panel.input(TextInput::Commit("For the next turn"), now);
+        let image = openagents_chat_app::attachments::Image::decode(
+            "parent.png",
+            include_bytes!("../../coder-sdk/fixtures/resources/one-pixel.png").to_vec(),
+        )
+        .unwrap();
+        panel.session.images.add("chat", image.clone()).unwrap();
+        poll(&mut panel, Some(snapshot(1)), now);
+        mount(&mut panel, 2);
+        panel.input(TextInput::Commit("Cover empty input"), now);
+        let view = rust_native::View::new("question-with-photos", 3, panel.footer())
+            .validate()
+            .unwrap();
+        panel.mounted(&view);
+        let Some(Request::CoderRun {
+            ticket,
+            request: coder_run::Request::Respond { reply, .. },
+            ..
+        }) = panel.run_action(RunAction::Send, &view)
+        else {
+            panic!("question reply")
+        };
+        assert!(
+            matches!(&reply.answer,pending::Answer::Questions {answers} if answers[0].text.as_deref()==Some("Cover empty input"))
+        );
+        assert_eq!(panel.session.images.get("chat"), &[image.clone()]);
+        panel.run_outcome(
+            "chat".into(),
+            ticket,
+            Ok(coder_run::Answer::Responded(pending::Receipt {
+                request: reply.request,
+                resolution: pending::Resolution::Answered,
+                duplicate: false,
+            })),
+        );
+        mount(&mut panel, 4);
+        assert_eq!(panel.draft(), "For the next turn");
+        assert_eq!(panel.session.images.get("chat"), &[image]);
+    }
+
+    #[test]
     fn live_questions_keep_separate_drafts_and_restore_the_queued_message() {
         let now = Instant::now();
         let mut panel = Panel::new(now);
@@ -6619,3 +6755,7 @@ mod live_sdk_tests {
         assert_eq!(panel.draft(), "For the next turn");
     }
 }
+
+#[cfg(test)]
+#[path = "sdk_replay_tests.rs"]
+mod sdk_replay_tests;

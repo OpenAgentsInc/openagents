@@ -4,6 +4,8 @@
 //! Every event is native on it: the replay calls the hooks before it
 //! applies each recorded step.
 
+pub mod conversation;
+
 use coder_delegate::session::HookBackend;
 use serde::{Deserialize, Serialize};
 

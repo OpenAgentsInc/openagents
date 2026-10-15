@@ -30,6 +30,16 @@ impl Recorder {
     }
 
     pub fn next(&mut self, mut item: Option<String>, mut body: Body) -> Observation {
+        if let Body::Resource { reference } = &body
+            && (!reference.valid()
+                || reference.owner.host != self.scope.host
+                || reference.owner.task != self.scope.task
+                || matches!(&reference.origin, route_contract::resources::Origin::Produced {scope,..} if scope != &self.scope))
+        {
+            body = Body::Gap {
+                after: Some(self.seq),
+            };
+        }
         match &mut body {
             Body::Child {
                 parent,

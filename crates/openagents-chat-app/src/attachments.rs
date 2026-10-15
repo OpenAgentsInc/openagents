@@ -15,7 +15,7 @@ pub const MAX_DRAFT_BYTES: usize = 16 * 1024 * 1024;
 pub const MAX_IMAGES: usize = 4;
 pub const MAX_DIMENSION: u32 = 4096;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Image {
     pub id: String,
     pub name: String,
@@ -30,6 +30,14 @@ pub struct Image {
 impl Image {
     /// Decode and thumbnail on the input worker, never on the rendering thread.
     pub fn decode(name: &str, bytes: Vec<u8>) -> Result<Self, String> {
+        Self::decode_preview(name, bytes, 96, 60)
+    }
+    pub fn decode_preview(
+        name: &str,
+        bytes: Vec<u8>,
+        preview_width: u32,
+        preview_height: u32,
+    ) -> Result<Self, String> {
         if bytes.len() > MAX_IMAGE_BYTES {
             return Err("Images must be 8 MiB or smaller.".into());
         }
@@ -55,7 +63,10 @@ impl Image {
         let width = decoded.width();
         let height = decoded.height();
         let preview = decoded
-            .thumbnail(width.min(96), height.min(60))
+            .thumbnail(
+                width.min(preview_width.clamp(1, 512)),
+                height.min(preview_height.clamp(1, 320)),
+            )
             .into_rgba8();
         let name: String = name
             .chars()
@@ -127,6 +138,13 @@ impl Drafts {
     /// No conversation's draft holds an image or a binding.
     pub fn is_empty(&self) -> bool {
         self.images.values().all(Vec::is_empty) && self.bound.is_empty()
+    }
+    pub fn image_sizes(&self) -> Vec<(String, usize)> {
+        self.images
+            .values()
+            .flatten()
+            .map(|image| (image.id.clone(), image.bytes.len()))
+            .collect()
     }
     pub fn get(&self, chat: &str) -> &[Image] {
         self.images.get(chat).map_or(&[], Vec::as_slice)
