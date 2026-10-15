@@ -727,6 +727,9 @@ impl SpellWorld {
                 radius,
                 half_length,
             } => DVec3::new(radius * 2., radius * 2., (radius + half_length) * 2.),
+            physics::Shape::Hull { .. } | physics::Shape::Sdf { .. } => {
+                collider.shape.half_extents() * 2.
+            }
         };
         let mut spec = PropSpec::reference(kind);
         spec.dimensions = dimensions;

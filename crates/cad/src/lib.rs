@@ -10,6 +10,8 @@
 //!   feature rebuilds, every solid closes, no undeclared overlaps) and the
 //!   mass properties.
 //! - [`export`]: STEP, 3MF, STL and glTF; [`render`]: PNG views.
+//! - [`collision`]: the physics bake, convex pieces per solid (CoACD,
+//!   offline) and a signed-distance grid.
 //! - [`urdf`]: URDF for Robot Lab (links with the measured mass and
 //!   inertia, the joints with their limits); [`feed`]: the typed
 //!   mass-properties record Lagrange 2's spacecraft document reads.
@@ -19,6 +21,7 @@
 
 pub mod build;
 pub mod clash;
+pub mod collision;
 pub mod doc;
 pub mod drawing;
 pub mod dxf;
@@ -646,6 +649,72 @@ mod tests {
             Some(&python),
         );
         assert!(problems.join(" ").contains("disagree"), "{problems:?}");
+    }
+
+    /// #11657: the collision bake splits the plate (non-convex: four holes)
+    /// into convex pieces and bakes its distance grid, the same bytes each
+    /// time. Skips when this machine has no CoACD (`pip install coacd`).
+    #[test]
+    fn the_collision_bake_is_convex_pieces_and_a_grid_reproducibly() {
+        let options = collision::Options::default();
+        let probe = std::process::Command::new(&options.python)
+            .args(["-c", "import coacd"])
+            .output();
+        if !probe.is_ok_and(|o| o.status.success()) {
+            eprintln!("skipped: no CoACD for {}", options.python);
+            return;
+        }
+        let mut eval = evaluate(&plate()).unwrap();
+        let dir = std::env::temp_dir().join(format!("cad-collision-{}", std::process::id()));
+        let mut hashes = Vec::new();
+        for run in ["a", "b"] {
+            let path = dir.join(format!("plate-{run}.collision.json"));
+            export::write(&mut eval.built, "collision", &path).unwrap();
+            let text = std::fs::read_to_string(&path).unwrap();
+            let report: Value = serde_json::from_str(&text).unwrap();
+            assert_eq!(report["format"], collision::FORMAT);
+            assert_eq!(report["decomposition"]["tool"], "CoACD");
+            assert_eq!(report["decomposition"]["license"], "MIT");
+            assert_eq!(report["decomposition"]["params"]["seed"], 0);
+            let hulls = report["solids"][0]["hulls"].as_array().unwrap();
+            assert!(
+                hulls.len() > 1,
+                "a plate with holes is several convex pieces"
+            );
+            // Every piece builds as an engine hull, and together they cover
+            // the plate: their volumes sum to at least its volume (pieces
+            // bridge the small holes and overlap a little).
+            let volume: f64 = hulls
+                .iter()
+                .map(|h| {
+                    let points: Vec<glam::DVec3> = h
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .map(|p| {
+                            let a: Vec<f64> = serde_json::from_value(p.clone()).unwrap();
+                            glam::DVec3::new(a[0], a[1], a[2])
+                        })
+                        .collect();
+                    physics::ConvexHull::new(&points).unwrap().volume()
+                })
+                .sum();
+            let plate_m3 = eval.report["mass"]["volume_cm3"].as_f64().unwrap() * 1e-6;
+            assert!(
+                volume > 0.95 * plate_m3 && volume < 1.3 * plate_m3,
+                "{volume} vs {plate_m3}"
+            );
+            let sdf = std::fs::read(dir.join(format!("plate-{run}.collision.sdf"))).unwrap();
+            let grid = physics::SdfGrid::from_bytes(&sdf).unwrap();
+            assert_eq!(report["sdf"]["sha256"], grid.hash());
+            // Inside the plate's middle (off the holes) is inside.
+            assert!(grid.sample(glam::DVec3::new(0.0, 0.0, 0.003)).0 < 0.0);
+            hashes.push((text.replace(&format!("plate-{run}"), "plate"), grid.hash()));
+        }
+        assert_eq!(
+            hashes[0], hashes[1],
+            "the same document bakes the same files"
+        );
     }
 
     #[test]

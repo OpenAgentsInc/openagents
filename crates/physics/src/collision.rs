@@ -1,10 +1,13 @@
 //! Collision shapes, filters, and narrow-phase contact generation.
 //!
-//! Shapes are spheres, capsules, and boxes attached to bodies. Every pair
-//! reduces to capsule–capsule, capsule–box, or box–box, since a sphere is a
-//! capsule of zero length. Box–box uses the separating-axis test and clips
-//! the incident face against the reference face, keeping at most four points
-//! (the contact-patch scheme in Genesis `examples/collision/contact_manifold.py`).
+//! Shapes are spheres, capsules, boxes, and convex hulls attached to
+//! bodies. Sphere, capsule, and box pairs reduce to capsule–capsule,
+//! capsule–box, or box–box, since a sphere is a capsule of zero length.
+//! Box–box uses the separating-axis test and clips the incident face
+//! against the reference face, keeping at most four points (the
+//! contact-patch scheme in Genesis `examples/collision/contact_manifold.py`).
+//! Hulls ([`hull`]) meet everything through GJK and EPA ([`gjk`]) with the
+//! same face clipping ([`convex`]).
 //! Contacts are generated up to a margin before touching, so the solver can
 //! stop a fast body at the surface instead of letting it tunnel through.
 
@@ -12,6 +15,14 @@ use glam::{DMat3, DQuat, DVec3};
 use serde::{Deserialize, Serialize};
 
 use crate::world::{BodyId, World};
+
+mod convex;
+pub(crate) mod gjk;
+pub mod hull;
+pub mod sdf;
+
+pub use hull::{ConvexHull, HullError, HullFace, HullRef, MassProperties};
+pub use sdf::{SdfError, SdfGrid, SdfRef};
 
 /// A collision shape in its collider frame.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
@@ -28,9 +39,52 @@ pub enum Shape {
     Cuboid {
         half: DVec3,
     },
+    /// A convex polyhedron, by a handle to its shared, immutable data.
+    Hull {
+        hull: HullRef,
+    },
+    /// Static non-convex geometry as a signed-distance grid ([`sdf`]).
+    /// Only for bodies that never move.
+    Sdf {
+        grid: SdfRef,
+    },
 }
 
 impl Shape {
+    /// A convex hull shape from points; see [`ConvexHull::new`].
+    ///
+    /// # Errors
+    ///
+    /// The points have no volume or are not finite.
+    pub fn hull(points: &[DVec3]) -> Result<Self, HullError> {
+        Ok(Self::Hull {
+            hull: HullRef::new(ConvexHull::new(points)?),
+        })
+    }
+
+    /// Half extents of a box centered on the collider origin, in the
+    /// collider frame, that encloses the shape.
+    #[must_use]
+    pub fn half_extents(&self) -> DVec3 {
+        match *self {
+            Self::Sphere { radius } => DVec3::splat(radius),
+            Self::Capsule {
+                radius,
+                half_length,
+            } => DVec3::new(radius, radius, radius + half_length),
+            Self::Cuboid { half } => half,
+            Self::Hull { hull } => hull
+                .get()
+                .vertices()
+                .iter()
+                .fold(DVec3::ZERO, |m, v| m.max(v.abs())),
+            Self::Sdf { grid } => {
+                let grid = grid.get();
+                grid.origin().abs().max(grid.max().abs())
+            }
+        }
+    }
+
     /// Radius of a sphere about the collider origin that encloses the shape.
     #[must_use]
     pub fn bound(&self) -> f64 {
@@ -41,6 +95,8 @@ impl Shape {
                 half_length,
             } => radius + half_length,
             Self::Cuboid { half } => half.length(),
+            Self::Hull { hull } => hull.radius(),
+            Self::Sdf { grid } => grid.radius(),
         }
     }
 }
@@ -168,7 +224,25 @@ impl Collider {
     #[must_use]
     pub fn closest_point(&self, world: &World, x: DVec3) -> DVec3 {
         let (pos, rotation) = self.pose(world);
-        match place(self.shape, pos, rotation) {
+        match place(&self.shape, pos, rotation) {
+            // One step down the gradient, exact where the field is a true
+            // distance.
+            Placed::Grid(grid) => {
+                let (d, n) = grid.sample(x);
+                if d <= 0.0 { x } else { x - n * d }
+            }
+            Placed::Poly(poly) => {
+                let scale = self.shape.bound() + x.distance(pos);
+                match gjk::proximity(
+                    &gjk::Core::Points(&poly.vertices),
+                    &gjk::Core::Point(x),
+                    f64::INFINITY,
+                    scale,
+                ) {
+                    Some(p) if p.distance > 0.0 => p.pa,
+                    _ => x,
+                }
+            }
             Placed::Capsule { p, q, radius } => {
                 let d = q - p;
                 let t = if d.length_squared() > 0.0 {
@@ -221,19 +295,31 @@ pub struct Manifold {
 
 /// A shape placed in the world, reduced to the primitives the narrow phase
 /// handles.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 enum Placed {
     /// Segment from `p` to `q`, swept by `radius`.
-    Capsule { p: DVec3, q: DVec3, radius: f64 },
+    Capsule {
+        p: DVec3,
+        q: DVec3,
+        radius: f64,
+    },
     Cuboid {
         center: DVec3,
         axes: DMat3,
         half: DVec3,
     },
+    Poly(convex::Poly),
+    Grid(sdf::PlacedGrid),
 }
 
-fn place(shape: Shape, pos: DVec3, rotation: DQuat) -> Placed {
-    match shape {
+fn place(shape: &Shape, pos: DVec3, rotation: DQuat) -> Placed {
+    match *shape {
+        Shape::Sdf { grid } => Placed::Grid(sdf::PlacedGrid {
+            grid: grid.get(),
+            pos,
+            rotation,
+        }),
+        Shape::Hull { hull } => Placed::Poly(convex::Poly::hull(&hull.get(), pos, rotation)),
         Shape::Sphere { radius } => Placed::Capsule {
             p: pos,
             q: pos,
@@ -259,28 +345,46 @@ fn place(shape: Shape, pos: DVec3, rotation: DQuat) -> Placed {
 }
 
 /// Contact points between two placed shapes within `margin` of touching.
-fn contact(a: Placed, b: Placed, margin: f64) -> Vec<ContactPoint> {
+fn contact(a: &Placed, b: &Placed, margin: f64) -> Vec<ContactPoint> {
     match (a, b) {
         (
-            Placed::Capsule { p, q, radius },
-            Placed::Capsule {
+            &Placed::Capsule { p, q, radius },
+            &Placed::Capsule {
                 p: p2,
                 q: q2,
                 radius: r2,
             },
         ) => capsule_capsule(p, q, radius, p2, q2, r2, margin),
-        (Placed::Capsule { p, q, radius }, Placed::Cuboid { center, axes, half }) => {
+        (&Placed::Capsule { p, q, radius }, &Placed::Cuboid { center, axes, half }) => {
             capsule_box(p, q, radius, center, axes, half, margin)
         }
-        (Placed::Cuboid { .. }, Placed::Capsule { .. }) => flip(contact(b, a, margin)),
+        (Placed::Cuboid { .. } | Placed::Poly(_), Placed::Capsule { .. })
+        | (Placed::Poly(_), Placed::Cuboid { .. }) => flip(contact(b, a, margin)),
         (
-            Placed::Cuboid { center, axes, half },
-            Placed::Cuboid {
+            &Placed::Cuboid { center, axes, half },
+            &Placed::Cuboid {
                 center: c2,
                 axes: a2,
                 half: h2,
             },
         ) => box_box(center, axes, half, c2, a2, h2, margin),
+        (&Placed::Capsule { p, q, radius }, Placed::Poly(poly)) => {
+            flip(convex::poly_capsule(poly, p, q, radius, margin))
+        }
+        (&Placed::Cuboid { center, axes, half }, Placed::Poly(poly)) => {
+            convex::poly_poly(&convex::Poly::cuboid(center, axes, half), poly, margin)
+        }
+        (Placed::Poly(pa), Placed::Poly(pb)) => convex::poly_poly(pa, pb, margin),
+        (Placed::Grid(grid), &Placed::Capsule { p, q, radius }) => {
+            sdf::grid_capsule(grid, p, q, radius, margin)
+        }
+        (Placed::Grid(grid), &Placed::Cuboid { center, axes, half }) => {
+            sdf::grid_poly(grid, &convex::Poly::cuboid(center, axes, half), margin)
+        }
+        (Placed::Grid(grid), Placed::Poly(poly)) => sdf::grid_poly(grid, poly, margin),
+        (_, Placed::Grid(_)) if !matches!(a, Placed::Grid(_)) => flip(contact(b, a, margin)),
+        // Two grids are both static.
+        (Placed::Grid(_), Placed::Grid(_)) | (_, Placed::Grid(_)) => Vec::new(),
     }
 }
 
@@ -690,7 +794,7 @@ impl World {
             .iter()
             .map(|c| {
                 let (pos, rotation) = c.pose(self);
-                (place(c.shape, pos, rotation), pos, c.shape.bound())
+                (place(&c.shape, pos, rotation), pos, c.shape.bound())
             })
             .collect();
         let mut manifolds = Vec::new();
@@ -710,9 +814,9 @@ impl World {
                 stats.filtered_pairs += 1;
                 let m = margin(a, b);
                 stats.bound_tests += 1;
-                let (pa, ca, ra) = placed[i];
-                let (pb, cb, rb) = placed[j];
-                if ca.distance(cb) > ra + rb + m {
+                let (pa, ca, ra) = &placed[i];
+                let (pb, cb, rb) = &placed[j];
+                if ca.distance(*cb) > ra + rb + m {
                     continue;
                 }
                 stats.narrow_phase += 1;
@@ -769,7 +873,7 @@ impl World {
             .iter()
             .map(|c| {
                 let (pos, rotation) = c.pose(self);
-                (place(c.shape, pos, rotation), pos, c.shape.bound())
+                (place(&c.shape, pos, rotation), pos, c.shape.bound())
             })
             .collect();
         if placed
@@ -848,9 +952,9 @@ impl World {
                 return (0_u8, None);
             }
             let m = margin(i, j);
-            let (pa, ca, ra) = placed[i];
-            let (pb, cb, rb) = placed[j];
-            if ca.distance(cb) > ra + rb + m {
+            let (pa, ca, ra) = &placed[i];
+            let (pb, cb, rb) = &placed[j];
+            if ca.distance(*cb) > ra + rb + m {
                 return (1, None);
             }
             let points = contact(pa, pb, m);
@@ -874,4 +978,8 @@ impl World {
 }
 
 #[cfg(test)]
+mod hull_tests;
+#[cfg(test)]
 mod index_tests;
+#[cfg(test)]
+mod sdf_tests;

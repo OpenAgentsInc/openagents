@@ -7,8 +7,10 @@ use serde_json::{Value, json};
 
 use crate::build::{Built, Solid};
 
-/// The formats a document exports to.
-pub const FORMATS: [&str; 4] = ["glb", "3mf", "step", "stl"];
+/// The formats a document exports to. `collision` is the physics bake
+/// ([`crate::collision`]): JSON with each solid's convex pieces, beside a
+/// `.sdf` distance grid of them all; native builds only.
+pub const FORMATS: [&str; 5] = ["glb", "3mf", "step", "stl", "collision"];
 
 /// Writes the built document as `format` to `path`.
 ///
@@ -35,6 +37,19 @@ pub fn write(built: &mut Built, format: &str, path: &Path) -> Result<u64, String
             let bytes = crate::tree::threemf(built)?;
             std::fs::write(path, &bytes).map_err(|e| e.to_string())?;
             Ok(bytes.len() as u64)
+        }
+        #[cfg(target_arch = "wasm32")]
+        "collision" => Err("The collision bake runs CoACD, so it needs the native build.".into()),
+        #[cfg(not(target_arch = "wasm32"))]
+        "collision" => {
+            let (mut report, grid) =
+                crate::collision::bake(&built.solids, &crate::collision::Options::default())?;
+            let sdf = path.with_extension("sdf");
+            std::fs::write(&sdf, grid.to_bytes()).map_err(|e| e.to_string())?;
+            report["sdf"]["file"] = json!(sdf.file_name().map(|n| n.to_string_lossy()));
+            let text = serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?;
+            std::fs::write(path, &text).map_err(|e| e.to_string())?;
+            Ok(text.len() as u64)
         }
         "stl" => {
             let report = built
@@ -78,6 +93,7 @@ pub fn bytes(built: &mut Built, format: &str) -> Result<Vec<u8>, String> {
             let _ = solidcraft_engine::io::vfs::remove(&path.to_string_lossy());
             Ok(out)
         }
+        "collision" => Err("The collision bake runs CoACD, so it needs the native build.".into()),
         other => Err(format!("I can export {}, not {other}.", FORMATS.join(", "))),
     }
 }

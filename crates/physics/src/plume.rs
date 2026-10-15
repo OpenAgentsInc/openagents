@@ -241,6 +241,17 @@ impl World {
                     let area = std::f64::consts::PI * radius * radius;
                     push(pos, curved(plume, norm, pos, area, reflection));
                 }
+                // A hull takes the plume as a ball of its volume at its
+                // centroid: a rough body, not a flat plate.
+                Shape::Hull { hull } => {
+                    let hull = hull.get();
+                    let radius = (hull.volume() * 0.75 / std::f64::consts::PI).cbrt();
+                    let at = pos + rotation * hull.centroid();
+                    let area = std::f64::consts::PI * radius * radius;
+                    push(at, curved(plume, norm, at, area, reflection));
+                }
+                // Static ground: a plume pushes nothing it could move.
+                Shape::Sdf { .. } => {}
                 Shape::Capsule {
                     radius,
                     half_length,

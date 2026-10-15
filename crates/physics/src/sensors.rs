@@ -162,6 +162,18 @@ impl World {
                 Shape::Cuboid { half } => {
                     ray_box(origin, dir, pos, DMat3::from_quat(rotation), half, limit)
                 }
+                Shape::Hull { hull } => {
+                    let inverse = rotation.inverse();
+                    hull.get()
+                        .ray(inverse * (origin - pos), inverse * dir, limit)
+                        .map(|(t, n)| (t, rotation * n))
+                }
+                Shape::Sdf { grid } => {
+                    let inverse = rotation.inverse();
+                    grid.get()
+                        .ray(inverse * (origin - pos), inverse * dir, limit)
+                        .map(|(t, n)| (t, rotation * n))
+                }
             };
             if let Some((t, normal)) = hit
                 && t <= limit

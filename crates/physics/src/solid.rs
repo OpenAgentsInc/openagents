@@ -39,11 +39,35 @@ impl Solid {
         }
     }
 
-    /// A collider's shape where its body is now.
+    /// A collider's shape where its body is now. A hull or a distance grid
+    /// becomes the box that bounds it in its own frame, which encloses it.
     #[must_use]
     pub fn of(collider: &Collider, world: &World) -> Self {
         let (pos, rotation) = collider.pose(world);
         match collider.shape {
+            Shape::Sdf { grid } => {
+                let grid = grid.get();
+                let (lo, hi) = (grid.origin(), grid.max());
+                Self::Cuboid {
+                    center: pos + rotation * ((lo + hi) * 0.5),
+                    rotation,
+                    half: (hi - lo) * 0.5,
+                }
+            }
+            Shape::Hull { hull } => {
+                let (lo, hi) = hull
+                    .get()
+                    .vertices()
+                    .iter()
+                    .fold((DVec3::INFINITY, DVec3::NEG_INFINITY), |(lo, hi), v| {
+                        (lo.min(*v), hi.max(*v))
+                    });
+                Self::Cuboid {
+                    center: pos + rotation * ((lo + hi) * 0.5),
+                    rotation,
+                    half: (hi - lo) * 0.5,
+                }
+            }
             Shape::Sphere { radius } => Self::Capsule {
                 a: pos,
                 b: pos,

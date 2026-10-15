@@ -45,6 +45,8 @@ fn add(world: &mut World, shape: Shape, mass: f64, pos: DVec3, orientation: DQua
             DVec3::new(2.0 * radius, 2.0 * radius, 2.0 * (half_length + radius)),
         ),
         Shape::Cuboid { half } => Body::box_inertia(mass, half * 2.0),
+        Shape::Hull { hull } => DVec3::splat(0.4 * mass * hull.radius() * hull.radius()),
+        Shape::Sdf { grid } => DVec3::splat(0.4 * mass * grid.radius() * grid.radius()),
     };
     let mut body = Body::new(mass, inertia, pos);
     body.orientation = orientation;

@@ -418,6 +418,27 @@ levels.
    model in the zone with that zone's capture example.
 4. Commit the script, the glTF, the provenance, and the repinned pack.
 
+## Collision bake
+
+A model that physics must collide with as more than a box gets a collision
+bake (#11657): convex pieces for a dynamic non-convex part, and a
+signed-distance grid for static non-convex geometry (a container, rubble,
+terrain). Export the collision mesh from Blender as Wavefront OBJ in metres,
+triangulated, +Y up, then:
+
+```sh
+pip install coacd   # CoACD, MIT; an offline tool, never linked into Verse
+cargo run -p cad --example collision_bake -- model.obj model.collision.json
+```
+
+It writes `model.collision.json` (`collision.v1`: each convex piece's
+corners, and CoACD's version and every parameter it ran with) and
+`model.collision.sdf` (the grid, `physics::SdfGrid`'s versioned format). The
+same mesh bakes to the same bytes. CAD Lab parts bake the same way through
+the CAD export's `collision` format (`crates/cad/src/collision.rs`). In
+`crates/physics`, the pieces become one body with
+`World::add_compound_body`, and the grid a static `Shape::Sdf` collider.
+
 ## Delivery
 
 1. Convert the spider and admit it for Wild Shape (#10610).

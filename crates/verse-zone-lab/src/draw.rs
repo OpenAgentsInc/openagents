@@ -140,6 +140,24 @@ fn cuboid(mesh: &mut Mesh, center: Vec3, rotation: Quat, half: Vec3, edge: [f32;
     }
 }
 
+/// A convex hull: each polygon face as a fan, and every edge.
+fn hull(mesh: &mut Mesh, center: Vec3, rotation: Quat, hull: &physics::ConvexHull, edge: [f32; 3]) {
+    let at = |k: u32| center + rotation * hull.vertices()[k as usize].as_vec3();
+    for face in hull.faces() {
+        for k in 1..face.vertices.len() - 1 {
+            tri(
+                mesh,
+                at(face.vertices[0]),
+                at(face.vertices[k]),
+                at(face.vertices[k + 1]),
+            );
+        }
+    }
+    for [a, b] in hull.edges() {
+        line(mesh, at(*a), at(*b), edge);
+    }
+}
+
 fn sphere(mesh: &mut Mesh, center: Vec3, rotation: Quat, radius: f32, edge: [f32; 3]) {
     let (lat, lon) = (8, 12);
     let p = |i: usize, j: usize| {
@@ -386,6 +404,14 @@ pub fn scene(scene: &Scene, alpha: f64, overlay: bool) -> Mesh {
             }
             Shape::Cuboid { half } => cuboid(&mut mesh, center, rotation, half.as_vec3(), edge),
             Shape::Sphere { radius } => sphere(&mut mesh, center, rotation, radius as f32, edge),
+            Shape::Hull { hull: shape } => hull(&mut mesh, center, rotation, &shape.get(), edge),
+            // A distance grid's bounds, as a wire box.
+            Shape::Sdf { .. } => {
+                let mut solid = Mesh::default();
+                let half = collider.shape.half_extents().as_vec3();
+                cuboid(&mut solid, center, rotation, half, edge);
+                mesh.lines.extend(solid.lines);
+            }
             Shape::Capsule {
                 radius,
                 half_length,

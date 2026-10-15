@@ -14,11 +14,13 @@ serde_json = "1"
 sha2 = "0.10"
 # 3MF packages with the assembly tree (the version SolidCraft's io already uses).
 zip = { version = "3", default-features = false, features = ["deflate"] }
+# The collision bake (#11657): hull checks and the distance-grid format.
+physics = { path = "../physics" }
+glam = "0.30.10"
 
 [dev-dependencies]
 # The URDF round trip reads what `urdf` writes the way Robot Lab does.
 robot-description = { path = "../robot-description" }
-glam = "0.30.10"
 
 [lints]
 workspace = true

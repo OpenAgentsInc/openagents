@@ -663,6 +663,7 @@ fn bounds(shape: Shape) -> DVec3 {
             half_length,
         } => DVec3::new(radius, radius, radius + half_length),
         Shape::Cuboid { half } => half,
+        Shape::Hull { .. } | Shape::Sdf { .. } => shape.half_extents(),
     }
 }
 

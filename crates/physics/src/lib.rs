@@ -5,8 +5,9 @@
 //! - [`batch`]: many independent worlds stepped together across threads.
 //! - [`world`]: bodies advanced together in fixed steps under a
 //!   caller-supplied acceleration [`Field`].
-//! - [`collision`]: sphere, capsule, and box colliders with bitmask filters
-//!   and multi-point manifolds.
+//! - [`collision`]: sphere, capsule, box, and convex-hull colliders with
+//!   bitmask filters and multi-point manifolds; hulls are built by
+//!   Quickhull and meet other shapes through GJK and EPA.
 //! - [`queries`]: instance-scoped scene trees with pose updates over per-mesh
 //!   hierarchies; stable hit ordering and optional candidate measurements.
 //! - [`contact`]: a sequential-impulse solver with restitution, an elliptic
@@ -51,6 +52,7 @@ pub mod collision;
 pub mod contact;
 pub mod continuous;
 pub mod fluid;
+mod interned;
 pub mod joint;
 pub mod kinematic;
 pub mod ledger;
@@ -73,7 +75,10 @@ pub mod world;
 
 pub use body::{Body, BodyKind, Composite};
 pub use clock::FixedStep;
-pub use collision::{Collider, ColliderId, ContactPoint, Filter, Manifold, Material, Shape};
+pub use collision::{
+    Collider, ColliderId, ContactPoint, ConvexHull, Filter, HullError, HullRef, Manifold, Material,
+    SdfError, SdfGrid, SdfRef, Shape,
+};
 pub use contact::{ContactReport, SolverSettings};
 pub use joint::{Joint, JointError, JointId, JointKind, JointLimits, Servo, Spring};
 pub use ledger::{Ledger, LedgerError, Momentum};

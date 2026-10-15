@@ -252,6 +252,10 @@ name = "lab_capture"
 required-features = ["capture"]
 
 [[example]]
+name = "physics_ports_capture"
+required-features = ["capture"]
+
+[[example]]
 name = "everglade_capture"
 required-features = ["capture"]
 

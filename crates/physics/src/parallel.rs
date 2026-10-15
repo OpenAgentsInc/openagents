@@ -35,6 +35,11 @@ pub(crate) fn serial_here<R>(f: impl FnOnce() -> R) -> R {
     }
 }
 
+/// Tests that set this to a nonzero count split work over that many
+/// threads (at most [`MOST`]) whatever the machine has.
+#[cfg(test)]
+pub(crate) static THREADS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
 /// How many threads to split `work` units across, at least `per_thread`
 /// units each: one when the work is small or threads are unavailable.
 pub(crate) fn threads(work: usize, per_thread: usize) -> usize {
@@ -51,6 +56,12 @@ pub(crate) fn threads(work: usize, per_thread: usize) -> usize {
         }
         if work < per_thread.saturating_mul(2) || NESTED.with(std::cell::Cell::get) {
             return 1;
+        }
+        #[cfg(test)]
+        let forced = THREADS.load(std::sync::atomic::Ordering::Relaxed);
+        #[cfg(test)]
+        if forced > 0 {
+            return forced.min(MOST).min(work / per_thread.max(1)).max(1);
         }
         let cores = std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get);
         cores.min(MOST).min(work / per_thread.max(1)).max(1)

@@ -198,6 +198,37 @@ Issues filed for the top five (all in project 22):
 | 10 | **Tactile taxels** | `kinematic_tactile.py` taxel and probe sensors, `tactile_shared.py` noise and hysteresis | `crates/physics/src/sensors.rs` | Reimplement over contact queries | M | None | 14 |
 | 11 | **MLS-MPM (wgpu)** | `mpm_solver.py` | GPU only; a later crate | Reimplement from MLS-MPM (Hu et al. 2018) | L | wgpu | 13 |
 
+### Landed
+
+- **#11656, hulls.** `Shape::Hull` in `crates/physics/src/collision/`:
+  `hull.rs` (Quickhull build with a degenerate-input policy, polygon faces,
+  mass properties, `World::add_hull_body`), `gjk.rs` (GJK and EPA on
+  support functions; spheres and capsules are a point or segment core plus
+  a radius), and `convex.rs` (reference/incident face clipping to at most
+  four points, and a consistency check that falls back to face axes when a
+  barely-touching GJK normal or a degenerate EPA polytope is wrong). Tests
+  in `collision/hull_tests.rs`: a stack of five hexagonal prisms rests for
+  10 s within the solver slop and sleeps; 200 mixed hulls thrown down at up
+  to 12 m/s settle inside a walled box; 1, 4 and 8 threads step bit for
+  bit; the GP-1 ledger holds to 1e-12 through hull contacts.
+  `cargo run --release -p physics --example hull_pile` on the M5 Max (with
+  other builds running): 2.6 ms mean, 9.9 ms worst per step while 200
+  hulls fall; 0.15 ms once they sleep.
+- **#11657, distance grids and the bake.** `Shape::Sdf` (static only) in
+  `collision/sdf.rs`: an `f32` grid queried trilinearly in `f64`, capped at
+  128 samples per axis, in a versioned byte format; a hull's or box's
+  corners, edge midpoints and face centres, or points along a capsule's
+  core, sample it. `SdfGrid::bake` samples a closed mesh (nearest triangle,
+  signed by the generalized winding number). The offline bake is
+  `crates/cad/src/collision.rs`, the `collision` export: CoACD (MIT, run as
+  `python3` with `pip install coacd`, never linked) splits each solid into
+  convex pieces, recorded with its version and parameters, and the grid of
+  all the solids is written beside them. Tests: 300 rocks poured into a
+  baked bowl stay in its cavity; a U bracket split by CoACD (checked-in
+  output, `collision/fixtures/u-bracket.coacd.json`) falls and rests as one
+  compound body (`World::add_compound_body`); the same mesh or document
+  bakes to the same bytes.
+
 **What we do not port:**
 
 - **The generalized-coordinate rigid solver.** It is a MuJoCo port, and we

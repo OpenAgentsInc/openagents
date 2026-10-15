@@ -84,6 +84,9 @@ pub fn volume(shape: &Shape) -> f64 {
             half_length,
         } => PI * radius * radius * 2.0 * half_length + 4.0 / 3.0 * PI * radius.powi(3),
         Shape::Cuboid { half } => 8.0 * half.x * half.y * half.z,
+        Shape::Hull { hull } => hull.get().volume(),
+        // A distance grid is static ground: it takes no buoyancy.
+        Shape::Sdf { .. } => 0.0,
     }
 }
 
@@ -97,6 +100,8 @@ pub fn area(shape: &Shape) -> f64 {
             half_length,
         } => 2.0 * PI * radius * 2.0 * half_length + 4.0 * PI * radius * radius,
         Shape::Cuboid { half } => 8.0 * (half.x * half.y + half.y * half.z + half.x * half.z),
+        Shape::Hull { hull } => hull.get().area(),
+        Shape::Sdf { .. } => 0.0,
     }
 }
 
@@ -112,6 +117,10 @@ pub fn below(shape: &Shape, pose: (DVec3, DQuat), plane: Plane) -> (f64, DVec3, 
             half_length,
         } => capsule(center, rotation * DVec3::Z, radius, half_length, plane),
         Shape::Cuboid { half } => cuboid(center, rotation, half, plane),
+        Shape::Hull { hull } => hull
+            .get()
+            .below(center, rotation, plane.point, plane.normal),
+        Shape::Sdf { .. } => (0.0, center, 0.0),
     }
 }
 
