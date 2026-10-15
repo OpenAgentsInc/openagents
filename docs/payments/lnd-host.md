@@ -85,3 +85,56 @@ unfunded node reports its missing channels and inbound liquidity as expected.
 A service restart fetched the wrapped password again, unlocked the wallet,
 and preserved the same node identity. Binary password fetches use
 `gcloud secrets versions access --out-file` to preserve ciphertext bytes.
+
+## Channel backups and watchtowers
+
+Run `scripts/lnd-backup-gcp.sh`, then install `lnd-backups` with
+`deploy/lnd/install-backups.sh COMMIT BINARY` on `oa-lnd-1`. The worker streams
+SCB changes and exports a complete snapshot every 30 seconds. A separate
+uploader encrypts each snapshot with age before creating a unique object in
+`gs://openagentsgemini-lnd-scb/oa-lnd-1/`. Its service account has only
+`roles/storage.objectCreator` on that bucket: it cannot list, read, replace,
+or delete backups. The age identity is in the `lnd-oa-lnd-1-backup-age-key`
+Secret Manager secret; the host can add a version but cannot read it. Only
+the public recipient stays on the host. Check both backup units and their
+journals after an upgrade. A failed export or upload must alert before funding.
+
+`oa-lnd-tower-1` is an unfunded `e2-small` in `us-central1-b`. Its private
+watchtower port accepts only `oa-lnd-1`; RPC stays on loopback. Install it with
+`deploy/lnd/install-tower.sh` and register the URI from `lncli tower info` on
+the payment node with `lncli wtclient add URI`. Its disposable wallet owns no
+payment funds. Keep its tower database when upgrading.
+
+The second tower is the free US service published by the
+[frznode operator](https://frznode.com/watchtower.html), checked on 2026-10-15.
+Its public key is
+`028829fcc05c0ba83d7fff053abf663448e2e1e440f345eaa9b3f0c11ac2ce44ea`.
+`openagents-lnd-third-party-tower.service` connects to its onion address through
+local Tor. Register that key at `127.0.0.1:19911`. The encrypted watchtower
+handshake authenticates the remote key. Recheck the operator's published
+address before changing it. Check `lncli wtclient towers --include_sessions`
+for both registrations and acknowledged backups after channel activity.
+Registration alone does not establish protection for a funded channel.
+
+### Recovery rule and release drill
+
+**Never restore a payment node's database from a snapshot or an old copy.**
+Stop the original writer and fence its machine first. Recovery uses the
+node's own aezeed plus its SCB, on a fresh data directory. An operator with
+separate recovery access retrieves the age identity and the newest complete
+SCB object, decrypts it on a private recovery machine, and supplies the seed
+and `lncli create --multi_file=channel.backup`. Never copy `channel.db` or
+`wallet.db` from an earlier point in time. Keep recovery inputs out of logs,
+shell history, and issue comments. Do not fund or run the original writer
+again. Wait for peers to force-close, confirm the closes, and verify sweeps
+before making the recovered wallet available for spending. Offline peers can
+delay recovery. Follow the pinned
+[LND recovery instructions](https://github.com/lightningnetwork/lnd/blob/v0.21.1-beta/docs/recovery.md).
+
+Repeat `scripts/lnd-sdk-regtest.sh` for every LND or SDK release. Its recovery
+test generates a new aezeed, funds a private channel with regtest coins,
+registers two isolated towers, verifies an acknowledged tower backup, and
+captures the streamed SCB within a minute. It stops the only writer, deletes
+all of that test node's databases, initializes a fresh wallet from seed plus
+SCB, checks the same node identity, mines its peer's force-close, and checks
+the recovered on-chain balance. It never reads a production seed or database.

@@ -1,0 +1,23 @@
+[Unit]
+Description=OpenAgents LND channel backup stream
+After=openagents-lnd.service
+Wants=openagents-lnd.service openagents-lnd-backup-upload.service
+OnFailure=openagents-lnd-alert.service
+[Service]
+User=oa-lnd-backup
+Group=oa-lnd-backup
+RuntimeDirectory=openagents-lnd-backup
+RuntimeDirectoryMode=0700
+RuntimeDirectoryPreserve=restart
+ExecStartPre=+/usr/bin/install -o oa-lnd-backup -g oa-lnd-backup -m 0600 /var/lib/openagents-lnd/backup.macaroon /run/openagents-lnd-backup/readonly.macaroon
+ExecStart=/opt/openagents-lnd/lnd-backups /etc/openagents-lnd/backups.json
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/run/openagents-lnd-backup
+[Install]
+WantedBy=multi-user.target

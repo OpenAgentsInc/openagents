@@ -15,6 +15,7 @@ pub mod state;
 pub mod supervisor;
 pub mod wallet;
 pub use lightning::Client;
+pub mod backups;
 pub mod health;
 #[cfg(test)]
 mod tests;

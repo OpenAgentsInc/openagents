@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Encrypt every complete SCB before it leaves tmpfs. Bucket access is create-only.
+set -euo pipefail
+umask 077
+runtime=/run/openagents-lnd-backup
+export CLOUDSDK_CONFIG="$runtime/gcloud"
+mkdir -p "$CLOUDSDK_CONFIG"
+last=
+while sleep 1; do
+  [[ -s $runtime/channel.backup ]] || continue
+  cp "$runtime/channel.backup" "$runtime/upload.scb"
+  next=$(sha256sum "$runtime/upload.scb" | cut -d' ' -f1)
+  [[ $next != "$last" ]] || continue
+  rm -f "$runtime/upload.age"
+  age --recipients-file=/etc/openagents-lnd/backup-recipient --output="$runtime/upload.age" "$runtime/upload.scb"
+  object="gs://openagentsgemini-lnd-scb/oa-lnd-1/$(date -u +%Y/%m/%d/%H%M%S)-$(cat /proc/sys/kernel/random/uuid).scb.age"
+  if timeout 45 gcloud --quiet storage cp --if-generation-match=0 "$runtime/upload.age" "$object" >/dev/null; then
+    last=$next
+    printf 'Saved encrypted channel backup: %s\n' "$object"
+  fi
+  rm -f "$runtime/upload.age" "$runtime/upload.scb"
+done

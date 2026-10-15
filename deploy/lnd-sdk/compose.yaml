@@ -5,14 +5,19 @@ services:
     command: ["-regtest", "-server", "-txindex=1", "-fallbackfee=0.0002", "-rpcbind=0.0.0.0", "-rpcallowip=0.0.0.0/0", "-rpcuser=regtest", "-rpcpassword=regtest-only", "-zmqpubrawblock=tcp://0.0.0.0:28332", "-zmqpubrawtx=tcp://0.0.0.0:28333"]
   alice:
     image: lightninglabs/lnd:v0.21.1-beta@sha256:4af8f9bbf98c8b86b0e54b065d6ea45d1387256a43fa9270c11ef849511abae0
-    command: ["--lnddir=/data", "--bitcoin.regtest", "--bitcoin.node=bitcoind", "--bitcoind.rpchost=bitcoin:18443", "--bitcoind.rpcuser=regtest", "--bitcoind.rpcpass=regtest-only", "--bitcoind.zmqpubrawblock=tcp://bitcoin:28332", "--bitcoind.zmqpubrawtx=tcp://bitcoin:28333", "--noseedbackup", "--rpclisten=0.0.0.0:10009", "--listen=0.0.0.0:9735", "--bitcoin.defaultchanconfs=1", "--bitcoin.defaultremotedelay=4", "--protocol.simple-taproot-chans", "--tlsextradomain=alice", "--tlsextraip=127.0.0.1"]
+    command: ["--lnddir=/data", "--bitcoin.regtest", "--bitcoin.node=bitcoind", "--bitcoind.rpchost=bitcoin:18443", "--bitcoind.rpcuser=regtest", "--bitcoind.rpcpass=regtest-only", "--bitcoind.zmqpubrawblock=tcp://bitcoin:28332", "--bitcoind.zmqpubrawtx=tcp://bitcoin:28333", "--noseedbackup", "--rpclisten=0.0.0.0:10009", "--listen=0.0.0.0:9735", "--bitcoin.defaultchanconfs=1", "--bitcoin.defaultremotedelay=4", "--protocol.simple-taproot-chans", "--wtclient.active", "--tlsextradomain=alice", "--tlsextraip=127.0.0.1"]
     ports: ["127.0.0.1::10009"]
     volumes: ["alice:/data"]
   bob:
     image: lightninglabs/lnd:v0.21.1-beta@sha256:4af8f9bbf98c8b86b0e54b065d6ea45d1387256a43fa9270c11ef849511abae0
-    command: ["--lnddir=/data", "--bitcoin.regtest", "--bitcoin.node=bitcoind", "--bitcoind.rpchost=bitcoin:18443", "--bitcoind.rpcuser=regtest", "--bitcoind.rpcpass=regtest-only", "--bitcoind.zmqpubrawblock=tcp://bitcoin:28332", "--bitcoind.zmqpubrawtx=tcp://bitcoin:28333", "--noseedbackup", "--rpclisten=0.0.0.0:10009", "--listen=0.0.0.0:9735", "--bitcoin.defaultchanconfs=1", "--bitcoin.defaultremotedelay=4", "--tlsextraip=127.0.0.1"]
+    command: ["--lnddir=/data", "--bitcoin.regtest", "--bitcoin.node=bitcoind", "--bitcoind.rpchost=bitcoin:18443", "--bitcoind.rpcuser=regtest", "--bitcoind.rpcpass=regtest-only", "--bitcoind.zmqpubrawblock=tcp://bitcoin:28332", "--bitcoind.zmqpubrawtx=tcp://bitcoin:28333", "--noseedbackup", "--rpclisten=0.0.0.0:10009", "--listen=0.0.0.0:9735", "--bitcoin.defaultchanconfs=1", "--bitcoin.defaultremotedelay=4", "--watchtower.active", "--watchtower.listen=0.0.0.0:9911", "--tlsextraip=127.0.0.1"]
     ports: ["127.0.0.1::10009"]
     volumes: ["bob:/data"]
+  tower:
+    image: lightninglabs/lnd:v0.21.1-beta@sha256:4af8f9bbf98c8b86b0e54b065d6ea45d1387256a43fa9270c11ef849511abae0
+    command: ["--lnddir=/data", "--bitcoin.regtest", "--bitcoin.node=bitcoind", "--bitcoind.rpchost=bitcoin:18443", "--bitcoind.rpcuser=regtest", "--bitcoind.rpcpass=regtest-only", "--bitcoind.zmqpubrawblock=tcp://bitcoin:28332", "--bitcoind.zmqpubrawtx=tcp://bitcoin:28333", "--noseedbackup", "--rpclisten=0.0.0.0:10009", "--listen=0.0.0.0:9735", "--bitcoin.defaultchanconfs=1", "--bitcoin.defaultremotedelay=4", "--watchtower.active", "--watchtower.listen=0.0.0.0:9911", "--tlsextraip=127.0.0.1"]
+    ports: ["127.0.0.1::10009"]
+    volumes: ["tower:/data"]
   testnet:
     image: lightninglabs/lnd:v0.21.1-beta@sha256:4af8f9bbf98c8b86b0e54b065d6ea45d1387256a43fa9270c11ef849511abae0
     command: ["--lnddir=/data", "--bitcoin.testnet", "--bitcoin.node=nochainbackend", "--noseedbackup"]
@@ -22,6 +27,7 @@ services:
     command: ["--tapddir=/tap", "--network=regtest", "--lnd.host=alice:10009", "--lnd.tlspath=/lnd/tls.cert", "--lnd.macaroonpath=/lnd/data/chain/bitcoin/regtest/admin.macaroon", "--rpclisten=0.0.0.0:10029"]
     volumes: ["alice:/lnd:ro", "tapd:/tap"]
 volumes:
+  tower:
   alice:
   bob:
   tapd:
