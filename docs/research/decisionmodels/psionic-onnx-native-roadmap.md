@@ -25,7 +25,7 @@ inputs, hardware, and thread budget after every optimization.
 | 2 | [#11723](https://github.com/OpenAgentsInc/openagents/issues/11723) | In progress | Improve native CPU router and digit inference | Correctness unchanged; matched ORT/native measurements; separate relative parity from the 512-token absolute target |
 | 3 | [#11724](https://github.com/OpenAgentsInc/openagents/issues/11724) | Complete | Keep native digit inference on GPU | Persistent buffers and GPU convolution/activation/pooling; paired CUDA evidence |
 | 4 | [#11725](https://github.com/OpenAgentsInc/openagents/issues/11725) | Implemented; Apple unqualified | Complete device-resident native Metal encoder and digit execution | Build and reference parity, then measured Metal/Core ML comparisons on Apple hardware |
-| 5 | [#11726](https://github.com/OpenAgentsInc/openagents/issues/11726) | In progress | Expose accelerator serving and publish the parity status | Explicit server device selection; direct/HTTP correctness; current benchmark and platform gaps visible here |
+| 5 | [#11726](https://github.com/OpenAgentsInc/openagents/issues/11726) | Complete | Expose accelerator serving and publish the parity status | Explicit server device selection; direct/HTTP correctness; current benchmark and platform gaps visible here |
 
 Apple CPU/Metal/Core ML measurements and mobile build, memory, startup, and
 thermal qualification remain in `NEEDS_OWNER.md`. They remain unqualified until
@@ -397,8 +397,15 @@ The existing server accepts `--router-device cpu|cuda|metal|coreml` with the
 appropriate engine and build feature. ORT accelerator CPU partitions require
 `--router-allow-cpu-fallback`; native serving reports the actual selected
 provider without CPU fallback. CUDA HTTP answers match direct inference.
-Paired HTTP latency and the final CPU scheduling comparison are being retained
-separately; the implementation does not promote the router into product routing.
+The [paired CUDA HTTP report](../../../crates/psionic/crates/psionic-inference/fixtures/reports/native-parity-http-cuda-2026-10-15/study.json)
+retains 4,000 serial loopback requests. Native p50 is 0.605–0.611 ms versus
+ORT 1.462–1.475 ms; native p99 is 2.388–2.423 ms versus ORT 3.252–3.255 ms.
+Native delivers 1,472–1,483 requests/s versus ORT 646–650. All 4,400 answers,
+including preflight requests, exactly match direct inference. Both engines use
+the same four-core affinity and pinned model. The harness hosts the production
+Axum routes in an integration test and includes client JSON encoding/decoding;
+it does not measure the server executable wrapper, gateway, or a remote network.
+The implementation does not promote the router into product routing.
 
 ## References
 

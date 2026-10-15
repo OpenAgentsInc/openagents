@@ -1,0 +1,72 @@
+{
+  "schema": "psionic.router.http.cuda.parity.study.v1",
+  "issue": 11726,
+  "date": "2026-10-15",
+  "protocol": "Two alternating rounds, 1000 serial loopback HTTP requests per engine per round, full 100-case router corpus, one client, model budget four threads, explicit affinity 0,2,4,6 on distinct i7-14700K P cores. Each process checks all 100 direct/HTTP answers before timing; every timed answer is checked too. Warm model and sequence-length caches.",
+  "timed_requests": 4000,
+  "exact_answer_comparisons": 4400,
+  "summary": [
+    {
+      "engine": "native",
+      "p50_ms": 0.6084134999999999,
+      "p50_range_ms": [
+        0.605381,
+        0.6114459999999999
+      ],
+      "p99_range_ms": [
+        2.3879639999999998,
+        2.422656
+      ],
+      "requests_per_second_range": [
+        1471.8526736231784,
+        1482.9843202154775
+      ]
+    },
+    {
+      "engine": "ort",
+      "p50_ms": 1.4688265,
+      "p50_range_ms": [
+        1.462352,
+        1.475301
+      ],
+      "p99_range_ms": [
+        3.252103,
+        3.255011
+      ],
+      "requests_per_second_range": [
+        645.7734210315166,
+        649.7705023581082
+      ]
+    }
+  ],
+  "scope": "Production RouterService and Axum HTTP routes hosted by an integration-test executable, including serial reqwest request JSON encoding and response decoding. These are HTTP measurements, not tensor-only timings. They do not time the psionic-openai-server executable wrapper, gateway, TLS, or a remote network.",
+  "hardware": {
+    "cpu_affinity": "0,2,4,6",
+    "host": "Linux coderos-4080 6.18.49 #1-NixOS SMP PREEMPT_DYNAMIC Wed Sep  2 12:31:51 UTC 2026 x86_64 GNU/Linux",
+    "gpu": "NVIDIA GeForce RTX 4080, GPU-cccbddcf-71ba-4910-6ddf-d863642f64b3, 595.71.05"
+  },
+  "source_sha256": {
+    "crates/psionic/crates/psionic-inference/tests/http.rs": "6cf4d9b4544636c6f58e4bb66b184619e708d7e9285beae8132d4766498f8440",
+    "crates/psionic/crates/psionic-inference/src/http.rs": "60b12f931c51a32117b4495eb770e7d9e9593e011b61b07b8d2b9c033873d996",
+    "crates/psionic/crates/psionic-inference/src/service.rs": "80b8acd9668cb1d21ef216abe012ea00927526f54ba89acb11c55ff0c73c3c07",
+    "crates/psionic/crates/psionic-inference/src/modernbert/cuda.rs": "703b85ea122370ea6f82a8235d255dd4e7974bcabb3b76fae77208971b1cbb1f",
+    "crates/psionic/crates/psionic-backend-cuda/src/kernels/encoder.cu": "73f87b9f1e252ef3eb35efaf9d9bdbdcb233ddf69d70f9dc59b42a1995dd0f74"
+  },
+  "rustc": "rustc 1.97.1 (8bab26f4f 2026-07-14)",
+  "cuda_environment": {
+    "CUDA_MODULE_DATA_LOADING": "EAGER",
+    "CUDA_MODULE_LOADING": "EAGER",
+    "NVIDIA_TF32_OVERRIDE": "0"
+  },
+  "checks": [
+    "All 4400 HTTP answers exactly match the shared in-process service, including probabilities.",
+    "Server CLI tests cover CPU defaults, explicit native CUDA, invalid engine/device choices, and explicit ORT fallback.",
+    "Readiness, request limits, queue bounds, typed refusals, and Retry-After tests pass."
+  ],
+  "remaining": [
+    "Apple Metal/Core ML device qualification.",
+    "Remote network, gateway, and deployment performance are separate measurements."
+  ],
+  "runs_sha256": "c476ddfa44ef86632ce07e7d4497da88140f6e32a99a796c13f03123baa033e3",
+  "source_note": "Raw records capture the local commit at execution time. File hashes identify the tested sources across rebases onto main."
+}

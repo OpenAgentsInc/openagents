@@ -317,3 +317,15 @@ The [native digit CUDA study](fixtures/reports/native-parity-digit-cuda-2026-10-
 retains 4,000 paired timings and compressed ORT profiles. Native median is
 0.055–0.056 ms versus ORT 0.072–0.075 ms, with lower p99 in both rounds.
 CPU remains faster for this tiny model.
+
+
+The [CUDA HTTP comparison](fixtures/reports/native-parity-http-cuda-2026-10-15/study.json)
+retains two alternating 1,000-request rounds per engine over the full corpus.
+Native median is 0.605–0.611 ms versus ORT 1.462–1.475 ms, with lower p99
+and 1,472–1,483 serial requests/s versus 646–650. All 4,400 timed and preflight
+answers match direct inference exactly. This uses the production Axum routes
+inside the integration-test host, including client JSON encoding and decoding.
+To reproduce, set `PSIONIC_ROUTER_MODEL_DIR`, `PSIONIC_HTTP_CUDA_ORT_LIBRARY`,
+and a new scratch `PSIONIC_HTTP_BENCH_OUTPUT`, provision the pinned CUDA stack,
+then run the ignored `paired_cuda_http` test with features
+`ort,http,native-cuda,native-metal` in release mode under an explicit CPU mask.
