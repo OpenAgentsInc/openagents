@@ -1,0 +1,46 @@
+[package]
+name = "lnd-sdk"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Typed, pinned LND client for server-side Lightning"
+
+[dependencies]
+async-trait = "0.1"
+lightning-invoice = { version = "0.34.1", features = ["std"] }
+hex = "0.4"
+prost = "0.13"
+sha2 = "0.10"
+thiserror = "2"
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "net", "process", "fs"] }
+tonic = { version = "=0.12.3", features = ["tls"] }
+tower = { version = "0.4", features = ["util"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+rustls-pemfile = "2"
+zeroize = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+openagents-wallet = { path = "../wallet", default-features = false }
+pay-ledger = { path = "../pay-ledger" }
+nostr = { path = "../nostr" }
+
+[target.'cfg(unix)'.dependencies]
+supervise = { path = "../supervise", optional = true }
+
+[features]
+default = []
+supervisor = ["dep:supervise"]
+
+[dev-dependencies]
+bitcoin = "0.32"
+proptest = "1"
+tempfile = "3"
+tonic-build = "=0.12.3"
+tokio-stream = { version = "0.1", features = ["net"] }
+rcgen = "0.14"
+
+[lints]
+workspace = true

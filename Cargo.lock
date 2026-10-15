@@ -9312,6 +9312,38 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "11d3d7f243d5c5a8b9bb5d6dd2b1602c0cb0b9db1621bafc7ed66e35ff9fe092"
 
 [[package]]
+name = "lnd-sdk"
+version = "1.0.0-rc.21"
+dependencies = [
+ "async-trait",
+ "bitcoin",
+ "hex",
+ "hyper-util",
+ "lightning-invoice 0.34.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "nostr",
+ "openagents-wallet",
+ "pay-ledger",
+ "proptest",
+ "prost 0.13.5",
+ "rcgen",
+ "rustls",
+ "rustls-pemfile",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "supervise",
+ "tempfile",
+ "thiserror 2.0.20",
+ "tokio",
+ "tokio-rustls",
+ "tokio-stream",
+ "tonic",
+ "tonic-build",
+ "tower 0.4.13",
+ "zeroize",
+]
+
+[[package]]
 name = "lnurl-models"
 version = "0.1.0"
 source = "git+https://github.com/breez/spark-sdk?tag=0.26.0#2c140a5d721f04d21c5ac334fecc3efe7c069943"

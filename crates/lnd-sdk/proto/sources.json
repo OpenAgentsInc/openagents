@@ -1,0 +1,166 @@
+[
+  {
+    "file": "proto/lnd/v0.21.1-beta/LICENSE",
+    "sha256": "7ebd67c52a36357cb0c6c5e903ece047b195a6b8b04c6e7a8c820e01c884581c"
+  },
+  {
+    "file": "proto/lnd/v0.21.1-beta/lnrpc/autopilotrpc/autopilot.proto",
+    "sha256": "79c8911f931edf4d3f2e66a048ccfd917f7bdffe395231a2fde3a790a9029ba9"
+  },
+  {
+    "file": "proto/lnd/v0.21.1-beta/lnrpc/chainrpc/chainkit.proto",
+    "sha256": "7a04c51f047a94120c26d15094d6ece8b23c8f00a207e32f2aa3e8c2864db631"
+  },
+  {
+    "file": "proto/lnd/v0.21.1-beta/lnrpc/chainrpc/chainnotifier.proto",
+    "sha256": "dac94d55e110b40273d8f443f307bc5a99c3e9f3cd74998e902f6fb78455dab1"
+  },
+  {
+    "file": "proto/lnd/v0.21.1-beta/lnrpc/devrpc/dev.proto",
+    "sha256": "886ca565f8eced623e9cd6f6e9283e8fc2203753101028ab65e36020cc0fd973"
+  },
+  {
+    "file": "proto/lnd/v0.21.1-beta/lnrpc/invoicesrpc/invoices.proto",
+    "sha256": "1724f72aa2ed070c8978f5e8a40bc828a2859bbf5a56274ffa1577a65f3f05e7"
+  },
+  {
+    "file": "proto/lnd/v0.21.1-beta/lnrpc/lightning.proto",
+    "sha256": "9c0f9a8649312711bd849b82430bb5bcd17a3d85bb8c5627c3456214c2aa87b0"
+  },
+  {
+    "file": "proto/lnd/v0.21.1-beta/lnrpc/lnclipb/lncli.proto",
+    "sha256": "4ea20e4309995b9a04dccf7cf6b305051e08e7694f9bf387d3e76cbe8936e41d"
+  },
+  {
+    "file": "proto/lnd/v0.21.1-beta/lnrpc/neutrinorpc/neutrino.proto",
+    "sha256": "eb9741a29744c9ede5dcb73b52180d900324bc067797407ee420530d443a2649"
+  },
+  {
+    "file": "proto/lnd/v0.21.1-beta/lnrpc/peersrpc/peers.proto",
+    "sha256": "ce4cb6225def023026ad4a5e4940be0fa082b3470bc00c688b163d0bf0cdf490"
+  },
+  {
+    "file": "proto/lnd/v0.21.1-beta/lnrpc/routerrpc/router.proto",
+    "sha256": "7ab9fd77ee214183eecefe063a00093348518462ce4dc34682a3a831c33ed7fd"
+  },
+  {
+    "file": "proto/lnd/v0.21.1-beta/lnrpc/signrpc/signer.proto",
+    "sha256": "47e5f109eae038e4c66355ed6ec9057bb4421dc8b42140248088e344f46bd547"
+  },
+  {
+    "file": "proto/lnd/v0.21.1-beta/lnrpc/stateservice.proto",
+    "sha256": "e7c9e1083804c5510874a4e549e3a26864e91892c830921e82d555e469f97242"
+  },
+  {
+    "file": "proto/lnd/v0.21.1-beta/lnrpc/verrpc/verrpc.proto",
+    "sha256": "863423e1da01ff05693084bca27a6f0bdff0e8a470c9d9df9b6c56c988d53a16"
+  },
+  {
+    "file": "proto/lnd/v0.21.1-beta/lnrpc/walletrpc/walletkit.proto",
+    "sha256": "a7ef28be29cb8d5186eb8a1f53d871d0193d30366e2bbe52dd25073c055a6b0a"
+  },
+  {
+    "file": "proto/lnd/v0.21.1-beta/lnrpc/walletunlocker.proto",
+    "sha256": "2b1810df963e3b50858f9306207a1edf97ff5588ce6dd9afad5ca5e677d5dea6"
+  },
+  {
+    "file": "proto/lnd/v0.21.1-beta/lnrpc/watchtowerrpc/watchtower.proto",
+    "sha256": "3d40ee86d9cb7817529cd4332c9f40f95b38224439a5c2d49cbb3b850808c787"
+  },
+  {
+    "file": "proto/lnd/v0.21.1-beta/lnrpc/wtclientrpc/wtclient.proto",
+    "sha256": "7c17b002827d9e19a0b2939766e6ac6dec244ff56f27eaa82a3c6179919069c2"
+  },
+  {
+    "file": "proto/taproot-assets/v0.8.0/LICENSE",
+    "sha256": "35e99c5d6ca195e0244c56a8f089dbae10664dc6cfc9cec5d41a518c2b3fdd82"
+  },
+  {
+    "file": "proto/taproot-assets/v0.8.0/taprpc/assetwalletrpc/assetwallet.proto",
+    "sha256": "a8e013dc7309a25bc6afdceaa2cf26137f425487b7e1f349473d81c7a8e1d336"
+  },
+  {
+    "file": "proto/taproot-assets/v0.8.0/taprpc/authmailboxrpc/mailbox.proto",
+    "sha256": "4c5c56f542e5360181fb0164d2349472d9f88ab6f2373c6ae65c558ded5cfb63"
+  },
+  {
+    "file": "proto/taproot-assets/v0.8.0/taprpc/mintrpc/mint.proto",
+    "sha256": "0b3542419e1e1f0fcbe01d8f1519b3172f492906c8446bf496150a0de4227c71"
+  },
+  {
+    "file": "proto/taproot-assets/v0.8.0/taprpc/portfoliopilotrpc/portfolio_pilot.proto",
+    "sha256": "e2ae1f4f22b8d1bb8f840857f4dbc216274cd28dda76e9d93a544f1bc755224b"
+  },
+  {
+    "file": "proto/taproot-assets/v0.8.0/taprpc/priceoraclerpc/price_oracle.proto",
+    "sha256": "f95ac62c0b3ec46ab4df5e57823a40442eba63999bd7503384ad4f0209f7a324"
+  },
+  {
+    "file": "proto/taproot-assets/v0.8.0/taprpc/rfqrpc/rfq.proto",
+    "sha256": "b847daeaec0fc45bfcfbdef763fadce4dca700cf7f4293f9cdfec1ecd6cdb5ab"
+  },
+  {
+    "file": "proto/taproot-assets/v0.8.0/taprpc/tapchannelrpc/tapchannel.proto",
+    "sha256": "d1340424fbcb1c24e274da98fd4d0362d037aa904ac32e95ac0f996af9f3cea1"
+  },
+  {
+    "file": "proto/taproot-assets/v0.8.0/taprpc/tapcommon.proto",
+    "sha256": "517026f4d529a8bc6c6f58135bd174c04b01ee8fadd81b10f995fa551a8dfa24"
+  },
+  {
+    "file": "proto/taproot-assets/v0.8.0/taprpc/tapdevrpc/tapdev.proto",
+    "sha256": "780c62c8b2afaccd83cb44aac48f79827f1b8c144e54565d5266eef1fe4ac09b"
+  },
+  {
+    "file": "proto/taproot-assets/v0.8.0/taprpc/taprootassets.proto",
+    "sha256": "170ec7ed8483fbf4c9f97e00c0e4b2277a3b6b59ed55b087146bb4aed97345ae"
+  },
+  {
+    "file": "proto/taproot-assets/v0.8.0/taprpc/universerpc/universe.proto",
+    "sha256": "0621c54fd4179d4f5e4dd5d14138da46f6f5a9576de82ff2c0eeb25c67bc745d"
+  },
+  {
+    "file": "proto/loop/v0.34.0-beta/LICENSE",
+    "sha256": "87a0ba0f03306baa7b8ee830f8a4cbbbe5ca72df2d051c2276a3851b0bf8c54c"
+  },
+  {
+    "file": "proto/loop/v0.34.0-beta/looprpc/client.proto",
+    "sha256": "26890c0338d177de709734384d1274c2c21419729c800332e2ca50da68fbab89"
+  },
+  {
+    "file": "proto/loop/v0.34.0-beta/looprpc/debug.proto",
+    "sha256": "62f58b2fab3b54769b37223e1623e3f75d3187c45a2d1db4649fc5ab4d81801c"
+  },
+  {
+    "file": "proto/lightning-terminal/v0.17.0-alpha/LICENSE",
+    "sha256": "1412c72d25b4cfd83045f684904d6e9962c69c55375c38aa13415c75f0a5d33f"
+  },
+  {
+    "file": "proto/lightning-terminal/v0.17.0-alpha/litrpc/firewall.proto",
+    "sha256": "d9d58992595d7c260c8c1149e7d05f720c469d39d2b224f6b9e8fac449a76dab"
+  },
+  {
+    "file": "proto/lightning-terminal/v0.17.0-alpha/litrpc/lit-accounts.proto",
+    "sha256": "000ad33d0c291b4721a64643c6e5b6ac3fce386da47624cf1f56e21f44aa2912"
+  },
+  {
+    "file": "proto/lightning-terminal/v0.17.0-alpha/litrpc/lit-autopilot.proto",
+    "sha256": "ef60791fb4d5aa97f3700fa72a4541465753af71f051d039926d5dfd12e70d1b"
+  },
+  {
+    "file": "proto/lightning-terminal/v0.17.0-alpha/litrpc/lit-sessions.proto",
+    "sha256": "6b3835d705a6bcf5e4cddbb4c0ef5c4a1d24433c3fbc1a3424bfaad11520260c"
+  },
+  {
+    "file": "proto/lightning-terminal/v0.17.0-alpha/litrpc/lit-status.proto",
+    "sha256": "ace46fdf19676fbf2fc904106908336600661ffe48e25ee7e3115ce1324c2c3c"
+  },
+  {
+    "file": "proto/lightning-terminal/v0.17.0-alpha/litrpc/proxy.proto",
+    "sha256": "679279f7fc115b0f9190b178f4a78318d94fd495c6164b2977ae1fe4f74c400c"
+  },
+  {
+    "file": "proto/loop/v0.34.0-beta/swapserverrpc/common.proto",
+    "sha256": "81de998243a6fddda43292d468c2c13536960056b245fafb7bd76fffea842bc8"
+  }
+]
