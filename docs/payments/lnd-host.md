@@ -179,3 +179,11 @@ through the gateway's existing fsynced, payment-hash-deduplicated
 `agent-credit.jsonl`; changing the issuing node does not create another credit
 path. The live canary must check that journal and reconcile after a retry and
 an LND restart.
+
+The receive checks on 2026-10-15 passed the payment-front suite, 19 CLI payment
+tests, five route-file/front tests, the rollback settings test, and the gateway
+credit retry test. The real LND drill checked 21,001 msat collection with
+`LookupInvoice`, private hints, and an open invoice settling after restart.
+A baked receive-only macaroon issued invoices and observed payments; LND denied
+its send request. The separate recovery drill passed again on GCP after testing
+the case where an active private channel's graph entry is still arriving.

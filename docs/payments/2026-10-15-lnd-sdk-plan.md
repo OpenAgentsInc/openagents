@@ -1,6 +1,6 @@
 # LND as our main Lightning backend, driven from Rust: the `lnd-sdk` plan
 
-Analysis, 2026-10-15. Status: **proposal; no code yet.** It asks whether
+Analysis, 2026-10-15. Status: **experimental implementation tracked in [#11762](https://github.com/OpenAgentsInc/openagents/issues/11762).** It asks whether
 OpenAgents should make LND its main server-side Lightning backend sooner
 rather than later, driven from Rust through a new `crates/lnd-sdk`, and how
 to get there without breaking a payout.
