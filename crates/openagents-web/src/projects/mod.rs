@@ -65,6 +65,7 @@ pub(crate) mod api;
 pub(crate) mod files;
 pub(crate) mod members;
 pub(crate) mod page;
+pub(crate) mod pending;
 pub(crate) mod shared_chats;
 
 pub(crate) fn routes() -> Router<App> {
@@ -72,6 +73,7 @@ pub(crate) fn routes() -> Router<App> {
         .merge(api::routes())
         .merge(files::routes())
         .merge(members::routes())
+        .merge(pending::routes())
         .route(PAGE, get(list_page).post(add))
         .route(REPOS, get(repositories))
         .merge(page::routes())
@@ -233,7 +235,11 @@ async fn list_page(
         Ok(found) => found,
         Err(response) => return response,
     };
-    render(
+    let waiting = match &viewer.github {
+        Some((github, _)) => pending::waiting(&app.config.chat_store, *github).await,
+        None => Vec::new(),
+    };
+    render_with(
         service,
         &viewer,
         &headers,
@@ -242,6 +248,7 @@ async fn list_page(
         StatusCode::OK,
         app.config.github_install.is_some(),
         crate::connections::access::permitted(&app, &viewer),
+        &waiting,
     )
     .await
 }
@@ -257,6 +264,33 @@ async fn render(
     install: bool,
     sources: bool,
 ) -> Response {
+    render_with(
+        service,
+        viewer,
+        headers,
+        q,
+        problem,
+        status,
+        install,
+        sources,
+        &[],
+    )
+    .await
+}
+
+/// [`render`], with the invitations waiting for the viewer listed.
+#[allow(clippy::too_many_arguments)]
+async fn render_with(
+    service: &CloudSession,
+    viewer: &Viewer,
+    headers: &HeaderMap,
+    q: &str,
+    problem: Option<String>,
+    status: StatusCode,
+    install: bool,
+    sources: bool,
+    waiting: &[(String, pending::Pending)],
+) -> Response {
     let state = match service.github_status(headers).await {
         Ok(state) => state,
         Err(error) => return failed(headers, &error),
@@ -264,7 +298,17 @@ async fn render(
     let token = service
         .csrf(headers, viewer, CSRF_SCOPE, "")
         .unwrap_or_default();
-    let body = view(&state, &token, q, problem.as_deref(), install, sources);
+    let invited = pending::section(waiting, &token);
+    let body = view_with(
+        &state,
+        &token,
+        q,
+        problem.as_deref(),
+        install,
+        None,
+        sources,
+        Some(invited),
+    );
     page_for(headers, status, body)
 }
 
@@ -468,11 +512,12 @@ fn view(
     install: bool,
     sources: bool,
 ) -> Markup {
-    view_with(state, csrf, q, problem, install, None, sources)
+    view_with(state, csrf, q, problem, install, None, sources, None)
 }
 
 /// The page body with `list`, the repositories list, in place of the one
 /// that loads after the page shows.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn view_with(
     state: &Status,
     csrf: &str,
@@ -481,6 +526,7 @@ pub(crate) fn view_with(
     install: bool,
     list: Option<Markup>,
     sources: bool,
+    invited: Option<Markup>,
 ) -> Markup {
     let q = q.trim();
     html! {
@@ -491,6 +537,7 @@ pub(crate) fn view_with(
         @if let Some(problem) = problem {
             (Alert::new().color(Color::Danger).description(problem))
         }
+        @if let Some(invited) = invited { (invited) }
         @if let Access::Reconnect { .. } = state.access {
             (Alert::new()
                 .color(Color::Warning)

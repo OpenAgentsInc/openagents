@@ -950,3 +950,144 @@ async fn sharing_on_the_website() {
     let gone = other.get(&world, &format!("/projects/{id}")).await;
     assert_eq!(gone.status, StatusCode::NOT_FOUND);
 }
+
+/// Invited by GitHub username: the invitation waits on that person's
+/// Projects page with Join and Decline, no link to pass along; Decline
+/// takes it off, Join spends it; someone else never sees it; a name
+/// GitHub doesn't know is refused before anything is made.
+#[tokio::test]
+async fn an_invitation_by_github_username_waits_on_their_projects_page() {
+    let world = world().await;
+    let mut owner = Browser::default();
+    owner.sign_in(&world, "octo-local").await;
+    let mut other = Browser::default();
+    other.sign_in(&world, "quiet-local").await;
+    let api = Api::of(&owner);
+    let (_, made) = api
+        .json(&world, "POST", "/v1/projects", json!({"name": "ledger"}))
+        .await;
+    let id = made["id"].as_str().unwrap().to_owned();
+    let page = owner.get(&world, &format!("/projects/{id}")).await;
+    assert!(page.body.contains("GitHub username"), "{}", page.body);
+    let csrf = hidden(
+        &page.body,
+        &format!("action=\"/projects/{id}/invite\""),
+        "csrf",
+    );
+
+    // An unknown name: refused, nothing waits.
+    let unknown = owner
+        .post(
+            &world,
+            &format!("/projects/{id}/invite"),
+            &[
+                ("csrf", &csrf),
+                ("role", "editor"),
+                ("github", "nobody-here"),
+            ],
+        )
+        .await;
+    assert_eq!(unknown.status, StatusCode::BAD_REQUEST, "{}", unknown.body);
+    assert!(unknown.body.contains("no GitHub account named nobody-here"));
+
+    let sent = owner
+        .post(
+            &world,
+            &format!("/projects/{id}/invite"),
+            &[
+                ("csrf", &csrf),
+                ("role", "viewer"),
+                ("github", "@Quiet-Local"),
+            ],
+        )
+        .await;
+    assert_eq!(sent.status, StatusCode::OK, "{}", sent.body);
+    assert!(sent.body.contains("Invited quiet-local"), "{}", sent.body);
+    crate::copy_guard::assert_plain(&format!("/projects/{id}"), &sent.body);
+
+    // Theirs to see, nobody else's.
+    let mine = owner.get(&world, "/projects").await;
+    assert!(!mine.body.contains("Invitations"), "{}", mine.body);
+    let theirs = other.get(&world, "/projects").await;
+    assert!(theirs.body.contains("Invitations"), "{}", theirs.body);
+    assert!(theirs.body.contains("ledger"));
+    assert!(
+        theirs.body.contains("invited you as a viewer"),
+        "{}",
+        theirs.body
+    );
+    crate::copy_guard::assert_plain("/projects", &theirs.body);
+
+    // Decline: it's gone.
+    let at = theirs.body.find("action=\"/projects/invitations/").unwrap();
+    let action: String = theirs.body[at + 8..]
+        .chars()
+        .take_while(|c| *c != '"')
+        .collect();
+    let csrf_theirs = hidden(&theirs.body, &format!("action=\"{action}\""), "csrf");
+    let declined = other.post(&world, &action, &[("csrf", &csrf_theirs)]).await;
+    assert!(declined.status.is_redirection(), "{}", declined.body);
+    let after = other.get(&world, "/projects").await;
+    assert!(!after.body.contains("Invitations"), "{}", after.body);
+
+    // Again, and Join from the list: in, and the list is empty.
+    let sent = owner
+        .post(
+            &world,
+            &format!("/projects/{id}/invite"),
+            &[
+                ("csrf", &csrf),
+                ("role", "viewer"),
+                ("github", "quiet-local"),
+            ],
+        )
+        .await;
+    assert_eq!(sent.status, StatusCode::OK, "{}", sent.body);
+    let theirs = other.get(&world, "/projects").await;
+    let at = theirs.body.find("/projects/join/prjinv_").unwrap();
+    let link: String = theirs.body[at..]
+        .chars()
+        .take_while(|c| c.is_ascii_alphanumeric() || matches!(c, '/' | '_'))
+        .collect();
+    let invitation = other.get(&world, &link).await;
+    assert_eq!(invitation.status, StatusCode::OK, "{}", invitation.body);
+    let csrf = hidden(&invitation.body, &format!("action=\"{link}\""), "csrf");
+    let joined = other.post(&world, &link, &[("csrf", &csrf)]).await;
+    assert_eq!(joined.location(), format!("/projects/{id}"));
+    let after = other.get(&world, "/projects").await;
+    assert!(!after.body.contains("Invitations"), "{}", after.body);
+    assert!(after.body.contains("Shared · viewer"), "{}", after.body);
+
+    // The API takes a GitHub username too, and says who it waits for.
+    let (_, other_project) = api
+        .json(&world, "POST", "/v1/projects", json!({"name": "garden"}))
+        .await;
+    let other_id = other_project["id"].as_str().unwrap();
+    let (status, made) = api
+        .json(
+            &world,
+            "POST",
+            &format!("/v1/projects/{other_id}/invitations"),
+            json!({"github": "quiet-local"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{made}");
+    assert_eq!(made["invitee"]["github"], "quiet-local");
+    let theirs = other.get(&world, "/projects").await;
+    assert!(theirs.body.contains("garden"), "{}", theirs.body);
+    assert!(
+        theirs.body.contains("invited you as an editor"),
+        "{}",
+        theirs.body
+    );
+    let (status, refused) = api
+        .json(
+            &world,
+            "POST",
+            &format!("/v1/projects/{other_id}/invitations"),
+            json!({"github": "nobody-here"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{refused}");
+    assert_eq!(refused["error"]["code"], "unknown_github_user");
+}

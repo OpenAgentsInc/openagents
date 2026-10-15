@@ -325,6 +325,17 @@ async fn invite(
             "Send {\"role\": \"editor\"} or {\"role\": \"viewer\"}, and \"expires_in\" in seconds if you like (7 days when left out).",
         );
     };
+    let github = match body.get("github") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(login)) => Some(login.clone()),
+        Some(_) => {
+            return refused(
+                StatusCode::BAD_REQUEST,
+                "invalid_request",
+                "\"github\" is the GitHub username to invite.",
+            );
+        }
+    };
     let (token, found) = match reach(&app, &headers, &id).await {
         Ok(found) => found,
         Err(response) => return response,
@@ -345,6 +356,16 @@ async fn invite(
         Ok(Protection::Standard) => {}
         Err(error) => return crate::coder_sync::stored(&error),
     }
+    // Invited by GitHub username: it waits on their Projects page.
+    let person = match github {
+        Some(login) => match super::pending::github_person(&app, &headers, &login).await {
+            Ok(person) => Some(person),
+            Err(problem) => {
+                return refused(StatusCode::BAD_REQUEST, "unknown_github_user", &problem);
+            }
+        },
+        None => None,
+    };
     let path = format!("/v1/projects/{}/invitations", found.project.id);
     let made = match call(
         &app,
@@ -363,11 +384,47 @@ async fn invite(
             crate::cloud::session::SessionError::Unavailable,
         ));
     };
+    let expires_unix = made["invitation"]["expires_unix"].as_u64().unwrap_or(0);
+    let invitee = match person {
+        Some((github, login)) => {
+            // Who invited, as the invitation's own page names them.
+            let from = call(
+                &app,
+                &token,
+                Method::POST,
+                "/v1/projects/invitations/preview",
+                Some(json!({"code": code})),
+            )
+            .await
+            .ok()
+            .and_then(|preview| preview["invited_by"].as_str().map(str::to_owned))
+            .unwrap_or_else(|| "Someone".to_owned());
+            let waiting = super::pending::Pending {
+                code: code.to_owned(),
+                project: found.project.id.clone(),
+                project_name: found.project.name.clone(),
+                from,
+                role: made["invitation"]["role"]
+                    .as_str()
+                    .unwrap_or(role)
+                    .to_owned(),
+                expires_unix,
+            };
+            if let Err(error) =
+                super::pending::record(&app.config.chat_store, github, &waiting).await
+            {
+                eprintln!("openagents-web: project invitation for {login}: {error}");
+            }
+            json!({"github": login})
+        }
+        None => Value::Null,
+    };
     let origin = crate::traces::origin(&app, &headers);
     answer(
         StatusCode::CREATED,
         json!({
             "object": "project.invitation",
+            "invitee": invitee,
             "id": made["invitation"]["id"],
             "project": found.project.id,
             "role": made["invitation"]["role"],

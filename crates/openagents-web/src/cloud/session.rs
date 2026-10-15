@@ -137,6 +137,8 @@ pub struct Viewer {
     /// A site admin, as the account service says (`invite_only` entries
     /// marked `admin`, docs/auth/github.md).
     pub admin: bool,
+    /// The GitHub person the account signed in as (id, login).
+    pub github: Option<(u64, String)>,
     pub workspaces: Vec<Workspace>,
     pub workspace: Option<WorkspaceSelection>,
     pub session_id: String,
@@ -520,12 +522,9 @@ impl CloudSession {
 
     async fn read_view(&self, token: &str, selected: Option<&str>) -> Result<Viewer> {
         let client = self.client(token)?;
-        let session = client
-            .account()
-            .session()
-            .await
-            .map_err(native_error)?
-            .session;
+        let answer = client.account().session().await.map_err(native_error)?;
+        let github = answer.github.map(|github| (github.id, github.login));
+        let session = answer.session;
         let expiry = session
             .expires_at
             .as_deref()
@@ -616,6 +615,7 @@ impl CloudSession {
                 .clone()
                 .filter(|url| url.starts_with("https://avatars.githubusercontent.com/")),
             admin: details.account.admin,
+            github,
             workspaces,
             workspace: selection,
             session_id: session.id,

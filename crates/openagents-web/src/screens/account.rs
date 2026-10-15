@@ -981,7 +981,7 @@ fn projects(
 ) -> Response {
     let status = oa_auth::repos::Status { access, projects };
     let list = listed.map(|listed| crate::projects::repos_page(listed, CSRF, q, 1, None));
-    let body = crate::projects::view_with(&status, CSRF, q, None, install, list, true);
+    let body = crate::projects::view_with(&status, CSRF, q, None, install, list, true, None);
     crate::projects::page_for(headers, StatusCode::OK, body)
 }
 

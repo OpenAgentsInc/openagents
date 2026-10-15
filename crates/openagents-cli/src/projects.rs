@@ -78,8 +78,11 @@ pub(crate) const USAGE: &str = "usage: openagents projects COMMAND [--account-di
   members PROJECT
               Who is in the project and what each can do. The owner also
               sees the invitations nobody has used yet.
-  invite PROJECT [--role editor|viewer] [--ttl DURATION]
+  invite PROJECT [--github USERNAME] [--role editor|viewer] [--ttl DURATION]
               Make a link that lets one person join, shown only this once.
+              With --github, the invitation also waits on that GitHub
+              person's Projects page on openagents.com, with Join and
+              Decline, so there's no link to send.
               An editor (the default) adds chats, files, and notes; a viewer
               reads them. --ttl is how long the link works, like 30m, 12h,
               or 7d (the default), from 10 minutes to 30 days. Only the
@@ -224,7 +227,7 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         "remove" => (&["account-dir"], 2, 2),
         "delete" => (&["account-dir", "detach-threads", "yes"], 1, 1),
         "members" | "leave" => (&["account-dir"], 1, 1),
-        "invite" => (&["account-dir", "role", "ttl"], 1, 1),
+        "invite" => (&["account-dir", "github", "role", "ttl"], 1, 1),
         "join" => (&["account-dir"], 1, 1),
         "role" => (&["account-dir"], 3, 3),
         "files list" => (&["account-dir"], 1, 1),
@@ -424,9 +427,11 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         "members" => projects.members(target).map(|listed| {
             output.emit(&listed, members_text);
         }),
-        "invite" => projects.invite(target, invite_role, ttl).map(|made| {
-            output.emit(&made, invited_text);
-        }),
+        "invite" => projects
+            .invite(target, args.option("github"), invite_role, ttl)
+            .map(|made| {
+                output.emit(&made, invited_text);
+            }),
         "join" => projects.join(target).map(|joined| {
             output.emit(&joined, joined_text);
         }),
@@ -1284,9 +1289,18 @@ impl Projects<'_> {
         Ok((found, listed["project"].clone()))
     }
 
-    fn invite(&self, target: &str, role: Option<&str>, ttl: Option<u64>) -> Result<Value, String> {
+    fn invite(
+        &self,
+        target: &str,
+        github: Option<&str>,
+        role: Option<&str>,
+        ttl: Option<u64>,
+    ) -> Result<Value, String> {
         let project = self.find(target)?;
         let mut body = json!({});
+        if let Some(github) = github {
+            body["github"] = json!(github);
+        }
         if let Some(role) = role {
             body["role"] = json!(role);
         }
@@ -1554,6 +1568,14 @@ fn invited_text(made: &Value) -> String {
         .as_str()
         .or_else(|| made["code"].as_str())
         .unwrap_or_default();
+    if let Some(who) = made["invitee"]["github"].as_str() {
+        return format!(
+            "Invited {who} to {} as {}. It's waiting on their Projects page on openagents.com until {}: they sign in with GitHub and choose Join. This link works too, once, and won't be shown again:\n{link}",
+            made["project_name"].as_str().unwrap_or("the project"),
+            role_phrase(made["role"].as_str().unwrap_or("editor")),
+            day(&made["expires_at"]),
+        );
+    }
     format!(
         "Send this link to the person you're inviting to {} as {}. It works once, until {}, and won't be shown again:\n{link}\nThey join with it on openagents.com, or with: openagents projects join LINK",
         made["project_name"].as_str().unwrap_or("the project"),

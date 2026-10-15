@@ -134,7 +134,7 @@ pub(crate) struct People {
     /// Repositories the viewer can't reach on GitHub, with why.
     pub(crate) unreachable: Vec<(String, String)>,
     /// A link just made: shown once.
-    pub(crate) invited: Option<(String, String)>,
+    pub(crate) invited: Option<(String, String, Option<String>)>,
 }
 
 async fn people(
@@ -144,7 +144,7 @@ async fn people(
     status: &Status,
     id: &str,
     _csrf: &str,
-    invited: Option<(String, String)>,
+    invited: Option<(String, String, Option<String>)>,
 ) -> Option<People> {
     let project = status.projects.iter().find(|p| p.id == id)?;
     let members = service
@@ -276,11 +276,18 @@ pub(crate) fn members_section(project: &Project, people: &People, csrf: &str) ->
                     }
                 }
             }
-            @if let Some((link, their)) = &people.invited {
-                (Alert::new()
-                    .color(Color::Success)
-                    .title("Invitation link")
-                    .description(format!("Anyone with this link can join once as {} within 7 days. It's shown only now.", a_role(their))))
+            @if let Some((link, their, who)) = &people.invited {
+                @if let Some(who) = who {
+                    (Alert::new()
+                        .color(Color::Success)
+                        .title(format!("Invited {who}"))
+                        .description(format!("{who} sees it on their Projects page when they sign in, and can join as {} within 7 days. This link works too, once. It's shown only now.", a_role(their))))
+                } @else {
+                    (Alert::new()
+                        .color(Color::Success)
+                        .title("Invitation link")
+                        .description(format!("Anyone with this link can join once as {} within 7 days. It's shown only now.", a_role(their))))
+                }
                 div class="oa-terminal-command" {
                     pre { code { (link) } }
                     (CopyButton::new(link.as_str())
@@ -296,6 +303,10 @@ pub(crate) fn members_section(project: &Project, people: &People, csrf: &str) ->
                 } @else {
                     form.oa-page-actions method="post" action=(format!("{base}/invite")) {
                         input type="hidden" name="csrf" value=(csrf);
+                        (Input::new("github")
+                            .placeholder("GitHub username (optional)")
+                            .aria_label("GitHub username to invite")
+                            .maxlength(40))
                         (Button::new("Invite an editor")
                             .kind(ButtonType::Submit)
                             .size(ControlSize::Sm)
@@ -681,6 +692,9 @@ struct RoleForm {
     csrf: String,
     #[serde(default)]
     role: String,
+    /// Invite: the GitHub person it waits for, when named.
+    #[serde(default)]
+    github: String,
 }
 
 #[derive(Deserialize)]
@@ -694,7 +708,7 @@ async fn again(
     headers: &HeaderMap,
     id: &str,
     problem: Option<String>,
-    invited: Option<(String, String)>,
+    invited: Option<(String, String, Option<String>)>,
     code: StatusCode,
 ) -> Response {
     let (service, viewer) = match viewer(app, headers).await {
@@ -747,7 +761,7 @@ async fn invite(
     Path(id): Path<String>,
     Form(form): Form<RoleForm>,
 ) -> Response {
-    let (service, _) = match checked(&app, &headers, &form.csrf).await {
+    let (service, viewer) = match checked(&app, &headers, &form.csrf).await {
         Ok(found) => found,
         Err(response) => return response,
     };
@@ -777,6 +791,25 @@ async fn invite(
         )
         .await;
     }
+    // Invited by GitHub username: it waits on their Projects page.
+    let person = if form.github.trim().is_empty() {
+        None
+    } else {
+        match super::pending::github_person(&app, &headers, &form.github).await {
+            Ok(person) => Some(person),
+            Err(problem) => {
+                return again(
+                    &app,
+                    &headers,
+                    &id,
+                    Some(problem),
+                    None,
+                    StatusCode::BAD_REQUEST,
+                )
+                .await;
+            }
+        }
+    };
     match service
         .project_call(
             &headers,
@@ -793,12 +826,43 @@ async fn invite(
                 crate::traces::origin(&app, &headers),
                 super::members::JOIN
             );
+            let who = match person {
+                Some((github, login)) => {
+                    let project_name = service
+                        .github_status(&headers)
+                        .await
+                        .ok()
+                        .and_then(|status| {
+                            status
+                                .projects
+                                .iter()
+                                .find(|project| project.id == id)
+                                .map(|project| project.name.clone())
+                        })
+                        .unwrap_or_else(|| "A project".to_owned());
+                    let waiting = super::pending::Pending {
+                        code: code.to_owned(),
+                        project: id.clone(),
+                        project_name,
+                        from: viewer.account_label.clone(),
+                        role: role.to_owned(),
+                        expires_unix: made["invitation"]["expires_unix"].as_u64().unwrap_or(0),
+                    };
+                    if let Err(error) =
+                        super::pending::record(&app.config.chat_store, github, &waiting).await
+                    {
+                        eprintln!("openagents-web: project invitation for {login}: {error}");
+                    }
+                    Some(login)
+                }
+                None => None,
+            };
             again(
                 &app,
                 &headers,
                 &id,
                 None,
-                Some((link, role.to_owned())),
+                Some((link, role.to_owned(), who)),
                 StatusCode::OK,
             )
             .await
@@ -1033,7 +1097,7 @@ async fn join(
             StatusCode::NOT_FOUND,
         );
     };
-    let (service, _) = match checked(&app, &headers, &form.csrf).await {
+    let (service, viewer) = match checked(&app, &headers, &form.csrf).await {
         Ok(found) => found,
         Err(response) => return response,
     };
@@ -1047,6 +1111,9 @@ async fn join(
         .await
     {
         Ok(body) => {
+            if let Some((github, _)) = &viewer.github {
+                super::pending::forget(&app.config.chat_store, *github, &code).await;
+            }
             let id = body["project"]["id"]
                 .as_str()
                 .unwrap_or_default()

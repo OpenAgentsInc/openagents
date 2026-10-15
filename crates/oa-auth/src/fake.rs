@@ -224,6 +224,7 @@ impl Fake {
             .route("/user", get(user))
             .route("/user/emails", get(emails))
             .route("/user/repos", get(repos))
+            .route("/users/{login}", get(public_user))
             .route("/repos/{owner}/{name}", get(repo))
             .route("/repos/{owner}/{name}/branches", get(branches))
             .route("/repos/{owner}/{name}/branches/{*branch}", get(branch))
@@ -1069,6 +1070,30 @@ async fn user(State(fake): State<Fake>, headers: HeaderMap) -> Response {
         None => (
             StatusCode::UNAUTHORIZED,
             axum::Json(json!({"message": "Bad credentials"})),
+        )
+            .into_response(),
+    }
+}
+
+/// `GET /users/{login}`: anyone's public profile, by login
+/// (case-insensitive), with or without a token.
+async fn public_user(
+    State(fake): State<Fake>,
+    axum::extract::Path(login): axum::extract::Path<String>,
+) -> Response {
+    let found = fake
+        .0
+        .lock()
+        .expect("fake GitHub state")
+        .users
+        .iter()
+        .find(|user| user.login().eq_ignore_ascii_case(&login))
+        .map(|user| json!({"login": user.user["login"], "id": user.user["id"], "type": "User"}));
+    match found {
+        Some(user) => axum::Json(user).into_response(),
+        None => (
+            StatusCode::NOT_FOUND,
+            axum::Json(json!({"message": "Not Found"})),
         )
             .into_response(),
     }

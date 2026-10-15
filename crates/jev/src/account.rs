@@ -295,6 +295,18 @@ pub struct SessionView {
     /// The anonymous lane's counters, for a funded anonymous session.
     #[serde(default)]
     pub budget: Option<SessionBudget>,
+    /// The GitHub identity behind a signed-in account.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub github: Option<SessionGithub>,
+}
+
+/// The GitHub person an account signed in as.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct SessionGithub {
+    /// GitHub's numeric user id; it never changes.
+    pub id: u64,
+    /// The GitHub login.
+    pub login: String,
 }
 
 /// One session as the service describes it.
