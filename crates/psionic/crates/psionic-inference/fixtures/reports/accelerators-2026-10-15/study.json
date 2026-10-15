@@ -1,0 +1,197 @@
+{
+  "schema": "psionic.accelerator.package.study.v1",
+  "date": "2026-10-15",
+  "cpu": "Intel Core i7-14700K",
+  "gpu": "NVIDIA RTX 4080 16 GiB",
+  "driver": "595.71.05",
+  "cpu_affinity": "0,2,4,6 (four distinct P cores)",
+  "precision": "f32 operations; uint8 router embeddings preserved; TF32 disabled",
+  "samples": {
+    "cuda": 8000,
+    "cpu_packages": 18000,
+    "lifecycle_checks": 20,
+    "lifecycle_inferences": 20000
+  },
+  "protocol": "Two alternating rounds, one engine per process, 1,000 timings per run, 20 warm-ups, all 100 reference cases checked first. Same named input tensors; concurrency 1; four model CPU threads. Native accelerators add one dedicated control thread. Profiling stops before timing. Warm filesystem caches.",
+  "build": {
+    "rust": "1.97.1",
+    "bindings": "ort 2.0.0-rc.13, API 28",
+    "runtime": "ORT 1.28.0",
+    "rust_release": "opt-level=3, thin LTO, codegen-units=1; CARGO_PROFILE_RELEASE_DEBUG=0",
+    "reduced": "ORT v1.28.0 source da9b5e364c465de65c49d91e696cd6485270757f; MinSizeRel; basic minimal; reduced operators/types; shared library; no RTTI/ML ops. Exact command retained. System Protobuf 34.1 and Abseil 20260107.1 are included in the inventory.",
+    "compiler": "g++ (GCC) 15.2.0"
+  },
+  "summary": [
+    {
+      "matrix": "cuda",
+      "model": "mnist-12",
+      "choice": "native",
+      "p50_ms": 0.1802165,
+      "p99_range_ms": [
+        0.30435199999999996,
+        0.322768
+      ],
+      "max_reference_distance": 3.0517578125e-05
+    },
+    {
+      "matrix": "cuda",
+      "model": "mnist-12",
+      "choice": "ort",
+      "p50_ms": 0.0706485,
+      "p99_range_ms": [
+        0.091934,
+        0.096858
+      ],
+      "max_reference_distance": 2.288818359375e-05
+    },
+    {
+      "matrix": "cuda",
+      "model": "s1-llm-auto-router",
+      "choice": "native",
+      "p50_ms": 7.205313500000001,
+      "p99_range_ms": [
+        138.40228199999999,
+        141.01569899999998
+      ],
+      "max_reference_distance": 4.649162292480469e-06
+    },
+    {
+      "matrix": "cuda",
+      "model": "s1-llm-auto-router",
+      "choice": "ort",
+      "p50_ms": 1.2707600000000001,
+      "p99_range_ms": [
+        2.695824,
+        2.703967
+      ],
+      "max_reference_distance": 3.337860107421875e-06
+    },
+    {
+      "matrix": "cpu",
+      "model": "mnist-12",
+      "choice": "full",
+      "p50_ms": 0.01589,
+      "p99_range_ms": [
+        0.018604,
+        0.021317
+      ],
+      "max_reference_distance": 0.0
+    },
+    {
+      "matrix": "cpu",
+      "model": "mnist-12",
+      "choice": "native",
+      "p50_ms": 0.131445,
+      "p99_range_ms": [
+        0.215157,
+        0.25738999999999995
+      ],
+      "max_reference_distance": 1.52587890625e-05
+    },
+    {
+      "matrix": "cpu",
+      "model": "mnist-12",
+      "choice": "reduced",
+      "p50_ms": 0.026223000000000003,
+      "p99_range_ms": [
+        0.02965,
+        0.038398
+      ],
+      "max_reference_distance": 3.814697265625e-05
+    },
+    {
+      "matrix": "cpu",
+      "model": "potion-base-2M",
+      "choice": "full",
+      "p50_ms": 0.007712999999999999,
+      "p99_range_ms": [
+        0.027313,
+        0.036965000000000005
+      ],
+      "max_reference_distance": 0.0
+    },
+    {
+      "matrix": "cpu",
+      "model": "potion-base-2M",
+      "choice": "native",
+      "p50_ms": 0.0036975000000000003,
+      "p99_range_ms": [
+        0.016524,
+        0.149367
+      ],
+      "max_reference_distance": 0.0
+    },
+    {
+      "matrix": "cpu",
+      "model": "potion-base-2M",
+      "choice": "reduced",
+      "p50_ms": 0.0119595,
+      "p99_range_ms": [
+        0.029717,
+        0.033861
+      ],
+      "max_reference_distance": 0.0
+    },
+    {
+      "matrix": "cpu",
+      "model": "s1-llm-auto-router",
+      "choice": "full",
+      "p50_ms": 6.7822495,
+      "p99_range_ms": [
+        84.297155,
+        84.301849
+      ],
+      "max_reference_distance": 0.0
+    },
+    {
+      "matrix": "cpu",
+      "model": "s1-llm-auto-router",
+      "choice": "native",
+      "p50_ms": 12.364718,
+      "p99_range_ms": [
+        147.624224,
+        151.063963
+      ],
+      "max_reference_distance": 4.291534423828125e-06
+    },
+    {
+      "matrix": "cpu",
+      "model": "s1-llm-auto-router",
+      "choice": "reduced",
+      "p50_ms": 7.229425,
+      "p99_range_ms": [
+        93.767521,
+        93.891947
+      ],
+      "max_reference_distance": 0.0
+    }
+  ],
+  "coverage": {
+    "ort_cuda_router": "CPU shape/index partitions plus CUDA tensor computation; profile retains per-provider operator and copy counts.",
+    "native_cuda_router": "All dense encoder/head GEMMs on CUDA; attention, norms, RoPE, embeddings, activation, residuals, and biases on CPU.",
+    "ort_cuda_mnist": "All eight optimized compute nodes per inference on CUDA; host I/O copies can occur outside profiled graph nodes.",
+    "native_cuda_mnist": "Three GEMMs on CUDA; im2col, bias/ReLU, pooling, and preparation on CPU.",
+    "native_potion_accelerator": "Unsupported; explicit requests fail. CPU comparisons retained.",
+    "apple": "Native CPU library cross-check passed for aarch64-apple-darwin. Accelerator cross-check needs the Apple SDK; no device results. NEEDS_OWNER.md records qualification.",
+    "mobile": "Assessment only; no iOS/Android app or device package is qualified."
+  },
+  "caveats": [
+    "Shared host; other work was not stopped. Raw records include observed system load. Our own builds finished before the final timing runs.",
+    "These router runs cycle all 100 reference inputs, including long sequences. They are not the earlier route-v1 CPU workload.",
+    "Latency excludes preprocessing and HTTP; memory is process RSS with models live, not GPU peak memory. GPU VRAM peak was not sampled.",
+    "Eager CUDA loading can increase startup time and GPU memory; load latency and process memory remain in raw records.",
+    "Native accelerator implementations use mixed CPU/GPU execution; CPU fallback is reported true. No whole-graph native GPU claim.",
+    "The reduced CPU runtime passes all references but is slower here. Its 2.42 MB library also needs the Protobuf/Abseil closure; use the complete 10.88 MB executable-plus-library inventory for comparison.",
+    "Package inventories are uncompressed benchmark executables, shared libraries, and model assets. System prerequisites are separate; these are not final mobile app sizes or redistributable release archives.",
+    "Dual-engine inventories keep both representations of the weights. Native-only deployed loaders do not need source ONNX or test archives.",
+    "Minimal ORT-format tensor execution uses the generic adapter and exported graphs. High-level ORT model loaders still use original ONNX and full ORT. Conversion/source caches stay outside the deployed minimal payload.",
+    "Fixed x86 CPU ORT graphs and this reduced library do not establish ARM, CUDA, Core ML, or arbitrary-model coverage. Minimal ORT emits an expected unsupported Model Editor API diagnostic; tensor inference succeeds."
+  ],
+  "mobile_assessment": "Ship only the model families an app needs. Native CPU avoids ORT. iOS Core ML/Metal need an Apple SDK, target-specific signed framework/app integration, and real-device parity, startup, memory, and thermal measurements; Android needs target ABI libraries and libc++ dependencies. Do not reuse fixed x86 ORT exports for those targets.",
+  "sources": [
+    "https://onnxruntime.ai/docs/build/custom.html",
+    "https://onnxruntime.ai/docs/execution-providers/CoreML-ExecutionProvider.html",
+    "https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html",
+    "https://docs.nvidia.com/cuda/cuda-programming-guide/05-appendices/environment-variables.html"
+  ]
+}

@@ -41,11 +41,13 @@ and starts it.
 The [ORT and native roadmap](../research/decisionmodels/psionic-onnx-native-roadmap.md)
 tracks optional ONNX Runtime execution alongside native Psionic models.
 The `psionic-inference` crate implements both CPU engines for
-`s1-llm-auto-router`, shared reference fixtures, and a benchmark runner.
+`s1-llm-auto-router`, Potion embeddings, and MNIST digit vision, with
+shared fixtures and benchmark runners. It also exposes ORT CUDA/Core ML
+and mixed native CUDA/Metal execution for the router and digit model.
 The existing `psionic-openai-server` serves the fixed router through
 `--router-model-dir` and an explicit `--router-engine native|ort`. The
-roadmap records CPU and HTTP measurements and the remaining model-family
-and accelerator work.
+roadmap records CPU, HTTP, CUDA, and package comparisons. Apple and mobile
+device qualification remains in `NEEDS_OWNER.md`.
 
 ## History
 

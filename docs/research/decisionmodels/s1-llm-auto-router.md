@@ -182,8 +182,8 @@ would sit where Clef sits today: after the rule, before the policy.
 | --- | --- | --- |
 | Model | Clef-Flash 9B (Qwen3.5) or Clef 27B, with a joint decision head | 120M-parameter encoder with fixed heads |
 | Questions | Any typed questions (choice, score, noul) | Only its seven |
-| Hardware | GPU pool (H100, A100), or about 14 GB on Metal | CPU; model file is 183 MB; peak process memory still needs measurement |
-| Latency (as seen by Coder) | 20–300 ms through the gateway | 3–8 ms in the standalone ORT test, about 93 ms through their API; native Psionic and Coder integration are not measured |
+| Hardware | GPU pool (H100, A100), or about 14 GB on Metal | CPU; model file is 183 MB; measured Psionic peaks are 450 MB with ORT and 518 MB with native on Linux `route-v1` (4 threads) |
+| Latency (as seen by Coder) | 20–300 ms through the gateway | 3–8 ms in the standalone Mac ORT test; Linux Psionic `route-v1` p50 is 4.0 ms with ORT and 8.6 ms with native; Coder routing outcomes are not measured |
 | Cost | Our GPU hours | Free on CPUs we already run, or USD 0.001 per million tokens through their API |
 | Fit to our schema | Exact: it answers `route-v1` as written | Partial: difficulty is roughly our Size, stakes our Risk, needs_tools our needs_repo or own_tools. It has nothing for issue_to_pr, research or new_work |
 
@@ -221,7 +221,11 @@ and package size. Both CPU engines are implemented in `psionic-inference`
 ORT reference set; maximum centered logit distance is 0.00000763. The
 [roadmap](psionic-onnx-native-roadmap.md#cpu-results-2026-10-15-11703)
 records the CPU measurements (#11703). Shared in-process and HTTP serving
-are implemented in #11704; routing adoption still requires the application
+are implemented in #11704. Embeddings and digit vision now have both CPU
+engines (#11705); #11706 adds explicit accelerator selection, mixed
+native CUDA/Metal execution, CUDA evidence, and package comparisons.
+Apple device qualification remains in `NEEDS_OWNER.md`. Routing adoption
+still requires the application
 evaluation below.
 
 **What Psionic does today.**
@@ -239,8 +243,8 @@ This table records the implementation scope; the [roadmap](psionic-onnx-native-r
 | # | Gap | What it takes | Size |
 | --- | --- | --- | --- |
 | 0 | **Optional ORT execution** | A Rust adapter around a pinned ONNX Runtime dependency, initially CPU only. Load the published ONNX directly and expose named tensor inputs and outputs through the shared model interface. Keep the dependency optional, identify the actual engine and execution provider in results, and fail an explicitly selected backend if it is unavailable. This is reusable model execution support, not a router-only wrapper | M |
-| 1 | **Encoder forward on CPU** | A ModernBERT family in `psionic-models` and `psionic-serve`. It needs: <br>• bidirectional attention with no KV cache; <br>• per-layer rotary frequencies from the graph (this artifact uses base 160,000 for both local and global attention); <br>• alternating global and sliding-window layers (a symmetric radius of 64, every third layer of the original 22 global; check which of the kept layers are global against the ONNX masks); <br>• a GeGLU MLP with exact (erf) GELU; <br>• LayerNorm without bias, including the embedding norm (layer 0 has no attention norm); <br>• first-token pooling. <br>Batch size 1 is enough at first. Rotary and the GEMM exist; GeGLU, bias-free LayerNorm and the bidirectional local mask are new on CPU | M |
-| 2 | **Weight loading for both engines** | ORT loads the original ONNX graph and weights. For native execution, a reproducible converter exports the ONNX initializers into named safetensors plus a JSON architecture config. Map anonymous `onnx::MatMul_*` names by walking the graph, and transpose to our layout. Preserve the uint8 embeddings, scale, and zero point; dequantize per gathered row. Pin source and converted files by sha256 and record the converter version. Safetensors carries weights; native code still implements the graph | S |
+| 1 | **Encoder forward on CPU** | A ModernBERT family in `psionic-inference`, exposed through `psionic-serve`. It needs: <br>• bidirectional attention with no KV cache; <br>• per-layer rotary frequencies from the graph (this artifact uses base 160,000 for both local and global attention); <br>• alternating global and sliding-window layers (a symmetric radius of 64, every third layer of the original 22 global; check which of the kept layers are global against the ONNX masks); <br>• a GeGLU MLP with exact (erf) GELU; <br>• LayerNorm without bias, including the embedding norm (layer 0 has no attention norm); <br>• first-token pooling. <br>Batch size 1 is enough at first. Rotary and the GEMM exist; GeGLU, bias-free LayerNorm and the bidirectional local mask are new on CPU | M |
+| 2 | **Weight loading for both engines** | ORT loads the original ONNX graph and weights. For native execution, a reproducible converter exports the ONNX initializers into named safetensors plus a JSON architecture config. Map anonymous `onnx::MatMul_*` names by walking the graph; preserve the published matrix layout where it matches the kernels. Preserve the uint8 embeddings, scale, and zero point; dequantize per gathered row. Pin source and converted files by sha256 and record the converter version. Safetensors carries weights; native code still implements the graph | S |
 | 3 | **Tokenizer** | Psionic's SentencePiece tokenizer reads GGUF score tables. This model ships an HF `tokenizer.json` with 580k ranked merges. The work: <br>• a loader for merge-ranked SentencePiece-style BPE with byte fallback and a Metaspace pre-tokenizer that always adds `▁`; <br>• the pair template `<bos> A <eos> B <eos>`; <br>• truncation of the second sequence only, at 512 tokens. <br>Acceptance: token ids identical to HF `tokenizers` on at least 1,000 strings across the 22 languages, plus code and paths | S–M |
 | 4 | **Heads and answer shaping** | ORT executes the four heads in the graph; native code implements the same projections. Both return raw logits to shared Rust processing: per-head temperatures from `meta.json`, softmax or sigmoid, expected score values, and the System One response. Record the engine separately from model identity | S |
 | 5 | **Serving** | Support both engines over HTTP and in process. <br>• **Over HTTP**: add the model to `psionic-openai-server` behind the existing `/v1/systemone` route. Its question schema is fixed, so a request asking anything else is refused as `not_admitted` and the judge chain moves to its next door. Warm the selected engine before `/health` (from [reax.md](reax.md)). Gateway adoption still requires the routing evaluation below. <br>• **In process**: Coder links the shared model adapter and selects ORT or native without a network hop. Measure this path separately from HTTP | S–M |

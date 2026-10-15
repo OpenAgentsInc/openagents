@@ -277,3 +277,13 @@ an ORT library and MNIST ONNX path as positional arguments; set
 in fresh processes when qualifying a driver/runtime stack. The benchmark
 driver treats a nonzero child exit as a failure even if it printed a
 result before shutdown.
+
+
+The [accelerator and package report](fixtures/reports/accelerators-2026-10-15/study.json)
+contains the matched CUDA/CPU measurements, the failed lazy-loading
+configuration, and all package hashes. `scripts/dev/psionic-package-bench.py`
+compares native CPU, full ORT, and reduced ORT on identical fixtures.
+`scripts/dev/psionic-package-size.py` inventories binaries, model assets,
+explicit lazy-loaded libraries, and transitive Linux shared dependencies.
+It lists ordinary system libraries and NVIDIA driver/compiler libraries
+separately. Use the recorded commands to reproduce each inventory.

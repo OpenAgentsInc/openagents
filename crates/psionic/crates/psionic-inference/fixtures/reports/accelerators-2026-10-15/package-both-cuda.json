@@ -1,0 +1,427 @@
+{
+  "schema": "psionic.package.size.v1",
+  "name": "both-cuda",
+  "files": [
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-cudnn-9.20/nvidia/cudnn/lib/libcudnn.so.9",
+      "name": "libcudnn.so.9",
+      "role": "application",
+      "bytes": 129240,
+      "sha256": "b88025af76979b3f1af208790195093684fe01cb8d190528856058f988016660"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-cudnn-9.20/nvidia/cudnn/lib/libcudnn_adv.so.9",
+      "name": "libcudnn_adv.so.9",
+      "role": "application",
+      "bytes": 109169104,
+      "sha256": "7702094a50dbea5b8244df01af8e9d3565309d3996bbc8ca96b6c7a207d2d6bd"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-cudnn-9.20/nvidia/cudnn/lib/libcudnn_cnn.so.9",
+      "name": "libcudnn_cnn.so.9",
+      "role": "application",
+      "bytes": 4203904,
+      "sha256": "e830c5cba875ebeb8ed3cfde5cc038a2703692ce714a8a4ff28666ac8e2c5732"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-cudnn-9.20/nvidia/cudnn/lib/libcudnn_engines_precompiled.so.9",
+      "name": "libcudnn_engines_precompiled.so.9",
+      "role": "application",
+      "bytes": 245391920,
+      "sha256": "e5133109f710c215d72fdc8f1d9be187f4760f5f32e57cc8c57515ea9e91455e"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-cudnn-9.20/nvidia/cudnn/lib/libcudnn_engines_runtime_compiled.so.9",
+      "name": "libcudnn_engines_runtime_compiled.so.9",
+      "role": "application",
+      "bytes": 29386664,
+      "sha256": "28db2a6f433a184e264d927b183c47ecaf72dc65ed58245a6d2380f980e29cd3"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-cudnn-9.20/nvidia/cudnn/lib/libcudnn_graph.so.9",
+      "name": "libcudnn_graph.so.9",
+      "role": "application",
+      "bytes": 4460192,
+      "sha256": "35c099d318433a88d292775676a51a07d2dd152c3ae799b1c21a75b40f78e456"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-cudnn-9.20/nvidia/cudnn/lib/libcudnn_heuristic.so.9",
+      "name": "libcudnn_heuristic.so.9",
+      "role": "application",
+      "bytes": 60822040,
+      "sha256": "a41eb9baa9ccc9e2d6c9f2ca226021b54c8ee2df4abf3a91e41687847b481228"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-cudnn-9.20/nvidia/cudnn/lib/libcudnn_ops.so.9",
+      "name": "libcudnn_ops.so.9",
+      "role": "application",
+      "bytes": 39855888,
+      "sha256": "705d3dcf9b209fdbeeecd8aaec5fcd0f6f55de5661e1c1388b5a4b8fd29db7c3"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-device-bench-qualified",
+      "name": "psionic-device-bench-qualified",
+      "role": "application",
+      "bytes": 5079096,
+      "sha256": "a80b04a38bcd6de7ee2544d0ebd954b24fbff422e0da2fe4b9fc3b21a7a79b4a"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-gpu-env/lib/python3.13/site-packages/nvidia/cu13/lib/libcurand.so.10",
+      "name": "libcurand.so.10",
+      "role": "application",
+      "bytes": 133931224,
+      "sha256": "76f0925c7407ad6c9be3979b916cbd6b6e56881192f6e9f90dca661a63da6a9b"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-gpu-env/lib/python3.13/site-packages/onnxruntime/capi/libonnxruntime.so.1.28.0",
+      "name": "libonnxruntime.so.1.28.0",
+      "role": "application",
+      "bytes": 24350768,
+      "sha256": "018d05f615e96f6e0cfb95d2865f63915681d5d2688dd187f599822b245d27bc"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-gpu-env/lib/python3.13/site-packages/onnxruntime/capi/libonnxruntime_providers_cuda.so",
+      "name": "libonnxruntime_providers_cuda.so",
+      "role": "application",
+      "bytes": 279770920,
+      "sha256": "e9ecc0702543a1951d37a8fba9b74b70a55d042b3f2e35b1b13f3b12690c976b"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-gpu-env/lib/python3.13/site-packages/onnxruntime/capi/libonnxruntime_providers_shared.so",
+      "name": "libonnxruntime_providers_shared.so",
+      "role": "application",
+      "bytes": 14632,
+      "sha256": "086ec1d5388f64153d9c63470d126693db9a182c8ce236d3a1119068471b8a0d"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-model-cache/mnist/LICENSE",
+      "name": "LICENSE",
+      "role": "model asset or license",
+      "bytes": 11358,
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-model-cache/mnist/README.md",
+      "name": "README.md",
+      "role": "model asset or license",
+      "bytes": 3702,
+      "sha256": "6a139e68e87f153c0239b0fbfd8258807fddc59de3ec8f9da96ff2848c5756fc"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-model-cache/mnist/model.onnx",
+      "name": "model.onnx",
+      "role": "model asset or license",
+      "bytes": 26143,
+      "sha256": "5c688690f8bacf667d4c2074af5ad0646ca328d7ab03eccf944a65b320171bdd"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-model-cache/mnist/native.safetensors",
+      "name": "native.safetensors",
+      "role": "model asset or license",
+      "bytes": 24408,
+      "sha256": "aff693e737b486936a2aab94128556208fcbf91e33d6a3bf2afdb89ed2e2ad9c"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-model-cache/potion/README.md",
+      "name": "README.md",
+      "role": "model asset or license",
+      "bytes": 5202,
+      "sha256": "38af170acce93b5eb0c4e18659ab0b30581b2f6860f3e12d8ba8b8751e249363"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-model-cache/potion/config.json",
+      "name": "config.json",
+      "role": "model asset or license",
+      "bytes": 200,
+      "sha256": "b2a89173391ca774c2d7323090a993a9a1553faa5b40eb37bb7cec6685fbea47"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-model-cache/potion/model.safetensors",
+      "name": "model.safetensors",
+      "role": "model asset or license",
+      "bytes": 7559256,
+      "sha256": "f95ffde02ad06f63ae38eb9d400038cd5ccaf8411ec3cb650c6025113f96cbb8"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-model-cache/potion/onnx/model.onnx",
+      "name": "model.onnx",
+      "role": "model asset or license",
+      "bytes": 7563349,
+      "sha256": "92d4a7576de7d39055924b4d9d3979c8c3b2de272010f76f99e2ac14c7b2e5a8"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-model-cache/potion/tokenizer.json",
+      "name": "tokenizer.json",
+      "role": "model asset or license",
+      "bytes": 683666,
+      "sha256": "e67e803f624fb4d67dea1c730d06e1067e1b14d830e2c2202569e3ef0f70bb50"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-model-cache/s1-router/LICENSE",
+      "name": "LICENSE",
+      "role": "model asset or license",
+      "bytes": 1375,
+      "sha256": "2fdc12f1de2340022107bc13fcef9027ca127cefb48c3c19615e2b596dc7e2fb"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-model-cache/s1-router/meta.json",
+      "name": "meta.json",
+      "role": "model asset or license",
+      "bytes": 688,
+      "sha256": "b6689ba21a44e0910cc2ae831c6ecf2bcc6f542b3fc5cd29d570e012865649c2"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-model-cache/s1-router/model.gq.onnx",
+      "name": "model.gq.onnx",
+      "role": "model asset or license",
+      "bytes": 183089235,
+      "sha256": "53a02107e46be7913f148037b63b4f4735a400f91221789b0aaefcde0ad8da80"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-model-cache/s1-router/native.json",
+      "name": "native.json",
+      "role": "model asset or license",
+      "bytes": 15450,
+      "sha256": "fb3d396e19ef875dcf26733c2b09b001c11b313da5327451f02933b577c4b61d"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-model-cache/s1-router/native.safetensors",
+      "name": "native.safetensors",
+      "role": "model asset or license",
+      "bytes": 182724488,
+      "sha256": "d48185e7032dc060425f7b3d2fcb06d62c05683ecdbfbe12a150e653bd885d04"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-model-cache/s1-router/tokenizer/tokenizer.json",
+      "name": "tokenizer.json",
+      "role": "model asset or license",
+      "bytes": 34363439,
+      "sha256": "c01f8492531b2e569bd8d28ef1de1c66779275753c78cb497f7118762ae3230d"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-model-cache/s1-router/tokenizer/tokenizer_config.json",
+      "name": "tokenizer_config.json",
+      "role": "model asset or license",
+      "bytes": 574,
+      "sha256": "14b147f2a4f939d9b12ab36e9633917040dd948fa78ce283b03402e4cf2c9cba"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-ort-source/LICENSE",
+      "name": "LICENSE",
+      "role": "model asset or license",
+      "bytes": 1073,
+      "sha256": "2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-ort-source/ThirdPartyNotices.txt",
+      "name": "ThirdPartyNotices.txt",
+      "role": "model asset or license",
+      "bytes": 325054,
+      "sha256": "0e07b95f3a8d6230037707c5c4a2b554d12c4cb67369669ac255635528ffcee2"
+    },
+    {
+      "file": "/nix/store/3b7njvjfc2w5lhj1jklrsw4lq7nwypri-gcc-15.2.0-lib/lib/libstdc++.so.6.0.34",
+      "name": "libstdc++.so.6.0.34",
+      "role": "system prerequisite",
+      "bytes": 3230944,
+      "sha256": "596bed480091e75c87f3d40fbb4b76180d67bd0aedfeb54f7d5bcf24c1cabc90"
+    },
+    {
+      "file": "/nix/store/jvw27qs9lrnmm2yxnvld8kdfg031jfx5-nvidia-x11-595.71.05/lib/libcuda.so.595.71.05",
+      "name": "libcuda.so.595.71.05",
+      "role": "system prerequisite",
+      "bytes": 91525656,
+      "sha256": "294d0a9b30514119f00c7ac40e334d14a85e578b5c7283c27d037eee422081fa"
+    },
+    {
+      "file": "/nix/store/jvw27qs9lrnmm2yxnvld8kdfg031jfx5-nvidia-x11-595.71.05/lib/libnvidia-gpucomp.so.595.71.05",
+      "name": "libnvidia-gpucomp.so.595.71.05",
+      "role": "system prerequisite",
+      "bytes": 94079128,
+      "sha256": "257f669fdcd4e713137ef0ffc751f4bbf7da80d68749ab8a003b83c9e2358175"
+    },
+    {
+      "file": "/nix/store/jvw27qs9lrnmm2yxnvld8kdfg031jfx5-nvidia-x11-595.71.05/lib/libnvidia-nvvm70.so.4",
+      "name": "libnvidia-nvvm70.so.4",
+      "role": "system prerequisite",
+      "bytes": 24835528,
+      "sha256": "943611899052f7b24250022c640feb0439b3b4b0feeb6a4c4a149671e330381e"
+    },
+    {
+      "file": "/nix/store/jvw27qs9lrnmm2yxnvld8kdfg031jfx5-nvidia-x11-595.71.05/lib/libnvidia-ptxjitcompiler.so.595.71.05",
+      "name": "libnvidia-ptxjitcompiler.so.595.71.05",
+      "role": "system prerequisite",
+      "bytes": 32834016,
+      "sha256": "97c4f59659fc149b8d774eb3942250fc15f1a88ab3df613fe1557b27a5409185"
+    },
+    {
+      "file": "/nix/store/m12aiq3gwd3va37byk0cpb67nv2c98sg-cuda13.2-libcublas-13.3.0.5-lib/lib/libcublas.so.13.3.0.5",
+      "name": "libcublas.so.13.3.0.5",
+      "role": "application",
+      "bytes": 54240840,
+      "sha256": "49ba7a7b50074324980009c9180c560721bbfa8253bfa7c318016355a407fc7f"
+    },
+    {
+      "file": "/nix/store/m12aiq3gwd3va37byk0cpb67nv2c98sg-cuda13.2-libcublas-13.3.0.5-lib/lib/libcublasLt.so.13.3.0.5",
+      "name": "libcublasLt.so.13.3.0.5",
+      "role": "application",
+      "bytes": 505032960,
+      "sha256": "7c0b1d0ec476f15f45d3381d5518066405c27a25b662e38993f8318eca8eee95"
+    },
+    {
+      "file": "/nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/ld-linux-x86-64.so.2",
+      "name": "ld-linux-x86-64.so.2",
+      "role": "system prerequisite",
+      "bytes": 263056,
+      "sha256": "5e6250bc71797bc3f75f8c3cee9d4f35e7ddd25ed07d8925ad9c2932d276182c"
+    },
+    {
+      "file": "/nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libc.so.6",
+      "name": "libc.so.6",
+      "role": "system prerequisite",
+      "bytes": 2413096,
+      "sha256": "47462289165b3273a441819431453b13068aeecb718afa39d8c5f904e49f2519"
+    },
+    {
+      "file": "/nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libdl.so.2",
+      "name": "libdl.so.2",
+      "role": "system prerequisite",
+      "bytes": 15688,
+      "sha256": "0993c0ce12a5755e9679198dc7507835d1d27f1cf2472d19b8dfc3236ca57dd7"
+    },
+    {
+      "file": "/nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libm.so.6",
+      "name": "libm.so.6",
+      "role": "system prerequisite",
+      "bytes": 1102240,
+      "sha256": "95aafdf744c5bd6df251264d6a0b864159ba6f77c1f21997dd79dfb8ecc2e2bf"
+    },
+    {
+      "file": "/nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libpthread.so.0",
+      "name": "libpthread.so.0",
+      "role": "system prerequisite",
+      "bytes": 16536,
+      "sha256": "99dcacbf25209219bcb289e91b4d68d0e267a98db6cfa4445fbe960877092c4f"
+    },
+    {
+      "file": "/nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/librt.so.1",
+      "name": "librt.so.1",
+      "role": "system prerequisite",
+      "bytes": 16352,
+      "sha256": "04e3560371b42af7d053a38dd7499a0079b07e798714b76dbfbc59c9b6f30ec0"
+    },
+    {
+      "file": "/nix/store/xa38z4p9ja0gm410z80hpl6fvy5nanji-cuda13.2-cuda_cudart-13.2.51/lib/libcudart.so.13.2.51",
+      "name": "libcudart.so.13.2.51",
+      "role": "application",
+      "bytes": 808432,
+      "sha256": "4e646788a65853a1d4fa9d4573452362e68e686a530a9adf272d78be673213ba"
+    },
+    {
+      "file": "/nix/store/yf2c1gngi2dqvgni1rgvnixxc0d8di02-gcc-15.2.0-libgcc/lib/libgcc_s.so.1",
+      "name": "libgcc_s.so.1",
+      "role": "system prerequisite",
+      "bytes": 196968,
+      "sha256": "ae044ece9877d38a4a4bcee7b9c15eed9b50d0dad24d41617eec8fff8bbd262d"
+    },
+    {
+      "file": "/nix/store/yq335q9gkpbpm9z7vzfcfngydldpj6q4-zlib-1.3.2/lib/libz.so.1.3.2",
+      "name": "libz.so.1.3.2",
+      "role": "application",
+      "bytes": 128936,
+      "sha256": "d57d2fad38719bf3c8c332769e81b707f0be0a216e25b41eac77fb7918c2a675"
+    }
+  ],
+  "application_bytes": 1496776760,
+  "model_asset_bytes": 416398660,
+  "system_prerequisite_bytes": 250529208,
+  "total_listed_bytes": 2163704628,
+  "command": [
+    "scripts/dev/psionic-package-size.py",
+    "--name",
+    "both-cuda",
+    "--binary",
+    "/home/christopherdavid/work/openagents-target-agent2/psionic-device-bench-qualified",
+    "--system-library",
+    "/run/opengl-driver/lib/libcuda.so.1",
+    "--library",
+    "/nix/store/m12aiq3gwd3va37byk0cpb67nv2c98sg-cuda13.2-libcublas-13.3.0.5-lib/lib/libcublas.so.13",
+    "--library",
+    "/nix/store/m12aiq3gwd3va37byk0cpb67nv2c98sg-cuda13.2-libcublas-13.3.0.5-lib/lib/libcublasLt.so.13",
+    "--library",
+    "/nix/store/xa38z4p9ja0gm410z80hpl6fvy5nanji-cuda13.2-cuda_cudart-13.2.51/lib/libcudart.so.13",
+    "--library",
+    "/home/christopherdavid/work/openagents-target-agent2/psionic-gpu-env/lib/python3.13/site-packages/onnxruntime/capi/libonnxruntime.so.1.28.0",
+    "--library",
+    "/home/christopherdavid/work/openagents-target-agent2/psionic-gpu-env/lib/python3.13/site-packages/onnxruntime/capi/libonnxruntime_providers_cuda.so",
+    "--library",
+    "/home/christopherdavid/work/openagents-target-agent2/psionic-gpu-env/lib/python3.13/site-packages/onnxruntime/capi/libonnxruntime_providers_shared.so",
+    "--library",
+    "/home/christopherdavid/work/openagents-target-agent2/psionic-gpu-env/lib/python3.13/site-packages/nvidia/cu13/lib/libcurand.so.10",
+    "--asset",
+    "/home/christopherdavid/.openagents/scratch/codex-01a14071-2d67-7bf2-b54d-9b7bd3014bda/models/s1-router/meta.json",
+    "--asset",
+    "/home/christopherdavid/.openagents/scratch/codex-01a14071-2d67-7bf2-b54d-9b7bd3014bda/models/s1-router/LICENSE",
+    "--asset",
+    "/home/christopherdavid/.openagents/scratch/codex-01a14071-2d67-7bf2-b54d-9b7bd3014bda/models/s1-router/tokenizer/tokenizer.json",
+    "--asset",
+    "/home/christopherdavid/.openagents/scratch/codex-01a14071-2d67-7bf2-b54d-9b7bd3014bda/models/s1-router/tokenizer/tokenizer_config.json",
+    "--asset",
+    "/home/christopherdavid/.openagents/scratch/codex-01a14071-2d67-7bf2-b54d-9b7bd3014bda/models/s1-router/native.safetensors",
+    "--asset",
+    "/home/christopherdavid/.openagents/scratch/codex-01a14071-2d67-7bf2-b54d-9b7bd3014bda/models/s1-router/native.json",
+    "--asset",
+    "/home/christopherdavid/.openagents/scratch/codex-01a14071-2d67-7bf2-b54d-9b7bd3014bda/models/potion/model.safetensors",
+    "--asset",
+    "/home/christopherdavid/.openagents/scratch/codex-01a14071-2d67-7bf2-b54d-9b7bd3014bda/models/potion/tokenizer.json",
+    "--asset",
+    "/home/christopherdavid/.openagents/scratch/codex-01a14071-2d67-7bf2-b54d-9b7bd3014bda/models/potion/config.json",
+    "--asset",
+    "/home/christopherdavid/.openagents/scratch/codex-01a14071-2d67-7bf2-b54d-9b7bd3014bda/models/potion/README.md",
+    "--asset",
+    "/home/christopherdavid/.openagents/scratch/codex-01a14071-2d67-7bf2-b54d-9b7bd3014bda/models/mnist/README.md",
+    "--asset",
+    "/home/christopherdavid/.openagents/scratch/codex-01a14071-2d67-7bf2-b54d-9b7bd3014bda/models/mnist/LICENSE",
+    "--asset",
+    "/home/christopherdavid/.openagents/scratch/codex-01a14071-2d67-7bf2-b54d-9b7bd3014bda/models/mnist/native.safetensors",
+    "--asset",
+    "/home/christopherdavid/.openagents/scratch/codex-01a14071-2d67-7bf2-b54d-9b7bd3014bda/models/s1-router/model.gq.onnx",
+    "--asset",
+    "/home/christopherdavid/.openagents/scratch/codex-01a14071-2d67-7bf2-b54d-9b7bd3014bda/models/potion/onnx/model.onnx",
+    "--asset",
+    "/home/christopherdavid/.openagents/scratch/codex-01a14071-2d67-7bf2-b54d-9b7bd3014bda/models/mnist/model.onnx",
+    "--asset",
+    "/home/christopherdavid/work/openagents-target-agent2/psionic-ort-source/LICENSE",
+    "--asset",
+    "/home/christopherdavid/work/openagents-target-agent2/psionic-ort-source/ThirdPartyNotices.txt",
+    "--library",
+    "/home/christopherdavid/work/openagents-target-agent2/psionic-cudnn-9.20/nvidia/cudnn/lib/libcudnn_ops.so.9",
+    "--library",
+    "/home/christopherdavid/work/openagents-target-agent2/psionic-cudnn-9.20/nvidia/cudnn/lib/libcudnn_heuristic.so.9",
+    "--library",
+    "/home/christopherdavid/work/openagents-target-agent2/psionic-cudnn-9.20/nvidia/cudnn/lib/libcudnn_graph.so.9",
+    "--library",
+    "/home/christopherdavid/work/openagents-target-agent2/psionic-cudnn-9.20/nvidia/cudnn/lib/libcudnn_engines_runtime_compiled.so.9",
+    "--library",
+    "/home/christopherdavid/work/openagents-target-agent2/psionic-cudnn-9.20/nvidia/cudnn/lib/libcudnn_engines_precompiled.so.9",
+    "--library",
+    "/home/christopherdavid/work/openagents-target-agent2/psionic-cudnn-9.20/nvidia/cudnn/lib/libcudnn_cnn.so.9",
+    "--library",
+    "/home/christopherdavid/work/openagents-target-agent2/psionic-cudnn-9.20/nvidia/cudnn/lib/libcudnn_adv.so.9",
+    "--library",
+    "/home/christopherdavid/work/openagents-target-agent2/psionic-cudnn-9.20/nvidia/cudnn/lib/libcudnn.so.9",
+    "--system-library",
+    "/nix/store/jvw27qs9lrnmm2yxnvld8kdfg031jfx5-nvidia-x11-595.71.05/lib/libcuda.so.595.71.05",
+    "--system-library",
+    "/nix/store/jvw27qs9lrnmm2yxnvld8kdfg031jfx5-nvidia-x11-595.71.05/lib/libnvidia-gpucomp.so.595.71.05",
+    "--system-library",
+    "/nix/store/jvw27qs9lrnmm2yxnvld8kdfg031jfx5-nvidia-x11-595.71.05/lib/libnvidia-nvvm70.so.4",
+    "--system-library",
+    "/nix/store/jvw27qs9lrnmm2yxnvld8kdfg031jfx5-nvidia-x11-595.71.05/lib/libnvidia-ptxjitcompiler.so.595.71.05"
+  ],
+  "notes": [
+    "Uncompressed files; each resolved file counted once. No Python environment is part of the runtime.",
+    "CUDA driver and ordinary OS/C++ libraries are listed as system prerequisites; provision them separately or include them when packaging.",
+    "Pass every lazy-loaded library and required license explicitly; ldd cannot discover dlopen dependencies or license requirements."
+  ]
+}

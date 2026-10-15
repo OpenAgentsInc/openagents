@@ -1,0 +1,38 @@
+{
+  "schema": "psionic.ort-reduced.package.v1",
+  "ort_source_revision": "da9b5e364c465de65c49d91e696cd6485270757f",
+  "conversion_runtime": "1.28.0",
+  "source_models": {
+    "router": {
+      "sha256": "53a02107e46be7913f148037b63b4f4735a400f91221789b0aaefcde0ad8da80",
+      "bytes": 183089235
+    },
+    "potion": {
+      "sha256": "92d4a7576de7d39055924b4d9d3979c8c3b2de272010f76f99e2ac14c7b2e5a8",
+      "bytes": 7563349
+    },
+    "mnist": {
+      "sha256": "5c688690f8bacf667d4c2074af5ad0646ca328d7ab03eccf944a65b320171bdd",
+      "bytes": 26143
+    }
+  },
+  "coverage": "Fixed CPU ORT-format artifacts only; no ONNX parser, CUDA, Core ML, or arbitrary model coverage.",
+  "files": {
+    "mnist.ort": {
+      "sha256": "5330efec288dab16390d6e096d1117e0279ed85530a56522807755ad3822f1de",
+      "bytes": 32080
+    },
+    "potion.ort": {
+      "sha256": "196d29a6c08d83d94c583497a9231b75d99b5b7bca660141285cdfaac142ef32",
+      "bytes": 7571144
+    },
+    "required_operators_and_types.config": {
+      "sha256": "96684126144090e935e9ffe4ca48cbad9171003f994a007e5989380623d0f35c",
+      "bytes": 1446
+    },
+    "router.ort": {
+      "sha256": "33ceb43e6f056325ebc166fa9c5000b0568a0ed94ca9fbf91afb1d6499d42008",
+      "bytes": 183261776
+    }
+  }
+}

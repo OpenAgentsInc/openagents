@@ -1,0 +1,809 @@
+{
+  "schema": "psionic.package.size.v1",
+  "name": "both-reduced-cpu",
+  "files": [
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-cpu-both-package",
+      "name": "psionic-cpu-both-package",
+      "role": "application",
+      "bytes": 4838464,
+      "sha256": "8010dc27ac82311ba8105752765ed56404a5761783989318c57dd34aca9967f4"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-model-cache/mnist/LICENSE",
+      "name": "LICENSE",
+      "role": "model asset or license",
+      "bytes": 11358,
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-model-cache/mnist/README.md",
+      "name": "README.md",
+      "role": "model asset or license",
+      "bytes": 3702,
+      "sha256": "6a139e68e87f153c0239b0fbfd8258807fddc59de3ec8f9da96ff2848c5756fc"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-model-cache/mnist/native.safetensors",
+      "name": "native.safetensors",
+      "role": "model asset or license",
+      "bytes": 24408,
+      "sha256": "aff693e737b486936a2aab94128556208fcbf91e33d6a3bf2afdb89ed2e2ad9c"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-model-cache/potion/README.md",
+      "name": "README.md",
+      "role": "model asset or license",
+      "bytes": 5202,
+      "sha256": "38af170acce93b5eb0c4e18659ab0b30581b2f6860f3e12d8ba8b8751e249363"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-model-cache/potion/config.json",
+      "name": "config.json",
+      "role": "model asset or license",
+      "bytes": 200,
+      "sha256": "b2a89173391ca774c2d7323090a993a9a1553faa5b40eb37bb7cec6685fbea47"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-model-cache/potion/model.safetensors",
+      "name": "model.safetensors",
+      "role": "model asset or license",
+      "bytes": 7559256,
+      "sha256": "f95ffde02ad06f63ae38eb9d400038cd5ccaf8411ec3cb650c6025113f96cbb8"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-model-cache/potion/tokenizer.json",
+      "name": "tokenizer.json",
+      "role": "model asset or license",
+      "bytes": 683666,
+      "sha256": "e67e803f624fb4d67dea1c730d06e1067e1b14d830e2c2202569e3ef0f70bb50"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-model-cache/s1-router/LICENSE",
+      "name": "LICENSE",
+      "role": "model asset or license",
+      "bytes": 1375,
+      "sha256": "2fdc12f1de2340022107bc13fcef9027ca127cefb48c3c19615e2b596dc7e2fb"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-model-cache/s1-router/meta.json",
+      "name": "meta.json",
+      "role": "model asset or license",
+      "bytes": 688,
+      "sha256": "b6689ba21a44e0910cc2ae831c6ecf2bcc6f542b3fc5cd29d570e012865649c2"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-model-cache/s1-router/native.json",
+      "name": "native.json",
+      "role": "model asset or license",
+      "bytes": 15450,
+      "sha256": "fb3d396e19ef875dcf26733c2b09b001c11b313da5327451f02933b577c4b61d"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-model-cache/s1-router/native.safetensors",
+      "name": "native.safetensors",
+      "role": "model asset or license",
+      "bytes": 182724488,
+      "sha256": "d48185e7032dc060425f7b3d2fcb06d62c05683ecdbfbe12a150e653bd885d04"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-model-cache/s1-router/tokenizer/tokenizer.json",
+      "name": "tokenizer.json",
+      "role": "model asset or license",
+      "bytes": 34363439,
+      "sha256": "c01f8492531b2e569bd8d28ef1de1c66779275753c78cb497f7118762ae3230d"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-model-cache/s1-router/tokenizer/tokenizer_config.json",
+      "name": "tokenizer_config.json",
+      "role": "model asset or license",
+      "bytes": 574,
+      "sha256": "14b147f2a4f939d9b12ab36e9633917040dd948fa78ce283b03402e4cf2c9cba"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-ort-package/optimized/mnist.ort",
+      "name": "mnist.ort",
+      "role": "model asset or license",
+      "bytes": 32080,
+      "sha256": "5330efec288dab16390d6e096d1117e0279ed85530a56522807755ad3822f1de"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-ort-package/optimized/potion.ort",
+      "name": "potion.ort",
+      "role": "model asset or license",
+      "bytes": 7571144,
+      "sha256": "196d29a6c08d83d94c583497a9231b75d99b5b7bca660141285cdfaac142ef32"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-ort-package/optimized/router.ort",
+      "name": "router.ort",
+      "role": "model asset or license",
+      "bytes": 183261776,
+      "sha256": "33ceb43e6f056325ebc166fa9c5000b0568a0ed94ca9fbf91afb1d6499d42008"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-ort-reduced/MinSizeRel/libonnxruntime.so.1.28.0",
+      "name": "libonnxruntime.so.1.28.0",
+      "role": "application",
+      "bytes": 2424512,
+      "sha256": "d863316c6fca45901eb2c874c64946cc32bd71024b60d5c080e69f62fa9e4501"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-ort-source/LICENSE",
+      "name": "LICENSE",
+      "role": "model asset or license",
+      "bytes": 1073,
+      "sha256": "2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-ort-source/ThirdPartyNotices.txt",
+      "name": "ThirdPartyNotices.txt",
+      "role": "model asset or license",
+      "bytes": 325054,
+      "sha256": "0e07b95f3a8d6230037707c5c4a2b554d12c4cb67369669ac255635528ffcee2"
+    },
+    {
+      "file": "/nix/store/3b7njvjfc2w5lhj1jklrsw4lq7nwypri-gcc-15.2.0-lib/lib/libstdc++.so.6.0.34",
+      "name": "libstdc++.so.6.0.34",
+      "role": "system prerequisite",
+      "bytes": 3230944,
+      "sha256": "596bed480091e75c87f3d40fbb4b76180d67bd0aedfeb54f7d5bcf24c1cabc90"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_base.so.2601.0.0",
+      "name": "libabsl_base.so.2601.0.0",
+      "role": "application",
+      "bytes": 29800,
+      "sha256": "fbd8d86e635ab2acff549e2ab256e2df04fac2e19d14e94a9f130cd61c7621ea"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_borrowed_fixup_buffer.so.2601.0.0",
+      "name": "libabsl_borrowed_fixup_buffer.so.2601.0.0",
+      "role": "application",
+      "bytes": 16816,
+      "sha256": "45243cf348208bb7954894f7944f3dee3ca69ab7ccda3d591e9645b5841b9ea5"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_city.so.2601.0.0",
+      "name": "libabsl_city.so.2601.0.0",
+      "role": "application",
+      "bytes": 15424,
+      "sha256": "573950d8404874e1ef5916a41e23f1e07e4a3ced1b372ec889df4d0dc46e04c5"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_civil_time.so.2601.0.0",
+      "name": "libabsl_civil_time.so.2601.0.0",
+      "role": "application",
+      "bytes": 30792,
+      "sha256": "2757c7dba78bb66a57cb01052c0ebed629d547468ddeebeaf2a27990775ea481"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_cord.so.2601.0.0",
+      "name": "libabsl_cord.so.2601.0.0",
+      "role": "application",
+      "bytes": 165352,
+      "sha256": "ffa99b457e01ad3d02877fb3cc104d24fb0030bf5ded460d86ca491d1cd805d9"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_cord_internal.so.2601.0.0",
+      "name": "libabsl_cord_internal.so.2601.0.0",
+      "role": "application",
+      "bytes": 95008,
+      "sha256": "9cb5244f14f70b75cbaf80f4dec77b1880ce1b580926cccd81aacb98177c4cfc"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_cordz_functions.so.2601.0.0",
+      "name": "libabsl_cordz_functions.so.2601.0.0",
+      "role": "application",
+      "bytes": 16096,
+      "sha256": "efa1b47582cd479284994f4f9145a0056b1011a77d32925c34cd1a79a435df19"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_cordz_handle.so.2601.0.0",
+      "name": "libabsl_cordz_handle.so.2601.0.0",
+      "role": "application",
+      "bytes": 21944,
+      "sha256": "138ec19d185ae555ceeed47716779c896ef7d44a2f0f39ade3d88cfa3773690c"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_cordz_info.so.2601.0.0",
+      "name": "libabsl_cordz_info.so.2601.0.0",
+      "role": "application",
+      "bytes": 28048,
+      "sha256": "9b21e7b3ac97dd2495891aedeb516356f5a7c67771b47c826365f464a1547d3a"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_crc32c.so.2601.0.0",
+      "name": "libabsl_crc32c.so.2601.0.0",
+      "role": "application",
+      "bytes": 24408,
+      "sha256": "6a8b074521cd8d152217a592159a6591fb3ee82bce408e24cd408613e0d3fc7c"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_crc_cord_state.so.2601.0.0",
+      "name": "libabsl_crc_cord_state.so.2601.0.0",
+      "role": "application",
+      "bytes": 35992,
+      "sha256": "130eb1a0ed42d4e6a92366a23f8deaa502a8afdaf2297edd10ac0a2e1d0fb30a"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_crc_cpu_detect.so.2601.0.0",
+      "name": "libabsl_crc_cpu_detect.so.2601.0.0",
+      "role": "application",
+      "bytes": 16024,
+      "sha256": "c02611ebd4a20591729d0cabaa690e81be03b40ee38f680117fe8638d9ab796f"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_crc_internal.so.2601.0.0",
+      "name": "libabsl_crc_internal.so.2601.0.0",
+      "role": "application",
+      "bytes": 27088,
+      "sha256": "c35bfebbb678868108c5cc7be331c8680bb3290588c65128f70e32793a130012"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_debugging_internal.so.2601.0.0",
+      "name": "libabsl_debugging_internal.so.2601.0.0",
+      "role": "application",
+      "bytes": 27832,
+      "sha256": "4ea719b1e81754ac522392532427bc28968eb080adb09123fc634d96d57984b6"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_decode_rust_punycode.so.2601.0.0",
+      "name": "libabsl_decode_rust_punycode.so.2601.0.0",
+      "role": "application",
+      "bytes": 15480,
+      "sha256": "9fd2d14ea9fdbbf7b137597da5fdab151ab7c52f4e34b4c5bd964e7aee57302c"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_demangle_internal.so.2601.0.0",
+      "name": "libabsl_demangle_internal.so.2601.0.0",
+      "role": "application",
+      "bytes": 76592,
+      "sha256": "13c57b6ffa46aee8307ab5583ea3d3def95200413bacffedef81a95c07f1d0e4"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_demangle_rust.so.2601.0.0",
+      "name": "libabsl_demangle_rust.so.2601.0.0",
+      "role": "application",
+      "bytes": 23952,
+      "sha256": "67cbb685194d7f74a5d9ba36bb34d279853e89ca0a1f4f91fd8bf7e24591a0f9"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_die_if_null.so.2601.0.0",
+      "name": "libabsl_die_if_null.so.2601.0.0",
+      "role": "application",
+      "bytes": 20336,
+      "sha256": "93fb7938b426f1a0932d840c1e40cee73e3860db1a18d1c3b5a18c3fa0db0c99"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_examine_stack.so.2601.0.0",
+      "name": "libabsl_examine_stack.so.2601.0.0",
+      "role": "application",
+      "bytes": 16344,
+      "sha256": "54c305123cd01c1411d3ce6f7637cc0d0d5feab570ee65860371850197298439"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_exponential_biased.so.2601.0.0",
+      "name": "libabsl_exponential_biased.so.2601.0.0",
+      "role": "application",
+      "bytes": 15616,
+      "sha256": "b20057d700759caa0d9e9c948c83e1a8cf67dbce24e2885c9b5ee0b99703b57f"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_flags_commandlineflag.so.2601.0.0",
+      "name": "libabsl_flags_commandlineflag.so.2601.0.0",
+      "role": "application",
+      "bytes": 15808,
+      "sha256": "1023ac50eaa3a088f93468787ee1509737499a2eeb68f68264e5beebbc143ce8"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_flags_commandlineflag_internal.so.2601.0.0",
+      "name": "libabsl_flags_commandlineflag_internal.so.2601.0.0",
+      "role": "application",
+      "bytes": 15928,
+      "sha256": "75c91b177842afac5b83ecdfdcb8661d7beec43726c2e87d91a1aec29ddcb3da"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_flags_config.so.2601.0.0",
+      "name": "libabsl_flags_config.so.2601.0.0",
+      "role": "application",
+      "bytes": 33456,
+      "sha256": "263c13be5709eed4447e81677c3c7a1a845df7e78035f795a24858aa93598805"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_flags_internal.so.2601.0.0",
+      "name": "libabsl_flags_internal.so.2601.0.0",
+      "role": "application",
+      "bytes": 54992,
+      "sha256": "70b352437abe6e22bacbec51b87f3bc51ee4d0a0646fc7ca83d5223f8f8eb01e"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_flags_marshalling.so.2601.0.0",
+      "name": "libabsl_flags_marshalling.so.2601.0.0",
+      "role": "application",
+      "bytes": 59400,
+      "sha256": "380fc9f2c97093297b9b20a14eb377e8326a8dcf5b3bf85f6b76cedef2ee4371"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_flags_private_handle_accessor.so.2601.0.0",
+      "name": "libabsl_flags_private_handle_accessor.so.2601.0.0",
+      "role": "application",
+      "bytes": 16192,
+      "sha256": "d4c2c97b7e4a691bbe45bb5d75c24528d0af72221f7bdf789519eef80fa3555d"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_flags_program_name.so.2601.0.0",
+      "name": "libabsl_flags_program_name.so.2601.0.0",
+      "role": "application",
+      "bytes": 21208,
+      "sha256": "f8a55b73b7e75d8fa07a6449060c97b749581cd7b6754a429d6656b6f723fbe5"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_flags_reflection.so.2601.0.0",
+      "name": "libabsl_flags_reflection.so.2601.0.0",
+      "role": "application",
+      "bytes": 58904,
+      "sha256": "97bb0374f6844639d8e81103e54ebe41c46132b30ff0a9ed33c53f24ac77d6d8"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_graphcycles_internal.so.2601.0.0",
+      "name": "libabsl_graphcycles_internal.so.2601.0.0",
+      "role": "application",
+      "bytes": 40216,
+      "sha256": "dedd4b51785c15036461cb6889b65d089c21efeac4a4433f30ed08049e73790b"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_hash.so.2601.0.0",
+      "name": "libabsl_hash.so.2601.0.0",
+      "role": "application",
+      "bytes": 16032,
+      "sha256": "53c3ab7c84a4581946a6dc55718ef6566ca355bef142ccc47e7d4ca47edeb19e"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_hashtablez_sampler.so.2601.0.0",
+      "name": "libabsl_hashtablez_sampler.so.2601.0.0",
+      "role": "application",
+      "bytes": 23840,
+      "sha256": "ccb9d0cf457e348d421a7258bd7160d03511c5a67a1775addd5731e4a8b92ca8"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_int128.so.2601.0.0",
+      "name": "libabsl_int128.so.2601.0.0",
+      "role": "application",
+      "bytes": 26856,
+      "sha256": "b948ed23e4f39fdb79192fb3db0343ffeed4b0e80c0ec1d9f26fe8eecefcddd5"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_kernel_timeout_internal.so.2601.0.0",
+      "name": "libabsl_kernel_timeout_internal.so.2601.0.0",
+      "role": "application",
+      "bytes": 21384,
+      "sha256": "2c50e3f98d42eea75a68e24c02da8bdfac4d113c12b81b290c29fd654b14e95b"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_leak_check.so.2601.0.0",
+      "name": "libabsl_leak_check.so.2601.0.0",
+      "role": "application",
+      "bytes": 15656,
+      "sha256": "fad66270a18f2abf25a9977480f3c0eb858ff84afddcad98907e6d92086a5b42"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_log_entry.so.2601.0.0",
+      "name": "libabsl_log_entry.so.2601.0.0",
+      "role": "application",
+      "bytes": 21024,
+      "sha256": "0ecbe6ae8a8eac63b3ee99d811808e6fec4505ed2e0442eb44290f24f754699a"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_log_globals.so.2601.0.0",
+      "name": "libabsl_log_globals.so.2601.0.0",
+      "role": "application",
+      "bytes": 23408,
+      "sha256": "4066be6f0573be6bac60eecb03b905de1076e21fe106274001bb289e0d6ef261"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_log_initialize.so.2601.0.0",
+      "name": "libabsl_log_initialize.so.2601.0.0",
+      "role": "application",
+      "bytes": 15408,
+      "sha256": "bf4ef19c99e3f38bcc6b495406e3ddceaac4f096d8cd8ef57fb2a64f484d3535"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_log_internal_check_op.so.2601.0.0",
+      "name": "libabsl_log_internal_check_op.so.2601.0.0",
+      "role": "application",
+      "bytes": 38136,
+      "sha256": "b45e7c0025af861de653dcb2f5a2fa5fb309ca4d9f58d113468ca576a6b2ec02"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_log_internal_conditions.so.2601.0.0",
+      "name": "libabsl_log_internal_conditions.so.2601.0.0",
+      "role": "application",
+      "bytes": 15712,
+      "sha256": "3897b1a18c9870c106bdccc4d4ecb7ae33fbfade8dc21106535b6bf99f738b33"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_log_internal_fnmatch.so.2601.0.0",
+      "name": "libabsl_log_internal_fnmatch.so.2601.0.0",
+      "role": "application",
+      "bytes": 15288,
+      "sha256": "8061cb63e53fe598353ecc574f2dbb56c6f38c43449357c2f7ec23b06f863d4d"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_log_internal_format.so.2601.0.0",
+      "name": "libabsl_log_internal_format.so.2601.0.0",
+      "role": "application",
+      "bytes": 21312,
+      "sha256": "e8ff1744c55f00b2ca2731bcea05f83d98bbdd3151b15aa69cf281e0be649fc6"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_log_internal_globals.so.2601.0.0",
+      "name": "libabsl_log_internal_globals.so.2601.0.0",
+      "role": "application",
+      "bytes": 17136,
+      "sha256": "9c990e548057867fdf8c334c214d7c7cb4ab2520bb1248b4dbbd53f3218d93da"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_log_internal_log_sink_set.so.2601.0.0",
+      "name": "libabsl_log_internal_log_sink_set.so.2601.0.0",
+      "role": "application",
+      "bytes": 28808,
+      "sha256": "3625acca88ac4a2931c49e9617fe16dfba9f39be9852afcb8a64e6854f4853c3"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_log_internal_message.so.2601.0.0",
+      "name": "libabsl_log_internal_message.so.2601.0.0",
+      "role": "application",
+      "bytes": 74368,
+      "sha256": "110b335d9f56b9b309f667b0aa5815b9949d186869e921f51b3c068348df4618"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_log_internal_nullguard.so.2601.0.0",
+      "name": "libabsl_log_internal_nullguard.so.2601.0.0",
+      "role": "application",
+      "bytes": 15208,
+      "sha256": "5bd24bd6e2da37f2c65f317807b987edea7b36caac594f331e7f4848bf668d7d"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_log_internal_proto.so.2601.0.0",
+      "name": "libabsl_log_internal_proto.so.2601.0.0",
+      "role": "application",
+      "bytes": 15912,
+      "sha256": "6b1757a04d88866e0effe385becf50487cb99547ce8817f2b495ee17a088f0f2"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_log_internal_structured_proto.so.2601.0.0",
+      "name": "libabsl_log_internal_structured_proto.so.2601.0.0",
+      "role": "application",
+      "bytes": 15664,
+      "sha256": "14cd0e83ba502fefb7256982530034efd29051c38a4f1b3aa03a920e18eda473"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_log_severity.so.2601.0.0",
+      "name": "libabsl_log_severity.so.2601.0.0",
+      "role": "application",
+      "bytes": 15552,
+      "sha256": "b44871327b18a7bacab3367db9e62bd314dba03f3c95b32af1ac828284206287"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_log_sink.so.2601.0.0",
+      "name": "libabsl_log_sink.so.2601.0.0",
+      "role": "application",
+      "bytes": 15608,
+      "sha256": "2d55c6788bf6587fcca3e3b934ddfa36de9f9456fa868a3192ec7636d34ad122"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_malloc_internal.so.2601.0.0",
+      "name": "libabsl_malloc_internal.so.2601.0.0",
+      "role": "application",
+      "bytes": 26976,
+      "sha256": "500e791e2e29b26038e160b8fcfdaab07af3ed8034888d66b7868a3a85d75c75"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_random_distributions.so.2601.0.0",
+      "name": "libabsl_random_distributions.so.2601.0.0",
+      "role": "application",
+      "bytes": 16128,
+      "sha256": "73951fc4936d70e4bc5e4fdc9ee77137bfd707fe6d43c51d7b2fbcd00db7197e"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_random_internal_entropy_pool.so.2601.0.0",
+      "name": "libabsl_random_internal_entropy_pool.so.2601.0.0",
+      "role": "application",
+      "bytes": 21584,
+      "sha256": "a4c97be906c8d60a976562629f18dff27c1a1d072d17657bf2a9504b6dc754d4"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_random_internal_platform.so.2601.0.0",
+      "name": "libabsl_random_internal_platform.so.2601.0.0",
+      "role": "application",
+      "bytes": 19240,
+      "sha256": "0cc458d75402c0a3fd29a652b2daf6d3907a2c95bcc403ff7f6b8fa9fc85c246"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_random_internal_randen.so.2601.0.0",
+      "name": "libabsl_random_internal_randen.so.2601.0.0",
+      "role": "application",
+      "bytes": 16296,
+      "sha256": "ebc2fde11d25cda6d82dfe9a7d19709ef09991a1ac4cb9484f874e4ab22ee5b2"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_random_internal_randen_hwaes.so.2601.0.0",
+      "name": "libabsl_random_internal_randen_hwaes.so.2601.0.0",
+      "role": "application",
+      "bytes": 15112,
+      "sha256": "ff89f37e64df9a5c3bf4beac71cf0211c14db13645868c371beb3a2e7a807676"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_random_internal_randen_hwaes_impl.so.2601.0.0",
+      "name": "libabsl_random_internal_randen_hwaes_impl.so.2601.0.0",
+      "role": "application",
+      "bytes": 15664,
+      "sha256": "74d4f3ae3a5b0e5f81cf95def3627e641637ddb6ada719189b15eee90cc9fc89"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_random_internal_randen_slow.so.2601.0.0",
+      "name": "libabsl_random_internal_randen_slow.so.2601.0.0",
+      "role": "application",
+      "bytes": 19728,
+      "sha256": "762fa9dc1ccc551c0f0f6761b6465a6a1884879f7dd490b82f5bbd44d76f5ece"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_random_internal_seed_material.so.2601.0.0",
+      "name": "libabsl_random_internal_seed_material.so.2601.0.0",
+      "role": "application",
+      "bytes": 16536,
+      "sha256": "3e027b96fc0b9aea447c036a661a511d09260c63c41bbd5609954f2f1de0af14"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_random_seed_gen_exception.so.2601.0.0",
+      "name": "libabsl_random_seed_gen_exception.so.2601.0.0",
+      "role": "application",
+      "bytes": 16216,
+      "sha256": "85ad372c1d4bbbf543d9a9db9b967b68e811987b0872346b5279e13684ed4124"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_random_seed_sequences.so.2601.0.0",
+      "name": "libabsl_random_seed_sequences.so.2601.0.0",
+      "role": "application",
+      "bytes": 15976,
+      "sha256": "3bf4ef155088a5a3761301e6caa2a96e8d13bfd7f007570431f0ad140e161743"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_raw_hash_set.so.2601.0.0",
+      "name": "libabsl_raw_hash_set.so.2601.0.0",
+      "role": "application",
+      "bytes": 45808,
+      "sha256": "89649d245f9a6e1cede9d1ae1d8efca86349ccf128bd7802251f419ec2c33eb1"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_raw_logging_internal.so.2601.0.0",
+      "name": "libabsl_raw_logging_internal.so.2601.0.0",
+      "role": "application",
+      "bytes": 17208,
+      "sha256": "faf1ce40841f1a3365ef79a6eef3721e4417e02a31a7f52eda9058cb9adf517b"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_spinlock_wait.so.2601.0.0",
+      "name": "libabsl_spinlock_wait.so.2601.0.0",
+      "role": "application",
+      "bytes": 15624,
+      "sha256": "ff68aeb94cb98a820e327958ca7d96dc869e8b3a3cc1ecbe2e2feec72ab7dea9"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_stacktrace.so.2601.0.0",
+      "name": "libabsl_stacktrace.so.2601.0.0",
+      "role": "application",
+      "bytes": 21656,
+      "sha256": "ae62f63ac34268b1774e57b2f01e6709d7deef0b84e61d669b745feb37115b77"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_status.so.2601.0.0",
+      "name": "libabsl_status.so.2601.0.0",
+      "role": "application",
+      "bytes": 55680,
+      "sha256": "e12c327dc0454bb19f316ec3d36c239f7c8736aa984cff55a17d0791db8a8396"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_statusor.so.2601.0.0",
+      "name": "libabsl_statusor.so.2601.0.0",
+      "role": "application",
+      "bytes": 23168,
+      "sha256": "f88586e37455e4f3a813ed081691edff8080c0f7c39490b7e539b29438f563ae"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_str_format_internal.so.2601.0.0",
+      "name": "libabsl_str_format_internal.so.2601.0.0",
+      "role": "application",
+      "bytes": 163512,
+      "sha256": "1d2cb79e4f8622e06048ee421cd2d39bf2f165d42f9d2ba6a596b908cfa5ba93"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_strerror.so.2601.0.0",
+      "name": "libabsl_strerror.so.2601.0.0",
+      "role": "application",
+      "bytes": 16488,
+      "sha256": "bf94b5bd2ca483c3db1cc6ee6912e0c9613847696b5abb61d30fbf3d070ee548"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_strings.so.2601.0.0",
+      "name": "libabsl_strings.so.2601.0.0",
+      "role": "application",
+      "bytes": 184040,
+      "sha256": "262727db2f0b463a84a35e172f12305a4a72f25eb308c163f835edbacaf1b40a"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_strings_internal.so.2601.0.0",
+      "name": "libabsl_strings_internal.so.2601.0.0",
+      "role": "application",
+      "bytes": 23176,
+      "sha256": "31b6c66deba12adf0feb1e8f7d9f7f358a44ae0b45c5bc3199092e0a00cde836"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_symbolize.so.2601.0.0",
+      "name": "libabsl_symbolize.so.2601.0.0",
+      "role": "application",
+      "bytes": 43272,
+      "sha256": "f4b9cd58ef412bc71b4fd76b0cdb80b4c69838bff0e122cc41b1549b89085779"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_synchronization.so.2601.0.0",
+      "name": "libabsl_synchronization.so.2601.0.0",
+      "role": "application",
+      "bytes": 82256,
+      "sha256": "fe72f2bc0854e76518ee171760ea8cbc55b613b738e52d552fdb838bad1828bf"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_throw_delegate.so.2601.0.0",
+      "name": "libabsl_throw_delegate.so.2601.0.0",
+      "role": "application",
+      "bytes": 28976,
+      "sha256": "153d4d0d6b8fd26ce91509e9a20cda1ab3ecbe6bbf7cec0738b43994c074c222"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_time.so.2601.0.0",
+      "name": "libabsl_time.so.2601.0.0",
+      "role": "application",
+      "bytes": 117432,
+      "sha256": "edbbae2ed67852bb6900b66df1d179796ba70d9e67b0495efaab1e8d71feedeb"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_time_zone.so.2601.0.0",
+      "name": "libabsl_time_zone.so.2601.0.0",
+      "role": "application",
+      "bytes": 162696,
+      "sha256": "aec301d65656bd197f6078966d96eb5e09f4a9968d6898629b955b0232a4dfa7"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_tracing_internal.so.2601.0.0",
+      "name": "libabsl_tracing_internal.so.2601.0.0",
+      "role": "application",
+      "bytes": 15264,
+      "sha256": "914af4a3ae191dc53627dbf0e54d6d66382567a6c4940e95a5647612ba6de3e4"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_utf8_for_code_point.so.2601.0.0",
+      "name": "libabsl_utf8_for_code_point.so.2601.0.0",
+      "role": "application",
+      "bytes": 15272,
+      "sha256": "483113fb803714035d211317292710ec1766bf7044ddc7abe6fce1c3a5233efa"
+    },
+    {
+      "file": "/nix/store/72kz46323yz0vjkb03nj6785ah11dl5i-abseil-cpp-20260107.1/lib/libabsl_vlog_config_internal.so.2601.0.0",
+      "name": "libabsl_vlog_config_internal.so.2601.0.0",
+      "role": "application",
+      "bytes": 36448,
+      "sha256": "4dccc5b335cd31bca4da0cafd49e5c280b0d67efa9b6066745d8d1e4e5d8e14d"
+    },
+    {
+      "file": "/nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/ld-linux-x86-64.so.2",
+      "name": "ld-linux-x86-64.so.2",
+      "role": "system prerequisite",
+      "bytes": 263056,
+      "sha256": "5e6250bc71797bc3f75f8c3cee9d4f35e7ddd25ed07d8925ad9c2932d276182c"
+    },
+    {
+      "file": "/nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libc.so.6",
+      "name": "libc.so.6",
+      "role": "system prerequisite",
+      "bytes": 2413096,
+      "sha256": "47462289165b3273a441819431453b13068aeecb718afa39d8c5f904e49f2519"
+    },
+    {
+      "file": "/nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libdl.so.2",
+      "name": "libdl.so.2",
+      "role": "system prerequisite",
+      "bytes": 15688,
+      "sha256": "0993c0ce12a5755e9679198dc7507835d1d27f1cf2472d19b8dfc3236ca57dd7"
+    },
+    {
+      "file": "/nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libm.so.6",
+      "name": "libm.so.6",
+      "role": "system prerequisite",
+      "bytes": 1102240,
+      "sha256": "95aafdf744c5bd6df251264d6a0b864159ba6f77c1f21997dd79dfb8ecc2e2bf"
+    },
+    {
+      "file": "/nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/librt.so.1",
+      "name": "librt.so.1",
+      "role": "system prerequisite",
+      "bytes": 16352,
+      "sha256": "04e3560371b42af7d053a38dd7499a0079b07e798714b76dbfbc59c9b6f30ec0"
+    },
+    {
+      "file": "/nix/store/wrqg6kpcggwkmzismz5q6a5bkjr3n916-protobuf-34.1/lib/libprotobuf-lite.so.34.1.0",
+      "name": "libprotobuf-lite.so.34.1.0",
+      "role": "application",
+      "bytes": 851288,
+      "sha256": "a69773956219ea92581ce4226ce7377a635b90b8d46bb7cd439666996d2d4ec7"
+    },
+    {
+      "file": "/nix/store/wrqg6kpcggwkmzismz5q6a5bkjr3n916-protobuf-34.1/lib/libutf8_validity.so.34.1.0",
+      "name": "libutf8_validity.so.34.1.0",
+      "role": "application",
+      "bytes": 15248,
+      "sha256": "490a6de5e56ce6e2e8cb67465adeb7d0ee8d72092fe3b3b3a978b782a14553f6"
+    },
+    {
+      "file": "/nix/store/yf2c1gngi2dqvgni1rgvnixxc0d8di02-gcc-15.2.0-libgcc/lib/libgcc_s.so.1",
+      "name": "libgcc_s.so.1",
+      "role": "system prerequisite",
+      "bytes": 196968,
+      "sha256": "ae044ece9877d38a4a4bcee7b9c15eed9b50d0dad24d41617eec8fff8bbd262d"
+    }
+  ],
+  "application_bytes": 10884304,
+  "model_asset_bytes": 416584933,
+  "system_prerequisite_bytes": 7238344,
+  "total_listed_bytes": 434707581,
+  "command": [
+    "scripts/dev/psionic-package-size.py",
+    "--name",
+    "both-reduced-cpu",
+    "--binary",
+    "/home/christopherdavid/work/openagents-target-agent2/psionic-cpu-both-package",
+    "--library",
+    "/dev/shm/openagents-target-agent2/psionic-ort-reduced/MinSizeRel/libonnxruntime.so.1.28.0",
+    "--asset",
+    "/home/christopherdavid/.openagents/scratch/codex-01a14071-2d67-7bf2-b54d-9b7bd3014bda/models/s1-router/meta.json",
+    "--asset",
+    "/home/christopherdavid/.openagents/scratch/codex-01a14071-2d67-7bf2-b54d-9b7bd3014bda/models/s1-router/LICENSE",
+    "--asset",
+    "/home/christopherdavid/.openagents/scratch/codex-01a14071-2d67-7bf2-b54d-9b7bd3014bda/models/s1-router/tokenizer/tokenizer.json",
+    "--asset",
+    "/home/christopherdavid/.openagents/scratch/codex-01a14071-2d67-7bf2-b54d-9b7bd3014bda/models/s1-router/tokenizer/tokenizer_config.json",
+    "--asset",
+    "/home/christopherdavid/.openagents/scratch/codex-01a14071-2d67-7bf2-b54d-9b7bd3014bda/models/s1-router/native.safetensors",
+    "--asset",
+    "/home/christopherdavid/.openagents/scratch/codex-01a14071-2d67-7bf2-b54d-9b7bd3014bda/models/s1-router/native.json",
+    "--asset",
+    "/home/christopherdavid/.openagents/scratch/codex-01a14071-2d67-7bf2-b54d-9b7bd3014bda/models/potion/model.safetensors",
+    "--asset",
+    "/home/christopherdavid/.openagents/scratch/codex-01a14071-2d67-7bf2-b54d-9b7bd3014bda/models/potion/tokenizer.json",
+    "--asset",
+    "/home/christopherdavid/.openagents/scratch/codex-01a14071-2d67-7bf2-b54d-9b7bd3014bda/models/potion/config.json",
+    "--asset",
+    "/home/christopherdavid/.openagents/scratch/codex-01a14071-2d67-7bf2-b54d-9b7bd3014bda/models/potion/README.md",
+    "--asset",
+    "/home/christopherdavid/.openagents/scratch/codex-01a14071-2d67-7bf2-b54d-9b7bd3014bda/models/mnist/README.md",
+    "--asset",
+    "/home/christopherdavid/.openagents/scratch/codex-01a14071-2d67-7bf2-b54d-9b7bd3014bda/models/mnist/LICENSE",
+    "--asset",
+    "/home/christopherdavid/.openagents/scratch/codex-01a14071-2d67-7bf2-b54d-9b7bd3014bda/models/mnist/native.safetensors",
+    "--asset",
+    "/home/christopherdavid/work/openagents-target-agent2/psionic-ort-package/optimized/mnist.ort",
+    "--asset",
+    "/home/christopherdavid/work/openagents-target-agent2/psionic-ort-package/optimized/potion.ort",
+    "--asset",
+    "/home/christopherdavid/work/openagents-target-agent2/psionic-ort-package/optimized/router.ort",
+    "--asset",
+    "/home/christopherdavid/work/openagents-target-agent2/psionic-ort-source/LICENSE",
+    "--asset",
+    "/home/christopherdavid/work/openagents-target-agent2/psionic-ort-source/ThirdPartyNotices.txt"
+  ],
+  "notes": [
+    "Uncompressed files; each resolved file counted once. No Python environment is part of the runtime.",
+    "CUDA driver and ordinary OS/C++ libraries are listed as system prerequisites; provision them separately or include them when packaging.",
+    "Pass every lazy-loaded library and required license explicitly; ldd cannot discover dlopen dependencies or license requirements."
+  ]
+}

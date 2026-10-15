@@ -27,7 +27,9 @@ Files in this folder:
 - [psionic-onnx-native-roadmap.md](psionic-onnx-native-roadmap.md)
   (2026-10-15): the roadmap for adding optional ORT execution and native
   model support, starting with the router on CPU, with shared correctness
-  fixtures and benchmarks before adding accelerators and other models.
+  fixtures and benchmarks. Both engines now cover the router, embeddings,
+  and digit vision, with CUDA comparisons and measured runtime packages;
+  Apple and mobile qualification remains separate.
 
 ## Summary
 

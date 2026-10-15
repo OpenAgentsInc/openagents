@@ -1,0 +1,256 @@
+{
+  "schema": "psionic.package.size.v1",
+  "name": "both-full-cpu",
+  "files": [
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-cpu-both-package",
+      "name": "psionic-cpu-both-package",
+      "role": "application",
+      "bytes": 4838464,
+      "sha256": "8010dc27ac82311ba8105752765ed56404a5761783989318c57dd34aca9967f4"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-model-cache/mnist/LICENSE",
+      "name": "LICENSE",
+      "role": "model asset or license",
+      "bytes": 11358,
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-model-cache/mnist/README.md",
+      "name": "README.md",
+      "role": "model asset or license",
+      "bytes": 3702,
+      "sha256": "6a139e68e87f153c0239b0fbfd8258807fddc59de3ec8f9da96ff2848c5756fc"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-model-cache/mnist/model.onnx",
+      "name": "model.onnx",
+      "role": "model asset or license",
+      "bytes": 26143,
+      "sha256": "5c688690f8bacf667d4c2074af5ad0646ca328d7ab03eccf944a65b320171bdd"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-model-cache/mnist/native.safetensors",
+      "name": "native.safetensors",
+      "role": "model asset or license",
+      "bytes": 24408,
+      "sha256": "aff693e737b486936a2aab94128556208fcbf91e33d6a3bf2afdb89ed2e2ad9c"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-model-cache/potion/README.md",
+      "name": "README.md",
+      "role": "model asset or license",
+      "bytes": 5202,
+      "sha256": "38af170acce93b5eb0c4e18659ab0b30581b2f6860f3e12d8ba8b8751e249363"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-model-cache/potion/config.json",
+      "name": "config.json",
+      "role": "model asset or license",
+      "bytes": 200,
+      "sha256": "b2a89173391ca774c2d7323090a993a9a1553faa5b40eb37bb7cec6685fbea47"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-model-cache/potion/model.safetensors",
+      "name": "model.safetensors",
+      "role": "model asset or license",
+      "bytes": 7559256,
+      "sha256": "f95ffde02ad06f63ae38eb9d400038cd5ccaf8411ec3cb650c6025113f96cbb8"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-model-cache/potion/onnx/model.onnx",
+      "name": "model.onnx",
+      "role": "model asset or license",
+      "bytes": 7563349,
+      "sha256": "92d4a7576de7d39055924b4d9d3979c8c3b2de272010f76f99e2ac14c7b2e5a8"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-model-cache/potion/tokenizer.json",
+      "name": "tokenizer.json",
+      "role": "model asset or license",
+      "bytes": 683666,
+      "sha256": "e67e803f624fb4d67dea1c730d06e1067e1b14d830e2c2202569e3ef0f70bb50"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-model-cache/s1-router/LICENSE",
+      "name": "LICENSE",
+      "role": "model asset or license",
+      "bytes": 1375,
+      "sha256": "2fdc12f1de2340022107bc13fcef9027ca127cefb48c3c19615e2b596dc7e2fb"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-model-cache/s1-router/meta.json",
+      "name": "meta.json",
+      "role": "model asset or license",
+      "bytes": 688,
+      "sha256": "b6689ba21a44e0910cc2ae831c6ecf2bcc6f542b3fc5cd29d570e012865649c2"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-model-cache/s1-router/model.gq.onnx",
+      "name": "model.gq.onnx",
+      "role": "model asset or license",
+      "bytes": 183089235,
+      "sha256": "53a02107e46be7913f148037b63b4f4735a400f91221789b0aaefcde0ad8da80"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-model-cache/s1-router/native.json",
+      "name": "native.json",
+      "role": "model asset or license",
+      "bytes": 15450,
+      "sha256": "fb3d396e19ef875dcf26733c2b09b001c11b313da5327451f02933b577c4b61d"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-model-cache/s1-router/native.safetensors",
+      "name": "native.safetensors",
+      "role": "model asset or license",
+      "bytes": 182724488,
+      "sha256": "d48185e7032dc060425f7b3d2fcb06d62c05683ecdbfbe12a150e653bd885d04"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-model-cache/s1-router/tokenizer/tokenizer.json",
+      "name": "tokenizer.json",
+      "role": "model asset or license",
+      "bytes": 34363439,
+      "sha256": "c01f8492531b2e569bd8d28ef1de1c66779275753c78cb497f7118762ae3230d"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-model-cache/s1-router/tokenizer/tokenizer_config.json",
+      "name": "tokenizer_config.json",
+      "role": "model asset or license",
+      "bytes": 574,
+      "sha256": "14b147f2a4f939d9b12ab36e9633917040dd948fa78ce283b03402e4cf2c9cba"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-ort-source/LICENSE",
+      "name": "LICENSE",
+      "role": "model asset or license",
+      "bytes": 1073,
+      "sha256": "2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-ort-source/ThirdPartyNotices.txt",
+      "name": "ThirdPartyNotices.txt",
+      "role": "model asset or license",
+      "bytes": 325054,
+      "sha256": "0e07b95f3a8d6230037707c5c4a2b554d12c4cb67369669ac255635528ffcee2"
+    },
+    {
+      "file": "/dev/shm/openagents-target-agent2/psionic-reference-env/lib/python3.13/site-packages/onnxruntime/capi/libonnxruntime.so.1.28.0",
+      "name": "libonnxruntime.so.1.28.0",
+      "role": "application",
+      "bytes": 24272944,
+      "sha256": "aa4079d18f4ea7a5f3a94d80cd4bbe0f2740436626622d64d793803a20381083"
+    },
+    {
+      "file": "/nix/store/3b7njvjfc2w5lhj1jklrsw4lq7nwypri-gcc-15.2.0-lib/lib/libstdc++.so.6.0.34",
+      "name": "libstdc++.so.6.0.34",
+      "role": "system prerequisite",
+      "bytes": 3230944,
+      "sha256": "596bed480091e75c87f3d40fbb4b76180d67bd0aedfeb54f7d5bcf24c1cabc90"
+    },
+    {
+      "file": "/nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/ld-linux-x86-64.so.2",
+      "name": "ld-linux-x86-64.so.2",
+      "role": "system prerequisite",
+      "bytes": 263056,
+      "sha256": "5e6250bc71797bc3f75f8c3cee9d4f35e7ddd25ed07d8925ad9c2932d276182c"
+    },
+    {
+      "file": "/nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libc.so.6",
+      "name": "libc.so.6",
+      "role": "system prerequisite",
+      "bytes": 2413096,
+      "sha256": "47462289165b3273a441819431453b13068aeecb718afa39d8c5f904e49f2519"
+    },
+    {
+      "file": "/nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libdl.so.2",
+      "name": "libdl.so.2",
+      "role": "system prerequisite",
+      "bytes": 15688,
+      "sha256": "0993c0ce12a5755e9679198dc7507835d1d27f1cf2472d19b8dfc3236ca57dd7"
+    },
+    {
+      "file": "/nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libm.so.6",
+      "name": "libm.so.6",
+      "role": "system prerequisite",
+      "bytes": 1102240,
+      "sha256": "95aafdf744c5bd6df251264d6a0b864159ba6f77c1f21997dd79dfb8ecc2e2bf"
+    },
+    {
+      "file": "/nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libpthread.so.0",
+      "name": "libpthread.so.0",
+      "role": "system prerequisite",
+      "bytes": 16536,
+      "sha256": "99dcacbf25209219bcb289e91b4d68d0e267a98db6cfa4445fbe960877092c4f"
+    },
+    {
+      "file": "/nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/librt.so.1",
+      "name": "librt.so.1",
+      "role": "system prerequisite",
+      "bytes": 16352,
+      "sha256": "04e3560371b42af7d053a38dd7499a0079b07e798714b76dbfbc59c9b6f30ec0"
+    },
+    {
+      "file": "/nix/store/yf2c1gngi2dqvgni1rgvnixxc0d8di02-gcc-15.2.0-libgcc/lib/libgcc_s.so.1",
+      "name": "libgcc_s.so.1",
+      "role": "system prerequisite",
+      "bytes": 196968,
+      "sha256": "ae044ece9877d38a4a4bcee7b9c15eed9b50d0dad24d41617eec8fff8bbd262d"
+    }
+  ],
+  "application_bytes": 29111408,
+  "model_asset_bytes": 416398660,
+  "system_prerequisite_bytes": 7254880,
+  "total_listed_bytes": 452764948,
+  "command": [
+    "scripts/dev/psionic-package-size.py",
+    "--name",
+    "both-full-cpu",
+    "--binary",
+    "/home/christopherdavid/work/openagents-target-agent2/psionic-cpu-both-package",
+    "--library",
+    "/home/christopherdavid/.openagents/scratch/codex-01a14071-2d67-7bf2-b54d-9b7bd3014bda/reference-env/lib/python3.13/site-packages/onnxruntime/capi/libonnxruntime.so.1.28.0",
+    "--asset",
+    "/home/christopherdavid/.openagents/scratch/codex-01a14071-2d67-7bf2-b54d-9b7bd3014bda/models/s1-router/meta.json",
+    "--asset",
+    "/home/christopherdavid/.openagents/scratch/codex-01a14071-2d67-7bf2-b54d-9b7bd3014bda/models/s1-router/LICENSE",
+    "--asset",
+    "/home/christopherdavid/.openagents/scratch/codex-01a14071-2d67-7bf2-b54d-9b7bd3014bda/models/s1-router/tokenizer/tokenizer.json",
+    "--asset",
+    "/home/christopherdavid/.openagents/scratch/codex-01a14071-2d67-7bf2-b54d-9b7bd3014bda/models/s1-router/tokenizer/tokenizer_config.json",
+    "--asset",
+    "/home/christopherdavid/.openagents/scratch/codex-01a14071-2d67-7bf2-b54d-9b7bd3014bda/models/s1-router/native.safetensors",
+    "--asset",
+    "/home/christopherdavid/.openagents/scratch/codex-01a14071-2d67-7bf2-b54d-9b7bd3014bda/models/s1-router/native.json",
+    "--asset",
+    "/home/christopherdavid/.openagents/scratch/codex-01a14071-2d67-7bf2-b54d-9b7bd3014bda/models/potion/model.safetensors",
+    "--asset",
+    "/home/christopherdavid/.openagents/scratch/codex-01a14071-2d67-7bf2-b54d-9b7bd3014bda/models/potion/tokenizer.json",
+    "--asset",
+    "/home/christopherdavid/.openagents/scratch/codex-01a14071-2d67-7bf2-b54d-9b7bd3014bda/models/potion/config.json",
+    "--asset",
+    "/home/christopherdavid/.openagents/scratch/codex-01a14071-2d67-7bf2-b54d-9b7bd3014bda/models/potion/README.md",
+    "--asset",
+    "/home/christopherdavid/.openagents/scratch/codex-01a14071-2d67-7bf2-b54d-9b7bd3014bda/models/mnist/README.md",
+    "--asset",
+    "/home/christopherdavid/.openagents/scratch/codex-01a14071-2d67-7bf2-b54d-9b7bd3014bda/models/mnist/LICENSE",
+    "--asset",
+    "/home/christopherdavid/.openagents/scratch/codex-01a14071-2d67-7bf2-b54d-9b7bd3014bda/models/mnist/native.safetensors",
+    "--asset",
+    "/home/christopherdavid/.openagents/scratch/codex-01a14071-2d67-7bf2-b54d-9b7bd3014bda/models/s1-router/model.gq.onnx",
+    "--asset",
+    "/home/christopherdavid/.openagents/scratch/codex-01a14071-2d67-7bf2-b54d-9b7bd3014bda/models/potion/onnx/model.onnx",
+    "--asset",
+    "/home/christopherdavid/.openagents/scratch/codex-01a14071-2d67-7bf2-b54d-9b7bd3014bda/models/mnist/model.onnx",
+    "--asset",
+    "/home/christopherdavid/work/openagents-target-agent2/psionic-ort-source/LICENSE",
+    "--asset",
+    "/home/christopherdavid/work/openagents-target-agent2/psionic-ort-source/ThirdPartyNotices.txt"
+  ],
+  "notes": [
+    "Uncompressed files; each resolved file counted once. No Python environment is part of the runtime.",
+    "CUDA driver and ordinary OS/C++ libraries are listed as system prerequisites; provision them separately or include them when packaging.",
+    "Pass every lazy-loaded library and required license explicitly; ldd cannot discover dlopen dependencies or license requirements."
+  ]
+}

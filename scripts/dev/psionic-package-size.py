@@ -20,7 +20,7 @@ parser.add_argument("--system-library",type=Path,action="append",default=[])
 parser.add_argument("--asset",type=Path,action="append",default=[])
 args=parser.parse_args()
 files={}
-system_names=("libc.so.","libm.so.","libdl.so.","librt.so.","libpthread.so.","libgcc_s.so.","libstdc++.so.","ld-linux-","libcuda.so.")
+system_names=("libc.so.","libm.so.","libdl.so.","librt.so.","libpthread.so.","libgcc_s.so.","libstdc++.so.","ld-linux-","libcuda.so.","libnvidia-")
 
 def add(path,role):
     path=path.resolve(strict=True)

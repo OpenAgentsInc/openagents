@@ -1,0 +1,26 @@
+{
+  "schema": "psionic.cuda.compatibility.v1",
+  "driver": "595.71.05",
+  "gpu": "RTX 4080",
+  "rejected_configuration": {
+    "cudnn": "9.27.0.42",
+    "minimum_driver": "615.71.09",
+    "source": "https://docs.nvidia.com/deeplearning/cudnn/backend/v9.27.0/reference/support-matrix.html"
+  },
+  "lazy_loading": {
+    "status": "failed",
+    "observed": "Intermittent SIGABRT after inference and session destruction, at process exit. coredumpctl points to free/malloc_consolidate in libnvidia-gpucomp.so.595.71.05. Reproduced with cuDNN 9.27, 9.20, and 9.12; without profiling as well as with profiling. Algorithm fallback, CUDA_CACHE_DISABLE, and CUDA_LAUNCH_BLOCKING alone did not resolve it.",
+    "root_cause": "Not established; this is an observed dependency/driver lifecycle failure."
+  },
+  "qualified_configuration": {
+    "cudnn": "9.20.0.48",
+    "minimum_driver": "580.65.06",
+    "source": "https://docs.nvidia.com/deeplearning/cudnn/backend/v9.20.0/reference/support-matrix.html",
+    "CUDA_MODULE_LOADING": "EAGER",
+    "CUDA_MODULE_DATA_LOADING": "EAGER",
+    "NVIDIA_TF32_OVERRIDE": "0",
+    "convolution_search": "DEFAULT (cuDNN 9 fallback heuristic)",
+    "evidence": "20 fresh processes, 10 with profiling; 1,000 inference calls each. All returned 0. The final eight benchmark processes also returned 0 and passed all reference cases."
+  },
+  "excluded_evidence": "Earlier exploratory CUDA timings are not included as qualified results. The benchmark driver rejects nonzero child exits even if a result was printed."
+}

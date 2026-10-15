@@ -239,6 +239,79 @@ execution parity, not recognition accuracy. Retrieval quality, product
 image quality, audio models, and device qualification remain separate
 work.
 
+## Accelerator and package results (2026-10-15, #11706)
+
+The [retained study](../../../crates/psionic/crates/psionic-inference/fixtures/reports/accelerators-2026-10-15/study.json)
+contains 8,000 CUDA timings, 18,000 CPU/package timings, provider profiles,
+five dependency inventories, and reduced-runtime conversion/build receipts.
+Every timing run checks all 100 reference cases first. These router runs
+cycle the full reference corpus, including long sequences; they use a
+different input mix from the earlier `route-v1` table.
+
+| Model and engine | CPU p50 | CUDA p50 | CUDA p99 across two runs |
+| --- | --- | --- | --- |
+| Router, ORT | 6.78 ms | 1.27 ms | 2.70 ms |
+| Router, native | 12.36 ms | 7.21 ms | 138.4–141.0 ms |
+| MNIST, ORT | 0.0159 ms | 0.0706 ms | 0.0919–0.0969 ms |
+| MNIST, native | 0.1314 ms | 0.1802 ms | 0.3044–0.3228 ms |
+
+The GPU is an RTX 4080 with driver 595.71.05; the host uses the same four
+P-core affinity. Native CUDA and Metal send the router's dense GEMMs and
+the digit model's three GEMMs through existing Psionic backends. They
+keep attention, norms, activations, pooling, and preparation on CPU and
+report mixed execution and logical transfers. ORT CUDA's router profile
+also contains CPU shape/index partitions; the digit graph's compute
+nodes all use CUDA. Host I/O copies can occur outside ORT's profiled graph
+nodes. Native Potion currently supports CPU only. CUDA helps this router;
+CPU wins for the tiny digit CNN on this host.
+
+CUDA qualification exposed an intermittent NVIDIA compiler cleanup abort
+with lazy module loading, including on supported cuDNN versions. The
+[compatibility record](../../../crates/psionic/crates/psionic-inference/fixtures/reports/accelerators-2026-10-15/cuda-compatibility.json)
+records the failure and excludes those exploratory timings. The adapter
+requires eager module and data loading before process startup. With
+cuDNN 9.20.0.48, TF32 disabled, and the default convolution algorithm,
+20 fresh process checks and all eight final benchmark processes exit
+successfully. The default convolution algorithm uses cuDNN's fallback
+heuristic on CUDA; CPU graph partitions are reported separately. Eager
+loading can increase startup cost and GPU memory. The runner pins and
+checks cuDNN and the driver; this qualifies the recorded configuration,
+not every CUDA dependency combination.
+
+| Bundle inventory | Executable and runtime libraries | Model assets and notices |
+| --- | --- | --- |
+| Native CPU | 4.58 MB | 225.4 MB |
+| Both engines, full CPU ORT | 29.11 MB | 416.4 MB |
+| Both engines, reduced CPU ORT | 10.88 MB | 416.6 MB |
+| Native CUDA | 564.87 MB | 225.4 MB |
+| Both engines, CUDA ORT | 1,496.78 MB | 416.4 MB |
+
+These are uncompressed benchmark executables built with release
+optimization and debug information disabled, plus their shared-library
+and model inventories. They are not mobile app sizes. Ordinary OS/C++
+libraries and the observed NVIDIA driver/compiler libraries are listed
+separately: about 250.5 MB of system prerequisites for the CUDA cases.
+The CUDA inventory includes CUDA 13.2, cuBLAS, cuRAND, and the full pinned
+cuDNN library set where required. Select model families per deployment;
+an app does not need every model in this inventory.
+
+Native deployment loaders verify the pinned converted weights without
+requiring a second copy of source ONNX or source test archives. Dual
+bundles keep both weight representations. The reduced ORT library itself
+is 2.42 MB, but its Protobuf/Abseil dependencies also count in the 10.88 MB
+bundle. Its exported CPU ORT graphs pass every reference case. It is
+slower here: router p50 is 7.23 ms, embeddings 0.0120 ms, and MNIST
+0.0262 ms. Keep full ORT for original ONNX and broader graph coverage;
+the basic minimal build supports only the exported graph/operator set.
+
+Core ML compute-unit selection and native Metal execution are implemented,
+but no Apple device results are claimed. The native CPU library passes
+an ARM64 macOS compile check; checking accelerator dependencies requires
+Apple's SDK. Apple Silicon and mobile build/device qualification remain
+in `NEEDS_OWNER.md`. Fixed x86 CPU ORT exports do not qualify mobile,
+Core ML, CUDA, or arbitrary models. No routing policy or product model
+promotion follows from these execution comparisons.
+
 ## References
 
 - [ONNX model concepts](https://onnx.ai/onnx/intro/concepts.html)
