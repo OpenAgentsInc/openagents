@@ -13,6 +13,9 @@ changes", with a short list of `file:line` rows.
   used 63% fewer tokens to find every caller of a function, at the same
   correctness, and the same tokens as without them to find the files an
   issue's fix changes.
+- Proposed next layer: [a task index built from agent navigation](task-index-roadmap.md),
+  with a local Claude/Codex navigation census and a roadmap for source-backed
+  extension recipes that cheaper agents can retrieve.
 
 ## What the graph holds
 

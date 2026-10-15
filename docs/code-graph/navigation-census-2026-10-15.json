@@ -1,0 +1,662 @@
+{
+  "schema": "openagents.navigation-census.v1",
+  "before": "2026-10-15T00:00:00Z",
+  "repository_commit": "59e445d5b5686f45c52ddb4e126835fef93db3d4",
+  "providers": {
+    "claude": {
+      "candidate_source_files": 208,
+      "excluded": {
+        "no_eligible_calls": 14
+      },
+      "source_files_with_calls": 194,
+      "first_record": "2026-09-22T17:18:40.222000+00:00",
+      "last_record": "2026-10-14T15:48:53.513000+00:00",
+      "subagent_source_files": 169,
+      "source_files_with_observed_edit": 156,
+      "median_navigation_before_first_edit": 21.0,
+      "counts": {
+        "check": 2478,
+        "edit": 4718,
+        "history": 202,
+        "list": 225,
+        "malformed_records": 14,
+        "navigation": 13509,
+        "operations": 23132,
+        "other": 2427,
+        "read": 5816,
+        "records": 99298,
+        "repeated_navigation_operations": 91,
+        "search": 7266,
+        "tool_calls": 23132,
+        "undated_records": 7316,
+        "undecoded_wrappers": 0
+      },
+      "top_repository_paths_in_navigation": [
+        {
+          "path": "crates/coder-one/src/micro.rs",
+          "operations_mentioning_path": 230,
+          "source_files": 27
+        },
+        {
+          "path": "crates/coder-one/src/policy.rs",
+          "operations_mentioning_path": 184,
+          "source_files": 48
+        },
+        {
+          "path": "crates/coder-one/src/micro/lean.rs",
+          "operations_mentioning_path": 181,
+          "source_files": 23
+        },
+        {
+          "path": "docs/terminal-bench/README.md",
+          "operations_mentioning_path": 110,
+          "source_files": 39
+        },
+        {
+          "path": "crates/coder-one/src/main.rs",
+          "operations_mentioning_path": 102,
+          "source_files": 35
+        },
+        {
+          "path": "crates/coder-one/src/terminal.rs",
+          "operations_mentioning_path": 100,
+          "source_files": 15
+        },
+        {
+          "path": "crates/coder-one/src/episode.rs",
+          "operations_mentioning_path": 96,
+          "source_files": 26
+        },
+        {
+          "path": "crates/gym/src/terminal_bench_tui.rs",
+          "operations_mentioning_path": 95,
+          "source_files": 19
+        },
+        {
+          "path": "docs/terminal-bench/runbook.md",
+          "operations_mentioning_path": 92,
+          "source_files": 30
+        },
+        {
+          "path": "crates/coder-one/src/compose.rs",
+          "operations_mentioning_path": 79,
+          "source_files": 19
+        },
+        {
+          "path": "crates/coder-one/src/micro/tests.rs",
+          "operations_mentioning_path": 78,
+          "source_files": 20
+        },
+        {
+          "path": "crates/gym/src/bin/gym.rs",
+          "operations_mentioning_path": 76,
+          "source_files": 25
+        },
+        {
+          "path": "crates/gym/src/runs_tui.rs",
+          "operations_mentioning_path": 75,
+          "source_files": 12
+        },
+        {
+          "path": "crates/coder-one/src/accept/mod.rs",
+          "operations_mentioning_path": 72,
+          "source_files": 16
+        },
+        {
+          "path": "crates/gym/src/bin/gym_terminal.rs",
+          "operations_mentioning_path": 71,
+          "source_files": 16
+        },
+        {
+          "path": "crates/gym/src/terminal_bench.rs",
+          "operations_mentioning_path": 69,
+          "source_files": 17
+        },
+        {
+          "path": "docs/optimization/coder-components.md",
+          "operations_mentioning_path": 68,
+          "source_files": 26
+        },
+        {
+          "path": "crates/coder-one/Cargo.toml",
+          "operations_mentioning_path": 61,
+          "source_files": 44
+        },
+        {
+          "path": "crates/coder-one/src/issue_turn.rs",
+          "operations_mentioning_path": 61,
+          "source_files": 11
+        },
+        {
+          "path": "crates/microluna/src/tools.rs",
+          "operations_mentioning_path": 59,
+          "source_files": 17
+        }
+      ],
+      "by_source_kind": {
+        "parent": {
+          "source_files_with_calls": 25,
+          "first_record": "2026-09-22T17:18:40.222000+00:00",
+          "last_record": "2026-10-14T15:48:53.513000+00:00",
+          "subagent_source_files": 0,
+          "source_files_with_observed_edit": 10,
+          "median_navigation_before_first_edit": 18.0,
+          "counts": {
+            "check": 368,
+            "edit": 450,
+            "history": 12,
+            "list": 31,
+            "malformed_records": 4,
+            "navigation": 1997,
+            "operations": 3396,
+            "other": 581,
+            "read": 690,
+            "records": 22537,
+            "repeated_navigation_operations": 5,
+            "search": 1264,
+            "tool_calls": 3396,
+            "undated_records": 7316,
+            "undecoded_wrappers": 0
+          },
+          "top_repository_paths_in_navigation": [
+            {
+              "path": "crates/coder-one/src/terminal.rs",
+              "operations_mentioning_path": 42,
+              "source_files": 1
+            },
+            {
+              "path": "crates/coder-one/src/micro.rs",
+              "operations_mentioning_path": 31,
+              "source_files": 1
+            },
+            {
+              "path": "crates/gym/src/runs_tui.rs",
+              "operations_mentioning_path": 28,
+              "source_files": 2
+            },
+            {
+              "path": "crates/coder-one/src/episode.rs",
+              "operations_mentioning_path": 23,
+              "source_files": 2
+            },
+            {
+              "path": "docs/terminal-bench/README.md",
+              "operations_mentioning_path": 20,
+              "source_files": 3
+            },
+            {
+              "path": "crates/gym/src/runs_replay_tui.rs",
+              "operations_mentioning_path": 20,
+              "source_files": 1
+            },
+            {
+              "path": "crates/coder-one/src/main.rs",
+              "operations_mentioning_path": 19,
+              "source_files": 2
+            },
+            {
+              "path": "crates/coder-one/src/micro/lean.rs",
+              "operations_mentioning_path": 18,
+              "source_files": 1
+            },
+            {
+              "path": "docs/optimization/coder-components.md",
+              "operations_mentioning_path": 16,
+              "source_files": 3
+            },
+            {
+              "path": "crates/gym/src/bin/gym_terminal.rs",
+              "operations_mentioning_path": 16,
+              "source_files": 2
+            },
+            {
+              "path": "docs/terminal-bench/tb4-results.md",
+              "operations_mentioning_path": 16,
+              "source_files": 1
+            },
+            {
+              "path": "crates/coder-one/src/issue_turn.rs",
+              "operations_mentioning_path": 15,
+              "source_files": 1
+            },
+            {
+              "path": "crates/gym/src/runs_transcript.rs",
+              "operations_mentioning_path": 13,
+              "source_files": 1
+            },
+            {
+              "path": "crates/gym/src/terminal_bench_tui.rs",
+              "operations_mentioning_path": 12,
+              "source_files": 2
+            },
+            {
+              "path": "docs/transcripts/288.md",
+              "operations_mentioning_path": 12,
+              "source_files": 2
+            },
+            {
+              "path": "docs/coder/design/luna-pivot.md",
+              "operations_mentioning_path": 11,
+              "source_files": 2
+            },
+            {
+              "path": "crates/coder-one/src/policy.rs",
+              "operations_mentioning_path": 10,
+              "source_files": 2
+            },
+            {
+              "path": "crates/coder/src/delegate_door.rs",
+              "operations_mentioning_path": 10,
+              "source_files": 2
+            },
+            {
+              "path": "docs/coder/design/README.md",
+              "operations_mentioning_path": 9,
+              "source_files": 3
+            },
+            {
+              "path": "docs/transcripts/287.md",
+              "operations_mentioning_path": 9,
+              "source_files": 2
+            }
+          ]
+        },
+        "subagent": {
+          "source_files_with_calls": 169,
+          "first_record": "2026-09-22T17:20:34.631000+00:00",
+          "last_record": "2026-10-03T03:18:55.378000+00:00",
+          "subagent_source_files": 169,
+          "source_files_with_observed_edit": 146,
+          "median_navigation_before_first_edit": 21.0,
+          "counts": {
+            "check": 2110,
+            "edit": 4268,
+            "history": 190,
+            "list": 194,
+            "malformed_records": 10,
+            "navigation": 11512,
+            "operations": 19736,
+            "other": 1846,
+            "read": 5126,
+            "records": 76761,
+            "repeated_navigation_operations": 86,
+            "search": 6002,
+            "tool_calls": 19736,
+            "undecoded_wrappers": 0
+          },
+          "top_repository_paths_in_navigation": [
+            {
+              "path": "crates/coder-one/src/micro.rs",
+              "operations_mentioning_path": 199,
+              "source_files": 26
+            },
+            {
+              "path": "crates/coder-one/src/policy.rs",
+              "operations_mentioning_path": 174,
+              "source_files": 46
+            },
+            {
+              "path": "crates/coder-one/src/micro/lean.rs",
+              "operations_mentioning_path": 163,
+              "source_files": 22
+            },
+            {
+              "path": "docs/terminal-bench/README.md",
+              "operations_mentioning_path": 90,
+              "source_files": 36
+            },
+            {
+              "path": "docs/terminal-bench/runbook.md",
+              "operations_mentioning_path": 87,
+              "source_files": 28
+            },
+            {
+              "path": "crates/gym/src/terminal_bench_tui.rs",
+              "operations_mentioning_path": 83,
+              "source_files": 17
+            },
+            {
+              "path": "crates/coder-one/src/main.rs",
+              "operations_mentioning_path": 83,
+              "source_files": 33
+            },
+            {
+              "path": "crates/coder-one/src/compose.rs",
+              "operations_mentioning_path": 73,
+              "source_files": 17
+            },
+            {
+              "path": "crates/coder-one/src/episode.rs",
+              "operations_mentioning_path": 73,
+              "source_files": 24
+            },
+            {
+              "path": "crates/coder-one/src/micro/tests.rs",
+              "operations_mentioning_path": 73,
+              "source_files": 19
+            },
+            {
+              "path": "crates/gym/src/bin/gym.rs",
+              "operations_mentioning_path": 68,
+              "source_files": 24
+            },
+            {
+              "path": "crates/gym/src/terminal_bench.rs",
+              "operations_mentioning_path": 67,
+              "source_files": 16
+            },
+            {
+              "path": "crates/coder-one/src/accept/mod.rs",
+              "operations_mentioning_path": 66,
+              "source_files": 15
+            },
+            {
+              "path": "crates/coder-one/src/terminal.rs",
+              "operations_mentioning_path": 58,
+              "source_files": 14
+            },
+            {
+              "path": "crates/gym/src/bin/gym_terminal.rs",
+              "operations_mentioning_path": 55,
+              "source_files": 14
+            },
+            {
+              "path": "crates/microluna/src/tools.rs",
+              "operations_mentioning_path": 55,
+              "source_files": 16
+            },
+            {
+              "path": "crates/gym/src/runs.rs",
+              "operations_mentioning_path": 53,
+              "source_files": 10
+            },
+            {
+              "path": "crates/coder-one/Cargo.toml",
+              "operations_mentioning_path": 53,
+              "source_files": 41
+            },
+            {
+              "path": "docs/optimization/coder-components.md",
+              "operations_mentioning_path": 52,
+              "source_files": 23
+            },
+            {
+              "path": "crates/coder/src/runtime.rs",
+              "operations_mentioning_path": 51,
+              "source_files": 7
+            }
+          ]
+        }
+      }
+    },
+    "codex": {
+      "candidate_source_files": 139,
+      "excluded": {
+        "no_eligible_calls": 6,
+        "other_repository": 105
+      },
+      "source_files_with_calls": 28,
+      "first_record": "2026-09-23T01:55:26.249000+00:00",
+      "last_record": "2026-10-14T23:56:21.746000+00:00",
+      "subagent_source_files": 0,
+      "source_files_with_observed_edit": 18,
+      "median_navigation_before_first_edit": 16.5,
+      "counts": {
+        "check": 2040,
+        "edit": 662,
+        "history": 367,
+        "list": 56,
+        "malformed_records": 38,
+        "navigation": 5378,
+        "operations": 9942,
+        "other": 1862,
+        "read": 2213,
+        "records": 67314,
+        "repeated_navigation_operations": 163,
+        "search": 2742,
+        "tool_calls": 8075,
+        "undecoded_wrappers": 364
+      },
+      "top_repository_paths_in_navigation": [
+        {
+          "path": "crates/verse-world/src/play.rs",
+          "operations_mentioning_path": 288,
+          "source_files": 3
+        },
+        {
+          "path": "docs/audits/2026-10-04-verse-engine-audit.md",
+          "operations_mentioning_path": 259,
+          "source_files": 1
+        },
+        {
+          "path": "crates/verse-world/src/service/net.rs",
+          "operations_mentioning_path": 184,
+          "source_files": 1
+        },
+        {
+          "path": "crates/verse-world/src/service/wire.rs",
+          "operations_mentioning_path": 151,
+          "source_files": 1
+        },
+        {
+          "path": "crates/verse-world/src/play/multiplayer.rs",
+          "operations_mentioning_path": 149,
+          "source_files": 1
+        },
+        {
+          "path": "crates/verse-world/src/service/client.rs",
+          "operations_mentioning_path": 148,
+          "source_files": 1
+        },
+        {
+          "path": "crates/verse-world/src/service/worker.rs",
+          "operations_mentioning_path": 117,
+          "source_files": 1
+        },
+        {
+          "path": "crates/verse-world/src/service.rs",
+          "operations_mentioning_path": 114,
+          "source_files": 1
+        },
+        {
+          "path": "crates/verse-world/src/prediction/local.rs",
+          "operations_mentioning_path": 111,
+          "source_files": 1
+        },
+        {
+          "path": "crates/verse/Cargo.toml",
+          "operations_mentioning_path": 110,
+          "source_files": 7
+        },
+        {
+          "path": "crates/verse/src/render.rs",
+          "operations_mentioning_path": 105,
+          "source_files": 6
+        },
+        {
+          "path": "crates/verse-world/src/service/auth.rs",
+          "operations_mentioning_path": 104,
+          "source_files": 1
+        },
+        {
+          "path": "crates/verse-world/README.md",
+          "operations_mentioning_path": 81,
+          "source_files": 1
+        },
+        {
+          "path": "crates/verse-world/src/service/save.rs",
+          "operations_mentioning_path": 79,
+          "source_files": 1
+        },
+        {
+          "path": "crates/verse-world/src/service/rewards.rs",
+          "operations_mentioning_path": 69,
+          "source_files": 1
+        },
+        {
+          "path": "crates/verse-pbr/src/imported/mod.rs",
+          "operations_mentioning_path": 67,
+          "source_files": 1
+        },
+        {
+          "path": "crates/verse-imported/src/imported/chamber_session.rs",
+          "operations_mentioning_path": 61,
+          "source_files": 1
+        },
+        {
+          "path": "crates/verse/examples/battle_scale.rs",
+          "operations_mentioning_path": 60,
+          "source_files": 1
+        },
+        {
+          "path": "crates/verse/src/zones/runtime.rs",
+          "operations_mentioning_path": 58,
+          "source_files": 3
+        },
+        {
+          "path": "crates/verse-world/src/rules.rs",
+          "operations_mentioning_path": 57,
+          "source_files": 1
+        }
+      ],
+      "by_source_kind": {
+        "parent": {
+          "source_files_with_calls": 28,
+          "first_record": "2026-09-23T01:55:26.249000+00:00",
+          "last_record": "2026-10-14T23:56:21.746000+00:00",
+          "subagent_source_files": 0,
+          "source_files_with_observed_edit": 18,
+          "median_navigation_before_first_edit": 16.5,
+          "counts": {
+            "check": 2040,
+            "edit": 662,
+            "history": 367,
+            "list": 56,
+            "malformed_records": 38,
+            "navigation": 5378,
+            "operations": 9942,
+            "other": 1862,
+            "read": 2213,
+            "records": 67314,
+            "repeated_navigation_operations": 163,
+            "search": 2742,
+            "tool_calls": 8075,
+            "undecoded_wrappers": 364
+          },
+          "top_repository_paths_in_navigation": [
+            {
+              "path": "crates/verse-world/src/play.rs",
+              "operations_mentioning_path": 288,
+              "source_files": 3
+            },
+            {
+              "path": "docs/audits/2026-10-04-verse-engine-audit.md",
+              "operations_mentioning_path": 259,
+              "source_files": 1
+            },
+            {
+              "path": "crates/verse-world/src/service/net.rs",
+              "operations_mentioning_path": 184,
+              "source_files": 1
+            },
+            {
+              "path": "crates/verse-world/src/service/wire.rs",
+              "operations_mentioning_path": 151,
+              "source_files": 1
+            },
+            {
+              "path": "crates/verse-world/src/play/multiplayer.rs",
+              "operations_mentioning_path": 149,
+              "source_files": 1
+            },
+            {
+              "path": "crates/verse-world/src/service/client.rs",
+              "operations_mentioning_path": 148,
+              "source_files": 1
+            },
+            {
+              "path": "crates/verse-world/src/service/worker.rs",
+              "operations_mentioning_path": 117,
+              "source_files": 1
+            },
+            {
+              "path": "crates/verse-world/src/service.rs",
+              "operations_mentioning_path": 114,
+              "source_files": 1
+            },
+            {
+              "path": "crates/verse-world/src/prediction/local.rs",
+              "operations_mentioning_path": 111,
+              "source_files": 1
+            },
+            {
+              "path": "crates/verse/Cargo.toml",
+              "operations_mentioning_path": 110,
+              "source_files": 7
+            },
+            {
+              "path": "crates/verse/src/render.rs",
+              "operations_mentioning_path": 105,
+              "source_files": 6
+            },
+            {
+              "path": "crates/verse-world/src/service/auth.rs",
+              "operations_mentioning_path": 104,
+              "source_files": 1
+            },
+            {
+              "path": "crates/verse-world/README.md",
+              "operations_mentioning_path": 81,
+              "source_files": 1
+            },
+            {
+              "path": "crates/verse-world/src/service/save.rs",
+              "operations_mentioning_path": 79,
+              "source_files": 1
+            },
+            {
+              "path": "crates/verse-world/src/service/rewards.rs",
+              "operations_mentioning_path": 69,
+              "source_files": 1
+            },
+            {
+              "path": "crates/verse-pbr/src/imported/mod.rs",
+              "operations_mentioning_path": 67,
+              "source_files": 1
+            },
+            {
+              "path": "crates/verse-imported/src/imported/chamber_session.rs",
+              "operations_mentioning_path": 61,
+              "source_files": 1
+            },
+            {
+              "path": "crates/verse/examples/battle_scale.rs",
+              "operations_mentioning_path": 60,
+              "source_files": 1
+            },
+            {
+              "path": "crates/verse/src/zones/runtime.rs",
+              "operations_mentioning_path": 58,
+              "source_files": 3
+            },
+            {
+              "path": "crates/verse-world/src/rules.rs",
+              "operations_mentioning_path": 57,
+              "source_files": 1
+            }
+          ]
+        },
+        "subagent": {
+          "source_files_with_calls": 0,
+          "first_record": null,
+          "last_record": null,
+          "subagent_source_files": 0,
+          "source_files_with_observed_edit": 0,
+          "median_navigation_before_first_edit": null,
+          "counts": {},
+          "top_repository_paths_in_navigation": []
+        }
+      }
+    }
+  }
+}
