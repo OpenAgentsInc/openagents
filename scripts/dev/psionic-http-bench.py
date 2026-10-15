@@ -5,6 +5,7 @@ import argparse
 import hashlib
 import http.client
 import json
+import platform
 from pathlib import Path
 import re
 import selectors
@@ -18,6 +19,8 @@ parser.add_argument("--model-dir", type=Path, required=True)
 parser.add_argument("--ort-library", type=Path, required=True)
 parser.add_argument("--output", type=Path, required=True)
 parser.add_argument("--samples", type=int, default=1000)
+parser.add_argument("--cpus", help="Optional Linux taskset CPU list for each server")
+parser.add_argument("--build-profile", default="unspecified")
 args = parser.parse_args()
 if args.samples < 1:
     parser.error("Use a positive sample count")
@@ -49,6 +52,8 @@ for round_index, engines in enumerate([["ort", "native"], ["native", "ort"]], 1)
                    "--router-engine", engine, "--router-threads", "4", "--host", "127.0.0.1", "--port", "0"]
         if engine == "ort":
             command += ["--ort-library", str(args.ort_library.resolve()), "--ort-sha256", library_hash]
+        if args.cpus:
+            command = ["taskset", "-c", args.cpus] + command
         stderr = (args.output / f"{round_index}-{engine}.stderr").open("w")
         process = None
         connection = None
@@ -103,6 +108,8 @@ for round_index, engines in enumerate([["ort", "native"], ["native", "ort"]], 1)
                       "corpus_sha256": hashlib.sha256(corpus_path.read_bytes()).hexdigest(),
                       "server_sha256": hashlib.sha256(args.server.read_bytes()).hexdigest(), "command": command,
                       "model_sha256": answer["psionic"]["model_sha256"], "tokenizer_sha256": answer["psionic"]["tokenizer_sha256"],
+                      "source_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
+                      "build_profile": args.build_profile, "cpu_affinity": args.cpus, "platform": platform.platform(),
                       "scope": "Loopback HTTP with a persistent connection; four model CPU threads; synthetic route-v1 requests; warm caches"}
             records.append(record)
             write_records()
