@@ -52,7 +52,7 @@ async fn measurements(
     path: &Path,
     arm: &str,
 ) -> Result<(), String> {
-    for i in 0..20 {
+    for i in 0..if arm == "memory" { 0 } else { 20 } {
         let op = format!("space-spike-{arm}-{}-{i}", uuid::Uuid::new_v4());
         report["pending_operation"] = json!(op);
         save(path, report);
@@ -134,9 +134,11 @@ async fn measurements(
         .map(|r| r["first_command_ms"].as_f64().unwrap())
         .collect();
     timings.sort_by(f64::total_cmp);
-    report["first_command_p50_ms"] = json!(timings[9]);
-    report["first_command_p90_ms"] = json!(timings[17]);
-    report["first_command_p50_under_2s"] = json!(timings[9] < 2000.);
+    if timings.len() == 20 {
+        report["first_command_p50_ms"] = json!(timings[9]);
+        report["first_command_p90_ms"] = json!(timings[17]);
+        report["first_command_p50_under_2s"] = json!(timings[9] < 2000.);
+    }
     let id = done(
         driver
             .create(&CreateRequest {
@@ -153,6 +155,8 @@ async fn measurements(
     reach(driver, &id, State::Running).await?;
     report["memory_guest"] =
         json!({"size":"medium","meminfo":sh(driver, &id, "head -n 3 /proc/meminfo").await?});
+    report["phase"] = json!("starting_memory_process");
+    save(path, report);
     // A private socket asks the same live Python process to hash its memory
     // before and after suspension. There is no saved buffer to reload.
     let python = r#"import hashlib,os,socket
@@ -182,12 +186,27 @@ while True:
         tokio::time::sleep(Duration::from_secs(1)).await;
     }
     let before = before.ok_or("Memory process did not become ready.")?;
+    report["memory_before"] = json!(before.trim());
+    report["phase"] = json!("suspending");
+    save(path, report);
     done(driver.suspend(&id).await)?;
     reach(driver, &id, State::Stopped).await?;
     let start = Instant::now();
+    report["phase"] = json!("waking");
+    save(path, report);
     done(driver.resume(&id).await)?;
     reach(driver, &id, State::Running).await?;
-    let after = sh(driver, &id, query).await?;
+    // Include restored-route readiness in the wake timer. Only these
+    // read-only probes retry; never repeat an ambiguous mutation.
+    let mut after = None;
+    for _ in 0..60 {
+        if let Ok(value) = sh(driver, &id, query).await {
+            after = Some(value);
+            break;
+        }
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+    let after = after.ok_or("Memory process did not answer after wake.")?;
     report["memory"] = json!({"bytes":1024u64*1024*1024,"before":before.trim(),"after":after.trim(),"same_process_and_hash":before==after,"wake_to_answer_ms":start.elapsed().as_secs_f64()*1000.});
     if before != after {
         return Err("Suspend/wake lost the memory process or changed its buffer.".into());
@@ -222,8 +241,8 @@ while True:
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    if args.len() != 2 || !matches!(args[1].as_str(), "cold" | "snapshot") {
-        eprintln!("Usage: space-spike EVIDENCE.json cold|snapshot");
+    if args.len() != 2 || !matches!(args[1].as_str(), "cold" | "snapshot" | "memory") {
+        eprintln!("Usage: space-spike EVIDENCE.json cold|snapshot|memory");
         std::process::exit(2);
     }
     let path = Path::new(&args[0]);

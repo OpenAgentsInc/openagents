@@ -40,12 +40,12 @@ PY
   conformance)
     exec computer-conformance --space >"$HOME/evidence/conformance.txt" 2>&1
     ;;
-  cold|snapshot)
+  cold|snapshot|memory)
     # The operator sets the base snapshot policy for the chosen arm and
     # retains backend observations. The arm name is not proof of boot mode.
     export SPACE_EXPECT_GITHUB_ONLY=1
     export SPACE_BOOT_OBSERVER="$HOME/boot-mode.py"
     exec space-spike "$HOME/evidence/$1.json" "$1" >"$HOME/evidence/$1.log" 2>&1
     ;;
-  *) echo 'Usage: check.sh conformance|prepare-cold|prepare-snapshot|inspect|cold|snapshot' >&2; exit 2 ;;
+  *) echo 'Usage: check.sh conformance|prepare-cold|prepare-snapshot|inspect|cold|snapshot|memory' >&2; exit 2 ;;
 esac

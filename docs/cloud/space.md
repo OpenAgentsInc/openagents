@@ -35,8 +35,8 @@ SPACE template references differ from GCE image names. A create that names
 an unavailable template fails at SPACE. The lifecycle service enforces its
 computer lifetime; the driver does not translate a hard lifetime into
 SPACE's access-idle timeout. The public API exposes no billable-seconds
-counter, so `Meter.seconds` is absent. The `small` size uses the template's
-default shape so snapshot boots remain eligible; `medium` and `large`
+counter, so `Meter.seconds` is absent. The `small` size leaves the shape to
+SPACE so snapshot boots remain eligible; `medium` and `large`
 request explicit shapes and therefore cold-boot in this SPACE version.
 
 ## Disposable GCE setup
@@ -69,15 +69,38 @@ the `oa-coder-main-20261015` image in our project (override with
 `SPACE_RUNTIME_IMAGE`); its temporary disk is read-only and deleted after
 extraction. The template keeps SPACE's guest daemon and kernel.
 
-Run conformance with `cargo run -p computer-conformance --features space
--- --space`. For measurements, run `cargo run -p computer-driver --features
-space --example space-spike -- EVIDENCE.json cold` and repeat with a fresh
-evidence path and the `snapshot` arm after enabling the template's base
-snapshot policy. Retain backend boot-mode observations: a requested arm
-alone does not prove a snapshot was used. The runner records twenty
-creates, versions, and a 1 GiB memory process before and after suspend.
-Set `SPACE_EXPECT_GITHUB_ONLY=1` only with a template whose network policy
-allows GitHub alone, to add the egress check.
+Build the check programs for Linux with `--features space`: the
+`computer-conformance` binary and the `computer-driver` example
+`space-spike`. On Nix, use the `x86_64-unknown-linux-musl` target with a musl
+C compiler so the programs run on Ubuntu. Set `SPACE_CONFORMANCE_BIN` and
+`SPACE_SPIKE_BIN` to their paths for the first upload:
+
+```sh
+deploy/space-host/host.sh check conformance
+# After conformance finishes, run each arm separately.
+deploy/space-host/host.sh check prepare-cold
+deploy/space-host/host.sh check cold
+deploy/space-host/host.sh check prepare-snapshot
+# Wait for snapshots to become available before starting the second arm.
+deploy/space-host/host.sh check inspect
+deploy/space-host/host.sh check snapshot
+```
+
+The check jobs write results under `/var/lib/space-spike/home/evidence/`.
+Each arm records twenty creates and their Firecracker launch arguments:
+cold boots supply `--config-file`, while restores start idle and load a
+snapshot through the Firecracker API. A mismatched boot mode fails the run.
+The timer ends after the first successful command, before collecting these
+observations. The runner also checks runtime versions, a separate 4 GiB
+guest's 1 GiB memory process before and after suspend, and network access.
+Preparation allows only `api.github.com`; the network check requires that
+request to succeed and a request to `example.com` to fail. Keep the two
+arms and conformance sequential so they do not contend for the same host.
+
+For an existing deployment, `computer-conformance --space` and
+`space-spike EVIDENCE.json cold|snapshot` use the environment variables above.
+Use a fresh evidence path for each run. Without `SPACE_BOOT_OBSERVER`, the
+measurement runner marks the actual boot mode as unverified.
 
 ```sh
 deploy/space-host/host.sh destroy
