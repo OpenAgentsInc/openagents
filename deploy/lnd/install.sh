@@ -84,7 +84,7 @@ expect -re "Input wallet password:"
 send -- "$password\r"
 expect -re "Confirm.*password:"
 send -- "$password\r"
-expect -re "Enter y/n"
+expect -re {Enter [ynxw/]+}
 send -- "n\r"
 expect -re "passphrase.*:"
 send -- "\r"
