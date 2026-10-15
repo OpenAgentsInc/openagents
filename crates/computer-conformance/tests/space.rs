@@ -269,6 +269,16 @@ async fn space_wire_contract_passes_core_and_suspend() {
     assert!(report.passed(), "{}", report.summary());
     let records = m.records.lock().unwrap();
     assert!(records.machines.is_empty());
+    let creates: Vec<_> = records
+        .requests
+        .iter()
+        .filter(|r| r.get("template").is_some())
+        .collect();
+    assert!(!creates.is_empty());
+    assert!(
+        creates.iter().all(|r| r.get("resources").is_none()),
+        "a custom shape forces cold boot in SPACE"
+    );
     // The conformance grep intentionally includes its search string in
     // argv. The credential-bearing command must not contain that value.
     for request in &records.requests {

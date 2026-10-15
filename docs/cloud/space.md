@@ -35,7 +35,9 @@ SPACE template references differ from GCE image names. A create that names
 an unavailable template fails at SPACE. The lifecycle service enforces its
 computer lifetime; the driver does not translate a hard lifetime into
 SPACE's access-idle timeout. The public API exposes no billable-seconds
-counter, so `Meter.seconds` is absent.
+counter, so `Meter.seconds` is absent. The `small` size uses the template's
+default shape so snapshot boots remain eligible; `medium` and `large`
+request explicit shapes and therefore cold-boot in this SPACE version.
 
 ## Disposable GCE setup
 
@@ -57,7 +59,7 @@ deploy/space-host/host.sh template
 Installation and template publication run as bounded systemd jobs. On the
 host, `/var/lib/space-spike/home/install.log` and `template.log` show their
 progress. The runtime step extracts only Coder and Claude binaries from
-the public `oa-coder-main-20261015` image (override with
+the `oa-coder-main-20261015` image in our project (override with
 `SPACE_RUNTIME_IMAGE`); its temporary disk is read-only and deleted after
 extraction. The template keeps SPACE's guest daemon and kernel.
 

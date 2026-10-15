@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Extract only program binaries from a read-only copy of our public image.
+# Extract only program binaries from a read-only copy of our runtime image.
 set -euo pipefail
 [[ $EUID == 0 ]]
 mount_dir=/mnt/space-runtime

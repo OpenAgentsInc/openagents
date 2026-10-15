@@ -397,16 +397,22 @@ impl Driver for SpaceDriver {
                 "A SPACE create needs an operation ID of up to 128 printable ASCII characters.",
             );
         }
-        let (vcpu, memory) = match r.size.as_deref().unwrap_or("small") {
-            "small" => (2, 2048),
-            "medium" => (4, 4096),
-            "large" => (8, 8192),
+        let resources = match r.size.as_deref().unwrap_or("small") {
+            // SPACE forces cold boot whenever a custom shape is supplied,
+            // even if it matches the template. Keep the default shape absent
+            // so base snapshots and warm pools remain eligible.
+            "small" => None,
+            "medium" => Some(json!({"vcpu":4,"memory_mib":4096})),
+            "large" => Some(json!({"vcpu":8,"memory_mib":8192})),
             _ => return Outcome::failed("Choose a supported SPACE computer size."),
         };
-        let body = json!({"template":r.image.as_deref().unwrap_or(&self.template), "runtime":"firecracker",
-            "resources":{"vcpu":vcpu, "memory_mib":memory}, "metadata":r.labels,
+        let mut body = json!({"template":r.image.as_deref().unwrap_or(&self.template), "runtime":"firecracker",
+            "metadata":r.labels,
             // Only explicit resume may wake a stopped chat computer.
             "auto_lifecycle":{"wake":{"on":[]},"condition_sets":{},"stages":[]}});
+        if let Some(resources) = resources {
+            body["resources"] = resources;
+        }
         match self
             .json(
                 Method::POST,

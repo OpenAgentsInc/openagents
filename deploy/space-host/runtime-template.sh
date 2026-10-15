@@ -43,7 +43,7 @@ python3 - "$seed" "$out" <<'PY'
 import datetime, hashlib, json, pathlib, sys
 seed,out=map(pathlib.Path,sys.argv[1:])
 metadata=json.loads((seed/'metadata.json').read_text())
-metadata.update(name='oa-coder-runtime',id='oa-coder-runtime',description='OpenAgents Coder runtime for the SPACE spike',disk_size_mb=4096,built_at=datetime.datetime.now(datetime.timezone.utc).isoformat())
+metadata.update(name='oa-coder-runtime',id='oa-coder-runtime',description='OpenAgents Coder runtime for the SPACE spike',vcpu=2,memory_mib=2048,disk_size_mb=4096,built_at=datetime.datetime.now(datetime.timezone.utc).isoformat())
 (out/'metadata.json').write_text(json.dumps(metadata,indent=2)+'\n')
 h=hashlib.sha256()
 with (out/'rootfs.ext4').open('rb') as f:
