@@ -523,11 +523,11 @@ Blue Rush Studios domain. Epic:
 
 | Phase | Issue | Status |
 | --- | --- | --- |
-| S1 | [#11669](https://github.com/OpenAgentsInc/openagents/issues/11669) | Done |
-| S2 | [#11670](https://github.com/OpenAgentsInc/openagents/issues/11670) | Done |
-| S3 | [#11671](https://github.com/OpenAgentsInc/openagents/issues/11671) | Done |
-| S4 | [#11672](https://github.com/OpenAgentsInc/openagents/issues/11672) | Done |
-| S5 | [#11673](https://github.com/OpenAgentsInc/openagents/issues/11673) | Done |
+| S1 | [#11669](https://github.com/OpenAgentsInc/openagents/issues/11669) | Done, 38357711ac |
+| S2 | [#11670](https://github.com/OpenAgentsInc/openagents/issues/11670) | Done, 38357711ac |
+| S3 | [#11671](https://github.com/OpenAgentsInc/openagents/issues/11671) | Done, 38357711ac |
+| S4 | [#11672](https://github.com/OpenAgentsInc/openagents/issues/11672) | Done, 38357711ac |
+| S5 | [#11673](https://github.com/OpenAgentsInc/openagents/issues/11673) | Done, 38357711ac and fcb6cf7b51 |
 | S6 | [#11674](https://github.com/OpenAgentsInc/openagents/issues/11674) | Planned |
 | S7 | [#11675](https://github.com/OpenAgentsInc/openagents/issues/11675) | Planned |
 | S8 | [#11676](https://github.com/OpenAgentsInc/openagents/issues/11676) | Planned |
