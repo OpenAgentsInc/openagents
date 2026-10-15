@@ -164,7 +164,7 @@ impl SpinBarrier {
         }
         let mut spins = 0u32;
         while self.generation.load(Acquire) == generation {
-            if spins < 20_000 {
+            if spins < 256 {
                 std::hint::spin_loop();
                 spins += 1;
             } else {
