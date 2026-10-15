@@ -7,7 +7,7 @@ use route_contract::pending as wire;
 
 pub(super) const ASK_TOOL: &str = "mcp__openagents__ask_user";
 
-type CallKey = (String, Option<String>);
+type CallKey = (u64, String, Option<String>);
 
 pub(super) fn handler(
     gate: &Arc<Gate>,
@@ -74,7 +74,11 @@ pub(super) fn handler(
                 match answer {
                     Ok(wire::Answer::AllowOnce) => {
                         state.native.insert(
-                            (identity.native_call, identity.child),
+                            (
+                                service.scope().generation,
+                                identity.native_call,
+                                identity.child,
+                            ),
                             Request::of(tool, &applied.input),
                         );
                         Permission::Allow
@@ -128,7 +132,8 @@ pub(super) fn handler(
                 let committed = service.with_active(|| {
                     let request = Request::of(&call.tool_name, input);
                     let mut state = gate.state();
-                    let key: CallKey = (call.tool_use_id, call.agent_id);
+                    let key: CallKey =
+                        (service.scope().generation, call.tool_use_id, call.agent_id);
                     let decision = if state.native.remove(&key).as_ref() == Some(&request) {
                         Decision::AllowedOnce
                     } else if state.once.as_ref() == Some(&request) {

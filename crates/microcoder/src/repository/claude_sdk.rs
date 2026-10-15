@@ -161,7 +161,7 @@ struct GateState {
     denied: Option<Request>,
     asked: Option<Pending>,
     log: Vec<(String, Value, Decision)>,
-    native: HashMap<(String, Option<String>), Request>,
+    native: HashMap<(u64, String, Option<String>), Request>,
     question: Option<route_contract::pending::Questionnaire>,
 }
 
