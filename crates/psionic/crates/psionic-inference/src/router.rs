@@ -51,6 +51,27 @@ pub fn pinned_manifest() -> Result<RouterManifest> {
     ))?)
 }
 
+pub fn verify_native_router(root: &Path) -> Result<()> {
+    let expected: serde_json::Value =
+        serde_json::from_str(include_str!("../fixtures/s1-router-native.json"))?;
+    let actual: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(root.join("native.json"))?)?;
+    if actual != expected {
+        return Err(Error(
+            "Converted router configuration does not match its pinned reference".into(),
+        ));
+    }
+    let expected_hash = expected["weights_sha256"]
+        .as_str()
+        .ok_or_else(|| Error("Missing converted router checksum".into()))?;
+    if file_sha256(&root.join("native.safetensors"))? != expected_hash {
+        return Err(Error(
+            "Converted router weights do not match their pinned reference".into(),
+        ));
+    }
+    Ok(())
+}
+
 pub fn file_sha256(path: &Path) -> Result<String> {
     let mut file = std::fs::File::open(path)?;
     let mut hash = Sha256::new();

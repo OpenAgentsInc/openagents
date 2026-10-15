@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+pub mod modernbert;
 #[cfg(feature = "ort")]
 pub mod ort_engine;
 pub mod router;

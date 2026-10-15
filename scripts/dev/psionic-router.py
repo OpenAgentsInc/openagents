@@ -133,11 +133,68 @@ def generate(root, manifest, destination):
     print(f"Wrote {len(requests)} inference cases and {len(tokenizer_cases)} tokenizer cases to {destination}")
 
 
+def convert(root, manifest):
+    import numpy as np
+    import onnx
+    from onnx import numpy_helper
+    from safetensors.numpy import save_file
+
+    verify(root, manifest)
+    model = onnx.load(root / "model.gq.onnx")
+    nodes = {node.name: node for node in model.graph.node}
+    initializers = {t.name: numpy_helper.to_array(t) for t in model.graph.initializer}
+    constants = {node.output[0]: numpy_helper.to_array(node.attribute[0].t)
+                 for node in model.graph.node if node.op_type == "Constant"}
+    weights, sources = {}, {}
+
+    def take(name, source):
+        weights[name] = np.ascontiguousarray(initializers[source])
+        sources[name] = source
+
+    take("embedding", "enc.embeddings.tok_embeddings.weight_quantized")
+    take("embedding_norm", "enc.embeddings.norm.weight")
+    take("final_norm", "enc.final_norm.weight")
+    frequencies = [v.flatten().tolist() for v in constants.values() if v.shape == (1, 32, 1)]
+    if len(frequencies) != 1:
+        raise ValueError("Expected one shared rotary frequency table in this pinned graph")
+    window_node = nodes["/enc/LessOrEqual"]
+    window = int(constants[window_node.input[1]].item())
+    layers = []
+    for i in range(11):
+        prefix = f"/enc/layers.{i}"
+        for name, path in [("qkv", "attn/Wqkv"), ("attn_out", "attn/Wo"), ("up", "mlp/Wi"), ("down", "mlp/Wo")]:
+            take(f"layers.{i}.{name}", nodes[f"{prefix}/{path}/MatMul"].input[1])
+        take(f"layers.{i}.mlp_norm", f"enc.layers.{i}.mlp_norm.weight")
+        if i:
+            take(f"layers.{i}.attn_norm", f"enc.layers.{i}.attn_norm.weight")
+        mask = nodes[f"{prefix}/attn/Where"].input[0]
+        if mask not in ["/enc/Expand_output_0", "/enc/Expand_1_output_0"]:
+            raise ValueError(f"Unknown attention mask: {mask}")
+        layers.append({"window": None if mask == "/enc/Expand_output_0" else window,
+                       "inverse_frequencies": frequencies[0]})
+    for name in ["category", "difficulty", "stakes", "flags"]:
+        take(f"heads.{name}.weight", f"heads.{name}.weight")
+        take(f"heads.{name}.bias", f"heads.{name}.bias")
+    path = root / "native.safetensors"
+    save_file(dict(sorted(weights.items())), str(path))
+    epsilon = onnx.helper.get_attribute_value(next(a for a in nodes["/enc/embeddings/norm/LayerNormalization"].attribute if a.name == "epsilon"))
+    config = {"schema": "psionic.modernbert.v1", "hidden": 384, "heads": 6, "intermediate": 1152,
+              "epsilon": epsilon, "layers": layers,
+              "embedding_scale": float(initializers["enc.embeddings.tok_embeddings.weight_scale"].item()),
+              "embedding_zero": int(initializers["enc.embeddings.tok_embeddings.weight_zero_point"].item()),
+              "source_sha256": manifest["files"]["model.gq.onnx"]["sha256"],
+              "weights_sha256": checksum(path), "converter": "psionic-modernbert-v1",
+              "converter_sha256": checksum(Path(__file__)), "tensor_sources": sources}
+    (root / "native.json").write_text(json.dumps(config, indent=2, sort_keys=True) + "\n")
+    print(f"Converted {len(weights)} tensors; SHA-256 {config['weights_sha256']}")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=["download", "verify", "fixtures"])
+    parser.add_argument("action", choices=["download", "verify", "fixtures", "convert"])
     parser.add_argument("model_dir", type=Path)
     parser.add_argument("--output", type=Path, default=FIXTURES / "s1-router-reference.json")
     args = parser.parse_args()
     manifest = json.loads(MANIFEST.read_text())
-    {"download": download, "verify": verify, "fixtures": lambda r, m: generate(r, m, args.output)}[args.action](args.model_dir, manifest)
+    {"download": download, "verify": verify, "convert": convert,
+     "fixtures": lambda r, m: generate(r, m, args.output)}[args.action](args.model_dir, manifest)

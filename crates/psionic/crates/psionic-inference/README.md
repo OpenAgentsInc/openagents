@@ -26,7 +26,7 @@ runtime. To regenerate reference fixtures, install the Python dependencies
 pinned in `scripts/dev/psionic-router.py` into a scratch virtual
 environment, then run its `fixtures` action with the same model directory.
 
-The [roadmap](../../../../../docs/research/decisionmodels/psionic-onnx-native-roadmap.md)
+The [roadmap](../../../../docs/research/decisionmodels/psionic-onnx-native-roadmap.md)
 tracks execution engines, comparisons, and serving work.
 
 ## ONNX Runtime
@@ -51,3 +51,28 @@ checks input names and dimensions, limits CPU threads, and reports the
 actual runtime build and library checksum. Native-only builds do not
 depend on ORT. The model's operators determine precision; the router uses
 uint8 embeddings and float32 encoder operations.
+
+## Native ModernBERT
+
+Run the tooling's `convert` action with the pinned model directory to
+write `native.safetensors` and `native.json`. Conversion preserves ONNX's
+matrix layout and embedding quantization, records each source tensor,
+and derives attention masks and rotary frequencies from the graph. The
+checked-in conversion receipt pins the converted weight checksum and
+configuration. No weights are committed.
+
+`ModernBertEngine` implements the encoder in Rust with a bounded Rayon
+pool and portable SIMD GEMMs from `matrixmultiply`. The existing qwen35
+GEMM specializes in quantized AVX-512 projections; this encoder uses
+float32 matrices and also runs on AVX2 and ARM CPUs.
+
+```sh
+python3 scripts/dev/psionic-router.py convert /path/to/models/s1-router
+PSIONIC_ROUTER_MODEL_DIR=/path/to/models/s1-router \
+  cargo test --manifest-path crates/psionic/Cargo.toml -p psionic-inference \
+  --test native -- --ignored --nocapture
+```
+
+The converter additionally needs `onnx==1.20.1`, `numpy==2.5.4`, and
+`safetensors==0.7.0`. The explicit native test compares all 100 reference
+cases, including long sequences, without loading ONNX Runtime.

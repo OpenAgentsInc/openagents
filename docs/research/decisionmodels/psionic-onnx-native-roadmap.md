@@ -5,8 +5,8 @@ execution so the same models can be benchmarked on both. Start with
 [`s1-llm-auto-router`](s1-llm-auto-router.md) on CPU. Keep both engines
 available after the comparison, and reuse the ORT integration for other
 models. The shared contract and reference fixtures (#11700) and optional
-ORT CPU execution (#11701) are implemented in `psionic-inference`; the
-remaining milestones are planned.
+ORT CPU execution (#11701), and native ModernBERT CPU execution (#11702)
+are implemented in `psionic-inference`; the remaining milestones are planned.
 
 ## Scope and current evidence
 
@@ -76,8 +76,9 @@ Implement and verify:
 
 - Bidirectional attention without a KV cache, with padding masks and the
   kept layers' actual local/global schedule.
-- Symmetric local windows and the distinct local/global rotary bases
-  recorded in the model configuration and ONNX graph.
+- Symmetric local windows and per-layer rotary frequencies from the
+  ONNX graph. The pinned router has a 64-position radius and uses the
+  same frequencies (base 160,000) on local and global layers.
 - Bias-free LayerNorm, including embedding and final normalization and
   the first layer's attention-normalization exception.
 - GeGLU with exact erf GELU, first-token pooling, and four linear heads.
