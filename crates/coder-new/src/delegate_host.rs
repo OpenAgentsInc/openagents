@@ -342,16 +342,24 @@ impl Host for CoderHost {
                 .enable_all()
                 .build()
             else {
+                running.observe_report(
+                    &Report::for_child(&running, Outcome::Failed)
+                        .failed("The agent could not start."),
+                );
                 return agent_fleet::Outcome::Failed("The agent could not start.".into());
             };
             let cancel = control.cancel_flag();
             control.set_transcript(running.transcript());
             let record = record_start(routing.as_ref(), &execution, &running);
-            let report = runtime.block_on(async {
+            let mut report = runtime.block_on(async {
                 let mut emit = |event: RuntimeEvent| control.event(event);
                 run_child(&execution, provider, &running, &cancel, &mut emit).await
             });
+            if control.stopped() {
+                report.outcome = Outcome::Stopped;
+            }
             record_end(record, &report);
+            running.observe_report(&report);
             if let Some(worktree) = &report.worktree {
                 control.set_checkout(Some(worktree.clone()), report.branch.clone());
             }
@@ -601,6 +609,7 @@ pub async fn run_child(
             ran_model = Some(model.clone());
         }
         if let Some(line) = transcript_line(&event) {
+            child.observe_line(&line);
             transcript.push(line);
         }
         emit(event);
@@ -611,7 +620,9 @@ pub async fn run_child(
         Ok(reply) => reply.clone(),
         Err(error) => String::new() + error,
     };
-    transcript.push(json!({"role": "assistant", "text": reply, "error": result.is_err()}));
+    let closing = json!({"role": "assistant", "text": reply, "error": result.is_err()});
+    child.observe_line(&closing);
+    transcript.push(closing);
     write_transcript(&child.transcript(), &transcript);
     let files = checkout.as_ref().map_or_else(Vec::new, |checkout| {
         coder_sdk::delegation::changed_files(&checkout.path, Some(&checkout.base))

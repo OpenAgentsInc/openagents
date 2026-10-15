@@ -93,6 +93,13 @@ pub struct Usage {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Body {
+    Child {
+        parent: Option<String>,
+        title: String,
+        harness: String,
+        model: Option<String>,
+        status: crate::children::Status,
+    },
     Started {
         provider: String,
         model: String,

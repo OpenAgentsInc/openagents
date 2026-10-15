@@ -427,21 +427,13 @@ impl Transcript<'_> {
     }
 
     fn assistant(&self, message: &Value, child: Option<&str>) {
-        let mut observations = self.observations.borrow_mut().assistant(message);
-        for observation in &mut observations {
-            observation.child = child.map(str::to_owned);
-        }
+        let observations = self.observations.borrow_mut().assistant_for(message, child);
         self.observe(observations);
     }
-
     fn user(&self, message: &Value, child: Option<&str>) {
-        let mut observations = self.observations.borrow_mut().user(message);
-        for observation in &mut observations {
-            observation.child = child.map(str::to_owned);
-        }
+        let observations = self.observations.borrow_mut().user_for(message, child);
         self.observe(observations);
     }
-
     fn session(&self, session: &str) {
         let observation = self.observations.borrow_mut().session(session);
         self.observe(vec![observation]);
@@ -727,9 +719,9 @@ async fn attempt(
         match message {
             SdkMessage::Assistant(assistant) => {
                 let child = assistant
-                    .agent_id
+                    .parent_tool_use_id
                     .as_deref()
-                    .or(assistant.parent_tool_use_id.as_deref());
+                    .or(assistant.agent_id.as_deref());
                 if child.is_none() {
                     if attempt.session.as_deref() != Some(&assistant.session_id) {
                         transcript.session(&assistant.session_id);
@@ -744,6 +736,10 @@ async fn attempt(
             }
             SdkMessage::User(user) => {
                 transcript.user(&user.message, user.parent_tool_use_id.as_deref())
+            }
+            SdkMessage::System(system) => {
+                let observations = transcript.observations.borrow_mut().system(&system);
+                transcript.observe(observations);
             }
             SdkMessage::RateLimitEvent(event) => {
                 if let Ok(info) = serde_json::to_value(&event.rate_limit_info) {
@@ -1810,6 +1806,66 @@ done
         assert_ne!(
             task.run.as_ref().unwrap().result.as_ref().unwrap().ending,
             "model_finished"
+        );
+    }
+
+    #[tokio::test]
+    async fn native_child_events_keep_parent_reply_model_and_session_separate() {
+        let (_root, store, grant) = fixture_with(MODEL, sdk_route);
+        let (_dir, program) = fake();
+        let branch = "    *'\"type\":\"user\"'*)";
+        let packets = [
+            json!({"type":"system","subtype":"task_started","task_id":"child-task","run_id":"child-run","tool_use_id":"child-tool","description":"Inspect a file","uuid":"start","session_id":"child-native"}),
+            json!({"type":"assistant","message":{"role":"assistant","model":"child-model","content":[{"type":"text","text":"Child-only answer"}]},"parent_tool_use_id":"child-tool","agent_id":"different-alias","uuid":"child-message","session_id":"child-native"}),
+            json!({"type":"system","subtype":"task_notification","task_id":"child-task","run_id":"child-run","tool_use_id":"child-tool","status":"completed","summary":"Read the file","output_file":"/private/ignored","uuid":"end","session_id":"child-native"}),
+        ];
+        let output = packets
+            .iter()
+            .map(|packet| format!("      printf '%s\\n' '{}'", packet))
+            .collect::<Vec<_>>()
+            .join("\n");
+        std::fs::write(
+            &program,
+            FAKE_CLAUDE.replace(branch, &format!("{branch}\n{output}")),
+        )
+        .unwrap();
+        let waiting = run_turn(&store, &grant, &program).await;
+        assert_eq!(
+            interaction::pending(&waiting),
+            Some(interaction::Kind::Approval)
+        );
+        assert!(!last_reply(&store, 1).contains("Child-only answer"));
+        let trace = std::fs::read_to_string(store.join("fixture.1.atif.jsonl")).unwrap();
+        let observations: Vec<coder_sdk::observation::Observation> = trace
+            .lines()
+            .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+            .filter_map(|line| {
+                serde_json::from_value(
+                    line["step"]["extensions"][coder_sdk::observation::TRACE_KEY].clone(),
+                )
+                .ok()
+            })
+            .collect();
+        let mut projection = openagents_chat::children::Projection::new("local", "fixture");
+        for observation in &observations {
+            projection.consume(observation);
+        }
+        assert_eq!(projection.children.len(), 1);
+        assert_eq!(
+            projection.children[0].status,
+            route_contract::children::Status::Completed
+        );
+        assert_eq!(projection.children[0].model.as_deref(), Some("child-model"));
+        let (child, _, _) =
+            openagents_chat::children::transcript(&observations, &projection.children[0].reference)
+                .unwrap();
+        assert!(child.contains("Child-only answer"));
+        assert!(!child.contains("/private/ignored"));
+        assert!(
+            observations
+                .iter()
+                .filter(|observation| observation.child.is_none())
+                .all(|observation| observation.native_session.as_deref() != Some("child-native"))
         );
     }
 

@@ -1,5 +1,7 @@
 //! Common observations, separate from SDK hooks and execution permissions.
 
+mod children;
+
 pub use route_contract::observation::*;
 use serde_json::Value;
 
@@ -29,6 +31,23 @@ impl Recorder {
 
     pub fn next(&mut self, mut item: Option<String>, mut body: Body) -> Observation {
         match &mut body {
+            Body::Child {
+                parent,
+                title,
+                harness,
+                model,
+                ..
+            } => {
+                if parent
+                    .as_ref()
+                    .is_some_and(|parent| !route_contract::children::valid_id(parent))
+                {
+                    *parent = None;
+                }
+                *title = children::clip(title, 512);
+                *harness = children::clip(harness, 128);
+                *model = model.as_ref().map(|model| children::clip(model, 256));
+            }
             Body::Text {
                 text, truncated, ..
             }
@@ -85,6 +104,7 @@ impl Recorder {
 pub struct Claude {
     recorder: Recorder,
     messages: u64,
+    children: children::NativeChildren,
 }
 
 impl Claude {
@@ -95,6 +115,7 @@ impl Claude {
         Self {
             recorder,
             messages: 0,
+            children: children::NativeChildren::default(),
         }
     }
 
@@ -113,6 +134,37 @@ impl Claude {
         )
     }
 
+    pub fn system(&mut self, message: &claude_agent_sdk::SdkSystemMessage) -> Vec<Observation> {
+        self.children.system(&mut self.recorder, message)
+    }
+    pub fn assistant_for(&mut self, message: &Value, child: Option<&str>) -> Vec<Observation> {
+        match child {
+            None => self.assistant(message),
+            Some(id) => {
+                let Some(child) = self.children.resolve(id) else {
+                    return vec![];
+                };
+                self.assistant(message)
+                    .into_iter()
+                    .map(|observation| children::tag(observation, &child))
+                    .collect()
+            }
+        }
+    }
+    pub fn user_for(&mut self, message: &Value, child: Option<&str>) -> Vec<Observation> {
+        match child {
+            None => self.user(message),
+            Some(id) => {
+                let Some(child) = self.children.resolve(id) else {
+                    return vec![];
+                };
+                self.user(message)
+                    .into_iter()
+                    .map(|observation| children::tag(observation, &child))
+                    .collect()
+            }
+        }
+    }
     pub fn assistant(&mut self, message: &Value) -> Vec<Observation> {
         self.messages += 1;
         let id = message["id"]

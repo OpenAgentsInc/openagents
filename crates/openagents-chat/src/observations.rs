@@ -361,6 +361,7 @@ impl Projection {
             }
             Body::Ended { .. } => self.ended = true,
             Body::Gap { .. } => self.gap(),
+            Body::Child { .. } => {}
             Body::Unknown => self.gap(),
         }
         Some(update)

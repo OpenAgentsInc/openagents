@@ -6506,6 +6506,7 @@ mod coder_events {
                         chat.clone(),
                         ticket,
                         Ok(Answer::Lines {
+                            children: None,
                             configuration: None,
                             native: None,
                             lines: lines.to_vec(),
@@ -6856,6 +6857,7 @@ mod coder_events {
                             chat,
                             ticket,
                             Ok(Answer::Lines {
+                                children: None,
                                 configuration: None,
                                 native: None,
                                 lines: vec![],

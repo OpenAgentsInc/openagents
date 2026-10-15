@@ -403,6 +403,7 @@ fn a_report_stays_short() {
         briefing: String::new(),
         run_dir: "/tmp/x".into(),
         start: None,
+        observer: None,
     };
     let report = Report::for_child(&child, Outcome::Done)
         .summarized(&long)

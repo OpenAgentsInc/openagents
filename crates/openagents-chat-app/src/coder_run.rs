@@ -25,6 +25,7 @@
 //! ("ran 3 commands") when the turn ends. The question or approval the run
 //! waits on is the paged decision panel ([`crate::decision`]).
 
+pub mod children;
 pub mod configuration;
 mod native;
 pub mod workspace;
@@ -77,6 +78,11 @@ pub enum Request {
         task: String,
         text: String,
         configuration: route_contract::session::control::Request,
+    },
+    ChildRead {
+        generation: u64,
+        task: String,
+        read: route_contract::children::Read,
     },
     WorkspaceOpen {
         task: String,
@@ -142,9 +148,11 @@ pub enum Answer {
         why: String,
     },
     Options(route_contract::session::control::Offer),
+    ChildPage(route_contract::children::Page),
     WorkspaceReference(route_contract::workspace::Reference),
     WorkspaceRead(route_contract::workspace::Output),
     Lines {
+        children: Option<route_contract::children::Snapshot>,
         configuration: Option<route_contract::session::control::Offer>,
         native: Option<route_contract::pending::Snapshot>,
         lines: Vec<Line>,
@@ -185,6 +193,7 @@ pub enum Action {
     NativeCancel(route_contract::Digest),
     Configure(configuration::Target),
     Workspace(workspace::Target),
+    Child(children::Target),
     Retry,
     ChooseFolder,
     RemoveQueued(usize),
@@ -293,6 +302,8 @@ pub struct Run {
     start_configuration: Option<route_contract::session::control::Request>,
     consumed_input: bool,
     configuration_due: bool,
+    children: children::Inspector,
+    child_due: Option<route_contract::children::Read>,
     workspace: workspace::Inspector,
     workspace_due: Option<workspace::Need>,
 }
@@ -330,6 +341,7 @@ impl Run {
     pub fn follow(chat: &str, task: &str, project: Option<String>, now: Instant) -> Self {
         let mut run = Self::new(chat, now);
         run.task = Some(task.into());
+        run.children = children::Inspector::new(task);
         run.project = project;
         run
     }
@@ -375,6 +387,8 @@ impl Run {
             start_configuration: None,
             consumed_input: false,
             configuration_due: false,
+            children: children::Inspector::default(),
+            child_due: None,
             workspace: workspace::Inspector::default(),
             workspace_due: None,
         }
@@ -444,6 +458,10 @@ impl Run {
             self.state == State::Ended,
             intent,
         )
+    }
+
+    pub fn children_view<I>(&self, intent: impl Fn(children::Target) -> I) -> Option<Node<I>> {
+        self.children.view(intent)
     }
 
     pub fn workspace(&self) -> &workspace::Inspector {
@@ -924,6 +942,18 @@ impl Run {
             return self.request(due);
         }
         if !self.pending.values().any(|request| !mutation(request))
+            && let Some(read) = self.child_due.clone()
+            && let Some(task) = self.task.clone()
+            && let Some(request) = self.request(Request::ChildRead {
+                generation: self.children.generation(),
+                task,
+                read,
+            })
+        {
+            self.child_due = None;
+            return Some(request);
+        }
+        if !self.pending.values().any(|request| !mutation(request))
             && let Some(need) = self.workspace_due.clone()
             && let Some(request) = self.workspace_request(&need)
             && let Some(request) = self.request(request)
@@ -1060,7 +1090,7 @@ impl Run {
     /// When the run next wants a tick.
     #[must_use]
     pub fn next_wake(&self, now: Instant) -> Instant {
-        if self.due.is_some() || self.workspace_due.is_some() {
+        if self.due.is_some() || self.workspace_due.is_some() || self.child_due.is_some() {
             return now;
         }
         self.poll.max(now + Duration::from_millis(100))
@@ -1082,6 +1112,13 @@ impl Run {
                 match &request {
                     // The card says why; the result card still names every
                     // file.
+                    Request::ChildRead {
+                        generation, read, ..
+                    } => {
+                        self.children.fail(*generation, read, error);
+                        self.revision += 1;
+                        return false;
+                    }
                     Request::WorkspaceOpen { .. } | Request::WorkspaceRead { .. } => {
                         self.workspace.fail(error);
                         self.revision += 1;
@@ -1127,6 +1164,8 @@ impl Run {
                     checkout,
                 },
             ) => {
+                self.children = children::Inspector::new(&task);
+                self.child_due = None;
                 self.task = Some(task.clone());
                 self.project = Some(project.clone());
                 self.bind = Some((task, project));
@@ -1150,6 +1189,7 @@ impl Run {
             (
                 Request::Poll { task },
                 Answer::Lines {
+                    children,
                     lines,
                     state,
                     configuration,
@@ -1161,7 +1201,10 @@ impl Run {
                     .update(configuration.filter(|offer| offer.task.as_ref() == Some(task)));
                 let native_changed = self.native.update(native, task, state);
                 let mut last = self.cursor;
-                let mut changed = native_changed || config_changed;
+                let child_changed = children
+                    .as_ref()
+                    .is_some_and(|snapshot| self.children.activity.merge_sdk(snapshot));
+                let mut changed = native_changed || config_changed || child_changed;
                 for mut line in lines {
                     // A new follower replays from the first event; keep one
                     // copy of each.
@@ -1217,6 +1260,7 @@ impl Run {
                                 ));
                         }
                         CoderEvent::Observation { observation } => {
+                            changed |= self.children.activity.consume(observation);
                             if self.observations.is_none()
                                 && matches!(
                                     observation.body,
@@ -1321,6 +1365,14 @@ impl Run {
                 self.heard = now;
                 accepted = true;
             }
+            (
+                Request::ChildRead {
+                    generation, read, ..
+                },
+                Answer::ChildPage(page),
+            ) => {
+                self.children.received(*generation, read, page);
+            }
             (Request::WorkspaceOpen { task }, Answer::WorkspaceReference(reference)) => {
                 if self
                     .session()
@@ -1392,6 +1444,15 @@ impl Run {
                 let task = self.task.clone()?;
                 (self.state == State::Running).then_some(())?;
                 self.request(Request::Stop { task })
+            }
+            Action::Child(target) => {
+                if let Some(read) = self.children.apply(&target) {
+                    self.child_due = Some(read);
+                } else if !self.children.open() {
+                    self.child_due = None;
+                }
+                self.revision += 1;
+                None
             }
             Action::Workspace(target) => {
                 let need = self.workspace.apply(&target);
@@ -1918,7 +1979,8 @@ impl Run {
 fn mutation(request: &Request) -> bool {
     !matches!(
         request,
-        Request::WorkspaceOpen { .. }
+        Request::ChildRead { .. }
+            | Request::WorkspaceOpen { .. }
             | Request::WorkspaceRead { .. }
             | Request::Poll { .. }
             | Request::Options { .. }

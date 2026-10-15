@@ -344,6 +344,15 @@ pub struct Target {
     pub model: Option<String>,
 }
 
+/// An optional host-owned copy of child activity. It grants no execution rights.
+/// Register before starting; later activity and reports describe effects already
+/// performed under the existing host and child authority.
+pub trait Observer: std::fmt::Debug + Send + Sync {
+    fn started(&self, child: &Child) -> Result<(), String>;
+    fn line(&self, child: &Child, line: &Value);
+    fn reported(&self, child: &Child, record: &Record, report: &Report);
+}
+
 /// One child, ready for the host to run.
 #[derive(Clone, Debug)]
 pub struct Child {
@@ -359,9 +368,45 @@ pub struct Child {
     /// parent checkout's `HEAD`. A part that needs another part's work
     /// starts from a commit holding it (#11539).
     pub start: Option<String>,
+    pub observer: Option<Arc<dyn Observer>>,
 }
 
 impl Child {
+    pub fn observe_line(&self, line: &Value) {
+        if let Some(observer) = &self.observer {
+            observer.line(self, line);
+        }
+    }
+    /// A background host reports when its work actually ends. Foreground
+    /// reports also pass through Delegator's existing record path.
+    pub fn observe_report(&self, report: &Report) {
+        if let Some(observer) = &self.observer {
+            let record = Record {
+                schema: RECORD_SCHEMA.into(),
+                run: self.lineage.run.clone(),
+                parent: self
+                    .lineage
+                    .id
+                    .rsplit_once(".d")
+                    .map_or("", |(parent, _)| parent)
+                    .into(),
+                parent_harness: self.lineage.chain.last().cloned().unwrap_or_default(),
+                child: self.lineage.id.clone(),
+                harness: self.target.harness.clone(),
+                model: report.model.clone().or_else(|| self.target.model.clone()),
+                depth: self.lineage.depth,
+                chain: self.lineage.path(),
+                read_only: self.request.read_only,
+                background: self.request.background,
+                outcome: serde_json::to_value(report.outcome)
+                    .ok()
+                    .and_then(|value| value.as_str().map(str::to_owned))
+                    .unwrap_or_default(),
+                error: report.error.clone(),
+            };
+            observer.reported(self, &record, report);
+        }
+    }
     /// The variables its process gets.
     #[must_use]
     pub fn env(&self) -> Vec<(String, String)> {
@@ -625,6 +670,7 @@ pub struct Delegator {
     /// The folder each child's run folder goes under.
     runs: PathBuf,
     next: AtomicU64,
+    observer: Option<Arc<dyn Observer>>,
 }
 
 impl std::fmt::Debug for Delegator {
@@ -646,9 +692,22 @@ impl Delegator {
             authority,
             runs: runs.to_owned(),
             next: AtomicU64::new(1),
+            observer: None,
         }
     }
 
+    #[must_use]
+    pub fn with_observer(mut self, observer: Arc<dyn Observer>) -> Self {
+        self.observer = Some(observer);
+        self
+    }
+    fn observe_start(&self, child: &Child) -> Result<(), String> {
+        if let Some(observer) = &self.observer {
+            observer.started(child)?;
+        }
+        child.observe_line(&json!({"role":"user","text":child.briefing}));
+        Ok(())
+    }
     #[must_use]
     pub fn lineage(&self) -> &Lineage {
         &self.lineage
@@ -688,6 +747,7 @@ impl Delegator {
             authority,
             run_dir,
             start: None,
+            observer: self.observer.clone(),
         })
     }
 
@@ -707,11 +767,14 @@ impl Delegator {
             }
         };
         let _ = std::fs::create_dir_all(&child.run_dir);
+        self.observe_start(&child)?;
         let background = child.request.background;
         let report = if background {
             match self.host.start(child.clone()) {
                 Ok(report) => report,
                 Err(error) => {
+                    child
+                        .observe_report(&Report::for_child(&child, Outcome::Failed).failed(&error));
                     self.record_refused(&arguments, &error);
                     return Err(error);
                 }
@@ -726,8 +789,12 @@ impl Delegator {
     /// Runs a child [`Delegator::prepare`] made, waiting for it, and
     /// records it: a caller that names the child before it runs (a fan-out
     /// part, #11539) or starts it from another commit ([`Child::start`]).
-    pub async fn run_prepared(&self, child: Child) -> Report {
+    pub async fn run_prepared(&self, mut child: Child) -> Report {
+        child.observer = self.observer.clone();
         let _ = std::fs::create_dir_all(&child.run_dir);
+        if let Err(error) = self.observe_start(&child) {
+            return Report::for_child(&child, Outcome::Failed).failed(&error);
+        }
         let report = self.host.run(child.clone()).await;
         self.record(&child, &report);
         report
@@ -755,6 +822,9 @@ impl Delegator {
             error: report.error.clone(),
         };
         append(&self.records(), &record);
+        if let Some(observer) = &self.observer {
+            observer.reported(child, &record, report);
+        }
     }
 
     fn record_refused(&self, arguments: &Value, error: &str) {

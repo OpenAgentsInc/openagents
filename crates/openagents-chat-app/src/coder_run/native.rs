@@ -247,6 +247,7 @@ mod tests {
         run.outcome(
             ticket,
             Ok(Answer::Lines {
+                children: None,
                 configuration: None,
                 lines: vec![],
                 state: State::Running,

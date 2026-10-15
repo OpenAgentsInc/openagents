@@ -544,6 +544,7 @@ pub(super) fn describe_backend(
             approvals: adapter == "claude-sdk",
             resume: adapter == "claude-sdk",
             questions: adapter == "claude-sdk",
+            children: adapter == "claude-sdk",
             ..NativeSupport::default()
         },
     )
@@ -3272,6 +3273,187 @@ mod tests {
                 .iter()
                 .any(|model| model.adapter == "claude-sdk" && model.available)
         );
+    }
+
+    #[tokio::test]
+    async fn sdk_child_observer_reads_only_owner_copies_and_survives_background_completion() {
+        use super::super::children::{Observer, Read, Status};
+        use coder_sdk::delegation::{self as sdk, scripted};
+        use serde_json::json;
+        use std::sync::Arc;
+        let dir = tempfile::tempdir().unwrap();
+        let top = repo(dir.path());
+        let local = local(dir.path(), only_claude).with_launcher(Box::new(Held));
+        let record = local
+            .start_requested(
+                &top,
+                "Children",
+                "Inspect the fixture",
+                None,
+                &[],
+                Some(Provider::Claude),
+            )
+            .unwrap();
+        let grant = std::fs::read(
+            local
+                .store()
+                .join("local/grants")
+                .join(format!("{}-1.grant.json", record.task)),
+        )
+        .unwrap();
+        let host = adapter::Host::admit(local.store(), &grant).await.unwrap();
+        let scope = host.observations().scope().clone();
+        let pending = host.pending(&scope).unwrap();
+        let observer = Arc::new(Observer::for_host(local.store(), &pending).unwrap());
+        let runs = dir.path().join("child-runs");
+        let scripted = scripted::ScriptedHost::new(&top, &runs, scripted::every_harness());
+        let delegator = sdk::Delegator::new(
+            Arc::new(scripted.clone()),
+            observer.lineage("claude-code"),
+            sdk::Authority::default(),
+            &runs,
+        )
+        .with_observer(observer.clone());
+        let report = delegator
+            .delegate(json!({"to":"codex","task":"Read code","read_only":true}))
+            .await
+            .unwrap();
+        assert_eq!(report.outcome, sdk::Outcome::Done);
+        let snapshot = local.sdk_children(&record.task).unwrap();
+        assert_eq!(snapshot.children.len(), 1);
+        assert_eq!(snapshot.children[0].status, Status::Completed);
+        let read = Read {
+            reference: snapshot.children[0].reference.clone(),
+            cursor: None,
+        };
+        let page = local.child_transcript(&record.task, &read).unwrap();
+        assert!(page.text.contains("Scripted Codex"), "{}", page.text);
+        assert!(!page.running);
+        // Editing the SDK's original transcript cannot alter the owner copy.
+        std::fs::write(report.transcript.unwrap(), "private forged text").unwrap();
+        assert!(
+            !local
+                .child_transcript(&record.task, &read)
+                .unwrap()
+                .text
+                .contains("private forged")
+        );
+        assert!(local.child_transcript("another-task", &read).is_err());
+        let mut forged = read.clone();
+        forged.reference.scope.generation += 1;
+        assert!(local.child_transcript(&record.task, &forged).is_err());
+        let background = delegator
+            .delegate(
+                json!({"to":"codex","task":"Background read","read_only":true,"background":true}),
+            )
+            .await
+            .unwrap();
+        assert_eq!(background.outcome, sdk::Outcome::Running);
+        let child = scripted.started().pop().unwrap();
+        child.observe_line(&json!({"role":"assistant_delta","text":"First "}));
+        child.observe_line(&json!({"role":"assistant_delta","text":"answer"}));
+        child.observe_line(&json!({"role":"assistant","text":"First answer"}));
+        let mut final_report =
+            sdk::Report::for_child(&child, sdk::Outcome::Failed).failed("The check failed.");
+        final_report.transcript = Some(dir.path().join("never-read"));
+        pending.close().unwrap();
+        assert!(
+            delegator
+                .delegate(json!({"to":"codex","task":"Late new child","read_only":true}))
+                .await
+                .is_err()
+        );
+        child.observe_report(&final_report);
+        let snapshot = local.sdk_children(&record.task).unwrap();
+        let row = snapshot
+            .children
+            .iter()
+            .find(|row| row.reference.child == child.lineage.id)
+            .unwrap();
+        assert_eq!(row.status, Status::Failed);
+        let read = Read {
+            reference: row.reference.clone(),
+            cursor: None,
+        };
+        let page = local.child_transcript(&record.task, &read).unwrap();
+        assert_eq!(page.text.matches("First answer").count(), 1);
+        child.observe_report(&sdk::Report::for_child(&child, sdk::Outcome::Running));
+        assert_eq!(
+            local
+                .sdk_children(&record.task)
+                .unwrap()
+                .children
+                .iter()
+                .find(|row| row.reference == read.reference)
+                .unwrap()
+                .status,
+            Status::Failed
+        );
+    }
+
+    #[tokio::test]
+    async fn native_child_transcript_is_bound_to_recorded_observations_and_prefix_cursor() {
+        use super::super::children::{Read, Reference, Source};
+        use coder_sdk::observation::{Body, Channel, TextMode};
+        let dir = tempfile::tempdir().unwrap();
+        let top = repo(dir.path());
+        let local = local(dir.path(), only_claude).with_launcher(Box::new(Held));
+        let record = local
+            .start_requested(&top, "Child", "Inspect", None, &[], Some(Provider::Claude))
+            .unwrap();
+        let grant = std::fs::read(
+            local
+                .store()
+                .join("local/grants")
+                .join(format!("{}-1.grant.json", record.task)),
+        )
+        .unwrap();
+        let host = adapter::Host::admit(local.store(), &grant).await.unwrap();
+        let mut observations = host.observations();
+        let reference = Reference::new(
+            observations.scope().clone(),
+            Source::Native,
+            "native-child".into(),
+        );
+        let mut observation = observations.next(
+            Some("message".into()),
+            Body::Text {
+                channel: Channel::Text,
+                mode: TextMode::Snapshot,
+                text: "é".repeat(20_000),
+                complete: false,
+                truncated: false,
+            },
+        );
+        observation.child = Some(reference.child.clone());
+        host.observe(&observation).unwrap();
+        let read = Read {
+            reference: reference.clone(),
+            cursor: None,
+        };
+        let first = local.child_transcript(&record.task, &read).unwrap();
+        assert!(first.next.is_some());
+        assert!(first.text.len() <= 16 * 1024);
+        let next = Read {
+            reference: reference.clone(),
+            cursor: first.next,
+        };
+        assert!(
+            local
+                .child_transcript(&record.task, &next)
+                .unwrap()
+                .valid_for(&next)
+        );
+        let mut forged = next.clone();
+        forged.cursor.as_mut().unwrap().prefix = route_contract::Digest::of_bytes(b"wrong");
+        assert!(local.child_transcript(&record.task, &forged).is_err());
+        let mut other = read.clone();
+        other.reference = Reference::new(
+            reference.scope.clone(),
+            Source::Native,
+            "other-child".into(),
+        );
+        assert!(local.child_transcript(&record.task, &other).is_err());
     }
 
     #[cfg(unix)]

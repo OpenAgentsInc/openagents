@@ -53,6 +53,7 @@
 //! whitespace), so a digest does not move with serde's map ordering.
 
 pub mod binding;
+pub mod children;
 pub mod decision;
 pub mod digest;
 pub mod eval;

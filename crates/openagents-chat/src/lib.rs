@@ -6,6 +6,7 @@ pub mod basic_coder;
 pub mod basic_link;
 pub mod cache;
 pub mod capability;
+pub mod children;
 pub mod client;
 pub mod coder_events;
 pub mod delegation;

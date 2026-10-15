@@ -27,6 +27,7 @@ fn fed(lines: &[Line], state: State) -> Run {
     run.outcome(
         ticket,
         Ok(Answer::Lines {
+            children: None,
             configuration: None,
             native: None,
             lines: lines.to_vec(),
@@ -274,6 +275,7 @@ fn replayed_lines_are_kept_once_and_polls_follow_the_state() {
     run.outcome(
         ticket,
         Ok(Answer::Lines {
+            children: None,
             configuration: None,
             native: None,
             lines: whole[..8].to_vec(),
@@ -304,6 +306,7 @@ fn stop_steer_queue_and_answers_go_to_the_runner() {
     run.outcome(
         ticket,
         Ok(Answer::Lines {
+            children: None,
             configuration: None,
             native: None,
             lines: whole[..12].to_vec(),
@@ -327,6 +330,7 @@ fn stop_steer_queue_and_answers_go_to_the_runner() {
     run.outcome(
         ticket,
         Ok(Answer::Lines {
+            children: None,
             configuration: None,
             native: None,
             lines: whole.to_vec(),
@@ -1067,6 +1071,7 @@ fn deliver(run: &mut Run, lines: &[Line], state: State) {
     run.outcome(
         ticket,
         Ok(Answer::Lines {
+            children: None,
             configuration: None,
             native: None,
             lines: lines.to_vec(),
@@ -1150,6 +1155,7 @@ fn missing_and_foreign_observations_do_not_join_partial_text_or_change_another_c
     assert!(!other_chat.outcome(
         u64::MAX,
         Ok(Answer::Lines {
+            children: None,
             configuration: None,
             native: None,
             lines,
@@ -1174,6 +1180,7 @@ fn duplicate_observations_in_a_batch_and_repeated_outcomes_do_not_repeat_output(
     run.outcome(
         new,
         Ok(Answer::Lines {
+            children: None,
             configuration: None,
             native: None,
             lines: duplicate,
@@ -1186,6 +1193,7 @@ fn duplicate_observations_in_a_batch_and_repeated_outcomes_do_not_repeat_output(
     run.outcome(
         new,
         Ok(Answer::Lines {
+            children: None,
             configuration: None,
             native: None,
             lines: Vec::new(),

@@ -66,6 +66,7 @@ pub mod apply;
 pub mod capacity;
 pub mod chat_client;
 pub mod checks;
+pub mod children;
 pub mod cli;
 pub mod commands;
 pub mod freshen;

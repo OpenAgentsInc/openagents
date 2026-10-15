@@ -727,6 +727,7 @@ impl CoderLane {
                 let native = self.local().pending_view(&task).unwrap_or(None);
                 let configuration = self.local().session_options(&task).ok();
                 Ok(Answer::Lines {
+                    children: self.local().sdk_children(&task).ok(),
                     configuration,
                     native,
                     lines,
@@ -737,6 +738,10 @@ impl CoderLane {
                     },
                 })
             }
+            Request::ChildRead { task, read, .. } => self
+                .local()
+                .child_transcript(&task, &read)
+                .map(Answer::ChildPage),
             Request::WorkspaceOpen { task } => self
                 .local()
                 .workspace_reference(&task)
@@ -1267,6 +1272,7 @@ mod tests {
             top.canonicalize().unwrap().display().to_string()
         );
         let Ok(Answer::Lines {
+            children: _,
             configuration: _,
             lines,
             state,
@@ -1302,6 +1308,7 @@ mod tests {
         projection.outcome(
             ticket,
             Ok(Answer::Lines {
+                children: None,
                 configuration: None,
                 lines,
                 state,
@@ -1319,6 +1326,7 @@ mod tests {
         );
         assert_eq!(ask(Run::Stop { task: task.clone() }), Ok(Answer::Stopping));
         let Ok(Answer::Lines {
+            children: _,
             configuration: _,
             lines,
             state,

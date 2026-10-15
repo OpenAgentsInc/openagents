@@ -19,6 +19,7 @@ pub mod admission;
 pub mod auto_policy;
 pub mod bridge;
 pub mod checkout_guard;
+pub mod children;
 pub mod claude;
 pub mod cloud_solver;
 pub mod codex;

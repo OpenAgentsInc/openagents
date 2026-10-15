@@ -394,11 +394,40 @@ artifact. The current `ToolRun` returns the Claude SDK's `ToolResult`; a portabl
 client API should use an SDK-owned result/observation shape and adapt vendor
 types internally if multiple clients need it.
 
-Project the SDK's existing `Lineage`, `Child`, delegation `Record`/`Report`, and
-host runtime events into a live child list with stable IDs and transcript
-references. Add bounded child updates and read access where missing. Keep a
-user-created side conversation/fork distinct from an execution subagent; they
-need different lifecycle and authority semantics.
+The child observation and transcript slice is implemented in
+[#11772](https://github.com/OpenAgentsInc/openagents/issues/11772). The desktop's
+local Claude SDK task path normalizes native task start, progress, updates, and
+completion, plus child assistant text, tool results, and plans. Child task IDs,
+provider run IDs, and tool-use aliases map to references scoped to the parent
+task, turn, and provider attempt. A reused tool alias across distinct runs is
+ambiguous and cannot attach late child text to the newer run. Parent replies,
+model/session identity, approvals, plans, and completion remain separate.
+
+The shared child list displays status and opens a read-only transcript in the
+parent chat. It supports refresh, bounded message pages, child-list pages,
+loading, errors, and missing-history notices. Reading never sends the composer
+draft or grants child controls. View generations reject results from a closed
+or replaced child view; transcript cursors verify the already-read prefix.
+
+The owner resolves native children from recorded observations in that task's
+ATIF trace. For SDK delegations, the additive `delegation::Observer` registers
+`Lineage`/`Child` before execution, copies bounded activity lines, and records
+`Record`/`Report` outcomes. The owner observer is minted from a live task's
+existing authority. Already-running background children can report completion
+after the parent callback closes. The SDK scripted host and `coder-new` child
+host emit through this optional observer; other SDK embedders must attach it
+explicitly. This does not replace the desktop's task runtime with `coder-new`
+or enable a new delegation backend.
+
+Transcript reads accept child identities and cursors, never filesystem paths.
+SDK `Report.transcript`, native `output_file`, and resource links are not read
+authority. Owner copies have separate private storage. Limits include 64 listed
+children, a 1 MiB child transcript, 32 KiB SDK activity lines, 16 KiB read pages,
+and a 64 MiB source-trace read ceiling. Truncation and missing prefixes are
+visible. Remote child reads, controlling children, background activity after a
+native provider stream closes, and user-created side conversations/forks remain
+separate work. Unknown native completion is shown as unavailable status rather
+than invented success.
 
 **First useful result:** one read-only workspace service is shared with an
 agent tool, and one delegated child can be inspected from its parent chat.
@@ -457,7 +486,7 @@ in `coder-sdk`.
 | 3 · [#11707](https://github.com/OpenAgentsInc/openagents/issues/11707) | Host-owned pending approval and SDK `Asker` bridge on one supported backend. | SDK callback/backend, task/control service, shared decision UI. | Allow once, deny, cancel, stop, stale answer, duplicate answer, no UI, and rewritten-input cases reach exactly the intended request. |
 | 4 · [#11709](https://github.com/OpenAgentsInc/openagents/issues/11709) | Explicit provider/model/reasoning configuration and native-resume request through the task owner. | Session facade/adapters, task configuration, shared composer and desktop picker. | A subsequent turn uses the recorded choices; missing native resume is explicit; no silent account/payer/target switch. |
 | 5 · [#11750](https://github.com/OpenAgentsInc/openagents/issues/11750) | One authorized workspace read/search service plus a `ToolServer` adapter for it. | Host workspace service and SDK tool integration. | A viewer and permitted agent get consistent results for the same authorized checkout; wrong host, denied path, and stale checkout are refused. |
-| 6 | Delegation projection with inspectable child transcript. | SDK delegation, host transcript service, shared subagent model, desktop surface host. | Child start/progress/end/failure stays attached to its parent and is readable without granting control over another task. |
+| 6 · [#11772](https://github.com/OpenAgentsInc/openagents/issues/11772) | Delegation projection with inspectable child transcript. | SDK delegation, host transcript service, shared subagent model, desktop surface host. | Child start/progress/end/failure stays attached to its parent and is readable without granting control over another task. |
 | 7 | Attachment/resource references and complete scripted-session fixture. | SDK input/output adapters, host artifact storage, shared queue/media presentation. | Image-bearing follow-up and queue behavior handles acknowledgment loss, unsupported provider, owner offline, stale loads, and bounded decoding. |
 
 Slices 1–3 give the desktop useful SDK integration without replacing its whole

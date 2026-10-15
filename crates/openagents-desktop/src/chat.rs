@@ -1874,6 +1874,9 @@ impl Panel {
         now: Instant,
     ) -> Option<Request> {
         match &action {
+            Action::Child { target } => {
+                return self.run_action(RunAction::Child(target.clone()), view);
+            }
             Action::Workspace { target } => {
                 if target.control == coder_run::workspace::Control::Close {
                     self.workspace_query.input(TextInput::FocusLost, 0);
@@ -1986,7 +1989,10 @@ impl Panel {
         }
         let id = self.session.selected.clone()?;
         match action {
-            Action::Workspace { .. } | Action::CodingSettings | Action::CodingChoice { .. } => None,
+            Action::Child { .. }
+            | Action::Workspace { .. }
+            | Action::CodingSettings
+            | Action::CodingChoice { .. } => None,
             Action::SavedSelect { .. }
             | Action::SavedRefresh
             | Action::SavedMore
@@ -4522,6 +4528,13 @@ impl Panel {
                 content.push(inspector);
             }
         }
+        if let Some(run) = run
+            && let Some(children) = run.children_view(|target| Intent::Chat {
+                action: Action::Child { target },
+            })
+        {
+            content.push(children);
+        }
         content.push(card);
         let mut footer = stack("chat-footer", Axis::Vertical, content);
         footer.style.padding_start = Some(Space::Md);
@@ -5152,6 +5165,7 @@ mod start_setting_tests {
             run.outcome(
                 ticket,
                 Ok(coder_run::Answer::Lines {
+                    children: None,
                     configuration: None,
                     native: None,
                     lines: lines.clone(),
@@ -6369,6 +6383,7 @@ mod live_sdk_tests {
         run.outcome(
             ticket,
             Ok(coder_run::Answer::Lines {
+                children: None,
                 configuration: None,
                 lines: vec![],
                 state: coder_run::State::Running,
@@ -6383,6 +6398,105 @@ mod live_sdk_tests {
             .validate()
             .unwrap();
         panel.mounted(&view);
+    }
+
+    #[test]
+    fn child_transcript_opens_without_sending_or_clearing_the_parent_draft() {
+        use route_contract::children as wire;
+        let now = Instant::now();
+        let mut panel = Panel::new(now);
+        panel.session.select("chat");
+        panel.selected_changed(None);
+        panel
+            .runs
+            .insert("chat".into(), Run::follow("chat", "task", None, now));
+        mount(&mut panel, 1);
+        panel.input(TextInput::Commit("Keep my parent draft"), now);
+        let reference = wire::Reference::new(
+            route_contract::observation::Scope {
+                host: "local".into(),
+                task: "task".into(),
+                turn: 1,
+                generation: 1,
+            },
+            wire::Source::Delegation,
+            "owner.d1".into(),
+        );
+        let snapshot = wire::Snapshot {
+            schema: wire::SCHEMA.into(),
+            task: "task".into(),
+            revision: 1,
+            children: vec![wire::Child {
+                reference: reference.clone(),
+                parent: None,
+                title: "Inspect code".into(),
+                harness: "codex".into(),
+                model: None,
+                status: wire::Status::Completed,
+                summary: "Read the file".into(),
+                transcript: true,
+                incomplete: false,
+            }],
+            truncated: false,
+        };
+        let run = panel.runs.get_mut("chat").unwrap();
+        let (ticket, _) = run.tick(now).unwrap();
+        run.outcome(
+            ticket,
+            Ok(coder_run::Answer::Lines {
+                children: Some(snapshot),
+                configuration: None,
+                native: None,
+                lines: vec![],
+                state: coder_run::State::Running,
+            }),
+            now,
+        );
+        let child_view = panel.runs["chat"].children_view(|target| target).unwrap();
+        let Element::Stack { children, .. } = &child_view.element else {
+            panic!("child list")
+        };
+        let Element::Button { intent: target, .. } = &children[1].element else {
+            panic!("child button")
+        };
+        let view = rust_native::View::new("child-test", 2, panel.footer())
+            .validate()
+            .unwrap();
+        panel.mounted(&view);
+        panel.action(
+            Action::Child {
+                target: target.clone(),
+            },
+            &view,
+            now,
+        );
+        let (ticket, request) = panel.runs.get_mut("chat").unwrap().tick(now).unwrap();
+        let coder_run::Request::ChildRead { read, .. } = request else {
+            panic!("read only")
+        };
+        assert_eq!(read.reference, reference);
+        panel.run_outcome(
+            "chat".into(),
+            ticket,
+            Ok(coder_run::Answer::ChildPage(wire::Page {
+                reference: reference.id,
+                offset: 0,
+                text: "Child-only answer".into(),
+                next: None,
+                truncated: false,
+                running: false,
+            })),
+        );
+        assert_eq!(panel.draft(), "Keep my parent draft");
+        assert!(panel.take_requests().is_empty());
+        let labels = crate::screens::words(&panel.footer());
+        assert!(
+            labels
+                .iter()
+                .any(|label| label.contains("Child-only answer")),
+            "{labels:?}"
+        );
+        assert_eq!(panel.runs["chat"].state(), coder_run::State::Running);
     }
 
     #[test]

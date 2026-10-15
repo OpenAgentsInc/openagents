@@ -192,12 +192,16 @@ impl ScriptedHost {
         if self.nesting
             && let Some(next) = self.next_after(&child.target.harness)
         {
-            let delegator = Arc::new(Delegator::new(
+            let mut delegator = Delegator::new(
                 Arc::new(self.clone()),
                 child.lineage.clone(),
                 child.authority.clone(),
                 &self.runs,
-            ));
+            );
+            if let Some(observer) = &child.observer {
+                delegator = delegator.with_observer(observer.clone());
+            }
+            let delegator = Arc::new(delegator);
             let result = delegator
                 .delegate(json!({"to": next, "task": "nested step", "read_only": child.request.read_only}))
                 .await;
@@ -221,6 +225,9 @@ impl ScriptedHost {
             })})
         );
         transcript.push(json!({"role": "assistant", "text": reply}));
+        for line in transcript.iter().skip(1) {
+            child.observe_line(line);
+        }
         write_transcript(&child.transcript(), &transcript);
         let (summary, checks, done) = closing(&reply);
         let mut report = report
