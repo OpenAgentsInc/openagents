@@ -23,18 +23,30 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options: UIScene.ConnectionOptions) {
         guard let scene = scene as? UIWindowScene else { return }
-        // iPadOS 26's windowed multitasking would open the game as a small
-        // window over the wallpaper; a game wants the whole screen, so the
-        // smallest window it accepts is the screen itself.
-        if scene.traitCollection.userInterfaceIdiom == .pad, let limits = scene.sizeRestrictions {
-            let bounds = scene.screen.bounds.size
-            let side = max(bounds.width, bounds.height)
-            limits.minimumSize = CGSize(width: side, height: side)
-        }
+        // iPadOS 26's "Windowed Apps" multitasking (Settings > Multitasking &
+        // Gestures) opens apps as resizable windows; a game wants the whole
+        // screen, so the smallest window it accepts is the screen.
+        SceneDelegate.fillScreen(scene)
         let window = UIWindow(windowScene: scene)
         window.rootViewController = GameViewController()
         window.backgroundColor = .black
         window.makeKeyAndVisible()
         self.window = window
+    }
+
+    // Rotation swaps the screen's width and height; follow it, or a
+    // minimum taller than the screen makes iPadOS shrink the whole scene.
+    func windowScene(
+        _ windowScene: UIWindowScene, didUpdate previousCoordinateSpace: UICoordinateSpace,
+        interfaceOrientation previousInterfaceOrientation: UIInterfaceOrientation,
+        traitCollection previousTraitCollection: UITraitCollection
+    ) {
+        SceneDelegate.fillScreen(windowScene)
+    }
+
+    static func fillScreen(_ scene: UIWindowScene) {
+        guard scene.traitCollection.userInterfaceIdiom == .pad, let limits = scene.sizeRestrictions else { return }
+        let screen = scene.screen.bounds.size
+        if limits.minimumSize != screen { limits.minimumSize = screen }
     }
 }

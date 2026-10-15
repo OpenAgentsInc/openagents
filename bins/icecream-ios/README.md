@@ -11,9 +11,12 @@ work offline. Nothing is fetched from the network.
   OpenAgents, Inc., display name "The Ice Cream Man". Universal (iPhone and
   iPad), iOS 16+, full screen, all orientations except iPhone upside down,
   a LaunchScreen storyboard and a UIScene, so iPad never runs it in
-  compatibility mode. iPadOS 26's "Windowed Apps" multitasking ignores
-  UIRequiresFullScreen, so the scene's minimum size is the screen (the
-  window opens full size); "Full Screen Apps" mode is edge to edge.
+  compatibility mode. On iPadOS 26, Settings > Multitasking & Gestures
+  decides: "Full Screen Apps" shows the game edge to edge; "Windowed Apps"
+  makes every app a window, so the scene asks for a minimum size of the
+  screen (following rotation) and opens at the largest window. The app
+  does not set UIRequiresFullScreen: iPadOS 26 runs such apps in windowed
+  mode as a scaled, letterboxed box.
 - Status bar hidden, home indicator auto-hidden, no zoom (scroll view and
   pinch off, viewport re-asserted), edge to edge; the page handles safe
   areas with `viewport-fit=cover` and `env(safe-area-inset-*)`.
