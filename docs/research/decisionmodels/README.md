@@ -22,8 +22,12 @@ Files in this folder:
 - [s1-llm-auto-router.md](s1-llm-auto-router.md) (2026-10-15): their open
   router model. It is an 11-layer mmBERT-small encoder (120M parameters,
   ONNX, a few ms on CPU) answering seven fixed routing questions. The note
-  compares it with Clef on our `route-v1` fixture and sizes the Psionic
-  port (an encoder family, about size M).
+  compares it with Clef on our `route-v1` fixture and describes both ONNX
+  Runtime (ORT) and native Psionic execution for comparison.
+- [psionic-onnx-native-roadmap.md](psionic-onnx-native-roadmap.md)
+  (2026-10-15): the roadmap for adding optional ORT execution and native
+  model support, starting with the router on CPU, with shared correctness
+  fixtures and benchmarks before adding accelerators and other models.
 
 ## Summary
 

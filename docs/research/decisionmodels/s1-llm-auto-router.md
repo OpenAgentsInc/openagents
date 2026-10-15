@@ -14,6 +14,13 @@ results image from the announcement, and our own inspection of the ONNX
 graph and tokenizer. We also ran a small local test: the published ONNX on
 CPU, plus our own `route-v1` fixture. The downloads were deleted afterwards.
 
+**Owner decision (2026-10-15): build both ONNX Runtime (ORT) and native
+Psionic execution so we can benchmark them.** ORT also supports adopting
+other models without first implementing each architecture. This replaces
+the original recommendation to avoid an ONNX runtime. The implementation
+sequence and comparison rules are in the
+[Psionic roadmap](psionic-onnx-native-roadmap.md).
+
 ## What they announced
 
 - "A small decision model that reads a request and picks the right LLM for
@@ -57,7 +64,8 @@ quota. This is the same split we use: typed judgments in, code decides.
 The graph uses only standard ONNX ops: MatMul, Add, Mul, LayerNormalization,
 Softmax, Erf (exact GELU), Sin and Cos (rotary), Gather, Where, Slice,
 Reshape, Transpose and one DequantizeLinear. There are no custom ops, so
-porting it is a question of the architecture, not of ONNX.
+ORT can execute the graph directly. Native Psionic execution needs the
+architecture implemented as described below.
 
 ### What it answers (the "labels")
 
@@ -174,8 +182,8 @@ would sit where Clef sits today: after the rule, before the policy.
 | --- | --- | --- |
 | Model | Clef-Flash 9B (Qwen3.5) or Clef 27B, with a joint decision head | 120M-parameter encoder with fixed heads |
 | Questions | Any typed questions (choice, score, noul) | Only its seven |
-| Hardware | GPU pool (H100, A100), or about 14 GB on Metal | CPU, about 200 MB of RAM, a few ms |
-| Latency (as seen by Coder) | 20–300 ms through the gateway | 3–8 ms in process (our test), about 93 ms through their API |
+| Hardware | GPU pool (H100, A100), or about 14 GB on Metal | CPU; model file is 183 MB; peak process memory still needs measurement |
+| Latency (as seen by Coder) | 20–300 ms through the gateway | 3–8 ms in the standalone ORT test, about 93 ms through their API; native Psionic and Coder integration are not measured |
 | Cost | Our GPU hours | Free on CPUs we already run, or USD 0.001 per million tokens through their API |
 | Fit to our schema | Exact: it answers `route-v1` as written | Partial: difficulty is roughly our Size, stakes our Risk, needs_tools our needs_repo or own_tools. It has nothing for issue_to_pr, research or new_work |
 
@@ -205,8 +213,10 @@ asks only once every few calls.
 
 ## Running it in Psionic
 
-**Short answer:** Psionic cannot run this model today, but it is a small
-encoder, and every piece of the port is bounded.
+**Short answer:** add two selectable execution engines: optional ORT for
+the published ONNX graph, and native Psionic for the same model. Share the
+tokenizer and answer processing, then compare correctness, speed, memory,
+and package size. Neither engine is implemented in Psionic yet.
 
 **What Psionic does today.**
 
@@ -220,22 +230,28 @@ encoder, and every piece of the port is bounded.
 
 | # | Gap | What it takes | Size |
 | --- | --- | --- | --- |
+| 0 | **Optional ORT execution** | A Rust adapter around a pinned ONNX Runtime dependency, initially CPU only. Load the published ONNX directly and expose named tensor inputs and outputs through the shared model interface. Keep the dependency optional, identify the actual engine and execution provider in results, and fail an explicitly selected backend if it is unavailable. This is reusable model execution support, not a router-only wrapper | M |
 | 1 | **Encoder forward on CPU** | A ModernBERT family in `psionic-models` and `psionic-serve`. It needs: <br>• bidirectional attention with no KV cache; <br>• rotary positions with two bases (mmBERT uses a larger base on global layers than on local ones; read both from the base config); <br>• alternating global and sliding-window layers (a symmetric window of 128, every third layer of the original 22 global; check which of the kept layers are global against the ONNX masks); <br>• a GeGLU MLP with exact (erf) GELU; <br>• LayerNorm without bias, including the embedding norm (layer 0 has no attention norm); <br>• first-token pooling. <br>Batch size 1 is enough at first. Rotary and the GEMM exist; GeGLU, bias-free LayerNorm and the bidirectional local mask are new on CPU | M |
-| 2 | **Weight loading** | Do not add an ONNX runtime to Psionic: it is a large dependency for one small model. Instead, a one-off converter turns the ONNX initializers into a safetensors file with named tensors, plus a JSON config. The work is mapping the anonymous `onnx::MatMul_*` names to layers by walking the graph, and transposing to our layout. Keep the uint8 embeddings with their scale and zero point, and dequantise per gathered row (98M bytes instead of 393 MB in f32). Pin the converted file by sha256, as the Clef GGUF is pinned. A GGUF path is possible later, but nothing needs it | S |
+| 2 | **Weight loading for both engines** | ORT loads the original ONNX graph and weights. For native execution, a reproducible converter exports the ONNX initializers into named safetensors plus a JSON architecture config. Map anonymous `onnx::MatMul_*` names by walking the graph, and transpose to our layout. Preserve the uint8 embeddings, scale, and zero point; dequantize per gathered row. Pin source and converted files by sha256 and record the converter version. Safetensors carries weights; native code still implements the graph | S |
 | 3 | **Tokenizer** | Psionic's SentencePiece tokenizer reads GGUF score tables. This model ships an HF `tokenizer.json` with 580k ranked merges. The work: <br>• a loader for merge-ranked SentencePiece-style BPE with byte fallback and a Metaspace pre-tokenizer that always adds `▁`; <br>• the pair template `<bos> A <eos> B <eos>`; <br>• truncation of the second sequence only, at 512 tokens. <br>Acceptance: token ids identical to HF `tokenizers` on at least 1,000 strings across the 22 languages, plus code and paths | S–M |
-| 4 | **Heads and answer shaping** | Four linear heads, the per-head temperatures from `meta.json`, softmax or sigmoid, and the System One response: a probability per option, expected values for scores, and the `psionic` provenance block. This is a small subset of what the Clef head already does | S |
-| 5 | **Serving** | Two ways, and we should build both. <br>• **Over HTTP**: add the model to `psionic-openai-server` behind the existing `/v1/systemone` route. Its question schema is fixed, so a request asking anything else is refused as `not_admitted` and the judge chain moves to its next door. Warm it up before `/health` (from [reax.md](reax.md)). The gateway's `decision_dispatch.rs` then gets a door (for example a `router` order or model id) in front of hosted Clef for the questions it can answer. <br>• **In process**: Coder links the encoder crate directly and asks with no network hop. A few ms is the whole point, and an HTTP round trip to the gateway would cost more than the model | S–M |
-| 6 | **CPU speed** | `psionic-backend-cpu` has no threading. Reuse the rayon GEMM from the qwen35 CPU lane. Target: p99 under 20 ms for 512 tokens on 4 cores. Short prompts should already be a few ms with f32 weights | S |
-| 7 | **Parity and calibration gate** | A fixture of about 100 requests with onnxruntime's logits checked in, like `crates/psionic/fixtures/clef/`. Psionic must match: every argmax equal, and centred-log distance (as in [calibration.md](calibration.md)) under 0.01 per answer | S |
+| 4 | **Heads and answer shaping** | ORT executes the four heads in the graph; native code implements the same projections. Both return raw logits to shared Rust processing: per-head temperatures from `meta.json`, softmax or sigmoid, expected score values, and the System One response. Record the engine separately from model identity | S |
+| 5 | **Serving** | Support both engines over HTTP and in process. <br>• **Over HTTP**: add the model to `psionic-openai-server` behind the existing `/v1/systemone` route. Its question schema is fixed, so a request asking anything else is refused as `not_admitted` and the judge chain moves to its next door. Warm the selected engine before `/health` (from [reax.md](reax.md)). Gateway adoption still requires the routing evaluation below. <br>• **In process**: Coder links the shared model adapter and selects ORT or native without a network hop. Measure this path separately from HTTP | S–M |
+| 6 | **CPU speed and comparison** | For native execution, reuse the threaded GEMM from the qwen35 CPU lane. Compare ORT and native on identical token tensors, thread budgets, precision, and request shapes, then measure the shared text-to-answer path separately. Target: p99 under 20 ms for 512 tokens on 4 cores. This is a target for both engines, not a measured native result | S |
+| 7 | **Parity and calibration gate** | Retain about 100 requests with reference ORT logits, like `crates/psionic/fixtures/clef/`. Require the integrated ORT and native paths to match those reference outputs and each other: every categorical argmax equal, flag decisions equal, and centered-log distance (as in [calibration.md](calibration.md)) under 0.01 per answer. Compare raw logits as well as processed probabilities | S |
 
-**Overall size: M.** About a week of focused work for one agent, nearly
-all of it in gap 1. If we train our own router (below), gaps 1–7 stay the
-same: only the heads and the weight file change. Doing the port once
-serves both models.
+The original estimate of about a focused week covered the native encoder
+port. It does not estimate the combined ORT integration, packaging, and
+benchmark work. The [roadmap](psionic-onnx-native-roadmap.md) splits that
+work into reviewable milestones. A router trained on our questions can
+reuse both execution paths with new weights, heads, and schema metadata.
 
 ## Experiment plan
 
-Each step has a gate. Do not start a step until the one before it passes.
+There are two independent workstreams. The backend work follows the
+[roadmap](psionic-onnx-native-roadmap.md) and can start now using the
+published model. Routing evaluation and training follow the steps below;
+their results decide whether to use a model in Coder, not whether to build
+the two execution engines.
 
 1. **Baseline (done above).** onnxruntime on CPU: 3.3 ms p50 on `route-v1`. Size 20/32 against Clef's 24/32; cheap-answer 30/32 against 29/32.
 2. **Evaluation set.** Build 300+ Coder-shaped requests:
@@ -257,7 +273,7 @@ Each step has a gate. Do not start a step until the one before it passes.
    - train on one rented GPU (about an hour, per their numbers) or on our TPU hold.
 
    **Gate:** agreement with Clef's argmax of at least 90 % on dev; Size and Kind accuracy against our gold no more than 2 points below Clef; cheap-answer precision at least Clef's; expected calibration error at most 0.03.
-5. **Psionic port (gaps 1–7).** **Gate:** the parity fixture passes (identical argmaxes, distance under 0.01); tokenizer ids are identical; p99 is under 20 ms on 4 CPU cores at 512 tokens.
+5. **ORT and native comparison (gaps 0–7, independent of steps 2–4).** Retain both selectable engines and publish a reproducible comparison. **Gate:** the parity fixture passes (identical categorical argmaxes and flag decisions, distance under 0.01); tokenizer ids are identical. Report cold start, warm p50/p99, throughput, peak memory, and package size for both; target p99 under 20 ms on 4 CPU cores at 512 tokens. A slower engine remains available for comparison; a failed target is reported rather than hidden by switching engines.
 6. **Shadow, then promote.** Run the small router next to Clef on live `openagents/decide` traffic for the questions it covers, logging both answers, the same way the one-in-twenty Jev shadow works now. Make it the first door, with Clef as the fallback when it is unsure (top probability under the step's threshold), only after:
    - 24 h of shadow traffic;
    - cheap-answer disagreement with Clef under 5 %;
