@@ -317,6 +317,7 @@ impl Lab {
             "summary": record["summary"],
             "title": document["copy"]["title"],
             "fragment": doc::fragment(&checked),
+            "play": doc::play_fragment(&checked),
             "stats": record["stats"],
         }))
     }
@@ -346,7 +347,8 @@ impl Lab {
             "title": side["title"],
             "version": n,
             "summary": side["summary"],
-            "fragment": side["fragment"],
+            // Played on a fresh house each run; a compare plays its seed.
+            "fragment": side["play"],
             "stats": side["stats"],
             "versions": versions,
             "notes": self.notes(game).len(),
@@ -380,7 +382,7 @@ impl Lab {
     /// No such version.
     pub fn play_page(&self, game: &str, n: u64) -> Result<String, String> {
         let side = self.side(game, n)?;
-        let fragment: String = side["fragment"]
+        let fragment: String = side["play"]
             .as_str()
             .unwrap_or_default()
             .chars()
@@ -962,13 +964,13 @@ mod tests {
         assert!(record["stats"]["escaped"].as_u64().unwrap() > 0);
         let opened = lab.run("game_open", &json!({"game": ICE_CREAM_MAN}));
         assert_eq!(opened["card"]["card"], CARD);
-        assert_eq!(opened["card"]["fragment"], "seed=7");
+        assert_eq!(opened["card"]["fragment"], "", "a fresh house each run");
     }
 
     #[test]
     fn an_edit_makes_a_version_and_compares_with_the_original() {
         let (_dir, lab) = lab();
-        let patch = "[{\"op\":\"replace\",\"path\":\"/man/man_chase\",\"value\":5.6},{\"op\":\"replace\",\"path\":\"/man/man_wander\",\"value\":2.4},{\"op\":\"replace\",\"path\":\"/layout/extra_closets\",\"value\":0}]";
+        let patch = "[{\"op\":\"replace\",\"path\":\"/man/man_chase\",\"value\":6.2},{\"op\":\"replace\",\"path\":\"/man/man_wander\",\"value\":2.7},{\"op\":\"replace\",\"path\":\"/layout/extra_closets\",\"value\":0}]";
         let edited = lab.run(
             "game_edit",
             &json!({"game": ICE_CREAM_MAN, "patch": patch, "summary": "He's 25% faster; two fewer closets"}),
@@ -979,7 +981,7 @@ mod tests {
             edited["card"]["fragment"]
                 .as_str()
                 .unwrap()
-                .contains("t.man_chase=5.6")
+                .contains("t.man_chase=6.2")
         );
         let compared = lab.run("game_compare", &json!({"game": ICE_CREAM_MAN, "a": 1}));
         assert_eq!(
@@ -989,10 +991,12 @@ mod tests {
         );
         let differences = compared["differences"].to_string();
         assert!(
-            differences.contains("Hiding spots: 7 → 5") || differences.contains("Hiding spots"),
+            differences.contains("Hiding spots: 15 → 13") || differences.contains("Hiding spots"),
             "{differences}"
         );
         assert_eq!(compared["card"]["compare"]["a"]["version"], 1);
+        // Both sides of a compare play the same house.
+        assert_eq!(compared["card"]["compare"]["a"]["fragment"], "seed=7");
     }
 
     #[test]

@@ -29,15 +29,18 @@ The first game is [The Ice Cream Man](../verse/games/the-ice-cream-man.md).
 A game's editable surface is one typed JSON document, `game.v1`
 ([schema](schemas/game.v1.json)). For The Ice Cream Man its sections are:
 
-- **layout:** the house the card plays (`seed`), and `extra_closets`, the
+- **layout:** the house a compare plays (`seed`; the card itself plays a
+  fresh house every run), its size (`house_size`, rooms along each side),
+  whether the keys go to its far ends (`key_spread`), and `extra_closets`, the
   hiding spots added beyond the rooms' own closets. A spare closet fits in
   bedrooms, kitchens and bathrooms, where it keeps the room's lanes and key
   spots clear. Every house has room for four.
 - **player:** walk and sprint speed, jump, health and how it comes back.
 - **man:** the Ice Cream Man's behaviour. This covers his speeds when he
   wanders, investigates, searches and chases, how far and how wide he sees,
-  how long he searches, how often he sniffs you out, and his grabs and
-  sprinkle volleys.
+  how long he searches, how often he sniffs you out, his grabs and
+  sprinkle volleys, whether he cuts corners chasing (`corners`), and how
+  many keys you hold before he guards the front door (`patrol_keys`).
 - **weapons:** the four earned weapons (#11626), switched on by
   `earned_weapons` (1): the candy cane sword, the waffle cone spear, the
   cone pistol and the sugar launcher. Each one's damage, reach or range,
@@ -45,7 +48,8 @@ A game's editable surface is one typed JSON document, `game.v1`
   (`man_health`: at none he melts, which wins the run), and what earns
   each one (`sword_task`, `pistol_task`, `sugar_task`).
 - **minions:** the mini Ice Cream Men that hunt you (`minion_count`, 0 for
-  none): when they come, their speed, health, bite and sight, what fudge
+  none; `minion_growth`, one more allowed every so many seconds of a
+  run): when they come, their speed, health, bite and sight, what fudge
   and farts do to them, the chance a melted one drops an edible cone
   (`cone_drop`), the cone's extra health and how long it lasts
   (`cone_boost` 0.5 and `cone_time` 10: 50% more for 10 s), and the
@@ -60,8 +64,10 @@ A game's editable surface is one typed JSON document, `game.v1`
 - **noise:** how far sprinting, fudge, fridges and the front door are heard.
 - **rules:** `front_door` (`opens_with_all_keys`, or `locked`, which the
   rules refuse), `keys` (three; fixed in the code), `unlock` (seconds holding
-  E at the door), reach, and `free_roam` (1: after a win, play on with the
-  sprinkle staff).
+  E at the door), `unlock_guard` (the unlock starts over while he is this
+  near), `puzzle_key` (1: one key is locked in the cone cabinet behind the
+  sprinkle-button puzzle), reach, and `free_roam` (1: after a win, play on
+  with the sprinkle staff).
 - **layout** also has `backrooms` (1: build the house as the Backrooms,
   mostly wide empty yellow rooms with wall stubs among a few of the
   Airbnb's own) and `loops` (doorways added beyond the ones that join every
@@ -73,11 +79,22 @@ Each number has bounds and a plain-words description, generated from one
 table in `tuning.rs`, so the schema, the validation and the game can't
 disagree.
 
-The defaults are the game the public page plays: since #11626 shipped,
-version 4 of `the-ice-cream-man` (the designer's revision with the
-Backrooms). A version saved before the code gained a setting is read with
-that setting as the original game had it (`Tuning::original`, via
-`doc::upgrade`), so version 1 still plays and measures exactly as it did.
+The defaults are the game the public page plays on Normal: since the
+difficulty pass (#11667), version 5 of `the-ice-cream-man` (a 7 by 7
+house with its keys at the far ends and one behind the button puzzle, a
+faster Ice Cream Man who guards the door, a 6-second unlock he
+interrupts). Version 4, the designer's revision with the Backrooms, plays
+as Easy, and Hard is harder again; the game's pause menu picks one
+(`icecream_rules::tuning::Difficulty`, measured in
+[the game's design doc](../verse/games/the-ice-cream-man.md)). A version
+saved before the code gained a setting is read with that setting as the
+original game had it (`Tuning::original`, via `doc::upgrade`), so
+version 1 still plays and measures exactly as it did, and version 4 still
+plays as version 4.
+
+The card plays a fresh house every run (its fragment has no seed), so a
+version's route can't be learned by heart. A compare plays both versions
+on the version's seed (`layout.seed`), the same house for both.
 
 Every change makes a new **version**: the document, a one-line summary in
 plain words, who made it, a digest, and the bot-run stats measured when it

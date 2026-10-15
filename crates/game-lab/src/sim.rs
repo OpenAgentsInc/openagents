@@ -153,6 +153,7 @@ pub fn measure(tuning: Tuning, seed: u64) -> Stats {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use icecream_rules::tuning::Difficulty;
 
     #[test]
     fn a_slower_ice_cream_man_is_easier_to_escape() {
@@ -213,21 +214,41 @@ mod tests {
     }
 
     #[test]
-    fn the_game_plays_version_4_by_default() {
-        // Version 4 of the-ice-cream-man, approved for the public page.
-        let today = measure(Tuning::default(), 7);
-        eprintln!("today: {}", today.line());
+    fn easy_plays_version_4() {
+        // Version 4 of the-ice-cream-man, the designer's revision with the
+        // Backrooms, as it measured before the difficulty pass (#11667).
+        let easy = measure(Difficulty::Easy.tuning(), 7);
+        eprintln!("easy (v4): {}", easy.line());
         assert_eq!(
-            (today.escaped + today.melted, today.runs),
+            (easy.escaped + easy.melted, easy.runs),
             (24, 24),
-            "{today:?}"
+            "{easy:?}"
         );
         assert!(
-            today.median_escape.is_some_and(|t| (t - 42.2).abs() < 0.05),
-            "{today:?}"
+            easy.median_escape.is_some_and(|t| (t - 42.2).abs() < 0.05),
+            "{easy:?}"
         );
-        assert!((today.hits - 1.9).abs() < 0.05, "{today:?}");
-        assert_eq!(today.hiding_spots, 7, "{today:?}");
+        assert!((easy.hits - 1.9).abs() < 0.05, "{easy:?}");
+        assert_eq!(easy.hiding_spots, 7, "{easy:?}");
+    }
+
+    #[test]
+    fn the_game_plays_version_5_normal_by_default() {
+        // Version 5 (#11667): a bigger house, keys at its far ends and one
+        // behind the button puzzle, him faster and smarter, a long unlock.
+        let today = measure(Tuning::default(), 7);
+        eprintln!("normal (v5): {}", today.line());
+        assert!(today.wins() >= 18, "{today:?}");
+        assert!(today.wins() < 24 || today.melted > 0, "{today:?}");
+        // A typical run takes two minutes or more, not 42 seconds.
+        assert!(today.median_escape.is_some_and(|t| t >= 110.0), "{today:?}");
+        let hard = measure(Difficulty::Hard.tuning(), 7);
+        eprintln!("hard: {}", hard.line());
+        assert!(hard.wins() >= 12, "still winnable: {hard:?}");
+        assert!(
+            hard.median_escape > today.median_escape,
+            "{hard:?} {today:?}"
+        );
     }
 
     #[test]

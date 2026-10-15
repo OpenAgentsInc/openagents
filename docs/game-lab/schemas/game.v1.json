@@ -239,8 +239,22 @@
           "minimum": 0,
           "type": "integer"
         },
+        "house_size": {
+          "default": 7,
+          "description": "rooms along each side of the house (4 is 4 by 4, 16 rooms)",
+          "maximum": 10,
+          "minimum": 3,
+          "type": "integer"
+        },
+        "key_spread": {
+          "default": 1,
+          "description": "the keys go to the far ends of the house, far from the bedroom, the front door and each other (1), or into any rooms (0)",
+          "maximum": 1,
+          "minimum": 0,
+          "type": "integer"
+        },
         "loops": {
-          "default": 10,
+          "default": 7,
           "description": "extra doorways beyond the ones that join every room; more make the house loop like the Backrooms",
           "maximum": 24,
           "minimum": 0,
@@ -257,7 +271,9 @@
         "seed",
         "extra_closets",
         "backrooms",
-        "loops"
+        "loops",
+        "house_size",
+        "key_spread"
       ],
       "type": "object"
     },
@@ -320,6 +336,13 @@
     "man": {
       "additionalProperties": false,
       "properties": {
+        "corners": {
+          "default": 1,
+          "description": "chasing, he cuts corners (1) or goes by the middle of every doorway (0)",
+          "maximum": 1,
+          "minimum": 0,
+          "type": "integer"
+        },
         "gloat": {
           "default": 1.0,
           "description": "seconds he stands gloating after a grab",
@@ -356,28 +379,28 @@
           "type": "number"
         },
         "man_chase": {
-          "default": 4.48,
+          "default": 5.6,
           "description": "his speed chasing you",
           "maximum": 14.0,
           "minimum": 0.5,
           "type": "number"
         },
         "man_investigate": {
-          "default": 2.88,
+          "default": 3.6,
           "description": "his speed going to look at a noise",
           "maximum": 12.0,
           "minimum": 0.5,
           "type": "number"
         },
         "man_search": {
-          "default": 2.56,
+          "default": 3.2,
           "description": "his speed searching where he last saw you",
           "maximum": 12.0,
           "minimum": 0.5,
           "type": "number"
         },
         "man_wander": {
-          "default": 1.92,
+          "default": 2.4,
           "description": "his speed wandering the rooms",
           "maximum": 12.0,
           "minimum": 0.5,
@@ -389,6 +412,13 @@
           "maximum": 20.0,
           "minimum": 0.0,
           "type": "number"
+        },
+        "patrol_keys": {
+          "default": 2,
+          "description": "once you have this many keys he keeps going back to guard the front door; 0 for never",
+          "maximum": 3,
+          "minimum": 0,
+          "type": "integer"
         },
         "pellet_dodge": {
           "default": 0.45,
@@ -478,6 +508,8 @@
         "notice",
         "search_time",
         "sniff_every",
+        "patrol_keys",
+        "corners",
         "sprinkle_damage",
         "grab_damage",
         "grab_shove",
@@ -566,6 +598,13 @@
           "minimum": 0.0,
           "type": "number"
         },
+        "minion_growth": {
+          "default": 60.0,
+          "description": "one more minion may hunt you every this many seconds of a run, up to 12; 0 for never more",
+          "maximum": 600.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
         "minion_health": {
           "default": 30.0,
           "description": "a minion's health",
@@ -627,6 +666,7 @@
         "minion_count",
         "minion_first",
         "minion_every",
+        "minion_growth",
         "minion_speed",
         "minion_health",
         "minion_damage",
@@ -670,7 +710,7 @@
           "type": "number"
         },
         "sprint_noise": {
-          "default": 8.0,
+          "default": 14.0,
           "description": "how far sprinting is heard",
           "maximum": 80.0,
           "minimum": 0.0,
@@ -777,6 +817,13 @@
           "const": 3,
           "description": "keys the house hides and the door needs (fixed in the game's code)"
         },
+        "puzzle_key": {
+          "default": 1,
+          "description": "one key is locked in the cone cabinet until the sprinkle buttons are pressed in order (1), or all keys lie on the floor (0)",
+          "maximum": 1,
+          "minimum": 0,
+          "type": "integer"
+        },
         "reach": {
           "default": 1.4,
           "description": "how close you must be to use a closet, fridge or the front door",
@@ -785,9 +832,16 @@
           "type": "number"
         },
         "unlock": {
-          "default": 2.0,
+          "default": 6.0,
           "description": "seconds holding E at the front door with every key to unlock it",
           "maximum": 600.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "unlock_guard": {
+          "default": 8.0,
+          "description": "the unlock stops and starts over while he is this near, metres; 0 for never",
+          "maximum": 60.0,
           "minimum": 0.0,
           "type": "number"
         }
@@ -796,6 +850,8 @@
         "front_door",
         "keys",
         "unlock",
+        "unlock_guard",
+        "puzzle_key",
         "reach",
         "key_reach",
         "free_roam"

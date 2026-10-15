@@ -2,7 +2,7 @@
 //! Man, keys, fridges, closets, the front door, and the run card.
 
 use crate::geom::{V2, first_hit, segment_distance, slide, v};
-use crate::layout::{BUTTONS, House, Pickup, cell_of, centre};
+use crate::layout::{BUTTONS, House, Pickup, centre};
 use crate::man::{Act, Man, ManState, Senses};
 use crate::minion::Minion;
 use crate::rng::Rng;
@@ -118,6 +118,8 @@ pub enum Prompt {
     Fridge,
     /// All keys: hold to unlock.
     Unlock,
+    /// All keys, but he's too near: the door won't unlock.
+    Guarded,
     /// Not all keys yet.
     Locked,
     /// A sprinkle button of the spear puzzle.
@@ -152,6 +154,8 @@ pub enum Event {
     Hid,
     Unhid,
     DoorLocked,
+    /// He came near and the unlock started over.
+    DoorGuarded,
     Jumped,
     Escaped,
     Scooped,
@@ -409,6 +413,41 @@ impl Game {
         self.tuning.earned_weapons == 1
     }
 
+    /// The key locked in the cone cabinet until the puzzle is solved.
+    #[must_use]
+    pub fn locked_key(&self) -> Option<usize> {
+        self.house.cabinet_key.filter(|_| !self.solved)
+    }
+
+    /// Whether the sprinkle-button puzzle is in this run: for the waffle
+    /// cone spear, or for the key in the cone cabinet.
+    #[must_use]
+    pub fn puzzle_on(&self) -> bool {
+        self.weapons_on() || self.house.cabinet_key.is_some()
+    }
+
+    /// Whether he's too near for the front door to unlock: awake and
+    /// within `rules.unlock_guard`.
+    #[must_use]
+    pub fn door_guarded(&self) -> bool {
+        self.tuning.unlock_guard > 0.0
+            && self.man_here()
+            && !matches!(self.man.state, ManState::Frozen | ManState::Confused)
+            && self.man.pos.distance(self.player.pos) < self.tuning.unlock_guard
+    }
+
+    /// How many of his minions may hunt you now: more as a run goes on
+    /// (`minions.minion_growth`), up to 12.
+    #[must_use]
+    pub fn minion_cap(&self) -> u32 {
+        let more = if self.tuning.minion_growth > 0.0 {
+            (self.seconds() / self.tuning.minion_growth) as u32
+        } else {
+            0
+        };
+        (self.tuning.minion_count + more).min(12)
+    }
+
     /// Whether the player has `tool`.
     #[must_use]
     pub fn has(&self, tool: Tool) -> bool {
@@ -515,14 +554,18 @@ impl Game {
         let p = self.player.pos;
         if !self.free_roam && p.distance(self.house.front.stand) <= self.tuning.reach {
             let prompt = if self.player.keys as usize >= self.house.keys.len() {
-                Prompt::Unlock
+                if self.door_guarded() {
+                    Prompt::Guarded
+                } else {
+                    Prompt::Unlock
+                }
             } else {
                 Prompt::Locked
             };
             return Some((prompt, 0));
         }
         let mut best: Option<(Prompt, usize, f32)> = None;
-        if self.weapons_on() && !self.solved {
+        if self.puzzle_on() && !self.solved {
             for (i, at) in self.house.buttons.iter().enumerate() {
                 let d = p.distance(*at);
                 if d <= self.tuning.reach && best.is_none_or(|b| d < b.2) {
@@ -761,6 +804,9 @@ impl Game {
     fn interact(&mut self, input: Input, pressed: bool) {
         let target = self.target();
         if !matches!(target, Some((Prompt::Unlock, _))) || !input.interact {
+            if self.player.unlock > 0.0 && matches!(target, Some((Prompt::Guarded, _))) {
+                self.events.push(Event::DoorGuarded);
+            }
             self.player.unlock = 0.0;
         }
         let Some((prompt, i)) = target else {
@@ -812,11 +858,13 @@ impl Game {
                     self.events.push(Event::Button(self.lit));
                     if self.lit as usize >= BUTTONS {
                         self.solved = true;
-                        self.drops.push(Drop {
-                            at: self.house.cabinet,
-                            kind: DropKind::Weapon(Tool::Spear),
-                            age: 0.0,
-                        });
+                        if self.weapons_on() {
+                            self.drops.push(Drop {
+                                at: self.house.cabinet,
+                                kind: DropKind::Weapon(Tool::Spear),
+                                age: 0.0,
+                            });
+                        }
                         self.events.push(Event::PuzzleSolved);
                     }
                 } else if i as u32 > self.lit {
@@ -828,6 +876,11 @@ impl Game {
             Prompt::Locked if pressed => {
                 self.noises.push((self.player.pos, self.tuning.door_noise));
                 self.events.push(Event::DoorLocked);
+            }
+            Prompt::Guarded if input.interact => {
+                if pressed || self.tick.is_multiple_of(u64::from(HZ)) {
+                    self.events.push(Event::DoorGuarded);
+                }
             }
             Prompt::Unlock if input.interact => {
                 self.player.unlock += DT;
@@ -848,8 +901,12 @@ impl Game {
         if self.player.hidden.is_some() {
             return;
         }
+        let locked = self.locked_key();
         for (i, key) in self.house.keys.iter().enumerate() {
-            if !self.taken[i] && key.distance(self.player.pos) <= self.tuning.key_reach {
+            if !self.taken[i]
+                && Some(i) != locked
+                && key.distance(self.player.pos) <= self.tuning.key_reach
+            {
                 self.taken[i] = true;
                 self.player.keys += 1;
                 self.events.push(Event::Key(self.player.keys));
@@ -957,6 +1014,7 @@ impl Game {
             hidden: self.player.hidden.is_some(),
             closet: self.closet_spot(),
             noises: &self.noises,
+            keys: self.player.keys,
         };
         let acts = self.man.step(&self.house, senses);
         for act in acts {
@@ -1279,14 +1337,14 @@ impl Game {
         }
         self.minion_wait = self.tuning.minion_every;
         let enemies = self.minions.iter().filter(|m| !m.friendly).count();
-        if enemies >= self.tuning.minion_count as usize {
+        if enemies >= self.minion_cap() as usize {
             return;
         }
         let player = self.player.pos;
         let at = if self.man_here() && self.man.pos.distance(player) >= 8.0 {
             self.man.pos
         } else {
-            let steps = self.house.distances(cell_of(player));
+            let steps = self.house.distances(self.house.cell_of(player));
             let far: Vec<usize> = (0..self.house.rooms.len())
                 .filter(|i| steps[*i] >= 2 && steps[*i] != usize::MAX)
                 .collect();
@@ -1637,8 +1695,17 @@ mod tests {
         assert_ne!(game.prompt(), Some(Prompt::Fridge));
     }
 
+    /// Presses E once where the player stands.
+    fn press(game: &mut Game) {
+        game.step(Input::default());
+        game.step(Input {
+            interact: true,
+            ..Input::default()
+        });
+    }
+
     #[test]
-    fn the_front_door_needs_three_keys_and_a_two_second_hold() {
+    fn the_front_door_needs_three_keys_and_a_long_hold() {
         let mut game = calm(8);
         let stand = game.house.front.stand;
         travel(&mut game, stand);
@@ -1648,6 +1715,11 @@ mod tests {
             ..Input::default()
         });
         assert_eq!(game.events, vec![Event::DoorLocked]);
+        for at in game.house.buttons.clone() {
+            travel(&mut game, at);
+            press(&mut game);
+        }
+        assert!(game.solved);
         for key in game.house.keys.clone() {
             travel(&mut game, key);
         }
@@ -1676,6 +1748,83 @@ mod tests {
         assert_eq!(card.keys, 3);
         assert_eq!(card.accuracy, None);
         assert!(card.seconds > 5);
+    }
+
+    #[test]
+    fn a_key_waits_in_the_cone_cabinet_until_the_buttons_are_pressed() {
+        let mut game = calm(3);
+        let locked = game.locked_key().expect("v5 locks a key in the cabinet");
+        assert_eq!(game.house.keys[locked], game.house.cabinet);
+        assert!(game.puzzle_on());
+        let cabinet = game.house.cabinet;
+        travel(&mut game, cabinet);
+        assert!(!game.taken[locked], "locked in");
+        assert_eq!(game.prompt(), Some(Prompt::Cabinet));
+        for at in game.house.buttons.clone() {
+            travel(&mut game, at);
+            press(&mut game);
+        }
+        assert!(game.solved && game.events.contains(&Event::PuzzleSolved));
+        assert_eq!(game.locked_key(), None);
+        travel(&mut game, cabinet);
+        assert!(game.taken[locked]);
+        assert!(
+            game.has(Tool::Spear),
+            "and the spear, with the earned weapons"
+        );
+        // Easy (version 4) has all three on the floor.
+        let easy = Game::tuned(
+            3,
+            Options { man: false },
+            crate::tuning::Difficulty::Easy.tuning(),
+        );
+        assert_eq!(easy.locked_key(), None);
+        assert!(easy.puzzle_on(), "for the spear only");
+    }
+
+    #[test]
+    fn he_near_the_front_door_starts_the_unlock_over() {
+        let mut game = Game::new(4, Options::default());
+        let stand = game.house.front.stand;
+        game.player.pos = stand;
+        game.player.keys = 3;
+        game.taken.iter_mut().for_each(|t| *t = true);
+        game.solved = true;
+        let hold = Input {
+            interact: true,
+            ..Input::default()
+        };
+        game.man.state = ManState::Frozen;
+        game.man.timer = 60.0;
+        game.man.pos = stand + (game.house.spawn - stand).normalized() * 3.0;
+        assert_eq!(game.prompt(), Some(Prompt::Unlock), "frozen, he can't");
+        game.step(hold);
+        assert!(game.player.unlock > 0.0);
+        game.man.state = ManState::Wander;
+        assert!(game.door_guarded());
+        assert_eq!(game.prompt(), Some(Prompt::Guarded));
+        game.step(hold);
+        assert_eq!(game.player.unlock, 0.0);
+        assert!(game.events.contains(&Event::DoorGuarded));
+        assert_eq!(game.status, Status::Playing);
+    }
+
+    #[test]
+    fn more_minions_may_come_as_a_run_goes_on() {
+        let mut game = Game::new(2, Options::default());
+        assert_eq!(game.minion_cap(), MINION_COUNT);
+        game.tick = u64::from(HZ) * (MINION_GROWTH as u64 * 2 + 1);
+        assert_eq!(game.minion_cap(), MINION_COUNT + 2);
+        game.tick = u64::from(HZ) * 3600;
+        assert_eq!(game.minion_cap(), 12);
+        let easy = Game::tuned(
+            2,
+            Options::default(),
+            crate::tuning::Difficulty::Easy.tuning(),
+        );
+        let mut late = easy.clone();
+        late.tick = u64::from(HZ) * 3600;
+        assert_eq!(late.minion_cap(), MINION_COUNT);
     }
 
     #[test]

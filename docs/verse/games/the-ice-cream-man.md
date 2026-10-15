@@ -84,13 +84,20 @@ third person camera. See [The designer's revision](#the-designers-revision).
   living room, bathroom, laundry, hallway, stairwell, "the freezer room")
   joined by doors. Each run shuffles the layout from a seed, Backrooms
   style: some hallways repeat, some doors open onto the same room again.
-- 12–20 rooms per run *tunable*, one floor in the MVP.
+- 12–20 rooms per run in the MVP, one floor; since version 5 (#11667) the
+  house is `layout.house_size` rooms along each side *tunable*: 4 by 4 on
+  Easy, 7 by 7 on Normal, 8 by 8 on Hard. Every run is a fresh house, and
+  the menu shows its house number.
 - Ice-cream theming: walls in pastel flavours (strawberry, mint, vanilla,
   chocolate), waffle-cone trim, melting drips on ceilings, sprinkles on the
   carpet, freezer-hum lighting with a slight flicker.
 - Interactables: doors (some locked until a key), closets and under-bed
   spots to hide, fridges that hold pickups, the front door (exit).
 - Keys spawn in fixed slots per room module, three chosen by the seed.
+  Since version 5 they go to the house's far ends (`layout.key_spread`),
+  far from the bedroom, the front door and each other, and one is locked
+  in the cone cabinet behind the sprinkle-button puzzle
+  (`rules.puzzle_key`).
 
 ## The Ice Cream Man
 
@@ -138,8 +145,11 @@ refilled from pickups in fridges and cupboards.
 
 ## Escaping
 
-Collect all keys, reach the front door, hold E for 2 s to unlock while he
-may be closing in. Escape plays a short exit scene (you burst out into
+Collect all keys, reach the front door, hold E to unlock while he may be
+closing in: 2 s in the MVP and on Easy, 6 s on Normal, 7 s on Hard
+(`rules.unlock`). Since version 5 the unlock starts over whenever he is
+awake and within 8 m (11 m on Hard, `rules.unlock_guard`): freeze him or
+fart him away first. Escape plays a short exit scene (you burst out into
 daylight, he waves sadly from the window) and the run card: time, keys,
 hits taken, fudge accuracy.
 
@@ -196,8 +206,10 @@ through Game Lab's chat (#11626). Every number below is a setting in the
 version's document (`game.v1`; the sections `weapons`, `minions`, `look`,
 `layout` and `rules`). In the chat, "add the new items and minions" and
 "make it feel like the Backrooms" switched them on as versions; the owner
-approved v4, and its numbers are now the game's defaults, so
-openagents.com/games/the-ice-cream-man plays it. The original stays in
+approved v4, and its numbers became the game's defaults. Since the
+difficulty pass (#11667) the defaults are version 5, Normal, and v4 plays
+as Easy (see Difficulty below), so openagents.com/games/the-ice-cream-man
+plays Normal unless you pick another. The original stays in
 Game Lab as v1 (`Tuning::original`).
 
 ### Earned weapons
@@ -217,7 +229,8 @@ into a puddle of vanilla, which wins the run like escaping does.
 
 Mini Ice Cream Men (a third his size) that hunt you when you're within
 14 m and not hiding. They walk out of him when he's away from you (or a
-room two doorways off), one every 15 s up to three at once *tunable*, and
+room two doorways off), one every 15 s up to three at once *tunable*
+(on Normal one more may come every 60 s of a run, `minion_growth`), and
 bite (6 damage). Hot fudge (10), fart clouds (40) and the weapons melt
 them. A melted minion sometimes drops an **edible ice cream cone**
 (35% *tunable*): walk over it to eat it for **50% more health for 10
@@ -250,6 +263,55 @@ second at a time, two a second at most, so they never strobe)
 and buzz (`buzz`). He, his cones, the keys and the sprinkles stay ice
 cream: it's still The Ice Cream Man, lost in the Backrooms.
 
+### Difficulty: Easy, Normal, Hard (version 5)
+
+The designer escaped version 4 in 16 seconds (#11667). The causes, as
+measured: the 4 by 4 house is small (a route-optimal run is 11 s
+fastest, 13 s typical, over the 24 seeded houses); the keys went into any
+rooms two doorways from the bedroom, often on the way to the door; the
+Ice Cream Man was 20% slower than the original (v2's playtest), slower
+than a walk, so he never caught a sprint; the door took 2 s; and Game
+Lab's card played the same house (`seed=7`) every run, so the route could
+be learned by heart.
+
+Version 5 is **Normal**, the game's defaults, and the pause menu switches
+between three difficulties (kept in the game's settings, with a best time
+for each):
+
+| Setting | Easy (= v4) | Normal (v5) | Hard |
+|---|---|---|---|
+| House (`layout.house_size`) | 4 by 4 | 7 by 7 | 8 by 8 |
+| Extra doorways (`layout.loops`) | 10 | 7 | 7 |
+| Keys at the far ends (`layout.key_spread`) | no | yes | yes |
+| A key in the cone cabinet (`rules.puzzle_key`) | no | yes | yes |
+| His chase / wander speed (`man_chase`, `man_wander`) | 4.48 / 1.92 | 5.6 / 2.4 | 6.2 / 2.7 |
+| He guards the front door once you have (`man.patrol_keys`) | never | 2 keys | 1 key |
+| He cuts corners chasing (`man.corners`) | no | yes | yes |
+| Sprinting heard from (`noise.sprint_noise`) | 8 m | 14 m | 18 m |
+| Unlock hold (`rules.unlock`) | 2 s | 6 s | 7 s |
+| Unlock starts over with him within (`rules.unlock_guard`) | never | 8 m | 11 m |
+| Minions at the start, one more every (`minion_count`, `minion_growth`) | 3, never | 3, 60 s | 4, 40 s |
+
+Hard also gives him longer sight (26 m), a longer search (10 s), a sniff
+every 18 s, faster minions (3.8) and one fewer spare closet. A sprint
+(7 m/s) still outruns him on every difficulty.
+
+Measured over the same 24 seeded houses. *Racer* is the route-optimal
+player (`icecream_rules::bot::Racer`): it knows every key and button from
+the start, takes them in the shortest order, sprints the whole way, never
+hides, and holds E at the door; alone in the house it is the fastest
+escape there can be. *Bot* is the regular bot below.
+
+| Difficulty | Racer alone: fastest / middle | Racer with him: wins | Bot: wins | Bot: fastest / middle escape |
+|---|---|---|---|---|
+| Easy (= v4) | 0:11 / 0:13 | 22 of 24 | 24 of 24 | 0:30 / 0:42 |
+| Normal (v5) | 1:03 / 1:17 | 19 of 24 | 23 of 24 (19 escaped, 4 melted him) | 1:42 / 2:10 |
+| Hard | 1:17 / 1:46 | 9 of 24 | 21 of 24 (17 escaped, 4 melted him) | 2:31 / 2:48 |
+
+`cargo test -p icecream-rules measures -- --ignored --nocapture` prints
+these; `a_perfect_run_takes_a_minute_or_more_on_normal` and Game Lab's
+`the_game_plays_version_5_normal_by_default` keep them.
+
 ### The bot
 
 The bot Game Lab measures versions with picks up dropped weapons, eats a
@@ -259,14 +321,16 @@ the pistol), and hits him with what it has while he's frozen or confused.
 
 The versions made in Game Lab's chat for the revision, as the bot measured
 them over the same 24 seeded houses (v2 is an earlier playtest: him 20%
-slower, two more closets):
+slower, two more closets; v5 is the difficulty pass above, where a win
+can also be melting him):
 
 | Version | Wins | Middle escape | Hits | Spotted | Hiding spots |
 |---|---|---|---|---|---|
 | v1, the original | 24 of 24 | 0:26 | 1.7 | 2.0 | 11 |
 | v2, slower, more closets | 24 of 24 | 0:25 | 1.4 | 1.8 | 13 |
 | v3, + weapons, minions, free roam | 24 of 24 | 0:53 | 3.3 | 4.3 | 13 |
-| v4, + the Backrooms | 24 of 24 | 0:42 | 1.9 | 3.9 | 7 |
+| v4, + the Backrooms (Easy) | 24 of 24 | 0:42 | 1.9 | 3.9 | 7 |
+| v5, Normal (#11667) | 23 of 24 | 2:10 | 4.9 | 4.4 | 15 |
 
 With the man at his original speeds, the rules' own check measures the
 weapons, minions and free roam at 23 of 24, and with the Backrooms at 24

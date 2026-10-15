@@ -170,7 +170,7 @@ pub(crate) fn render() -> Markup {
                     div class="br-guide br-wrap" {
                         (step("goal", 1, html! {
                             p { "Your check-in note says: " strong { "\u{201c}Check-out is at 11. Don't let him in.\u{201d}" } " Too late. He's in." }
-                            p { "Find the " strong { "three check-out keys" } ", then go to the front door and hold " (key("E")) " for 2 seconds to unlock it. Get out and you win." }
+                            p { "Find the " strong { "three check-out keys" } ", then go to the front door and hold " (key("E")) " for 6 seconds to unlock it. Get out and you win." }
                         }, Some(shot("icecream-hall.jpg", "The bedroom where you wake up: your blocky avatar with the hot fudge blaster next to a closet, and the hot bar at the bottom", "The bedroom where you wake up."))))
                         (step("controls", 2, html! {
                             div class="br-table-wrap" {
@@ -199,10 +199,12 @@ pub(crate) fn render() -> Markup {
                         (step("house", 3, html! {
                             p { "You wake up in the bedroom. The house has a kitchen, a living room, a bathroom, a laundry, hallways, a stairwell, and the freezer room. Some rooms show up again, and some hallways are longer than they should be." }
                             p { "Past them are the Backrooms: wide, empty rooms of yellow wallpaper and damp carpet under buzzing lights that flicker. Extra doorways loop back on themselves, and the fog hides what's ahead." }
-                            p { "Every run shuffles the rooms, so it's a new house every time." }
+                            p { "Every run shuffles the rooms, so it's a new house every time. The menu shows its house number." }
+                            p { "Pick how hard it is with " strong { "Difficulty" } " in the menu. " strong { "Easy" } " is a small house where he's slow and the door opens in 2 seconds, for younger players. " strong { "Normal" } " is a big house, 7 rooms by 7. " strong { "Hard" } " is bigger still, and he's faster. Each one keeps its own best time, and a new difficulty starts with the next house." }
                         }, None))
                         (step("keys", 4, html! {
-                            p { "Keys spin and sparkle just above the floor. Walk over one to pick it up. The count at the top of the screen shows how many you have." }
+                            p { "Keys spin and sparkle just above the floor, far apart at the ends of the house. Walk over one to pick it up. The count at the top of the screen shows how many you have." }
+                            p { "One key is locked in the " strong { "cone cabinet" } ". Press the three sprinkle buttons in order, pink, blue, then yellow, and the cabinet opens. Out of order, they all go dark." }
                             p { "A fridge with a pink sparkle on top hasn't been opened yet." }
                         }, None))
                         (step("man", 5, html! {
@@ -210,7 +212,8 @@ pub(crate) fn render() -> Markup {
                             ul class="br-list" {
                                 li { strong { "Sprinkles" } ": from far away he fires sprinkles. Each one costs 5 health. Jump to dodge them." }
                                 li { strong { "Grab" } ": up close he grabs you. That costs 30 health and shoves you back." }
-                                li { strong { "Speed" } ": he's about as fast as you walking, so sprinting gets you away." }
+                                li { strong { "Speed" } ": he's faster than you walking, but sprinting gets you away. He hears you sprint, though." }
+                                li { strong { "The door" } ": once you have two keys, he keeps going back to guard the front door." }
                             }
                             p { "Listen for the ice cream truck jingle. The louder it gets, the closer he is." }
                         }, Some(shot("icecream-man.jpg", "The Ice Cream Man: a waffle-cone body with a vanilla scoop head, a huge bald forehead and a big grin", "He's coming. Hear the jingle?"))))
@@ -224,14 +227,14 @@ pub(crate) fn render() -> Markup {
                             p { "Running low? Press " (key("E")) " at a fridge for more fudge or a fart cloud, and ammo for any weapons you've earned. Each fridge opens once." }
                         }, Some(shot("icecream-fudge.jpg", "The Ice Cream Man frozen solid in hardened hot fudge, next to your avatar", "Six quick hits and he's frozen solid."))))
                         (step("minions", 7, html! {
-                            p { "Soon after you start, his " strong { "minions" } " come for you: mini Ice Cream Men that hunt you down and bite. Up to three roam the house at once." }
+                            p { "Soon after you start, his " strong { "minions" } " come for you: mini Ice Cream Men that hunt you down and bite. Three can roam the house at first, and one more every minute." }
                             p { "Hot fudge, fart clouds, and your weapons melt them. A melted minion sometimes drops an " strong { "ice cream cone" } ". Walk over it to eat it: 50% more health for 10 seconds." }
                         }, None))
                         (step("weapons", 8, html! {
                             p { "Four weapons are hidden in the house. Each one is earned, and each one hurts him. They go in the hot bar after your tools, on " (key("4")) " and up." }
                             ul class="br-list" {
                                 li { strong { "Candy Cane Sword" } ": the first minion you melt drops it. Swing it up close." }
-                                li { strong { "Waffle Cone Spear" } ": press the three sprinkle buttons in order, pink, blue, then yellow, and the cone cabinet opens. It reaches a long way." }
+                                li { strong { "Waffle Cone Spear" } ": it waits in the cone cabinet with the locked key. It reaches a long way." }
                                 li { strong { "Cone Pistol" } ": freeze him with hot fudge once and it's yours. It fires cones from far away." }
                                 li { strong { "Sugar Launcher" } ": melt four minions to earn it. Its sugar bursts hurt everything nearby." }
                             }
@@ -241,7 +244,7 @@ pub(crate) fn render() -> Markup {
                             p { "Press " (key("E")) " next to a closet to hide inside, and " (key("E")) " again to come out. He can't open your closet, unless he saw you get in." }
                         }, Some(shot("icecream-hide.jpg", "The view from inside a closet, peeking out at the room", "Hiding in a closet."))))
                         (step("escape", 10, html! {
-                            p { "With all three keys, go to the front door and hold " (key("E")) " for 2 seconds. Rattling the door makes noise, so he may come running." }
+                            p { "With all three keys, go to the front door and hold " (key("E")) " for 6 seconds. Rattling the door makes noise, so he may come running. If he gets close, the lock starts over, so freeze him or fart him away first." }
                             p { "Or melt him with your weapons. That's a win too." }
                             p { "You have 100 health. It slowly comes back once you haven't been hit for 10 seconds. If it runs out, you're " strong { "scooped" } ": he lunges right at you with a scream and splats the screen with strawberry syrup. It's a jumpscare! Turn " strong { "Jumpscares" } " off in the menu for a gentle ending instead. Then press " strong { "Try again" } "." }
                             p { "After every run you get a card with your time, your keys, the hits you took, and how well you aimed your fudge." }

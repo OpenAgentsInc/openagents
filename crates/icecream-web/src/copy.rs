@@ -55,6 +55,28 @@ pub const JUMPSCARES_OFF: &str = "Jumpscares: off";
 pub const SPRINT_HOLD: &str = "Sprint button: hold";
 pub const SPRINT_TAP: &str = "Sprint button: tap";
 pub const NEW_BEST: &str = "New best!";
+pub const EASY: &str = "Difficulty: Easy";
+pub const NORMAL: &str = "Difficulty: Normal";
+pub const HARD: &str = "Difficulty: Hard";
+/// Under the menu when the difficulty changed during a run.
+pub const NEXT_HOUSE: &str = "The new difficulty starts with the next house.";
+
+/// The difficulty button's words.
+#[must_use]
+pub fn difficulty(d: icecream_rules::tuning::Difficulty) -> &'static str {
+    use icecream_rules::tuning::Difficulty;
+    match d {
+        Difficulty::Easy => EASY,
+        Difficulty::Normal => NORMAL,
+        Difficulty::Hard => HARD,
+    }
+}
+
+/// The menu's line naming this house, to play it again (`#seed=`).
+#[must_use]
+pub fn house_line(seed: u64) -> String {
+    format!("House number {seed}")
+}
 
 /// The escape card's time, to a tenth of a second.
 #[must_use]
@@ -83,6 +105,7 @@ pub const LOST: &str = "You lost him.";
 pub const HID: &str = "Shh. You're hiding.";
 pub const PULLED_OUT: &str = "He saw you hide in there!";
 pub const LOCKED: &str = "Locked. Find all three keys first.";
+pub const DOOR_GUARDED: &str = "He's too close! The door won't unlock with him near.";
 pub const EMPTY_FUDGE: &str = "Out of fudge. Check the fridges.";
 pub const EMPTY_FART: &str = "No fart clouds left.";
 pub const JINGLE: &str = "Jingle jingle. He heard that.";
@@ -167,6 +190,7 @@ pub fn prompt(prompt: icecream_rules::Prompt) -> &'static str {
         Prompt::Leave => "Come out",
         Prompt::Fridge => "Open the fridge",
         Prompt::Unlock => "Hold to unlock the front door",
+        Prompt::Guarded => "He's too close to unlock the door",
         Prompt::Locked => "The front door. Find all three keys",
         Prompt::Button => "Press the sprinkle button",
         Prompt::Cabinet => "The cone cabinet",
@@ -290,6 +314,10 @@ mod tests {
             SPRINT_HOLD,
             SPRINT_TAP,
             NEW_BEST,
+            EASY,
+            NORMAL,
+            HARD,
+            NEXT_HOUSE,
             NO_WEBGL,
             HEALTH,
             KEYS,
@@ -335,6 +363,7 @@ mod tests {
             HID,
             PULLED_OUT,
             LOCKED,
+            DOOR_GUARDED,
             EMPTY_FUDGE,
             EMPTY_FART,
             JINGLE,
@@ -353,6 +382,7 @@ mod tests {
             all.push(earned(tool).to_owned());
         }
         all.push(button_lit(2));
+        all.push(house_line(3_141_592_653));
         all.push(your_time("0:26.4"));
         all.push(best_time("0:24.1"));
         all.push(version_line("3f9a2c1b"));
@@ -365,6 +395,7 @@ mod tests {
             Prompt::Leave,
             Prompt::Fridge,
             Prompt::Unlock,
+            Prompt::Guarded,
             Prompt::Locked,
             Prompt::Button,
             Prompt::Cabinet,

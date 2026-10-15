@@ -328,6 +328,19 @@ pub fn fragment(game: &Game) -> String {
     parts.join("&")
 }
 
+/// The fragment the card and the play page play: the version without its
+/// seed, so every run is a fresh house and no route can be learned by
+/// heart (#11667). Compares keep [`fragment`]'s seed, so the bot plays
+/// both versions on the same house.
+#[must_use]
+pub fn play_fragment(game: &Game) -> String {
+    fragment(game)
+        .split('&')
+        .filter(|p| !p.starts_with("seed="))
+        .collect::<Vec<_>>()
+        .join("&")
+}
+
 fn encode(text: &str) -> String {
     text.bytes()
         .map(|b| match b {
@@ -452,6 +465,7 @@ mod tests {
         assert!(!game.door_locked);
         assert!(game.words.is_empty());
         assert_eq!(fragment(&game), format!("seed={}", game.seed));
+        assert_eq!(play_fragment(&game), "", "a fresh house each run");
     }
 
     #[test]
@@ -492,6 +506,7 @@ mod tests {
             doc["layout"].as_object_mut().unwrap().remove(name);
         }
         doc["rules"].as_object_mut().unwrap().remove("free_roam");
+        forget_the_difficulty_pass(&mut doc);
         for (name, value) in [
             ("man_wander", 2.4),
             ("man_investigate", 3.6),
@@ -501,8 +516,46 @@ mod tests {
             doc["man"][name] = json!(value);
         }
         doc["layout"]["extra_closets"] = json!(0);
+        doc["rules"]["unlock"] = json!(2.0);
+        doc["noise"]["sprint_noise"] = json!(8.0);
         assert!(upgrade(&mut doc));
         assert_eq!(read(&doc).unwrap().tuning, Tuning::original());
+    }
+
+    /// Takes out the settings the difficulty pass (#11667) added, as a
+    /// document saved before it has them.
+    fn forget_the_difficulty_pass(doc: &mut Value) {
+        for (section, name) in [
+            ("layout", "house_size"),
+            ("layout", "key_spread"),
+            ("man", "patrol_keys"),
+            ("man", "corners"),
+            ("rules", "unlock_guard"),
+            ("rules", "puzzle_key"),
+            ("minions", "minion_growth"),
+        ] {
+            if let Some(values) = doc.get_mut(section).and_then(Value::as_object_mut) {
+                values.remove(name);
+            }
+        }
+    }
+
+    #[test]
+    fn version_4_saved_before_the_difficulty_pass_still_plays_as_version_4() {
+        // Version 4 as Game Lab saved it: the Backrooms, before #11667.
+        let mut doc = original();
+        forget_the_difficulty_pass(&mut doc);
+        for (name, value) in icecream_rules::tuning::V4 {
+            let f = icecream_rules::tuning::field(name).unwrap();
+            if doc[f.section].get(*name).is_some() {
+                doc[f.section][*name] = number(*value, f.whole);
+            }
+        }
+        assert!(upgrade(&mut doc));
+        assert_eq!(
+            read(&doc).unwrap().tuning,
+            icecream_rules::tuning::Difficulty::Easy.tuning()
+        );
     }
 
     #[test]
@@ -516,12 +569,14 @@ mod tests {
     #[test]
     fn a_version_plays_from_its_fragment() {
         let mut doc = original();
-        doc["man"]["man_chase"] = json!(5.6);
+        doc["man"]["man_chase"] = json!(4.48);
         doc["layout"]["extra_closets"] = json!(0);
         doc["copy"]["title"] = json!("The Slow Man & Co");
         let game = read(&doc).unwrap();
         let fragment = fragment(&game);
-        assert!(fragment.contains("t.man_chase=5.6"), "{fragment}");
+        assert!(fragment.contains("t.man_chase=4.48"), "{fragment}");
+        assert!(!play_fragment(&game).contains("seed="));
+        assert!(play_fragment(&game).starts_with("t."));
         assert!(fragment.contains("t.extra_closets=0"), "{fragment}");
         assert!(
             fragment.contains("c.title=The%20Slow%20Man%20%26%20Co"),

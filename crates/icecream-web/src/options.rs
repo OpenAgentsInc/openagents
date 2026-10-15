@@ -1,6 +1,8 @@
 //! What the page's address fragment asks for, `#seed=7&skip`: a fixed
 //! house, and switches for tests and captures.
 
+use icecream_rules::tuning::Difficulty;
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Options {
     /// Play this house instead of a new one each run.
@@ -72,10 +74,14 @@ fn decode(text: &str) -> String {
 }
 
 impl Options {
-    /// The run's numbers: the defaults with the fragment's changes (a
-    /// value out of bounds is left at its default).
+    /// The run's numbers: a Game Lab version's (the defaults with the
+    /// fragment's changes; a value out of bounds is left at its default),
+    /// else the chosen difficulty's.
     #[must_use]
-    pub fn tuning(&self) -> icecream_rules::Tuning {
+    pub fn tuning(&self, difficulty: Difficulty) -> icecream_rules::Tuning {
+        if self.tune.is_empty() {
+            return difficulty.tuning();
+        }
         let mut tuning = icecream_rules::Tuning::default();
         for (name, value) in &self.tune {
             if let Ok(value) = value.parse::<f64>() {
@@ -171,7 +177,9 @@ mod tests {
         let o = Options::parse(
             "#seed=7&t.man_chase=4.48&t.extra_closets=2&t.unlock=1e9&c.title=The%20Slow%20Man&c.tagline=&t.minion_count=3&t.earned_weapons=1&t.yellow=1&t.first_person=1",
         );
-        let t = o.tuning();
+        // A version plays as itself, whatever the menu's difficulty.
+        let t = o.tuning(Difficulty::Hard);
+        assert_eq!(t.house_size, icecream_rules::tuning::HOUSE_SIZE);
         assert!((t.man_chase - 4.48).abs() < 1e-6);
         assert_eq!(t.extra_closets, 2);
         assert_eq!(
@@ -187,5 +195,13 @@ mod tests {
         assert_eq!(o.word("title"), Some("The Slow Man"));
         assert_eq!(o.word("tagline"), None);
         assert_eq!(decode("a%2Cb+c%zz"), "a,b c%zz");
+    }
+
+    #[test]
+    fn without_a_version_the_difficulty_picks_the_numbers() {
+        let o = Options::parse("#seed=7");
+        for d in Difficulty::ALL {
+            assert_eq!(o.tuning(d), d.tuning());
+        }
     }
 }

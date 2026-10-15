@@ -6,7 +6,7 @@
 
 use crate::DT;
 use crate::geom::{V2, first_hit, slide, v};
-use crate::layout::{House, cell_of, centre};
+use crate::layout::{House, centre};
 use crate::rng::Rng;
 use crate::tuning::*;
 
@@ -45,6 +45,8 @@ pub struct Senses<'a> {
     pub closet: Option<V2>,
     /// Noises this step: where, and how far they carry.
     pub noises: &'a [(V2, f32)],
+    /// Keys the player has.
+    pub keys: u32,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -198,6 +200,15 @@ impl Man {
                 break;
             }
         }
+        // Chasing, he cuts the corner to any later waypoint in a clear
+        // line, instead of going by each doorway's middle.
+        if self.tuning.corners == 1 && self.state == ManState::Chase {
+            while self.path.len() > 1
+                && first_hit(&house.blocks, self.pos, self.path[1], MAN_RADIUS, 0.0).is_none()
+            {
+                self.path.remove(0);
+            }
+        }
         let Some(&next) = self.path.first() else {
             return true;
         };
@@ -222,7 +233,7 @@ impl Man {
         if self.stuck > 20 {
             self.stuck = 0;
             if let Some(goal) = self.goal {
-                let c = centre(cell_of(self.pos));
+                let c = centre(house.cell_of(self.pos));
                 let mut path = vec![c];
                 path.extend(house.route(c, goal, MAN_RADIUS));
                 self.path = path;
@@ -341,7 +352,7 @@ impl Man {
             if self.sniff <= 0.0 {
                 self.sniff = self.tuning.sniff_every;
                 self.state = ManState::Investigate;
-                self.head_to(house, centre(cell_of(senses.player)));
+                self.head_to(house, centre(house.cell_of(senses.player)));
             }
         }
 
@@ -413,7 +424,7 @@ impl Man {
                         self.goal = None;
                     } else {
                         // Looks around the room: a nearby spot in its lanes.
-                        let c = centre(cell_of(self.pos));
+                        let c = centre(house.cell_of(self.pos));
                         let spots = [
                             v(0.0, 0.0),
                             v(3.0, 0.0),
@@ -430,14 +441,23 @@ impl Man {
             ManState::Wander => {
                 let speed = self.speed(self.tuning.man_wander);
                 if self.follow(house, speed) {
-                    let here = cell_of(self.pos);
-                    let next = house.neighbours(here);
-                    let pick = if next.is_empty() {
-                        here
+                    let here = house.cell_of(self.pos);
+                    let door = house.cell_of(house.front.stand);
+                    let patrol = self.tuning.patrol_keys > 0
+                        && senses.keys >= self.tuning.patrol_keys
+                        && here != door;
+                    if patrol && self.rng.below(2) == 0 {
+                        // Back to guard the front door, now and then.
+                        self.head_to(house, house.front.stand);
                     } else {
-                        next[self.rng.below(next.len())]
-                    };
-                    self.head_to(house, centre(pick));
+                        let next = house.neighbours(here);
+                        let pick = if next.is_empty() {
+                            here
+                        } else {
+                            next[self.rng.below(next.len())]
+                        };
+                        self.head_to(house, centre(pick));
+                    }
                 }
             }
             ManState::Frozen | ManState::Confused => {}
@@ -449,6 +469,7 @@ impl Man {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::layout::cell_of;
 
     fn senses(player: V2) -> Senses<'static> {
         Senses {
@@ -456,6 +477,7 @@ mod tests {
             hidden: false,
             closet: None,
             noises: &[],
+            keys: 0,
         }
     }
 
@@ -464,6 +486,33 @@ mod tests {
         let house = House::new(3);
         let man = Man::new(house.man_start, 3);
         (house, man)
+    }
+
+    #[test]
+    fn with_two_keys_taken_he_keeps_going_back_to_the_front_door() {
+        let tuning = Tuning::default();
+        let at_door = |keys: u32| {
+            let mut frames = 0;
+            for seed in 0..6 {
+                let house = House::of(seed, &tuning);
+                let mut man = Man::tuned(house.man_start, seed, tuning);
+                let far = v(-100.0, -100.0);
+                for _ in 0..30 * 120 {
+                    man.sniff = 1000.0;
+                    man.step(
+                        &house,
+                        Senses {
+                            keys,
+                            ..senses(far)
+                        },
+                    );
+                    frames += u32::from(man.pos.distance(house.front.stand) < 3.0);
+                }
+            }
+            frames
+        };
+        let (guarding, not) = (at_door(2), at_door(1));
+        assert!(guarding > not * 3 + 30, "{guarding} {not}");
     }
 
     #[test]
@@ -640,6 +689,7 @@ mod tests {
             hidden: true,
             closet: Some(closet),
             noises: &[],
+            keys: 0,
         };
         man.state = ManState::Chase;
         man.saw_hide = true;

@@ -21,9 +21,12 @@ pub const WALL_HEIGHT: f32 = 3.2;
 pub const DOOR: f32 = 2.2;
 /// Half the width of each room's clear plus.
 pub const LANE: f32 = 1.5;
-/// The grid: 4 by 4 rooms *tunable*.
+/// The original grid: 4 by 4 rooms. A run's house is
+/// `layout.house_size` rooms along each side *tunable*.
 pub const COLS: usize = 4;
 pub const ROWS: usize = 4;
+/// The biggest house, in rooms along a side.
+pub const MAX_SIZE: usize = 10;
 /// How many keys a run hides.
 pub const KEYS: usize = 3;
 /// Buttons in the spear puzzle (`House::buttons`).
@@ -347,10 +350,42 @@ pub struct FrontDoor {
     pub stand: V2,
 }
 
+/// What shape of house to build: its size, its doorways, and where the
+/// keys go.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Shape {
+    /// Rooms along each side.
+    pub size: usize,
+    /// Doorways beyond the ones that join every room.
+    pub loops: usize,
+    pub backrooms: bool,
+    /// Keys at the far ends (else in any rooms).
+    pub spread: bool,
+    /// The last key is locked in the cone cabinet.
+    pub puzzle_key: bool,
+}
+
+impl Shape {
+    /// The house a run with `tuning` plays.
+    #[must_use]
+    pub fn of(tuning: &crate::tuning::Tuning) -> Self {
+        Self {
+            size: (tuning.house_size as usize).clamp(3, MAX_SIZE),
+            loops: tuning.loops as usize,
+            backrooms: tuning.backrooms == 1,
+            spread: tuning.key_spread == 1,
+            puzzle_key: tuning.puzzle_key == 1,
+        }
+    }
+}
+
 /// A whole house from a seed.
 #[derive(Clone, Debug, PartialEq)]
 pub struct House {
     pub seed: u64,
+    /// Rooms across (x) and down (z).
+    pub cols: usize,
+    pub rows: usize,
     /// Rooms in row-major order.
     pub rooms: Vec<Room>,
     /// Walls and furniture in world space.
@@ -372,6 +407,9 @@ pub struct House {
     pub cabinet: V2,
     /// Built as the Backrooms.
     pub backrooms: bool,
+    /// The key locked in the cone cabinet until the puzzle is solved
+    /// (`keys[i]` lies at [`House::cabinet`]).
+    pub cabinet_key: Option<usize>,
 }
 
 /// The centre of a cell in world space.
@@ -383,24 +421,20 @@ pub fn centre(cell: Cell) -> V2 {
     )
 }
 
-/// The cell a point is in, clamped to the grid.
+/// The cell a point is in, clamped to the biggest grid
+/// ([`House::cell_of`] clamps to a house's own).
 #[must_use]
 pub fn cell_of(p: V2) -> Cell {
-    let col = (p.x / CELL).floor().clamp(0.0, (COLS - 1) as f32) as usize;
-    let row = (p.z / CELL).floor().clamp(0.0, (ROWS - 1) as f32) as usize;
+    let col = (p.x / CELL).floor().clamp(0.0, (MAX_SIZE - 1) as f32) as usize;
+    let row = (p.z / CELL).floor().clamp(0.0, (MAX_SIZE - 1) as f32) as usize;
     (col, row)
 }
 
-#[must_use]
-pub fn index(cell: Cell) -> usize {
-    cell.1 * COLS + cell.0
-}
-
-fn neighbour(cell: Cell, side: Side) -> Option<Cell> {
+fn neighbour_in(cell: Cell, side: Side, cols: usize, rows: usize) -> Option<Cell> {
     let (dx, dz) = side.step();
     let col = cell.0.checked_add_signed(dx)?;
     let row = cell.1.checked_add_signed(dz)?;
-    (col < COLS && row < ROWS).then_some((col, row))
+    (col < cols && row < rows).then_some((col, row))
 }
 
 fn side_index(side: Side) -> usize {
@@ -422,14 +456,38 @@ fn opposite(side: Side) -> Side {
 }
 
 impl House {
-    /// The house a run with `tuning` plays: its loops, the Backrooms or
-    /// not, and its extra closets.
+    /// The house a run with `tuning` plays: its size, loops, the
+    /// Backrooms or not, its keys, and its extra closets.
     #[must_use]
     pub fn of(seed: u64, tuning: &crate::tuning::Tuning) -> Self {
         Self::with_closets(
-            Self::build(seed, tuning.loops as usize, tuning.backrooms == 1),
+            Self::generate(seed, Shape::of(tuning)),
             tuning.extra_closets as usize,
         )
+    }
+
+    /// The cell a point is in, clamped to this house.
+    #[must_use]
+    pub fn cell_of(&self, p: V2) -> Cell {
+        let col = (p.x / CELL).floor().clamp(0.0, (self.cols - 1) as f32) as usize;
+        let row = (p.z / CELL).floor().clamp(0.0, (self.rows - 1) as f32) as usize;
+        (col, row)
+    }
+
+    /// A cell's room, in [`House::rooms`].
+    #[must_use]
+    pub fn index(&self, cell: Cell) -> usize {
+        cell.1 * self.cols + cell.0
+    }
+
+    /// The room a point is in.
+    #[must_use]
+    pub fn room_of(&self, p: V2) -> usize {
+        self.index(self.cell_of(p))
+    }
+
+    fn neighbour(&self, cell: Cell, side: Side) -> Option<Cell> {
+        neighbour_in(cell, side, self.cols, self.rows)
     }
 
     /// The house for `seed` with `extra` more closets to hide in (up to
@@ -494,20 +552,43 @@ impl House {
         Self::build(seed, crate::tuning::AIRBNB_LOOPS as usize, false)
     }
 
-    /// Builds the house for `seed` with `loops` extra doorways, as the
-    /// Backrooms or not.
+    /// Builds the 4 by 4 house for `seed` with `loops` extra doorways, as
+    /// the Backrooms or not.
     #[must_use]
     pub fn build(seed: u64, loops: usize, backrooms: bool) -> Self {
+        Self::generate(
+            seed,
+            Shape {
+                size: COLS,
+                loops,
+                backrooms,
+                spread: false,
+                puzzle_key: false,
+            },
+        )
+    }
+
+    /// Builds the house for `seed` in `shape`.
+    #[must_use]
+    pub fn generate(seed: u64, shape: Shape) -> Self {
+        let Shape {
+            size,
+            loops,
+            backrooms,
+            ..
+        } = shape;
+        let (cols, rows) = (size, size);
         let mut rng = Rng::new(seed);
-        let count = COLS * ROWS;
-        let corners = [(0, 0), (COLS - 1, 0), (0, ROWS - 1), (COLS - 1, ROWS - 1)];
+        let count = cols * rows;
+        let corners = [(0, 0), (cols - 1, 0), (0, rows - 1), (cols - 1, rows - 1)];
         let spawn_cell = corners[rng.below(4)];
-        let spawn_room = index(spawn_cell);
+        let spawn_room = spawn_cell.1 * cols + spawn_cell.0;
 
         let mut kinds: Vec<Module> = if backrooms {
             // The Backrooms: a few of the Airbnb's rooms (closets and
             // fridges to use) among empty yellow ones.
-            let mut kinds = vec![
+            // A bigger house has more of them, about as many per room.
+            let own = [
                 Module::Bedroom,
                 Module::Kitchen,
                 Module::Bathroom,
@@ -515,6 +596,10 @@ impl House {
                 Module::LivingRoom,
                 Module::Laundry,
             ];
+            let mut kinds = Vec::new();
+            for _ in 0..(count / 16).max(1) {
+                kinds.extend(own);
+            }
             kinds.resize(count - 1, Module::Backroom);
             kinds
         } else {
@@ -531,7 +616,7 @@ impl House {
         let mut kinds = kinds.into_iter();
         let mut rooms: Vec<Room> = (0..count)
             .map(|i| {
-                let cell = (i % COLS, i / COLS);
+                let cell = (i % cols, i / cols);
                 let module = if i == spawn_room {
                     Module::Bedroom
                 } else {
@@ -548,6 +633,9 @@ impl House {
         for room in &mut rooms {
             room.flavor = Flavor::ALL[rng.below(4)];
         }
+
+        let index = |cell: Cell| cell.1 * cols + cell.0;
+        let neighbour = |cell: Cell, side: Side| neighbour_in(cell, side, cols, rows);
 
         // Doorways: a random tree from the bedroom, then a few loops.
         let mut seen = vec![false; count];
@@ -586,6 +674,8 @@ impl House {
 
         let mut house = Self {
             seed,
+            cols,
+            rows,
             rooms,
             blocks: Vec::new(),
             closets: Vec::new(),
@@ -604,6 +694,7 @@ impl House {
             buttons: Vec::new(),
             cabinet: V2::ZERO,
             backrooms,
+            cabinet_key: None,
         };
         let distance = house.distances(spawn_cell);
 
@@ -612,7 +703,7 @@ impl House {
         for (i, room) in house.rooms.iter().enumerate() {
             let outer = Side::ALL
                 .iter()
-                .any(|side| neighbour(room.cell, *side).is_none());
+                .any(|side| house.neighbour(room.cell, *side).is_none());
             if outer && distance[i] > distance[front_room] {
                 front_room = i;
             }
@@ -620,7 +711,11 @@ impl House {
         let outer: Vec<Side> = Side::ALL
             .iter()
             .copied()
-            .filter(|side| neighbour(house.rooms[front_room].cell, *side).is_none())
+            .filter(|side| {
+                house
+                    .neighbour(house.rooms[front_room].cell, *side)
+                    .is_none()
+            })
             .collect();
         let side = outer[rng.below(outer.len())];
         let mid = centre(house.rooms[front_room].cell) + side.outward() * (CELL / 2.0);
@@ -631,7 +726,9 @@ impl House {
             stand: mid - side.outward() * 1.1,
         };
 
-        // Keys: three other rooms, as far apart from the bedroom as can be.
+        // Keys: three other rooms two or more doorways from the bedroom
+        // (one fewer on the floor when the last is in the cone cabinet).
+        let floor_keys = if shape.puzzle_key { KEYS - 1 } else { KEYS };
         let mut candidates: Vec<usize> = (0..count)
             .filter(|i| *i != spawn_room && *i != front_room && distance[*i] >= 2)
             .collect();
@@ -641,7 +738,30 @@ impl House {
                 .collect();
         }
         rng.shuffle(&mut candidates);
-        for &room in candidates.iter().take(KEYS) {
+        let key_rooms: Vec<usize> = if shape.spread {
+            // The far ends: each key in the room farthest (in doorways)
+            // from the bedroom, the front door and the keys before it.
+            let mut anchors = vec![
+                distance.clone(),
+                house.distances(house.rooms[front_room].cell),
+            ];
+            let mut picked = Vec::new();
+            for _ in 0..floor_keys {
+                let best = candidates
+                    .iter()
+                    .copied()
+                    .filter(|r| !picked.contains(r))
+                    .max_by_key(|r| anchors.iter().map(|d| d[*r]).min().unwrap_or(0));
+                if let Some(room) = best {
+                    picked.push(room);
+                    anchors.push(house.distances(house.rooms[room].cell));
+                }
+            }
+            picked
+        } else {
+            candidates.iter().copied().take(floor_keys).collect()
+        };
+        for room in key_rooms {
             let slots = house.rooms[room].module.def().key_slots;
             let slot = slots[rng.below(slots.len())];
             house.keys.push(centre(house.rooms[room].cell) + slot);
@@ -657,7 +777,11 @@ impl House {
         house.man_start = centre(house.rooms[man_room].cell);
 
         house.build_blocks(&mut rng);
-        house.place_puzzle(front_room);
+        house.place_puzzle(front_room, shape.spread);
+        if shape.puzzle_key {
+            house.cabinet_key = Some(house.keys.len());
+            house.keys.push(house.cabinet);
+        }
         house
     }
 
@@ -665,12 +789,50 @@ impl House {
     /// own room away from the bedroom and the front door, on a key spot
     /// the room's key doesn't use. Its own stream, so the rest of the
     /// house is the same with or without it.
-    fn place_puzzle(&mut self, front_room: usize) {
+    ///
+    /// With `spread`, the puzzle's rooms keep away from the key rooms too,
+    /// and the cabinet goes to the room farthest from the bedroom and
+    /// the front door of those picked.
+    fn place_puzzle(&mut self, front_room: usize, spread: bool) {
         let mut rng = Rng::new(self.seed ^ 0x5b0a_7c0d_e5ea_3001);
+        let key_rooms: Vec<usize> = self.keys.iter().map(|k| self.room_of(*k)).collect();
         let mut rooms: Vec<usize> = (0..self.rooms.len())
             .filter(|i| *i != self.spawn_room && *i != front_room)
+            .filter(|i| !spread || !key_rooms.contains(i))
             .collect();
         rng.shuffle(&mut rooms);
+        if spread {
+            let from_bed = self.distances(self.rooms[self.spawn_room].cell);
+            let from_door = self.distances(self.rooms[front_room].cell);
+            // Each in the room farthest from the bedroom, the front door,
+            // the keys and the puzzle's rooms before it.
+            let mut anchors = vec![from_bed.clone(), from_door.clone()];
+            anchors.extend(
+                key_rooms
+                    .iter()
+                    .map(|r| self.distances(self.rooms[*r].cell)),
+            );
+            let mut picked = Vec::new();
+            for _ in 0..=BUTTONS {
+                let best = rooms
+                    .iter()
+                    .copied()
+                    .filter(|r| !picked.contains(r))
+                    .max_by_key(|r| anchors.iter().map(|d| d[*r]).min().unwrap_or(0));
+                if let Some(room) = best {
+                    picked.push(room);
+                    anchors.push(self.distances(self.rooms[room].cell));
+                }
+            }
+            rooms = picked;
+            // The cabinet last: the farthest of them.
+            if let Some(far) =
+                (0..rooms.len()).max_by_key(|i| from_bed[rooms[*i]].min(from_door[rooms[*i]]))
+            {
+                let room = rooms.remove(far);
+                rooms.push(room);
+            }
+        }
         let mut spots = Vec::new();
         for room in rooms.into_iter().take(BUTTONS + 1) {
             let c = centre(self.rooms[room].cell);
@@ -705,10 +867,10 @@ impl House {
             let x0 = col as f32 * CELL;
             let z0 = row as f32 * CELL;
             let mut sides = vec![Side::North, Side::West];
-            if col == COLS - 1 {
+            if col == self.cols - 1 {
                 sides.push(Side::East);
             }
-            if row == ROWS - 1 {
+            if row == self.rows - 1 {
                 sides.push(Side::South);
             }
             for side in sides {
@@ -777,16 +939,16 @@ impl House {
     pub fn distances(&self, from: Cell) -> Vec<usize> {
         let mut distance = vec![usize::MAX; self.rooms.len()];
         let mut queue = VecDeque::from([from]);
-        distance[index(from)] = 0;
+        distance[self.index(from)] = 0;
         while let Some(cell) = queue.pop_front() {
             for side in Side::ALL {
-                if !self.rooms[index(cell)].doors[side_index(side)] {
+                if !self.rooms[self.index(cell)].doors[side_index(side)] {
                     continue;
                 }
-                if let Some(next) = neighbour(cell, side)
-                    && distance[index(next)] == usize::MAX
+                if let Some(next) = self.neighbour(cell, side)
+                    && distance[self.index(next)] == usize::MAX
                 {
-                    distance[index(next)] = distance[index(cell)] + 1;
+                    distance[self.index(next)] = distance[self.index(cell)] + 1;
                     queue.push_back(next);
                 }
             }
@@ -801,15 +963,15 @@ impl House {
         let mut path = vec![from];
         let mut at = from;
         while at != to {
-            let here = distance[index(at)];
+            let here = distance[self.index(at)];
             if here == usize::MAX {
                 break;
             }
             let next = Side::ALL
                 .iter()
-                .filter(|side| self.rooms[index(at)].doors[side_index(**side)])
-                .filter_map(|side| neighbour(at, *side))
-                .find(|n| distance[index(*n)] + 1 == here);
+                .filter(|side| self.rooms[self.index(at)].doors[side_index(**side)])
+                .filter_map(|side| self.neighbour(at, *side))
+                .find(|n| distance[self.index(*n)] + 1 == here);
             match next {
                 Some(next) => {
                     path.push(next);
@@ -832,8 +994,8 @@ impl House {
     pub fn neighbours(&self, cell: Cell) -> Vec<Cell> {
         Side::ALL
             .iter()
-            .filter(|side| self.rooms[index(cell)].doors[side_index(**side)])
-            .filter_map(|side| neighbour(cell, *side))
+            .filter(|side| self.rooms[self.index(cell)].doors[side_index(**side)])
+            .filter_map(|side| self.neighbour(cell, *side))
             .collect()
     }
 
@@ -841,7 +1003,7 @@ impl House {
     /// doorways, by way of a room's centre when furniture is in the way.
     #[must_use]
     pub fn route(&self, from: V2, to: V2, radius: f32) -> Vec<V2> {
-        let cells = self.cell_path(cell_of(from), cell_of(to));
+        let cells = self.cell_path(self.cell_of(from), self.cell_of(to));
         let mut points = Vec::new();
         let mut last = from;
         let push = |points: &mut Vec<V2>, last: &mut V2, next: V2, room: Cell| {
@@ -863,7 +1025,7 @@ impl House {
                 pair[0],
             );
         }
-        push(&mut points, &mut last, to, cell_of(to));
+        push(&mut points, &mut last, to, self.cell_of(to));
         points
     }
 
@@ -952,7 +1114,7 @@ mod tests {
             assert!(house.open(house.spawn, BODY));
             assert!(house.open(house.front.stand, BODY));
             assert!(house.open(house.man_start, BODY));
-            let steps = house.distances(from)[index(cell_of(house.man_start))];
+            let steps = house.distances(from)[house.room_of(house.man_start)];
             assert!(steps >= 3, "seed {seed}: he starts {steps} rooms away");
         }
     }
@@ -962,7 +1124,7 @@ mod tests {
         for seed in 0..50 {
             let house = House::new(seed);
             let cell = house.rooms[house.front.room].cell;
-            assert!(neighbour(cell, house.front.side).is_none());
+            assert!(house.neighbour(cell, house.front.side).is_none());
             let d = house.distances(house.rooms[house.spawn_room].cell);
             assert!(d[house.front.room] >= 2, "seed {seed}");
             // The door sits in a solid wall.
@@ -1107,6 +1269,88 @@ mod tests {
         assert_eq!(
             House::build(5, crate::tuning::AIRBNB_LOOPS as usize, false),
             House::new(5)
+        );
+    }
+
+    #[test]
+    fn a_bigger_house_spreads_its_keys_to_the_far_ends() {
+        let tuning = crate::tuning::Tuning::default();
+        for seed in 0..30 {
+            let house = House::of(seed, &tuning);
+            assert_eq!((house.cols, house.rows), (7, 7));
+            assert_eq!(house.rooms.len(), 49);
+            let from = house.rooms[house.spawn_room].cell;
+            let steps = house.distances(from);
+            assert!(steps.iter().all(|d| *d != usize::MAX), "seed {seed}");
+            assert_eq!(house.keys.len(), KEYS);
+            // The last key is in the cone cabinet.
+            assert_eq!(house.cabinet_key, Some(KEYS - 1));
+            assert_eq!(house.keys[KEYS - 1], house.cabinet);
+            let mut rooms: Vec<usize> = house.keys.iter().map(|k| house.room_of(*k)).collect();
+            rooms.extend(house.buttons.iter().map(|b| house.room_of(*b)));
+            rooms.sort_unstable();
+            rooms.dedup();
+            assert_eq!(
+                rooms.len(),
+                KEYS + BUTTONS,
+                "seed {seed}: every stop in its own room"
+            );
+            for key in &house.keys {
+                assert!(house.open(*key, BODY), "seed {seed}: key {key:?}");
+                assert!(
+                    steps[house.room_of(*key)] >= 3,
+                    "seed {seed}: a key near the bedroom"
+                );
+            }
+            assert!(house.open(house.front.stand, BODY));
+            assert!(house.open(house.man_start, BODY));
+            for target in house
+                .keys
+                .iter()
+                .chain(&house.buttons)
+                .chain([&house.front.stand])
+            {
+                let route = house.route(house.spawn, *target, BODY);
+                let mut last = house.spawn;
+                for point in &route {
+                    assert!(
+                        first_hit(&house.blocks, last, *point, BODY - 0.05, 0.0).is_none(),
+                        "seed {seed}: {last:?} to {point:?}"
+                    );
+                    last = *point;
+                }
+                assert_eq!(route.last(), Some(target));
+            }
+            // A house of any size points to its own rooms.
+            let far = v(1000.0, 1000.0);
+            assert_eq!(house.room_of(far), house.rooms.len() - 1);
+        }
+        // Spread keys are farther than shuffled ones, over many houses.
+        let shape = |spread| Shape {
+            size: 7,
+            loops: 7,
+            backrooms: true,
+            spread,
+            puzzle_key: false,
+        };
+        let total = |spread| {
+            (0..30)
+                .map(|seed| {
+                    let house = House::generate(seed, shape(spread));
+                    let steps = house.distances(house.rooms[house.spawn_room].cell);
+                    house
+                        .keys
+                        .iter()
+                        .map(|k| steps[house.room_of(*k)])
+                        .sum::<usize>()
+                })
+                .sum::<usize>()
+        };
+        assert!(
+            total(true) > total(false) + 30,
+            "{} {}",
+            total(true),
+            total(false)
         );
     }
 

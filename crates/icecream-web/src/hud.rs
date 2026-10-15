@@ -44,6 +44,8 @@ pub enum Action {
     ToggleTimer,
     ToggleJumpscares,
     ToggleSprintMode,
+    /// Easy, Normal, Hard, round and round.
+    ToggleDifficulty,
     /// First or third person (V on a keyboard).
     ToggleView,
     /// After a win: play on in free roam with the sprinkle staff.

@@ -8,7 +8,7 @@ use std::rc::Rc;
 use glam::{Mat4, Quat, Vec3, Vec4};
 use icecream_rules::bot::Bot;
 use icecream_rules::game::{DropKind, ShotKind};
-use icecream_rules::layout::{cell_of, centre};
+use icecream_rules::layout::centre;
 use icecream_rules::{
     DT, Event, Game, HZ, Input, ManState, Options as RuleOptions, Pickup, Prompt, Status, Tool, V2,
     v,
@@ -29,6 +29,7 @@ use crate::scene;
 use crate::settings::{self, Settings};
 use crate::sound::{Effect, Sound};
 use crate::tutorial::{self, Tour};
+use icecream_rules::tuning::Difficulty;
 
 const VERTEX: &str = r"#version 300 es
 layout(location = 0) in vec3 a_position;
@@ -371,6 +372,8 @@ struct App {
     game: Game,
     bot: Option<Bot>,
     seed: u64,
+    /// This run's difficulty (the menu's choice when it began).
+    difficulty: Difficulty,
     phase: Phase,
     tour: Option<Tour>,
     touch: bool,
@@ -445,10 +448,10 @@ fn hash(a: u32, b: u32) -> u32 {
     x ^ (x >> 12)
 }
 
+/// A fresh house: a number the menu shows and `#seed=` plays again (up
+/// to Game Lab's `layout.seed` bound).
 fn new_seed() -> u64 {
-    let a = (js_sys::Math::random() * 4_294_967_296.0) as u64;
-    let b = (js_sys::Math::random() * 4_294_967_296.0) as u64;
-    a << 32 | b
+    (js_sys::Math::random() * 4_294_967_296.0) as u64
 }
 
 fn tutorial_seen(window: &Window) -> Option<String> {
@@ -486,7 +489,17 @@ impl App {
 
     fn new_run(&mut self) {
         self.seed = self.options.seed.unwrap_or_else(new_seed);
-        self.game = Game::tuned(self.seed, self.rule_options(), self.options.tuning());
+        if self.difficulty != self.settings.difficulty {
+            self.difficulty = self.settings.difficulty;
+            self.best = settings::best(
+                stored(&self.window, &settings::best_key(self.difficulty)).as_deref(),
+            );
+        }
+        self.game = Game::tuned(
+            self.seed,
+            self.rule_options(),
+            self.options.tuning(self.difficulty),
+        );
         if self.options.no_farts {
             self.game.player.farts = 0;
         }
@@ -687,6 +700,10 @@ impl App {
                 self.settings.jumpscares = !self.settings.jumpscares;
                 self.save_settings();
             }
+            Action::ToggleDifficulty => {
+                self.settings.difficulty = self.settings.difficulty.next();
+                self.save_settings();
+            }
             Action::ToggleSprintMode => {
                 self.settings.sprint_tap = !self.settings.sprint_tap;
                 self.sprint_toggle = false;
@@ -792,7 +809,11 @@ impl App {
             if settings::is_new_best(self.best, seconds) {
                 self.best = Some(seconds);
                 self.new_best = true;
-                store(&self.window, settings::BEST_KEY, &format!("{seconds:.2}"));
+                store(
+                    &self.window,
+                    &settings::best_key(self.difficulty),
+                    &format!("{seconds:.2}"),
+                );
             }
         }
     }
@@ -1034,6 +1055,10 @@ impl App {
             Event::DoorLocked => {
                 self.sound.play(Effect::Locked);
                 self.hud.toast(copy::LOCKED, now);
+            }
+            Event::DoorGuarded => {
+                self.sound.play(Effect::Locked);
+                self.hud.toast(copy::DOOR_GUARDED, now);
             }
             Event::Jumped => self.sound.play(Effect::Jump),
             Event::Escaped | Event::Melted => {
@@ -1315,7 +1340,7 @@ impl App {
             let glow = light.map(|c| (c * 1.05).min(1.0));
             gpu.draw_flat(&m.lights[i], &Mat4::IDENTITY, glow);
         }
-        let light_at = |p: V2| self.room_light(icecream_rules::layout::index(cell_of(p)));
+        let light_at = |p: V2| self.room_light(game.house.room_of(p));
 
         // Keys, bobbing and turning, each with a sparkle.
         for (i, key) in game.house.keys.iter().enumerate() {
@@ -1365,7 +1390,7 @@ impl App {
 
         // The spear puzzle: its buttons, lit ones glowing, and the cone
         // cabinet with the spear inside until it's taken.
-        if game.weapons_on() {
+        if game.puzzle_on() {
             for (i, at) in game.house.buttons.iter().enumerate() {
                 let model = Mat4::from_translation(Vec3::new(at.x, 0.0, at.z));
                 gpu.draw(
@@ -1389,7 +1414,7 @@ impl App {
             let at = game.house.cabinet;
             let model = Mat4::from_translation(Vec3::new(at.x, 0.0, at.z));
             gpu.draw(&m.cabinet, &model, WHITE, light_at(at), 0.6, true);
-            if !game.solved {
+            if !game.solved && game.weapons_on() {
                 let spear = Mat4::from_translation(Vec3::new(at.x, 0.35, at.z))
                     * Mat4::from_rotation_x(-FRAC_PI_2);
                 let index = Tool::ALL
@@ -1588,7 +1613,7 @@ impl App {
         let m = &self.meshes;
         let man = &game.man;
         // He is the one detailed model: lit so he always reads.
-        let room = self.room_light(icecream_rules::layout::index(cell_of(man.pos)));
+        let room = self.room_light(game.house.room_of(man.pos));
         let light = room.map(|c| c.max(0.97));
         let frozen = man.state == ManState::Frozen;
         let bob = if man.moving {
@@ -1677,7 +1702,7 @@ impl App {
         let gpu = &self.gpu;
         let m = &self.meshes;
         for (i, minion) in self.game.minions.iter().enumerate() {
-            let room = self.room_light(icecream_rules::layout::index(cell_of(minion.pos)));
+            let room = self.room_light(self.game.house.room_of(minion.pos));
             let light = room.map(|c| c.max(0.95));
             let stride = self.minion_stride + i as f32 * 1.7;
             let bob = if minion.moving {
@@ -1746,7 +1771,7 @@ impl App {
             .iter()
             .position(|t| *t == game.player.tool)
             .unwrap_or(0);
-        let room = self.room_light(icecream_rules::layout::index(cell_of(game.player.pos)));
+        let room = self.room_light(game.house.room_of(game.player.pos));
         self.gpu.draw(
             &self.meshes.tools[index],
             &model,
@@ -1765,7 +1790,7 @@ impl App {
         }
         let gpu = &self.gpu;
         let m = &self.meshes;
-        let room = self.room_light(icecream_rules::layout::index(cell_of(player.pos)));
+        let room = self.room_light(game.house.room_of(player.pos));
         let light = room.map(|c| c.max(0.97));
         let mut sink = 0.0;
         let mut shrink = 1.0;
@@ -1903,6 +1928,15 @@ impl App {
                         false,
                     ),
                 ];
+                buttons.push((
+                    copy::difficulty(s.difficulty).to_owned(),
+                    Action::ToggleDifficulty,
+                    false,
+                ));
+                let mut lines = vec![copy::house_line(self.seed)];
+                if s.difficulty != self.difficulty {
+                    lines.push(copy::NEXT_HOUSE.to_owned());
+                }
                 if self.touch {
                     buttons.push((
                         if s.sprint_tap {
@@ -1917,6 +1951,7 @@ impl App {
                 }
                 Some(Card {
                     title: copy::PAUSED.to_owned(),
+                    lines,
                     buttons,
                     links,
                     version: self.version.as_deref().map(copy::version_line),
@@ -2105,6 +2140,7 @@ impl App {
                     .map_or("none".to_owned(), |t| format!("{t:.2}")),
             ),
             ("data-settings", self.settings.stored()),
+            ("data-difficulty", self.difficulty.id().to_owned()),
             ("data-hidden", game.player.hidden.is_some().to_string()),
             ("data-clouds", game.clouds.len().to_string()),
             ("data-spotted", self.spotted.to_string()),
@@ -2161,12 +2197,10 @@ impl App {
             ("data-seconds", format!("{:.1}", game.seconds())),
             (
                 "data-room",
-                game.house.rooms[icecream_rules::layout::index(icecream_rules::layout::cell_of(
-                    game.player.pos,
-                ))]
-                .module
-                .name()
-                .to_owned(),
+                game.house.rooms[game.house.room_of(game.player.pos)]
+                    .module
+                    .name()
+                    .to_owned(),
             ),
             (
                 "data-prompt",
@@ -2342,7 +2376,8 @@ pub fn start() {
         .get_attribute("data-version")
         .filter(|v| !v.trim().is_empty());
     let settings = Settings::parse(stored(&window, settings::SETTINGS_KEY).as_deref());
-    let best = settings::best(stored(&window, settings::BEST_KEY).as_deref());
+    let difficulty = settings.difficulty;
+    let best = settings::best(stored(&window, &settings::best_key(difficulty)).as_deref());
     let options = Options::parse(&window.location().hash().unwrap_or_default());
     let seed = options.seed.unwrap_or(1);
     let mut app = App {
@@ -2352,10 +2387,15 @@ pub fn start() {
         meshes,
         hud,
         sound: Sound::new(),
-        game: Game::tuned(seed, RuleOptions { man: !options.calm }, options.tuning()),
+        game: Game::tuned(
+            seed,
+            RuleOptions { man: !options.calm },
+            options.tuning(difficulty),
+        ),
         options,
         bot: None,
         seed,
+        difficulty,
         phase: Phase::Title,
         tour: None,
         touch,

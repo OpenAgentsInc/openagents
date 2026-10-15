@@ -22,12 +22,12 @@ pub const REGEN_RATE: f32 = 4.0;
 
 /// The Ice Cream Man.
 pub const MAN_RADIUS: f32 = 0.5;
-pub const MAN_WANDER: f32 = 1.92;
-pub const MAN_INVESTIGATE: f32 = 2.88;
-pub const MAN_SEARCH: f32 = 2.56;
-/// Just under a walk, so the minions and the Backrooms' loops are the
-/// danger, and a sprint gets you clear.
-pub const MAN_CHASE: f32 = 4.48;
+pub const MAN_WANDER: f32 = 2.4;
+pub const MAN_INVESTIGATE: f32 = 3.6;
+pub const MAN_SEARCH: f32 = 3.2;
+/// Faster than a walk, slower than a sprint: a sprint gets you clear,
+/// for a while (v5, #11667; v4 had him at 4.48, just under a walk).
+pub const MAN_CHASE: f32 = 5.6;
 pub const SIGHT: f32 = 22.0;
 /// Half his field of view while not chasing, as a cosine (70 degrees).
 pub const SIGHT_COS: f32 = 0.342;
@@ -37,6 +37,12 @@ pub const NOTICE: f32 = 4.0;
 pub const SEARCH_TIME: f32 = 7.0;
 /// How often a wandering Ice Cream Man sniffs out the player's room.
 pub const SNIFF_EVERY: f32 = 25.0;
+/// Once this many keys are taken he keeps going back to the front door
+/// (0: never).
+pub const PATROL_KEYS: u32 = 2;
+/// Chasing, he cuts corners instead of going by every doorway's middle
+/// (1) or not (0).
+pub const CORNERS: u32 = 1;
 
 /// Sprinkle volleys: the range, the pellets, their speed and the wait.
 pub const VOLLEY_MIN: f32 = 3.0;
@@ -83,7 +89,7 @@ pub const JINGLE_NOISE: f32 = 30.0;
 pub const JINGLE_WAIT: f32 = 1.5;
 
 /// How far noises carry.
-pub const SPRINT_NOISE: f32 = 8.0;
+pub const SPRINT_NOISE: f32 = 14.0;
 pub const FUDGE_NOISE: f32 = 12.0;
 pub const FRIDGE_NOISE: f32 = 8.0;
 pub const DOOR_NOISE: f32 = 25.0;
@@ -92,7 +98,12 @@ pub const DOOR_NOISE: f32 = 25.0;
 pub const REACH: f32 = 1.4;
 pub const KEY_REACH: f32 = 0.9;
 /// Holding E at the front door this long unlocks it.
-pub const UNLOCK: f32 = 2.0;
+pub const UNLOCK: f32 = 6.0;
+/// The unlock stops and starts over while he is this near (0: never).
+pub const UNLOCK_GUARD: f32 = 8.0;
+/// One key is locked in the cone cabinet, behind the sprinkle-button
+/// puzzle (1), or all three lie on the floor (0).
+pub const PUZZLE_KEY: u32 = 1;
 
 /// A shove fades this much each second.
 pub const SHOVE_FADE: f32 = 6.0;
@@ -103,6 +114,13 @@ pub const EXTRA_CLOSETS: u32 = 2;
 /// The most spare closets a house can take: one in each bedroom, kitchen
 /// and bathroom, and every house has at least four of those.
 pub const MAX_EXTRA_CLOSETS: u32 = 4;
+/// The house is this many rooms along each side (v4 had 4 by 4).
+pub const HOUSE_SIZE: u32 = 7;
+/// The biggest house: [`crate::layout::MAX_SIZE`] rooms along a side.
+pub const MAX_HOUSE_SIZE: u32 = crate::layout::MAX_SIZE as u32;
+/// The keys go to the house's far ends, far from the bedroom, the front
+/// door and each other (1), or into any rooms (0).
+pub const KEY_SPREAD: u32 = 1;
 /// His field of view while not chasing, in degrees either side of where
 /// he faces ([`SIGHT_COS`] is its cosine).
 pub const SIGHT_ANGLE: f32 = 70.0;
@@ -145,6 +163,9 @@ pub const MINION_RADIUS: f32 = 0.3;
 pub const MINION_COUNT: u32 = 3;
 pub const MINION_FIRST: f32 = 25.0;
 pub const MINION_EVERY: f32 = 15.0;
+/// One more minion may hunt you every this many seconds of a run (0:
+/// never more than [`MINION_COUNT`]).
+pub const MINION_GROWTH: f32 = 60.0;
 pub const MINION_SPEED: f32 = 3.4;
 pub const MINION_HEALTH: f32 = 30.0;
 pub const MINION_DAMAGE: f32 = 6.0;
@@ -171,7 +192,7 @@ pub const FREE_ROAM: u32 = 1;
 /// The house as the Backrooms (0: the Airbnb's rooms), and the doorways
 /// added beyond the ones that join every room.
 pub const BACKROOMS: u32 = 1;
-pub const LOOPS: u32 = 10;
+pub const LOOPS: u32 = 7;
 /// The Airbnb's own extra doorways, as the original game built it.
 pub const AIRBNB_LOOPS: u32 = 4;
 /// The look: how yellowed the rooms are, the fog, the lights' flicker and
@@ -203,7 +224,112 @@ pub const ORIGINAL: &[(&str, f64)] = &[
     ("fog_far", 34.0),
     ("flicker", 0.03),
     ("buzz", 0.0),
+    ("sprint_noise", 8.0),
+    ("unlock", 2.0),
+    ("unlock_guard", 0.0),
+    ("puzzle_key", 0.0),
+    ("house_size", 4.0),
+    ("key_spread", 0.0),
+    ("patrol_keys", 0.0),
+    ("corners", 0.0),
+    ("minion_growth", 0.0),
 ];
+
+/// Version 4 of the game, the designer's revision with the Backrooms, as
+/// it played before the difficulty pass (#11667): the values that differ
+/// from today's defaults (version 5, Normal). Easy plays it.
+pub const V4: &[(&str, f64)] = &[
+    ("man_wander", 1.92),
+    ("man_investigate", 2.88),
+    ("man_search", 2.56),
+    ("man_chase", 4.48),
+    ("loops", 10.0),
+    ("sprint_noise", 8.0),
+    ("unlock", 2.0),
+    ("unlock_guard", 0.0),
+    ("puzzle_key", 0.0),
+    ("house_size", 4.0),
+    ("key_spread", 0.0),
+    ("patrol_keys", 0.0),
+    ("corners", 0.0),
+    ("minion_growth", 0.0),
+];
+
+/// Hard: the values that differ from Normal. For the game's designer.
+pub const HARD: &[(&str, f64)] = &[
+    ("house_size", 8.0),
+    ("man_wander", 2.7),
+    ("man_investigate", 4.0),
+    ("man_search", 3.6),
+    ("man_chase", 6.2),
+    ("sight", 26.0),
+    ("search_time", 10.0),
+    ("sniff_every", 18.0),
+    ("patrol_keys", 1.0),
+    ("sprint_noise", 18.0),
+    ("unlock", 7.0),
+    ("unlock_guard", 11.0),
+    ("minion_count", 4.0),
+    ("minion_growth", 40.0),
+    ("minion_speed", 3.8),
+    ("extra_closets", 1.0),
+];
+
+/// How hard a run is. Normal is the game's defaults (version 5).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum Difficulty {
+    /// Version 4: a small house, a slow Ice Cream Man, a quick door. For
+    /// younger players.
+    Easy,
+    #[default]
+    Normal,
+    Hard,
+}
+
+impl Difficulty {
+    pub const ALL: [Self; 3] = [Self::Easy, Self::Normal, Self::Hard];
+
+    /// Its name in settings and addresses.
+    #[must_use]
+    pub fn id(self) -> &'static str {
+        match self {
+            Self::Easy => "easy",
+            Self::Normal => "normal",
+            Self::Hard => "hard",
+        }
+    }
+
+    #[must_use]
+    pub fn from_id(id: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|d| d.id() == id)
+    }
+
+    /// The next one, round and round (the menu's button).
+    #[must_use]
+    pub fn next(self) -> Self {
+        match self {
+            Self::Easy => Self::Normal,
+            Self::Normal => Self::Hard,
+            Self::Hard => Self::Easy,
+        }
+    }
+
+    /// The numbers a run at this difficulty plays by.
+    #[must_use]
+    pub fn tuning(self) -> Tuning {
+        let changes = match self {
+            Self::Easy => V4,
+            Self::Normal => &[],
+            Self::Hard => HARD,
+        };
+        let mut t = Tuning::default();
+        for (name, value) in changes {
+            t.set(name, *value)
+                .expect("the difficulty's values are in bounds");
+        }
+        t
+    }
+}
 
 /// One value a game document may change: its section, name, default,
 /// bounds, and what it does, in plain words.
@@ -318,6 +444,8 @@ tunables! {
     "man" notice: f32 = NOTICE, 0.0, 20.0, "how close you can be before he notices you whichever way he faces";
     "man" search_time: f32 = SEARCH_TIME, 0.0, 60.0, "seconds he searches the last place he saw you";
     "man" sniff_every: f32 = SNIFF_EVERY, 3.0, 600.0, "how often a wandering Ice Cream Man sniffs out your room, seconds";
+    "man" patrol_keys: u32 = PATROL_KEYS, 0, 3, "once you have this many keys he keeps going back to guard the front door; 0 for never";
+    "man" corners: u32 = CORNERS, 0, 1, "chasing, he cuts corners (1) or goes by the middle of every doorway (0)";
     "man" sprinkle_damage: f32 = SPRINKLE_DAMAGE, 0.0, 100.0, "a sprinkle pellet's damage";
     "man" grab_damage: f32 = GRAB_DAMAGE, 0.0, 200.0, "a grab's damage";
     "man" grab_shove: f32 = GRAB_SHOVE, 0.0, 30.0, "how hard a grab shoves you";
@@ -357,10 +485,14 @@ tunables! {
     "noise" door_noise: f32 = DOOR_NOISE, 0.0, 80.0, "how far rattling the front door is heard";
     "layout" extra_closets: u32 = EXTRA_CLOSETS, 0, MAX_EXTRA_CLOSETS, "hiding spots (closets) added to the house";
     "rules" unlock: f32 = UNLOCK, 0.0, 600.0, "seconds holding E at the front door with every key to unlock it";
+    "rules" unlock_guard: f32 = UNLOCK_GUARD, 0.0, 60.0, "the unlock stops and starts over while he is this near, metres; 0 for never";
+    "rules" puzzle_key: u32 = PUZZLE_KEY, 0, 1, "one key is locked in the cone cabinet until the sprinkle buttons are pressed in order (1), or all keys lie on the floor (0)";
     "rules" reach: f32 = REACH, 0.5, 4.0, "how close you must be to use a closet, fridge or the front door";
     "rules" key_reach: f32 = KEY_REACH, 0.3, 4.0, "how close you must walk to pick up a key";
     "layout" backrooms: u32 = BACKROOMS, 0, 1, "build the house as the Backrooms (1): wide empty yellow rooms with wall stubs among the Airbnb's own; 0 keeps the Airbnb's rooms";
     "layout" loops: u32 = LOOPS, 0, 24, "extra doorways beyond the ones that join every room; more make the house loop like the Backrooms";
+    "layout" house_size: u32 = HOUSE_SIZE, 3, MAX_HOUSE_SIZE, "rooms along each side of the house (4 is 4 by 4, 16 rooms)";
+    "layout" key_spread: u32 = KEY_SPREAD, 0, 1, "the keys go to the far ends of the house, far from the bedroom, the front door and each other (1), or into any rooms (0)";
     "weapons" earned_weapons: u32 = EARNED_WEAPONS, 0, 1, "whether the four earned weapons are in the game (1) or not (0): the candy cane sword, the waffle cone spear, the cone pistol and the sugar launcher";
     "weapons" man_health: f32 = MAN_HEALTH, 10.0, 10000.0, "the Ice Cream Man's health against the earned weapons; at none he melts and you win";
     "weapons" sword_damage: f32 = SWORD_DAMAGE, 0.0, 500.0, "a candy cane sword swing's damage";
@@ -390,6 +522,7 @@ tunables! {
     "minions" minion_count: u32 = MINION_COUNT, 0, 12, "how many minions (mini Ice Cream Men) can hunt you at once; 0 for none";
     "minions" minion_first: f32 = MINION_FIRST, 0.0, 600.0, "seconds before the first minion comes";
     "minions" minion_every: f32 = MINION_EVERY, 1.0, 600.0, "seconds between new minions";
+    "minions" minion_growth: f32 = MINION_GROWTH, 0.0, 600.0, "one more minion may hunt you every this many seconds of a run, up to 12; 0 for never more";
     "minions" minion_speed: f32 = MINION_SPEED, 0.5, 12.0, "a minion's speed, metres a second";
     "minions" minion_health: f32 = MINION_HEALTH, 1.0, 1000.0, "a minion's health";
     "minions" minion_damage: f32 = MINION_DAMAGE, 0.0, 100.0, "a minion's bite's damage (your own minions bite as hard)";
@@ -443,9 +576,13 @@ mod tests {
         assert_eq!(t.man_chase, MAN_CHASE);
         assert_eq!(t.fudge_start, FUDGE_START);
         assert!((t.sight_cos() - SIGHT_COS).abs() < 0.001);
-        // The revision Game Lab measured as version 4 of the-ice-cream-man.
+        // Version 5 of the-ice-cream-man (#11667), on top of the
+        // designer's revision Game Lab measured as version 4.
         assert_eq!((t.earned_weapons, t.minion_count, t.free_roam), (1, 3, 1));
-        assert_eq!((t.backrooms, t.loops, t.extra_closets), (1, 10, 2));
+        assert_eq!((t.backrooms, t.loops, t.extra_closets), (1, 7, 2));
+        assert_eq!((t.house_size, t.key_spread, t.puzzle_key), (7, 1, 1));
+        assert_eq!((t.man_chase, t.unlock, t.unlock_guard), (5.6, 6.0, 8.0));
+        assert_eq!((t.patrol_keys, t.corners, t.minion_growth), (2, 1, 60.0));
         assert_eq!((t.yellow, t.fog_near, t.fog_far), (1.0, 3.0, 18.0));
         assert_eq!((t.flicker, t.buzz, t.first_person), (0.35, 0.8, 0));
         let original = Tuning::original();
@@ -458,10 +595,50 @@ mod tests {
     }
 
     #[test]
+    fn easy_is_version_4_and_hard_is_harder() {
+        let easy = Difficulty::Easy.tuning();
+        assert_eq!((easy.man_chase, easy.man_wander), (4.48, 1.92));
+        assert_eq!((easy.house_size, easy.loops, easy.unlock), (4, 10, 2.0));
+        assert_eq!(
+            (easy.puzzle_key, easy.key_spread, easy.unlock_guard),
+            (0, 0, 0.0)
+        );
+        assert_eq!(
+            (easy.patrol_keys, easy.corners, easy.minion_growth),
+            (0, 0, 0.0)
+        );
+        assert_eq!(easy.sprint_noise, 8.0);
+        assert_eq!(Difficulty::default(), Difficulty::Normal);
+        assert_eq!(Difficulty::Normal.tuning(), Tuning::default());
+        let (normal, hard) = (Tuning::default(), Difficulty::Hard.tuning());
+        assert!(hard.house_size > normal.house_size && normal.house_size > easy.house_size);
+        assert!(hard.man_chase > normal.man_chase && normal.man_chase > easy.man_chase);
+        assert!(hard.unlock > normal.unlock && normal.unlock > easy.unlock);
+        // A sprint still gets you clear of him.
+        assert!(hard.man_chase < hard.sprint);
+        for d in Difficulty::ALL {
+            assert_eq!(Difficulty::from_id(d.id()), Some(d));
+            assert_ne!(d.next(), d);
+        }
+        assert_eq!(Difficulty::from_id("impossible"), None);
+        // The original game knows nothing of the difficulty pass.
+        let original = Tuning::original();
+        assert_eq!(
+            (original.house_size, original.unlock, original.puzzle_key),
+            (4, 2.0, 0)
+        );
+    }
+
+    #[test]
     fn values_are_set_by_name_within_bounds() {
         let mut t = Tuning::default();
         t.set("man_chase", 4.48).unwrap();
         assert!((t.man_chase - 4.48).abs() < 1e-6);
+        assert!(
+            t.set("house_size", 11.0)
+                .unwrap_err()
+                .contains("between 3 and 10")
+        );
         t.set("extra_closets", 2.0).unwrap();
         assert_eq!(t.extra_closets, 2);
         assert!(t.set("extra_closets", 1.5).unwrap_err().contains("whole"));

@@ -50,13 +50,15 @@ impl Bot {
         if let Some(d) = detour {
             return (d.at, false);
         }
+        let locked = game.locked_key();
         let keys_left: Vec<V2> = game
             .house
             .keys
             .iter()
             .zip(&game.taken)
-            .filter(|(_, taken)| !**taken)
-            .map(|(key, _)| *key)
+            .enumerate()
+            .filter(|(i, (_, taken))| !**taken && Some(*i) != locked)
+            .map(|(_, (key, _))| *key)
             .collect();
         if let Some(key) = keys_left
             .iter()
@@ -65,7 +67,8 @@ impl Bot {
         {
             return (key, false);
         }
-        if game.weapons_on() && !game.has(Tool::Spear) {
+        // The puzzle: for the key locked in the cone cabinet, or the spear.
+        if locked.is_some() || (game.weapons_on() && !game.has(Tool::Spear)) {
             if !game.solved {
                 if let Some(button) = game.house.buttons.get(game.lit as usize) {
                     return (*button, true);
@@ -230,8 +233,12 @@ mod tests {
             .filter(|seed| play(*seed, Options::default(), 600).status == Status::Escaped)
             .collect();
         assert!(escaped.len() >= 8, "{escaped:?}");
-        // The browser check plays this seed.
+        // The browser checks play this seed, the speedrun check in under
+        // four minutes.
         assert!(escaped.contains(&crate::bot::ESCAPE_SEED), "{escaped:?}");
+        let seven = play(ESCAPE_SEED, Options::default(), 600);
+        eprintln!("seed {ESCAPE_SEED}: {:.1} s", seven.seconds());
+        assert!(seven.seconds() < 200.0, "{}", seven.seconds());
     }
 
     #[test]
@@ -243,6 +250,67 @@ mod tests {
             a.fingerprint(),
             play(12, Options::default(), 90).fingerprint()
         );
+    }
+
+    #[test]
+    fn a_perfect_run_takes_a_minute_or_more_on_normal() {
+        use crate::tuning::Difficulty;
+        // The route-optimal player alone in the house: the fastest escape
+        // there can be. Version 4 (Easy) was 11 seconds (#11667).
+        let alone = Options { man: false };
+        let easy = measure(Difficulty::Easy.tuning(), 0..24, alone, true, 600);
+        let normal = measure(Difficulty::Normal.tuning(), 0..24, alone, true, 600);
+        let hard = measure(Difficulty::Hard.tuning(), 0..24, alone, true, 600);
+        for m in [&easy, &normal, &hard] {
+            assert_eq!(m.wins, 24, "{m:?}");
+        }
+        assert!(easy.fastest().unwrap() < 20.0, "{easy:?}");
+        assert!(normal.fastest().unwrap() >= 60.0, "{normal:?}");
+        assert!(
+            hard.fastest().unwrap() > normal.fastest().unwrap(),
+            "{hard:?}"
+        );
+        assert!(
+            hard.median().unwrap() > normal.median().unwrap(),
+            "{hard:?}"
+        );
+    }
+
+    /// Prints the measures (`cargo test -p icecream-rules measures --
+    /// --ignored --nocapture`).
+    #[test]
+    #[ignore = "a report, not a check"]
+    fn measures() {
+        let clock = |s: Option<f32>| s.map_or("-".to_owned(), |s| format!("{s:.1}"));
+        for difficulty in crate::tuning::Difficulty::ALL {
+            let (name, mut tuning) = (difficulty.id(), difficulty.tuning());
+            // Try changes: ICE_TRY="normal:unlock=6,loops=8".
+            for change in std::env::var("ICE_TRY").unwrap_or_default().split(';') {
+                if let Some((who, pairs)) = change.split_once(':')
+                    && who == name
+                {
+                    for pair in pairs.split(',') {
+                        if let Some((k, v)) = pair.split_once('=') {
+                            tuning.set(k, v.parse().unwrap()).unwrap();
+                        }
+                    }
+                }
+            }
+            let alone = measure(tuning, 0..24, Options { man: false }, true, 600);
+            let racer = measure(tuning, 0..24, Options::default(), true, 600);
+            let bot = measure(tuning, 0..24, Options::default(), false, 600);
+            eprintln!(
+                "{name}: racer alone fastest {} median {}; racer with him {} wins, fastest {} median {}; bot {} wins, fastest {} median {}",
+                clock(alone.fastest()),
+                clock(alone.median()),
+                racer.wins,
+                clock(racer.fastest()),
+                clock(racer.median()),
+                bot.wins,
+                clock(bot.fastest()),
+                clock(bot.median()),
+            );
+        }
     }
 
     #[test]
@@ -276,3 +344,234 @@ mod tests {
 /// A seed the bot escapes with the Ice Cream Man in the house: the
 /// browser check plays it.
 pub const ESCAPE_SEED: u64 = 7;
+
+/// The length of the route between two points for the player's body.
+fn leg(house: &crate::layout::House, from: V2, to: V2) -> f32 {
+    let mut last = from;
+    house
+        .route(from, to, PLAYER_RADIUS)
+        .iter()
+        .fold(0.0, |sum, p| {
+            let d = p.distance(last);
+            last = *p;
+            sum + d
+        })
+}
+
+/// The route-optimal player: the fastest a perfect run could be. It knows
+/// where every key and button is from the start, takes them in the order
+/// with the shortest route (the sprinkle buttons in their order, then the
+/// cone cabinet, when a key is locked in it), sprints the whole way,
+/// never hides and never fights, then holds E at the front door. Game
+/// Lab's difficulty measures use it for the fastest possible escape.
+#[derive(Clone, Debug, Default)]
+pub struct Racer {
+    plan: Vec<(V2, bool)>,
+    planned: bool,
+    path: Vec<V2>,
+    target: Option<V2>,
+    replan: u32,
+}
+
+impl Racer {
+    /// The stops: each key left on the floor, and the puzzle's buttons
+    /// then its cabinet while a key is locked in it; pressed (`true`) or
+    /// walked over.
+    fn plan(game: &Game) -> Vec<(V2, bool)> {
+        let house = &game.house;
+        let locked = game.locked_key();
+        let keys: Vec<V2> = house
+            .keys
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| !game.taken[*i] && Some(*i) != locked)
+            .map(|(_, k)| *k)
+            .collect();
+        let chain: Vec<V2> = if locked.is_some() && !game.solved {
+            house.buttons[game.lit as usize..]
+                .iter()
+                .copied()
+                .chain([house.cabinet])
+                .collect()
+        } else {
+            Vec::new()
+        };
+        // Every order of the keys, with the puzzle's chain woven through
+        // in its own order: few enough stops to try them all.
+        let n = keys.len() + chain.len();
+        let mut best: (f32, Vec<(V2, bool)>) = (f32::MAX, Vec::new());
+        let mut order: Vec<usize> = (0..n).collect();
+        let mut walk = |order: &[usize]| {
+            // Chain stops must come in their order.
+            let chain_seen: Vec<usize> =
+                order.iter().copied().filter(|i| *i >= keys.len()).collect();
+            if chain_seen.windows(2).any(|w| w[0] > w[1]) {
+                return;
+            }
+            let stops: Vec<(V2, bool)> = order
+                .iter()
+                .map(|i| {
+                    if *i < keys.len() {
+                        (keys[*i], false)
+                    } else {
+                        let c = *i - keys.len();
+                        (chain[c], c + 1 < chain.len())
+                    }
+                })
+                .collect();
+            let mut at = game.player.pos;
+            let mut length = 0.0;
+            for (stop, _) in stops.iter().chain([&(house.front.stand, false)]) {
+                length += leg(house, at, *stop);
+                at = *stop;
+                if length >= best.0 {
+                    return;
+                }
+            }
+            best = (length, stops);
+        };
+        permute(&mut order, 0, &mut walk);
+        best.1
+    }
+
+    /// The next step's input.
+    pub fn input(&mut self, game: &Game) -> Input {
+        let player = &game.player;
+        let mut input = Input::default();
+        if player.hidden.is_some() {
+            input.interact = game.tick % 2 == 0;
+            return input;
+        }
+        if !self.planned {
+            self.plan = Self::plan(game);
+            self.planned = true;
+        }
+        // Drop stops already done.
+        while let Some((stop, press)) = self.plan.first().copied() {
+            let done = if press {
+                !game.house.buttons[..game.lit as usize]
+                    .iter()
+                    .all(|b| b.distance(stop) > 0.01)
+                    || game.solved
+            } else {
+                let key = game.house.keys.iter().position(|k| k.distance(stop) < 0.01);
+                key.is_some_and(|i| game.taken[i])
+                    || (key.is_none() && game.solved && stop.distance(game.house.cabinet) < 0.01)
+            };
+            if done {
+                self.plan.remove(0);
+            } else {
+                break;
+            }
+        }
+        let (target, press) = self
+            .plan
+            .first()
+            .copied()
+            .unwrap_or((game.house.front.stand, false));
+        if self.target != Some(target) || self.replan == 0 || self.path.is_empty() {
+            self.path = game.house.route(player.pos, target, PLAYER_RADIUS);
+            self.target = Some(target);
+            self.replan = 15;
+        }
+        self.replan -= 1;
+        while self.path.len() > 1 && self.path[0].distance(player.pos) < 0.3 {
+            self.path.remove(0);
+        }
+        let near = player.pos.distance(target) < 0.5;
+        let at_door = self.plan.is_empty() && near;
+        if at_door {
+            input.interact = true;
+        } else if press && near {
+            input.interact = game.tick % 2 == 0;
+        } else if let Some(next) = self.path.first() {
+            input.walk = ((*next - player.pos) * 4.0).clamped(1.0);
+            input.sprint = true;
+        }
+        input
+    }
+}
+
+/// Calls `f` with every order of `items[k..]` after `items[..k]`.
+fn permute(items: &mut Vec<usize>, k: usize, f: &mut impl FnMut(&[usize])) {
+    if k == items.len() {
+        f(items);
+        return;
+    }
+    for i in k..items.len() {
+        items.swap(k, i);
+        permute(items, k + 1, f);
+        items.swap(k, i);
+    }
+}
+
+/// One bot's runs over seeded houses: wins, and the escape times.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Measure {
+    pub runs: u32,
+    pub wins: u32,
+    /// Seconds of each escape, shortest first.
+    pub escapes: Vec<f32>,
+}
+
+impl Measure {
+    #[must_use]
+    pub fn fastest(&self) -> Option<f32> {
+        self.escapes.first().copied()
+    }
+
+    #[must_use]
+    pub fn median(&self) -> Option<f32> {
+        (!self.escapes.is_empty()).then(|| self.escapes[self.escapes.len() / 2])
+    }
+}
+
+/// Plays `seeds` with `tuning`, the regular bot (`race` false) or the
+/// [`Racer`], for up to `limit` seconds each.
+#[must_use]
+pub fn measure(
+    tuning: crate::Tuning,
+    seeds: std::ops::Range<u64>,
+    options: crate::game::Options,
+    race: bool,
+    limit: u32,
+) -> Measure {
+    use crate::game::Status;
+    let runs: Vec<(Status, f32)> = std::thread::scope(|scope| {
+        let handles: Vec<_> = seeds
+            .map(|seed| {
+                scope.spawn(move || {
+                    let mut game = Game::tuned(seed, options, tuning);
+                    let (mut bot, mut racer) = (Bot::default(), Racer::default());
+                    for _ in 0..limit * crate::HZ {
+                        let input = if race {
+                            racer.input(&game)
+                        } else {
+                            bot.input(&game)
+                        };
+                        game.step(input);
+                        if game.status != Status::Playing {
+                            break;
+                        }
+                    }
+                    (game.status, game.seconds())
+                })
+            })
+            .collect();
+        handles.into_iter().filter_map(|h| h.join().ok()).collect()
+    });
+    let mut escapes: Vec<f32> = runs
+        .iter()
+        .filter(|(s, _)| *s == Status::Escaped)
+        .map(|(_, t)| *t)
+        .collect();
+    escapes.sort_by(f32::total_cmp);
+    Measure {
+        runs: runs.len() as u32,
+        wins: runs
+            .iter()
+            .filter(|(s, _)| matches!(s, Status::Escaped | Status::Melted))
+            .count() as u32,
+        escapes,
+    }
+}

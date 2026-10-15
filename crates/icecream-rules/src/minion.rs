@@ -5,7 +5,7 @@
 
 use crate::DT;
 use crate::geom::{V2, first_hit, slide, v};
-use crate::layout::{House, cell_of, centre};
+use crate::layout::{House, centre};
 use crate::rng::Rng;
 use crate::tuning::MINION_RADIUS;
 
@@ -96,7 +96,7 @@ impl Minion {
     pub fn wander(&mut self, house: &House, rng: &mut Rng, speed: f32) {
         let arrived = self.goal.is_none_or(|g| g.distance(self.pos) < 0.5);
         if arrived {
-            let here = cell_of(self.pos);
+            let here = house.cell_of(self.pos);
             let next = house.neighbours(here);
             let pick = if next.is_empty() {
                 here

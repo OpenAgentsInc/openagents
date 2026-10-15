@@ -542,7 +542,14 @@ async fn the_guide_teaches_the_ice_cream_man() {
     assert!(html.contains("<h1 class=\"br-guide-title\">How to play The Ice Cream Man</h1>"));
     for words in [
         "three check-out keys",
-        "for 2 seconds",
+        "for 6 seconds",
+        // The difficulty pass (#11667).
+        "Difficulty",
+        "Easy",
+        "Hard",
+        "cone cabinet",
+        "house number",
+        "the lock starts over",
         "Check-out is at 11. Don't let him in.",
         "freezer room",
         "Each one costs 5 health",

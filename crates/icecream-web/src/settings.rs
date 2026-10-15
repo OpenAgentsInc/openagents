@@ -3,12 +3,25 @@
 //! time is a new best, and which hot-bar tool comes next.
 
 use icecream_rules::Tool;
+use icecream_rules::tuning::Difficulty;
 
 /// The browser storage key for [`Settings`].
 pub const SETTINGS_KEY: &str = "icecream.settings.v1";
 
-/// The browser storage key for the best escape time, in seconds.
+/// The browser storage key for the best escape time, in seconds, on
+/// Easy: the game before the difficulty pass (#11667) played as Easy
+/// does, so the times kept before it stay Easy's. Normal and Hard keep
+/// theirs under this key and a suffix ([`best_key`]).
 pub const BEST_KEY: &str = "icecream.best.v1";
+
+/// The storage key for a difficulty's best time.
+#[must_use]
+pub fn best_key(difficulty: Difficulty) -> String {
+    match difficulty {
+        Difficulty::Easy => BEST_KEY.to_owned(),
+        other => format!("{BEST_KEY}.{}", other.id()),
+    }
+}
 
 /// What the player chose in the menu.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -20,6 +33,8 @@ pub struct Settings {
     /// The touch Sprint button: tap to turn sprint on and off, instead of
     /// holding it.
     pub sprint_tap: bool,
+    /// How hard the next house is.
+    pub difficulty: Difficulty,
 }
 
 impl Default for Settings {
@@ -28,12 +43,14 @@ impl Default for Settings {
             timer: true,
             jumpscares: true,
             sprint_tap: false,
+            difficulty: Difficulty::Normal,
         }
     }
 }
 
 impl Settings {
-    /// Settings from their stored text, `timer=1;jumpscares=0;sprint=tap`.
+    /// Settings from their stored text,
+    /// `timer=1;jumpscares=0;sprint=tap;difficulty=hard`.
     /// Anything missing or unreadable keeps its default.
     #[must_use]
     pub fn parse(stored: Option<&str>) -> Self {
@@ -49,6 +66,11 @@ impl Settings {
                 ("jumpscares", "0") => settings.jumpscares = false,
                 ("sprint", "tap") => settings.sprint_tap = true,
                 ("sprint", "hold") => settings.sprint_tap = false,
+                ("difficulty", id) => {
+                    if let Some(d) = Difficulty::from_id(id) {
+                        settings.difficulty = d;
+                    }
+                }
                 _ => {}
             }
         }
@@ -59,10 +81,11 @@ impl Settings {
     #[must_use]
     pub fn stored(self) -> String {
         format!(
-            "timer={};jumpscares={};sprint={}",
+            "timer={};jumpscares={};sprint={};difficulty={}",
             u8::from(self.timer),
             u8::from(self.jumpscares),
-            if self.sprint_tap { "tap" } else { "hold" }
+            if self.sprint_tap { "tap" } else { "hold" },
+            self.difficulty.id()
         )
     }
 }
@@ -111,13 +134,25 @@ mod tests {
     fn settings_round_trip_and_default_on() {
         let default = Settings::parse(None);
         assert!(default.timer && default.jumpscares && !default.sprint_tap);
+        assert_eq!(default.difficulty, Difficulty::Normal);
         let changed = Settings {
             timer: false,
             jumpscares: false,
             sprint_tap: true,
+            difficulty: Difficulty::Hard,
         };
         assert_eq!(Settings::parse(Some(&changed.stored())), changed);
         assert_eq!(Settings::parse(Some("junk;timer=maybe")), default);
+        assert_eq!(Settings::parse(Some("difficulty=impossible")), default);
+        // Stored before difficulties: Normal.
+        assert_eq!(
+            Settings::parse(Some("timer=1;jumpscares=1;sprint=hold")),
+            default
+        );
+        assert_eq!(
+            Settings::parse(Some("difficulty=easy")).difficulty,
+            Difficulty::Easy
+        );
         assert_eq!(
             Settings::parse(Some("jumpscares=0")),
             Settings {
@@ -145,6 +180,14 @@ mod tests {
         assert!(is_new_best(Some(41.0), 26.0));
         assert!(!is_new_best(Some(26.0), 46.0));
         assert!(!is_new_best(Some(26.0), 26.0));
+    }
+
+    #[test]
+    fn each_difficulty_keeps_its_own_best() {
+        // Times kept before difficulties were Easy's game (version 4).
+        assert_eq!(best_key(Difficulty::Easy), "icecream.best.v1");
+        assert_eq!(best_key(Difficulty::Normal), "icecream.best.v1.normal");
+        assert_eq!(best_key(Difficulty::Hard), "icecream.best.v1.hard");
     }
 
     #[test]

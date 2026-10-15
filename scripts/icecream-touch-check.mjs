@@ -242,7 +242,7 @@ async function speedrun(device) {
   await shot(page, `${device}-timer`);
   const d = await until(page, (d) => d.phase === "over", 240000);
   check(d.status === "escaped" && d.newBest === "true", `${device}: escaped, a new best (${d.best})`);
-  const stored = await page.evaluate(() => localStorage.getItem("icecream.best.v1"));
+  const stored = await page.evaluate(() => localStorage.getItem("icecream.best.v1.normal"));
   check(!!stored && Number(stored) > 0, `${device}: the best time is saved (${stored})`);
   const card = await page.evaluate(() => document.body.innerText);
   check(card.includes("New best!") && card.includes("Your time:"), `${device}: the escape card shows the time and New best!`);
