@@ -23,44 +23,60 @@ They are not observed runtime behavior.
 | --- | --- |
 | [Scope and evidence](scope-and-evidence.md) | What was inspected, how claims are marked, and the digests that identify the build |
 | [Identity and packaging](identity-and-packaging.md) | Bundle identity, signature, entitlements, Electron fuses, document types, and the Developer ID profile |
-| [Application](application.md) | ASAR layout, package manifest, windows, IPC, context bridge, workers, and packaged resources |
+| [Process architecture](architecture.md) | Boot, windows, the IPC bus, preload trust, utility processes, schemes, and permission decisions |
+| [Surfaces and deep links](surfaces.md) | `claude://` routing, login callbacks, desktop actions, and the shell around the web view |
+| [Sessions and code](sessions.md) | Local code sessions, the local-agent session, git, GitHub, SSH, and device signatures |
+| [Cowork](cowork.md) | Spaces, artifacts, the `cowork-artifact:` document protocol, memory, and scheduled tasks |
+| [Virtual machine](vm.md) | Bundle download, `smol-bin` disk copy, Swift start, host loop, and Yukon Silver |
+| [Computer use and devices](computer-use.md) | TCC grants, teach and watch-record, Sable Otter, framebuffer, simulator, Buddy, Bluetooth |
+| [Extensions and integrations](extensions-and-integrations.md) | MCP hosts, the node host's refusal to spawn Electron, plugins, GitHub, Office, Chrome |
+| [Web UI and previews](web-and-preview.md) | `ion-dist`, the artifact frame shell, host-tools port, launch previews, browser shim |
+| [Enterprise configuration](enterprise.md) | Managed-config schema, third-party setup, device-code confirmation, Microsoft 365 labels |
+| [Application](application.md) | ASAR layout, package manifest, archive inventory, and the earlier graph counts |
 | [Native modules](native.md) | Host stub, Swift and Rust-like addons, helpers, Go MCP server, MSAL, and linkage |
-| [Bundle and resources](bundle.md) | Frameworks, second web UI, browser shim, iOS Simulator helper, images, and assets |
-| [Coverage](coverage.md) | Which surfaces are only partly described, and which questions this pass left open |
+| [Bundle and resources](bundle.md) | Frameworks, images, iOS Simulator helper, and asset catalog |
+| [Coverage](coverage.md) | What this reading established, and what is still unexecuted |
 
 ## The architecture in short
 
-1. **A thin Electron host.** `Contents/MacOS/Claude` links only Electron
-   Framework and the system C library. Its arm64 executable text is 348 bytes
-   and 16 procedures. Electron Framework is version 44.7.0 and about 402 MB
-   universal. The real application is `Contents/Resources/app.asar`.
-2. **The app is loaded only from that archive, with Node debug switches
-   fused off.** Both architectures disable running as plain Node and disable
-   Node's `--inspect` arguments. Both enable an embedded archive-integrity
-   check and load-only-from-ASAR. Cookie encryption and extra `file:`
-   privileges are on.
-3. **The desktop UI is several windows, not one page.** Static analysis
-   counted 14 browser-window constructions. Six HTML documents ship: main,
-   buddy, about, find-in-page, quick, and a local-exec consent window. Main
-   build files also name computer-use teaching, watch-record, Cowork
-   artifacts, a design window, and a page preview.
-4. **Privileged work is native and out of process.** Computer use is a Swift
-   addon linked to ScreenCaptureKit and Accessibility. A second Swift addon
-   links Virtualization, `vmnet`, and a Go userspace network stack. A Rust-like
-   N-API addon links Accessibility and Security. A small helper spawns a child
-   with the system TCC-disclaim API. An iOS Simulator helper links private
-   CoreSimulator and ships a deny-default sandbox profile.
-5. **Integrations are files in the archive.** A universal Go binary implements
-   GitHub's MCP server `v1.6.0`. An Office directory carries an MSAL runtime
-   and a stdio MCP script. Bundled `.skill` files are zips of the exported
-   type `com.anthropic.skill`. Mermaid, Chart.js, and Grid.js ship as artifact
-   libraries.
+1. **A thin Electron host loads one archive.** `Contents/MacOS/Claude` links
+   only Electron Framework and the system C library. Its arm64 text is 348
+   bytes. The product is `Contents/Resources/app.asar`. Node-as-node and
+   `--inspect` are fused off. The archive is the only app the fuses will load.
+2. **The main process is one 7 MB chunk behind a compile-cache bootstrap.**
+   Build commit `ba51ab579cc4029765083ec9f9f0bd23d37a32ee`, production, not a
+   nest build. It creates the windows, registers `cowork-artifact`,
+   `cowork-file`, `claude-media`, and `claude-simulator`, and forks utility
+   processes with a `{type: "init"}` port.
+3. **Renderers get a typed bus, not Node.** Channels are
+   `$eipc_message$_<uuid>_$_<namespace>_$_<Type>_$_<method>`. A preload
+   exposes a world only for a top frame on an allowlisted origin. The main
+   view's worlds are `claude.web`, `claude.settings`, and the smaller
+   simulator, skills, Office, engine, locale, and Buddy worlds.
+   `LocalSessions` alone lists 337 methods.
+4. **Three products share the shell.** Chat is the shipped `ion-dist` page.
+   Code is `LocalSessions`: files, a pty, git, `gh`, and SSH. Cowork is
+   `LocalAgentModeSessions` plus a Linux VM (`claudevm.bundle`, downloaded
+   from `downloads.claude.ai`, booted through the Swift addon) plus
+   `cowork-artifact:` documents that can call `mcp__<server>__<tool>` and
+   nothing else.
+5. **`claude://` is one function.** Hosts `cowork`, `code`, `claude.ai`,
+   `login`, `resume`, and `sable-otter` navigate or import. `preview` and
+   `debug-handoff` are rejected in this non-nest build. Google and magic-link
+   callbacks are dropped unless this process started them. Managed config can
+   disable the scheme and fail closed.
+6. **Privileged work stays out of the page.** Computer use is a panel plus
+   TCC grants plus `computer_use.node`. Pairing is a Buddy window and a
+   separate Nordic UART bridge. The MCP node host refuses to spawn Electron
+   and tells the user to turn off the built-in Node. Preview partitions and
+   the browser shim's `pane` reply are how a local URL opens inside the app.
 
 ## What this report is not
 
-It is not a line-by-line reconstruction of the minified interface, and it is
-not a claim about what a signed-in session does. The JavaScript graph is
-partial: large hashed bundles kept static facts and were not fully expanded.
-Endpoint-shaped strings in that graph are property and call names, not
-confirmed servers. A compiler path embedded in a binary identifies
-a compiler commit; it does not authenticate package versions.
+It is not a line-by-line reconstruction of the hydrated claude.ai modules, and
+it is not a claim about what a signed-in session does. Control flow in the
+chapters above is the shipped script, read as text. The VM was not started,
+no deep link was opened, and no MCP server was spawned. A compiler path
+embedded in a binary identifies a compiler commit. It does not authenticate
+package versions. Hashed assets under `ion-dist/assets/v1/` were sampled
+through the HTML that loads them, not executed.

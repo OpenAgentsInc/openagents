@@ -43,27 +43,31 @@ Consequences:
 Endpoint nodes are candidates. They did not produce a hostname. Hashed
 chunks and `heavyWorkWorker.js` kept static facts only.
 
-## Surfaces inventoried and not read
+## Read as text after the graph stopped
 
-- `ion-dist` stopped after `assets/v1/cef1e6037-DkhsUYfO.js`. The HTML
-  names are known. Their scripts are not.
+The preload files, the `claude://` handler, the VM controller, the artifact
+protocol, the frame-shell HTML, and the managed-config schema were read from
+the shipped bytes. Those chapters replace the "not read" status of the
+window and IPC questions below. They do not replace a run.
+
+Still not read as documents:
+
+- Hashed modules under `ion-dist/assets/v1/`. The HTML that loads them, and
+  the inline boot scripts, were read.
 - `.skill` zips, `office365-mcp-stdio.mjs`, `pdf.worker.mjs`,
-  `pdfExtractorProcess.mjs`, and the locale JSON files were not opened as
-  text.
-- `compile-cache/*.jsc` was not decoded.
-- `document.wflow` was not decoded.
-- Electron Framework was not decompiled. The fuse record, version, exports,
-  and linkage are known. The Chromium implementation is not.
-- `swift_addon.node`, `github-mcp-server`, `claude-ios-sim`,
-  `SimulatorFrameworkBridge-iOS`, and Squirrel have linkage and, where
-  present, compiler metadata. They do not have procedure-level overviews.
-- `pty.node` and `msal-node-runtime.node` have arm64 overviews and do not
-  have a recovered Go or Rust metadata record. Their Mach-O type and full
-  import tables were not normalized the way the other binaries were.
-- The `smol-bin` images are exFAT volumes of about 23 and 24 MB. Their
-  filesystems were not mounted, so a VM-disk conclusion stays an inference
-  from the filename and from `swift_addon.node`'s Virtualization and
-  `vmnet` linkage.
+  `pdfExtractorProcess.mjs`, and the locale JSON files.
+- `compile-cache/*.jsc`.
+- `document.wflow`.
+- `file-index-worker` and `heavy-work-worker` past their file names and sizes.
+- The body of `directMcpHost.js` past the MCP method strings and the OAuth
+  token type. The file is mostly an SDK.
+- Electron Framework's Chromium and V8. The fuse record, version, and linkage
+  are known.
+- Procedure-level contents of `swift_addon.node`, `github-mcp-server`,
+  `claude-ios-sim`, `SimulatorFrameworkBridge-iOS`, and Squirrel.
+- The files inside the exFAT `smol-bin.*.img` volumes. The controller copies
+  a `smol-bin.<arch>.vhdx` by that name. No `.vhdx` was in the bundle listing
+  this pass walked. The images were not mounted.
 
 ## Inferences that should stay labeled
 
@@ -82,23 +86,48 @@ chunks and `heavyWorkWorker.js` kept static facts only.
 - Bridge hypotheses that pair every helper with hundreds of scripts are a
   projection rule. They are not a call graph.
 
-## Questions left open
+## Questions the later reading closed
 
-1. Which of the 14 window constructions have no HTML file, and which build
-   files are only modules loaded by the six documents.
-2. The full strings of the dynamic IPC channels, and the names of the three
-   main-process handlers.
-3. Where `@ant/computer-use-mcp`, `@ant/claude-for-chrome-mcp`,
-   `@ant/imagine-server`, and `@loc/electron-window` land inside the hashed
-   bundles.
-4. Whether `ion-dist` is the in-app browser pane, a Cowork frame, or both.
-   The shim's `pane` reply and the `frame-*.html` names suggest a framed
-   browser surface. The files were not tied together.
-5. The guest image layout inside `smol-bin.*.img`, and whether
-   `swift_addon.node` mounts those files.
-6. The concrete Seatbelt allow-list's effect on CoreSimulator, which the
-   profile's own comment says can only be checked by running it.
-7. Whether the unpacked-metadata mismatches are the usual ASAR placeholder
+1. The six shell HTML files are the Electron windows. Computer-use teach,
+   the watch-record chooser, the design window, Cowork artifacts, and the
+   page preview are further `BrowserWindow`s whose documents are a temp file,
+   a `cowork-artifact:` response, or a preview partition. Buddy has its own
+   HTML. The graph's "14 windows" count was a constructor count, not 14 HTML
+   files.
+2. IPC channels are the `$eipc_message$_<uuid>_$_…` spelling in
+   [architecture](architecture.md). Two UUIDs exist: the app bus and the
+   `electron_window` bus. The graph's three unnamed main-process handlers
+   were not given those names by the graph. The handlers that were read are
+   the service methods on the far side of that spelling.
+3. `ion-dist/index.html` is the claude.ai page inside the main view.
+   `frame-shell.html` is the artifact frame. Launch-preview partitions and
+   the shim's `pane` reply are the in-app browser. They are three surfaces,
+   described in [web and preview](web-and-preview.md).
+4. `@loc/electron-window` is the second IPC UUID and the `WindowManager`
+   methods. `@ant/computer-use-mcp`, `@ant/claude-for-chrome-mcp`, and
+   `@ant/imagine-server` still have no package directory. Computer use and
+   Chrome are native addons plus the services in
+   [computer use](computer-use.md) and
+   [extensions](extensions-and-integrations.md). An imagine server was not
+   found as a named process.
+
+## Questions still open
+
+1. The guest filesystem inside `smol-bin.*.img`, and whether the `.vhdx` the
+   controller copies is produced from those images at runtime or downloaded
+   inside `claudevm.bundle`.
+2. The Seatbelt profile's effect on CoreSimulator. The profile's own comment
+   says that can only be checked by running it.
+3. Whether the unpacked-metadata mismatches are the usual ASAR placeholder
    for files that also live in `app.asar.unpacked`, or a real content
-   disagreement. The hashes differ. The cause was not proven by comparing
-   the placeholder bytes inside the archive with the unpacked files.
+   disagreement. The hashes differ. The placeholder bytes inside the archive
+   were not compared with the unpacked files.
+4. Which `https` requests `protocol.handle("https")` answers itself, and
+   which it forwards. The artifact-document branch was read. The rest of the
+   handler was not.
+5. The enforcement branch for each managed-config key that is only named in
+   [enterprise](enterprise.md). The keys the boot path consults are the ones
+   that chapter says the boot path consults.
+6. Swift method names inside each addon group. The loader lists the groups.
+   The TypeScript declarations are not in the archive. Call sites in the main
+   chunk were not enumerated per group.

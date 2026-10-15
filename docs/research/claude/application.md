@@ -166,9 +166,14 @@ content-hashed `index.chunk-*.js` plus source maps (43 source-map nodes).
 
 ## Context bridge
 
+The counts in the table above are the graph's counts. Preload entrypoints
+recovered by that graph: 0. The preload files are in the archive and were
+read afterward. Their worlds, the origin check, and the channel spelling are
+in [process architecture](architecture.md). The graph's 19 retained bridge
+nodes are the subset that survived truncation.
+
 Nineteen context-bridge nodes were retained, all in world `main`. The
 summary count is 52. The difference sits in the truncated semantic analysis.
-Preload entrypoints recovered: 0.
 
 Literal keys with object members:
 
@@ -183,6 +188,10 @@ Literal keys with object members:
 Several further bridges survive only as the expression `t`.
 
 ## IPC
+
+The channel spelling and the service catalog are in
+[process architecture](architecture.md). The notes below are what the earlier
+graph retained, which stopped before the preloads were read as text.
 
 Of 114 retained channel nodes, 113 are dynamic concatenations and one is a
 literal. The summary's 10 literal channels are therefore not all present as
