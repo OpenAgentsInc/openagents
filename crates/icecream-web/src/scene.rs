@@ -10,7 +10,8 @@ use std::f32::consts::{FRAC_PI_2, PI};
 use glam::{Mat4, Quat, Vec3};
 use icecream_rules::geom::{Block, V2};
 use icecream_rules::layout::{
-    CELL, DOOR, Flavor, House, Module, PropKind, Side, WALL_HEIGHT, centre,
+    CELL, DOOR, DOOR_HEIGHT, Flavor, House, MAN_HEIGHT, Module, PLAYER_HEIGHT, PropKind, Side,
+    WALL_HEIGHT, centre,
 };
 
 use crate::mesh::{Mesh, Shape};
@@ -282,7 +283,7 @@ pub fn room(house: &House, index: usize, yellow: f32) -> Mesh {
                 &mut mesh,
                 mid - gap,
                 mid + gap,
-                2.45,
+                DOOR_HEIGHT,
                 WALL_HEIGHT,
                 colour,
                 0.0,
@@ -293,7 +294,7 @@ pub fn room(house: &House, index: usize, yellow: f32) -> Mesh {
                 mid - gap - 0.12,
                 mid - gap,
                 0.0,
-                2.45,
+                DOOR_HEIGHT,
                 frame,
                 0.06,
             );
@@ -302,7 +303,7 @@ pub fn room(house: &House, index: usize, yellow: f32) -> Mesh {
                 mid + gap,
                 mid + gap + 0.12,
                 0.0,
-                2.45,
+                DOOR_HEIGHT,
                 frame,
                 0.06,
             );
@@ -310,8 +311,8 @@ pub fn room(house: &House, index: usize, yellow: f32) -> Mesh {
                 &mut mesh,
                 mid - gap - 0.12,
                 mid + gap + 0.12,
-                2.33,
-                2.45,
+                DOOR_HEIGHT - 0.12,
+                DOOR_HEIGHT,
                 frame,
                 0.06,
             );
@@ -867,7 +868,7 @@ fn front_door(mesh: &mut Mesh, house: &House) {
     let along = Vec3::new(out.z.abs(), 0.0, out.x.abs());
     let face = Vec3::new(f.at.x, 0.0, f.at.z) - out * 0.17;
     let lo = face - along * 0.75 - out * 0.06;
-    let hi = face + along * 0.75 + Vec3::Y * 2.3;
+    let hi = face + along * 0.75 + Vec3::Y * DOOR_HEIGHT;
     boxed(mesh, lo.min(hi), lo.max(hi), 0x6B3A1E, 1.0);
     for i in 0..3 {
         let hole = face + Vec3::Y * (0.9 + i as f32 * 0.22) + along * 0.5 - out * 0.08;
@@ -889,8 +890,8 @@ fn front_door(mesh: &mut Mesh, house: &House) {
         GOLD,
         1.0,
     );
-    let sign = face + Vec3::Y * 2.6 - out * 0.06;
-    let half = along * 0.5 + Vec3::Y * 0.15 + out * 0.04;
+    let sign = face + Vec3::Y * (DOOR_HEIGHT + 0.15) - out * 0.06;
+    let half = along * 0.5 + Vec3::Y * 0.1 + out * 0.04;
     boxed(mesh, sign - half, sign + half, 0x3BB273, 1.0);
 }
 
@@ -930,6 +931,58 @@ pub fn lights(house: &House, index: usize, yellow: f32) -> Mesh {
         );
     }
     mesh
+}
+
+/// The avatar model's height (to the top of its hair) and the scale that
+/// draws it the kid's [`PLAYER_HEIGHT`], with the eyes at the camera's
+/// first-person [`crate::camera::HEAD`].
+pub const AVATAR_MODEL_HEIGHT: f32 = 2.12;
+pub const AVATAR_SCALE: f32 = PLAYER_HEIGHT / AVATAR_MODEL_HEIGHT;
+/// The avatar model's eye line, before [`AVATAR_SCALE`].
+pub const AVATAR_MODEL_EYES: f32 = 1.89;
+
+/// The Ice Cream Man model's height with his forehead, the scale that
+/// draws him [`MAN_HEIGHT`], and his hip joint, which he bends at to duck
+/// through a doorway.
+pub const MAN_MODEL_HEIGHT: f32 = 3.345;
+pub const MAN_SCALE: f32 = MAN_HEIGHT / MAN_MODEL_HEIGHT;
+pub const MAN_MODEL_HIP: f32 = 0.85;
+/// How far forward he bends (radians) at a doorway: his top comes down
+/// under the lintel.
+pub const MAN_DUCK: f32 = 0.72;
+/// The minions: little Ice Cream Men, 0.8 m tall.
+pub const MINION_SCALE: f32 = 0.8 / MAN_MODEL_HEIGHT;
+
+/// The Ice Cream Man's top when bent `duck` (0 to 1) of [`MAN_DUCK`],
+/// in metres.
+#[must_use]
+pub fn man_top(duck: f32) -> f32 {
+    let hip = MAN_MODEL_HIP * MAN_SCALE;
+    hip + (MAN_HEIGHT - hip) * (MAN_DUCK * duck.clamp(0.0, 1.0)).cos()
+}
+
+/// How much (0 to 1) the Ice Cream Man ducks at `at`: fully within 1.3 m
+/// of a doorway (he bends forward, so his head reaches the lintel before
+/// his feet do), not at all past 2.3 m.
+#[must_use]
+pub fn duck(house: &House, at: V2) -> f32 {
+    house
+        .doorways()
+        .into_iter()
+        .map(|(mid, along_x)| {
+            let (across, along) = if along_x {
+                ((at.z - mid.z).abs(), (at.x - mid.x).abs())
+            } else {
+                ((at.x - mid.x).abs(), (at.z - mid.z).abs())
+            };
+            if along > DOOR / 2.0 + 0.6 {
+                0.0
+            } else {
+                let t = ((2.3 - across) / 1.0).clamp(0.0, 1.0);
+                t * t * (3.0 - 2.0 * t)
+            }
+        })
+        .fold(0.0, f32::max)
 }
 
 /// The avatar's parts.
@@ -1348,7 +1401,8 @@ pub struct ManModel {
     pub forehead: Mesh,
 }
 
-/// The Ice Cream Man, facing +z, about 3 m tall with his forehead.
+/// The Ice Cream Man, facing +z, [`MAN_MODEL_HEIGHT`] tall with his
+/// forehead (drawn at [`MAN_SCALE`]).
 #[must_use]
 pub fn man() -> ManModel {
     let mut body = Mesh::new();
@@ -1801,8 +1855,8 @@ pub fn cabinet() -> Mesh {
     );
     boxed(
         &mut mesh,
-        Vec3::new(-0.5, 2.45, -0.5),
-        Vec3::new(0.5, 2.6, 0.5),
+        Vec3::new(-0.5, 2.05, -0.5),
+        Vec3::new(0.5, 2.2, 0.5),
         WAFFLE_DARK,
         1.0,
     );
@@ -1810,7 +1864,7 @@ pub fn cabinet() -> Mesh {
         boxed(
             &mut mesh,
             Vec3::new(x, 0.15, z),
-            Vec3::new(x + 0.1, 2.45, z + 0.1),
+            Vec3::new(x + 0.1, 2.05, z + 0.1),
             WAFFLE,
             1.0,
         );
@@ -1873,7 +1927,13 @@ mod tests {
             .chunks(crate::mesh::STRIDE)
             .map(|v| v[1])
             .fold(0.0_f32, f32::max);
-        assert!(top > 3.0 && top < 3.4, "{top}");
+        assert!((top - MAN_MODEL_HEIGHT).abs() < 0.01, "{top}");
+        let a = avatar();
+        let hair = [&a.head, &a.torso]
+            .iter()
+            .flat_map(|m| m.data.chunks(crate::mesh::STRIDE).map(|v| v[1]))
+            .fold(0.0_f32, f32::max);
+        assert!((hair - AVATAR_MODEL_HEIGHT).abs() < 0.01, "{hair}");
         for t in icecream_rules::Tool::ALL {
             assert!(tool(t).vertices() > 0);
         }
@@ -1889,6 +1949,38 @@ mod tests {
             cabinet(),
         ] {
             assert!(mesh.vertices() > 0);
+        }
+    }
+
+    #[test]
+    fn the_kid_is_kid_sized_and_the_man_ducks_under_lintels() {
+        let kid = AVATAR_MODEL_HEIGHT * AVATAR_SCALE;
+        assert!((kid - PLAYER_HEIGHT).abs() < 1e-4);
+        let eyes = AVATAR_MODEL_EYES * AVATAR_SCALE;
+        assert!((eyes - crate::camera::HEAD).abs() < 0.02, "{eyes}");
+        assert!(kid + 0.6 < DOOR_HEIGHT);
+        // Upright he's a head over the doorway and under the ceiling;
+        // bent he clears the lintel.
+        assert!(man_top(0.0) > DOOR_HEIGHT && man_top(0.0) < WALL_HEIGHT);
+        assert!(man_top(1.0) < DOOR_HEIGHT - 0.1, "{}", man_top(1.0));
+        let house = House::new(7);
+        for (mid, along_x) in house.doorways() {
+            assert_eq!(duck(&house, mid), 1.0);
+            let away = if along_x {
+                V2 {
+                    x: mid.x,
+                    z: mid.z + 1.2,
+                }
+            } else {
+                V2 {
+                    x: mid.x + 1.2,
+                    z: mid.z,
+                }
+            };
+            assert_eq!(duck(&house, away), 1.0, "bent before the head gets there");
+        }
+        for room in &house.rooms {
+            assert_eq!(duck(&house, centre(room.cell)), 0.0);
         }
     }
 

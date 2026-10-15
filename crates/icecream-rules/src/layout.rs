@@ -14,11 +14,19 @@ use crate::rng::Rng;
 
 /// A cell's side, in metres.
 pub const CELL: f32 = 10.0;
-/// Walls' thickness and height.
+/// Walls' thickness, and their height: the ceiling, a real house's 2.6 m.
 pub const WALL: f32 = 0.3;
-pub const WALL_HEIGHT: f32 = 3.2;
-/// A doorway's width.
+pub const WALL_HEIGHT: f32 = 2.6;
+/// A doorway's width, and the top of its opening (the lintel's underside).
 pub const DOOR: f32 = 2.2;
+pub const DOOR_HEIGHT: f32 = 2.1;
+/// The kid you play: 1.35 m tall, eyes at 1.2 m, so the head clears a
+/// doorway by 0.75 m standing and the lintel stops a jump under it.
+pub const PLAYER_HEIGHT: f32 = 1.35;
+pub const EYE_HEIGHT: f32 = 1.2;
+/// The Ice Cream Man stands 2.35 m with his forehead: a head taller than a
+/// doorway (he ducks through), under the ceiling.
+pub const MAN_HEIGHT: f32 = 2.35;
 /// Half the width of each room's clear plus.
 pub const LANE: f32 = 1.5;
 /// The original grid: 4 by 4 rooms. A run's house is
@@ -244,7 +252,7 @@ static HALLWAY: ModuleDef = ModuleDef {
 
 static STAIRWELL: ModuleDef = ModuleDef {
     props: &[
-        prop(K::Stairs, 1.8, -IN, IN, -1.8, 3.0),
+        prop(K::Stairs, 1.8, -IN, IN, -1.8, WALL_HEIGHT),
         usable(K::Closet, -IN, 2.0, -3.0, IN, 2.4, v(-2.3, 3.4)),
         prop(K::Plant, 3.6, 3.6, 4.4, 4.4, 1.2),
     ],
@@ -989,6 +997,37 @@ impl House {
         (centre(a) + centre(b)) * 0.5
     }
 
+    /// Every doorway once: its middle and whether its wall runs along x.
+    #[must_use]
+    pub fn doorways(&self) -> Vec<(V2, bool)> {
+        let mut all = Vec::new();
+        for room in &self.rooms {
+            for side in [Side::South, Side::East] {
+                if room.doors[side_index(side)]
+                    && let Some(next) = self.neighbour(room.cell, side)
+                {
+                    all.push((Self::doorway(room.cell, next), side == Side::South));
+                }
+            }
+        }
+        all
+    }
+
+    /// The clear height over a body of `radius` at `p`: the lintel's
+    /// underside in a doorway, else the ceiling.
+    #[must_use]
+    pub fn headroom(&self, p: V2, radius: f32) -> f32 {
+        let under = self.doorways().into_iter().any(|(mid, along_x)| {
+            let (across, along) = if along_x {
+                ((p.z - mid.z).abs(), (p.x - mid.x).abs())
+            } else {
+                ((p.x - mid.x).abs(), (p.z - mid.z).abs())
+            };
+            across < WALL / 2.0 + radius && along < DOOR / 2.0 + radius
+        });
+        if under { DOOR_HEIGHT } else { WALL_HEIGHT }
+    }
+
     /// Rooms that open onto this one.
     #[must_use]
     pub fn neighbours(&self, cell: Cell) -> Vec<Cell> {
@@ -1116,6 +1155,28 @@ mod tests {
             assert!(house.open(house.man_start, BODY));
             let steps = house.distances(from)[house.room_of(house.man_start)];
             assert!(steps >= 3, "seed {seed}: he starts {steps} rooms away");
+        }
+    }
+
+    #[test]
+    fn a_kid_fits_the_house_and_the_man_ducks_through_doors() {
+        // Real-world proportions: the head and eyes clear a doorway with
+        // room to spare, and nothing in a room pokes through the ceiling.
+        assert!(EYE_HEIGHT < PLAYER_HEIGHT && PLAYER_HEIGHT + 0.6 < DOOR_HEIGHT);
+        assert!(DOOR_HEIGHT + 0.4 < WALL_HEIGHT);
+        assert!(MAN_HEIGHT > DOOR_HEIGHT && MAN_HEIGHT < WALL_HEIGHT);
+        for seed in 0..20 {
+            let house = House::build(seed, 12, seed % 2 == 0);
+            assert!(house.blocks.iter().all(|b| b.height <= WALL_HEIGHT));
+            let doorways = house.doorways();
+            assert!(doorways.len() >= house.rooms.len() - 1);
+            for (mid, _) in doorways {
+                assert!(house.open(mid, BODY), "seed {seed}: {mid:?}");
+                assert_eq!(house.headroom(mid, BODY), DOOR_HEIGHT);
+            }
+            for room in &house.rooms {
+                assert_eq!(house.headroom(centre(room.cell), BODY), WALL_HEIGHT);
+            }
         }
     }
 

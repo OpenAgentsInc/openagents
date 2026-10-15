@@ -20,7 +20,7 @@ use web_sys::{
     WebGlBuffer, WebGlProgram, WebGlUniformLocation, WebGlVertexArrayObject, WheelEvent, Window,
 };
 
-use crate::camera::{Camera, View, ray_to_height};
+use crate::camera::{Boom, Camera, Space, View, ray_to_height};
 use crate::copy;
 use crate::hud::{Action, Card, Hold, Hud, css, element};
 use crate::mesh::{Mesh, STRIDE, rgb};
@@ -416,6 +416,12 @@ struct App {
     man_yaw: f32,
     stride: f32,
     man_stride: f32,
+    /// How bent the Ice Cream Man is, to duck through a doorway.
+    man_duck: f32,
+    /// The third-person boom's length, smoothed.
+    boom: Boom,
+    /// The last frame's length in seconds, for the boom.
+    dt: f32,
     drip_wait: f32,
     man_hit: f32,
     particles: Vec<Particle>,
@@ -961,6 +967,7 @@ impl App {
                 self.daylight = (t / ENDING * 1.4).min(1.0);
             }
         }
+        self.dt = dt as f32;
         self.animate(dt as f32);
         self.render();
         self.update_hud(seconds);
@@ -1193,6 +1200,10 @@ impl App {
         if man.moving {
             self.man_stride += dt * 7.0;
         }
+        // He bends to get through a doorway, quickly enough that his head
+        // never meets the lintel.
+        let duck = scene::duck(&game.house, man.pos);
+        self.man_duck += (duck - self.man_duck) * (1.0 - (-12.0 * dt).exp());
         self.man_yaw = if self.options.portrait {
             yaw_of(man.facing)
         } else {
@@ -1307,7 +1318,23 @@ impl App {
             camera.yaw = self.time * 0.15;
             camera.zoom = 6.0;
         }
-        let mut view = camera.view(player.pos, player.height, &game.house.blocks);
+        let space = Space::of(&game.house);
+        let rig = camera.rig(player.pos, player.height, &space);
+        let boom = self.boom.follow(&rig, self.dt);
+        let mut view = rig.view(boom);
+        if let (Some(i), None) = (player.hidden, scare) {
+            // In the closet: looking out through the slats at eye height,
+            // from its door.
+            let closet = &game.house.closets[i];
+            let door = closet.block.closest(closet.at);
+            let out = (closet.at - door).normalized();
+            let eye = door + out * 0.15;
+            view = View {
+                eye: Vec3::new(eye.x, crate::camera::HEAD, eye.z),
+                target: Vec3::new(closet.at.x, crate::camera::HEAD, closet.at.z),
+                first_person: true,
+            };
+        }
         if let Some(t) = scare {
             // Through your own eyes, at him, shaking once he hits.
             let (eye, dir) = self.scare_eye();
@@ -1633,22 +1660,33 @@ impl App {
             let lunge = ((t - 0.1) / (SCARE_HIT - 0.1)).clamp(0.0, 1.0);
             // He stops just short of the lens, his face filling the
             // screen (any closer and the camera is inside his outline).
-            let dist = 3.6
+            let dist = (3.6
                 - 2.0 * lunge * lunge * lunge
                 - if t > SCARE_HIT {
                     0.12 * ((t - SCARE_HIT) * 20.0).sin().abs() * (1.0 - (t - SCARE_HIT)).max(0.0)
                 } else {
                     0.0
-                };
+                })
+                * scene::MAN_SCALE;
             let at = eye + dir * dist;
-            Mat4::from_translation(Vec3::new(at.x, eye.y - 2.45, at.z))
+            // His face (2.45 up the model) at your eyes.
+            Mat4::from_translation(Vec3::new(at.x, eye.y - 2.45 * scene::MAN_SCALE, at.z))
                 * Mat4::from_rotation_y(yaw_of(v(-dir.x, -dir.z)))
+                * Mat4::from_scale(Vec3::splat(scene::MAN_SCALE))
         } else {
             Mat4::from_translation(Vec3::new(man.pos.x + shake, bob, man.pos.z))
                 * Mat4::from_rotation_y(self.man_yaw)
+                * Mat4::from_scale(Vec3::splat(scene::MAN_SCALE))
                 * Mat4::from_scale(Vec3::new(squash, 1.0 / squash, squash))
         };
         let scaring = self.scare_time().is_some();
+        // Everything over the hips bends forward to duck through doorways.
+        let duck = if scaring { 0.0 } else { self.man_duck };
+        let hip = Vec3::Y * scene::MAN_MODEL_HIP;
+        let upper = base
+            * Mat4::from_translation(hip)
+            * Mat4::from_rotation_x(scene::MAN_DUCK * duck)
+            * Mat4::from_translation(-hip);
         let (tint, shine) = if frozen {
             ([0.62, 0.42, 0.3], 1.3)
         } else if man.slow > 0.0 {
@@ -1673,23 +1711,34 @@ impl App {
             } else {
                 -swing * side * 0.7
             };
-            let arm = base
+            let arm = upper
                 * Mat4::from_translation(Vec3::new(side * 0.62, 1.85, 0.0))
                 * Mat4::from_rotation_z(side * 0.25)
                 * Mat4::from_rotation_x(reach);
             gpu.draw(&m.man_arm, &arm, tint, light, shine, true);
         }
-        gpu.draw(&m.man_body, &base, tint, light, shine, true);
-        gpu.draw(&m.man_head, &base, tint, light, shine, true);
+        gpu.draw(&m.man_body, &upper, tint, light, shine, true);
+        gpu.draw(&m.man_head, &upper, tint, light, shine, true);
         // The forehead always shines.
-        gpu.draw(&m.man_forehead, &base, tint, light, 1.0 + shine * 0.5, true);
+        gpu.draw(
+            &m.man_forehead,
+            &upper,
+            tint,
+            light,
+            1.0 + shine * 0.5,
+            true,
+        );
         if man.state == ManState::Confused {
             for i in 0..3 {
                 let a = self.time * 4.0 + i as f32 * 2.1;
                 let star = Mat4::from_scale_rotation_translation(
                     Vec3::splat(0.22),
                     Quat::from_rotation_y(a * 2.0),
-                    Vec3::new(man.pos.x + a.cos() * 0.7, 3.5, man.pos.z + a.sin() * 0.7),
+                    Vec3::new(
+                        man.pos.x + a.cos() * 0.5,
+                        scene::man_top(self.man_duck) + 0.05,
+                        man.pos.z + a.sin() * 0.5,
+                    ),
                 );
                 gpu.draw_flat(&m.star, &star, [1.0, 0.88, 0.3]);
             }
@@ -1710,7 +1759,7 @@ impl App {
             } else {
                 0.0
             };
-            let scale = 0.34;
+            let scale = scene::MINION_SCALE;
             let base = Mat4::from_translation(Vec3::new(minion.pos.x, bob, minion.pos.z))
                 * Mat4::from_rotation_y(yaw_of(minion.facing))
                 * Mat4::from_scale(Vec3::splat(scale));
@@ -1744,7 +1793,7 @@ impl App {
                 let glow = Mat4::from_scale_rotation_translation(
                     Vec3::splat(0.1),
                     Quat::IDENTITY,
-                    Vec3::new(minion.pos.x, 1.35, minion.pos.z),
+                    Vec3::new(minion.pos.x, 0.95, minion.pos.z),
                 );
                 gpu.draw_flat(&m.sparkle, &glow, [0.6, 1.0, 0.75]);
             }
@@ -1785,7 +1834,9 @@ impl App {
     fn draw_avatar(&self, view: &View, scooped: bool) {
         let game = &self.game;
         let player = &game.player;
-        if player.hidden.is_some() || view.first_person {
+        // Hidden, in first person, or the boom pulled in so close the
+        // avatar would fill the view.
+        if player.hidden.is_some() || view.first_person || self.boom.close() {
             return;
         }
         let gpu = &self.gpu;
@@ -1801,10 +1852,10 @@ impl App {
         };
         if let (Some(t), true) = (ending, scooped) {
             let t = (t / ENDING).min(1.0);
-            sink = t * 0.9;
+            sink = t * 0.9 * scene::AVATAR_SCALE;
             shrink = 1.0 - t * 0.45;
             let cone = Mat4::from_scale_rotation_translation(
-                Vec3::splat(1.2),
+                Vec3::splat(1.2 * scene::AVATAR_SCALE),
                 Quat::IDENTITY,
                 Vec3::new(player.pos.x, 0.0, player.pos.z),
             );
@@ -1820,7 +1871,7 @@ impl App {
             player.height + 0.4 - sink - 0.4 * shrink.min(1.0) + 0.4 * shrink,
             player.pos.z,
         )) * Mat4::from_rotation_y(self.yaw)
-            * Mat4::from_scale(Vec3::splat(shrink));
+            * Mat4::from_scale(Vec3::splat(shrink * scene::AVATAR_SCALE));
         let swing = self.stride.sin() * 0.7 * if player.moving { 1.0 } else { 0.0 };
         let air = player.height > 0.05;
         gpu.draw(&m.torso, &base, flash, light, 0.0, true);
@@ -2426,6 +2477,9 @@ pub fn start() {
         man_yaw: 0.0,
         stride: 0.0,
         man_stride: 0.0,
+        man_duck: 0.0,
+        boom: Boom::default(),
+        dt: 0.0,
         drip_wait: 0.0,
         man_hit: 0.0,
         particles: Vec::new(),

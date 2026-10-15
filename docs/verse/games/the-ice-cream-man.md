@@ -98,6 +98,15 @@ third person camera. See [The designer's revision](#the-designers-revision).
   far from the bedroom, the front door and each other, and one is locked
   in the cone cabinet behind the sprinkle-button puzzle
   (`rules.puzzle_key`).
+- Real-world scale (`icecream-rules` `layout.rs`): rooms are 10 m cells
+  with 2.6 m ceilings (Backrooms included) and doorways 2.2 m wide by
+  2.1 m high. You play a kid, 1.35 m tall with eyes at 1.2 m (the
+  first-person camera height), so your head clears every doorway by 0.75 m;
+  a jump under a lintel bumps it instead of passing through. The Ice Cream
+  Man stands 2.35 m with his forehead, a head taller than a doorway, so he
+  bends forward through each one; his minions are 0.8 m. Closets are 2.2 to
+  2.4 m, the front door 2.1 m, the cone cabinet 2.2 m, and the stairwell's
+  steps end at the ceiling.
 
 ## The Ice Cream Man
 
@@ -174,8 +183,15 @@ find the keys), skippable and re-openable, like Grow Little Bunny's.
 
 Roblox default: third person behind the avatar, orbit with right-drag,
 zoom with the wheel (first person at closest zoom). Shift Lock locks the
-camera over the right shoulder with a crosshair for aiming tools. The
-camera pulls in when a wall is behind the avatar. V switches between first
+camera over the right shoulder with a crosshair for aiming tools. Third
+person is a boom from the avatar's head (4.5 m to start, 8 m at most):
+indoors it tilts down so the camera stays 0.3 m under the ceiling (and up
+to stay over the floor), and a 0.2 m sphere swept from the head to the
+camera against walls, furniture, doorway lintels, the floor and the
+ceiling pulls it in short of anything solid. The boom snaps in at once and
+eases back out over about a second, so it never passes through a wall and
+never bounces; when it's pulled in closer than 0.6 m the avatar isn't
+drawn. V switches between first
 person (the tool in your hand at the bottom right, the mouse locked to look
 around) and third person (back at the zoom you had). A version can start in
 first person (`look.first_person`).

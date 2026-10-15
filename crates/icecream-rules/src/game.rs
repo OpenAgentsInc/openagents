@@ -2,7 +2,7 @@
 //! Man, keys, fridges, closets, the front door, and the run card.
 
 use crate::geom::{V2, first_hit, segment_distance, slide, v};
-use crate::layout::{BUTTONS, House, Pickup, centre};
+use crate::layout::{BUTTONS, House, PLAYER_HEIGHT, Pickup, centre};
 use crate::man::{Act, Man, ManState, Senses};
 use crate::minion::Minion;
 use crate::rng::Rng;
@@ -693,6 +693,14 @@ impl Game {
         if player.height <= 0.0 {
             player.height = 0.0;
             player.vy = 0.0;
+        }
+        if player.height > 0.0 {
+            // A jump under a lintel (or the ceiling) bumps the head.
+            let room = self.house.headroom(player.pos, PLAYER_RADIUS) - PLAYER_HEIGHT - 0.05;
+            if player.height > room {
+                player.height = room.max(0.0);
+                player.vy = player.vy.min(0.0);
+            }
         }
     }
 
@@ -1470,6 +1478,25 @@ mod tests {
             top = top.max(game.player.height);
         }
         assert!(top > 0.8 && top < 1.2, "{top}");
+        assert_eq!(game.player.height, 0.0);
+    }
+
+    #[test]
+    fn a_jump_in_a_doorway_bumps_the_lintel() {
+        let mut game = calm(1);
+        let (mid, _) = game.house.doorways()[0];
+        game.player.pos = mid;
+        let mut top: f32 = 0.0;
+        for _ in 0..40 {
+            game.step(Input {
+                jump: true,
+                ..Input::default()
+            });
+            top = top.max(game.player.height);
+        }
+        let head = top + crate::layout::PLAYER_HEIGHT;
+        assert!(head < crate::layout::DOOR_HEIGHT, "{head}");
+        assert!(top > 0.5, "still a jump: {top}");
         assert_eq!(game.player.height, 0.0);
     }
 
