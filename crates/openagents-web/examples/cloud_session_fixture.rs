@@ -246,7 +246,11 @@ pub async fn serve(
         "{}",
         json!({"synthetic":true,"origin":origin,"account_service":native_origin,"config":path})
     );
-    let result = axum::serve(listener, openagents_web::router(config))
+    let result = // With the peer address: pages answer only a loopback peer (X-SEC-02).
+    axum::serve(
+        listener,
+        openagents_web::router(config).into_make_service_with_connect_info::<SocketAddr>(),
+    )
         .with_graceful_shutdown(async {
             let _ = tokio::signal::ctrl_c().await;
         })

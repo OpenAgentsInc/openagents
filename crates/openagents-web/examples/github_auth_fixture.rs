@@ -149,10 +149,14 @@ async fn main() -> Result<(), String> {
         "{}",
         json!({"origin": origin, "login": format!("{origin}/login"), "github": github_label, "account_service": account_service, "stores": stores})
     );
-    axum::serve(listener, openagents_web::router(config))
-        .with_graceful_shutdown(async {
-            let _ = tokio::signal::ctrl_c().await;
-        })
-        .await
-        .map_err(|_| "fixture web server stopped".into())
+    // With the peer address: pages answer only a loopback peer (X-SEC-02).
+    axum::serve(
+        listener,
+        openagents_web::router(config).into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .with_graceful_shutdown(async {
+        let _ = tokio::signal::ctrl_c().await;
+    })
+    .await
+    .map_err(|_| "fixture web server stopped".into())
 }
