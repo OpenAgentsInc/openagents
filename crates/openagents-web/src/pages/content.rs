@@ -403,7 +403,7 @@ mod tests {
     #[test]
     fn the_legal_text_is_the_published_text() {
         assert!(TERMS.starts_with("# Terms of Service\nLast updated: 2026-10-09"));
-        assert!(PRIVACY.starts_with("# Privacy Policy\nLast updated: 2026-10-09"));
+        assert!(PRIVACY.starts_with("# Privacy Policy\nLast updated: 2026-10-15"));
         assert!(TERMS.contains("train, fine-tune, and evaluate the models and tools we run"));
         assert!(PRIVACY.contains("To train, fine-tune, and evaluate models we run or develop"));
         assert!(

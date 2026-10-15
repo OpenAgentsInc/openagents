@@ -39,7 +39,7 @@ pub(super) async fn show(State(app): State<App>, headers: HeaderMap) -> Response
 
 /// A bearer dashboard key that matches, or a signed-in site admin. A
 /// wrong key waits a moment before the same `404` as everyone else.
-async fn allowed(app: &App, headers: &HeaderMap) -> bool {
+pub(crate) async fn allowed(app: &App, headers: &HeaderMap) -> bool {
     let offered = headers
         .get(header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
@@ -81,7 +81,7 @@ fn page(headers: &HeaderMap, status: StatusCode, content: Markup) -> Response {
 }
 
 /// Never cached, indexed, or sent on as a referrer.
-fn guarded(mut response: Response) -> Response {
+pub(crate) fn guarded(mut response: Response) -> Response {
     let headers = response.headers_mut();
     headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
     headers.insert(
@@ -168,7 +168,7 @@ impl Window<'_> {
     }
 }
 
-fn number(value: u64) -> String {
+pub(crate) fn number(value: u64) -> String {
     let digits = value.to_string();
     let mut out = String::new();
     for (index, digit) in digits.chars().enumerate() {
@@ -341,6 +341,10 @@ pub(super) fn report(counts: &Counts, hour: u64, stored: bool) -> Markup {
                 "Counts only: no cookies, no IP addresses, no message text, no accounts. "
                 "Times are UTC. "
                 @if stored { "Updated every minute." } @else { "This server keeps counts in memory only." }
+            }
+            p {
+                "Clicks and sign-ups from our campaign and affiliate links are on "
+                a href=(crate::attribution::SCOREBOARD) { "Links" } "."
             }
         }))
         (facts)

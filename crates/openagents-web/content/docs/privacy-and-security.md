@@ -99,6 +99,33 @@ for it.
 Our hosting provider's request logs, which keep the site running and
 secure, do see IP addresses; they're deleted after 30 days.
 
+## Links that credit who sent you
+
+Our own campaign links start with `openagents.com/go/` (like
+`openagents.com/go/yt-cost`), and links shared by people who recommend us
+start with `openagents.com/r/`. Unlike the counting above, following one
+of these keeps a cookie in your browser, so we can credit who sent you.
+
+- **What's kept in your browser:** one cookie, `oa_ref`, that only our
+  site can read. It holds the link you followed, its series, a random
+  click number, and the time. It lasts 30 days; a newer link replaces it,
+  and it's deleted when you log in or sign up.
+- **What we keep:** for each click, the random click number, the link's
+  code (a short code for a referral link, never the link itself), the
+  series, the time, the page it led to, and whether a person, an agent, or
+  a crawler clicked, for up to 13 months. Not your IP address, device,
+  browser, or account.
+  If you sign up while the cookie is set, your account keeps which link
+  brought you. A later paid plan is counted for that link too.
+- **Asking first:** in the European Economic Area, the UK, and
+  Switzerland, or when we can't tell where you are, we ask before setting
+  the cookie, and set nothing if you say no.
+- **Do Not Track and Global Privacy Control:** no cookie, and we only
+  count that a link was followed. Agents and crawlers never get the
+  cookie.
+- **Who sees it:** we do. Someone who shares a referral link may see
+  totals for their own link, never who you are.
+
 ## Your computer
 
 - A phone can reach your computer only after you scanned that computer's

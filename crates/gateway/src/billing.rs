@@ -636,8 +636,18 @@ async fn stripe_webhook(
             problem,
         );
     }
+    // Affiliate attribution (#11698): a paid month, refund or lost dispute
+    // for an account that came through a link becomes a named conversion
+    // once the book has applied it.
+    let conversion = crate::conversions::pending(&value, &meaning);
     let response = match meaning {
-        Meaning::Book(event) => deliver(state, *event).await,
+        Meaning::Book(event) => {
+            let response = deliver(state, *event).await;
+            if let Some(pending) = conversion.filter(|_| response.status().is_success()) {
+                crate::conversions::settle(&state.dir, &pending, unix_now());
+            }
+            response
+        }
         Meaning::Later(why) => refused(StatusCode::CONFLICT, "not_yet", why),
         Meaning::Ignored(why) => {
             answered(StatusCode::OK, json!({"outcome": format!("ignored:{why}")}))

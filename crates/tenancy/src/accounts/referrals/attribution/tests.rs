@@ -552,3 +552,153 @@ fn immutable_decision_validation_and_workspace_adoption_refuse_substitution() {
     store.seal();
     assert!(store.validate(ACCOUNTS).is_err());
 }
+
+fn github(id: u64, login: &str) -> crate::accounts::identities::GithubProfile {
+    crate::accounts::identities::GithubProfile {
+        id,
+        login: login.into(),
+        ..Default::default()
+    }
+}
+fn click(link: LinkKind, code: Option<&str>, series: Option<&str>) -> Campaign {
+    Campaign {
+        link,
+        code: code.map(str::to_owned),
+        series: series.map(str::to_owned),
+        click: format!("clk_{}", "ab".repeat(16)),
+        clicked_at: 1_760_000_000,
+        basis: Basis::Consent,
+    }
+}
+
+/// #11698: a GitHub sign-up through an affiliate link captures the source
+/// and its click in the write that creates the account, and the click's
+/// proposal is accepted under the published policy.
+#[test]
+fn affiliate_signup_records_the_click_and_is_accepted_under_the_policy() {
+    crate::files_only!();
+    let (_dir, accounts, affiliate, _, policy) = fixture();
+    let r = accounts
+        .create_referrer(&affiliate.id, Kind::Author, "Creator")
+        .unwrap();
+    let link = accounts.issue_referral_link(&affiliate.id, &r.id).unwrap();
+    let campaign = click(LinkKind::Affiliate, None, Some("cost"));
+    let capture = Capture {
+        request: format!("signup-{}", campaign.click),
+        token: Some(link.token.clone()),
+        consent: true,
+        consent_version: Some(CONSENT.into()),
+    };
+    let signed = accounts
+        .sign_in_github_acquired(
+            &github(7, "newcomer"),
+            "signup",
+            Some((&capture, Some(&campaign))),
+        )
+        .unwrap();
+    assert!(signed.created);
+    let source = accounts.acquisition(&signed.account.id).unwrap().unwrap();
+    assert_eq!(source.outcome, Outcome::Captured);
+    assert_eq!(source.referrer.as_ref().unwrap().id, r.id);
+    assert_eq!(source.campaign.as_ref(), Some(&campaign));
+    // The account's own store never holds the link token.
+    let stored = std::fs::read_to_string(_dir.path().join(crate::accounts::ACCOUNTS)).unwrap();
+    assert!(!stored.contains(&link.token));
+
+    let proposal = signup_proposal(&source, &policy).unwrap();
+    let decision = accounts
+        .propose_attribution(&signed.account.id, &proposal)
+        .unwrap();
+    assert_eq!(decision.status, Status::Accepted);
+    assert_eq!(decision.referrer.as_ref().unwrap().id, r.id);
+
+    // Signing in again changes nothing about the source.
+    let again = accounts
+        .sign_in_github_acquired(
+            &github(7, "newcomer"),
+            "signup",
+            Some((
+                &Capture {
+                    request: "other".into(),
+                    token: None,
+                    consent: false,
+                    consent_version: None,
+                },
+                None,
+            )),
+        )
+        .unwrap();
+    assert!(!again.created);
+    assert_eq!(
+        accounts.acquisition(&signed.account.id).unwrap().unwrap(),
+        source
+    );
+}
+
+/// #11698: a `/go` campaign click is kept with the account as a source
+/// with no referrer, and makes no proposal.
+#[test]
+fn campaign_signup_keeps_the_code_without_a_referrer() {
+    crate::files_only!();
+    let (_dir, accounts, _, _, policy) = fixture();
+    let campaign = click(LinkKind::Go, Some("yt-cost"), Some("cost"));
+    let capture = Capture {
+        request: format!("signup-{}", campaign.click),
+        token: None,
+        consent: true,
+        consent_version: Some(CONSENT.into()),
+    };
+    let signed = accounts
+        .sign_in_github_acquired(
+            &github(8, "viewer"),
+            "signup",
+            Some((&capture, Some(&campaign))),
+        )
+        .unwrap();
+    let source = accounts.acquisition(&signed.account.id).unwrap().unwrap();
+    assert_eq!(source.outcome, Outcome::Missing);
+    assert!(source.referrer.is_none());
+    assert_eq!(
+        source.campaign.as_ref().unwrap().code.as_deref(),
+        Some("yt-cost")
+    );
+    assert!(signup_proposal(&source, &policy).is_none());
+}
+
+/// #11698: no click, no attribution; a malformed click is dropped and the
+/// sign-up still happens.
+#[test]
+fn signup_without_a_valid_click_records_no_campaign() {
+    crate::files_only!();
+    let (_dir, accounts, _, _, _) = fixture();
+    let plain = accounts
+        .sign_in_github(&github(9, "plain"), "signup")
+        .unwrap();
+    assert!(plain.created);
+    assert!(accounts.acquisition(&plain.account.id).unwrap().is_none());
+
+    let mut bad = click(LinkKind::Go, Some("Not A Code"), None);
+    let capture = Capture {
+        request: "signup-bad".into(),
+        token: None,
+        consent: true,
+        consent_version: Some(CONSENT.into()),
+    };
+    let signed = accounts
+        .sign_in_github_acquired(&github(10, "odd"), "signup", Some((&capture, Some(&bad))))
+        .unwrap();
+    assert!(signed.created);
+    assert!(accounts.acquisition(&signed.account.id).unwrap().is_none());
+    // A `/go` click can't carry an affiliate token.
+    bad.code = Some("yt-cost".into());
+    let token = Capture {
+        request: "signup-token".into(),
+        token: Some(format!("rfr_{}", "0".repeat(64))),
+        consent: true,
+        consent_version: Some(CONSENT.into()),
+    };
+    let signed = accounts
+        .sign_in_github_acquired(&github(11, "mixed"), "signup", Some((&token, Some(&bad))))
+        .unwrap();
+    assert!(accounts.acquisition(&signed.account.id).unwrap().is_none());
+}

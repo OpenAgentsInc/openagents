@@ -127,6 +127,32 @@ impl Proposal {
         Ok(())
     }
 }
+/// The proposal a signup through an affiliate link makes (#11698): the
+/// captured source under the published `policy`, with the click as its
+/// evidence. `None` when the source has no captured affiliate or no click.
+#[must_use]
+pub fn signup_proposal(source: &Source, policy: &Policy) -> Option<Proposal> {
+    let campaign = source.campaign.as_ref()?;
+    if source.outcome != Outcome::Captured
+        || source.referrer.is_none()
+        || campaign.link != LinkKind::Affiliate
+    {
+        return None;
+    }
+    Some(Proposal {
+        request: format!("signup-{}", campaign.click),
+        policy_digest: policy.digest.clone(),
+        introduction: Introduction::CapturedSource,
+        referrer: None,
+        evidence: vec![Evidence {
+            reference: format!("click:{}", campaign.click),
+            digest: digest(campaign),
+        }],
+        reason: "Signed up after following an affiliate link.".into(),
+        consent: true,
+        expected_decision: None,
+    })
+}
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum Status {

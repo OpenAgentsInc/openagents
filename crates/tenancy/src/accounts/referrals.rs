@@ -64,6 +64,85 @@ pub struct Source {
     pub referrer: Option<Identity>,
     pub consent_version: Option<String>,
     pub captured_at: u64,
+    /// The link click a signup came through (#11698), kept with the
+    /// account. Absent for every source captured another way.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub campaign: Option<Campaign>,
+}
+
+/// Which kind of link a click was (#11698).
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LinkKind {
+    /// One of our own checked-in campaign codes, `/go/{code}`.
+    Go,
+    /// An affiliate's referral link, `/r/{token}[/{series}]`. The affiliate
+    /// is the captured source's referrer, found from the link's token.
+    Affiliate,
+}
+
+/// Why the click could be remembered in the browser: the visitor said yes
+/// to the banner, or lives where a notice is enough.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Basis {
+    Consent,
+    Notice,
+}
+
+/// The link click a signup came through: the kind of link, our campaign
+/// code (for `/go`), the series the link named, the click's random id and
+/// time, and the basis the browser kept it on. Never an address, a device,
+/// or the affiliate's link token.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Campaign {
+    pub link: LinkKind,
+    pub code: Option<String>,
+    pub series: Option<String>,
+    pub click: String,
+    pub clicked_at: u64,
+    pub basis: Basis,
+}
+
+/// A campaign code or series: lowercase letters, digits and `-`, at most
+/// 48 bytes, not starting or ending with `-`.
+pub fn campaign_word(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 48
+        && !value.starts_with('-')
+        && !value.ends_with('-')
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+}
+
+/// A click id: `clk_` and 32 lowercase hex digits.
+pub fn click_id(value: &str) -> bool {
+    value.strip_prefix("clk_").is_some_and(|hex| {
+        hex.len() == 32
+            && hex
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    })
+}
+
+impl Campaign {
+    pub fn check(&self) -> Result<(), Error> {
+        let code_ok = match (self.link, self.code.as_deref()) {
+            (LinkKind::Go, Some(code)) => campaign_word(code),
+            (LinkKind::Affiliate, None) => true,
+            _ => false,
+        };
+        if !code_ok
+            || self.series.as_deref().is_some_and(|s| !campaign_word(s))
+            || !click_id(&self.click)
+            || self.clicked_at == 0
+        {
+            return Err(Error::Invalid);
+        }
+        Ok(())
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -239,6 +318,16 @@ impl Book {
             {
                 return Err("invalid acquisition source".into());
             }
+            if source.campaign.as_ref().is_some_and(|c| {
+                c.check().is_err()
+                    || recorded.at_signup != Some(true)
+                    || match c.link {
+                        LinkKind::Affiliate => source.outcome != Outcome::Captured,
+                        LinkKind::Go => source.referrer.is_some(),
+                    }
+            }) {
+                return Err("invalid signup campaign".into());
+            }
             if let Some(identity) = &source.referrer {
                 if !self.referrers.get(&identity.id).is_some_and(|r| {
                     identity.version > 0
@@ -302,6 +391,7 @@ impl Book {
             referrer: identity,
             consent_version: input.consent.then(|| CONSENT.into()),
             captured_at: now,
+            campaign: None,
         };
         self.sources.insert(
             account.into(),
@@ -312,6 +402,45 @@ impl Book {
             },
         );
         Ok((source, true))
+    }
+}
+
+impl Book {
+    /// Capture a new account's source at signup, in the write that creates
+    /// it, with the link click it came through (#11698). The account must
+    /// already be in the store being written.
+    pub(in crate::accounts) fn capture_signup(
+        &mut self,
+        account: &str,
+        input: &Capture,
+        campaign: Option<&Campaign>,
+        now: u64,
+    ) -> Result<Source, Error> {
+        input.validate()?;
+        if let Some(campaign) = campaign {
+            campaign.check()?;
+            if (campaign.link == LinkKind::Affiliate) != input.token.is_some() {
+                return Err(Error::Invalid);
+            }
+        }
+        if self
+            .sources
+            .values()
+            .any(|record| record.source.request == input.request)
+        {
+            return Err(Error::Conflict);
+        }
+        let (mut source, _) = self.capture(account, input, now)?;
+        // An affiliate click whose link no longer resolves keeps no
+        // campaign: nothing would be credited by it.
+        let campaign = campaign
+            .filter(|c| c.link == LinkKind::Go || source.outcome == Outcome::Captured)
+            .cloned();
+        source.campaign = campaign;
+        let recorded = self.sources.get_mut(account).ok_or(Error::Unavailable)?;
+        recorded.source = source.clone();
+        recorded.at_signup = Some(true);
+        Ok(source)
     }
 }
 

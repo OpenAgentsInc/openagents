@@ -183,6 +183,7 @@ pub fn owned(path: &str) -> bool {
         || path.starts_with("/api/flow/")
         || OWNED_EXACT.contains(&path)
         || crate::agent_ready::owns(path)
+        || crate::attribution::owns(path)
         || crate::oauth::owns(path)
         || crate::phone_api::owns(path)
         || crate::own_runs::owns(path)

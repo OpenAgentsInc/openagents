@@ -389,6 +389,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("Analytics counts are kept");
     }
     config.analytics = analytics.clone();
+    // Affiliate attribution (#11698): `/go/` and `/r/` clicks and sign-ups,
+    // kept beside the analytics counts; its cookie key comes from
+    // OPENAGENTS_WEB_ASK_SALT.
+    let attribution = std::sync::Arc::new(openagents_web::attribution::Attribution::from_env(
+        &config.ask_salt,
+    )?);
+    attribution.spawn();
+    config.attribution = attribution.clone();
     // The actor runtime (#11253): the account database, in its own schema;
     // with OPENAGENTS_WEB_MAC_JOBS_ACTORS=1 Mac jobs run through it. The
     // connection string is never printed.
@@ -421,6 +429,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     .await?;
     if !drained {
         eprintln!("Stopping with requests still open after the drain");
+    }
+    if let Err(error) = attribution.flush().await {
+        eprintln!("The last link clicks were not kept: {error}");
     }
     if let Err(error) = analytics.flush().await {
         eprintln!("The last analytics counts were not kept: {error}");

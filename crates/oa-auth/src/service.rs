@@ -6,6 +6,8 @@
 use std::path::Path;
 
 use tenancy::accounts::identities::{GithubIdentity, github_principal};
+use tenancy::accounts::referrals::attribution::signup_proposal;
+use tenancy::accounts::referrals::{Campaign, Capture};
 use tenancy::sessions::{self, Issued, Sessions};
 use tenancy::workspaces::UserId;
 use tenancy::{Account, Accounts};
@@ -14,12 +16,18 @@ use crate::AuthError;
 use crate::github::Github;
 use crate::invite::{self, InviteOnly};
 
-/// The body both routes take.
+/// The body both routes take. A sign-in may also carry the browser's
+/// link click (#11698): the source to capture if this sign-in creates the
+/// account, and the click it came through. Linking ignores both.
 #[derive(Clone, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CodeRequest {
     pub code: String,
     pub code_verifier: String,
+    #[serde(default)]
+    pub acquisition: Option<Capture>,
+    #[serde(default)]
+    pub campaign: Option<Campaign>,
 }
 
 impl std::fmt::Debug for CodeRequest {
@@ -73,9 +81,16 @@ pub async fn sign_in(
     }
     let admin = invite.is_some_and(|list| list.admin(profile.id, &profile.login));
     let accounts = Accounts::open(dir).map_err(|_| AuthError::Unavailable)?;
+    let signup = request
+        .acquisition
+        .as_ref()
+        .map(|capture| (capture, request.campaign.as_ref()));
     let resolved = accounts
-        .sign_in_github(&profile, tenant)
+        .sign_in_github_acquired(&profile, tenant, signup)
         .map_err(AuthError::from_refusal)?;
+    if resolved.created {
+        attribute_signup(&accounts, &resolved.account.id);
+    }
     let sessions = Sessions::open(dir).map_err(|_| AuthError::Unavailable)?;
     let account = resolved.account.id.clone();
     let workspace = resolved.workspace.as_ref().map(|w| w.id.clone());
@@ -105,6 +120,22 @@ pub async fn sign_in(
         github: (profile.id, profile.login.clone()),
         admin,
     })
+}
+
+/// A new account that came through an affiliate link: record its
+/// attribution through the referral system under the published policy
+/// (#11698). Without a published policy, or a captured affiliate, nothing
+/// happens; the captured source stays, and can be proposed later.
+fn attribute_signup(accounts: &Accounts, account: &str) {
+    let Ok(Some(source)) = accounts.acquisition(account) else {
+        return;
+    };
+    let Ok(Some(policy)) = accounts.attribution_policy(account) else {
+        return;
+    };
+    if let Some(proposal) = signup_proposal(&source, &policy) {
+        accounts.propose_attribution(account, &proposal).ok();
+    }
 }
 
 /// Link the GitHub account behind `code` to the signed-in `account`. With

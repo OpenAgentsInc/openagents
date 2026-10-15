@@ -352,7 +352,17 @@ async fn finish(
             "Start again.",
         );
     };
-    let grant = match service.sign_in_github(code, flow.verifier()).await {
+    // A link click this browser followed (#11698) goes with the sign-in, for
+    // the account service to record if this creates the account.
+    let ticket = crate::attribution::ticket(app, headers);
+    let signup = ticket.as_ref().map(|ticket| {
+        let (acquisition, campaign) = ticket.signup();
+        serde_json::json!({"acquisition": acquisition, "campaign": campaign})
+    });
+    let grant = match service
+        .sign_in_github(code, flow.verifier(), signup.as_ref())
+        .await
+    {
         Ok(grant) => grant,
         Err(SessionError::Unavailable) => {
             return again(
@@ -418,6 +428,17 @@ async fn finish(
     );
     for cookie in cookies {
         response.headers_mut().append(header::SET_COOKIE, cookie);
+    }
+    // The click has done its job: counted with a sign-up, or not needed by
+    // an account that already exists. Either way the browser forgets it.
+    if let Some(ticket) = ticket.as_ref().filter(|_| grant.created) {
+        app.config.attribution.signed_up(ticket);
+    }
+    if crate::attribution::has_cookie(headers) {
+        response.headers_mut().append(
+            header::SET_COOKIE,
+            crate::attribution::clear(service.secure()),
+        );
     }
     response
 }

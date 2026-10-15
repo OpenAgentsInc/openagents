@@ -26,6 +26,7 @@ mod answer_ui;
 mod api_alias;
 mod api_keys;
 pub mod ask;
+pub mod attribution;
 mod auth;
 pub mod backend;
 mod chat_export;
@@ -410,6 +411,10 @@ pub struct Config {
     /// First-party, cookieless counts and the owner's dashboard
     /// ([`analytics`]). In memory only unless a store is configured.
     pub analytics: Arc<analytics::Analytics>,
+    /// Affiliate attribution (#11698, [`attribution`]): `/go/` and `/r/`
+    /// links, their signed `oa_ref` cookie, click records and the
+    /// scoreboard. Separate from the cookieless [`analytics`].
+    pub attribution: Arc<attribution::Attribution>,
     /// Accounts that may do agent work on a public host besides site
     /// admins (`OPENAGENTS_WEB_AGENT_ACCOUNTS`, [`agent_work`]): staging's
     /// smoke test account, which has no GitHub identity to invite.
@@ -481,6 +486,7 @@ impl Config {
             environments: Environments::default(),
             plan: None,
             analytics: Arc::new(analytics::Analytics::default()),
+            attribution: Arc::new(attribution::Attribution::default()),
             agent_accounts: Vec::new(),
             work_host_token: None,
             staging_push: None,
@@ -589,6 +595,7 @@ pub fn router(config: Config) -> Router {
         .merge(docs_mcp::routes())
         .merge(oauth::routes())
         .merge(analytics::routes())
+        .merge(attribution::routes())
         .route_layer(middleware::from_fn(analytics::mark))
         .fallback(not_found)
         .layer(middleware::from_fn_with_state(

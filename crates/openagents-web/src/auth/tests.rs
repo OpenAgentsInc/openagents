@@ -19,6 +19,8 @@ const ORIGIN: &str = "http://127.0.0.1:4300";
 const REDIRECT: &str = "http://127.0.0.1:4300/auth/github/callback";
 const CLIENT: &str = "Ov23liWebTest";
 const SECRET: &str = "web-test-secret";
+/// A browser's name, so link clicks count as a person's (#11698).
+const BROWSER: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Safari/537.36";
 
 struct World {
     root: tempfile::TempDir,
@@ -151,6 +153,7 @@ impl Browser {
             .method(if form.is_some() { "POST" } else { "GET" })
             .uri(path)
             .header(header::HOST, HOST)
+            .header(header::USER_AGENT, BROWSER)
             .header(header::ACCEPT, "text/html");
         if form.is_some() {
             request = request
@@ -1155,4 +1158,105 @@ async fn a_sign_in_key_acts_as_the_account_until_revoked() {
         session_routes(&world, &expired).await,
         [StatusCode::UNAUTHORIZED; 3]
     );
+}
+
+/// #11698: a click on one of our `/go/` links, consent, then a GitHub
+/// sign-up: the new account keeps the code and the click, the browser
+/// forgets the cookie, and the click counts as a sign-up.
+#[tokio::test]
+async fn a_campaign_click_then_sign_up_records_the_code_and_clears_the_cookie() {
+    let world = world(true).await;
+    let mut browser = Browser::default();
+    let asked = browser.get(&world, "/go/yt-cost").await;
+    assert_eq!(asked.status, StatusCode::OK);
+    assert!(!browser.0.contains_key("oa_ref"));
+    let allowed = browser
+        .post(&world, "/go/yt-cost", &[("choice", "allow")])
+        .await;
+    assert_eq!(allowed.location(), "/pricing");
+    assert!(browser.0.contains_key("oa_ref"));
+
+    let done = browser
+        .through_github(&world, "%2Fpricing", "login=octo-local")
+        .await;
+    assert_eq!(done.status, StatusCode::OK, "{}", done.body);
+    assert!(!browser.0.contains_key("oa_ref"), "cookie cleared");
+    let store = accounts(&world);
+    let account = store.accounts.keys().next().unwrap().clone();
+    let source = tenancy::Accounts::open(&world.root.path().join("accounts"))
+        .unwrap()
+        .acquisition(&account)
+        .unwrap()
+        .expect("source captured at sign-up");
+    let campaign = source.campaign.expect("the click");
+    assert_eq!(campaign.code.as_deref(), Some("yt-cost"));
+    assert_eq!(campaign.series.as_deref(), Some("cost"));
+    assert!(source.referrer.is_none());
+
+    // Signing in again later records nothing new.
+    let mut again = Browser::default();
+    again
+        .through_github(&world, "%2F", "login=octo-local")
+        .await;
+    assert_eq!(
+        tenancy::Accounts::open(&world.root.path().join("accounts"))
+            .unwrap()
+            .acquisition(&account)
+            .unwrap()
+            .unwrap()
+            .campaign
+            .unwrap(),
+        campaign
+    );
+}
+
+/// #11698: an affiliate's `/r/` link, then a GitHub sign-up: the account's
+/// attribution names the affiliate under the published policy.
+#[tokio::test]
+async fn an_affiliate_click_then_sign_up_is_attributed_to_the_affiliate() {
+    use tenancy::accounts::referrals::{Kind, attribution};
+    let world = world(true).await;
+    let store = tenancy::Accounts::open(&world.root.path().join("accounts")).unwrap();
+    let affiliate = store.create_account("Synthetic creator", &[]).unwrap();
+    let referrer = store
+        .create_referrer(&affiliate.id, Kind::Author, "Synthetic creator")
+        .unwrap();
+    let link = store
+        .issue_referral_link(&affiliate.id, &referrer.id)
+        .unwrap();
+    let policy = attribution::Policy::new(
+        "test-v1".into(),
+        "A test policy: the person who shared the link is credited.".into(),
+    )
+    .unwrap();
+    store.publish_attribution_policy(&policy).unwrap();
+
+    let mut browser = Browser::default();
+    let path = format!("/r/{}/cost", link.token);
+    assert_eq!(browser.get(&world, &path).await.status, StatusCode::OK);
+    browser.post(&world, &path, &[("choice", "allow")]).await;
+    assert!(browser.0.contains_key("oa_ref"));
+    let done = browser
+        .through_github(&world, "%2F", "login=octo-local")
+        .await;
+    assert_eq!(done.status, StatusCode::OK, "{}", done.body);
+    assert!(!browser.0.contains_key("oa_ref"));
+
+    let customer = accounts(&world)
+        .identities
+        .github
+        .values()
+        .next()
+        .unwrap()
+        .account
+        .clone();
+    let view = store.attribution(&customer).unwrap().expect("attributed");
+    assert_eq!(view.status, attribution::Status::Accepted);
+    let decision = view.decisions.last().unwrap();
+    assert_eq!(decision.referrer.as_ref().unwrap().id, referrer.id);
+    assert_eq!(decision.evidence.len(), 1);
+    assert!(decision.evidence[0].reference.starts_with("click:clk_"));
+    // The account store never holds the link token itself.
+    let raw = std::fs::read_to_string(world.root.path().join("accounts/accounts.json")).unwrap();
+    assert!(!raw.contains(&link.token));
 }

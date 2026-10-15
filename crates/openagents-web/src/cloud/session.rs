@@ -158,6 +158,8 @@ pub struct SessionGrant {
     pub viewer: Viewer,
     token: jev::ApiKey,
     secure: bool,
+    /// This sign-in created the account (a sign-up).
+    pub created: bool,
 }
 
 impl SessionGrant {
@@ -346,6 +348,7 @@ impl CloudSession {
             viewer,
             token: issued.token,
             secure: self.secure,
+            created: false,
         })
     }
 
@@ -353,7 +356,17 @@ impl CloudSession {
     /// verifier to the account service, which exchanges them with GitHub,
     /// finds or creates the account, and issues a session (docs/auth). The
     /// web server never sees the GitHub token.
-    pub async fn sign_in_github(&self, code: &str, verifier: &str) -> Result<SessionGrant> {
+    ///
+    /// `signup` is the browser's link click (#11698): the source and click
+    /// the account service records if this sign-in creates the account. An
+    /// account service that doesn't know these fields refuses the body
+    /// before it uses the code, so the sign-in is sent again without them.
+    pub async fn sign_in_github(
+        &self,
+        code: &str,
+        verifier: &str,
+        signup: Option<&serde_json::Value>,
+    ) -> Result<SessionGrant> {
         if code.is_empty()
             || code.len() > 256
             || !code
@@ -367,20 +380,41 @@ impl CloudSession {
             return Err(SessionError::InvalidRequest);
         }
         self.ready()?;
-        let response = self
-            .http
-            .post(format!("{}/v1/sessions/github", self.account_service))
-            // The account service talks to GitHub twice or three times.
-            .timeout(Duration::from_secs(20))
-            .json(&serde_json::json!({"code": code, "code_verifier": verifier}))
-            .send()
-            .await
-            .map_err(|_| SessionError::Unavailable)?;
-        let status = response.status();
-        let bytes = response
-            .bytes()
-            .await
-            .map_err(|_| SessionError::Unavailable)?;
+        let send = |body: serde_json::Value| async move {
+            let response = self
+                .http
+                .post(format!("{}/v1/sessions/github", self.account_service))
+                // The account service talks to GitHub twice or three times.
+                .timeout(Duration::from_secs(20))
+                .json(&body)
+                .send()
+                .await
+                .map_err(|_| SessionError::Unavailable)?;
+            let status = response.status();
+            let bytes = response
+                .bytes()
+                .await
+                .map_err(|_| SessionError::Unavailable)?;
+            Ok::<_, SessionError>((status, bytes))
+        };
+        let plain = serde_json::json!({"code": code, "code_verifier": verifier});
+        let (mut status, mut bytes) = match signup {
+            Some(extra) => {
+                let mut body = plain.clone();
+                if let (Some(body), Some(extra)) = (body.as_object_mut(), extra.as_object()) {
+                    body.extend(extra.clone());
+                }
+                send(body).await?
+            }
+            None => send(plain.clone()).await?,
+        };
+        if signup.is_some()
+            && status.as_u16() == 400
+            && serde_json::from_slice::<serde_json::Value>(&bytes)
+                .is_ok_and(|body| body["error"]["code"] == "invalid_request")
+        {
+            (status, bytes) = send(plain).await?;
+        }
         if !status.is_success() {
             let invite_only = status.as_u16() == 403
                 && serde_json::from_slice::<serde_json::Value>(&bytes)
@@ -410,6 +444,8 @@ impl CloudSession {
             token: String,
             #[serde(default)]
             github: Option<WireGithub>,
+            #[serde(default)]
+            created: bool,
         }
         let wire: Wire = (bytes.len() <= 64 * 1024)
             .then(|| serde_json::from_slice(&bytes).ok())
@@ -444,6 +480,7 @@ impl CloudSession {
             viewer,
             token: jev::ApiKey::new(wire.token),
             secure: self.secure,
+            created: wire.created,
         })
     }
 

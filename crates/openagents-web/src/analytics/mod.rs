@@ -24,6 +24,11 @@
 //!
 //! Counts are kept in memory and written every minute to the store
 //! ([`store`]); the dashboard is `/admin/analytics` ([`dashboard`]).
+//!
+//! Affiliate and campaign links (`/go/`, `/r/`, #11698) are a separate,
+//! disclosed feature in [`crate::attribution`]: it alone may set a cookie
+//! (`oa_ref`) and keep per-click records. Nothing here reads that cookie or
+//! those records, and nothing there adds to these counts.
 
 mod classify;
 pub(crate) mod dashboard;
@@ -249,6 +254,7 @@ fn ignored(template: &str) -> bool {
         )
         || template == BEACON
         || template == DASHBOARD
+        || template == crate::attribution::SCOREBOARD
 }
 
 /// The name a request is counted under: its route template, a docs page's

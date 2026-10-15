@@ -38,3 +38,55 @@ Scripts can send the dashboard key as a bearer instead:
 
 A wrong key also gets the 404. To change the key, add a new secret
 version and deploy a new revision.
+
+## Affiliate and campaign links (#11698)
+
+A separate, disclosed feature beside the cookieless counts: `/go/{code}`
+(our own campaign codes, the checked-in list in
+`crates/openagents-web/src/attribution/codes.rs`) and `/r/{token}[/{series}]`
+(an affiliate's referral link from the referral system). The code and the
+exact rules are in `crates/openagents-web/src/attribution/mod.rs`; the
+public description is section 6 of the privacy policy and "Links that
+credit who sent you" in `content/docs/privacy-and-security.md`. The general
+counts above still set nothing in the browser and keep no identifier; the
+two features share only the bucket.
+
+- **Cookie:** `oa_ref`, signed (HMAC-SHA256 with a key derived from
+  `OPENAGENTS_WEB_ASK_SALT`), `HttpOnly`, `SameSite=Lax`, 30 days, last
+  click wins, set only by `/go/` and `/r/`, and only for a person's click
+  (never an agent or a crawler), never with `Sec-GPC: 1` or `DNT: 1`, and
+  only after consent where it's asked. Cleared at the next GitHub sign-in.
+- **Consent:** `OPENAGENTS_WEB_COUNTRY_HEADER` names the request header
+  holding the visitor's two-letter country. openagents.com is a Cloud Run
+  domain mapping (checked 2026-10-15: `gcloud beta run domain-mappings
+  list` maps `openagents.com` to the `coder` service; no load balancer, no
+  backend service with custom request headers), and Cloud Run sends no
+  country header, so it is unset and every visitor is asked first. Behind
+  a Google external load balancer, add the custom request header
+  `X-Client-Geo-Location: {client_region}` on the backend service and set
+  `OPENAGENTS_WEB_COUNTRY_HEADER=x-client-geo-location`; visitors from the
+  EEA, the UK and Switzerland, or with no header, are still asked.
+- **Records:** each instance rewrites
+  `attribution/raw/YYYY-MM-DD/INSTANCE.json` (that day's clicks, sign-ups
+  and counted-only totals) every minute and on shutdown. A click record is
+  a random click id, the code (an affiliate as `aff-` and 16 hex digits of
+  the token's SHA-256, never the token), series, time, destination and
+  traffic class. Keep these 13 months: add a bucket lifecycle rule
+  deleting `attribution/raw/` objects after 400 days (the `raw/` rule
+  doesn't match this prefix).
+- **Sign-up:** the GitHub callback sends the click with the sign-in
+  (`acquisition` and `campaign` in `POST /v1/sessions/github`); the
+  account service captures it with the new account in the same write
+  (`tenancy::accounts::referrals::Source::campaign`) and, for an affiliate
+  under a published attribution policy, records an accepted
+  `CapturedSource` attribution with the click as evidence.
+- **Sales:** the gateway's Stripe webhook writes a named conversion for
+  each paid month (start or renewal) of an account that came through a
+  link, and a reversal for a full refund or lost dispute, to
+  `attribution-conversions.jsonl` in its state directory
+  (`crates/gateway/src/conversions.rs`). No commission is computed or paid
+  yet.
+- **Scoreboard:** <https://openagents.com/admin/attribution>, for the same
+  people and key as the analytics dashboard: clicks, sign-ups and
+  sign-ups per click per code, affiliate and series, per week, for 8
+  weeks.

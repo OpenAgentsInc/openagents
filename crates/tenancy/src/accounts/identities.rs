@@ -280,6 +280,23 @@ impl super::Accounts {
         profile: &GithubProfile,
         tenant: &str,
     ) -> Result<GithubSignIn, Refusal> {
+        self.sign_in_github_acquired(profile, tenant, None)
+    }
+
+    /// [`Self::sign_in_github`], and when it creates the account, capture
+    /// `signup`'s source (and the link click it came through, #11698) in
+    /// the same write. A source that can't be captured (malformed, or its
+    /// request already used) is left out; the sign-up still happens. An
+    /// existing account's source never changes here.
+    pub fn sign_in_github_acquired(
+        &self,
+        profile: &GithubProfile,
+        tenant: &str,
+        signup: Option<(
+            &super::referrals::Capture,
+            Option<&super::referrals::Campaign>,
+        )>,
+    ) -> Result<GithubSignIn, Refusal> {
         profile
             .validate()
             .map_err(|e| Refusal::Store(Trouble::Invalid(e)))?;
@@ -287,7 +304,7 @@ impl super::Accounts {
             return Err(Refusal::EmptyField("tenant"));
         }
         let key = profile.id.to_string();
-        self.mutate(|store, _| {
+        self.mutate(|store, now| {
             let stamp = crate::registry::now_utc();
             if let Some(identity) = store.identities.github.get_mut(&key) {
                 identity.profile = profile.clone();
@@ -328,6 +345,13 @@ impl super::Accounts {
                     refreshed: stamp,
                 },
             );
+            if let Some((capture, campaign)) = signup {
+                // Refused before anything is written; the sign-up goes on.
+                store
+                    .referrals
+                    .capture_signup(&account.id, capture, campaign, now)
+                    .ok();
+            }
             Ok(GithubSignIn {
                 account,
                 workspace: Some(workspace),

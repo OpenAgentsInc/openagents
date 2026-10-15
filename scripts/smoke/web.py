@@ -677,6 +677,43 @@ def run(base, only, install, production=False, restart=None, invite_only=False,
         record("download: desktop downloads hidden", not desktop_links,
                ", ".join(desktop_links[:3]))
 
+    # Campaign and affiliate links (#11698): /go/{code} redirects to the
+    # code's page and sets the oa_ref cookie only for a person's click, only
+    # when allowed (asked first where consent is needed, which is everyone
+    # without a country header), never for an agent or with Sec-GPC.
+    if want("links"):
+        browser = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+                                 "(KHTML, like Gecko) Chrome/129.0 Safari/537.36",
+                   "Accept": "text/html", "Sec-Fetch-Mode": "navigate"}
+        agent = site.get("/go/yt-cost", cookies=False)
+        record("links: an agent's /go/ click goes on with no cookie",
+               agent.status in (302, 303) and agent.location().endswith("/pricing")
+               and "oa_ref" not in agent.cookies(), f"{agent.status} {agent.location()}")
+        quiet = site.get("/go/yt-cost", cookies=False, headers={**browser, "Sec-GPC": "1"})
+        record("links: Sec-GPC sets no cookie",
+               quiet.status in (302, 303) and quiet.location().endswith("/pricing")
+               and "oa_ref" not in quiet.cookies(), f"{quiet.status}")
+        person = site.get("/go/yt-cost", cookies=False, headers=browser)
+        if person.status == 200:
+            record("links: a person is asked before the cookie",
+                   'action="/go/yt-cost"' in person.text and "oa_ref" not in person.cookies(),
+                   "consent page")
+            no = site.request("/go/yt-cost", method="POST", form={"choice": "decline"},
+                              cookies=False, headers=browser)
+            record("links: saying no sets no cookie",
+                   no.status in (302, 303) and "oa_ref" not in no.cookies(), f"{no.status}")
+        else:
+            cookie = next((v for v in person.headers.get_all("Set-Cookie") or []
+                           if v.startswith("oa_ref=")), "")
+            record("links: a person's click sets the signed cookie",
+                   person.status in (302, 303) and person.location().endswith("/pricing")
+                   and "HttpOnly" in cookie and "Max-Age=2592000" in cookie,
+                   f"{person.status} {cookie.split(';')[0][:12]}")
+        unknown = site.get("/go/not-a-code", cookies=False, headers=browser)
+        record("links: an unknown code goes home with no cookie",
+               unknown.status in (302, 303) and unknown.location() in ("/", base.rstrip("/") + "/")
+               and "oa_ref" not in unknown.cookies(), f"{unknown.status} {unknown.location()}")
+
     # Agent-ready documents.
     if want("agent"):
         sec = site.get("/.well-known/security.txt")

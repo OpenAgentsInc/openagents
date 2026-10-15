@@ -1,5 +1,5 @@
 # Privacy Policy
-Last updated: 2026-10-09
+Last updated: 2026-10-15
 
 This Privacy Policy describes how OpenAgents, Inc. (“we,” “us,” or “our”) handles personal information that we collect through our website [https://openagents.com](https://openagents.com) , our APIs and inference gateway, Coder and Coder Terminal, the Forum, Pylon, and any other service that links to this Privacy Policy (collectively, the “Services”).
 
@@ -50,29 +50,41 @@ We keep personal information for as long as reasonably necessary for the purpose
 
 We use cookies and similar technologies for authentication, preferences, security, and to understand how the Services are used. Most browsers let you remove or reject cookies through their settings; doing so may affect functionality such as staying signed in.
 
-**Website analytics.** On openagents.com we measure use ourselves, without third-party analytics or tracking scripts and without cookies or other identifiers stored in your browser. We record only aggregate hourly totals: which kind of page was opened, the name of the referring site, the type of device (phone, tablet, or computer), whether the visit came from a person, an automated agent, or a crawler, response status and speed, and a fixed list of actions (sending a chat, receiving an answer, clicking a suggestion, card, or download, copying the install command, and signing in). For this purpose we do not record IP addresses, account identifiers, the content you submit, full page or referrer addresses, or any identifier that distinguishes one visitor from another. We keep these totals for up to 13 months. Our hosting provider's request logs, which we use to operate and secure the Services, include IP addresses and are deleted after 30 days.
+**Website analytics.** On openagents.com we measure use ourselves, without third-party analytics or tracking scripts and without cookies or other identifiers stored in your browser. The one exception is the cookie for affiliate and campaign links described in section 6, which is a separate feature set only when you follow such a link. We record only aggregate hourly totals: which kind of page was opened, the name of the referring site, the type of device (phone, tablet, or computer), whether the visit came from a person, an automated agent, or a crawler, response status and speed, and a fixed list of actions (sending a chat, receiving an answer, clicking a suggestion, card, or download, copying the install command, and signing in). For this purpose we do not record IP addresses, account identifiers, the content you submit, full page or referrer addresses, or any identifier that distinguishes one visitor from another. We keep these totals for up to 13 months. Our hosting provider's request logs, which we use to operate and secure the Services, include IP addresses and are deleted after 30 days.
 
-**Do Not Track and Global Privacy Control.** When your browser sends a Do Not Track or Global Privacy Control signal, our website analytics count only that a page was opened (the kind of page, its status, and its speed), and nothing else about your visit.
+**Do Not Track and Global Privacy Control.** When your browser sends a Do Not Track or Global Privacy Control signal, our website analytics count only that a page was opened (the kind of page, its status, and its speed), and nothing else about your visit. We also set no affiliate or campaign link cookie (section 6).
 
-## 6. Data Security
+## 6. Affiliate and Campaign Links
+
+Some links to openagents.com are campaign links we post ourselves (they start with openagents.com/go/), and some are referral links shared by people and partners who recommend us (they start with openagents.com/r/). When you follow one, we remember which link brought you, so we can see which posts bring people who sign up and credit the person who recommended us. This is separate from our website analytics in section 5, which stay cookieless.
+
+**What we keep in your browser.** One first-party cookie named oa_ref, which only our website can read. It holds the link you followed (our campaign code, or the referral link), the series the link names, a random click number, and the time. It lasts 30 days, and following a newer link replaces it. We delete it when you log in or sign up.
+
+**What we keep on our servers.** For each click: the random click number, the link's campaign code (for a referral link, a short code made from the link instead of the link itself), the series, the time, the page it led to, and whether the click came from a person, an automated agent, or a crawler. We do not record your IP address, your device or browser, or your account for this. We keep click records for up to 13 months. If you create an account while the cookie is set, we keep with your account which link brought you and its click number; this stays with your account like its other sign-up details. If you later pay for a plan, we record that sale against the same link, so we can see which links lead to purchases and, under the terms we publish to the people who share referral links, pay them a commission.
+
+**Who sees it.** We do. A person who shares a referral link may see totals for their own link (clicks, sign-ups, and sales), never who you are.
+
+**Your choices.** If you are in the European Economic Area, the United Kingdom, or Switzerland, or we can't tell where you are, we ask before setting the cookie, and set nothing if you say no. When your browser sends a Do Not Track or Global Privacy Control signal, we set no cookie and record only that a link was followed. Automated agents and crawlers never get the cookie and are never credited. You can delete the cookie in your browser at any time.
+
+## 7. Data Security
 
 We use technical, organizational, and physical safeguards designed to protect personal information. However, no security measures are perfect, and we cannot guarantee the security of your information. You are responsible for safeguarding your credentials, API keys, and any connected wallet.
 
-## 7. Your Choices and Rights
+## 8. Your Choices and Rights
 
 - You may opt out of marketing communications by following the unsubscribe instructions in those messages.
 - You may access, update, or request deletion of your account information by contacting us, subject to legal and contractual retention requirements.
 - Depending on your location, you may have additional rights under applicable privacy laws; contact us to exercise them.
 - On a paid plan, you may ask us not to use the content you submit to improve our products or to train or evaluate models. Opt-outs are set up by agreement with us; once agreed, we honor it going forward for the account you name. We still process that content to answer the request you made, to secure the Services, and to meet our legal obligations.
 
-## 8. Links to Other Sites
+## 9. Links to Other Sites
 
 The Services may link to websites and services we do not operate. Information you share with those third parties is governed by their privacy policies, not this one. We encourage you to review their policies.
 
-## 9. Changes to This Policy
+## 10. Changes to This Policy
 
 We may update this Privacy Policy from time to time. If we make material changes, we will update the “Last updated” date above and post the revised policy here, or notify you as required by law.
 
-## 10. Contact Us
+## 11. Contact Us
 
 If you have questions about this Privacy Policy or our information practices, contact us at [chris@openagents.com](mailto:chris@openagents.com), or by mail at OpenAgents, Inc., 1101 W 34th St. #581, Austin, TX 78705.

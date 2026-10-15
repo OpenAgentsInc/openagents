@@ -43,6 +43,9 @@ pub struct ReferralSource {
     pub referrer: Option<ReferralIdentity>,
     pub consent_version: Option<String>,
     pub captured_at: u64,
+    /// The link click a signup came through (#11698), when it did.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub campaign: Option<serde_json::Value>,
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]

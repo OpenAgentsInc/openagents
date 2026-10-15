@@ -45,6 +45,7 @@ mod budgets;
 pub mod card_funding;
 pub mod classify;
 pub mod config;
+pub mod conversions;
 #[allow(clippy::result_large_err)]
 pub mod dashboard;
 pub mod decision_dispatch;
