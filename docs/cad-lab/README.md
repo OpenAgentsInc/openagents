@@ -527,6 +527,20 @@ web image includes the Rust player under `/srv/robot`; a local server can set
 
 ## Part of Pro (#11693)
 
+**The rule:** CAD on your own computer is free. Anything that runs on our
+servers needs Pro: CAD Lab on openagents.com, the `cad_*` tools in our
+chats, rendering we host, and sending parts through openagents.com.
+
+- **Free, on your computer**: `cad-lab serve`, `cad-lab tool`,
+  `cad-lab mcp`, and `openagents cad …` (including `openagents cad place`
+  into a Verse zone). They run the Lab on `127.0.0.1`, keep designs in a
+  folder on your computer, and make no calls to openagents.com, so they
+  need no login and no plan. Models you run on your own keys or on your
+  own computer stay free too.
+- **Pro, on our servers**: everything below. The check is made on the
+  server, so a local tool that ever calls one of these routes gets the
+  same `402 plan_required` answer and shows its message.
+
 On openagents.com CAD Lab is a Pro feature
 (`crates/openagents-web/src/cad_gate.rs`). The check is made on the
 server, with the same plan meter `/pricing` uses (`plan::on_pro`): a
@@ -553,7 +567,7 @@ account) passes.
   `X-OpenAgents-Test-Plan: free` counts as Free, so the test account can
   check both sides; the header can only take Pro away.
 - A server that signs no one in (local development) has no plans, so CAD
-  Lab is open there, and so is `cad-lab` on your own computer.
+  Lab is open there.
 
 ## Where it runs
 
