@@ -148,5 +148,5 @@ spawn (`cbb573740b`).
   is used where the device can compute.
 - **How to see it.** Run `verse --water-lab` and walk to the stand.
   Offscreen, run
-  `cargo run --release -p verse --example water_capture -- OUT_DIR --only tank`.
+  `cargo run -p verse --features capture --example water_capture -- OUT_DIR --only tank`.
 - **Capture.** `~/Downloads/water-lab-tank-11660.png` on the owner's Mac.
