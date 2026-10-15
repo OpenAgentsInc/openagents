@@ -128,12 +128,7 @@ impl Client {
                 .await;
             let mut stream = match subscription {
                 Ok(r) => r.into_inner(),
-                Err(s)
-                    if matches!(
-                        s.code(),
-                        tonic::Code::Unavailable | tonic::Code::Cancelled | tonic::Code::Unknown
-                    ) =>
-                {
+                Err(s) if matches!(Error::from(s.clone()), Error::Unavailable | Error::Timeout) => {
                     failures = (failures + 1).min(7);
                     tokio::time::sleep(std::time::Duration::from_millis(
                         (50 << failures.min(7)).min(5000),
@@ -160,10 +155,8 @@ impl Client {
                     }
                     Err(status)
                         if matches!(
-                            status.code(),
-                            tonic::Code::Unavailable
-                                | tonic::Code::Cancelled
-                                | tonic::Code::Unknown
+                            Error::from(status.clone()),
+                            Error::Unavailable | Error::Timeout
                         ) =>
                     {
                         failures = (failures + 1).min(7);

@@ -33,6 +33,7 @@ pub fn invoice_fixture(amount: u64) -> String {
 struct Mock {
     minor: u32,
     changed: std::sync::atomic::AtomicBool,
+    deny_subscriptions: std::sync::atomic::AtomicBool,
     sends: AtomicUsize,
     subscriptions: Mutex<Vec<u64>>,
     reads: AtomicUsize,
@@ -103,6 +104,9 @@ impl lnrpc::lightning_server::Lightning for Mock {
         &self,
         r: Request<lnrpc::InvoiceSubscription>,
     ) -> std::result::Result<Response<BoxStream<lnrpc::Invoice>>, Status> {
+        if self.deny_subscriptions.load(Ordering::SeqCst) {
+            return Err(Status::unknown("permission denied"));
+        }
         let cursor = r.into_inner().settle_index;
         self.subscriptions.lock().unwrap().push(cursor);
         let items = if cursor == 1 {
@@ -279,6 +283,20 @@ async fn interrupted_settlement_stream_resumes_and_deduplicates() {
         .unwrap();
     assert_eq!(sink.0, vec![1, 2, 3]);
     assert_eq!(*mock.subscriptions.lock().unwrap(), vec![1, 2]);
+    task.abort();
+}
+#[tokio::test]
+async fn denied_settlement_subscriptions_do_not_retry() {
+    let (config, mock, task) = server(21).await;
+    mock.deny_subscriptions.store(true, Ordering::SeqCst);
+    let client = Client::connect(&config, credential()).await.unwrap();
+    let mut sink = Sink(vec![1]);
+    assert_eq!(
+        tokio::time::timeout(Duration::from_secs(2), client.settlements(&mut sink, 1))
+            .await
+            .unwrap(),
+        Err(Error::PermissionDenied)
+    );
     task.abort();
 }
 #[test]
