@@ -25,7 +25,8 @@ def call(path='', method='GET', body=None):
 
 if action != 'inspect':
     call(method='PATCH', body={'network_policy': {'version': 'v1', 'egress': {
-        'default_action': 'deny', 'allow': [{'domain': 'api.github.com'}], 'deny': []}}})
+        'default_action': 'deny', 'allow': [{'domain': 'api.github.com'},
+        {'cidr': '8.8.8.8/32'}, {'cidr': '1.1.1.1/32'}], 'deny': []}}})
     policy = call('/base-snapshot-policy', 'PATCH', {
         'ensure_base_snapshot': action == 'prepare-snapshot',
         'snapshot_vcpu': 2, 'snapshot_memory_mib': 1024})
@@ -45,6 +46,9 @@ PY
     # retains backend observations. The arm name is not proof of boot mode.
     export SPACE_EXPECT_GITHUB_ONLY=1
     export SPACE_BOOT_OBSERVER="$HOME/boot-mode.py"
+    export SPACE_BLOCKED_HOST_IP=$(python3 -c 'import socket; print(socket.gethostbyname("example.com"))')
+    curl --noproxy '*' -fsS --max-time 15 --resolve "example.com:443:$SPACE_BLOCKED_HOST_IP" \
+      -o /dev/null -w '%{http_code}\n' https://example.com >"$HOME/evidence/$1-host-example-control.txt"
     exec space-spike "$HOME/evidence/$1.json" "$1" >"$HOME/evidence/$1.log" 2>&1
     ;;
   *) echo 'Usage: check.sh conformance|prepare-cold|prepare-snapshot|inspect|cold|snapshot|memory' >&2; exit 2 ;;

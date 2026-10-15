@@ -95,8 +95,10 @@ snapshot through the Firecracker API. A mismatched boot mode fails the run.
 The timer ends after the first successful command, before collecting these
 observations. The runner also checks runtime versions, a separate 4 GiB
 guest's 1 GiB memory process before and after suspend, and network access.
-Preparation allows only `api.github.com`; the network check requires that
-request to succeed and a request to `example.com` to fail. Keep the two
+Preparation allows `api.github.com` plus SPACE's two reserved DNS resolver
+addresses. SPACE checks the requested domain at those resolvers. The network
+check requires GitHub to succeed and `example.com` to fail even with DNS
+bypassed. A host-side request to that same address must succeed. Keep the two
 arms and conformance sequential so they do not contend for the same host.
 
 For an existing deployment, `computer-conformance --space` and

@@ -218,19 +218,22 @@ while True:
             "curl --noproxy '*' -fsS --max-time 15 https://api.github.com >/dev/null",
         )
         .await?;
-        let blocked = done(
+        let address: std::net::Ipv4Addr = std::env::var("SPACE_BLOCKED_HOST_IP")
+            .map_err(
+                |_| "Set SPACE_BLOCKED_HOST_IP to the control host's verified example.com address.",
+            )?
+            .parse()
+            .map_err(|_| "SPACE_BLOCKED_HOST_IP must be an IPv4 address.")?;
+        let denied = done(
             driver
                 .exec(
                     &id,
-                    &Exec::new(
-                        "curl --noproxy '*' -fsS --max-time 15 https://example.com >/dev/null",
-                    ),
+                    &Exec::new(format!("curl --noproxy '*' -fsS --max-time 15 --resolve example.com:443:{address} https://example.com >/dev/null")),
                 )
                 .await,
-        )?
-        .code
-            != 0;
-        report["egress"] = json!({"github_allowed":true,"example_blocked":blocked});
+        )?;
+        let blocked = denied.code != 0;
+        report["egress"] = json!({"github_allowed":true,"example_blocked":blocked,"example_ipv4":address.to_string(),"denied_exit_code":denied.code,"denied_stderr":denied.stderr,"blocked_request_bypassed_dns":true});
         if !blocked {
             return Err("The egress policy allowed example.com.".into());
         }
