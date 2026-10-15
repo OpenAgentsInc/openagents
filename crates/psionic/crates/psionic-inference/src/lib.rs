@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 pub mod artifacts;
+mod dense_accelerator;
 #[cfg(feature = "http")]
 pub mod http;
 pub mod models;
@@ -107,9 +108,26 @@ pub struct ExecutionIdentity {
     pub cpu_fallback: Option<bool>,
 }
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DeviceChoice {
+    #[default]
+    Cpu,
+    Cuda,
+    Metal,
+    CoreMl,
+}
+
 pub trait ModelEngine: Send {
     fn identity(&self) -> &ExecutionIdentity;
     fn run(&mut self, inputs: &Tensors) -> Result<Tensors>;
+    /// Stops optional profiling before timing; an absent report means unknown placement.
+    fn finish_profiling(&mut self) -> Result<Option<serde_json::Value>> {
+        Ok(None)
+    }
+    fn execution_report(&self) -> serde_json::Value {
+        serde_json::Value::Null
+    }
 }
 
 #[cfg(test)]

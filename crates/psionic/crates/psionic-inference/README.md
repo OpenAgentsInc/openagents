@@ -184,3 +184,67 @@ the model loaded during memory measurement. The
 [retained comparison](fixtures/reports/small-models-2026-10-15/study.json)
 contains 16,000 timed tensor calls. The new APIs run in process; the
 existing server's embedding endpoint still uses its existing model.
+
+## Accelerators and deployment packages
+
+`OrtEngine::load_with_execution()` selects CPU, CUDA, or Core ML through
+`OrtExecution`. Provider registration errors stop loading. Accelerator
+CPU partitions require `allow_cpu_fallback: true`; the default refuses
+CPU fallback. CUDA uses device 0 by default and disables TF32. Core ML
+uses ML Program format and explicitly selects its compute units; the
+default is CPU and GPU. Core ML's internal device placement is unknown,
+even when ORT reports a Core ML graph partition.
+
+For native execution, enable `native-cuda` or `native-metal` and call
+`router::load_native_on()` or `models::load_native_on()` with a
+`DeviceChoice`. ModernBERT and MNIST use the existing Psionic CUDA/cuBLAS
+or Metal GEMMs with weights loaded once. Other operations remain on CPU.
+Every GEMM writes a host input, waits for completion, and reads its output.
+This is mixed execution. Potion's native path currently supports CPU only;
+unsupported explicit choices return an error.
+
+Device contexts and buffers stay on one dedicated worker thread, which
+shuts down when its model drops. The Rayon setting bounds model CPU work;
+the GPU control worker is one additional thread. `execution_report()`
+records GEMM calls, loaded weight bytes, and logical buffer transfers.
+On unified-memory Metal, those bytes do not imply physical bus copies.
+The CUDA comparison driver sets `NVIDIA_TF32_OVERRIDE=0`.
+
+`psionic-small-model-bench` now also accepts `--family router`,
+`--device cuda|metal|coreml`, `--allow-cpu-fallback`, and
+`--coreml-units all|cpu-and-gpu|cpu-and-neural-engine|cpu-only`. ORT
+accelerator runs require a scratch `--profile PREFIX`. The harness checks
+all 100 references, ends profiling before timing, and records operator
+counts by provider and graph copy events. Host I/O bytes are reported
+separately because ORT can copy them outside profiled graph nodes.
+
+Build the binary with `--release --features ort,native-cuda` on Linux,
+or `--release --features ort,native-metal` on a Mac. Provision the matching
+ORT library and provider dependencies before running. Use
+`scripts/dev/psionic-accelerator-bench.py --help` for two alternating
+1,000-sample rounds on the same device. Apple comparisons use Core ML's
+CPU-and-GPU setting; an ANE run is a separate hardware configuration.
+The existing router HTTP mode continues to select CPU execution.
+
+The optional ORT feature still loads a separately provisioned library;
+it never downloads one during inference. Native-only builds exclude it.
+To prepare a reduced CPU package, use the pinned Python environment:
+
+```sh
+python3 scripts/dev/psionic-ort-reduced.py prepare \
+  --models /path/to/models --output /path/to/package
+python3 scripts/dev/psionic-ort-reduced.py build \
+  --source /path/to/onnxruntime --build /path/to/build \
+  --output /path/to/package --jobs 8
+```
+
+The source checkout must be ORT v1.28.0 at the exact commit pinned by the
+tool, with its submodules. Provision CMake and Ninja explicitly. Build
+setup can fetch dependencies. Preparation verifies the three source
+models, exports fixed CPU ORT-format graphs, and records checksums and
+the union of their required operators and types. The build uses those
+operators in a basic minimal CPU library. It cannot load original ONNX,
+CUDA or Core ML providers, or arbitrary other models. Keep full ORT for
+broader graph support. In the benchmark, select an exported graph with
+`--ort-model FILE --ort-model-sha256 HASH` and supply the reduced runtime
+library and checksum. Every reference case must still pass.

@@ -1,3 +1,27 @@
+## Qualify Psionic on Apple and mobile devices (#11706)
+
+The Rust APIs and comparison driver support native Metal and ORT Core ML
+for ModernBERT and MNIST. This Linux session has no Apple device result.
+The native CPU library cross-checks for `aarch64-apple-darwin`; the
+accelerator cross-check requires Apple's SDK (`TargetConditionals.h` is
+absent here). On a Mac, build `psionic-small-model-bench` with
+`--release --features ort,native-metal`, provision an ARM64 ORT 1.28.0
+library with Core ML support, and run
+`scripts/dev/psionic-accelerator-bench.py --platform apple` with the
+pinned model directories, runtime path and checksum, output, and scratch
+profile directory. Keep the default CPU-and-GPU Core ML configuration for
+the paired Metal comparison; measure ANE separately. Retain parity,
+provider/operator placement, timings, memory, and package hashes. A Core
+ML partition does not reveal its internal physical placement.
+
+Before phone integration, build and sign the target-specific ORT framework
+or Android shared library and measure the complete app, model memory,
+startup, thermal behavior, and the same fixture parity on a real device.
+The Linux reduced CPU build is not an iOS or Android package. Its fixed
+x86 CPU ORT graphs must not be reused as mobile or Core ML artifacts.
+Native CPU needs no ORT library; native Metal and mobile ORT integration
+still need their platform build and device qualification.
+
 ## Run Psionic CPU comparisons on Apple Silicon (#11703)
 
 The ORT/native CPU runner and Linux evidence are on `main`. This session

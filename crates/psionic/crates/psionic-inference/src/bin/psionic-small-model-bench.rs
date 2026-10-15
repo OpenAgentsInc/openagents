@@ -1,7 +1,7 @@
 //! Tensor-only comparisons for the pinned embedding and digit models.
 use clap::{Parser, ValueEnum};
 use psionic_inference::{
-    EngineKind, Error, Result, Tensors,
+    DeviceChoice, EngineKind, Error, Result, Tensors,
     artifacts::file_sha256,
     models::{self, ModelFamily},
 };
@@ -11,6 +11,7 @@ use std::{path::PathBuf, time::Instant};
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
 enum Family {
+    Router,
     Potion,
     Mnist,
 }
@@ -19,8 +20,35 @@ enum Engine {
     Native,
     Ort,
 }
+#[derive(Clone, Copy, Debug, ValueEnum)]
+enum Device {
+    Cpu,
+    Cuda,
+    Metal,
+    Coreml,
+}
+#[derive(Clone, Copy, Debug, ValueEnum)]
+enum Units {
+    All,
+    CpuAndGpu,
+    CpuAndNeuralEngine,
+    CpuOnly,
+}
 #[derive(Parser)]
 struct Args {
+    /// Explicit converted ORT-format model for a reduced runtime comparison.
+    #[arg(long)]
+    ort_model: Option<PathBuf>,
+    #[arg(long)]
+    ort_model_sha256: Option<String>,
+    #[arg(long, default_value = "cpu")]
+    device: Device,
+    #[arg(long)]
+    allow_cpu_fallback: bool,
+    #[arg(long)]
+    profile: Option<PathBuf>,
+    #[arg(long, default_value = "cpu-and-gpu")]
+    coreml_units: Units,
     #[arg(long)]
     family: Family,
     #[arg(long)]
@@ -40,6 +68,7 @@ struct Args {
 }
 #[derive(Deserialize)]
 struct Reference {
+    #[serde(alias = "requests")]
     cases: Vec<Case>,
 }
 #[derive(Deserialize)]
@@ -52,31 +81,138 @@ fn run(args: Args) -> Result<serde_json::Value> {
         return Err(Error("Use positive sample and warm-up counts".into()));
     }
     let family = match args.family {
-        Family::Potion => ModelFamily::Potion,
-        Family::Mnist => ModelFamily::Mnist,
+        Family::Router => None,
+        Family::Potion => Some(ModelFamily::Potion),
+        Family::Mnist => Some(ModelFamily::Mnist),
     };
     let kind = match args.engine {
         Engine::Native => EngineKind::Native,
         Engine::Ort => EngineKind::Ort,
     };
+    let device = match args.device {
+        Device::Cpu => DeviceChoice::Cpu,
+        Device::Cuda => DeviceChoice::Cuda,
+        Device::Metal => DeviceChoice::Metal,
+        Device::Coreml => DeviceChoice::CoreMl,
+    };
     let fixture = match family {
-        ModelFamily::Potion => include_str!("../../fixtures/potion-reference.json"),
-        ModelFamily::Mnist => include_str!("../../fixtures/mnist-reference.json"),
+        None => include_str!("../../fixtures/s1-router-reference.json"),
+        Some(ModelFamily::Potion) => include_str!("../../fixtures/potion-reference.json"),
+        Some(ModelFamily::Mnist) => include_str!("../../fixtures/mnist-reference.json"),
+    };
+    let model = if let Some(family) = family {
+        serde_json::to_value(models::manifest(family)?)?
+    } else {
+        serde_json::to_value(psionic_inference::router::pinned_manifest()?)?
     };
     let reference: Reference = serde_json::from_str(fixture)?;
     let startup = Instant::now();
-    let mut engine = models::load_engine(
-        family,
-        kind,
-        &args.model_dir,
-        args.threads,
-        args.ort_library.as_deref(),
-        args.ort_sha256.as_deref(),
-    )?;
+    let mut engine: Box<dyn psionic_inference::ModelEngine> = match kind {
+        EngineKind::Native => {
+            if let Some(family) = family {
+                models::load_native_on(family, &args.model_dir, args.threads, device)?
+            } else {
+                psionic_inference::router::load_native_on(&args.model_dir, args.threads, device)?
+            }
+        }
+        EngineKind::Ort => {
+            #[cfg(feature = "ort")]
+            {
+                use psionic_inference::ort_engine::{
+                    CoreMlUnits, OrtEngine, OrtExecution, OrtOptions,
+                };
+                if device != DeviceChoice::Cpu && args.profile.is_none() {
+                    return Err(Error(
+                        "Provide --profile to measure accelerator placement".into(),
+                    ));
+                }
+                let onnx = if let Some(family) = family {
+                    let spec = models::manifest(family)?;
+                    spec.verify(&args.model_dir, kind)?;
+                    spec.onnx
+                } else {
+                    psionic_inference::router::pinned_manifest()?.verify(&args.model_dir)?;
+                    "model.gq.onnx".into()
+                };
+                let execution = OrtExecution {
+                    device,
+                    device_id: 0,
+                    allow_cpu_fallback: args.allow_cpu_fallback,
+                    profile: args.profile.clone(),
+                    coreml_units: match args.coreml_units {
+                        Units::All => CoreMlUnits::All,
+                        Units::CpuAndGpu => CoreMlUnits::CpuAndGpu,
+                        Units::CpuAndNeuralEngine => CoreMlUnits::CpuAndNeuralEngine,
+                        Units::CpuOnly => CoreMlUnits::CpuOnly,
+                    },
+                };
+                let onnx_path = if let Some(path) = &args.ort_model {
+                    if Some(file_sha256(path)?) != args.ort_model_sha256 {
+                        return Err(Error("Converted ORT model checksum does not match".into()));
+                    }
+                    path.clone()
+                } else {
+                    args.model_dir.join(onnx)
+                };
+                Box::new(OrtEngine::load_with_execution(
+                    &onnx_path,
+                    &OrtOptions {
+                        library: args
+                            .ort_library
+                            .clone()
+                            .ok_or_else(|| Error("Provide --ort-library".into()))?,
+                        library_sha256: args
+                            .ort_sha256
+                            .clone()
+                            .ok_or_else(|| Error("Provide --ort-sha256".into()))?,
+                        threads: args.threads,
+                    },
+                    &execution,
+                )?)
+            }
+            #[cfg(not(feature = "ort"))]
+            {
+                return Err(Error("ORT is not enabled".into()));
+            }
+        }
+    };
     let load_ms = startup.elapsed().as_secs_f64() * 1000.0;
     let mut max_distance = 0_f32;
     for case in &reference.cases {
         let actual = engine.run(&case.inputs)?;
+        if family.is_none() {
+            let manifest = psionic_inference::router::pinned_manifest()?;
+            let actual_answer = psionic_inference::router::answer(&actual, &manifest)?;
+            let expected_answer = psionic_inference::router::answer(&case.outputs, &manifest)?;
+            if [
+                actual_answer.category.label,
+                actual_answer.difficulty.label,
+                actual_answer.stakes.label,
+            ] != [
+                expected_answer.category.label,
+                expected_answer.difficulty.label,
+                expected_answer.stakes.label,
+            ] || actual_answer
+                .flags
+                .iter()
+                .any(|(k, v)| (*v >= 0.5) != (expected_answer.flags[k] >= 0.5))
+            {
+                return Err(Error("Router decisions differ from reference".into()));
+            }
+        }
+        if matches!(family, Some(ModelFamily::Mnist)) {
+            let argmax = |v: &[f32]| {
+                v.iter()
+                    .enumerate()
+                    .max_by(|(i, a), (j, b)| a.total_cmp(b).then(j.cmp(i)))
+                    .map(|(i, _)| i)
+            };
+            if argmax(actual["Plus214_Output_0"].floats()?)
+                != argmax(case.outputs["Plus214_Output_0"].floats()?)
+            {
+                return Err(Error("Digit decision differs from reference".into()));
+            }
+        }
         for (name, expected) in &case.outputs {
             let output = actual
                 .get(name)
@@ -90,14 +226,16 @@ fn run(args: Args) -> Result<serde_json::Value> {
         }
     }
     let tolerance = match family {
-        ModelFamily::Potion => 1e-5,
-        ModelFamily::Mnist => 1e-3,
+        Some(ModelFamily::Potion) => 1e-5,
+        Some(ModelFamily::Mnist) => 1e-3,
+        None => 0.01,
     };
     if max_distance >= tolerance {
         return Err(Error(format!(
             "Reference distance {max_distance} exceeds {tolerance}"
         )));
     }
+    let placement = engine.finish_profiling()?;
     for i in 0..args.warmup {
         std::hint::black_box(engine.run(&reference.cases[i % reference.cases.len()].inputs)?);
     }
@@ -123,7 +261,7 @@ fn run(args: Args) -> Result<serde_json::Value> {
     };
     let executable = std::env::current_exe()?;
     Ok(
-        json!({"schema":"psionic.small-model.benchmark.v1","model":models::manifest(family)?,"execution":engine.identity(),
+        json!({"schema":"psionic.small-model.benchmark.v1","model":model,"converted_ort_model_sha256":args.ort_model_sha256,"execution":engine.identity(),"execution_details":engine.execution_report(),"placement_profile":placement,
         "mode":"engine","samples":args.samples,"warmup":args.warmup,"reference_cases":reference.cases.len(),"max_reference_distance":max_distance,
         "load_ms":load_ms,"p50_ms":percentile(0.50),"p95_ms":percentile(0.95),"p99_ms":percentile(0.99),
         "requests_per_second":args.samples as f64/elapsed,"timings_ms":durations,

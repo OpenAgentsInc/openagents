@@ -72,6 +72,19 @@ pub fn load_engine(
     }
 }
 
+/// Uses the same router artifacts with explicit native CPU, CUDA, or Metal execution.
+pub fn load_native_on(
+    root: &Path,
+    threads: usize,
+    device: crate::DeviceChoice,
+) -> Result<Box<dyn ModelEngine>> {
+    pinned_manifest()?.verify(root)?;
+    verify_native_router(root)?;
+    Ok(Box::new(crate::modernbert::ModernBertEngine::load_on(
+        root, threads, device,
+    )?))
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct RouterManifest {
     pub model: String,

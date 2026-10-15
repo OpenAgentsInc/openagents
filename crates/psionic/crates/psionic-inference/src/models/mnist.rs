@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, path::Path};
 
 pub struct MnistEngine {
+    accelerator: Option<std::sync::Mutex<crate::dense_accelerator::DenseAccelerator>>,
     conv1: Vec<f32>,
     bias1: Vec<f32>,
     conv2: Vec<f32>,
@@ -26,6 +27,7 @@ impl MnistEngine {
         let tensors =
             safetensors::SafeTensors::deserialize(&bytes).map_err(|e| Error(e.to_string()))?;
         Ok(Self {
+            accelerator: None,
             conv1: floats(&tensors, "conv1.weight", &[8, 1, 5, 5])?,
             bias1: floats(&tensors, "conv1.bias", &[8])?,
             conv2: floats(&tensors, "conv2.weight", &[16, 8, 5, 5])?,
@@ -35,6 +37,80 @@ impl MnistEngine {
             pool,
             identity: identity("psionic-mnist-cpu", threads),
         })
+    }
+
+    pub(super) fn load_on(
+        root: &Path,
+        threads: usize,
+        device: crate::DeviceChoice,
+    ) -> Result<Self> {
+        let mut model = Self::load_verified(root, threads)?;
+        if device != crate::DeviceChoice::Cpu {
+            let transpose = |values: &[f32], channels: usize| -> Vec<f32> {
+                (0..values.len())
+                    .map(|i| values[(i % channels) * (values.len() / channels) + i / channels])
+                    .collect()
+            };
+            let first = transpose(&model.conv1, 8);
+            let second = transpose(&model.conv2, 16);
+            let accelerator = crate::dense_accelerator::DenseAccelerator::load(
+                device,
+                &[
+                    (1, &first, 25, 8),
+                    (2, &second, 200, 16),
+                    (3, &model.fc, 256, 10),
+                ],
+            )?;
+            model.identity.provider = accelerator.provider.clone();
+            model.identity.device = accelerator.device.clone();
+            model.identity.cpu_fallback = Some(true);
+            model.accelerator = Some(std::sync::Mutex::new(accelerator));
+        }
+        Ok(model)
+    }
+
+    fn convolution(
+        &self,
+        input: &[f32],
+        channels: usize,
+        width: usize,
+        weights: &[f32],
+        bias: &[f32],
+        key: usize,
+    ) -> Result<Vec<f32>> {
+        let Some(accelerator) = &self.accelerator else {
+            return Ok(conv_relu(input, channels, width, weights, bias));
+        };
+        let k = channels * 25;
+        let mut columns = vec![0.0; width * width * k];
+        for y in 0..width {
+            for x in 0..width {
+                for c in 0..channels {
+                    for ky in 0..5 {
+                        for kx in 0..5 {
+                            let iy = y as isize + ky as isize - 2;
+                            let ix = x as isize + kx as isize - 2;
+                            if iy >= 0 && ix >= 0 && (iy as usize) < width && (ix as usize) < width
+                            {
+                                columns[(y * width + x) * k + (c * 5 + ky) * 5 + kx] =
+                                    input[c * width * width + iy as usize * width + ix as usize];
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        let result = accelerator
+            .lock()
+            .map_err(|_| Error("Cannot access native accelerator".into()))?
+            .matmul(key, &columns, width * width, k, bias.len())?;
+        let mut output = vec![0.0; result.len()];
+        for c in 0..bias.len() {
+            for i in 0..width * width {
+                output[c * width * width + i] = (result[i * bias.len() + c] + bias[c]).max(0.0);
+            }
+        }
+        Ok(output)
     }
 
     fn forward(&self, inputs: &Tensors) -> Result<Tensors> {
@@ -50,16 +126,24 @@ impl MnistEngine {
             ));
         }
         let pixels = input.floats()?;
-        let first = conv_relu(pixels, 1, 28, &self.conv1, &self.bias1);
+        let first = self.convolution(pixels, 1, 28, &self.conv1, &self.bias1, 1)?;
         let first = max_pool(&first, 8, 28, 2);
-        let second = conv_relu(&first, 8, 14, &self.conv2, &self.bias2);
+        let second = self.convolution(&first, 8, 14, &self.conv2, &self.bias2, 2)?;
         let second = max_pool(&second, 16, 14, 3);
-        let mut logits = vec![0.0; 10];
-        for (i, value) in second.iter().enumerate() {
-            for (j, out) in logits.iter_mut().enumerate() {
-                *out += value * self.fc[i * 10 + j];
+        let mut logits = if let Some(accelerator) = &self.accelerator {
+            accelerator
+                .lock()
+                .map_err(|_| Error("Cannot access native accelerator".into()))?
+                .matmul(3, &second, 1, 256, 10)?
+        } else {
+            let mut logits = vec![0.0; 10];
+            for (i, value) in second.iter().enumerate() {
+                for (j, out) in logits.iter_mut().enumerate() {
+                    *out += value * self.fc[i * 10 + j];
+                }
             }
-        }
+            logits
+        };
         for (out, bias) in logits.iter_mut().zip(&self.bias_fc) {
             *out += bias;
         }
@@ -74,6 +158,19 @@ impl MnistEngine {
 }
 
 impl ModelEngine for MnistEngine {
+    fn execution_report(&self) -> serde_json::Value {
+        self.accelerator
+            .as_ref()
+            .and_then(|a| a.lock().ok())
+            .map_or(serde_json::Value::Null, |a| {
+                let mut report = a.report();
+                report["cpu_operations"] = serde_json::json!(
+                    "im2col, bias, ReLU, max pooling, input and output preparation"
+                );
+                report
+            })
+    }
+
     fn identity(&self) -> &ExecutionIdentity {
         &self.identity
     }

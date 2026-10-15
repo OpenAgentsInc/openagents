@@ -115,6 +115,23 @@ pub fn load_engine(
     }
 }
 
+/// Loads explicit native device execution. Potion currently supports CPU only.
+pub fn load_native_on(
+    family: ModelFamily,
+    root: &Path,
+    threads: usize,
+    device: crate::DeviceChoice,
+) -> Result<Box<dyn ModelEngine>> {
+    manifest(family)?.verify(root, EngineKind::Native)?;
+    match family {
+        ModelFamily::Potion if device == crate::DeviceChoice::Cpu => {
+            Ok(Box::new(PotionEngine::load_verified(root, threads)?))
+        }
+        ModelFamily::Potion => Err(Error("Native Potion supports CPU execution only".into())),
+        ModelFamily::Mnist => Ok(Box::new(MnistEngine::load_on(root, threads, device)?)),
+    }
+}
+
 fn identity(provider: &str, threads: usize) -> ExecutionIdentity {
     ExecutionIdentity {
         engine: EngineKind::Native,

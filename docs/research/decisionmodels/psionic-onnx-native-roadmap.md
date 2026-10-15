@@ -8,7 +8,8 @@ models. The shared contract and fixtures (#11700), optional ORT CPU
 execution (#11701), native ModernBERT CPU execution (#11702), CPU
 benchmarks (#11703), and shared in-process/HTTP serving (#11704) are
 implemented. Embeddings and digit vision (#11705) also have both engines;
-accelerators remain planned.
+explicit CUDA/Core ML and native CUDA/Metal paths are implemented in
+#11706. Device measurements and package qualification are recorded below.
 
 ## Scope and current evidence
 

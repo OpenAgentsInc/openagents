@@ -53,6 +53,7 @@ struct Head {
 }
 
 pub struct ModernBertEngine {
+    accelerator: Option<std::sync::Mutex<crate::dense_accelerator::DenseAccelerator>>,
     config: ModernBertConfig,
     embedding: Vec<u8>,
     embedding_norm: Vec<f32>,
@@ -180,6 +181,7 @@ impl ModernBertEngine {
             );
         }
         Ok(Self {
+            accelerator: None,
             embedding,
             embedding_norm: floats(&tensors, "embedding_norm", &[h])?,
             final_norm: floats(&tensors, "final_norm", &[h])?,
@@ -201,6 +203,49 @@ impl ModernBertEngine {
             },
             config,
         })
+    }
+
+    pub fn load_on(root: &Path, threads: usize, device: crate::DeviceChoice) -> Result<Self> {
+        let mut model = Self::load(root, threads)?;
+        if device != crate::DeviceChoice::Cpu {
+            let weights: Vec<_> = model
+                .layers
+                .iter()
+                .flat_map(|l| [&l.qkv, &l.attn_out, &l.up, &l.down])
+                .chain(model.heads.values().map(|h| &h.weight))
+                .map(|w| {
+                    (
+                        w.values.as_ptr() as usize,
+                        w.values.as_slice(),
+                        w.rows,
+                        w.cols,
+                    )
+                })
+                .collect();
+            let accelerator = crate::dense_accelerator::DenseAccelerator::load(device, &weights)?;
+            model.identity.provider = accelerator.provider.clone();
+            model.identity.device = accelerator.device.clone();
+            model.identity.cpu_fallback = Some(true);
+            model.accelerator = Some(std::sync::Mutex::new(accelerator));
+        }
+        Ok(model)
+    }
+
+    fn linear(&self, input: &[f32], weight: &Matrix) -> Result<Vec<f32>> {
+        if let Some(accelerator) = &self.accelerator {
+            accelerator
+                .lock()
+                .map_err(|_| Error("Cannot access native accelerator".into()))?
+                .matmul(
+                    weight.values.as_ptr() as usize,
+                    input,
+                    input.len() / weight.rows,
+                    weight.rows,
+                    weight.cols,
+                )
+        } else {
+            Ok(linear(input, weight))
+        }
     }
 
     fn forward(&self, inputs: &Tensors) -> Result<Tensors> {
@@ -249,13 +294,13 @@ impl ModernBertEngine {
             if let Some(weight) = &layer.attn_norm {
                 normalize(&mut normalized, weight, self.config.epsilon);
             }
-            let qkv = linear(&normalized, &layer.qkv);
+            let qkv = self.linear(&normalized, &layer.qkv)?;
             let attention = attention(&qkv, n, h, self.config.heads, mask, &layer.config);
-            let output = linear(&attention, &layer.attn_out);
+            let output = self.linear(&attention, &layer.attn_out)?;
             add(&mut hidden, &output);
             let mut normalized = hidden.clone();
             normalize(&mut normalized, &layer.mlp_norm, self.config.epsilon);
-            let up = linear(&normalized, &layer.up);
+            let up = self.linear(&normalized, &layer.up)?;
             let f = self.config.intermediate;
             let mut gated = vec![0.0; n * f];
             gated
@@ -269,13 +314,13 @@ impl ModernBertEngine {
                             * input[f + i];
                     }
                 });
-            add(&mut hidden, &linear(&gated, &layer.down));
+            add(&mut hidden, &self.linear(&gated, &layer.down)?);
         }
         let mut pooled = hidden[..h].to_vec();
         normalize(&mut pooled, &self.final_norm, self.config.epsilon);
         let mut outputs = Tensors::new();
         for (name, head) in &self.heads {
-            let mut values = linear(&pooled, &head.weight);
+            let mut values = self.linear(&pooled, &head.weight)?;
             add(&mut values, &head.bias);
             outputs.insert(
                 name.clone(),
@@ -290,6 +335,12 @@ impl ModernBertEngine {
 }
 
 impl ModelEngine for ModernBertEngine {
+    fn execution_report(&self) -> serde_json::Value {
+        self.accelerator.as_ref().and_then(|a| a.lock().ok()).map_or(serde_json::Value::Null, |a| {
+            let mut report=a.report();report["cpu_operations"]=serde_json::json!("embedding gather/dequantization, norms, RoPE, attention, GeGLU, residuals, and head biases");report
+        })
+    }
+
     fn identity(&self) -> &ExecutionIdentity {
         &self.identity
     }
