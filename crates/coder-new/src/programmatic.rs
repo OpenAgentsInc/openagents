@@ -17,8 +17,8 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::{
-    App, Mode, bundled_runtime::RuntimeEvent, live, models, plugins::SettingsFocus,
-    sessions as local_sessions, trajectory,
+    App, Mode, bundled_runtime::RuntimeEvent, harness_plugin::Harness, live, models,
+    plugins::SettingsFocus, sessions as local_sessions, trajectory,
 };
 
 macro_rules! command_usage {
@@ -69,6 +69,9 @@ macro_rules! command_usage {
   models list                         Read the curated model catalog.
   models set SLUG [--reasoning EFFORT] [--max-tokens N]
                                       Choose model and generation settings.
+                                      A harness (opencode, opencode/MODEL,
+                                      claude-code, codex) starts new chats
+                                      on it, as /models does; auto undoes it.
   agents list                         Read discovered ACP agent choices.
   agents enable ID                    Enable a discovered ACP agent.
   agents disable ID                   Disable a discovered ACP agent.
@@ -588,6 +591,13 @@ fn active_model(app: &App) -> String {
         && models::pinned(&app.plugins.model)
     {
         app.plugins.options.slug(&app.plugins.model)
+    } else if let Some(harness) = default_harness(app) {
+        // New chats start on the harness `models set` saved (#11687).
+        match harness {
+            Harness::ClaudeCode => format!("claude-code/{}", crate::claude::choice().model),
+            Harness::Codex => format!("codex/{}", crate::codex::turn_model(None)),
+            _ => crate::opencode_chat::model(None),
+        }
     } else if let Some(model) = app.account.as_ref().and(app.gateway_model.clone()) {
         model
     } else {
@@ -886,6 +896,18 @@ fn model_command(app: &mut App, args: &[String]) -> Result<Value, Error> {
             .map(|root| crate::gateway_models::listed_now(root, app.connections().as_ref()))
             .unwrap_or_default();
         catalog.extend(crate::gateway_models::catalog(&gateway, false).iter().map(|model|json!({"plugin":model.plugin,"id":model.id,"name":model.name,"reasoning":model.efforts,"context_length":model.context_length,"max_output_tokens":model.max_output_tokens})));
+        // The harnesses /models offers here (#11687): `models set ID`
+        // starts new chats on one.
+        for (id, name, harness) in [
+            ("claude-code", "Claude Code", Harness::ClaudeCode),
+            ("codex", "Codex", Harness::Codex),
+            ("opencode", "OpenCode", Harness::OpenCode),
+        ] {
+            if app.plugins.enabled_for(id) {
+                catalog.push(json!({"plugin":id,"id":id,"name":name,"harness":true,
+                    "selected":default_harness(app) == Some(harness)}));
+            }
+        }
         return Ok(json!({"selected":active_model(app),"models":catalog}));
     }
     if args.first().is_none_or(|arg| arg != "set") {
@@ -940,8 +962,45 @@ fn model_command(app: &mut App, args: &[String]) -> Result<Value, Error> {
         }
         app.gateway_model =
             crate::gateway_models::choose(app.plugins.store_root(), None).map_err(Error::from)?;
+        clear_default_harness(app)?;
         return Ok(json!({"model":"auto","provider":"openagents-gateway"}));
     }
+    // A harness new chats start on, as /models picks it (#11687):
+    // `opencode`, `opencode/MODEL`, `claude-code[/MODEL]`, `codex[/MODEL]`.
+    if let Some((harness, model)) = harness_slug(&slug) {
+        if max_tokens.is_some() {
+            return Err(usage("A harness does not take an output limit here."));
+        }
+        let id = match harness {
+            Harness::ClaudeCode => "claude-code",
+            Harness::Codex => "codex",
+            _ => "opencode",
+        };
+        if !app.plugins.enabled_for(id) {
+            return Err(usage(&format!(
+                "Turn it on first: openagents coder plugins enable {id}."
+            )));
+        }
+        let chosen = match (harness, &model) {
+            (Harness::OpenCode, Some(model)) => {
+                if reasoning.is_some() {
+                    return Err(usage("OpenCode models do not take reasoning here."));
+                }
+                crate::opencode_chat::choose(model)
+            }
+            (Harness::ClaudeCode, Some(model)) => crate::claude::choose(model, reasoning.clone()),
+            (Harness::Codex, Some(model)) => crate::codex::choose(model, reasoning.clone()),
+            _ => Ok(()),
+        };
+        chosen.map_err(|error| usage(&error))?;
+        let root = app
+            .plugins
+            .store_root()
+            .ok_or_else(|| Error::from("Coder's settings folder is unavailable.".to_owned()))?;
+        crate::harness_pick::save_default(root, Some(harness)).map_err(Error::from)?;
+        return Ok(json!({"model":active_model(app),"harness":id}));
+    }
+    clear_default_harness(app)?;
     // A gateway model (#11526): the Coder loop's turns run on it through
     // the gateway.
     let account = app.connections();
@@ -987,6 +1046,45 @@ fn model_command(app: &mut App, args: &[String]) -> Result<Value, Error> {
             .into());
     }
     Ok(json!({"model":app.plugins.options.slug(&app.plugins.model),"options":app.plugins.options}))
+}
+
+/// The harness, and the model on it, a `models set` slug names (#11687):
+/// `opencode`, `opencode/MODEL` (an OpenCode `provider/model`; a bare
+/// `opencode/NAME` is OpenCode's own `opencode/NAME`), `claude-code[/MODEL]`
+/// or `codex[/MODEL]`.
+fn harness_slug(slug: &str) -> Option<(Harness, Option<String>)> {
+    let (head, model) = slug
+        .split_once('/')
+        .map_or((slug, None), |(head, rest)| (head, Some(rest)));
+    match head {
+        "opencode" => Some((
+            Harness::OpenCode,
+            model.map(|rest| {
+                if rest.contains('/') {
+                    rest.to_owned()
+                } else {
+                    slug.to_owned()
+                }
+            }),
+        )),
+        "claude-code" => Some((Harness::ClaudeCode, model.map(str::to_owned))),
+        "codex" => Some((Harness::Codex, model.map(str::to_owned))),
+        _ => None,
+    }
+}
+
+/// Any model other than a harness's puts new chats back on Auto's choice
+/// (#11687).
+fn clear_default_harness(app: &App) -> Result<(), Error> {
+    match app.plugins.store_root() {
+        Some(root) => crate::harness_pick::save_default(root, None).map_err(Error::from),
+        None => Ok(()),
+    }
+}
+
+/// The harness new chats start on, saved by `models set` (#11687).
+fn default_harness(app: &App) -> Option<Harness> {
+    crate::harness_pick::saved_default(app.plugins.store_root()?)
 }
 
 fn agent_list(app: &App) -> Value {
@@ -2496,6 +2594,72 @@ mod tests {
             )
             .is_ok()
         );
+    }
+
+    /// #11687: `models set` takes a harness as /models does: new chats
+    /// start on it, `status` and `models list` show it, and `auto` (or any
+    /// other model) goes back to Auto choosing.
+    #[test]
+    fn models_set_starts_new_chats_on_a_harness() {
+        crate::opencode_chat::install_for_test(true);
+        let temp = tempfile::tempdir().unwrap();
+        let context = context(&temp);
+        let set = execute_words(&["models", "set", "opencode"], &context).unwrap();
+        assert_eq!(set["harness"], "opencode");
+        let status = execute_words(&["status"], &context).unwrap();
+        assert!(
+            status["model"]
+                .as_str()
+                .is_some_and(|model| model.starts_with("opencode/")),
+            "{status}"
+        );
+        let catalog = execute_words(&["models", "list"], &context).unwrap();
+        assert!(
+            catalog["models"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|model| model["id"] == "opencode" && model["selected"] == true),
+            "{catalog}"
+        );
+
+        // A new chat's first message runs on it, pinned as a /models pick
+        // is; a chat that already has messages is left alone.
+        let mut app = bootstrap(&context).unwrap();
+        app.apply_pick();
+        assert_eq!(app.live.runs_on, Some(Harness::OpenCode));
+        assert!(app.live.pinned);
+
+        execute_words(&["models", "set", "auto"], &context).unwrap();
+        assert_eq!(
+            execute_words(&["status"], &context).unwrap()["model"],
+            "auto"
+        );
+        let mut app = bootstrap(&context).unwrap();
+        app.apply_pick();
+        assert_eq!(app.live.runs_on, None);
+
+        assert!(execute_words(&["models", "set", "no-such-harness"], &context).is_err());
+        assert_eq!(
+            harness_slug("opencode/cat-jam-free"),
+            Some((Harness::OpenCode, Some("opencode/cat-jam-free".into())))
+        );
+        assert_eq!(
+            harness_slug("opencode/anthropic/claude-sonnet-5-5"),
+            Some((
+                Harness::OpenCode,
+                Some("anthropic/claude-sonnet-5-5".into())
+            ))
+        );
+        assert_eq!(
+            harness_slug("codex/gpt-6.1"),
+            Some((Harness::Codex, Some("gpt-6.1".into())))
+        );
+        assert_eq!(
+            harness_slug("claude-code"),
+            Some((Harness::ClaudeCode, None))
+        );
+        assert_eq!(harness_slug("google/gemini-3.8-flash"), None);
     }
 
     #[test]

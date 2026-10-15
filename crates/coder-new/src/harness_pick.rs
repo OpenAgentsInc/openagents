@@ -646,6 +646,21 @@ impl crate::App {
         self.next_pick = Some(pick);
     }
 
+    /// The harness a new chat starts on when `openagents coder models set`
+    /// saved one (#11687): only for a chat's first message, and never over
+    /// a chat already pinned or on an agent.
+    fn default_pick(&self) -> Option<Pick> {
+        let first = !self
+            .live
+            .entries
+            .iter()
+            .any(|entry| matches!(entry, crate::live::Entry::User(_)));
+        if !first || self.live.pinned || self.live.agent.is_some() {
+            return None;
+        }
+        saved_default(self.plugins.store_root()?).map(Pick::Harness)
+    }
+
     /// Says once per chat, on the rail, that the agent `pick` names runs
     /// steps without asking first (#11556).
     pub(crate) fn note_unasked(&mut self, pick: &Pick) {
@@ -663,8 +678,10 @@ impl crate::App {
     /// and goes back to the harness Auto had chosen.
     pub(crate) fn apply_pick(&mut self) {
         use crate::routing_record::Rule;
-        // A chat pinned earlier stays pinned; its follow-ups continue.
-        let Some(pick) = self.next_pick.take() else {
+        // A chat pinned earlier stays pinned; its follow-ups continue. A
+        // new chat with no pick starts on the harness `models set` saved
+        // (#11687), as if it was picked in /models.
+        let Some(pick) = self.next_pick.take().or_else(|| self.default_pick()) else {
             return;
         };
         let was_auto = !self.live.pinned && self.live.agent.is_none();
@@ -836,6 +853,48 @@ impl crate::App {
             self.next_pick = Some(Pick::Auto);
         }
     }
+}
+
+/// Where `openagents coder models set` saves the harness new chats start
+/// on (#11687), in Coder's store.
+const DEFAULT_FILE: &str = "harness-default.json";
+
+#[derive(Serialize, Deserialize)]
+struct DefaultFile {
+    version: u32,
+    harness: Harness,
+}
+
+/// The harness new chats start on, when one is saved: Claude Code, Codex
+/// or OpenCode (#11687).
+#[must_use]
+pub fn saved_default(root: &Path) -> Option<Harness> {
+    let bytes = std::fs::read(root.join(DEFAULT_FILE)).ok()?;
+    let file: DefaultFile = serde_json::from_slice(&bytes).ok()?;
+    (file.version == 1 && file.harness != Harness::CoderLoop).then_some(file.harness)
+}
+
+/// Saves `harness` as the one new chats start on, or with `None` goes back
+/// to Auto choosing (#11687).
+///
+/// # Errors
+/// The choice can't be saved.
+pub fn save_default(root: &Path, harness: Option<Harness>) -> Result<(), String> {
+    let path = root.join(DEFAULT_FILE);
+    let Some(harness) = harness else {
+        return match std::fs::remove_file(&path) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(_) => Err("Coder could not save the choice.".into()),
+        };
+    };
+    std::fs::create_dir_all(root).map_err(|_| "Coder could not save the choice.".to_owned())?;
+    let bytes = serde_json::to_vec_pretty(&DefaultFile {
+        version: 1,
+        harness,
+    })
+    .map_err(|error| error.to_string())?;
+    std::fs::write(path, bytes).map_err(|_| "Coder could not save the choice.".into())
 }
 
 #[cfg(test)]
