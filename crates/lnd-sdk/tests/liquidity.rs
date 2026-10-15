@@ -33,10 +33,17 @@ fn anchor_channel_and_realistic_inbound_payment() {
         let alice = Client::connect(&config, mac).await.unwrap();
         let (config, mac) = nodes.config("bob").unwrap();
         let bob = Client::connect(&config, mac).await.unwrap();
+        let acceptor = bob.clone();
+        let peer = alice.node_id();
+        let guard =
+            tokio::spawn(async move { acceptor.guard_inbound_channel(&peer, 1_000_000).await });
+        tokio::time::sleep(Duration::from_millis(200)).await;
         let point = alice
             .open_peer_channel_at_rate(&bob.node_id(), "bob:9735", 1_000_000, false, 2)
             .await
             .unwrap();
+        assert!(!guard.is_finished());
+        guard.abort();
         nodes.mine(6).unwrap();
         nodes
             .wait(|| {
