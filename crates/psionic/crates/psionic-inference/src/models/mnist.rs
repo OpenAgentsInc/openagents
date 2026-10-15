@@ -11,7 +11,13 @@ use std::{collections::BTreeMap, path::Path};
 #[cfg(target_arch = "x86_64")]
 mod simd;
 
+#[cfg(feature = "native-cuda")]
+mod cuda;
+
 pub struct MnistEngine {
+    buffers: crate::buffers::Buffers,
+    #[cfg(feature = "native-cuda")]
+    cuda: Option<cuda::Digit>,
     accelerator: Option<std::sync::Mutex<crate::dense_accelerator::DenseAccelerator>>,
     conv1: Vec<f32>,
     bias1: Vec<f32>,
@@ -30,6 +36,9 @@ impl MnistEngine {
         let tensors =
             safetensors::SafeTensors::deserialize(&bytes).map_err(|e| Error(e.to_string()))?;
         Ok(Self {
+            buffers: crate::buffers::Buffers::default(),
+            #[cfg(feature = "native-cuda")]
+            cuda: None,
             accelerator: None,
             conv1: floats(&tensors, "conv1.weight", &[8, 1, 5, 5])?,
             bias1: floats(&tensors, "conv1.bias", &[8])?,
@@ -48,6 +57,15 @@ impl MnistEngine {
         device: crate::DeviceChoice,
     ) -> Result<Self> {
         let mut model = Self::load_verified(root, threads)?;
+        #[cfg(feature = "native-cuda")]
+        if device == crate::DeviceChoice::Cuda {
+            let digit = cuda::Digit::load(&mut model)?;
+            model.identity.provider = "psionic-cuda-digit".into();
+            model.identity.device = digit.device.clone();
+            model.identity.cpu_fallback = Some(false);
+            model.cuda = Some(digit);
+            return Ok(model);
+        }
         if device != crate::DeviceChoice::Cpu {
             let transpose = |values: &[f32], channels: usize| -> Vec<f32> {
                 (0..values.len())
@@ -82,7 +100,16 @@ impl MnistEngine {
         key: usize,
     ) -> Result<Vec<f32>> {
         let Some(accelerator) = &self.accelerator else {
-            return Ok(conv_relu(input, channels, width, weights, bias, false));
+            return Ok(conv_relu(
+                input,
+                channels,
+                width,
+                weights,
+                bias,
+                false,
+                if key == 2 { width / 3 * 3 } else { width },
+                &self.buffers,
+            ));
         };
         let k = channels * 25;
         let mut columns = vec![0.0; width * width * k];
@@ -116,7 +143,7 @@ impl MnistEngine {
         Ok(output)
     }
 
-    fn forward(&self, inputs: &Tensors) -> Result<Tensors> {
+    fn pixels(inputs: &Tensors) -> Result<&[f32]> {
         if inputs.len() != 1 {
             return Err(Error("The digit model requires one image".into()));
         }
@@ -128,25 +155,29 @@ impl MnistEngine {
                 "The digit model expects a 28 by 28 grayscale image".into(),
             ));
         }
-        let pixels = input.floats()?;
+        input.floats()
+    }
+
+    fn forward(&self, inputs: &Tensors) -> Result<Tensors> {
+        let pixels = Self::pixels(inputs)?;
         let first = self.convolution(pixels, 1, 28, &self.conv1, &self.bias1, 1)?;
-        let first = max_pool(&first, 8, 28, 2);
+        let pooled = max_pool_cached(&first, 8, 28, 2, &self.buffers);
+        self.buffers.give(first);
+        let first = pooled;
         let second = self.convolution(&first, 8, 14, &self.conv2, &self.bias2, 2)?;
-        let second = max_pool(&second, 16, 14, 3);
+        self.buffers.give(first);
+        let pooled = max_pool_cached(&second, 16, 14, 3, &self.buffers);
+        self.buffers.give(second);
+        let second = pooled;
         let mut logits = if let Some(accelerator) = &self.accelerator {
             accelerator
                 .lock()
                 .map_err(|_| Error("Cannot access native accelerator".into()))?
                 .matmul(3, &second, 1, 256, 10)?
         } else {
-            let mut logits = vec![0.0; 10];
-            for (i, value) in second.iter().enumerate() {
-                for (j, out) in logits.iter_mut().enumerate() {
-                    *out += value * self.fc[i * 10 + j];
-                }
-            }
-            logits
+            native_head(&second, &self.fc)
         };
+        self.buffers.give(second);
         for (out, bias) in logits.iter_mut().zip(&self.bias_fc) {
             *out += bias;
         }
@@ -162,6 +193,10 @@ impl MnistEngine {
 
 impl ModelEngine for MnistEngine {
     fn execution_report(&self) -> serde_json::Value {
+        #[cfg(feature = "native-cuda")]
+        if let Some(cuda) = &self.cuda {
+            return cuda.report();
+        }
         self.accelerator
             .as_ref()
             .and_then(|a| a.lock().ok())
@@ -170,7 +205,7 @@ impl ModelEngine for MnistEngine {
                 let simd=std::arch::is_x86_feature_detected!("avx2") && std::arch::is_x86_feature_detected!("fma");
                 #[cfg(not(target_arch="x86_64"))]
                 let simd=false;
-                serde_json::json!({"placement":"CPU","convolution":if simd {"AVX2/FMA with eight output channels per vector group"} else {"portable scalar"},"requested_thread_budget":self.identity.threads,"convolution_parallelism":if simd {1} else {self.identity.threads}})
+                serde_json::json!({"placement":"CPU","convolution":if simd {"AVX2/FMA with four channels and sixteen spatial pixels per group"} else {"portable scalar"},"requested_thread_budget":self.identity.threads,"convolution_parallelism":if simd {1} else {self.identity.threads},"cached_activation_bytes":self.buffers.cached_bytes()})
             }, |a| {
                 let mut report = a.report();
                 report["cpu_operations"] = serde_json::json!(
@@ -184,6 +219,10 @@ impl ModelEngine for MnistEngine {
         &self.identity
     }
     fn run(&mut self, inputs: &Tensors) -> Result<Tensors> {
+        #[cfg(feature = "native-cuda")]
+        if let Some(cuda) = &mut self.cuda {
+            return cuda.run(Self::pixels(inputs)?);
+        }
         #[cfg(target_arch = "x86_64")]
         if self.accelerator.is_none()
             && std::arch::is_x86_feature_detected!("avx2")
@@ -202,11 +241,17 @@ fn conv_relu(
     weights: &[f32],
     bias: &[f32],
     parallel: bool,
+    rows: usize,
+    buffers: &crate::buffers::Buffers,
 ) -> Vec<f32> {
     #[cfg(target_arch = "x86_64")]
     if std::arch::is_x86_feature_detected!("avx2") && std::arch::is_x86_feature_detected!("fma") {
         // SAFETY: both required CPU features were checked; the pinned model supplies fixed dimensions.
-        return unsafe { simd::conv_relu(input, channels, width, weights, bias, parallel) };
+        return unsafe {
+            simd::conv_relu(
+                input, channels, width, weights, bias, parallel, rows, buffers,
+            )
+        };
     }
     conv_relu_scalar(input, channels, width, weights, bias)
 }
@@ -253,9 +298,54 @@ fn conv_relu_scalar(
     result
 }
 
+#[cfg(test)]
 fn max_pool(input: &[f32], channels: usize, width: usize, stride: usize) -> Vec<f32> {
+    max_pool_cached(
+        input,
+        channels,
+        width,
+        stride,
+        &crate::buffers::Buffers::default(),
+    )
+}
+
+fn native_head(features: &[f32], weights: &[f32]) -> Vec<f32> {
+    #[cfg(target_arch = "x86_64")]
+    if std::arch::is_x86_feature_detected!("avx2") && std::arch::is_x86_feature_detected!("fma") {
+        // SAFETY: features were checked and the pinned model supplies a 256-by-10 dense matrix.
+        return unsafe { simd::head(features, weights) };
+    }
+    let mut logits = vec![0.0; 10];
+    for (i, value) in features.iter().enumerate() {
+        for (j, out) in logits.iter_mut().enumerate() {
+            *out += value * weights[i * 10 + j];
+        }
+    }
+    logits
+}
+
+fn max_pool_cached(
+    input: &[f32],
+    channels: usize,
+    width: usize,
+    stride: usize,
+    buffers: &crate::buffers::Buffers,
+) -> Vec<f32> {
+    let height = input.len() / (channels * width);
     let next = width / stride;
-    let mut output = vec![0.0; channels * next * next];
+    let mut output = buffers.take(channels * next * next);
+    #[cfg(target_arch = "x86_64")]
+    if ((stride == 2 && width == 28) || (stride == 3 && width == 14))
+        && std::arch::is_x86_feature_detected!("avx2")
+        && std::arch::is_x86_feature_detected!("fma")
+    {
+        // SAFETY: features and complete pinned spatial shapes were checked.
+        unsafe {
+            simd::pool(input, channels, width, height, stride, &mut output);
+        }
+        return output;
+    }
+
     for channel in 0..channels {
         for y in 0..next {
             for x in 0..next {
@@ -263,7 +353,7 @@ fn max_pool(input: &[f32], channels: usize, width: usize, stride: usize) -> Vec<
                 for ky in 0..stride {
                     for kx in 0..stride {
                         max = max.max(
-                            input[channel * width * width
+                            input[channel * height * width
                                 + (y * stride + ky) * width
                                 + x * stride
                                 + kx],
@@ -361,7 +451,16 @@ mod tests {
                         .map(|i| ((i * 7 % 29) as f32 - 14.0) / 31.0)
                         .collect();
                     let bias: Vec<_> = (0..out_channels).map(|i| (i as f32 - 1.0) * 0.1).collect();
-                    let actual = conv_relu(&input, channels, width, &weights, &bias, true);
+                    let actual = conv_relu(
+                        &input,
+                        channels,
+                        width,
+                        &weights,
+                        &bias,
+                        true,
+                        width,
+                        &crate::buffers::Buffers::default(),
+                    );
                     let expected = conv_relu_scalar(&input, channels, width, &weights, &bias);
                     let distance = actual
                         .iter()
@@ -376,6 +475,30 @@ mod tests {
             }
         }
     }
+    #[test]
+    fn cropped_convolution_preserves_every_pooled_value() {
+        let width = 14;
+        let channels = 8;
+        let input: Vec<_> = (0..channels * width * width)
+            .map(|i| ((i * 13 % 37) as f32 - 18.0) / 19.0)
+            .collect();
+        let weights: Vec<_> = (0..16 * channels * 25)
+            .map(|i| ((i * 7 % 29) as f32 - 14.0) / 31.0)
+            .collect();
+        let bias = vec![0.1; 16];
+        let buffers = crate::buffers::Buffers::default();
+        let cropped = conv_relu(
+            &input, channels, width, &weights, &bias, false, 12, &buffers,
+        );
+        let full = conv_relu_scalar(&input, channels, width, &weights, &bias);
+        let expected = max_pool(&full, 16, width, 3);
+        let actual = max_pool_cached(&cropped, 16, width, 3, &buffers);
+        assert_eq!(actual.len(), 256);
+        for (a, b) in actual.iter().zip(expected) {
+            assert!((a - b).abs() < 1e-4, "{a} != {b}");
+        }
+    }
+
     #[test]
     fn pooling_uses_floor_dimensions_and_keeps_channels_separate() {
         let input: Vec<f32> = (0..32).map(|i| i as f32).collect();

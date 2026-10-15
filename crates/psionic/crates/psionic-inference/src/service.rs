@@ -167,7 +167,74 @@ impl RouterService {
         library: Option<&Path>,
         library_sha256: Option<&str>,
     ) -> Result<Self> {
-        let engine = router::load_engine(engine, root, threads, library, library_sha256)?;
+        Self::load_on(
+            root,
+            engine,
+            threads,
+            library,
+            library_sha256,
+            crate::DeviceChoice::Cpu,
+            false,
+        )
+    }
+
+    /// Loads the selected engine and device; provider fallback requires an explicit choice.
+    pub fn load_on(
+        root: &Path,
+        engine: EngineKind,
+        threads: usize,
+        library: Option<&Path>,
+        library_sha256: Option<&str>,
+        device: crate::DeviceChoice,
+        allow_cpu_fallback: bool,
+    ) -> Result<Self> {
+        use crate::DeviceChoice;
+        if (engine == EngineKind::Native && device == DeviceChoice::CoreMl)
+            || (engine == EngineKind::Ort && device == DeviceChoice::Metal)
+        {
+            return Err(crate::Error(
+                "Choose CPU, CUDA, or Metal for native; CPU, CUDA, or Core ML for ORT".into(),
+            ));
+        }
+        if allow_cpu_fallback && (engine != EngineKind::Ort || device == DeviceChoice::Cpu) {
+            return Err(crate::Error(
+                "CPU fallback is an ORT accelerator option".into(),
+            ));
+        }
+        let engine: Box<dyn ModelEngine> = match engine {
+            EngineKind::Native => router::load_native_on(root, threads, device)?,
+            EngineKind::Ort => {
+                #[cfg(feature = "ort")]
+                {
+                    use crate::ort_engine::{OrtEngine, OrtExecution, OrtOptions};
+                    router::pinned_manifest()?.verify(root)?;
+                    Box::new(OrtEngine::load_with_execution(
+                        &root.join("model.gq.onnx"),
+                        &OrtOptions {
+                            library: library
+                                .ok_or_else(|| crate::Error("Provide the ORT library".into()))?
+                                .to_path_buf(),
+                            library_sha256: library_sha256
+                                .ok_or_else(|| {
+                                    crate::Error("Provide the ORT library checksum".into())
+                                })?
+                                .into(),
+                            threads,
+                        },
+                        &OrtExecution {
+                            device,
+                            allow_cpu_fallback,
+                            ..Default::default()
+                        },
+                    )?)
+                }
+                #[cfg(not(feature = "ort"))]
+                {
+                    let _ = (library, library_sha256);
+                    return Err(crate::Error("ORT is not enabled in this build".into()));
+                }
+            }
+        };
         Ok(Self {
             engine,
             tokenizer: RouterTokenizer::load(&root.join("tokenizer/tokenizer.json"))?,

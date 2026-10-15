@@ -2,10 +2,11 @@
 
 use std::{collections::BTreeMap, path::Path};
 
-use rayon::{ThreadPool, ThreadPoolBuilder, prelude::*};
+use rayon::{ThreadPool, prelude::*};
 use safetensors::{Dtype, SafeTensors};
 use serde::{Deserialize, Serialize};
 
+use crate::buffers::Buffers;
 use crate::{
     EngineKind, Error, ExecutionIdentity, ModelEngine, Result, Tensor, TensorData, Tensors,
 };
@@ -59,40 +60,6 @@ struct Head {
 
 #[cfg(feature = "native-cuda")]
 mod cuda;
-
-#[derive(Default)]
-struct Buffers {
-    state: std::sync::Mutex<(usize, std::collections::VecDeque<Vec<f32>>)>,
-}
-impl Buffers {
-    fn take(&self, len: usize) -> Vec<f32> {
-        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some(index) = state.1.iter().rposition(|values| values.len() == len) {
-            if let Some(values) = state.1.remove(index) {
-                state.0 -= len * 4;
-                return values;
-            }
-        }
-        drop(state);
-        vec![0.0; len]
-    }
-    fn give(&self, values: Vec<f32>) {
-        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-        let bytes = values.len() * 4;
-        if bytes > 64 * 1024 * 1024 {
-            return;
-        }
-        while state.0 + bytes > 64 * 1024 * 1024 || state.1.len() >= 128 {
-            if let Some(oldest) = state.1.pop_front() {
-                state.0 -= oldest.len() * 4;
-            } else {
-                break;
-            }
-        }
-        state.0 += bytes;
-        state.1.push_back(values);
-    }
-}
 
 pub struct ModernBertEngine {
     buffers: Buffers,
@@ -251,10 +218,7 @@ impl ModernBertEngine {
             final_norm: floats(&tensors, "final_norm", &[h])?,
             layers,
             heads,
-            pool: ThreadPoolBuilder::new()
-                .num_threads(threads)
-                .build()
-                .map_err(tensor_error)?,
+            pool: crate::cpu::pool(threads)?,
             identity: ExecutionIdentity {
                 engine: EngineKind::Native,
                 provider: "psionic-cpu".into(),
@@ -483,7 +447,7 @@ impl ModelEngine for ModernBertEngine {
             );
             return report;
         }
-        let mut report = serde_json::json!({"placement":"CPU","activation_cache_limit_bytes":64*1024*1024,"activation_cache_max_buffers":128,"cached_activation_bytes":self.buffers.state.lock().map(|state|state.0).unwrap_or(0),"rotary":"cached position tables","final_layer_query_rows":1,"projection":"gemm 0.19 f32","erf":"libm f32"});
+        let mut report = serde_json::json!({"placement":"CPU","activation_cache_limit_bytes":64*1024*1024,"activation_cache_max_buffers":128,"cached_activation_bytes":self.buffers.cached_bytes(),"cached_activation_buffers":self.buffers.cached_buffers(),"worker_cpus":self.pool.broadcast(|_|crate::cpu::affinity()),"rotary":"cached position tables","final_layer_query_rows":1,"projection":"gemm 0.19 f32","erf":"libm f32"});
         #[cfg(target_arch = "x86_64")]
         if simd::available() {
             report["projection"] =
@@ -802,8 +766,7 @@ mod tests {
         }
         assert_eq!(buffers.take(1), vec![0.0]);
         assert_eq!(buffers.take(129), vec![7.0; 129]);
-        let state = buffers.state.lock().unwrap();
-        assert!(state.0 <= 64 * 1024 * 1024 && state.1.len() <= 128);
+        assert!(buffers.cached_bytes() <= 64 * 1024 * 1024 && buffers.cached_buffers() <= 128);
     }
     #[test]
     fn first_query_pruning_preserves_attention_output() {

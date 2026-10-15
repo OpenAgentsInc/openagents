@@ -16,6 +16,8 @@ path = "src/lib.rs"
 [features]
 default = []
 router-ort = ["psionic-inference/ort"]
+router-cuda = ["psionic-inference/native-cuda"]
+router-metal = ["psionic-inference/native-metal"]
 tokio-runtime-telemetry = ["psionic-observe/tokio-runtime-telemetry"]
 tokio-runtime-telemetry-cpu = [
   "tokio-runtime-telemetry",

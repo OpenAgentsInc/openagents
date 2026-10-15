@@ -5,6 +5,8 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 pub mod artifacts;
+mod buffers;
+mod cpu;
 mod dense_accelerator;
 #[cfg(feature = "http")]
 pub mod http;

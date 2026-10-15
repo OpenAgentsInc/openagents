@@ -16,6 +16,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     println!("cargo:rerun-if-changed=src/kernels/encoder.cu");
     println!("cargo:rerun-if-changed=src/kernels/encoder_stub.c");
+    println!("cargo:rerun-if-changed=src/kernels/digit.cu");
+    println!("cargo:rerun-if-changed=src/kernels/digit_stub.c");
     println!("cargo:rerun-if-env-changed=NVCC");
     let out_dir = PathBuf::from(env::var("OUT_DIR")?);
     if let Some(nvcc) = find_nvcc() {
@@ -25,6 +27,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             .file("src/kernels/quantized_matvec_stub.c")
             .file("src/kernels/clef_prefill_stub.c")
             .file("src/kernels/encoder_stub.c")
+            .file("src/kernels/digit_stub.c")
             .file("src/kernels/clef_hopper_stub.c")
             .compile("psionic_cuda_quantized_kernels");
     }
@@ -101,12 +104,15 @@ fn compile_cuda_kernels(nvcc: &Path, out_dir: &Path) -> Result<(), Box<dyn Error
 
     let encoder_object = out_dir.join("encoder.o");
     compile_cuda_object(nvcc, "src/kernels/encoder.cu", &encoder_object, false)?;
+    let digit_object = out_dir.join("digit.o");
+    compile_cuda_object(nvcc, "src/kernels/digit.cu", &digit_object, false)?;
     let mut build = cc::Build::new();
     build
         .cpp(true)
         .object(&object)
         .object(&clef_object)
-        .object(&encoder_object);
+        .object(&encoder_object)
+        .object(&digit_object);
     // The Hopper projection GEMM (#11443) is wgmma/TMA code for sm_90a;
     // other targets link its stub and keep the fused and cuBLAS paths.
     if find_cuda_arch().is_some_and(|arch| arch == "sm_90" || arch == "sm_90a") {

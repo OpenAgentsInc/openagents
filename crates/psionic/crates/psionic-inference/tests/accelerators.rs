@@ -157,3 +157,52 @@ fn cuda_encoder_replays_mixed_shapes_without_answer_drift() {
         0
     );
 }
+
+#[cfg(feature = "native-cuda")]
+#[test]
+#[ignore = "requires pinned digit assets and an NVIDIA GPU with compiled kernels"]
+fn cuda_digit_replays_images_without_cpu_graph_operations() {
+    use psionic_inference::{ModelEngine, Tensors};
+    let root =
+        std::path::PathBuf::from(std::env::var_os("PSIONIC_SMALL_MODELS_DIR").expect("model root"))
+            .join("mnist");
+    let mut model = psionic_inference::models::load_native_on(
+        psionic_inference::models::ModelFamily::Mnist,
+        &root,
+        4,
+        DeviceChoice::Cuda,
+    )
+    .unwrap();
+    let reference: serde_json::Value =
+        serde_json::from_str(include_str!("../fixtures/mnist-reference.json")).unwrap();
+    let cases = reference["cases"].as_array().unwrap();
+    for round in 0..3 {
+        for case in cases.iter().cycle().skip(round).take(cases.len()) {
+            let inputs: Tensors = serde_json::from_value(case["inputs"].clone()).unwrap();
+            let expected: Tensors = serde_json::from_value(case["outputs"].clone()).unwrap();
+            let actual = model.run(&inputs).unwrap();
+            let output = actual["Plus214_Output_0"].floats().unwrap();
+            let expected = expected["Plus214_Output_0"].floats().unwrap();
+            assert!(
+                output
+                    .iter()
+                    .zip(expected)
+                    .all(|(a, b)| (a - b).abs() < 1e-3)
+            );
+            let argmax = |values: &[f32]| {
+                values
+                    .iter()
+                    .enumerate()
+                    .max_by(|(i, a), (j, b)| a.total_cmp(b).then(j.cmp(i)))
+                    .unwrap()
+                    .0
+            };
+            assert_eq!(argmax(output), argmax(expected));
+        }
+    }
+    assert_eq!(model.identity().cpu_fallback, Some(false));
+    assert_eq!(
+        model.execution_report()["activation_allocations_per_call"],
+        0
+    );
+}
