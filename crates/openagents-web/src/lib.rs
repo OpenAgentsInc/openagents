@@ -349,6 +349,10 @@ pub struct Config {
     /// `/games/the-ice-cream-man/`. Without it, the game's page says it
     /// can't be played here.
     pub icecream: Option<PathBuf>,
+    /// The Snap Station web build (`--snap DIR`, default `/srv/snap` when
+    /// it exists), served under `/games/snap-station/`. Without it, the
+    /// game's page says it can't be played here.
+    pub snap: Option<PathBuf>,
     /// The sealed-inference demo's build (`--att DIR`, default `/srv/att`
     /// when it exists), served under `/att/`.
     pub att: Option<PathBuf>,
@@ -455,6 +459,7 @@ impl Config {
             everglade: None,
             bunny: None,
             icecream: None,
+            snap: None,
             att: None,
             cad: None,
             components_build: None,

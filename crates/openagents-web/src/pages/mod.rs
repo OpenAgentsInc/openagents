@@ -18,6 +18,7 @@ mod icecream_guide;
 pub(crate) mod live;
 mod pricing;
 pub(crate) mod profile;
+mod snap;
 pub(crate) mod stats;
 
 use axum::Router;
@@ -30,6 +31,7 @@ pub(crate) use api_docs::API_DOCS;
 pub(crate) use blue_rush::{
     ASSETS as BLUE_RUSH_ASSETS, GUIDE as BLUE_RUSH_GUIDE,
     ICECREAM_GUIDE as BLUE_RUSH_ICECREAM_GUIDE, PATH as BLUE_RUSH,
+    SNAP_GUIDE as BLUE_RUSH_SNAP_GUIDE,
 };
 pub(crate) use blue_rush::{HOSTS as STUDIO_HOSTS, STUDIO_HEADER, studio_path};
 pub(crate) use bunny::{BUNNY_CANVAS, BUNNY_GLUE, BUNNY_POLICY, BUNNY_START, BUNNY_WASM};
@@ -56,6 +58,8 @@ pub(crate) use icecream::{
 pub(crate) use icecream_guide::ICECREAM_GUIDE_PATH;
 pub(crate) use pricing::PRICING;
 #[cfg(test)]
+pub(crate) use snap::{SNAP_CANVAS, SNAP_GLUE, SNAP_PATH, SNAP_START, SNAP_WASM};
+#[cfg(test)]
 pub(crate) use stats::utc;
 
 pub(crate) fn routes() -> Router<App> {
@@ -70,6 +74,7 @@ pub(crate) fn routes() -> Router<App> {
         .merge(everglade::routes())
         .merge(bunny::routes())
         .merge(icecream::routes())
+        .merge(snap::routes())
         .merge(att::routes())
         .merge(cad::routes())
         .merge(content::routes())

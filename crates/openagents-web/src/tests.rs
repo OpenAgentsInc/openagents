@@ -79,7 +79,7 @@ async fn get(router: Router, uri: &str) -> (StatusCode, String) {
 /// of `UiPage`, so the shell's checks (one `ui.css` link, the wordmark, no
 /// script) don't apply. Its own test below holds it to the same policy
 /// rules: no inline script or style, scripts from this site only.
-const PAGES: [&str; 59] = [
+const PAGES: [&str; 60] = [
     "/",
     "/pricing",
     "/live",
@@ -90,6 +90,7 @@ const PAGES: [&str; 59] = [
     "/grid",
     "/games/grow-little-bunny",
     "/games/the-ice-cream-man",
+    "/games/snap-station",
     "/stats",
     "/efficiency",
     "/download",
@@ -4020,4 +4021,156 @@ async fn security_txt_names_the_contact_and_has_not_lapsed() {
         std::time::SystemTime::now() + month < expires,
         "renew SECURITY_EXPIRES in wellknown.rs"
     );
+}
+
+/// The homepage has a card for Snap Station that leads to the game and to
+/// its guide.
+#[tokio::test]
+async fn the_blue_rush_homepage_has_snap_station() {
+    let root = tempfile::tempdir().unwrap();
+    let site = router(config(root.path().join("tasks")));
+    let (status, _, html) = get_with(site, pages::BLUE_RUSH, LOCAL).await;
+    assert_eq!(status, StatusCode::OK);
+    let card = html
+        .split("br-card br-card-snap")
+        .nth(1)
+        .and_then(|rest| rest.split("</article>").next())
+        .expect("Snap Station's card");
+    assert!(card.contains("Snap Station"), "{card}");
+    assert!(card.contains("href=\"/games/snap-station\""), "{card}");
+    assert!(
+        card.contains(&format!("href=\"{}\"", pages::BLUE_RUSH_SNAP_GUIDE)),
+        "{card}"
+    );
+    let text = oa_copy::visible_text(card);
+    assert_eq!(oa_copy::violations(&text, &[]), vec![], "{text}");
+}
+
+/// `/studios/blue-rush/snap-station/how-to-play`: the written guide, with
+/// screenshots from the game, no script, and every link answering, on
+/// openagents.com and on the studio's own domain.
+#[tokio::test]
+async fn the_blue_rush_guide_teaches_snap_station() {
+    let root = tempfile::tempdir().unwrap();
+    let site = router(config(root.path().join("tasks")));
+    let (status, headers, html) = get_with(site.clone(), pages::BLUE_RUSH_SNAP_GUIDE, LOCAL).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(html.contains("<h1 class=\"br-guide-title\">How to play Snap Station</h1>"));
+    for words in [
+        "We made Snap Station",
+        "lined up",
+        "Squares lean",
+        "Triangles don't lean",
+        "strut",
+        "bolt",
+        "Spinning makes gravity",
+        "heavy parts belong in the middle",
+        "spins",
+        "Captain Cog",
+        "Pip",
+        "Rivet",
+        "Nova",
+        "Tock",
+        "solar storm",
+        "cargo ship",
+        "three stars",
+    ] {
+        assert!(html.contains(words), "{words}");
+    }
+    assert!(html.contains("href=\"/games/snap-station\""));
+    let lower = html.to_ascii_lowercase();
+    assert_eq!(scripts(&lower), 0, "the guide runs no script");
+    assert!(!lower.contains("<style") && !lower.contains(" style="));
+    let policy = headers[header::CONTENT_SECURITY_POLICY].to_str().unwrap();
+    assert!(!policy.contains("script-src"), "{policy}");
+    let text = oa_copy::visible_text(main_of(&html));
+    assert_eq!(oa_copy::violations(&text, &[]), vec![], "{text}");
+    let shots: Vec<&str> = html
+        .split("src=\"")
+        .skip(1)
+        .map(|rest| &rest[..rest.find('"').unwrap()])
+        .filter(|src| src.contains("/snap-"))
+        .collect();
+    assert!(shots.len() >= 6, "{shots:?}");
+    for src in &shots {
+        let (status, headers, body) = get_bytes(site.clone(), src).await;
+        assert_eq!(status, StatusCode::OK, "{src}");
+        assert_eq!(headers[header::CONTENT_TYPE], "image/jpeg", "{src}");
+        assert!(body.starts_with(&[0xff, 0xd8]), "a JPEG: {src}");
+        assert!(body.len() < 80_000, "small: {src}");
+    }
+    for target in html.split("href=\"").skip(1) {
+        let target = &target[..target.find('"').unwrap()];
+        if target.starts_with('/') && !target.starts_with("/games/") {
+            let path = target.split(['?', '#']).next().unwrap();
+            let (status, _) = get(site.clone(), path).await;
+            assert_eq!(status, StatusCode::OK, "links {target}");
+        }
+    }
+    assert!(upstream::owned(pages::BLUE_RUSH_SNAP_GUIDE));
+
+    let host = pages::STUDIO_HOSTS[0];
+    let (status, _, guide) = get_with(site.clone(), "/snap-station/how-to-play", host).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(guide.contains("src=\"/static/snap-drag.jpg\""));
+    assert!(!guide.contains("/studios/blue-rush"), "root paths only");
+    let (status, _, _) = get_with(site, "/games/snap-station", host).await;
+    assert_eq!(status, StatusCode::OK);
+}
+
+/// `/games/snap-station`: a full-window canvas, the build's one start
+/// script, the game's policy, and the build's files; without the build,
+/// a page that says so and runs nothing.
+#[tokio::test]
+async fn the_snap_station_page_serves_the_game_build() {
+    let root = tempfile::tempdir().unwrap();
+    let build = root.path().join("snap");
+    std::fs::create_dir_all(&build).unwrap();
+    std::fs::write(
+        build.join(pages::SNAP_GLUE),
+        "export default async function init() {}",
+    )
+    .unwrap();
+    std::fs::write(build.join(pages::SNAP_WASM), b"\0asm\x01\0\0\0").unwrap();
+    std::fs::write(
+        build.join(pages::SNAP_START),
+        "import init from \"./snap_web.js\";",
+    )
+    .unwrap();
+    let mut config = config(root.path().join("tasks"));
+    config.snap = Some(build.clone());
+    let (status, headers, html) = get_with(router(config.clone()), pages::SNAP_PATH, LOCAL).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(html.contains("<title>Snap Station"), "{html}");
+    assert!(html.contains(&format!("<canvas id=\"{}\"", pages::SNAP_CANVAS)));
+    assert_eq!(scripts(&html.to_ascii_lowercase()), 1);
+    assert!(
+        headers[header::CONTENT_SECURITY_POLICY]
+            .to_str()
+            .unwrap()
+            .contains("'wasm-unsafe-eval'")
+    );
+    for (file, content_type) in [
+        (pages::SNAP_GLUE, "text/javascript; charset=utf-8"),
+        (pages::SNAP_START, "text/javascript; charset=utf-8"),
+        (pages::SNAP_WASM, "application/wasm"),
+    ] {
+        let uri = format!("/games/snap-station/{file}");
+        let (status, headers, _) = get_bytes(router(config.clone()), &uri).await;
+        assert_eq!(status, StatusCode::OK, "{uri}");
+        assert_eq!(headers[header::CONTENT_TYPE], content_type, "{uri}");
+        assert!(upstream::owned(&uri), "{uri}");
+    }
+    let (status, _, _) =
+        get_bytes(router(config.clone()), "/games/snap-station/../secret.js").await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert!(upstream::owned(pages::SNAP_PATH));
+
+    std::fs::remove_file(build.join(pages::SNAP_START)).unwrap();
+    let (status, headers, html) = get_with(router(config), pages::SNAP_PATH, LOCAL).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(oa_copy::visible_text(main_of(&html)).contains("be played here right now"));
+    assert_eq!(scripts(&html.to_ascii_lowercase()), 0);
+    let policy = headers[header::CONTENT_SECURITY_POLICY].to_str().unwrap();
+    assert!(!policy.contains("script-src"), "{policy}");
 }

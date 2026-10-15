@@ -1,7 +1,8 @@
 //! `/studios/blue-rush`: the Blue Rush Studios site, OpenAgents' game
-//! studio (Grow Little Bunny, `docs/verse/games/grow-little-bunny.md`, and
-//! the games after it), and its pages: the Grow Little Bunny guide at
-//! [`GUIDE`]. The Ice Cream Man is not a Blue Rush game; its old guide
+//! studio (Grow Little Bunny, `docs/verse/games/grow-little-bunny.md`,
+//! Snap Station, `docs/verse/games/snap-station.md`, and the games after
+//! them), and its pages: the Grow Little Bunny guide at [`GUIDE`] and Snap
+//! Station's at [`SNAP_GUIDE`]. The Ice Cream Man is not a Blue Rush game; its old guide
 //! address here, [`ICECREAM_GUIDE`], redirects to its guide beside the game.
 //!
 //! It is its own brand, so it does not use the OpenAgents shell
@@ -45,6 +46,10 @@ pub(crate) const GUIDE: &str = "/studios/blue-rush/grow-little-bunny/how-to-play
 /// ([`super::icecream_guide::ICECREAM_GUIDE_PATH`]), on openagents.com.
 pub(crate) const ICECREAM_GUIDE: &str = "/studios/blue-rush/the-ice-cream-man/how-to-play";
 
+/// The Snap Station guide. `snap-web` links it from its tutorial and menu
+/// (`tutorial::GUIDE`), so the path stays put.
+pub(crate) const SNAP_GUIDE: &str = "/studios/blue-rush/snap-station/how-to-play";
+
 /// Where the pages' stylesheet, script, and pictures are served.
 pub(crate) const ASSETS: &str = "/studios/blue-rush/static/";
 
@@ -67,13 +72,49 @@ img-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
 /// Where the hero's button and the featured card lead.
 pub(crate) const BUNNY: &str = "/games/grow-little-bunny";
 
+/// Snap Station's game.
+pub(crate) const SNAP: &str = "/games/snap-station";
+
 const CSS: &str = include_str!("../../static/bluerush/bluerush.css");
 const JS: &str = include_str!("../../static/bluerush/bluerush.js");
 
 /// The coast stills, from `bench/verse/2026-10-08/coast-c1` and `coast-c2`,
 /// downscaled to JPEG, and the guide's screenshots of the real game
-/// (`bunny-*.jpg`, 960 by 600).
-const IMAGES: [(&str, &[u8]); 12] = [
+/// (`bunny-*.jpg`, 960 by 600), and Snap Station's (`snap-*.jpg`, 960 by
+/// 600).
+const IMAGES: [(&str, &[u8]); 20] = [
+    (
+        "snap-tour.jpg",
+        include_bytes!("../../static/bluerush/snap-tour.jpg"),
+    ),
+    (
+        "snap-jobs.jpg",
+        include_bytes!("../../static/bluerush/snap-jobs.jpg"),
+    ),
+    (
+        "snap-ask.jpg",
+        include_bytes!("../../static/bluerush/snap-ask.jpg"),
+    ),
+    (
+        "snap-drag.jpg",
+        include_bytes!("../../static/bluerush/snap-drag.jpg"),
+    ),
+    (
+        "snap-done.jpg",
+        include_bytes!("../../static/bluerush/snap-done.jpg"),
+    ),
+    (
+        "snap-storm.jpg",
+        include_bytes!("../../static/bluerush/snap-storm.jpg"),
+    ),
+    (
+        "snap-spin.jpg",
+        include_bytes!("../../static/bluerush/snap-spin.jpg"),
+    ),
+    (
+        "snap-dock.jpg",
+        include_bytes!("../../static/bluerush/snap-dock.jpg"),
+    ),
     (
         "hero-bay.jpg",
         include_bytes!("../../static/bluerush/hero-bay.jpg"),
@@ -154,6 +195,7 @@ pub(crate) fn routes() -> Router<App> {
         .route(PATH, get(page))
         .route(GUIDE, get(guide))
         .route(ICECREAM_GUIDE, get(icecream_moved))
+        .route(SNAP_GUIDE, get(snap_guide))
         .route("/studios/blue-rush/static/{file}", get(asset))
 }
 
@@ -168,6 +210,8 @@ pub(crate) fn studio_path(path: &str) -> String {
         || path.starts_with("/studios/blue-rush/")
         || path == BUNNY
         || path.starts_with("/games/grow-little-bunny/")
+        || path == SNAP
+        || path.starts_with("/games/snap-station/")
         || matches!(
             path,
             "/favicon.svg" | "/favicon.ico" | "/static/legacy-demo.css" | "/health"
@@ -188,6 +232,7 @@ pub(crate) fn studio_path(path: &str) -> String {
 struct Site {
     home: &'static str,
     guide: &'static str,
+    snap_guide: &'static str,
     assets: &'static str,
     /// Prefixed to the links to the rest of openagents.com.
     openagents: &'static str,
@@ -196,6 +241,7 @@ struct Site {
 const ON_OPENAGENTS: Site = Site {
     home: PATH,
     guide: GUIDE,
+    snap_guide: SNAP_GUIDE,
     assets: ASSETS,
     openagents: "",
 };
@@ -203,6 +249,7 @@ const ON_OPENAGENTS: Site = Site {
 const ON_STUDIO: Site = Site {
     home: "/",
     guide: "/grow-little-bunny/how-to-play",
+    snap_guide: "/snap-station/how-to-play",
     assets: "/static/",
     openagents: "https://openagents.com",
 };
@@ -253,6 +300,10 @@ async fn guide(headers: HeaderMap) -> Response {
 
 /// The Ice Cream Man's guide moved beside the game: a permanent redirect,
 /// to openagents.com from the studio's own domain.
+async fn snap_guide(headers: HeaderMap) -> Response {
+    with_policy(render_snap_guide(site(&headers)), GUIDE_POLICY)
+}
+
 async fn icecream_moved(headers: HeaderMap) -> Response {
     let to = if headers.contains_key(STUDIO_HEADER) {
         format!(
@@ -452,6 +503,20 @@ fn render(site: &Site) -> Markup {
                                         div class="br-card-actions" {
                                             a class="br-card-go" href=(BUNNY) { "Play" }
                                             a class="br-card-link" href=(site.guide) { "How to play" }
+                                        }
+                                    }
+                                }
+                                article class="br-card br-card-snap" {
+                                    a class="br-card-media" href=(SNAP) tabindex="-1" aria-hidden="true" {
+                                        img src={(site.assets) "snap-spin.jpg"} alt="" width="960" height="600" loading="lazy";
+                                    }
+                                    div class="br-card-body" {
+                                        span class="br-tag br-tag-new" { "New" }
+                                        h3 { "Snap Station" }
+                                        p { "Snap magnetic pieces into stations, ships and docks in space, then press Go and see if they hold. Jobs come from a friendly robot crew. For builders about 5 to 12." }
+                                        div class="br-card-actions" {
+                                            a class="br-card-go" href=(SNAP) { "Play" }
+                                            a class="br-card-link" href=(site.snap_guide) { "How to play" }
                                         }
                                     }
                                 }
@@ -760,6 +825,196 @@ fn render_guide(site: &Site) -> Markup {
     }
 }
 
+/// The Snap Station guide's sections: their anchors and titles.
+const SNAP_SECTIONS: [(&str, &str); 10] = [
+    ("goal", "The goal"),
+    ("crew", "The robot crew"),
+    ("controls", "Controls"),
+    ("snap", "Snap pieces on"),
+    ("pieces", "The pieces"),
+    ("go", "Press Go"),
+    ("strong", "Make it strong"),
+    ("jobs", "The five jobs"),
+    ("stars", "Stars"),
+    ("tips", "Tips"),
+];
+
+fn render_snap_guide(site: &Site) -> Markup {
+    let step = |id, number, body, picture| step_in(&SNAP_SECTIONS, id, number, body, picture);
+    let control_rows: [(&str, Markup, Markup); 8] = [
+        (
+            "Pick up a piece",
+            html! { "Press it in the tray at the bottom" },
+            html! { "Touch it in the tray" },
+        ),
+        (
+            "Snap it on",
+            html! { "Drag it next to the station and let go" },
+            html! { "Drag it next to the station and lift your finger, or tap it in the tray and then tap where it goes" },
+        ),
+        (
+            "Turn a piece",
+            html! { (key("R")) " or the mouse wheel while you hold it" },
+            html! { "Tap " strong { "Turn" } },
+        ),
+        (
+            "Take a piece back",
+            html! { "Drag it off the station, or press " strong { "Undo" } },
+            html! { "Drag it off the station, or tap " strong { "Undo" } },
+        ),
+        (
+            "Test your build",
+            html! { strong { "Go" } ", or " (key("G")) },
+            html! { "Tap " strong { "Go" } },
+        ),
+        (
+            "Build with the keyboard",
+            html! { (key("\u{2190}")) " " (key("\u{2192}")) " pick a piece, " (key("Enter")) " picks it up, the arrows move it, " (key("Enter")) " snaps it on, " (key("X")) " takes the last piece back" },
+            html! { "Not needed" },
+        ),
+        (
+            "Menu",
+            html! { (key("Esc")) },
+            html! { "The \u{2630} button" },
+        ),
+        (
+            "Open the tutorial",
+            html! { (key("?")) ", or the " strong { "?" } " button" },
+            html! { "The " strong { "?" } " button" },
+        ),
+    ];
+    html! {
+        (DOCTYPE)
+        html lang="en" {
+            (head(site, "How to play Snap Station \u{b7} Blue Rush Studios", "How to play Snap Station: snap magnetic pieces into stations, ships and docks in space, press Go, and do the robot crew's jobs.", false))
+            body class="br" {
+                (nav(site, &[("Games", &format!("{}#games", site.home)), ("How to play", site.snap_guide)], SNAP))
+                main id="main" {
+                    header class="br-guide-head" {
+                        div class="br-wrap" {
+                            p class="br-crumbs" {
+                                a href=(site.home) { "Blue Rush Studios" }
+                                " / Snap Station"
+                            }
+                            h1 class="br-guide-title" { "How to play Snap Station" }
+                            p class="br-guide-lede" {
+                                "We made Snap Station for builders about 5 to 12. You snap colourful magnetic pieces together into stations, ships and docks in space, then press Go and watch what happens. Here's how, with pictures from the game."
+                            }
+                            div class="br-guide-actions" {
+                                a class="br-cta" href=(SNAP) { "Play Snap Station" }
+                            }
+                            nav class="br-toc" aria-label="On this page" {
+                                @for (anchor, title) in &SNAP_SECTIONS {
+                                    a href={"#" (anchor)} { (title) }
+                                }
+                            }
+                        }
+                    }
+                    div class="br-guide br-wrap" {
+                        (step("goal", 1, html! {
+                            p { "The robot crew of Snap Station needs a builder. Each job comes from one of them: join two modules, push a crate, spin a garden, or give a cargo ship a place to dock." }
+                            p { "Build with the pieces in your tray, then press " strong { "Go" } ". If your build does the job, you win stars. If it doesn't, fix it and try again. No reading needed: the pictures show the way." }
+                        }, Some(shot(site, "snap-jobs.jpg", "The job list: Captain Cog over five jobs, the first one open", "Pick a job from the robot crew."))))
+                        (step("crew", 2, html! {
+                            ul class="br-list" {
+                                li { strong { "Captain Cog" } ", the captain: a round orange robot with gears all around." }
+                                li { strong { "Pip" } ", the helper drone: small, blue, one big eye." }
+                                li { strong { "Rivet" } ", the builder: tall and green, with arms that wave." }
+                                li { strong { "Nova" } ", the scientist: a purple ring with an eye in the middle." }
+                                li { strong { "Tock" } ", the cargo bot: a yellow box with a clock on its tummy." }
+                            }
+                            p { "Tap the job card at the top of the screen to hear the job again." }
+                        }, Some(shot(site, "snap-ask.jpg", "Pip asking: join my two modules, with a Start building button", "Pip's job: join the two modules."))))
+                        (step("controls", 3, html! {
+                            div class="br-table-wrap" {
+                                table class="br-keys-table" {
+                                    thead {
+                                        tr {
+                                            th scope="col" { "To" }
+                                            th scope="col" { "Mouse and keyboard" }
+                                            th scope="col" { "Phone or tablet" }
+                                        }
+                                    }
+                                    tbody {
+                                        @for (action, keys, touch) in &control_rows {
+                                            tr {
+                                                th scope="row" { (action) }
+                                                td { (keys) }
+                                                td { (touch) }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            p { "The first time you play, five quick cards show you how. Skip them if you like, and open them again with the " strong { "?" } " button." }
+                        }, Some(shot(site, "snap-tour.jpg", "The game's first tutorial card, Welcome to Snap Station, with Skip and Next", "The tutorial in the game."))))
+                        (step("snap", 4, html! {
+                            p { "Pieces are magnetic. Hold one close to a side of the station, lined up with it, and a glowing outline shows where it will go. Let go and it snaps on, exactly flush." }
+                            p { "Too far away, or turned the wrong way, and it doesn't snap. Turn it and try again. A triangle's sides point three ways, so sometimes it needs a turn before a side lines up." }
+                            p { "A piece dropped into a corner joins both of its neighbours, and a ring of pieces closes by itself." }
+                        }, Some(shot(site, "snap-drag.jpg", "A square held next to the station, with a glowing outline where it will snap", "Close and lined up: it snaps there."))))
+                        (step("pieces", 5, html! {
+                            ul class="br-list" {
+                                li { strong { "Square" } ": four rods with magnets in the corners. Push it sideways and it leans." }
+                                li { strong { "Triangle" } " and " strong { "half square" } ": they can't lean. Two half squares make a square that can't lean." }
+                                li { strong { "Panel" } ": a solid square. Stiff, but twice as heavy." }
+                                li { strong { "Strut" } ": drop it on a square to brace it corner to corner, so it can't lean." }
+                                li { strong { "Bolt" } ": drop it on a join so the magnets can't let go." }
+                                li { strong { "Thruster" } ": it snaps on by its flat side and pushes away from its nozzle while it burns." }
+                                li { strong { "Solar wing" } ": long and light. It catches the solar wind." }
+                                li { strong { "Crate" } " and " strong { "plant pod" } ": heavy things the jobs ask you to move or spin." }
+                            }
+                        }, None))
+                        (step("go", 6, html! {
+                            p { "Press " strong { "Go" } " to test your build in space. The physics is simple, but honest:" }
+                            ul class="br-list" {
+                                li { "Thrusters push. Push through the middle and the build goes straight; push off to one side and it spins." }
+                                li { "Spinning makes gravity: the faster it spins, and the farther out a plant pod sits, the heavier the pod feels." }
+                                li { "Heavy things pull hardest on their joins, so heavy parts belong in the middle." }
+                                li { "Wobbly builds shake apart; braced ones hold." }
+                            }
+                            p { "Press " strong { "Stop" } " to go back to building at any time." }
+                        }, Some(shot(site, "snap-spin.jpg", "The garden spinning with thrusters on its pods, and the plant gravity meter in the green", "Spinning makes gravity for the plants."))))
+                        (step("strong", 7, html! {
+                            p { "Squares lean when they're pushed sideways, and a square that leans too far pops apart. Triangles don't lean at all. A strut across a square stops it leaning." }
+                            p { "Magnets hold, but only so hard. Pull too hard and a join lets go. A bolt on the join locks it for good." }
+                            p { "When something breaks, the robot tells you what happened and what to try. Press " strong { "Fix it" } " and change your build." }
+                        }, Some(shot(site, "snap-storm.jpg", "The solar storm blowing: a bare square bridge has come apart and a square drifts away", "In the storm, bare squares pop."))))
+                        (step("jobs", 8, html! {
+                            ul class="br-list" {
+                                li { strong { "1. Hello, Magnets" } " (Pip): join two modules with a row of pieces." }
+                                li { strong { "2. Straight Push" } " (Tock): push a crate into the green ring without spinning it." }
+                                li { strong { "3. Storm Bridge" } " (Nova): join two modules before the solar storm comes. A clock shows how long you have. Brace and bolt your bridge." }
+                                li { strong { "4. Garden Spin" } " (Rivet): spin the garden until the plant gravity meter sits in the green, and keep the pods on." }
+                                li { strong { "5. Cargo Dock" } " (Captain Cog): build arms that fit around the cargo ship's outline. It flies in, ties up to the ends of your arms, and tugs." }
+                            }
+                            p { "Finishing a job opens the next one." }
+                        }, Some(shot(site, "snap-dock.jpg", "Two braced, bolted arms around the cargo ship's outline in its berth", "A berth that fits the ship."))))
+                        (step("stars", 9, html! {
+                            p { "Every job done earns stars. Use as few pieces as the robot crew would, struts and bolts included, for three stars. The job list shows your best." }
+                            p { "Your stars stay in this browser." }
+                        }, Some(shot(site, "snap-done.jpg", "The Job done card with three stars, Next job, Try again and All jobs", "Job done, three stars!"))))
+                        (step("tips", 10, html! {
+                            ul class="br-list" {
+                                li { "Watch what breaks: a flash of sparks shows where." }
+                                li { "Triangles and struts make a build stiff; bolts make it strong." }
+                                li { "Put thrusters in pairs, opposite each other, to spin without drifting." }
+                                li { "Keep heavy parts close to the middle." }
+                                li { "Leave room for the cargo ship: its outline shows where it goes." }
+                            }
+                            div class="br-guide-actions" {
+                                a class="br-cta" href=(SNAP) { "Play now" }
+                                a class="br-hero-link" href=(site.home) { "Back to Blue Rush Studios" }
+                            }
+                        }, None))
+                    }
+                }
+                (footer(site))
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -797,7 +1052,14 @@ mod tests {
     fn the_studio_pages_link_the_root_paths() {
         let home = render(&ON_STUDIO).into_string();
         let guide = render_guide(&ON_STUDIO).into_string();
-        for html in [&home, &guide] {
+        let snap = render_snap_guide(&ON_STUDIO).into_string();
+        assert!(snap.contains("href=\"/\""), "home");
+        assert!(home.contains("href=\"/snap-station/how-to-play\""));
+        assert_eq!(studio_path("/snap-station/how-to-play"), SNAP_GUIDE);
+        for kept in [SNAP, "/games/snap-station/start.js", SNAP_GUIDE] {
+            assert_eq!(studio_path(kept), kept);
+        }
+        for html in [&home, &guide, &snap] {
             assert!(!html.contains("/studios/blue-rush"), "root paths only");
             assert!(html.contains("href=\"https://openagents.com/privacy\""));
         }

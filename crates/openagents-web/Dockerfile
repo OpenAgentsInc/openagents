@@ -99,6 +99,13 @@ RUN scripts/build-icecream-web.sh /build/icecream \
     && test -s /build/icecream/icecream_web_bg.wasm \
     && test -s /build/icecream/start.js
 
+# Snap Station, which /games/snap-station serves the same way, found at
+# /srv/snap without a flag.
+RUN scripts/build-snap-web.sh /build/snap \
+    && test -s /build/snap/snap_web.js \
+    && test -s /build/snap/snap_web_bg.wasm \
+    && test -s /build/snap/start.js
+
 # The sealed-inference demo, which /att serves (crates/att-web): the glue,
 # the module, the start script, the stylesheet, and gzip copies of each.
 RUN scripts/build-att-web.sh /build/att \
@@ -146,6 +153,7 @@ COPY --from=everglade /build/cloud /srv/cloud
 COPY --from=everglade /build/chat /srv/chat
 COPY --from=everglade /build/bunny /srv/bunny
 COPY --from=everglade /build/icecream /srv/icecream
+COPY --from=everglade /build/snap /srv/snap
 COPY --from=everglade /build/att /srv/att
 COPY --from=cadweb /build/cad /srv/cad
 
