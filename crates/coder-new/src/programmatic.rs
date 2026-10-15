@@ -27,7 +27,7 @@ macro_rules! command_usage {
             "usage: openagents coder COMMAND [OPTIONS]
   status                              Provider, model, plugins, and working directory.
   chat [-p TEXT | --prompt-file FILE | --stdin] [--session ID] [--delegation ID]
-       [--instructions TEXT | --instructions-file FILE] [--mode auto|coder|codex]
+       [--instructions TEXT | --instructions-file FILE] [--mode auto|coder|codex|opencode]
        [--in-place]",
             $demo,
             "
@@ -1170,7 +1170,22 @@ pub(crate) fn chat(
                 "Turn on the Codex plugin in /plugins to run on Codex.",
             ));
         }
-        Some(_) => return Err(usage("--mode takes auto, coder or codex.")),
+        // `opencode` pins OpenCode on this computer (#11688): the same turn
+        // as the app's, streamed with `--json`.
+        Some("opencode") if !crate::opencode_chat::installed() => {
+            return Err(Error::from(
+                "OpenCode isn't installed here. Install it with npm install -g opencode-ai.",
+            ));
+        }
+        Some("opencode") if app.plugins.enabled_for("opencode") => {
+            Some(crate::harness_plugin::Harness::OpenCode)
+        }
+        Some("opencode") => {
+            return Err(Error::from(
+                "Turn on the OpenCode plugin in /plugins to run on OpenCode.",
+            ));
+        }
+        Some(_) => return Err(usage("--mode takes auto, coder, codex or opencode.")),
     };
     let prompt = take_option(&mut args, "-p")?.or(take_option(&mut args, "--prompt")?);
     let file = take_option(&mut args, "--prompt-file")?;
@@ -2660,6 +2675,32 @@ mod tests {
             Some((Harness::ClaudeCode, None))
         );
         assert_eq!(harness_slug("google/gemini-3.8-flash"), None);
+    }
+
+    /// #11688: `chat --mode opencode` runs on OpenCode, and says what to do
+    /// when it can't: OpenCode not installed, or its plugin off.
+    #[test]
+    fn chat_mode_opencode_says_what_it_needs() {
+        let temp = tempfile::tempdir().unwrap();
+        let context = context(&temp);
+        let chat = |context: &Context| {
+            execute_words(
+                &["chat", "-p", "hi", "--mode", "opencode", "--in-place"],
+                context,
+            )
+        };
+        crate::opencode_chat::install_for_test(false);
+        let missing = chat(&context).unwrap_err();
+        assert!(missing.message.contains("isn't installed"), "{missing:?}");
+        crate::opencode_chat::install_for_test(true);
+        execute_words(&["plugins", "disable", "opencode"], &context).unwrap();
+        let off = chat(&context).unwrap_err();
+        assert!(
+            off.message.contains("Turn on the OpenCode plugin"),
+            "{off:?}"
+        );
+        let other = execute_words(&["chat", "-p", "hi", "--mode", "devin"], &context).unwrap_err();
+        assert!(other.message.contains("opencode"), "{other:?}");
     }
 
     #[test]
