@@ -36,8 +36,8 @@ privacy guarantees.
   tools and data, not only a model call. (3) It covers every workload that
   touches customer data, not one demo lane. Our cloud computers, our chat
   worker and our BYOK Claude token path all run outside sealed hardware
-  today, and on cloud computers the token is briefly written to `/tmp` in
-  plain text.
+  today. (On cloud computers the token used to be written briefly to
+  `/tmp` in plain text; since #11766 it travels in memory only.)
 - **Top three to adopt, smallest first:** put the rules into the evidence
   (a policy digest in every release and receipt); move cloud computers to
   Confidential VMs and release BYOK tokens only to an attested machine, in
@@ -158,7 +158,7 @@ General availability of "OPAQUE 3.0" was scheduled for July 2026.
 | --- | --- | --- |
 | Sealed Clef decisions | Only inside a TDX (and TDX + H100) Confidential Space VM | `crates/pylon/src/attested.rs`, `crates/oa-att`, `deploy/att/`, [private inference](../../security/private-inference.md) |
 | BYOK Claude credentials at rest | Sealed with AES-256-GCM through `oa_seal`, keyring in Secret Manager | `crates/openagents-web/src/cloud/byo.rs`, `cloud/custody.rs`; [audit](../../audits/2026-10-14-computers-for-chats-audit.md) |
-| BYOK plan token on a cloud computer | Decrypted per run, **written to `/tmp/oa-coder-{job}.env` in plain text** on the VM, then held in the process environment. The in-memory per-turn `release_turn` exists but has no callers | `crates/coder-cloud/src/boat_backend.rs`, `byo.rs` `release_turn`; same audit, rows on plan tokens |
+| BYOK plan token on a cloud computer | Decrypted per run and sent to the turn's prepare and dispatch commands in memory (a command's `env`, read from stdin), then held only in the process environment; never in a file on the VM and never in its per-boot environment (#11766; it used to be written to `/tmp/oa-coder-{job}.env`) | `crates/coder-cloud/src/boat_backend.rs`, `byo.rs` `release_turn`; same audit, rows on plan tokens |
 | Cloud computers | Plain GCE VMs (`e2-standard-*`, `n2d-standard-*`) made by `oa-boat`, driven over SSH. Per-turn env values stay in `oa-computers` memory and go over SSH stdin | `crates/oa-boat/src/sizes.rs`, `crates/oa-computers`, [computers](../../cloud/computers.md) |
 | Chat worker | NIP-44 sealed from the phone to the worker, plain text in the worker and at Vertex Gemini | [chat worker](../../deployment/chat-worker.md) |
 | Model gateway | Vertex first; Vertex is not a TEE | `crates/gateway`, [private inference](../../security/private-inference.md) "Vertex Gemini is not a TEE" |

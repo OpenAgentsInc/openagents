@@ -29,9 +29,6 @@ async fn integrated_agent_keeps_exact_selection_redacts_output_and_confirms_stop
             json!({"ok":true,"type":"file.written","id":"bx_test","path":"task","size":4,"success":true,"encoding":"utf8"}),
         ),
         reply(
-            json!({"ok":true,"type":"file.written","id":"bx_test","path":"env","size":4,"success":true,"encoding":"utf8"}),
-        ),
-        reply(
             json!({"ok":true,"type":"command.result","success":true,"exitCode":0,"stdout":"","stderr":"","timedOut":false}),
         ),
         reply(
@@ -106,11 +103,32 @@ async fn integrated_agent_keeps_exact_selection_redacts_output_and_confirms_stop
     let create: Value = serde_json::from_slice(&seen[0].body).unwrap();
     assert_eq!(create["noEnv"], true);
     assert_eq!(create["env"]["TEST_API_KEY"], "test-secret");
-    let prompt: Value = serde_json::from_slice(&seen[6].body).unwrap();
+    // The turn's credentials reach the prepare command in its own `env`
+    // (read from stdin on the computer), never a file write or a script
+    // (#11766).
+    let prepare: Value = serde_json::from_slice(&seen[4].body).unwrap();
+    assert_eq!(prepare["env"]["TEST_API_KEY"], "test-secret");
+    assert!(!prepare["command"].as_str().unwrap().contains("test-secret"));
+    for request in &seen {
+        let body = String::from_utf8_lossy(&request.body);
+        // Only ever named to remove one an older runtime left.
+        assert!(
+            !body
+                .replace("rm -f \\\"/tmp/oa-coder-j1.env\\\"", "")
+                .contains("oa-coder-j1.env"),
+            "{}",
+            request.target
+        );
+        if body.contains("test-secret") {
+            let v: Value = serde_json::from_slice(&request.body).unwrap();
+            assert!(v.get("content").is_none() && v.get("path").is_none());
+        }
+    }
+    let prompt: Value = serde_json::from_slice(&seen[5].body).unwrap();
     assert_eq!(prompt["provider"], "codex");
     assert_eq!(prompt["model"], "chosen-model");
     assert_eq!(prompt["reasoningEffort"], "medium");
-    assert_eq!(seen[11].method, "GET");
+    assert_eq!(seen[10].method, "GET");
 }
 
 // The launch script runs on Linux boat hosts: it needs `flock(1)` and `/proc`.

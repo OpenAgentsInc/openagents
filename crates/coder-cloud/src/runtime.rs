@@ -3,7 +3,8 @@ use crate::{Record, Result};
 use serde_json::Value;
 use std::collections::BTreeMap;
 
-/// Values live only in memory and in a private remote file removed before dispatch.
+/// Values live only in memory: here, and on the computer in the process
+/// environment of the commands that receive them (#11766). Never in a file.
 #[derive(Clone, Default)]
 pub struct Credentials {
     values: BTreeMap<String, String>,
@@ -107,10 +108,23 @@ impl Credentials {
         }
         out
     }
+    /// [`Self::environment`] without the user's own Claude credentials
+    /// (subscription token, API key, Bedrock, Vertex, Foundry): what a
+    /// computer may keep for its whole boot. Those go to a turn's own
+    /// commands in memory instead (#11766).
+    #[must_use]
+    pub fn environment_without_own_claude(&self) -> BTreeMap<String, String> {
+        let mut kept = self.clone();
+        kept.values
+            .retain(|name, _| crate::claude::OwnCredential::from_name(name).is_none());
+        kept.environment()
+    }
     /// Names only, for the sign-in class and admission.
     pub fn names(&self) -> impl Iterator<Item = &str> {
         self.values.keys().map(String::as_str)
     }
+    /// The launch environment as `export` lines, for a remote command's
+    /// standard input after [`ENV_FROM_STDIN`]. Never written to a file.
     pub fn shell(&self) -> String {
         self.environment()
             .iter()
@@ -166,6 +180,13 @@ fn credential_fragments(value: &Value, secrets: &mut Vec<String>) {
     }
 }
 
+/// A remote script prefix that reads [`Credentials::shell`] from standard
+/// input into the script's own process environment (#11766): the turn's
+/// credentials travel in the SSH channel's memory, are inherited by the
+/// processes the script starts, and are never written to the computer's
+/// disk, a shell history, or a log. `$(cat)` reads a pipe or socket alike.
+pub const ENV_FROM_STDIN: &str = "eval \"$(cat)\"\n";
+
 pub fn directory(record: &Record) -> String {
     format!("/home/user/.oa-coder/jobs/{}", record.id)
 }
@@ -206,7 +227,10 @@ mkdir -p "$d/workspace" "/tmp/oa-coder-{job}/state"
 export PATH="$HOME/.local/bin:$HOME/.cargo/bin:/usr/local/bin:$PATH"
 export CODEX_HOME="/tmp/oa-coder-{job}/codex"
 mkdir -p "$CODEX_HOME"
-if [ -f "/tmp/oa-coder-{job}.env" ]; then chmod 600 "/tmp/oa-coder-{job}.env"; . "/tmp/oa-coder-{job}.env"; fi
+# The turn's credentials arrive in this command's own process environment
+# (#11766), never in a file. Remove any file an older runtime left.
+rm -f "/tmp/oa-coder-{job}.env"
+find /tmp -maxdepth 1 -type f -name 'oa-coder-*.env' -mmin +10 -exec rm -f {{}} + 2>/dev/null || true
 if [ -n "${{OA_CODEX_AUTH:-}}" ]; then mkdir -p "$CODEX_HOME"; printf '%s' "$OA_CODEX_AUTH" > "$CODEX_HOME/auth.json"; chmod 600 "$CODEX_HOME/auth.json"; unset OA_CODEX_AUTH; fi
 if [ -n "${{OPENAI_API_KEY:-}}" ] && command -v codex >/dev/null 2>&1; then printf '%s' "$OPENAI_API_KEY" | codex login --with-api-key >/dev/null 2>&1; fi
 "#,
@@ -246,10 +270,7 @@ if [ -n "${{OPENROUTER_API_KEY:-}}" ]; then "$p" coder --state "/tmp/oa-coder-{j
             }
         )
     } else {
-        format!(
-            "rm -f {}\n",
-            boat::shell_quote(&format!("/tmp/oa-coder-{}.env", record.id))
-        )
+        String::new()
     }
 }
 
@@ -269,7 +290,9 @@ touch "$d/started"
 p=$(cat "$d/binary")
 export PATH="$HOME/.local/bin:$HOME/.cargo/bin:/usr/local/bin:$PATH"
 export CODEX_HOME="/tmp/oa-coder-{job}/codex"
-if [ -f "/tmp/oa-coder-{job}.env" ]; then . "/tmp/oa-coder-{job}.env"; rm -f "/tmp/oa-coder-{job}.env"; fi
+# The turn's credentials are this process's environment, inherited from the
+# dispatch command that received them in memory (#11766). No file holds them.
+rm -f "/tmp/oa-coder-{job}.env"
 unset OA_CODEX_AUTH
 if [ -n "${{{vertex}:-}}" ]; then printf '%s' "${vertex}" > "/tmp/oa-coder-{job}/vertex.json"; chmod 600 "/tmp/oa-coder-{job}/vertex.json"; export GOOGLE_APPLICATION_CREDENTIALS="/tmp/oa-coder-{job}/vertex.json"; fi
 unset {vertex}
@@ -491,6 +514,83 @@ mod tests {
             assert!(credentials.sanitize_artifacts(&mut files).is_err());
         }
         assert!(crate::workspace::validate_path("home/.claude/.credentials.json").is_err());
+    }
+    /// #11766: a BYOK plan token reaches the turn's processes through the
+    /// command's stdin and environment only. No script reads or leaves a
+    /// token file, and one an older runtime left is removed.
+    #[test]
+    fn turn_credentials_travel_in_memory_and_no_token_file_is_left() {
+        // Assembled at run time; a fake, never a real token.
+        let token = format!("sk-ant-oat01-{}", "q7".repeat(40));
+        let own =
+            Credentials::from_names(&["CLAUDE_CODE_OAUTH_TOKEN".into()], |_| Some(token.clone()))
+                .unwrap();
+        // The dispatch shape: read stdin, then start a detached child that
+        // inherits the token in its environment.
+        let script = format!("{ENV_FROM_STDIN}sh -c 'printf %s \"$CLAUDE_CODE_OAUTH_TOKEN\"'");
+        let mut child = std::process::Command::new("sh")
+            .args(["-c", &script])
+            .env_clear()
+            .env("PATH", std::env::var_os("PATH").unwrap_or_default())
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        {
+            use std::io::Write;
+            let mut stdin = child.stdin.take().unwrap();
+            stdin.write_all(own.shell().as_bytes()).unwrap();
+        }
+        let out = child.wait_with_output().unwrap();
+        assert!(out.status.success());
+        assert_eq!(String::from_utf8_lossy(&out.stdout), token);
+        assert!(out.stderr.is_empty());
+        assert!(!script.contains(&token));
+
+        let id = format!("byo11766_{}_{}", std::process::id(), crate::now_ms());
+        let r = crate::Record::new(
+            &id,
+            crate::Spec {
+                placement: crate::Placement::Boat,
+                mode: crate::Mode::Integrated,
+                agent: "claude".into(),
+                task: "t".into(),
+                model: None,
+                reasoning: None,
+                cwd: "/w".into(),
+                timeout_seconds: 60,
+                size: "s".into(),
+                template: None,
+                credential_names: vec![],
+            },
+        )
+        .unwrap();
+        let home = tempfile::tempdir().unwrap();
+        let dir = home.path().join("job");
+        let prepare = prepare_script(&r, dir.to_str().unwrap());
+        let launch = launch_script(&r, dir.to_str().unwrap());
+        let file = format!("/tmp/oa-coder-{id}.env");
+        for script in [&prepare, &launch] {
+            assert!(!script.contains(&format!(". \"{file}\"")), "{script}");
+            assert!(script.contains(&format!("rm -f \"{file}\"")), "{script}");
+        }
+        // A token file an older runtime left is gone after the next start.
+        std::fs::write(&file, format!("export CLAUDE_CODE_OAUTH_TOKEN='{token}'\n")).unwrap();
+        let ran = std::process::Command::new("sh")
+            .args(["-c", &prepare])
+            .env_clear()
+            .env("PATH", std::env::var_os("PATH").unwrap_or_default())
+            .env("HOME", home.path())
+            .output()
+            .unwrap();
+        let _ = std::fs::remove_dir_all(format!("/tmp/oa-coder-{id}"));
+        assert!(
+            ran.status.success(),
+            "{}",
+            String::from_utf8_lossy(&ran.stderr)
+        );
+        assert!(!std::path::Path::new(&file).exists());
     }
     #[test]
     fn credentials_are_redacted_recursively_and_shell_quoted() {

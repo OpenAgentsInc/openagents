@@ -163,6 +163,27 @@ async fn shared_gce_job_retains_the_grant_streams_redacted_results_and_estimates
             .iter()
             .any(|(script, _)| script.contains("fixture-secret"))
     );
+    // The turn's credentials go only to the prepare and dispatch commands,
+    // on stdin, read into their process environment; nothing writes them
+    // to a file on the host (#11766).
+    let carrying: Vec<_> = calls
+        .iter()
+        .filter(|(_, input)| String::from_utf8_lossy(input).contains("fixture-secret"))
+        .collect();
+    assert_eq!(carrying.len(), 2);
+    for (script, _) in &carrying {
+        assert!(
+            script.starts_with(coder_cloud::runtime::ENV_FROM_STDIN),
+            "{script}"
+        );
+        assert!(!script.contains("cat >"), "{script}");
+    }
+    assert!(carrying[1].0.contains("run.sh"));
+    assert!(
+        !calls
+            .iter()
+            .any(|(script, _)| script.contains("cat > '/tmp/oa-coder-g1.env'"))
+    );
     drop(calls);
     r.turns.push(json!({"state":"completed"}));
     b.prepare(&r).await.unwrap();

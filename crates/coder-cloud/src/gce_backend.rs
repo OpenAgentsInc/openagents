@@ -126,6 +126,10 @@ impl<T: Transport> Gce<T> {
         let (p, h) = self.admitted(r)?;
         self.transport.execute(&p, &h, script, input).await
     }
+    /// This job's turn credentials as `export` lines for a command's stdin.
+    fn turn_env(&self, r: &Record) -> String {
+        crate::release::turn(&self.credentials, &r.id).shell()
+    }
     async fn put(&self, r: &Record, path: &str, bytes: &[u8]) -> Result<()> {
         self.command(
             r,
@@ -199,16 +203,14 @@ impl<T: Transport> Backend for Gce<T> {
         .await?;
         self.put(r, &(dir.clone() + "/task"), r.spec.task.as_bytes())
             .await?;
-        self.put(
+        // The turn's credentials go to the prepare and dispatch commands on
+        // their standard input only, never to a file (#11766).
+        self.command(
             r,
-            &format!("/tmp/oa-coder-{}.env", r.id),
-            crate::release::turn(&self.credentials, &r.id)
-                .shell()
-                .as_bytes(),
+            &(runtime::ENV_FROM_STDIN.to_owned() + &runtime::prepare_script(r, &dir)),
+            Some(self.turn_env(r).as_bytes()),
         )
         .await?;
-        self.command(r, &runtime::prepare_script(r, &dir), None)
-            .await?;
         if let Some(snapshot) = &r.workspace {
             let marker = self
                 .command(
@@ -251,7 +253,17 @@ touch "$HOME/.oa-pool/busy"
         self.put(r, &(dir + "/run.sh"), script.as_bytes()).await
     }
     async fn dispatch(&self, r: &Record) -> Result<Task> {
-        self.command(r,&format!("d={}; setsid nohup sh \"$d/run.sh\" >\"$d/launcher.out\" 2>\"$d/launcher.err\" </dev/null &",boat::shell_quote(&directory(r))),None).await?;
+        // run.sh inherits the credentials this command read from stdin.
+        self.command(
+            r,
+            &format!(
+                "{}d={}; setsid nohup sh \"$d/run.sh\" >\"$d/launcher.out\" 2>\"$d/launcher.err\" </dev/null &",
+                runtime::ENV_FROM_STDIN,
+                boat::shell_quote(&directory(r))
+            ),
+            Some(self.turn_env(r).as_bytes()),
+        )
+        .await?;
         Ok(Task {
             id: r.id.clone(),
             conversation: None,

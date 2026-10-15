@@ -13,8 +13,18 @@ pub struct Boat {
     pub credentials: Credentials,
 }
 impl Boat {
+    /// The sandbox's per-boot environment: the profile's credentials only.
+    /// A credential released for one turn (BYO-05) is never part of it, and
+    /// for a headless Coder job neither is the user's own Claude credential
+    /// (a plan token, API key, or cloud account): those go to the turn's
+    /// prepare and dispatch commands in memory ([`Self::command_turn`],
+    /// #11766), so the computer never keeps them in a file.
     fn environment(&self, r: &Record) -> std::collections::BTreeMap<String, String> {
-        let mut environment = self.turn(r).environment();
+        let mut environment = if r.spec.mode == Mode::Coder {
+            self.credentials.environment_without_own_claude()
+        } else {
+            self.credentials.environment()
+        };
         if r.spec.agent == "codex" && environment.remove("OA_CODEX_AUTH").is_some() {
             environment.insert("CODEX_HOME".into(), format!("/tmp/oa-coder-{}/codex", r.id));
         }
@@ -46,6 +56,28 @@ impl Boat {
             .ok_or("The Boat sandbox is not yet known.".into())
     }
     pub async fn command(&self, r: &Record, command: String) -> Result<String> {
+        self.command_with(r, command, None).await
+    }
+    /// Run `command` with this job's turn credentials in its own process
+    /// environment (#11766). They travel in the request body's `env`, which
+    /// the computer reads from the command's standard input: never a file
+    /// on the computer, never the per-boot environment, never a log (the
+    /// request's `Debug` shows no fields).
+    async fn command_turn(&self, r: &Record, command: String) -> Result<String> {
+        let env = self.turn(r).environment();
+        self.command_with(r, command, (!env.is_empty()).then_some(env))
+            .await
+    }
+    async fn command_with(
+        &self,
+        r: &Record,
+        command: String,
+        env: Option<std::collections::BTreeMap<String, String>>,
+    ) -> Result<String> {
+        let mut extra = std::collections::BTreeMap::new();
+        if let Some(env) = env {
+            extra.insert("env".to_owned(), json!(env));
+        }
         match self
             .client
             .command(&CommandParams {
@@ -53,6 +85,7 @@ impl Boat {
                 body: CommandRequest {
                     command,
                     timeout_seconds: Some(600),
+                    extra,
                     ..Default::default()
                 },
                 ..Default::default()
@@ -281,16 +314,8 @@ impl Backend for Boat {
             .write_text(id, &format!("{dir}/task"), &r.spec.task)
             .await
             .map_err(|e| e.to_string())?;
-        self.client
-            .write_text(
-                id,
-                &format!("/tmp/oa-coder-{}.env", r.id),
-                &self.turn(r).shell(),
-            )
-            .await
-            .map_err(|e| e.to_string())?;
         let script = runtime::prepare_script(r, &dir);
-        self.command(r, script).await?;
+        self.command_turn(r, script).await?;
         if let Some(snapshot) = &r.workspace {
             let marker = self
                 .command(
@@ -376,7 +401,8 @@ impl Backend for Boat {
             })
         } else {
             let dir = runtime::directory(r);
-            self.command(r,format!("d={}; setsid nohup sh \"$d/run.sh\" >\"$d/launcher.out\" 2>\"$d/launcher.err\" </dev/null &",boat::shell_quote(&dir))).await?;
+            // run.sh inherits the turn's credentials from this command.
+            self.command_turn(r,format!("d={}; setsid nohup sh \"$d/run.sh\" >\"$d/launcher.out\" 2>\"$d/launcher.err\" </dev/null &",boat::shell_quote(&dir))).await?;
             Ok(Task {
                 id: r.id.clone(),
                 conversation: None,
@@ -713,6 +739,53 @@ mod tests {
         };
         assert_eq!(b.environment(&r)["CODEX_HOME"], "/tmp/oa-coder-j1/codex");
         assert!(!b.environment(&r).contains_key("OA_CODEX_AUTH"));
+    }
+    /// #11766: a plan token released for one turn is never in the
+    /// sandbox's per-boot environment; only that turn's commands get it.
+    #[test]
+    fn a_released_plan_token_goes_only_to_the_turn() {
+        let token = format!("sk-ant-oat01-{}", "w4".repeat(40));
+        let (_, released) = crate::release::credentials("CLAUDE_CODE_OAUTH_TOKEN", &token).unwrap();
+        let b = Boat {
+            client: Client::new("fixture").unwrap(),
+            credentials: Credentials::default(),
+        };
+        let spec = crate::Spec {
+            placement: crate::Placement::Boat,
+            mode: Mode::Coder,
+            agent: "claude".into(),
+            task: "test".into(),
+            model: None,
+            reasoning: None,
+            cwd: "fixture".into(),
+            timeout_seconds: 600,
+            size: "small".into(),
+            template: None,
+            credential_names: vec![],
+        };
+        let r = Record::new("byo-11766", spec).unwrap();
+        crate::release::arm(&r.id, released);
+        let boot = b.environment(&r);
+        let turn = b.turn(&r).environment();
+        crate::release::disarm(&r.id);
+        assert!(!boot.values().any(|v| v.contains(&token)));
+        assert_eq!(turn["CLAUDE_CODE_OAUTH_TOKEN"], token);
+        assert!(
+            !b.turn(&r)
+                .environment()
+                .contains_key("CLAUDE_CODE_OAUTH_TOKEN")
+        );
+        // The studio's own-key run holds the token as the profile's: it
+        // still stays out of the per-boot environment of a Coder job.
+        let own = Boat {
+            client: Client::new("fixture").unwrap(),
+            credentials: Credentials::from_names(&["CLAUDE_CODE_OAUTH_TOKEN".into()], |_| {
+                Some(token.clone())
+            })
+            .unwrap(),
+        };
+        assert!(!own.environment(&r).values().any(|v| v.contains(&token)));
+        assert_eq!(own.turn(&r).environment()["CLAUDE_CODE_OAUTH_TOKEN"], token);
     }
 }
 

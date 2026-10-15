@@ -252,9 +252,11 @@ directory (a disk snapshot, a backup, a stolen volume) holds only ciphertext.
 - The operator (`coder_cloud::release`) keeps it in memory only. An offer
   waits up to two minutes for the effect of the same job from the same
   device. The effect binds it to that one turn, and the backend adds it
-  only to that turn's process environment (the private per-job file the
-  launch script reads and removes) and redacts it from the turn's events,
-  results, and artifacts. The turn's end drops it. The job keeps only the
+  only to that turn's process environment: the prepare and dispatch
+  commands receive it in memory (a command's `env`, read from its standard
+  input on the computer), the launched turn inherits it, and no file on the
+  computer holds it, not even briefly (#11766). It redacts it from the
+  turn's events, results, and artifacts. The turn's end drops it. The job keeps only the
   credential type in its evidence, plus a digest of the owner. A release
   from another device, owner, or membership epoch is refused.
 - After removal, the next turn gets no release. It runs on the plan login

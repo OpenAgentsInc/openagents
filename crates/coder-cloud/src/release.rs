@@ -10,9 +10,11 @@
 //! 1. An **offer** waits at most [`dto::RELEASE_SECONDS`] for the effect of
 //!    the same job from the same device; anything else drops it.
 //! 2. The effect **arms** the job's next turn with it. The backend adds it
-//!    to that turn's process environment (the private per-job file the
-//!    launch script reads and removes) and redacts it from the turn's
-//!    events, results, and artifacts.
+//!    to that turn's process environment only: the prepare and dispatch
+//!    commands receive it in memory (a command's `env`, read from its
+//!    stdin), the launched turn inherits it, and no file on the computer
+//!    ever holds it (#11766). It is redacted from the turn's events,
+//!    results, and artifacts.
 //! 3. When the turn ends the driver **disarms** the job. A later turn needs
 //!    a fresh release; without one a released-credential job does not start
 //!    another turn with it, and a new turn runs on the plan login made
