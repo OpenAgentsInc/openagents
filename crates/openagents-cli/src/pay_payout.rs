@@ -508,7 +508,17 @@ pub(crate) fn payouts(output: &Output, words: &[String], usage: &str) -> u8 {
         Ok(ledger) => ledger,
         Err(e) => return output.fail("pay", &format!("{}: {e}", path.display())),
     };
-    let (wallet, config) = match crate::x402::open_wallet() {
+    let opened = if args.switch("check") {
+        let home = openagents_wallet::config::home();
+        openagents_wallet::WalletConfig::load(&home).and_then(|config| {
+            openagents_wallet::resident::RemoteWallet::probe(&home)
+                .map(|remote| (Opened::Resident(remote), config))
+                .ok_or_else(|| WalletError::Node("No running receiving wallet answered.".into()))
+        })
+    } else {
+        crate::x402::open_wallet()
+    };
+    let (wallet, config) = match opened {
         Ok(opened) => opened,
         Err(error) => return output.fail("pay", &error.to_string()),
     };
