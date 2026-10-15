@@ -1250,17 +1250,9 @@ impl App {
                 ..
             } if self.live.busy => {
                 // What the model wrote before this call shows above it, not
-                // at the end of the turn.
-                self.live.finish_partial();
-                if let Some(live::Entry::Tool { input: previous_input, output: previous_output, running: previous_running, .. }) = self.live.entries.iter_mut().rev().find(|entry| {
-                    matches!(entry, live::Entry::Tool { name: previous, input: previous_input, running: true, .. } if previous == &name && (input.is_null() || previous_input == &input))
-                }) {
-                    if !input.is_null() { *previous_input = input; }
-                    *previous_output = output;
-                    *previous_running = running;
-                } else {
-                    self.live.entries.push(live::Entry::Tool { name, input, output, running });
-                }
+                // at the end of the turn; a call's later events find it as
+                // `Chat::tool` does, its input only growing (#11686).
+                self.live.tool(name, input, output, running);
             }
             live::Update::Attempt { attempt, .. } if self.live.busy => {
                 self.live.attempt(attempt);

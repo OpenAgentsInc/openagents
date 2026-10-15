@@ -425,14 +425,48 @@ impl Chat {
         running: bool,
     ) {
         self.finish_partial();
-        if let Some(Entry::Tool { input: previous_input, output: previous_output, running: previous_running, .. }) = self.entries.iter_mut().rev().find(|entry| {
-            matches!(entry, Entry::Tool { name: previous, input: previous_input, running: true, .. } if previous == &name && (input.is_null() || previous_input == &input))
-        }) {
-            if !input.is_null() { *previous_input = input; }
+        // The running call this event belongs to: the same input, else one
+        // whose input this event only adds to (OpenCode sends a call's
+        // `cwd` first and its `command` later, #11686).
+        let same = |previous: &serde_json::Value| input.is_null() || previous == &input;
+        let grows = |previous: &serde_json::Value| {
+            previous.as_object().is_some_and(|fields| {
+                !fields.is_empty()
+                    && fields
+                        .iter()
+                        .all(|(key, value)| input.get(key) == Some(value))
+            })
+        };
+        let at = self
+            .entries
+            .iter()
+            .rposition(|entry| {
+                matches!(entry, Entry::Tool { name: previous, input: previous_input, running: true, .. } if previous == &name && same(previous_input))
+            })
+            .or_else(|| {
+                self.entries.iter().rposition(|entry| {
+                    matches!(entry, Entry::Tool { name: previous, input: previous_input, running: true, .. } if previous == &name && grows(previous_input))
+                })
+            });
+        if let Some(Entry::Tool {
+            input: previous_input,
+            output: previous_output,
+            running: previous_running,
+            ..
+        }) = at.and_then(|at| self.entries.get_mut(at))
+        {
+            if !input.is_null() {
+                *previous_input = input;
+            }
             *previous_output = output;
             *previous_running = running;
         } else {
-            self.entries.push(Entry::Tool { name, input, output, running });
+            self.entries.push(Entry::Tool {
+                name,
+                input,
+                output,
+                running,
+            });
         }
     }
 

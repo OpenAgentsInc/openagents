@@ -663,9 +663,10 @@ struct Call {
     name: String,
     /// OpenCode's arguments so far.
     raw: Value,
-    /// The input the chat shows for this call, once it has one. The chat
-    /// matches a call's later events to it by name and this exact input
-    /// (`live::Chat::tool`), so every later event repeats it (#11686).
+    /// The input the chat last showed for this call, once it has one.
+    /// Later events only add to it (OpenCode sends `cwd` before
+    /// `command`), which `live::Chat::tool` matches as the same call
+    /// (#11686).
     shown: Option<Value>,
 }
 
@@ -691,10 +692,8 @@ impl Events<'_> {
         if call.shown.is_none() && running && !has_arguments {
             return;
         }
-        let input = call
-            .shown
-            .get_or_insert_with(|| coder_sdk::opencode::args_to_claude(&call.own, &call.raw))
-            .clone();
+        let input = coder_sdk::opencode::args_to_claude(&call.own, &call.raw);
+        call.shown = Some(input.clone());
         (self.emit)(RuntimeEvent::Tool {
             name: call.name.clone(),
             input,
@@ -974,6 +973,24 @@ mod tests {
         events.update(fill("c2", "/r/a.txt"));
         events.update(finish("c2", "1: a"));
         events.update(finish("c1", "1: # Heading"));
+        // A Bash call opens with its `cwd` and gets its `command` later
+        // (rc.18 on Windows): one call, with the command.
+        events.update(Update::ToolCall {
+            id: "c3".into(),
+            title: "bash".into(),
+            kind: "execute".into(),
+            status: "pending".into(),
+            raw_input: json!({"cwd": "/r"}),
+            tool: Some("bash".into()),
+        });
+        events.update(Update::ToolCallUpdate {
+            id: "c3".into(),
+            title: None,
+            status: Some("in_progress".into()),
+            text: None,
+            raw_input: Some(json!({"command": "ls", "description": "List files"})),
+        });
+        events.update(finish("c3", "README.md"));
 
         let mut chat = crate::live::Chat::default();
         for event in seen {
@@ -1002,7 +1019,7 @@ mod tests {
             })
             .collect();
         assert_eq!(
-            calls,
+            calls[..2],
             [
                 (
                     "Read".to_owned(),
@@ -1018,6 +1035,12 @@ mod tests {
                 ),
             ]
         );
+        assert_eq!(calls.len(), 3, "{calls:?}");
+        let (name, input, output, running) = &calls[2];
+        assert_eq!(name, "Bash");
+        assert_eq!(input["command"], "ls", "{input}");
+        assert_eq!(output, &json!({"output": "README.md"}));
+        assert!(!running);
     }
 
     /// #11690: a setup that didn't finish says why in OpenCode's words.
