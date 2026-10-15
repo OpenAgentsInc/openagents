@@ -29,10 +29,12 @@ pub enum GameInput {
     /// Up let go, for a game whose Up is held (a jump that goes higher the
     /// longer it is held). Hosts send it when the key or touch is released.
     UpReleased,
+    /// Rotate a held construction piece.
+    Turn,
 }
 
 impl GameInput {
-    pub const ALL: [Self; 8] = [
+    pub const ALL: [Self; 9] = [
         Self::Left,
         Self::Right,
         Self::Up,
@@ -41,6 +43,7 @@ impl GameInput {
         Self::Use,
         Self::Pause,
         Self::UpReleased,
+        Self::Turn,
     ];
 
     /// A one-letter code, for replays.
@@ -55,6 +58,7 @@ impl GameInput {
             Self::Use => 'E',
             Self::Pause => 'P',
             Self::UpReleased => 'u',
+            Self::Turn => 'T',
         }
     }
 
@@ -65,7 +69,7 @@ impl GameInput {
 
     /// The input a desktop key gives, by the DOM's `KeyboardEvent.key`
     /// names: arrows and WASD, Space for Up, X or Backspace for Back, E or
-    /// Enter for Use, Escape or P for Pause.
+    /// Enter for Use, Escape or P for Pause, and R for Turn.
     #[must_use]
     pub fn from_key(key: &str) -> Option<Self> {
         match key {
@@ -76,6 +80,7 @@ impl GameInput {
             "x" | "X" | "Backspace" => Some(Self::Back),
             "e" | "E" | "Enter" => Some(Self::Use),
             "Escape" | "p" | "P" => Some(Self::Pause),
+            "r" | "R" => Some(Self::Turn),
             _ => None,
         }
     }

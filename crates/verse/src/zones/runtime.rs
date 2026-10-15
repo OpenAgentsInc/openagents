@@ -21,7 +21,7 @@ pub const GRID_LABEL: &str = "The Grid";
 
 impl WorldRuntime {
     pub(crate) fn update_player(&mut self, input: &InputState, dt: f32) {
-        if self.is_hosted() {
+        if self.is_hosted() || self.zone_state.snap.is_some() {
             return;
         }
         if let Some(coast) = &mut self.zone_state.coast {
@@ -231,6 +231,29 @@ impl WorldRuntime {
             super::lagrange2::Lagrange2::spawn_yaw(),
         );
         self.camera = crate::camera::FollowCamera::default();
+    }
+
+    /// Enter the game at the nearby Lagrange 1 arch.
+    pub fn enter_snap_station(&mut self) -> Result<(), String> {
+        if self.is_hosted() || !self.snap_arch_near() {
+            return Err("Approach the Snap Station arch".into());
+        }
+        self.cancel_navigation();
+        self.zone_state.snap = Some(Box::default());
+        self.zone_state.snap_armed = false;
+        self.zone_revision = self.zone_revision.saturating_add(1);
+        Ok(())
+    }
+    pub fn snap_station(&self) -> Option<&super::snap::Station> {
+        self.zone_state.snap.as_deref()
+    }
+    pub fn snap_station_mut(&mut self) -> Option<&mut super::snap::Station> {
+        self.zone_state.snap.as_deref_mut()
+    }
+    pub fn snap_arch_near(&self) -> bool {
+        self.zone == ZoneId::Lagrange1
+            && self.zone_state.snap.is_none()
+            && self.player.pos.distance(super::snap::arch().at) < 5.
     }
 
     /// The Lagrange 2 factory, while the player is in it.
@@ -1165,6 +1188,32 @@ impl WorldRuntime {
         result
     }
     fn apply_zone_intent(&mut self, intent: Intent) -> Result<(), String> {
+        if let Some(snap) = &mut self.zone_state.snap {
+            use verse_game::GameInput as G;
+            match intent {
+                Intent::Return => {
+                    self.zone_state.snap = None;
+                    self.zone_revision = self.zone_revision.saturating_add(1);
+                    self.zone_state.gate_cooldown = 1.;
+                }
+                Intent::Decrease => snap.input(G::Left),
+                Intent::Increase => snap.input(G::Right),
+                Intent::Rise => snap.input(G::Up),
+                Intent::Lower => snap.input(G::Down),
+                Intent::Grab => snap.input(G::Use),
+                Intent::Release => snap.input(G::Back),
+                Intent::Camera => snap.input(G::Turn),
+                Intent::Pause => snap.input(G::Pause),
+                Intent::KnobPrev => snap.next(-1),
+                Intent::KnobNext => snap.next(1),
+                Intent::Reset => *snap = Box::new(super::snap::Station::new(snap.job)),
+                _ => return Err("Choose a Snap Station control".into()),
+            }
+            return Ok(());
+        }
+        if intent == Intent::Interact && self.zone == ZoneId::Lagrange1 {
+            return self.enter_snap_station();
+        }
         if self.zone == ZoneId::Grove
             && let Some(spell) = self
                 .zone_state
@@ -1237,6 +1286,7 @@ impl WorldRuntime {
                 // Leaving Everglade stops the studio's observation.
                 self.zone_state.studio.set_active(false);
                 // Dropping a zone releases its decoded frames and simulation.
+                self.zone_state.snap = None;
                 self.zone_state.lagrange = None;
                 self.zone_state.lagrange2 = None;
                 self.zone_state.lab = None;
@@ -1591,6 +1641,9 @@ impl WorldRuntime {
     /// Map status and marker while an EVA pack autopilot owns map taps.
     #[must_use]
     pub fn eva_map_status(&self) -> Option<(&'static str, Option<[f32; 2]>)> {
+        if self.zone_state.snap.is_some() {
+            return None;
+        }
         let station = &self.zone_state.lagrange.as_deref()?.station;
         Some(match station.target {
             Some(t) => ("Flying", Some([t.x as f32, t.z as f32])),
@@ -2114,7 +2167,32 @@ impl WorldRuntime {
             );
             add("cancel", "Dismiss", Intent::Cancel, true);
             format!("{} could not load", self.zone_state.destination.label())
+        } else if let Some(snap) = &self.zone_state.snap {
+            for (id, label, intent) in [
+                ("left", "Left", Intent::Decrease),
+                ("right", "Right", Intent::Increase),
+                ("up", "Up", Intent::Rise),
+                ("down", "Down", Intent::Lower),
+                ("use", "Use", Intent::Grab),
+                ("back", "Undo", Intent::Release),
+                ("turn", "Turn", Intent::Camera),
+                ("prev", "Prev", Intent::KnobPrev),
+                ("next", "Next", Intent::KnobNext),
+                ("reset", "Reset", Intent::Reset),
+                (
+                    "pause",
+                    if snap.paused { "Resume" } else { "Pause" },
+                    Intent::Pause,
+                ),
+                ("return", "Leave", Intent::Return),
+            ] {
+                add(id, label, intent, true);
+            }
+            snap.caption()
         } else if let Some(lagrange) = &self.zone_state.lagrange {
+            if self.snap_arch_near() {
+                add("snap", "Play Snap", Intent::Interact, true);
+            }
             let s = lagrange.station.snapshot();
             if s.carrying.is_some() {
                 add(
@@ -2442,6 +2520,7 @@ impl WorldRuntime {
                 .zone_state
                 .lagrange
                 .as_deref()
+                .filter(|_| self.zone_state.snap.is_none())
                 .map(|l| l.station.snapshot()),
             lab: self.zone_state.lab.as_deref().map(Lab::snapshot),
             robot_lab: self
@@ -2695,7 +2774,9 @@ impl WorldRuntime {
     /// "The Grid"; Coder's plaza and every zone keep their own names.
     #[must_use]
     pub fn zone_label(&self) -> &'static str {
-        if self.is_bare() && self.is_plaza() {
+        if self.zone_state.snap.is_some() {
+            "Snap Station"
+        } else if self.is_bare() && self.is_plaza() {
             GRID_LABEL
         } else if self.in_demolition() {
             "Demolition yard"
@@ -2735,6 +2816,19 @@ impl WorldRuntime {
     /// player's position this frame. Coder's plaza keeps its tapped arches
     /// and buttons.
     pub(crate) fn walk_through_portals(&mut self, from: Vec3, dt: f32) {
+        if self.zone == ZoneId::Lagrange1 {
+            if self.zone_state.snap.is_some() {
+                return;
+            }
+            let gate = super::snap::arch();
+            if gate.local(self.player.pos).z.abs() > 1.5 {
+                self.zone_state.snap_armed = true;
+            }
+            if self.zone_state.snap_armed && gate.crossed(from, self.player.pos) {
+                let _ = self.enter_snap_station();
+                return;
+            }
+        }
         if !self.is_bare() {
             return;
         }
@@ -3191,6 +3285,10 @@ impl WorldRuntime {
     }
 
     pub(crate) fn zone_simulation_tick(&mut self, dt: f32, _previous: PlayerController) {
+        if let Some(snap) = &mut self.zone_state.snap {
+            snap.tick(dt);
+            return;
+        }
         self.zone_state.elapsed = (self.zone_state.elapsed + dt) % 1000.0;
         // CAD Lab models placed here, kept in step with their file.
         #[cfg(not(target_arch = "wasm32"))]
@@ -3322,6 +3420,11 @@ impl WorldRuntime {
         self.pose_cad_bodies();
     }
     pub(crate) fn zone_dynamic_mesh(&self) -> crate::mesh::Mesh {
+        if let (Some(snap), Some(lagrange)) = (&self.zone_state.snap, &self.zone_state.lagrange) {
+            if let Some(sky) = lagrange.dynamic().sky.clone() {
+                return snap.mesh(sky);
+            }
+        }
         let elapsed = self.zone_state.elapsed;
         let mut mesh = if self.is_bare() {
             self.grid_portal_mesh()
@@ -3330,6 +3433,7 @@ impl WorldRuntime {
         };
         if let Some(lagrange) = &self.zone_state.lagrange {
             mesh.extend(lagrange.dynamic());
+            mesh.extend(&super::snap::arch().mesh(ZoneId::Lagrange1, "SNAP STATION", elapsed));
         }
         if let Some(factory) = &self.zone_state.lagrange2 {
             mesh.extend(factory.dynamic());

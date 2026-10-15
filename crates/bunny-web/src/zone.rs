@@ -22,7 +22,7 @@ pub fn input(input: GameInput) -> Option<Input> {
         GameInput::Down => Some(Input::Duck),
         GameInput::Back => Some(Input::Back),
         GameInput::UpReleased => Some(Input::Release),
-        GameInput::Use | GameInput::Pause => None,
+        GameInput::Use | GameInput::Pause | GameInput::Turn => None,
     }
 }
 

@@ -143,6 +143,7 @@ impl SnapGame {
                         turn: self.best_turn(kind),
                     }];
                 }
+                GameInput::Turn => self.turn_carried(),
                 GameInput::Pause | GameInput::UpReleased => {}
             }
             let (low, high) = self.game.level.area;

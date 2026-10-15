@@ -2281,6 +2281,14 @@ impl App {
     }
 
     fn zone_action(&mut self, action: ZoneIntent) {
+        if action == ZoneIntent::Interact && self.runtime.snap_arch_near() {
+            if self.runtime.enter_snap_station().is_ok() {
+                self.stop_map();
+                self.keys = Keys::default();
+                self.capture(false);
+            }
+            return;
+        }
         if action == ZoneIntent::Interact {
             if let Some(kind) = self.runtime.studio_panel_here() {
                 self.open_studio_panel(kind);
@@ -3244,6 +3252,37 @@ impl App {
     }
 
     fn key(&mut self, code: KeyCode, pressed: bool, _event_loop: &ActiveEventLoop) {
+        if self.runtime.snap_station().is_some() {
+            self.keys = Keys::default();
+            if pressed {
+                use verse_game::GameInput as G;
+                let input = match code {
+                    KeyCode::ArrowLeft | KeyCode::KeyA => Some(G::Left),
+                    KeyCode::ArrowRight | KeyCode::KeyD => Some(G::Right),
+                    KeyCode::ArrowUp | KeyCode::KeyW => Some(G::Up),
+                    KeyCode::ArrowDown | KeyCode::KeyS => Some(G::Down),
+                    KeyCode::KeyE | KeyCode::Enter => Some(G::Use),
+                    KeyCode::KeyX | KeyCode::Backspace => Some(G::Back),
+                    KeyCode::Escape | KeyCode::KeyP => Some(G::Pause),
+                    _ => None,
+                };
+                if let Some(input) = input {
+                    self.runtime.snap_station_mut().unwrap().input(input);
+                }
+                match code {
+                    KeyCode::KeyR => self.runtime.snap_station_mut().unwrap().input(G::Turn),
+                    KeyCode::PageUp => self.runtime.snap_station_mut().unwrap().next(-1),
+                    KeyCode::PageDown => self.runtime.snap_station_mut().unwrap().next(1),
+                    KeyCode::KeyF => self.zone_action(ZoneIntent::Return),
+                    _ => {}
+                }
+            }
+            return;
+        }
+        if pressed && code == KeyCode::KeyF && self.runtime.snap_arch_near() {
+            self.zone_action(ZoneIntent::Interact);
+            return;
+        }
         if self.runtime.zone_loading() {
             if pressed && code == KeyCode::Escape {
                 self.zone_action(ZoneIntent::Cancel);

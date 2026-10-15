@@ -49,6 +49,7 @@ mod runtime;
 mod sight;
 #[cfg(test)]
 mod sight_tests;
+pub mod snap;
 #[cfg(test)]
 mod studio_tests;
 #[cfg(test)]
@@ -385,6 +386,8 @@ pub(crate) struct State {
     error: Option<String>,
     lagrange: Option<Box<Lagrange>>,
     lagrange2: Option<Box<lagrange2::Lagrange2>>,
+    snap: Option<Box<snap::Station>>,
+    snap_armed: bool,
     lab: Option<Box<Lab>>,
     robot_lab: Option<Box<robotlab::Room>>,
     #[cfg(not(target_arch = "wasm32"))]
@@ -473,6 +476,8 @@ impl Default for State {
             error: None,
             lagrange: None,
             lagrange2: None,
+            snap: None,
+            snap_armed: true,
             lab: None,
             robot_lab: None,
             #[cfg(not(target_arch = "wasm32"))]

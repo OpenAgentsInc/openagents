@@ -539,7 +539,7 @@ Blue Rush Studios domain. Epic:
 | S7 | [#11675](https://github.com/OpenAgentsInc/openagents/issues/11675) | Implemented; physical devices need the owner |
 | S8 | [#11676](https://github.com/OpenAgentsInc/openagents/issues/11676) | Done: twenty checked jobs and moving pieces |
 | S9 | [#11677](https://github.com/OpenAgentsInc/openagents/issues/11677) | Implemented; deployment needs the owner |
-| S10 | [#11678](https://github.com/OpenAgentsInc/openagents/issues/11678) | Planned |
+| S10 | [#11678](https://github.com/OpenAgentsInc/openagents/issues/11678) | Implemented |
 
 ### S1: the rules
 
@@ -700,6 +700,29 @@ that policy. [Results](../captures/snap-sharing/browser.json), the
 [friend's phone](../captures/snap-sharing/friend-phone.png), and the
 [changed-file refusal](../captures/snap-sharing/changed-file-refused.png)
 are retained.
+
+### In Verse (S10)
+
+In Lagrange 1, approach the **Snap Station** arch near the arrival point.
+Fly through it, press **F**, or choose **Play Snap**. The local game pauses
+the astronaut and Lagrange construction while it is open. **Leave** or **F**
+returns to the same station. Returning from Lagrange 1 still leaves the zone.
+
+Arrows choose a tray piece or move it after picking it up; **E** picks or
+places it, **X** puts it down or undoes a piece, and **R** turns it. Select
+**Go** in the tray to start the test. **P** or Escape pauses. The panel also
+has every control; **Prev** and **Next** choose among all twenty jobs, and
+**Reset** starts that job again. Each visit starts a fresh game.
+
+The Verse host steps `CommunityGame` at the rules' rate and records its generic
+inputs, including Turn, in a verified replay. The shared scene's lit models
+and glow render through `verse-pbr`; physics remains in `snap-rules`.
+The native offscreen acceptance plays job one, wins, verifies its rotated
+build replay, and returns to Lagrange 1. It retains the
+[arch](../captures/snap-verse/arch.png),
+[build](../captures/snap-verse/built.png),
+[result](../captures/snap-verse/won.png), and
+[replay](../captures/snap-verse/run.txt).
 
 ## Out of scope
 

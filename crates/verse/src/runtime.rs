@@ -596,6 +596,9 @@ impl WorldRuntime {
 
     #[must_use]
     pub fn view(&self, aspect: f32) -> View {
+        if let Some(snap) = self.snap_station() {
+            return snap.view(aspect);
+        }
         let aspect = if aspect.is_finite() {
             aspect.clamp(0.01, 100.0)
         } else {

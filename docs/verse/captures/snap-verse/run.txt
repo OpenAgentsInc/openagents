@@ -1,0 +1,8 @@
+verse.game-replay.v1
+game snap-station
+rules 414950367d4cb2f1ad8c9c6fe266da315c91bbb1a63e00c8a92aba226cac4049
+level 307eed4dace7bbf1bc3e258b230941228055c21c407f867eec820bcdf4dcb7ac
+seed 0
+inputs 1:E 2:T 3:T 4:T 5:E 6:E 7:R 8:R 9:E 10:E 11:R 12:R 13:E 14:L 15:E
+ticks 254
+result 584098940128f9e2bb1fc0746c3a92291b0da00aee4e28f5f59f6750f82449ef

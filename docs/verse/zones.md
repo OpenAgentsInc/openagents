@@ -126,6 +126,11 @@ through it. **Forces** toggles an overlay of contacts, joints, and thrust.
 Six parts complete the keel: main engine, propellant tank, two keel trusses, RCS
 pod, and avionics bay. [Lagrange 1](lagrange-1.md) documents the physics.
 
+Snap Station's arch near the arrival point opens a local building game.
+Fly through it, press **F**, or choose **Play Snap**; **Leave** returns to
+the station. The astronaut and construction pause while playing. The
+[game guide](games/snap-station.md#in-verse-s10) covers its controls.
+
 ### Physics Lab controls
 
 You walk around a railed stage where the current scenario runs. The HUD shows
