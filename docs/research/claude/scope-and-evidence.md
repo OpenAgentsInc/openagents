@@ -16,6 +16,12 @@ Inspected surfaces:
   arm64 slices.
 - The ASAR archive header and `package.json`, plus a static parse of the
   JavaScript in that archive.
+- The preload scripts and the main-process chunk, read as text: window
+  options, the `claude://` handler, the VM controller, custom-scheme
+  registration, the artifact document handler, and the managed-config schema.
+  `ion-dist/index.html`, `frame-shell.html`, `frame-connect.html`, and
+  `frame-manage.html` were read. The hashed modules those documents load were
+  not reconstructed function by function.
 - Mach-O identity, linkage, exports, and embedded Go or Rust compiler metadata
   for the Claude-specific binaries.
 - A static overview of the arm64 slice of the host stub and of the smaller
