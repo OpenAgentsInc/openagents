@@ -113,6 +113,17 @@ impl<R: LightningRail> Wallet<R> {
     }
 }
 impl Wallet<crate::Client> {
+    pub fn receive_hinted(&self, a: u64, h: [u8; 32], e: u32) -> Result<IssuedInvoice> {
+        self.run(move |r| {
+            Box::pin(async move {
+                let hints = r.private_route_hints().await?;
+                r.create_invoice_with_hints(a, h, e, hints).await
+            })
+        })
+    }
+    pub fn received_msat(&self, hash: [u8; 32]) -> Result<Option<u64>> {
+        self.run(move |r| Box::pin(async move { r.received_msat(hash).await }))
+    }
     pub fn connect(
         config: crate::transport::Config,
         macaroon: crate::macaroon::Macaroon,
@@ -121,6 +132,20 @@ impl Wallet<crate::Client> {
             runtime
                 .block_on(crate::Client::connect(&config, macaroon))
                 .map(Arc::new)
+        })
+    }
+    pub fn connect_receiver(
+        config: crate::transport::Config,
+        macaroon: crate::macaroon::Macaroon,
+        node: String,
+        network: String,
+    ) -> Result<Self> {
+        Self::start(move |runtime| {
+            let client = runtime.block_on(crate::Client::connect(&config, macaroon))?;
+            if client.node_id() != node || client.network() != network {
+                return Err(Error::NodeMismatch);
+            }
+            Ok(Arc::new(client))
         })
     }
 }

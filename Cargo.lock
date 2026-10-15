@@ -11458,6 +11458,7 @@ dependencies = [
  "jsonschema",
  "knowledge",
  "libc",
+ "lnd-sdk",
  "mac-jobs",
  "microcoder",
  "model-access",

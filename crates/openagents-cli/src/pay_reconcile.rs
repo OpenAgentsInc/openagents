@@ -96,6 +96,32 @@ fn read_receiver(references: &[String]) -> (Option<WalletView>, Option<Network>,
     (Some(view), network, None)
 }
 
+/// Both receive nodes must be readable before claiming an aggregate balance.
+fn combine_receivers(mut primary: WalletView, secondary: WalletView) -> Result<WalletView, String> {
+    let mut seen: std::collections::HashSet<_> = primary
+        .payments
+        .iter()
+        .map(|p| p.reference.clone())
+        .collect();
+    for payment in secondary.payments {
+        if !seen.insert(payment.reference.clone()) {
+            return Err(
+                "The same payment appears on both receiving wallets. Review their records.".into(),
+            );
+        }
+        primary.payments.push(payment);
+    }
+    primary.complete &= secondary.complete;
+    primary.balance_msat = match (primary.balance_msat, secondary.balance_msat) {
+        (Some(a), Some(b)) => Some(
+            a.checked_add(b)
+                .ok_or("The receiving balance is too large.")?,
+        ),
+        _ => None,
+    };
+    Ok(primary)
+}
+
 fn spark_network(network: Network) -> Option<openagents_spark::Network> {
     match network {
         Network::Bitcoin => Some(openagents_spark::Network::Mainnet),
@@ -293,8 +319,38 @@ pub(crate) fn reconcile(output: &Output, words: &[String], usage: &str) -> u8 {
         Err(e) => return output.fail("pay", &e.to_string()),
     };
     let mut problems: Vec<String> = vec![];
-    let (receiver, network, why) = read_receiver(&receiver_refs);
+    let (mut receiver, network, why) = read_receiver(&receiver_refs);
     problems.extend(why);
+    if let Some(path) = args.option("routes") {
+        let path = Path::new(path);
+        let read = (|| {
+            let text =
+                std::fs::read_to_string(path).map_err(|_| "Could not read payment routes.")?;
+            let routes =
+                crate::pay::RouteFile::parse(&text, path.parent().unwrap_or(Path::new(".")))?;
+            if let Some(settings) = routes.lnd_receive {
+                let wallet = settings.readonly_wallet()?;
+                let records = wallet.payments().map_err(|e| e.to_string())?;
+                let balance = wallet.balance().map_err(|e| e.to_string())?;
+                let secondary = WalletView {
+                    payments: records.iter().map(receiver_payment).collect(),
+                    complete: true,
+                    balance_msat: i64::try_from(balance.lightning_total_sats)
+                        .ok()
+                        .and_then(|s| s.checked_mul(1000)),
+                };
+                let primary = receiver
+                    .take()
+                    .ok_or("The primary receiving wallet could not be read.")?;
+                receiver = Some(combine_receivers(primary, secondary)?);
+            }
+            Ok::<_, String>(())
+        })();
+        if let Err(error) = read {
+            receiver = None;
+            problems.push(format!("LND receiving wallet: {error}"));
+        }
+    }
     let scratch_root = report_dir.clone().unwrap_or_else(|| {
         std::env::temp_dir().join(format!("oa-reconcile-{}", std::process::id()))
     });
@@ -407,5 +463,28 @@ mod tests {
         assert_eq!(third["state"], "ok");
         assert_eq!(third["day"]["drift_runs"], 1);
         assert_eq!(third["day"]["drift_kinds"], json!(["payout_missing"]));
+    }
+    #[test]
+    fn receive_balances_combine_only_when_both_are_known() {
+        let a = WalletView {
+            balance_msat: Some(120),
+            complete: true,
+            ..WalletView::default()
+        };
+        let b = WalletView {
+            balance_msat: Some(230),
+            complete: true,
+            ..WalletView::default()
+        };
+        assert_eq!(
+            combine_receivers(a.clone(), b).unwrap().balance_msat,
+            Some(350)
+        );
+        assert_eq!(
+            combine_receivers(a, WalletView::default())
+                .unwrap()
+                .balance_msat,
+            None
+        );
     }
 }

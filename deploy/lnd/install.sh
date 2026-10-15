@@ -130,7 +130,7 @@ done
 pay_ip=10.128.0.46
 for role in invoice readonly payout ops monitor; do
   case $role in
-    invoice) id=101; ip="$pay_ip"; permissions=(info:read invoices:read invoices:write);;
+    invoice) id=101; ip="$pay_ip"; permissions=(info:read invoices:read invoices:write offchain:read);;
     readonly) id=102; ip="$pay_ip"; permissions=(info:read invoices:read offchain:read onchain:read peers:read address:read);;
     payout) id=103; ip="$pay_ip"; permissions=(info:read offchain:read offchain:write);;
     ops) id=104; ip=127.0.0.1; permissions=(info:read offchain:read offchain:write onchain:read onchain:write peers:read peers:write address:read address:write);;

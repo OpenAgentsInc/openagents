@@ -10,7 +10,13 @@ pub fn record(i: &lnrpc::Invoice) -> Result<PaymentRecord> {
             Ok(lnrpc::invoice::InvoiceState::Canceled) => PaymentStatus::Failed,
             _ => PaymentStatus::Pending,
         },
-        amount_msat: Some(unsigned(i.value_msat)?),
+        amount_msat: Some(unsigned(
+            if i.state == lnrpc::invoice::InvoiceState::Settled as i32 {
+                i.amt_paid_msat
+            } else {
+                i.value_msat
+            },
+        )?),
         fee_msat: None,
         preimage: None,
         bolt11: Some(i.payment_request.clone()),
@@ -36,6 +42,28 @@ pub(crate) fn deliver(sink: &mut impl SettlementSink, invoice: &lnrpc::Invoice) 
     Ok(true)
 }
 impl Client {
+    /// Reconcile collection against LND's settled invoice, never an outbound
+    /// payment record or a caller's claim of payment.
+    pub async fn received_msat(&self, hash: [u8; 32]) -> Result<Option<u64>> {
+        self.ensure_current().await?;
+        let invoice = match self.lookup_invoice(hash).await {
+            Ok(invoice) => invoice,
+            Err(Error::NotFound) => return Ok(None),
+            Err(e) => return Err(e),
+        };
+        if invoice.r_hash != hash {
+            return Err(Error::Invalid("invoice hash"));
+        }
+        if invoice.state != lnrpc::invoice::InvoiceState::Settled as i32 {
+            return Ok(None);
+        }
+        let paid = unsigned(invoice.amt_paid_msat)?;
+        if paid == 0 || paid < unsigned(invoice.value_msat)? || invoice.settle_index == 0 {
+            return Err(Error::Invalid("settled invoice amount"));
+        }
+        Ok(Some(paid))
+    }
+
     pub async fn settlements(&self, sink: &mut impl SettlementSink, count: usize) -> Result<()> {
         let mut delivered = 0;
         let mut failures = 0;

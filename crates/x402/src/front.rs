@@ -326,9 +326,15 @@ pub struct Config {
     pub timeout_secs: u32,
 }
 
+struct ResourceReceivers {
+    active: Arc<dyn Receiver>,
+    known: Vec<Arc<dyn Receiver>>,
+}
+
 pub struct Front<S: ReplayStore> {
     config: Config,
     receiver: Arc<dyn Receiver>,
+    resource_receivers: std::collections::HashMap<String, ResourceReceivers>,
     facilitator: Facilitator<S>,
     sink: Arc<dyn SettlementSink>,
     routes: Vec<Route>,
@@ -404,6 +410,7 @@ impl<S: ReplayStore> Front<S> {
         Ok(Self {
             config,
             receiver,
+            resource_receivers: std::collections::HashMap::new(),
             facilitator,
             sink,
             routes,
@@ -411,6 +418,55 @@ impl<S: ReplayStore> Front<S> {
             #[cfg(unix)]
             outcomes: None,
         })
+    }
+
+    /// Select an issuer for one exact resource. Keep the secondary configured
+    /// when rolling back so its open invoices can still settle on their node.
+    pub fn with_resource_receiver(
+        mut self,
+        resource: &str,
+        receiver: Arc<dyn Receiver>,
+        selected: bool,
+    ) -> Result<Self, String> {
+        if resource.is_empty() || resource.len() > 1024 {
+            return Err("A receiver needs an exact resource name.".into());
+        }
+        let binding = self
+            .resource_receivers
+            .entry(resource.into())
+            .or_insert_with(|| ResourceReceivers {
+                active: self.receiver.clone(),
+                known: vec![self.receiver.clone()],
+            });
+        if !binding
+            .known
+            .iter()
+            .any(|r| r.pay_to() == receiver.pay_to())
+        {
+            binding.known.push(receiver.clone());
+        }
+        if selected {
+            binding.active = receiver;
+        }
+        Ok(self)
+    }
+
+    fn issuer(&self, resource: &str) -> &dyn Receiver {
+        self.resource_receivers
+            .get(resource)
+            .map_or(self.receiver.as_ref(), |b| b.active.as_ref())
+    }
+
+    fn original_receiver(&self, resource: &str, invoice: &str) -> Option<&dyn Receiver> {
+        let payee = hex::encode(decode_invoice(invoice).ok()?.payee());
+        match self.resource_receivers.get(resource) {
+            Some(binding) => binding
+                .known
+                .iter()
+                .find(|r| r.pay_to() == payee)
+                .map(|r| r.as_ref()),
+            None => (self.receiver.pay_to() == payee).then_some(self.receiver.as_ref()),
+        }
     }
 
     pub(crate) fn with_funded_purchase(mut self, purchase: String) -> Self {
@@ -438,7 +494,13 @@ impl<S: ReplayStore> Front<S> {
         self.receiver.pay_to()
     }
 
-    fn requirements(&self, request_hash: &str, invoice: &str, price: u64) -> PaymentRequirements {
+    fn requirements(
+        &self,
+        resource: &str,
+        request_hash: &str,
+        invoice: &str,
+        price: u64,
+    ) -> PaymentRequirements {
         let mut extra = Map::new();
         extra.insert("assetTransferMethod".into(), json!("bolt11"));
         extra.insert("paymentFlow".into(), json!("upfront"));
@@ -451,7 +513,10 @@ impl<S: ReplayStore> Front<S> {
             network: self.config.network.into(),
             amount: price.to_string(),
             asset: "BTC".into(),
-            pay_to: self.receiver.pay_to(),
+            pay_to: self
+                .original_receiver(resource, invoice)
+                .unwrap_or_else(|| self.issuer(resource))
+                .pay_to(),
             max_timeout_seconds: u64::from(self.config.timeout_secs),
             extra,
         }
@@ -755,18 +820,19 @@ impl<S: ReplayStore> Front<S> {
         if hex::decode_to_slice(paid.request_hash, &mut digest).is_err() {
             return Response::json(500, &json!({"error": {"type": "binding_digest"}}));
         }
-        let invoice = match self
-            .receiver
-            .invoice(paid.price, digest, self.config.timeout_secs)
-        {
-            Ok(invoice) => invoice,
-            Err(_) => {
-                return Response::json(
-                    503,
-                    &json!({"error": {"type": "exact_lnbtc_invoice_issuance_denied"}}),
-                );
-            }
-        };
+        let invoice =
+            match self
+                .issuer(paid.resource())
+                .invoice(paid.price, digest, self.config.timeout_secs)
+            {
+                Ok(invoice) => invoice,
+                Err(_) => {
+                    return Response::json(
+                        503,
+                        &json!({"error": {"type": "exact_lnbtc_invoice_issuance_denied"}}),
+                    );
+                }
+            };
         let required = PaymentRequired {
             x402_version: 2,
             error: Some(
@@ -780,7 +846,12 @@ impl<S: ReplayStore> Front<S> {
                 mime_type: Some(paid.route.mime_type.clone()),
                 rest: Map::new(),
             },
-            accepts: vec![self.requirements(paid.request_hash, &invoice, paid.price)],
+            accepts: vec![self.requirements(
+                paid.resource(),
+                paid.request_hash,
+                &invoice,
+                paid.price,
+            )],
             extensions: None,
         };
         let Ok(required) = encode_header(&required) else {
@@ -939,7 +1010,8 @@ impl<S: ReplayStore> Front<S> {
                 event,
             );
         };
-        let requirements = self.requirements(paid.request_hash, invoice, paid.price);
+        let requirements =
+            self.requirements(paid.resource(), paid.request_hash, invoice, paid.price);
         #[cfg(unix)]
         if paid.quote.plugin.is_some()
             && let Some(store) = &self.outcomes
@@ -953,7 +1025,7 @@ impl<S: ReplayStore> Front<S> {
             .facilitator
             .settle(&requirements, &payload, &paid.purchase(), paid.now)
         {
-            Ok(admitted) => self.admitted(paid, admitted, Scheme::X402, None, event),
+            Ok(admitted) => self.admitted(paid, admitted, Scheme::X402, None, invoice, event),
             Err(settlement) => {
                 let reason = settlement
                     .error_reason
@@ -1011,7 +1083,12 @@ impl<S: ReplayStore> Front<S> {
                 event,
             );
         }
-        let requirements = self.requirements(paid.request_hash, &charge.invoice, paid.price);
+        let requirements = self.requirements(
+            paid.resource(),
+            paid.request_hash,
+            &charge.invoice,
+            paid.price,
+        );
         let mut proof = Map::new();
         proof.insert(
             "preimage".into(),
@@ -1033,6 +1110,7 @@ impl<S: ReplayStore> Front<S> {
                 admitted,
                 Scheme::Payment,
                 Some(&credential.challenge.id),
+                &charge.invoice,
                 event,
             ),
             Err(settlement) => {
@@ -1051,9 +1129,10 @@ impl<S: ReplayStore> Front<S> {
         admitted: Admission,
         scheme: Scheme,
         challenge_id: Option<&str>,
+        invoice: &str,
         event: Event,
     ) -> (Response, Event) {
-        self.admitted_inner(paid, admitted, scheme, challenge_id, event, None)
+        self.admitted_inner(paid, admitted, scheme, challenge_id, invoice, event, None)
     }
 
     fn admitted_inner(
@@ -1062,6 +1141,7 @@ impl<S: ReplayStore> Front<S> {
         admitted: Admission,
         scheme: Scheme,
         challenge_id: Option<&str>,
+        invoice: &str,
         mut event: Event,
         #[cfg(unix)] mut custody: Option<crate::outcome::Transaction>,
         #[cfg(not(unix))] _custody: Option<()>,
@@ -1076,19 +1156,20 @@ impl<S: ReplayStore> Front<S> {
                 "outcome_unknown",
             );
         }
+        let receiver = self.original_receiver(paid.resource(), invoice);
         let mut hash = [0u8; 32];
         let mut legacy_collection = || {
             hex::decode_to_slice(&payment_hash, &mut hash)
                 .ok()
-                .and_then(|()| self.receiver.received_msat(hash).ok().flatten())
+                .and_then(|()| receiver.and_then(|r| r.received_msat(hash).ok().flatten()))
         };
         #[cfg(unix)]
         let looked_up = match &custody {
-            Some(tx) => self
-                .receiver
-                .received_invoice(&tx.record.identity.invoice)
-                .ok()
-                .flatten(),
+            Some(tx) => receiver.and_then(|r| {
+                r.received_invoice(&tx.record.identity.invoice)
+                    .ok()
+                    .flatten()
+            }),
             None => legacy_collection(),
         };
         #[cfg(not(unix))]
@@ -1436,6 +1517,11 @@ impl<S: ReplayStore> Front<S> {
             },
             Scheme::X402,
             None,
+            requirements
+                .extra
+                .get("invoice")
+                .and_then(Value::as_str)
+                .unwrap_or_default(),
             event,
             Some(custody),
         )
@@ -1490,10 +1576,12 @@ impl<S: ReplayStore> Front<S> {
         };
         if matches!(tx.record.stage, Stage::Prepared | Stage::SettlementPending) {
             let received = self
-                .receiver
-                .received_invoice(&tx.record.identity.invoice)
-                .ok()
-                .flatten();
+                .original_receiver(&tx.record.settlement.resource, &tx.record.identity.invoice)
+                .and_then(|r| {
+                    r.received_invoice(&tx.record.identity.invoice)
+                        .ok()
+                        .flatten()
+                });
             if tx.current().is_err() {
                 return refused(event);
             }
@@ -1569,6 +1657,13 @@ struct Paid<'a> {
 }
 
 impl Paid<'_> {
+    fn resource(&self) -> &str {
+        self.quote
+            .resource
+            .as_deref()
+            .unwrap_or(&self.route.resource)
+    }
+
     fn purchase(&self) -> String {
         self.funded_purchase
             .map(str::to_owned)

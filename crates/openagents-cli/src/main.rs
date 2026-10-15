@@ -80,6 +80,7 @@ mod pay;
 mod pay_commission;
 #[cfg(unix)]
 mod pay_hosted;
+mod pay_lnd;
 #[cfg(unix)]
 mod pay_payout;
 #[cfg(unix)]

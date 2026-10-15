@@ -83,6 +83,7 @@ impl crate::Client {
                 ("info", "read"),
                 ("invoices", "read"),
                 ("invoices", "write"),
+                ("offchain", "read"),
             ],
             Role::ReadOnly => &[
                 ("info", "read"),

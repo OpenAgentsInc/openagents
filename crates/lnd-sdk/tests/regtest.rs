@@ -163,6 +163,7 @@ fn invoice_payment_lookup_and_reconnect() {
                 payer.lookup(hash).await.unwrap().unwrap().status,
                 openagents_wallet::PaymentStatus::Succeeded
             );
+            assert_eq!(receiver.received_msat(hash).await.unwrap(), Some(21001));
             assert_eq!(
                 receiver.lookup(hash).await.unwrap().unwrap().status,
                 openagents_wallet::PaymentStatus::Succeeded

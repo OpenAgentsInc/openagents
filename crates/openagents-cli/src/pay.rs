@@ -194,6 +194,7 @@ pub(crate) struct RouteFile {
     pub ledger: Option<PathBuf>,
     pub plugin_cache: Option<PathBuf>,
     pub hosted: Option<HostedSpec>,
+    pub lnd_receive: Option<crate::pay_lnd::ReceiveSettings>,
     #[serde(rename = "route", default)]
     pub routes: Vec<RouteSpec>,
 }
@@ -249,6 +250,9 @@ impl RouteFile {
         }
         if let Some(path) = &mut file.plugin_cache {
             anchor(path);
+        }
+        if let Some(lnd) = &mut file.lnd_receive {
+            lnd.anchor(base);
         }
         if let Some(hosted) = &mut file.hosted {
             hosted.anchor(base);
@@ -441,7 +445,7 @@ pub(crate) fn front<S: ReplayStore>(
     if let Some(hosted) = hosted {
         routes.extend(hosted.routes());
     }
-    Front::new(
+    let front = Front::new(
         Config {
             base_url: file.public_url.clone(),
             network,
@@ -453,7 +457,11 @@ pub(crate) fn front<S: ReplayStore>(
         openagents_x402::Facilitator::new(store, nostr::x402::DEFAULT_CLOCK_SKEW),
         sink,
         routes,
-    )
+    )?;
+    match &file.lnd_receive {
+        Some(settings) => settings.attach(front),
+        None => Ok(front),
+    }
 }
 
 /// Read the challenge key at `path`, or make 32 random bytes there (0600).

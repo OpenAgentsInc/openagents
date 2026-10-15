@@ -22,7 +22,7 @@ EnvironmentFile=/etc/openagents-pay/openagents-pay.env
 # A drift is an error-priority line ({"event":"reconciliation_drift",...})
 # in this unit's journal; pay-host reads reconcile/latest.json for /stats.
 ExecStartPre=/usr/bin/install -d -m 0700 /var/lib/openagents-pay/reconcile
-ExecStart=/opt/openagents-pay/current/openagents --json pay reconcile --ledger /var/lib/openagents-pay/ledger/ledger.sqlite --spark-home /var/lib/openagents-pay/spark --report-dir /var/lib/openagents-pay/reconcile --resolve
+ExecStart=/opt/openagents-pay/current/openagents --json pay reconcile --routes /etc/openagents-pay/routes.toml --ledger /var/lib/openagents-pay/ledger/ledger.sqlite --spark-home /var/lib/openagents-pay/spark --report-dir /var/lib/openagents-pay/reconcile --resolve
 TimeoutStartSec=300
 StandardOutput=journal
 StandardError=journal

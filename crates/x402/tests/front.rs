@@ -34,6 +34,7 @@ const BASE: &str = "https://api.example.com";
 /// Signs invoices as `NODE` and keeps each preimage so the test buyer can
 /// "pay" by looking it up, as a wallet returns it after a payment.
 struct TestNode {
+    key: [u8; 32],
     created_at: Option<u64>,
     counter: AtomicU64,
     preimages: Mutex<HashMap<String, [u8; 32]>>,
@@ -43,6 +44,7 @@ struct TestNode {
 impl TestNode {
     fn new(created_at: Option<u64>) -> Self {
         Self {
+            key: NODE,
             created_at,
             counter: AtomicU64::new(0),
             preimages: Mutex::new(HashMap::new()),
@@ -67,7 +69,7 @@ fn hrp(amount_msat: u64) -> String {
 
 impl Receiver for TestNode {
     fn pay_to(&self) -> String {
-        hex::encode(payee_of(NODE))
+        hex::encode(payee_of(self.key))
     }
     fn invoice(&self, amount: u64, request_hash: [u8; 32], expiry: u32) -> Result<String, String> {
         let n = self.counter.fetch_add(1, Ordering::SeqCst);
@@ -80,7 +82,7 @@ impl Receiver for TestNode {
         fields.extend(tag(23, &words(&request_hash)));
         fields.extend(tag(6, &number(u64::from(expiry))));
         let created_at = self.created_at.unwrap_or_else(openagents_x402::unix_now);
-        let invoice = signed_by(NODE, &hrp(amount), fields, false, false, created_at);
+        let invoice = signed_by(self.key, &hrp(amount), fields, false, false, created_at);
         self.preimages
             .lock()
             .unwrap()
@@ -856,3 +858,86 @@ mod funded;
 
 #[path = "front/quoted_release.rs"]
 mod quoted_release;
+
+#[test]
+fn resource_receiver_switch_keeps_original_invoices_and_other_routes() {
+    let mut f = fixture("receive-switch", TestNode::new(Some(NOW)));
+    let mut secondary = TestNode::new(Some(NOW));
+    secondary.key = [10; 32];
+    secondary.received = Some(21000);
+    let secondary = Arc::new(secondary);
+    let request = || post("/v1/messages", b"credit", vec![]);
+    // Retain an unpaid MDK invoice, then select the second node.
+    let old_mdk = f.front.handle(&request(), NOW).0;
+    f.front = f
+        .front
+        .with_resource_receiver("api:messages", secondary.clone(), true)
+        .unwrap();
+    let on_lnd = f.front.handle(&request(), NOW).0;
+    let terms = decode_payment_required(header(&on_lnd, PAYMENT_REQUIRED).unwrap()).unwrap();
+    assert_eq!(terms.accepts[0].pay_to, secondary.pay_to());
+    let plugin = f
+        .front
+        .handle(&post("/v1/plugins/demo/invoke", b"", vec![]), NOW)
+        .0;
+    let terms = decode_payment_required(header(&plugin, PAYMENT_REQUIRED).unwrap()).unwrap();
+    assert_eq!(terms.accepts[0].pay_to, f.node.pay_to());
+    let paid_mdk = x402_signature(&f.node, &old_mdk);
+    assert_eq!(
+        f.front
+            .handle(
+                &post(
+                    "/v1/messages",
+                    b"credit",
+                    vec![(PAYMENT_SIGNATURE, paid_mdk)]
+                ),
+                NOW
+            )
+            .0
+            .status,
+        200
+    );
+    let paid_lnd = x402_signature(&secondary, &on_lnd);
+    // One switch back changes new invoices, preserving LND's old invoice.
+    f.front = f
+        .front
+        .with_resource_receiver("api:messages", f.node.clone(), true)
+        .unwrap();
+    let after = f.front.handle(&request(), NOW).0;
+    let terms = decode_payment_required(header(&after, PAYMENT_REQUIRED).unwrap()).unwrap();
+    assert_eq!(terms.accepts[0].pay_to, f.node.pay_to());
+    assert_eq!(
+        f.front
+            .handle(
+                &post(
+                    "/v1/messages",
+                    b"credit",
+                    vec![(PAYMENT_SIGNATURE, paid_lnd.clone())]
+                ),
+                NOW
+            )
+            .0
+            .status,
+        200
+    );
+    assert_ne!(
+        f.front
+            .handle(
+                &post(
+                    "/v1/messages",
+                    b"credit",
+                    vec![(PAYMENT_SIGNATURE, paid_lnd)]
+                ),
+                NOW
+            )
+            .0
+            .status,
+        200
+    );
+    let rows = f.ledger.rows.lock().unwrap();
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[1].received_msat, 21000);
+    assert!(rows[1].received_from_wallet);
+    drop(rows);
+    let _ = std::fs::remove_dir_all(&f.dir);
+}
