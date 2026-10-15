@@ -102,6 +102,11 @@ impl Boundary {
     /// it followed by such a command counts too.
     #[must_use]
     pub fn run_refusal(&self, command: &str, cwd: &Path) -> Option<String> {
+        // A PowerShell script Coder can't read (an encoded command, a
+        // script file) could write anywhere, so it is refused (#11708).
+        if crate::floors::unreadable(command) {
+            return Some(crate::floors::UNREADABLE_REFUSAL.to_owned());
+        }
         // Paths held in shell variables (`F=/repo/x; echo >> "$F"`) are read
         // through; a write whose target still can't be worked out before
         // the command runs (`$(...)`, a loop variable) is refused rather
@@ -1130,6 +1135,34 @@ mod tests {
             )
             .is_none()
         );
+    }
+
+    /// PowerShell Coder can't read (an encoded command, a script file) is
+    /// refused with or without a fence, in string and argv forms; readable
+    /// PowerShell is read through as before (#11708).
+    #[test]
+    fn powershell_it_cant_read_is_refused() {
+        let b = boundary();
+        let wt = Path::new("/repo/.coder/worktrees/chat-abc");
+        for command in crate::floors::tests::unreadable_powershell() {
+            let input = serde_json::json!({"command": command});
+            for fence in [Some(&b), None] {
+                assert_eq!(
+                    super::tool_refusal(fence, "shell", &input, wt).as_deref(),
+                    Some(crate::floors::UNREADABLE_REFUSAL),
+                    "{command}"
+                );
+            }
+            let text = crate::floors::command_text(&input).unwrap();
+            assert!(b.run_refusal(&text, wt).is_some(), "{command}");
+        }
+        for command in crate::floors::tests::readable_powershell() {
+            let input = serde_json::json!({"command": command});
+            assert!(
+                super::tool_refusal(Some(&b), "shell", &input, wt).is_none(),
+                "{command}"
+            );
+        }
     }
 
     /// Drive paths on Windows: in redirects, cmdlets and scripts (#11708).

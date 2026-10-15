@@ -6,6 +6,11 @@
 /// Why `command` is refused, or `None` when it may run.
 #[must_use]
 pub fn refusal(command: &str) -> Option<String> {
+    // A PowerShell script Coder can't read could run any of these
+    // (#11708).
+    if crate::floors::unreadable(command) {
+        return Some(crate::floors::UNREADABLE_REFUSAL.to_owned());
+    }
     segments(command).find_map(|words| {
         let (subcommand, rest) = git_subcommand(&words)?;
         let refused = match subcommand {
@@ -91,6 +96,25 @@ mod tests {
             "cargo test -p coder-new",
         ] {
             assert!(refusal(command).is_none(), "{command}");
+        }
+    }
+
+    /// PowerShell Coder can't read is refused, so `powershell -enc` can't
+    /// hide a `git stash` (#11708); readable PowerShell runs.
+    #[test]
+    fn powershell_it_cant_read_is_refused() {
+        let text = |command| {
+            crate::floors::command_text(&serde_json::json!({"command": command})).unwrap()
+        };
+        for command in crate::floors::tests::unreadable_powershell() {
+            assert_eq!(
+                refusal(&text(command.clone())).as_deref(),
+                Some(crate::floors::UNREADABLE_REFUSAL),
+                "{command}"
+            );
+        }
+        for command in crate::floors::tests::readable_powershell() {
+            assert!(refusal(&text(command.clone())).is_none(), "{command}");
         }
     }
 }

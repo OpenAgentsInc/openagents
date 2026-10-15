@@ -572,6 +572,13 @@ run, the briefed agent and the Solver's Devin boundary each wrote), Token
 savers' levers, the plugins' hooks, and the System One monitor; decisions
 log through `hook-log`.
 
+The floors, the fence and `coder_sdk::git_guard` read through shell
+wrappers, Windows' `cmd /c` and `powershell -Command` included (#11708).
+PowerShell they can't read (an encoded command such as `powershell -enc`,
+`-e`, `-ec` or `/EncodedCommand`; a script file, `-File x.ps1` or `pwsh
+x.ps1`; `-Command -`) is refused by all three (`floors::unreadable`):
+Coder can't check what it writes, so it doesn't run.
+
 | Surface | Starts at | Harnesses | On the SDK | Left |
 |---|---|---|---|---|
 | Coder chat (terminal, desktop) | `coder_new::claude`, `codex_chat`, `opencode_chat`, `provider::chat_with_plugins` | Claude Code, Codex app-server, OpenCode, Coder loop | `sdk_hooks::claude` / `codex` / `opencode_registry` / `coder_loop`: the registry, harness order Claude Code → OpenCode → Coder loop (`escalate::fallback`). Token savers' gate and conditional context are registry hooks on every harness, Claude Code's included; the loop's file tools fire the loop's hooks as its Run does (`coder_loop_in`, with the session's fence) (#11531) | none |

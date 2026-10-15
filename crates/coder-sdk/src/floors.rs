@@ -91,6 +91,10 @@ pub fn hook(rules: Rules, asking: Asking) -> Hook {
         },
         move |call: &Call| {
             let tool = call.tool.as_deref().unwrap_or_default();
+            // A script Coder can't read may reach any floor: refused.
+            if let Some(reason) = unreadable_refusal(tool, &call.input) {
+                return Ok(HookOutcome::deny(reason));
+            }
             let Some(floor) = classify(tool, &call.input) else {
                 return Ok(HookOutcome::none());
             };
@@ -139,11 +143,14 @@ pub fn held_registry(guard: Option<crate::worktree::Guard>) -> crate::Registry {
 #[must_use]
 pub fn held_decision(input: &Value) -> Option<Value> {
     let tool = input["tool_name"].as_str()?;
-    let floor = classify(tool, &input["tool_input"])?;
+    let reason = match unreadable_refusal(tool, &input["tool_input"]) {
+        Some(reason) => reason.to_owned(),
+        None => held(&classify(tool, &input["tool_input"])?),
+    };
     Some(serde_json::json!({"hookSpecificOutput": {
         "hookEventName": "PreToolUse",
         "permissionDecision": "deny",
-        "permissionDecisionReason": held(&floor),
+        "permissionDecisionReason": reason,
     }}))
 }
 
@@ -459,46 +466,10 @@ pub fn wrapped_script(words: &[String]) -> Option<String> {
         return Some(args[at + 1..].join(" ")).filter(|script| !script.is_empty());
     }
     if matches!(program.as_str(), "powershell" | "pwsh") {
-        let mut at = 0;
-        while let Some(arg) = args.get(at) {
-            let flag = arg.to_ascii_lowercase().replacen('/', "-", 1);
-            if flag.len() > 1 && "-command".starts_with(flag.as_str()) {
-                at += 1;
-                break;
-            }
-            if !flag.starts_with('-') {
-                // Windows PowerShell runs its first plain argument as a
-                // command; PowerShell 7 runs it as a script file.
-                if program == "pwsh" {
-                    return None;
-                }
-                break;
-            }
-            let valued = matches!(
-                flag.trim_start_matches('-'),
-                "executionpolicy"
-                    | "ex"
-                    | "ep"
-                    | "windowstyle"
-                    | "w"
-                    | "version"
-                    | "v"
-                    | "inputformat"
-                    | "if"
-                    | "outputformat"
-                    | "of"
-                    | "configurationname"
-                    | "workingdirectory"
-                    | "wd"
-                    | "psconsolefile"
-                    | "settingsfile"
-            );
-            if flag.starts_with("-f") && "-file".starts_with(flag.as_str()) {
-                return None;
-            }
-            at += if valued { 2 } else { 1 };
-        }
-        return Some(args.get(at..)?.join(" ")).filter(|script| !script.is_empty());
+        return match powershell_script(&program, args) {
+            Powershell::Script(script) => Some(script),
+            Powershell::Unreadable | Powershell::Nothing => None,
+        };
     }
     if !matches!(
         program.as_str(),
@@ -525,6 +496,111 @@ pub fn wrapped_script(words: &[String]) -> Option<String> {
         }
     }
     None
+}
+
+/// What a `powershell` or `pwsh` command line runs.
+enum Powershell {
+    /// A script given in plain text (`-Command SCRIPT`).
+    Script(String),
+    /// A script Coder can't read before it runs: an encoded command
+    /// (`-EncodedCommand`, `-enc`, `-e`, `-ec`), a script file (`-File`,
+    /// or `pwsh`'s first plain argument), or one read from standard input
+    /// (`-Command -`).
+    Unreadable,
+    /// No script (an interactive shell).
+    Nothing,
+}
+
+/// What `powershell`/`pwsh` with `args` runs (#11708). Flags are
+/// case-insensitive, start with `-` or `/`, and may be shortened to any
+/// prefix (`-c`, `-enc`), as PowerShell reads them.
+fn powershell_script(program: &str, args: &[String]) -> Powershell {
+    let mut at = 0;
+    while let Some(arg) = args.get(at) {
+        let lower = arg.to_ascii_lowercase().replacen('/', "-", 1);
+        // `-EncodedCommand:BASE64` names its value after a colon.
+        let flag = lower.split(':').next().unwrap_or_default();
+        if !flag.starts_with('-') {
+            // Windows PowerShell runs its first plain argument as a
+            // command; PowerShell 7 runs it as a script file.
+            if program == "pwsh" {
+                return Powershell::Unreadable;
+            }
+            break;
+        }
+        let prefix_of = |name: &str| flag.len() > 1 && name.starts_with(flag);
+        if prefix_of("-command") {
+            at += 1;
+            break;
+        }
+        if flag == "-ec"
+            || prefix_of("-encodedcommand")
+            || (flag.starts_with("-f") && prefix_of("-file"))
+        {
+            return Powershell::Unreadable;
+        }
+        let valued = matches!(
+            flag.trim_start_matches('-'),
+            "executionpolicy"
+                | "ex"
+                | "ep"
+                | "windowstyle"
+                | "w"
+                | "version"
+                | "v"
+                | "inputformat"
+                | "if"
+                | "outputformat"
+                | "of"
+                | "configurationname"
+                | "workingdirectory"
+                | "wd"
+                | "psconsolefile"
+                | "settingsfile"
+        );
+        at += if valued { 2 } else { 1 };
+    }
+    let script = args.get(at..).unwrap_or_default().join(" ");
+    match script.trim() {
+        "" => Powershell::Nothing,
+        "-" => Powershell::Unreadable,
+        _ => Powershell::Script(script),
+    }
+}
+
+/// What a guard tells the agent about a command whose script Coder can't
+/// read ([`unreadable`]).
+pub const UNREADABLE_REFUSAL: &str = "Refused: Coder can't check what an encoded PowerShell command or a script file writes, so it didn't run. Run the commands directly.";
+
+/// Whether `command`, or a script a shell wrapper in it runs, hands
+/// PowerShell a script Coder can't read before it runs: an encoded command
+/// (`powershell -enc ...`), a script file (`pwsh -File x.ps1`, `pwsh
+/// x.ps1`), or standard input. Every guard that reads wrapped scripts
+/// refuses these rather than letting them through unchecked (#11708):
+/// the floors, [`crate::checkout_guard`] and [`crate::git_guard`].
+#[must_use]
+pub fn unreadable(command: &str) -> bool {
+    scripts(command).iter().any(|script| {
+        simple_commands(script).iter().any(|words| {
+            argv(words).is_some_and(|(program, args)| {
+                matches!(program.as_str(), "powershell" | "pwsh")
+                    && matches!(powershell_script(&program, args), Powershell::Unreadable)
+            })
+        })
+    })
+}
+
+/// [`UNREADABLE_REFUSAL`] for a shell tool call whose command is
+/// [`unreadable`], else `None`.
+#[must_use]
+pub fn unreadable_refusal(tool: &str, input: &Value) -> Option<&'static str> {
+    let server = format!("mcp__{SERVER}__");
+    let tool = tool.strip_prefix(&server).unwrap_or(tool);
+    (matches!(
+        tool,
+        "Bash" | "Run" | "Monitor" | "shell" | "exec_command" | "local_shell"
+    ) && unreadable(&command_text(input)?))
+    .then_some(UNREADABLE_REFUSAL)
 }
 
 /// The shell text of a tool call's `command` (or `cmd`): a string as it
@@ -626,7 +702,7 @@ pub fn declined(floor: &Floor) -> String {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use serde_json::json;
 
     use super::*;
@@ -696,5 +772,102 @@ mod tests {
         assert!(
             matches!(run(Rule::Deny, Asking::Hold), Permission::Deny { reason } if reason.starts_with("Not allowed here"))
         );
+    }
+
+    /// PowerShell command lines whose script Coder can't read (#11708), as
+    /// a harness sends them: one string, or an argument list.
+    pub(crate) fn unreadable_powershell() -> Vec<Value> {
+        vec![
+            json!("powershell -EncodedCommand ZQBjAGgAbwA="),
+            json!(["powershell.exe", "-EncodedCommand", "ZQBjAGgAbwA="]),
+            json!("PowerShell.exe -NoProfile -enc ZQBjAGgAbwA="),
+            json!(["powershell", "-ENC", "ZQBjAGgAbwA="]),
+            json!("pwsh -e ZQBjAGgAbwA="),
+            json!(["pwsh.exe", "-E", "ZQBjAGgAbwA="]),
+            json!("powershell /enc ZQBjAGgAbwA="),
+            json!(["powershell", "/Enc", "ZQBjAGgAbwA="]),
+            json!("pwsh -Ec ZQBjAGgAbwA="),
+            json!(["pwsh", "-eC", "ZQBjAGgAbwA="]),
+            json!("powershell -EncodedCo ZQBjAGgAbwA="),
+            json!(["powershell", "-encodedcommand:ZQBjAGgAbwA="]),
+            json!("pwsh -File x.ps1"),
+            json!(["pwsh", "-File", "x.ps1"]),
+            json!("pwsh -f x.ps1"),
+            json!(["pwsh", "-NoProfile", "-f", "x.ps1"]),
+            json!("pwsh x.ps1"),
+            json!(["pwsh.exe", "x.ps1"]),
+            json!("powershell -File x.ps1"),
+            json!([
+                "powershell.exe",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                "x.ps1"
+            ]),
+            json!("cat x | powershell -Command -"),
+            json!("cmd /c powershell -enc ZQBjAGgAbwA="),
+            json!(["bash", "-lc", "pwsh -File x.ps1"]),
+        ]
+    }
+
+    /// Readable PowerShell runs as before (#11708).
+    pub(crate) fn readable_powershell() -> Vec<Value> {
+        vec![
+            json!("powershell -Command \"cargo test\""),
+            json!(["powershell.exe", "-Command", "cargo test -p x"]),
+            json!("powershell -NoProfile -Command \"cargo test\""),
+            json!([
+                "powershell",
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-Command",
+                "cargo test"
+            ]),
+            json!("pwsh -c 'cargo test'"),
+            json!("powershell Get-ChildItem"),
+            json!("echo encodedcommand -enc"),
+        ]
+    }
+
+    /// Every guard that reads wrapped scripts refuses PowerShell it can't
+    /// read, so `powershell -enc` bypasses none of them (#11708).
+    #[test]
+    fn powershell_it_cant_read_is_refused_by_the_floors() {
+        let allow = hook(Arc::new(|_| Rule::Allow), Asking::Ask);
+        for command in unreadable_powershell() {
+            let text = command_text(&json!({"command": command})).unwrap();
+            assert!(unreadable(&text), "{command}");
+            let call = Call::tool(Event::PreToolUse, "Bash", json!({"command": command}));
+            assert!(
+                matches!((allow.run)(&call).unwrap().permission, Permission::Deny { reason } if reason == UNREADABLE_REFUSAL),
+                "{command}"
+            );
+            let reply =
+                held_decision(&json!({"tool_name": "shell", "tool_input": {"command": command}}))
+                    .unwrap();
+            assert_eq!(
+                reply["hookSpecificOutput"]["permissionDecisionReason"],
+                UNREADABLE_REFUSAL
+            );
+        }
+        for command in readable_powershell() {
+            let text = command_text(&json!({"command": command})).unwrap();
+            assert!(!unreadable(&text), "{command}");
+            let call = Call::tool(Event::PreToolUse, "Bash", json!({"command": command}));
+            assert_eq!(
+                (allow.run)(&call).unwrap().permission,
+                Permission::NoOpinion,
+                "{command}"
+            );
+        }
+        // Read through as before: the script inside is what runs.
+        assert_eq!(
+            scripts("powershell -NoProfile -Command \"cargo test\"")
+                .last()
+                .map(String::as_str),
+            Some("cargo test")
+        );
+        assert!(command("powershell -Command 'gh pr merge 5'").is_some());
     }
 }
