@@ -6,7 +6,7 @@ use openagents_wallet::{
 };
 use std::{sync::Arc, time::Duration};
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Health {
     pub synced_to_chain: bool,
     pub synced_to_graph: bool,

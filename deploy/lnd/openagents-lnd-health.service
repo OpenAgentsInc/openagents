@@ -1,0 +1,17 @@
+[Unit]
+Description=OpenAgents LND health
+After=openagents-lnd.service
+OnFailure=openagents-lnd-alert.service
+[Service]
+Type=oneshot
+User=oa-lnd-health
+Group=oa-lnd-health
+RuntimeDirectory=openagents-lnd-health
+RuntimeDirectoryMode=0700
+ExecStartPre=+/usr/bin/install -o oa-lnd-health -g oa-lnd-health -m 0400 /var/lib/openagents-lnd/monitor.macaroon /run/openagents-lnd-health/readonly.macaroon
+ExecStart=/opt/openagents-lnd/lnd-health /etc/openagents-lnd/health.json
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/openagents-lnd-health /run/openagents-lnd-health

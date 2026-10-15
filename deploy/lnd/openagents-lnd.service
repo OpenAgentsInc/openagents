@@ -1,0 +1,27 @@
+[Unit]
+Description=OpenAgents experimental LND node
+After=network-online.target
+Wants=network-online.target
+RequiresMountsFor=/var/lib/openagents-lnd
+
+[Service]
+User=oa-lnd
+Group=oa-lnd
+Type=simple
+RuntimeDirectory=openagents-lnd
+RuntimeDirectoryMode=0700
+ExecStartPre=+/usr/local/sbin/openagents-lnd-secrets
+ExecStart=/opt/openagents-lnd/lnd --configfile=/run/openagents-lnd/secrets/lnd.conf --wallet-unlock-password-file=/run/openagents-lnd/secrets/password --wallet-unlock-allow-create
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=120
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/openagents-lnd /run/openagents-lnd
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

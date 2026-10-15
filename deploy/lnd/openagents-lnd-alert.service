@@ -1,0 +1,5 @@
+[Unit]
+Description=Report an LND health failure
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/logger -p daemon.err -t openagents-lnd Health check failed; see openagents-lnd-health.service and /var/lib/openagents-lnd-health/health.json

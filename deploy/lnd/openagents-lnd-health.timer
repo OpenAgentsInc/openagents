@@ -1,0 +1,7 @@
+[Unit]
+Description=Check the LND node every minute
+[Timer]
+OnBootSec=30
+OnUnitActiveSec=60
+[Install]
+WantedBy=timers.target
