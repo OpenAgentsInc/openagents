@@ -29,7 +29,6 @@ use axum::Router;
 
 use crate::App;
 
-pub(crate) use affiliates::AFFILIATES;
 #[cfg(test)]
 pub(crate) use api_docs::API_DOCS;
 #[cfg(test)]

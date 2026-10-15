@@ -125,7 +125,7 @@ of these keeps a cookie in your browser, so we can credit who sent you.
   cookie.
 - **Who sees it:** we do. Someone who shares a referral link may see
   totals for their own link, never who you are. What we pay them is in
-  [our affiliate terms](/affiliates).
+  our affiliate terms.
 
 ## Your computer
 

@@ -187,8 +187,7 @@ pub(crate) fn admin_section(report: Option<&Report>) -> Markup {
             p {
                 (program.rate_percent) "% of net Pro revenue for each referred account's first "
                 (program.paid_months) " paid months. Commission waits " (program.hold_days)
-                " days after each payment before it is ready to pay; a refund in that time cancels it, and a later one is taken back. "
-                a href=(crate::pages::AFFILIATES) { "The terms" } "."
+                " days after each payment before it is ready to pay; a refund in that time cancels it, and a later one is taken back."
             }
         }))
         @if report.affiliates.is_empty() {
@@ -273,8 +272,7 @@ pub(crate) fn settings_section(report: &Report, days: &BTreeMap<u64, Day>) -> Ma
                 div class="oa-settings-text" {
                     span class="oa-settings-hint" {
                         "Commission waits " (report.program.hold_days) " days after each payment. We pay in sats over Lightning once your ready-to-pay balance is at least "
-                        (number(report.program.minimum_sats)) " sats. "
-                        a href=(crate::pages::AFFILIATES) { "Read the terms" } "."
+                        (number(report.program.minimum_sats)) " sats."
                     }
                 }
             }
@@ -378,7 +376,8 @@ mod tests {
         assert!(html.contains("Paid sales: 3"));
         assert!(html.contains("Waiting: $3.15"));
         assert!(html.contains("10,000 sats"));
-        assert!(html.contains("href=\"/affiliates\""));
+        // The terms page isn't linked from anywhere yet (owner, 2026-10-15).
+        assert!(!html.contains("href=\"/affiliates\""));
         // No affiliate: no section.
         let none = Report {
             affiliates: Vec::new(),
