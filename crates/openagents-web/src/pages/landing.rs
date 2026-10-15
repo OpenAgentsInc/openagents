@@ -17,7 +17,7 @@
 //! Pro's price from the plan terms `/pricing` sells.
 
 use axum::Router;
-use axum::http::header;
+use axum::http::{HeaderMap, header};
 use axum::response::{Html, IntoResponse};
 use axum::routing::get;
 use maud::{DOCTYPE, Markup, html};
@@ -67,18 +67,24 @@ const AGENTS: [&str; 6] = [
 
 pub(crate) fn routes() -> Router<App> {
     let mut router = Router::new()
-        .route("/landing", get(|| async { Html(page().into_string()) }))
+        .route(
+            "/landing",
+            get(|headers: HeaderMap| async move {
+                Html(page(crate::theme::from_headers(&headers)).into_string())
+            }),
+        )
         .route(
             CSS_PATH,
             get(|| async { ([(header::CONTENT_TYPE, "text/css; charset=utf-8")], CSS) }),
         );
     for (path, bytes, _, _) in SHOTS {
-        router = router.route(
-            path,
-            get(move || async move {
-                ([(header::CONTENT_TYPE, "image/jpeg")], bytes).into_response()
-            }),
-        );
+        router =
+            router.route(
+                path,
+                get(move || async move {
+                    ([(header::CONTENT_TYPE, "image/jpeg")], bytes).into_response()
+                }),
+            );
     }
     router
 }
@@ -109,6 +115,7 @@ fn navbar() -> Markup {
                 a href="/docs" { "Docs" }
                 a href="#faq" { "FAQ" }
             }
+            a.navbar-login href=(crate::auth::login_href("/", false)) { "Log in" }
             (button("Download Coder", "/download", "3d"))
         }
     }
@@ -181,7 +188,10 @@ fn problem_section() -> Markup {
     }
 }
 
-/// A feature: text on one side, our picture on the other.
+/// A feature: text on one side, our picture on the other; with `wide`,
+/// the text over the full width and the pictures below it, for a section
+/// with more than one picture.
+#[allow(clippy::too_many_arguments)]
 fn feature_section(
     id: &str,
     label: &str,
@@ -190,11 +200,12 @@ fn feature_section(
     action: Option<(&str, &str)>,
     picture: Markup,
     flipped: bool,
+    wide: bool,
 ) -> Markup {
-    let class = if flipped {
-        "feature-section feature-flipped"
-    } else {
-        "feature-section"
+    let class = match (wide, flipped) {
+        (true, _) => "feature-section feature-wide",
+        (false, true) => "feature-section feature-flipped",
+        (false, false) => "feature-section",
     };
     html! {
         section class=(class) id=(id) data-slot="feature-section" aria-labelledby=(format!("{id}-title")) {
@@ -381,17 +392,20 @@ fn footer() -> Markup {
     }
 }
 
-pub(crate) fn page() -> Markup {
+/// The page, in the visitor's chosen theme (Coder Light or Coder Noir), or
+/// following their system without a choice, as every page on the site.
+pub(crate) fn page(theme: Option<openagents_ui::shell::Theme>) -> Markup {
     html! {
         (DOCTYPE)
-        html lang="en" {
+        html lang="en" data-theme=[theme.map(openagents_ui::shell::Theme::as_str)] {
             head {
                 meta charset="utf-8";
                 meta name="viewport" content="width=device-width, initial-scale=1";
-                meta name="color-scheme" content="dark";
+                meta name="color-scheme" content="light dark";
                 title { "OpenAgents" }
                 meta name="description" content="Coder sits in front of every coding agent you use, and sends each step to the model it needs.";
                 link rel="icon" type="image/svg+xml" href="/favicon.svg";
+                (maud::PreEscaped(crate::theme::style_tag()))
                 link rel="stylesheet" href=(CSS_PATH);
             }
             body.landing {
@@ -402,25 +416,25 @@ pub(crate) fn page() -> Markup {
                     (feature_section(
                         "routing", "Routing", "Only the hard parts reach the big model",
                         &["Every message stops first at a ring of quick decisions: route, brief, trim, gate, check. Finding and reading go to small, fast models; only the fix goes on to the big one."],
-                        Some(("How Coder works", HOW)), routing_pictures(), false,
+                        Some(("How Coder works", HOW)), routing_pictures(), false, true,
                     ))
                     (stats_section())
                     (feature_section(
                         "agents", "Agents", "Keep the agent you use",
                         &["Claude Code, Codex, OpenCode, Grok Build, Devin CLI and Cursor all run behind the same Coder. Shift+Tab steps from one to the next; Auto picks for you."],
                         Some(("Download Coder", "/download")),
-                        diagram("/static/docs/coder-agents.svg", "One Coder in front of every agent."), true,
+                        diagram("/static/docs/coder-agents.svg", "One Coder in front of every agent."), true, false,
                     ))
                     (feature_section(
                         "holds", "Safety", "Hard-to-undo steps wait for you",
                         &["Reading, editing, running tests and pushing go straight through. A deploy, a merge, a secret, a payment or a DNS change stops and waits until you press Y or N."],
                         None,
-                        diagram("/static/docs/coder-holds.svg", "Hard-to-undo steps wait for you."), false,
+                        diagram("/static/docs/coder-holds.svg", "Hard-to-undo steps wait for you."), false, false,
                     ))
                     (feature_section(
                         "everywhere", "Everywhere", "On the web and on your phone",
                         &["Start in the terminal, follow along on your phone, or design and check a part on the web."],
-                        None, shots_tray(), true,
+                        None, shots_tray(), true, true,
                     ))
                     (steps_section())
                     (pricing_section())
@@ -439,7 +453,7 @@ mod tests {
 
     #[test]
     fn the_landing_page_has_every_section_and_real_links() {
-        let page = page().into_string();
+        let page = page(None).into_string();
         for slot in [
             "navbar",
             "hero-section",
@@ -481,5 +495,11 @@ mod tests {
         // No inline styles or scripts: the site's policy allows neither.
         assert!(!page.contains("<script") && !page.contains("style="));
         crate::copy_guard::assert_plain("/landing", &page);
+        // The site's Coder Light / Coder Noir stylesheet, and the chosen
+        // theme pinned like every other page.
+        assert!(page.contains(crate::theme::STYLESHEET_PATH));
+        assert!(!page.contains("data-theme"));
+        let light = super::page(Some(openagents_ui::shell::Theme::Light)).into_string();
+        assert!(light.contains("data-theme=\"light\""));
     }
 }

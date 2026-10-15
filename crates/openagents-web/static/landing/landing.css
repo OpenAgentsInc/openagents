@@ -3,21 +3,23 @@
    ported from the registry reads the same variables. Dark only for now. */
 
 :root {
-  --background: #08090b;
-  --foreground: #ececef;
-  --card: #111216;
-  --card-foreground: #ececef;
-  --muted: #18191e;
-  --muted-foreground: #9a9ba3;
-  --border: #24252c;
-  --input: #2c2d35;
-  --primary: #f5f5f7;
-  --primary-foreground: #0b0b0d;
-  --accent: #e8b14a;
-  --ring: #6b6d78;
+  /* shadcn's color roles over our semantic tokens (crates/openagents-ui
+     static/tokens-semantic.css), so the page follows Coder Light and Coder
+     Noir like every other page: the visitor's choice, else their system. */
+  --background: var(--color-surface);
+  --foreground: var(--color-text);
+  --card: var(--color-surface-secondary);
+  --card-foreground: var(--color-text);
+  --muted: var(--color-background-primary-soft);
+  --muted-foreground: var(--color-text-secondary);
+  --border: var(--color-border);
+  --input: var(--color-border-strong);
+  --primary: var(--color-background-primary-solid);
+  --primary-foreground: var(--color-text-inverse);
+  --accent: var(--color-text-warning);
+  --ring: var(--color-ring);
   --radius: 14px;
   --max: 1160px;
-  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
@@ -33,7 +35,9 @@ body.landing {
   margin: 0;
   background: var(--background);
   color: var(--foreground);
-  font: 16px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.6;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -134,6 +138,10 @@ main > section {
 
 .navbar .button { height: 38px; padding: 0 16px; font-size: 14px; }
 
+.navbar-login { color: var(--muted-foreground); font-size: 15px; text-decoration: none; }
+
+.navbar-login:hover { color: var(--foreground); }
+
 /* Hero */
 .hero-section {
   display: grid;
@@ -179,7 +187,7 @@ main > section {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--card);
-  box-shadow: 0 30px 80px -40px #000;
+  box-shadow: 0 30px 80px -40px color-mix(in oklch, var(--foreground) 35%, transparent);
 }
 
 .prompt-chips { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -226,7 +234,7 @@ main > section {
 
 .dot { width: 9px; height: 9px; border-radius: 50%; }
 
-.dot-small { background: #4fb3a5; }
+.dot-small { background: var(--color-text-success); }
 
 .dot-big { background: var(--accent); box-shadow: 0 0 12px var(--accent); }
 
@@ -237,7 +245,7 @@ main > section {
   border-radius: 12px;
   background: color-mix(in oklch, var(--card) 92%, transparent);
   backdrop-filter: blur(8px);
-  box-shadow: 0 20px 50px -24px #000;
+  box-shadow: 0 20px 50px -24px color-mix(in oklch, var(--foreground) 35%, transparent);
 }
 
 .float-stat { top: 0; right: 0; }
@@ -280,6 +288,14 @@ kbd {
 
 .feature-flipped .feature-copy { order: 2; }
 
+/* More than one picture: the words over the full width, the pictures
+   below at a size they can be read at. */
+.feature-wide { grid-template-columns: 1fr; gap: 40px; }
+
+.feature-wide .feature-copy { max-width: 720px; }
+
+.feature-wide .feature-picture { padding: 24px; }
+
 .feature-copy p { margin-top: 18px; color: var(--muted-foreground); font-size: 17px; }
 
 .feature-copy .button { margin-top: 28px; }
@@ -293,17 +309,17 @@ kbd {
 
 .diagram { display: block; width: 100%; height: auto; border-radius: 10px; }
 
-.compare { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.compare { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
 
 figure { margin: 0; }
 
 .compare figcaption { margin-top: 8px; color: var(--muted-foreground); font-size: 13px; text-align: center; }
 
-.tray { display: grid; grid-template-columns: 1fr 1fr 0.62fr; gap: 12px; align-items: end; }
+.tray { display: grid; grid-template-columns: 1fr 1fr 0.42fr; gap: 24px; align-items: start; }
 
 .tray-shot img { display: block; width: 100%; border-radius: 10px; border: 1px solid var(--border); }
 
-.tray-shot figcaption { display: grid; margin-top: 8px; font-size: 13px; }
+.tray-shot figcaption { display: grid; gap: 2px; margin-top: 12px; font-size: 15px; }
 
 .tray-shot figcaption span { color: var(--muted-foreground); }
 
@@ -438,6 +454,9 @@ figure { margin: 0; }
 @media (max-width: 900px) {
   .navbar-links { display: none; }
   .navbar { gap: 16px; }
+  .compare { grid-template-columns: 1fr; }
+  .tray { grid-template-columns: 1fr 0.5fr; }
+  .tray-shot:nth-child(2) { display: none; }
   .navbar .button { margin-left: auto; }
   .hero-pill { flex-wrap: wrap; border-radius: 16px; }
   .hero-section, .feature-section { grid-template-columns: 1fr; gap: 40px; }
