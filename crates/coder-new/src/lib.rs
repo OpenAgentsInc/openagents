@@ -222,6 +222,10 @@ pub struct App {
     footer_focused: bool,
     replaying_prompt: bool,
     queue_hint_count: u8,
+    /// The terminal tells Ctrl+Enter from Enter (the kitty keyboard
+    /// protocol, or Windows' own key events), so the input's hint names
+    /// Ctrl+Enter rather than the Ctrl+Q fallback (#11685).
+    pub ctrl_enter_detected: bool,
     escape_at: Option<std::time::Instant>,
     pub messages: Vec<String>,
     pub scroll: u16,
@@ -3998,7 +4002,14 @@ impl App {
                         self.composer_history.reset();
                         self.draft.insert("\n");
                     }
-                    KeyCode::Enter if !ctrl => {
+                    // Ctrl+Enter (Cmd+Enter where the terminal reports it)
+                    // queues the message for later (#11685). Many terminals
+                    // send Ctrl+Enter as Ctrl+J, and Ctrl+Q always works.
+                    KeyCode::Enter if ctrl || key.modifiers.contains(KeyModifiers::SUPER) => {
+                        self.queue_for_later();
+                    }
+                    KeyCode::Char('j' | 'q') if ctrl => self.queue_for_later(),
+                    KeyCode::Enter => {
                         if self.on_coder_loop()
                             && self.draft.text.trim().is_empty()
                             && self.composer.images.is_empty()
@@ -4018,13 +4029,30 @@ impl App {
                             self.message_agent(index);
                             return true;
                         }
-                        if self.on_coder_loop()
-                            && self.live.busy
+                        // Enter sends now, even while a turn runs (#11685):
+                        // into the running turn where its harness reads one,
+                        // otherwise the turn stops and this message goes.
+                        // It never queues; Ctrl+Enter does that.
+                        if self.live.busy
                             && (!self.draft.text.trim().is_empty()
                                 || !self.composer.images.is_empty())
                         {
-                            self.queue_prompt();
-                            return true;
+                            if self.on_coder_loop()
+                                && (self.selected_agent.is_some()
+                                    || self.draft.text.trim().starts_with('/'))
+                            {
+                                // A command, or a message to an agent's
+                                // chat, waits for the turn as before.
+                                self.queue_prompt();
+                                return true;
+                            }
+                            if self.selected_agent.is_none()
+                                && !self.draft.text.trim().starts_with('/')
+                                && !self.steers_running_turn()
+                            {
+                                self.send_now();
+                                return true;
+                            }
                         }
                         if self.submit_brainstorm_command() {
                             return true;

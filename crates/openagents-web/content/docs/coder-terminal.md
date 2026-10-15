@@ -38,10 +38,15 @@ It works in any terminal, over SSH, and in tmux. Install it from [Download and i
 
 ## Keys
 
+The input's bottom edge says it short: "Enter to send, Ctrl+Enter to queue for
+later" ("Ctrl+Q" where the terminal can't tell Ctrl+Enter apart).
+
 | Key | Does |
 | --- | --- |
-| Enter | Send. |
+| Enter | Send now, even while a reply is being written. Claude Code and Codex read it in the turn they're on; on Coder's own loop and OpenCode the reply stops and your message goes next. It never waits in the queue. With an empty input, Enter sends the next queued message now. |
+| Ctrl+Enter | Queue for later: the message waits under the input and runs when the reply ends, in the order you queued. With nothing running it sends at once. Many terminals send Ctrl+Enter as a plain Enter; there, use Ctrl+Q (Ctrl+J works too), and the input's hint says so. Kitty, Ghostty, foot, and Windows Terminal tell Ctrl+Enter apart. |
 | Shift+Enter, Alt+Enter | A new line. |
+| Esc with messages queued | Puts the queued messages back in the input to edit or remove. |
 | Esc | Stop the reply. Closes a list or screen. Twice on a draft clears it. |
 | Shift+Tab | In a new chat, before its first message: choose who answers (Auto, Claude Code, Codex, OpenCode, or another agent here). |
 | Tab | Complete a `/` command. |

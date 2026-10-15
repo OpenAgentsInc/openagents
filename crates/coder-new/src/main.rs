@@ -386,6 +386,18 @@ fn run() -> io::Result<()> {
         previous_hook(info);
     }));
     let result: io::Result<()> = (|| {
+        // Ctrl+Enter queues for later (#11685): the kitty keyboard protocol
+        // tells it from Enter, and Windows reports the key itself; where
+        // neither holds, the input's hint names Ctrl+Q instead.
+        #[cfg(unix)]
+        {
+            app.ctrl_enter_detected =
+                crossterm::terminal::supports_keyboard_enhancement().unwrap_or(false);
+        }
+        #[cfg(windows)]
+        {
+            app.ctrl_enter_detected = true;
+        }
         #[cfg(unix)]
         execute!(
             io::stdout(),

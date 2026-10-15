@@ -3,6 +3,11 @@ use crate::{App, Draft, Mode, Screen, live};
 
 /// The discovery hint for retrieving queued messages (#11121).
 pub(crate) const QUEUE_HINT: &str = "Press up to edit queued messages";
+/// The input's hint for the send keys (#11685).
+pub const SEND_HINT: &str = "Enter to send, Ctrl+Enter to queue for later";
+/// The hint where the terminal sends Ctrl+Enter as a plain Enter: Ctrl+Q
+/// queues everywhere.
+pub const SEND_HINT_FALLBACK: &str = "Enter to send, Ctrl+Q to queue for later";
 /// How many times the hint is shown in one run of Coder.
 const QUEUE_HINT_SHOWS: u8 = 3;
 
@@ -22,13 +27,65 @@ pub(crate) struct Prompt {
 }
 
 impl App {
+    /// The send keys' hint the input shows: Ctrl+Enter where the terminal
+    /// tells it from Enter, else the Ctrl+Q fallback.
+    pub fn send_hint(&self) -> &'static str {
+        if self.ctrl_enter_detected {
+            SEND_HINT
+        } else {
+            SEND_HINT_FALLBACK
+        }
+    }
+
     pub(crate) fn queue_prompt(&mut self) {
+        self.queue_prompt_with(true);
+    }
+
+    /// Ctrl+Enter (#11685): the message waits in the queue and runs after
+    /// the current turn ends; with nothing running it goes at once.
+    pub(crate) fn queue_for_later(&mut self) {
+        if self.draft.text.trim().is_empty() && self.composer.images.is_empty() {
+            return;
+        }
+        self.composer_history.reset();
+        self.queue_prompt_with(false);
+        if !self.live.busy {
+            self.process_prompt_queue();
+        }
+    }
+
+    /// Enter while a turn runs on a harness that can't read a message mid
+    /// turn (#11685): the turn stops and this message goes now. Messages
+    /// already queued stay queued and run after it.
+    pub(crate) fn send_now(&mut self) {
+        self.cancel_request();
+        self.submit_live();
+    }
+
+    /// Whether the running turn reads a message sent now: Claude Code and
+    /// Codex take one mid turn.
+    pub(crate) fn steers_running_turn(&self) -> bool {
+        self.claude_turn
+            && matches!(
+                self.live.runs_on,
+                Some(
+                    crate::harness_plugin::Harness::ClaudeCode
+                        | crate::harness_plugin::Harness::Codex
+                )
+            )
+    }
+
+    /// Queues the draft. `steer` lets a turn on Coder's own loop read it
+    /// after its current tool batch; a message queued for later waits for
+    /// the turn to end.
+    fn queue_prompt_with(&mut self, steer: bool) {
         if self.draft.text.trim().is_empty() && self.composer.images.is_empty() {
             return;
         }
         self.record_prompt();
         let slot = std::sync::Arc::new(std::sync::Mutex::new(Some(self.draft.text.clone())));
-        if self.live.busy
+        if steer
+            && self.live.busy
             && self.active_delegation.is_none()
             && self.selected_agent.is_none()
             && self.composer.mode == crate::composer_state::InputMode::Prompt
@@ -391,30 +448,109 @@ mod tests {
         );
     }
 
+    fn key(
+        code: crossterm::event::KeyCode,
+        modifiers: crossterm::event::KeyModifiers,
+    ) -> crossterm::event::Event {
+        crossterm::event::Event::Key(crossterm::event::KeyEvent::new(code, modifiers))
+    }
+
+    fn user_texts(request: &live::Request) -> Vec<String> {
+        match &request.kind {
+            Work::Microcoder { messages, .. } | Work::Chat { messages, .. } => messages
+                .iter()
+                .filter(|m| m.role == "user")
+                .map(|m| m.content.clone())
+                .collect(),
+            _ => panic!("chat request"),
+        }
+    }
+
+    /// #11685: Enter sends now while a turn runs, Ctrl+Enter (or Ctrl+J,
+    /// or Ctrl+Q) queues for later, and Alt+Enter is a new line.
     #[test]
-    fn enter_with_draft_still_queues_and_alt_enter_inserts_newline() {
+    fn enter_with_draft_sends_now_ctrl_enter_queues_and_alt_enter_inserts_newline() {
+        use crossterm::event::{KeyCode, KeyModifiers};
         let mut app = app();
         app.submit("first", std::path::Path::new("."));
         let id = app.request.take().unwrap().id;
         app.submit("second", std::path::Path::new("."));
+        assert_eq!(app.queued_prompts.len(), 1);
+        // Enter: the running turn stops and "third" goes now.
         app.draft.text = "third".into();
         app.draft.cursor = 5;
-        app.handle(crossterm::event::Event::Key(
-            crossterm::event::KeyEvent::new(
-                crossterm::event::KeyCode::Enter,
-                crossterm::event::KeyModifiers::NONE,
-            ),
-        ));
-        assert_eq!(app.queued_prompts.len(), 2);
-        assert_eq!(app.request_id, id);
-        app.handle(crossterm::event::Event::Key(
-            crossterm::event::KeyEvent::new(
-                crossterm::event::KeyCode::Enter,
-                crossterm::event::KeyModifiers::ALT,
-            ),
-        ));
+        app.handle(key(KeyCode::Enter, KeyModifiers::NONE));
+        assert!(app.draft.text.is_empty());
+        assert_ne!(app.request_id, id);
+        assert!(app.live.busy);
+        let request = app.request.take().unwrap();
+        assert_eq!(user_texts(&request), ["first", "third"]);
+        // What was queued before still waits its turn.
+        assert_eq!(app.queued_prompts.len(), 1);
+        assert_eq!(app.queued_prompts[0].text, "second");
+        let id = app.request_id;
+        // Ctrl+Enter, Ctrl+J and Ctrl+Q each queue for later.
+        for (n, (code, modifiers)) in [
+            (KeyCode::Enter, KeyModifiers::CONTROL),
+            (KeyCode::Char('j'), KeyModifiers::CONTROL),
+            (KeyCode::Char('q'), KeyModifiers::CONTROL),
+            (KeyCode::Enter, KeyModifiers::SUPER),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            app.draft.text = format!("later {n}");
+            app.draft.cursor = app.draft.text.len();
+            app.handle(key(code, modifiers));
+            assert!(app.draft.text.is_empty());
+            assert_eq!(app.request_id, id);
+            assert_eq!(app.queued_prompts.len(), n + 2);
+        }
+        // A message queued for later is not read mid turn.
+        assert!(app.prompt_inbox.lock().unwrap().is_empty());
+        app.handle(key(KeyCode::Enter, KeyModifiers::ALT));
         assert_eq!(app.draft.text, "\n");
-        assert_eq!(app.queued_prompts.len(), 2);
+        app.handle(key(KeyCode::Enter, KeyModifiers::SHIFT));
+        assert_eq!(app.draft.text, "\n\n");
+        assert_eq!(app.queued_prompts.len(), 5);
+        // When the turn ends the queue runs, in order.
+        app.draft = Draft::default();
+        app.apply_update(Update::Finished {
+            id,
+            result: Err("fixture failure".into()),
+        });
+        app.process_prompt_queue();
+        assert!(app.queued_prompts.is_empty());
+        let request = app.request.take().unwrap();
+        let texts = user_texts(&request);
+        assert_eq!(
+            &texts[texts.len() - 5..],
+            ["second", "later 0", "later 1", "later 2", "later 3"]
+        );
+    }
+
+    /// With nothing running, Ctrl+Enter sends at once.
+    #[test]
+    fn ctrl_enter_while_idle_sends() {
+        use crossterm::event::{KeyCode, KeyModifiers};
+        let mut app = app();
+        app.draft.text = "hello".into();
+        app.draft.cursor = 5;
+        app.handle(key(KeyCode::Enter, KeyModifiers::CONTROL));
+        assert!(app.queued_prompts.is_empty());
+        assert!(app.live.busy);
+        assert_eq!(user_texts(&app.request.take().unwrap()), ["hello"]);
+    }
+
+    #[test]
+    fn the_hint_names_ctrl_q_only_where_ctrl_enter_cannot_be_told_apart() {
+        let mut app = app();
+        assert_eq!(app.send_hint(), SEND_HINT_FALLBACK);
+        app.ctrl_enter_detected = true;
+        assert_eq!(
+            app.send_hint(),
+            "Enter to send, Ctrl+Enter to queue for later"
+        );
     }
 
     #[test]

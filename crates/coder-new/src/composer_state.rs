@@ -353,9 +353,10 @@ mod tests {
         app.handle(Event::Paste(
             "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==".into(),
         ));
+        // Ctrl+Enter queues it for later (#11685).
         app.handle(Event::Key(KeyEvent::new(
             KeyCode::Enter,
-            KeyModifiers::NONE,
+            KeyModifiers::CONTROL,
         )));
         assert!(app.draft.text.is_empty());
         assert_eq!(app.queued_prompts.len(), 1);

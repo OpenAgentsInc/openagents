@@ -272,6 +272,11 @@ fn render_contents(frame: &mut Frame, app: &mut App) {
         .as_ref()
         .filter(|(until, _)| std::time::Instant::now() < *until)
         .map(|(_, text)| text.as_str());
+    // Otherwise the send keys' hint (#11685), where it fits beside the path.
+    let hint = app.send_hint();
+    let status = status.or_else(|| {
+        (usize::from(terminal_width) >= hint.width() + 3 + path.width() + 6).then_some(hint)
+    });
     let status_width = status.map_or(0, |s| s.chars().count() as u16 + 3);
     let path = truncate(&path, terminal_width.saturating_sub(6 + status_width));
     coder_terminal::rail(
