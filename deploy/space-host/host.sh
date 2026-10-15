@@ -59,7 +59,7 @@ case ${1:-help} in
     ;;
   status)
     owned instances --zone "$ZONE"
-    ssh_host --command 'sudo journalctl -u space-spike-install --no-pager -n 35'
+    ssh_host --command 'sudo journalctl -u space-spike-install --no-pager -n 5; sudo tail -n 25 /var/lib/space-spike/home/install.log'
     ;;
   runtime)
     owned instances --zone "$ZONE"
