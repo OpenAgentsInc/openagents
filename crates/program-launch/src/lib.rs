@@ -368,6 +368,12 @@ mod tests {
     const NATIVE_CMD: &str =
         "@ECHO off\r\nendLocal & \"%dp0%\\node_modules\\tool\\bin\\tool.exe\"   %*\r\n";
 
+    /// The launch's prefix as paths, which compare by component: npm's
+    /// shims name their script with `\`, a test's paths with `/`.
+    fn prefix_paths(launch: &Launch) -> Vec<PathBuf> {
+        launch.prefix.iter().map(PathBuf::from).collect()
+    }
+
     fn write(path: &Path, text: &str) {
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(path, text).unwrap();
@@ -383,7 +389,7 @@ mod tests {
         // No node beside the shim and none on PATH: the bare name.
         let launch = launch_with(&shim, None, None);
         assert_eq!(launch.program, PathBuf::from("node"));
-        assert_eq!(launch.prefix, vec![script.clone().into_os_string()]);
+        assert_eq!(prefix_paths(&launch), vec![script.clone()]);
         assert!(!launch.is_batch());
         // A Node on PATH is found by its PATHEXT name.
         let bin = dir.path().join("nodejs");
@@ -395,7 +401,7 @@ mod tests {
         write(&dir.path().join("node.exe"), "");
         let launch = launch_with(&shim, Some(&path), None);
         assert_eq!(launch.program, dir.path().join("node.exe"));
-        assert_eq!(launch.prefix, vec![script.into_os_string()]);
+        assert_eq!(prefix_paths(&launch), vec![script]);
     }
 
     #[test]
@@ -407,7 +413,7 @@ mod tests {
         write(&script, "");
         let launch = launch_with(&shim, None, None);
         assert_eq!(launch.program, PathBuf::from("node"));
-        assert_eq!(launch.prefix, vec![script.into_os_string()]);
+        assert_eq!(prefix_paths(&launch), vec![script]);
 
         let shim = dir.path().join("claude.ps1");
         write(&shim, NPM_PS1);
@@ -417,7 +423,7 @@ mod tests {
         write(&script, "");
         let launch = launch_with(&shim, None, None);
         assert_eq!(launch.program, PathBuf::from("node"));
-        assert_eq!(launch.prefix, vec![script.into_os_string()]);
+        assert_eq!(prefix_paths(&launch), vec![script]);
     }
 
     #[test]
@@ -428,6 +434,22 @@ mod tests {
         let exe = dir.path().join("node_modules/tool/bin/tool.exe");
         write(&exe, "");
         assert_eq!(launch_with(&shim, None, None), Launch::direct(&exe));
+    }
+
+    /// The exact shim `npm install -g opencode-ai` (1.19) writes on
+    /// Windows, read from a Windows Server 2022 VM (#11645): Coder runs
+    /// the package's `opencode.exe`, never `cmd.exe`.
+    #[test]
+    fn the_real_opencode_ai_shim_runs_its_exe() {
+        const REAL: &str = "@ECHO off\r\nGOTO start\r\n:find_dp0\r\nSET dp0=%~dp0\r\nEXIT /b\r\n:start\r\nSETLOCAL\r\nCALL :find_dp0\r\n\"%dp0%\\node_modules\\opencode-ai\\bin\\opencode.exe\"   %*\r\n";
+        let dir = tempfile::tempdir().unwrap();
+        let shim = dir.path().join("opencode.cmd");
+        write(&shim, REAL);
+        let exe = dir.path().join("node_modules/opencode-ai/bin/opencode.exe");
+        write(&exe, "");
+        let launch = launch_with(&shim, None, None);
+        assert_eq!(launch, Launch::direct(&exe));
+        assert!(refusal(&launch, &["line one\nline two"]).is_none());
     }
 
     /// The npm `opencode` launcher looks for the platform package's
