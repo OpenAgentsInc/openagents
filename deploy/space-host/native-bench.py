@@ -38,7 +38,47 @@ def cli(*args):
         raise RuntimeError(f'Node CLI failed ({result.returncode}): {result.stderr[:2000]}')
     return result.stdout
 
+def prepare_network():
+    # Kind disables precreated network slots because sandbox pods bring CNI
+    # namespaces. Explicit node creates need a small pool of their own.
+    present = subprocess.run(['docker', 'exec', node, 'test', '-x', '/space/bin/grpcurl'])
+    if present.returncode:
+        container = 'oa-space-grpcurl-helper'
+        subprocess.run(['docker', 'create', '--name', container,
+                        'oa-space-runtime-publish:local'], check=True, capture_output=True)
+        try:
+            subprocess.run(['docker', 'cp', container + ':/usr/local/bin/grpcurl',
+                            str(home / 'grpcurl')], check=True)
+        finally:
+            subprocess.run(['docker', 'rm', container], check=True, capture_output=True)
+        subprocess.run(['docker', 'cp', str(home / 'grpcurl'),
+                        node + ':/space/bin/grpcurl'], check=True)
+        subprocess.run(['docker', 'cp', str(home / 'SPACE/proto'),
+                        node + ':/space/spike-proto'], check=True)
+
+    def rpc(method, body):
+        return json.loads(subprocess.check_output([
+            'docker', 'exec', node, '/space/bin/grpcurl', '-plaintext',
+            '-import-path', '/space/spike-proto', '-proto', 'node/v1/node.proto',
+            '-d', json.dumps(body), 'unix:///space/run/node-manager/node-manager.sock',
+            'space.node.v1.NodeManager/' + method], text=True, timeout=30))
+
+    report['network_pool_before'] = rpc('GetNetworkPoolStatus', {})
+    report['network_pool_configured'] = rpc('SetNetworkPoolConfig', {
+        'target_ready_slots': 2, 'retained_ready_slots': 2, 'min_ready_slots': 1})
+    until = time.monotonic() + 120
+    while True:
+        status = rpc('GetNetworkPoolStatus', {})
+        if status.get('networkSlotsReady', 0) >= 2:
+            report['network_pool_ready'] = status
+            save()
+            return
+        if time.monotonic() >= until:
+            raise RuntimeError('Native network slots did not become ready.')
+        time.sleep(1)
+
 try:
+    prepare_network()
     for index in range(20):
         save()
         start = time.monotonic()
