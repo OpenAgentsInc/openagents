@@ -62,9 +62,11 @@ checked-in conversion receipt pins the converted weight checksum and
 configuration. No weights are committed.
 
 `ModernBertEngine` implements the encoder in Rust with a bounded Rayon
-pool and portable SIMD GEMMs from `matrixmultiply`. The existing qwen35
-GEMM specializes in quantized AVX-512 projections; this encoder uses
-float32 matrices and also runs on AVX2 and ARM CPUs.
+pool, packed AVX2/FMA projections on x86, and portable `gemm` fallbacks.
+Weights retain float32 precision. Cached rotary tables, vector norms and
+activations, bounded scratch buffers, and first-token final-layer pruning
+reduce repeated work. Workers preserve the caller's allowed CPU mask so the
+OS can schedule around other work.
 
 ```sh
 python3 scripts/dev/psionic-router.py convert /path/to/models/s1-router
@@ -113,13 +115,17 @@ The existing server has a router-only mode:
 
 ```sh
 cargo build --manifest-path crates/psionic/Cargo.toml -p psionic-serve \
-  --bin psionic-openai-server --features router-ort
+  --release --bin psionic-openai-server --features router-ort,router-cuda
 psionic-openai-server --router-model-dir /path/to/models/s1-router \
-  --router-engine native --router-threads 4 --host 127.0.0.1 --port 8080
+  --router-engine native --router-device cuda --router-threads 4 \
+  --host 127.0.0.1 --port 8080
 ```
 
 For ORT, select `--router-engine ort` and provide `--ort-library FILE`
-and `--ort-sha256 HASH`. A build without `router-ort` refuses that engine.
+and `--ort-sha256 HASH`. Select `--router-device cpu|cuda|coreml` for ORT
+or `cpu|cuda|metal` for native; CPU is the default. Enable `router-metal`
+on a Mac. ORT accelerator CPU partitions require the explicit
+`--router-allow-cpu-fallback` flag. A build without `router-ort` refuses ORT.
 Run GGUF models in a separate server. Exact browser origins can use the
 existing `--allow-origin` option.
 
@@ -209,9 +215,12 @@ masks in and 22 logits out. A bounded CUDA graph cache removes repeated launch
 setup; the first call at each sequence length captures a graph. The last layer
 computes only the output row used by first-token pooling.
 
-ModernBERT on Metal and MNIST accelerators still use device GEMMs between CPU
-operations. Each GEMM writes a host input, waits, and reads its output. Their
-remaining work is tracked in #11724 and #11725. Potion's native path supports
+MNIST on CUDA uses three captured float32 kernels: convolution/ReLU/pooling
+for each stage, then the dense head. Metal implementations keep the complete
+encoder and digit graph on GPU with persistent buffers and one command buffer
+per call. Metal uses float32 tiled matrices and disables fast math. Apple
+shader compilation, fixture parity, and Metal/Core ML performance remain
+unqualified until checked on an Apple device. Potion's native path supports
 CPU only; unsupported explicit choices return an error.
 
 Device contexts and buffers stay on one dedicated worker thread, which
@@ -239,7 +248,9 @@ and requires NVIDIA driver 580.65.06 or newer before starting any runs.
 Other CUDA/cuDNN configurations need their own compatibility check and
 can use the binary directly. Apple comparisons use Core ML's
 CPU-and-GPU setting; an ANE run is a separate hardware configuration.
-The existing router HTTP mode continues to select CPU execution.
+Router HTTP serving selects the same device through `--router-device`;
+CUDA loopback tests compare exact HTTP and in-process answers and the
+published execution identity.
 
 The optional ORT feature still loads a separately provisioned library;
 it never downloads one during inference. Native-only builds exclude it.
@@ -300,3 +311,9 @@ on the full reference mix, with p99 1.96–1.97 ms versus 2.70 ms. At exactly
 3.09–3.16 ms. These are CUDA results, not the four-core CPU target. Use
 `--families router` and `--min-tokens 512 --max-tokens 512` on the paired
 accelerator runner to reproduce the separate long-input bucket.
+
+
+The [native digit CUDA study](fixtures/reports/native-parity-digit-cuda-2026-10-15/study.json)
+retains 4,000 paired timings and compressed ORT profiles. Native median is
+0.055–0.056 ms versus ORT 0.072–0.075 ms, with lower p99 in both rounds.
+CPU remains faster for this tiny model.

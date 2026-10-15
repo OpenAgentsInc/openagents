@@ -1,0 +1,107 @@
+{
+  "schema": "psionic.native.digit.cuda.parity.study.v1",
+  "issue": 11724,
+  "date": "2026-10-15",
+  "implementation": {
+    "source_commit": "27e73bff47b38f75bc591db5b48ce5ba44bcef77",
+    "source_sha256": {
+      "crates/psionic/crates/psionic-backend-cuda/src/digit.rs": "ff95f54b9aa635c42799120322e789e5b8407060c7b0570afdacc17a9a641757",
+      "crates/psionic/crates/psionic-backend-cuda/src/kernels/digit.cu": "e23be040abcbe7038216f265937e4446dea5b79d43df43a2eda6359d0ae01799",
+      "crates/psionic/crates/psionic-backend-cuda/src/kernels/digit_stub.c": "ee050ff2933aa68281f36e158f56e928a62b0db1ba54b24b28e8238220d74970",
+      "crates/psionic/crates/psionic-backend-metal/src/kernels/small_models.metal": "5be5aa0188a903ae00fa84f41cd11d1487ea88c7b94b1d5987ae6a7648f64f3f",
+      "crates/psionic/crates/psionic-backend-metal/src/small_models.rs": "ce6b2f4f4e9c36e11efa650ce58711742e2c56f04a39acad4f7e5e80abbab734",
+      "crates/psionic/crates/psionic-inference/src/artifacts.rs": "fad7846b7a40041383a4f4bc35b55eaf59bef4017f90d295f492227eb36a2dc3",
+      "crates/psionic/crates/psionic-inference/src/bin/psionic-model-bench.rs": "1f1a8e603fb77ee5754f2c52ecbb94af50a798497f6aeaa112f7d85e1667e09d",
+      "crates/psionic/crates/psionic-inference/src/bin/psionic-small-model-bench.rs": "835484bb70e963a0eb7708ffa9766f7fa73bc55d0c4f5d27d937e728250c546c",
+      "crates/psionic/crates/psionic-inference/src/buffers.rs": "3068c2957a344e07a9999f5ebcc8da4e4f0413cb3c6650fe1fe67a6225579b9b",
+      "crates/psionic/crates/psionic-inference/src/cpu.rs": "e257c9f3e74c50c0103cbea6f1238808c45df249ae8e3e4946363df191ea290d",
+      "crates/psionic/crates/psionic-inference/src/dense_accelerator.rs": "d68bda4cc07d996f3a8cfebe5fb2c390b299ddfdcfdd147ac18d9b640f6440dc",
+      "crates/psionic/crates/psionic-inference/src/http.rs": "60b12f931c51a32117b4495eb770e7d9e9593e011b61b07b8d2b9c033873d996",
+      "crates/psionic/crates/psionic-inference/src/lib.rs": "ea9294a0fb22a4dd9ca30dadc1467ae0d562dafb7821dda2c241eddade55a5a4",
+      "crates/psionic/crates/psionic-inference/src/models/mnist/cuda.rs": "da887fe1861970856daa16262a937c879c2d05fe5aad08010c2199dabc57c02a",
+      "crates/psionic/crates/psionic-inference/src/models/mnist/metal.rs": "f87ea9058c637f0edc9d911e49e7bf9654e0d2a0c8c2f4ff751ab6d99a204c6a",
+      "crates/psionic/crates/psionic-inference/src/models/mnist/simd.rs": "50640ff0798bac55b4ff29205495cd20aa2a2baf18a507ed7e1ff6b4d98bbcc4",
+      "crates/psionic/crates/psionic-inference/src/models/mnist.rs": "fe1dc4ae122069825ad2742dbdd86545b50e46da906f089f5c41626954620f5d",
+      "crates/psionic/crates/psionic-inference/src/models/mod.rs": "8857db6792199a521eb072dabd93296f57668d913c6eb254da03f1e2b84f1c17",
+      "crates/psionic/crates/psionic-inference/src/models/potion.rs": "0228b17cd4ea981d3b45183264bcabd0a30ddfcfcd8d30346c1c1b90d87f4fd7",
+      "crates/psionic/crates/psionic-inference/src/modernbert/cuda.rs": "703b85ea122370ea6f82a8235d255dd4e7974bcabb3b76fae77208971b1cbb1f",
+      "crates/psionic/crates/psionic-inference/src/modernbert/metal.rs": "cfeaac6e04f7780b649a2d2194dcfb3cd2a92ff913faa8466772ebc308b93382",
+      "crates/psionic/crates/psionic-inference/src/modernbert/simd.rs": "54da86738ebdc163d240cc32167c6c93985cd9a3326b483982b8fd7982d0e438",
+      "crates/psionic/crates/psionic-inference/src/modernbert.rs": "56b5c80bf221f3f63c169801529fc03e7345c4e0f74c99c5c19e4849433f6b1d",
+      "crates/psionic/crates/psionic-inference/src/ort_engine.rs": "c50336a454a77730571f1b9e59b8626dc161092ad2224050d593c8569a5b2631",
+      "crates/psionic/crates/psionic-inference/src/router.rs": "4e2c2edcdcd4cac56790da31aa6f3d988c02c3149863f1e15d02bf7fbb0281a7",
+      "crates/psionic/crates/psionic-inference/src/service.rs": "80b8acd9668cb1d21ef216abe012ea00927526f54ba89acb11c55ff0c73c3c07"
+    }
+  },
+  "protocol": "Two alternating A/B rounds, 1000 timings/run, same RTX 4080 and four P-core affinity. Each process checks all 100 independent references before timing. All models and runtime libraries are pinned in raw runs. No own compilation overlapped timings; other sessions continued. Float32, eager CUDA loading, TF32 disabled.",
+  "timed_calls": 4000,
+  "summary": [
+    {
+      "model": "mnist-12",
+      "engine": "ort",
+      "threads": 4,
+      "bucket": "full",
+      "p50_ms": 0.073193,
+      "p50_range_ms": [
+        0.071613,
+        0.07477299999999999
+      ],
+      "p99_range_ms": [
+        0.110759,
+        0.114791
+      ],
+      "requests_per_second_range": [
+        12208.070098347847,
+        12752.33605262022
+      ],
+      "resident_bytes_range": [
+        4120240128,
+        4131958784
+      ],
+      "max_reference_logit_error": 2.288818359375e-05
+    },
+    {
+      "model": "mnist-12",
+      "engine": "native",
+      "threads": 4,
+      "bucket": "full",
+      "p50_ms": 0.055695499999999995,
+      "p50_range_ms": [
+        0.055223999999999995,
+        0.056167
+      ],
+      "p99_range_ms": [
+        0.066134,
+        0.077796
+      ],
+      "requests_per_second_range": [
+        17292.53779266842,
+        17664.35409653329
+      ],
+      "resident_bytes_range": [
+        1506029568,
+        1507852288
+      ],
+      "max_reference_logit_error": 3.814697265625e-05
+    }
+  ],
+  "changes": "Two fused convolution/ReLU/floor-pooling kernels and one dense-head kernel. Persistent device buffers and one captured CUDA graph; only image pixels and ten final logits cross the host boundary. No ORT or cuDNN is required for the native engine.",
+  "correctness": "Every run passes all 100 independent reference cases with identical digit argmax. Separate kernel/scalar edge and padding tests and repeated full-fixture replay pass. This corpus establishes execution correctness, not handwriting recognition quality.",
+  "memory_note": "Raw records measure host RSS while models are loaded. GPU memory after child exit is not peak VRAM evidence.",
+  "profiles": {
+    "mnist-0_2026-10-15_16-30-39_576.json.gz": {
+      "uncompressed_sha256": "b5dade43794499f72a66895acd6fd6355f8088021c4f127df98764828a47c839",
+      "compressed_sha256": "98948a6a0441d6e88889d9e434842c2e1c1687fba91b4e1a71db5aee6fc7e9e4"
+    },
+    "mnist-1_2026-10-15_16-30-45_373.json.gz": {
+      "uncompressed_sha256": "d39617206a3aadc684aed9a708764dcca1c842ab487d671e69eaf721078994a9",
+      "compressed_sha256": "e229eb066469a858ab0750ce00d824ae695f5a439c0fe4e8eab10dd6dbf54b7a"
+    }
+  },
+  "runs_sha256": "33eeebbd602d2eb27709fe1daafdfd529d6b6447c9c4d8b61f7db80ccd64532f",
+  "remaining": [
+    "Apple Metal/Core ML and mobile qualification.",
+    "Peak per-model VRAM remains unmeasured.",
+    "CPU remains the faster device for this tiny digit model on this host."
+  ]
+}

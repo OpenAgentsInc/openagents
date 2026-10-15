@@ -9,15 +9,20 @@ of the first live channel change and acknowledged tower sessions after a
 payment. Follow [the runbook](docs/payments/lnd-host.md#channel-backups-and-watchtowers).
 No production seed was read for the drill. Customer traffic remains unchanged.
 
-## Qualify Psionic on Apple and mobile devices (#11706)
+## Qualify Psionic on Apple and mobile devices (#11706, #11725)
 
 The Rust APIs and comparison driver support native Metal and ORT Core ML
-for ModernBERT and MNIST. This Linux session has no Apple device result.
+for ModernBERT and MNIST. Native Metal now has device-resident encoder and
+digit implementations with persistent buffers and float32 GPU operations.
+This Linux session has no Apple shader-compilation or device result.
 The native CPU library cross-checks for `aarch64-apple-darwin`; the
 accelerator cross-check requires Apple's SDK (`TargetConditionals.h` is
 absent here). On a Mac, build `psionic-small-model-bench` with
 `--release --features ort,native-metal`, provision an ARM64 ORT 1.28.0
-library with Core ML support, and run
+library with Core ML support. First run the ignored `metal_` fixture tests
+and `modernbert::metal::tests` in `psionic-inference`, plus the ignored
+`small_models::tests` in `psionic-backend-metal`, using the pinned model
+directories. Run the paired CPU matrix and
 `scripts/dev/psionic-accelerator-bench.py --platform apple` with the
 pinned model directories, runtime path and checksum, output, and scratch
 profile directory. Keep the default CPU-and-GPU Core ML configuration for

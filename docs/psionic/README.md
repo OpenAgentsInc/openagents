@@ -44,11 +44,12 @@ The `psionic-inference` crate implements both CPU engines for
 `s1-llm-auto-router`, Potion embeddings, and MNIST digit vision, with
 shared fixtures and benchmark runners. It also exposes ORT CUDA/Core ML
 and native CUDA/Metal execution for the router and digit model. The CUDA
-router keeps all tensor computation on GPU and beats ORT in the retained
-paired median and p99 measurements; Metal and digit execution still mix
-CPU and GPU operations.
+router and digit model keep tensor computation on GPU and beat ORT in the
+retained paired median and p99 measurements. Metal has complete GPU graphs
+but still needs Apple shader compilation and device qualification.
 The existing `psionic-openai-server` serves the fixed router through
-`--router-model-dir` and an explicit `--router-engine native|ort`. The
+`--router-model-dir`, an explicit `--router-engine native|ort`, and
+`--router-device cpu|cuda|metal|coreml` for the supported engine/device pair. The
 roadmap records CPU, HTTP, CUDA, and package comparisons. Apple and mobile
 device qualification remains in `NEEDS_OWNER.md`.
 

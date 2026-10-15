@@ -22,10 +22,10 @@ inputs, hardware, and thread budget after every optimization.
 | Priority | Issue | Status | Work | Acceptance |
 | --- | --- | --- | --- | --- |
 | 1 | [#11722](https://github.com/OpenAgentsInc/openagents/issues/11722) | Complete | Keep the ModernBERT encoder on CUDA, including attention and elementwise operations | All reference cases pass; no intermediate host transfers; paired short and long input measurements, with remaining ORT gaps explicit |
-| 2 | [#11723](https://github.com/OpenAgentsInc/openagents/issues/11723) | Open | Improve native CPU router and digit inference | Correctness unchanged; matched ORT/native measurements; separate relative parity from the 512-token absolute target |
-| 3 | [#11724](https://github.com/OpenAgentsInc/openagents/issues/11724) | Open | Keep native digit inference on GPU | Persistent buffers and GPU convolution/activation/pooling; paired CUDA evidence |
-| 4 | [#11725](https://github.com/OpenAgentsInc/openagents/issues/11725) | Open | Complete device-resident native Metal encoder execution | Build and reference parity, then measured Metal/Core ML comparisons on Apple hardware |
-| 5 | [#11726](https://github.com/OpenAgentsInc/openagents/issues/11726) | Open | Expose accelerator serving and publish the parity status | Explicit server device selection; direct/HTTP correctness; current benchmark and platform gaps visible here |
+| 2 | [#11723](https://github.com/OpenAgentsInc/openagents/issues/11723) | In progress | Improve native CPU router and digit inference | Correctness unchanged; matched ORT/native measurements; separate relative parity from the 512-token absolute target |
+| 3 | [#11724](https://github.com/OpenAgentsInc/openagents/issues/11724) | Complete | Keep native digit inference on GPU | Persistent buffers and GPU convolution/activation/pooling; paired CUDA evidence |
+| 4 | [#11725](https://github.com/OpenAgentsInc/openagents/issues/11725) | Implemented; Apple unqualified | Complete device-resident native Metal encoder and digit execution | Build and reference parity, then measured Metal/Core ML comparisons on Apple hardware |
+| 5 | [#11726](https://github.com/OpenAgentsInc/openagents/issues/11726) | In progress | Expose accelerator serving and publish the parity status | Explicit server device selection; direct/HTTP correctness; current benchmark and platform gaps visible here |
 
 Apple CPU/Metal/Core ML measurements and mobile build, memory, startup, and
 thermal qualification remain in `NEEDS_OWNER.md`. They remain unqualified until
@@ -357,9 +357,48 @@ measurements do not satisfy or replace the absolute four-core CPU target.
 The source hashes, binary hashes, dependency configuration, exact commands,
 individual timings, and host RSS are retained. Peak VRAM remains unmeasured.
 
-The earlier accelerator table describes the previous mixed router and remains
-historical evidence. Native MNIST, CPU optimization, Metal, accelerated HTTP
-serving, and Apple/mobile qualification remain separate open work above.
+The earlier accelerator table describes the previous mixed implementation and
+remains historical evidence. Current CPU, digit, Metal, and serving work follows
+below; Apple and mobile qualification remain unmeasured.
+
+## Native digit CUDA results (2026-10-15, #11724)
+
+The [paired digit study](../../../crates/psionic/crates/psionic-inference/fixtures/reports/native-parity-digit-cuda-2026-10-15/study.json)
+contains 4,000 timings across two alternating rounds. Native runs two fused
+convolution/ReLU/floor-pooling kernels and the dense head in one CUDA graph.
+Weights and activations persist on GPU; only 784 image values and ten logits
+cross the host boundary. No intermediate tensor computation runs on CPU.
+
+Native p50 is 0.055–0.056 ms versus ORT 0.072–0.075 ms. Native p99 is
+0.066–0.078 ms versus ORT 0.111–0.115 ms. Every run passes all 100 reference
+images with identical argmax; native maximum raw-logit error is 0.0000382.
+Native host RSS is 1.51 GB versus ORT 4.12–4.13 GB with the model loaded.
+These host figures include runtime libraries and are not VRAM measurements.
+Compressed ORT profiles and their hashes are retained with the raw runs.
+CPU remains the faster device for this tiny CNN.
+
+## Native Metal and serving implementation (#11725, #11726)
+
+Native Metal now implements the complete encoder and digit graph with
+persistent shared buffers, float32 GPU kernels, and one command buffer per
+call. Fast math is disabled. The encoder covers quantized embeddings, norms,
+rotary positions, key masks, local/global attention, GeGLU, residuals, and
+output heads. The digit path fuses convolution, ReLU, and floor pooling.
+Non-Apple builds return an explicit unavailable-device error.
+
+The model dispatch compiles on Linux against unavailable-device stubs. The
+Metal backend Rust API also passes a separate type check against `metal` 0.33.0
+without framework linking. These checks do not compile Metal shaders or run an
+Apple GPU. Fixture replay, matrix edge sizes, in-place normalization, attention
+masks/windows, and HTTP parity checks are ready for an Apple machine. Follow
+`NEEDS_OWNER.md` before claiming Metal/Core ML correctness or performance.
+
+The existing server accepts `--router-device cpu|cuda|metal|coreml` with the
+appropriate engine and build feature. ORT accelerator CPU partitions require
+`--router-allow-cpu-fallback`; native serving reports the actual selected
+provider without CPU fallback. CUDA HTTP answers match direct inference.
+Paired HTTP latency and the final CPU scheduling comparison are being retained
+separately; the implementation does not promote the router into product routing.
 
 ## References
 

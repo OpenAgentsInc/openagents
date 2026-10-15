@@ -185,6 +185,5 @@
     "Complete cropped/vector digit CPU qualification.",
     "Apple hardware and mobile qualification remain unmeasured."
   ],
-  "published_implementation_commit": "b78afc3f2d8c5e588c8eff2b57cad45b2867f017",
   "source_note": "Runs record the original implementation commit and exact tested source hashes. The published commit rebases those unchanged model sources onto current main; workspace version metadata can differ."
 }
