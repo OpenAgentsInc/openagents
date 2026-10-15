@@ -33,6 +33,7 @@ the parity work.
 | [Platforms and quality](platforms-and-quality.md) | Platform differences, installation, updates, accessibility, lifecycle, performance, and validation |
 | [Delivery plan](delivery-plan.md) | Dependency order, implementation work packages, acceptance scenarios, and completion rules |
 | [Coverage map](coverage-map.md) | Current Zeron surface inventory, cross-references, stale documentation, and remaining investigation |
+| [Coder SDK integration](coder-sdk-integration.md) | Existing SDK contracts, desktop intersections, proposed extensions, ownership boundaries, and first implementation slices |
 
 The register contains **174 assessed items**: 68 missing desktop workflows,
 80 partial workflows, 24 verification gaps, and 2 product differences requiring
