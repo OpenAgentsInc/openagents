@@ -35,7 +35,7 @@ videos are who they say they are.
 | 3,000 videos a month from avatars | 3-6 short videos a day cut from real product footage: Coder runs, `/trace` pages, launch-film shots, Verse/CAD demos |
 | Hook vault from Amazon reviews | Hook vault from **our** users' words: GitHub issues, the `/contact` form, feedback, replies on X. Quoted only with consent or paraphrased without a name |
 | One tool per job, run by a person on Discord | One agent per job, each a step in a pipeline we own, with a person approving before anything posts |
-| Named Amazon Attribution per page | One channel code per channel and series, counted as aggregates in our own analytics (see "Attribution" below) |
+| Named Amazon Attribution per page | One link per channel, series and creator; signups and Pro sales credited by name (see "Attribution" below, #11698) |
 | Kill/clone weekly on sales | Kill/clone weekly on signups and Pro starts per channel code, not views |
 | Claims lock (approved supplement wording) | The claims list: every figure in a video must already be in [claims.md](../../launch/1.0/claims.md) with its evidence, e.g. **$1.84 instead of $4.00 per accepted fix** ([evidence](../../inference/briefed-agent-ab.md)) |
 | QA gate (lip-sync, labels, off-claim lines) | QA gate: claims check, copy check (no system talk), voice check, AI label check, consent check |
@@ -81,24 +81,23 @@ videos are who they say they are.
 Owners are roles. "Agent" means a Coder-run job in our repo; nothing posts
 without step 6.
 
-## Attribution without tracking people
+## Attribution: named, like an affiliate program
 
-Our analytics ([`analytics/mod.rs`](../../../crates/openagents-web/src/analytics/mod.rs), #11153)
-is cookieless and never reads query strings or full referrers, so a
-standard UTM tag would be thrown away, on purpose. The design that fits:
+Owner decision (2026-10-15): per-channel totals aren't enough; every
+signup and Pro sale is credited by name to the link, series or creator
+that brought it, as Amazon Attribution does. The design is
+[#11698](https://github.com/OpenAgentsInc/openagents/issues/11698):
 
-- A closed list of channel codes (`x`, `yt`, `tt`, `li`, `ig`, plus a series
-  code) on short links like `openagents.com/go/yt-cost`.
-- The `/go/` route counts the code as an aggregate event and redirects to
-  the landing page. No cookie, no id, nothing stored about the person.
-- Signup and Pro-start events already counted server-side get the code only
-  if it is carried in the same session's first page view, as an aggregate.
-  If that can't be done without an identifier, we score per channel by the
-  ratio of `/go/` clicks to signups in the same hour, and say it's an
-  estimate.
-
-This is a small change to a privacy invariant's surface, so it needs its
-own issue and an INVARIANTS check before it ships.
+- `openagents.com/go/{code}` for our own channel and series codes
+  (`yt-cost`, `x-cost`, ...) and `openagents.com/r/{handle}` for affiliates.
+- A click sets a signed, first-party `oa_ref` cookie (last click wins, 30
+  days); signup records the account's attribution in our existing referral
+  system; each paid Pro month is a named conversion, reversed on refund.
+- Affiliates earn commission only on named, paid, unrefunded sales, under
+  published terms, paid over Lightning.
+- It's disclosed in the privacy policy, needs consent where the law asks
+  for it, and sets nothing for `Sec-GPC`/`DNT`. General site analytics
+  stays cookieless.
 
 ## Channels and cadence
 
