@@ -1,14 +1,20 @@
 # A task index built from agent navigation
 
-Date: 2026-10-15. Status: proposal, with a local navigation census. The
-semantic index, recipe builder, and cheaper-agent results described below
-are not implemented or measured.
+Date: 2026-10-15. Status: experimental implementation. The local history
+pipeline, recipe builder, bounded lookup, optional Coder integration, edit
+evaluation, and candidate selector are implemented in `crates/code-index`.
+The [first edit pilot](evaluation-2026-10-15.md) passed 12/12 independent
+checks and replays but found no quality or cost improvement over the cheaper
+baseline. Usefulness and selector promotion gates remain unmet. Both features
+stay off by default.
 
 Implementation issues, in dependency order: #11711 (episodes), #11712
 (demand), #11713 (recipes), #11714 (builder), #11715 (lookup), #11716
 (freshness and publication), #11717 (Coder), #11718 (evaluation), and
-#11719 (feedback and distillation). `crates/code-index` provides the first
-Rust history importer; subsequent sections describe the proposed complete system.
+#11719 (feedback and distillation). Each issue ships separately. The
+[crate guide](../../crates/code-index/README.md) documents the repeatable
+commands. The sections below describe the design, evidence, and conditions
+for broader use; shipping the machinery does not establish its usefulness.
 
 Build an index that answers **how to extend a capability**, alongside the
 existing graph of what calls what. A strong model does the expensive work

@@ -387,6 +387,7 @@ impl Store {
                 removed += 1;
             }
         }
+        crate::learning::withdraw_all(&self.directory)?;
         Ok(removed)
     }
 

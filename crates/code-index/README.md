@@ -76,7 +76,10 @@ content-addressed bundle and activates it. Subsequent installs and `rollback`
 require `--expected HASH`; rollback also takes `--digest HASH`. Stores isolate
 repositories and workspaces, check object digests, and serialize writers.
 `withdraw --repo DIR --workspace NAME --store DIR --source ID --expected HASH`
-removes affected private derived objects, including old rollback targets.
+removes affected private derived objects, including old rollback targets. It
+also discards selectors in that store; rebuild them after source withdrawal.
+Delete separate private export directories when withdrawing their inputs;
+the store does not track exports written elsewhere.
 
 `publish --repo DIR --rev COMMIT --workspace public [--remote origin]`
 publishes the source-only pilot to the parentless `code-index` branch.
@@ -107,6 +110,49 @@ Checks use a temporary home and a target outside the checkout. See the
 the negative promotion verdict. `build --claude` also supports the local
 authenticated CLI teacher with an explicit output schema and no tools or
 saved session.
+
+`feedback --observations DIR --partitions FILE --out DIR [--corpus FILE]`
+collects lookup misses and incomplete answers without copying question text.
+An optional local episode corpus joins exact question hashes to known families
+and reports related navigation counts and available durations. These are
+observations, not success labels or proof that lookup caused later navigation.
+The partition manifest uses schema `openagents.task-partitions.v1`, repository
+and workspace identities from the artifact, `training_cutoff_ms`, and a `groups`
+map from family IDs to `training`, `development`, `evaluation`, or `locked`.
+
+`train-selector --index FILE --partitions FILE --plan FILE --report FILE
+--run-dir DIR --target EXISTING_CARGO_TARGET_DIR --out DIR` independently
+replays accepted training changes before generating targets. The plan must
+declare `purpose: "training"`; its cases and `training_families` must agree.
+Only outcomes finished by the manifest's training cut qualify. Targets predict
+overlap between recipe roles and independently checked companion changes;
+they do not establish that a recipe caused success. A teacher's optional
+judgment is diagnostic and never changes labels or weights. Repeated family
+copies contribute once. The candidate is a normalized token-centroid selector,
+not a newly trained language model. Keep its targets and weights private.
+`--fixture` permits synthetic test targets, permanently marking the resulting
+candidate ineligible for activation.
+
+Before evaluating a selector, freeze a held-out array of `{question,family,
+expected}` cases, where `expected` contains recipe IDs. In the edit plan, set
+`selectors` to a map of arm IDs to exact selector objects, set
+`selector_dataset_digest` to the ATIF digest of that array, and freeze
+`selector_minimum_gain`. The candidate and baseline arms must both use
+`recipes` context and the same model. Omit the baseline selector to compare
+against ordinary lookup. Run `evaluate` with that plan. Selectors rerank only
+the existing lookup's first five candidates; ties retain ordinary lookup.
+
+`compare-selector --candidate FILE --index FILE --partitions FILE --cases FILE
+--plan FILE --report FILE --out DIR [--baseline FILE]` measures family-weighted
+top-one recall and checks the exact edit experiment. Promotion requires both
+the frozen recall gain and the complete edit-quality and cost gate.
+`promote-selector` takes the same inputs plus `--receipt FILE --store DIR`
+instead of `--out`; replacement also requires `--expected HASH`. The exact
+recipe artifact must already be installed in that store. It repeats
+the comparison and atomically changes the selector in the selected repository
+store directory. `rollback-selector --store DIR --digest HASH --expected HASH`
+restores a previously admitted candidate. Runtime ignores missing, invalid,
+or artifact-mismatched selectors. No selector was promoted by the first pilot.
 
 Run `cargo test -p code-index` and `cargo fmt -p code-index`. See the
 [roadmap](../../docs/code-graph/task-index-roadmap.md) for experiment scope.

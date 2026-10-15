@@ -164,7 +164,7 @@ pub fn prepare_pilot(scratch: &Path, strong: &str, cheap: &str) -> Result<Plan, 
     for case in &mut cases {
         case.available_ms = cutoff;
     }
-    let plan=Plan{schema:"openagents.task-index-eval-plan.v1".into(),frozen_ms:cutoff,index_cutoff_ms:cutoff,training_families:BTreeSet::new(),cases,
+    let plan=Plan{purpose:Purpose::Evaluation,selectors:BTreeMap::new(),selector_minimum_gain:None,selector_dataset_digest:None,schema:"openagents.task-index-eval-plan.v1".into(),frozen_ms:cutoff,index_cutoff_ms:cutoff,training_families:BTreeSet::new(),cases,
         arms:vec![Arm{id:"strong-current".into(),model:strong.into(),context:ContextKind::Current},Arm{id:"cheap-current".into(),model:cheap.into(),context:ContextKind::Current},Arm{id:"cheap-summaries".into(),model:cheap.into(),context:ContextKind::Summary},Arm{id:"cheap-capability".into(),model:cheap.into(),context:ContextKind::Capability},Arm{id:"cheap-recipes".into(),model:cheap.into(),context:ContextKind::Recipes},Arm{id:"cheap-reviewed".into(),model:cheap.into(),context:ContextKind::Reviewed}],
         repetitions:1,timeout_secs:90,max_output_bytes:2*1024*1024,build_cost_usd:build_cost,refresh_cost_usd:None,check_cost_usd:None,
         baseline:"cheap-current".into(),candidate:"cheap-recipes".into(),min_families:4,allowed_quality_loss:0.0,max_cost_ratio:0.9,

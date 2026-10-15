@@ -1,8 +1,13 @@
+mod learning_cli;
 use code_index::episodes::{self, Limits};
 use std::path::PathBuf;
 
 fn run() -> Result<(), String> {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if let Some(result) = learning_cli::run(&args)? {
+        println!("{result}");
+        return Ok(());
+    }
     let value = |key: &str| -> Option<String> {
         args.iter()
             .position(|a| a == key)

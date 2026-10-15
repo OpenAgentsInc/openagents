@@ -111,11 +111,21 @@ fn withdrawing_a_private_source_removes_derived_objects_and_rollback_targets() {
     let cache = tempfile::tempdir().unwrap();
     let store = Store::new(cache.path(), &context.snapshot);
     let id = store.install(&bundle, None).unwrap();
+    for name in [
+        "selector-active.json",
+        "selector-old.json",
+        "selector-old-receipt.json",
+    ] {
+        std::fs::write(store.directory.join(name), b"private derivative").unwrap();
+    }
     assert_eq!(
         store.withdraw_source("private-source", Some(&id)).unwrap(),
         1
     );
     assert!(store.load(&id).is_err());
+    assert!(!store.directory.join("selector-active.json").exists());
+    assert!(!store.directory.join("selector-old.json").exists());
+    assert!(!store.directory.join("selector-old-receipt.json").exists());
     let active = store.active().unwrap().unwrap();
     assert!(store.load(&active).unwrap().artifact.recipes.is_empty());
 }

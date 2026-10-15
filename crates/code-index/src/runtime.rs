@@ -99,7 +99,7 @@ pub fn execute(cwd: &Path, arguments: &Value, config: &Configuration) -> Result<
         })
         .transpose()?
         .unwrap_or(16000);
-    let request = lookup::Request {
+    let mut request = lookup::Request {
         question,
         operation: arguments
             .get("operation")
@@ -113,6 +113,9 @@ pub fn execute(cwd: &Path, arguments: &Value, config: &Configuration) -> Result<
         recipe_vectors: BTreeMap::new(),
         decision: None,
     };
+    if let Ok(Some(selector)) = crate::learning::active(&store.directory, &bundle.artifact) {
+        let _ = crate::learning::apply(&selector, &bundle.artifact, &mut request);
+    }
     let dirty = if bundle.artifact.snapshot == request.snapshot {
         let graph = code_graph::store::open(&root)?;
         store::dirty(&bundle, &root, &graph.index)?
@@ -122,7 +125,7 @@ pub fn execute(cwd: &Path, arguments: &Value, config: &Configuration) -> Result<
     let answer = store::query(&bundle, &request, &dirty)?;
     static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let sequence = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let observation = json!({"schema":"openagents.lookup-observation.v1","repository":request.snapshot.repository,"workspace":request.snapshot.workspace,"commit":request.snapshot.commit,"artifact_digest":answer.artifact_digest,
+    let observation = json!({"schema":"openagents.lookup-observation.v1","at_ms":atif::now_ms(),"repository":request.snapshot.repository,"workspace":request.snapshot.workspace,"commit":request.snapshot.commit,"artifact_digest":answer.artifact_digest,
         "question_digest":crate::digest(request.question.as_bytes()),"status":answer.status,"required_roles_complete":answer.required_roles_complete,"candidates":answer.candidates.iter().map(|c|&c.id).collect::<Vec<_>>(),"elapsed_ms":started.elapsed().as_millis(),"cost_usd":null});
     let name = format!(
         "lookup-{}-{}-{sequence}.json",

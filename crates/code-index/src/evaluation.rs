@@ -26,6 +26,14 @@ pub enum ContextKind {
     Reviewed,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Purpose {
+    #[default]
+    Evaluation,
+    Training,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Case {
@@ -64,6 +72,17 @@ pub struct Plan {
     pub allowed_quality_loss: f64,
     pub max_cost_ratio: f64,
     pub scope: String,
+    #[serde(default, skip_serializing_if = "is_evaluation")]
+    pub purpose: Purpose,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub selectors: BTreeMap<String, crate::learning::Selector>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selector_minimum_gain: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selector_dataset_digest: Option<String>,
+}
+fn is_evaluation(p: &Purpose) -> bool {
+    *p == Purpose::Evaluation
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -98,6 +117,8 @@ pub trait Runner {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Trial {
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub finished_ms: u64,
     pub case: String,
     pub family: String,
     pub arm: String,
@@ -117,6 +138,9 @@ pub struct Trial {
     pub elapsed_ms: u64,
     pub guide_source_bytes: u64,
     pub error: Option<String>,
+}
+fn is_zero(value: &u64) -> bool {
+    *value == 0
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -159,6 +183,17 @@ pub fn validate(plan: &Plan) -> Result<(), String> {
             return Err("Each evaluation arm needs a unique ID and model.".into());
         }
     }
+    if plan.selectors.keys().any(|id| {
+        !plan
+            .arms
+            .iter()
+            .any(|a| a.id == *id && matches!(a.context, ContextKind::Recipes))
+    }) || plan
+        .selector_minimum_gain
+        .is_some_and(|g| !g.is_finite() || !(0.0..=1.0).contains(&g))
+    {
+        return Err("Freeze selectors only for recipe arms with a valid gain target.".into());
+    }
     if !arms.contains(&plan.baseline)
         || !arms.contains(&plan.candidate)
         || plan.baseline == plan.candidate
@@ -189,8 +224,12 @@ pub fn validate(plan: &Plan) -> Result<(), String> {
     let mut families = BTreeMap::new();
     for case in &plan.cases {
         if !cases.insert(&case.id)
-            || plan.training_families.contains(&case.family)
-            || matches!(case.partition, Partition::Training | Partition::Unassigned)
+            || (plan.purpose == Purpose::Evaluation
+                && (plan.training_families.contains(&case.family)
+                    || matches!(case.partition, Partition::Training | Partition::Unassigned)))
+            || (plan.purpose == Purpose::Training
+                && (!plan.training_families.contains(&case.family)
+                    || case.partition != Partition::Training))
             || case.available_ms < plan.index_cutoff_ms
             || case.available_ms > plan.frozen_ms
             || case.acceptance.is_empty()
@@ -232,7 +271,10 @@ pub fn validate(plan: &Plan) -> Result<(), String> {
     Ok(())
 }
 
-fn prompt(case: &Case, arm: &Arm) -> Result<String, String> {
+fn prompt(case: &Case, arm: &Arm, plan: &Plan) -> Result<String, String> {
+    if plan.selectors.contains_key(&arm.id) && !matches!(arm.context, ContextKind::Recipes) {
+        return Err("Selectors require a recipe evaluation arm.".into());
+    }
     let files = recipes::git(
         &case.repository,
         &["ls-tree", "-r", "--name-only", &case.base],
@@ -276,7 +318,7 @@ fn prompt(case: &Case, arm: &Arm) -> Result<String, String> {
             } else {
                 &case.index
             };
-            let request = crate::lookup::Request {
+            let mut request = crate::lookup::Request {
                 question: case.task.clone(),
                 operation: None,
                 snapshot: index.snapshot.clone(),
@@ -287,6 +329,9 @@ fn prompt(case: &Case, arm: &Arm) -> Result<String, String> {
                 recipe_vectors: BTreeMap::new(),
                 decision: None,
             };
+            if let Some(selector) = plan.selectors.get(&arm.id) {
+                crate::learning::apply(selector, index, &mut request)?;
+            }
             context = serde_json::to_string(&crate::lookup::query(index, &request)?)
                 .map_err(|e| e.to_string())?;
         }
@@ -397,7 +442,7 @@ pub fn run(
                         "Keep the Cargo target directory outside the evaluation checkout.".into(),
                     );
                 }
-                let prompt = prompt(case, arm)?;
+                let prompt = prompt(case, arm, plan)?;
                 let started = std::time::Instant::now();
                 let engine = match runner.run(&root, &prompt, arm, plan, &trial_dir) {
                     Ok(result) => result,
@@ -495,6 +540,7 @@ pub fn run(
                     && missing_companions.is_empty()
                     && missing_new_paths.is_empty();
                 let trial = Trial {
+                    finished_ms: atif::now_ms(),
                     case: case.id.clone(),
                     family: case.family.clone(),
                     arm: arm.id.clone(),
@@ -773,8 +819,12 @@ impl Runner for Claude {
 }
 
 pub fn report(plan: &Plan, trials: Vec<Trial>) -> Result<Report, String> {
+    validate(plan)?;
     let digest = plan_digest(plan)?;
     let mut reasons = Vec::new();
+    if plan.purpose == Purpose::Training {
+        reasons.push("Training runs cannot establish held-out model quality.".into());
+    }
     let mut unique = BTreeSet::new();
     for trial in &trials {
         if trial
@@ -807,7 +857,7 @@ pub fn report(plan: &Plan, trials: Vec<Trial>) -> Result<Report, String> {
             .iter()
             .find(|a| a.id == trial.arm)
             .ok_or("A trial names an unknown arm.")?;
-        if trial.prompt_digest != crate::digest(prompt(case, arm)?.as_bytes()) {
+        if trial.prompt_digest != crate::digest(prompt(case, arm, plan)?.as_bytes()) {
             return Err("A trial used a different prompt or guide.".into());
         }
         if trial.family != case.family
@@ -928,6 +978,38 @@ pub struct ReplayReceipt {
     pub result_tree: String,
     pub checks_exit: Option<i32>,
     pub verified: bool,
+}
+
+/// Learning inputs require an actual replay, not a deserialized receipt.
+pub struct VerifiedReplay {
+    pub(crate) case: Case,
+    pub(crate) trial: Trial,
+    pub(crate) receipt: ReplayReceipt,
+}
+pub fn verify_for_learning(
+    plan: &Plan,
+    trial: &Trial,
+    patch: &[u8],
+    scratch: &Path,
+    target: &Path,
+) -> Result<VerifiedReplay, String> {
+    let receipt = replay_trial(plan, trial, patch, scratch, target)?;
+    if !receipt.verified || receipt.checks_exit != Some(0) || !trial.accepted {
+        return Err(
+            "Only a successful independently replayed change can supply learning targets.".into(),
+        );
+    }
+    let case = plan
+        .cases
+        .iter()
+        .find(|c| c.id == trial.case)
+        .ok_or("The replay task is unknown.")?
+        .clone();
+    Ok(VerifiedReplay {
+        case,
+        trial: trial.clone(),
+        receipt,
+    })
 }
 
 pub fn replay_trial(
