@@ -1499,6 +1499,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "atif-nostr"
+version = "1.0.0-rc.21"
+dependencies = [
+ "atif",
+ "futures-util",
+ "nostr",
+ "nostr-transport",
+ "pylon",
+ "reqwest 0.12.28",
+ "secp256k1 0.31.1",
+ "serde_json",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "atomic"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -11360,6 +11376,7 @@ dependencies = [
  "actors",
  "agent-fleet",
  "atif",
+ "atif-nostr",
  "axum 0.8.9",
  "background",
  "base64 0.22.1",

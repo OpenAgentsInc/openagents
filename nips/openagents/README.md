@@ -41,11 +41,12 @@ Verse consumers. Receipt, aggregate, and policy v2 keep payment proofs private
 and count paid claims only from explicitly trusted issuers. Live-wallet
 qualification and additional projection/relay roles remain unfinished.
 
-[NIP-ATIF](NIP-ATIF.md) is a **Designed** draft for carrying agent trajectories
+[NIP-ATIF](NIP-ATIF.md) has a Rust publisher and reader for carrying agent trajectories
 in the Agent Trajectory Interchange Format that Coder already records. Trajectories
 stay owner-encrypted by default; a public copy is a separate, usually redacted,
 publication with its own digest. It replaces the historical SA `39230`/`39231`
-records with two regular kinds, `3198` and `3199`, and implements no publisher yet.
+records with two regular kinds, `3198` and `3199`. `crates/atif-nostr` and
+`openagents trajectory` implement bounded public/private carriage and verification.
 
 [NIP-REG](NIP-REG.md) is a **Designed** draft for curated plugin registries.
 A curator publishes an inert EXT catalog that pins original publishers' releases.
@@ -279,7 +280,7 @@ conformance requires validation and enforcement for each advertised role.
 | [NIP-REACH](NIP-REACH.md) | Owner host directory, host presence with bounded telemetry and receipt-time freshness, reachability hints without loopback fallback, authenticated direct channels bound to a grant and host generation, and placement. Implemented in [`coder-reach`](../../crates/coder-reach/README.md) with synthetic loopback-socket tests over TCP and WebSocket; [`coder-host`](../../crates/coder-host/README.md) publishes presence and hints and serves TCP and WebSocket direct channels, `ws` or TLS-terminated `wss`, with the real grant store. The 2026-09-29 amendment designs, but does not implement, `iroh` hints in a v2 hints record and the channel over an iroh stream. | Shared `3188`; no new kinds. |
 | [NIP-TERM](NIP-TERM.md) | Interactive terminal sessions: open, attach, detach, input, resize, signal, and close under the `terminal` right; per-terminal output sequence numbers, bounded replay with explicit gaps, idle expiry, and `lost` after a host restart. Implemented in [`coder-pty`](../../crates/coder-pty/README.md) with real-PTY tests on macOS; [`coder-host`](../../crates/coder-host/README.md) wires NIP-HOST rights, NIP-REACH channels, and `3188` sealing. | Shared `3188` or NIP-REACH data frames; no new kinds. |
 | [NIP-SOV](NIP-SOV.md) | Partially implemented successor to historical SA: durable agent identity, admitted custody, bounded lifecycle, guardians, treasury policy, market participation, and retained recovery evidence. | Shared `3188`; existing AUTO/CAP/CJ/COORD/RUN contracts; no new kinds. |
-| [NIP-ATIF](NIP-ATIF.md) | Designed carriage of ATIF agent trajectories: exact-byte and ATIF-rule step digests, owner-encrypted private carriage, public declarations with ordered chunks, and links to Coder tasks, RUN runs, delegated sub-agents, and continued segments. Maps Block AO/AM/AE onto ATIF steps. | `3198`, `3199`; private manifests and chunks on shared `3188`. |
+| [NIP-ATIF](NIP-ATIF.md) | Implemented public/private carriage of ATIF agent trajectories: exact-byte and ATIF-rule step digests, owner-encrypted private carriage, public declarations with ordered chunks, and links to Coder tasks, RUN runs, delegated sub-agents, and continued segments. Maps Block AO/AM/AE onto ATIF steps. | `3198`, `3199`; private manifests and chunks on shared `3188`. |
 | [NIP-MV](NIP-MV.md) | Shared 3D worlds: ephemeral pose frames and gestures, durable entity state, world definitions, and cell-scoped subscriptions. Its optional runtime-loaded scene manifest and rules profile are Designed; Verse's curated local zones are not general world discovery. Standalone: it depends on no other contract here. | `23300`, `23301`, `23302`, `33300`, `33301`. |
 | [NIP-PYLON](NIP-PYLON.md) | Partially implemented compute pylons and pools: a provider's opt-in public beacon with coarse class and free slots, buyer-signed service receipts with digests and proof-free seller/broker payment acknowledgments, recomputable pool aggregates, NIP-32 check verdicts, and the rules a world follows to draw them. | `30200`, `30201`, `3201`; NIP-32 `1985` labels. |
 | [NIP-ATT](NIP-ATT.md) | Confidential Space implementation of attested workloads; other roles remain designed: public releases with measurements, sources, rebuilds, and Rekor entries; release heads with notice delays and rollback refusal; attested endpoint keys bound into TEE evidence; evidence-computed levels (`open`, `hardened`, `tee`, `tee-cloud`); sealed CJ/DEC jobs with ciphertext-digest receipts. | `3202`, `30202`, `30203`; sealed jobs on CJ/DEC. |

@@ -85,6 +85,47 @@
         }
       }
     },
+    "selector": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "set",
+            "bank"
+          ],
+          "properties": {
+            "set": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 1024
+                }
+              ]
+            },
+            "bank": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 1024
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
     "task": {
       "anyOf": [
         { "type": "null" },

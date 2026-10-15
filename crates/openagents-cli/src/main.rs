@@ -208,6 +208,7 @@ Pairing and computers (NIP-HOST, NIP-REACH):
   study        Launch and read Microcoder study runs on a host.
   reach        Owner directory, host presence, and route probes.
   session      Observe a paired computer's chats (NIP-SESS): pair, list, read, tail.
+  trajectory   Share private trajectories or explicitly publish them (NIP-ATIF).
 
 Chat:
   chat         Talk to OpenAgents, the chat router: send a message, continue a
@@ -528,6 +529,28 @@ fn main() -> ExitCode {
         #[cfg(feature = "verse")]
         "chamber" => chamber::run(&output, &rest),
         "study" => study::run(&output, &rest),
+        "trajectory" => match runtime().block_on(atif_nostr::cli::run(rest)) {
+            Ok(Some(value)) => {
+                output.emit(&value, |v| {
+                    if let Some(id) = v["trajectory_id"].as_str() {
+                        format!("Saved trajectory {id} ({} bytes).", v["bytes"])
+                    } else {
+                        let action = if v["published"] == true {
+                            "Published"
+                        } else {
+                            "Saved"
+                        };
+                        format!(
+                            "{action} trajectory {}.",
+                            v["manifest"].as_str().unwrap_or_default()
+                        )
+                    }
+                });
+                0
+            }
+            Ok(None) => 0,
+            Err(error) => output.fail("trajectory", &error),
+        },
         "session" | "sessions" => session::run(&output, &rest),
         "sov" => sov::run(&output, &rest),
         "eval" => eval::run(&output, &rest),

@@ -1,0 +1,24 @@
+[package]
+name = "atif-nostr"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Private and explicitly public NIP-ATIF trajectory exchange."
+
+[dependencies]
+atif = { path = "../atif" }
+nostr = { path = "../nostr" }
+nostr-transport = { path = "../nostr-transport" }
+secp256k1 = { version = "0.31.1", features = ["rand"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
+futures-util = "0.3"
+tempfile = "3"
+
+[dev-dependencies]
+pylon = { path = "../pylon", default-features = false, features = ["fixture"] }
+
+[lints]
+workspace = true

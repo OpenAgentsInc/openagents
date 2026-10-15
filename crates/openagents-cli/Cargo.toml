@@ -57,6 +57,7 @@ openagents-terminal = { path = "../openagents-terminal" }
 # `openagents terminal --computer`: another computer's threads over NIP-HOST.
 openagents-chat-app = { path = "../openagents-chat-app" }
 atif = { path = "../atif" }
+atif-nostr = { path = "../atif-nostr" }
 coder-host = { path = "../coder-host" }
 coder-link = { path = "../coder-link" }
 # `openagents lease`: the host resource broker's leases.

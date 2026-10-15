@@ -11,8 +11,8 @@ The crate is `crates/openagents-cli`. It adds no protocol logic of its own:
 `host`, `pair`, and `task` are the `coder` implementations; `computer` is
 `coder_computers::live::Live`, the same client the Computers screens use;
 `verse` and `zone` are `verse::net`, `verse::mv`, and `verse-lagrange`;
-`sov` validates the NIP-SOV profile shape and refuses to activate anything
-until the pieces NIP-SOV requires exist.
+`sov` validates NIP-SOV profiles and runs a bounded local no-spend lifecycle;
+`trajectory` shares and verifies ATIF recordings without granting execution.
 
 ## Conventions
 
@@ -1062,6 +1062,16 @@ loaded Lagrange station and answers each command with a `zone-ok` or `zone-refus
 gesture, which `zone send` waits for. Commands for another zone, from an
 unlisted key, or naming `install` or `wait` (headless-only verbs) are
 refused without touching the simulation.
+
+## Trajectory sharing (NIP-ATIF)
+
+`openagents trajectory pack|publish` carries a captured ATIF log privately to
+`--to NPUB`, or publicly with explicit `--publish-public`. `--bundle FILE`
+keeps the exact signed events for `retry`; `fetch EVENT --output FILE` verifies
+and saves the original bytes. Use `--key-file` or `OPENAGENTS_NOSTR_SECRET`
+for the recorder/recipient key. Public sharing does not redact content.
+See the [trajectory runtime guide](../../crates/atif-nostr/README.md) for
+metadata, source permissions, bounds, and retry behavior.
 
 ## Sovereign agents (NIP-SOV)
 

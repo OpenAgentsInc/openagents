@@ -136,9 +136,11 @@ does not imply remote custody, guardian approval, portable recovery, or payments
 REACH has a narrower `coder-reach`
 implementation; consult its role limits before treating reachability as
 availability or controller-transfer authority.
-ATIF is a **Designed** draft that does allocate kinds: public trajectory
+ATIF has a publisher and reader in `crates/atif-nostr` (`openagents trajectory`).
+It allocates kinds for public trajectory
 declarations `3198` and chunks `3199`; private trajectories ride `3188`. It
-replaces historical `39230`/`39231`; no component publishes trajectories yet.
+replaces historical `39230`/`39231`. Private sharing is the default; public
+publication and HTTPS source hosts require explicit selection.
 MKT/LAB has a bounded free-order host in `crates/coder-labor`, with retained relay
 and process fixtures. Explicit paid fulfillment has fake-fund fixtures;
 independently operated service delivery, general rework/resolver roles, and

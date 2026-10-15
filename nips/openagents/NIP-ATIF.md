@@ -1,6 +1,7 @@
 # NIP-ATIF — Agent Trajectories
 
-`draft` `optional` — v1, 2026-09-28. **Designed.** The
+`draft` `optional` — v1, 2026-09-28. **Implemented** in `crates/atif-nostr`
+(#11731), with the supported roles below. The
 [shared contracts](contracts.md) are normative.
 
 This NIP carries agent trajectories in the Agent Trajectory Interchange
@@ -33,13 +34,26 @@ Test-time capabilities: this NIP carries the trajectory of each with-and-without
 
 ## Status
 
-Designed. No component publishes or reads these events yet. Traces remain
-local files; the [SESS observer](NIP-SESS.md#read-only-observation-of-retained-foreign-history)
-reads bounded raw pages of `<task>.<attempt>.atif.jsonl` files over private
-`3188` artifacts, and that path is unchanged by this NIP. The schemas
-`schemas/atif-manifest.v1.json` and `schemas/atif-chunk.v1.json` and the
-worked fixture in `crates/nostr/tests/fixtures/atif` are checked by
-`crates/nostr` (`atif_nip`) and `crates/atif` (`nip_atif_fixture`).
+`crates/atif-nostr` implements public declarations/chunks and owner-private
+artifact sharing, exact retrieval, bounded chunking, byte and rendered ATIF
+verification, and parent/child and continued-segment checks. The main CLI
+exposes it as `openagents trajectory`; the standalone binary uses the same
+implementation. See the [runtime guide](../../crates/atif-nostr/README.md).
+
+Private sharing is the default. Public publication requires an explicit action
+and does not redact input automatically. Callers separately admit each
+recipient and any linked trajectory. The reader checks already supplied links
+through `check_child`/`check_previous`; it does not walk them automatically.
+HTTPS source retrieval requires an explicit hostname allowlist and refuses
+redirects. Converted documents retain partial coverage because the original
+whole-log evidence is not available in their bytes.
+
+The [SESS observer](NIP-SESS.md#read-only-observation-of-retained-foreign-history)
+continues to read bounded raw pages of local `.atif.jsonl` files over private
+`3188` artifacts. It is unchanged by whole-trajectory exchange. The original
+schemas and worked fixture remain checked by `crates/nostr` (`atif_nip`) and
+`crates/atif` (`nip_atif_fixture`); `atif-nostr` adds isolated file/relay and
+adversarial carriage tests. These checks do not claim deployment on a live relay.
 
 ## Kinds
 
@@ -124,7 +138,7 @@ Every carried trajectory has one manifest,
 | `chunks` | Ordered `{index, digest, size, event?}` entries, one per chunk; empty when the bytes travel only by `artifact.sources`. `event` is the 64-hex ID of the chunk's event when the publisher knows it. |
 | `task` | `{task_id, attempt}` for a Coder task attempt (the `<task>.<attempt>.atif.jsonl` name), or `null`. |
 | `run` | The 64-hex RUN run ID this trajectory observed, or `null`. |
-| `selector` | `{set, bank}` (each `name@digest` or `null`): the question set and prepared-answer bank the agent's router chose with during this trajectory, or `null`. It is what makes a reach failure ("the selector didn't choose the tool for that wording") distinguishable from a tool failure in the record. |
+| `selector` | Optional on historical manifests; new producers include it. `{set, bank}` (each `name@digest` or `null`): the question set and prepared-answer bank the agent's router chose with during this trajectory, or `null`. It is what makes a reach failure ("the selector didn't choose the tool for that wording") distinguishable from a tool failure in the record. |
 | `parent` | `{trajectory_id, step_id}` of the step that delegated to this trajectory, or `null`. |
 | `children` | Ordered `{trajectory_id, step_id, steps_digest, artifact, event?}` entries, one per delegated trajectory carried separately. `artifact` is the child's `artifact.digest`; `event` is the child's manifest event ID when known. |
 | `previous` | `{trajectory_id, steps_digest}` of the segment this one continues (ATIF `continued_trajectory_ref`), or `null`. |
@@ -160,7 +174,8 @@ Splitting rules:
    artifact's bytes: same digest, same size.
 2. Every boundary falls on a UTF-8 character boundary. In the log form a
    boundary falls after a newline, so each chunk holds whole records, unless
-   one record alone exceeds 32,768 bytes; then that record is split on
+   one record alone exceeds 32,768 bytes or cannot fit the encoded private
+   payload bound; then that record is split on
    character boundaries and only that record's chunks end mid-line.
 3. The JCS encoding of the chunk body is at most 65,535 bytes, so it fits
    one standard NIP-44 plaintext. Heavy JSON escaping can push a 32 KiB
