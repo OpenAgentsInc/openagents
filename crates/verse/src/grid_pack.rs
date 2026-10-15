@@ -38,6 +38,8 @@ pub const GYM: &str = "grid/gym";
 pub const ARCH_EVERGLADE: &str = "grid/arch-everglade";
 /// The Lagrange 1 arch, at the origin facing +Z.
 pub const ARCH_LAGRANGE: &str = "grid/arch-lagrange-1";
+/// The Lagrange 2 arch, at the origin facing +Z.
+pub const ARCH_LAGRANGE2: &str = "grid/arch-lagrange-2";
 /// The RITUAL arch, at the origin facing +Z.
 pub const ARCH_RITUAL: &str = "grid/arch-ritual";
 /// The view of Everglade in the Everglade arch's opening, at the origin
@@ -187,6 +189,7 @@ pub fn compile(dir: &Path) -> Result<Pack, String> {
     for (name, zone, sign) in [
         (ARCH_EVERGLADE, ZoneId::Plaza, ZoneId::Everglade.sign()),
         (ARCH_LAGRANGE, ZoneId::Plaza, ZoneId::Lagrange1.sign()),
+        (ARCH_LAGRANGE2, ZoneId::Plaza, ZoneId::Lagrange2.sign()),
         (ARCH_RITUAL, ZoneId::Plaza, gate::RITUAL_SIGN),
     ] {
         let mut arch = Mesh::default();
@@ -322,6 +325,7 @@ pub fn gates(runtime: &crate::runtime::WorldRuntime) -> Vec<verse_engine::presen
         (ARCH_EVERGLADE, everglade, 0.0),
         (PORTAL_EVERGLADE, everglade, clock),
         (ARCH_LAGRANGE, runtime.grid_gate(), 0.0),
+        (ARCH_LAGRANGE2, runtime.lagrange2_gate(), 0.0),
         (ARCH_RITUAL, runtime.ritual_gate(), 0.0),
     ]
     .into_iter()
@@ -795,6 +799,7 @@ mod tests {
             ARCH_EVERGLADE,
             PORTAL_EVERGLADE,
             ARCH_LAGRANGE,
+            ARCH_LAGRANGE2,
             ARCH_RITUAL,
             FIGURE,
             BOARDS,
@@ -839,7 +844,8 @@ mod tests {
         // It stands with the arch, on the arch's transform, and ripples by
         // the Grid's clock.
         let mut runtime = crate::runtime::WorldRuntime::bare();
-        assert!(gates(&runtime).is_empty());
+        // Without zone storage only the Lagrange 2 arch stands.
+        assert!(gates(&runtime).iter().all(|i| i.model == ARCH_LAGRANGE2));
         let cache = tempfile::tempdir().unwrap();
         runtime.configure_zone_cache(cache.path().to_path_buf());
         for _ in 0..30 {

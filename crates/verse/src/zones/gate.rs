@@ -6,7 +6,8 @@
 //!
 //! The portal to Lagrange 1 is hidden for now ([`GRID_PORTAL_OPEN`] is
 //! `false`): no arch, no lettering, and no crossing in any build of the phone
-//! apps. The portal to Everglade is shown ([`GRID_EVERGLADE_OPEN`]).
+//! apps. The portals to Everglade ([`GRID_EVERGLADE_OPEN`]) and to the
+//! Lagrange 2 factory ([`GRID_LAGRANGE2_OPEN`]) are shown.
 //!
 //! A gate is an arch at `at`, turned `yaw` about the vertical. Its local +Z
 //! points through the opening, away from the side the player approaches:
@@ -38,6 +39,14 @@ pub const GRID_EVERGLADE_OPEN: bool = true;
 /// the stack, the dominoes, the pillar, and the Gym all stand clear of it.
 /// Side, forward, m.
 pub const GRID_EVERGLADE_AT: [f64; 2] = [9.0, 11.0];
+/// Whether the Grid shows its walk-in portal to Lagrange 2, the spaceship
+/// factory at Earth–Moon L2. On: like Lagrange 1 it needs no download, so
+/// every Grid shows it, and walking through enters at once.
+pub const GRID_LAGRANGE2_OPEN: bool = true;
+/// The Grid's portal to Lagrange 2 in the same frame: beside the hidden
+/// Lagrange 1 arch and farther out, clear of the ball, the blocks, the
+/// pillar, the Gym, and the other arches' approaches. Side, forward, m.
+pub const GRID_LAGRANGE2_AT: [f64; 2] = [-20.0, 19.0];
 /// The Grid's RITUAL arch in the same frame: centered, beyond the stack
 /// and the dominoes, so a player walking out from the spawn passes between
 /// the side arches and the blocks before reaching it. Shown only when the
@@ -76,6 +85,12 @@ impl Gate {
     #[must_use]
     pub fn everglade(layout: &crate::blocks::Layout) -> Self {
         Self::on_grid(layout, GRID_EVERGLADE_AT)
+    }
+
+    /// The Grid's portal to Lagrange 2, placed and turned as [`Self::grid`].
+    #[must_use]
+    pub fn lagrange2(layout: &crate::blocks::Layout) -> Self {
+        Self::on_grid(layout, GRID_LAGRANGE2_AT)
     }
 
     /// The Grid's RITUAL arch to the pinned chamber, placed and turned as
@@ -285,6 +300,50 @@ mod tests {
             assert!(nearest.distance(gate.at) > 14.0, "{wall:?}");
         }
         // Inside the world's walls.
+        assert!(gate.at.x.abs() < crate::world::HALF - 5.0);
+        assert!(gate.at.z.abs() < crate::world::HALF - 5.0);
+    }
+
+    #[test]
+    fn the_lagrange2_portal_faces_the_spawn_clear_of_everything_on_the_grid() {
+        let layout = crate::blocks::Layout::grid();
+        let gate = Gate::lagrange2(&layout);
+        let spawn = crate::world::SPAWN;
+        assert!(gate.local(spawn).z < -8.0);
+        assert!(gate.local(spawn).x.abs() < 0.01);
+        let ball = crate::ball::Ball::new();
+        let world = ball.world();
+        let blocks = ball.blocks();
+        let ball_at = ball.body().pos.as_vec3();
+        assert!(ball_at.with_y(0.0).distance(gate.at) - crate::ball::RADIUS as f32 > 6.0);
+        for &id in blocks.cubes().iter().chain(blocks.dominoes()) {
+            let p = world[id].pos.as_vec3().with_y(0.0);
+            assert!(p.distance(gate.at) > 5.0, "{p} is near the arch");
+        }
+        for (center, radius) in [blocks.stack_pool(), blocks.domino_pool()] {
+            assert!(center.with_y(0.0).distance(gate.at) - radius > 1.0);
+        }
+        let pillar = crate::pillar::AT.as_vec3().with_y(0.0);
+        assert!(pillar.distance(gate.at) > 6.0);
+        // Every other arch, shown or hidden, and their approaches.
+        let others = [
+            Gate::grid(&layout),
+            Gate::everglade(&layout),
+            Gate::ritual(&layout),
+        ];
+        for other in others {
+            assert!(other.at.distance(gate.at) > 10.0, "{}", other.at);
+            assert!(gate.front().0.distance(other.at) > 8.0);
+            assert!(other.front().0.distance(gate.at) > 8.0);
+        }
+        for wall in crate::world::GymSite::GRID.walls() {
+            let nearest = Vec3::new(
+                gate.at.x.clamp(wall.min[0], wall.max[0]),
+                0.0,
+                gate.at.z.clamp(wall.min[1], wall.max[1]),
+            );
+            assert!(nearest.distance(gate.at) > 14.0, "{wall:?}");
+        }
         assert!(gate.at.x.abs() < crate::world::HALF - 5.0);
         assert!(gate.at.z.abs() < crate::world::HALF - 5.0);
     }

@@ -7,6 +7,17 @@ of [Lagrange 1's tests](../../crates/verse-lagrange/src/tests.rs). Numbers
 carry the marks from [the README](README.md); test thresholds come from [V]
 or [C] values only.
 
+## Status
+
+Lagrange 2's first pass has landed; see
+[docs/verse/lagrange-2.md](../verse/lagrange-2.md).
+- The orbit tests are in `verse-lagrange` (`earth_moon_tests.rs`).
+- The document, factory, assembly, and burn tests are in `verse-lagrange2`
+  (`tests.rs`), under the names below where they match.
+- Still open: `arms_match_mujoco_for_a_reference_move`,
+  `assembly_is_frame_rate_independent`, `the_burn_rings_the_truss`,
+  `solar_event_quiet_hold`, and `debris_avoidance_hold`.
+
 ## What exists
 
 | Crate | What it gives Lagrange 2 | Gap |

@@ -115,6 +115,7 @@ townsfolk = { path = "../townsfolk" }
 verse-lagrange = { path = "../verse-lagrange" }
 # The Lagrange 1 zone; `verse` re-exports it as `zones::lagrange`.
 verse-zone-lagrange = { path = "../verse-zone-lagrange" }
+verse-zone-lagrange2 = { path = "../verse-zone-lagrange2" }
 # The Physics Lab zone; `verse` re-exports it as `zones::lab`.
 verse-zone-lab = { path = "../verse-zone-lab" }
 verse-zone-robotlab = { path = "../verse-zone-robotlab" }
@@ -232,6 +233,10 @@ required-features = ["model-host", "studio-host", "panels"]
 
 [[example]]
 name = "lagrange_capture"
+required-features = ["capture"]
+
+[[example]]
+name = "lagrange2_film"
 required-features = ["capture"]
 
 [[example]]

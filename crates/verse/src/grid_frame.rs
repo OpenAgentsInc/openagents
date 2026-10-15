@@ -239,8 +239,11 @@ mod tests {
         assert!(!runtime.has_gym());
         assert!(runtime.gym_site().is_none());
         assert!(runtime.world.blockers.is_empty());
-        // No zone storage: no portal to Everglade, and Lagrange 1 is shut.
-        assert!(grid_pack::gates(&runtime).is_empty());
+        // No zone storage: no portal to Everglade, and Lagrange 1 is shut;
+        // only the Lagrange 2 factory, which needs no download, stands.
+        let gates = grid_pack::gates(&runtime);
+        assert_eq!(gates.len(), 1);
+        assert_eq!(gates[0].model, grid_pack::ARCH_LAGRANGE2);
         // Coder's plaza keeps its Gym.
         let mut plaza = WorldRuntime::new();
         plaza.remove_gym();

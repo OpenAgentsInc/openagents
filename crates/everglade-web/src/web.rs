@@ -128,10 +128,16 @@ async fn open_grid(
 }
 
 /// What draws the page: the Grid through the engine renderer, Everglade and
-/// the Grove through the legacy renderer until their own migration.
+/// the Grove through the legacy renderer until their own migration. A Grid
+/// page that walks into a zone (Lagrange 2) swaps to the legacy renderer and
+/// back; `Opening` holds the canvas while the next renderer opens.
 enum Draw {
     Legacy(Renderer),
     Grid(GridEngine),
+    Opening {
+        next: Rc<RefCell<Option<Result<Draw, String>>>>,
+        size: [f32; 2],
+    },
 }
 
 impl Draw {
@@ -139,6 +145,10 @@ impl Draw {
         match self {
             Self::Legacy(renderer) => renderer.resize(width, height),
             Self::Grid(engine) => engine.resize(width, height),
+            Self::Opening { size, .. } => {
+                *size = [width as f32, height as f32];
+                Ok(())
+            }
         }
     }
 
@@ -146,6 +156,7 @@ impl Draw {
         match self {
             Self::Legacy(renderer) => renderer.aspect(),
             Self::Grid(engine) => engine.aspect(),
+            Self::Opening { size, .. } => size[0] / size[1].max(1.0),
         }
     }
 
@@ -153,8 +164,42 @@ impl Draw {
         match self {
             Self::Legacy(renderer) => renderer.size(),
             Self::Grid(engine) => engine.size(),
+            Self::Opening { size, .. } => *size,
         }
     }
+}
+
+/// The legacy renderer for `world`, for a zone the Grid page walked into.
+async fn open_zone(
+    canvas: HtmlCanvasElement,
+    backends: wgpu::Backends,
+    world: verse::mesh::Mesh,
+    atlas: Atlas,
+    atmosphere: zones::Atmosphere,
+    width: u32,
+    height: u32,
+) -> Result<Draw, String> {
+    let mut descriptor = wgpu::InstanceDescriptor::new_with_display_handle(Box::new(WebDisplay));
+    descriptor.backends = backends;
+    let instance = wgpu::util::new_instance_with_webgpu_detection(descriptor).await;
+    let surface = instance
+        .create_surface(wgpu::SurfaceTarget::Canvas(canvas))
+        .map_err(|e| format!("cannot draw on the canvas: {e}"))?;
+    let mut renderer = Renderer::from_surface_async(
+        instance,
+        surface,
+        width,
+        height,
+        &world,
+        &atlas,
+        RenderOptions {
+            max_extent: MAX_SIDE,
+            ..RenderOptions::default()
+        },
+    )
+    .await?;
+    renderer.set_atmosphere(atmosphere)?;
+    Ok(Draw::Legacy(renderer))
 }
 
 /// The browser's display, for wgpu's WebGL2 backend.
@@ -218,6 +263,10 @@ struct Page {
     /// once-a-second line.
     frames: Option<Frames>,
     water_dry: bool,
+    /// The backends and glyph atlas the page opened its renderer with, to
+    /// open the next one when a Grid page walks into a zone and back.
+    backends: wgpu::Backends,
+    draw_atlas: Option<Atlas>,
 }
 
 /// Frame times over the current second, for `?frames`.
@@ -490,6 +539,8 @@ async fn run() -> Result<(), String> {
         presence: None,
         frames: query_has(&window, "frames").then(Frames::default),
         water_dry: query_has(&window, "frames") && query_has(&window, "water-dry"),
+        backends,
+        draw_atlas: None,
     }));
     listen(&window, &page)?;
     animate(window, page);
@@ -561,6 +612,8 @@ async fn run_grid(
         presence,
         frames: None,
         water_dry: false,
+        backends,
+        draw_atlas: Some(atlas.clone()),
     }));
     listen(&window, &page)?;
     animate(window, page);
@@ -734,28 +787,60 @@ impl Page {
         }
         self.runtime.zone_tick();
         if self.runtime.zone_revision != self.rendered_revision {
-            match &mut self.renderer {
-                Draw::Legacy(renderer) => {
-                    let replaced =
-                        renderer
-                            .replace_world(&self.runtime.world.mesh)
-                            .and_then(|()| {
-                                renderer.set_atmosphere(zones::atmosphere(self.runtime.zone))
-                            });
-                    if let Err(error) = replaced {
-                        self.fail(&error);
+            let on_grid = self.runtime.is_bare() && self.runtime.is_plaza();
+            let walks = self.draw_atlas.is_some();
+            let swap = match &self.renderer {
+                // Back through the zone's arch onto the Grid.
+                Draw::Legacy(_) if walks && on_grid => Some(true),
+                // Walked through a Grid arch into a zone the engine renderer
+                // does not draw: open the legacy renderer on the canvas.
+                Draw::Grid(_) if walks && !on_grid => Some(false),
+                _ => None,
+            };
+            if let Some(grid) = swap {
+                self.reopen(grid);
+            } else {
+                match &mut self.renderer {
+                    Draw::Legacy(renderer) => {
+                        let replaced =
+                            renderer
+                                .replace_world(&self.runtime.world.mesh)
+                                .and_then(|()| {
+                                    renderer.set_atmosphere(zones::atmosphere(self.runtime.zone))
+                                });
+                        if let Err(error) = replaced {
+                            self.fail(&error);
+                            return;
+                        }
+                    }
+                    // The engine draws the Grid from its pack.
+                    Draw::Grid(_) if on_grid => {}
+                    Draw::Grid(_) => {
+                        self.fail(
+                            "The browser Grid's arches lead nowhere yet: open Everglade from the \
+                             page without ?zone, or the Grove with ?zone=grove",
+                        );
                         return;
                     }
-                }
-                Draw::Grid(_) => {
-                    self.fail(
-                        "The browser Grid's arches lead nowhere yet: open Everglade from the \
-                         page without ?zone, or the Grove with ?zone=grove",
-                    );
-                    return;
+                    Draw::Opening { .. } => {}
                 }
             }
             self.rendered_revision = self.runtime.zone_revision;
+        }
+        if let Draw::Opening { next, .. } = &self.renderer {
+            let opened = next.borrow_mut().take();
+            match opened {
+                Some(Ok(draw)) => {
+                    self.renderer = draw;
+                    // The zone may have changed again while it opened.
+                    self.rendered_revision = u64::MAX;
+                }
+                Some(Err(error)) => {
+                    self.fail(&error);
+                    return;
+                }
+                None => {}
+            }
         }
         if super::terminal::active() {
             self.input = super::input::Input::default();
@@ -1101,6 +1186,37 @@ impl Page {
         if let Some(action) = action {
             let _ = self.runtime.apply(action);
         }
+    }
+
+    /// Drops the renderer and opens the next one on the same canvas: the
+    /// engine for the Grid, or the legacy renderer for the zone the player
+    /// walked into. The page keeps ticking while it opens.
+    fn reopen(&mut self, grid: bool) {
+        let Some(atlas) = self.draw_atlas.clone() else {
+            return;
+        };
+        let size = self.renderer.size();
+        let next = Rc::new(RefCell::new(None));
+        // The old renderer lets go of the canvas before the next one takes it.
+        self.renderer = Draw::Opening {
+            next: next.clone(),
+            size,
+        };
+        let canvas = self.canvas.clone();
+        let backends = self.backends;
+        let (width, height) = (canvas.width(), canvas.height());
+        let world = self.runtime.world.mesh.clone();
+        let atmosphere = zones::atmosphere(self.runtime.zone);
+        wasm_bindgen_futures::spawn_local(async move {
+            let opened = if grid {
+                open_grid(&canvas, backends, &atlas, width, height)
+                    .await
+                    .map(Draw::Grid)
+            } else {
+                open_zone(canvas, backends, world, atlas, atmosphere, width, height).await
+            };
+            *next.borrow_mut() = Some(opened);
+        });
     }
 
     fn fail(&mut self, error: &str) {

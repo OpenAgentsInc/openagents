@@ -81,53 +81,176 @@ pub struct L1 {
     unstable_left: [f64; 4],
 }
 
-impl L1 {
-    /// Solve the collinear quintic for L1 by Newton iteration.
-    #[must_use]
-    pub fn new(mu: f64) -> Self {
-        // gamma^5 - (3 - mu) gamma^4 + (3 - 2 mu) gamma^3 - mu gamma^2 + 2 mu gamma - mu = 0
-        let mut gamma = (mu / 3.0).cbrt();
-        for _ in 0..50 {
-            let f = gamma.powi(5) - (3.0 - mu) * gamma.powi(4) + (3.0 - 2.0 * mu) * gamma.powi(3)
-                - mu * gamma.powi(2)
-                + 2.0 * mu * gamma
-                - mu;
-            let df = 5.0 * gamma.powi(4) - 4.0 * (3.0 - mu) * gamma.powi(3)
-                + 3.0 * (3.0 - 2.0 * mu) * gamma.powi(2)
-                - 2.0 * mu * gamma
-                + 2.0 * mu;
-            let step = f / df;
-            gamma -= step;
-            if step.abs() < 1e-16 {
-                break;
-            }
+/// Which collinear Lagrange point: between the primaries or beyond the
+/// smaller one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CollinearPoint {
+    /// Between the primaries, `gamma` short of the smaller one.
+    L1,
+    /// Beyond the smaller primary by `gamma`.
+    L2,
+}
+
+/// The collinear quintic's root: the point's distance from the smaller
+/// primary, normalized, by Newton iteration from `(mu / 3)^(1/3)`.
+fn collinear_gamma(mu: f64, point: CollinearPoint) -> f64 {
+    // L1: gamma^5 - (3 - mu) gamma^4 + (3 - 2 mu) gamma^3 - mu gamma^2 + 2 mu gamma - mu = 0
+    // L2: gamma^5 + (3 - mu) gamma^4 + (3 - 2 mu) gamma^3 - mu gamma^2 - 2 mu gamma - mu = 0
+    let s = match point {
+        CollinearPoint::L1 => -1.0,
+        CollinearPoint::L2 => 1.0,
+    };
+    let mut gamma = (mu / 3.0).cbrt();
+    for _ in 0..50 {
+        let f = gamma.powi(5) + s * (3.0 - mu) * gamma.powi(4) + (3.0 - 2.0 * mu) * gamma.powi(3)
+            - mu * gamma.powi(2)
+            - s * 2.0 * mu * gamma
+            - mu;
+        let df = 5.0 * gamma.powi(4)
+            + s * 4.0 * (3.0 - mu) * gamma.powi(3)
+            + 3.0 * (3.0 - 2.0 * mu) * gamma.powi(2)
+            - 2.0 * mu * gamma
+            - s * 2.0 * mu;
+        let step = f / df;
+        gamma -= step;
+        if step.abs() < 1e-16 {
+            break;
         }
-        let c2 = (mu + (1.0 - mu) * gamma.powi(3) / (1.0 - gamma).powi(3)) / gamma.powi(3);
-        let root = (9.0 * c2 * c2 - 8.0 * c2).sqrt();
-        let lambda = ((c2 - 2.0 + root) / 2.0).sqrt();
-        let omega_p = ((2.0 - c2 + root) / 2.0).sqrt();
-        let omega_v = c2.sqrt();
-        let kappa = (omega_p * omega_p + 1.0 + 2.0 * c2) / (2.0 * omega_p);
-        // Right unstable eigenvector over (x, y, vx, vy): (1, tau, lambda, lambda tau).
-        let a = 1.0 + 2.0 * c2;
-        let b = 1.0 - c2;
-        let tau = (lambda * lambda - a) / (2.0 * lambda);
-        // Left eigenvector from w^T A = lambda w^T with w_vx = 1.
-        let w1 = a / lambda;
-        let w4 = (w1 - lambda) / 2.0;
-        let w2 = b * w4 / lambda;
-        let w = [w1, w2, 1.0, w4];
-        let dot = w[0] + w[1] * tau + w[2] * lambda + w[3] * lambda * tau;
+    }
+    gamma
+}
+
+/// Linear constants shared by every collinear point: they depend only on
+/// `c2`. Returns `(lambda, omega_p, omega_v, kappa, unstable_left)`.
+fn linear_constants(c2: f64) -> (f64, f64, f64, f64, [f64; 4]) {
+    let root = (9.0 * c2 * c2 - 8.0 * c2).sqrt();
+    let lambda = ((c2 - 2.0 + root) / 2.0).sqrt();
+    let omega_p = ((2.0 - c2 + root) / 2.0).sqrt();
+    let omega_v = c2.sqrt();
+    let kappa = (omega_p * omega_p + 1.0 + 2.0 * c2) / (2.0 * omega_p);
+    // Right unstable eigenvector over (x, y, vx, vy): (1, tau, lambda, lambda tau).
+    let a = 1.0 + 2.0 * c2;
+    let b = 1.0 - c2;
+    let tau = (lambda * lambda - a) / (2.0 * lambda);
+    // Left eigenvector from w^T A = lambda w^T with w_vx = 1.
+    let w1 = a / lambda;
+    let w4 = (w1 - lambda) / 2.0;
+    let w2 = b * w4 / lambda;
+    let w = [w1, w2, 1.0, w4];
+    let dot = w[0] + w[1] * tau + w[2] * lambda + w[3] * lambda * tau;
+    (lambda, omega_p, omega_v, kappa, w.map(|v| v / dot))
+}
+
+/// A collinear Lagrange point (L1 or L2) of any CR3BP and its linearized
+/// dynamics. The linearized equations about either point have the same
+/// form, so only `gamma`, `x`, and `c2` differ.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Collinear {
+    pub which: CollinearPoint,
+    pub mu: f64,
+    /// Distance from the smaller primary, normalized.
+    pub gamma: f64,
+    /// The point's x coordinate: `1 - mu - gamma` (L1) or `1 - mu + gamma` (L2).
+    pub x: f64,
+    /// Richardson's `c2`.
+    pub c2: f64,
+    pub lambda: f64,
+    pub omega_p: f64,
+    pub omega_v: f64,
+    pub kappa: f64,
+    unstable_left: [f64; 4],
+}
+
+impl Collinear {
+    #[must_use]
+    pub fn new(mu: f64, which: CollinearPoint) -> Self {
+        let gamma = collinear_gamma(mu, which);
+        let (x, c2) = match which {
+            CollinearPoint::L1 => (
+                1.0 - mu - gamma,
+                (mu + (1.0 - mu) * gamma.powi(3) / (1.0 - gamma).powi(3)) / gamma.powi(3),
+            ),
+            CollinearPoint::L2 => (
+                1.0 - mu + gamma,
+                (mu + (1.0 - mu) * gamma.powi(3) / (1.0 + gamma).powi(3)) / gamma.powi(3),
+            ),
+        };
+        let (lambda, omega_p, omega_v, kappa, unstable_left) = linear_constants(c2);
         Self {
+            which,
             mu,
             gamma,
-            x: 1.0 - mu - gamma,
+            x,
             c2,
             lambda,
             omega_p,
             omega_v,
             kappa,
-            unstable_left: w.map(|v| v / dot),
+            unstable_left,
+        }
+    }
+
+    #[must_use]
+    pub fn point(&self) -> DVec3 {
+        DVec3::new(self.x, 0.0, 0.0)
+    }
+
+    /// The linear unstable-mode coordinate of a state relative to the point.
+    #[must_use]
+    pub fn unstable_component(&self, state: &State) -> f64 {
+        let d = state.pos - self.point();
+        let w = self.unstable_left;
+        w[0] * d.x + w[1] * d.y + w[2] * state.vel.x + w[3] * state.vel.y
+    }
+
+    /// The right unstable eigenvector over (x, y, vx, vy), with unit x.
+    #[must_use]
+    pub fn unstable_direction(&self) -> [f64; 4] {
+        let a = 1.0 + 2.0 * self.c2;
+        let tau = (self.lambda * self.lambda - a) / (2.0 * self.lambda);
+        [1.0, tau, self.lambda, self.lambda * tau]
+    }
+
+    /// The smallest in-plane velocity change that cancels the unstable mode.
+    #[must_use]
+    pub fn cancel_unstable(&self, state: &State) -> DVec3 {
+        let alpha = self.unstable_component(state);
+        let w = self.unstable_left;
+        let norm = w[2] * w[2] + w[3] * w[3];
+        DVec3::new(-alpha * w[2] / norm, -alpha * w[3] / norm, 0.0)
+    }
+
+    /// A linear Lissajous state about the point.
+    #[must_use]
+    pub fn lissajous(&self, ax: f64, az: f64, phase: f64, vertical_phase: f64) -> State {
+        let (s, c) = phase.sin_cos();
+        let (sv, cv) = vertical_phase.sin_cos();
+        State {
+            pos: DVec3::new(self.x - ax * c, self.kappa * ax * s, az * sv),
+            vel: DVec3::new(
+                ax * self.omega_p * s,
+                self.kappa * ax * self.omega_p * c,
+                az * self.omega_v * cv,
+            ),
+        }
+    }
+}
+
+impl L1 {
+    /// Solve the collinear quintic for L1 by Newton iteration.
+    #[must_use]
+    pub fn new(mu: f64) -> Self {
+        let p = Collinear::new(mu, CollinearPoint::L1);
+        Self {
+            mu,
+            gamma: p.gamma,
+            x: p.x,
+            c2: p.c2,
+            lambda: p.lambda,
+            omega_p: p.omega_p,
+            omega_v: p.omega_v,
+            kappa: p.kappa,
+            unstable_left: p.unstable_left,
         }
     }
 

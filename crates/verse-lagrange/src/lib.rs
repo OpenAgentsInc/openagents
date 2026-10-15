@@ -6,6 +6,9 @@
 //! - [`station`] is the construction sandbox: an astronaut with a cold-gas
 //!   maneuvering pack, free-flying parts, a keel jig, the ropes of the
 //!   safety tether and part lines, and plume impingement.
+//! - [`earth_moon`] is the same CR3BP for the Earth and the Moon (DE440):
+//!   Earth–Moon L1 and L2, a corrected southern halo about L2, and a station
+//!   on it kept there by daily targeting burns, for Lagrange 2.
 //! - [`arrays`] flexes the two solar array wings in assumed modes.
 //!
 //! Rigid bodies, fixed stepping, and restorable world state come from the
@@ -16,16 +19,20 @@
 //! mapping belong to the Verse host.
 
 pub mod arrays;
+pub mod earth_moon;
 pub mod orbit;
 pub mod station;
 
 pub use arrays::ArrayFlex;
-pub use orbit::{L1, OrbitSnapshot, StationOrbit};
+pub use earth_moon::{Halo, HaloOrbit, HaloSnapshot};
+pub use orbit::{Collinear, CollinearPoint, L1, OrbitSnapshot, StationOrbit};
 pub use physics::{self, Body, BodyId};
 pub use station::{
     Command, Input, Line, PartKind, PartState, PlumePulse, RopeView, Snapshot, Station,
     StationState,
 };
 
+#[cfg(test)]
+mod earth_moon_tests;
 #[cfg(test)]
 mod tests;

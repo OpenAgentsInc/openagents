@@ -101,6 +101,10 @@ opt-level = 3
 opt-level = 3
 [profile.dev.package.verse-zone-lagrange]
 opt-level = 3
+[profile.dev.package.verse-lagrange2]
+opt-level = 3
+[profile.dev.package.verse-zone-lagrange2]
+opt-level = 3
 [profile.dev.package.physics]
 opt-level = 3
 [profile.dev.package.wgpu]

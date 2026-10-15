@@ -608,12 +608,18 @@ fn walking_through_the_grids_everglade_arch_loads_the_pack_and_return_comes_back
     let gate = runtime
         .everglade_gate()
         .expect("the Grid's arch to Everglade");
-    // The Lagrange 1 portal stays hidden: only Everglade's arch draws.
+    // The Lagrange 1 portal stays hidden: Everglade's arch draws, with
+    // the Lagrange 2 factory's.
     assert!(runtime.grid_gate().is_none());
     let drawn = runtime.grid_portal_mesh();
     let arch = gate.mesh(ZoneId::Plaza, "EVERGLADE", 0.0);
-    assert_eq!(drawn.lines.len(), arch.lines.len());
-    assert_eq!(drawn.faces.len(), arch.faces.len());
+    let factory =
+        runtime
+            .lagrange2_gate()
+            .unwrap()
+            .mesh(ZoneId::Plaza, ZoneId::Lagrange2.sign(), 0.0);
+    assert_eq!(drawn.lines.len(), arch.lines.len() + factory.lines.len());
+    assert_eq!(drawn.faces.len(), arch.faces.len() + factory.faces.len());
     // No button: in front of the arch nothing offers to enter.
     facing(&mut runtime, gate);
     let snapshot = runtime.zone_snapshot(1.0);

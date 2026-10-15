@@ -33,6 +33,8 @@ impl WorldRuntime {
             coast.move_player(&mut self.player, &input, self.camera.pitch, dt);
         } else if let Some(lagrange) = &mut self.zone_state.lagrange {
             lagrange.move_player(&mut self.player, input, self.camera.pitch, dt);
+        } else if let Some(factory) = &mut self.zone_state.lagrange2 {
+            factory.move_player(&mut self.player, input, self.camera.pitch, dt);
         } else if let Some(everglade) = &mut self.zone_state.everglade {
             // As the Grove's Giant Eagle, Jump climbs.
             let flying = self
@@ -174,6 +176,9 @@ impl WorldRuntime {
         if let Some(lagrange) = &mut self.zone_state.lagrange {
             lagrange.settle_light();
         }
+        if let Some(factory) = &mut self.zone_state.lagrange2 {
+            factory.settle_light();
+        }
         if let Some(everglade) = &mut self.zone_state.everglade {
             everglade.settle_light();
         }
@@ -201,6 +206,44 @@ impl WorldRuntime {
         let _ = self.set_spawn(Lagrange::spawn(), Lagrange::spawn_yaw());
         self.camera = crate::camera::FollowCamera::default();
     }
+    /// Enter the Lagrange 2 factory. Nothing is downloaded: the factory,
+    /// its arms, and the ship's parts are generated and simulated here.
+    pub fn install_lagrange2(&mut self) {
+        if self.is_hosted() || !self.is_plaza() {
+            return;
+        }
+        self.zone_state.plaza_pose = Some((self.player.pos, self.player.yaw));
+        self.zone_cancel_loading();
+        let mut zone = super::lagrange2::Lagrange2::new();
+        zone.neutral = self.is_bare();
+        zone.tick();
+        self.world = if self.is_bare() {
+            super::lagrange2::Lagrange2::neutral_world()
+        } else {
+            super::lagrange2::Lagrange2::world()
+        };
+        self.zone_state.lagrange2 = Some(Box::new(zone));
+        self.zone = ZoneId::Lagrange2;
+        self.zone_state.progress = 1.0;
+        self.zone_revision = self.zone_revision.saturating_add(1);
+        let _ = self.set_spawn(
+            super::lagrange2::Lagrange2::spawn(),
+            super::lagrange2::Lagrange2::spawn_yaw(),
+        );
+        self.camera = crate::camera::FollowCamera::default();
+    }
+
+    /// The Lagrange 2 factory, while the player is in it.
+    #[must_use]
+    pub fn lagrange2(&self) -> Option<&super::lagrange2::Lagrange2> {
+        self.zone_state.lagrange2.as_deref()
+    }
+
+    /// The Lagrange 2 factory, mutably (captures and the film drive it).
+    pub fn lagrange2_mut(&mut self) -> Option<&mut super::lagrange2::Lagrange2> {
+        self.zone_state.lagrange2.as_deref_mut()
+    }
+
     /// Enter the generated Physics Lab. Nothing is downloaded.
     pub fn install_lab(&mut self) {
         if self.is_hosted() || !self.is_plaza() {
@@ -1048,6 +1091,12 @@ impl WorldRuntime {
                     self.install_lagrange();
                     return Ok(());
                 }
+                if destination == ZoneId::Lagrange2 {
+                    self.cancel_navigation();
+                    self.doors.cancel_transient();
+                    self.install_lagrange2();
+                    return Ok(());
+                }
                 if destination == ZoneId::PhysicsLab {
                     self.cancel_navigation();
                     self.doors.cancel_transient();
@@ -1071,6 +1120,7 @@ impl WorldRuntime {
                 self.zone_state.studio.set_active(false);
                 // Dropping a zone releases its decoded frames and simulation.
                 self.zone_state.lagrange = None;
+                self.zone_state.lagrange2 = None;
                 self.zone_state.lab = None;
                 self.zone_state.robot_lab = None;
                 self.zone_state.everglade = None;
@@ -1099,6 +1149,8 @@ impl WorldRuntime {
                     let pose = self.zone_state.plaza_pose.take();
                     let gate = if left == ZoneId::Everglade {
                         self.everglade_gate()
+                    } else if left == ZoneId::Lagrange2 {
+                        self.lagrange2_gate()
                     } else {
                         self.grid_gate()
                     };
@@ -1122,6 +1174,32 @@ impl WorldRuntime {
             // The Grove casts these through its kit above.
             Intent::Firebolt | Intent::MagicMissile | Intent::Fireball => {
                 return Err("Enter the Grove first".into());
+            }
+            Intent::Forces if self.zone_state.lagrange2.is_some() => {
+                if let Some(factory) = self.zone_state.lagrange2.as_deref_mut() {
+                    factory.overlay = !factory.overlay;
+                    factory.tick();
+                }
+            }
+            Intent::Camera if self.zone_state.lagrange2.is_some() => {
+                if let Some(factory) = self.zone_state.lagrange2.as_deref_mut() {
+                    factory.art = !factory.art;
+                    factory.tick();
+                }
+            }
+            Intent::Decrease | Intent::Increase | Intent::Pause | Intent::Reset
+                if self.zone_state.lagrange2.is_some() =>
+            {
+                if let Some(factory) = self.zone_state.lagrange2.as_deref_mut() {
+                    match intent {
+                        Intent::Decrease => factory.speed = (factory.speed / 2.0).max(1.0),
+                        Intent::Increase => factory.speed = (factory.speed * 2.0).min(64.0),
+                        Intent::Pause => factory.paused = !factory.paused,
+                        _ => factory.restart(),
+                    }
+                    factory.tick();
+                }
+                self.zone_state.error = None;
             }
             Intent::Forces => {
                 let lagrange = self
@@ -1998,6 +2076,34 @@ impl WorldRuntime {
                 s.speed_m_s,
                 status
             )
+        } else if let Some(factory) = &self.zone_state.lagrange2 {
+            add("slower", "Slower", Intent::Decrease, factory.speed > 1.0);
+            add("faster", "Faster", Intent::Increase, factory.speed < 64.0);
+            add(
+                "pause",
+                if factory.paused { "Run" } else { "Pause" },
+                Intent::Pause,
+                true,
+            );
+            add("restart", "New ship", Intent::Reset, true);
+            add(
+                "forces",
+                if factory.overlay {
+                    "Hide forces"
+                } else {
+                    "Forces"
+                },
+                Intent::Forces,
+                true,
+            );
+            add(
+                "camera",
+                if factory.art { "Photo" } else { "Art" },
+                Intent::Camera,
+                true,
+            );
+            add("return", self.return_label(), Intent::Return, true);
+            factory.caption()
         } else if let Some(room) = &self.zone_state.robot_lab {
             for (index, (label, intent)) in room.controls().into_iter().enumerate() {
                 let ids = [
@@ -2313,6 +2419,10 @@ impl WorldRuntime {
     fn zone_dynamic_occludes(&self, eye: Vec3, direction: Vec3, distance: f32) -> bool {
         if let Some(lagrange) = &self.zone_state.lagrange {
             crate::runtime::mesh_occludes(lagrange.dynamic(), eye, direction, distance)
+        } else if self.zone_state.lagrange2.is_some() {
+            // The factory's open truss hides little, and testing its moving
+            // geometry every frame costs more than the answer is worth.
+            false
         } else if let Some(lab) = &self.zone_state.lab {
             crate::runtime::mesh_occludes(lab.dynamic(), eye, direction, distance)
         } else if let Some(everglade) = &self.zone_state.everglade {
@@ -2339,6 +2449,15 @@ impl WorldRuntime {
             && super::gate::GRID_EVERGLADE_OPEN
             && self.zone_state.everglade_loader.is_some())
         .then(|| super::Gate::everglade(&crate::blocks::Layout::grid()))
+    }
+
+    /// The Grid's walk-in portal to the Lagrange 2 factory in the bare
+    /// world ([`super::gate::GRID_LAGRANGE2_OPEN`]). It needs no zone
+    /// storage: the factory is generated, not downloaded.
+    #[must_use]
+    pub fn lagrange2_gate(&self) -> Option<super::Gate> {
+        (self.is_bare() && super::gate::GRID_LAGRANGE2_OPEN)
+            .then(|| super::Gate::lagrange2(&crate::blocks::Layout::grid()))
     }
 
     /// The Grid's RITUAL arch to the pinned chamber, when the desktop has one
@@ -2381,6 +2500,7 @@ impl WorldRuntime {
         [
             (ZoneId::Lagrange1, self.grid_gate()),
             (ZoneId::Everglade, self.everglade_gate()),
+            (ZoneId::Lagrange2, self.lagrange2_gate()),
         ]
         .into_iter()
         .filter_map(|(zone, gate)| gate.map(|gate| (zone, gate)))
@@ -2529,6 +2649,8 @@ impl WorldRuntime {
             self.zone_state.gate_cooldown = super::gate::COOLDOWN;
             if zone == ZoneId::Lagrange1 {
                 self.install_lagrange();
+            } else if zone == ZoneId::Lagrange2 {
+                self.install_lagrange2();
             } else if let Err(error) = self.start_zone_load(zone) {
                 // The zone panel offers Retry and Dismiss.
                 self.zone_load_failed(&error);
@@ -2960,6 +3082,9 @@ impl WorldRuntime {
         if let Some(lagrange) = &mut self.zone_state.lagrange {
             lagrange.tick();
         }
+        if let Some(factory) = &mut self.zone_state.lagrange2 {
+            factory.tick();
+        }
         if let Some(lab) = &mut self.zone_state.lab {
             lab.tick(dt);
         }
@@ -3077,6 +3202,9 @@ impl WorldRuntime {
         };
         if let Some(lagrange) = &self.zone_state.lagrange {
             mesh.extend(lagrange.dynamic());
+        }
+        if let Some(factory) = &self.zone_state.lagrange2 {
+            mesh.extend(factory.dynamic());
         }
         if let Some(room) = &self.zone_state.robot_lab {
             mesh.extend(room.dynamic());

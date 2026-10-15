@@ -373,11 +373,16 @@ fn walking_through_the_grid_portal_enters_a_neutral_lagrange_1_and_flying_back_r
 fn the_grid_shows_no_portal_while_it_is_hidden() {
     const { assert!(!super::gate::GRID_PORTAL_OPEN) };
     // Without zone storage the Grid has no Everglade arch either, so it
-    // draws no arch at all.
+    // draws only the Lagrange 2 factory's arch.
     let mut runtime = WorldRuntime::bare();
     assert!(runtime.grid_gate().is_none());
-    assert!(runtime.grid_portal_mesh().lines.is_empty());
-    assert!(runtime.grid_portal_mesh().faces.is_empty());
+    let factory =
+        runtime
+            .lagrange2_gate()
+            .unwrap()
+            .mesh(ZoneId::Plaza, ZoneId::Lagrange2.sign(), 0.0);
+    assert_eq!(runtime.grid_portal_mesh().lines.len(), factory.lines.len());
+    assert_eq!(runtime.grid_portal_mesh().faces.len(), factory.faces.len());
     // Walking where the arch would stand, facing through it, stays on the
     // Grid, and nothing offers to enter Lagrange 1.
     let layout = crate::blocks::Layout::grid();
@@ -534,4 +539,55 @@ fn the_ritual_arch_appears_with_a_pinned_chamber_and_a_walk_through_hands_it_ove
     assert!(runtime.player.pos.distance(front) < 0.5);
     runtime.set_ritual(None);
     assert!(runtime.ritual_gate().is_none() && runtime.return_from_ritual().is_err());
+}
+
+#[test]
+fn walking_through_the_grid_portal_enters_lagrange_2_and_flying_back_returns() {
+    let mut runtime = WorldRuntime::bare();
+    // Shown on every Grid: the factory is generated, not downloaded.
+    let gate = runtime
+        .lagrange2_gate()
+        .expect("the Grid's Lagrange 2 arch");
+    assert!(
+        crate::grid_pack::gates(&runtime)
+            .iter()
+            .any(|i| i.model == crate::grid_pack::ARCH_LAGRANGE2)
+    );
+    let (front, away) = gate.front();
+    runtime
+        .place_player(front, away + std::f32::consts::PI)
+        .unwrap();
+    assert!(walk_until_zone_changes(&mut runtime, 3.0));
+    assert_eq!(runtime.zone, ZoneId::Lagrange2);
+    assert!(runtime.is_bare() && !runtime.is_plaza());
+    let dynamic = runtime.dynamic_mesh_with_interactions(true, true);
+    assert!(!dynamic.lit.is_empty() && dynamic.sky.is_some());
+    // Guides in the neutral palette, as everywhere off the Grid.
+    assert!(dynamic.lines.iter().all(|v| gray(v.color)));
+    let snapshot = runtime.zone_snapshot(1.0);
+    assert!(snapshot.caption.contains("L2 halo"));
+    let back = snapshot
+        .controls
+        .iter()
+        .find(|c| c.action == Intent::Return)
+        .unwrap();
+    assert_eq!(back.label, "The Grid");
+    // The factory runs while the visitor watches.
+    runtime.zone_intent(Intent::Increase).unwrap();
+    let start = runtime.lagrange2().unwrap().assembly.factory.time();
+    let idle = InputState::default();
+    for _ in 0..30 {
+        runtime.tick(&idle, 1.0 / 30.0);
+    }
+    assert!(runtime.lagrange2().unwrap().assembly.factory.time() > start + 10.0);
+    // Fly back through the return arch onto the Grid, in front of the arch.
+    let portal = crate::zones::Gate::fixed(ZoneId::Lagrange2.portal().unwrap());
+    let (front, away) = portal.front();
+    runtime
+        .place_player(front, away + std::f32::consts::PI)
+        .unwrap();
+    assert!(walk_until_zone_changes(&mut runtime, 3.0));
+    assert!(runtime.is_plaza());
+    assert!(runtime.lagrange2().is_none());
+    assert!(runtime.player.pos.distance(gate.at) < 6.0);
 }

@@ -18,6 +18,7 @@ mod private_assets;
 #[cfg(test)]
 mod private_assets_tests;
 pub use verse_zone_lagrange as lagrange;
+pub use verse_zone_lagrange2 as lagrange2;
 #[cfg(test)]
 mod budget_tests;
 #[cfg(test)]
@@ -102,9 +103,12 @@ pub enum ZoneId {
     /// ([`meteor_showcase`], `verse --meteor-showcase`). No arch leads
     /// here.
     MeteorShowcase,
+    /// The spaceship factory at Earth–Moon L2 ([`lagrange2`],
+    /// `docs/verse/lagrange-2.md`), walked into from the Grid.
+    Lagrange2,
 }
 impl ZoneId {
-    pub const ALL: [Self; 11] = [
+    pub const ALL: [Self; 12] = [
         Self::Plaza,
         Self::Lagrange1,
         Self::PhysicsLab,
@@ -116,6 +120,7 @@ impl ZoneId {
         Self::WaterLab,
         Self::Coast,
         Self::MeteorShowcase,
+        Self::Lagrange2,
     ];
 
     /// Whether this zone is one of the standalone Meteor Swarm stages: the
@@ -151,6 +156,7 @@ impl ZoneId {
             Self::WaterLab => "verse-water-lab",
             Self::Coast => "verse-coast",
             Self::MeteorShowcase => "verse-meteor-showcase",
+            Self::Lagrange2 => "verse-lagrange-2",
         }
     }
     pub const fn label(self) -> &'static str {
@@ -166,12 +172,14 @@ impl ZoneId {
             Self::WaterLab => "Water Lab",
             Self::Coast => "Coast",
             Self::MeteorShowcase => "Meteor Showcase",
+            Self::Lagrange2 => "Lagrange 2",
         }
     }
     pub const fn half_extent(self) -> f32 {
         match self {
             Self::Plaza => crate::world::HALF,
             Self::Lagrange1 => 150.0,
+            Self::Lagrange2 => 400.0,
             Self::PhysicsLab => lab::HALF_EXTENT,
             Self::RobotLab => robotlab::HALF_EXTENT,
             Self::Everglade | Self::Grove | Self::MeteorStressTest | Self::MeteorShowcase => {
@@ -207,6 +215,7 @@ impl ZoneId {
                 portals
             }
             Self::Lagrange1 => vec![(Self::Plaza, lagrange::RETURN_PORTAL)],
+            Self::Lagrange2 => vec![(Self::Plaza, lagrange2::RETURN_PORTAL)],
             Self::PhysicsLab => vec![(Self::Plaza, lab::RETURN_PORTAL)],
             Self::RobotLab => vec![(Self::Plaza, robotlab::RETURN_PORTAL)],
             // Everglade has no arch back; its zone panel's return control
@@ -237,6 +246,7 @@ impl ZoneId {
             Self::WaterLab => "WATER LAB",
             Self::Coast => "COAST",
             Self::MeteorShowcase => "METEOR SHOWCASE",
+            Self::Lagrange2 => "LAGRANGE 2",
         }
     }
 }
@@ -260,7 +270,7 @@ pub fn atmosphere(zone: ZoneId) -> Atmosphere {
             height_fog: None,
         },
         // Vacuum: no scattering. Fog only fades the edge of the 2 km sky shell.
-        ZoneId::Lagrange1 => Atmosphere {
+        ZoneId::Lagrange1 | ZoneId::Lagrange2 => Atmosphere {
             color: [0.0, 0.0, 0.004],
             fog_start: 1_000.0,
             fog_end: 2_000.0,
@@ -375,6 +385,7 @@ pub(crate) struct State {
     progress: f32,
     error: Option<String>,
     lagrange: Option<Box<Lagrange>>,
+    lagrange2: Option<Box<lagrange2::Lagrange2>>,
     lab: Option<Box<Lab>>,
     robot_lab: Option<Box<robotlab::Room>>,
     #[cfg(not(target_arch = "wasm32"))]
@@ -459,6 +470,7 @@ impl Default for State {
             progress: 0.0,
             error: None,
             lagrange: None,
+            lagrange2: None,
             lab: None,
             robot_lab: None,
             #[cfg(not(target_arch = "wasm32"))]
@@ -555,7 +567,7 @@ fn arch_rings(mesh: &mut crate::mesh::Mesh, zone: ZoneId, at: glam::Vec3, elapse
     use glam::Vec3;
     let color = match zone {
         ZoneId::Plaza => crate::palette::amber(coder_ui::theme::Intensity::Half),
-        ZoneId::Lagrange1 => [0.35, 0.7, 1.0],
+        ZoneId::Lagrange1 | ZoneId::Lagrange2 => [0.35, 0.7, 1.0],
         ZoneId::PhysicsLab | ZoneId::RobotLab => [0.3, 0.85, 1.0],
         ZoneId::Everglade | ZoneId::Grove | ZoneId::MeteorStressTest | ZoneId::MeteorShowcase => {
             [0.95, 0.85, 0.4]

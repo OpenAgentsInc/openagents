@@ -762,6 +762,10 @@ pub struct Layer {
     player_scale: f32,
     /// The glyph atlas revision the engine last uploaded.
     player_atlas: u64,
+    /// A zone the player walked into from the Grid (Lagrange 2), drawn by
+    /// the legacy renderer on the window's device, with the zone revision
+    /// it was built for.
+    zone: Option<(verse::render::Layer, u64)>,
     started: Instant,
     last: Option<Instant>,
     playing: bool,
@@ -779,6 +783,7 @@ impl Layer {
             player: None,
             player_scale: 0.0,
             player_atlas: 0,
+            zone: None,
             started: Instant::now(),
             last: None,
             playing: false,
@@ -804,6 +809,7 @@ impl Layer {
         }
         self.open = open;
         self.player = None;
+        self.zone = None;
         self.last = None;
         self.playing = false;
         if open {
@@ -964,6 +970,58 @@ impl Backdrop for Layer {
                     input,
                 )?
                 .unwrap_or(0.0);
+            let on_grid = {
+                let world = surface.world();
+                world.is_bare() && world.is_plaza()
+            };
+            if !on_grid {
+                // A zone entered through a Grid arch: the engine draws only
+                // the Grid, so the zone draws through the legacy renderer.
+                self.player = None;
+                let revision = surface.world().zone_revision;
+                if self
+                    .zone
+                    .as_ref()
+                    .is_none_or(|(_, built)| *built != revision)
+                {
+                    let world = surface.world();
+                    let layer = verse::render::Layer::new(
+                        gpu.adapter,
+                        gpu.device,
+                        gpu.queue,
+                        rust_native_desktop::backdrop::FORMAT,
+                        size,
+                        &world.world.mesh,
+                        surface.atlas(),
+                        world.atmosphere(),
+                        1,
+                    )?;
+                    self.zone = Some((layer, revision));
+                }
+                let frame = surface.frame(dt);
+                let Some((layer, _)) = self.zone.as_mut() else {
+                    return Ok(());
+                };
+                if layer.size() != size {
+                    layer.resize(gpu.device, size.0, size.1)?;
+                }
+                let drawn = layer.encode(
+                    gpu.device,
+                    gpu.queue,
+                    encoder,
+                    target,
+                    frame.view,
+                    &frame.mesh,
+                    &frame.ui,
+                );
+                if drawn.is_err() {
+                    self.zone = None;
+                }
+                drawn?;
+                self.last = Some(now);
+                return Ok(());
+            }
+            self.zone = None;
             if self.player_scale != surface.scale() {
                 self.player = None;
                 self.player_scale = surface.scale();

@@ -1,0 +1,20 @@
+[package]
+name = "verse-lagrange2"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Lagrange 2 for Verse: a typed spacecraft document, robot arms that assemble it at Earth–Moon L2 in stage-checked steps, and its test burn."
+publish.workspace = true
+
+[dependencies]
+physics = { path = "../physics" }
+verse-lagrange = { path = "../verse-lagrange" }
+glam = { version = "0.30.10", features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["float_roundtrip"] }
+
+[dev-dependencies]
+robot-description = { path = "../robot-description" }
+
+[lints]
+workspace = true

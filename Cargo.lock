@@ -17772,6 +17772,7 @@ dependencies = [
  "verse-zone-grove",
  "verse-zone-lab",
  "verse-zone-lagrange",
+ "verse-zone-lagrange2",
  "verse-zone-robotlab",
  "verse-zone-water",
  "web-time",
@@ -17960,6 +17961,18 @@ dependencies = [
  "physics",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "verse-lagrange2"
+version = "1.0.0-rc.14"
+dependencies = [
+ "glam",
+ "physics",
+ "robot-description",
+ "serde",
+ "serde_json",
+ "verse-lagrange",
 ]
 
 [[package]]
@@ -18188,6 +18201,19 @@ dependencies = [
  "verse-lagrange",
  "verse-pbr",
  "verse-world",
+]
+
+[[package]]
+name = "verse-zone-lagrange2"
+version = "1.0.0-rc.14"
+dependencies = [
+ "glam",
+ "verse-core",
+ "verse-lagrange",
+ "verse-lagrange2",
+ "verse-pbr",
+ "verse-world",
+ "verse-zone-lagrange",
 ]
 
 [[package]]

@@ -9,7 +9,7 @@
 //! ([`crate::pbr`]); the Sun, Earth, Moon, and stars come from real data at
 //! infinity. Guides and the forces overlay stay as lines.
 
-mod draw;
+pub mod draw;
 mod light;
 
 // The paths this zone was written against inside `crates/verse`.

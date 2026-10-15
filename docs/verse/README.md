@@ -61,7 +61,9 @@ records while the player is inside and supports explicitly confirmed recipes.
 Portals lead to separate local [zones](zones.md).
 **[Lagrange 1](lagrange-1.md)** is a construction station at the Sun–Earth L1
 point with restricted three-body orbital mechanics, station-keeping, and
-rigid-body EVA assembly. The **[Physics Lab](physics-lab.md)** runs each
+rigid-body EVA assembly. **[Lagrange 2](lagrange-2.md)**, walked into from
+the Grid, is a spaceship factory at Earth–Moon L2 where four robot arms
+assemble a ship in stage-checked steps and the ship flies a test burn. The **[Physics Lab](physics-lab.md)** runs each
 mechanism of the shared physics crate live, with knobs to choose a scenario
 and change its parameters. Authenticated chamber and hosted social instances,
 sealed authored worlds, and operator-reviewed public releases are implemented;

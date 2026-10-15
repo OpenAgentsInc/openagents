@@ -273,6 +273,26 @@ impl MapHud {
                     z: -2.0,
                 },
             ],
+            crate::zones::ZoneId::Lagrange2 => vec![
+                Landmark {
+                    id: "return",
+                    label: "Grid portal",
+                    x: crate::zones::lagrange2::RETURN_PORTAL.x,
+                    z: crate::zones::lagrange2::RETURN_PORTAL.z,
+                },
+                Landmark {
+                    id: "cradle",
+                    label: "Cradle",
+                    x: 0.0,
+                    z: 0.0,
+                },
+                Landmark {
+                    id: "racks",
+                    label: "Parts racks",
+                    x: -36.0,
+                    z: 15.0,
+                },
+            ],
             crate::zones::ZoneId::RobotLab => vec![
                 Landmark {
                     id: "return",

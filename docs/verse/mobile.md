@@ -246,6 +246,17 @@ pack first.
   comes back 3.5 m in front of the Grid's Everglade arch, facing away from
   it, and presence rejoins `verse-bare` there.
 
+### The Grid's portal to Lagrange 2
+
+**Shown.** `verse::zones::gate::GRID_LAGRANGE2_OPEN` is `true`. The arch
+stands at `GRID_LAGRANGE2_AT`, which is 20 m to the side and 19 m ahead in
+the Grid's layout frame. It needs no zone cache, because the factory is
+generated rather than downloaded. Walking through it enters the
+[Lagrange 2](lagrange-2.md) factory at once, and the phones reopen their
+surface for the legacy renderer as they do for any zone. Its **THE GRID**
+arch on the deck's corner, or the HUD's control, comes back in front of the
+Grid's arch.
+
 ### The Grid's portal to Lagrange 1
 
 **Hidden for now.** `verse::zones::gate::GRID_PORTAL_OPEN` is `false`, so no

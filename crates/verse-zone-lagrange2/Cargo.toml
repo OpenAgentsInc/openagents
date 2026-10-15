@@ -1,0 +1,19 @@
+[package]
+name = "verse-zone-lagrange2"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Verse's Lagrange 2 zone: the spaceship factory at Earth–Moon L2, drawn on the physical path over verse-lagrange2's physics."
+
+[dependencies]
+glam = "0.30.10"
+verse-core = { path = "../verse-core" }
+verse-lagrange = { path = "../verse-lagrange" }
+verse-lagrange2 = { path = "../verse-lagrange2" }
+verse-pbr = { path = "../verse-pbr" }
+verse-world = { path = "../verse-world" }
+verse-zone-lagrange = { path = "../verse-zone-lagrange" }
+
+[lints]
+workspace = true
