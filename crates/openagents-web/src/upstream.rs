@@ -33,7 +33,7 @@ use hyper_util::rt::{TokioExecutor, TokioIo};
 
 /// The paths this site answers itself, exactly or as a prefix. `/app`, the
 /// local task browser, is never proxied; the host guard keeps it local.
-const OWNED_EXACT: [&str; 76] = [
+const OWNED_EXACT: [&str; 77] = [
     "/",
     crate::analytics::BEACON,
     crate::analytics::SCRIPT,
@@ -52,6 +52,7 @@ const OWNED_EXACT: [&str; 76] = [
     "/cli/install.sh",
     "/cli/install.ps1",
     "/docs",
+    "/blog",
     "/terms",
     "/privacy",
     "/connect",
@@ -126,7 +127,7 @@ const OWNED_EXACT: [&str; 76] = [
 /// `/coder/memory`), so a shipped app still calling them is served here
 /// and its `Bearer sess_...` never reaches the upstream. Current apps ask
 /// the `/v1` paths first (#11158).
-const OWNED_PREFIXES: [&str; 37] = [
+const OWNED_PREFIXES: [&str; 38] = [
     "/landing/",
     "/auth/",
     // Link preview pictures (crate::link_preview).
@@ -140,6 +141,8 @@ const OWNED_PREFIXES: [&str; 37] = [
     "/device/",
     "/v1/device/",
     "/docs/",
+    // The blog's posts, their Markdown, and its feed (crate::pages::blog).
+    "/blog/",
     "/studios/blue-rush/",
     "/demo/",
     "/app/",
@@ -171,9 +174,10 @@ const OWNED_PREFIXES: [&str; 37] = [
 ];
 
 /// The sections removed at the owner's direction (2026-09-29). They answer
-/// `404` here and are never proxied, with everything under them.
-pub(crate) const REMOVED: [&str; 9] = [
-    "/forum", "/gym", "/traces", "/trace", "/earn", "/weights", "/qa", "/blog", "/doc",
+/// `404` here and are never proxied, with everything under them. The blog
+/// was one of them until it came back on 2026-10-15 (`crate::pages::blog`).
+pub(crate) const REMOVED: [&str; 8] = [
+    "/forum", "/gym", "/traces", "/trace", "/earn", "/weights", "/qa", "/doc",
 ];
 
 /// Whether `path` is this site's to answer: one of its pages, or a

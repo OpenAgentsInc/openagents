@@ -79,8 +79,10 @@ async fn get(router: Router, uri: &str) -> (StatusCode, String) {
 /// of `UiPage`, so the shell's checks (one `ui.css` link, the wordmark, no
 /// script) don't apply. Its own test below holds it to the same policy
 /// rules: no inline script or style, scripts from this site only.
-const PAGES: [&str; 61] = [
+const PAGES: [&str; 63] = [
     "/new",
+    "/blog",
+    "/blog/coder-1-0",
     "/pricing",
     "/live",
     "/promises",
@@ -2272,8 +2274,6 @@ async fn the_removed_sections_are_gone_and_never_linked() {
         "/install-terminal.ps1",
         "/doc",
         "/doc/install",
-        "/blog",
-        "/blog/introducing-coder",
     ];
     for uri in removed {
         let (status, _) = get(router(config(root.path().into())), uri).await;
@@ -2907,11 +2907,10 @@ async fn owned_pages_removed_sections_and_the_task_browser_never_go_upstream() {
         "/earn",
         "/weights",
         "/qa",
-        "/blog",
-        "/blog/introducing-coder",
         "/doc",
         "/doc/install",
         "/docs/nope",
+        "/blog/nope",
     ] {
         let (status, _, body) = get_with(site.clone(), uri, "openagents.com").await;
         assert_eq!(status, StatusCode::NOT_FOUND, "{uri}");
@@ -3674,6 +3673,152 @@ async fn the_agent_docs_list_every_page_and_serve_markdown() {
         get(site(), "/docs/agents/nope.md").await.0,
         StatusCode::NOT_FOUND
     );
+}
+
+/// The blog: the index lists every post, newest first, with its date and
+/// summary; each post answers as HTML (in plain words, every site link
+/// answering `200`) and as Markdown; the site's `llms.txt`,
+/// `llms-full.txt`, sitemap, and the feed list it.
+#[tokio::test]
+async fn the_blog_lists_every_post_and_serves_markdown() {
+    use crate::pages::blog;
+    let root = tempfile::tempdir().unwrap();
+    let site = || router(config(root.path().join("tasks")));
+    let (status, index) = get(site(), "/blog").await;
+    assert_eq!(status, StatusCode::OK);
+    crate::copy_guard::assert_plain("/blog", &index);
+    assert!(index.contains("type=\"application/atom+xml\""));
+    let (_, _, site_llms) = get_with(site(), "/llms.txt", LOCAL).await;
+    let (_, _, full) = get_with(site(), "/llms-full.txt", LOCAL).await;
+    let (_, _, sitemap) = get_with(site(), "/sitemap.xml", LOCAL).await;
+    let (_, _, home_md) = get_with(site(), "/index.md", LOCAL).await;
+    assert!(home_md.contains("(/blog.md)"));
+    let (status, headers, index_md) = get_with(site(), "/blog.md", LOCAL).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        headers[header::CONTENT_TYPE]
+            .to_str()
+            .unwrap()
+            .starts_with("text/markdown")
+    );
+    let (status, headers, feed) = get_with(site(), "/blog/feed.xml", LOCAL).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        headers[header::CONTENT_TYPE]
+            .to_str()
+            .unwrap()
+            .starts_with("application/atom+xml")
+    );
+    assert!(sitemap.contains("/blog<"));
+    let posts = blog::posts();
+    assert!(!posts.is_empty());
+    // Newest first, on the page and in its Markdown.
+    let mut last = usize::MAX;
+    for post in posts.iter().rev() {
+        let at = index
+            .find(&format!("href=\"{}\"", post.path()))
+            .expect("listed");
+        assert!(
+            at < last || last == usize::MAX,
+            "{} is out of order",
+            post.slug
+        );
+        last = at;
+    }
+    for post in &posts {
+        let path = post.path();
+        assert!(
+            index.contains(&blog::long_date(&post.date)),
+            "{}",
+            post.slug
+        );
+        assert!(
+            index.contains(&crate::layout::escape(&post.summary)),
+            "{}",
+            post.slug
+        );
+        let md = format!("https://openagents.com{path}.md");
+        assert!(site_llms.contains(&md), "{} in /llms.txt", post.slug);
+        assert!(full.contains(&format!("Source: https://openagents.com{path}\n")));
+        assert!(
+            sitemap.contains(&format!("{path}<")),
+            "{} in the sitemap",
+            post.slug
+        );
+        assert!(feed.contains(&format!("https://openagents.com{path}<")));
+        assert!(index_md.contains(&format!("({path}.md)")), "{}", post.slug);
+        let (status, html) = get(site(), &path).await;
+        assert_eq!(status, StatusCode::OK, "{}", post.slug);
+        crate::copy_guard::assert_plain(&path, &html);
+        let trail_start = html.find(r#"<nav id="oa-breadcrumb""#).expect("breadcrumb");
+        assert!(html[trail_start..].contains(r#"href="/blog">Blog</a>"#));
+        let main = &html[html.find("<main").unwrap()..html.find("</main>").unwrap()];
+        assert!(main.contains(&format!("<h1>{}</h1>", crate::layout::escape(&post.title))));
+        for target in main.split("href=\"").skip(1) {
+            let target = &target[..target.find('"').unwrap()];
+            if target.starts_with('/') && !target.starts_with("/static/") {
+                let link = target.split('#').next().unwrap();
+                let (status, _) = get(site(), link).await;
+                assert_eq!(status, StatusCode::OK, "{} links {target}", post.slug);
+            }
+        }
+        let (status, headers, markdown) = get_with(site(), &format!("{path}.md"), LOCAL).await;
+        assert_eq!(status, StatusCode::OK, "{}.md", post.slug);
+        assert!(
+            headers[header::CONTENT_TYPE]
+                .to_str()
+                .unwrap()
+                .starts_with("text/markdown")
+        );
+        assert!(
+            markdown.starts_with("---\ntitle: "),
+            "{}.md has front matter",
+            post.slug
+        );
+        assert!(markdown.contains(&format!("\n# {}\n", post.title)));
+        assert_eq!(
+            crate::agent_ready::twin(&path).as_deref(),
+            Some(format!("{path}.md").as_str())
+        );
+    }
+    assert_eq!(
+        crate::agent_ready::twin("/blog").as_deref(),
+        Some("/blog.md")
+    );
+    assert_eq!(crate::agent_ready::twin("/blog/nope"), None);
+    assert_eq!(get(site(), "/blog/nope").await.0, StatusCode::NOT_FOUND);
+    assert_eq!(get(site(), "/blog/nope.md").await.0, StatusCode::NOT_FOUND);
+}
+
+/// The launch post's figures are the study's, credited to the brief and
+/// the check in front of the same model, never to small models
+/// (docs/launch/1.0/claims.md), and it links the study.
+#[test]
+fn the_coder_1_0_post_keeps_to_the_claims() {
+    let post = crate::pages::blog::post("coder-1-0").expect("the post");
+    assert_eq!(post.date, "2026-10-15");
+    assert_eq!(post.author, "OpenAgents");
+    let body = post.body;
+    for figure in [
+        "$1.84",
+        "$4.00",
+        "121 s",
+        "284 s",
+        "21 real",
+        "19 of 63",
+        "$20 a month",
+    ] {
+        assert!(body.contains(figure), "{figure}");
+    }
+    assert!(body.contains("docs/inference/briefed-agent-ab.md"));
+    assert!(body.contains("No small model ran in this study"));
+    assert!(body.contains(crate::pages::CODER_SH) && body.contains(crate::pages::CODER_PS1));
+    for line in body
+        .lines()
+        .filter(|l| l.contains("$1.84") || l.contains("121 s"))
+    {
+        assert!(!line.to_lowercase().contains("small model"), "{line}");
+    }
 }
 
 /// The models page draws the rate card the gateway serves at

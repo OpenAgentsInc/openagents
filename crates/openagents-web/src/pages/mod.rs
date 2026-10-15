@@ -4,6 +4,7 @@ pub(crate) mod affiliates;
 pub(crate) mod agent_docs;
 pub(crate) mod api_docs;
 mod att;
+pub(crate) mod blog;
 mod blue_rush;
 mod bunny;
 pub(crate) mod cad;
@@ -88,6 +89,7 @@ pub(crate) fn routes() -> Router<App> {
         .merge(content::routes())
         .merge(api_docs::routes())
         .merge(agent_docs::routes())
+        .merge(blog::routes())
         .merge(download::routes())
         .merge(connect::routes())
         .merge(profile::routes())

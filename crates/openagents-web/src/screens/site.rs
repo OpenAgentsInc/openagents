@@ -45,6 +45,16 @@ pub(crate) fn screens() -> Vec<Screen> {
             ],
         ),
         page(
+            "blog",
+            "Blog",
+            &["/blog", "/blog/{slug}"],
+            vec![
+                state("index", "Every post, newest first", blog_index),
+                state("post", "One post", blog_post),
+                state("missing", "No post by that name", blog_missing),
+            ],
+        ),
+        page(
             "pricing",
             "Pricing",
             &["/pricing", "/docs/pricing"],
@@ -175,6 +185,18 @@ fn docs_article(headers: &HeaderMap) -> Response {
 
 fn docs_missing(headers: &HeaderMap) -> Response {
     crate::pages::content::doc_page(headers, "no-such-guide")
+}
+
+fn blog_index(headers: &HeaderMap) -> Response {
+    crate::pages::blog::index_page(headers)
+}
+
+fn blog_post(headers: &HeaderMap) -> Response {
+    crate::pages::blog::post_page(headers, crate::pages::blog::POSTS[0].0)
+}
+
+fn blog_missing(headers: &HeaderMap) -> Response {
+    crate::pages::blog::post_page(headers, "no-such-post")
 }
 
 fn api_index(headers: &HeaderMap) -> Response {

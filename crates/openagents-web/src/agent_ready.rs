@@ -56,7 +56,7 @@ const SKILL_PATH: &str = "/skill.md";
 
 /// The Markdown twins and agent documents this module answers. The
 /// upstream guard treats them as the site's own ([`owns`]).
-const PATHS: [&str; 23] = [
+const PATHS: [&str; 24] = [
     "/robots.txt",
     "/sitemap.xml",
     "/llms.txt",
@@ -64,6 +64,7 @@ const PATHS: [&str; 23] = [
     "/auth.md",
     "/index.md",
     "/docs.md",
+    "/blog.md",
     "/terms.md",
     "/privacy.md",
     "/download.md",
@@ -123,11 +124,16 @@ pub(crate) fn twin(path: &str) -> Option<String> {
         .unwrap_or(path);
     match path {
         "/" => return Some("/index.md".to_owned()),
-        "/docs" | "/docs/api" | "/docs/agents" | "/terms" | "/privacy" | "/download"
+        "/docs" | "/docs/api" | "/docs/agents" | "/blog" | "/terms" | "/privacy" | "/download"
         | "/pricing" | "/promises" | "/roadmap" => {
             return Some(format!("{path}.md"));
         }
         _ => {}
+    }
+    if let Some(slug) = path.strip_prefix("/blog/") {
+        return crate::pages::blog::post(slug)
+            .is_some()
+            .then(|| format!("{path}.md"));
     }
     if let Some(slug) = path.strip_prefix("/docs/agents/") {
         return AGENT_DOCS
@@ -474,6 +480,16 @@ pub(crate) fn doc_md(path: &str, source: &str, fallback: &str) -> Response {
     )
 }
 
+/// A Markdown document at `path` with its title and summary as front
+/// matter (the blog's posts and index).
+pub(crate) fn markdown_doc(path: &str, title: &str, description: &str, body: &str) -> Response {
+    let canonical = format!("{SITE}{path}");
+    markdown_response(
+        with_frontmatter(title, description, &canonical, body),
+        &canonical,
+    )
+}
+
 /// `/docs/{slug}.md`: one guide (called by the guide's route).
 pub(crate) fn guide_md(slug: &str, source: &str) -> Response {
     doc_md(&format!("/docs/{slug}"), source, slug)
@@ -515,6 +531,7 @@ fn home_markdown() -> String {
         "# OpenAgents\n\n{}\n\n## Start here\n\n\
 - [Download](/download.md): the apps and Coder for your computer.\n\
 - [Docs](/docs.md): guides to the chat, Coder, the apps, plugins, and the Gym.\n\
+- [Blog](/blog.md): news from OpenAgents, newest first.\n\
 - [API](/docs/api.md): use our models from your own code. Beta.\n\
 - [For agents](/docs/agents.md): sign up as an agent, pay in bitcoin, and use our API, MCP server, and command.\n\
 - [Pricing](/pricing.md)\n\
@@ -642,6 +659,7 @@ Every page here is also Markdown: add `.md` to its address, or send `Accept: tex
 - [For agents]({SITE}/docs/api/for-agents.md): find us, say who you are, and pay. {}\n\
 - [OpenAPI]({SITE}/openapi.json): the API's machine-readable description.\n\
 - [API catalog]({SITE}/.well-known/api-catalog): where each API and its description live.\n\n\
+## Blog\n\n{}\n\
 ## Agent tools\n\n\
 - [Docs MCP server]({SITE}{MCP_PATH}): list, search, and read these docs and the model prices as MCP tools over Streamable HTTP. No key needed.\n\
 - [MCP server card]({SITE}/.well-known/mcp/server-card.json): the server's tools and transport.\n\
@@ -659,7 +677,8 @@ Every page here is also Markdown: add `.md` to its address, or send `Accept: tex
         crate::pages::agent_docs::LEAD,
         crate::pages::agent_docs::list(true),
         api_list(true),
-        crate::payments::sentence(methods)
+        crate::payments::sentence(methods),
+        crate::pages::blog::list(true)
     )
 }
 
@@ -690,6 +709,13 @@ async fn llms_full(State(app): State<App>) -> Response {
         out.push_str(&format!(
             "\n---\n\nSource: {SITE}/docs/agents/{slug}\n\n{}\n",
             source.trim()
+        ));
+    }
+    for post in crate::pages::blog::posts() {
+        out.push_str(&format!(
+            "\n---\n\nSource: {SITE}{}\n\n{}\n",
+            post.path(),
+            post.markdown().trim()
         ));
     }
     text_response(out, "text/plain; charset=utf-8")
@@ -821,6 +847,7 @@ pub(crate) fn public_paths() -> Vec<String> {
         "/docs",
         "/docs/api",
         "/docs/agents",
+        "/blog",
         "/pilot",
         "/live",
         "/stats",
@@ -839,6 +866,7 @@ pub(crate) fn public_paths() -> Vec<String> {
             .iter()
             .map(|(slug, _)| format!("/docs/agents/{slug}")),
     );
+    paths.extend(crate::pages::blog::posts().iter().map(|post| post.path()));
     paths
 }
 

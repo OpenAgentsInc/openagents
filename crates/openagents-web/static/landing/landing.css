@@ -142,6 +142,80 @@ main > section {
 
 .navbar-login:hover { color: var(--foreground); }
 
+.navbar-account { display: flex; align-items: center; gap: 20px; }
+
+.navbar-links a:focus-visible, .navbar-login:focus-visible, .navbar-brand:focus-visible,
+.navbar-menu-panel a:focus-visible, .hero-pill:focus-visible, .footer-columns a:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+/* The menu for narrow screens: a <details>, so it needs no script. Shown
+   at 900px and under, where the section links and Log in leave the bar. */
+.navbar-menu { display: none; }
+
+.navbar-menu-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 38px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--foreground);
+  cursor: pointer;
+  list-style: none;
+}
+
+.navbar-menu-button::-webkit-details-marker { display: none; }
+
+.navbar-menu-button:hover { background: color-mix(in oklch, var(--muted) 60%, transparent); }
+
+.navbar-menu-button:focus-visible { outline: 3px solid color-mix(in oklch, var(--ring) 60%, transparent); outline-offset: 2px; }
+
+.navbar-menu-icon { display: grid; gap: 4px; width: 16px; }
+
+.navbar-menu-icon span {
+  display: block;
+  height: 2px;
+  border-radius: 2px;
+  background: currentColor;
+  transition: transform .15s, opacity .15s;
+}
+
+/* Open, the three bars become a cross. */
+.navbar-menu[open] .navbar-menu-icon span:nth-child(1) { transform: translateY(6px) rotate(45deg); }
+.navbar-menu[open] .navbar-menu-icon span:nth-child(2) { opacity: 0; }
+.navbar-menu[open] .navbar-menu-icon span:nth-child(3) { transform: translateY(-6px) rotate(-45deg); }
+
+.navbar-menu[open] .navbar-menu-button { background: var(--muted); }
+
+.navbar-menu-panel {
+  position: absolute;
+  top: 100%;
+  left: 12px;
+  right: 12px;
+  display: grid;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  box-shadow: 0 24px 60px -28px color-mix(in oklch, var(--foreground) 45%, transparent);
+}
+
+.navbar-menu-panel a {
+  padding: 12px 14px;
+  border-radius: 10px;
+  color: var(--foreground);
+  font-size: 16px;
+  text-decoration: none;
+}
+
+.navbar-menu-panel a:hover { background: var(--muted); }
+
+.navbar-menu-panel hr { width: calc(100% - 28px); margin: 6px 14px; border: 0; border-top: 1px solid var(--border); }
+
 /* Hero */
 .hero-section {
   display: grid;
@@ -165,6 +239,10 @@ main > section {
 }
 
 .hero-pill:hover { border-color: var(--input); color: var(--foreground); }
+
+.hero-pill-arrow { transition: transform .15s; }
+
+.hero-pill:hover .hero-pill-arrow { transform: translateX(2px); }
 
 .hero-pill-tag {
   padding: 2px 10px;
@@ -438,11 +516,11 @@ figure { margin: 0; }
 .footer-columns a:hover { color: var(--foreground); }
 
 @media (max-width: 900px) {
-  .navbar-links { display: none; }
-  .navbar { gap: 16px; }
+  .navbar-links, .navbar-account { display: none; }
+  .navbar { gap: 10px; padding: 10px 16px; }
+  .navbar-menu { display: block; }
   .compare { grid-template-columns: 1fr; }
   .navbar .button { margin-left: auto; }
-  .hero-pill { flex-wrap: wrap; border-radius: 16px; }
   .hero-section, .feature-section { grid-template-columns: 1fr; gap: 40px; }
   .feature-flipped .feature-copy { order: 0; }
   .steps, .stats-section { grid-template-columns: 1fr; }
@@ -453,10 +531,19 @@ figure { margin: 0; }
 
 @media (max-width: 560px) {
   .compare { grid-template-columns: 1fr; }
-  .footer-columns { gap: 32px; flex-wrap: wrap; }
-  .hero-visual { padding: 28px 0 84px; }
-  .float-stat { right: 0; top: -6px; }
+  .footer { padding: 40px 20px 56px; }
+  .footer-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 28px 24px; }
+  /* The stat card sits over the prompt card's corner instead of its chips. */
+  .hero-visual { padding: 64px 0 84px; }
+  .float-stat { right: 0; top: 0; padding: 10px 14px; }
+  .float-stat .float-value { font-size: 22px; }
   .float-hold { left: 0; bottom: 0; }
+  main > section { padding: 56px 16px; }
+  .feature-section { gap: 28px; }
+  .feature-picture, .feature-wide .feature-picture { padding: 10px; border-radius: var(--radius); }
+  .step, .price-card { padding: 20px; }
+  .stat { padding: 22px 4px; }
+  .stats-source { padding: 0 4px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

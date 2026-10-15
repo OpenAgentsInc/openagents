@@ -33,6 +33,8 @@ const CSS_PATH: &str = "/landing/landing.css";
 const RESEARCH: &str =
     "https://github.com/OpenAgentsInc/openagents/blob/main/docs/inference/briefed-agent-ab.md";
 const HOW: &str = "/docs/coder-how-it-works";
+/// The Coder 1.0 announcement on the blog.
+const ANNOUNCEMENT: &str = "/blog/coder-1-0";
 const GITHUB: &str = "https://github.com/OpenAgentsInc/openagents";
 const X: &str = "https://x.com/OpenAgentsInc";
 const DESCRIPTION: &str =
@@ -90,7 +92,23 @@ fn eyebrow(text: &str) -> Markup {
     html! { p.eyebrow { (text) } }
 }
 
+/// The section links, in the order the wide header and the menu list them.
+const SECTIONS: [(&str, &str); 6] = [
+    ("How it works", "#how"),
+    ("Agents", "#agents"),
+    ("Pricing", "#pricing"),
+    ("Docs", "/docs"),
+    ("Blog", "/blog"),
+    ("FAQ", "#faq"),
+];
+
+/// The header. Wide: the brand, the section links, Try it, Log in, and
+/// Download. At phone and tablet width (900px and under): the brand,
+/// Download, and a Menu button that opens the rest. The menu is a
+/// `<details>`, so it opens and closes with no script, from the keyboard
+/// too (Tab to it, Enter or Space).
 fn navbar() -> Markup {
+    let log_in = crate::auth::login_href("/", false);
     html! {
         header.navbar data-slot="navbar" {
             a.navbar-brand href="/" {
@@ -98,15 +116,24 @@ fn navbar() -> Markup {
                 span { "OpenAgents" }
             }
             nav.navbar-links aria-label="Sections" {
-                a href="#how" { "How it works" }
-                a href="#agents" { "Agents" }
-                a href="#pricing" { "Pricing" }
-                a href="/docs" { "Docs" }
-                a href="#faq" { "FAQ" }
+                @for (label, href) in SECTIONS { a href=(href) { (label) } }
             }
-            a.navbar-login href=(super::home::NEW) { "Try it in your browser" }
-            a.navbar-login href=(crate::auth::login_href("/", false)) { "Log in" }
+            div.navbar-account {
+                a.navbar-login href=(super::home::NEW) { "Try it in your browser" }
+                a.navbar-login href=(log_in) { "Log in" }
+            }
             (button("Download Coder", "/download", "3d"))
+            details.navbar-menu {
+                summary.navbar-menu-button aria-label="Menu" {
+                    span.navbar-menu-icon aria-hidden="true" { span {} span {} span {} }
+                }
+                nav.navbar-menu-panel aria-label="Menu" {
+                    @for (label, href) in SECTIONS { a href=(href) { (label) } }
+                    hr;
+                    a href=(super::home::NEW) { "Try it in your browser" }
+                    a href=(log_in) { "Log in" }
+                }
+            }
         }
     }
 }
@@ -115,9 +142,10 @@ fn hero_section() -> Markup {
     html! {
         section.hero-section data-slot="hero-section" aria-labelledby="hero-title" {
             div.hero-copy {
-                a.hero-pill href=(RESEARCH) {
-                    span.hero-pill-tag { "Research" }
-                    span { "Same model, 21 real issues: half the cost per fix" }
+                a.hero-pill href=(ANNOUNCEMENT) {
+                    span.hero-pill-tag { "New" }
+                    span { "Coder 1.0 is out" }
+                    span.hero-pill-arrow aria-hidden="true" { "\u{2192}" }
                 }
                 h1 #hero-title { "One Coder in front of every coding agent you use" }
                 p.hero-lead {
@@ -427,7 +455,7 @@ fn footer() -> Markup {
             }
             nav.footer-columns aria-label="Footer" {
                 div { h3 { "Product" } a href="/download" { "Download" } a href="/pricing" { "Pricing" } a href="/efficiency" { "Efficiency" } }
-                div { h3 { "Resources" } a href="/docs" { "Docs" } a href=(RESEARCH) { "Research" } a href=(GITHUB) { "GitHub" } a href=(X) { "X (Twitter)" } }
+                div { h3 { "Resources" } a href="/docs" { "Docs" } a href="/blog" { "Blog" } a href=(RESEARCH) { "Research" } a href=(GITHUB) { "GitHub" } a href=(X) { "X (Twitter)" } }
                 div { h3 { "Legal" } a href="/privacy" { "Privacy" } a href="/terms" { "Terms" } }
                 div { h3 { "Contact" } a href="/contact" { "Contact us" } a href=(format!("mailto:{}", crate::agent_ready::CONTACT)) { "Email" } }
             }
@@ -522,6 +550,14 @@ mod tests {
         }
         assert!(page.contains("href=\"/download\""));
         assert!(page.contains(RESEARCH));
+        // The announcement pill, and Blog in the header, the menu, and the
+        // footer.
+        assert!(page.contains(&format!("class=\"hero-pill\" href=\"{ANNOUNCEMENT}\"")));
+        assert!(crate::pages::blog::post("coder-1-0").is_some());
+        assert_eq!(page.matches("href=\"/blog\"").count(), 3);
+        // The menu for narrow screens works without a script.
+        assert!(page.contains("<details class=\"navbar-menu\">"));
+        assert!(page.contains("<summary class=\"navbar-menu-button\" aria-label=\"Menu\">"));
         assert!(page.contains(CODER_SH) && page.contains(CODER_PS1));
         for svg in [
             "coder-harness",

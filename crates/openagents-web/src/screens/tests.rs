@@ -120,6 +120,8 @@ async fn site_states_show_their_sample_data() {
             "Nothing was sent.",
         ),
         ("docs", "missing", StatusCode::NOT_FOUND, "Page not found"),
+        ("blog", "missing", StatusCode::NOT_FOUND, "Post not found"),
+        ("blog", "post", StatusCode::OK, "Coder 1.0"),
         (
             "problem",
             "not-found",
