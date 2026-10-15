@@ -2,6 +2,7 @@
 //! 127.0.0.1 (docs/cad-lab/mvp.md).
 //! `cad-lab schema`: prints the `part.v1` and `assembly.v1` JSON Schemas.
 //! `cad-lab tool NAME [JSON]`: runs one tool here, without the service.
+//! `cad-lab mcp`: the `cad_*` tools as an MCP server on stdin and stdout.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -14,7 +15,7 @@ use axum::{Json, Router};
 use cad_lab::lab::{FILES, Lab};
 use serde_json::{Value, json};
 
-const USAGE: &str = "usage: cad-lab serve [--port PORT] [--dir DIR] | cad-lab schema | cad-lab tool NAME [JSON]\n       \
+const USAGE: &str = "usage: cad-lab serve [--port PORT] [--dir DIR] | cad-lab schema | cad-lab tool NAME [JSON] | cad-lab mcp\n       \
      cad-lab frames DOC OUT [--from N] [--to N] [--frames F] [--turn DEG] [--width W] [--height H] [--view V] [--offset DEG] [--pitch DEG] [--fit N]";
 
 fn main() -> std::process::ExitCode {
@@ -52,6 +53,23 @@ fn main() -> std::process::ExitCode {
                 std::process::ExitCode::FAILURE
             } else {
                 std::process::ExitCode::SUCCESS
+            }
+        }
+        Some("mcp") => {
+            let lab = match Lab::open(Lab::default_root()) {
+                Ok(lab) => lab,
+                Err(why) => {
+                    eprintln!("cad-lab: {why}");
+                    return std::process::ExitCode::FAILURE;
+                }
+            };
+            let stdin = std::io::stdin();
+            match cad_lab::mcp::serve(&lab, stdin.lock(), std::io::stdout().lock()) {
+                Ok(()) => std::process::ExitCode::SUCCESS,
+                Err(why) => {
+                    eprintln!("cad-lab: {why}");
+                    std::process::ExitCode::FAILURE
+                }
             }
         }
         Some("frames") => match frames(&args[1..]) {

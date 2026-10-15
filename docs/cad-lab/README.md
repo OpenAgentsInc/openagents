@@ -232,6 +232,12 @@ before.
   may read the chat.
 - `cad-lab tool NAME JSON` runs one tool without the service (scripts,
   tests).
+- `cad-lab mcp` serves every `cad_*` tool to MCP clients over stdio
+  (`crates/cad-lab/src/mcp.rs`): the same tools, schemas and checks as the
+  chat, a refused edit coming back as a tool error with the reason. Add it
+  to Claude Code with
+  `claude mcp add cad-lab -- cargo run -q -p cad-lab -- mcp` from the repo
+  (or the built binary's path in place of `cargo run ...`).
 - `openagents cad list|open|check|versions|compare|render|export|tool`
   starts the service when it isn't running.
 
