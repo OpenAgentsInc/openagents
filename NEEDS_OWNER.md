@@ -1,3 +1,18 @@
+## Approve the LND receive canary and check MDK Pro compatibility (#11754)
+
+The optional LND credit receiver, original-invoice recovery after rollback,
+private hints, and dual-receiver reconciliation are implemented. Keep
+`lnd_receive.backend = "mdk"` until the #11755 liquidity budget and small
+real-wallet credit canary are approved. The canary must verify one credit in
+`agent-credit.jsonl`, repeat-proof deduplication, reconciliation against LND,
+and settlement of an open invoice across an LND restart and rollback.
+
+Pro stays on MDK. Use a staging MDK app credential (device authorization is
+owner-only) to test an LND-issued invoice through `registerInvoice` and a
+verified `subscription.created` webhook. The public contract requires a node
+ID and SCID but does not establish LND acceptance. Do not switch Pro on an
+assumption. See [the compatibility finding](docs/pro/bitcoin.md#lnd-compatibility-check-2026-10-15-11754).
+
 ## Fund the experimental LND node before live channel checks (#11753)
 
 The fresh `oa-lnd-1` node is unfunded. Encrypted SCBs reach the write-only

@@ -864,6 +864,7 @@ fn resource_receiver_switch_keeps_original_invoices_and_other_routes() {
     let mut f = fixture("receive-switch", TestNode::new(Some(NOW)));
     let mut secondary = TestNode::new(Some(NOW));
     secondary.key = [10; 32];
+    secondary.counter = AtomicU64::new(100);
     secondary.received = Some(21000);
     let secondary = Arc::new(secondary);
     let request = || post("/v1/messages", b"credit", vec![]);

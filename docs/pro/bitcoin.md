@@ -4,6 +4,18 @@ Status: **plan, 2026-10-13.** The owner wants to collect Bitcoin for Pro and
 credits with MoneyDevKit (MDK), which we already run. This sits next to the
 Stripe card path in [README.md](README.md); it doesn't replace it.
 
+## LND compatibility check (2026-10-15, #11754)
+
+Pro stays on MDK. Its public [checkout contract](https://github.com/moneydevkit/api-contract/blob/ee0da7e839ee2feff64cc81501c61d64f361c6eb/src/contracts/checkout.ts)
+requires both `nodeId` and `scid` for `registerInvoice`. The newer
+`mintInvoice` flow delegates to the node holding the app's connection.
+Neither contract proves that MDK accepts an independently issued LND invoice
+or that it emits `subscription.created` for one. A staging checkout with an
+MDK app credential, an LND invoice, and a signed subscription webhook is still
+required before enabling that path. This is an unverified integration, not a
+confirmed refusal by MDK. Agent credits use the separate direct pay-front path
+in [the LND runbook](../payments/lnd-host.md#receiving-agent-credit-purchases).
+
 ## What we already have
 
 - **The central receiver** (`e834410db9`, #10185). This is

@@ -114,9 +114,6 @@ impl LndReceiver {
                 self.settings.network.clone(),
             )
             .map_err(|e| e.to_string())?;
-            if connected.node_id() != self.settings.node_id {
-                return Err("The receiving wallet identity changed.".into());
-            }
             *wallet = Some(connected);
         }
         call(wallet.as_ref().unwrap())

@@ -146,3 +146,36 @@ Encrypted zero-channel SCBs first arrived at 21:29 UTC. Checks using the node's
 service account returned HTTP 403 for both object reads and recovery-key reads.
 A live channel-change timing check and funded-channel tower sessions await the
 owner's funding decision; neither requires reading the production seed.
+
+## Receiving agent credit purchases
+
+The pay front supports `[lnd_receive]` in its routes TOML. Stage a checked
+`openagents` binary with `deploy/lnd/stage-receiver.sh COMMIT BINARY` on
+`oa-pay-1`. The pay host's service account needs Secret Manager accessor on
+only the LND invoice macaroon, read-only macaroon, and TLS certificate secrets.
+The credential unit writes a ready-to-copy stanza to
+`/run/openagents-lnd-receive/receive.toml`; it starts with `backend = "mdk"`.
+Staging keeps the active binary and routes. The invoice credential has
+`info:read`, `invoices:read`, `invoices:write`, and `offchain:read` for explicit
+private-channel hints. It cannot send payments or open channels. Reconciliation
+uses the separate read-only credential.
+
+After the owner approves funding and the canary, use the staged binary, add
+that stanza to `/etc/openagents-pay/routes.toml`, and select `backend = "lnd"`.
+Only the exact resource `x:openagents-agent-credit` changes issuer; plugin
+calls and other hosted resources keep their existing receiver. Revert
+`backend = "mdk"` and restart the front to roll back. Keep the LND stanza and
+credentials: they let already-issued LND invoices settle after rollback.
+Startup on MDK does not require connecting to LND. The signed invoice's payee
+selects the original receiver when observing collection. Both receivers must
+use the same Bitcoin network.
+
+Pass `--routes /etc/openagents-pay/routes.toml` to `openagents pay reconcile`;
+the shipped timer does this. It reads both complete payment histories and
+balances, including LND's invoice amounts actually paid, and reports unknown
+if either configured receiver cannot be read. Conflicting payment hashes across
+nodes require review. It never sends a payment. Agent credit still passes
+through the gateway's existing fsynced, payment-hash-deduplicated
+`agent-credit.jsonl`; changing the issuing node does not create another credit
+path. The live canary must check that journal and reconcile after a retry and
+an LND restart.
