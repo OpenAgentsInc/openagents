@@ -104,6 +104,11 @@ pub struct Chat {
     pub moved: bool,
     /// The model a pin names for this chat's turns on its harness (#11475).
     pub pinned_model: Option<String>,
+    /// The person picked a model in /models in this chat, even one the
+    /// chat could no longer change to after its first turn (#11556): the
+    /// chat is theirs where it runs, so Auto never moves it on to a
+    /// harness (#11696). Pins hold.
+    pub model_chosen: bool,
     /// The router judged the current piece of work a cheap answer
     /// (#11537): its Coder loop turns run on a cheap model.
     pub cheap: bool,

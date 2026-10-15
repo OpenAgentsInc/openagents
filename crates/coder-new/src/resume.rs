@@ -336,6 +336,15 @@ impl App {
         let fresh = App::default();
         // The new chat keeps the harness picked with Shift+Tab (#11524).
         let pick = self.current_pick();
+        // A Coder-loop pin from a /models pick belongs to its chat, as the
+        // model does (#11556): the new chat starts on Auto.
+        let pick = if self.live.model_chosen
+            && pick == crate::harness_pick::Pick::Harness(crate::harness_plugin::Harness::CoderLoop)
+        {
+            crate::harness_pick::Pick::Auto
+        } else {
+            pick
+        };
         self.drop_route();
         self.set_mode(Mode::Live);
         self.cancel_request();

@@ -59,13 +59,13 @@ Checks for each harness:
 | Check | What passes |
 | --- | --- |
 | answer | Every turn ends with a non-empty reply on screen. The time is recorded. |
-| rail | The rail reads `Harness (Model display name)` and names the model that actually ran. A raw id or slug (`[fast=true]`, `opencode/big-pickle`, "Swe 1 6 Slow") fails. |
+| rail | The rail reads `Harness (Model display name)` and names the model the last turn actually ran. A raw id or slug (`[fast=true]`, `opencode/big-pickle`, "Swe 1 6 Slow") fails. |
 | default-model | The model that ran is the harness's intended default, read from the harness's own CLI or config: Grok uses the `grok models` default, Devin uses the model configured in Devin's `config.json` (else Coder's SWE-2 Medium), Cursor uses `cursor-agent`'s selected model, OpenCode uses `opencode.json`'s model, and Oh My Pi uses any chat-capable model but never `clef*`. Codex and Claude use Coder's own defaults. |
 | thinking | When the model reported reasoning (in the export or the harness's own session log), the reasoning text appeared in the transcript. |
 | clean | The replies, the transcript and the export hold only the conversation. They contain no "doesn't ask before every step" notice, no "New chat…" line, no raw HTTP error and no log path. |
 | models-new | `/models` in a new chat with the harness picked, before any message, lists that harness's own catalog. |
 | models-turn | The same after a turn. The current model is marked, and OpenCode lists free models first. |
-| one-lane | Every turn in the chat ran on the same harness, model and payer (as each turn's end records it), even after another model was picked mid-chat. |
+| one-lane | Every turn in the chat ran on the same harness, model and payer (as each turn's end records it), even after another model was picked mid-chat: a /models pick pins the chat. The one exception (#11696): an unpinned Auto chat with no pick may move once, from the Coder loop to a harness, and stays there. |
 | shift-tab | Shift+Tab after a turn doesn't switch the chat's harness. |
 | export | The `/export` ATIF matches the screen: the prompts, the replies and the models. |
 | ctrl-n | Ctrl+N leaves the new chat's transcript empty. |

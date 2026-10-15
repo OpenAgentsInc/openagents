@@ -1666,6 +1666,125 @@ mod tests {
         assert_eq!(harness.rail_notice_text(), None);
     }
 
+    fn routed_to(harness: Harness) -> crate::router::Routed {
+        crate::router::Routed {
+            harness,
+            model: None,
+            rule: crate::routing_record::Rule::Router,
+            probabilities: Vec::new(),
+            trace: crate::router::Trace {
+                question_set: String::new(),
+                policy: String::new(),
+                step: Some("plan-work".into()),
+                follow_up: true,
+                ms: 0,
+                missing: None,
+            },
+        }
+    }
+
+    /// The rc.19 gate (auto/one-lane): an Auto chat on Coder's loop got a
+    /// /models pick after its first turns, then moved to Claude Code on its
+    /// next message. A /models pick pins the chat (#11696): it can't change
+    /// the model mid-chat (#11556), and Auto never moves it on.
+    #[test]
+    fn a_model_pick_pins_the_chat_so_it_never_hops() {
+        use crossterm::event::KeyCode;
+        let mut app = crate::App::default();
+        app.set_mode(crate::Mode::Live);
+        app.plugins.enabled = true;
+        app.live.runs_on = Some(Harness::CoderLoop);
+        app.live.cheap = true;
+        answered(&mut app);
+        app.open_models();
+        let picker = app.model_picker.as_ref().unwrap();
+        let other = picker
+            .models
+            .iter()
+            .position(|model| model.id != picker.active_model)
+            .unwrap();
+        app.model_picker.as_mut().unwrap().selected = other;
+        for _ in 0..3 {
+            if app.model_picker.is_some() {
+                key(&mut app, KeyCode::Enter);
+            }
+        }
+        assert!(app.live.model_chosen);
+        assert_eq!(app.rail_notice_text(), Some(crate::MODEL_LOCKED_HINT));
+        // The router sends the next message to Claude Code: it stays.
+        for _ in 0..2 {
+            app.routed = Some(routed_to(Harness::ClaudeCode));
+            assert_eq!(app.route_turn(), Harness::CoderLoop);
+            assert_eq!(app.live.runs_on, Some(Harness::CoderLoop));
+            assert!(app.live.cheap, "the same path, so the same model and payer");
+            assert_eq!(app.rail_notice_text(), Some(crate::MODEL_LOCKED_HINT));
+        }
+    }
+
+    /// An unpinned Auto chat may move once, forward: Coder's loop to the
+    /// harness, and from there never again (#11696).
+    #[test]
+    fn an_unpinned_auto_chat_moves_once_from_coders_loop_to_a_harness() {
+        let mut app = crate::App::default();
+        app.set_mode(crate::Mode::Live);
+        app.live.runs_on = Some(Harness::CoderLoop);
+        app.live.cheap = true;
+        answered(&mut app);
+        app.routed = Some(routed_to(Harness::ClaudeCode));
+        assert_eq!(app.route_turn(), Harness::ClaudeCode);
+        answered(&mut app);
+        for later in [Harness::OpenCode, Harness::CoderLoop, Harness::Codex] {
+            app.routed = Some(routed_to(later));
+            assert_eq!(app.route_turn(), Harness::ClaudeCode);
+            assert_eq!(app.live.runs_on, Some(Harness::ClaudeCode));
+        }
+    }
+
+    /// A Coder-loop model picked in /models before the first message pins
+    /// the chat there (#11696): the rail names the pick, the turn runs it
+    /// (no cheap or no-harness model over it) and the router never takes
+    /// the chat elsewhere. Auto lifts the pin; a new chat starts on Auto.
+    #[test]
+    fn a_coder_loop_pick_before_the_first_turn_runs_that_model_and_holds() {
+        use crate::routing_record::Rule;
+        let mut app = crate::App::default();
+        app.set_mode(crate::Mode::Live);
+        app.account = Some("Fixture".into());
+        app.gateway_model = Some("google/gemini-2.5-flash-lite".into());
+        app.pin_coder_pick(true);
+        assert_eq!(app.current_pick(), Pick::Harness(Harness::CoderLoop));
+        let shown = rail(&mut app);
+        assert!(
+            shown.contains("Coder (Gemini 2.5 Flash Lite)") && !shown.contains("Auto"),
+            "{shown}"
+        );
+        app.apply_pick();
+        assert_eq!(app.live.runs_on, Some(Harness::CoderLoop));
+        assert!(app.live.pinned && app.live.model_chosen);
+        assert_eq!(app.routing_rule, Some(Rule::Pin));
+        // Its turns run the pick, not the cheap model.
+        app.live.cheap = true;
+        assert!(app.cheap_turn().is_none());
+        answered(&mut app);
+        app.routed = Some(routed_to(Harness::ClaudeCode));
+        assert_eq!(app.route_turn(), Harness::CoderLoop);
+
+        // Picking Auto again before the first message lifts the pin.
+        let mut app = crate::App::default();
+        app.set_mode(crate::Mode::Live);
+        app.pin_coder_pick(true);
+        assert_eq!(app.current_pick(), Pick::Harness(Harness::CoderLoop));
+        app.pin_coder_pick(false);
+        assert_eq!(app.current_pick(), Pick::Auto);
+        assert!(!app.live.model_chosen);
+
+        // A new chat doesn't keep the pick's pin.
+        app.pin_coder_pick(true);
+        ctrl_n(&mut app);
+        assert_eq!(app.current_pick(), Pick::Auto);
+        assert!(!app.live.model_chosen);
+    }
+
     /// A model picked in one chat never carries into the next (#11556).
     #[test]
     fn a_new_chat_starts_on_the_default_model() {

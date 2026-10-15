@@ -1085,11 +1085,16 @@ fn harness_label(app: &App, harness: crate::harness_plugin::Harness) -> String {
     }
 }
 
-/// The model the Coder loop's next turn runs, as the rail names it: the
-/// person's choice in /models, else (on auto) the gateway model picked
-/// while signed in (#11526), else the model the chat's latest turn ran
-/// (#11519), else `None` until one is known (#11537).
+/// The model the rail names for the Coder loop: the model the chat's
+/// latest turn ran (#11519), honest even when a picked model couldn't
+/// answer and another did (#11654); before any turn, the person's choice
+/// in /models, else the gateway model picked while signed in (#11526),
+/// else a no-harness turn's one model (#11548), else `None` until one is
+/// known (#11537).
 fn coder_rail_model(app: &App) -> Option<String> {
+    if let Some(model) = served_model(app) {
+        return Some(rail_model_name(&model));
+    }
     if let Some(chosen) = coder_chosen_model(app) {
         return Some(chosen);
     }
@@ -1100,10 +1105,7 @@ fn coder_rail_model(app: &App) -> Option<String> {
         return Some(rail_model_name(picked));
     }
     // A no-harness turn's one model (#11548): "Coder (Gemini 4 Argon)".
-    if let Some(model) = &app.no_harness_model {
-        return Some(rail_model_name(model));
-    }
-    served_model(app).map(|model| rail_model_name(&model))
+    app.no_harness_model.as_deref().map(rail_model_name)
 }
 
 /// The model the person chose for the Coder loop in /models (OpenRouter
@@ -3200,6 +3202,12 @@ mod export_notice_tests {
         app.gateway_model = Some("zai/glm-5.3-flash".into());
         assert!(rail(&mut app).contains("Coder (Gemini 3.8 Flash)"));
         app.account = Some("Fixture".into());
+        // The rail names the model that ran, never the pick over it
+        // (#11654): the gate saw `Haiku 5.5` while another model ran.
+        let shown = rail(&mut app);
+        assert!(shown.contains("Coder (Gemini 3.8 Flash)"), "{shown}");
+        // Before any turn it names the pick.
+        app.live.entries.clear();
         let shown = rail(&mut app);
         assert!(shown.contains("Coder (GLM 5.3 Flash)"), "{shown}");
     }

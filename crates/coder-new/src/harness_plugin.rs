@@ -419,6 +419,7 @@ impl App {
             let hands_on = self.live.runs_on == Some(Harness::CoderLoop)
                 && routed.harness != Harness::CoderLoop
                 && !self.live.pinned
+                && !self.live.model_chosen
                 && self.live.agent.is_none();
             if hands_on && self.live.answered() {
                 self.rail_notice(

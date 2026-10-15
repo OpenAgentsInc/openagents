@@ -438,6 +438,35 @@ impl App {
         }
     }
 
+    /// A model picked in /models for the Coder loop before the chat's
+    /// first message (`picked`, or Auto when false). A pick pins the chat
+    /// (#11696): its turns run on the Coder loop with that model, and
+    /// Auto never routes it to a harness. Auto lifts that pin again.
+    fn pin_coder_pick(&mut self, picked: bool) {
+        use harness_pick::Pick;
+        use harness_plugin::Harness;
+        if self.mode != Mode::Live || self.chat_started() {
+            return;
+        }
+        if picked {
+            if self.live.agent.is_none()
+                && (!self.live.pinned || self.live.runs_on == Some(Harness::CoderLoop))
+                && matches!(
+                    self.current_pick(),
+                    Pick::Auto | Pick::Harness(Harness::CoderLoop)
+                )
+            {
+                self.live.model_chosen = true;
+                self.next_pick = Some(Pick::Harness(Harness::CoderLoop));
+            }
+        } else if self.live.model_chosen {
+            self.live.model_chosen = false;
+            if self.current_pick() == Pick::Harness(Harness::CoderLoop) {
+                self.next_pick = Some(Pick::Auto);
+            }
+        }
+    }
+
     /// Whether this chat has sent its first message: from then on the
     /// agent it runs on stays (#11556).
     #[must_use]
@@ -947,6 +976,8 @@ impl App {
                 && self.chat_started()
                 && *id != claude::choice().model
             {
+                // The person chose a model: the chat stays where it is.
+                self.live.model_chosen = true;
                 self.rail_notice(MODEL_LOCKED_HINT, RAIL_NOTICE_TTL);
                 return true;
             }
@@ -3514,6 +3545,10 @@ impl App {
                         && self.chat_started()
                     {
                         self.model_picker = None;
+                        // The pick can't change the model now, but the
+                        // person chose one: the chat is pinned where it
+                        // runs, and Auto never moves it on (#11696).
+                        self.live.model_chosen = true;
                         self.rail_notice(MODEL_LOCKED_HINT, RAIL_NOTICE_TTL);
                         return true;
                     }
@@ -3622,6 +3657,7 @@ impl App {
                                 Ok(picked) => {
                                     self.gateway_model = picked;
                                     self.model_picker = None;
+                                    self.pin_coder_pick(models::pinned(&model.id));
                                     let said = if models::pinned(&model.id) {
                                         format!("Coder now runs {} on OpenAgents.", model.name)
                                     } else {
@@ -3643,6 +3679,7 @@ impl App {
                             }
                             if self.plugins.set_model(&model, options) {
                                 self.model_picker = None;
+                                self.pin_coder_pick(models::pinned(&model.id));
                             } else if let Some(picker) = &mut self.model_picker {
                                 picker.error = self.plugins.storage_error.clone();
                             }

@@ -17,7 +17,9 @@ session logs where it keeps them, and checks:
   models-new      /models in the new chat before any message: own catalog
   models-turn     /models after a turn: own catalog, current model marked
   one-lane        every turn ran on the same harness, model and payer, even
-                  after another model is picked in /models mid-chat
+                  after another model is picked in /models mid-chat (a pick
+                  pins the chat); only an unpinned Auto chat may move once,
+                  from the Coder loop to a harness (#11696)
   shift-tab       Shift+Tab after a turn doesn't switch the chat's harness
   export          the ATIF export matches what the screen showed
   ctrl-n          Ctrl+N writes nothing into the new chat's transcript
@@ -164,6 +166,24 @@ def tally(rows: list[dict], scenarios: dict) -> tuple[list[str], list[str]]:
     return blocking, warnings
 
 
+def lane_hop(lanes: list[tuple], may_move: bool) -> str | None:
+    """Why the turns' lanes (harness, model, payer) break one-lane, or None.
+
+    A chat keeps one lane (#11556). The one exception (#11696): an unpinned
+    Auto chat on Coder's loop may move once, forward, to a harness when
+    the work starts, and stays there. A pinned chat (Shift+Tab, a /models
+    pick, even one refused after a turn) may never move. `may_move` says
+    the chat was unpinned Auto with no /models pick."""
+    if len(set(lanes)) <= 1:
+        return None
+    runs = [lane for i, lane in enumerate(lanes) if i == 0 or lane != lanes[i - 1]]
+    if not may_move:
+        return "a pinned chat moved"
+    if len(runs) == 2 and runs[0][0] == "coder-loop" and runs[1][0] != "coder-loop":
+        return None
+    return "more than one Coder loop → harness move" if len(runs) > 2 else "not a Coder loop → harness move"
+
+
 def self_test() -> int:
     """Offline check of the classification; runs no harness."""
     rows = [
@@ -184,6 +204,16 @@ def self_test() -> int:
                  "OpenCode didn't answer, so Coder's free answers did."):
         assert FELL_BACK.search(line), line
     assert not FELL_BACK.search("OpenCode could not start.")
+    loop, claude, oc = ("coder-loop", "argon", "credits"), ("claude-code", "haiku", "plan"), ("opencode", "cat", "free")
+    loop_lite = ("coder-loop", "flash-lite", "free")
+    assert lane_hop([loop, loop, loop], False) is None
+    assert lane_hop([loop, loop, claude], False), "a pinned chat never hops"
+    assert lane_hop([loop, loop, claude], True) is None, "an unpinned Auto chat moves once"
+    assert lane_hop([loop, claude, claude], True) is None
+    assert lane_hop([loop, claude, oc], True), "a harness never hands on"
+    assert lane_hop([claude, loop, loop], True), "never back to the loop"
+    assert lane_hop([loop, claude, loop], True)
+    assert lane_hop([loop, loop_lite, loop_lite], True), "the loop's model never changes"
     print("self-test: ok")
     return 0
 
@@ -1225,6 +1255,9 @@ class Run:
         # The replies' models: a thinking step ahead of a reply isn't one.
         export_models = [st.get("model_name") or "" for st in agent_msgs if str(st.get("message") or "").strip()]
         model = ran[0] or (export_models[0] if export_models else "") or (export.get("agent") or {}).get("model_name", "")
+        # The model the last turn ran: what the rail after the chat names.
+        last_model = ran[-1] if ran else ""
+        last_model = last_model or (export_models[-1] if export_models else "") or model
         self.facts["models_ran"] = ran
         self.facts["export_models"] = export_models
         # rail
@@ -1240,9 +1273,11 @@ class Run:
                 problems.append(f"slug-cased `{disp}`")
             if re.fullmatch(r"[a-z0-9./:_-]+", disp) and ("-" in disp or "/" in disp):
                 problems.append(f"raw id `{disp}`")
-            if model and not (norm(strip_params(model).split("/")[-1]) in norm(disp) or norm(disp) in norm(strip_params(model))):
+            # The rail names the model of the turn that ran last (#11654);
+            # a chat that moved is one-lane's to judge, not the rail's.
+            if last_model and not (norm(strip_params(last_model).split("/")[-1]) in norm(disp) or norm(disp) in norm(strip_params(last_model))):
                 if not (self.exp.get("display") and norm(self.exp["display"]) == norm(disp)):
-                    problems.append(f"`{disp}` but `{model}` ran")
+                    problems.append(f"`{disp}` but `{last_model}` ran")
         # The rail in the new chat, before the first message, named the
         # same model that then ran (a stale cached model is a lie).
         dn = (r0 or {}).get("display", "")
@@ -1333,13 +1368,19 @@ class Run:
             # Who actually paid, as the turn's end records it.
             lanes.append((c.get("harness") or en.get("harness"), strip_params(en.get("model") or ""), en.get("payer") or c.get("payer")))
         self.facts["lanes"] = lanes
-        if len(set(lanes)) > 1:
-            picked = self.facts.get("picked_mid_chat", {})
+        picked = self.facts.get("picked_mid_chat", {})
+        # Unpinned Auto: no Shift+Tab pin, no /models pick (#11696).
+        unpinned_auto = self.key in ("auto", "coder-loop") and (r0 or {}).get("name") == "Auto" and not picked
+        hop = lane_hop(lanes, unpinned_auto)
+        if hop:
             self.fail(
                 "one-lane",
-                " → ".join(f"{h}/{m}/{p}" for h, m, p in lanes)
+                f"{hop}: "
+                + " → ".join(f"{h}/{m}/{p}" for h, m, p in lanes)
                 + (f" (after picking `{picked.get('id')}` in /models)" if picked else ""),
             )
+        elif len(set(lanes)) > 1:
+            self.ok("one-lane", "Auto moved once, from the Coder loop to a harness (#11696): " + " → ".join(f"{h}/{m}/{p}" for h, m, p in lanes))
         elif lanes:
             self.ok("one-lane", f"{lanes[0][0]}/{lanes[0][1]}/{lanes[0][2]} on every turn")
         # export matches the screen
