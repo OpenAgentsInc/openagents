@@ -3,6 +3,7 @@
 pub mod builder;
 pub mod demand;
 pub mod episodes;
+pub mod lookup;
 pub mod pilot;
 pub mod private;
 pub mod recipes;

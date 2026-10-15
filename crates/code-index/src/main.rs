@@ -9,6 +9,39 @@ fn run() -> Result<(), String> {
             .and_then(|at| args.get(at + 1))
             .cloned()
     };
+    if args.first().map(String::as_str) == Some("query") {
+        let repo = PathBuf::from(value("--repo").ok_or("Choose a repository with --repo DIR.")?);
+        let artifact: code_index::recipes::Artifact = code_index::read_json(std::path::Path::new(
+            &value("--index").ok_or("Choose an index with --index FILE.")?,
+        ))?;
+        let request = code_index::lookup::Request {
+            question: value("--question").ok_or("Choose a question with --question TEXT.")?,
+            operation: value("--operation"),
+            snapshot: code_index::recipes::snapshot(
+                &repo,
+                &value("--rev").unwrap_or_else(|| "HEAD".into()),
+                &value("--workspace").unwrap_or_else(|| "local".into()),
+            )?,
+            max_bytes: value("--max-bytes")
+                .map(|s| {
+                    s.parse::<usize>()
+                        .map_err(|_| "Choose an integer context budget.")
+                })
+                .transpose()?
+                .unwrap_or(16000),
+            conditions: Default::default(),
+            file_candidates: vec![],
+            query_vector: None,
+            recipe_vectors: Default::default(),
+            decision: None,
+        };
+        println!(
+            "{}",
+            serde_json::to_string(&code_index::lookup::query(&artifact, &request)?)
+                .map_err(|e| e.to_string())?
+        );
+        return Ok(());
+    }
     if args.first().map(String::as_str) == Some("build")
         || args.first().map(String::as_str) == Some("replay-build")
     {

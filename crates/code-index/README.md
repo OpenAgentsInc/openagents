@@ -55,5 +55,14 @@ requests or artifact digests. Cost remains unknown when the provider does not
 report it. Build records remain private; private trace context needs a separate
 explicit disclosure choice.
 
+`code-index query --repo DIR --index FILE --workspace NAME --question TEXT`
+returns source locations, required roles, examples, checks, and a next step.
+Use `--operation NAME` to narrow the operation and `--max-bytes N` to bound
+the serialized context. The library also accepts supplied embedding vectors,
+file-finder candidates, applicability answers, and a selection bound to the
+question and artifact. Retrieval scores are not probabilities. Missing
+conditions and required context remain explicit; a new revision or workspace
+returns `stale` until the artifact is refreshed.
+
 Run `cargo test -p code-index` and `cargo fmt -p code-index`. See the
 [roadmap](../../docs/code-graph/task-index-roadmap.md) for experiment scope.
