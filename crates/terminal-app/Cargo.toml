@@ -1,6 +1,6 @@
 [package]
 name = "terminal-app"
-version = "1.0.0-rc.19"
+version = "1.0.0-rc.20"
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true

@@ -1,6 +1,6 @@
 [package]
 name = "openagents-wallet"
-version = "1.0.0-rc.19"
+version = "1.0.0-rc.20"
 edition = "2024"
 license = "CC-0"
 publish = false
