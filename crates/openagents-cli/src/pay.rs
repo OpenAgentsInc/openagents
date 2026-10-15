@@ -67,7 +67,7 @@ pub(crate) const USAGE: &str = "usage: openagents pay COMMAND [OPTIONS]
                           List payouts: state, rail, amounts, and the wallet
                           reference; --open lists planned, sending, and
                           unknown ones only.
-  reconcile --ledger FILE [--spark-home DIR] [--report-dir DIR] [--resolve]
+  reconcile --ledger FILE [--routes FILE] [--spark-home DIR] [--report-dir DIR] [--resolve]
                           Check the ledger against the receiver wallet (through
                           the running node's control.sock) and the payout
                           Spark wallet: every Lightning settlement is a
