@@ -21,6 +21,37 @@ use cad::render::View;
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 
+/// The kind of the file of CAD models placed in Verse zones.
+pub const PLACEMENTS: &str = "verse-cad-placements.v1";
+
+/// The Verse zones a CAD version can be placed in (world id, label): the
+/// zones on Everglade's lit stage, which draws the glTF.
+pub const VERSE_ZONES: [(&str, &str); 3] = [
+    ("verse-everglade", "Everglade"),
+    ("verse-meteor-showcase", "Meteor Showcase"),
+    ("verse-meteor-stress-test", "Meteor Stress Test"),
+];
+
+/// Where the placements live: `$VERSE_CAD_PLACEMENTS`, else
+/// `ROOT/.verse/placements.json`. Verse reads the same file
+/// (`verse::zones::cad_place`).
+#[must_use]
+pub fn placements_path(root: &Path) -> PathBuf {
+    std::env::var_os("VERSE_CAD_PLACEMENTS").map_or_else(
+        || root.join(".verse").join("placements.json"),
+        PathBuf::from,
+    )
+}
+
+/// The revision a version's URDF pins: the SHA-256 of its document.
+#[must_use]
+pub fn robot_revision(document: &Value) -> String {
+    Sha256::digest(document.to_string().as_bytes())
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
 /// The card kind a tool result carries.
 pub const CARD: &str = "cad_lab";
 
@@ -268,6 +299,7 @@ impl Lab {
             "cad_import_dxf" => self.import_dxf(args),
             "cad_import_step" => self.import_step(args),
             "cad_export_dxf" => self.export_dxf(args),
+            "cad_place" => self.place(args),
             other => Err(format!("{other} isn't a CAD Lab tool.")),
         };
         result.unwrap_or_else(|why| json!({"error": why}))
@@ -720,7 +752,7 @@ impl Lab {
     }
 
     fn export(&self, args: &Value) -> Result<Value, String> {
-        let (id, n, document, _) = self.pick(args)?;
+        let (id, n, document, record) = self.pick(args)?;
         let formats: Vec<String> = match arg_list(args, "formats")? {
             list if !list.is_empty() => list
                 .iter()
@@ -728,11 +760,42 @@ impl Lab {
                 .collect(),
             _ => vec!["glb".into(), "3mf".into(), "step".into()],
         };
+        for format in &formats {
+            if !cad::export::FORMATS.contains(&format.as_str())
+                && !matches!(format.as_str(), "urdf" | "feed")
+            {
+                return Err(format!(
+                    "I can export {}, urdf and feed, not {format}.",
+                    cad::export::FORMATS.join(", ")
+                ));
+            }
+        }
         let mut eval =
             cad::evaluate_with(&document, &self.root.join(".parts")).map_err(|p| p.join(" "))?;
         let dir = self.version_dir(&id, n).join("out");
         let mut files = Vec::new();
         for format in formats {
+            if format == "urdf" {
+                let (path, bytes) = self.write_urdf(&id, n, &document, &eval)?;
+                files.push(json!({"format": format, "path": path, "bytes": bytes,
+                                  "robot_lab": {"source": format!("cad:{id}/v{n}"), "revision": robot_revision(&document)}}));
+                continue;
+            }
+            if format == "feed" {
+                let source = cad::feed::Source {
+                    doc: id.clone(),
+                    version: n,
+                    digest: record["digest"].as_str().unwrap_or_default().to_owned(),
+                };
+                let feed = cad::feed::feed(source, &document, &eval.report)?;
+                let name = format!("{id}-v{n}.mass.json");
+                let value = serde_json::to_value(&feed).map_err(|e| e.to_string())?;
+                write_json(&dir.join(&name), &value)?;
+                let bytes = std::fs::metadata(dir.join(&name)).map_or(0, |m| m.len());
+                files.push(json!({"format": format, "path": dir.join(&name), "bytes": bytes,
+                                  "url": format!("{}/api/out?doc={id}&v={n}&name={name}", self.base)}));
+                continue;
+            }
             let path = dir.join(format!("{id}-v{n}.{format}"));
             let bytes = cad::export::write(&mut eval.built, &format, &path)?;
             files.push(json!({"format": format, "path": path, "bytes": bytes,
@@ -741,6 +804,143 @@ impl Lab {
         let mut card = self.card(&id, n, None)?;
         card["exports"] = json!(files);
         Ok(json!({"doc": id, "version": n, "files": files, "card": card}))
+    }
+
+    /// Writes a version's URDF as a pinned folder Robot Lab imports
+    /// (`out/urdf/`: the description, its STL meshes, a notice and
+    /// `source.json` with every file's SHA-256). Returns the description's
+    /// path and its size.
+    fn write_urdf(
+        &self,
+        id: &str,
+        n: u64,
+        document: &Value,
+        eval: &cad::Evaluation,
+    ) -> Result<(PathBuf, u64), String> {
+        let urdf = cad::urdf::write(id, document, &eval.report, Some(&eval.built.solids))?;
+        let dir = self.version_dir(id, n).join("out").join("urdf");
+        // The pin lists every file, so the folder is written afresh.
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("meshes")).map_err(|e| e.to_string())?;
+        let description = format!("{id}.urdf");
+        let notice = format!(
+            "{id}.urdf and meshes/ were written by OpenAgents CAD Lab from the CAD document {id}, version {n} \
+             (docs/cad-lab/README.md). They describe that design; whoever made it in CAD Lab decides how it may be used.\n"
+        );
+        let mut files: Vec<(String, Vec<u8>)> = vec![
+            (description.clone(), urdf.text.into_bytes()),
+            ("NOTICE".into(), notice.into_bytes()),
+        ];
+        files.extend(urdf.meshes);
+        let mut pinned = Vec::new();
+        for (path, bytes) in &files {
+            std::fs::write(dir.join(path), bytes).map_err(|e| e.to_string())?;
+            let hash = Sha256::digest(bytes);
+            pinned.push(json!({"path": path, "sha256": hash.iter().map(|b| format!("{b:02x}")).collect::<String>()}));
+        }
+        write_json(
+            &dir.join("source.json"),
+            &json!({
+                "repository": "https://github.com/OpenAgentsInc/openagents",
+                "revision": robot_revision(document),
+                "source_path": format!("CAD Lab {id} v{n} (crates/cad/src/urdf.rs)"),
+                "license": "LicenseRef-CAD-Lab-design",
+                "description": description,
+                "notices": ["NOTICE"],
+                "files": pinned,
+            }),
+        )?;
+        let bytes = files[0].1.len() as u64;
+        Ok((dir.join(&description), bytes))
+    }
+
+    /// Puts a version in a Verse zone: its glTF at a place on the ground,
+    /// turned to a heading, in the placements file the zone loads
+    /// ([`placements_path`]). A later version of the same document in the
+    /// same zone replaces the earlier one.
+    fn place(&self, args: &Value) -> Result<Value, String> {
+        let (id, n, _, _) = self.pick(args)?;
+        let zone = arg_str(args, "zone").unwrap_or("everglade");
+        let wanted = zone.to_ascii_lowercase().replace([' ', '_'], "-");
+        let Some((zone, label)) = VERSE_ZONES.iter().copied().find(|(world, label)| {
+            *world == wanted
+                || world.trim_start_matches("verse-") == wanted
+                || label.to_ascii_lowercase().replace(' ', "-") == wanted
+        }) else {
+            return Err(format!(
+                "CAD Lab places models in {}.",
+                VERSE_ZONES
+                    .iter()
+                    .map(|(_, l)| *l)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        };
+        let glb = self.version_dir(&id, n).join("model.glb");
+        if !glb.is_file() {
+            return Err(format!(
+                "{id} v{n} has no glTF (model.glb); cad_check rebuilds it."
+            ));
+        }
+        let at = match arg_json(args, "at")? {
+            None => None,
+            Some(v) => {
+                let list: Vec<f64> = v
+                    .as_array()
+                    .map(|a| a.iter().filter_map(Value::as_f64).collect())
+                    .unwrap_or_default();
+                match list.as_slice() {
+                    [x, z] => Some([*x, 0.0, *z]),
+                    [x, y, z] => Some([*x, *y, *z]),
+                    _ => {
+                        return Err(
+                            "at is [x, z] or [x, y, z] in metres (y above the ground).".into()
+                        );
+                    }
+                }
+            }
+        };
+        if at.is_some_and(|p| p.iter().any(|x| !x.is_finite() || x.abs() > 5000.0)) {
+            return Err("at must be within 5 km of the zone's centre.".into());
+        }
+        let heading = args["heading"].as_f64().unwrap_or(0.0);
+        let scale = args["scale"].as_f64().unwrap_or(1.0);
+        if !(0.01..=100.0).contains(&scale) || !heading.is_finite() {
+            return Err("scale is between 0.01 and 100, heading in degrees.".into());
+        }
+        let remove = args["remove"].as_bool().unwrap_or(false);
+        let _guard = self.writes.lock().map_err(|_| "The Lab is busy.")?;
+        let path = placements_path(&self.root);
+        let mut file =
+            read_json(&path).unwrap_or_else(|| json!({"kind": PLACEMENTS, "placements": []}));
+        let mut list: Vec<Value> = file["placements"].as_array().cloned().unwrap_or_default();
+        let before = list.len();
+        list.retain(|p| !(p["doc"] == id.as_str() && p["zone"] == zone));
+        let replaced = list.len() < before;
+        let placement = json!({
+            "doc": id, "version": n, "zone": zone, "glb": glb,
+            "at": at, "heading_deg": heading, "scale": scale,
+            "placed": now(), "author": Self::author(args),
+        });
+        if !remove {
+            list.push(placement.clone());
+        }
+        file["kind"] = json!(PLACEMENTS);
+        file["placements"] = json!(list);
+        write_json(&path, &file)?;
+        let summary = if remove {
+            format!("Took {id} out of {label}.")
+        } else if replaced {
+            format!("{id} v{n} replaces the earlier version in {label}.")
+        } else {
+            format!("{id} v{n} is in {label}.")
+        };
+        Ok(json!({
+            "doc": id, "version": n, "zone": zone, "summary": summary,
+            "placement": if remove { Value::Null } else { placement },
+            "file": path,
+            "open": format!("verse --{}", zone.trim_start_matches("verse-")),
+        }))
     }
 
     fn render(&self, args: &Value) -> Result<Value, String> {
@@ -1388,6 +1588,9 @@ fn takes(name: &str) -> &'static [&'static str] {
         "cad_versions" => &["doc"],
         "cad_compare" => &["doc", "a", "b"],
         "cad_export" => &["doc", "version", "formats"],
+        "cad_place" => &[
+            "doc", "version", "zone", "at", "heading", "scale", "remove", "author",
+        ],
         "cad_render" => &[
             "doc", "version", "view", "focus", "yaw", "pitch", "zoom", "width", "height",
         ],
@@ -1524,9 +1727,16 @@ pub fn tools() -> Value {
         {"name": "cad_compare", "description": "What changed between two versions: parts, features, instances, joints, and the mass and centre of mass. a defaults to the version before b; b to the latest.",
          "parameters": {"type": "object", "required": ["doc"], "properties": {"doc": doc,
             "a": {"type": "integer", "description": "the first version, e.g. 1"}, "b": {"type": "integer", "description": "the second version; the latest when left out"}}}},
-        {"name": "cad_export", "description": "Export a version as files: glb (glTF, for the web and Verse), 3mf (for printing) and step (exact solids for other CAD). Default: all three.",
+        {"name": "cad_export", "description": "Export a version as files: glb (glTF, for the web and Verse), 3mf (for printing), step (exact solids for other CAD), stl, urdf (a robot for Robot Lab: a link per instance with its mass and inertia, the joints with their limits) and feed (the mass-properties record for Lagrange 2's spacecraft document). Default: glb, 3mf and step.",
          "parameters": {"type": "object", "required": ["doc"], "properties": {"doc": doc, "version": version,
-            "formats": {"type": "string", "description": "a JSON array of formats, e.g. [\"step\",\"3mf\",\"glb\"]"}}}},
+            "formats": {"type": "string", "description": "a JSON array of formats, e.g. [\"step\",\"3mf\",\"glb\",\"urdf\",\"feed\"]"}}}},
+        {"name": "cad_place", "description": "Put a version in a Verse zone (Everglade, Meteor Showcase or Meteor Stress Test): its glTF stands on the ground there at a place and heading. Placing another version of the same document in the same zone replaces it; remove takes it out.",
+         "parameters": {"type": "object", "required": ["doc"], "properties": {"doc": doc, "version": version,
+            "zone": {"type": "string", "description": "everglade (default), meteor-showcase or meteor-stress-test"},
+            "at": {"type": "string", "description": "where, as JSON [x, z] or [x, y, z] in metres (y above the ground); in front of where you arrive when left out"},
+            "heading": {"type": "number", "description": "which way it faces, degrees about the vertical (0 faces +X)"},
+            "scale": {"type": "number", "description": "1 is life size"},
+            "remove": {"type": "boolean", "description": "take it out of the zone"}}}},
         {"name": "cad_render", "description": "A picture of a version from a view: hero, rear, plan, front, side, iso, under or detail; focus frames some instances (e.g. [\"camera_head\"]). The card shows it.",
          "parameters": {"type": "object", "required": ["doc"], "properties": {"doc": doc, "version": version,
             "view": {"type": "string", "description": "hero, rear, plan, front, side, iso, under or detail"},
@@ -1606,6 +1816,66 @@ mod tests {
         );
         let exported = lab.run("cad_export", &json!({"doc": "cart"}));
         assert_eq!(exported["files"].as_array().unwrap().len(), 3, "{exported}");
+        // A robot for Robot Lab (a pinned folder) and the mass feed.
+        let robot = lab.run(
+            "cad_export",
+            &json!({"doc": "cart", "formats": ["urdf", "feed"]}),
+        );
+        assert_eq!(
+            robot["files"][0]["robot_lab"]["source"], "cad:cart/v5",
+            "{robot}"
+        );
+        let urdf_dir = lab.version_dir("cart", 5).join("out/urdf");
+        let pin = read_json(&urdf_dir.join("source.json")).unwrap();
+        assert_eq!(pin["revision"], robot["files"][0]["robot_lab"]["revision"]);
+        for file in pin["files"].as_array().unwrap() {
+            let bytes = std::fs::read(urdf_dir.join(file["path"].as_str().unwrap())).unwrap();
+            let hash: String = Sha256::digest(&bytes)
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect();
+            assert_eq!(file["sha256"], hash.as_str());
+        }
+        let text = std::fs::read_to_string(urdf_dir.join("cart.urdf")).unwrap();
+        assert!(
+            text.contains("<link name=\"w4\">") && text.contains("<mass value="),
+            "{text}"
+        );
+        let feed: cad::feed::MassFeed = serde_json::from_value(
+            read_json(Path::new(robot["files"][1]["path"].as_str().unwrap())).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(feed.parts.len(), 5);
+        assert_eq!(feed.source.version, 5);
+        assert!(
+            lab.run("cad_export", &json!({"doc": "cart", "formats": ["dwg"]}))["error"].is_string()
+        );
+        // Into Verse: a version at a place, then the latest replaces it.
+        let placed = lab.run(
+            "cad_place",
+            &json!({"doc": "cart", "version": 4, "at": "[3, 4]", "heading": 30}),
+        );
+        assert_eq!(placed["zone"], "verse-everglade", "{placed}");
+        assert_eq!(placed["placement"]["at"], json!([3.0, 0.0, 4.0]));
+        let again = lab.run("cad_place", &json!({"doc": "cart", "zone": "Everglade"}));
+        assert!(
+            again["summary"].as_str().unwrap().contains("replaces"),
+            "{again}"
+        );
+        let file = read_json(&placements_path(&lab.root)).unwrap();
+        assert_eq!(file["kind"], PLACEMENTS);
+        assert_eq!(file["placements"].as_array().unwrap().len(), 1);
+        assert_eq!(file["placements"][0]["version"], 5);
+        assert!(
+            lab.run("cad_place", &json!({"doc": "cart", "zone": "plaza"}))["error"].is_string()
+        );
+        let removed = lab.run("cad_place", &json!({"doc": "cart", "remove": true}));
+        assert!(
+            removed["summary"].as_str().unwrap().contains("Took"),
+            "{removed}"
+        );
+        let file = read_json(&placements_path(&lab.root)).unwrap();
+        assert!(file["placements"].as_array().unwrap().is_empty());
         let rendered = lab.run("cad_render", &json!({"doc": "cart", "view": "plan", "focus": "[\"w1\"]", "width": 320, "height": 200}));
         assert!(
             rendered["card"]["render"]["file"]

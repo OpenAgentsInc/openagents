@@ -25,6 +25,9 @@ pub struct Pin {
     /// The upstream repository, an `https://` URL.
     pub repository: String,
     /// The upstream commit: 40 lowercase hex digits, never a branch or tag.
+    /// A generated description (CAD Lab's URDF) pins the SHA-256 of the
+    /// document it was written from instead: 64 hex digits, with
+    /// `repository` naming the program that wrote it.
     pub revision: String,
     /// The folder in the upstream repository the files were copied from.
     pub source_path: String,
@@ -70,9 +73,9 @@ pub fn verify(folder: &Path) -> Result<Pin, Error> {
             pin.repository
         )));
     }
-    if !hex(&pin.revision, 40) {
+    if !hex(&pin.revision, 40) && !hex(&pin.revision, 64) {
         return Err(Error::Pin(format!(
-            "revision {:?} is not a 40-digit commit hash; pin an immutable commit, not a branch or tag",
+            "revision {:?} is not a 40-digit commit hash or a 64-digit content digest; pin an immutable commit, not a branch or tag",
             pin.revision
         )));
     }

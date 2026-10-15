@@ -4355,7 +4355,7 @@
               "chat"
             ],
             "usage": [
-              "chat [-p TEXT | --prompt-file FILE | --stdin] [--session ID] [--delegation ID] [--instructions TEXT | --instructions-file FILE] [--mode auto|coder|codex] [--in-place] [--demo]"
+              "chat [-p TEXT | --prompt-file FILE | --stdin] [--session ID] [--delegation ID] [--instructions TEXT | --instructions-file FILE] [--mode auto|coder|codex] [--in-place]"
             ],
             "forms": [
               {
@@ -4428,11 +4428,6 @@
                   {
                     "kind": "option",
                     "name": "in-place",
-                    "optional": true
-                  },
-                  {
-                    "kind": "option",
-                    "name": "demo",
                     "optional": true
                   }
                 ]
@@ -5813,12 +5808,6 @@
         {
           "kind": "option",
           "name": "in-place",
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "demo",
           "optional": true,
           "repeated": true
         },
@@ -15958,7 +15947,7 @@
               "export"
             ],
             "usage": [
-              "export DOC [--formats glb,3mf,step,stl] [--version N]"
+              "export DOC [--formats glb,3mf,step,stl,urdf,feed] [--version N]"
             ],
             "forms": [
               {
@@ -15974,9 +15963,9 @@
                   {
                     "kind": "option",
                     "name": "formats",
-                    "value": "glb,3mf,step,stl",
+                    "value": "glb,3mf,step,stl,urdf,feed",
                     "choices": [
-                      "glb,3mf,step,stl"
+                      "glb,3mf,step,stl,urdf,feed"
                     ],
                     "optional": true
                   },
@@ -15990,7 +15979,80 @@
                 ]
               }
             ],
-            "summary": "Files of a version.",
+            "summary": "Files of a version (urdf: a robot for Robot Lab; feed: its mass properties for Lagrange 2).",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "place",
+          "leaf": {
+            "path": [
+              "cad",
+              "place"
+            ],
+            "usage": [
+              "place DOC [--zone everglade|meteor-showcase|meteor-stress-test] [--at X,Z] [--heading DEG] [--scale S] [--version N] [--remove]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "place"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "DOC"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "zone",
+                    "value": "everglade|meteor-showcase|meteor-stress-test",
+                    "choices": [
+                      "everglade",
+                      "meteor-showcase",
+                      "meteor-stress-test"
+                    ],
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "at",
+                    "value": "X,Z",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "heading",
+                    "value": "DEG",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "scale",
+                    "value": "S",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "version",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "remove",
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Put a version in a Verse zone; a newer one replaces it.",
             "effect": "local_write",
             "runs_on": "connected_computer"
           }
@@ -16100,6 +16162,48 @@
         {
           "kind": "option",
           "name": "formats",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "zone",
+          "value": "everglade|meteor-showcase|meteor-stress-test",
+          "choices": [
+            "everglade",
+            "meteor-showcase",
+            "meteor-stress-test"
+          ],
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "at",
+          "value": "X,Z",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "heading",
+          "value": "DEG",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "scale",
+          "value": "S",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "remove",
           "optional": true,
           "repeated": true
         },

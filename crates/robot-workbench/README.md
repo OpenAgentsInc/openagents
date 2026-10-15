@@ -31,6 +31,15 @@ To create that scene in a new project, call `robot_import` once:
 http://127.0.0.1:PORT/api/tool/robot_import`, with `REVISION` from
 `robot-description/assets/so101/source.json`. It returns the player link.
 
+A CAD Lab version imports the same way once its URDF is exported
+(`openagents cad export rover --formats urdf`): call `robot_import` with
+`"source":"cad:rover/v38"` and the `revision` the export printed (the
+SHA-256 of the version's document, in its `source.json`). The service reads
+CAD Lab's folder (`$CAD_LAB_DIR`, else `~/work/film-out/lab/cad`, or
+`serve --cad DIR`) and stands the robot on a floor with each link's CAD
+mass and inertia and its joints; it can be inspected and posed, not
+simulated (the URDF has no contact shapes).
+
 In a scene, the arm panel has one slider per joint within the description's
 limits, Open gripper, Close gripper, and Reset pose. Keys: Q/A shoulder pan,
 W/S shoulder lift, E/D elbow flex, R/F wrist flex, T/G wrist roll, O/C gripper,

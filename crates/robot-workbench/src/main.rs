@@ -28,12 +28,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         return robot_workbench::record::cli(args.collect());
     }
     if command.as_deref() != Some("serve") {
-        return Err("Use: robot-workbench serve --root FOLDER --project PROJECT --build FOLDER [--port PORT] [--catalog FOLDER]".into());
+        return Err("Use: robot-workbench serve --root FOLDER --project PROJECT --build FOLDER [--port PORT] [--catalog FOLDER] [--cad CAD_LAB_FOLDER]".into());
     }
     let mut root = None;
     let mut project = None;
     let mut build = None;
     let mut execution = None;
+    let mut cad = None;
     let mut port = 8794_u16;
     let mut catalog = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../robot-description/assets/so101");
@@ -46,6 +47,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "--port" => port = value.parse()?,
             "--catalog" => catalog = value.into(),
             "--execution" => execution = Some(std::path::PathBuf::from(value)),
+            "--cad" => cad = Some(std::path::PathBuf::from(value)),
             _ => return Err("Choose a supported Robot Lab option".into()),
         }
     }
@@ -56,6 +58,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", port)).await?;
     let base = format!("http://127.0.0.1:{}", listener.local_addr()?.port());
     let mut host = robot_workbench::host::Host::open(store, &catalog, &base)?;
+    if cad.is_some() {
+        host.cad = cad;
+    }
     if let Some(path) = execution {
         let metadata = std::fs::symlink_metadata(&path)?;
         if !metadata.is_file() || metadata.len() > 65536 {

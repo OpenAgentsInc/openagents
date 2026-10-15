@@ -10,6 +10,9 @@
 //!   feature rebuilds, every solid closes, no undeclared overlaps) and the
 //!   mass properties.
 //! - [`export`]: STEP, 3MF, STL and glTF; [`render`]: PNG views.
+//! - [`urdf`]: URDF for Robot Lab (links with the measured mass and
+//!   inertia, the joints with their limits); [`feed`]: the typed
+//!   mass-properties record Lagrange 2's spacecraft document reads.
 //!
 //! Callers see our documents and JSON reports; only [`build`], [`refs`],
 //! [`render`] and [`export`] touch the kernel, so it can be swapped.
@@ -19,12 +22,14 @@ pub mod doc;
 pub mod dxf;
 pub mod exact;
 pub mod export;
+pub mod feed;
 pub mod mass;
 pub mod overlap;
 pub mod refs;
 pub mod render;
 pub mod sys;
 pub mod tree;
+pub mod urdf;
 pub mod xf;
 
 use std::collections::BTreeMap;
@@ -928,5 +933,152 @@ mod tests {
         // Turned 90° about the hinge at (20, 0, 40): the centre (60, 0, 20) → (40, 0, 80).
         assert!((com[0].as_f64().unwrap() - 40.0).abs() < 0.5, "{com}");
         assert!((com[2].as_f64().unwrap() - 80.0).abs() < 0.5, "{com}");
+    }
+
+    /// A base with an arm on a hinge, a carriage on a rail, a spindle that
+    /// turns and slides, and a tip fixed to the arm, every joint away from
+    /// zero.
+    fn machine() -> Value {
+        let mut a = doc::new_assembly("machine", "Machine");
+        let block = |id: &str, material: &str, l: f64, w: f64, h: f64| {
+            let mut p = doc::new_part(id, id, material, None);
+            p["features"] = json!([{"id": "b", "op": "solid.box", "params": {"length": l, "width": w, "height": h, "center": [0, 0, h / 2.0]}}]);
+            p
+        };
+        a["parts"]["base"] = block("base", "Steel", 200.0, 100.0, 40.0);
+        a["parts"]["arm"] = block("arm", "Aluminum", 20.0, 20.0, 120.0);
+        a["parts"]["carriage"] = block("carriage", "Brass", 30.0, 30.0, 10.0);
+        a["parts"]["tip"] = block("tip", "Titanium", 10.0, 10.0, 30.0);
+        a["parts"]["spindle"] = doc::new_part("spindle", "spindle", "ABS Plastic", None);
+        a["parts"]["spindle"]["features"] = json!([{"id": "c", "op": "solid.box", "params": {"length": 24, "width": 8, "height": 20, "center": [4, 0, 10]}}]);
+        a["instances"] = json!([
+            {"id": "base", "part": "base"},
+            {"id": "arm", "part": "arm", "parent": "base", "at": [80, 0, 40], "rotate": [0, 0, 30]},
+            {"id": "carriage", "part": "carriage", "parent": "base", "at": [-60, 0, 40]},
+            {"id": "spindle", "part": "spindle", "parent": "base", "at": [0, 30, 40]},
+            {"id": "tip", "part": "tip", "parent": "arm", "at": [0, 0, 120], "rotate": [90, 0, 0]}
+        ]);
+        a["joints"] = json!([
+            {"id": "shoulder", "type": "revolute", "parent": "base", "child": "arm",
+             "origin": [80, 0, 40], "axis": [0, 1, 0], "value": 30, "limits": [[-90, 90]]},
+            {"id": "rail", "type": "slider", "parent": "base", "child": "carriage",
+             "origin": [-60, 0, 40], "axis": [1, 0, 0], "value": 15, "limits": [[-20, 40]]},
+            {"id": "spin", "type": "cylindrical", "parent": "base", "child": "spindle",
+             "origin": [0, 30, 40], "axis": [0, 0, 1], "value": [45, 5], "limits": [[-180, 180], [0, 10]]}
+        ]);
+        a["contacts"] = json!([["arm", "tip"]]);
+        a
+    }
+
+    #[test]
+    fn urdf_round_trips_mass_inertia_and_joints_through_robot_description() {
+        use glam::{DMat3, DVec3};
+        let a = machine();
+        let eval = evaluate(&a).unwrap_or_else(|p| panic!("{p:?}"));
+        let out = urdf::write("machine", &a, &eval.report, Some(&eval.built.solids)).unwrap();
+        let dir = std::env::temp_dir().join(format!("cad-urdf-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("meshes")).unwrap();
+        std::fs::write(dir.join("machine.urdf"), &out.text).unwrap();
+        for (path, bytes) in &out.meshes {
+            std::fs::write(dir.join(path), bytes).unwrap();
+        }
+        let robot = robot_description::load(&dir.join("machine.urdf"))
+            .unwrap_or_else(|e| panic!("{e}\n{}", out.text));
+        // The version's own pose, in URDF units.
+        let pose: Vec<f64> = robot.movable().map(|j| out.pose[&j.name]).collect();
+        let frames = robot.forward(&pose).unwrap();
+        for entry in eval.report["instances"].as_array().unwrap() {
+            let id = entry["id"].as_str().unwrap();
+            let link = robot.link(id).unwrap();
+            let inertial = robot.links()[link].inertial.expect("an inertial");
+            let frame = frames[link];
+            assert!((inertial.mass - entry["mass_kg"].as_f64().unwrap()).abs() < 1e-12);
+            let com = frame.transform_point3(inertial.origin.w_axis.truncate()) * 1000.0;
+            let want = doc::triple(&entry["center_of_mass_mm"]).unwrap();
+            assert!(
+                (com - DVec3::from(want)).length() < 0.06,
+                "{id}: {com} vs {want:?}"
+            );
+            let r = DMat3::from_mat4(frame);
+            let world = r * inertial.inertia_in_link() * r.transpose();
+            for row in 0..3 {
+                for col in 0..3 {
+                    let want = entry["inertia_kg_m2"][row][col].as_f64().unwrap();
+                    let got = world.col(col)[row];
+                    assert!(
+                        (got - want).abs() <= 1e-9 + 1e-6 * want.abs(),
+                        "{id} [{row}][{col}]: {got} vs {want}"
+                    );
+                }
+            }
+            // Its meshes sit where its solids are.
+            let solid = eval.built.solids.iter().find(|s| s.instance == id).unwrap();
+            let q = solid.mesh.positions[0];
+            let near = robot.links()[link].visuals.iter().any(|v| {
+                let robot_description::Geometry::Mesh { mesh, .. } = &v.geometry else {
+                    return false;
+                };
+                mesh.triangles.iter().flatten().any(|p| {
+                    let w =
+                        frame.transform_point3(DVec3::new(p[0].into(), p[1].into(), p[2].into()));
+                    (w * 1000.0 - DVec3::new(q.x, q.y, q.z)).length() < 0.01
+                })
+            });
+            assert!(near, "{id}'s mesh isn't where its solid is");
+        }
+        // Every joint, with its kind and limits.
+        let joint = |name: &str| robot.joints().iter().find(|j| j.name == name).unwrap();
+        use robot_description::JointKind::{Fixed, Prismatic, Revolute};
+        let pi = std::f64::consts::PI;
+        assert_eq!(joint("shoulder").kind, Revolute);
+        let l = joint("shoulder").limit.unwrap();
+        assert!((l.lower + pi / 2.0).abs() < 1e-12 && (l.upper - pi / 2.0).abs() < 1e-12);
+        assert_eq!(joint("rail").kind, Prismatic);
+        let l = joint("rail").limit.unwrap();
+        assert!((l.lower + 0.02).abs() < 1e-12 && (l.upper - 0.04).abs() < 1e-12);
+        assert_eq!(joint("spin").kind, Revolute);
+        assert_eq!(joint("spin_slide").kind, Prismatic);
+        assert_eq!(joint("tip_fixed").kind, Fixed);
+        assert_eq!(joint("base_fixed").kind, Fixed);
+        assert_eq!(robot.movable().count(), 4);
+        assert!((out.pose["shoulder"] - 30f64.to_radians()).abs() < 1e-12);
+        assert!((out.pose["spin_slide"] - 0.005).abs() < 1e-12);
+        // The mass feed: every part, ports on both sides, and the total
+        // is the report's.
+        let feed = feed::feed(
+            feed::Source {
+                doc: "machine".into(),
+                version: 1,
+                digest: "0".into(),
+            },
+            &a,
+            &eval.report,
+        )
+        .unwrap();
+        let text = serde_json::to_string(&feed).unwrap();
+        let back: feed::MassFeed = serde_json::from_str(&text).unwrap();
+        assert_eq!(back, feed);
+        assert_eq!(feed.parts.len(), 5);
+        let total = eval.report["mass"]["mass_kg"].as_f64().unwrap();
+        assert!(
+            (feed.total.mass_kg - total).abs() < 1e-3,
+            "{}",
+            feed.total.mass_kg
+        );
+        let com = doc::triple(&eval.report["mass"]["center_of_mass_mm"]).unwrap();
+        for k in 0..3 {
+            assert!((feed.total.center_of_mass_m[k] * 1000.0 - com[k]).abs() < 0.1);
+            for j in 0..3 {
+                let want = eval.report["mass"]["inertia_kg_m2"][k][j].as_f64().unwrap();
+                assert!((feed.total.inertia_kg_m2[k][j] - want).abs() < 1e-6 + 1e-4 * want.abs());
+            }
+        }
+        let base = feed.parts.iter().find(|p| p.id == "base").unwrap();
+        assert_eq!(base.ports.len(), 3);
+        assert!(base.ports.iter().all(|p| p.parent));
+        let arm = feed.parts.iter().find(|p| p.id == "arm").unwrap();
+        assert_eq!(arm.ports[0].mate, "base");
+        assert!((arm.ports[0].origin_m[0] - 0.08).abs() < 1e-12);
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

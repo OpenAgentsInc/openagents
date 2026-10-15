@@ -21,7 +21,12 @@ pub(crate) const USAGE: &str = "usage: openagents cad COMMAND [DOC] [options]
   render DOC [--view hero|rear|plan|front|side|iso|under|detail]
                  [--focus ID,ID] [--version N] [--width W] [--height H]
                  A picture of a version.
-  export DOC [--formats glb,3mf,step,stl] [--version N]  Files of a version.
+  export DOC [--formats glb,3mf,step,stl,urdf,feed] [--version N]  Files of a
+                 version (urdf: a robot for Robot Lab; feed: its mass
+                 properties for Lagrange 2).
+  place DOC [--zone everglade|meteor-showcase|meteor-stress-test]
+                 [--at X,Z] [--heading DEG] [--scale S] [--version N] [--remove]
+                 Put a version in a Verse zone; a newer one replaces it.
   tool NAME --json ARGS  Any cad_* tool with its JSON arguments (new_part,
                  add_feature, edit_feature, set_part, assemble ...).
 Design parts and assemblies on this computer (docs/cad-lab/mvp.md). Every
@@ -40,6 +45,7 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("compare", Effect::ReadOnly),
     Declared::computer("render", Effect::LocalWrite),
     Declared::computer("export", Effect::LocalWrite),
+    Declared::computer("place", Effect::LocalWrite),
     Declared::computer("tool", Effect::LocalWrite),
 ];
 
@@ -116,7 +122,7 @@ fn ensure(http: &reqwest::blocking::Client, base: &str) -> Result<(), String> {
 
 /// The tool and its arguments for the command line, or the usage problem.
 pub(crate) fn request(words: &[String]) -> Result<(String, Value), String> {
-    let args = Args::parse(words, &[])?;
+    let args = Args::parse(words, &["remove"])?;
     let positional = args.positional();
     let Some(command) = positional.first() else {
         return Err("say which command".into());
@@ -127,6 +133,7 @@ pub(crate) fn request(words: &[String]) -> Result<(String, Value), String> {
         "compare" => &["a", "b"],
         "render" => &["view", "focus", "version", "width", "height", "zoom", "yaw"],
         "export" => &["formats", "version"],
+        "place" => &["zone", "at", "heading", "scale", "version"],
         "tool" => &["json"],
         other => return Err(format!("unknown command `{other}`")),
     };
@@ -136,6 +143,9 @@ pub(crate) fn request(words: &[String]) -> Result<(String, Value), String> {
         .find(|n| !allowed.contains(n))
     {
         return Err(format!("`cad {command}` takes no --{name}"));
+    }
+    if args.switch("remove") && command != "place" {
+        return Err(format!("`cad {command}` takes no --remove"));
     }
     if command == "tool" {
         let Some(name) = positional.get(1) else {
@@ -187,12 +197,23 @@ pub(crate) fn request(words: &[String]) -> Result<(String, Value), String> {
                 "version" | "a" | "b" | "width" | "height" => value
                     .parse::<u64>()
                     .map_or_else(|_| json!(value), |n| json!(n)),
-                "zoom" | "yaw" => value
+                "zoom" | "yaw" | "heading" | "scale" => value
                     .parse::<f64>()
                     .map_or_else(|_| json!(value), |n| json!(n)),
+                "at" => {
+                    let numbers: Result<Vec<f64>, _> =
+                        value.split(',').map(|n| n.trim().parse::<f64>()).collect();
+                    match numbers {
+                        Ok(list) if matches!(list.len(), 2 | 3) => json!(list),
+                        _ => return Err("--at is X,Z or X,Y,Z in metres".into()),
+                    }
+                }
                 _ => json!(value),
             };
         }
+    }
+    if args.switch("remove") {
+        call["remove"] = json!(true);
     }
     Ok((format!("cad_{command}"), call))
 }
@@ -336,6 +357,19 @@ mod tests {
         assert_eq!(tool, "cad_add_feature");
         assert_eq!(call["doc"], "rover");
         assert_eq!(request(&words("list")).unwrap().0, "cad_list");
+        let (tool, call) = request(&words(
+            "place rover --zone everglade --at 3,-4 --heading 30 --version 38",
+        ))
+        .unwrap();
+        assert_eq!(tool, "cad_place");
+        assert_eq!(
+            call,
+            json!({"doc": "rover", "zone": "everglade", "at": [3.0, -4.0], "heading": 30.0, "version": 38})
+        );
+        let (_, call) = request(&words("place rover --remove")).unwrap();
+        assert_eq!(call["remove"], true);
+        assert!(request(&words("place rover --at north")).is_err());
+        assert!(request(&words("open rover --remove")).is_err());
     }
 
     #[test]

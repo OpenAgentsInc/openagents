@@ -46,7 +46,7 @@ pub enum Tool {
     List,
     #[serde(rename = "robot_import")]
     #[schemars(
-        description = "Import the pinned SO-101 description and open a table scene with a red cube."
+        description = "Import a robot and open a scene with it: source \"so101\" (the pinned SO-101 on a table with a red cube) or \"cad:DOC/vN\" (a CAD Lab version's URDF from cad_export, on a floor, with the CAD mass and inertia and its joints); revision is the source's pinned revision."
     )]
     Import {
         document: String,

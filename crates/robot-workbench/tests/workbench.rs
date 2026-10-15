@@ -508,3 +508,93 @@ fn remote_simulation_keeps_partial_evidence_and_reads_exact_saved_preview() {
             .is_ok()
     );
 }
+
+/// A CAD Lab version's URDF export (as `cad_export` writes it: a pinned
+/// folder with a 64-digit document digest) imports as a robot on a floor,
+/// keeping each link's mass and inertia and its joints' limits.
+#[test]
+fn a_cad_lab_urdf_imports_with_its_mass_and_joints() {
+    use sha2::{Digest, Sha256};
+    let (root, mut host) = host();
+    let cad = root.path().join("cad");
+    let folder = cad.join("cart/v3/out/urdf");
+    std::fs::create_dir_all(&folder).unwrap();
+    let urdf = r#"<?xml version="1.0"?>
+<robot name="cart">
+  <link name="base_link"/>
+  <link name="body">
+    <inertial><origin xyz="0 0 0.1" rpy="0 0 0"/><mass value="4.5"/>
+      <inertia ixx="0.02" ixy="0" ixz="0.001" iyy="0.03" iyz="0" izz="0.04"/></inertial>
+    <visual><geometry><box size="0.4 0.3 0.1"/></geometry></visual>
+  </link>
+  <link name="lid">
+    <inertial><origin xyz="0.05 0 0.01" rpy="0 0 0"/><mass value="0.25"/>
+      <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.002" iyz="0" izz="0.003"/></inertial>
+  </link>
+  <joint name="body_fixed" type="fixed"><parent link="base_link"/><child link="body"/><origin xyz="0 0 0.1" rpy="0 0 0"/></joint>
+  <joint name="hinge" type="revolute"><parent link="body"/><child link="lid"/><origin xyz="-0.2 0 0.05" rpy="0 0 0"/>
+    <axis xyz="0 -1 0"/><limit lower="0" upper="1.9" effort="100" velocity="2"/></joint>
+</robot>
+"#;
+    let files = [
+        ("cart.urdf", urdf.as_bytes()),
+        ("NOTICE", b"CAD Lab cart v3\n".as_slice()),
+    ];
+    let mut pinned = Vec::new();
+    for (path, bytes) in files {
+        std::fs::write(folder.join(path), bytes).unwrap();
+        let hash: String = Sha256::digest(bytes)
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
+        pinned.push(json!({"path": path, "sha256": hash}));
+    }
+    let revision = "ab".repeat(32);
+    std::fs::write(
+        folder.join("source.json"),
+        json!({"repository": "https://github.com/OpenAgentsInc/openagents", "revision": revision,
+               "source_path": "CAD Lab cart v3", "license": "LicenseRef-CAD-Lab-design",
+               "description": "cart.urdf", "notices": ["NOTICE"], "files": pinned})
+        .to_string(),
+    )
+    .unwrap();
+    host.cad = Some(cad);
+    let wrong = host.execute(
+        "robot_import",
+        json!({"document": "cart", "source": "cad:cart/v3", "revision": "0".repeat(64)}),
+        1,
+    );
+    assert!(wrong.unwrap_err().contains(&revision));
+    assert!(
+        host.execute(
+            "robot_import",
+            json!({"document": "cart", "source": "cad:../x/v3", "revision": revision}),
+            1
+        )
+        .is_err()
+    );
+    let value = host
+        .execute(
+            "robot_import",
+            json!({"document": "cart", "source": "cad:cart/v3", "revision": revision}),
+            1,
+        )
+        .unwrap();
+    assert!(
+        value["summary"].as_str().unwrap().contains("4.75 kg"),
+        "{value}"
+    );
+    let reference: Reference = serde_json::from_value(value["card"]["reference"].clone()).unwrap();
+    let bundle = host.bundle(&reference).unwrap();
+    assert_eq!(bundle.scene.objects[0].id, "floor");
+    let robot = &bundle.robot;
+    let body = robot.links.iter().find(|l| l.name == "body").unwrap();
+    let inertial = body.inertial.as_ref().unwrap();
+    assert_eq!(inertial.mass, 4.5);
+    assert_eq!(inertial.center, [0.0, 0.0, 0.1]);
+    assert_eq!(inertial.tensor, [0.02, 0.03, 0.04, 0.0, 0.001, 0.0]);
+    let hinge = robot.joints.iter().find(|j| j.name == "hinge").unwrap();
+    assert_eq!(hinge.kind, robot_lab::document::JointKind::Revolute);
+    assert_eq!(hinge.limits.unwrap().upper, 1.9);
+    assert_eq!(bundle.scene.robots[0].joints["hinge"], 0.0);
+}

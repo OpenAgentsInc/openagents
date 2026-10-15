@@ -35,6 +35,8 @@ mod grove_tower_tests;
 #[cfg(test)]
 mod lab_tests;
 #[cfg(not(target_arch = "wasm32"))]
+pub mod cad_place;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod meteor_rover;
 pub mod meteor_showcase;
 #[cfg(test)]
@@ -445,6 +447,9 @@ pub(crate) struct State {
     /// ([`meteor_rover`]).
     #[cfg(not(target_arch = "wasm32"))]
     rover: Option<Box<meteor_rover::Rover>>,
+    /// CAD Lab models placed in this zone ([`cad_place`]).
+    #[cfg(not(target_arch = "wasm32"))]
+    cad: cad_place::Placements,
 }
 impl Default for State {
     fn default() -> Self {
@@ -488,6 +493,8 @@ impl Default for State {
             private_loader: None,
             #[cfg(not(target_arch = "wasm32"))]
             rover: None,
+            #[cfg(not(target_arch = "wasm32"))]
+            cad: cad_place::Placements::default(),
         }
     }
 }

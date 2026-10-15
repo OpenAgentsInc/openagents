@@ -26,7 +26,7 @@ mod urdf;
 
 use std::sync::Arc;
 
-use glam::{DMat4, DVec3};
+use glam::{DMat3, DMat4, DVec3};
 
 pub use error::Error;
 pub use stl::TriangleMesh;
@@ -71,11 +71,35 @@ pub struct Robot {
 #[derive(Clone, Debug)]
 pub struct Link {
     pub name: String,
+    /// Its mass properties, when the description gives them.
+    pub inertial: Option<Inertial>,
     /// What the link looks like, in the link's frame.
     pub visuals: Vec<Shape>,
     /// Its contact geometry, in the link's frame. Kept for later
     /// simulation; inspection does not use it.
     pub collisions: Vec<Shape>,
+}
+
+/// A link's mass properties, as URDF's `<inertial>` gives them.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Inertial {
+    /// Kilograms.
+    pub mass: f64,
+    /// The inertial frame in the link's frame: its origin is the centre of
+    /// mass.
+    pub origin: DMat4,
+    /// The inertia tensor about the centre of mass in the inertial frame's
+    /// axes, kg m².
+    pub inertia: DMat3,
+}
+
+impl Inertial {
+    /// The inertia tensor about the centre of mass in the link's axes.
+    #[must_use]
+    pub fn inertia_in_link(&self) -> DMat3 {
+        let r = DMat3::from_mat4(self.origin);
+        r * self.inertia * r.transpose()
+    }
 }
 
 /// A placed piece of geometry.

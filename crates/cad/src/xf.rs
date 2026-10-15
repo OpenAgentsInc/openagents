@@ -56,6 +56,35 @@ impl Xf {
         Xf { r, t }
     }
 
+    /// The inverse: rotation transposed, translation undone.
+    #[must_use]
+    pub fn inverse(&self) -> Xf {
+        let mut r = [[0.0; 3]; 3];
+        for (i, row) in r.iter_mut().enumerate() {
+            for (j, cell) in row.iter_mut().enumerate() {
+                *cell = self.r[j][i];
+            }
+        }
+        let back = Xf { r, t: [0.0; 3] }.rotate(self.t);
+        Xf {
+            r,
+            t: [-back[0], -back[1], -back[2]],
+        }
+    }
+
+    /// The rotation as URDF's roll, pitch and yaw (radians): R = Rz(yaw) ·
+    /// Ry(pitch) · Rx(roll), about fixed axes.
+    #[must_use]
+    pub fn rpy(&self) -> [f64; 3] {
+        let r = &self.r;
+        let pitch = (-r[2][0]).clamp(-1.0, 1.0).asin();
+        if r[2][0].abs() > 1.0 - 1e-9 {
+            // Gimbal lock: roll and yaw share an axis; put it all in yaw.
+            return [0.0, pitch, (-r[0][1]).atan2(r[1][1])];
+        }
+        [r[2][1].atan2(r[2][2]), pitch, r[1][0].atan2(r[0][0])]
+    }
+
     #[must_use]
     pub fn apply(&self, p: [f64; 3]) -> [f64; 3] {
         let mut out = self.t;
@@ -175,6 +204,19 @@ mod tests {
             let again = Xf::rotate_xyz(xf.to_xyz_degrees());
             for p in [[1.0, 2.0, 3.0], [-4.0, 0.5, 2.0]] {
                 assert!(close(xf.apply(p), again.apply(p)), "{degrees:?}");
+            }
+        }
+        for degrees in [[30.0, -45.0, 120.0], [0.0, 90.0, 10.0], [-170.0, 20.0, 5.0]] {
+            let xf = Xf::translate([1.0, -2.0, 3.0]).mul(&Xf::rotate_xyz(degrees));
+            let back = xf.inverse().mul(&xf);
+            assert!(
+                close(back.apply([4.0, 5.0, 6.0]), [4.0, 5.0, 6.0]),
+                "{degrees:?}"
+            );
+            let [roll, pitch, yaw] = xf.rpy();
+            let again = Xf::rotate_xyz([roll, pitch, yaw].map(f64::to_degrees));
+            for p in [[1.0, 2.0, 3.0], [-4.0, 0.5, 2.0]] {
+                assert!(close(xf.rotate(p), again.rotate(p)), "{degrees:?}");
             }
         }
         let quarter = Xf::rotate_xyz([0.0, 0.0, 90.0]);

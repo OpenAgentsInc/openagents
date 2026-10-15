@@ -71,7 +71,10 @@ version.
    persistent naming on every build; points still work.
 3. **Assembly structure in exports:** done for STEP (AP242) and 3MF
    (#11628): parts once, placed by instances, subassemblies nested. URDF
-   from our joints is #11643.
+   from `assembly.v1` with the measured mass and inertia and our joints
+   is shipped (#11643; Robot Lab imports it as `cad:<doc>/vN`, without
+   collision shapes, so inspect and replay only), as is the typed mass
+   feed for Lagrange 2.
 4. **Interference by sampling:** overlaps are measured on triangles over a
    28³ grid; slivers thinner than a grid cell can be missed. Exact checks
    wait on a faster kernel intersection for touching curved faces (#11648).
@@ -79,8 +82,9 @@ version.
    the exact solid by the display tolerance (well under 1% on the rover's
    parts). Parts flagged `exact_mass` are cross-checked against SMLib's
    exact integrals on every edit when `smlibpy` is installed (#11628).
-6. **Verse:** the glTF is ready for it; placing a version in a Verse zone is
-   a follow-up.
+6. **Verse:** `cad_place` puts a version in Everglade or a Meteor stage
+   (#11642); the CAD card has no "Put it in Verse" button yet (the chat
+   calls the tool), and the browser Verse build doesn't load placements.
 7. **Browser builds:** `crates/cad-wasm` runs the engine as WebAssembly
    (check, Solid API, faces, DXF, exports; `scripts/cad-wasm-test.sh`), but
    no web page uses it yet: the web chat still calls the local Lab and

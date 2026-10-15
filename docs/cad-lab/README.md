@@ -214,12 +214,13 @@ message (workspace rule: no keyword routing).
 | `cad_check(doc, version?)` | Rebuild and check a version again |
 | `cad_versions(doc)` | Each version's summary, author, mass and parts |
 | `cad_compare(doc, a?, b?)` | What changed: parts, features, instances, joints, mass and centre of mass |
-| `cad_export(doc, version?, formats?)` | glTF binary (`.glb`, for the web and Verse), 3MF, STEP (exact solids) and STL; STEP (AP242) and 3MF keep the assembly tree: each part once in its own frame, placed by its instances, subassemblies as products or objects of their own |
+| `cad_export(doc, version?, formats?)` | glTF binary (`.glb`, for the web and Verse), 3MF, STEP (exact solids), STL, `urdf` (a robot for Robot Lab) and `feed` (mass properties for Lagrange 2); STEP (AP242) and 3MF keep the assembly tree: each part once in its own frame, placed by its instances, subassemblies as products or objects of their own |
 | `cad_import_step(doc, part, feature, path? / step?)` | A STEP model (AP203, AP214 or AP242) as a feature of a part (`solid.import_step`, the file kept in the Lab's store by its SHA-256) |
 | `cad_solid(ops, sketches?, material?, formats?)` | Direct operations with no document: mass, size and checks, and files if asked; nothing saved |
 | `cad_import_dxf(doc, part, feature, dxf, plane?, offset?, scale?, at?)` | A DXF drawing as a new sketch: touching lines and arcs become polylines (JSON the part keeps), with circles, splines and text |
 | `cad_export_dxf(doc, version?, part?, sketch?, plane?, at?)` | A sketch as DXF, or the whole model cut by a plane |
 | `cad_faces(doc, part, after?)` | A part's faces and edges by the names features pick them with |
+| `cad_place(doc, version?, zone?, at?, heading?, scale?, remove?)` | Put a version in a Verse zone (Everglade, Meteor Showcase, Meteor Stress Test); a newer version of the same document replaces it |
 | `cad_render(doc, version?, view, focus?, yaw?, pitch?)` | A picture: hero, rear, plan, front, side, iso, under or detail, framing some instances; yaw and pitch turn and raise the camera to match a photograph |
 
 ## Seeing it: the card
@@ -245,6 +246,44 @@ bytes. Versions, renders and the file store stay with the Lab.
 under Node: a filleted plate with a hole rebuilds and checks in about
 180 ms to within 0.01% of its analytic volume, and exports all four formats.
 The `.wasm` is 26 MB before `wasm-opt` and compression.
+
+## Into Verse (#11642)
+
+`cad_place` (or `openagents cad place rover --zone everglade --at 3,-4
+--heading 150`) writes the version's glTF, zone, place and heading into
+`ROOT/.verse/placements.json` (`verse-cad-placements.v1`;
+`$VERSE_CAD_PLACEMENTS` moves it). The zone loads that file
+(`crates/verse/src/zones/cad_place.rs`): every placement named for it
+stands on the ground, its lowest point resting there, and a change to the
+file shows within a second. One placement per document and zone, keeping
+its version, so placing v39 replaces v38. With no `at`, the model stands
+in front of where the player arrives. Native Verse only; the browser build
+reads no local files. `cad_place_capture OUT.png` (a `verse` example)
+photographs it.
+
+## Robot Lab and Lagrange 2 (#11643)
+
+- **URDF** (`cad_export` `urdf`, `crates/cad/src/urdf.rs`): a link per
+  instance under a massless `base_link` at the ground, each with the
+  report's mass, centre of mass and inertia carried into its link frame
+  (metres, kg·m²), and the joints: revolute → `revolute` (radians;
+  unlimited or past a turn → `continuous`), slider → `prismatic` (metres),
+  cylindrical → `prismatic` to a `<child>_slide` link plus `revolute`,
+  fastened or none → `fixed`. A moving instance's link frame sits at its
+  joint's origin, so URDF turns it about the right point. Each instance's
+  solids are STL visuals by colour. The URDF's zero pose is every joint at
+  zero. It is written as a pinned folder, `vN/out/urdf/` with
+  `source.json` (revision: the SHA-256 of the version's document), which
+  Robot Lab's `robot_import` reads through `robot-description` as source
+  `cad:<doc>/vN` and stands on a floor (inspect and replay; the URDF has
+  no contact shapes for simulation yet). A round-trip test reads it back
+  with `robot-description` and gets every link's mass, centre of mass
+  (0.06 mm) and inertia (10⁻⁶ relative) and every joint's kind and limits.
+- **Mass feed** (`cad_export` `feed`, `cad::feed::MassFeed`,
+  `cad-mass-feed.v1`): the typed record Lagrange 2's spacecraft document
+  reads: per instance its part, material, mass, centre of mass and inertia
+  (SI, assembly axes) and a port per joint on both sides (origin, axis,
+  kind, values, limits), with the parallel-axis total.
 
 ## Where it runs
 

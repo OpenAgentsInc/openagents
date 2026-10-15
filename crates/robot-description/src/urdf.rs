@@ -5,13 +5,14 @@ use std::io::Read as _;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
-use glam::{DMat4, DVec3};
+use glam::{DMat3, DMat4, DVec3};
 use roxmltree::{Document, Node, ParsingOptions};
 
 use crate::{
-    AXIS_TOLERANCE, Error, Geometry, Joint, JointKind, Limit, Link, MAX_DESCRIPTION_BYTES,
-    MAX_JOINTS, MAX_LINKS, MAX_MESH_BYTES, MAX_MESH_EXTENT_METERS, MAX_MESHES, MAX_OFFSET_METERS,
-    MAX_TOTAL_MESH_BYTES, MAX_XML_NODES, Robot, Shape, TriangleMesh, origin,
+    AXIS_TOLERANCE, Error, Geometry, Inertial, Joint, JointKind, Limit, Link,
+    MAX_DESCRIPTION_BYTES, MAX_JOINTS, MAX_LINKS, MAX_MESH_BYTES, MAX_MESH_EXTENT_METERS,
+    MAX_MESHES, MAX_OFFSET_METERS, MAX_TOTAL_MESH_BYTES, MAX_XML_NODES, Robot, Shape, TriangleMesh,
+    origin,
 };
 
 /// Reads the URDF file at `path`; its meshes resolve under its folder.
@@ -327,6 +328,7 @@ fn link(
     let at = format!("link {name}");
     let mut visuals = Vec::new();
     let mut collisions = Vec::new();
+    let mut inertial_of = None;
     for child in elements(node) {
         match child.tag_name().name() {
             "origin" => {
@@ -345,7 +347,7 @@ fn link(
                     });
                 }
             }
-            "inertial" => inertial(child, &at)?,
+            "inertial" => inertial_of = Some(inertial(child, &at)?),
             "visual" => {
                 let at = format!("{at} visual {}", visuals.len() + 1);
                 visuals.push(shape(child, &at, Some(materials), meshes)?);
@@ -364,27 +366,44 @@ fn link(
     }
     Ok(Link {
         name,
+        inertial: inertial_of,
         visuals,
         collisions,
     })
 }
 
-fn inertial(node: Node, at: &str) -> Result<(), Error> {
+fn inertial(node: Node, at: &str) -> Result<Inertial, Error> {
+    let mut out = Inertial {
+        mass: 0.0,
+        origin: DMat4::IDENTITY,
+        inertia: DMat3::ZERO,
+    };
     for child in elements(node) {
         match child.tag_name().name() {
             "origin" => {
-                pose_origin(child, at)?;
+                out.origin = pose_origin(child, at)?;
             }
             "mass" => {
                 let [mass] = numbers(required(child, "value", at)?, at, "mass")?;
                 if mass < 0.0 {
                     return Err(invalid(at, format!("has a negative mass {mass}")));
                 }
+                out.mass = mass;
             }
             "inertia" => {
-                for key in ["ixx", "ixy", "ixz", "iyy", "iyz", "izz"] {
-                    numbers::<1>(required(child, key, at)?, at, key)?;
+                let mut value = [0.0; 6];
+                for (slot, key) in value
+                    .iter_mut()
+                    .zip(["ixx", "ixy", "ixz", "iyy", "iyz", "izz"])
+                {
+                    [*slot] = numbers::<1>(required(child, key, at)?, at, key)?;
                 }
+                let [xx, xy, xz, yy, yz, zz] = value;
+                out.inertia = DMat3::from_cols(
+                    DVec3::new(xx, xy, xz),
+                    DVec3::new(xy, yy, yz),
+                    DVec3::new(xz, yz, zz),
+                );
             }
             other => {
                 return Err(Error::Unsupported {
@@ -394,7 +413,7 @@ fn inertial(node: Node, at: &str) -> Result<(), Error> {
             }
         }
     }
-    Ok(())
+    Ok(out)
 }
 
 fn shape(

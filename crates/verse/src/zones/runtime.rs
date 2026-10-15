@@ -462,6 +462,44 @@ impl WorldRuntime {
             .is_some_and(|glade| super::meteor_showcase::stage_rover(glade, delay).is_ok())
     }
 
+    /// Reads the CAD Lab placements file ([`super::cad_place::path`]) again
+    /// if it or the zone changed, and stands every model placed in this
+    /// zone on Everglade's ground. Returns how many stand here.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn refresh_cad_placements(&mut self) -> usize {
+        self.refresh_cad_placements_from(&super::cad_place::path())
+    }
+
+    /// [`Self::refresh_cad_placements`] from a given placements file.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn refresh_cad_placements_from(&mut self, file: &std::path::Path) -> usize {
+        let zone = self.zone;
+        // Only zones on Everglade's lit stage draw the models.
+        if self.zone_state.everglade.is_none() {
+            self.zone_state.cad = super::cad_place::Placements::default();
+            return 0;
+        }
+        let yaw = Everglade::spawn_yaw();
+        let arrive = Everglade::spawn()
+            + Vec3::new(-yaw.sin(), 0.0, -yaw.cos()) * super::cad_place::AHEAD;
+        let ahead = Vec3::new(
+            arrive.x,
+            super::everglade::land(arrive.x, arrive.z),
+            arrive.z,
+        );
+        self.zone_state
+            .cad
+            .refresh(zone, file, super::everglade::land, ahead);
+        self.zone_state.cad.placed.len()
+    }
+
+    /// The CAD Lab models standing in this zone.
+    #[cfg(not(target_arch = "wasm32"))]
+    #[must_use]
+    pub fn cad_placed(&self) -> &[super::cad_place::Placed] {
+        &self.zone_state.cad.placed
+    }
+
     /// The rover on the showcase's lot, when one stands there.
     #[cfg(not(target_arch = "wasm32"))]
     #[must_use]
@@ -2914,6 +2952,11 @@ impl WorldRuntime {
 
     pub(crate) fn zone_simulation_tick(&mut self, dt: f32, _previous: PlayerController) {
         self.zone_state.elapsed = (self.zone_state.elapsed + dt) % 1000.0;
+        // CAD Lab models placed here, kept in step with their file.
+        #[cfg(not(target_arch = "wasm32"))]
+        if self.zone_state.cad.due(dt) {
+            self.refresh_cad_placements();
+        }
         if let Some(lagrange) = &mut self.zone_state.lagrange {
             lagrange.tick();
         }
@@ -3105,6 +3148,9 @@ impl WorldRuntime {
             if let Some(rover) = &self.zone_state.rover {
                 mesh.lit.extend(rover.lit());
             }
+            // CAD Lab models placed here (`cad_place`).
+            #[cfg(not(target_arch = "wasm32"))]
+            mesh.lit.extend(self.zone_state.cad.lit());
             everglade.see_water_from(&mut mesh, self.view(1.0).eye);
             // The player, and the seats when the pack's character draws them.
             // In first person the player's own character is not drawn.
