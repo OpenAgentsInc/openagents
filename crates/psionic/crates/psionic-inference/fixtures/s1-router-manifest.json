@@ -1,0 +1,34 @@
+{
+  "model": "s1-llm-auto-router",
+  "repository": "decisionmodels/s1-llm-auto-router",
+  "revision": "572c5b6cdb53b77fbb26ed33568ebbc5b71c69c0",
+  "license": "MIT",
+  "temperatures": {
+    "category": 0.5,
+    "difficulty": 0.8,
+    "stakes": 0.75,
+    "flags": 0.6
+  },
+  "files": {
+    "model.gq.onnx": {
+      "sha256": "53a02107e46be7913f148037b63b4f4735a400f91221789b0aaefcde0ad8da80",
+      "bytes": 183089235
+    },
+    "meta.json": {
+      "sha256": "b6689ba21a44e0910cc2ae831c6ecf2bcc6f542b3fc5cd29d570e012865649c2",
+      "bytes": 688
+    },
+    "LICENSE": {
+      "sha256": "2fdc12f1de2340022107bc13fcef9027ca127cefb48c3c19615e2b596dc7e2fb",
+      "bytes": 1375
+    },
+    "tokenizer/tokenizer.json": {
+      "sha256": "c01f8492531b2e569bd8d28ef1de1c66779275753c78cb497f7118762ae3230d",
+      "bytes": 34363439
+    },
+    "tokenizer/tokenizer_config.json": {
+      "sha256": "14b147f2a4f939d9b12ab36e9633917040dd948fa78ce283b03402e4cf2c9cba",
+      "bytes": 574
+    }
+  }
+}
