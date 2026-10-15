@@ -181,7 +181,7 @@ impl Lab {
     }
 
     fn edit(&self, args: &Value) -> Result<Value, String> {
-        let (id, n, ship, _) = self.pick(&json!({"doc": args["doc"]}))?;
+        let (id, n, ship, current) = self.pick(&json!({"doc": args["doc"]}))?;
         let edit = parse_edit(args)?;
         let summary = args["summary"]
             .as_str()
@@ -192,8 +192,16 @@ impl Lab {
         match ship.edit(&edit) {
             Ok(next) => {
                 let v = self.save(&id, &next, &summary)?;
+                // Parts resized away from their CAD documents.
+                let left_cad: Vec<String> = next
+                    .parts
+                    .iter()
+                    .filter(|p| p.cad.is_none() && ship.part(&p.id).is_some_and(|o| o.cad.is_some()))
+                    .map(|p| format!("{} no longer matches its CAD model; its mass properties now come from its new size", p.id))
+                    .collect();
                 Ok(json!({
                     "doc": id, "version": v, "accepted": true, "summary": summary,
+                    "notes": left_cad,
                     "before": numbers(&ship), "after": numbers(&next),
                     "card": card(&id, v, &next, &summary, None),
                 }))
@@ -205,7 +213,7 @@ impl Lab {
                     finding.requirement, finding.detail
                 ),
                 "requirement": finding.requirement,
-                "card": card(&id, n, &ship, &summary, Some(&finding.to_string())),
+                "card": card(&id, n, &ship, &current, Some(&finding.to_string())),
             })),
         }
     }

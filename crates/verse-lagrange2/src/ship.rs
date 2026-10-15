@@ -311,7 +311,8 @@ pub enum Edit {
     },
     /// Make a part `factor` times its volume, in place: each dimension
     /// grows by the cube root of `factor`, and its dry mass and any
-    /// propellant scale with the volume.
+    /// propellant scale with the volume. The part leaves its CAD document
+    /// (`cad` is cleared): its inertia comes from its shape.
     ScalePart {
         part: String,
         factor: f64,
@@ -936,6 +937,9 @@ impl Spacecraft {
                 }
                 let linear = factor.cbrt();
                 let p = &mut next.parts[i];
+                // A resized part no longer matches its CAD document, so
+                // its inertia comes from its shape again.
+                p.cad = None;
                 p.dry_mass_kg *= factor;
                 if let PartKind::Tank { propellant_kg } = &mut p.kind {
                     *propellant_kg *= factor;

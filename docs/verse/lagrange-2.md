@@ -318,6 +318,29 @@ and the arms start a new ship.
   the legacy zones (`reopen_for_zone`), so the arch works there with no
   phone-specific code.
 
+Checked by hand for #11651: headless Chrome walks the Grid page
+(`?zone=grid&at=-17.46,6.59,-0.8106` stands at the arch) in and back out on
+WebGPU and on WebGL2 (`&gl`), and the desktop's ignored GPU test
+`walking_into_lagrange_2_and_back_out_draws_each_side` (in
+`crates/openagents-desktop/src/grid_fixtures.rs`; captures with
+`OPENAGENTS_GRID_EVIDENCE=DIR`) walks the window's real layer through both
+arches.
+
+## Editing the ship by chat
+
+`ship-lab serve` (port 8796; `scripts/dev/full-local.sh start --ship`, or
+`--lab`) keeps versions of the spacecraft document in
+`~/work/film-out/lab/ship` and serves the web chat's `ship_*` tools:
+`ship_list`, `ship_open`, `ship_edit`, `ship_versions` and `ship_compare`.
+`ship_edit` takes a typed edit (`scale`, `set_dry_mass`, `set_propellant`,
+`move`, `remove`) and part ids. Several parts are one `Edit::Batch`, checked
+together. Every edit goes through `Spacecraft::edit`, so a refusal names the
+requirement. "Make the tug's tank 20% bigger" scales both tanks by 1.2 in
+volume. A scaled part drops its CAD mass, since it no longer matches its CAD
+document. The tug's latest accepted version is also written to
+`.verse/lagrange2.json`, and the zone's next ship on that Mac is built from
+it when the arms can reach every part.
+
 ## The demo film
 
 ```sh
