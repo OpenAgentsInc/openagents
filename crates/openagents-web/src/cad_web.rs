@@ -83,10 +83,11 @@ const MAX_FILE_BYTES: usize = 15 * 1024 * 1024;
 const MAX_PARTS_BYTES: u64 = 48 * 1024 * 1024;
 
 /// The tools that change a model (a viewer may not run them).
-const CHANGES: [&str; 8] = [
+const CHANGES: [&str; 9] = [
     "cad_new_part",
     "cad_add_feature",
     "cad_edit_feature",
+    "cad_drag_face",
     "cad_set_part",
     "cad_assemble",
     "cad_from_json",
@@ -446,7 +447,7 @@ impl Engine {
         name: &str,
         args: &Value,
     ) -> Result<Value, String> {
-        let args = admitted(scope, name, args)?;
+        let mut args = admitted(scope, name, args)?;
         if !self.admit(&scope.actor) {
             return Err(
                 "You've run a lot of CAD steps this hour. Try again in a few minutes.".into(),
@@ -455,6 +456,21 @@ impl Engine {
         let lock = self.scope_lock(scope);
         let _scope = lock.lock().await;
         let (index, _) = read_index(store, scope).await?;
+        if name == "cad_drag_face" {
+            let base = args
+                .as_object_mut()
+                .and_then(|a| a.remove("base_version"))
+                .and_then(|v| v.as_u64())
+                .ok_or("Reload the design before pulling a face.")?;
+            let doc = args["doc"].as_str().unwrap_or_default();
+            if !index
+                .docs
+                .get(doc)
+                .is_some_and(|entry| entry.versions == base)
+            {
+                return Err("This design changed. Reload it before pulling a face.".into());
+            }
+        }
         if CHANGES.contains(&name) {
             if let Some(doc) = args["doc"].as_str() {
                 if !index.docs.contains_key(doc) && index.docs.len() >= MAX_DOCS {
@@ -1107,6 +1123,7 @@ pub(crate) fn routes() -> Router<App> {
         // `{file}`, as /cad/{file} names the same segment (pages::cad).
         .route("/cad/{file}/file", get(file))
         .route("/cad/{file}/delete", post(delete_form))
+        .route("/cad/{file}/pull", post(pull_form))
         .route(
             DOC_JS,
             get(|| async {
@@ -1146,6 +1163,65 @@ async fn file(
         }
         None => crate::not_found().await,
     }
+}
+
+#[derive(Deserialize)]
+struct PullForm {
+    csrf: String,
+    #[serde(default)]
+    project: String,
+    version: u64,
+    part: String,
+    face: String,
+    delta: f64,
+}
+
+async fn pull_form(
+    State(app): State<App>,
+    headers: HeaderMap,
+    UrlPath(doc): UrlPath<String>,
+    Form(form): Form<PullForm>,
+) -> Response {
+    if crate::pages::chat::validate_form(&app, &headers, &form.csrf)
+        .await
+        .is_err()
+    {
+        return (StatusCode::FORBIDDEN, "Reload the page and try again.").into_response();
+    }
+    let Some(scope) = page_scope(&app, &headers, Some(&form.project)).await else {
+        return crate::not_found().await;
+    };
+    if !scope.edits {
+        return (
+            StatusCode::FORBIDDEN,
+            "Only this project's editors can change this design.",
+        )
+            .into_response();
+    }
+    let Some(engine) = engine() else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "The CAD engine isn't available. Try again later.",
+        )
+            .into_response();
+    };
+    let result = engine.run(&app.config.chat_store, &scope, "cad_drag_face", &json!({
+        "doc":doc,"base_version":form.version,"part":form.part,"face":form.face,"delta":form.delta,
+    })).await;
+    if let Some(error) = result["error"].as_str() {
+        return (StatusCode::CONFLICT, error.to_owned()).into_response();
+    }
+    if result["saved"] != true {
+        return (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "This change didn't pass the design checks.",
+        )
+            .into_response();
+    }
+    axum::Json(
+        json!({"url":scope.page(&doc, result["version"].as_u64()),"version":result["version"]}),
+    )
+    .into_response()
 }
 
 #[derive(Deserialize)]
@@ -1239,7 +1315,9 @@ pub(crate) fn doc_content(
     html! {
         section.oa-cad-doc aria-labelledby="cad-doc-title"
             data-cad-doc-page="" data-cad-doc=(doc) data-cad-version=(version)
-            data-cad-document=(file_url(scope, doc, version, "doc.json")) {
+            data-cad-document=(file_url(scope, doc, version, "doc.json"))
+            data-cad-pull=[(engine_in_browser && csrf.is_some()).then(|| format!("/cad/{doc}/pull"))]
+            data-cad-csrf=[csrf] data-cad-project=(scope.project.as_deref().unwrap_or("")) {
             (MarkdownRoot::new(html! {
                 h1 id="cad-doc-title" { (entry.title) }
                 p.oa-page-lead {
@@ -1254,6 +1332,16 @@ pub(crate) fn doc_content(
                 doc,
                 version,
             ))
+            @if engine_in_browser && csrf.is_some() {
+                div.oa-cad-pull data-cad-pull-panel="" hidden {
+                    p data-cad-pull-label="" {}
+                    label { "Move face (mm) " input type="number" step="0.1" value="0" data-cad-pull-delta=""; }
+                    (Button::new("Preview").variant(ButtonVariant::Outline).attr("data-cad-pull-preview", ""))
+                    (Button::new("Save change").attr("data-cad-pull-save", "").disabled(true))
+                    (Button::new("Cancel").variant(ButtonVariant::Outline).attr("data-cad-pull-cancel", ""))
+                    p data-cad-pull-status="" aria-live="polite" {}
+                }
+            }
             p.oa-cad-meta { (crate::cad_lab::mass_line(&card["mass"])) }
             p.oa-cad-meta { (crate::cad_lab::counts_line(&card)) }
             h2 { "Files" }

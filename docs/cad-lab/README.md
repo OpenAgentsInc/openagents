@@ -322,6 +322,15 @@ there), its mass and centre of mass, its size and counts, the
 render or the exports the turn made, and **Compare with** the version
 before.
 
+On a saved design's page, pick an extrusion's end, a box face, or a fillet's
+rounded face, then drag **Pull** along its normal. The browser rebuilds and
+checks the preview with the Rust CAD engine. Releasing saves a checked version;
+**Cancel** or Escape restores the starting shape. You can also enter a movement
+in millimeters, select **Preview**, and select **Save change**. Box pulls keep
+the opposite face fixed. Cuts, formulas, and unsupported faces stay editable
+through chat. Viewers cannot pull faces, and a page based on an older version
+must be reloaded before saving ([#11661](https://github.com/OpenAgentsInc/openagents/issues/11661)).
+
 ## In the browser
 
 `crates/cad-wasm` is the same engine built for `wasm32-unknown-unknown`

@@ -40,7 +40,14 @@ struct Fixture {
 fn fixture() -> Fixture {
     let root = tempfile::tempdir().unwrap();
     let program = root.path().join("cad-lab");
-    std::fs::write(&program, FAKE).unwrap();
+    // The child has a fixed production PATH; Nix keeps test tools elsewhere.
+    let path = std::env::var("PATH").unwrap().replace('\'', "'\\''");
+    let fake = FAKE.replacen(
+        "#!/bin/sh\n",
+        &format!("#!/bin/sh\nPATH='{path}'\nexport PATH\n"),
+        1,
+    );
+    std::fs::write(&program, fake).unwrap();
     std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
     let store = Store::local(root.path().join("store"));
     Fixture {
@@ -297,6 +304,8 @@ fn the_page_lists_versions_and_files() {
         "{html}"
     );
     assert!(html.contains("data-cad-download=\"step\""));
+    assert!(html.contains("data-cad-pull=\"/cad/bracket/pull\""));
+    assert!(html.contains("data-cad-pull-save"));
     assert!(html.contains("href=\"/cad/bracket?v=1&amp;project=prj_1\""));
     assert!(html.contains("Delete this design"));
     assert!(
@@ -311,6 +320,7 @@ fn the_page_lists_versions_and_files() {
     let plain = doc_content(&scope, "bracket", &entry, 2, &record, None, false).into_string();
     assert!(!plain.contains("Delete this design"));
     assert!(!plain.contains("data-cad-download"));
+    assert!(!plain.contains("data-cad-pull-save"));
     assert!(plain.contains("download=1"));
 }
 
@@ -367,5 +377,47 @@ async fn real_engine_makes_a_part_and_changes_a_picked_face() {
         read_file(&f.store, &scope, "plate", 2, "hero.png")
             .await
             .is_some()
+    );
+}
+
+#[tokio::test]
+async fn face_pulls_check_current_version_and_editor_rights_before_running() {
+    let f = fixture();
+    let e = engine(&f, "face-pulls");
+    let scope = Scope::personal(&owner("acct_1")).unwrap();
+    e.run(
+        &f.store,
+        &scope,
+        "cad_new_part",
+        &json!({"doc":"bracket","part":"bracket"}),
+    )
+    .await;
+    let stale = e
+        .run(
+            &f.store,
+            &scope,
+            "cad_drag_face",
+            &json!({"doc":"bracket","base_version":0,"part":"bracket","face":"body:+z","delta":2}),
+        )
+        .await;
+    assert!(
+        stale["error"].as_str().unwrap().contains("Reload"),
+        "{stale}"
+    );
+    let mut viewer = scope.clone();
+    viewer.edits = false;
+    assert!(admitted(&viewer, "cad_drag_face", &json!({"doc":"bracket"})).is_err());
+    let current = e
+        .run(
+            &f.store,
+            &scope,
+            "cad_drag_face",
+            &json!({"doc":"bracket","base_version":1,"part":"bracket","face":"body:+z","delta":2}),
+        )
+        .await;
+    assert_eq!(current["version"], 2, "{current}");
+    assert_eq!(
+        load_index(&f.store, &scope).await.unwrap().docs["bracket"].versions,
+        2
     );
 }

@@ -54,6 +54,78 @@ if (page && buttons.length) {
       worker.postMessage({ id, call: name, args, format });
     });
 
+  const pullPanel = page.querySelector("[data-cad-pull-panel]");
+  const viewer = page.querySelector(".oa-cad-viewer");
+  let pick = null, generation = 0, pending = null, previewing = false;
+  const deltaInput = page.querySelector("[data-cad-pull-delta]");
+  const pullStatus = page.querySelector("[data-cad-pull-status]");
+  const saveButton = page.querySelector("[data-cad-pull-save]");
+  let checkedDelta = null, saving = false;
+  const pullSay = (text) => { if (pullStatus) pullStatus.textContent = text; };
+  const loadDocument = async () => {
+    if (!documentJson) {
+      const response = await fetch(page.dataset.cadDocument, {credentials:"same-origin"});
+      if (!response.ok) throw new Error("The design couldn't be read.");
+      documentJson = await response.json();
+    }
+    return documentJson;
+  };
+  const savePull = async () => {
+    if (!pick || checkedDelta === null || checkedDelta === 0 || saving) return;
+    saving = true; saveButton.disabled = true; pullSay("Saving the change…");
+    try {
+      const form = new URLSearchParams({csrf:page.dataset.cadCsrf,project:page.dataset.cadProject,
+        version,part:pick.part,face:pick.face,delta:String(checkedDelta)});
+      const response = await fetch(page.dataset.cadPull, {method:"POST",credentials:"same-origin",body:form});
+      if (!response.ok) throw new Error(await response.text());
+      const result = await response.json(); window.location.assign(result.url);
+    } catch (error) { pullSay(error.message); saving=false; saveButton.disabled=false; }
+  };
+  const pumpPreview = async () => {
+    if (previewing || !pending || saving) return;
+    previewing=true;
+    const job=pending; pending=null; const selected=pick;
+    try {
+      const result = await call("run", {tool:"cad_drag_face",args:{document:await loadDocument(),part:selected.part,face:selected.face,delta:job.delta}});
+      if (job.generation === generation) {
+        if (result.error) throw new Error(result.error);
+        viewer.__cadSetModel(result.view); checkedDelta=job.delta;
+        viewer.dispatchEvent(new CustomEvent("cad-pull-handle", {detail:selected}));
+        pullPanel.querySelector("[data-cad-pull-label]").textContent = `${result.edit.dimension}: ${Number(result.edit.value.toFixed(2))} mm`;
+        pullSay(job.delta === 0 ? "Drag Pull to move this face, or enter a distance." : "Preview checked.");
+        saveButton.disabled=job.delta===0;
+        if (job.commit) await savePull();
+      }
+    } catch (error) {
+      if (job.generation === generation) { checkedDelta=null; saveButton.disabled=true; pullSay(error.message); }
+    } finally { previewing=false; pumpPreview(); }
+  };
+  const previewPull = (delta,commit=false) => {
+    if (!pick || saving) return;
+    checkedDelta=null; saveButton.disabled=true; deltaInput.value=String(delta);
+    pending={delta,commit,generation:++generation}; pumpPreview();
+  };
+  const cancelPull = () => {
+    if (!pick || saving) return;
+    ++generation; pending=null; pick=null; checkedDelta=null; pullPanel.hidden=true;
+    viewer.dispatchEvent(new CustomEvent("cad-pull-handle", {detail:null})); viewer.__cadSetModel(null);
+  };
+  if (pullPanel && viewer) {
+    viewer.addEventListener("cad-face-pick", (event) => {
+      if (saving) return;
+      pick=event.detail; pullPanel.hidden=false;
+      viewer.dispatchEvent(new CustomEvent("cad-pull-handle", {detail:null})); previewPull(0);
+    });
+    viewer.addEventListener("cad-face-drag", (event) => {
+      if (event.detail.cancel) cancelPull(); else previewPull(event.detail.delta,event.detail.commit);
+    });
+    page.querySelector("[data-cad-pull-preview]").addEventListener("click",()=>previewPull(Number(deltaInput.value)));
+    saveButton.addEventListener("click",savePull);
+    deltaInput.addEventListener("input",()=>{++generation;pending=null;checkedDelta=null;saveButton.disabled=true;});
+    page.querySelector("[data-cad-pull-cancel]").addEventListener("click",cancelPull);
+    page.addEventListener("keydown",(event)=>{if(event.key==="Escape") cancelPull();});
+  }
+
   const TYPES = {
     step: ["model/step", `${doc}-v${version}.step`],
     stl: ["model/stl", `${doc}-v${version}.stl`],

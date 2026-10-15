@@ -1,0 +1,68 @@
+//! A real local CAD page for pointer and touch checks with isolated accounts.
+use super::*;
+
+#[tokio::test]
+#[ignore = "serves a local CAD page; needs the native and browser CAD builds"]
+async fn serve_cad_drag() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    HOST_OVERRIDE.set(format!("127.0.0.1:{port}")).unwrap();
+    let world = world_at(
+        port,
+        Options {
+            cad: Some(std::env::var_os("OA_CAD_BROWSER").unwrap().into()),
+            ..Options::default()
+        },
+    )
+    .await;
+    let mut browser = Browser::default();
+    browser.sign_in(&world, "octo-local").await;
+    let scope = crate::cad_web::Scope::personal(&account_owner_of(&world, "octo-local")).unwrap();
+    let engine = crate::cad_web::engine().expect("set OPENAGENTS_CAD_ENGINE");
+    let result=engine.run(&world.store,&scope,"cad_from_json",&json!({"doc":"bracket","document":{
+        "kind":"part.v1","id":"bracket","title":"Fan bracket","material":"Aluminum","features":[
+            {"id":"body","op":"solid.box","params":{"length":50,"width":30,"height":8,"center":[0,0,4]}},
+            {"id":"notch","op":"solid.box","params":{"length":40,"width":30,"height":12,"center":[10,10,6],"operation":"cut"}}
+        ]}})).await;
+    assert_eq!(result["saved"], true, "{result}");
+    // The actual authenticated route refuses a stale page and bad CSRF.
+    let page = browser.get(&world, "/cad/bracket").await;
+    assert_eq!(page.status, StatusCode::OK, "{}", page.body);
+    let csrf = page
+        .body
+        .split("data-cad-csrf=\"")
+        .nth(1)
+        .unwrap()
+        .split('"')
+        .next()
+        .unwrap();
+    for (token, version, status) in [
+        (csrf, "0", StatusCode::CONFLICT),
+        ("wrong", "1", StatusCode::FORBIDDEN),
+    ] {
+        let refused = browser
+            .post(
+                &world,
+                "/cad/bracket/pull",
+                &[
+                    ("csrf", token),
+                    ("version", version),
+                    ("part", "bracket"),
+                    ("face", "body:+z"),
+                    ("delta", "2"),
+                ],
+            )
+            .await;
+        assert_eq!(refused.status, status, "{}", refused.body);
+    }
+    let out = std::path::PathBuf::from(std::env::var_os("OA_CAD_CAPTURE").unwrap());
+    std::fs::write(
+        out,
+        serde_json::to_vec(
+            &json!({"url":format!("{}/cad/bracket",world.origin()),"cookies":browser.0}),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    axum::serve(listener, world.site).await.unwrap();
+}

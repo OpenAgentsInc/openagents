@@ -293,6 +293,7 @@ impl Lab {
             "cad_new_part" => self.new_part(args),
             "cad_add_feature" => self.add_feature(args),
             "cad_edit_feature" => self.edit_feature(args),
+            "cad_drag_face" => self.drag_face(args),
             "cad_set_part" => self.set_part(args),
             "cad_assemble" => self.assemble(args),
             "cad_check" => self.check(args),
@@ -510,6 +511,23 @@ impl Lab {
                 list.insert(at + i, f.clone());
             }
             Ok(format!("{part}: added {}", names.join(", ")))
+        })
+    }
+
+    fn drag_face(&self, args: &Value) -> Result<Value, String> {
+        let part = arg_str(args, "part").ok_or("Pick a part first.")?;
+        let face = arg_str(args, "face").ok_or("Pick a face first.")?;
+        let delta = args["delta"]
+            .as_f64()
+            .ok_or("Choose the face movement in millimeters.")?;
+        self.change(args, |document| {
+            let edit = cad::drag::apply(document, part, face, delta)?;
+            Ok(format!(
+                "{}: {} is {:.1} mm",
+                part,
+                edit["dimension"].as_str().unwrap_or("dimension"),
+                edit["value"].as_f64().unwrap_or_default()
+            ))
         })
     }
 
@@ -1666,6 +1684,7 @@ fn takes(name: &str) -> &'static [&'static str] {
             "author",
         ],
         "cad_add_feature" => &["doc", "part", "features", "after", "summary", "author"],
+        "cad_drag_face" => &["doc", "part", "face", "delta", "summary", "author"],
         "cad_edit_feature" => &[
             "doc",
             "part",
@@ -1922,6 +1941,28 @@ mod tests {
             .as_nanos();
         let path = std::env::temp_dir().join(format!("cad-lab-test-{n}-{}", std::process::id()));
         (Dir(path.clone()), Lab::open(path).unwrap())
+    }
+
+    #[test]
+    fn pulled_faces_save_checked_versions_and_invalid_pulls_leave_the_old_version() {
+        let (_dir, lab) = lab();
+        let made=lab.run("cad_from_json",&json!({"doc":"plate","document":{"kind":"part.v1","id":"plate","material":"Aluminum","features":[{"id":"body","op":"solid.box","params":{"length":20,"width":10,"height":5,"center":[0,0,2.5]}}]}}));
+        assert_eq!(made["version"], 1, "{made}");
+        let changed = lab.run(
+            "cad_drag_face",
+            &json!({"doc":"plate","part":"plate","face":"body:+z","delta":3}),
+        );
+        assert_eq!(changed["version"], 2, "{changed}");
+        let invalid = lab.run(
+            "cad_drag_face",
+            &json!({"doc":"plate","part":"plate","face":"body:+z","delta":-9}),
+        );
+        assert!(invalid.get("error").is_some(), "{invalid}");
+        let current = lab.run("cad_open", &json!({"doc":"plate"}));
+        assert_eq!(current["version"], 2);
+        assert_eq!(current["document"]["features"][0]["params"]["height"], 8.0);
+        let old = lab.run("cad_open", &json!({"doc":"plate","version":1}));
+        assert_eq!(old["document"]["features"][0]["params"]["height"], 5);
     }
 
     #[test]

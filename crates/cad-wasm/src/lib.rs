@@ -73,6 +73,19 @@ fn tool(name: &str, args: &Value) -> Result<Value, String> {
             Ok(eval) => json!({"passed": true, "report": eval.report}),
             Err(problems) => json!({"passed": false, "problems": problems}),
         }),
+        "cad_drag_face" => {
+            let mut doc = document(args)?;
+            let edit = cad::drag::apply(
+                &mut doc,
+                args["part"].as_str().ok_or("Pick a part first.")?,
+                args["face"].as_str().ok_or("Pick a face first.")?,
+                args["delta"]
+                    .as_f64()
+                    .ok_or("Choose the face movement in millimeters.")?,
+            )?;
+            let eval = cad::evaluate_with(&doc, &cache).map_err(|p| p.join(" "))?;
+            Ok(json!({"passed":true,"edit":edit,"view":cad::view::model(&eval.built)}))
+        }
         "cad_solid" => {
             let ops = list(args, "ops")?;
             if ops.is_empty() {
@@ -141,8 +154,9 @@ fn tool(name: &str, args: &Value) -> Result<Value, String> {
 }
 
 /// The tools the browser build runs.
-pub const TOOLS: [&str; 7] = [
+pub const TOOLS: [&str; 8] = [
     "cad_check",
+    "cad_drag_face",
     "cad_solid",
     "cad_faces",
     "cad_import_dxf",
@@ -228,6 +242,27 @@ mod tests {
         json!({"kind": "part.v1", "id": "puck", "material": "Steel", "features": [
             {"id": "disc", "op": "solid.cylinder", "params": {"radius": 10, "height": 5}},
             {"id": "round", "op": "solid.fillet", "params": {"radius": 1, "edges": [{"of": "disc:top"}]}}]})
+    }
+
+    #[test]
+    fn face_pull_previews_rebuild_the_complete_design_without_mutating_the_source() {
+        let doc = json!({"kind":"part.v1","id":"plate","material":"Aluminum","features":[
+            {"id":"body","op":"solid.box","params":{"length":20,"width":10,"height":5,"center":[0,0,2.5]}}]});
+        let preview: Value = serde_json::from_str(&run(
+            "cad_drag_face",
+            &json!({"document":doc,"part":"plate","face":"body:+z","delta":3}).to_string(),
+        ))
+        .unwrap();
+        assert_eq!(preview["passed"], true, "{preview}");
+        assert_eq!(preview["edit"]["value"], 8.0);
+        assert!((preview["view"]["size_mm"][2].as_f64().unwrap() - 8.0).abs() < 0.01);
+        assert_eq!(doc["features"][0]["params"]["height"], 5);
+        let invalid: Value = serde_json::from_str(&run(
+            "cad_drag_face",
+            &json!({"document":doc,"part":"plate","face":"body:+z","delta":-6}).to_string(),
+        ))
+        .unwrap();
+        assert!(invalid.get("error").is_some());
     }
 
     #[test]

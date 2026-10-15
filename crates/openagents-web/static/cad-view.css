@@ -26,3 +26,10 @@
 .oa-cad-versions li[aria-current]{font-weight:600}
 .oa-cad-designs{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
 @media (max-width:640px){.oa-cad-view{aspect-ratio:4/3}.oa-cad-card{padding:8px}}
+
+.oa-cad-pull-handle{position:absolute;transform:translate(-50%,-50%);min-width:48px;min-height:44px;border:2px solid #8a5100;border-radius:22px;background:#ffbd59;color:#201500;font:inherit;font-weight:600;touch-action:none;cursor:ns-resize;z-index:2}
+.oa-cad-pull-handle[hidden],.oa-cad-pull[hidden]{display:none}
+.oa-cad-pull{display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:12px;border:1px solid rgba(127,127,127,.3);border-radius:8px}
+.oa-cad-pull p{margin:0;flex-basis:100%}.oa-cad-pull input{max-width:100px;min-height:44px;font:inherit}
+
+.oa-cad-pull-stem{position:absolute;height:2px;background:#8a5100;transform-origin:left center;pointer-events:none;z-index:1}.oa-cad-pull-stem[hidden]{display:none}

@@ -70,6 +70,7 @@ impl World {
 #[derive(Default)]
 pub(crate) struct Options {
     pub uploads: Option<crate::ProjectUploadPolicy>,
+    pub cad: Option<std::path::PathBuf>,
     /// Serve a public host (`openagents.test`) instead of the local address.
     pub public: bool,
     /// The account service's invite list (`oa_auth::invite`).
@@ -160,6 +161,7 @@ async fn world_at(port: u16, options: Options) -> World {
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
     let mut config = crate::Config::development(root.path().join("tasks"));
     config.project_uploads = options.uploads.unwrap_or_default();
+    config.cad = options.cad;
     config.port = port;
     let store = Arc::new(Store::local(root.path().join("chats")));
     config.chat_store = store.clone();
@@ -913,3 +915,5 @@ mod chat_share;
 mod composer_row;
 mod files;
 mod members;
+
+mod cad_drag;

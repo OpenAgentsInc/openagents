@@ -23,6 +23,7 @@ pub mod build;
 pub mod clash;
 pub mod collision;
 pub mod doc;
+pub mod drag;
 pub mod drawing;
 pub mod dxf;
 pub mod exact;

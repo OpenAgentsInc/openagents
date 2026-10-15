@@ -137,11 +137,15 @@
 
   function run(root, canvas, gl, model) {
     var mesh = program(gl, MESH_VS, MESH_FS), line = program(gl, LINE_VS, LINE_FS);
-    function buffer(target, data) { var b = gl.createBuffer(); gl.bindBuffer(target, b); gl.bufferData(target, data, gl.STATIC_DRAW); return b; }
+    var gpuBuffers = [], gpuArrays = [];
+    function vao() { var v = gl.createVertexArray(); gpuArrays.push(v); return v; }
+    function buffer(target, data) { var b = gl.createBuffer(); gpuBuffers.push(b); gl.bindBuffer(target, b); gl.bufferData(target, data, gl.STATIC_DRAW); return b; }
     var lo = [1e30, 1e30, 1e30], hi = [-1e30, -1e30, -1e30];
+    function uploadModel() {
+      lo = [1e30, 1e30, 1e30]; hi = [-1e30, -1e30, -1e30];
     model.solids.forEach(function (s) {
       for (var k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], s.box[0][k]); hi[k] = Math.max(hi[k], s.box[1][k]); }
-      s.vao = gl.createVertexArray(); gl.bindVertexArray(s.vao);
+      s.vao = vao(); gl.bindVertexArray(s.vao);
       gl.bindBuffer(gl.ARRAY_BUFFER, buffer(gl.ARRAY_BUFFER, s.pos)); gl.enableVertexAttribArray(mesh.ap); gl.vertexAttribPointer(mesh.ap, 3, gl.FLOAT, false, 0, 0);
       gl.bindBuffer(gl.ARRAY_BUFFER, buffer(gl.ARRAY_BUFFER, s.nor)); gl.enableVertexAttribArray(mesh.an); gl.vertexAttribPointer(mesh.an, 3, gl.FLOAT, false, 0, 0);
       buffer(gl.ELEMENT_ARRAY_BUFFER, s.idx);
@@ -150,12 +154,14 @@
       s.edges.forEach(function (e) { for (var i = 3; i < e.pts.length; i += 3) segs.push(e.pts[i - 3], e.pts[i - 2], e.pts[i - 1], e.pts[i], e.pts[i + 1], e.pts[i + 2]); });
       s.lineCount = segs.length / 3;
       if (s.lineCount) {
-        s.lvao = gl.createVertexArray(); gl.bindVertexArray(s.lvao);
+        s.lvao = vao(); gl.bindVertexArray(s.lvao);
         gl.bindBuffer(gl.ARRAY_BUFFER, buffer(gl.ARRAY_BUFFER, new Float32Array(segs))); gl.enableVertexAttribArray(line.ap); gl.vertexAttribPointer(line.ap, 3, gl.FLOAT, false, 0, 0);
       }
       s.visible = true;
       s.offset = [0, 0, 0];
     });
+    }
+    uploadModel();
     var center = [0, 1, 2].map(function (k) { return (lo[k] + hi[k]) / 2; });
     var radius = Math.max(1e-3, len(sub(hi, lo)) / 2);
     var instances = model.instances.length ? model.instances : uniqueInstances(model.solids);
@@ -166,6 +172,51 @@
     }
     var cam = fit();
     var state = {mode: "pick", picks: [], section: null, explode: 0, hl: null, marks: []};
+    var originalModel = model;
+    root.__cadSetModel = function (json) {
+      gpuBuffers.forEach(function (b) { gl.deleteBuffer(b); });
+      gpuArrays.forEach(function (v) { gl.deleteVertexArray(v); });
+      gpuBuffers = []; gpuArrays = [];
+      model = json ? fromView(json) : originalModel;
+      uploadModel();
+      state.hl = null; state.edge = null; state.marks = []; state.picks = [];
+      draw();
+    };
+    var pull = null, handle = null, stem = null;
+    if (root.closest("[data-cad-pull]")) {
+      handle = document.createElement("button");
+      handle.type = "button"; handle.className = "oa-cad-pull-handle";
+      handle.textContent = "Pull"; handle.setAttribute("aria-label", "Pull the selected face along its normal");
+      stem = document.createElement("span"); stem.className = "oa-cad-pull-stem"; stem.setAttribute("aria-hidden", "true");
+      stem.hidden = true; handle.hidden = true; root.querySelector(".oa-cad-view").append(stem, handle);
+      root.addEventListener("cad-pull-handle", function (event) {
+        pull = event.detail; handle.hidden = !pull; stem.hidden = !pull; draw();
+      });
+      var pulling = null;
+      handle.addEventListener("pointerdown", function (e) {
+        e.preventDefault(); e.stopPropagation();
+        if (!pull) return;
+        var r = ray(e.clientX, e.clientY), a = screen(pull.point, r);
+        var b = screen(add(pull.point, mul(pull.normal, radius * 0.35)), r);
+        if (!a || !b) return;
+        var dx = b[0] - a[0], dy = b[1] - a[1], length = Math.hypot(dx, dy);
+        if (length < 8) { say("Turn the view to see this face from the side, then pull it."); return; }
+        pulling = {id:e.pointerId, x:e.clientX, y:e.clientY, dx:dx/length, dy:dy/length, scale:length/(radius*0.35), delta:0};
+        handle.setPointerCapture(e.pointerId);
+      });
+      window.addEventListener("pointermove", function (e) {
+        if (!pulling || e.pointerId !== pulling.id) return;
+        pulling.delta = Math.round(((e.clientX-pulling.x)*pulling.dx+(e.clientY-pulling.y)*pulling.dy)/pulling.scale*10)/10;
+        root.dispatchEvent(new CustomEvent("cad-face-drag", {detail:{delta:pulling.delta,commit:false}}));
+      });
+      function stopPull(e) {
+        if (!pulling || e.pointerId !== pulling.id) return;
+        root.dispatchEvent(new CustomEvent("cad-face-drag", {detail:{delta:pulling.delta,commit:e.type==="pointerup",cancel:e.type!=="pointerup"}}));
+        pulling=null;
+      }
+      window.addEventListener("pointerup", stopPull); window.addEventListener("pointercancel", stopPull);
+    }
+
 
     // ---- the camera ----
     function basis(w, h) {
@@ -202,6 +253,16 @@
       gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
       gl.enable(gl.DEPTH_TEST);
       var b = basis(w, h), m = matrix(b), k = clip();
+      if (pull && handle) {
+        var tip = screen(add(pull.point, mul(pull.normal, radius*0.35)), {b:b,rect:canvas.getBoundingClientRect()});
+        var anchor = screen(pull.point, {b:b,rect:canvas.getBoundingClientRect()});
+        if (tip && anchor) {
+          handle.style.left = tip[0]+"px"; handle.style.top = tip[1]+"px";
+          stem.style.left = anchor[0]+"px"; stem.style.top = anchor[1]+"px";
+          stem.style.width = Math.hypot(tip[0]-anchor[0],tip[1]-anchor[1])+"px";
+          stem.style.transform = "rotate("+Math.atan2(tip[1]-anchor[1],tip[0]-anchor[0])+"rad)";
+        }
+      }
       var l = unit(add(add(mul(b.f, -1), mul(b.u, 0.6)), mul(b.r, 0.3)));
       gl.useProgram(mesh.p);
       gl.uniformMatrix4fv(mesh.u.m, false, m);
@@ -342,16 +403,16 @@
       if (hit.edge) {
         var segs = [], p = hit.edge.pts;
         for (var i = 3; i < p.length; i += 3) segs.push(p[i - 3], p[i - 2], p[i - 1], p[i], p[i + 1], p[i + 2]);
-        var vao = gl.createVertexArray(); gl.bindVertexArray(vao);
+        var selection = vao(); gl.bindVertexArray(selection);
         gl.bindBuffer(gl.ARRAY_BUFFER, buffer(gl.ARRAY_BUFFER, new Float32Array(segs))); gl.enableVertexAttribArray(line.ap); gl.vertexAttribPointer(line.ap, 3, gl.FLOAT, false, 0, 0);
-        state.edge = {solid: hit.solid, vao: vao, count: segs.length / 3};
+        state.edge = {solid: hit.solid, vao: selection, count: segs.length / 3};
         return;
       }
       var s = hit.solid;
       if (!s.tface) return;
       var f = s.tface[hit.tri], sel = [];
       for (var t = 0; t < s.tface.length; t++) if (s.tface[t] === f) sel.push(s.idx[t * 3], s.idx[t * 3 + 1], s.idx[t * 3 + 2]);
-      var hv = gl.createVertexArray(); gl.bindVertexArray(hv);
+      var hv = vao(); gl.bindVertexArray(hv);
       gl.bindBuffer(gl.ARRAY_BUFFER, buffer(gl.ARRAY_BUFFER, s.pos)); gl.enableVertexAttribArray(mesh.ap); gl.vertexAttribPointer(mesh.ap, 3, gl.FLOAT, false, 0, 0);
       gl.bindBuffer(gl.ARRAY_BUFFER, buffer(gl.ARRAY_BUFFER, s.nor)); gl.enableVertexAttribArray(mesh.an); gl.vertexAttribPointer(mesh.an, 3, gl.FLOAT, false, 0, 0);
       buffer(gl.ELEMENT_ARRAY_BUFFER, new Uint32Array(sel));
@@ -391,6 +452,7 @@
         if (name) {
           say("Face " + name + " · " + face.solid.part);
           chip({part: face.solid.part, instance: face.solid.instance, face: name}, name);
+          root.dispatchEvent(new CustomEvent("cad-face-pick", {detail:{part:face.solid.part,face:name,point:face.at,normal:face.normal}}));
         } else say(model.named ? "This face has no name we can use yet." : "");
       } else { highlight(null); say(""); }
       draw();
