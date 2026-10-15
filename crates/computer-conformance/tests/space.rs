@@ -29,6 +29,8 @@ struct Records {
     requests: Vec<Value>,
     fail_next: Option<u16>,
     stream_mode: &'static str,
+    operation_states: std::collections::VecDeque<&'static str>,
+    operation_reads: usize,
 }
 #[derive(Clone)]
 struct Mock {
@@ -61,6 +63,11 @@ async fn api(
             .into_response();
     }
     r.requests.push(body.clone());
+    if path.starts_with("operations/") && method == Method::GET {
+        r.operation_reads += 1;
+        let state = r.operation_states.pop_front().unwrap_or("succeeded");
+        return reply(json!({"state":state,"terminal_error":"do-not-echo-this-secret"}));
+    }
     if path == "sandboxes" && method == Method::POST {
         let key = headers.get("idempotency-key").unwrap().to_str().unwrap();
         if let Some(id) = r.creates.get(key) {
@@ -289,6 +296,34 @@ async fn space_wire_contract_passes_core_and_suspend() {
             assert_eq!(request["env"], json!({}));
         }
     }
+}
+
+#[tokio::test]
+async fn lifecycle_waits_for_the_operation_and_never_echoes_its_error() {
+    let (d, m, task) = setup().await;
+    let id = d
+        .create(&CreateRequest {
+            operation: "lifecycle".into(),
+            ..Default::default()
+        })
+        .await
+        .value()
+        .unwrap();
+    m.records
+        .lock()
+        .unwrap()
+        .operation_states
+        .extend(["queued", "running", "succeeded"]);
+    assert!(d.suspend(&id).await.is_done());
+    assert_eq!(m.records.lock().unwrap().operation_reads, 3);
+    for state in ["failed", "canceled", "expired", "future_state"] {
+        m.records.lock().unwrap().operation_states.push_back(state);
+        let result = d.resume(&id).await;
+        assert!(matches!(result, Outcome::Unknown { .. }));
+        assert!(!format!("{result:?}").contains("do-not-echo"));
+    }
+    assert!(d.delete(&id).await.is_done());
+    task.abort();
 }
 
 #[tokio::test]

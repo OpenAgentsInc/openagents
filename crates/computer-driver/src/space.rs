@@ -218,20 +218,50 @@ impl SpaceDriver {
         // Each new lifecycle request needs a new key: one computer can be
         // suspended and woken repeatedly. Retrying an uncertain request belongs
         // to the caller's observation loop, not an automatic mutation retry.
-        let result = self
-            .json(
-                Method::POST,
-                &format!("/v1/sandboxes/{computer}:{action}"),
-                None,
-                Some(&uuid::Uuid::new_v4().to_string()),
-            )
-            .await;
-        match result {
-            Ok(v) => match field(&v, "operation_id") {
-                Ok(id) if valid_id(id, "op_") => Outcome::done(id.into()),
-                _ => Outcome::unknown("SPACE did not return an operation ID."),
-            },
-            Err(e) => e.outcome(),
+        let result = async {
+            let v = self
+                .json(
+                    Method::POST,
+                    &format!("/v1/sandboxes/{computer}:{action}"),
+                    None,
+                    Some(&uuid::Uuid::new_v4().to_string()),
+                )
+                .await?;
+            let id = field(&v, "operation_id")?;
+            self.wait_operation(id).await?;
+            Ok::<String, Error>(id.to_owned())
+        };
+        match tokio::time::timeout(Duration::from_secs(600), result).await {
+            Ok(Ok(id)) => Outcome::done(id),
+            Ok(Err(e)) => e.outcome(),
+            Err(_) => Outcome::unknown(
+                "The SPACE operation exceeded its deadline. Check the computer before trying again.",
+            ),
+        }
+    }
+
+    async fn wait_operation(&self, id: &str) -> Result<()> {
+        if !valid_id(id, "op_") {
+            return Err(Error::unknown("invalid lifecycle operation ID"));
+        }
+        loop {
+            let operation = self
+                .json(Method::GET, &format!("/v1/operations/{id}"), None, None)
+                .await?;
+            match field(&operation, "state")? {
+                "succeeded" => return Ok(()),
+                "queued" | "running" => tokio::time::sleep(Duration::from_millis(100)).await,
+                "failed" | "canceled" | "expired" => {
+                    return Err(Error::unknown(
+                        "the lifecycle operation did not succeed; check the computer before trying again",
+                    ));
+                }
+                _ => {
+                    return Err(Error::unknown(
+                        "the lifecycle operation has an unknown state",
+                    ));
+                }
+            }
         }
     }
 
