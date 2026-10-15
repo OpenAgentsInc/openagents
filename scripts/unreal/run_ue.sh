@@ -46,6 +46,16 @@ if [ ! -f "$project" ]; then
 JSON
 fi
 echo "UE $version: $editor" >&2
+# Headless runs never launch CrashReportClient: on macOS an unattended
+# editor only skips it when the project opts out of unattended bug reports.
+# Each crash or ensure otherwise starts a reporter that compresses,
+# symbolicates and uploads the report (Epic's servers), and a run of
+# crashes leaves dozens of them burning CPU.
+settings="$(dirname "$project")/Config/DefaultEditorSettings.ini"
+mkdir -p "$(dirname "$settings")"
+if ! grep -q "bSendUnattendedBugReports=False" "$settings" 2>/dev/null; then
+  printf '\n[/Script/UnrealEd.CrashReportsPrivacySettings]\nbSendUnattendedBugReports=False\n\n[/Script/UnrealEd.AnalyticsPrivacySettings]\nbSendUsageData=False\n' >> "$settings"
+fi
 if [ -n "${DRACONIA_UE_KEEP:-}" ]; then
   # A script that keeps working on later ticks (render_reference.py) and
   # quits the editor itself: -ExecutePythonScript closes the editor as soon
@@ -57,8 +67,8 @@ if [ -n "${DRACONIA_UE_KEEP:-}" ]; then
   cp "$ini" "$ini.draconia-bak"
   printf '\n[/Script/PythonScriptPlugin.PythonScriptPluginSettings]\n+StartupScripts=%s\n' "$script" >> "$ini"
   status=0
-  DRACONIA_ARGS="$*" "$editor" "$project" -nosplash -stdout -AllowStdOutLogVerbosity || status=$?
+  DRACONIA_ARGS="$*" "$editor" "$project" -unattended -nocrashreports -nosplash -stdout -AllowStdOutLogVerbosity || status=$?
   mv "$ini.draconia-bak" "$ini"
   exit $status
 fi
-DRACONIA_ARGS="$*" exec "$editor" "$project" -ExecutePythonScript="$script" -unattended -nosplash -stdout -AllowStdOutLogVerbosity
+DRACONIA_ARGS="$*" exec "$editor" "$project" -ExecutePythonScript="$script" -unattended -nocrashreports -nosplash -stdout -AllowStdOutLogVerbosity
