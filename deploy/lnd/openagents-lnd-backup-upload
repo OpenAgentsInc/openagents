@@ -14,7 +14,22 @@ while sleep 1; do
   rm -f "$runtime/upload.age"
   age --recipients-file=/etc/openagents-lnd/backup-recipient --output="$runtime/upload.age" "$runtime/upload.scb"
   object="gs://openagentsgemini-lnd-scb/oa-lnd-1/$(date -u +%Y/%m/%d/%H%M%S)-$(cat /proc/sys/kernel/random/uuid).scb.age"
-  if timeout 45 gcloud --quiet storage cp --if-generation-match=0 "$runtime/upload.age" "$object" >/dev/null; then
+  if timeout 45 python3 - "$runtime/upload.age" "$object" <<'UPLOAD'
+import json,pathlib,sys,urllib.parse,urllib.request
+try:
+    request=urllib.request.Request('http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token',headers={'Metadata-Flavor':'Google'})
+    token=json.load(urllib.request.urlopen(request,timeout=10))['access_token']
+    bucket,name=sys.argv[2][5:].split('/',1)
+    query=urllib.parse.urlencode({'uploadType':'media','name':name,'ifGenerationMatch':'0'})
+    url='https://storage.googleapis.com/upload/storage/v1/b/'+bucket+'/o?'+query
+    request=urllib.request.Request(url,data=pathlib.Path(sys.argv[1]).read_bytes(),headers={'Authorization':'Bearer '+token,'Content-Type':'application/octet-stream'},method='POST')
+    with urllib.request.urlopen(request,timeout=30) as result:
+        if result.status != 200: raise RuntimeError()
+except Exception:
+    print('Could not upload the encrypted channel backup.',file=sys.stderr)
+    sys.exit(1)
+UPLOAD
+  then
     last=$next
     printf 'Saved encrypted channel backup: %s\n' "$object"
   fi
