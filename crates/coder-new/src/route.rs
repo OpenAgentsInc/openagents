@@ -146,6 +146,10 @@ pub enum Lane {
     /// The person's own Gemini API key, for a no-harness turn's model
     /// (#11548).
     GeminiKey,
+    /// Coder's own free answers while signed out (#11645): an anonymous
+    /// OpenAgents agent account's daily free tier. Always the last door,
+    /// so a signed-out first run answers whatever else is missing.
+    FreeTier,
 }
 
 impl Lane {
@@ -159,6 +163,7 @@ impl Lane {
             Lane::OpenCode => (5, 4, 3),
             Lane::OpenRouter => (2, 5, 4),
             Lane::GeminiKey => (3, 4, 4),
+            Lane::FreeTier => (5, 3, 1),
         }
     }
 
@@ -178,6 +183,7 @@ impl Lane {
             Lane::OpenCode => "OpenCode",
             Lane::OpenRouter => "the OpenRouter key",
             Lane::GeminiKey => "your Gemini API key",
+            Lane::FreeTier => "Coder's free answers",
         }
     }
 }
@@ -189,14 +195,64 @@ pub struct Plan {
     /// Plain-words clauses for connected doors the plan skipped, such as
     /// "the OpenAgents account can't answer right now".
     pub notes: Vec<String>,
+    /// The door the chat is held to, tried first (#11645): when another
+    /// door answers instead, the turn says so in one grey line.
+    pub held: Option<Lane>,
+    /// The OpenAgents account answers here, so the ending's fix is credit
+    /// rather than signing in.
+    pub signed_in: bool,
 }
 
 /// The doors an auto turn may take, in the order `favor` puts them.
 /// `has_key` says an OpenRouter key is connected; `execution` says whether
 /// the OpenAgents account is signed in and an enabled OpenCode agent is
 /// installed.
+///
+/// A turn never ends on one door (#11645): a door the chat is held to (the
+/// one its earlier answers came through, or a gateway model the person
+/// picked) goes first, and every other door that can run follows it, so a
+/// failure falls back instead of ending the turn. Signed out, Coder's own
+/// free answers ([`Lane::FreeTier`]) are always last.
 #[must_use]
 pub fn plan(execution: &ExecutionSettings, has_key: bool, favor: Favor) -> Plan {
+    let mut plan = doors(execution, has_key, favor);
+    let first = if execution.no_harness.is_some() {
+        None
+    } else if execution.gateway_model.is_some()
+        && execution
+            .connections
+            .as_ref()
+            .is_some_and(crate::provider::gateway_open)
+    {
+        // A gateway model the person picked (#11526) runs there first.
+        Some(Lane::Gateway)
+    } else {
+        // A chat goes on through the door its first answer came through
+        // (#11563), first.
+        execution.door
+    };
+    let signed_in = execution
+        .connections
+        .as_ref()
+        .is_some_and(crate::provider::gateway_open);
+    // The free answers are for a signed-out chat only.
+    let first =
+        first.filter(|first| *first != Lane::FreeTier || (execution.free_tier && !signed_in));
+    if let Some(first) = first {
+        plan.lanes.retain(|lane| *lane != first);
+        plan.lanes.insert(0, first);
+        plan.held = Some(first);
+    }
+    plan.signed_in = signed_in;
+    if execution.free_tier && !signed_in && !plan.lanes.contains(&Lane::FreeTier) {
+        plan.lanes.push(Lane::FreeTier);
+    }
+    plan
+}
+
+/// The doors [`plan`] walks before a held door is moved first and the free
+/// answers are added.
+fn doors(execution: &ExecutionSettings, has_key: bool, favor: Favor) -> Plan {
     let mut lanes = Vec::new();
     let mut notes = Vec::new();
     // No harness here (#11548): the one model, through the gateway while
@@ -220,32 +276,22 @@ pub fn plan(execution: &ExecutionSettings, has_key: bool, favor: Favor) -> Plan 
                 coder_sdk::auto_policy::Door::GeminiKey => Lane::GeminiKey,
             })
             .collect::<Vec<_>>();
-        if lanes.is_empty() {
+        // The person's own OpenRouter key answers too, rather than no one
+        // (#11645).
+        let mut lanes = lanes;
+        if has_key {
+            lanes.push(Lane::OpenRouter);
+        }
+        if lanes.is_empty() && !execution.free_tier {
             notes.push(
                 "you're not signed in (run coder login) and no GEMINI_API_KEY is set".to_owned(),
             );
         }
-        return Plan { lanes, notes };
-    }
-    // A gateway model the person picked (#11526) runs only there: a
-    // chosen model's turn is never handed to another model.
-    if execution.gateway_model.is_some()
-        && execution
-            .connections
-            .as_ref()
-            .is_some_and(crate::provider::gateway_open)
-    {
         return Plan {
-            lanes: vec![Lane::Gateway],
+            lanes,
             notes,
-        };
-    }
-    // A chat goes on through the door its first answer came through
-    // (#11563): the same payer, or the turn says why it can't.
-    if let Some(door) = execution.door {
-        return Plan {
-            lanes: vec![door],
-            notes,
+            held: None,
+            signed_in,
         };
     }
     // A cheap answer tries the doors cheapest first, whatever the favor
@@ -279,7 +325,12 @@ pub fn plan(execution: &ExecutionSettings, has_key: bool, favor: Favor) -> Plan 
     if !cheap {
         lanes.sort_by_key(|lane| std::cmp::Reverse(lane.score(favor)));
     }
-    Plan { lanes, notes }
+    Plan {
+        lanes,
+        notes,
+        held: None,
+        signed_in: false,
+    }
 }
 
 /// Why the plan skipped `account`'s gateway: the 402's own "needs credit"
@@ -336,6 +387,7 @@ pub fn door_of(payer: crate::harness_plugin::Payer) -> Option<Lane> {
         Payer::OpenCode => Some(Lane::OpenCode),
         Payer::OpenRouterKey => Some(Lane::OpenRouter),
         Payer::GeminiKey => Some(Lane::GeminiKey),
+        Payer::FreeTier => Some(Lane::FreeTier),
         _ => None,
     }
 }
@@ -387,6 +439,14 @@ impl Plan {
     /// (#11640).
     #[must_use]
     pub fn explain(&self, reasons: &[String]) -> String {
+        // The free answers ran out (#11645): that, with the command that
+        // gets more, is the whole ending.
+        if reasons
+            .iter()
+            .any(|reason| reason.contains(crate::free_tier::USED_UP))
+        {
+            return crate::free_tier::USED_UP.to_owned();
+        }
         if let Some(credit) = reasons
             .iter()
             .position(|reason| reason.contains(crate::provider::NEEDS_CREDIT))
@@ -426,8 +486,16 @@ impl Plan {
                 }
             })
             .collect();
+        let fix = if self.signed_in {
+            "Add credit at openagents.com, or connect another model in /plugins."
+        } else {
+            "Sign in with `coder login` to get answers, or connect another model in /plugins."
+        };
+        if reasons.is_empty() {
+            return format!("Nothing here can answer yet. {fix}");
+        }
         format!(
-            "Coder couldn't find a model that can answer: {}. Connect another one in /plugins or add credit at openagents.com.",
+            "Coder couldn't find a model that can answer: {}. {fix}",
             join(&reasons)
         )
     }
@@ -542,34 +610,44 @@ mod tests {
         );
     }
 
-    /// #11563: a chat's later turns go only through the door its first
-    /// answer came through, so a used-up free allowance says so instead
-    /// of moving the chat to the person's ChatGPT plan (the harness gate,
-    /// 2026-10-13).
+    /// #11563: a chat's later turns go first through the door its first
+    /// answer came through; #11645: never only through it, so a door that
+    /// can't answer falls back instead of ending the turn.
     #[test]
-    fn a_chat_goes_on_through_the_door_it_answered_through() {
+    fn a_chat_goes_on_through_the_door_it_answered_through_first() {
         use crate::harness_plugin::Payer;
         let mut settings = settings(&["opencode"]);
         settings.door = door_of(Payer::GatewayCredits);
-        assert_eq!(plan(&settings, true, BALANCED).lanes, [Lane::Gateway]);
+        let held = plan(&settings, true, BALANCED);
+        assert_eq!(
+            held.lanes,
+            [Lane::Gateway, Lane::Local, Lane::OpenCode, Lane::OpenRouter]
+        );
+        assert_eq!(held.held, Some(Lane::Gateway));
         settings.door = door_of(Payer::ChatGptLogin);
-        assert_eq!(plan(&settings, true, BALANCED).lanes, [Lane::Local]);
+        assert_eq!(
+            plan(&settings, true, BALANCED).lanes,
+            [Lane::Local, Lane::Gateway, Lane::OpenCode, Lane::OpenRouter]
+        );
         assert_eq!(door_of(Payer::ClaudePlan), Some(Lane::Local));
         assert_eq!(door_of(Payer::AgentLogin), None);
     }
 
-    /// #11526: a gateway model picked in /models runs only on the
-    /// gateway, whatever the favor; signed out, the pick waits and `auto`
-    /// walks its doors.
+    /// #11526: a gateway model picked in /models runs on the gateway
+    /// first, whatever the favor, and the other doors follow it (#11645);
+    /// signed out, the pick waits and `auto` walks its doors.
     #[test]
-    fn a_picked_gateway_model_runs_only_on_the_gateway() {
+    fn a_picked_gateway_model_runs_on_the_gateway_first() {
         let mut settings = settings(&["opencode"]);
         settings.gateway_model = Some("zai/glm-5.3-flash".into());
         let favor = Favor {
             intelligence: 5,
             ..BALANCED
         };
-        assert_eq!(plan(&settings, true, favor).lanes, [Lane::Gateway]);
+        let picked = plan(&settings, true, favor);
+        assert_eq!(picked.lanes[0], Lane::Gateway);
+        assert_eq!(picked.held, Some(Lane::Gateway));
+        assert!(picked.lanes.len() > 1);
         settings.connections = None;
         assert!(!plan(&settings, true, favor).lanes.contains(&Lane::Gateway));
     }
@@ -599,10 +677,11 @@ mod tests {
     }
 
     /// #11548: with no harness, the turn runs on its one model through
-    /// the gateway while signed in, then the person's own Gemini key, and
-    /// never on this computer's logins, OpenCode, or an OpenRouter key.
+    /// the gateway while signed in, then the person's own Gemini key, never
+    /// on this computer's logins or OpenCode; the person's own OpenRouter
+    /// key is the last resort rather than no answer (#11645).
     #[test]
-    fn a_no_harness_turn_takes_only_the_gateway_and_the_own_gemini_key() {
+    fn a_no_harness_turn_takes_the_gateway_then_the_own_keys() {
         let mut settings = settings(&["opencode"]);
         settings.cheap = Some(Cheap {
             gateway_model: Some(crate::models::GATEWAY_FAST.into()),
@@ -614,16 +693,19 @@ mod tests {
         });
         assert_eq!(
             plan(&settings, true, BALANCED).lanes,
-            [Lane::Gateway, Lane::GeminiKey]
+            [Lane::Gateway, Lane::GeminiKey, Lane::OpenRouter]
         );
         assert_eq!(
             settings.no_harness.as_ref().unwrap().model(),
             "google/gemini-4-argon"
         );
         settings.connections = None;
-        assert_eq!(plan(&settings, true, BALANCED).lanes, [Lane::GeminiKey]);
+        assert_eq!(
+            plan(&settings, true, BALANCED).lanes,
+            [Lane::GeminiKey, Lane::OpenRouter]
+        );
         settings.no_harness.as_mut().unwrap().gemini_key = None;
-        let none = plan(&settings, true, BALANCED);
+        let none = plan(&settings, false, BALANCED);
         assert!(none.lanes.is_empty());
         assert!(none.explain(&none.notes).contains("GEMINI_API_KEY"));
     }
@@ -635,6 +717,8 @@ mod tests {
         let plan = Plan {
             lanes: vec![Lane::Gateway, Lane::OpenCode],
             notes: vec![],
+            held: None,
+            signed_in: true,
         };
         let credit = crate::provider::needs_credit(
             "Today's free allowance is used up. Add credit or use your own key.",
@@ -674,10 +758,12 @@ mod tests {
         let plan = Plan {
             lanes: vec![Lane::Gateway],
             notes: vec![],
+            held: None,
+            signed_in: true,
         };
         let said = plan.explain(&["Today's free allowance on OpenAgents is used up (HTTP 402). Add credit at openagents.com, or choose a model in /models.".to_owned()]);
         assert!(!said.contains(".."), "{said}");
-        assert!(said.contains("in /models. Connect another"), "{said}");
+        assert!(said.contains("in /models. Add credit"), "{said}");
     }
 
     #[test]

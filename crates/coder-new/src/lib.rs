@@ -48,6 +48,7 @@ pub mod file_tools;
 pub mod fleet;
 mod fleet_app;
 pub mod floors;
+pub mod free_tier;
 pub mod gate;
 pub mod gateway_models;
 #[cfg(test)]
@@ -72,6 +73,9 @@ mod memory_sync;
 pub mod message_route;
 pub mod model_catalog;
 pub mod models;
+mod never_fail;
+#[cfg(test)]
+mod never_fail_tests;
 pub mod no_harness;
 pub mod opencode_chat;
 pub mod opencode_models;
@@ -362,6 +366,18 @@ pub struct App {
     /// The router's call for the held message, read by
     /// [`App::route_turn`] when the message is sent.
     pub(crate) routed: Option<router::Routed>,
+    /// The door the running auto turn's answer came through (#11645),
+    /// from the worker's [`live::Update::Routed`]: the chat's door is the
+    /// one that really answered, never one guessed from the model's name.
+    pub(crate) answered_lane: Option<route::Lane>,
+    /// The harnesses that failed before answering in this run (#11645):
+    /// Auto leaves them out until their plugin is turned on again or the
+    /// person picks one with Shift+Tab.
+    pub(crate) start_failed: Vec<harness_plugin::Harness>,
+    /// The running turn is a fallback for a harness that failed (#11645):
+    /// the harness's name and its real reason, for the grey line and the
+    /// turn's record.
+    pub(crate) fallback_from: Option<(String, String)>,
     /// The held message is being sent now: its routing point is over.
     pub(crate) route_settled: bool,
     /// How the next turn's briefing was chosen, for the routing record
@@ -1269,6 +1285,12 @@ impl App {
                 self.live.partial.push_str(&text);
                 self.scroll_main_to_end();
             }
+            live::Update::Routed { lane, note, .. } if self.live.busy => {
+                self.answered_lane = Some(lane);
+                if let Some(note) = note {
+                    self.notice = Some(note);
+                }
+            }
             live::Update::OpenCodeSession { session, model, .. } => {
                 self.live.opencode_session = Some(live::OpenCodeSession {
                     id: session,
@@ -1361,6 +1383,21 @@ impl App {
                         }
                     }
                 }
+                // A harness or agent that failed before it answered never
+                // ends the turn (#11645): Auto answers it instead, and one
+                // grey line says so. The real reason stays in the record.
+                if let Err(why) = &result
+                    && let Some(name) = self.failed_before_answering()
+                {
+                    let why = why.clone();
+                    self.live.turn_counted = (0, 0.0);
+                    self.live.partial.clear();
+                    self.live.partial_model = None;
+                    self.record_end(None, model, Some(format!("{name}: {why}")));
+                    self.fall_back_to_auto(name, why);
+                    self.scroll_main_to_end();
+                    return;
+                }
                 match result {
                     Ok(reply) => {
                         // Only what the per-call reports didn't already add.
@@ -1389,16 +1426,22 @@ impl App {
                         }
                         // The chat's first Coder-loop answer fixes its door
                         // (#11563), by who paid for it.
+                        // It is the door that really answered (#11645): one
+                        // guessed from the model's name held a chat whose
+                        // first answer came from this computer's logins to
+                        // the gateway, which a signed-out second turn can't
+                        // use.
+                        let answered = self.answered_lane.take();
                         if self.live.door.is_none()
                             && self.live.runs_on == Some(harness_plugin::Harness::CoderLoop)
                             && self.live.agent.is_none()
                         {
-                            self.live.door = crate::route::door_of(harness_plugin::paid_by(
-                                harness_plugin::Harness::CoderLoop,
-                                false,
-                                &reply.model,
-                                self.byok_turn(),
-                            ));
+                            self.live.door = answered;
+                        }
+                        // A harness that failed and Auto answered for
+                        // (#11645): one grey line says so.
+                        if let Some((name, why)) = self.fallback_from.take() {
+                            self.notice = Some(never_fail::fallback_note(&name, &why));
                         }
                         self.live.partial.clear();
                         self.live.partial_model = None;
@@ -1410,6 +1453,11 @@ impl App {
                     }
                     Err(error) => {
                         self.live.turn_counted = (0, 0.0);
+                        // A fallback that couldn't answer either ends with
+                        // its own one message (#11645).
+                        if self.fallback_from.take().is_some() {
+                            self.notice = None;
+                        }
                         if error.contains("HTTP 401") {
                             self.plugins.connection = plugins::Connection::Failed(error.clone());
                         }
@@ -2320,12 +2368,11 @@ impl App {
             }
             // A Shift+Tab pick holds from this message on (#11524).
             self.apply_pick();
-            // A chat goes on only on the harness, agent and payer it ran
-            // on: one that isn't here says so, and the message stays in
-            // the input (#11563).
+            // A chat whose harness, agent or payer isn't here any more
+            // goes on with Auto, and one grey line says so (#11563,
+            // #11645): never a dead end.
             if let Some(why) = self.chat_cant_go_on() {
-                self.rail_notice(why, RAIL_NOTICE_TTL);
-                return;
+                self.go_on_with_auto(why);
             }
             if let Some(agent) = self.picked_agent() {
                 // A list-shaped message may still run as parts, each on
@@ -2349,7 +2396,7 @@ impl App {
             if self.ask_router() {
                 return;
             }
-            match self.route_turn() {
+            match self.admitted_turn() {
                 harness_plugin::Harness::ClaudeCode => {
                     self.submit_claude();
                     return;
@@ -2365,6 +2412,13 @@ impl App {
                 harness_plugin::Harness::CoderLoop => {}
             }
         }
+        self.submit_coder_loop();
+    }
+
+    /// The draft as a turn on Coder's own loop: Auto's doors, or the
+    /// model the person chose. A harness that failed before answering
+    /// sends its message here too (#11645).
+    pub(crate) fn submit_coder_loop(&mut self) {
         if self.live.busy
             || self.checking_key
             || self.checking_jev
@@ -3778,6 +3832,7 @@ impl App {
                         KeyCode::Up => self.plugins.select(true),
                         KeyCode::Down => self.plugins.select(false),
                         KeyCode::Char(' ') => {
+                            let was_on = self.harness_plugins_on();
                             if self.plugins.toggle_selected() && self.on_coder_loop() {
                                 self.cancel_request();
                             }
@@ -3796,13 +3851,22 @@ impl App {
                                 self.cancel_request();
                                 self.live.runs_on = None;
                             }
-                            // And the OpenCode plugin (#11507).
+                            // And the OpenCode plugin (#11507), or the ACP
+                            // Subagents switch, which covers OpenCode too
+                            // (#11645).
                             if self.on_opencode()
-                                && !self.plugins.bundled.enabled(crate::opencode_chat::PLUGIN)
+                                && !(self.plugins.bundled.enabled(crate::opencode_chat::PLUGIN)
+                                    && self.plugins.bundled.acp)
                             {
                                 self.cancel_request();
                                 self.live.runs_on = None;
                             }
+                            // A plugin turned on again gets its harness
+                            // another try (#11645).
+                            let now_on = self.harness_plugins_on();
+                            self.start_failed.retain(|harness| {
+                                !(now_on.contains(harness) && !was_on.contains(harness))
+                            });
                         }
                         KeyCode::Enter => self.open_plugin_settings(),
                         KeyCode::Esc | KeyCode::F(2) => self.screen = self.return_screen,

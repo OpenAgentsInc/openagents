@@ -110,7 +110,7 @@ pub const DEFINITIONS: &[PluginDefinition] = &[
     PluginDefinition {
         id: "acp-subagents",
         name: "ACP Subagents",
-        description: "Hands tasks to other coding agents installed on this computer, like Claude Code, Codex, or Cursor.",
+        description: "Hands tasks to other coding agents installed on this computer, like Claude Code, Codex, or Cursor. Turned off, OpenCode isn't used either.",
         default_enabled: true,
         tools: &[ToolBinding::AcpSubagent],
         model_provider: None,

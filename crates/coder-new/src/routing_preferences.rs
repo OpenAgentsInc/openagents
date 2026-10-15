@@ -967,6 +967,7 @@ mod tests {
             },
             openrouter_key: false,
             leaning,
+            failed: Default::default(),
         }
     }
 

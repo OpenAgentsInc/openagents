@@ -16,6 +16,11 @@ const NAMES: &[&str] = &[
     "robot_inspect",
     "robot_select",
     "robot_restore",
+    // Simulation runs (the workbench's run tools).
+    "robot_experiment",
+    "robot_run",
+    "robot_run_status",
+    "robot_run_control",
 ];
 pub const INSTRUCTIONS: &str = "The robot_* tools inspect and edit robot scenes in the configured local Robot Lab. Read before editing and use the exact saved version as base. Imports support SO-101 at revision a758567c3978dfeefe282ede0500085a48fe8f78. End with the returned player link so the person can orbit the robot or replay an attempt. A recorded demonstration does not prove a physical grasp.\n";
 pub fn is_tool(name: &str) -> bool {

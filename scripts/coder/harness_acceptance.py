@@ -120,6 +120,10 @@ SEVERITY = {
     "plugins-toggle": "blocking",  # tools: plugins turn off and on
     "projects-chat": "blocking",   # a turn runs without a repository
     "no-home": "blocking",         # a turn runs with only USERPROFILE
+    # A turn never dead-ends (#11645): core behaviour, so these block.
+    "chosen-fails-fallback": "blocking",   # a picked harness that won't start: Auto answers
+    "signed-out-free-tier": "blocking",    # signed out, no harness: the free answers answer
+    "plugin-disabled-never-chosen": "blocking",  # a plugin turned off mid-chat is never chosen
     "plugins-details": "warning",
     "projects-live": "warning",    # live-account housekeeping
     "web-chat": "warning",         # the website, not a Coder harness
@@ -174,6 +178,8 @@ def self_test() -> int:
     assert blocking == want_b, blocking
     assert len(warnings) == 5, warnings
     assert all(c in SEVERITY for c in CHECKS), [c for c in CHECKS if c not in SEVERITY]
+    for c in ("chosen-fails-fallback", "signed-out-free-tier", "plugin-disabled-never-chosen"):
+        assert blocks(None, c, "fail"), c
     print("self-test: ok")
     return 0
 
@@ -1701,6 +1707,140 @@ def no_home_run(coder, root, path, signin, evidence, turn_timeout) -> dict:
         tui.stop()
 
 
+BROKEN_OPENCODE = """#!/bin/sh
+# The gate's broken OpenCode (#11645): installed, but it never starts.
+echo "opencode: cannot start (the gate's broken fixture)" >&2
+exit 1
+"""
+# The free answers' key, kept between gate runs so each run doesn't use up
+# one of this address's five daily sign-ups. Never under ~/.openagents.
+FREE_AGENT_CACHE = REAL_HOME / ".cache" / "coder-harness-gate" / "free-agent.json"
+RED_DEAD_ENDS = re.compile(r"could not start\.|couldn.t find a model that can answer|is not signed in", re.I)
+
+
+def broken_opencode_path(root: Path, path: str) -> str:
+    """`path` with a broken `opencode` first on it."""
+    bin_dir = root / "broken-opencode-bin"
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    tool = bin_dir / "opencode"
+    tool.write_text(BROKEN_OPENCODE)
+    os.chmod(tool, 0o755)
+    return f"{bin_dir}{os.pathsep}{path}"
+
+
+def never_fail_run(coder, root, path, signin, evidence, turn_timeout) -> dict:
+    """A turn never dead-ends (#11645), three ways:
+    chosen-fails-fallback        OpenCode picked with Shift+Tab won't start:
+                                 Auto answers, one grey line says so.
+    signed-out-free-tier         signed out, no harness on PATH: Coder's
+                                 own free answers answer.
+    plugin-disabled-never-chosen OpenCode's plugin turned off mid-chat: the
+                                 next turn never runs on OpenCode."""
+    out = {}
+    ev = evidence / "never-fail"
+    ev.mkdir(parents=True, exist_ok=True)
+
+    # 1. A picked harness that won't start.
+    spec = {"key": "chosen-fails", "rail": ["OpenCode"], "bins": []}
+    r = Run(spec, coder, root, broken_opencode_path(root, path), {}, signin, 0, turn_timeout, evidence)
+    env = harness_env(r.home, r.path)
+    r.login(env)
+    tui = Tui("h-chosen-fails", coder, r.home, r.state, env)
+    try:
+        if not tui.wait(lambda s: rail(s) is not None, 40):
+            out["chosen-fails-fallback"] = ["fail", "Coder's screen never came up"]
+        elif not r.pick(tui):
+            out["chosen-fails-fallback"] = ["fail", f"Shift+Tab never offered the installed OpenCode (offered {r.facts.get('offered')})"]
+        else:
+            t = r.send(tui, "what's 2+2?", 1)
+            ans = answers(t["final"])
+            text = "\n".join(transcript(t["final"]))
+            if RED_DEAD_ENDS.search(text) and not ans:
+                out["chosen-fails-fallback"] = ["fail", "dead end: " + words(text)[-200:]]
+            elif not ans:
+                out["chosen-fails-fallback"] = ["fail", f"no answer in {t['secs']}s: " + words(text)[-200:]]
+            elif not re.search(r"OpenCode didn.t (start|answer)", t["final"]):
+                out["chosen-fails-fallback"] = ["fail", f"answered “{ans[-1][:60]}” but no grey line says OpenCode didn't start"]
+            else:
+                out["chosen-fails-fallback"] = ["pass", f"OpenCode didn't start; Auto answered “{ans[-1][:60]}”"]
+    finally:
+        tui.stop()
+
+    # 2. Signed out, no harness: the free answers.
+    spec = {"key": "free-tier", "rail": ["Auto"], "bins": []}
+    bare = os.pathsep.join(["/usr/bin", "/bin", "/usr/sbin", "/sbin"])
+    r = Run(spec, coder, root, bare, {}, None, 0, turn_timeout, evidence)
+    env = harness_env(r.home, bare)
+    saved = r.home / ".openagents" / "coder" / "free-agent.json"
+    if FREE_AGENT_CACHE.is_file():
+        saved.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(FREE_AGENT_CACHE, saved)
+        os.chmod(saved, 0o600)
+    tui = Tui("h-free-tier", coder, r.home, r.state, env)
+    try:
+        if not tui.wait(lambda s: rail(s) is not None, 40):
+            out["signed-out-free-tier"] = ["fail", "Coder's screen never came up"]
+        else:
+            t = r.send(tui, "what's 2+2? answer in one line", 1)
+            ans = answers(t["final"])
+            text = "\n".join(transcript(t["final"]))
+            if ans:
+                out["signed-out-free-tier"] = ["pass", f"signed out, no harness: “{ans[-1][:60]}”"]
+            elif "Today's free answers are used up" in text and "coder login" in text:
+                out["signed-out-free-tier"] = ["pass", "the free answers are used up today, and the ending says `coder login`"]
+            else:
+                out["signed-out-free-tier"] = ["fail", f"no answer in {t['secs']}s signed out: " + words(text)[-200:]]
+    finally:
+        tui.stop()
+        if saved.is_file():
+            FREE_AGENT_CACHE.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(saved, FREE_AGENT_CACHE)
+            os.chmod(FREE_AGENT_CACHE, 0o600)
+
+    # 3. A plugin turned off mid-chat is never chosen.
+    spec = {"key": "plugin-off", "rail": ["Auto"], "bins": []}
+    r = Run(spec, coder, root, broken_opencode_path(root, path), {}, signin, 0, turn_timeout, evidence)
+    env = harness_env(r.home, r.path)
+    r.login(env)
+    tui = Tui("h-plugin-off", coder, r.home, r.state, env)
+    try:
+        if not tui.wait(lambda s: rail(s) is not None, 40):
+            out["plugin-disabled-never-chosen"] = ["fail", "Coder's screen never came up"]
+        else:
+            r.send(tui, "hi, one word please", 1)
+            tui.text("/plugins")
+            time.sleep(0.3)
+            tui.keys("Enter")
+            turned_off = False
+            if tui.wait(lambda s: "Up/Down Select" in s, 8):
+                for _ in range(40):
+                    sel = [l for l in tui.screen().splitlines() if l.lstrip().startswith("❯")]
+                    if sel and re.match(r"^\s*❯\s*OpenCode\s{2,}\[\s*on\s*\]", sel[0]):
+                        tui.keys("Space")
+                        time.sleep(1.0)
+                        turned_off = True
+                        break
+                    tui.keys("Down")
+                    time.sleep(0.15)
+                tui.keys("Escape")
+                time.sleep(0.6)
+            if not turned_off:
+                out["plugin-disabled-never-chosen"] = ["fail", "couldn't find OpenCode on in /plugins"]
+            else:
+                t = r.send(tui, "and now? one word please", 2)
+                lane = ((t["ended"] or {}).get("chose") or {}).get("harness") or ""
+                ans = answers(t["final"])
+                if "opencode" in lane.lower():
+                    out["plugin-disabled-never-chosen"] = ["fail", f"the turn after OpenCode was turned off ran on `{lane}`"]
+                elif not ans:
+                    out["plugin-disabled-never-chosen"] = ["fail", f"no answer after turning OpenCode off ({t['secs']}s)"]
+                else:
+                    out["plugin-disabled-never-chosen"] = ["pass", f"OpenCode off; the next turn ran on `{lane or 'auto'}`"]
+    finally:
+        tui.stop()
+    return out
+
+
 def projects_run(coder, root, path, signin, evidence, turn_timeout) -> dict:
     """Projects: Coder's answer to "can you make a new project, what do you
     need" claims no repository is required; the live account reads
@@ -2143,6 +2283,12 @@ def main() -> int:
             scenarios.update(no_home_run(coder, root, path, signin, evidence, a.turn_timeout))
         except Exception as e:
             scenarios["no-home"] = [GATE_ERROR, f"{e!r}"]
+    if not only or "never-fail" in only:
+        say("never-fail: start")
+        try:
+            scenarios.update(never_fail_run(coder, root, path, signin, evidence, a.turn_timeout))
+        except Exception as e:
+            scenarios["chosen-fails-fallback"] = [GATE_ERROR, f"{e!r}"]
     if not only or "web" in only:
         say("web: start")
         try:

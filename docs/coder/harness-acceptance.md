@@ -85,6 +85,9 @@ Other scenarios:
 | projects-live | `openagents projects list` reads the live account, read-only. This needs the gate sign-in key. |
 | projects-local | A local or test server takes the full flow: a project with just a name, a second project on a repository another project uses, and two repositories with a primary. Set `HACC_PROJECTS_ORIGIN` and `HACC_PROJECTS_TOKEN`. |
 | no-home | With `HOME` unset and only `USERPROFILE` set, as on Windows, a first message gets an answer and nothing says "HOME is not set". It reaches the gateway once the gate has its sign-in key. |
+| chosen-fails-fallback | A broken `opencode` is first on `PATH`, and OpenCode is picked with Shift+Tab. The turn still gets an answer from Auto, and one grey line says OpenCode didn't start (#11645). Blocking. |
+| signed-out-free-tier | The gate is signed out and only system folders are on `PATH`, so no harness is there. A first message still gets an answer from Coder's own free answers, or, once today's are used up, the line with `coder login`. The free agent's key is kept in `~/.cache/coder-harness-gate/` between runs. Blocking. |
+| plugin-disabled-never-chosen | After a turn, OpenCode's plugin is turned off in `/plugins`, and the next turn never runs on OpenCode. Blocking. |
 | web-chat | A question in a local web chat (`scripts/dev/full-local.sh`, or `HACC_WEB_ORIGIN`) gets an answer with no "Run in Coder on …" button. The message makes exactly one thread, and the composer has no Chat/Code mode switch. |
 
 A harness that isn't installed shows as "not installed", and a check that

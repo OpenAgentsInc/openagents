@@ -82,6 +82,14 @@ const GATEWAY_EXHAUSTED_HOLD: u64 = 30 * 60;
 
 /// Whether `auto` may try the OpenAgents gateway with `account`.
 #[must_use]
+/// Closes `token`'s gateway door, as a refusal does, for a test.
+#[cfg(test)]
+pub(crate) fn refuse_gateway_for_test(token: &str) {
+    if let Ok(mut refused) = GATEWAY_REFUSED.lock() {
+        refused.insert(token.to_owned());
+    }
+}
+
 pub fn gateway_open(account: &openagents_login::Saved) -> bool {
     if GATEWAY_REFUSED
         .lock()
@@ -1996,6 +2004,7 @@ mod tests {
             cheap: None,
             door: None,
             no_harness: None,
+            free_tier: false,
         }
     }
 

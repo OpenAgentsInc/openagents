@@ -583,6 +583,7 @@ mod tests {
             cheap: None,
             door: None,
             no_harness: None,
+            free_tier: false,
         };
         let client = settings.jev_client().unwrap().unwrap();
         assert_eq!(jev_hosted::via(&client), "direct");
@@ -873,6 +874,7 @@ mod tests {
                 cheap: None,
                 door: None,
                 no_harness: None,
+                free_tier: false,
             };
             let result = if chat_tool {
                 settings

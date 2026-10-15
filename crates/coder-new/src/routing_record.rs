@@ -1476,6 +1476,7 @@ mod tests {
                     },
                     openrouter_key: false,
                     leaning: crate::routing_preferences::Leaning::default(),
+                    failed: Default::default(),
                 },
             ));
         });
@@ -1539,7 +1540,10 @@ mod tests {
                 _ => None,
             })
             .collect();
-        assert_eq!(lines.len(), 6, "{lines:?}");
+        // Claude Code's failure is recorded, and Auto takes the same
+        // message (#11645): a redo, then the fallback's own choice.
+        assert_eq!(lines.len(), 8, "{lines:?}");
+        assert!(matches!(&lines[6], Line::Redone(_)), "{lines:?}");
         assert_eq!(
             chose
                 .iter()
@@ -1549,6 +1553,7 @@ mod tests {
                 (Harness::CoderLoop, Rule::Pin),
                 (Harness::CoderLoop, Rule::Continues),
                 (Harness::ClaudeCode, Rule::Pin),
+                (Harness::CoderLoop, Rule::Continues),
             ]
         );
         assert_eq!(chose[1].turn, 2);
@@ -1563,7 +1568,7 @@ mod tests {
         assert_eq!(ended[2].harness, Harness::ClaudeCode);
         assert_eq!(ended[2].ended, Ended::Error);
         let summary = summarize(&lines);
-        assert_eq!(summary.iter().map(|s| s.chosen).sum::<u64>(), 3);
+        assert_eq!(summary.iter().map(|s| s.chosen).sum::<u64>(), 4);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

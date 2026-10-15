@@ -47,6 +47,9 @@ pub enum Payer {
     AgentLogin,
     /// The person's own Gemini API key, for a no-harness turn (#11548).
     GeminiKey,
+    /// Coder's own free answers while signed out (#11645): an anonymous
+    /// agent account's free tier, no dollars to the person.
+    FreeTier,
 }
 
 /// Why a harness is not a candidate for this chat.
@@ -69,6 +72,40 @@ pub enum Exclusion {
     PersonSaidNever,
     /// The person said never to run the model it would run on it.
     PersonSaidNeverWithModel,
+    /// It failed before answering earlier in this run (#11645), so Auto
+    /// leaves it out until its plugin is turned on again.
+    FailedHere,
+}
+
+/// The harnesses that failed before answering in this run (#11645).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Failed {
+    pub claude: bool,
+    pub codex: bool,
+    pub opencode: bool,
+}
+
+impl Failed {
+    /// The harnesses in `failed`.
+    #[must_use]
+    pub fn of(failed: &[Harness]) -> Self {
+        Failed {
+            claude: failed.contains(&Harness::ClaudeCode),
+            codex: failed.contains(&Harness::Codex),
+            opencode: failed.contains(&Harness::OpenCode),
+        }
+    }
+
+    /// Whether `harness` failed.
+    #[must_use]
+    pub fn get(self, harness: Harness) -> bool {
+        match harness {
+            Harness::ClaudeCode => self.claude,
+            Harness::Codex => self.codex,
+            Harness::OpenCode => self.opencode,
+            Harness::CoderLoop => false,
+        }
+    }
 }
 
 /// What a harness's health check found.
@@ -101,6 +138,8 @@ pub struct Facts {
     /// What the person's routing preferences say about each harness
     /// (#11455).
     pub leaning: crate::routing_preferences::Leaning,
+    /// The harnesses that failed before answering in this run (#11645).
+    pub failed: Failed,
 }
 
 impl Facts {
@@ -124,7 +163,10 @@ impl Facts {
         let forced = crate::no_harness::forced();
         let claude_plugin_on = app.plugins.bundled.claude && !forced;
         let codex_on = app.plugins.bundled.codex && !forced;
-        let opencode_on = app.plugins.bundled.opencode && !forced;
+        // OpenCode is an installed coding agent: the ACP Subagents switch
+        // ("other coding agents installed on this computer") turns it off
+        // too (#11645).
+        let opencode_on = app.plugins.bundled.opencode && app.plugins.bundled.acp && !forced;
         // The sign-in and the plan windows are read only for a plugin
         // that is on.
         let claude_signed_in = claude_plugin_on && claude_signed_in();
@@ -161,6 +203,7 @@ impl Facts {
                     Harness::Codex => Some(crate::codex::choice().model),
                 },
             ),
+            failed: Failed::of(&app.start_failed),
         }
     }
 }
@@ -299,6 +342,9 @@ pub fn exclusion(harness: Harness, facts: &Facts) -> Option<Exclusion> {
     }
     if declaration.place == Place::ThisComputer && !facts.local {
         return Some(Exclusion::NotHere);
+    }
+    if facts.failed.get(harness) {
+        return Some(Exclusion::FailedHere);
     }
     match harness {
         Harness::ClaudeCode if !facts.claude_plugin_on => Some(Exclusion::PluginOff),
@@ -1022,6 +1068,7 @@ mod tests {
             },
             openrouter_key: false,
             leaning: crate::routing_preferences::Leaning::default(),
+            failed: Failed::default(),
         }
     }
 

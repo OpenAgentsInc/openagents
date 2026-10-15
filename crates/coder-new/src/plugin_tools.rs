@@ -111,6 +111,10 @@ pub struct ExecutionSettings {
     /// signed in, then the person's own Gemini API key; never this
     /// computer's other logins.
     pub no_harness: Option<crate::route::NoHarness>,
+    /// Coder's own free answers while signed out (#11645): an anonymous
+    /// OpenAgents agent account's free tier, the door of last resort so a
+    /// signed-out first run always answers.
+    pub free_tier: bool,
 }
 
 #[derive(Clone)]
@@ -1411,6 +1415,7 @@ mod tests {
             cheap: None,
             door: None,
             no_harness: None,
+            free_tier: false,
         }
     }
 

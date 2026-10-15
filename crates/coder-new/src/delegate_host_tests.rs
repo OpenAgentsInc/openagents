@@ -362,6 +362,7 @@ fn facts() -> crate::harness_plugin::Facts {
         opencode: health,
         openrouter_key: false,
         leaning: crate::routing_preferences::Leaning::default(),
+        failed: Default::default(),
     }
 }
 

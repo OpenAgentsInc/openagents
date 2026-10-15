@@ -528,6 +528,7 @@ pub fn local(app: &crate::App) -> Local {
             && !signed_out(Harness::ClaudeCode),
         codex: bundled.codex && allowed(Harness::Codex) && crate::codex::available(),
         opencode: bundled.opencode
+            && bundled.acp
             && allowed(Harness::OpenCode)
             && crate::opencode_chat::installed(),
         agents: if bundled.acp {
@@ -601,7 +602,7 @@ impl crate::App {
     }
 
     /// The ACP agents a turn can run on here, `(id, name)`.
-    fn pick_agents(&self) -> Vec<(String, String)> {
+    pub(crate) fn pick_agents(&self) -> Vec<(String, String)> {
         if !self.plugins.bundled.acp {
             return Vec::new();
         }
@@ -680,6 +681,9 @@ impl crate::App {
                 }
             }
             Pick::Harness(harness) => {
+                // The person's own pick gets a harness that failed
+                // earlier another try (#11645).
+                self.start_failed.retain(|failed| *failed != harness);
                 if was_auto {
                     self.live.before_pin = self.live.runs_on;
                 }
@@ -814,7 +818,8 @@ impl crate::App {
         self.pick_refreshes_seen = finished;
         if !options(&local(self)).contains(&current) {
             // A chat that answered stays on its agent: the rail says it
-            // can't go on, and nothing moves it (#11563).
+            // can't go on where it ran; its next message goes to Auto
+            // (#11563, #11645).
             if self.live.answered() {
                 if let Some(why) = self.chat_cant_go_on() {
                     self.rail_notice(why, crate::RAIL_NOTICE_TTL);
@@ -1258,6 +1263,7 @@ mod tests {
                 opencode: health,
                 openrouter_key: false,
                 leaning: crate::routing_preferences::Leaning::default(),
+                failed: Default::default(),
             },
         )));
         let mut app = crate::App::default();

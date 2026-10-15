@@ -619,6 +619,8 @@ impl Plugins {
             cheap: None,
             door: None,
             no_harness: None,
+            // Tests never register an account.
+            free_tier: !cfg!(test) && crate::free_tier::available(),
         }
     }
 

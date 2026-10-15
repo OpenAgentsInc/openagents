@@ -374,6 +374,7 @@ mod tests {
             cheap: None,
             door: None,
             no_harness: None,
+            free_tier: false,
         }
     }
 

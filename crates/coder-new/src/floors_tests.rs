@@ -571,6 +571,7 @@ fn a_pin_is_honored_and_recorded_and_never_means_never() {
             },
             openrouter_key: false,
             leaning: crate::routing_preferences::Leaning::default(),
+            failed: Default::default(),
         },
     )));
     let store = dir.path().join("store");

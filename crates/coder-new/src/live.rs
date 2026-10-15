@@ -776,6 +776,14 @@ pub enum Update {
         session: String,
         model: String,
     },
+    /// The door an auto turn's answer came through (#11645), sent just
+    /// before the turn finishes, and the grey line to show when it isn't
+    /// the door the chat was held to.
+    Routed {
+        id: u64,
+        lane: crate::route::Lane,
+        note: Option<String>,
+    },
     Finished {
         id: u64,
         result: Result<Streamed, String>,
@@ -810,6 +818,7 @@ impl Update {
             | Self::ThinkingText { id, .. }
             | Self::Model { id, .. }
             | Self::OpenCodeSession { id, .. }
+            | Self::Routed { id, .. }
             | Self::Finished { id, .. } => *id,
         }
     }
@@ -1671,7 +1680,12 @@ fn run_with_provider(
                     Update::Finished { id, result: result.map_err(|_| reasons.join("; ")) }
                 }
                 Work::Microcoder { messages, execution, options } => {
-                    auto_route(id, messages, execution, &request.key, options, &create, &cancel, &mut text_callback, &mut model_callback, &mut event_callback).await
+                    {
+                        let mut routed = |lane, note| {
+                            let _ = sender.send(Update::Routed { id, lane, note });
+                        };
+                        auto_route(id, messages, execution, &request.key, options, &create, &cancel, &mut text_callback, &mut model_callback, &mut event_callback, &mut routed).await
+                    }
                 }
                 // A claude turn runs in its chat's own process
                 // ([`Background::claude_request`]), never on a worker.
@@ -1682,28 +1696,54 @@ fn run_with_provider(
                     let turn = crate::opencode_chat::Turn {
                         messages, cwd, session, last_model, briefing: briefing.map(|briefing| *briefing), model: model.clone(), tools,
                     };
-                    let mut events = |event: RuntimeEvent| match event {
-                        RuntimeEvent::Text(text) => text_callback(&text),
-                        RuntimeEvent::Model(model) => model_callback(&model),
-                        event => event_callback(event),
+                    // A harness that shows no sign of life in time is
+                    // stopped, and Auto takes its message (#11645).
+                    let door_cancel = Arc::new(AtomicBool::new(false));
+                    let alive = AtomicBool::new(false);
+                    let mut events = |event: RuntimeEvent| {
+                        if sign_of_life(&event) {
+                            alive.store(true, Ordering::Relaxed);
+                        }
+                        match event {
+                            RuntimeEvent::Text(text) => text_callback(&text),
+                            RuntimeEvent::Model(model) => model_callback(&model),
+                            event => event_callback(event),
+                        }
                     };
                     let mut on_session = |session: &str| {
                         let _ = sender.send(Update::OpenCodeSession { id, session: session.to_owned(), model: model.clone() });
                     };
-                    let result = crate::opencode_chat::run(turn, &cancel, &mut events, &mut on_session).await;
+                    let limit = harness_first_event_limit();
+                    let result = watched(
+                        crate::opencode_chat::run(turn, &door_cancel, &mut events, &mut on_session),
+                        &cancel, &door_cancel, &alive, limit,
+                        || silent("OpenCode", limit),
+                    ).await;
                     Update::Finished { id, result }
                 }
                 Work::Acp { agent, messages, cwd, briefing } => {
                     let task = crate::codex::seed(&messages);
-                    let mut events = |event: RuntimeEvent| match event {
-                        RuntimeEvent::Text(text) => text_callback(&text),
-                        RuntimeEvent::Model(model) => model_callback(&model),
-                        event => event_callback(event),
+                    let door_cancel = Arc::new(AtomicBool::new(false));
+                    let alive = AtomicBool::new(false);
+                    let mut events = |event: RuntimeEvent| {
+                        if sign_of_life(&event) {
+                            alive.store(true, Ordering::Relaxed);
+                        }
+                        match event {
+                            RuntimeEvent::Text(text) => text_callback(&text),
+                            RuntimeEvent::Model(model) => model_callback(&model),
+                            event => event_callback(event),
+                        }
                     };
                     // The model picked in /models for this agent, else its
                     // Coder default (#11556).
                     let model = crate::agent_models::choice(&agent.id);
-                    let result = crate::bundled_runtime::acp_briefed(&agent, &task, &cwd, model.as_deref(), false, briefing.as_deref(), &cancel, &mut events).await;
+                    let limit = harness_first_event_limit();
+                    let result = watched(
+                        crate::bundled_runtime::acp_briefed(&agent, &task, &cwd, model.as_deref(), false, briefing.as_deref(), &door_cancel, &mut events),
+                        &cancel, &door_cancel, &alive, limit,
+                        || silent(&agent.name, limit),
+                    ).await;
                     // The model the agent named, for its pick on the rail next time.
                     if let Some(model) = result.as_ref().ok().and_then(|value| value["model"].as_str()) {
                         let now = atif::now_ms() / 1000;
@@ -1755,7 +1795,12 @@ fn run_with_provider(
                     Update::Finished { id, result }
                 }
                 Work::Chat { model, options, messages, execution } if !crate::models::pinned(&model) => {
-                    auto_route(id, messages, execution, &request.key, options, &create, &cancel, &mut text_callback, &mut model_callback, &mut event_callback).await
+                    {
+                        let mut routed = |lane, note| {
+                            let _ = sender.send(Update::Routed { id, lane, note });
+                        };
+                        auto_route(id, messages, execution, &request.key, options, &create, &cancel, &mut text_callback, &mut model_callback, &mut event_callback, &mut routed).await
+                    }
                 }
                 // A picked Claude or Codex model runs on this computer's plan
                 // first, then the person's own key (#11550).
@@ -1862,6 +1907,7 @@ async fn auto_route(
     text_callback: &mut (dyn FnMut(&str) + Send),
     model_callback: &mut (dyn FnMut(&str) + Send),
     event_callback: &mut (dyn FnMut(RuntimeEvent) + Send),
+    routed: &mut (dyn FnMut(crate::route::Lane, Option<String>) + Send),
 ) -> Update {
     let favor = execution.favor;
     let plan = crate::route::plan(&execution, !key.expose().is_empty(), favor);
@@ -1927,27 +1973,28 @@ async fn auto_route(
                 .await
                 {
                     Ok(result) => result,
-                    // A picked model's failure is its own (#11526): no
-                    // other door takes its turn.
-                    Err(why) if plan.lanes == [crate::route::Lane::Gateway] => {
-                        if let Some(model) = &execution.gateway_model {
-                            let name = crate::ui::rail_model_name(model);
-                            let why = if why.contains("(HTTP 402)") {
-                                format!(
-                                    "{name} needs credit on your OpenAgents account (HTTP 402). Add credit at openagents.com, or pick another model in /models."
-                                )
-                            } else {
-                                format!(
-                                    "{name} didn't answer: {}. Pick another model in /models.",
-                                    why.trim().trim_end_matches('.')
-                                )
-                            };
-                            return Update::Finished {
-                                id,
-                                result: Err(why),
-                            };
-                        }
-                        reasons.push(why);
+                    // A picked model that can't answer says why, and the
+                    // turn falls back to the other doors (#11526, #11645).
+                    Err(why)
+                        if index == 0
+                            && plan.held == Some(crate::route::Lane::Gateway)
+                            && execution.gateway_model.is_some() =>
+                    {
+                        let name = execution
+                            .gateway_model
+                            .as_deref()
+                            .map(crate::ui::rail_model_name)
+                            .unwrap_or_default();
+                        reasons.push(if why.contains("(HTTP 402)") {
+                            format!(
+                                "{name} needs credit on your OpenAgents account (HTTP 402). Add credit at openagents.com, or pick another model in /models."
+                            )
+                        } else {
+                            format!(
+                                "{name} didn't answer: {}. Pick another model in /models.",
+                                why.trim().trim_end_matches('.')
+                            )
+                        });
                         continue;
                     }
                     Err(why) => {
@@ -2019,6 +2066,17 @@ async fn auto_route(
                 )
                 .await
             }
+            crate::route::Lane::FreeTier => {
+                watched(
+                    crate::free_tier::chat(&messages, &door_cancel, &mut text, model_callback),
+                    cancel,
+                    &door_cancel,
+                    &alive,
+                    limit,
+                    late,
+                )
+                .await
+            }
             crate::route::Lane::OpenRouter => match create(openrouter::ApiKey::new(key.expose())) {
                 Ok(provider) => {
                     watched(
@@ -2045,6 +2103,13 @@ async fn auto_route(
         };
         match result {
             Ok(reply) => {
+                // The chat's door is the one that really answered
+                // (#11645); a held door that didn't says so in grey.
+                let note = plan
+                    .held
+                    .filter(|held| *held != lane)
+                    .map(|held| fell_back(held, lane, execution.gateway_model.as_deref()));
+                routed(lane, note);
                 return Update::Finished {
                     id,
                     result: Ok(reply),
@@ -2063,6 +2128,44 @@ async fn auto_route(
         id,
         result: Err(plan.explain(&reasons)),
     }
+}
+
+/// How long a harness's or agent's own turn may take to its first sign
+/// of life before Auto takes the message (#11645): the doors' limit, but
+/// never under a minute, as a harness starting a session is slower than a
+/// model call.
+fn harness_first_event_limit() -> Option<std::time::Duration> {
+    crate::route::first_event_limit().map(|limit| limit.max(std::time::Duration::from_secs(60)))
+}
+
+/// What a harness that stayed silent past `limit` says.
+fn silent(name: &str, limit: Option<std::time::Duration>) -> String {
+    let seconds = limit.map_or(0, |limit| limit.as_secs());
+    format!("{name} didn't start answering within {seconds} seconds")
+}
+
+/// The grey line for a turn the chat's `held` door didn't answer and
+/// `answered` did (#11645): "OpenCode didn't answer, so Coder's free
+/// answers did." `picked` names a gateway model the person picked.
+#[must_use]
+pub fn fell_back(
+    held: crate::route::Lane,
+    answered: crate::route::Lane,
+    picked: Option<&str>,
+) -> String {
+    let held = match (held, picked) {
+        (crate::route::Lane::Gateway, Some(model)) => crate::ui::rail_model_name(model),
+        (lane, _) => capitalized(lane.name()),
+    };
+    format!("{held} didn't answer, so {} did.", answered.name())
+}
+
+/// `text` with its first letter capitalized.
+pub(crate) fn capitalized(text: &str) -> String {
+    let mut chars = text.chars();
+    chars.next().map_or_else(String::new, |first| {
+        first.to_uppercase().chain(chars).collect()
+    })
 }
 
 /// Whether `event` shows a door working (#11640): its words or thinking,
@@ -2804,9 +2907,10 @@ mod tests {
     }
 
     /// #11526: a gateway model picked in /models is what the gateway is
-    /// asked for, and when it fails no other door takes the turn.
+    /// asked for; when it fails the other doors are tried (#11645), and
+    /// the ending leads with why the pick didn't answer.
     #[test]
-    fn a_picked_gateway_model_runs_on_the_gateway_and_its_failure_is_its_own() {
+    fn a_picked_gateway_model_runs_on_the_gateway_and_its_failure_falls_back() {
         let pick = |token: &str, origin: &str| {
             let mut turn = auto_turn(token, origin);
             if let Work::Chat { execution, .. } = &mut turn.kind {
@@ -2857,7 +2961,7 @@ mod tests {
             pick("sess_gateway_pick_fails", &origin),
             sender,
             canceled,
-            |_| panic!("a picked gateway model's failure never falls back to OpenRouter"),
+            |_| Err("The OpenRouter key is a test fixture.".into()),
         );
         failing.join().unwrap();
         let ended = receiver.try_iter().find_map(|update| match update {
@@ -2866,9 +2970,13 @@ mod tests {
             } => Some(why),
             _ => None,
         });
-        let why = ended.expect("the turn ends with the pick's failure");
-        assert!(why.starts_with("GLM 5.3 Flash didn't answer: "), "{why}");
-        assert!(why.ends_with("Pick another model in /models."), "{why}");
+        let why = ended.expect("no door here answers");
+        assert!(why.contains("GLM 5.3 Flash didn't answer: "), "{why}");
+        assert!(why.contains("Pick another model in /models"), "{why}");
+        assert!(
+            why.contains("local model logins"),
+            "the other doors were tried: {why}"
+        );
     }
 
     /// When the gateway refuses the sign-in, the same turn goes to the

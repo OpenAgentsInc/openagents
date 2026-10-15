@@ -626,10 +626,6 @@ impl App {
     }
 }
 
-/// What a chat whose harness, agent or payer can't go on here says on the
-/// rail, after the reason (#11563).
-pub const START_NEW: &str = "Start a new chat (Ctrl+N) to use another one.";
-
 impl App {
     /// The model and payer this chat's next turn runs on (#11563): its
     /// harness's or agent's model as picked (or its default), the effort,
@@ -757,9 +753,10 @@ impl App {
         }
     }
 
-    /// Why this chat can't take its next turn here, in the rail's words,
-    /// when the harness, agent or payer it ran on isn't available
-    /// (#11563): a chat never moves to another one silently.
+    /// Why this chat can't take its next turn where it ran, in the rail's
+    /// words, when the harness, agent or payer it ran on isn't available
+    /// (#11563). It never moves silently, and never dead-ends either: its
+    /// next message goes to Auto, and this line says so (#11645).
     #[must_use]
     pub(crate) fn chat_cant_go_on(&self) -> Option<String> {
         use crate::harness_plugin::{Exclusion, Harness, Payer};
@@ -779,7 +776,7 @@ impl App {
             }
             let name = crate::harness_pick::name(&self.current_pick());
             return Some(format!(
-                "{name} isn't installed here, so this chat can't go on. {START_NEW}"
+                "{name} isn't installed here, so Auto answers this chat now."
             ));
         }
         let harness = self.live.runs_on?;
@@ -788,10 +785,10 @@ impl App {
             let keyed = self.plugins.enabled && self.plugins.key_configured;
             return match self.live.ran.as_ref().map(|ran| ran.payer) {
                 Some(Payer::OpenRouterKey) if !keyed => Some(format!(
-                    "This chat paid with your OpenRouter key, which isn't on here. {START_NEW}"
+                    "This chat paid with your OpenRouter key, which isn't on here, so Auto answers it now."
                 )),
                 Some(Payer::GatewayCredits) if keyed => Some(format!(
-                    "This chat paid with OpenAgents credits, and your OpenRouter key is on now. {START_NEW}"
+                    "This chat paid with OpenAgents credits, and your OpenRouter key is on now, so Auto answers it now."
                 )),
                 _ => None,
             };
@@ -799,13 +796,13 @@ impl App {
         let facts = crate::harness_plugin::Facts::read(self);
         match crate::harness_plugin::exclusion(harness, &facts) {
             Some(Exclusion::NotInstalled) => Some(format!(
-                "{name} isn't installed here, so this chat can't go on. {START_NEW}"
+                "{name} isn't installed here, so Auto answers this chat now."
             )),
             Some(Exclusion::NotSignedIn) => Some(format!(
-                "{name} isn't signed in here, so this chat can't go on. {START_NEW}"
+                "{name} isn't signed in here, so Auto answers this chat now."
             )),
             Some(Exclusion::PluginOff) => Some(format!(
-                "{name} is off in /plugins, so this chat can't go on. {START_NEW}"
+                "{name} is off in /plugins, so Auto answers this chat now."
             )),
             _ => None,
         }
@@ -968,10 +965,10 @@ mod ran_tests {
     }
 
     /// A reopened chat whose harness isn't installed here any more says so
-    /// on the rail and keeps the message: it never moves to another
-    /// harness (#11563).
+    /// on the rail (#11563), and its next message goes to Auto instead of
+    /// staying stuck in the input (#11645).
     #[test]
-    fn a_resumed_chat_whose_harness_is_gone_says_so_and_stays() {
+    fn a_resumed_chat_whose_harness_is_gone_says_so_and_goes_on_with_auto() {
         let dir = tempfile::tempdir().unwrap();
         let store = sessions::Store::under(dir.path());
         saved(
@@ -990,24 +987,25 @@ mod ran_tests {
         app.plugins.bundled.opencode = true;
         app.attach_session_store(store);
         assert!(app.resume(Some("s-opencode")));
-        let gone = "OpenCode isn't installed here, so this chat can't go on.";
+        let gone = "OpenCode isn't installed here, so Auto answers this chat now.";
         assert!(app.rail_notice_text().unwrap().starts_with(gone));
         let screen = shown(&mut app);
         assert!(screen.contains(gone), "{screen}");
 
+        // Never a dead end (#11645): the message goes to Auto, in grey.
         app.draft.text = "go on".into();
         app.submit_live();
-        assert!(app.request.is_none(), "no turn starts");
-        assert_eq!(app.draft.text, "go on", "the message stays in the input");
-        assert_eq!(app.live.runs_on, Some(Harness::OpenCode));
-        assert!(app.rail_notice_text().unwrap().ends_with(super::START_NEW));
+        assert!(app.request.is_some(), "the turn runs");
+        assert!(app.draft.text.is_empty());
+        assert_eq!(app.live.runs_on, Some(Harness::CoderLoop));
+        assert_eq!(app.notice.as_deref(), Some(gone));
         app.reset_model_picks();
     }
 
     /// A chat on an ACP agent that isn't here any more says so too, and
-    /// stays on that agent instead of going back to Auto.
+    /// goes on with Auto at its next message (#11645).
     #[test]
-    fn a_resumed_chat_whose_agent_is_gone_stays_on_it() {
+    fn a_resumed_chat_whose_agent_is_gone_goes_on_with_auto() {
         let dir = tempfile::tempdir().unwrap();
         let store = sessions::Store::under(dir.path());
         let mut chat = crate::live::Chat {
@@ -1036,13 +1034,13 @@ mod ran_tests {
         assert!(
             app.rail_notice_text()
                 .unwrap()
-                .contains("isn't installed here, so this chat can't go on.")
+                .contains("isn't installed here, so Auto answers this chat now.")
         );
+        // Never a dead end (#11645): the next message goes to Auto.
         app.draft.text = "go on".into();
         app.submit_live();
-        assert!(app.request.is_none());
-        assert_eq!(app.live.agent.as_deref(), Some("devin-cli"));
-        assert_eq!(app.next_pick, None, "never back on Auto");
+        assert!(app.request.is_some());
+        assert_eq!(app.live.agent, None);
         app.reset_model_picks();
     }
 }
