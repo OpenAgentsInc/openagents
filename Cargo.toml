@@ -147,6 +147,17 @@ panic = "abort"
 strip = true
 debug = false
 
+# The CAD engine's browser build (scripts/build-cad-web.sh, #11649): as
+# small as it goes, since /cad downloads it. No native build uses it.
+[profile.cad-web]
+inherits = "release"
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+debug = false
+
 # breez/boltz-client, a git dependency of breez-sdk-spark, is no longer
 # published (404 on 2026-10-04); build its pinned revision from the vendored
 # copy. See vendor/boltz-client/VENDORED.md.

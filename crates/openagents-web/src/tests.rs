@@ -1623,6 +1623,96 @@ async fn the_bunny_page_says_it_cannot_be_played_without_the_build() {
     }
 }
 
+/// A server started with `--cad DIR` holding a stand-in CAD engine build.
+fn with_cad(root: &std::path::Path) -> Config {
+    let build = root.join("cad");
+    std::fs::create_dir_all(&build).unwrap();
+    for file in pages::CAD_FILES {
+        std::fs::write(build.join(file), format!("/* {file} */")).unwrap();
+    }
+    std::fs::write(build.join("cad_wasm_bg.wasm.br"), b"brotli wasm").unwrap();
+    std::fs::write(build.join("cad_wasm_bg.wasm.gz"), b"gzipped wasm").unwrap();
+    std::fs::write(build.join("sizes.txt"), "not served").unwrap();
+    let mut config = config(root.join("tasks"));
+    config.cad = Some(build);
+    config
+}
+
+/// `/cad`: the site's page with the engine's one start script and its
+/// styles, a policy that lets it compile the engine and start its worker,
+/// and the build's files, brotli when asked.
+#[tokio::test]
+async fn the_cad_page_loads_the_engine_only_there() {
+    let root = tempfile::tempdir().unwrap();
+    let config = with_cad(root.path());
+    let (status, headers, html) = get_with(router(config.clone()), pages::CAD_PATH, LOCAL).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(html.contains("<title>CAD in your browser"), "{html}");
+    assert!(html.contains("class=\"oa-wordmark\""), "the site's header");
+    assert!(html.contains("<script type=\"module\" src=\"/cad/start.js\"></script>"));
+    assert!(html.contains("href=\"/cad/cad.css\""));
+    assert_eq!(headers[header::CONTENT_SECURITY_POLICY], pages::CAD_POLICY);
+    let text = oa_copy::visible_text(main_of(&html));
+    assert_eq!(oa_copy::violations(&text, &[]), vec![], "{text}");
+    // No other page loads the engine.
+    let (_, _, home) = get_with(router(config.clone()), "/", LOCAL).await;
+    assert!(!home.contains("/cad/start.js"));
+
+    for (file, content_type) in [
+        ("cad_wasm.js", "text/javascript; charset=utf-8"),
+        ("start.js", "text/javascript; charset=utf-8"),
+        ("worker.js", "text/javascript; charset=utf-8"),
+        ("cad_wasm_bg.wasm", "application/wasm"),
+        ("cad.css", "text/css; charset=utf-8"),
+    ] {
+        let uri = format!("/cad/{file}");
+        let (status, headers, _) = get_bytes(router(config.clone()), &uri).await;
+        assert_eq!(status, StatusCode::OK, "{uri}");
+        assert_eq!(headers[header::CONTENT_TYPE], content_type, "{uri}");
+        // The worker runs under its own script's policy.
+        assert_eq!(
+            headers[header::CONTENT_SECURITY_POLICY],
+            pages::CAD_POLICY,
+            "{uri}"
+        );
+        assert!(upstream::owned(&uri), "{uri}");
+    }
+    for (accept, coding, body) in [
+        ("gzip, deflate, br", "br", &b"brotli wasm"[..]),
+        ("gzip", "gzip", &b"gzipped wasm"[..]),
+    ] {
+        let response = router(config.clone())
+            .oneshot(
+                Request::builder()
+                    .uri("/cad/cad_wasm_bg.wasm")
+                    .header(header::HOST, LOCAL)
+                    .header(header::ACCEPT_ENCODING, accept)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.headers()[header::CONTENT_ENCODING], coding);
+        assert_eq!(response.headers()[header::CONTENT_TYPE], "application/wasm");
+        let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        assert_eq!(&bytes[..], body);
+    }
+    for uri in ["/cad/sizes.txt", "/cad/missing.js", "/cad/../secret.js"] {
+        let (status, _, _) = get_bytes(router(config.clone()), uri).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{uri}");
+    }
+    assert!(upstream::owned(pages::CAD_PATH));
+
+    // Without the build the page says so and runs nothing.
+    std::fs::remove_file(root.path().join("cad").join("worker.js")).unwrap();
+    let (status, headers, html) = get_with(router(config), pages::CAD_PATH, LOCAL).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(oa_copy::visible_text(main_of(&html)).contains("can't run here right now"));
+    assert_eq!(scripts(&html.to_ascii_lowercase()), 0);
+    let policy = headers[header::CONTENT_SECURITY_POLICY].to_str().unwrap();
+    assert!(!policy.contains("script-src"), "{policy}");
+}
+
 /// A server started with `--icecream DIR` holding a stand-in Ice Cream Man
 /// build.
 fn with_icecream(root: &std::path::Path) -> Config {

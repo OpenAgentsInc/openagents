@@ -4,6 +4,7 @@ pub(crate) mod api_docs;
 mod att;
 mod blue_rush;
 mod bunny;
+mod cad;
 pub(crate) mod chat;
 mod cloud;
 pub(crate) mod connect;
@@ -31,6 +32,8 @@ pub(crate) use blue_rush::{
 };
 pub(crate) use blue_rush::{HOSTS as STUDIO_HOSTS, STUDIO_HEADER, studio_path};
 pub(crate) use bunny::{BUNNY_CANVAS, BUNNY_GLUE, BUNNY_POLICY, BUNNY_START, BUNNY_WASM};
+#[cfg(test)]
+pub(crate) use cad::{CAD_FILES, CAD_PATH, CAD_POLICY};
 #[cfg(test)]
 pub(crate) use connect::TESTFLIGHT;
 #[cfg(test)]
@@ -64,6 +67,7 @@ pub(crate) fn routes() -> Router<App> {
         .merge(bunny::routes())
         .merge(icecream::routes())
         .merge(att::routes())
+        .merge(cad::routes())
         .merge(content::routes())
         .merge(api_docs::routes())
         .merge(download::routes())

@@ -350,6 +350,9 @@ pub struct Config {
     /// The sealed-inference demo's build (`--att DIR`, default `/srv/att`
     /// when it exists), served under `/att/`.
     pub att: Option<PathBuf>,
+    /// The CAD engine's browser build (`--cad DIR`, default `/srv/cad`
+    /// when it exists), served under `/cad/` for the `/cad` page.
+    pub cad: Option<PathBuf>,
     /// The independently built Rust/Wasm component catalog assets.
     pub components_build: Option<PathBuf>,
     /// Explicit native account adapter; absence leaves sign-in and Settings unavailable.
@@ -451,6 +454,7 @@ impl Config {
             bunny: None,
             icecream: None,
             att: None,
+            cad: None,
             components_build: None,
             cloud: None,
             github: None,

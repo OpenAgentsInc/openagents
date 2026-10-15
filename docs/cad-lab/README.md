@@ -271,7 +271,46 @@ message (workspace rule: no keyword routing).
 | `cad_export_dxf(doc, version?, part?, sketch?, plane?, at?)` | A sketch as DXF, or the whole model cut by a plane |
 | `cad_faces(doc, part, after?)` | A part's faces and edges by the names features pick them with |
 | `cad_place(doc, version?, zone?, at?, heading?, scale?, remove?)` | Put a version in a Verse zone (Everglade, Meteor Showcase, Meteor Stress Test); a newer version of the same document replaces it |
+| `cad_drawing(doc, version?, views?, sections?, dimensions?, sheet?, angle?, title?, hidden?, formats?)` | A 2D drawing: projected views with hidden lines, sections, dimensions and a title block, as SVG, PDF and DXF (see Drawings) |
 | `cad_render(doc, version?, view, focus?, yaw?, pitch?)` | A picture: hero, rear, plan, front, side, iso, under or detail, framing some instances; yaw and pitch turn and raise the camera to match a photograph |
+
+## Drawings
+
+`cad_drawing` (and `openagents cad drawing DOC`) draws a version on a
+sheet, projected from its solids (`crates/cad/src/drawing.rs`):
+
+- **Views:** `front` looks at the model's front (+X) with Z up; `top`
+  looks down with the front at the foot of the view; `right` looks from
+  the right of the front view (+Y); `left`, `bottom` and `back` are their
+  opposites; `iso` looks from (1, 1, 1). Third-angle projection (the top
+  view above the front, the right view to its right) unless `angle` is
+  `first`. One standard scale fits every view on an A4, A3 or A2 sheet.
+- **Lines:** every B-rep edge except seams and smooth (tangent) joins, and
+  the silhouettes of curved faces, found on the circular arc each mesh
+  edge stands for, so a cylinder's silhouette is on the cylinder. A line
+  is split where it passes behind another and each piece tested against
+  the triangles in front of it: hidden lines are dashed. Where lines fall
+  on each other a section's outline wins over a visible line and a visible
+  line over a hidden one. The iso view and sections show no hidden lines.
+- **Sections:** `sections: [{"view": "front", "at": 0}]` cuts the model
+  with a plane square to that view (through the middle when `at` is left
+  out), takes away what is in front, draws the cut's outline and hatches
+  it at 45°, and marks the cut with a chain line on the view it crosses.
+- **Dimensions:** the front view's width and height and the top (or
+  right) view's depth; on a part's drawing, each hole size once with how
+  many there are (`4× Ø3.4`); and distances between named parallel flat
+  faces (`dimensions: [{"part": "plate", "faces": ["body:start",
+  "body:top"], "view": "front"}]`).
+- **Files:** SVG and PDF (vector, Helvetica) of the sheet, and DXF
+  (AutoCAD R12, sheet millimetres) with a layer per kind of line:
+  VISIBLE, HIDDEN (DASHED), SECTION, HATCH, CUTTING (CENTER), DIMENSION,
+  FRAME and TEXT.
+
+A drilled block's views have exactly the lines they should (four visible
+and two hidden in the front view, the hidden ones at ±5 mm), its section
+is two closed rectangles of cut material, and the drawing writes as all
+three files (`crates/cad/src/drawing.rs` tests). The rover (38 parts)
+draws its four views and a section in about 10 s.
 
 ## Seeing it: the card
 
@@ -288,7 +327,8 @@ before.
 the disk for the kernel's in-memory file store, and the clock for none,
 in `crates/cad/src/sys.rs`). A page holds its documents and calls
 `run(tool, args)` for `cad_check`, `cad_solid`, `cad_faces`,
-`cad_import_dxf` and `cad_export_dxf`, with the Lab's arguments and
+`cad_import_dxf`, `cad_export_dxf` and `cad_drawing` (its report and
+SVG; `drawing_file(args, format)` for the PDF or DXF), with the Lab's arguments and
 answers, and `export_file(document, format)` for glb, STEP, 3MF or STL
 bytes. Versions, renders and the file store stay with the Lab.
 
@@ -296,6 +336,33 @@ bytes. Versions, renders and the file store stay with the Lab.
 under Node: a filleted plate with a hole rebuilds and checks in about
 180 ms to within 0.01% of its analytic volume, and exports all four formats.
 The `.wasm` is 26 MB before `wasm-opt` and compression.
+
+**On openagents.com** (`/cad`, #11649): a sample plate with four holes
+and five sliders (length, width, thickness, corner radius, hole size).
+Each move rebuilds, checks and draws it in the browser, with no request
+to us; its mass, volume and size, and STEP, STL and drawing (PDF, DXF)
+files, come from the same build. The plate's numbers stay in the browser's
+storage. `scripts/build-cad-web.sh` builds what the site serves (the
+`cad-web` profile: size-optimized, link-time optimized, then `wasm-opt
+-Oz`, then brotli and gzip copies):
+
+| | Bytes |
+| --- | --- |
+| Before (release, as above) | 26 MB |
+| Built (`cad-web` profile) | 15.2 MB |
+| After `wasm-opt -Oz` | 12.5 MB |
+| Shipped, brotli | 3.3 MB (gzip 4.8 MB) |
+
+Only `/cad` loads it (`crates/openagents-web/src/pages/cad.rs`), in a
+worker (`crates/cad-wasm/web/`), so the page keeps answering while a part
+builds; the site sends the brotli copy when the browser takes it
+(`serve_build`). Measured on a Mac (M-series): the engine loads and the
+first plate is drawn 0.9 s after the page opens (served locally); a slider
+move rebuilds, checks and draws the plate in 0.3 to 0.4 s, or about 25 ms
+when it's a shape already built. The rover's wheel (18 treads patterned
+round a drum, recessed both sides) rebuilds from nothing in 28 s in the
+browser build (9 s natively, where parts build side by side) and in 32 ms
+once built; its drawing takes 75 ms.
 
 ## Into Verse (#11642)
 

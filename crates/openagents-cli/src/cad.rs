@@ -27,6 +27,11 @@ pub(crate) const USAGE: &str = "usage: openagents cad COMMAND [DOC] [options]
   place DOC [--zone everglade|meteor-showcase|meteor-stress-test]
                  [--at X,Z] [--heading DEG] [--scale S] [--version N] [--remove]
                  Put a version in a Verse zone; a newer one replaces it.
+  drawing DOC [--views front,top,right,iso] [--sections front@0]
+                 [--angle third|first] [--sheet A4|A3|A2] [--title TEXT]
+                 [--formats svg,pdf,dxf] [--version N]
+                 A 2D drawing: projected views with hidden lines dashed,
+                 sections, dimensions and a title block.
   tool NAME --json ARGS  Any cad_* tool with its JSON arguments (new_part,
                  add_feature, edit_feature, set_part, assemble ...).
 Design parts and assemblies on this computer (docs/cad-lab/mvp.md). Every
@@ -46,6 +51,7 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("render", Effect::LocalWrite),
     Declared::computer("export", Effect::LocalWrite),
     Declared::computer("place", Effect::LocalWrite),
+    Declared::computer("drawing", Effect::LocalWrite),
     Declared::computer("tool", Effect::LocalWrite),
 ];
 
@@ -134,6 +140,9 @@ pub(crate) fn request(words: &[String]) -> Result<(String, Value), String> {
         "render" => &["view", "focus", "version", "width", "height", "zoom", "yaw"],
         "export" => &["formats", "version"],
         "place" => &["zone", "at", "heading", "scale", "version"],
+        "drawing" => &[
+            "views", "sections", "angle", "sheet", "title", "formats", "version",
+        ],
         "tool" => &["json"],
         other => return Err(format!("unknown command `{other}`")),
     };
@@ -187,7 +196,7 @@ pub(crate) fn request(words: &[String]) -> Result<(String, Value), String> {
     for name in allowed {
         if let Some(value) = args.option(name) {
             call[*name] = match *name {
-                "focus" | "formats" => json!(
+                "focus" | "formats" | "views" | "sections" => json!(
                     value
                         .split(',')
                         .map(str::trim)
@@ -370,6 +379,15 @@ mod tests {
         assert_eq!(call["remove"], true);
         assert!(request(&words("place rover --at north")).is_err());
         assert!(request(&words("open rover --remove")).is_err());
+        let (tool, call) = request(&words(
+            "drawing rover --views front,top --sections front@0 --sheet A4",
+        ))
+        .unwrap();
+        assert_eq!(tool, "cad_drawing");
+        assert_eq!(
+            call,
+            json!({"doc": "rover", "views": ["front", "top"], "sections": ["front@0"], "sheet": "A4"})
+        );
     }
 
     #[test]

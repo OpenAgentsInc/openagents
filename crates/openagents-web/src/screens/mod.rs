@@ -216,6 +216,14 @@ pub(crate) const NOT_SCREENS: &[(&str, &str)] = &[
     ("/games/*", "a game"),
     ("/att*", "a canvas app"),
     (
+        "/cad",
+        "a live tool: the CAD engine runs in the page, so it has no sample states",
+    ),
+    (
+        "/cad/{file}",
+        "the CAD engine's code and styles, for the CAD page",
+    ),
+    (
         "/studios/blue-rush*",
         "the Blue Rush studio site, in its own design",
     ),

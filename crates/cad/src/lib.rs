@@ -20,6 +20,7 @@
 pub mod build;
 pub mod clash;
 pub mod doc;
+pub mod drawing;
 pub mod dxf;
 pub mod exact;
 pub mod export;

@@ -30,18 +30,14 @@ properties.
 | STEP import (AP203/214/242) | `solid.import_step` features from the Lab's file store; `cad_import_step` | `step_and_3mf_keep_the_assembly_tree_and_step_comes_back_as_a_feature` (AP242 and AP214) |
 | STEP AP242 export with the assembly | Products per part and per placed subassembly, an occurrence per instance; parts built afresh so their exact solids write cleanly | same test: 7 occurrences, 5 products, reads back to the same volume and box |
 | glTF, STL, 3MF | glb (ours), STL (kernel), 3MF with components (ours) | `exports_step_3mf_and_glb_and_reads_step_back`, the tree test |
-| WebAssembly and native builds of one API | `crates/cad-wasm` (wasm32-unknown-unknown, wasm-bindgen) and `cad-lab serve` | `scripts/cad-wasm-test.sh`: check, faces, Solid API, DXF and all exports under Node |
-| Agent tooling: typed tools, an MCP server, checks | 20 `cad_*` tools; `cad-lab mcp` (stdio JSON-RPC); checks on every edit | `an_mcp_client_lists_and_calls_the_cad_tools`, `every_tool_is_declared...` |
+| WebAssembly and native builds of one API | `crates/cad-wasm` (wasm32-unknown-unknown, wasm-bindgen) and `cad-lab serve`; live at openagents.com/cad (3.3 MB brotli) | `scripts/cad-wasm-test.sh`: check, faces, Solid API, DXF and all exports under Node |
+| Agent tooling: typed tools, an MCP server, checks | 21 `cad_*` tools; `cad-lab mcp` (stdio JSON-RPC); checks on every edit | `an_mcp_client_lists_and_calls_the_cad_tools`, `every_tool_is_declared...` |
+| **drawing2d**: projected views with hidden lines, dimensions | `cad_drawing`: front, top, right, left, bottom, back and iso views (third- or first-angle) with visible and hidden lines and silhouettes, hatched section views, overall sizes, hole diameters and named-face distances, a title block; SVG, PDF and DXF (a layer per line kind); `openagents cad drawing` | `crates/cad/src/drawing.rs`; `a_drilled_blocks_views_have_exactly_the_lines_they_should`, `the_sheet_writes_as_svg_pdf_and_dxf`, `named_faces_are_dimensioned_and_first_angle_puts_the_top_below` |
 | URDF | #11643 (another agent) | |
 
 ## Not covered, and why
 
 Each is its own issue; none blocks the parity map above.
 
-- **2D drawings** (ClassCAD's drawing2d: projected views with hidden lines,
-  dimensions) (#11647). The kernel gives sections and sketch DXF, which we
-  expose; projected hidden-line views are new work.
-- **The wasm engine on openagents.com** (#11649). The build runs the tools;
-  wiring a page to it is product work.
 - **OFB, IWP and SCG files** are ClassCAD's own formats; we read and write
   open ones (STEP, DXF, 3MF, STL, glTF) and our JSON documents instead.

@@ -54,6 +54,15 @@ const drawn = call("cad_import_dxf", { dxf });
 if (drawn.draw?.[0]?.op !== "sketch.polyline") fail(`cad_import_dxf: ${JSON.stringify(drawn)}`);
 console.log(`cad_import_dxf: ${drawn.draw.length} step, closed ${drawn.draw[0].params.closed}`);
 
+const drawn = call("cad_drawing", { document: plate, sections: ["front"] });
+if (!drawn.svg?.startsWith("<svg")) fail(`cad_drawing: ${JSON.stringify(drawn).slice(0, 400)}`);
+const front = drawn.drawing.views.find((v) => v.view === "front");
+if (front.visible < 4 || front.hidden !== 2) fail(`cad_drawing front: ${JSON.stringify(front)}`);
+const pdf = cad.drawing_file(JSON.stringify({ document: plate }), "pdf");
+if (String.fromCharCode(...pdf.slice(0, 5)) !== "%PDF-") fail("drawing pdf");
+console.log(`cad_drawing: ${drawn.drawing.views.length} views, front ${front.visible} visible ` +
+  `and ${front.hidden} hidden lines, scale ${drawn.drawing.scale}; PDF ${pdf.length} bytes`);
+
 for (const format of ["glb", "step", "3mf", "stl"]) {
   const bytes = cad.export_file(JSON.stringify(plate), format);
   if (!(bytes?.length > 84)) fail(`export ${format}`);

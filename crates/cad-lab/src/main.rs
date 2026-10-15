@@ -285,6 +285,9 @@ fn kind(name: &str) -> &'static str {
         "step" => "model/step",
         "3mf" => "model/3mf",
         "stl" => "model/stl",
+        "svg" => "image/svg+xml",
+        "pdf" => "application/pdf",
+        "dxf" => "image/vnd.dxf",
         _ => "application/octet-stream",
     }
 }

@@ -301,6 +301,7 @@ impl Lab {
             "cad_import_step" => self.import_step(args),
             "cad_export_dxf" => self.export_dxf(args),
             "cad_place" => self.place(args),
+            "cad_drawing" => self.drawing(args),
             other => Err(format!("{other} isn't a CAD Lab tool.")),
         };
         result.unwrap_or_else(|why| json!({"error": why}))
@@ -1232,6 +1233,50 @@ impl Lab {
         )
     }
 
+    /// A 2D drawing of a version: its views projected with visible and
+    /// hidden lines, sections, dimensions and a title block, as SVG, PDF
+    /// and DXF files.
+    fn drawing(&self, args: &Value) -> Result<Value, String> {
+        let (id, n, document, _) = self.pick(args)?;
+        let formats: Vec<String> = match arg_list(args, "formats")? {
+            list if !list.is_empty() => list
+                .iter()
+                .filter_map(|f| f.as_str().map(|s| s.trim_start_matches('.').to_lowercase()))
+                .collect(),
+            _ => vec!["svg".into(), "pdf".into(), "dxf".into()],
+        };
+        if let Some(bad) = formats
+            .iter()
+            .find(|f| !["svg", "pdf", "dxf"].contains(&f.as_str()))
+        {
+            return Err(format!("A drawing is svg, pdf or dxf, not {bad}."));
+        }
+        let mut options = args.clone();
+        options["subtitle"] = json!(format!("{id} version {n}"));
+        let drawing = cad::drawing::of_document(&document, &options, &self.root.join(".parts"))
+            .map_err(|p| p.join(" "))?;
+        let dir = self.version_dir(&id, n).join("out");
+        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+        let mut files = Vec::new();
+        for format in &formats {
+            let file = format!("{id}-v{n}-drawing.{format}");
+            let bytes = drawing.bytes(format)?;
+            std::fs::write(dir.join(&file), &bytes).map_err(|e| e.to_string())?;
+            files.push(
+                json!({"format": format, "path": dir.join(&file), "bytes": bytes.len(),
+                              "url": format!("{}/api/out?doc={id}&v={n}&name={file}", self.base)}),
+            );
+        }
+        let mut card = self.card(&id, n, None)?;
+        if formats.iter().any(|f| f == "svg") {
+            card["drawing"] = json!({"file": format!("{id}-v{n}-drawing.svg")});
+        }
+        card["exports"] = json!(files);
+        Ok(
+            json!({"doc": id, "version": n, "drawing": drawing.report(), "files": files, "card": card}),
+        )
+    }
+
     /// A part's faces and edges by the names features can use for them.
     fn faces(&self, args: &Value) -> Result<Value, String> {
         let (id, n, document, _) = self.pick(args)?;
@@ -1659,6 +1704,18 @@ fn takes(name: &str) -> &'static [&'static str] {
             "author",
         ],
         "cad_export_dxf" => &["doc", "version", "part", "sketch", "plane", "at"],
+        "cad_drawing" => &[
+            "doc",
+            "version",
+            "views",
+            "sections",
+            "angle",
+            "sheet",
+            "title",
+            "hidden",
+            "dimensions",
+            "formats",
+        ],
         "cad_import_step" => &[
             "doc", "part", "feature", "path", "step", "after", "summary", "author",
         ],
@@ -1804,6 +1861,16 @@ pub fn tools() -> Value {
             "part": part, "sketch": {"type": "string", "description": "the sketch feature's id"},
             "plane": {"type": "string", "description": "XY (at a height), XZ (at a y) or YZ (at an x)"},
             "at": {"type": "number", "description": "where the plane cuts, mm"}}}},
+        {"name": "cad_drawing", "description": "A 2D engineering drawing of a version: front, top, right and iso views (or those named) projected from the exact model, visible lines solid and hidden ones dashed, curved faces' silhouettes, section views cut through it and hatched, the overall sizes, hole diameters and distances between named flat faces, and a title block, on an A4, A3 or A2 sheet at one standard scale; as SVG, PDF and DXF (a layer per kind of line). The card shows it.",
+         "parameters": {"type": "object", "required": ["doc"], "properties": {"doc": doc, "version": version,
+            "views": {"type": "string", "description": "a JSON array or comma list of front, top, right, left, bottom, back, iso; default front, top, right, iso"},
+            "sections": {"type": "string", "description": "a JSON array of sections, each the view it is seen like and where it cuts in mm along that view's direction, e.g. [{\"view\":\"front\",\"at\":0}] or [\"front@0\"]; through the middle when at is left out"},
+            "angle": {"type": "string", "description": "third (top view above the front, the default) or first (below)"},
+            "sheet": {"type": "string", "description": "A4, A3 (default) or A2"},
+            "title": {"type": "string", "description": "the title block's title; the document's title when left out"},
+            "hidden": {"type": "boolean", "description": "false leaves the hidden lines out"},
+            "dimensions": {"type": "string", "description": "a JSON array of distances between two parallel flat faces, named like cad_faces names them, e.g. [{\"part\":\"plate\",\"faces\":[\"body:start\",\"body:top\"],\"view\":\"front\",\"label\":\"H\"}]"},
+            "formats": {"type": "string", "description": "a JSON array of svg, pdf, dxf; default all three"}}}},
         {"name": "cad_check", "description": "Run the checks on a version again: every feature rebuilds, every solid is closed, no undeclared overlaps; with its mass, centre of mass and inertia.",
          "parameters": {"type": "object", "required": ["doc"], "properties": {"doc": doc, "version": version}}},
         {"name": "cad_versions", "description": "The versions of a CAD document: each one's summary, author, mass and part count.",

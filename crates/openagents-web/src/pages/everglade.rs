@@ -272,20 +272,26 @@ async fn build_file(
     serve_build(directory, &file, content_type, &request).await
 }
 
-/// One build file from `directory`, or its gzip copy beside it when the
-/// request accepts gzip. `file` must already have passed [`build_type`].
-/// `/games/grow-little-bunny` serves its build the same way.
+/// One build file from `directory`, or its brotli or gzip copy beside it
+/// when the request accepts that (brotli first). `file` must already have
+/// passed [`build_type`]. `/games/grow-little-bunny` serves its build the
+/// same way.
 pub(super) async fn serve_build(
     directory: &Path,
     file: &str,
     content_type: &'static str,
     request: &HeaderMap,
 ) -> Response {
-    // The build stage writes a gzip copy beside each file; the wasm is about
-    // a third smaller compressed.
-    let gzip = accepts_gzip(request);
-    if gzip {
-        let compressed = directory.join(format!("{file}.gz"));
+    // The build stage writes compressed copies beside each file; the wasm
+    // is about a third of its size gzipped and less again with brotli.
+    for (accepted, extension, coding) in [
+        (accepts(request, "br"), "br", "br"),
+        (accepts_gzip(request), "gz", "gzip"),
+    ] {
+        if !accepted {
+            continue;
+        }
+        let compressed = directory.join(format!("{file}.{extension}"));
         if tokio::fs::metadata(&compressed)
             .await
             .is_ok_and(|metadata| metadata.is_file())
@@ -293,7 +299,7 @@ pub(super) async fn serve_build(
             let mut response = serve(compressed, content_type, BUILD_CACHE).await;
             if response.status().is_success() {
                 let headers = response.headers_mut();
-                headers.insert(header::CONTENT_ENCODING, HeaderValue::from_static("gzip"));
+                headers.insert(header::CONTENT_ENCODING, HeaderValue::from_static(coding));
                 headers.insert(header::VARY, HeaderValue::from_static("accept-encoding"));
             }
             return response;
@@ -304,6 +310,27 @@ pub(super) async fn serve_build(
         .headers_mut()
         .insert(header::VARY, HeaderValue::from_static("accept-encoding"));
     response
+}
+
+/// Whether the request's `Accept-Encoding` admits `coding` by name (not
+/// through `*`).
+pub(crate) fn accepts(request: &HeaderMap, coding: &str) -> bool {
+    request
+        .get_all(header::ACCEPT_ENCODING)
+        .iter()
+        .filter_map(|value| value.to_str().ok())
+        .flat_map(|value| value.split(','))
+        .any(|entry| {
+            let mut parts = entry.split(';');
+            let name = parts.next().unwrap_or("").trim();
+            let refused = parts.any(|param| {
+                param
+                    .trim()
+                    .strip_prefix("q=")
+                    .is_some_and(|q| q.trim().parse::<f32>().is_ok_and(|q| q == 0.0))
+            });
+            name.eq_ignore_ascii_case(coding) && !refused
+        })
 }
 
 /// Whether the request's `Accept-Encoding` admits gzip.

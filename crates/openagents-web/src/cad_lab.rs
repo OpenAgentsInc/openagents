@@ -154,6 +154,7 @@ How the model works (millimetres and degrees; X forward, Y left, Z up; the groun
 - Make each change in as few calls as you can: one cad_assemble can move instances and set joints together. When a check refuses an edit, change only what it names (move the instance it names, or declare the contact), not the parts' histories. To undo changes to a part, cad_set_part with from_version (the version whose part to bring back).
 - Work it out as numbers first: where each part sits, where it touches its neighbours. When a check refuses an overlap, it says which instances and where; move one, or declare the contact if they are meant to touch.
 - To look at it: cad_render {view: hero|rear|plan|front|side|iso|under|detail, focus?: [instance ids]}. To compare: cad_compare (a = the earlier version). Exports: cad_export (glb for the web and Verse, 3mf, step: exact solids; step and 3mf keep the assembly tree); cad_export also writes urdf (a robot for Robot Lab with each part's mass and inertia and the joints) and feed (the mass-properties record for Lagrange 2). To put a version in Verse: cad_place {zone: everglade|meteor-showcase|meteor-stress-test, at?: [x, z] in metres, heading?: degrees}; a newer version replaces the one there. cad_import_step brings a STEP model from other CAD into a part as a feature.
+- Drawings: cad_drawing {views?: front, top, right, left, bottom, back, iso; sections?: [{"view":"front","at":mm}]; dimensions?: [{"part","faces":[two parallel flat faces],"view"}]; sheet?: A4|A3|A2; angle?: third|first} makes a 2D drawing with hidden lines dashed, silhouettes, hatched sections, the overall sizes, hole diameters and a title block, as SVG, PDF and DXF; the card shows it.
 "##;
 
 /// The CAD Lab cards a reply keeps.
@@ -248,6 +249,7 @@ pub(crate) fn card_markup(chat: &str, card: &Value) -> Markup {
     let doc = s(card, "doc");
     let version = card["version"].as_u64().unwrap_or(1);
     let render = card["render"]["file"].as_str();
+    let drawing = card["drawing"]["file"].as_str();
     html! {
         div.oa-cad-card {
             link rel="stylesheet" href=(ASSET_CSS);
@@ -256,7 +258,10 @@ pub(crate) fn card_markup(chat: &str, card: &Value) -> Markup {
                 strong { (s(card, "title")) " · v" (version) }
                 " " span.oa-cad-dim { (s(card, "summary")) }
             }
-            @if let Some(file) = render {
+            @if let Some(file) = drawing {
+                img.oa-cad-render.oa-cad-drawing src=(out_href(chat, doc, version, file))
+                    alt={ (s(card, "title")) ", drawing" };
+            } @else if let Some(file) = render {
                 img.oa-cad-render src=(out_href(chat, doc, version, file))
                     alt={ (s(card, "title")) ", " (card["render"]["view"].as_str().unwrap_or("view")) " view" };
             } @else {
@@ -284,7 +289,9 @@ pub(crate) fn card_markup(chat: &str, card: &Value) -> Markup {
                         @let name = f["path"].as_str().and_then(|p| p.rsplit('/').next()).unwrap_or_default();
                         a href=(out_href(chat, doc, version, name)) download { (f["format"].as_str().unwrap_or_default().to_uppercase()) }
                     }
-                    " (STEP holds the exact solids)"
+                    @if files.iter().any(|f| f["format"] == "step") {
+                        " (STEP holds the exact solids)"
+                    }
                 }
             }
             div.oa-cad-actions {
@@ -293,7 +300,7 @@ pub(crate) fn card_markup(chat: &str, card: &Value) -> Markup {
                         hx-get=(format!("/chat/{chat}/cad/card?doc={}&v={version}&a={}", clean(doc), version - 1))
                         hx-target="closest .oa-cad-card" hx-swap="outerHTML" { "Compare with v" (version - 1) }
                 }
-                @if render.is_some() {
+                @if render.is_some() || drawing.is_some() {
                     button.oa-cad-button type="button"
                         hx-get=(format!("/chat/{chat}/cad/card?doc={}&v={version}", clean(doc)))
                         hx-target="closest .oa-cad-card" hx-swap="outerHTML" { "Turn it in 3D" }
@@ -321,7 +328,7 @@ const CSS: &str = r".oa-cad-card{margin:12px 0;padding:12px;border:1px solid rgb
 .oa-cad-title{margin:0 0 8px}.oa-cad-dim{opacity:.7}
 .oa-cad-view{position:relative;width:100%;aspect-ratio:16/10;border-radius:8px;overflow:hidden;background:linear-gradient(#eef1f5,#cfd5de)}
 .oa-cad-view img,.oa-cad-canvas{position:absolute;inset:0;width:100%;height:100%;display:block;object-fit:contain;touch-action:none;cursor:grab}
-.oa-cad-render{width:100%;border-radius:8px;display:block}
+.oa-cad-render{width:100%;border-radius:8px;display:block}.oa-cad-drawing{background:#fff}
 .oa-cad-meta{margin:8px 0 0;font-size:13px;opacity:.85}
 .oa-cad-list{margin:6px 0 0;padding-left:20px;font-size:13px}
 .oa-cad-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;font-size:13px}
@@ -617,6 +624,22 @@ mod tests {
         assert!(html.contains("name=rover-v3.step") && html.contains("STEP"));
         assert!(html.contains("Placed wheel_lf") && html.contains("Turn it in 3D"));
         assert!(!html.contains("Compare with v2"));
+    }
+
+    #[test]
+    fn a_card_shows_a_drawing_and_its_files() {
+        let mut card = sample();
+        card["drawing"] = json!({"file": "rover-v3-drawing.svg"});
+        card["exports"] = json!([{"format": "svg", "path": "/x/rover-v3-drawing.svg"},
+                                 {"format": "pdf", "path": "/x/rover-v3-drawing.pdf"}]);
+        let html = card_markup("c1", &card).into_string();
+        assert!(
+            html.contains("name=rover-v3-drawing.svg") && html.contains("drawing\""),
+            "{html}"
+        );
+        assert!(html.contains("name=rover-v3-drawing.pdf") && html.contains(">PDF<"));
+        assert!(!html.contains("STEP holds"));
+        assert!(html.contains("Turn it in 3D"));
     }
 
     #[test]

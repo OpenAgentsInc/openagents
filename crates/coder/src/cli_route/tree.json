@@ -4355,7 +4355,7 @@
               "chat"
             ],
             "usage": [
-              "chat [-p TEXT | --prompt-file FILE | --stdin] [--session ID] [--delegation ID] [--instructions TEXT | --instructions-file FILE] [--mode auto|coder|codex] [--in-place]"
+              "chat [-p TEXT | --prompt-file FILE | --stdin] [--session ID] [--delegation ID] [--instructions TEXT | --instructions-file FILE] [--mode auto|coder|codex] [--in-place] [--demo]"
             ],
             "forms": [
               {
@@ -4428,6 +4428,11 @@
                   {
                     "kind": "option",
                     "name": "in-place",
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "demo",
                     "optional": true
                   }
                 ]
@@ -5808,6 +5813,12 @@
         {
           "kind": "option",
           "name": "in-place",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "demo",
           "optional": true,
           "repeated": true
         },
@@ -16058,6 +16069,93 @@
           }
         },
         {
+          "name": "drawing",
+          "leaf": {
+            "path": [
+              "cad",
+              "drawing"
+            ],
+            "usage": [
+              "drawing DOC [--views front,top,right,iso] [--sections front@0] [--angle third|first] [--sheet A4|A3|A2] [--title TEXT] [--formats svg,pdf,dxf] [--version N]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "drawing"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "DOC"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "views",
+                    "value": "front,top,right,iso",
+                    "choices": [
+                      "front,top,right,iso"
+                    ],
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "sections",
+                    "value": "front@0",
+                    "choices": [
+                      "front@0"
+                    ],
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "angle",
+                    "value": "third|first",
+                    "choices": [
+                      "third",
+                      "first"
+                    ],
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "sheet",
+                    "value": "A4|A3|A2",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "title",
+                    "value": "TEXT",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "formats",
+                    "value": "svg,pdf,dxf",
+                    "choices": [
+                      "svg,pdf,dxf"
+                    ],
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "version",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "A 2D drawing: projected views with hidden lines dashed, sections, dimensions and a title block.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
           "name": "tool",
           "leaf": {
             "path": [
@@ -16204,6 +16302,45 @@
         {
           "kind": "option",
           "name": "remove",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "views",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "sections",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "angle",
+          "value": "third|first",
+          "choices": [
+            "third",
+            "first"
+          ],
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "sheet",
+          "value": "A4|A3|A2",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "title",
+          "value": "TEXT",
+          "open": true,
           "optional": true,
           "repeated": true
         },

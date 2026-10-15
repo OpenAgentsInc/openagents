@@ -12,6 +12,9 @@
 //! - `cad_faces {document, part, after?}`: faces and edges by name;
 //! - `cad_import_dxf {dxf, scale?, at?}`: a DXF drawing as sketch steps;
 //! - `cad_export_dxf {document, part, sketch}` or `{document, plane, at}`;
+//! - `cad_drawing {document, views?, sections?, angle?, sheet?, title?,
+//!   hidden?, dimensions?}`: a 2D drawing's report and its SVG; the PDF
+//!   and DXF through [`drawing`] (`drawing_file` in JavaScript);
 //! - `cad_export {document, format}` through [`export`] (`export_file` in
 //!   JavaScript; bytes: glb, step,
 //!   3mf, stl).
@@ -122,6 +125,11 @@ fn tool(name: &str, args: &Value) -> Result<Value, String> {
                 cad::dxf::section(&eval.built, &plane, args["at"].as_f64().unwrap_or(0.0))?;
             Ok(json!({"dxf": dxf, "entities": lines}))
         }
+        "cad_drawing" => {
+            let drawing = cad::drawing::of_document(&document(args)?, args, &cache)
+                .map_err(|p| p.join(" "))?;
+            Ok(json!({"drawing": drawing.report(), "svg": drawing.svg()}))
+        }
         "cad_export" => {
             Err("cad_export hands back bytes: call export_file(document, format).".into())
         }
@@ -133,12 +141,13 @@ fn tool(name: &str, args: &Value) -> Result<Value, String> {
 }
 
 /// The tools the browser build runs.
-pub const TOOLS: [&str; 6] = [
+pub const TOOLS: [&str; 7] = [
     "cad_check",
     "cad_solid",
     "cad_faces",
     "cad_import_dxf",
     "cad_export_dxf",
+    "cad_drawing",
     "cad_export",
 ];
 
@@ -152,6 +161,20 @@ pub fn export(document: &str, format: &str) -> Result<Vec<u8>, String> {
     let mut eval =
         cad::evaluate_with(&doc, &cad::build::default_cache()).map_err(|p| p.join(" "))?;
     cad::export::bytes(&mut eval.built, format)
+}
+
+/// A drawing as `format` (svg, pdf or dxf); `args` are `cad_drawing`'s,
+/// with the document.
+///
+/// # Errors
+/// The arguments aren't JSON, the document doesn't build, an option is
+/// unknown, or the format is.
+pub fn drawing(args: &str, format: &str) -> Result<Vec<u8>, String> {
+    let args: Value =
+        serde_json::from_str(args).map_err(|e| format!("The arguments aren't JSON ({e})."))?;
+    cad::drawing::of_document(&document(&args)?, &args, &cad::build::default_cache())
+        .map_err(|p| p.join(" "))?
+        .bytes(format)
 }
 
 /// The JSON Schemas of `part.v1` and `assembly.v1`.
@@ -175,6 +198,13 @@ mod web {
     #[wasm_bindgen]
     pub fn export_file(document: &str, format: &str) -> Result<Vec<u8>, JsValue> {
         super::export(document, format).map_err(|why| JsValue::from_str(&why))
+    }
+
+    /// A drawing as svg, pdf or dxf bytes: `drawing_file(JSON.stringify({document,
+    /// views, sections, ...}), "pdf")`.
+    #[wasm_bindgen]
+    pub fn drawing_file(args: &str, format: &str) -> Result<Vec<u8>, JsValue> {
+        super::drawing(args, format).map_err(|why| JsValue::from_str(&why))
     }
 
     /// The document schemas, as JSON.
@@ -222,5 +252,14 @@ mod tests {
         assert!(String::from_utf8_lossy(&step).contains("ISO-10303-21"));
         let stl = export(&part().to_string(), "stl").unwrap();
         assert!(stl.len() > 84, "{}", stl.len());
+        let drawn: Value = serde_json::from_str(&run(
+            "cad_drawing",
+            &json!({"document": part(), "views": ["front", "top"]}).to_string(),
+        ))
+        .unwrap();
+        assert_eq!(drawn["drawing"]["views"][1]["view"], "top", "{drawn}");
+        assert!(drawn["svg"].as_str().unwrap().starts_with("<svg"));
+        let pdf = drawing(&json!({"document": part()}).to_string(), "pdf").unwrap();
+        assert_eq!(&pdf[..5], b"%PDF-");
     }
 }
