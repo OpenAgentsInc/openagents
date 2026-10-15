@@ -530,11 +530,11 @@ async fn a_last_attempt_slower_than_its_ceiling_is_a_plain_failure() {
 }
 
 #[tokio::test]
-async fn the_default_chat_class_has_a_fifteen_second_budget_and_an_eight_second_fallback() {
+async fn the_default_chat_class_gives_argon_25_seconds_and_the_last_attempt_a_minute() {
     let table = ClassTable::default();
     let chat = &table.classes[&TaskClass::Chat];
-    assert_eq!(chat.first_token_ms, 8_000);
-    assert!(chat.last_ms >= 15_000);
+    assert_eq!(chat.first_token_ms, 25_000);
+    assert!(chat.last_ms >= 60_000);
     for entry in table.classes.values() {
         assert!(entry.last_ms >= entry.first_token_ms);
     }
@@ -587,4 +587,46 @@ async fn pay_mine_uses_only_the_callers_own_keys_and_ours_never_answer_it() {
     let routed = gateway.run(&request(MODEL), &own).await.unwrap();
     drain(routed.events).await;
     assert_eq!((mine.calls(), ours.calls()), (1, 1));
+}
+
+#[test]
+fn a_fallback_or_no_answer_is_logged_without_the_prompt() {
+    // #11654: a 502 after 25.6 s left nothing in the gateway's log.
+    use inference::openagents::{Attempt, AttemptOutcome};
+    let tried = [
+        Attempt {
+            model: "google/gemini-4-argon".into(),
+            upstream: "vertex".into(),
+            outcome: AttemptOutcome::Fallback,
+            ms: 25_000,
+            reason: Some("first_token_deadline".into()),
+            extra: Default::default(),
+        },
+        Attempt {
+            model: "google/gemini-3.8-flash".into(),
+            upstream: "openrouter".into(),
+            outcome: AttemptOutcome::Fallback,
+            ms: 600,
+            reason: Some("server".into()),
+            extra: Default::default(),
+        },
+    ];
+    let line = inference::run::route_log_line(
+        "req_1",
+        Some("chat"),
+        "openagents/auto",
+        25_000,
+        60_000,
+        &tried,
+        &[None, Some(503)],
+        None,
+    );
+    let json: Value =
+        serde_json::from_str(line.strip_prefix("inference route: ").unwrap()).unwrap();
+    assert_eq!(json["event"], "no_answer");
+    assert_eq!(json["request_id"], "req_1");
+    assert_eq!(json["attempts"][0]["reason"], "first_token_deadline");
+    assert_eq!(json["attempts"][0]["ms"], 25_000);
+    assert_eq!(json["attempts"][1]["status"], 503);
+    assert_eq!(json.as_object().unwrap().len(), 8);
 }

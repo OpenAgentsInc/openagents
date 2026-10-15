@@ -245,6 +245,18 @@ fn a_class_without_scores_keeps_the_table_order() {
     let plan = world.plan(&ask("openagents/chat")).unwrap();
     assert_eq!(plan.class, Some(TaskClass::Chat));
     assert_eq!(plan.first_token_ms, 25_000);
+    // A long prompt gets longer to its first token (#11654): 150,000
+    // tokens (600,000 characters) add 37.5 s to the deadline and the
+    // last attempt's ceiling; a huge one adds at most a minute.
+    let long = |chars: usize| CreateResponse {
+        input: Some(Input::Text("x".repeat(chars))),
+        ..ask("openagents/chat")
+    };
+    let planned = world.plan(&long(600_000)).unwrap();
+    assert_eq!(planned.first_token_ms, 25_000 + 37_500);
+    assert_eq!(planned.last_ms, plan.last_ms + 37_500);
+    let huge = world.plan(&long(4_000_000)).unwrap();
+    assert_eq!(huge.first_token_ms, 25_000 + 60_000);
 }
 
 #[test]

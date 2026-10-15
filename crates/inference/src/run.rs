@@ -554,6 +554,21 @@ impl Gateway {
             .iter()
             .rposition(|candidate| self.upstream(&candidate.upstream).is_some());
         let mut tried: Vec<ext::Attempt> = Vec::new();
+        // Each failed attempt's upstream status, for the route log.
+        let mut statuses: Vec<Option<u16>> = Vec::new();
+        let route_log =
+            |tried: &[ext::Attempt], statuses: &[Option<u16>], answered: Option<&str>| {
+                route_log_line(
+                    &caller.request_id,
+                    class.map(|class| class.as_str()),
+                    &requested,
+                    planned.first_token_ms,
+                    planned.last_ms,
+                    tried,
+                    statuses,
+                    answered,
+                )
+            };
         for (index, candidate) in planned.attempts.iter().enumerate() {
             let found = if candidate.payer == ext::Payer::Mine {
                 caller
@@ -622,6 +637,12 @@ impl Gateway {
                         reason: None,
                         extra: Extra::new(),
                     });
+                    statuses.push(None);
+                    // A fallback is logged (#11654): which models were
+                    // tried, how long each took, and why each failed.
+                    if tried.len() > 1 {
+                        eprintln!("{}", route_log(&tried, &statuses, Some(&candidate.model)));
+                    }
                     let recorder: Arc<dyn Recorder> = if candidate.payer == ext::Payer::Mine {
                         Arc::new(TheirAccount(self.meter.clone()))
                     } else {
@@ -698,7 +719,9 @@ impl Gateway {
                         reason: Some(error_word(class_record).to_owned()),
                         extra: Extra::new(),
                     });
+                    statuses.push(failure.error.status);
                     if !falls_back {
+                        eprintln!("{}", route_log(&tried, &statuses, None));
                         return Err(ApiError::invalid_request(
                             "input",
                             format!(
@@ -715,6 +738,7 @@ impl Gateway {
                 }
             }
         }
+        eprintln!("{}", route_log(&tried, &statuses, None));
         let summary = tried
             .iter()
             .map(|attempt| {
@@ -747,6 +771,53 @@ impl Recorder for TheirAccount {
         attempt.account = Some(CALLER_KEY.to_owned());
         self.0.record(attempt);
     }
+}
+
+/// The gateway's log line for a request its router could not answer on
+/// the first attempt (#11654): one JSON object after `inference route: `,
+/// with the request id, the class and requested model, the first-token
+/// deadline and ceiling, and each attempt's model, upstream, milliseconds,
+/// outcome, why it failed (`first_token_deadline`, `server`, `network`,
+/// ...) and the upstream's HTTP status. `answered` names the model that
+/// answered after a fallback; `None` is the 502 (or a refusal). Never the
+/// prompt, the answer, or a credential.
+#[must_use]
+#[allow(clippy::too_many_arguments)]
+pub fn route_log_line(
+    request_id: &str,
+    class: Option<&str>,
+    requested: &str,
+    first_token_ms: u64,
+    last_ms: u64,
+    tried: &[ext::Attempt],
+    statuses: &[Option<u16>],
+    answered: Option<&str>,
+) -> String {
+    let attempts: Vec<serde_json::Value> = tried
+        .iter()
+        .enumerate()
+        .map(|(index, attempt)| {
+            serde_json::json!({
+                "model": attempt.model,
+                "upstream": attempt.upstream,
+                "ms": attempt.ms,
+                "outcome": attempt.outcome,
+                "reason": attempt.reason,
+                "status": statuses.get(index).copied().flatten(),
+            })
+        })
+        .collect();
+    let line = serde_json::json!({
+        "event": if answered.is_some() { "fell_back" } else { "no_answer" },
+        "request_id": request_id,
+        "class": class,
+        "requested": requested,
+        "first_token_ms": first_token_ms,
+        "last_ms": last_ms,
+        "attempts": attempts,
+        "answered": answered,
+    });
+    format!("inference route: {line}")
 }
 
 /// The record word for an error class, as attempts name it.

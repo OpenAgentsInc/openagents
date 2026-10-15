@@ -845,19 +845,49 @@ pub fn plan(request: &CreateResponse, context: &Context<'_>) -> Result<Plan, Api
     if attempts.is_empty() {
         return Err(no_route(model, &dropped));
     }
+    // A long prompt takes longer to its first token: Argon reads it and
+    // thinks over it before it writes (#11654).
+    let extra = prompt_allowance_ms(needs.input_tokens);
     Ok(Plan {
         class,
         attempts,
-        first_token_ms: entry.map_or(context.classes.model_first_token_ms, |entry| {
-            entry.first_token_ms
-        }),
+        first_token_ms: entry
+            .map_or(context.classes.model_first_token_ms, |entry| {
+                entry.first_token_ms
+            })
+            .saturating_add(extra),
         last_ms: entry
             .map_or(context.classes.model_last_ms, |entry| entry.last_ms)
             .max(entry.map_or(context.classes.model_first_token_ms, |entry| {
                 entry.first_token_ms
-            })),
+            }))
+            .saturating_add(extra),
         dropped,
     })
+}
+
+/// Milliseconds of first-token time a prompt adds per thousand input tokens.
+///
+/// Measured on Gemini 4 Argon through the gateway, 2026-10-15, uncached
+/// prompts: a one-word answer took 3.3 s at 2,000 tokens and 7.0-9.0 s at
+/// 150,000 (about 40 ms per thousand to read the prompt); a question that
+/// needs thought took 17-25 s at 3,000 tokens and 39-58 s at 60,000 to
+/// 150,000. 250 ms per thousand covers the reading and the longer thinking
+/// over a long prompt: a 150,000-token prompt gets 37.5 s more, so `fast`
+/// waits 57.5 s for Argon's first token instead of 20 s.
+pub const FIRST_TOKEN_MS_PER_1K_INPUT: u64 = 250;
+/// The most a long prompt adds to the first-token deadline: past 240,000
+/// input tokens a stall is a stall.
+pub const MAX_PROMPT_ALLOWANCE_MS: u64 = 60_000;
+
+/// What a prompt of `input_tokens` adds to the first-token deadline and the
+/// last attempt's ceiling: [`FIRST_TOKEN_MS_PER_1K_INPUT`] per whole
+/// thousand tokens, at most [`MAX_PROMPT_ALLOWANCE_MS`].
+#[must_use]
+pub fn prompt_allowance_ms(input_tokens: u64) -> u64 {
+    (input_tokens / 1_000)
+        .saturating_mul(FIRST_TOKEN_MS_PER_1K_INPUT)
+        .min(MAX_PROMPT_ALLOWANCE_MS)
 }
 
 /// Whether `candidate` is the caller's own coding capacity (#11080).
