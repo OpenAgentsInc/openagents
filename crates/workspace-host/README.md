@@ -37,7 +37,10 @@ workspace binding, operation, input, document, encoding, and expected version.
 The version includes the Git commit and retained ref-history identity, length,
 and digest. The host checks it while a native Git ref transaction holds the lock,
 then rechecks authority and expiry before commit. Independent writers and
-A-to-B-to-A changes cannot silently overwrite a stale document.
+A-to-B-to-A changes cannot silently overwrite a stale document. New replacement
+bytes must accompany the request; only the verified current target bytes can be
+reused without an attachment. Knowing another resource's cached digest grants
+no read permission.
 
 Admission and effect intent reach durable storage before dispatch. Exact retries
 return the recorded result; changed requests under the same actor/command refuse.

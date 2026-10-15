@@ -517,9 +517,6 @@ impl Host {
             workspace::parse(&resolve(&replacement["snapshot"])?).map_err(|e| e.to_string())?;
         let observation = contracts::parse_strict(&resolve(&snapshot["observation"])?)
             .map_err(|e| e.to_string())?;
-        let old_bytes = resolve(&snapshot["content"])?;
-        workspace::verify_document(&snapshot, &observation, Some(&old_bytes))
-            .map_err(|e| e.to_string())?;
         if snapshot["editable"] != true
             || snapshot["resource"] != proposal["resource"]
             || snapshot["binding"] != proposal["binding"]
@@ -530,10 +527,30 @@ impl Host {
         {
             return Err("stale: replacement is not bound to the expected document".into());
         }
-        let bytes = resolve(&replacement["content"])?;
         let expected = observation["provider_revision"]
             .as_str()
             .ok_or("conditional revision is unavailable")?;
+        let capture = resource.source.capture()?;
+        let current = capture.position == expected;
+        let old_bytes = if current {
+            capture.bytes
+        } else {
+            // A stale request still reaches the durable source-CAS refusal below.
+            // Its historical bytes cannot authorize reuse of cached replacement bytes.
+            resolve(&snapshot["content"])?
+        };
+        workspace::verify_document(&snapshot, &observation, Some(&old_bytes))
+            .map_err(|e| e.to_string())?;
+        let content =
+            contracts::parse_artifact(&replacement["content"]).map_err(|e| e.to_string())?;
+        let bytes = if let Some(bytes) = attachments.get(&content.digest) {
+            bytes.clone()
+        } else if current && replacement["content"] == snapshot["content"] {
+            old_bytes.clone()
+        } else {
+            return Err("not_admitted: replacement bytes must be supplied".into());
+        };
+        contracts::check_artifact_bytes(&content, &bytes).map_err(|e| e.to_string())?;
         // Stage all needed immutable evidence before committing the admission.
         for value in [&admission, &proposal, &replacement, &snapshot, &observation] {
             self.artifacts.put_json(value)?;

@@ -535,6 +535,11 @@ history requires a new snapshot; a temporary ref change cannot disappear merely
 because the branch returned to the same commit. The host disables repository
 hooks and bounds Git subprocess time and output.
 
+Replacement bytes must accompany the request unless they exactly match the
+current target document. The host checks the snapshot against the source's
+actual bytes and version before permitting that reuse. A digest in the private
+artifact cache supplies no permission to copy bytes from another resource.
+
 Native authenticated reads use `openagents.ws-resource-read.v1` with `requires`
 and `resource`; retained projection fetches use
 `openagents.ws-projection-fetch.v1` with `requires`, `projection`, `artifact`,

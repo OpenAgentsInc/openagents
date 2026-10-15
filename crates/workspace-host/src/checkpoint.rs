@@ -366,10 +366,22 @@ impl Host {
                 self.run_record(restore,command,"dispatched",Some(index),json!({"binding":plan["binding"],"attempt":1,"input":step["proposal"],"context":plan["safety_checkpoint"],"effect":plan["impact"],"generation":0}),time)?;
                 self.save(&state)?;
             }
+            // This plan was built from resource-authorized checkpoint reads.
+            // Supply those exact bytes explicitly through the common change path.
+            let proposal = self.artifacts.json(&step["proposal"])?;
+            let replacement = self.artifacts.json(&proposal["input"])?;
+            let content = &replacement["content"];
+            let attachments = BTreeMap::from([(
+                content["digest"]
+                    .as_str()
+                    .ok_or("restore content digest")?
+                    .to_string(),
+                self.artifacts.get(content)?,
+            )]);
             let result = self.change_admitted(
                 actor.clone(),
                 step.clone(),
-                &BTreeMap::new(),
+                &attachments,
                 time,
                 None,
                 Some(&plan),

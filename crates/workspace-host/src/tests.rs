@@ -452,3 +452,106 @@ fn a_changed_root_mapping_requires_explicit_registration() {
     std::os::unix::fs::symlink(&moved, &repo).unwrap();
     assert!(source.capture().unwrap_err().contains("identity changed"));
 }
+#[test]
+fn a_digest_does_not_authorize_copying_another_resources_retained_bytes() {
+    let (_temp, host, first, repo) = setup();
+    git(&repo, &["branch", "private", "refs/heads/docs"], None);
+    let private = host
+        .register_git(
+            git::GitDocument::admit(&repo, "refs/heads/private", "doc.txt").unwrap(),
+            "Private".into(),
+            100,
+        )
+        .unwrap();
+    let before = read(&host, &private, 1, 100);
+    let (event, files) = change(
+        &host,
+        &private,
+        before,
+        "private retained content\n",
+        1,
+        None,
+        101,
+    );
+    host.change(&event, &files, 101, None).unwrap();
+    let private_snapshot = read(&host, &private, 1, 102);
+    let private_content = private_snapshot["body"]["content"].clone();
+    host.grant(&key(2), [first.resource.clone()].into(), true, false, 500)
+        .unwrap();
+    let before = read(&host, &first, 2, 102);
+    let (event, mut files) = change(&host, &first, before.clone(), "placeholder\n", 2, None, 103);
+    let opened = nostr::private_artifact::open(&event, &secret(2)).unwrap();
+    let mut admission = contracts::parse_strict(opened.inline_bytes().unwrap()).unwrap();
+    let mut proposal =
+        contracts::parse_strict(&files[admission["proposal"]["digest"].as_str().unwrap()]).unwrap();
+    let mut replacement =
+        contracts::parse_strict(&files[proposal["input"]["digest"].as_str().unwrap()]).unwrap();
+    replacement["content"] = private_content;
+    let bytes = contracts::jcs(&replacement).unwrap();
+    let reference = artifact::json_ref(&replacement).unwrap();
+    files.insert(reference["digest"].as_str().unwrap().into(), bytes);
+    proposal["input"] = reference;
+    let bytes = contracts::jcs(&proposal).unwrap();
+    let reference = artifact::json_ref(&proposal).unwrap();
+    files.insert(reference["digest"].as_str().unwrap().into(), bytes);
+    admission["proposal"] = reference;
+    assert!(
+        !files
+            .values()
+            .any(|bytes| bytes == b"private retained content\n")
+    );
+    let event = request(&secret(2), &key(1), admission, 103).unwrap();
+    let result = host.change(&event, &files, 103, None);
+    assert!(
+        result.is_err(),
+        "retained private bytes were copied: {result:?}"
+    );
+    assert_eq!(
+        read(&host, &first, 2, 104)["content_utf8"],
+        before["content_utf8"]
+    );
+}
+
+#[test]
+fn unchanged_current_bytes_can_be_reused_without_an_attachment() {
+    let (_temp, host, resource, _) = setup();
+    let before = read(&host, &resource, 1, 100);
+    let (event, mut files) = change(&host, &resource, before, "hello\n", 1, None, 101);
+    files.remove(&contracts::digest_bytes(b"hello\n"));
+    assert_eq!(
+        host.change(&event, &files, 101, None).unwrap()["outcome"],
+        "completed"
+    );
+}
+#[test]
+fn a_caller_snapshot_cannot_substitute_cached_bytes_for_the_native_source() {
+    let (_temp, host, resource, _) = setup();
+    let before = read(&host, &resource, 1, 100);
+    let foreign = host
+        .artifacts
+        .put(b"unrelated cached bytes\n", "text/plain", None)
+        .unwrap();
+    let mut snapshot = before["body"].clone();
+    let mut observation = host.artifacts.json(&snapshot["observation"]).unwrap();
+    snapshot["content"] = foreign.clone();
+    observation["content"] = foreign;
+    snapshot["observation"] = host.artifacts.put_json(&observation).unwrap();
+    let mut forged = before.clone();
+    forged["snapshot"] = host.artifacts.put_json(&snapshot).unwrap();
+    forged["body"] = snapshot;
+    let (event, mut files) = change(
+        &host,
+        &resource,
+        forged,
+        "unrelated cached bytes\n",
+        1,
+        None,
+        101,
+    );
+    files.remove(&contracts::digest_bytes(b"unrelated cached bytes\n"));
+    assert!(host.change(&event, &files, 101, None).is_err());
+    assert_eq!(
+        read(&host, &resource, 1, 102)["content_utf8"],
+        before["content_utf8"]
+    );
+}
