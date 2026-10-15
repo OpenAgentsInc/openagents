@@ -230,9 +230,11 @@ def working(html):
 def ask(base, question, stream=False):
     """Ask on a fresh visitor; returns (answer text, streamed?, error)."""
     site = Site(base)
-    home = site.get("/")
+    # A visitor who isn't signed in starts a chat at /new (/ is the
+    # landing page for them).
+    home = site.get("/new")
     if home.status != 200 or "oa_visitor" not in site.cookies:
-        return None, False, f"GET / {home.status}, visitor cookie {'oa_visitor' in site.cookies}"
+        return None, False, f"GET /new {home.status}, visitor cookie {'oa_visitor' in site.cookies}"
     fields = hidden_fields(home.text)
     chat = str(uuid.uuid4())
     form = {"q": question, "request_id": chat, "csrf": fields.get("csrf", ""),
@@ -564,9 +566,15 @@ def run(base, only, install, production=False, restart=None, invite_only=False,
     site = Site(base)
     want = (lambda name: True) if not only else (lambda name: any(name.startswith(o) for o in only))
 
-    # Home: the composer, the four starter questions, the theme toggle.
+    # Home: a visitor who isn't signed in sees the landing page at /, and
+    # starts a chat at /new: the composer, the four starter questions, the
+    # theme toggle.
     if want("home"):
-        home = site.get("/")
+        landing = site.get("/")
+        record("home: / is the landing page", landing.status == 200
+               and 'data-slot="hero-section"' in landing.text
+               and 'href="/new"' in landing.text, f"{landing.status}")
+        home = site.get("/new")
         chips = re.findall(r'<form class="oa-suggestion-form"[^>]*>.*?</form>', home.text, re.S)
         questions = [hidden_fields(c).get("q", "") for c in chips]
         record("home: loads", home.status == 200, f"{home.status}")
