@@ -77,6 +77,7 @@ mod robot_lab;
 pub mod sales_remote;
 mod screens;
 mod settings;
+mod ship_lab;
 pub mod shutdown;
 mod sign_in_keys;
 mod suggestions;

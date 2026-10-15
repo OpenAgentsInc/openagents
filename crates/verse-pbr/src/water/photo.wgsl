@@ -992,4 +992,10 @@ fn water_orb(i: WaterOut, v: vec3<f32>, pixel: vec2<f32>, t: f32) -> WaterShade 
     return water_cover(rgb, alpha);
 }
 
+// WebGL2's water pipeline has no rain depth (16 textures at most), so
+// rain falls on all of its water there.
+//#if GLES
+fn water_host_rain_open(world: vec3<f32>) -> f32 { return 1.0; }
+//#else
 fn water_host_rain_open(world: vec3<f32>) -> f32 { return rain_open(world); }
+//#endif

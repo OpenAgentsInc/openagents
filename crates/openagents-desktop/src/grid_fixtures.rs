@@ -509,6 +509,160 @@ fn episode_289_title_slide_over_the_grid() {
     assert!(layer.rect().is_none());
 }
 
+/// Walking through the Grid's LAGRANGE 2 arch draws the factory through
+/// the legacy renderer on the window's device, and walking back out through
+/// its THE GRID arch draws the Grid again (#11651).
+#[test]
+#[ignore = "requires a GPU; run with OPENAGENTS_GRID_EVIDENCE to retain captures"]
+fn walking_into_lagrange_2_and_back_out_draws_each_side() {
+    use verse::zones::ZoneId;
+    let evidence = std::env::var_os("OPENAGENTS_GRID_EVIDENCE").map(std::path::PathBuf::from);
+    if let Some(dir) = &evidence {
+        std::fs::create_dir_all(dir).unwrap();
+    }
+    let home = tempfile::tempdir().unwrap();
+    let start = Instant::now();
+    let (mut app, _) = DesktopApp::performance_fixture(0, 0, start);
+    let grid = Grid::new("ws://127.0.0.1:1".into(), home.path().into(), true);
+    app.set_grid(grid.clone());
+    app.activate(
+        Intent::Navigate {
+            action: chrome::Action::Grid,
+        },
+        start,
+    );
+    let watcher: openagents_desktop::grid::Watcher = Box::new(|| {
+        openagents_desktop::backdrop::GridBackdrop::new("ws://127.0.0.1:1", Box::new(|| true))
+    });
+    let mut layer = Layer::new(grid.clone(), Some(watcher));
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+    let adapter =
+        pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
+            .unwrap();
+    let (device, queue) =
+        pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default())).unwrap();
+    let gpu = Gpu {
+        adapter: &adapter,
+        device: &device,
+        queue: &queue,
+    };
+    app.activate(Intent::Grid { key: "play".into() }, start);
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while grid.borrow().surface.is_none() && Instant::now() < deadline {
+        app.tick(Instant::now());
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    // Lay the page out so the Verse view has its place for input.
+    let (_, scene) = rust_native_desktop::capture_views(&mut app, 1280.0, 800.0, 1.0);
+    if let Some(rect) = layer.surface().and_then(|name| scene.backdrop_rect(name)) {
+        layer.viewport(rect, 1.0);
+    }
+    let size = (1280, 800);
+    let key = |code: &'static str, pressed: bool| NativeInput::Key {
+        code,
+        pressed,
+        repeat: false,
+        command: false,
+        alt: false,
+        control: false,
+        logo: false,
+    };
+    let lit = |frame: &Frame| {
+        frame
+            .pixels
+            .chunks_exact(4)
+            .filter(|p| p[0].max(p[1]).max(p[2]) > 40)
+            .count()
+    };
+    let save = |name: &str, frame: &Frame| {
+        if let Some(dir) = &evidence {
+            std::fs::write(dir.join(name), frame.png().unwrap()).unwrap();
+        }
+    };
+    // On the Grid, just in front of the arch, facing it.
+    {
+        let mut state = grid.borrow_mut();
+        let world = state.surface.as_mut().unwrap().world_mut();
+        let (pos, away) = world.lagrange2_gate().expect("the Grid's arch").front();
+        world
+            .place_player(pos, away + std::f32::consts::PI)
+            .unwrap();
+    }
+    let before = render(&mut layer, &gpu, size, Instant::now());
+    save("lagrange2-1-grid-at-the-arch.png", &before);
+    let zone = |grid: &openagents_desktop::grid::Shared| {
+        grid.borrow().surface.as_ref().unwrap().world().zone
+    };
+    let rect = grid.borrow().rect;
+    app.native_input(
+        NativeInput::Button {
+            button: 1,
+            pressed: true,
+            x: rect.x + 10.0,
+            y: rect.y + 10.0,
+        },
+        Instant::now(),
+    );
+    app.native_input(key("KeyW", true), Instant::now());
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while zone(&grid) != ZoneId::Lagrange2 {
+        assert!(Instant::now() < deadline, "walking through the arch enters");
+        render(&mut layer, &gpu, size, Instant::now());
+        std::thread::sleep(Duration::from_millis(16));
+    }
+    app.native_input(key("KeyW", false), Instant::now());
+    let mut inside = render(&mut layer, &gpu, size, Instant::now());
+    for _ in 0..30 {
+        inside = render(&mut layer, &gpu, size, Instant::now());
+        std::thread::sleep(Duration::from_millis(16));
+    }
+    save("lagrange2-2-inside.png", &inside);
+    assert!(
+        lit(&inside) > inside.pixels.len() / 4 / 100,
+        "the factory draws: {} lit pixels",
+        lit(&inside)
+    );
+    // In the zone, in front of its THE GRID arch, facing it, then through.
+    {
+        let mut state = grid.borrow_mut();
+        let world = state.surface.as_mut().unwrap().world_mut();
+        let mut at = verse::zones::lagrange2::RETURN_PORTAL;
+        at.y += 1.0;
+        at.z -= 3.5;
+        world.place_player(at, 0.0).unwrap();
+    }
+    for _ in 0..10 {
+        render(&mut layer, &gpu, size, Instant::now());
+        std::thread::sleep(Duration::from_millis(16));
+    }
+    save(
+        "lagrange2-3-at-the-way-out.png",
+        &render(&mut layer, &gpu, size, Instant::now()),
+    );
+    app.native_input(key("KeyW", true), Instant::now());
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while zone(&grid) != ZoneId::Plaza {
+        assert!(
+            Instant::now() < deadline,
+            "walking through THE GRID arch returns"
+        );
+        render(&mut layer, &gpu, size, Instant::now());
+        std::thread::sleep(Duration::from_millis(16));
+    }
+    app.native_input(key("KeyW", false), Instant::now());
+    let mut back = render(&mut layer, &gpu, size, Instant::now());
+    for _ in 0..30 {
+        back = render(&mut layer, &gpu, size, Instant::now());
+        std::thread::sleep(Duration::from_millis(16));
+    }
+    save("lagrange2-4-grid-again.png", &back);
+    assert!(
+        lit(&back) > back.pixels.len() / 4 / 200,
+        "the Grid draws again: {} lit pixels",
+        lit(&back)
+    );
+}
+
 fn texture(device: &wgpu::Device, size: (u32, u32)) -> wgpu::Texture {
     device.create_texture(&wgpu::TextureDescriptor {
         label: Some("Grid acceptance"),

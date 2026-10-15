@@ -1,5 +1,6 @@
 //! The Labs in the web chat: Video Lab ([`crate::lab`]), Game Lab
-//! ([`crate::game_lab`]) and CAD Lab ([`crate::cad_lab`]) behind one door
+//! ([`crate::game_lab`]), CAD Lab ([`crate::cad_lab`]) and Ship Lab
+//! ([`crate::ship_lab`]) behind one door
 //! (#11619, #11627).
 //!
 //! One chat turn is one Gemini 4 Argon conversation that sees both Labs'
@@ -40,6 +41,7 @@ pub(crate) enum Kind {
     Game,
     Robot,
     Cad,
+    Ship,
 }
 
 impl Kind {
@@ -53,6 +55,8 @@ impl Kind {
             Some(Kind::Robot)
         } else if name.starts_with("cad_") {
             Some(Kind::Cad)
+        } else if name.starts_with("ship_") {
+            Some(Kind::Ship)
         } else {
             None
         }
@@ -65,6 +69,7 @@ impl Kind {
             crate::game_lab::CARD => Some(Kind::Game),
             crate::robot_lab::CARD => Some(Kind::Robot),
             crate::cad_lab::CARD => Some(Kind::Cad),
+            crate::ship_lab::CARD => Some(Kind::Ship),
             _ => None,
         }
     }
@@ -75,6 +80,7 @@ impl Kind {
             Kind::Game => crate::game_lab::CARD,
             Kind::Robot => crate::robot_lab::CARD,
             Kind::Cad => crate::cad_lab::CARD,
+            Kind::Ship => crate::ship_lab::CARD,
         }
     }
 
@@ -85,6 +91,7 @@ impl Kind {
             Kind::Game => "game",
             Kind::Robot => "document",
             Kind::Cad => "doc",
+            Kind::Ship => "doc",
         }
     }
 
@@ -94,6 +101,7 @@ impl Kind {
             Kind::Game => "Game Lab",
             Kind::Robot => "Robot Lab",
             Kind::Cad => "CAD Lab",
+            Kind::Ship => "Ship Lab",
         }
     }
 }
@@ -157,13 +165,17 @@ pub(crate) async fn door(
     owner: &str,
     project: Option<&str>,
 ) -> Option<LabsDoor> {
-    let (video, game, robot, cad) = tokio::join!(
+    let (video, game, robot, cad, ship) = tokio::join!(
         crate::lab::manifest_here(),
         crate::game_lab::manifest_here(),
         crate::robot_lab::manifest_here(owner, project),
-        crate::cad_lab::manifest_here()
+        crate::cad_lab::manifest_here(),
+        crate::ship_lab::manifest_here()
     );
-    let labs: Vec<Lab> = [video, game, robot, cad].into_iter().flatten().collect();
+    let labs: Vec<Lab> = [video, game, robot, cad, ship]
+        .into_iter()
+        .flatten()
+        .collect();
     if labs.is_empty() {
         return None;
     }
@@ -190,11 +202,12 @@ fn guidance(labs: &[Lab], current: Option<&Current>) -> String {
             Kind::Game => crate::game_lab::guidance(&lab.documents),
             Kind::Robot => crate::robot_lab::guidance(&lab.documents),
             Kind::Cad => crate::cad_lab::guidance(&lab.documents),
+            Kind::Ship => crate::ship_lab::guidance(&lab.documents),
         });
     }
     out.push_str(
         "\nFilms, cuts, shots, scenes and videos are Video Lab documents (lab_* tools); games are Game Lab documents \
-(game_* tools); robot scenes and attempts are Robot Lab documents (robot_* tools); parts, assemblies and CAD models are CAD Lab documents (cad_* tools). Never use one Lab's tools on another Lab's document. When the message is about none of these Labs, call \
+(game_* tools); robot scenes and attempts are Robot Lab documents (robot_* tools); parts, assemblies and CAD models are CAD Lab documents (cad_* tools); the Lagrange 2 spacecraft (the tug) is a Ship Lab document (ship_* tools). Never use one Lab's tools on another Lab's document. When the message is about none of these Labs, call \
 general_chat.\nSay only what the tool results in this turn say: every version, time, number and measurement you \
 mention comes from a tool result. When a tool refuses (a document or version that doesn't exist, an edit it won't \
 make), say so plainly in a sentence and don't guess an answer.\n",
@@ -282,6 +295,7 @@ fn misrouted(labs: &[Lab], name: &str, arguments: &Value) -> Option<String> {
                 Kind::Game => "game_",
                 Kind::Robot => "robot_",
                 Kind::Cad => "cad_",
+                Kind::Ship => "ship_",
             }
         )
     })
@@ -300,6 +314,7 @@ async fn run_tool(labs: &[Lab], name: &str, arguments: &Value) -> Result<Value, 
         Kind::Game => crate::game_lab::run_tool(&lab.url, name, arguments).await,
         Kind::Robot => crate::robot_lab::run_tool(&lab.url, name, arguments).await,
         Kind::Cad => crate::cad_lab::run_tool(&lab.url, name, arguments).await,
+        Kind::Ship => crate::ship_lab::run_tool(&lab.url, name, arguments).await,
     }
 }
 

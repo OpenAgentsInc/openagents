@@ -14999,6 +14999,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "ship-lab"
+version = "1.0.0-rc.14"
+dependencies = [
+ "axum 0.8.9",
+ "glam",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "verse-lagrange2",
+]
+
+[[package]]
 name = "shlex"
 version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -18209,6 +18221,7 @@ name = "verse-zone-lagrange2"
 version = "1.0.0-rc.14"
 dependencies = [
  "glam",
+ "serde_json",
  "verse-core",
  "verse-lagrange",
  "verse-lagrange2",

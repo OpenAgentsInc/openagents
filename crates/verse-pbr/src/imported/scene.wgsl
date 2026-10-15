@@ -248,6 +248,8 @@ fn portal(v:Out,t:f32,x_axis:vec3<f32>,z_axis:vec3<f32>,center:vec3<f32>)->vec4<
  let ca=cross(py,geometric);let cb=cross(geometric,px);
  let det=dot(px,ca);let inv_det=select(0.0,1.0/det,abs(det)>1e-20);
  let grad_u=(ca*ux.x+cb*uy.x)*inv_det;let grad_v=(ca*ux.y+cb*uy.y)*inv_det;
+ // Surface curvature (1/m), for skin's pre-integrated scattering.
+ let curvature=length(fwidth(geometric))/max(length(fwidth(v.pos)),1e-6);
  var soft=n;
  if model==1u && material.maps.x>0.5 {
   // Skin: the normal map seen through scattering, from a blurrier mip.
@@ -323,8 +325,6 @@ fn portal(v:Out,t:f32,x_axis:vec3<f32>,z_axis:vec3<f32>,center:vec3<f32>)->vec4<
  let f0=mix(vec3(0.04),albedo,metallic);
  let nv=max(dot(n,view_direction),0.0001);
  let strand=normalize(grad_v+vec3(0.0,0.0,1e-9));
- // Surface curvature (1/m), for skin's pre-integrated scattering.
- let curvature=length(fwidth(geometric))/max(length(fwidth(v.pos)),1e-6);
  for(var i=0u;i<u32(frame.settings.x);i++){
   let source=frame.lights[i*2u];let radiance=frame.lights[i*2u+1u];
   let delta=source.xyz-v.pos;let distance_squared=dot(delta,delta);

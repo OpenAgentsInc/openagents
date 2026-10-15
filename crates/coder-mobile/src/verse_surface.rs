@@ -236,6 +236,10 @@ impl GridSurface {
     pub fn world(&self) -> &verse::runtime::WorldRuntime {
         &self.scene.world
     }
+    /// The world, to stand the player somewhere for captures and tests.
+    pub fn world_mut(&mut self) -> &mut verse::runtime::WorldRuntime {
+        &mut self.scene.world
+    }
     pub fn atlas(&self) -> &verse::ui::Atlas {
         &self.scene.atlas
     }

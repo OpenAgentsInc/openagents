@@ -2,7 +2,7 @@
 # The whole 1.0 web stack on this Mac, wired the way production runs it
 # (docs/dev/full-local.md):
 #
-#   scripts/dev/full-local.sh start [--no-build] [--lab] [--game] [--cad]
+#   scripts/dev/full-local.sh start [--no-build] [--lab] [--game] [--cad] [--ship]
 #                                                  build, start everything, return
 #   scripts/dev/full-local.sh stop                 stop what start started
 #   scripts/dev/full-local.sh status               what runs, where
@@ -46,6 +46,10 @@
 #                  unoptimised), and the website's chat gets its cad_* tools
 #                  the same way (docs/cad-lab/mvp.md). --cad alone leaves
 #                  Video Lab off.
+#   ship lab       with --lab or --ship: ship-lab serve on 127.0.0.1:8796
+#                  (SHIP_LAB_PORT), and the website's chat gets its ship_*
+#                  tools: Lagrange 2's spacecraft, every edit checked
+#                  (docs/verse/lagrange-2.md).
 #
 # Everything persists under $FULL_LOCAL (default ~/.openagents/full-local):
 # accounts, sessions, chats, saved keys, the gateway registry, logs.
@@ -161,10 +165,11 @@ build() {
 
 status() {
     any=0
-    for name in gateway worker web lab game cad; do
+    for name in gateway worker web lab game cad ship; do
         [ "$name" = lab ] && [ "${lab:-0}" != 1 ] && continue
         [ "$name" = game ] && [ "${game:-0}" != 1 ] && continue
         [ "$name" = cad ] && [ "${cad:-0}" != 1 ] && continue
+        [ "$name" = ship ] && [ "${ship:-0}" != 1 ] && continue
         if p=$(pid "$name"); then
             any=1
             printf '%-8s running (pid %s)\n' "$name" "$p"
@@ -187,12 +192,15 @@ status() {
         if [ "${cad:-0}" = 1 ]; then
             echo "CAD Lab:   http://127.0.0.1:${cad_port:-8794} (the chat's CAD models; log in $logs/cad.log)"
         fi
+        if [ "${ship:-0}" = 1 ]; then
+            echo "Ship Lab:  http://127.0.0.1:${ship_port:-8796} (the chat's Lagrange 2 ship; log in $logs/ship.log)"
+        fi
         echo "Logs:      $logs/{gateway,worker,web}.log"
     fi
 }
 
 stop() {
-    for name in web worker gateway lab game cad; do
+    for name in web worker gateway lab game cad ship; do
         if p=$(pid "$name"); then
             kill "$p" 2>/dev/null || true
             i=0
@@ -212,12 +220,14 @@ start() {
     lab=0
     game=0
     cad=0
+    ship=0
     for arg in "$@"; do
         case "$arg" in
         --no-build) build_first=0 ;;
-        --lab) lab=1 game=1 cad=1 ;;
+        --lab) lab=1 game=1 cad=1 ship=1 ;;
         --game) game=1 ;;
         --cad) cad=1 ;;
+        --ship) ship=1 ;;
         *) usage ;;
         esac
     done
@@ -227,6 +237,7 @@ start() {
     lab_port=${VIDEO_LAB_PORT:-8792}
     game_port=${GAME_LAB_PORT:-8793}
     cad_port=${CAD_LAB_PORT:-8794}
+    ship_port=${SHIP_LAB_PORT:-8796}
     if pid gateway > /dev/null || pid worker > /dev/null || pid web > /dev/null; then
         echo "Already running; 'stop' first to restart."
         status
@@ -246,8 +257,8 @@ start() {
 
     mkdir -p "$state" "$run" "$logs"
     chmod 700 "$state"
-    printf 'web_port=%s\ngateway_port=%s\nrelay=%s\nlab=%s\nlab_port=%s\ngame=%s\ngame_port=%s\ncad=%s\ncad_port=%s\n' \
-        "$web_port" "$gateway_port" "$relay" "$lab" "$lab_port" "$game" "$game_port" "$cad" "$cad_port" > "$run/ports"
+    printf 'web_port=%s\ngateway_port=%s\nrelay=%s\nlab=%s\nlab_port=%s\ngame=%s\ngame_port=%s\ncad=%s\ncad_port=%s\nship=%s\nship_port=%s\n' \
+        "$web_port" "$gateway_port" "$relay" "$lab" "$lab_port" "$game" "$game_port" "$cad" "$cad_port" "$ship" "$ship_port" > "$run/ports"
     if [ "$build_first" = 1 ]; then
         build
     elif [ ! -s "$state/build/chat/coder_chat_web_bg.wasm" ] \
@@ -503,8 +514,36 @@ EOF
         [ -n "$google_credentials" ] || echo "No Google credential, so the chat can't use CAD Lab's tools (Gemini)." >&2
     fi
 
+    # Ship Lab (docs/verse/lagrange-2.md): Lagrange 2's spacecraft
+    # document, every edit checked; the website's chat gets its tools the
+    # same way.
+    ship_url=""
+    if [ "$ship" = 1 ]; then
+        ship_url="http://127.0.0.1:$ship_port"
+        if curl -fsS -o /dev/null "$ship_url/healthz" 2>/dev/null; then
+            echo "Ship Lab is already running on $ship_url."
+        else
+            if [ ! -x "$target/debug/ship-lab" ] || [ "$build_first" = 1 ]; then
+                cargo_build -p ship-lab --bin ship-lab >> "$logs/build.log" 2>&1 \
+                    || { echo "The Ship Lab build failed; see $logs/build.log" >&2; stop > /dev/null; exit 1; }
+            fi
+            nohup "$target/debug/ship-lab" serve --port "$ship_port" \
+                > "$logs/ship.log" 2>&1 &
+            echo $! > "$run/ship.pid"
+            if ! wait_http "$ship_url/healthz" 30; then
+                echo "Ship Lab didn't start; see $logs/ship.log" >&2
+                stop > /dev/null
+                exit 1
+            fi
+        fi
+    fi
+
     # The website.
     (
+        if [ -n "$ship_url" ]; then
+            export OPENAGENTS_SHIP_LAB="$ship_url"
+            [ -n "$google_credentials" ] && export GOOGLE_APPLICATION_CREDENTIALS="$google_credentials"
+        fi
         if [ -n "$cad_url" ]; then
             export OPENAGENTS_CAD_LAB="$cad_url"
             [ -n "$google_credentials" ] && export GOOGLE_APPLICATION_CREDENTIALS="$google_credentials"

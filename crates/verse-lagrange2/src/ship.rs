@@ -291,11 +291,36 @@ pub struct Report {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "edit", rename_all = "snake_case")]
 pub enum Edit {
-    SetDryMass { part: String, kg: f64 },
-    SetPropellant { part: String, kg: f64 },
-    MovePart { part: String, position: DVec3 },
-    AddPart { part: Part },
-    RemovePart { part: String },
+    SetDryMass {
+        part: String,
+        kg: f64,
+    },
+    SetPropellant {
+        part: String,
+        kg: f64,
+    },
+    MovePart {
+        part: String,
+        position: DVec3,
+    },
+    AddPart {
+        part: Part,
+    },
+    RemovePart {
+        part: String,
+    },
+    /// Make a part `factor` times its volume, in place: each dimension
+    /// grows by the cube root of `factor`, and its dry mass and any
+    /// propellant scale with the volume.
+    ScalePart {
+        part: String,
+        factor: f64,
+    },
+    /// Several edits checked together, as one revision (both tanks at once
+    /// keep the thrust line where one alone would not).
+    Batch {
+        edits: Vec<Edit>,
+    },
 }
 
 /// What a part is beyond its measured mass: its role, propellant or
@@ -852,12 +877,28 @@ impl Spacecraft {
     /// The edit names a missing part or leaves the design failing a check.
     pub fn edit(&self, edit: &Edit) -> Result<Self, Finding> {
         let mut next = self.clone();
+        next.apply(edit)?;
+        next.revision += 1;
+        match next.check().into_iter().next() {
+            Some(finding) => Err(finding),
+            None => Ok(next),
+        }
+    }
+
+    /// One edit's change, unchecked: [`Self::edit`] checks the result.
+    fn apply(&mut self, edit: &Edit) -> Result<(), Finding> {
+        let next = self;
         let missing = |id: &str| Finding {
             requirement: "edit".into(),
             detail: format!("there is no part named {id}"),
         };
         let index = |ship: &Self, id: &str| ship.index(id).ok_or_else(|| missing(id));
         match edit {
+            Edit::Batch { edits } => {
+                for edit in edits {
+                    next.apply(edit)?;
+                }
+            }
             Edit::SetDryMass { part, kg } => {
                 let i = index(&next, part)?;
                 next.parts[i].dry_mass_kg = *kg;
@@ -885,12 +926,32 @@ impl Spacecraft {
                 let i = index(&next, part)?;
                 next.parts.remove(i);
             }
+            Edit::ScalePart { part, factor } => {
+                let i = index(&next, part)?;
+                if !(factor.is_finite() && *factor > 0.0) {
+                    return Err(Finding {
+                        requirement: "edit".into(),
+                        detail: format!("{part} can't be scaled by {factor}"),
+                    });
+                }
+                let linear = factor.cbrt();
+                let p = &mut next.parts[i];
+                p.dry_mass_kg *= factor;
+                if let PartKind::Tank { propellant_kg } = &mut p.kind {
+                    *propellant_kg *= factor;
+                }
+                p.shape = match p.shape {
+                    Shape::Box { size } => Shape::Box {
+                        size: size * linear,
+                    },
+                    Shape::Cylinder { radius, length } => Shape::Cylinder {
+                        radius: radius * linear,
+                        length: length * linear,
+                    },
+                };
+            }
         }
-        next.revision += 1;
-        match next.check().into_iter().next() {
-            Some(finding) => Err(finding),
-            None => Ok(next),
-        }
+        Ok(())
     }
 
     /// A stable 64-bit content hash (FNV-1a of the canonical JSON), which

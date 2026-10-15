@@ -230,4 +230,29 @@ mod tests {
         assert_eq!(u64::from(layouter[pose].size), 80 + 254 * 64);
         assert!(u64::from(layouter[pose].size) <= GLES_UNIFORM_BINDING);
     }
+
+    /// Chrome's WebGPU refuses a derivative after a branch that returns or
+    /// discards (non-uniform control flow); naga accepts it, so the Grid
+    /// drew nothing in Chrome while every native test passed (#11651).
+    #[test]
+    fn the_scene_fragment_takes_every_derivative_before_its_first_branch_out() {
+        let source = include_str!("scene.wgsl");
+        let start = source.find("@fragment fn fs(").unwrap();
+        let body = &source[start..];
+        let end = body.find("\n}\n").unwrap();
+        let body = &body[..end];
+        let first_out = ["return ", "discard"]
+            .iter()
+            .filter_map(|word| body.find(word))
+            .min()
+            .unwrap();
+        for derivative in ["fwidth(", "dpdx(", "dpdy("] {
+            if let Some(last) = body.rfind(derivative) {
+                assert!(
+                    last < first_out,
+                    "{derivative} comes after the first return or discard"
+                );
+            }
+        }
+    }
 }

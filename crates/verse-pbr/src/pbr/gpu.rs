@@ -1781,7 +1781,15 @@ impl Photo {
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("verse water"),
                 bind_group_layouts: &[
-                    Some(&scene_layout),
+                    // WebGL2 binds at most 16 textures to a pipeline (the
+                    // GL backend's texture units, counted across groups):
+                    // the water there reads the scene without the rain's
+                    // depth, so its 11 + 3 + 3 fit (#11651).
+                    Some(if capability.gles {
+                        &sprite_scene_layout
+                    } else {
+                        &scene_layout
+                    }),
                     Some(&water_screen_layout),
                     Some(&water_layout),
                 ],
@@ -4269,6 +4277,12 @@ impl Photo {
         if !any {
             return;
         }
+        // WebGL2's water reads the scene without the rain's depth (see the
+        // water pipeline layout); the scene group goes back after it.
+        let gles = self.capability.gles;
+        if gles {
+            pass.set_bind_group(0, &self.sprite_scene_group, &[]);
+        }
         pass.set_bind_group(1, &targets.water_group, &[]);
         pass.set_bind_group(2, &self.water_group, &[]);
         if let Some(gpu) = zone {
@@ -4297,6 +4311,9 @@ impl Photo {
             pass.draw(0..self.liquid.count, 0..1);
             pass.set_pipeline(&self.pipelines.water);
             pass.draw(0..self.liquid.count, 0..1);
+        }
+        if gles {
+            pass.set_bind_group(0, &self.scene_group, &[]);
         }
     }
 

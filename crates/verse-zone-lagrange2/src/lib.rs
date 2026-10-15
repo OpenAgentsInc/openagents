@@ -102,7 +102,7 @@ impl Default for Lagrange2 {
 
 impl Lagrange2 {
     pub fn new() -> Self {
-        let mut assembly = Assembly::sample();
+        let mut assembly = next_assembly();
         // A lighter prediction pace keeps a frame's work bounded on the web.
         assembly.predict_rate = 4;
         assembly.approve();
@@ -225,7 +225,7 @@ impl Lagrange2 {
 
     /// Start a new ship: the racks refill and the arms begin again.
     pub fn restart(&mut self) {
-        let mut assembly = Assembly::sample();
+        let mut assembly = next_assembly();
         assembly.predict_rate = 4;
         assembly.approve();
         self.assembly = assembly;
@@ -533,6 +533,43 @@ fn basis(axis: Vec3) -> (Vec3, Vec3) {
     (u, a.cross(u))
 }
 
+/// The ship the factory builds next: on a computer with Ship Lab
+/// (`ship-lab`, which the chat's ship edits go through), the tug's latest
+/// accepted version from `SHIP_LAB_DIR` or `~/work/film-out/lab/ship`,
+/// `.verse/lagrange2.json`; otherwise, or when the factory can't plan it,
+/// the sample ship.
+fn next_assembly() -> Assembly {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let root = std::env::var_os("SHIP_LAB_DIR")
+            .map(std::path::PathBuf::from)
+            .or_else(|| {
+                std::env::var_os("HOME")
+                    .map(|home| std::path::PathBuf::from(home).join("work/film-out/lab/ship"))
+            });
+        if let Some(assembly) =
+            root.and_then(|root| lab_assembly(&root.join(".verse/lagrange2.json")))
+        {
+            return assembly;
+        }
+    }
+    Assembly::sample()
+}
+
+/// The factory and plan for the ship in `path`, if it is a ship that
+/// passes its checks and the arms can reach every part of.
+#[cfg(not(target_arch = "wasm32"))]
+fn lab_assembly(path: &std::path::Path) -> Option<Assembly> {
+    let text = std::fs::read_to_string(path).ok()?;
+    let ship: verse_lagrange2::Spacecraft = serde_json::from_str(&text).ok()?;
+    if !ship.check().is_empty() {
+        return None;
+    }
+    let factory = verse_lagrange2::Factory::new(ship).ok()?;
+    let plan = verse_lagrange2::Plan::new(&factory).ok()?;
+    Some(Assembly::new(factory, plan))
+}
+
 /// The fixed structure, built and occlusion-baked once.
 fn structure() -> &'static [LitVertex] {
     static BAKED: OnceLock<Vec<LitVertex>> = OnceLock::new();
@@ -543,4 +580,28 @@ fn structure() -> &'static [LitVertex] {
         bake::bake_occlusion(&mut fixed, &bvh, 3.0, 16);
         fixed
     })
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod tests {
+    use verse_lagrange2::ship::{Edit, Spacecraft};
+
+    #[test]
+    fn the_zone_builds_ship_labs_version_and_passes_over_a_bad_file() {
+        let dir = std::env::temp_dir().join(format!("l2-zone-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("lagrange2.json");
+        let ship = Spacecraft::sample()
+            .edit(&Edit::ScalePart {
+                part: "tank-port".into(),
+                factor: 1.2,
+            })
+            .unwrap();
+        std::fs::write(&path, serde_json::to_string(&ship).unwrap()).unwrap();
+        let assembly = super::lab_assembly(&path).expect("the edited tug plans");
+        assert_eq!(assembly.factory.ship, ship);
+        std::fs::write(&path, "{}").unwrap();
+        assert!(super::lab_assembly(&path).is_none());
+        std::fs::remove_dir_all(&dir).ok();
+    }
 }

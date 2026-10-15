@@ -137,6 +137,9 @@ enum Draw {
     Opening {
         next: Rc<RefCell<Option<Result<Draw, String>>>>,
         size: [f32; 2],
+        /// The zone revision whose world the next renderer was opened
+        /// with.
+        revision: u64,
     },
 }
 
@@ -556,6 +559,15 @@ async fn run_grid(
     status("Opening the Grid…");
     let mut runtime = WorldRuntime::bare();
     runtime.interact_hint = verse::runtime::InteractHint::None;
+    // `?at=X,Z` or `?at=X,Z,YAW` stands the player there, as on the
+    // Everglade page, for captures (an arch's approach).
+    if let Some(at) = query_value(&window, "at") {
+        let numbers: Vec<f32> = at.split(',').filter_map(|n| n.parse().ok()).collect();
+        if let [x, z, ref rest @ ..] = numbers[..] {
+            let yaw = rest.first().copied().unwrap_or(0.0);
+            let _ = runtime.set_spawn(glam::Vec3::new(x, 0.0, z), yaw);
+        }
+    }
     let scale = (window.device_pixel_ratio() as f32).clamp(1.0, 3.0);
     let (width, height) = drawing_size(&canvas, scale);
     canvas.set_width(width);
@@ -827,13 +839,17 @@ impl Page {
             }
             self.rendered_revision = self.runtime.zone_revision;
         }
-        if let Draw::Opening { next, .. } = &self.renderer {
+        if let Draw::Opening { next, revision, .. } = &self.renderer {
+            let revision = *revision;
             let opened = next.borrow_mut().take();
             match opened {
                 Some(Ok(draw)) => {
                     self.renderer = draw;
-                    // The zone may have changed again while it opened.
-                    self.rendered_revision = u64::MAX;
+                    // It already holds that revision's world; a zone that
+                    // changed again while it opened differs from it. (A
+                    // second upload of the same world was refused as too
+                    // big for Lagrange 2's factory, #11651.)
+                    self.rendered_revision = revision;
                 }
                 Some(Err(error)) => {
                     self.fail(&error);
@@ -1201,6 +1217,7 @@ impl Page {
         self.renderer = Draw::Opening {
             next: next.clone(),
             size,
+            revision: self.runtime.zone_revision,
         };
         let canvas = self.canvas.clone();
         let backends = self.backends;

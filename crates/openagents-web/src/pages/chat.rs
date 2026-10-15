@@ -2480,6 +2480,8 @@ async fn answer(
                         meta.cards.extend(crate::robot_lab::cards(&r.meta));
                         // A CAD Lab answer's card (the model under it).
                         meta.cards.extend(crate::cad_lab::cards(&r.meta));
+                        // A Ship Lab answer's card (the ship's numbers).
+                        meta.cards.extend(crate::ship_lab::cards(&r.meta));
                         meta
                     })
                     .filter(|meta| !meta.is_empty()),
@@ -2942,6 +2944,8 @@ fn messages_from(
             (crate::robot_lab::thread_entry(&chat.id, crate::suggestions::message_reply(chat, message)))
             // A CAD Lab answer: the model in 3D (docs/cad-lab/mvp.md).
             (crate::cad_lab::thread_entry(&chat.id, crate::suggestions::message_reply(chat, message)))
+            // A Ship Lab answer: the Lagrange 2 ship's numbers (#11651).
+            (crate::ship_lab::thread_entry(crate::suggestions::message_reply(chat, message)))
             // A reply the router read as work on code, about an issue: "Work on this issue" (#11258).
             (crate::work_runs::thread_entry(&chat.id, index + start, crate::suggestions::message_reply(chat, message)))
             (work::rows(chat, index + start + 1, links))
