@@ -90,6 +90,9 @@ async fn measurements(
             let observed: Value =
                 serde_json::from_slice(&output.stdout).map_err(|_| "Invalid boot observation.")?;
             if observed["boot_mode"] != arm {
+                report["actual_boot_mode"] = observed["boot_mode"].clone();
+                report["rejected_sample"] = json!({"computer":id,"backend":observed,"accepted_ms":accepted_ms,"running_ms":ready_ms,"first_command_ms":command_ready_ms});
+                save(path, report);
                 return Err("Actual boot mode differs from the requested arm.".into());
             }
             report["actual_boot_mode"] = json!(arm);

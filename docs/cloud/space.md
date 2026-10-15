@@ -70,6 +70,8 @@ progress. The runtime step extracts only Coder and Claude binaries from
 the `oa-coder-main-20261015` image in our project (override with
 `SPACE_RUNTIME_IMAGE`); its temporary disk is read-only and deleted after
 extraction. The template keeps SPACE's guest daemon and kernel.
+It contains the two runtime executables, not the GCE image's full compiler
+and toolchain installation.
 
 Build the check programs for Linux with `--features space`: the
 `computer-conformance` binary and the `computer-driver` example
@@ -105,6 +107,26 @@ For an existing deployment, `computer-conformance --space` and
 `space-spike EVIDENCE.json cold|snapshot` use the environment variables above.
 Use a fresh evidence path for each run. Without `SPACE_BOOT_OBSERVER`, the
 measurement runner marks the actual boot mode as unverified.
+
+At this upstream commit, the Kind shim sends an unspecified create boot
+mode, which the node manager resolves to cold. The snapshot API check
+therefore fails its boot-mode guard even with a ready base snapshot.
+To measure the available node optimization separately, enable 2 GiB base
+snapshots and use the explicit node CLI:
+
+```sh
+deploy/space-host/host.sh check prepare-native
+# Wait for the 2 vCPU, 2048 MiB snapshot, then run these jobs in order.
+deploy/space-host/host.sh check native-cold
+deploy/space-host/host.sh check native-snapshot
+deploy/space-host/host.sh check memory
+```
+
+The native runner verifies the returned boot mode, Firecracker arguments,
+and actual VM CPU and memory configuration. Its timer includes the Docker
+CLI invocation and ends at guest readiness. It does not run an HTTP
+command, so compare its two arms with each other. A fast native snapshot
+result alone does not meet the HTTP driver's adoption bar.
 
 ```sh
 deploy/space-host/host.sh destroy

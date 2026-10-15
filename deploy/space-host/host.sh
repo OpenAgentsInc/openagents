@@ -88,16 +88,18 @@ case ${1:-help} in
   check)
     owned instances --zone "$ZONE"
     action=${2:-inspect}
-    case "$action" in conformance|prepare-cold|prepare-snapshot|inspect|cold|snapshot|memory) ;; *) echo 'Unknown SPACE check.' >&2; exit 2 ;; esac
-    g compute scp "$ROOT/deploy/space-host/check.sh" "$ROOT/deploy/space-host/boot-mode.py" "space-admin@$NAME:" --zone "$ZONE" --tunnel-through-iap
+    case "$action" in conformance|prepare-cold|prepare-snapshot|prepare-native|inspect|cold|snapshot|memory|native-cold|native-snapshot) ;; *) echo 'Unknown SPACE check.' >&2; exit 2 ;; esac
+    g compute scp "$ROOT/deploy/space-host/check.sh" "$ROOT/deploy/space-host/boot-mode.py" "$ROOT/deploy/space-host/native-bench.py" "space-admin@$NAME:" --zone "$ZONE" --tunnel-through-iap
     # Supply Linux binaries that can run on Ubuntu (musl builds are portable).
     if [[ -n ${SPACE_CONFORMANCE_BIN:-} && -n ${SPACE_SPIKE_BIN:-} ]]; then
       g compute scp "$SPACE_CONFORMANCE_BIN" "space-admin@$NAME:computer-conformance" --zone "$ZONE" --tunnel-through-iap
       g compute scp "$SPACE_SPIKE_BIN" "space-admin@$NAME:space-spike" --zone "$ZONE" --tunnel-through-iap
       ssh_host --command 'sudo install -o space-spike -g space-spike -m0755 ~/computer-conformance ~/space-spike /var/lib/space-spike/home/.local/bin/'
     fi
-    ssh_host --command 'sudo install -o space-spike -g space-spike -m0755 ~/check.sh ~/boot-mode.py /var/lib/space-spike/home/'
-    if [[ "$action" == conformance || "$action" == cold || "$action" == snapshot || "$action" == memory ]]; then
+    ssh_host --command 'sudo install -o space-spike -g space-spike -m0755 ~/check.sh ~/boot-mode.py ~/native-bench.py /var/lib/space-spike/home/'
+    if [[ "$action" == native-* ]]; then
+      ssh_host --command "sudo systemd-run --unit=space-spike-$action --collect --property=RuntimeMaxSec=3600 /usr/sbin/runuser -l space-spike -c 'python3 /var/lib/space-spike/home/native-bench.py ${action#native-} /var/lib/space-spike/home/evidence/$action.json > /var/lib/space-spike/home/evidence/$action.log 2>&1'"
+    elif [[ "$action" == conformance || "$action" == cold || "$action" == snapshot || "$action" == memory ]]; then
       ssh_host --command "sudo systemd-run --unit=space-spike-$action --collect --property=RuntimeMaxSec=3600 /usr/sbin/runuser -l space-spike -c 'bash /var/lib/space-spike/home/check.sh $action'"
     else
       ssh_host --command "sudo runuser -l space-spike -c 'bash /var/lib/space-spike/home/check.sh $action'"

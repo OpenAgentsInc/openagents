@@ -6,7 +6,7 @@ export PATH="$HOME/.local/bin:$PATH"
 export SPACE_TEMPLATE="oa-coder-runtime@$(jq -er .content_hash "$HOME/evidence/runtime-manifest.json")"
 mkdir -p "$HOME/evidence"
 case ${1:-} in
-  prepare-cold|prepare-snapshot|inspect)
+  prepare-cold|prepare-snapshot|prepare-native|inspect)
     export SPACE_SPIKE_ACTION=$1
     python3 - <<'PY'
 import json, os, pathlib, urllib.request
@@ -28,8 +28,8 @@ if action != 'inspect':
         'default_action': 'deny', 'allow': [{'domain': 'api.github.com'},
         {'cidr': '8.8.8.8/32'}, {'cidr': '1.1.1.1/32'}], 'deny': []}}})
     policy = call('/base-snapshot-policy', 'PATCH', {
-        'ensure_base_snapshot': action == 'prepare-snapshot',
-        'snapshot_vcpu': 2, 'snapshot_memory_mib': 1024})
+        'ensure_base_snapshot': action != 'prepare-cold',
+        'snapshot_vcpu': 2, 'snapshot_memory_mib': 2048 if action == 'prepare-native' else 1024})
     result = call('/base-snapshot-policy:reconcile', 'POST', {})
     (evidence / (action + '.json')).write_text(json.dumps({
         'policy': policy, 'reconcile': result}, indent=2) + '\n')
@@ -51,5 +51,5 @@ PY
       -o /dev/null -w '%{http_code}\n' https://example.com >"$HOME/evidence/$1-host-example-control.txt"
     exec space-spike "$HOME/evidence/$1.json" "$1" >"$HOME/evidence/$1.log" 2>&1
     ;;
-  *) echo 'Usage: check.sh conformance|prepare-cold|prepare-snapshot|inspect|cold|snapshot|memory' >&2; exit 2 ;;
+  *) echo 'Usage: check.sh conformance|prepare-cold|prepare-snapshot|prepare-native|inspect|cold|snapshot|memory' >&2; exit 2 ;;
 esac
