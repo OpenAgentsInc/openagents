@@ -36,12 +36,34 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         "EXCLUDED_ARCHS[sdk=iphonesimulator*]": x86_64
         DEAD_CODE_STRIPPING: YES
+  # Simulator UI tests: build.sh test runs them.
+  IceCreamManUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: UITests
+    dependencies:
+      - target: IceCreamMan
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.openagents.icecreamman.uitests
+        SWIFT_VERSION: "5.10"
+        TARGETED_DEVICE_FAMILY: "1,2"
+        DEVELOPMENT_TEAM: HQWSG26L43
+        GENERATE_INFOPLIST_FILE: true
+        TEST_TARGET_NAME: IceCreamMan
+        "EXCLUDED_ARCHS[sdk=iphonesimulator*]": x86_64
 schemes:
   IceCreamMan:
     build:
       targets:
         IceCreamMan: all
+        IceCreamManUITests: [test]
     run:
       config: Debug
+    test:
+      config: Debug
+      targets:
+        - IceCreamManUITests
     archive:
       config: Release

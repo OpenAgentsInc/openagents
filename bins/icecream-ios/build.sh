@@ -6,6 +6,9 @@
 #   bins/icecream-ios/build.sh archive   game + signed App Store archive (no upload)
 #   bins/icecream-ios/build.sh ipa       export the archive to a signed .ipa (no upload)
 #   bins/icecream-ios/build.sh upload    upload the archive to App Store Connect
+#   bins/icecream-ios/build.sh test      game + the rotation UI test on ICECREAM_IOS_DEVICE_ID
+#                                        (a simulator UDID); ICECREAM_SHOTS=DIR keeps its
+#                                        whole-screen PNGs there (ICECREAM_SEED: the bot's run)
 #   bins/icecream-ios/build.sh clean     delete DerivedData, archives, and exports
 #
 # The game comes from scripts/build-icecream-web.sh --with-page (needs the
@@ -84,6 +87,14 @@ case "$command" in
     rm -rf "$archive"
     xcodebuild "${args[@]}" -destination 'generic/platform=iOS' -archivePath "$archive" archive
     echo "Archived $archive. Upload it with: bins/icecream-ios/build.sh upload" ;;
+  test)
+    [[ -n "${ICECREAM_IOS_DEVICE_ID:-}" ]] || { echo "ICECREAM_IOS_DEVICE_ID (a simulator UDID) is not set." >&2; exit 64; }
+    game
+    (cd "$host" && xcodegen generate --quiet)
+    if [[ -n "${ICECREAM_SHOTS:-}" ]]; then mkdir -p "$ICECREAM_SHOTS"; fi
+    TEST_RUNNER_ICECREAM_SHOTS="${ICECREAM_SHOTS:-}" TEST_RUNNER_ICECREAM_SEED="${ICECREAM_SEED:-}" xcodebuild -project "$host/IceCreamMan.xcodeproj" \
+      -scheme IceCreamMan -configuration Debug -derivedDataPath "$output/DerivedData" \
+      -destination "id=$ICECREAM_IOS_DEVICE_ID" CODE_SIGN_IDENTITY=- PROVISIONING_PROFILE_SPECIFIER= test ;;
   ipa)
     [[ -d "$archive" ]] || { echo "No archive; run archive first." >&2; exit 1; }
     rm -rf "$output/ipa"
@@ -101,5 +112,5 @@ case "$command" in
       -authenticationKeyPath "$ASC_API_PRIVATE_KEY_PATH" \
       -authenticationKeyID "$ASC_API_KEY_ID" -authenticationKeyIssuerID "$ASC_API_ISSUER_ID" ;;
   clean) rm -rf "$output/DerivedData" "$output/upload" "$output/ipa" "$output/game" ;;
-  *) echo "usage: bins/icecream-ios/build.sh game|sim|archive|ipa|upload|clean" >&2; exit 64 ;;
+  *) echo "usage: bins/icecream-ios/build.sh game|sim|test|archive|ipa|upload|clean" >&2; exit 64 ;;
 esac

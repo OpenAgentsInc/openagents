@@ -41,6 +41,8 @@ work offline. Nothing is fetched from the network.
     bins/icecream-ios/build.sh ipa       # signed .ipa from the archive, no upload
     bins/icecream-ios/build.sh upload    # upload the archive to App Store Connect
     bins/icecream-ios/build.sh clean     # remove DerivedData and exports
+    ICECREAM_IOS_DEVICE_ID=<simulator UDID> ICECREAM_SHOTS=/tmp/shots \
+      bins/icecream-ios/build.sh test    # rotation UI test: plays, turns, checks full screen
 
 `game` runs `scripts/build-icecream-web.sh --with-page` (wasm32 target and
 the Cargo.lock-matching `wasm-bindgen` CLI) and copies the output, minus the
@@ -68,6 +70,8 @@ cannot); see `~/work/NEEDS_OWNER.md`. Release, once it exists:
 
 `metadata/` holds the store text, and `metadata/review.md` the privacy,
 age-rating (9+), category, and review-note answers. `screenshots/` holds the
-iPhone 6.9" and iPad 13" shots (Simulator; launch arguments
-`-IceCreamFragment 'bot&seed=7' -IceCreamLandscape YES` start the game's bot
-in landscape). `icon.py` draws the app icon.
+iPhone 6.9" (2868x1320) and iPad 13" (2752x2064 / 2064x2752) store shots,
+taken in the Simulator by the rotation UI test (`ICECREAM_SHOTS`,
+`ICECREAM_SEED`) with the game's bot playing. The launch arguments
+`-IceCreamFragment 'bot&seed=7'` (any game URL fragment) and, on iPhone,
+`-IceCreamLandscape YES` do the same by hand. `icon.py` draws the app icon.
