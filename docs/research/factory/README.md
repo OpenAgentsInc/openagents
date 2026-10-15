@@ -354,7 +354,9 @@ S = a day or less, M = a few days, L = a week or more.
    customer's GCP project or Kubernetes cluster; outbound-only enrollment;
    CLI and a small admin page.
 10. **Pylon computer driver (L)**, with isolation and sats payouts.
-11. **Kubernetes agent-sandbox driver (L), Firecracker driver (L).**
+11. **Kubernetes agent-sandbox driver (L), Firecracker driver (L).** The
+    opt-in [SPACE driver and GCE spike](../../cloud/space.md) evaluate the
+    Firecracker option before production adoption (#11728).
 
 ## Open questions
 

@@ -162,6 +162,6 @@ secret; delete removed the VM (no `oa-boat` instance left).
 ## Not yet
 
 Warm pool, activity-based suspend beyond the idle bound, billing, the
-own-machine and Pylon drivers, Kubernetes agent-sandbox and Firecracker
-drivers, signed enrollment for cloud computers (see the design's build
+own-machine and Pylon drivers, Kubernetes agent-sandbox and production SPACE
+support, signed enrollment for cloud computers (see the design's build
 order).

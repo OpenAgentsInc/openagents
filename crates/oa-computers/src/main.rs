@@ -5,7 +5,9 @@
 //!   service keeps its tables in the `computers` schema.
 //! - `OA_COMPUTERS_TOKEN` (required): the service bearer token callers send.
 //! - `OA_COMPUTERS_DRIVER`: `boat` (default; `BOAT_API_BASE`, `BOAT_API_KEY`)
-//!   or `fake` (`OA_COMPUTERS_FAKE_DIR`, local development only).
+//!   `fake` (`OA_COMPUTERS_FAKE_DIR`, local development only), or `space`
+//!   (feature `space`; `SPACE_API_URL`, `SPACE_DATA_PLANE_URL`,
+//!   `SPACE_API_TOKEN`, and `SPACE_TEMPLATE`).
 //! - `OA_COMPUTERS_LISTEN` (default `0.0.0.0:$PORT`, else `127.0.0.1:8790`).
 //! - `OA_COMPUTERS_RECONCILE=0` serves the API without a reconciler.
 //! - `OA_COMPUTERS_KEEP_STOPPED_DAYS` (7): a computer stopped this long

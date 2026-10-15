@@ -28,9 +28,13 @@ sudo install -m 0755 /var/lib/space-spike/runtime/bin/coder /var/lib/space-spike
 sudo mount --bind /dev "$mount_dir/dev"
 sudo mount -t proc proc "$mount_dir/proc"
 # These packages support the memory and network acceptance checks.
+sudo cp -a "$mount_dir/etc/resolv.conf" "$out/resolv.conf.original"
+sudo rm -f "$mount_dir/etc/resolv.conf"
 sudo cp -L /etc/resolv.conf "$mount_dir/etc/resolv.conf"
 sudo chroot "$mount_dir" apt-get update
 sudo chroot "$mount_dir" env DEBIAN_FRONTEND=noninteractive apt-get install -y python3 curl ca-certificates
+sudo rm -f "$mount_dir/etc/resolv.conf"
+sudo cp -a "$out/resolv.conf.original" "$mount_dir/etc/resolv.conf"
 sudo chroot "$mount_dir" coder --version
 sudo chroot "$mount_dir" claude --version
 cleanup
