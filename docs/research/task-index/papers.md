@@ -13,7 +13,7 @@ The 25 arXiv papers [the research note](task-index-research.md) reads, by its nu
 | 7 | CodePlan: Repository-level Coding using LLMs and Planning | 2023 | [2309.12499](https://arxiv.org/abs/2309.12499) | `papers/07-2309.12499-codeplan.pdf` |
 | 8 | LocAgent: Graph-Guided LLM Agents for Code Localization | 2025 | [2503.09089](https://arxiv.org/abs/2503.09089) | `papers/08-2503.09089-locagent.pdf` |
 | 9 | Know Before Fix: QA-Driven Repository Knowledge Acquisition for Software Issue Resolution | July 2026 | [2607.11111](https://arxiv.org/abs/2607.11111) | `papers/09-2607.11111-know-before-fix.pdf` |
-| 10 | HyperGraphRAG: Retrieval-Augmented Generation with Hypergraph-Structured Knowledge Representation | 2025 | [2503.21322](https://arxiv.org/abs/2503.21322) | `papers/10-2503.21322-hypergraphrag.pdf` |
+| 10 | HyperGraphRAG: Retrieval-Augmented Generation via Hypergraph-Structured Knowledge Representation | 2025 | [2503.21322](https://arxiv.org/abs/2503.21322) | `papers/10-2503.21322-hypergraphrag.pdf` |
 | 11 | SkillsBench: Benchmarking How Well Agent Skills Work Across Diverse Tasks | 2026 | [2602.12670](https://arxiv.org/abs/2602.12670) | `papers/11-2602.12670-skillsbench.pdf` |
 | 12 | SWE-Skills-Bench: Do Agent Skills Actually Help in Real-World Software Engineering? | 2026 | [2603.15401](https://arxiv.org/abs/2603.15401) | `papers/12-2603.15401-swe-skills-bench.pdf` |
 | 13 | SkillGenBench: Benchmarking Skill Generation Pipelines for LLM Agents | May 2026 | [2605.18693](https://arxiv.org/abs/2605.18693) | `papers/13-2605.18693-skillgenbench.pdf` |
@@ -29,3 +29,7 @@ The 25 arXiv papers [the research note](task-index-research.md) reads, by its nu
 | 23 | An Overview of Hierarchical Task Network Planning | 2014 | [1403.7426](https://arxiv.org/abs/1403.7426) | `papers/23-1403.7426-an-overview-of-hierarchical-task-network.pdf` |
 | 24 | DreamCoder: Growing Generalizable, Interpretable Knowledge with Wake-Sleep Bayesian Program Learning | 2020 | [2006.08381](https://arxiv.org/abs/2006.08381) | `papers/24-2006.08381-dreamcoder.pdf` |
 | 25 | A Knowledge Compilation Map |  | [1106.1819](https://arxiv.org/abs/1106.1819) | `papers/25-1106.1819-a-knowledge-compilation-map.pdf` |
+
+## Link check (2026-10-15, #11767)
+
+Every arXiv ID above, and every one cited in [the research note](task-index-research.md), was checked with `curl -sI https://arxiv.org/abs/ID`: all 25 answer `200`, and each abstract page's title matches the paper named here. One title differed in wording only: #10's arXiv title is "HyperGraphRAG: Retrieval-Augmented Generation **via** Hypergraph-Structured Knowledge Representation" (the draft said "with"); both files now use the arXiv title. No ID failed to resolve.
