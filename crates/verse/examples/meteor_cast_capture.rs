@@ -97,54 +97,6 @@ fn ease(x: f32) -> f32 {
     x * x * (3.0 - 2.0 * x)
 }
 
-/// An sRGB hex color (`e8892f`) in linear RGB.
-fn linear(hex: &str) -> Option<[f32; 3]> {
-    let hex = hex.trim_start_matches('#');
-    if hex.len() != 6 {
-        return None;
-    }
-    let mut out = [0.0; 3];
-    for (k, c) in out.iter_mut().enumerate() {
-        let v = f32::from(u8::from_str_radix(hex.get(2 * k..2 * k + 2)?, 16).ok()?) / 255.0;
-        *c = if v <= 0.04045 {
-            v / 12.92
-        } else {
-            ((v + 0.055) / 1.055).powf(2.4)
-        };
-    }
-    Some(out)
-}
-
-/// The livery: each `KEY=RRGGBB` as a match on a solid and its new color.
-struct Livery(Vec<(String, Option<[f32; 3]>, [f32; 3])>);
-
-impl Livery {
-    fn parse(specs: &[String]) -> Result<Self, String> {
-        specs
-            .iter()
-            .map(|spec| {
-                let (key, to) = spec
-                    .split_once('=')
-                    .ok_or_else(|| format!("--paint {spec}: expected KEY=RRGGBB"))?;
-                let to = linear(to).ok_or_else(|| format!("--paint {spec}: bad color"))?;
-                Ok((key.to_owned(), linear(key), to))
-            })
-            .collect::<Result<_, String>>()
-            .map(Self)
-    }
-
-    fn paint(&self, instance: &str, color: [f32; 3]) -> [f32; 3] {
-        if let Some((_, _, to)) = self.0.iter().find(|(key, _, _)| key == instance) {
-            return *to;
-        }
-        let near = |a: [f32; 3], b: [f32; 3]| (0..3).all(|k| (a[k] - b[k]).abs() < 0.01);
-        self.0
-            .iter()
-            .find(|(_, from, _)| from.is_some_and(|f| near(f, color)))
-            .map_or(color, |(_, _, to)| *to)
-    }
-}
-
 /// The character in `glb` (with the unskinned lower body in `lower`, when
 /// it is built apart) as the pack form `film/caster`, with the player's
 /// clips it has and the cast: the library's overhand throw in its right
@@ -312,7 +264,7 @@ fn throw_view() -> (Vec3, Vec3) {
 /// `own_caster` leaves the showcase's caster out for the film's.
 fn scene(
     pack: &ZonePack,
-    livery: &Livery,
+    livery: &verse::zones::meteor_rover::Livery,
     delay: f32,
     own_caster: bool,
     bake: bool,
@@ -488,7 +440,7 @@ fn main() -> Result<(), String> {
             other => return Err(format!("Unknown argument {other}")),
         }
     }
-    let livery = Livery::parse(&paint)?;
+    let livery = verse::zones::meteor_rover::Livery::parse(&paint)?;
     std::fs::create_dir_all(&out).map_err(|e| format!("{}: {e}", out.display()))?;
     let pack = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../..")

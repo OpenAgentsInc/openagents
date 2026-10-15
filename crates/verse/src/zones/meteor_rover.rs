@@ -705,6 +705,8 @@ pub struct Rover {
     caster: DVec3,
     carry: f64,
     events: Vec<Event>,
+    /// Every blast it felt: when (s), where, and its damage radius (m).
+    felt: Vec<(f64, Vec3, f32)>,
     hardest: Option<(f64, f64)>,
     elapsed: f64,
 }
@@ -1062,6 +1064,7 @@ impl Rover {
             caster: caster.as_dvec3(),
             carry: 0.0,
             events: Vec::new(),
+            felt: Vec::new(),
             hardest: None,
             elapsed: 0.0,
         };
@@ -1473,6 +1476,7 @@ impl Rover {
     /// ([`Rover::strike`]), and the energy that solid took goes off where
     /// it hit; the rest goes off on the ground.
     pub fn blast(&mut self, at: Vec3, radius: f32) {
+        self.felt.push((self.elapsed, at, radius));
         let charge = blast::charge_for(f64::from(radius));
         let horizontal = DVec3::new(
             f64::from(at.x) - self.caster.x,
@@ -1927,6 +1931,61 @@ impl Rover {
             .collect()
     }
 
+    /// Every blast the rover felt, in order: when (s since it was made),
+    /// where the meteor landed, and the blast's damage radius (m).
+    #[must_use]
+    pub fn blasts(&self) -> &[(f64, Vec3, f32)] {
+        &self.felt
+    }
+
+    /// The direction a meteor landing at `at` flies in: down at a slant,
+    /// away from the caster (the flight [`Self::blast`] strikes with).
+    #[must_use]
+    pub fn flight(&self, at: Vec3) -> Vec3 {
+        let horizontal = DVec3::new(
+            f64::from(at.x) - self.caster.x,
+            0.0,
+            f64::from(at.z) - self.caster.z,
+        )
+        .normalize_or(DVec3::X);
+        (horizontal * 0.55 + DVec3::NEG_Y * 0.83)
+            .normalize()
+            .as_vec3()
+    }
+
+    /// Every body still in the world (a whole solid, or a fragment broken
+    /// from one): its index (stable for its life; fragments get new ones),
+    /// its solid's instance, and its pose.
+    #[must_use]
+    pub fn bodies(&self) -> Vec<(usize, String, DVec3, DQuat)> {
+        self.live()
+            .map(|k| {
+                let b = self.body(k);
+                (k, self.parts[k].instance.clone(), b.pos, b.orientation)
+            })
+            .collect()
+    }
+
+    /// Body `k`'s triangles in its own frame (a vertex `p` is at
+    /// `pos + rotation * p` in the world, with [`Self::bodies`]' pose):
+    /// positions, normals, a triangle list, and its color (linear RGB).
+    #[must_use]
+    pub fn body_mesh(&self, k: usize) -> Option<(Vec<Vec3>, Vec<Vec3>, Vec<u32>, [f32; 3])> {
+        let part = self.parts.get(k)?;
+        let mut remap = std::collections::HashMap::new();
+        let (mut positions, mut normals, mut indices) = (Vec::new(), Vec::new(), Vec::new());
+        for &i in part.indices.iter() {
+            let next = remap.len() as u32;
+            let j = *remap.entry(i).or_insert_with(|| {
+                positions.push(part.positions[i as usize] - part.shift);
+                normals.push(part.normals[i as usize]);
+                next
+            });
+            indices.push(j);
+        }
+        Some((positions, normals, indices, part.color))
+    }
+
     /// Each solid's pose: its instance, position and rotation.
     #[must_use]
     pub fn poses(&self) -> Vec<(String, DVec3, DQuat)> {
@@ -1961,6 +2020,64 @@ impl Rover {
     }
 }
 
+/// An sRGB hex color (`e8892f`) in linear RGB.
+#[must_use]
+pub fn linear(hex: &str) -> Option<[f32; 3]> {
+    let hex = hex.trim_start_matches('#');
+    if hex.len() != 6 {
+        return None;
+    }
+    let mut out = [0.0; 3];
+    for (k, c) in out.iter_mut().enumerate() {
+        let v = f32::from(u8::from_str_radix(hex.get(2 * k..2 * k + 2)?, 16).ok()?) / 255.0;
+        *c = if v <= 0.04045 {
+            v / 12.92
+        } else {
+            ((v + 0.055) / 1.055).powf(2.4)
+        };
+    }
+    Some(out)
+}
+
+/// A livery for [`Rover::repaint`]: each `KEY=RRGGBB` matches a solid by
+/// its CAD color (an sRGB hex such as `e8892f`) or its instance name (such
+/// as `chassis`) and gives its new color; an instance name wins.
+#[derive(Clone, Debug, Default)]
+pub struct Livery(Vec<(String, Option<[f32; 3]>, [f32; 3])>);
+
+impl Livery {
+    /// Parses `KEY=RRGGBB` specs.
+    ///
+    /// # Errors
+    /// Returns a message for a spec that is not `KEY=RRGGBB`.
+    pub fn parse(specs: &[String]) -> Result<Self, String> {
+        specs
+            .iter()
+            .map(|spec| {
+                let (key, to) = spec
+                    .split_once('=')
+                    .ok_or_else(|| format!("--paint {spec}: expected KEY=RRGGBB"))?;
+                let to = linear(to).ok_or_else(|| format!("--paint {spec}: bad color"))?;
+                Ok((key.to_owned(), linear(key), to))
+            })
+            .collect::<Result<_, String>>()
+            .map(Self)
+    }
+
+    /// The color for `instance`, now `color`.
+    #[must_use]
+    pub fn paint(&self, instance: &str, color: [f32; 3]) -> [f32; 3] {
+        if let Some((_, _, to)) = self.0.iter().find(|(key, _, _)| key == instance) {
+            return *to;
+        }
+        let near = |a: [f32; 3], b: [f32; 3]| (0..3).all(|k| (a[k] - b[k]).abs() < 0.01);
+        self.0
+            .iter()
+            .find(|(_, from, _)| from.is_some_and(|f| near(f, color)))
+            .map_or(color, |(_, _, to)| *to)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1979,6 +2096,31 @@ mod tests {
             r.step(1.0 / 60.0);
         }
         r
+    }
+
+    #[test]
+    fn a_livery_matches_by_instance_before_color() {
+        let livery = Livery::parse(&["e8892f=ff0000".into(), "chassis=00ff00".into()]).unwrap();
+        let orange = linear("e8892f").unwrap();
+        assert_eq!(livery.paint("rail_l", orange), [1.0, 0.0, 0.0]);
+        assert_eq!(livery.paint("chassis", orange), [0.0, 1.0, 0.0]);
+        assert_eq!(livery.paint("rail_l", [0.5; 3]), [0.5; 3]);
+        assert!(Livery::parse(&["nonsense".into()]).is_err());
+    }
+
+    #[test]
+    fn a_body_mesh_and_pose_rebuild_its_triangles_and_blasts_are_logged() {
+        let mut r = rover();
+        for (k, _, pos, rot) in r.bodies() {
+            let (positions, _, indices, _) = r.body_mesh(k).unwrap();
+            assert_eq!(indices.len() % 3, 0);
+            assert!(indices.iter().all(|&i| (i as usize) < positions.len()));
+            let world = pos.as_vec3() + rot.as_quat() * positions[0];
+            assert!(world.distance(pos.as_vec3()) < 2.0);
+        }
+        r.blast(Vec3::new(-56.0, 0.0, 30.0), 5.2);
+        assert_eq!(r.blasts().len(), 1);
+        assert!(r.flight(Vec3::new(-56.0, 0.0, 30.0)).y < -0.5);
     }
 
     #[test]
