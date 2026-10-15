@@ -515,6 +515,32 @@ impl WorldRuntime {
         true
     }
 
+    /// Stands any destructible assembly on the Meteor Showcase's lot in
+    /// the rover's place ([`super::meteor_rover::Rover::assembly`]: a
+    /// plain binary glTF of solids and its spec), so the swarm breaks it
+    /// as it breaks the rover. [`Self::stage_meteor_rover`] then stages
+    /// the cast at it.
+    ///
+    /// # Errors
+    /// Not in the showcase, or the assembly does not load.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn add_meteor_assembly(&mut self, glb: &[u8], spec: &str) -> Result<(), String> {
+        use super::meteor_showcase as showcase;
+        if self.zone != ZoneId::MeteorShowcase {
+            return Err("The assembly stands only in the Meteor Showcase".into());
+        }
+        let [x, z] = showcase::rover_at();
+        let [cx, cz] = showcase::CASTER;
+        self.zone_state.rover = Some(Box::new(super::meteor_rover::Rover::assembly(
+            glb,
+            spec,
+            Vec3::new(x, super::everglade::land(x, z), z),
+            showcase::ROVER_HEADING,
+            Vec3::new(cx, 0.0, cz),
+        )?));
+        Ok(())
+    }
+
     /// Stages the showcase's cast with the rover among its targets
     /// ([`super::meteor_showcase::stage_rover`]).
     #[cfg(not(target_arch = "wasm32"))]

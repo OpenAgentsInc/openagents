@@ -238,7 +238,7 @@ fn model() -> &'static Model {
 }
 
 /// The rigid group of an instance: the nearest of it and its ancestors
-/// that a CAD joint moves, else the body.
+/// that a CAD joint moves, else the body ([`core_of`]).
 fn group_of(spec: &Value, id: &str) -> String {
     let moved: Vec<&str> = spec["joints"]
         .as_array()
@@ -255,7 +255,13 @@ fn group_of(spec: &Value, id: &str) -> String {
             .and_then(|v| v["parent"].as_str())
             .map(str::to_owned);
     }
-    "chassis".into()
+    core_of(spec)
+}
+
+/// The assembly's main body: the spec's `core`, the rover's chassis by
+/// default. A meteor aimed at the assembly lands on it ([`Rover::deck`]).
+fn core_of(spec: &Value) -> String {
+    spec["core"].as_str().unwrap_or("chassis").to_owned()
 }
 
 /// What a joint is.
@@ -367,6 +373,8 @@ pub struct Rover {
     ground: ColliderId,
     origin: DVec3,
     caster: DVec3,
+    /// The main body's instance (the chassis on the rover).
+    core: String,
     carry: f64,
     events: Vec<Event>,
     /// Every blast it felt: when (s), where, and its damage radius (m).
@@ -380,10 +388,49 @@ impl Rover {
     /// (radians about Y; 0 faces +X), with meteors flying in from `caster`.
     #[must_use]
     pub fn new(origin: Vec3, heading: f32, caster: Vec3) -> Self {
+        Self::build(model(), origin, heading, caster)
+    }
+
+    /// Any assembly made destructible as the rover is: `glb` holds one
+    /// node per solid (a single triangle primitive with 32-bit indices,
+    /// in the assembly's frame: metres, Y up, the node's `extras.instance`
+    /// naming its solid), and `spec` (JSON, the shape of
+    /// `assets/verse/cad/rover.json`) gives each instance's `material` and
+    /// `density_g_cm3`, any CAD `joints`, and its `core` (the main body a
+    /// meteor aims for). With no joints every pair of touching solids is a
+    /// bolted seam. `scripts/blender/destructible_glb.py` writes both from
+    /// any glTF.
+    ///
+    /// # Errors
+    /// The glTF or the spec does not parse, or has no solid.
+    pub fn assembly(
+        glb: &[u8],
+        spec: &str,
+        origin: Vec3,
+        heading: f32,
+        caster: Vec3,
+    ) -> Result<Self, String> {
+        let spec: Value = serde_json::from_str(spec).map_err(|e| format!("spec: {e}"))?;
+        let solids = parse_glb(glb, &spec).ok_or("The assembly's glTF does not parse")?;
+        if solids.is_empty() {
+            return Err("The assembly has no solids".into());
+        }
+        let core = core_of(&spec);
+        if !solids.iter().any(|s| s.instance == core) {
+            return Err(format!("The assembly has no core solid {core}"));
+        }
+        Ok(Self::build(
+            &Model { solids, spec },
+            origin,
+            heading,
+            caster,
+        ))
+    }
+
+    fn build(model: &Model, origin: Vec3, heading: f32, caster: Vec3) -> Self {
         let origin = origin.as_dvec3();
         let heading = f64::from(heading);
         let turn = DQuat::from_rotation_y(heading);
-        let model = model();
         let spec = &model.spec;
         let mut world = World::new(STEP);
         let ground_body = world.add(
@@ -671,6 +718,7 @@ impl Rover {
             ground,
             origin,
             caster: caster.as_dvec3(),
+            core: core_of(spec),
             carry: 0.0,
             events: Vec::new(),
             felt: Vec::new(),
@@ -1688,7 +1736,7 @@ impl Rover {
         let c = self
             .parts
             .iter()
-            .position(|p| p.instance == "chassis")
+            .position(|p| p.instance == self.core)
             .map_or(self.origin, |k| self.body(k).pos);
         let toward =
             DVec3::new(self.caster.x - c.x, 0.0, self.caster.z - c.z).normalize_or(DVec3::X);
@@ -1710,7 +1758,7 @@ impl Rover {
         let c = self
             .parts
             .iter()
-            .position(|p| p.instance == "chassis" && !p.gone)
+            .position(|p| p.instance == self.core && !p.gone)
             .map_or(self.origin, |k| self.body(k).pos);
         let toward =
             DVec3::new(self.caster.x - c.x, 0.0, self.caster.z - c.z).normalize_or(DVec3::X);
@@ -2072,6 +2120,25 @@ mod tests {
         // Cast from straight ahead, at 20 m, the rover turned
         // three-quarters on (`metahuman_meteor_film`).
         swarm_comes_to_rest(Rover::new(Vec3::new(1.5, 0.0, -20.0), 0.55, Vec3::ZERO));
+    }
+
+    #[test]
+    fn any_assembly_from_a_gltf_breaks_and_comes_to_rest_after_a_swarm() {
+        // The rover's own solids as a plain assembly: no CAD joints, so
+        // every touching pair is bolted (wheels and all).
+        let mut spec: Value = serde_json::from_str(SPEC).unwrap();
+        spec["joints"] = Value::Array(vec![]);
+        spec["core"] = Value::String("chassis".into());
+        let spec = spec.to_string();
+        let origin = Vec3::new(4.0, 0.0, -18.0);
+        let r = Rover::assembly(GLB, &spec, origin, 0.3, Vec3::ZERO).unwrap();
+        assert_eq!(r.counts().0, model().solids.len());
+        assert!(r.joints().iter().all(|l| l.kind == Kind::Fastened));
+        swarm_comes_to_rest(r);
+        let mut bad: Value = serde_json::from_str(&spec).unwrap();
+        bad["core"] = Value::String("no such part".into());
+        assert!(Rover::assembly(GLB, &bad.to_string(), origin, 0.3, Vec3::ZERO).is_err());
+        assert!(Rover::assembly(b"not a glb", &spec, origin, 0.3, Vec3::ZERO).is_err());
     }
 
     #[test]

@@ -51,7 +51,8 @@ pub fn rover_joint_settings(name: &str) -> (Option<JointLimits>, Option<physics:
 }
 
 /// Yield strength of a CAD material, Pa (handbook values: 6061-T6
-/// aluminium, Ti-6Al-4V, mild steel, FR-4, and so on).
+/// aluminium, Ti-6Al-4V, mild steel, FR-4, oak across the grain, grey cast
+/// iron, and so on).
 #[must_use]
 pub fn yield_strength(material: &str) -> f64 {
     1e6 * match material {
@@ -72,6 +73,13 @@ pub fn yield_strength(material: &str) -> f64 {
         "Gold" => 100.0,
         "Foam" => 1.0,
         "Kapton" => 69.0,
+        // Construction and furniture materials (glued joints and grain
+        // across the load: the weak direction).
+        "Wood" => 40.0,
+        "Cast Iron" => 130.0,
+        "Bone" => 60.0,
+        "Leather" => 15.0,
+        "Fabric" => 5.0,
         // Aluminium
         _ => 276.0,
     }
@@ -269,6 +277,43 @@ pub fn parse_glb(bytes: &[u8], spec: &Value) -> Option<Vec<Solid>> {
             second[3] += v * cross(0, 1) / 20.0;
             second[4] += v * cross(1, 2) / 20.0;
             second[5] += v * cross(2, 0) / 20.0;
+        }
+        // An open surface (a pane, a sheet of trim) has no volume to
+        // measure: its spec may give its mass (`mass_kg`, with `open`),
+        // and it is weighed as a uniform box round its triangles.
+        let given = info
+            .filter(|i| i["open"].as_bool() == Some(true) || volume <= 1e-12)
+            .and_then(|i| i["mass_kg"].as_f64())
+            .filter(|m| m.is_finite() && *m > 0.0);
+        if let Some(mass) = given {
+            let (lo, hi) = positions.iter().fold(
+                (DVec3::splat(f64::MAX), DVec3::splat(f64::MIN)),
+                |(lo, hi), p| (lo.min(*p), hi.max(*p)),
+            );
+            let size = (hi - lo).max(DVec3::splat(0.006));
+            let com = (lo + hi) / 2.0;
+            let body: Vec<DVec3> = positions.iter().map(|p| *p - com).collect();
+            out.push(Solid {
+                instance: name,
+                material,
+                mass,
+                com,
+                frame: DQuat::IDENTITY,
+                inertia: DVec3::new(
+                    size.y * size.y + size.z * size.z,
+                    size.x * size.x + size.z * size.z,
+                    size.x * size.x + size.y * size.y,
+                ) * (mass / 12.0),
+                center: DVec3::ZERO,
+                half: size / 2.0,
+                lo,
+                hi,
+                positions: body.iter().map(|p| p.as_vec3()).collect(),
+                normals: normals.iter().map(|n| n.as_vec3()).collect(),
+                indices,
+                color,
+            });
+            continue;
         }
         if volume <= 1e-12 {
             continue;
