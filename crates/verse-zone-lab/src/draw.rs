@@ -426,6 +426,7 @@ pub fn scene(scene: &Scene, alpha: f64, overlay: bool) -> Mesh {
         }
     }
     rig(&mut mesh, scene, alpha);
+    flag(&mut mesh, scene, alpha);
     if overlay {
         // The manifold scene never steps, so it has no contact reports; draw
         // its detected points directly.
@@ -472,6 +473,44 @@ pub fn scene(scene: &Scene, alpha: f64, overlay: bool) -> Mesh {
         }
     }
     mesh
+}
+
+/// The flag (#11658) on its pole, faces shaded both sides, its free edge
+/// outlined in the dynamic color.
+fn flag(mesh: &mut Mesh, scene: &Scene, alpha: f64) {
+    let pole = at(super::scenes::FLAG_POLE);
+    let height = super::scenes::FLAG_HEIGHT as f32;
+    cuboid(
+        mesh,
+        pole + Vec3::new(0.0, height * 0.5 + 0.03, 0.0),
+        Quat::IDENTITY,
+        Vec3::new(0.03, height * 0.5 + 0.03, 0.03),
+        STATIC,
+    );
+    let points = verse_pbr::cloth::positions(&scene.flag, alpha, STAGE);
+    for (corners, normals) in verse_pbr::cloth::two_sided(&scene.flag, &points) {
+        let light = Vec3::new(0.3, 0.9, -0.35).normalize();
+        let n = (normals[0] + normals[1] + normals[2]).normalize_or_zero();
+        let k = 0.45 + 0.55 * n.dot(light).max(0.0);
+        let cloth = [0.7 * k, 0.16 * k, 0.1 * k];
+        for p in corners {
+            mesh.faces.push(vertex(p, cloth));
+        }
+    }
+    let (columns, rows) = (scene.flag.columns, scene.flag.rows);
+    let edge = |i: u32, j: u32| points[(j * columns + i) as usize];
+    for j in 0..rows - 1 {
+        line(
+            mesh,
+            edge(columns - 1, j),
+            edge(columns - 1, j + 1),
+            DYNAMIC,
+        );
+    }
+    for i in 0..columns - 1 {
+        line(mesh, edge(i, 0), edge(i + 1, 0), DYNAMIC);
+        line(mesh, edge(i, rows - 1), edge(i + 1, rows - 1), DYNAMIC);
+    }
 }
 
 /// Marks that belong to one scenario, drawn with or without the overlay.

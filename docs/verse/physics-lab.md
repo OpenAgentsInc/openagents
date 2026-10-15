@@ -108,6 +108,11 @@ tunneling shots, rebuild the same world each time.
 | 8 | Tether and weld | Point joints, tethers that only pull, and hard or soft welds | A rigid pendulum on a point joint; a box that falls with slack until its tether catches it; and an inverted-T pair of welded boxes that a ball strikes and moves as one. | Tether length, impact speed, weld (hard or soft) |
 | 9 | Thrusters | `ThrusterSet::box_corners`, the bounded allocator, and `Pid` | A 6 kg craft with 24 thrusters at its corners recovers from a tumble, holds attitude, and flies a commanded path. Firing thrusters show orange plumes, and a green cross marks the target. | Command (hold, right 1 m, up 0.5 m, yaw 90°, square; live), start still or tumbling |
 
+Beside every scenario, a red flag flies from a pole at the stage's back left
+corner: a 16x10 `physics::Cloth` (#11658) pinned along the pole, in a gusting
+wind that drags each particle, under gravity when gravity is on. It restarts
+with the scenario.
+
 Scenarios 4, 5, and 9 start in zero g; the others start under gravity. You can
 toggle gravity in any scenario. In zero g, the friction and torsion limits are
 zero because nothing presses the body on the floor, so any load slips.

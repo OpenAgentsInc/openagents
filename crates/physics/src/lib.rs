@@ -23,6 +23,9 @@
 //! - [`oracle`]: scenes shared with the offline Genesis oracle.
 //! - [`sensors`]: raycasts, per-body contact force, an IMU, and debug lines
 //!   for contacts and joints.
+//! - [`cloth`]: deterministic XPBD cloth (stretch, shear, dihedral
+//!   bending), pinned to world points or two-way to bodies, colliding with
+//!   every collider shape, with optional self-collision.
 //! - [`rope`]: a deterministic XPBD rope pinned at both ends or loose at
 //!   one, with long-range limits from each pinned end, one-way by default or
 //!   coupled to its end bodies, that collides with and wraps around solids.
@@ -48,6 +51,7 @@ pub mod body;
 mod broadphase;
 pub mod character;
 pub mod clock;
+pub mod cloth;
 pub mod collision;
 pub mod contact;
 pub mod continuous;
@@ -75,6 +79,7 @@ pub mod world;
 
 pub use body::{Body, BodyKind, Composite};
 pub use clock::FixedStep;
+pub use cloth::{Anchor, Cloth, ClothSettings, Pin};
 pub use collision::{
     Collider, ColliderId, ContactPoint, ConvexHull, Filter, HullError, HullRef, Manifold, Material,
     SdfError, SdfGrid, SdfRef, Shape,

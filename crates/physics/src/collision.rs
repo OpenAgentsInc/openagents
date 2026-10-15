@@ -293,6 +293,67 @@ pub struct Manifold {
     pub points: Vec<ContactPoint>,
 }
 
+/// A collider placed where its body is, for point queries (a cloth's
+/// particles against it).
+#[derive(Clone, Debug)]
+pub(crate) struct Surface(Placed);
+
+impl Collider {
+    pub(crate) fn surface(&self, world: &World) -> Surface {
+        let (pos, rotation) = self.pose(world);
+        Surface(place(&self.shape, pos, rotation))
+    }
+}
+
+impl Surface {
+    /// Signed distance from `x` to the surface, negative inside, and the
+    /// outward unit normal of the nearest surface point.
+    pub(crate) fn distance(&self, x: DVec3) -> (f64, DVec3) {
+        match &self.0 {
+            &Placed::Capsule { p, q, radius } => {
+                let d = q - p;
+                let t = if d.length_squared() > 0.0 {
+                    ((x - p).dot(d) / d.length_squared()).clamp(0.0, 1.0)
+                } else {
+                    0.0
+                };
+                let offset = x - (p + d * t);
+                let length = offset.length();
+                let normal = if length > 1e-12 {
+                    offset / length
+                } else {
+                    DVec3::Y
+                };
+                (length - radius, normal)
+            }
+            &Placed::Cuboid { center, axes, half } => box_distance(x, center, axes, half),
+            Placed::Poly(poly) => {
+                // Inside, the nearest face plane is exact; outside, GJK.
+                let mut best = (f64::NEG_INFINITY, DVec3::Y);
+                for (n, ids) in &poly.faces {
+                    let d = n.dot(x - poly.vertices[ids[0] as usize]);
+                    if d > best.0 {
+                        best = (d, *n);
+                    }
+                }
+                if best.0 <= 0.0 {
+                    return best;
+                }
+                match gjk::proximity(
+                    &gjk::Core::Points(&poly.vertices),
+                    &gjk::Core::Point(x),
+                    f64::INFINITY,
+                    best.0 + 1.0,
+                ) {
+                    Some(p) if p.distance > 1e-12 => (p.distance, (x - p.pa) / p.distance),
+                    _ => best,
+                }
+            }
+            Placed::Grid(grid) => grid.sample(x),
+        }
+    }
+}
+
 /// A shape placed in the world, reduced to the primitives the narrow phase
 /// handles.
 #[derive(Clone, Debug)]
@@ -982,4 +1043,4 @@ mod hull_tests;
 #[cfg(test)]
 mod index_tests;
 #[cfg(test)]
-mod sdf_tests;
+pub(crate) mod sdf_tests;

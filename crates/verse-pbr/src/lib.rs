@@ -3,9 +3,10 @@
 //! scenes (`pbr`), the world mesh they draw (`mesh`), streamed content
 //! residency on native targets (`streaming`), the shared fog distances
 //! (`fog`), water for both renderers (`water`), and the GPU particle
-//! liquid (`fluid`). `verse` re-exports each
+//! liquid (`fluid`), and cloth drawing (`cloth`). `verse` re-exports each
 //! module under its old path. Read `docs/verse/README.md`.
 
+pub mod cloth;
 pub mod fluid;
 pub mod fog;
 pub mod fx;

@@ -36,6 +36,36 @@ fn every_scenario_builds_steps_and_draws_without_nans() {
     }
 }
 
+/// #11658: the flag flies downwind of its pole, keeps its shape, and the
+/// gusts keep it moving.
+#[test]
+fn the_flag_flies_in_the_wind_beside_every_scenario() {
+    let mut lab = Lab::new();
+    lab.gravity = true;
+    lab.reset();
+    run(&mut lab, 3.0);
+    let pole = scenes::FLAG_POLE;
+    let flag = &lab.scene.flag;
+    let tip = flag.pos[(flag.columns - 1) as usize];
+    assert!(tip.x > pole.x + 0.6, "flies downwind: {tip}");
+    assert!(
+        flag.pos
+            .iter()
+            .all(|p| p.is_finite() && p.distance(pole) < 4.0)
+    );
+    let before = flag.pos.clone();
+    run(&mut lab, 0.5);
+    let swing = lab
+        .scene
+        .flag
+        .pos
+        .iter()
+        .zip(&before)
+        .map(|(a, b)| a.distance(*b))
+        .fold(0.0, f64::max);
+    assert!(swing > 0.01, "the gusts move it: {swing}");
+}
+
 #[test]
 fn every_knob_option_builds_and_steps() {
     let mut lab = Lab::new();

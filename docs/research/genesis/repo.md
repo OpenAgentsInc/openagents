@@ -228,6 +228,24 @@ Issues filed for the top five (all in project 22):
   output, `collision/fixtures/u-bracket.coacd.json`) falls and rests as one
   compound body (`World::add_compound_body`); the same mesh or document
   bakes to the same bytes.
+- **#11658, cloth.** `crates/physics/src/cloth.rs`, beside `rope.rs` and on
+  its XPBD loop: stretch and shear distance constraints, isometric bending
+  (Bergou et al. 2006; a dihedral-angle constraint flipped at full folds
+  and pumped energy on a fine grid), pins to world points or two-way to
+  bodies, contacts with every collider shape as in-pass constraints with
+  position-level friction and Müller's velocity update, air drag, and
+  optional particle self-collision through a sorted hash. Tests in
+  `cloth/tests.rs`: a 32x32 cloth drapes over a sphere and rests (under
+  5 mm/s creep, no jitter); a banner on a free body conserves momentum to
+  1e-12 and a wind on it drags the body; 1, 4 and 8 threads bit for bit;
+  restore bit for bit. Drawing: `verse_pbr::cloth`. Zone: the Physics Lab
+  flag (`verse-zone-lab`), in every scenario.
+  `cargo run --release -p physics --example cloth_drape`: 2.3 ms per
+  1/120 s step for 1,024 particles at 12 substeps on the M5 Max (about
+  2.2 µs per particle-step), 0.5 ms for 256. **Budget:** 256 cloth
+  particles per zone (a 16x16 flag), about 0.5 ms on the M5 Max and within
+  the 1 ms phone step budget at the phones' measured 2–3x slower cores;
+  films and offline scenes may use more.
 
 **What we do not port:**
 

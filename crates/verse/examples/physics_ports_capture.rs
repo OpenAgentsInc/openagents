@@ -7,6 +7,8 @@
 //! - `rubble` (#11657): a rubble field of mounds and a broken slab, one
 //!   closed mesh baked to a static distance grid, with rocks and blocks
 //!   poured over it.
+//! - `drape` (#11658): a cloth dropped over a CAD bracket (the U bracket's
+//!   convex pieces from the CoACD bake), stepped beside the world.
 //!
 //! The scene is simulated by `physics::World` at 120 Hz; only the camera is
 //! staged. Frames go to `ffmpeg` as 1920x1080 at 30 fps; with STILLS_DIR,
@@ -16,7 +18,9 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use glam::{DQuat, DVec3, Vec3};
-use physics::{Body, BodyKind, Collider, ConvexHull, HullRef, Shape, Uniform, World};
+use physics::{
+    Body, BodyKind, Cloth, ClothSettings, Collider, ConvexHull, HullRef, Shape, Uniform, World,
+};
 use verse::{
     mesh::Vertex,
     runtime::WorldRuntime,
@@ -138,6 +142,84 @@ struct Scene {
     color: Box<dyn Fn(usize, &Body) -> [f32; 3]>,
     /// Fixed triangles drawn every frame (a distance grid's source mesh).
     ground: Draw,
+    /// A cloth stepped after the world, with its color.
+    cloth: Option<(Cloth, [f32; 3])>,
+}
+
+/// #11658: a 40 x 40 cloth dropped over a CAD bracket, the U bracket's
+/// convex pieces from the CoACD bake (the physics fixture), scaled up.
+fn drape() -> Scene {
+    let mut world = World::new(1.0 / 120.0);
+    fixed_box(
+        &mut world,
+        DVec3::new(0.0, -0.1, 0.0),
+        DVec3::new(2.4, 0.1, 2.4),
+    );
+    let fixture: serde_json::Value = serde_json::from_str(include_str!(
+        "../../physics/src/collision/fixtures/u-bracket.coacd.json"
+    ))
+    .map_err(|e| e.to_string())
+    .unwrap();
+    let scale = 4.0;
+    let bracket = world.add(Body::new(1.0, DVec3::ONE, DVec3::ZERO).with_kind(BodyKind::Static));
+    for hull in fixture["hulls"].as_array().unwrap() {
+        let points: Vec<DVec3> = hull
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|p| {
+                let a = p.as_array().unwrap();
+                let v = DVec3::new(
+                    a[0].as_f64().unwrap(),
+                    a[1].as_f64().unwrap(),
+                    a[2].as_f64().unwrap(),
+                );
+                // Stand the bracket on the slab, its posts up.
+                DVec3::new(v.x, v.y + 0.1, v.z) * scale
+            })
+            .collect();
+        world.add_collider(Collider::new(
+            bracket,
+            Shape::Hull {
+                hull: HullRef::new(ConvexHull::new(&points).unwrap()),
+            },
+        ));
+    }
+    let side = 40;
+    let size = 2.0;
+    let cloth = Cloth::grid(
+        DVec3::new(-size / 2.0 + 0.05, 1.3, -size / 2.0 - 0.1),
+        DVec3::X,
+        DVec3::Z,
+        side,
+        side,
+        size / f64::from(side - 1),
+        ClothSettings {
+            friction: 0.6,
+            ..ClothSettings::default()
+        },
+    );
+    Scene {
+        world,
+        frames: FPS as usize * 8,
+        camera: Box::new(|k| {
+            let t = k as f32 / FPS as f32;
+            let a = 0.7 + t * 0.07;
+            (
+                Vec3::new(3.0 * a.sin(), 1.7 - t * 0.04, 3.0 * a.cos()),
+                Vec3::new(0.0, 0.45, 0.0),
+            )
+        }),
+        color: Box::new(|_, body| {
+            if body.pos.length() < 0.01 {
+                [0.55, 0.58, 0.62]
+            } else {
+                [0.3, 0.3, 0.3]
+            }
+        }),
+        ground: Draw::default(),
+        cloth: Some((cloth, [0.75, 0.18, 0.12])),
+    }
 }
 
 /// #11657: a rubble field (mounds and slabs) as one closed mesh, baked to
@@ -279,6 +361,7 @@ fn rubble() -> Scene {
             tones[i % tones.len()]
         }),
         ground: draw,
+        cloth: None,
     }
 }
 
@@ -352,6 +435,7 @@ fn rocks() -> Scene {
             tones[i % tones.len()]
         }),
         ground: Draw::default(),
+        cloth: None,
     }
 }
 
@@ -366,6 +450,7 @@ fn main() -> Result<(), String> {
     let mut scene = match name.as_str() {
         "rocks" => rocks(),
         "rubble" => rubble(),
+        "drape" => drape(),
         other => return Err(format!("Unknown scene {other}")),
     };
     let mut runtime = WorldRuntime::bare();
@@ -387,6 +472,9 @@ fn main() -> Result<(), String> {
         if k > 0 {
             for _ in 0..STEPS_PER_FRAME {
                 scene.world.step(&g);
+                if let Some((cloth, _)) = &mut scene.cloth {
+                    cloth.step(&mut scene.world, &g);
+                }
                 slowest = slowest.max(scene.world.stats.total);
             }
         }
@@ -395,6 +483,12 @@ fn main() -> Result<(), String> {
         let view = runtime.view(aspect);
         let mut draw = scene.ground.clone();
         draw.world(&scene.world, &scene.color);
+        if let Some((cloth, color)) = &scene.cloth {
+            let points = verse_pbr::cloth::positions(cloth, 1.0, Vec3::ZERO);
+            for (corners, normals) in verse_pbr::cloth::two_sided(cloth, &points) {
+                draw.tri(corners, normals[0] + normals[1] + normals[2], *color, 0.9);
+            }
+        }
         let mut dynamic = verse::mesh::Mesh::default();
         dynamic.faces = draw.faces;
         dynamic.lines = draw.lines;

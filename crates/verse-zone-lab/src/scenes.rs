@@ -7,8 +7,8 @@
 
 use glam::{DQuat, DVec3};
 use physics::{
-    Body, BodyId, BodyKind, Collider, ContactPoint, Filter, Joint, JointId, JointKind, Ledger,
-    LedgerError, Material, NoField, Pid, Shape, ThrusterSet, Uniform, World,
+    Body, BodyId, BodyKind, Cloth, ClothSettings, Collider, ContactPoint, Filter, Joint, JointId,
+    JointKind, Ledger, LedgerError, Material, NoField, Pid, Shape, ThrusterSet, Uniform, World,
 };
 
 /// Fixed step length, s.
@@ -462,11 +462,53 @@ pub enum Rig {
     },
 }
 
+/// The lab's flag (#11658): a cloth on a pole at the stage's back left
+/// corner, flying in a gusting wind in every scenario.
+pub const FLAG_POLE: DVec3 = DVec3::new(-(FLOOR_HALF - 0.3), 0.0, FLOOR_HALF - 0.3);
+/// The pole's height, m.
+pub const FLAG_HEIGHT: f64 = 2.6;
+const FLAG_COLUMNS: u32 = 16;
+const FLAG_ROWS: u32 = 10;
+const FLAG_SPACING: f64 = 0.06;
+
+fn flag() -> Cloth {
+    let top = FLAG_POLE + DVec3::new(0.05, FLAG_HEIGHT, 0.0);
+    let mut cloth = Cloth::grid(
+        top,
+        DVec3::X,
+        DVec3::NEG_Y,
+        FLAG_COLUMNS,
+        FLAG_ROWS,
+        FLAG_SPACING,
+        ClothSettings {
+            density: 0.15,
+            air: 0.0,
+            ..ClothSettings::default()
+        },
+    );
+    for j in 0..FLAG_ROWS {
+        cloth.pin_here(0, j);
+    }
+    cloth
+}
+
+/// The wind on the flag at `t`, m/s: a steady breeze across the stage with
+/// slow gusts that swing it.
+fn wind(t: f64) -> DVec3 {
+    DVec3::new(
+        3.0 + 1.5 * (0.9 * t).sin() + 0.6 * (2.3 * t).sin(),
+        0.0,
+        -1.2 * (0.37 * t).sin(),
+    )
+}
+
 /// A built scenario: its world, rig, and elapsed time.
 pub struct Scene {
     pub kind: Kind,
     pub world: World,
     pub rig: Rig,
+    /// The flag beside the stage.
+    pub flag: Cloth,
     /// Simulated time since the last build, s.
     pub time: f64,
     /// How many times the scenario looped back to its start on its own.
@@ -929,6 +971,7 @@ impl Scene {
             kind,
             world,
             rig,
+            flag: flag(),
             time: 0.0,
             loops: 0,
         }
@@ -1132,6 +1175,11 @@ impl Scene {
                 step_world(&mut self.world, gravity);
             }
         }
+        // The flag: gravity when it is on, and the wind's drag on each
+        // particle.
+        let breeze = wind(t);
+        let blow = move |_: DVec3, v: DVec3| DVec3::new(0.0, -g, 0.0) + (breeze - v) * 1.5;
+        self.flag.step(&mut self.world, &blow);
         self.time += DT;
         if restart {
             let loops = self.loops + 1;
