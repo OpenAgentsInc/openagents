@@ -279,7 +279,7 @@ fn a_denied_code_says_so() {
     until(|| matches!(f.link.lock().sign_in, SignIn::Failed(_)));
     assert_eq!(
         f.link.lock().sign_in,
-        SignIn::Failed("Sign-in was denied on the website.".into())
+        SignIn::Failed("Login was denied on the website.".into())
     );
     assert_eq!(f.site.calls("POST /v1/device/code").len(), 1);
     assert!(!f.site.calls("POST /v1/device/token").is_empty());
@@ -775,7 +775,7 @@ fn an_ended_session_signs_out() {
     f.site.answer(
         "GET /v1/threads",
         401,
-        json!({"error": {"code": "signed_out", "message": "Sign in again."}}),
+        json!({"error": {"code": "signed_out", "message": "Log in again."}}),
     );
     signed(&mut f);
     until(|| !f.link.signed_in());
@@ -1034,7 +1034,7 @@ fn memory_notes_list_edit_delete_and_go_with_chat_turns() {
     );
     f.site
         .answer("DELETE /coder/memory/mem-2", 200, json!({"deleted": true}));
-    assert!(f.link.memory_notes().is_empty(), "signed out");
+    assert!(f.link.memory_notes().is_empty(), "logged out");
     signed(&mut f);
     until(|| f.link.lock().memory_read);
     // Chat turns carry only the notes that apply everywhere.

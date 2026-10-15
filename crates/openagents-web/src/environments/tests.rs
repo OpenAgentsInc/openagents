@@ -328,7 +328,7 @@ fn a_stopped_setup_offers_a_retry_and_a_saved_one_offers_claude_code() {
     }];
     let without = view::transcript(&v, view::Claude::Unavailable, None).into_string();
     // Without any key: sign in to Claude inside the environment (#11294).
-    assert!(without.contains("sign in to Claude once inside this environment"));
+    assert!(without.contains("log in to Claude once inside this environment"));
     assert!(
         without.contains("href=\"/environments/env-1/sign-in\""),
         "{without}"
@@ -889,7 +889,7 @@ fn the_sign_in_panel_shows_the_terminal_then_sends_the_held_message() {
     use coder_environment_operator::studio::sign_in::{Phase as SignIn, View as Screen};
     let back = Some("/chat/chat-1");
     let first = view::sign_in_panel("env-1", None, back).into_string();
-    assert!(first.contains("Start sign-in") && first.contains("OpenAgents never sees your login"));
+    assert!(first.contains("Start login") && first.contains("OpenAgents never sees your login"));
     assert!(
         first.contains(
             r#"hx-post="/environments/env-1/sign-in?back=%2Fchat%2Fchat-1&amp;part=panel""#
@@ -915,8 +915,8 @@ fn the_sign_in_panel_shows_the_terminal_then_sends_the_held_message() {
         "{html}"
     );
     assert!(
-        html.contains("Open Anthropic&#39;s sign-in page")
-            || html.contains("Open Anthropic's sign-in page")
+        html.contains("Open Anthropic&#39;s login page")
+            || html.contains("Open Anthropic's login page")
     );
     assert!(html.contains("Paste code here if prompted"));
     assert!(
@@ -929,7 +929,7 @@ fn the_sign_in_panel_shows_the_terminal_then_sends_the_held_message() {
         link: None,
     };
     let html = view::sign_in_panel("env-1", Some(&done), back).into_string();
-    assert!(html.contains("Signed in to Claude"));
+    assert!(html.contains("Logged in to Claude"));
     // The waiting message is sent by the chat's own form, no retyping.
     assert!(
         html.contains(r#"form="chat-form""#) && html.contains("Send your message"),
@@ -938,7 +938,7 @@ fn the_sign_in_panel_shows_the_terminal_then_sends_the_held_message() {
     let html = view::sign_in_panel("env-1", Some(&done), None).into_string();
     assert!(!html.contains("chat-form") && html.contains("href=\"/environments/env-1\""));
     let failed = Screen {
-        phase: SignIn::Failed("Claude isn't signed in yet.".into()),
+        phase: SignIn::Failed("Claude isn't logged in yet.".into()),
         screen: String::new(),
         link: None,
     };

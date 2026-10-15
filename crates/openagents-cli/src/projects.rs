@@ -128,7 +128,7 @@ instructions and files and its primary repository when it has one, and it
 shows in the project. A project can be in no repository, and one repository
 can be in several projects; when a name matches more than one project, use
 the id.
-These are the projects in the left panel of openagents.com, signed in as
+These are the projects in the left panel of openagents.com, logged in as
 openagents login or coder login saved them, or OPENAGENTS_TOKEN. Ask about
 only-me files with openagents vault ask FILE --project ID. Projects
 someone shared with you list here too, with your role. GitHub Project
@@ -1570,7 +1570,7 @@ fn invited_text(made: &Value) -> String {
         .unwrap_or_default();
     if let Some(who) = made["invitee"]["github"].as_str() {
         return format!(
-            "Invited {who} to {} as {}. It's waiting on their Projects page on openagents.com until {}: they sign in with GitHub and choose Join. This link works too, once, and won't be shown again:\n{link}",
+            "Invited {who} to {} as {}. It's waiting on their Projects page on openagents.com until {}: they log in with GitHub and choose Join. This link works too, once, and won't be shown again:\n{link}",
             made["project_name"].as_str().unwrap_or("the project"),
             role_phrase(made["role"].as_str().unwrap_or("editor")),
             day(&made["expires_at"]),

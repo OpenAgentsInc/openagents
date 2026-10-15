@@ -71,7 +71,7 @@ fn started() -> CoderEvent {
         base: "abc".into(),
         provider: "codex".into(),
         model: "gpt-5".into(),
-        reason: "Codex is signed in and has capacity.".into(),
+        reason: "Codex is logged in and has capacity.".into(),
         fallbacks: Vec::new(),
         via: "local".into(),
         runner: None,
@@ -496,7 +496,7 @@ fn the_welcome_card_is_three_short_facts() {
     assert!(!host.contains("synced"), "{host}");
     assert!(!host.contains("Ctrl+S"), "a host needs no offer: {host}");
     assert!(host.contains("Project  none"), "{host}");
-    assert!(host.contains("Agents   none signed in"), "{host}");
+    assert!(host.contains("Agents   none logged in"), "{host}");
     assert!(host.lines().count() <= 5, "{host}");
 }
 
@@ -665,7 +665,7 @@ fn a_start_shows_starting_then_one_line() {
         unreachable!()
     };
     grok.provider = "grok".into();
-    grok.reason = "You asked for Grok Build; it is signed in and has capacity.".into();
+    grok.reason = "You asked for Grok Build; it is logged in and has capacity.".into();
     grok.runner = Some(runner);
     app.event(line(1, CoderEvent::CoderStarted(grok)));
     assert_eq!(app.status(), "Working · Esc stops");
@@ -678,7 +678,7 @@ fn a_start_shows_starting_then_one_line() {
         .collect();
     assert_eq!(after.len(), 1, "{shown}");
     assert!(after[0].contains("Grok Build is working."), "{shown}");
-    for noise in ["t1", "/tmp/w", "signed in", "Coder started"] {
+    for noise in ["t1", "/tmp/w", "logged in", "Coder started"] {
         assert!(!shown.contains(noise), "{noise}: {shown}");
     }
 }

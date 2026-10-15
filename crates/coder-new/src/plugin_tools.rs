@@ -329,13 +329,13 @@ impl ExecutionSettings {
             return Err("OpenAgents is turned off on this computer (CODER_CLOUD=off)".into());
         }
         let Some(account) = &self.connections else {
-            return Err("You're not signed in to OpenAgents".into());
+            return Err("You're not logged in to OpenAgents".into());
         };
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |elapsed| elapsed.as_secs());
         if account.expired(now) {
-            return Err("Your OpenAgents sign-in has expired".into());
+            return Err("Your OpenAgents login has expired".into());
         }
         Ok(account.clone())
     }
@@ -848,7 +848,7 @@ impl ExecutionSettings {
                 let account = self
                     .connections
                     .as_ref()
-                    .ok_or("Sign in with coder login.")?;
+                    .ok_or("Log in with coder login.")?;
                 tokio::select! {
                     result = crate::connection_tools::execute(account, name, arguments) => result,
                     () = async { while !cancel.load(Ordering::Relaxed) { tokio::time::sleep(std::time::Duration::from_millis(50)).await; } } => Err("The Drive request was canceled.".into()),

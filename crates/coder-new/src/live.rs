@@ -1947,7 +1947,7 @@ fn run_with_provider(
                 }
                 Work::SolverIntake { messages, cwd, github, claude: false, account } => {
                     let result = match account.as_ref().map(Provider::gateway) {
-                        None => Err("Solver's Intaker needs Claude Code or your OpenAgents sign-in: run coder login, or turn Claude Code on in /plugins.".to_owned()),
+                        None => Err("Solver's Intaker needs Claude Code or your OpenAgents login: run coder login, or turn Claude Code on in /plugins.".to_owned()),
                         Some(Err(why)) => Err(why),
                         Some(Ok(provider)) => {
                             let mut execution = crate::issue_run::agent::coder_settings(&cwd, false);
@@ -2438,7 +2438,7 @@ async fn gateway_turn(
     event_callback: &mut (dyn FnMut(RuntimeEvent) + Send),
 ) -> Result<Result<Streamed, String>, String> {
     let Some(account) = execution.connections.as_ref() else {
-        return Err("the OpenAgents account is not signed in".into());
+        return Err("the OpenAgents account is not logged in".into());
     };
     let provider = Provider::gateway(account)?;
     let mut execution = execution.clone();
@@ -3335,7 +3335,7 @@ mod tests {
             auto_turn("sess_gateway_ok", &origin),
             sender,
             canceled,
-            |_| panic!("a signed-in auto turn the gateway answers never reaches OpenRouter"),
+            |_| panic!("a logged-in auto turn the gateway answers never reaches OpenRouter"),
         );
         let request = server.join().unwrap();
         assert!(request.starts_with("POST /api/v1/chat/completions HTTP/1.1"));

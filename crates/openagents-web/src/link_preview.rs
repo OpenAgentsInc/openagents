@@ -125,22 +125,22 @@ impl Kind {
             ),
             Self::Chat => (
                 "A chat",
-                "One conversation with your agents. Sign in to open it.",
+                "One conversation with your agents. Log in to open it.",
             ),
             Self::Projects => (
                 "Projects",
-                "Your repositories and the chats about them. Sign in to open them.",
+                "Your repositories and the chats about them. Log in to open them.",
             ),
             Self::Settings => (
                 "Settings",
-                "Your account, keys and plan. Sign in to open them.",
+                "Your account, keys and plan. Log in to open them.",
             ),
             Self::Environments => ("Environments", "Set up a repository and run agents in it."),
             Self::Work => (
                 "Work",
-                "What your agents are working on. Sign in to follow it.",
+                "What your agents are working on. Log in to follow it.",
             ),
-            Self::Device => ("Connect a device", "Sign in to finish connecting it."),
+            Self::Device => ("Connect a device", "Log in to finish connecting it."),
             Self::Docs => ("Docs", "How to use OpenAgents and Coder."),
             Self::Roadmap => (
                 "Roadmap",
@@ -221,35 +221,35 @@ pub(crate) fn signed_out(return_to: &str) -> Option<SignedOut> {
     let (title, description) = match Kind::of(path) {
         Kind::Chat => (
             "A chat on OpenAgents",
-            "Sign in to OpenAgents to open this chat.",
+            "Log in to OpenAgents to open this chat.",
         ),
         Kind::Projects if path == "/projects" => (
             "Your projects on OpenAgents",
-            "Sign in to OpenAgents to see your projects and their repositories.",
+            "Log in to OpenAgents to see your projects and their repositories.",
         ),
         Kind::Projects => (
             "A project on OpenAgents",
-            "Sign in to OpenAgents to open this project.",
+            "Log in to OpenAgents to open this project.",
         ),
         Kind::Settings => (
             "Your settings on OpenAgents",
-            "Sign in to OpenAgents to change your account, keys and plan.",
+            "Log in to OpenAgents to change your account, keys and plan.",
         ),
         Kind::Environments => (
             "Environments on OpenAgents",
-            "Sign in to OpenAgents to set up a repository and run agents in it.",
+            "Log in to OpenAgents to set up a repository and run agents in it.",
         ),
         Kind::Work => (
             "Work on OpenAgents",
-            "Sign in to OpenAgents to follow what your agents are working on.",
+            "Log in to OpenAgents to follow what your agents are working on.",
         ),
         Kind::Device => (
             "Connect a device to OpenAgents",
-            "Sign in to OpenAgents to finish connecting your device.",
+            "Log in to OpenAgents to finish connecting your device.",
         ),
         Kind::Page if !path.is_empty() => (
             "A page on OpenAgents",
-            "Sign in to OpenAgents to open this page.",
+            "Log in to OpenAgents to open this page.",
         ),
         _ => return None,
     };

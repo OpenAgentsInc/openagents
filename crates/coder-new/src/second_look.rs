@@ -758,7 +758,7 @@ impl Look {
                 QUESTION,
                 "Should a second reviewer, who sees only the request and this change, check it before the agent reports it done?",
                 [
-                    ("check", "Yes: the change is large, touches code where a mistake is costly (money, sign-in, stored data, security, concurrency, migrations, public interfaces), or its tests did not run or failed."),
+                    ("check", "Yes: the change is large, touches code where a mistake is costly (money, login, stored data, security, concurrency, migrations, public interfaces), or its tests did not run or failed."),
                     ("skip", "No: the change is small and low-risk and its checks ran and passed, or it only changes docs, comments or wording."),
                 ],
             )

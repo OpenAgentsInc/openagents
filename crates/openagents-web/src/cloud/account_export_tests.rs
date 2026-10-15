@@ -119,7 +119,7 @@ async fn a_token_that_no_longer_signs_in_is_refused_as_json() {
     assert_eq!(status, StatusCode::UNAUTHORIZED);
     let body: Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(body["error"]["code"], "signed_out");
-    assert_eq!(body["error"]["message"], "Sign in again with coder login.");
+    assert_eq!(body["error"]["message"], "Log in again with coder login.");
     // Not a session token at all.
     let (status, _, _) = export(&fixture.site, Some("oak_not-a-session")).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);

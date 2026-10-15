@@ -210,7 +210,7 @@ Options:
   --engine NAME      claude (a Claude Code session), opencode (an OpenCode session
                      under Coder's plugin) or coder (the Coder loop on the OpenAgents
                      gateway). Default: claude while the Claude Code plugin is on and
-                     signed in, then opencode while it is installed and its plugin is
+                     logged in, then opencode while it is installed and its plugin is
                      on, otherwise coder.
   --model NAME       The agent's model (default claude-opus-5-5; your OpenCode model on
                      opencode; openagents/auto on coder).

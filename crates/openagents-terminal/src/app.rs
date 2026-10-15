@@ -1894,7 +1894,7 @@ pub fn welcome(_backend: Kind, context: &Context, _resumed: Option<&str>) -> Car
         _ => Vec::new(),
     };
     let agents = if ready.is_empty() {
-        "none signed in".to_owned()
+        "none logged in".to_owned()
     } else {
         ready.join(" · ")
     };

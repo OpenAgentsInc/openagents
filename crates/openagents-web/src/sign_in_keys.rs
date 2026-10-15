@@ -101,14 +101,14 @@ fn target(viewer: &Viewer, request: &str) -> String {
 fn problem(status: StatusCode, text: &str) -> Response {
     protect(crate::layout::problem(
         status,
-        "Sign-in keys",
+        "Login keys",
         text,
-        (PAGE, "Sign-in keys"),
+        (PAGE, "Login keys"),
     ))
 }
 
 pub(crate) const UNREACHABLE: &str =
-    "Your sign-in keys can't be reached right now. Try again in a minute.";
+    "Your login keys can't be reached right now. Try again in a minute.";
 
 fn unreachable_service() -> Response {
     problem(StatusCode::BAD_GATEWAY, UNREACHABLE)
@@ -139,7 +139,7 @@ async fn settings_page(State(app): State<App>, headers: HeaderMap) -> Response {
         (&tickets[0].0, &tickets[0].1),
         (&tickets[1].0, &tickets[1].1),
     );
-    page(&headers, service, &viewer, "Sign-in keys", PAGE, body)
+    page(&headers, service, &viewer, "Login keys", PAGE, body)
 }
 
 /// A key's dates in words.
@@ -168,17 +168,17 @@ pub(crate) fn keys_content(keys: &[SignInKey], make: (&str, &str), revoke: (&str
     html! {
         p { (action_link("Settings", SETTINGS)) }
         (MarkdownRoot::new(html! {
-            h1 { "Sign-in keys for agents" }
+            h1 { "Login keys for agents" }
             p {
-                "A sign-in key lets an agent or a script act as you, like "
+                "A login key lets an agent or a script act as you, like "
                 code { "coder login" } ", without a code to approve. Anyone with the key can do what you can, so keep it secret and revoke it when you're done."
             }
         }))
         @if keys.is_empty() {
-            p { "You have no sign-in keys." }
+            p { "You have no login keys." }
         } @else {
             section class="oa-settings-group" aria-labelledby="sign-in-keys-list" {
-                h2 #sign-in-keys-list { "Your sign-in keys" }
+                h2 #sign-in-keys-list { "Your login keys" }
                 @for key in keys {
                     div class="oa-settings-row" {
                         div class="oa-settings-text" {
@@ -201,7 +201,7 @@ pub(crate) fn keys_content(keys: &[SignInKey], make: (&str, &str), revoke: (&str
             }
         }
         section class="oa-settings-group" aria-labelledby="sign-in-keys-make" {
-            h2 #sign-in-keys-make { "Make a sign-in key" }
+            h2 #sign-in-keys-make { "Make a login key" }
             form method="post" action=(PAGE) autocomplete="off" {
                 input type="hidden" name="csrf" value=(make.0);
                 input type="hidden" name="request" value=(make.1);
@@ -239,9 +239,9 @@ pub(crate) fn made_content(origin: &str, made: &MadeKey) -> Markup {
         format!("OPENAGENTS_ORIGIN={origin} coder login --key")
     };
     html! {
-        p { (action_link("Sign-in keys", PAGE)) }
+        p { (action_link("Login keys", PAGE)) }
         (MarkdownRoot::new(html! {
-            h1 { "Your new sign-in key" }
+            h1 { "Your new login key" }
             p { "Copy " strong { (made.key.name) } " now. It won't be shown again." }
         }))
         (copy_line(&made.token))
@@ -302,14 +302,7 @@ async fn settings_make(
         Err(_) => return unreachable_service(),
     };
     let body = made_content(service.origin(), &made);
-    let mut response = page(
-        &headers,
-        service,
-        &viewer,
-        "Your new sign-in key",
-        PAGE,
-        body,
-    );
+    let mut response = page(&headers, service, &viewer, "Your new login key", PAGE, body);
     response
         .headers_mut()
         .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
@@ -399,7 +392,7 @@ fn signed_out() -> Response {
     refused(
         StatusCode::UNAUTHORIZED,
         "signed_out",
-        "Sign in first: coder login, or a sign-in key in OPENAGENTS_TOKEN.",
+        "Log in first: coder login, or a login key in OPENAGENTS_TOKEN.",
     )
 }
 
@@ -674,7 +667,7 @@ mod tests {
         ];
         let html = keys_content(&keys, ("t", "r"), ("t2", "r2")).into_string();
         crate::copy_guard::assert_plain(PAGE, &html);
-        assert!(html.contains("Sign-in keys for agents"));
+        assert!(html.contains("Login keys for agents"));
         assert!(html.contains("build agent"));
         assert!(html.contains("Never used · Never expires"));
         assert!(html.contains("Last used 2026-10-10 · Expires 2026-11-08"));
@@ -682,7 +675,7 @@ mod tests {
         assert!(html.contains("In 30 days") && html.contains("In 90 days"));
         assert!(!html.contains("oa_sk_"));
         let empty = keys_content(&[], ("t", "r"), ("t2", "r2")).into_string();
-        assert!(empty.contains("You have no sign-in keys."));
+        assert!(empty.contains("You have no login keys."));
     }
 
     #[test]

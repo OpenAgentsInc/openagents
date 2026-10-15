@@ -6,7 +6,7 @@ const WORLD: &str = "world/index.json";
 const MAX_PLACEMENTS: usize = 20;
 
 fn personal(scope: &Scope) -> Result<Scope, String> {
-    Scope::personal(&scope.actor).ok_or("Sign in to place a model in your world.".into())
+    Scope::personal(&scope.actor).ok_or("Log in to place a model in your world.".into())
 }
 fn project(scope: &Scope) -> &str {
     scope.project.as_deref().unwrap_or("me")

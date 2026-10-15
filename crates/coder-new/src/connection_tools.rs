@@ -229,7 +229,7 @@ mod tests {
                     if headers["authorization"] != "Bearer sess_test" {
                         return (
                             axum::http::StatusCode::UNAUTHORIZED,
-                            axum::Json(json!({"error": {"message": "Sign in with coder login."}})),
+                            axum::Json(json!({"error": {"message": "Log in with coder login."}})),
                         );
                     }
                     (
@@ -252,7 +252,7 @@ mod tests {
         let refused = call(&origin, "sess_other", "drive_read", json!({"file": "abc"}))
             .await
             .unwrap_err();
-        assert_eq!(refused, "Sign in with coder login.");
+        assert_eq!(refused, "Log in with coder login.");
         assert!(call(&origin, "sess_test", "Run", json!({})).await.is_err());
     }
 }

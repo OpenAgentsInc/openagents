@@ -129,7 +129,7 @@ pub(crate) async fn app_viewer<'a>(
             Err(crate::coder_sync::refused(
                 StatusCode::UNAUTHORIZED,
                 "signed_out",
-                "Sign in again with coder login.",
+                "Log in again with coder login.",
             ))
         }
         Err(_) => Err(crate::coder_sync::refused(

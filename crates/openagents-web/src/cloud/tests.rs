@@ -841,7 +841,7 @@ async fn subscription_tokens_are_offered_and_kept_for_the_allowlist_only() {
     .await;
     assert_eq!(page.status, StatusCode::OK, "{}", page.body);
     plain(&page);
-    assert!(page.body.contains("Sign in inside your environment"));
+    assert!(page.body.contains("Log in inside your environment"));
     assert!(!page.body.contains("claude_subscription_token"));
     assert!(!page.body.contains("setup-token"));
     for material in ["claude_subscription_token", "anthropic_api_key"] {
@@ -868,7 +868,7 @@ async fn subscription_tokens_are_offered_and_kept_for_the_allowlist_only() {
         assert!(
             refused
                 .body
-                .contains("Sign in to Claude inside your environment instead"),
+                .contains("Log in to Claude inside your environment instead"),
             "{}",
             refused.body
         );

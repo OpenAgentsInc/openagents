@@ -192,7 +192,7 @@ fn gh(arguments: &[String], input: Option<&[u8]>) -> Result<String, String> {
         .spawn()
         .map_err(|error| {
             if error.kind() == std::io::ErrorKind::NotFound {
-                "This needs the GitHub CLI (gh), signed in: https://cli.github.com".to_owned()
+                "This needs the GitHub CLI (gh), logged in: https://cli.github.com".to_owned()
             } else {
                 format!("gh: {error}")
             }

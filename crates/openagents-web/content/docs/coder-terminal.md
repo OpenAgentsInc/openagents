@@ -82,7 +82,7 @@ Type `/` to see them above the input; keep typing to filter, and press
 | `/loop` | Repeat a prompt while Coder is open: `/loop 5m check the deploy`. `/loop stop 1` or `/loop stop all` ends them. |
 | `/schedule` | Run a prompt on this computer on a schedule, even while Coder is closed: `/schedule weekdays 09:00 triage new issues`. `/schedule remove ID` deletes one. |
 | `/shells` | Commands running in the background. `/shells stop ID` stops one. |
-| `/login`, `/logout` | Sign in to openagents.com, or sign out. |
+| `/login`, `/logout` | Log in to openagents.com, or log out. |
 | `/sync` | Save chats to your account: `/sync on`, `/sync off`, or `/sync delete`. See [Sync, share, and export](/docs/coder-sync). |
 | `/appearance` | Use your terminal's own background color instead of Coder's. |
 | `/brainstorm` | Public profile lookups, when the Brainstorm plugin is on. |

@@ -11,7 +11,7 @@ release script and says how to use it.
 - OpenAgents for Mac, with your phone [connected](/docs/connect-a-computer),
   the app's repository picked as the project, and **Let my phone start
   Coder here** on.
-- A coding agent signed in. See [Coding agents](/docs/coding-agents).
+- A coding agent logged in. See [Coding agents](/docs/coding-agents).
 - Xcode, with your Apple Distribution signing identity in the login
   keychain and the App Store profile installed.
 - An App Store Connect API key in a file on the Mac. The OpenAgents

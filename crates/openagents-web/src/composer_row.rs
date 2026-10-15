@@ -197,7 +197,7 @@ pub(crate) const CODER_NEW_CHAT: Refused =
 
 /// Why a message for Claude Code wasn't sent while Claude isn't connected
 /// yet; the message stays in the box (#11234).
-pub(crate) const CONNECT: Refused = "Claude Code needs Claude connected before it can run here. Sign in to Claude, or add your key in Settings, Claude, then send again: your message stays in the box.";
+pub(crate) const CONNECT: Refused = "Claude Code needs Claude connected before it can run here. Log in to Claude, or add your key in Settings, Claude, then send again: your message stays in the box.";
 
 /// Where the connect card's button goes: Settings, Claude, at the key.
 pub(crate) const CONNECT_KEY: &str = "/settings/claude#key";
@@ -409,7 +409,7 @@ pub(crate) async fn checked(
     let asked = Target::parse(&wanted.target);
     let Some(choices) = choices(app, headers, owner).await else {
         if asked != Target::Chat {
-            return Err("Sign in to run this somewhere else. Reload the page.");
+            return Err("Log in to run this somewhere else. Reload the page.");
         }
         return Ok(Picked {
             project: None,
@@ -574,14 +574,14 @@ pub(crate) fn connect_card(
         div.oa-composer-connect #composer-connect role="status" {
             strong { "Connect Claude to run Claude Code" }
             span {
-                "Sign in to Claude once inside this environment"
+                "Log in to Claude once inside this environment"
                 @if keys { ", or use your own key" }
                 ". Your message stays in the box."
             }
             a.oa-composer-connect-action href=(href(&sign_in, &[("back", back.clone())]))
                 hx-post=(href(&sign_in, &[("back", back), ("part", "dialog".to_owned())]))
                 hx-target="body" hx-swap="beforeend" aria-haspopup="dialog" {
-                "Sign in to Claude"
+                "Log in to Claude"
             }
             @if subscription {
                 a.oa-composer-connect-action href=(page) hx-get=(dialog) hx-target="body"
@@ -688,11 +688,11 @@ async fn reload(
     Query(wanted): Query<Wanted>,
 ) -> Response {
     let Some(owner) = crate::pages::chat::reader(&app, &headers).await else {
-        return plain(StatusCode::FORBIDDEN, "Sign in to pick a project.");
+        return plain(StatusCode::FORBIDDEN, "Log in to pick a project.");
     };
     let chat = wanted.chat.as_deref().filter(|id| !id.is_empty());
     let Some(choices) = choices_in(&app, &headers, &owner, chat).await else {
-        return plain(StatusCode::FORBIDDEN, "Sign in to pick a project.");
+        return plain(StatusCode::FORBIDDEN, "Log in to pick a project.");
     };
     let picked = choices.resolve(&wanted);
     respond(html! {
@@ -739,11 +739,11 @@ async fn choose(
         return StatusCode::NOT_FOUND.into_response();
     }
     let Some(owner) = crate::pages::chat::reader(&app, &headers).await else {
-        return plain(StatusCode::FORBIDDEN, "Sign in to pick a project.");
+        return plain(StatusCode::FORBIDDEN, "Log in to pick a project.");
     };
     let chat = wanted.chat.as_deref().filter(|id| !id.is_empty());
     let Some(choices) = choices_in(&app, &headers, &owner, chat).await else {
-        return plain(StatusCode::FORBIDDEN, "Sign in to pick a project.");
+        return plain(StatusCode::FORBIDDEN, "Log in to pick a project.");
     };
     let picked = choices.resolve(&wanted);
     let body = match kind.as_str() {
@@ -883,7 +883,7 @@ fn target_panel(choices: &Choices, picked: &Picked, with: &With<'_>) -> Markup {
             }
             @if choices.account && choices.computers.is_empty() {
                 p class="oa-composer-note" {
-                    "None of your computers is online. Open Coder on your computer, signed in, with "
+                    "None of your computers is online. Open Coder on your computer, logged in, with "
                     code { "/sync on" }
                     ", to run work there. "
                     a href="/download" { "Get Coder" }

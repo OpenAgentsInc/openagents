@@ -282,7 +282,7 @@ pub(crate) fn list_markup(
                     div class="oa-settings-row" {
                         div class="oa-settings-text" {
                             span class="oa-settings-hint" {
-                                "Sign in on the computer, then start issue runs with: openagents chat work --issues NUMBERS"
+                                "Log in on the computer, then start issue runs with: openagents chat work --issues NUMBERS"
                             }
                         }
                     }

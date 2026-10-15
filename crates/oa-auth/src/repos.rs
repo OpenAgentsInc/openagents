@@ -627,7 +627,7 @@ impl std::fmt::Display for RepoError {
         f.write_str(match self {
             Self::NotConnected => "Connect GitHub to see your repositories.",
             Self::Reconnect => "GitHub access ended. Connect GitHub again.",
-            Self::OtherGithub => "Use the GitHub account you sign in with.",
+            Self::OtherGithub => "Use the GitHub account you log in with.",
             Self::NotFound => "That repository wasn't found.",
             Self::Full => "You have as many projects as you can add. Remove one first.",
             Self::Denied => "GitHub didn't connect. Try again.",

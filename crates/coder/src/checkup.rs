@@ -79,7 +79,7 @@ fn report() -> (Vec<String>, bool) {
             _ if !target.agent.is_cli() => "runs in this process".to_string(),
             (None, _, _) => "not installed".to_string(),
             (Some(path), coder_delegate::delegate::Credential::Missing, _) => {
-                format!("{}, not signed in", path.display())
+                format!("{}, not logged in", path.display())
             }
             (Some(path), _, Some(problem)) => format!("{}, skipped: {problem}", path.display()),
             (Some(path), credential, None) => {

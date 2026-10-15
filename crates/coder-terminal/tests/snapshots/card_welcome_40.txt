@@ -1,7 +1,7 @@
 ┌─ OpenAgents ─────────────────────────┐
 │ model    Gemini 3.8 Flash            │
 │ folder   ~/work/openagents           │
-│ account  signed in as a person with  │
+│ account  logged in as a person with  │
 │          a long display name that    │
 │          wraps                       │
 │                                      │

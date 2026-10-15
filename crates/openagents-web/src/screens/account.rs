@@ -32,7 +32,7 @@ pub(crate) fn screens() -> Vec<Screen> {
             group: Group::Page,
             routes: &["/settings", "/settings/memory", "/settings/schedules"],
             states: vec![
-                state("default", "Signed in", settings_default),
+                state("default", "Logged in", settings_default),
                 state("plan-free", "Plan: free", settings_free),
                 state("plan-paid", "Plan: paid", settings_paid),
                 state("plan-problem", "Plan: billing problem", settings_problem),
@@ -45,14 +45,14 @@ pub(crate) fn screens() -> Vec<Screen> {
         },
         Screen {
             id: "sign-in-keys",
-            title: "Sign-in keys",
+            title: "Login keys",
             group: Group::Page,
             routes: &["/settings/sign-in-keys"],
             states: vec![
                 state("none", "No keys", sign_in_keys_none),
                 state("keys", "With keys", sign_in_keys_some),
                 state("made", "Key just made", sign_in_keys_made),
-                state("signed-out", "Signed out", signed_out),
+                state("signed-out", "Logged out", signed_out),
                 state(
                     "unreachable",
                     "Service unreachable",
@@ -71,7 +71,7 @@ pub(crate) fn screens() -> Vec<Screen> {
                 state("made", "Key just made", api_keys_made),
                 state("own-saved", "Own keys saved", api_keys_own_saved),
                 state("own-unsaved", "Own keys not saved", api_keys_own_unsaved),
-                state("signed-out", "Signed out", signed_out),
+                state("signed-out", "Logged out", signed_out),
                 state("unreachable", "Service unreachable", api_keys_unreachable),
             ],
         },
@@ -84,7 +84,7 @@ pub(crate) fn screens() -> Vec<Screen> {
                 state("none", "No agents", agent_accounts_none),
                 state("mine", "With agents", agent_accounts_mine),
                 state("admin", "Admin: every agent", agent_accounts_admin),
-                state("signed-out", "Signed out", signed_out),
+                state("signed-out", "Logged out", signed_out),
                 state(
                     "unreachable",
                     "Service unreachable",
@@ -99,7 +99,7 @@ pub(crate) fn screens() -> Vec<Screen> {
             routes: &["/settings"],
             states: vec![
                 state("none", "None", computers_none),
-                state("one", "One signed in", computers_one),
+                state("one", "One logged in", computers_one),
                 state("several", "Several", computers_several),
             ],
         },
@@ -228,7 +228,7 @@ pub(crate) fn screens() -> Vec<Screen> {
                 state("review", "Detail: ready to save", environment_review),
                 state(
                     "needs-sign-in",
-                    "Detail: needs Claude sign-in",
+                    "Detail: needs Claude login",
                     environment_needs_sign_in,
                 ),
                 state("failed", "Detail: retry after failure", environment_failed),
@@ -253,19 +253,19 @@ pub(crate) fn screens() -> Vec<Screen> {
                 state("run", "Run Claude Code", claude_run),
                 state(
                     "run-signed-in",
-                    "Run Claude Code, signed in",
+                    "Run Claude Code, logged in",
                     claude_run_signed_in,
                 ),
-                state("sign-in", "Sign in to Claude", claude_sign_in),
+                state("sign-in", "Log in to Claude", claude_sign_in),
                 state(
                     "sign-in-starting",
-                    "Sign-in starting",
+                    "Login starting",
                     claude_sign_in_starting,
                 ),
-                state("sign-in-screen", "Sign-in screen", claude_sign_in_open),
-                state("sign-in-input", "Sign-in input error", claude_sign_in_input),
-                state("signed-in", "Signed in to Claude", claude_signed_in),
-                state("sign-in-failed", "Sign-in failed", claude_sign_in_failed),
+                state("sign-in-screen", "Login screen", claude_sign_in_open),
+                state("sign-in-input", "Login input error", claude_sign_in_input),
+                state("signed-in", "Logged in to Claude", claude_signed_in),
+                state("sign-in-failed", "Login failed", claude_sign_in_failed),
             ],
         },
         Screen {
@@ -553,7 +553,7 @@ fn sign_in_keys(
     keys: &[crate::cloud::session::device::SignInKey],
 ) -> Response {
     let body = crate::sign_in_keys::keys_content(keys, TICKET, TICKET);
-    settings_page(headers, "Sign-in keys", crate::sign_in_keys::PAGE, body)
+    settings_page(headers, "Login keys", crate::sign_in_keys::PAGE, body)
 }
 
 fn sign_in_keys_none(headers: &HeaderMap) -> Response {
@@ -578,7 +578,7 @@ fn sign_in_keys_made(headers: &HeaderMap) -> Response {
     let body = crate::sign_in_keys::made_content("https://openagents.com", &made);
     settings_page(
         headers,
-        "Your new sign-in key",
+        "Your new login key",
         crate::sign_in_keys::PAGE,
         body,
     )
@@ -588,9 +588,9 @@ fn sign_in_keys_unreachable(headers: &HeaderMap) -> Response {
     crate::ui_page::problem(
         headers,
         StatusCode::BAD_GATEWAY,
-        "Sign-in keys",
+        "Login keys",
         crate::sign_in_keys::UNREACHABLE,
-        (crate::sign_in_keys::PAGE, "Sign-in keys"),
+        (crate::sign_in_keys::PAGE, "Login keys"),
     )
 }
 
@@ -1462,7 +1462,7 @@ fn run_running(headers: &HeaderMap) -> Response {
     run_page(
         headers,
         &run(RunState::Running, run_events()),
-        &["Also add a test for the sign-out button.".into()],
+        &["Also add a test for the logout button.".into()],
     )
 }
 
@@ -1552,7 +1552,7 @@ fn claude_signed_in(headers: &HeaderMap) -> Response {
 fn claude_sign_in_failed(headers: &HeaderMap) -> Response {
     claude_with(
         headers,
-        sign_in::Phase::Failed("The sign-in closed before it finished.".into()),
+        sign_in::Phase::Failed("The login closed before it finished.".into()),
     )
 }
 

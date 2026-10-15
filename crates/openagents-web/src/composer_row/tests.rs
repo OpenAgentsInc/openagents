@@ -384,7 +384,7 @@ fn claude_code_before_claude_is_connected_shows_the_connect_card() {
     let card = connect_card("env-1", false, false, None).into_string();
     assert_eq!(card.matches("<a ").count(), 1, "{card}");
     assert!(
-        card.contains("Sign in to Claude") && !card.contains("Use a key"),
+        card.contains("Log in to Claude") && !card.contains("Use a key"),
         "{card}"
     );
     // On the subscription allowlist the card leads with the subscription:

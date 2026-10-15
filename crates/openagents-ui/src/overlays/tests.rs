@@ -33,7 +33,7 @@ fn menu_has_menu_roles_and_a_no_js_baseline_of_links_and_buttons() {
             .item(MenuItem::separator())
             .item(MenuItem::button("Compact").checked(true).value("compact"))
             .item(
-                MenuItem::button("Sign out")
+                MenuItem::button("Log out")
                     .submit()
                     .form("logout")
                     .name("action")

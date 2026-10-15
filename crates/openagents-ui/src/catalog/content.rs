@@ -264,10 +264,10 @@ pub(super) fn answers(pane: Pane) -> Markup {
     let steps = AnswerSteps::new()
         .step("Install Coder", vec![tabs.render()])
         .step(
-            "Sign in",
+            "Log in",
             vec![
                 CodeBlock::new("coder login").language("bash").render(),
-                ButtonLink::new("Approve sign-in", "/device")
+                ButtonLink::new("Approve login", "/device")
                     .variant(ButtonVariant::Outline)
                     .color(Color::Secondary)
                     .render(),

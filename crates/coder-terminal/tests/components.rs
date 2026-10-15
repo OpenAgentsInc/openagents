@@ -106,7 +106,7 @@ fn welcome() -> Card {
             ("folder".into(), "~/work/openagents".into()),
             (
                 "account".into(),
-                "signed in as a person with a long display name that wraps".into(),
+                "logged in as a person with a long display name that wraps".into(),
             ),
         ],
         body: vec![

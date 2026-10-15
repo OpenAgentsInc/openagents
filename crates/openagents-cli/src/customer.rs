@@ -74,8 +74,8 @@ pub const USAGE: &str = "usage: openagents customer COMMAND --root DIR [OPTIONS]
   reconcile --purchase ID [--receipt DIGEST]
         Read original settlement proof; never dispatch a purchase again.
   change --input FILE [--recovery-token FILE]
-        Apply one private credential intent: sign-in, recover, rotate,
-        revoke, or sign-out. Its ID prevents replay after uncertain responses.
+        Apply one private credential intent: login, recover, rotate,
+        revoke, or logout. Its ID prevents replay after uncertain responses.
   funding --input FILE
         Quote, approve, read, or reconcile an exact gateway funding intent.
         Issue creates a receiver invoice and never pays from a caller wallet.

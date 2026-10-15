@@ -94,13 +94,13 @@ impl SessionError {
 impl fmt::Display for SessionError {
     fn fmt(&self, out: &mut fmt::Formatter<'_>) -> fmt::Result {
         out.write_str(match self {
-            Self::Unauthenticated => "Sign in to continue.",
+            Self::Unauthenticated => "Log in to continue.",
             Self::Forbidden => "Your account can't open this.",
-            Self::Unavailable => "Sign-in isn't working right now. Try again later.",
+            Self::Unavailable => "Login isn't working right now. Try again later.",
             Self::InvalidRequest => "That didn't work. Check what you entered and try again.",
             Self::Csrf => "This page expired. Reload it and try again.",
             Self::Conflict => "Your account changed. Reload the page.",
-            Self::InviteOnly => "Sign-in is invite-only for now.",
+            Self::InviteOnly => "Login is invite-only for now.",
         })
     }
 }

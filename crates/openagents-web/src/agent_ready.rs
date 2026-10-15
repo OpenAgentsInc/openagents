@@ -865,7 +865,7 @@ pub(crate) fn api_catalog_json(origin: &str, methods: &[crate::payments::Method]
             "service-doc": [
                 {"href": format!("{origin}/docs/api"), "type": "text/html"},
                 {"href": format!("{origin}/docs/api.md"), "type": "text/markdown"},
-                {"href": format!("{origin}/docs/api/for-agents"), "type": "text/html", "title": "For agents: find, sign in, pay"},
+                {"href": format!("{origin}/docs/api/for-agents"), "type": "text/html", "title": "For agents: find, log in, pay"},
                 {"href": format!("{origin}/docs/api/pay-per-request"), "type": "text/html", "title": "Pay per request"},
                 {"href": format!("{origin}/auth.md#register-yourself-as-an-agent"), "type": "text/markdown", "title": "Register as an agent"}
             ],

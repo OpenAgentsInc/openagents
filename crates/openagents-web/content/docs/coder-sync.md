@@ -1,25 +1,25 @@
 # Sync, share, and export
 
-Coder keeps your chats on your computer. Signed in (`coder login`), it
+Coder keeps your chats on your computer. Logged in (`coder login`), it
 can keep them on your openagents.com account too, so you can read and
 answer them on the web and on your phone.
 
-## Sign in
+## Log in
 
 | To | Run |
 | --- | --- |
-| Sign in from the terminal | `coder login`, then approve the code at [openagents.com/device](https://openagents.com/device) |
-| Sign in from inside Coder | `/login` |
-| Sign in with a key, without a browser | `coder login --key`, then paste a sign-in key from your account's Settings (or set `OPENAGENTS_TOKEN`) |
+| Log in from the terminal | `coder login`, then approve the code at [openagents.com/device](https://openagents.com/device) |
+| Log in from inside Coder | `/login` |
+| Log in with a key, without a browser | `coder login --key`, then paste a login key from your account's Settings (or set `OPENAGENTS_TOKEN`) |
 | Sign this computer out | `coder logout`, or `/logout` in Coder |
 
 The website's [Connect your terminal](https://openagents.com/settings/terminal)
 page walks through the same steps: it shows the install command and a
-`coder login --pair` command, and you approve the sign-in on that page.
+`coder login --pair` command, and you approve the login on that page.
 
 ## Turn sync on
 
-After you sign in, Coder asks once where this computer's chats should
+After you log in, Coder asks once where this computer's chats should
 live: **Sync all my chats** or **Keep chats on this computer**. Answer in
 the terminal or on the website. Change it any time:
 

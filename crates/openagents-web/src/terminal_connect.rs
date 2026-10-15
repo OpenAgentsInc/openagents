@@ -162,7 +162,7 @@ pub(crate) fn page_body(headers: &HeaderMap, pair: &str, live: Markup) -> Markup
             } @else {
                 p.oa-page-meta { "Already installed? Go on to step 2." }
             }
-            h2 { "2. Sign in from your terminal" }
+            h2 { "2. Log in from your terminal" }
             p { "Run this in a terminal:" }
         }))
         (command("terminal-login", &login_command(pair, local.as_deref())))
@@ -185,9 +185,9 @@ fn live_href(since: u64, computer: Option<&str>) -> String {
 /// Plain words for a code that couldn't be approved.
 fn problem_text(code: &str) -> &'static str {
     match code {
-        "expired_token" => "That sign-in expired. Run the command again.",
-        "denied" => "Sign-in denied. Run the command again to start over.",
-        _ => "That sign-in didn't work. Run the command again.",
+        "expired_token" => "That login expired. Run the command again.",
+        "denied" => "Login denied. Run the command again to start over.",
+        _ => "That login didn't work. Run the command again.",
     }
 }
 
@@ -220,7 +220,7 @@ fn live_markup(step: &Step, since: u64, problem: Option<&str>, choose_csrf: &str
                     }
                     @for request in waiting {
                         (MarkdownRoot::new(html! {
-                            p { strong { (request.app) " on " (request.computer) } " wants to sign in. Your terminal shows " strong { (request.code) } "." }
+                            p { strong { (request.app) " on " (request.computer) } " wants to log in. Your terminal shows " strong { (request.code) } "." }
                             p.oa-page-meta { "Approve only if the code matches." }
                         }))
                         form method="post" action=(APPROVE) {
@@ -240,7 +240,7 @@ fn live_markup(step: &Step, since: u64, problem: Option<&str>, choose_csrf: &str
                 }
                 Step::Choose { computer } => {
                     (MarkdownRoot::new(html! {
-                        p role="status" { "Coder on " strong { (computer) } " is signed in." }
+                        p role="status" { "Coder on " strong { (computer) } " is logged in." }
                         h2 { "3. Choose where your chats live" }
                         p { "Your terminal asks the same question. Answer in either place." }
                     }))
@@ -249,7 +249,7 @@ fn live_markup(step: &Step, since: u64, problem: Option<&str>, choose_csrf: &str
                 Step::Connected { computer, choice, chats } => {
                     (MarkdownRoot::new(html! {
                         h2 { "4. Your terminal is connected" }
-                        p role="status" { "Coder on " strong { (computer) } " is signed in to your account." }
+                        p role="status" { "Coder on " strong { (computer) } " is logged in to your account." }
                         @match choice {
                             SyncChoice::All => {
                                 @if *chats == 0 {

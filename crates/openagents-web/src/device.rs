@@ -98,7 +98,7 @@ fn unavailable() -> Response {
     oauth_error(
         StatusCode::SERVICE_UNAVAILABLE,
         "temporarily_unavailable",
-        "Sign-in isn't available right now. Try again in a minute.",
+        "Login isn't available right now. Try again in a minute.",
     )
 }
 
@@ -272,9 +272,9 @@ fn respond(
 /// Plain words for a code that can't be approved.
 pub(crate) fn problem_text(code: &str) -> &'static str {
     match code {
-        "expired_token" => "That code expired. Start sign-in again on your computer.",
+        "expired_token" => "That code expired. Start login again on your computer.",
         "invalid_grant" => "That code isn't right, or it was already used. Check it and try again.",
-        "browser_session_required" => "Approve sign-ins from the website while signed in.",
+        "browser_session_required" => "Approve logins from the website while logged in.",
         _ => "That code didn't work. Check it and try again.",
     }
 }
@@ -287,7 +287,7 @@ pub(crate) fn code_form(typed: &str, problem: Option<&str>) -> Markup {
         .error_opt(problem)
         .description("The code your computer shows, like BCDF-GHJK.");
     auth_card(
-        "Sign in on another computer",
+        "Log in on another computer",
         Some(html! { "Enter the code " code { "coder login" } " shows in your terminal." }),
         html! {
             form.oa-device-form method="get" action=(PAGE) autocomplete="off" {
@@ -318,9 +318,9 @@ pub(crate) fn approve_form(code: &str, app: &str, computer: &str, csrf: &str) ->
         Icon::Desktop
     };
     auth_card(
-        &format!("Sign in to {app} on {computer}?"),
+        &format!("Log in to {app} on {computer}?"),
         Some(
-            html! { "Approve only if you started this sign-in and the code matches the one on your computer." },
+            html! { "Approve only if you started this login and the code matches the one on your computer." },
         ),
         html! {
             div.oa-device-code data-slot="device-code" {
@@ -389,7 +389,7 @@ async fn page(
             service,
             &viewer,
             StatusCode::OK,
-            "Sign in on another computer",
+            "Log in on another computer",
             body,
         );
     }
@@ -400,7 +400,7 @@ async fn page(
             service,
             &viewer,
             StatusCode::BAD_REQUEST,
-            "Sign in on another computer",
+            "Log in on another computer",
             body,
         );
     };
@@ -411,7 +411,7 @@ async fn page(
                 Ok(csrf) => csrf,
                 Err(error) => return refused(error),
             };
-            let title = format!("Sign in to {} on {}?", request.app, request.computer);
+            let title = format!("Log in to {} on {}?", request.app, request.computer);
             let body = approve_form(&shown, &request.app, &request.computer, &csrf);
             respond(&headers, service, &viewer, StatusCode::OK, &title, body)
         }
@@ -422,7 +422,7 @@ async fn page(
                 service,
                 &viewer,
                 StatusCode::BAD_REQUEST,
-                "Sign in on another computer",
+                "Log in on another computer",
                 body,
             )
         }
@@ -469,7 +469,7 @@ async fn decide(
     let body = match decided {
         Ok(request) if approve => empty_state(
             EmptyMedia::Icon(Icon::CheckCircle),
-            &format!("{} on {} is signed in", request.app, request.computer),
+            &format!("{} on {} is logged in", request.app, request.computer),
             // The phone app signs in as "OpenAgents" (#11107); Coder in a
             // terminal as "Coder".
             html! {
@@ -484,17 +484,13 @@ async fn decide(
         ),
         Ok(request) => empty_state(
             EmptyMedia::Icon(Icon::XCircle),
-            "Sign-in denied",
-            &format!("{} on {} was not signed in.", request.app, request.computer),
+            "Login denied",
+            &format!("{} on {} was not logged in.", request.app, request.computer),
             action_link("Home", "/"),
         ),
         Err(problem) => code_form(&form.code, Some(problem_text(&problem))),
     };
-    let title = if approve {
-        "Signed in"
-    } else {
-        "Sign-in denied"
-    };
+    let title = if approve { "Logged in" } else { "Login denied" };
     respond(&headers, service, &viewer, StatusCode::OK, title, body)
 }
 
@@ -559,9 +555,9 @@ pub(crate) fn computers_markup(rows: &[Row<'_>]) -> Markup {
                 div class="oa-settings-row" {
                     div class="oa-settings-text" {
                         span class="oa-settings-label" {
-                            @if rows.is_empty() { "No computers are signed in" } @else { "Connect your terminal" }
+                            @if rows.is_empty() { "No computers are logged in" } @else { "Connect your terminal" }
                         }
-                        span class="oa-settings-hint" { "Install Coder, sign in, and choose where its chats live." }
+                        span class="oa-settings-hint" { "Install Coder, log in, and choose where its chats live." }
                     }
                     div class="oa-settings-control" {
                         (action_link("Connect your terminal", crate::terminal_connect::PAGE))
@@ -574,7 +570,7 @@ pub(crate) fn computers_markup(rows: &[Row<'_>]) -> Markup {
                         div class="oa-settings-text" {
                             span class="oa-settings-label" { (row.session.app) " on " (row.session.computer) }
                             span class="oa-settings-hint" {
-                                "Signed in " (date(row.session.created_at)) " · "
+                                "Logged in " (date(row.session.created_at)) " · "
                                 @match row.choice {
                                     Some(crate::chat_store::SyncChoice::All) => "Syncs all its chats",
                                     Some(crate::chat_store::SyncChoice::Local) => "Keeps chats on this computer",
@@ -658,7 +654,7 @@ mod tests {
     #[test]
     fn the_approval_page_names_the_app_the_computer_and_both_choices() {
         let html = approve_form("BCDF-GHJK", "Coder", "chris-mbp", "ticket").into_string();
-        assert!(html.contains("Sign in to Coder on chris-mbp?"));
+        assert!(html.contains("Log in to Coder on chris-mbp?"));
         assert!(html.contains("BCDF-GHJK"));
         assert!(html.contains("name=\"decision\" value=\"approve\""));
         assert!(html.contains("name=\"decision\" value=\"deny\""));
@@ -680,7 +676,7 @@ mod tests {
     fn settings_lists_computers_with_remove_or_says_how_to_add_one() {
         let empty = computers_markup(&[]).into_string();
         assert!(empty.contains("/settings/terminal"));
-        assert!(empty.contains("No computers are signed in"));
+        assert!(empty.contains("No computers are logged in"));
         let session = crate::cloud::session::device::AppSession {
             id: "a".repeat(64),
             app: "Coder".into(),
@@ -696,7 +692,7 @@ mod tests {
         }])
         .into_string();
         assert!(html.contains("Coder on chris-mbp"));
-        assert!(html.contains("Signed in 2026-10-09"));
+        assert!(html.contains("Logged in 2026-10-09"));
         assert!(html.contains("Syncs all its chats"));
         assert!(html.contains("Sync all my chats (chosen)"));
         assert!(html.contains(r#"name="back" value="settings""#));

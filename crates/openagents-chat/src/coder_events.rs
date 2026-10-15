@@ -229,7 +229,7 @@ impl Passed {
     #[must_use]
     pub fn clause(&self) -> String {
         match &self.why {
-            PassedOver::NotSignedIn => "is not signed in here".into(),
+            PassedOver::NotSignedIn => "is not logged in here".into(),
             PassedOver::Refused { .. } | PassedOver::NearLimit { .. } => {
                 "isn't available right now".into()
             }
@@ -422,7 +422,7 @@ impl Runner {
             }
             Runner::NotSignedIn { providers } => not_signed_in(providers),
             Runner::NoCapacity { until } => format!(
-                "No coding agent signed in on this computer is available right now{}.",
+                "No coding agent logged in on this computer is available right now{}.",
                 until
                     .map(|at| format!("; try again after {}", utc(at)))
                     .unwrap_or_default()
@@ -1650,7 +1650,7 @@ pub fn sign_in_step(provider: &str) -> &'static str {
         "devin" => "run `devin auth login`",
         "opencode" => "install `opencode` and run `opencode auth login`",
         "grok" => "run `grok` and log in, or set XAI_API_KEY",
-        _ => "sign in to it",
+        _ => "log in to it",
     }
 }
 
@@ -1668,17 +1668,17 @@ pub fn not_signed_in(providers: &[String]) -> String {
     };
     match providers {
         [] => format!(
-            "No coding agent is signed in on this computer. Sign in to one, then ask again: {}; {}.",
+            "No coding agent is logged in on this computer. Log in to one, then ask again: {}; {}.",
             named(&"codex".to_owned()),
             named(&"claude".to_owned())
         ),
         [one] => format!(
-            "{} is not signed in on this computer. Sign in ({}), then ask again.",
+            "{} is not logged in on this computer. Log in ({}), then ask again.",
             provider_name(&Value::String(one.clone())),
             sign_in_step(one)
         ),
         many => format!(
-            "No coding agent Coder can use is signed in on this computer. Sign in to one, \
+            "No coding agent Coder can use is logged in on this computer. Log in to one, \
              then ask again: {}.",
             many.iter().map(named).collect::<Vec<_>>().join("; ")
         ),
@@ -2680,7 +2680,7 @@ mod tests {
             "You asked for Claude Code; it isn't available right now, so Codex will do this."
         );
         for (why, clause) in [
-            (PassedOver::NotSignedIn, "it is not signed in here"),
+            (PassedOver::NotSignedIn, "it is not logged in here"),
             (
                 PassedOver::NotAllowed,
                 "it is turned off in your Coder settings",
@@ -2737,7 +2737,7 @@ mod tests {
                 passed: vec![],
                 requested: Some("grok".into()),
             }),
-            "You asked for Grok Build; it is signed in and has capacity.",
+            "You asked for Grok Build; it is logged in and has capacity.",
         );
         assert_eq!(asked.line(), "Grok Build is working.");
         assert_eq!(asked.news(), None);
@@ -2756,12 +2756,12 @@ mod tests {
                 }],
                 requested: Some("codex".into()),
             }),
-            "You asked for Codex; it is not signed in here, so Grok Build is running.",
+            "You asked for Codex; it is not logged in here, so Grok Build is running.",
         );
         let shown = text(&CoderEvent::CoderStarted(other)).unwrap();
         assert_eq!(
             shown,
-            "Grok Build is working.\nYou asked for Codex; it is not signed in here, so Grok \
+            "Grok Build is working.\nYou asked for Codex; it is not logged in here, so Grok \
              Build is running."
         );
         assert!(!shown.contains("b9c1ff") && !shown.contains("/w/"));
@@ -2829,11 +2829,11 @@ mod tests {
         };
         assert_eq!(
             signed_out.text(),
-            "Codex is not signed in here; Claude Code will do this."
+            "Codex is not logged in here; Claude Code will do this."
         );
         assert_eq!(
             signed_out.started("is running."),
-            "Codex is not signed in here; using Claude Code."
+            "Codex is not logged in here; using Claude Code."
         );
 
         let nobody = Runner::NotSignedIn {
@@ -2841,7 +2841,7 @@ mod tests {
         };
         assert_eq!(
             nobody.text(),
-            "No coding agent Coder can use is signed in on this computer. Sign in to one, \
+            "No coding agent Coder can use is logged in on this computer. Log in to one, \
              then ask again: Codex (run `codex login`); Claude Code (run `claude` and log in)."
         );
         assert_eq!(nobody.provider(), None);
@@ -2854,7 +2854,7 @@ mod tests {
                 providers: vec!["claude".into()]
             }
             .text(),
-            "Claude Code is not signed in on this computer. Sign in (run `claude` and log in), \
+            "Claude Code is not logged in on this computer. Log in (run `claude` and log in), \
              then ask again."
         );
         assert_eq!(
@@ -2862,7 +2862,7 @@ mod tests {
                 until: Some(1_791_050_823)
             }
             .text(),
-            "No coding agent signed in on this computer is available right now; \
+            "No coding agent logged in on this computer is available right now; \
              try again after 2026-10-03 18:07 UTC."
         );
     }

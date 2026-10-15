@@ -15,8 +15,8 @@ with the step and what it printed. The full guide, with every option, is
 
 | Part | What it does | Needed |
 | --- | --- | --- |
-| Website | Pages, chat, sign-in, Settings | Yes |
-| Account service | GitHub sign-in and accounts; sends the chat worker's model calls to your keys | For sign-in |
+| Website | Pages, chat, login, Settings | Yes |
+| Account service | GitHub login and accounts; sends the chat worker's model calls to your keys | For login |
 | Chat worker | Answers each chat message with a model | Yes |
 | Relay | Carries encrypted messages between the website and the chat worker | No: by default yours meet on relay.openagents.com, which only passes them along |
 
@@ -27,7 +27,7 @@ with the step and what it printed. The full guide, with every option, is
   `sudo apt-get install -y build-essential pkg-config git curl openssl lsof`
 - An [OpenRouter API key](https://openrouter.ai/keys) for the answers.
 - A [GitHub OAuth App](https://github.com/settings/applications/new) for
-  sign-in, with homepage `http://127.0.0.1:4301` and callback
+  login, with homepage `http://127.0.0.1:4301` and callback
   `http://127.0.0.1:4301/auth/github/callback`.
 
 ## Start it
@@ -61,7 +61,7 @@ scripts/dev/full-local.sh start
 ```
 
 Then open [127.0.0.1:4301](http://127.0.0.1:4301) on the same machine and
-send a message. Click **Log in** to sign in with GitHub. Stop everything
+send a message. Click **Log in** to log in with GitHub. Stop everything
 with `scripts/dev/full-local.sh stop`.
 
 To use Coder in the terminal with your copy, run

@@ -360,7 +360,7 @@ pub fn sync_now(dir: &Path) -> Result<String, String> {
         return Ok(OFF.into());
     }
     let Some(saved) = signed_in(dir) else {
-        return Err("Sign in first with coder login.".into());
+        return Err("Log in first with coder login.".into());
     };
     let computer = openagents_login::computer_name();
     let mut uploads = unsent(dir, &settings, &computer, &secret_screen::Screen::host());
@@ -1031,7 +1031,7 @@ impl App {
                 sync.listening = false;
                 sync.taking.clear();
                 self.notice = Some(
-                    "Your sign-in ended. Run /login to keep saving chats to your account.".into(),
+                    "Your login ended. Run /login to keep saving chats to your account.".into(),
                 );
             }
             Event::Refused { message, .. } => {
@@ -1049,7 +1049,7 @@ impl App {
     /// when it came from there).
     fn set_sync(&mut self, argument: &str, tell: bool) {
         if self.account.is_none() {
-            self.notice = Some("Sign in first with /login.".into());
+            self.notice = Some("Log in first with /login.".into());
             return;
         }
         if self.sync.is_none() {
@@ -1131,7 +1131,7 @@ impl App {
         let Some(worker) = &sync.worker else {
             if sync.settings.on || !sync.settings.to_delete.is_empty() {
                 self.notice =
-                    Some("Sign in again with /login to save chats to your account.".into());
+                    Some("Log in again with /login to save chats to your account.".into());
             }
             return;
         };
@@ -1159,7 +1159,7 @@ mod tests {
             ..App::default()
         };
         app.sync_command("on");
-        assert_eq!(app.notice.as_deref(), Some("Sign in first with /login."));
+        assert_eq!(app.notice.as_deref(), Some("Log in first with /login."));
         assert!(!Settings::load(dir.path()).on);
 
         // Signed in by name only (no token here): the setting is kept, and
@@ -1172,7 +1172,7 @@ mod tests {
         assert!(Settings::load(dir.path()).chosen);
         assert_eq!(
             app.notice.as_deref(),
-            Some("Sign in again with /login to save chats to your account.")
+            Some("Log in again with /login to save chats to your account.")
         );
         app.sync_command("off");
         assert!(!Settings::load(dir.path()).on);
@@ -1607,7 +1607,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             sync_now(dir.path()).unwrap_err(),
-            "Sign in first with coder login."
+            "Log in first with coder login."
         );
     }
 

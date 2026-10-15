@@ -430,7 +430,7 @@ pub(super) fn work_cloud(
         if status.is_success() {
             Ok(body)
         } else if status.as_u16() == 401 {
-            Err("This sign-in stopped working. Sign in again with: coder login".into())
+            Err("This login stopped working. Log in again with: coder login".into())
         } else {
             Err(body["error"]["message"]
                 .as_str()

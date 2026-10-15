@@ -2452,7 +2452,7 @@ pub const USAGE: &str = "usage: coder host autostart COMMAND
   status [--store DIR] [--refresh] [--fresh PROVIDER]...
                        Print one JSON report: the engine routes in order,
                        whether Codex and Claude Code (and Grok Build, when
-                       installed) are signed in, and
+                       installed) are logged in, and
                        each probed usage window as percents and reset
                        times. The report has no credential. --refresh asks
                        a provider only when this policy's usage probe is
@@ -4313,7 +4313,7 @@ mod tests {
             | Provider::Vertex
             | Provider::Devin
             | Provider::OpenCode
-            | Provider::Grok => Connection::Missing("not signed in".into()),
+            | Provider::Grok => Connection::Missing("not logged in".into()),
         };
         let usage = usage::Book::default();
         match policy.choose(&book, &usage, &only_codex, 1) {

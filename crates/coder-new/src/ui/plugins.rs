@@ -340,7 +340,7 @@ fn plugin_details(app: &App, width: u16) -> Vec<Line<'static>> {
     match definition.id {
         OPENROUTER_PLUGIN => {
             lines.push(Line::from(span(
-                "A model you pick runs on OpenRouter, billed by OpenRouter. Auto runs on OpenAgents when you're signed in.",
+                "A model you pick runs on OpenRouter, billed by OpenRouter. Auto runs on OpenAgents when you're logged in.",
                 t::GRAY,
             )));
             lines.push(Line::default());

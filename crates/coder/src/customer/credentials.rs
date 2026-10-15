@@ -357,7 +357,7 @@ impl Store {
                     .account()
                     .sign_in()
                     .await
-                    .map_err(|_| "Sign-in outcome is unknown.")?;
+                    .map_err(|_| "Login outcome is unknown.")?;
                 self.retain_issued(&command.id, &grant.token)?;
                 if grant.session.account.as_deref() != Some(&command.account)
                     || grant.session.kind != "user"
@@ -428,7 +428,7 @@ impl Store {
                     .account()
                     .sign_out()
                     .await
-                    .map_err(|_| "Sign-out outcome is unknown.")?;
+                    .map_err(|_| "Logout outcome is unknown.")?;
                 None
             }
         };

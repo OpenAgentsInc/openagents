@@ -510,7 +510,7 @@ fn the_start_card_is_one_line_unless_another_engine_runs() {
     let text = text_of(&run.rows());
     assert!(text.starts_with("Codex is working."), "{text}");
     for noise in [
-        "signed in",
+        "logged in",
         "Falls back",
         "worktree",
         "/",
@@ -522,7 +522,7 @@ fn the_start_card_is_one_line_unless_another_engine_runs() {
         unreachable!()
     };
     started.reason =
-        "You asked for Claude Code; it is not signed in here, so Codex is running.".into();
+        "You asked for Claude Code; it is not logged in here, so Codex is running.".into();
     started.runner = Some(openagents_chat::coder_events::Runner::Runs {
         provider: "codex".into(),
         model: "gpt-6-luna".into(),
@@ -536,7 +536,7 @@ fn the_start_card_is_one_line_unless_another_engine_runs() {
     let text = text_of(&other.rows());
     assert!(
         text.starts_with(
-            "Codex is working.\nYou asked for Claude Code; it is not signed in here, so Codex is running."
+            "Codex is working.\nYou asked for Claude Code; it is not logged in here, so Codex is running."
         ),
         "{text}"
     );

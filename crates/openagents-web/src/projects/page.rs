@@ -281,7 +281,7 @@ pub(crate) fn members_section(project: &Project, people: &People, csrf: &str) ->
                     (Alert::new()
                         .color(Color::Success)
                         .title(format!("Invited {who}"))
-                        .description(format!("{who} sees it on their Projects page when they sign in, and can join as {} within 7 days. This link works too, once. It's shown only now.", a_role(their))))
+                        .description(format!("{who} sees it on their Projects page when they log in, and can join as {} within 7 days. This link works too, once. It's shown only now.", a_role(their))))
                 } @else {
                     (Alert::new()
                         .color(Color::Success)

@@ -47,11 +47,11 @@ pub const LABEL: &str = "claude";
 pub const PLUGIN: &str = "claude-code";
 
 /// What /plugins says when the plugin cannot turn on here.
-pub const SIGN_IN_FIRST: &str = "Sign in to Claude Code first";
+pub const SIGN_IN_FIRST: &str = "Log in to Claude Code first";
 
 /// What `coder chat --mode claude` says on a computer with no Claude
 /// account login.
-pub const NEEDS_LOGIN: &str = "claude needs Claude Code signed in on this computer.";
+pub const NEEDS_LOGIN: &str = "claude needs Claude Code logged in on this computer.";
 
 /// The model a claude turn runs before the person picks one, and the one
 /// [`run_with`] always runs: Haiku 5.5.

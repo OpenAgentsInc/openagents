@@ -368,7 +368,7 @@ async fn authorize(
         .collect();
     Html(format!(
         "<!doctype html><meta charset=utf-8><title>Fake GitHub</title>\
-         <h1>Fake GitHub</h1><p>This is the local test GitHub. Pick who to sign in as.</p>\
+         <h1>Fake GitHub</h1><p>This is the local test GitHub. Pick who to log in as.</p>\
          <ul>{people}</ul><p><a href=\"{}\">Cancel</a></p>",
         escape(&format!("{base}&deny=1"))
     ))

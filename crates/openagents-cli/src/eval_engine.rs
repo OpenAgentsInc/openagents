@@ -73,7 +73,7 @@ impl Bridge {
                 return Self::start(Engine { agent, binary });
             }
         }
-        Err("Sign in to Claude Code or Codex, or add a provider key with `openagents settings provider-key set openrouter`.".into())
+        Err("Log in to Claude Code or Codex, or add a provider key with `openagents settings provider-key set openrouter`.".into())
     }
     fn start(engine: Engine) -> Result<Self, String> {
         let key = ext_eval::proxy::random_token().map_err(|e| e.to_string())?;

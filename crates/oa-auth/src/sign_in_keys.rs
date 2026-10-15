@@ -40,7 +40,7 @@ fn unavailable() -> Answer {
     refused(
         503,
         "sessions_unavailable",
-        "Sign-in keys aren't available right now. Try again in a minute.",
+        "Login keys aren't available right now. Try again in a minute.",
     )
 }
 

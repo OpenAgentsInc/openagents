@@ -54,7 +54,7 @@ with `Retry-After`.
   names none gets 1,024), no images or files, and at most $0.005 of use a day
   in all.
 - 20 decision calls, and 500 other API calls.
-- No other models, computers, Solver, Drive, or website sign-in.
+- No other models, computers, Solver, Drive, or website login.
 
 `GET https://openagents.com/v1/agents/me` with the key shows what is left
 today, the credit, and how to pay. Free use for all agents together has a
@@ -92,7 +92,7 @@ While `pay.available` is `false`, buying credit isn't open yet.
 ### Claiming and turning off an agent
 
 The registration answer has a `claim.code` (`clm_...`, good for 30 days). A
-person who signs in at <https://openagents.com/settings/agent-accounts>
+person who logs in at <https://openagents.com/settings/agent-accounts>
 and enters it links the agent to their account (`POST /v1/agents/claim`
 with `{"claim": "..."}` under their session does the same). They can then
 turn the agent off there; its key stops at once. Site admins can turn off
@@ -100,27 +100,27 @@ any agent.
 
 ## Get a key as a person
 
-1. Sign in at <https://openagents.com/login> (GitHub).
+1. Log in at <https://openagents.com/login> (GitHub).
 2. Open **Settings → API keys** (<https://openagents.com/settings/api-keys>).
 3. Make a key, and set a monthly spending limit if you want one. The key is
    shown once. It looks like `oak_<id>.<secret>`.
 4. Give it to the agent in an environment variable, such as
    `OPENAGENTS_API_KEY`. Never put it in source code or a URL.
 
-An app that acts for a person, such as an MCP client, can sign in with
-OAuth instead of a key: see [Sign in with OAuth](#sign-in-with-oauth).
+An app that acts for a person, such as an MCP client, can log in with
+OAuth instead of a key: see [Log in with OAuth](#log-in-with-oauth).
 
 Agents can also call the API with no key and pay for each request. Every
-way to find, sign in to, and pay OpenAgents is in
+way to find, log in to, and pay OpenAgents is in
 [For agents](https://openagents.com/docs/api/for-agents.md).
 
-## Sign in with OAuth
+## Log in with OAuth
 
 Apps that act for a person, such as MCP clients (Claude, ChatGPT, Cursor,
 VS Code), get a bearer token with OAuth 2.1: the app registers itself, you
-approve the sign-in in your browser, and the app gets a token for your
-account. OpenAgents is its own authorization server (sign-in with GitHub;
-sign-in is invite-only for now).
+approve the login in your browser, and the app gets a token for your
+account. OpenAgents is its own authorization server (login with GitHub;
+login is invite-only for now).
 
 - Resource metadata: <https://openagents.com/.well-known/oauth-protected-resource/mcp>
   (and <https://openagents.com/.well-known/oauth-protected-resource> for the site).
@@ -131,12 +131,12 @@ sign-in is invite-only for now).
   `127.0.0.1` or `localhost`, or the app's own scheme.
 - Authorize: `https://openagents.com/oauth/authorize` with
   `response_type=code`, `client_id`, `redirect_uri`, `state`, and PKCE
-  (`code_challenge_method=S256`; plain is refused). The person signs in
+  (`code_challenge_method=S256`; plain is refused). The person logs in
   and chooses Approve or Deny.
 - Token: `POST https://openagents.com/oauth/token` with
   `grant_type=authorization_code`, `code`, `client_id`, `redirect_uri`,
   and `code_verifier`. The answer is a bearer `access_token` that lasts 30
-  days; there is no refresh token, so sign in again when it ends.
+  days; there is no refresh token, so log in again when it ends.
 
 The app shows in **Settings** under Computers
 (<https://openagents.com/settings>), where **Remove** signs it out at once.

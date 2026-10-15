@@ -421,7 +421,7 @@ pub(crate) fn content(
                         (small("Add another device", "vault-pair"))
                     }
                     div #vault-pair-box class="oa-vault-pair" hidden {
-                        p { "On your other device, sign in and open this link, or scan the code. It works once, for 10 minutes." }
+                        p { "On your other device, log in and open this link, or scan the code. It works once, for 10 minutes." }
                         svg #vault-qr class="oa-vault-qr" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="QR code of the link" {}
                         input #vault-pair-link type="text" readonly aria-label="Link for your other device";
                         div class="oa-vault-actions" { (small("Copy link", "vault-pair-copy")) }

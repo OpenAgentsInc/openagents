@@ -56,7 +56,7 @@ fn where_it_is(trace: &Trace, lines: &mut Vec<String>) {
             lines.push(public.clone());
         }
         _ => {
-            lines.push("Private: only you can see it, signed in.".into());
+            lines.push("Private: only you can see it, logged in.".into());
             lines.push(trace.url.clone());
         }
     }
@@ -237,7 +237,7 @@ fn source(args: &[String], dir: &Path, cwd: &Path) -> Result<(Source, bool), Str
 fn signed_in(dir: &Path) -> Result<Saved, String> {
     Saved::load(dir)
         .filter(|saved| !saved.expired(now()))
-        .ok_or_else(|| "Sign in first with coder login.".to_string())
+        .ok_or_else(|| "Log in first with coder login.".to_string())
 }
 
 fn has_agents(document: &Value) -> bool {
@@ -360,7 +360,7 @@ mod tests {
         );
         assert_eq!(
             run(&args(&["upload", "--last"]), &dir, temp.path()).unwrap_err(),
-            "Sign in first with coder login."
+            "Log in first with coder login."
         );
         assert!(
             run(&args(&["nope"]), &dir, temp.path())
@@ -390,7 +390,7 @@ mod tests {
         .text();
         assert_eq!(
             private,
-            "Left out before upload: 1 password or key.\nUploaded \"Fix it\" (3 steps).\nPrivate: only you can see it, signed in.\nhttps://openagents.com/settings/traces/t1"
+            "Left out before upload: 1 password or key.\nUploaded \"Fix it\" (3 steps).\nPrivate: only you can see it, logged in.\nhttps://openagents.com/settings/traces/t1"
         );
         let shared = Outcome::Uploaded {
             uploaded: Uploaded {

@@ -3243,7 +3243,7 @@ mod export_notice_tests {
                     false,
                     Some("Claude (Haiku 5.5)"),
                     Some("ctx 40%"),
-                    Some("stripe needs sign-in"),
+                    Some("stripe needs login"),
                     None,
                     false,
                 );
@@ -3252,7 +3252,7 @@ mod export_notice_tests {
         let buffer = terminal.backend().buffer();
         let rail: String = (0..width).map(|x| buffer[(x, 0)].symbol()).collect();
         assert!(
-            rail.contains("stripe needs sign-in · Claude (Haiku 5.5) · ctx 40%"),
+            rail.contains("stripe needs login · Claude (Haiku 5.5) · ctx 40%"),
             "{rail}"
         );
         let at = |word: &str| {
@@ -3261,7 +3261,7 @@ mod export_notice_tests {
             rail[..cell].chars().count() as u16
         };
         assert_eq!(buffer[(at("stripe"), 0)].fg, t::WARNING);
-        assert_eq!(buffer[(at("sign-in"), 0)].fg, t::WARNING);
+        assert_eq!(buffer[(at("login"), 0)].fg, t::WARNING);
         assert_eq!(buffer[(at("ctx"), 0)].fg, t::GRAY);
         assert_eq!(buffer[(at("Claude"), 0)].fg, t::GRAY);
     }
@@ -3406,7 +3406,7 @@ mod export_notice_tests {
                     false,
                     Some("Claude (Haiku 5.5)"),
                     Some("5h 33% · week 83% · ctx 40%"),
-                    Some("stripe and linear need sign-in"),
+                    Some("stripe and linear need login"),
                     None,
                     false,
                 );
@@ -4078,7 +4078,7 @@ mod streaming_tests {
         assert!(shown("Intro\n\n```rust\nfn main").contains("fn main"));
     }
 
-    const BLOCK: &str = "Connect it here.\n\n```openui-lang\nroot = Card(\"On your computer\", [Steps([install]), Button(\"Approve sign-in\", href=\"/device\")])\ninstall = Step(\"Install Coder\", [Command(\"curl -fsSL https://openagents.com/cli/install.sh | bash\")])\n```\n";
+    const BLOCK: &str = "Connect it here.\n\n```openui-lang\nroot = Card(\"On your computer\", [Steps([install]), Button(\"Approve login\", href=\"/device\")])\ninstall = Step(\"Install Coder\", [Command(\"curl -fsSL https://openagents.com/cli/install.sh | bash\")])\n```\n";
 
     /// A component block shows as readable Markdown: numbered steps, the
     /// command, and the link written out; never its statements (#11187).

@@ -52,7 +52,7 @@ fn unavailable() -> Answer {
     refused(
         503,
         "sessions_unavailable",
-        "Sign-in isn't available right now. Try again in a minute.",
+        "Login isn't available right now. Try again in a minute.",
     )
 }
 
@@ -66,7 +66,7 @@ fn from_refusal(refusal: &Refusal) -> Answer {
             refused(status, device.code(), device.to_string())
         }
         Refusal::UnknownSession(_) | Refusal::SessionClosed { .. } => {
-            refused(404, "unknown_session", "That sign-in isn't active.")
+            refused(404, "unknown_session", "That login isn't active.")
         }
         _ => unavailable(),
     }
@@ -217,7 +217,7 @@ fn browser_session(dir: &Path, account: &str, session: Option<&str>) -> Result<(
         refused(
             403,
             "browser_session_required",
-            "Approve sign-ins from the website while signed in.",
+            "Approve logins from the website while logged in.",
         )
     };
     let session = session.ok_or_else(denied)?;
@@ -367,7 +367,7 @@ pub fn list(dir: &Path, account: &str, session: Option<&str>) -> Answer {
 /// sessions out (Settings' Remove).
 pub fn revoke(dir: &Path, account: &str, session: Option<&str>, id: &str) -> Answer {
     if id.len() != 64 || !id.bytes().all(|b| b.is_ascii_hexdigit()) {
-        return refused(404, "unknown_session", "That sign-in isn't active.");
+        return refused(404, "unknown_session", "That login isn't active.");
     }
     let sessions = match store(dir) {
         Ok(sessions) => sessions,

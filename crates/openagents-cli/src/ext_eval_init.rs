@@ -34,7 +34,7 @@ plugin is for, what a good run looks like, the tests, the checks, a one-run
 try, and the full run's size. Type y at each step to go on, or type what to
 change. The plugin is read, never changed; the finished tests are
 written under its eval directory (evals/ by default), or --out.
-Uses your model key, or your signed-in Claude Code or Codex when no key
+Uses your model key, or your logged-in Claude Code or Codex when no key
 is available.";
 
 /// The package key a local extension's definition names until it is

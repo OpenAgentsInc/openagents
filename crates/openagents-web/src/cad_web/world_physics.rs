@@ -436,7 +436,7 @@ async fn respond(
     request: Option<Request>,
 ) -> Response {
     let Some(scope) = page_scope(app, headers, None).await else {
-        return (StatusCode::UNAUTHORIZED, "Sign in to open your world.").into_response();
+        return (StatusCode::UNAUTHORIZED, "Log in to open your world.").into_response();
     };
     let mut response = match exchange(&app.config.chat_store, &scope, &zone, request).await {
         Ok(snapshot) => Json(snapshot).into_response(),

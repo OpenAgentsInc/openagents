@@ -6,7 +6,7 @@ reads, edits, and runs commands in that folder, and shows each step as it
 goes.
 
 Coder works with the coding agents you already have. It can answer
-through Claude Code, Codex, or OpenCode on your own sign-in, hand work to
+through Claude Code, Codex, or OpenCode on your own login, hand work to
 other agents on your computer, or use its own coding loop on OpenAgents
 models. You don't need an API key to start.
 
@@ -33,7 +33,7 @@ coder --version
 Updates install themselves. See [Download and install](/docs/download)
 for what gets installed, updating, and uninstalling.
 
-## 2. Sign in
+## 2. Log in
 
 ```sh
 coder login
@@ -51,8 +51,8 @@ then approve. Coder then asks once where this computer's chats should live:
 Type `1` or `2`, or answer on the website. You can change it later with
 `/sync`; see [Sync, share, and export](/docs/coder-sync).
 
-Signing in is optional. Without it, Coder answers through Claude Code,
-Codex, or OpenCode if one of them is set up on this computer. Signed in,
+Logging in is optional. Without it, Coder answers through Claude Code,
+Codex, or OpenCode if one of them is set up on this computer. Logged in,
 it can also use OpenAgents models, with a free daily allowance (see
 [Pricing](/docs/pricing)).
 

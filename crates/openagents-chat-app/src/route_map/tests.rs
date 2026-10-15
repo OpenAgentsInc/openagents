@@ -506,7 +506,7 @@ fn engine_readiness_from_this_computer() {
         }
     );
     let devin = gap_on(&map, "engine:devin", GapKind::EngineSignedOut).unwrap();
-    assert_eq!(devin.step.label(), "Sign in Devin");
+    assert_eq!(devin.step.label(), "Log in to Devin");
     let claude = map.find("engine:claude_code").unwrap();
     assert_eq!(map.nodes[claude].health, Health::Good);
     assert!(map.nodes[claude].gaps.is_empty());

@@ -682,7 +682,7 @@ async fn writer(app: &App, headers: &HeaderMap, chat: &str) -> Result<String, Re
         Err(response) if response.status() == StatusCode::SERVICE_UNAVAILABLE => {
             return Err(failed(
                 StatusCode::SERVICE_UNAVAILABLE,
-                "We couldn't check your sign-in. Try again in a minute.",
+                "We couldn't check your login. Try again in a minute.",
                 None,
             ));
         }

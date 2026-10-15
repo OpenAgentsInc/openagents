@@ -20,11 +20,11 @@ use serde_json::Value;
 pub const PLUGIN: &str = "codex";
 
 /// What /plugins says when the plugin cannot turn on here.
-pub const SIGN_IN_FIRST: &str = "Sign in to Codex first";
+pub const SIGN_IN_FIRST: &str = "Log in to Codex first";
 
 /// What `coder chat --mode codex` says on a computer with no Codex login.
 pub const NEEDS_LOGIN: &str =
-    "Codex needs a ChatGPT sign-in on this computer: run `codex login`, then try again.";
+    "Codex needs a ChatGPT login on this computer: run `codex login`, then try again.";
 
 /// The picker rows' plugin name, so /models knows a Codex row.
 pub const PICKER: &str = "codex";

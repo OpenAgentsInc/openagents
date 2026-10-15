@@ -490,7 +490,7 @@ mod tests {
     #[test]
     fn a_replys_bare_urls_are_links() {
         let html = render_reply(
-            "Sign in at https://openagents.com/projects, approve it at openagents.com/device, and read https://github.com/OpenAgentsInc/openagents.\n\nRun `curl -fsSL https://openagents.com/cli/install.sh | bash`.",
+            "Log in at https://openagents.com/projects, approve it at openagents.com/device, and read https://github.com/OpenAgentsInc/openagents.\n\nRun `curl -fsSL https://openagents.com/cli/install.sh | bash`.",
         );
         assert!(
             html.contains("<a href=\"/projects\">https://openagents.com/projects</a>,"),

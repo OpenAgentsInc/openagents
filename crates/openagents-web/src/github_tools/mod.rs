@@ -217,9 +217,9 @@ async fn ready(app: &App, headers: &HeaderMap, id: &str) -> Result<Ready, Respon
         return Err(crate::ui_page::problem(
             headers,
             StatusCode::OK,
-            "Sign in to use GitHub tools",
-            "GitHub tools change issues and boards as you, so sign in with GitHub first.",
-            (&login, "Sign in"),
+            "Log in to use GitHub tools",
+            "GitHub tools change issues and boards as you, so log in with GitHub first.",
+            (&login, "Log in"),
         ));
     };
     match &sidebar.status.access {
@@ -661,7 +661,7 @@ pub(crate) fn work_markup(csrf: &str, repository: &str) -> Markup {
     html! {
         section.oa-github-tool #gh-work {
             h2 { "Work on an issue" }
-            p { "The briefed agent makes the change, runs the checks, and opens a pull request or lands it, with your own Claude sign-in." }
+            p { "The briefed agent makes the change, runs the checks, and opens a pull request or lands it, with your own Claude login." }
             form method="post" action=(crate::work_runs::PAGE) {
                 input type="hidden" name="csrf" value=(csrf);
                 input type="hidden" name="source" value="github";

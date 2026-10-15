@@ -104,7 +104,7 @@ fn login_key_reads_the_key_from_stdin_and_saves_it() {
         String::from_utf8_lossy(&out.stderr)
     );
     assert!(
-        stdout.contains("Signed in to OpenAgents as Octo with a sign-in key."),
+        stdout.contains("Logged in to OpenAgents as Octo with a login key."),
         "{stdout}"
     );
     assert!(!stdout.contains(KEY), "the key is never printed");

@@ -77,7 +77,7 @@ impl Login {
                 .enable_all()
                 .build()
             else {
-                let _ = send.send(Event::Failed("Couldn't start sign-in.".into()));
+                let _ = send.send(Event::Failed("Couldn't start login.".into()));
                 return;
             };
             let outcome = runtime.block_on(run(&origin, None, |user_code, url, opened| {
@@ -150,7 +150,7 @@ pub fn login_command(dir: &Path, out: &mut impl Write, pair: Option<&str>) -> Re
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
-        .map_err(|_| "Couldn't start sign-in.".to_string())?;
+        .map_err(|_| "Couldn't start login.".to_string())?;
     let saved = runtime
         .block_on(run(&origin, pair, |user_code, url, opened| {
             let _ = writeln!(out, "{}", code_text(user_code, url, opened));
@@ -161,7 +161,7 @@ pub fn login_command(dir: &Path, out: &mut impl Write, pair: Option<&str>) -> Re
     drop(runtime);
     let label = saved.label.clone();
     saved.store(dir)?;
-    writeln!(out, "Signed in to OpenAgents as {label}.").map_err(|e| e.to_string())?;
+    writeln!(out, "Logged in to OpenAgents as {label}.").map_err(|e| e.to_string())?;
     crate::login_choice::after_login(dir, &saved, out)
 }
 
@@ -178,23 +178,20 @@ pub fn login_key_command(
     let saved = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
-        .map_err(|_| "Couldn't start sign-in.".to_string())?
+        .map_err(|_| "Couldn't start login.".to_string())?
         .block_on(openagents_login::sign_in_with_key(&origin, &key))
         .map_err(|error| error.to_string())?;
     let label = saved.label.clone();
     saved.store(dir)?;
-    writeln!(
-        out,
-        "Signed in to OpenAgents as {label} with a sign-in key."
-    )
-    .map_err(|e| e.to_string())?;
+    writeln!(out, "Logged in to OpenAgents as {label} with a login key.")
+        .map_err(|e| e.to_string())?;
     crate::login_choice::after_login(dir, &saved, out)
 }
 
 /// `coder-new logout`: ends the token on the website and removes it here.
 pub fn logout_command(dir: &Path, out: &mut impl Write) -> Result<(), String> {
     let Some(saved) = Saved::load(dir) else {
-        return writeln!(out, "Not signed in.").map_err(|e| e.to_string());
+        return writeln!(out, "Not logged in.").map_err(|e| e.to_string());
     };
     Saved::forget(dir)?;
     let ended = tokio::runtime::Builder::new_current_thread()
@@ -207,10 +204,10 @@ pub fn logout_command(dir: &Path, out: &mut impl Write) -> Result<(), String> {
                 .map_err(|_| ())
         });
     match ended {
-        Ok(()) => writeln!(out, "Signed out of OpenAgents."),
+        Ok(()) => writeln!(out, "Logged out of OpenAgents."),
         Err(()) => writeln!(
             out,
-            "Signed out here. The website couldn't be reached; remove this computer in Settings on openagents.com."
+            "Logged out here. The website couldn't be reached; remove this computer in Settings on openagents.com."
         ),
     }
     .map_err(|e| e.to_string())
@@ -241,28 +238,28 @@ impl crate::App {
     pub fn login(&mut self) {
         if self.account_dir.is_none() {
             self.notice = Some(
-                "Coder couldn't find your user folder to keep your sign-in in. Set HOME (on Windows, USERPROFILE) to your user folder, or use --state DIR.".into(),
+                "Coder couldn't find your user folder to keep your login in. Set HOME (on Windows, USERPROFILE) to your user folder, or use --state DIR.".into(),
             );
             return;
         }
         if self.login.is_some() {
-            self.notice = Some("Sign-in is already waiting for you on the website.".into());
+            self.notice = Some("Login is already waiting for you on the website.".into());
             return;
         }
         self.login = Some(Login::start(origin()));
-        self.notice = Some("Starting sign-in…".into());
+        self.notice = Some("Starting login…".into());
     }
 
     /// `/logout`.
     pub fn logout(&mut self) {
         self.login = None;
         let Some(dir) = self.account_dir.clone() else {
-            self.notice = Some("Not signed in.".into());
+            self.notice = Some("Not logged in.".into());
             return;
         };
         let Some(saved) = Saved::load(&dir) else {
             self.account = None;
-            self.notice = Some("Not signed in.".into());
+            self.notice = Some("Not logged in.".into());
             return;
         };
         if let Err(error) = Saved::forget(&dir) {
@@ -271,7 +268,7 @@ impl crate::App {
         }
         self.account = None;
         self.stop_sync();
-        self.notice = Some("Signed out of OpenAgents.".into());
+        self.notice = Some("Logged out of OpenAgents.".into());
         // End the token on the website without holding the terminal.
         std::thread::spawn(move || {
             if let Ok(runtime) = tokio::runtime::Builder::new_current_thread()
@@ -306,7 +303,7 @@ impl crate::App {
                     let stored = self
                         .account_dir
                         .as_deref()
-                        .map_or(Err("No folder for the sign-in.".to_string()), |dir| {
+                        .map_or(Err("No folder for the login.".to_string()), |dir| {
                             saved.store(dir)
                         });
                     match stored {
@@ -315,10 +312,10 @@ impl crate::App {
                             self.start_sync();
                             let chosen = self.sync.as_ref().is_some_and(|s| s.settings.chosen);
                             self.notice = Some(if chosen {
-                                format!("Signed in to OpenAgents as {label}.")
+                                format!("Logged in to OpenAgents as {label}.")
                             } else {
                                 format!(
-                                    "Signed in to OpenAgents as {label}. {}",
+                                    "Logged in to OpenAgents as {label}. {}",
                                     crate::account_sync::QUESTION
                                 )
                             });
@@ -367,7 +364,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let mut out = Vec::new();
         logout_command(dir.path(), &mut out).unwrap();
-        assert_eq!(String::from_utf8(out).unwrap(), "Not signed in.\n");
+        assert_eq!(String::from_utf8(out).unwrap(), "Not logged in.\n");
 
         let mut app = crate::App {
             account_dir: Some(dir.path().to_path_buf()),
@@ -376,7 +373,7 @@ mod tests {
         };
         app.logout();
         assert_eq!(app.account, None);
-        assert_eq!(app.notice.as_deref(), Some("Not signed in."));
+        assert_eq!(app.notice.as_deref(), Some("Not logged in."));
         assert_eq!(signed_in(dir.path()), None);
     }
 }

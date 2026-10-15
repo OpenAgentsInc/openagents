@@ -1099,7 +1099,7 @@ async fn api_connect(
             "url": url,
             "scopes": scopes,
             "status": google_state(&app, stored.as_ref()).await,
-            "message": "Open this link in a browser signed in to openagents.com as you. Google asks you to allow it, then you come back here.",
+            "message": "Open this link in a browser logged in to openagents.com as you. Google asks you to allow it, then you come back here.",
         }),
     )
 }

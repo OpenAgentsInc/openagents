@@ -31,9 +31,9 @@ pub const ID: &str = coder_cloud::claude::ENGINE;
 pub fn limited(resets_at: Option<u64>, session: Option<&str>) -> String {
     let base = match resets_at {
         Some(at) => format!(
-            "Claude Code reached a usage limit on this computer's Claude sign-in. Claude AI usage limit reached|{at}"
+            "Claude Code reached a usage limit on this computer's Claude login. Claude AI usage limit reached|{at}"
         ),
-        None => "Claude Code reached a usage limit on this computer's Claude sign-in and did not say when it resets.".into(),
+        None => "Claude Code reached a usage limit on this computer's Claude login and did not say when it resets.".into(),
     };
     match session.filter(|id| session_id(id)) {
         Some(id) => format!("{base} {SESSION_MARK}{id}."),
@@ -143,7 +143,7 @@ pub(crate) fn take_next_turn() -> Turn {
 
 /// What a missing or expired login says, so the Cloud job stops with a
 /// sign-in prompt. Sign-in happens only inside the computer.
-pub const SIGN_IN: &str = "Claude Code is not signed in on this computer, or its login expired. Please run /login: use Sign in to Claude for this computer, then continue the task.";
+pub const SIGN_IN: &str = "Claude Code is not logged in on this computer, or its login expired. Please run /login: use Log in to Claude for this computer, then continue the task.";
 
 /// The built-in print-mode agent, when the computer has the engine: the
 /// pinned install first, else `claude` on `PATH`.

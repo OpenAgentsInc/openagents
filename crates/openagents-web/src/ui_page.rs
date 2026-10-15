@@ -334,7 +334,7 @@ impl UiPage {
                 let sign_out = sign_out.filter(|_| forms);
                 if sign_out.is_some() {
                     menu = menu.item(MenuItem::separator()).item(
-                        MenuItem::button("Sign out")
+                        MenuItem::button("Log out")
                             .icon(Icon::ExitLogout)
                             .submit()
                             .form("oa-sign-out"),
@@ -566,7 +566,7 @@ pub fn auth_card(title: &str, description: Option<Markup>, content: impl Render)
 /// signed-in person ([`UiPage::bare`] has no account menu).
 pub fn signed_in_as(name: &str) -> Markup {
     html! {
-        p.oa-auth-fine-print { "Signed in as " strong { (name) } }
+        p.oa-auth-fine-print { "Logged in as " strong { (name) } }
     }
 }
 
@@ -878,7 +878,7 @@ mod tests {
         );
         assert!(html.contains("form=\"oa-sign-out\""));
         assert!(html.contains("name=\"csrf\" value=\"token\""));
-        assert!(!html.contains(">Sign in<"));
+        assert!(!html.contains(">Log in<"));
         // A page that allows no form gets no sign-out button.
         let strict = UiPage::new("x")
             .without_toggle()
@@ -890,7 +890,7 @@ mod tests {
             })
             .render(&HeaderMap::new())
             .into_string();
-        assert!(!strict.contains("<form") && !strict.contains(">Sign out<"));
+        assert!(!strict.contains("<form") && !strict.contains(">Log out<"));
         // Signed out: a sign-in link.
         let html = page(Account::SignedOut);
         assert!(html.contains("href=\"/login\"") && html.contains(">Log in</span>"));

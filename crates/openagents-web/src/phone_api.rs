@@ -1404,7 +1404,7 @@ async fn action(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Resp
             return refused(
                 StatusCode::UNAUTHORIZED,
                 "signed_out",
-                "Sign in again to choose.",
+                "Log in again to choose.",
             );
         };
         return match crate::pages::chat::choose_paused(
@@ -1531,7 +1531,7 @@ async fn environment_action(
                 return refused(
                     StatusCode::UNAUTHORIZED,
                     "signed_out",
-                    "Sign in again to send it a message.",
+                    "Log in again to send it a message.",
                 );
             };
             let text = sent.text.as_deref().unwrap_or_default().trim();

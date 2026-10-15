@@ -110,7 +110,7 @@ fn signed_out() -> Response {
     refused(
         StatusCode::UNAUTHORIZED,
         "signed_out",
-        "Sign in again with openagents login, or use a sign-in key.",
+        "Log in again with openagents login, or use a login key.",
     )
 }
 

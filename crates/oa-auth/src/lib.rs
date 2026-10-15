@@ -94,11 +94,11 @@ impl AuthError {
 impl std::fmt::Display for AuthError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
-            Self::Denied => "GitHub sign-in didn't go through. Try again.",
+            Self::Denied => "GitHub login didn't go through. Try again.",
             Self::Taken => "That GitHub account is already used by another OpenAgents account.",
             Self::AlreadyLinked => "This account already has a different GitHub account linked.",
-            Self::Unavailable => "Sign-in isn't available right now. Try again in a minute.",
-            Self::InviteOnly => "Sign-in is invite-only for now.",
+            Self::Unavailable => "Login isn't available right now. Try again in a minute.",
+            Self::InviteOnly => "Login is invite-only for now.",
         })
     }
 }

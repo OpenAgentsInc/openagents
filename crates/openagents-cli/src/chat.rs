@@ -64,7 +64,7 @@ pub(crate) const USAGE: &str = "usage: openagents chat COMMAND [OPTIONS]
         openagents projects threads PROJECT, and on your phone. When OpenAgents judges that the
         message is coding work, Coder runs on this computer at once, in its
         own worktree of the Git checkout this command runs in, with Codex,
-        Claude Code, or Grok Build, the first signed in here with capacity,
+        Claude Code, or Grok Build, the first logged in here with capacity,
         and its events stream here. --no-run only shows the offer instead.
         `openagents settings` chooses the providers, whether Coder asks
         first, the project folders, and what its commands may reach.
@@ -81,18 +81,18 @@ pub(crate) const USAGE: &str = "usage: openagents chat COMMAND [OPTIONS]
         Answer the question Coder asked, and follow the turn it starts.
   threads [--all] [--limit N] [--account]
         List threads, newest first; --all includes archived threads.
-        --account lists the signed-in account's chats on openagents.com
+        --account lists the logged-in account's chats on openagents.com
         instead: those made on the website, the phone, and every terminal.
   read --thread ID
         Print a thread's turns. A thread this computer doesn't keep is read
-        from the signed-in account on openagents.com, so a website or phone
+        from the logged-in account on openagents.com, so a website or phone
         chat's ID (as `chat threads --account` or `projects show` lists it),
         a unique prefix of it, or its title prints its messages.
   export --thread ID
         Print the thread as an ATIF-v1.8 trajectory whose session_id is ID;
         an account chat exports the same way.
   delete ID...
-        Delete chats from the signed-in account on openagents.com for good
+        Delete chats from the logged-in account on openagents.com for good
         (their IDs, as `chat threads --account` lists them); a terminal
         chat is deleted in Coder too. `openagents chats delete` is the same.
   apply --thread ID
@@ -123,8 +123,8 @@ pub(crate) const USAGE: &str = "usage: openagents chat COMMAND [OPTIONS]
         capability is missing (it says which), then the landing queue
         (--land queue, or main) or a pull request (--land pr; none commits
         only). Here it uses this computer's Claude Code login; with --on it
-        goes to openagents.com's work hosts under your sign-in (coder login)
-        and your own Claude sign-in from Settings > Claude. Each issue ends
+        goes to openagents.com's work hosts under your login (coder login)
+        and your own Claude login from Settings > Claude. Each issue ends
         with its engine, time, cost (unknown when not reported), checks,
         and pull request or landing entry. --engine briefed:codex runs the
         same briefing and checks on Codex CLI, briefed:opencode on OpenCode,

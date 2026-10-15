@@ -1452,7 +1452,7 @@ mod tests {
             panic!("{lines:?}")
         };
         assert_eq!(started.provider, "claude");
-        assert_eq!(started.reason, "Claude Code is signed in and has capacity.");
+        assert_eq!(started.reason, "Claude Code is logged in and has capacity.");
         assert_eq!(started.fallbacks, vec!["codex:gpt-6.1-sol".to_owned()]);
     }
 

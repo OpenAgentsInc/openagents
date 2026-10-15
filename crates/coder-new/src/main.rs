@@ -735,7 +735,7 @@ fn key_input() -> io::Result<io::Cursor<String>> {
         stdin.lock().read_line(&mut line)?;
         return Ok(io::Cursor::new(line));
     }
-    eprint!("Paste your sign-in key (from Settings, Sign-in keys for agents): ");
+    eprint!("Paste your login key (from Settings, Login keys for agents): ");
     let _ = io::stderr().flush();
     let hidden = cfg!(unix)
         && std::process::Command::new("stty")
@@ -877,8 +877,8 @@ fn help() -> String {
 
 Usage:
   coder [OPTIONS]        Open Coder in this directory.
-  coder login            Sign in to openagents.com: approve the code at https://openagents.com/device.
-  coder login --key      Sign in with a sign-in key from Settings, pasted or piped in. Or set OPENAGENTS_TOKEN.
+  coder login            Log in to openagents.com: approve the code at https://openagents.com/device.
+  coder login --key      Log in with a login key from Settings, pasted or piped in. Or set OPENAGENTS_TOKEN.
   coder logout           Sign this computer out.
   coder trace upload     Upload a chat to your account as a trace (coder trace --help).
   coder trace list       List the traces on your account.

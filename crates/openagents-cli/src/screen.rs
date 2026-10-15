@@ -840,13 +840,12 @@ fn coder_settings_with(file: &std::path::Path, keys: &model_access::Keys) -> Set
         if provider == model_access::Provider::OpenRouter && key.is_none() {
             choices.push(openagents_terminal::Choice {
                 key: CONNECT_KEY.into(),
-                label: "Connect OpenRouter (sign in in your browser)".into(),
+                label: "Connect OpenRouter (log in in your browser)".into(),
                 on: false,
                 blocked: None,
                 secret: false,
                 waiting: Some(
-                    "Sign in to OpenRouter in your browser and approve a key for OpenAgents…"
-                        .into(),
+                    "Log in to OpenRouter in your browser and approve a key for OpenAgents…".into(),
                 ),
             });
         }

@@ -60,8 +60,8 @@ pub fn root(screen: &Screen, admits: &BTreeMap<String, Admit>) -> Node<Intent> {
         ]),
         Screen::SignIn(_) => page(vec![
             heading("tailnet-title", "Connect to a tailnet"),
-            body("Sign in with Tailscale to see the devices on your tailnet."),
-            button("sign-in", "Sign in with Tailscale", Intent::SignIn),
+            body("Log in with Tailscale to see the devices on your tailnet."),
+            button("sign-in", "Log in with Tailscale", Intent::SignIn),
         ]),
         Screen::Failed(error) => page(vec![
             heading("tailnet-title", "Tailnet"),

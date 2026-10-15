@@ -1742,8 +1742,8 @@ fn names(policy: &Policy) -> Vec<Provider> {
 fn unconnected(providers: &[Provider]) -> String {
     match providers {
         [one] => format!(
-            "{} is not signed in on this computer, and every other coding agent is turned off \
-             in your settings. Sign in ({}) or turn another agent back on \
+            "{} is not logged in on this computer, and every other coding agent is turned off \
+             in your settings. Log in ({}) or turn another agent back on \
              (`openagents settings enable AGENT`).",
             settings::provider_name(*one),
             coder_events::sign_in_step(one.as_str())
@@ -2038,7 +2038,7 @@ fn runner(
 /// is never named (#10120): the run fails over past it silently, and
 /// the passed-over routes keep it for the record.
 fn started_reason(runner: &Runner) -> String {
-    runner.started("is signed in and has capacity.")
+    runner.started("is logged in and has capacity.")
 }
 
 /// The fallbacks a start card names: the order after the first route,
@@ -3199,7 +3199,7 @@ mod tests {
         assert_eq!(order[1].provider, Provider::Claude);
         assert_eq!(
             started_reason(&runner),
-            "Codex is signed in and has capacity."
+            "Codex is logged in and has capacity."
         );
 
         // A refusal that holds in this store's book passes Codex over.
@@ -3220,7 +3220,7 @@ mod tests {
         assert_eq!(order[0].provider, Provider::Claude);
         // The provider's refusal is the record's, never the sentence's
         // (#10120): the run fails over to Claude Code silently.
-        assert_eq!(why, "Claude Code is signed in and has capacity.");
+        assert_eq!(why, "Claude Code is logged in and has capacity.");
         assert_eq!(runner.started("is running."), "Claude Code is running.");
         let json = serde_json::to_value(&runner).unwrap();
         assert_eq!(json["passed"][0]["why"], "refused");
@@ -3254,7 +3254,7 @@ mod tests {
         assert_eq!(order[0].provider, Provider::Codex);
         assert_eq!(
             started_reason(&runner),
-            "Codex is signed in and has capacity."
+            "Codex is logged in and has capacity."
         );
         assert_eq!(
             shown_fallbacks(&order[1..], &runner),
@@ -3272,7 +3272,7 @@ mod tests {
         let (_, runner) = run2.choose(&run2.policy("proj").unwrap()).unwrap();
         assert_eq!(
             started_reason(&runner),
-            "Codex is not signed in here; using Claude Code."
+            "Codex is not logged in here; using Claude Code."
         );
         // Claude Code alone, with Codex refused: still Claude Code.
         assert!(run.choose(&policy).is_ok());
@@ -3281,7 +3281,7 @@ mod tests {
         let why = none.choose(&policy).unwrap_err();
         assert!(
             why.contains(
-                "No coding agent Coder can use is signed in on this computer. Sign in to one, \
+                "No coding agent Coder can use is logged in on this computer. Log in to one, \
                  then ask again: Codex (run `codex login`); Claude Code (run `claude` and log \
                  in); Grok Build"
             ),
@@ -3409,7 +3409,7 @@ mod tests {
         assert_eq!(order.len(), 1);
         assert_eq!(order[0].provider, Provider::Claude);
         assert_eq!(order[0].model, "claude-opus-5-5");
-        assert_eq!(reason, "Claude Code is signed in and has capacity.");
+        assert_eq!(reason, "Claude Code is logged in and has capacity.");
 
         // Codex signed in, but only Claude Code allowed: nothing runs.
         fn only_codex(provider: Provider) -> Connection {
@@ -3424,7 +3424,7 @@ mod tests {
             .unwrap_err();
         assert!(
             why.starts_with(
-                "Claude Code is not signed in on this computer, and every other coding agent is \
+                "Claude Code is not logged in on this computer, and every other coding agent is \
                  turned off in your settings."
             ),
             "{why}"
@@ -3468,7 +3468,7 @@ mod tests {
         assert_eq!(order[0].provider, Provider::OpenCode);
         assert_eq!(order[1].provider, Provider::Devin);
         assert_eq!(order[1].model, acp_client::devin::DEFAULT_MODEL);
-        assert_eq!(reason, "OpenCode is signed in and has capacity.");
+        assert_eq!(reason, "OpenCode is logged in and has capacity.");
         let none = local(dir.path(), nobody).with_settings(run.settings().unwrap().clone());
         assert!(
             none.choose(&policy)
@@ -3533,7 +3533,7 @@ mod tests {
         assert_eq!(first(Some(90)).0, Provider::Codex);
         let (provider, reason) = first(Some(75));
         assert_eq!(provider, Provider::Claude);
-        assert_eq!(reason, "Claude Code is signed in and has capacity.");
+        assert_eq!(reason, "Claude Code is logged in and has capacity.");
         assert_eq!(first(None).0, Provider::Codex);
     }
 
@@ -3785,7 +3785,7 @@ mod tests {
         );
         assert_eq!(
             none.predict(None).unwrap().text(),
-            "No coding agent Coder can use is signed in on this computer. Sign in to one, then \
+            "No coding agent Coder can use is logged in on this computer. Log in to one, then \
              ask again: Codex (run `codex login`); Claude Code (run `claude` and log in); Grok \
              Build (run `grok` and log in, or set XAI_API_KEY); Devin (run `devin auth login`)."
         );
@@ -3870,14 +3870,14 @@ mod tests {
                 false,
                 Provider::Claude,
                 "claude",
-                "You asked for Claude Code; it is signed in and has capacity.",
+                "You asked for Claude Code; it is logged in and has capacity.",
             ),
             (
                 both,
                 false,
                 Provider::Codex,
                 "codex",
-                "You asked for Codex; it is signed in and has capacity.",
+                "You asked for Codex; it is logged in and has capacity.",
             ),
             (
                 both,
@@ -3891,7 +3891,7 @@ mod tests {
                 false,
                 Provider::Claude,
                 "codex",
-                "You asked for Claude Code; it is not signed in here, so Codex is running.",
+                "You asked for Claude Code; it is not logged in here, so Codex is running.",
             ),
             // Grok Build is allowed by default (#10091): asked for, it runs
             // when signed in, and is passed over with a plain reason when
@@ -3901,14 +3901,14 @@ mod tests {
                 false,
                 Provider::Grok,
                 "grok",
-                "You asked for Grok Build; it is signed in and has capacity.",
+                "You asked for Grok Build; it is logged in and has capacity.",
             ),
             (
                 only_codex,
                 false,
                 Provider::Grok,
                 "codex",
-                "You asked for Grok Build; it is not signed in here, so Codex is running.",
+                "You asked for Grok Build; it is not logged in here, so Codex is running.",
             ),
             // Devin, signed in, runs with nothing set (#10184).
             (
@@ -3916,7 +3916,7 @@ mod tests {
                 false,
                 Provider::Devin,
                 "devin",
-                "You asked for Devin; it is signed in and has capacity.",
+                "You asked for Devin; it is logged in and has capacity.",
             ),
         ];
         for (index, (probe, refused, asked, runs, reason)) in cases.into_iter().enumerate() {
@@ -3990,7 +3990,7 @@ mod tests {
         assert_eq!(record.turns[0].provider, "codex");
         assert_eq!(
             record.turns[0].reason,
-            "Codex is signed in and has capacity."
+            "Codex is logged in and has capacity."
         );
         assert_eq!(record.requested, None);
     }

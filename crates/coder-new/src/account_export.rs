@@ -113,7 +113,7 @@ pub fn run(args: &[String], dir: &Path, cwd: &Path) -> Result<Outcome, String> {
     let output = options(args)?;
     let saved = Saved::load(dir)
         .filter(|saved| !saved.expired(now()))
-        .ok_or_else(|| "Sign in first with coder login.".to_string())?;
+        .ok_or_else(|| "Log in first with coder login.".to_string())?;
     let export = account_export::download(&saved, &account_export::today())?;
     let path = cwd.join(output.unwrap_or_else(|| export.file_name.clone()));
     let path = account_export::save(&export, &path)?;
@@ -154,7 +154,7 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         assert_eq!(
             run(&args(&["--account"]), temp.path(), temp.path()).unwrap_err(),
-            "Sign in first with coder login."
+            "Log in first with coder login."
         );
         assert!(std::fs::read_dir(temp.path()).unwrap().next().is_none());
     }

@@ -881,7 +881,7 @@ fn github_problem(message: &str) -> Markup {
 }
 /// GitHub's shared limit for reads without a sign-in is spent.
 pub(crate) const LIMITED_ANONYMOUS: &str =
-    "GitHub is limiting requests without a sign-in. Connect GitHub, or try again later.";
+    "GitHub is limiting requests without a login. Connect GitHub, or try again later.";
 /// The person's own GitHub limit is spent.
 pub(crate) const LIMITED: &str =
     "GitHub is limiting requests right now. Try again in a few minutes.";

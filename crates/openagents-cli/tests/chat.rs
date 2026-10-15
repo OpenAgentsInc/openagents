@@ -105,7 +105,7 @@ async fn relay(worker: SecretKey) -> (String, Arc<Mutex<Vec<Value>>>) {
                             let _ = socket.send(send(json!(["EOSE", subscription]))).await;
                         }
                         Some("EVENT") => {
-                            assert!(authed, "the client signs in before it publishes");
+                            assert!(authed, "the client logs in before it publishes");
                             let request: Event = serde_json::from_value(frame[1].clone()).unwrap();
                             assert_eq!(request.kind, CJ_CONVERSATION_REQUEST);
                             let _ = socket.send(send(json!(["OK", request.id, true, ""]))).await;
@@ -575,7 +575,7 @@ async fn settings_change_the_local_run_and_the_defaults_change_nothing() {
     assert_eq!(plain.code, 1, "{}\n{}", plain.stdout, plain.stderr);
     assert!(
         coder_message(&plain).contains(
-            "No coding agent Coder can use is signed in on this computer. Sign in to one, then \
+            "No coding agent Coder can use is logged in on this computer. Log in to one, then \
              ask again: Codex (run `codex login`); Claude Code (run `claude` and log in); Grok \
              Build"
         ),
@@ -624,7 +624,7 @@ async fn settings_change_the_local_run_and_the_defaults_change_nothing() {
     assert_eq!(claude.code, 1);
     assert!(
         coder_message(&claude).starts_with(
-            "Claude Code is not signed in on this computer, and every other coding agent is \
+            "Claude Code is not logged in on this computer, and every other coding agent is \
              turned off in your settings."
         ),
         "{}",

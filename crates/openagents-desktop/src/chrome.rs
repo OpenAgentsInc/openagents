@@ -1032,9 +1032,9 @@ fn engines(model: &Model, sidebar_width: f32) -> Option<Node<Intent>> {
 
 fn sign_in(signed_in: bool) -> &'static str {
     if signed_in {
-        "Signed in"
+        "Logged in"
     } else {
-        "Not signed in"
+        "Not logged in"
     }
 }
 
@@ -1165,9 +1165,9 @@ pub fn engine_tooltip(model: &Model, key: &str) -> Option<String> {
         route.name,
         route.model,
         if route.signed_in {
-            "Signed in"
+            "Logged in"
         } else {
-            "Not signed in"
+            "Not logged in"
         },
         openagents_chat_app::engine::usage_sentence(&route.usage)
     ))
@@ -1887,7 +1887,7 @@ mod tests {
         }
         // Resets on hover.
         let tip = engine_tooltip(&model, "sidebar-engine-0").expect("a tooltip");
-        assert!(tip.contains("Signed in"), "{tip}");
+        assert!(tip.contains("Logged in"), "{tip}");
         assert!(
             tip.contains("Primary 72% until 2026-10-03 18:07 UTC"),
             "{tip}"
@@ -1950,13 +1950,13 @@ mod tests {
         else {
             panic!("no Grok Build row")
         };
-        assert_eq!(label, "Grok Build  Signed in");
+        assert_eq!(label, "Grok Build  Logged in");
         assert!(!contains(&root, "sidebar-engine-1-meter"));
         // Claude Code, not signed in and named by no route, is left out.
         assert!(!contains(&root, "sidebar-engine-2"));
         assert_eq!(
             engine_tooltip(&model, "sidebar-engine-1").as_deref(),
-            Some("Grok Build · Signed in")
+            Some("Grok Build · Logged in")
         );
         let mut state = State::empty();
         state.page = Page::Settings;

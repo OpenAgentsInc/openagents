@@ -41,7 +41,7 @@ impl Problem {
         match self {
             Self::NotFound => "Claude Code not found",
             Self::Root => "Claude Code can't run as root",
-            Self::NotSignedIn => "Claude Code isn't signed in",
+            Self::NotSignedIn => "Claude Code isn't logged in",
         }
     }
 
@@ -56,7 +56,7 @@ impl Problem {
                 "Claude Code won't run tasks for an app running as root. Quit OpenAgents and open it again as your regular user, not with sudo, then press Retry."
             }
             Self::NotSignedIn => {
-                "Run this in a terminal, then type /login and finish signing in on Anthropic's page. Then press Retry."
+                "Run this in a terminal, then type /login and finish logging in on Anthropic's page. Then press Retry."
             }
         }
     }

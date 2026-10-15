@@ -27,8 +27,8 @@ export PATH="$HOME/.openagents/bin:$PATH"
 ## Coder has nobody to answer
 
 Coder needs at least one of these on the computer: Claude Code or Codex
-signed in (run `claude` or `codex` once and sign in), OpenCode installed,
-your openagents.com sign-in (`coder login`), or an OpenRouter key
+logged in (run `claude` or `codex` once and log in), OpenCode installed,
+your openagents.com login (`coder login`), or an OpenRouter key
 ([how](/docs/coder-plugins)). Then press `Shift+Tab` in Coder to see who
 can answer.
 
@@ -60,16 +60,16 @@ See [Connect a computer](/docs/connect-a-computer).
 - Can't scan? Run `openagents connect invite --text` and paste the code it
   prints in the phone's **Paste a code**.
 
-## A coding agent says it isn't signed in
+## A coding agent says it isn't logged in
 
-Coder uses only agents signed in on the computer it runs on, as the same
+Coder uses only agents logged in on the computer it runs on, as the same
 user.
 
 1. Run the agent's own program in a terminal on that computer (for
-   example `codex` or `claude`) and sign in.
+   example `codex` or `claude`) and log in.
 2. Check the Mac app's sidebar or **Settings → Coder**, or OpenAgents
-   Terminal's **Agents** row: it should say **Signed in**.
-3. Nothing needs enabling: Coder uses every signed-in agent. Only one you
+   Terminal's **Agents** row: it should say **Logged in**.
+3. Nothing needs enabling: Coder uses every logged-in agent. Only one you
    turned off is skipped (**Agents Coder may run**, or
    `openagents settings enable AGENT`).
 
@@ -82,7 +82,7 @@ start says why. See [Coding agents](/docs/coding-agents).
   In the Mac app, **Choose folder…**; in the Terminal, start in your
   project's folder. If you set `coder.projects`, the checkout must be
   inside one of those folders.
-- **No agent available.** No allowed agent is signed in with room right
+- **No agent available.** No allowed agent is logged in with room right
   now. Sign one in, or turn another on.
 - **Settings file can't be read.** Fix or remove
   `~/.openagents/settings.json`; the message names the problem.
@@ -98,7 +98,7 @@ The Mac app's usage meters come from the last reading your computer took;
 it reads again in the background when a reading is due.
 
 - **Reading usage…** means no reading yet. Wait a little.
-- **The sign-in has expired** or **No sign-in to read**: sign in to that
+- **The login has expired** or **No login to read**: log in to that
   agent again.
 - **Usage can't be read right now**: the provider didn't answer; it tries
   again later.

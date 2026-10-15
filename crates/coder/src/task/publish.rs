@@ -112,7 +112,7 @@ fn gh(dir: &Path, args: &[&str]) -> Result<String, String> {
         .current_dir(dir)
         .output()
         .map_err(|_| {
-            "cannot run gh; install the GitHub CLI and sign in with `gh auth login`".to_owned()
+            "cannot run gh; install the GitHub CLI and log in with `gh auth login`".to_owned()
         })?;
     if !output.status.success() {
         return Err(clip(String::from_utf8_lossy(&output.stderr).trim(), 400));

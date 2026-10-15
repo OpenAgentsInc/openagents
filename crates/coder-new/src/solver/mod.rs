@@ -270,7 +270,7 @@ Options:
                         Coder's plugin), coder (four Coder-loop sessions on the
                         OpenAgents gateway) or devin (four `devin acp` sessions
                         on this computer's Devin login). Default: claude while
-                        the Claude Code plugin is on and signed in, then
+                        the Claude Code plugin is on and logged in, then
                         opencode while it is installed and its plugin is on,
                         otherwise coder.
   --rounds R            How many times the Tester may hand work back (default 2).

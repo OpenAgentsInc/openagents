@@ -799,7 +799,7 @@ impl App {
                 "{name} isn't installed here, so Auto answers this chat now."
             )),
             Some(Exclusion::NotSignedIn) => Some(format!(
-                "{name} isn't signed in here, so Auto answers this chat now."
+                "{name} isn't logged in here, so Auto answers this chat now."
             )),
             Some(Exclusion::PluginOff) => Some(format!(
                 "{name} is off in /plugins, so Auto answers this chat now."

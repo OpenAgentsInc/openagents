@@ -364,7 +364,7 @@ fn autostart(model: &Model) -> Node<Intent> {
 /// One agent's line: a check when it is signed in.
 fn signed_in(key: &str, name: &str, on: bool) -> Node<Intent> {
     let mark = if on { "✓" } else { "–" };
-    let state = if on { "signed in" } else { "not signed in" };
+    let state = if on { "logged in" } else { "not logged in" };
     let mut line = text(key, format!("{mark}  {name} · {state}"), TextRole::Body);
     if !on {
         line.style.foreground = Some(openagents_chat_app::visual::current().muted);
@@ -410,7 +410,7 @@ fn connected(model: &Model, device: &str) -> Node<Intent> {
         agents.push(text(
             "agents-help",
             format!(
-                "Sign in to {engines} on this {} so Coder can work here: {how}.",
+                "Log in to {engines} on this {} so Coder can work here: {how}.",
                 model.computer
             ),
             TextRole::Status,

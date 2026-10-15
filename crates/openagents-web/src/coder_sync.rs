@@ -1455,7 +1455,7 @@ pub(crate) async fn account(app: &App, headers: &HeaderMap) -> Result<String, Re
         Err(SessionError::Unauthenticated | SessionError::InvalidRequest) => Err(refused(
             StatusCode::UNAUTHORIZED,
             "signed_out",
-            "Sign in again with coder login.",
+            "Log in again with coder login.",
         )),
         Err(_) => Err(refused(
             StatusCode::SERVICE_UNAVAILABLE,
@@ -2778,7 +2778,7 @@ mod tests {
             "Your account has no room for more chats. Delete some on openagents.com.",
             "A message looks like it holds a password or key, so it wasn't saved.",
             "This chat is too long to save to your account.",
-            "Sign in again with coder login.",
+            "Log in again with coder login.",
             // The chat page's words for a reply sent to Coder (#11048).
             "This chat runs in Coder on Studio. To reply here, open Coder there and type /sync on.",
             "Reply to Coder on Studio",

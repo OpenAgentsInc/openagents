@@ -83,7 +83,7 @@ pub const DEFINITIONS: &[PluginDefinition] = &[
     PluginDefinition {
         id: "microcoder",
         name: "Coder loop",
-        description: "Coder's own coding loop, on a model you're signed in to here or your OpenRouter key.",
+        description: "Coder's own coding loop, on a model you're logged in to here or your OpenRouter key.",
         default_enabled: true,
         tools: &[ToolBinding::Microcoder],
         model_provider: None,
@@ -155,7 +155,7 @@ pub const DEFINITIONS: &[PluginDefinition] = &[
     PluginDefinition {
         id: crate::claude::PLUGIN,
         name: "Claude Code",
-        description: "Claude Code inside Coder on this computer's Claude sign-in: its whole toolset, your settings and skills, and Coder's delegation tools. When it is on, new chats run on it.",
+        description: "Claude Code inside Coder on this computer's Claude login: its whole toolset, your settings and skills, and Coder's delegation tools. When it is on, new chats run on it.",
         default_enabled: true,
         tools: &[],
         model_provider: None,
@@ -164,7 +164,7 @@ pub const DEFINITIONS: &[PluginDefinition] = &[
     PluginDefinition {
         id: crate::codex::PLUGIN,
         name: "Codex",
-        description: "Codex inside Coder on this computer's ChatGPT sign-in: its own tools and models, and Coder's delegation tools. Coder can pick it for a chat, or you can ask for it.",
+        description: "Codex inside Coder on this computer's ChatGPT login: its own tools and models, and Coder's delegation tools. Coder can pick it for a chat, or you can ask for it.",
         default_enabled: true,
         tools: &[],
         model_provider: None,
@@ -223,7 +223,7 @@ pub const DEFINITIONS: &[PluginDefinition] = &[
 pub const OPENCODE: PluginDefinition = PluginDefinition {
     id: crate::opencode_chat::PLUGIN,
     name: "OpenCode",
-    description: "OpenCode inside Coder on this computer: its free model or the models you set up in OpenCode, with Coder checking every step before it runs. When Claude Code is off, signed out, or out of usage, new chats run on it, except one that starts with a quick question, which Coder answers itself and keeps. To start every new chat on OpenCode, run openagents coder models set opencode.",
+    description: "OpenCode inside Coder on this computer: its free model or the models you set up in OpenCode, with Coder checking every step before it runs. When Claude Code is off, logged out, or out of usage, new chats run on it, except one that starts with a quick question, which Coder answers itself and keeps. To start every new chat on OpenCode, run openagents coder models set opencode.",
     default_enabled: true,
     tools: &[],
     model_provider: None,

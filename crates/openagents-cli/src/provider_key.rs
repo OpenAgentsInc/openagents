@@ -27,7 +27,7 @@ pub(crate) const USAGE: &str =
   test [PROVIDER]         Test your keys now, and whether each OpenRouter or
                           Vercel key may call Jev (one small decision).
   connect [openrouter] [--use]
-                          Sign in to OpenRouter in your browser and approve a
+                          Log in to OpenRouter in your browser and approve a
                           key for OpenAgents; nothing to copy or paste.
   clear PROVIDER          Remove a key; removing your last OpenRouter or Vercel
                           key returns model calls to OpenAgents.
@@ -254,13 +254,13 @@ pub(crate) fn run(output: &Output, words: &[String]) -> u8 {
             if provider.is_some_and(|p| p != Provider::OpenRouter) {
                 return output.usage(
                     "settings provider-key",
-                    "only OpenRouter connects by signing in; add a Vercel AI Gateway or TypeSafe key with `set`",
+                    "only OpenRouter connects by logging in; add a Vercel AI Gateway or TypeSafe key with `set`",
                     USAGE,
                 );
             }
             let key = match connect(&|url| {
                 eprintln!(
-                    "Sign in to OpenRouter in your browser and approve a key for OpenAgents.\nIf no browser opens, visit:\n{url}"
+                    "Log in to OpenRouter in your browser and approve a key for OpenAgents.\nIf no browser opens, visit:\n{url}"
                 );
                 true
             }) {
@@ -470,7 +470,7 @@ pub(crate) fn connect(announce: &dyn Fn(&str) -> bool) -> Result<ApiKey, String>
             if model_access::connect::open_browser(url) || shown {
                 Ok(())
             } else {
-                Err("Couldn't open a browser here. Run `openagents settings provider-key connect` to get the sign-in link.".into())
+                Err("Couldn't open a browser here. Run `openagents settings provider-key connect` to get the login link.".into())
             }
         },
         &|| false,

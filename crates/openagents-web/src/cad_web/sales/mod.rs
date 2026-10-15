@@ -364,7 +364,7 @@ async fn prepare(
     if order.buyer != buyer || order.listing != listing_id || order.values != values {
         return Err("This order belongs to another purchase. Reload the listing.".into());
     }
-    let account = Scope::personal(buyer).ok_or("Sign in to buy this design.")?;
+    let account = Scope::personal(buyer).ok_or("Log in to buy this design.")?;
     let index_key = account
         .key(&format!("purchases/{id}.json"))
         .map_err(|_| "The order couldn't be saved.")?;

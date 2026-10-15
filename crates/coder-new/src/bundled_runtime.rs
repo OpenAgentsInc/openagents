@@ -1107,7 +1107,7 @@ pub async fn acp_briefed(
             Some(wanted) => Some(wanted),
             None => {
                 return Err(format!(
-                    "{} has no model here that can chat. Sign in to a provider in {}, then pick one with /models.",
+                    "{} has no model here that can chat. Log in to a provider in {}, then pick one with /models.",
                     agent.name, agent.name
                 ));
             }

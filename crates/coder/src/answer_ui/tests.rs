@@ -103,7 +103,7 @@ async fn a_repair_that_draws_no_better_is_dropped() {
 #[tokio::test]
 async fn a_follow_up_edit_is_merged_and_patched() {
     let door = StubGenerate::saying("never asked");
-    let edit = "intro = Text(\"Install Coder, then sign in.\")\n";
+    let edit = "intro = Text(\"Install Coder, then log in.\")\n";
     let finished = finish(&door, &reply(edit), Some(EARLIER)).await;
     // The stored reply holds the whole interface, not the edit alone.
     assert!(
@@ -111,11 +111,11 @@ async fn a_follow_up_edit_is_merged_and_patched() {
         "{}",
         finished.text
     );
-    assert!(finished.text.contains("then sign in"), "{}", finished.text);
+    assert!(finished.text.contains("then log in"), "{}", finished.text);
     assert!(finished.text.contains("go = Button"), "{}", finished.text);
     assert_eq!(finished.left, 0, "{finished:?}");
     let patch = finished.patch.expect("a patch");
-    assert_eq!(patch, "intro = Text(\"Install Coder, then sign in.\")\n");
+    assert_eq!(patch, "intro = Text(\"Install Coder, then log in.\")\n");
     let payload = patch_payload(2, &patch).expect("small");
     assert_eq!(payload["type"], "ui_patch");
     assert_eq!(payload["patch"], patch.as_str());

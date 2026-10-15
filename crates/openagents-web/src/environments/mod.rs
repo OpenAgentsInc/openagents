@@ -1047,7 +1047,7 @@ fn sign_in_answer(
         Some("dialog") => protect(
             axum::response::Html(
                 html! {
-                    (openagents_ui::overlays::Dialog::new(view::SIGN_IN_DIALOG, "Sign in to Claude", panel)
+                    (openagents_ui::overlays::Dialog::new(view::SIGN_IN_DIALOG, "Log in to Claude", panel)
                         .open_on_load(true))
                 }
                 .into_string(),
@@ -1071,16 +1071,16 @@ pub(crate) fn sign_in_page_for(
     panel: maud::Markup,
 ) -> Response {
     protect(
-        UiPage::new("Sign in to Claude")
+        UiPage::new("Log in to Claude")
             .path(format!("/environments/{id}/sign-in"))
             .section("/environments")
             .head(head())
             .breadcrumb(
-                openagents_ui::shell::Breadcrumb::new("Sign in to Claude")
+                openagents_ui::shell::Breadcrumb::new("Log in to Claude")
                     .crumb("Environments", "/environments")
                     .crumb(repository, format!("/environments/{id}")),
             )
-            .content(html! { div.oa-page-column { h1 { "Sign in to Claude" } (panel) } })
+            .content(html! { div.oa-page-column { h1 { "Log in to Claude" } (panel) } })
             .respond(headers),
     )
 }

@@ -399,7 +399,7 @@ fn turn_two_can_use_the_door_turn_one_answered_through() {
     };
     let route = plan(execution, false, Favor::default());
     assert_eq!(route.lanes.first(), Some(&Lane::Local));
-    assert!(!route.lanes.contains(&Lane::Gateway), "signed out");
+    assert!(!route.lanes.contains(&Lane::Gateway), "logged out");
     computer(false, false);
 }
 

@@ -738,7 +738,7 @@ fn claude_card(view: &View, claude: Claude) -> Markup {
         }
     };
     let card = ResultCard::new(title).subtitle(if claude == Claude::SignedIn {
-        "Claude Code runs on your computer for this environment, signed in to your Claude."
+        "Claude Code runs on your computer for this environment, logged in to your Claude."
     } else {
         "Claude Code starts on a fresh computer made from this environment."
     });
@@ -756,7 +756,7 @@ fn claude_card(view: &View, claude: Claude) -> Markup {
     } else {
         card.body(html! {
             (MarkdownRoot::new(html! {
-                p { "To run Claude Code here, sign in to Claude once inside this environment, with Anthropic's own sign-in." }
+                p { "To run Claude Code here, log in to Claude once inside this environment, with Anthropic's own login." }
                 @if claude == Claude::AddKey {
                     p { "Or add your Claude key in " a href="/settings/claude" { "Settings" } "." }
                 }
@@ -764,7 +764,7 @@ fn claude_card(view: &View, claude: Claude) -> Markup {
             (runs)
         })
         .footer(html! {
-            (ButtonLink::new("Sign in to Claude", sign_in_path(id, None)))
+            (ButtonLink::new("Log in to Claude", sign_in_path(id, None)))
         })
         .render()
     }
@@ -1096,15 +1096,15 @@ pub(crate) fn sign_in_panel(id: &str, view: Option<&sign_in::View>, back: Option
         div #claude-sign-in.oa-sign-in {
             @match phase {
                 None => {
-                    p { "Claude Code's own sign-in opens in a terminal on your computer for this environment. Sign in with your Claude account, then paste the code Anthropic shows back here. OpenAgents never sees your login, and you sign in once for this environment." }
-                    (start_form("Start sign-in"))
+                    p { "Claude Code's own login opens in a terminal on your computer for this environment. Log in with your Claude account, then paste the code Anthropic shows back here. OpenAgents never sees your login, and you log in once for this environment." }
+                    (start_form("Start login"))
                 }
                 Some(sign_in::Phase::Starting) | Some(sign_in::Phase::Open) => {
                     (sign_in_screen(id, view, back))
                     (sign_in_input(id, back, None))
                 }
                 Some(sign_in::Phase::SignedIn) => {
-                    p role="status" { "Signed in to Claude on your computer for this environment." }
+                    p role="status" { "Logged in to Claude on your computer for this environment." }
                     @if back.is_some() {
                         // Sends the message waiting in the chat's box.
                         (Button::new("Send your message").kind(ButtonType::Submit).attr("form", "chat-form"))
@@ -1174,7 +1174,7 @@ pub(crate) fn sign_in_screen(id: &str, view: Option<&sign_in::View>, back: Optio
                 Some(v) => {
                     @if let Some(link) = &v.link {
                         p {
-                            a href=(link) target="_blank" rel="noopener noreferrer" { "Open Anthropic's sign-in page ↗" }
+                            a href=(link) target="_blank" rel="noopener noreferrer" { "Open Anthropic's login page ↗" }
                         }
                     }
                     pre.oa-sign-in-screen aria-live="polite" { (v.screen) }

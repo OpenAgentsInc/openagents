@@ -148,7 +148,7 @@ mod tests {
 web = Card("On the web", [Text("Connect GitHub at https://openagents.com/projects."), Button("Connect GitHub", href="/auth/github/repos?access=private", show="signed_in"), Button("Log in to connect", href="/login?return_to=/projects", show="signed_out")])
 computer = Card("On your computer", [Steps([install, login])])
 install = Step("Install Coder", [Command("curl -fsSL https://openagents.com/cli/install.sh | bash", windows="irm https://openagents.com/cli/install.ps1 | iex")])
-login = Step("Sign in", [CodeBlock("coder login", "bash"), Button("Approve sign-in", href="https://openagents.com/device", style="secondary"), Link("GitHub", "https://github.com/OpenAgentsInc/openagents")])
+login = Step("Log in", [CodeBlock("coder login", "bash"), Button("Approve login", href="https://openagents.com/device", style="secondary"), Link("GitHub", "https://github.com/OpenAgentsInc/openagents")])
 "#;
 
     fn draw(signed_in: Option<bool>) -> String {

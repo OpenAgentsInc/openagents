@@ -529,10 +529,10 @@ fn a_studio_notice_leads_the_everglade_caption() {
     let mut runtime = entered();
     let wall = STATIONS.iter().find(|s| s.id == "task_wall").unwrap();
     runtime.set_spawn(wall.position(), wall.facing).unwrap();
-    runtime.set_studio_notice(Some("  No coding agent can sign in.  ".into()));
+    runtime.set_studio_notice(Some("  No coding agent can log in.  ".into()));
     let caption = runtime.zone_snapshot(1.0).caption;
     assert!(
-        caption.starts_with("No coding agent can sign in. · "),
+        caption.starts_with("No coding agent can log in. · "),
         "{caption}"
     );
     assert!(caption.contains("Task Wall"), "{caption}");

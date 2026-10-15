@@ -8,7 +8,7 @@ it with a link.
 
 ## Upload a trace
 
-Sign Coder in to your account once:
+Log Coder in to your account once:
 
 ```sh
 coder login
@@ -68,7 +68,7 @@ coder trace list
 ```
 
 On the website, open **Settings → Traces**. A trace is private: only you
-can see it, signed in. Open it and choose **Share** to get a public link at
+can see it, logged in. Open it and choose **Share** to get a public link at
 `openagents.com/trace/…` that anyone can open; **Stop sharing** turns the
 link off. To share as you upload:
 

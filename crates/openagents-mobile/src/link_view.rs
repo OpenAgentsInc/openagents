@@ -81,7 +81,7 @@ fn account(state: &State) -> Node<Intent> {
             ));
             children.push(text(
                 "link-signed-in",
-                &format!("Signed in as {}", session.label),
+                &format!("Logged in as {}", session.label),
                 TextRole::Body,
                 ink(),
                 false,
@@ -137,7 +137,7 @@ fn account(state: &State) -> Node<Intent> {
             ));
             children.push(button(
                 "link-sign-out",
-                "Sign out",
+                "Log out",
                 Some(Glyph::Key),
                 Intent::SignOut,
             ));
@@ -151,10 +151,10 @@ fn account(state: &State) -> Node<Intent> {
                 None,
             ));
             children.push(text("link-code", user_code, TextRole::Heading, ink(), true));
-            children.push(surface("link-qr", "link-qr", "Sign-in QR code"));
+            children.push(surface("link-qr", "link-qr", "Login QR code"));
             children.push(status(
                 "link-how",
-                "Scan the code with a phone or computer where you're signed in, or enter the code at openagents.com/device.",
+                "Scan the code with a phone or computer where you're logged in, or enter the code at openagents.com/device.",
                 quiet(),
             ));
             children.push(button(
@@ -171,23 +171,11 @@ fn account(state: &State) -> Node<Intent> {
             ));
         }
         (None, SignIn::Starting) => {
-            children.push(bar(
-                "link-account-header",
-                Lead::Menu,
-                "Sign in",
-                None,
-                None,
-            ));
+            children.push(bar("link-account-header", Lead::Menu, "Log in", None, None));
             children.push(working("link-starting", "Getting a code…"));
         }
         (None, sign_in) => {
-            children.push(bar(
-                "link-account-header",
-                Lead::Menu,
-                "Sign in",
-                None,
-                None,
-            ));
+            children.push(bar("link-account-header", Lead::Menu, "Log in", None, None));
             children.push(text(
                 "link-why",
                 "See your chats from openagents.com and your computers, reply to them, and watch what Coder runs.",
@@ -201,14 +189,14 @@ fn account(state: &State) -> Node<Intent> {
             if state.invite.is_some() {
                 children.push(status(
                     "link-invite-sign-in",
-                    "Sign in to join the project you were invited to.",
+                    "Log in to join the project you were invited to.",
                     quiet(),
                 ));
             }
             children.extend(notice(state));
             children.push(button(
                 "link-sign-in",
-                "Sign in",
+                "Log in",
                 Some(Glyph::Person),
                 Intent::SignIn,
             ));
@@ -576,7 +564,7 @@ fn running(state: &State) -> Node<Intent> {
     if !any {
         children.push(status(
             "link-running-empty",
-            "Nothing is running on your computers. Coder shows its work here when it's signed in with coder login and syncing with /sync on.",
+            "Nothing is running on your computers. Coder shows its work here when it's logged in with coder login and syncing with /sync on.",
             quiet(),
         ));
         for (index, computer) in state

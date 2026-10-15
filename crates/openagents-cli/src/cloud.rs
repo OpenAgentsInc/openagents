@@ -54,7 +54,7 @@ pub(crate) const USAGE: &str = "usage: openagents cloud COMMAND
                  runs, idle minutes), and the pool's hourly cost estimate.
 Run a task with `openagents coder delegate AGENT --on gce --task TEXT`.
 Run issues with `openagents chat work --on gce --issues N --parallel M`.
-Needs gcloud signed in to project openagentsgemini (CLOUDSDK_CONFIG), and ssh;
+Needs gcloud logged in to project openagentsgemini (CLOUDSDK_CONFIG), and ssh;
 OA_PROJECT and OA_ZONES override the project and zones. docs/cloud/gce-pool.md.";
 
 /// What each command above does, for the chat router's command tree.

@@ -223,7 +223,7 @@ pub struct Auth {
 }
 
 fn unauthorized() -> ActorError {
-    ActorError::new("unauthorized", "Sign in first.")
+    ActorError::new("unauthorized", "Log in first.")
 }
 
 fn unavailable() -> ActorError {

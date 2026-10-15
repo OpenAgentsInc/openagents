@@ -49,7 +49,7 @@ impl Client {
         let path: PathBuf = dir.join("tailscale-node.json");
         let state: PersistState = match std::fs::read(&path) {
             Ok(bytes) => serde_json::from_slice(&bytes)
-                .map_err(|_| "Couldn't read this phone's saved Tailscale sign-in.".to_string())?,
+                .map_err(|_| "Couldn't read this phone's saved Tailscale login.".to_string())?,
             Err(_) => {
                 let state = PersistState::default();
                 std::fs::create_dir_all(dir).map_err(|e| format!("Could not save keys: {e}"))?;

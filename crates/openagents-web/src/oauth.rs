@@ -196,7 +196,7 @@ pub(crate) fn authorization_server(origin: &str) -> Value {
                     "code_challenge_methods": ["S256"],
                     "token_endpoint_auth_method": "none",
                     "scopes": [SCOPE],
-                    "approval": "A signed-in person approves the app in the browser.",
+                    "approval": "A logged-in person approves the app in the browser.",
                 },
                 {
                     "type": "api_key",
@@ -604,7 +604,7 @@ fn unavailable() -> Response {
     oauth_error(
         StatusCode::SERVICE_UNAVAILABLE,
         "temporarily_unavailable",
-        "Sign-in isn't available right now. Try again in a minute.",
+        "Login isn't available right now. Try again in a minute.",
     )
 }
 
@@ -679,7 +679,7 @@ pub(crate) enum Stop {
     },
 }
 
-pub(crate) const BAD_LINK: &str = "This sign-in link isn't valid. Start again in the app.";
+pub(crate) const BAD_LINK: &str = "This login link isn't valid. Start again in the app.";
 
 /// Whether `resource` (RFC 8707) is one this server protects.
 fn resource_allowed(origin: &str, resource: &str) -> bool {
@@ -778,13 +778,13 @@ fn back_to_app(
     all.push(("iss", origin));
     match with_query(redirect_uri, &all) {
         Some(to) => protect(Redirect::to(&to).into_response()),
-        None => failure(StatusCode::BAD_REQUEST, "Sign-in link not valid", BAD_LINK),
+        None => failure(StatusCode::BAD_REQUEST, "Login link not valid", BAD_LINK),
     }
 }
 
 fn stopped(origin: &str, stop: Stop) -> Response {
     match stop {
-        Stop::Page(words) => failure(StatusCode::BAD_REQUEST, "Sign-in link not valid", words),
+        Stop::Page(words) => failure(StatusCode::BAD_REQUEST, "Login link not valid", words),
         Stop::Back {
             redirect_uri,
             state,
@@ -836,7 +836,7 @@ async fn authorize(State(app): State<App>, headers: HeaderMap, uri: Uri) -> Resp
             None => {
                 return failure(
                     StatusCode::BAD_REQUEST,
-                    "Sign-in took too long",
+                    "Login took too long",
                     "Start again in the app.",
                 );
             }
@@ -852,7 +852,7 @@ async fn authorize(State(app): State<App>, headers: HeaderMap, uri: Uri) -> Resp
         Ok(viewer) => viewer,
         Err(SessionError::Unauthenticated) => {
             if query.len() > REQUEST_MAX {
-                return failure(StatusCode::BAD_REQUEST, "Sign-in link not valid", BAD_LINK);
+                return failure(StatusCode::BAD_REQUEST, "Login link not valid", BAD_LINK);
             }
             let back = format!("{AUTHORIZE}?resume=1");
             let mut response =
@@ -892,7 +892,7 @@ pub(crate) fn consent_form(request: &Authorization, query: &str, csrf: &str) -> 
     let place = computer_label(&request.redirect_uri);
     auth_card(
         &format!("Let {name} use your OpenAgents account?"),
-        Some(html! { "Approve only if you just asked " (name) " to sign in." }),
+        Some(html! { "Approve only if you just asked " (name) " to log in." }),
         html! {
             div.oa-device-who {
                 span.oa-device-who-icon aria-hidden="true" { (Icon::ConnectApps.size(IconSize::Md)) }
@@ -1037,7 +1037,7 @@ async fn decide(
                 state,
                 &[
                     ("error", "access_denied"),
-                    ("error_description", "The person denied the sign-in."),
+                    ("error_description", "The person denied the login."),
                 ],
             );
         }
@@ -1059,7 +1059,7 @@ async fn decide(
                     ("error", "server_error"),
                     (
                         "error_description",
-                        "The sign-in couldn't be made. Try again.",
+                        "The login couldn't be made. Try again.",
                     ),
                 ],
             );
@@ -1156,9 +1156,9 @@ pub(crate) fn redeemable(
     let invalid = |words| TokenRefused("invalid_grant", words);
     let code = field("code")
         .and_then(|code| open_code(code_key, code))
-        .ok_or(invalid("The code isn't valid. Sign in again."))?;
+        .ok_or(invalid("The code isn't valid. Log in again."))?;
     if code.expires_at <= now {
-        return Err(invalid("The code expired. Sign in again."));
+        return Err(invalid("The code expired. Log in again."));
     }
     let client = field("client_id")
         .or(basic)
@@ -1168,10 +1168,10 @@ pub(crate) fn redeemable(
     }
     match field("redirect_uri") {
         Some(given) if given != code.redirect_uri => {
-            return Err(invalid("redirect_uri doesn't match the sign-in request."));
+            return Err(invalid("redirect_uri doesn't match the login request."));
         }
         None if code.redirect_given => {
-            return Err(invalid("Send the redirect_uri the sign-in request named."));
+            return Err(invalid("Send the redirect_uri the login request named."));
         }
         _ => {}
     }
@@ -1247,7 +1247,7 @@ async fn token(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Respo
         Ok(_) | Err(SessionError::InvalidRequest) => oauth_error(
             StatusCode::BAD_REQUEST,
             "invalid_grant",
-            "This code was already used or has expired. Sign in again.",
+            "This code was already used or has expired. Log in again.",
         ),
         Err(_) => unavailable(),
     }

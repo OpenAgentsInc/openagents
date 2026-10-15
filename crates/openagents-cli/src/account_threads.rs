@@ -305,9 +305,9 @@ pub(crate) fn as_thread(row: &Value, turns: &[Value]) -> openagents_chat::thread
 /// segment encoded.
 fn item_url(collection_url: &str, item: &str) -> Result<reqwest::Url, String> {
     let mut url = reqwest::Url::parse(collection_url)
-        .map_err(|_| "The sign-in names an invalid website.".to_owned())?;
+        .map_err(|_| "The login names an invalid website.".to_owned())?;
     url.path_segments_mut()
-        .map_err(|()| "The sign-in names an invalid website.".to_owned())?
+        .map_err(|()| "The login names an invalid website.".to_owned())?
         .push(item);
     Ok(url)
 }

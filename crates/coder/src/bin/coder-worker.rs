@@ -5749,7 +5749,7 @@ mod tests {
             "runs": [
                 {"ending": "finished", "turn": 1, "engine": "codex", "summary": "A Rust workspace of 80 crates.", "files": [], "commands": []},
                 {"ending": "finished", "turn": 1, "engine": "claude", "summary": "Rust monorepo; apps under bins/.", "files": [], "commands": []},
-                {"ending": "failed", "turn": 1, "engine": "grok", "summary": "Not signed in.", "files": [], "commands": []},
+                {"ending": "failed", "turn": 1, "engine": "grok", "summary": "Not logged in.", "files": [], "commands": []},
             ],
         });
         let judging = judge(

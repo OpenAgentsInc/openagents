@@ -3491,7 +3491,7 @@
                 ]
               }
             ],
-            "summary": "Send one message to OpenAgents and stream its reply. `openagents chat MESSAGE` is the same, and MESSAGE `-` reads it from stdin. Without --thread a new thread starts. --project starts a new chat inside one of your projects on openagents.com instead (PROJECT by name, repository, or id, as openagents projects show takes it), answered there with the project's repository, as starting a chat in that project on the website does; it shows in the project, in openagents projects threads PROJECT, and on your phone. When OpenAgents judges that the message is coding work, Coder runs on this computer at once, in its own worktree of the Git checkout this command runs in, with Codex, Claude Code, or Grok Build, the first signed in here with capacity, and its events stream here. --no-run only shows the offer instead. `openagents settings` chooses the providers, whether Coder asks first, the project folders, and what its commands may reach.",
+            "summary": "Send one message to OpenAgents and stream its reply. `openagents chat MESSAGE` is the same, and MESSAGE `-` reads it from stdin. Without --thread a new thread starts. --project starts a new chat inside one of your projects on openagents.com instead (PROJECT by name, repository, or id, as openagents projects show takes it), answered there with the project's repository, as starting a chat in that project on the website does; it shows in the project, in openagents projects threads PROJECT, and on your phone. When OpenAgents judges that the message is coding work, Coder runs on this computer at once, in its own worktree of the Git checkout this command runs in, with Codex, Claude Code, or Grok Build, the first logged in here with capacity, and its events stream here. --no-run only shows the offer instead. `openagents settings` chooses the providers, whether Coder asks first, the project folders, and what its commands may reach.",
             "effect": "publishes",
             "runs_on": "connected_computer"
           }
@@ -3688,7 +3688,7 @@
                 ]
               }
             ],
-            "summary": "List threads, newest first; --all includes archived threads. --account lists the signed-in account's chats on openagents.com instead: those made on the website, the phone, and every terminal.",
+            "summary": "List threads, newest first; --all includes archived threads. --account lists the logged-in account's chats on openagents.com instead: those made on the website, the phone, and every terminal.",
             "effect": "read_only",
             "runs_on": "connected_computer"
           }
@@ -3719,7 +3719,7 @@
                 ]
               }
             ],
-            "summary": "Print a thread's turns. A thread this computer doesn't keep is read from the signed-in account on openagents.com, so a website or phone chat's ID (as `chat threads --account` or `projects show` lists it), a unique prefix of it, or its title prints its messages.",
+            "summary": "Print a thread's turns. A thread this computer doesn't keep is read from the logged-in account on openagents.com, so a website or phone chat's ID (as `chat threads --account` or `projects show` lists it), a unique prefix of it, or its title prints its messages.",
             "effect": "read_only",
             "runs_on": "connected_computer"
           }
@@ -3780,7 +3780,7 @@
                 ]
               }
             ],
-            "summary": "Delete chats from the signed-in account on openagents.com for good (their IDs, as `chat threads --account` lists them); a terminal chat is deleted in Coder too. `openagents chats delete` is the same.",
+            "summary": "Delete chats from the logged-in account on openagents.com for good (their IDs, as `chat threads --account` lists them); a terminal chat is deleted in Coder too. `openagents chats delete` is the same.",
             "effect": "publishes",
             "runs_on": "connected_computer"
           }
@@ -3946,7 +3946,7 @@
                 ]
               }
             ],
-            "summary": "Work several issues: NUMBERS such as 10050,10051, or a LABEL's open issues. By default the briefed agent works each one (--engine briefed): a briefing of the files the issue needs, the agent with its check tool, the checks replayed on the actual diff, Claude Code instead when the briefing is weak, the checks keep failing, or a capability is missing (it says which), then the landing queue (--land queue, or main) or a pull request (--land pr; none commits only). Here it uses this computer's Claude Code login; with --on it goes to openagents.com's work hosts under your sign-in (coder login) and your own Claude sign-in from Settings > Claude. Each issue ends with its engine, time, cost (unknown when not reported), checks, and pull request or landing entry. --engine briefed:codex runs the same briefing and checks on Codex CLI, briefed:opencode on OpenCode, and briefed:gemini on Gemini (Vertex AI, through OpenCode). --engine bare keeps the Coder issue flow below. With --engine bare: hand several issues to Coder, one issue flow each, each in its own thread. --parallel (1 to 4, default 1) runs that many at once, each in its own worktree. Issues claimed in the last hours (the repository's claim window) and closed issues are skipped. --land overrides the repository's policy. --on boat runs each issue on a Boat sandbox of its own instead of this computer (--parallel up to 16; starts are queued under Boat's start limits): started from the newest oa-coder-main-<date> template (--template NAME picks one; with none, a seed is set up once and forked), the same issue flow runs and lands there, its events stream here, and the sandbox's machine time and cost go in a comment on the issue. The sandbox stops when its run ends and is deleted once the issue landed. --engine-logins api-keys (default: Codex on this computer's ChatGPT login, sent as a copy that can't refresh; with --engine-fallback, else an OpenAI key from OA_CODER_OPENAI_API_KEY or Secret Manager coder-openai-api-key; and Grok Build's XAI_API_KEY) or boat (subscriptions connected on Boat's dashboard). Needs BOAT_API_KEY or Secret Manager oa-boat-api-key (our own sandbox service, docs/cloud/oa-boat.md), and a GitHub token (OA_BOAT_GH_TOKEN, Secret Manager coder-pool-git-token, or `gh auth token`); docs/cloud/boat-chat-work.md. With --engine-logins api-keys, cloud runs require a ChatGPT access token with at least 2 h left. If it is short, open Codex on the Mac once to refresh it, then rerun. --engine-fallback allows an OpenAI API key or Grok Build instead, and allows switching engines during the run. Without it, runs use only Codex on the ChatGPT login and refuse if it is unavailable. --on gce runs each issue on the GCE pool this computer granted with `openagents cloud up` (--parallel up to 32, two runs per host; the pool grows within the grant's --max-hosts): the same issue flow runs and lands on a pool host, its events stream here, and its wall time and estimated cost go in a comment on the issue. Hosts delete themselves when idle. A lost host resumes on another pool host from its pushed progress or stranded branch, or from scratch. When spot capacity is unavailable, new hosts fall back to on demand. Preemptions go in the run record. Without a live grant it refuses; it never runs elsewhere. Engine logins use the ChatGPT copy first, or with --engine-fallback, Codex's OpenAI key or Grok Build's XAI_API_KEY, as for boat; docs/cloud/gce-pool.md.",
+            "summary": "Work several issues: NUMBERS such as 10050,10051, or a LABEL's open issues. By default the briefed agent works each one (--engine briefed): a briefing of the files the issue needs, the agent with its check tool, the checks replayed on the actual diff, Claude Code instead when the briefing is weak, the checks keep failing, or a capability is missing (it says which), then the landing queue (--land queue, or main) or a pull request (--land pr; none commits only). Here it uses this computer's Claude Code login; with --on it goes to openagents.com's work hosts under your login (coder login) and your own Claude login from Settings > Claude. Each issue ends with its engine, time, cost (unknown when not reported), checks, and pull request or landing entry. --engine briefed:codex runs the same briefing and checks on Codex CLI, briefed:opencode on OpenCode, and briefed:gemini on Gemini (Vertex AI, through OpenCode). --engine bare keeps the Coder issue flow below. With --engine bare: hand several issues to Coder, one issue flow each, each in its own thread. --parallel (1 to 4, default 1) runs that many at once, each in its own worktree. Issues claimed in the last hours (the repository's claim window) and closed issues are skipped. --land overrides the repository's policy. --on boat runs each issue on a Boat sandbox of its own instead of this computer (--parallel up to 16; starts are queued under Boat's start limits): started from the newest oa-coder-main-<date> template (--template NAME picks one; with none, a seed is set up once and forked), the same issue flow runs and lands there, its events stream here, and the sandbox's machine time and cost go in a comment on the issue. The sandbox stops when its run ends and is deleted once the issue landed. --engine-logins api-keys (default: Codex on this computer's ChatGPT login, sent as a copy that can't refresh; with --engine-fallback, else an OpenAI key from OA_CODER_OPENAI_API_KEY or Secret Manager coder-openai-api-key; and Grok Build's XAI_API_KEY) or boat (subscriptions connected on Boat's dashboard). Needs BOAT_API_KEY or Secret Manager oa-boat-api-key (our own sandbox service, docs/cloud/oa-boat.md), and a GitHub token (OA_BOAT_GH_TOKEN, Secret Manager coder-pool-git-token, or `gh auth token`); docs/cloud/boat-chat-work.md. With --engine-logins api-keys, cloud runs require a ChatGPT access token with at least 2 h left. If it is short, open Codex on the Mac once to refresh it, then rerun. --engine-fallback allows an OpenAI API key or Grok Build instead, and allows switching engines during the run. Without it, runs use only Codex on the ChatGPT login and refuse if it is unavailable. --on gce runs each issue on the GCE pool this computer granted with `openagents cloud up` (--parallel up to 32, two runs per host; the pool grows within the grant's --max-hosts): the same issue flow runs and lands on a pool host, its events stream here, and its wall time and estimated cost go in a comment on the issue. Hosts delete themselves when idle. A lost host resumes on another pool host from its pushed progress or stranded branch, or from scratch. When spot capacity is unavailable, new hosts fall back to on demand. Preemptions go in the run record. Without a live grant it refuses; it never runs elsewhere. Engine logins use the ChatGPT copy first, or with --engine-fallback, Codex's OpenAI key or Grok Build's XAI_API_KEY, as for boat; docs/cloud/gce-pool.md.",
             "effect": "publishes",
             "runs_on": "connected_computer"
           }
@@ -7849,7 +7849,7 @@
               "invite"
             ],
             "usage": [
-              "invite PROJECT [--role editor|viewer] [--ttl DURATION]"
+              "invite PROJECT [--github USERNAME] [--role editor|viewer] [--ttl DURATION]"
             ],
             "forms": [
               {
@@ -7861,6 +7861,13 @@
                   {
                     "kind": "positional",
                     "name": "PROJECT"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "github",
+                    "value": "USERNAME",
+                    "open": true,
+                    "optional": true
                   },
                   {
                     "kind": "option",
@@ -7882,7 +7889,7 @@
                 ]
               }
             ],
-            "summary": "Make a link that lets one person join, shown only this once. An editor (the default) adds chats, files, and notes; a viewer reads them. --ttl is how long the link works, like 30m, 12h, or 7d (the default), from 10 minutes to 30 days. Only the owner invites.",
+            "summary": "Make a link that lets one person join, shown only this once. With --github, the invitation also waits on that GitHub person's Projects page on openagents.com, with Join and Decline, so there's no link to send. An editor (the default) adds chats, files, and notes; a viewer reads them. --ttl is how long the link works, like 30m, 12h, or 7d (the default), from 10 minutes to 30 days. Only the owner invites.",
             "effect": "publishes",
             "runs_on": "connected_computer"
           }
@@ -8096,7 +8103,7 @@
                     ]
                   }
                 ],
-                "summary": "Add files, 10 MB each at most. They follow the project's protection unless you pass --protection only_me.",
+                "summary": "Add files. Large uploads resume when the same command is run again, within your account's configured limits. They follow the project's protection unless you pass --protection only_me.",
                 "effect": "publishes",
                 "runs_on": "connected_computer"
               }
@@ -8431,6 +8438,14 @@
         },
         {
           "kind": "option",
+          "name": "github",
+          "value": "USERNAME",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
           "name": "role",
           "value": "editor|viewer",
           "choices": [
@@ -8564,7 +8579,7 @@
                     ]
                   }
                 ],
-                "summary": "Print the link that connects Google Drive (read only), and open it in your browser on this computer. --sheets also lets chats read every tab of your Google Sheets. --feature asks for one more thing on its own: gmail (read mail), gmail_compose (write drafts), calendar (read events), calendar_events (add events you confirm). Open the link signed in to openagents.com as you; Google asks you to allow it.",
+                "summary": "Print the link that connects Google Drive (read only), and open it in your browser on this computer. --sheets also lets chats read every tab of your Google Sheets. --feature asks for one more thing on its own: gmail (read mail), gmail_compose (write drafts), calendar (read events), calendar_events (add events you confirm). Open the link logged in to openagents.com as you; Google asks you to allow it.",
                 "effect": "grants",
                 "runs_on": "connected_computer"
               }
@@ -14051,7 +14066,7 @@
                 ]
               }
             ],
-            "summary": "Apply one private credential intent: sign-in, recover, rotate, revoke, or sign-out. Its ID prevents replay after uncertain responses.",
+            "summary": "Apply one private credential intent: login, recover, rotate, revoke, or logout. Its ID prevents replay after uncertain responses.",
             "effect": "secret",
             "runs_on": "connected_computer"
           }
@@ -16003,7 +16018,7 @@
               "place"
             ],
             "usage": [
-              "place DOC [--zone everglade|meteor-showcase|meteor-stress-test] [--at X,Z] [--heading DEG] [--scale S] [--version N] [--remove]"
+              "place DOC [--zone everglade|meteor-showcase|meteor-stress-test] [--at X,Z] [--placement NAME] [--heading DEG] [--scale S] [--version N] [--remove]"
             ],
             "forms": [
               {
@@ -16031,6 +16046,13 @@
                     "kind": "option",
                     "name": "at",
                     "value": "X,Z",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "placement",
+                    "value": "NAME",
                     "open": true,
                     "optional": true
                   },
@@ -16279,6 +16301,14 @@
           "kind": "option",
           "name": "at",
           "value": "X,Z",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "placement",
+          "value": "NAME",
           "open": true,
           "optional": true,
           "repeated": true
@@ -19255,7 +19285,7 @@
                 ]
               }
             ],
-            "summary": "Launch the studio on a repository: admit it as a host workspace, turn auto-start on for the team's routes, seat a team, start the host if none runs, and open Verse in Everglade. The default team is a lead and two workers on the signed-in coding agents; TEAM is NAME=ROUTE,NAME=ROUTE,... with the lead first, ROUTE being PROVIDER:MODEL or a provider alone. --sim opens the simulated team on a scratch repository with no model spend. --full-access gives the team's runs the host user's reads and network, which session and sdk seats need. Options are remembered for the next up.",
+            "summary": "Launch the studio on a repository: admit it as a host workspace, turn auto-start on for the team's routes, seat a team, start the host if none runs, and open Verse in Everglade. The default team is a lead and two workers on the logged-in coding agents; TEAM is NAME=ROUTE,NAME=ROUTE,... with the lead first, ROUTE being PROVIDER:MODEL or a provider alone. --sim opens the simulated team on a scratch repository with no model spend. --full-access gives the team's runs the host user's reads and network, which session and sdk seats need. Options are remembered for the next up.",
             "effect": "local_write",
             "runs_on": "connected_computer"
           }
@@ -28093,7 +28123,7 @@
     },
     {
       "name": "login",
-      "summary": "Sign in with a sign-in key from Settings (login --key), read from standard input, never the command line.",
+      "summary": "Log in with a login key from Settings (login --key), read from standard input, never the command line.",
       "leaf": {
         "path": [
           "login"
@@ -28118,14 +28148,14 @@
             ]
           }
         ],
-        "summary": "Sign in with a sign-in key from Settings (login --key), read from standard input, never the command line.",
+        "summary": "Log in with a login key from Settings (login --key), read from standard input, never the command line.",
         "effect": "local_write",
         "runs_on": "connected_computer"
       }
     },
     {
       "name": "keys",
-      "summary": "Your sign-in keys (an agent acting as you) and API keys: list, create, show, revoke, rotate.",
+      "summary": "Your login keys (an agent acting as you) and API keys: list, create, show, revoke, rotate.",
       "children": [
         {
           "name": "list",

@@ -1816,7 +1816,7 @@ impl Link {
                         .unwrap_or_default()
                         .to_owned();
                     if user_code.is_empty() || device_code.is_empty() || !page.starts_with("http") {
-                        Err("The site didn't start sign-in. Try again.".to_owned())
+                        Err("The site didn't start login. Try again.".to_owned())
                     } else {
                         Ok(SignIn::Waiting {
                             device_code,
@@ -1827,7 +1827,7 @@ impl Link {
                         })
                     }
                 }
-                Ok(reply) => Err(reply.message("The site didn't start sign-in. Try again.")),
+                Ok(reply) => Err(reply.message("The site didn't start login. Try again.")),
                 Err(error) => Err(error),
             };
             {
@@ -1873,7 +1873,7 @@ impl Link {
             state.seen.clear();
             state.choice_read = false;
             state.screen = Screen::Account;
-            state.notice = Some("Signed out.".into());
+            state.notice = Some("Logged out.".into());
             state.changed();
             session
         };
@@ -3145,7 +3145,7 @@ async fn wait_for_approval(
         if reply.status == 200 {
             let token = reply.body["access_token"].as_str().unwrap_or_default();
             if !token.starts_with("sess_") {
-                state.sign_in = SignIn::Failed("Sign-in stopped. Try again.".into());
+                state.sign_in = SignIn::Failed("Login stopped. Try again.".into());
                 state.changed();
                 drop(state);
                 wake();
@@ -3197,7 +3197,7 @@ async fn wait_for_approval(
                 }
             }
             "access_denied" => {
-                state.sign_in = SignIn::Failed("Sign-in was denied on the website.".into());
+                state.sign_in = SignIn::Failed("Login was denied on the website.".into());
                 state.changed();
                 drop(state);
                 wake();
@@ -3212,7 +3212,7 @@ async fn wait_for_approval(
                 return;
             }
             _ => {
-                state.sign_in = SignIn::Failed(reply.message("Sign-in stopped. Try again."));
+                state.sign_in = SignIn::Failed(reply.message("Login stopped. Try again."));
                 state.changed();
                 drop(state);
                 wake();
@@ -3848,7 +3848,7 @@ impl Poller {
             state.editing = None;
             state.open = None;
             state.screen = Screen::Account;
-            state.notice = Some("Your sign-in ended. Sign in again.".into());
+            state.notice = Some("Your login ended. Log in again.".into());
             state.changed();
         }
         state.failures = if failed {

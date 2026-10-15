@@ -98,7 +98,7 @@ pub(crate) fn form(ticket: (&str, &str), back: &str, error: Option<&str>, dialog
                     }
                 }
                 li {
-                    p { "A browser window opens. Sign in with your Claude Pro or Max account and approve access." }
+                    p { "A browser window opens. Log in with your Claude Pro or Max account and approve access." }
                 }
                 li {
                     (token.clone().control(
@@ -344,7 +344,7 @@ mod tests {
             .find("In a terminal on your own computer, run:")
             .unwrap();
         let two = html
-            .find("A browser window opens. Sign in with your Claude Pro or Max account and approve access.")
+            .find("A browser window opens. Log in with your Claude Pro or Max account and approve access.")
             .unwrap();
         let three = html
             .find("Paste the token that the command prints")

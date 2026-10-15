@@ -2428,7 +2428,7 @@ echo '{"type":"result","subtype":"success","is_error":false,"num_turns":1,"resul
     fn fresh_host(provider: Provider) -> Connection {
         match provider {
             Provider::Vertex => capacity::cloud_connection(None),
-            _ => Connection::Missing("not signed in".into()),
+            _ => Connection::Missing("not logged in".into()),
         }
     }
 

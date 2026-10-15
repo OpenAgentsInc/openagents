@@ -184,9 +184,9 @@ pub fn usage_sentence(usage: &RouteUsage) -> String {
 fn reason_sentence(reason: &str) -> &'static str {
     match reason {
         "not_probed" => "Reading usage…",
-        "no_credential" => "No sign-in to read",
-        "expired" => "The sign-in has expired",
-        "unauthorized" => "The sign-in was refused",
+        "no_credential" => "No login to read",
+        "expired" => "The login has expired",
+        "unauthorized" => "The login was refused",
         "rate_limited" | "status" | "malformed" => "Usage is temporarily unavailable",
         "network" => "Usage can't be read right now",
         _ => "Usage unavailable",
@@ -195,9 +195,9 @@ fn reason_sentence(reason: &str) -> &'static str {
 
 fn sign_in(signed_in: bool) -> &'static str {
     if signed_in {
-        "Signed in"
+        "Logged in"
     } else {
-        "Not signed in"
+        "Not logged in"
     }
 }
 
@@ -359,8 +359,8 @@ mod tests {
         assert!(words.contains("gpt-6-luna"));
         assert!(words.contains("Claude Code"));
         assert!(words.contains("claude-opus-5-5"));
-        assert!(words.contains("Signed in"));
-        assert!(words.contains("Not signed in"));
+        assert!(words.contains("Logged in"));
+        assert!(words.contains("Not logged in"));
         assert!(words.contains("Primary 100%"));
         assert!(words.contains("Temporarily unavailable"));
         assert!(!words.contains("Used up"));
@@ -436,19 +436,19 @@ mod tests {
             usage_sentence(&RouteUsage::Unknown {
                 reason: "no_credential".into()
             }),
-            "No sign-in to read"
+            "No login to read"
         );
         assert_eq!(
             usage_sentence(&RouteUsage::Unknown {
                 reason: "expired".into()
             }),
-            "The sign-in has expired"
+            "The login has expired"
         );
         assert_eq!(
             usage_sentence(&RouteUsage::Unknown {
                 reason: "unauthorized".into()
             }),
-            "The sign-in was refused"
+            "The login was refused"
         );
         assert_eq!(
             usage_sentence(&RouteUsage::Unknown {

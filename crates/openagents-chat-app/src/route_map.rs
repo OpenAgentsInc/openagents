@@ -1050,7 +1050,7 @@ impl Map {
             Kind::Engine => Some(
                 match engine_reading(&self.local, &n.label) {
                     EngineReading::Ready => "Ready",
-                    EngineReading::SignedOut => "Not signed in",
+                    EngineReading::SignedOut => "Not logged in",
                     EngineReading::AtLimit => "Temporarily unavailable",
                     EngineReading::Unknown => "No reading",
                 }
@@ -1306,8 +1306,8 @@ impl Map {
                 fields.push(Field::new(
                     "On this computer",
                     match reading {
-                        EngineReading::Ready => "Signed in, with capacity",
-                        EngineReading::SignedOut => "Not signed in",
+                        EngineReading::Ready => "Logged in, with capacity",
+                        EngineReading::SignedOut => "Not logged in",
                         EngineReading::AtLimit => "Temporarily unavailable; another engine runs",
                         EngineReading::Unknown => "No reading from this computer's Coder",
                     },
@@ -1811,14 +1811,14 @@ fn gaps(map: &Map) -> Vec<Gap> {
             continue;
         };
         let step = NextStep::SignIn {
-            label: format!("Sign in {}", engine.name),
+            label: format!("Log in to {}", engine.name),
             engine: engine.id.clone(),
         };
         match engine_reading(&map.local, &engine.name) {
             EngineReading::SignedOut => out.push(Gap {
                 kind: GapKind::EngineSignedOut,
                 node,
-                title: format!("{} isn't signed in", engine.name),
+                title: format!("{} isn't logged in", engine.name),
                 detail: "This computer's Coder can't hand work to it until it is.".into(),
                 evidence: vec![],
                 step,

@@ -123,7 +123,7 @@ pub(crate) fn sign_in_page(
                     (Alert::new()
                         .color(Color::Info)
                         .variant(Variant::Soft)
-                        .title("Sign-in is invite-only for now.")
+                        .title("Login is invite-only for now.")
                         .description("If you were invited, continue with GitHub."))
                 }
                 (continue_button)
@@ -184,8 +184,8 @@ pub(crate) fn begin(
         return notice(
             headers,
             StatusCode::NOT_FOUND,
-            "Sign-in isn't available",
-            "This server doesn't sign people in with GitHub.",
+            "Login isn't available",
+            "This server doesn't log people in with GitHub.",
         );
     };
     // The flow cookie must be set on the address GitHub returns to.
@@ -217,7 +217,7 @@ pub(crate) fn begin(
         return notice(
             headers,
             StatusCode::SERVICE_UNAVAILABLE,
-            "Sign-in isn't available",
+            "Login isn't available",
             "Try again in a minute.",
         );
     };
@@ -260,8 +260,8 @@ async fn callback(
         return notice(
             &headers,
             StatusCode::NOT_FOUND,
-            "Sign-in isn't available",
-            "This server doesn't sign people in with GitHub.",
+            "Login isn't available",
+            "This server doesn't log people in with GitHub.",
         );
     };
     let query = query.ok().map(|q| q.0);
@@ -320,7 +320,7 @@ async fn finish(
     let Some(query) = query else {
         return again(
             StatusCode::BAD_REQUEST,
-            "Sign-in didn't go through",
+            "Login didn't go through",
             "Start again.",
         );
     };
@@ -334,21 +334,21 @@ async fn finish(
     }) else {
         return again(
             StatusCode::BAD_REQUEST,
-            "That sign-in expired",
+            "That login expired",
             "Start again from this browser.",
         );
     };
     if query.error.is_some() {
         return again(
             StatusCode::OK,
-            "GitHub sign-in was canceled",
+            "GitHub login was canceled",
             "Nothing changed. You can try again any time.",
         );
     }
     let Some(code) = query.code.as_deref() else {
         return again(
             StatusCode::BAD_REQUEST,
-            "Sign-in didn't go through",
+            "Login didn't go through",
             "Start again.",
         );
     };
@@ -357,7 +357,7 @@ async fn finish(
         Err(SessionError::Unavailable) => {
             return again(
                 StatusCode::SERVICE_UNAVAILABLE,
-                "Sign-in isn't available right now",
+                "Login isn't available right now",
                 "Try again in a minute.",
             );
         }
@@ -366,14 +366,14 @@ async fn finish(
             return notice(
                 headers,
                 StatusCode::FORBIDDEN,
-                "Sign-in is invite-only for now",
+                "Login is invite-only for now",
                 "OpenAgents accounts are open to invited people only for now. Nothing was saved.",
             );
         }
         Err(_) => {
             return again(
                 StatusCode::BAD_REQUEST,
-                "GitHub didn't accept that sign-in",
+                "GitHub didn't accept that login",
                 "Try again.",
             );
         }
@@ -381,7 +381,7 @@ async fn finish(
     let Ok(mut cookies) = grant.cookies() else {
         return again(
             StatusCode::BAD_REQUEST,
-            "Sign-in didn't go through",
+            "Login didn't go through",
             "Start again.",
         );
     };
@@ -390,7 +390,7 @@ async fn finish(
     let Ok(selected) = crate::cloud::default_workspace_cookies(service, &grant.viewer) else {
         return again(
             StatusCode::SERVICE_UNAVAILABLE,
-            "Sign-in isn't available right now",
+            "Login isn't available right now",
             "Try again in a minute.",
         );
     };
@@ -403,12 +403,12 @@ async fn finish(
     let back = flow.return_to.clone();
     let content = empty_state(
         EmptyMedia::Icon(Icon::CheckCircle),
-        "You're signed in",
+        "You're logged in",
         "Taking you back now.",
         ButtonLink::new("Continue", &back),
     );
     let mut response = protect(
-        UiPage::new("Signed in")
+        UiPage::new("Logged in")
             .account(Account::Unknown)
             .scriptless()
             .bare()
@@ -431,13 +431,13 @@ const LOCAL_SIGN_IN: &str = "cargo run -p openagents-web --example github_auth_f
 /// host) it adds how a developer runs sign-in locally.
 pub(crate) fn unavailable_page(headers: &HeaderMap, local: bool) -> Response {
     let card = auth_card(
-        "Sign-in isn't available",
-        Some(html! { "This server doesn't sign people in." }),
+        "Login isn't available",
+        Some(html! { "This server doesn't log people in." }),
         html! {
             div.oa-auth-login-form data-slot="login-form" {
                 @if local {
                     div.oa-auth-dev {
-                        p { "For developers: sign-in runs on this computer with the GitHub fixture. Run:" }
+                        p { "For developers: login runs on this computer with the GitHub fixture. Run:" }
                         pre.oa-auth-command { code { (LOCAL_SIGN_IN) } }
                         p {
                             "Then open " a href="http://127.0.0.1:4301/login" { "127.0.0.1:4301/login" }
@@ -450,7 +450,7 @@ pub(crate) fn unavailable_page(headers: &HeaderMap, local: bool) -> Response {
         },
     );
     protect(
-        UiPage::new("Sign-in isn't available")
+        UiPage::new("Login isn't available")
             .path("/login")
             .status(StatusCode::SERVICE_UNAVAILABLE)
             .account(Account::Unknown)

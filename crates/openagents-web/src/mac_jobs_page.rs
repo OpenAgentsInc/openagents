@@ -151,7 +151,7 @@ fn macs_markup(found: &[(String, mac_jobs::Reported, bool)], now: u64) -> Markup
                     div class="oa-settings-text" {
                         span class="oa-settings-label" { "No Mac is linked yet" }
                         span class="oa-settings-hint" {
-                            "On your Mac, sign in to Coder, then run: openagents mac serve"
+                            "On your Mac, log in to Coder, then run: openagents mac serve"
                         }
                     }
                 }

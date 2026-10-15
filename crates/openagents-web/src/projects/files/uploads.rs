@@ -181,7 +181,7 @@ async fn caller(app: &App, headers: &HeaderMap) -> Result<(String, bool), Respon
         refused(
             StatusCode::UNAUTHORIZED,
             "signed_out",
-            "Sign in again with coder login.",
+            "Log in again with coder login.",
         )
     })?;
     Ok((viewer.account_id, viewer.admin))

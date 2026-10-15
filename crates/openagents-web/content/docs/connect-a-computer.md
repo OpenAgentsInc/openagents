@@ -19,12 +19,12 @@ chats show on the website, in the left panel, where you can reply to them.
 Coder's chats on that computer then show in the website's left panel. A
 reply you send from the site reaches Coder while it's open on that
 computer. [Settings](https://openagents.com/settings) lists your
-signed-in computers, each with **Remove**.
+logged-in computers, each with **Remove**.
 
-## Let an agent sign in as you
+## Let an agent log in as you
 
-An agent, a script, or a sandbox can sign in without a code to approve. Make
-a key at [Settings, Sign-in keys for agents](https://openagents.com/settings/sign-in-keys),
+An agent, a script, or a sandbox can log in without a code to approve. Make
+a key at [Settings, Login keys for agents](https://openagents.com/settings/sign-in-keys),
 copy it (it's shown once), and give it to the agent in one line:
 
 ```sh

@@ -615,7 +615,7 @@ mod tests {
         let started: CoderEvent = serde_json::from_value(serde_json::json!({
             "event": "coder_started", "turn": 1, "project": "openagents", "checkout": "/c",
             "worktree": "/w", "base": "abc", "provider": "claude", "model": "opus",
-            "reason": "Claude Code is signed in.", "fallbacks": [], "via": "local"
+            "reason": "Claude Code is logged in.", "fallbacks": [], "via": "local"
         }))
         .unwrap();
         fleet.seen("t1", &started);

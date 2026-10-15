@@ -152,11 +152,7 @@ fn auth_refused(error: AuthError) -> Response {
 }
 
 fn unauthenticated() -> Response {
-    refused(
-        StatusCode::UNAUTHORIZED,
-        "unauthenticated",
-        "Sign in again.",
-    )
+    refused(StatusCode::UNAUTHORIZED, "unauthenticated", "Log in again.")
 }
 
 /// The active user session behind the bearer token, as (session id, account).

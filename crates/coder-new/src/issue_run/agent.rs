@@ -2317,7 +2317,7 @@ pub async fn run_coder(
         (None, Some(account)) => crate::provider::Provider::gateway(&account)
             .map(|provider| (provider, account.token().to_owned())),
         (None, None) => {
-            Err("The Coder loop needs your OpenAgents sign-in: run coder login.".to_owned())
+            Err("The Coder loop needs your OpenAgents login: run coder login.".to_owned())
         }
     };
     let (provider, secret) = match door {

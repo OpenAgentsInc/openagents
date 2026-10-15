@@ -6,7 +6,7 @@ folder
  ~/work/openagen
  ts
 account
- signed in as a
+ logged in as a
  person with a
  long display
  name that wraps

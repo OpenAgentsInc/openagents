@@ -236,7 +236,7 @@ impl Coder for FakeCoder {
                 base,
                 provider: "codex".into(),
                 model: "fake-engine".into(),
-                reason: "Codex is signed in and has capacity.".into(),
+                reason: "Codex is logged in and has capacity.".into(),
                 fallbacks: Vec::new(),
                 via: "local".into(),
                 runner: None,
@@ -712,7 +712,7 @@ fn the_screen_end_to_end() {
     for noise in [
         "Coder started task",
         "worktree of",
-        "signed in and has capacity",
+        "logged in and has capacity",
     ] {
         assert!(!run.contains(noise), "{noise} in:\n{run}");
     }

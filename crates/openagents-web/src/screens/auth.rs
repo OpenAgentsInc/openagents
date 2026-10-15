@@ -44,10 +44,10 @@ pub(crate) fn screens() -> Vec<Screen> {
             group: Group::Organism,
             routes: &["every page"],
             states: vec![
-                state("signed-out", "Signed out", shell_signed_out),
-                state("signed-in", "Signed in", shell_signed_in),
-                state("admin", "Signed in as an admin", shell_admin),
-                state("unknown", "No sign-in on this server", shell_unknown),
+                state("signed-out", "Logged out", shell_signed_out),
+                state("signed-in", "Logged in", shell_signed_in),
+                state("admin", "Logged in as an admin", shell_admin),
+                state("unknown", "No login on this server", shell_unknown),
             ],
         },
         Screen {
@@ -56,36 +56,36 @@ pub(crate) fn screens() -> Vec<Screen> {
             group: Group::Page,
             routes: &["/"],
             states: vec![
-                state("signed-out", "Signed out", home_signed_out),
-                state("signed-in", "Signed in", home_signed_in),
+                state("signed-out", "Logged out", home_signed_out),
+                state("signed-in", "Logged in", home_signed_in),
             ],
         },
         Screen {
             id: "sign-in",
-            title: "Sign in",
+            title: "Log in",
             group: Group::Page,
             routes: &["/login", "/signup", "/auth/github/callback"],
             states: vec![
                 state("login", "Log in", login),
                 state("signup", "Sign up", signup),
                 state("invite-only", "Invite-only", invite_only),
-                state("try-again", "GitHub sign-in failed", try_again),
+                state("try-again", "GitHub login failed", try_again),
                 state(
                     "unavailable",
-                    "No sign-in on this server",
+                    "No login on this server",
                     sign_in_unavailable,
                 ),
                 state(
                     "unavailable-local",
-                    "No sign-in, on this computer",
+                    "No login, on this computer",
                     sign_in_unavailable_local,
                 ),
-                state("signed-in", "Signed in", signed_in_notice),
+                state("signed-in", "Logged in", signed_in_notice),
             ],
         },
         Screen {
             id: "device",
-            title: "Sign in on another computer",
+            title: "Log in on another computer",
             group: Group::Page,
             routes: &["/device"],
             states: vec![
@@ -93,7 +93,7 @@ pub(crate) fn screens() -> Vec<Screen> {
                 state("typed", "Code typed", device_typed),
                 state("wrong", "Wrong code", device_wrong),
                 state("expired", "Expired code", device_expired),
-                state("approve", "Approve a sign-in", device_approve),
+                state("approve", "Approve a login", device_approve),
                 state("approved", "Approved", device_approved),
                 state("denied", "Denied", device_denied),
             ],
@@ -116,8 +116,8 @@ pub(crate) fn screens() -> Vec<Screen> {
             states: vec![
                 state("on-this-computer", "An app on this computer", consent_local),
                 state("on-a-site", "A website", consent_site),
-                state("bad-link", "Sign-in link not valid", consent_bad_link),
-                state("too-slow", "Sign-in took too long", consent_too_slow),
+                state("bad-link", "Login link not valid", consent_bad_link),
+                state("too-slow", "Login took too long", consent_too_slow),
             ],
         },
     ]
@@ -164,11 +164,11 @@ fn failure(headers: &HeaderMap, title: &str, text: &str) -> Response {
 }
 
 fn consent_bad_link(headers: &HeaderMap) -> Response {
-    failure(headers, "Sign-in link not valid", crate::oauth::BAD_LINK)
+    failure(headers, "Login link not valid", crate::oauth::BAD_LINK)
 }
 
 fn consent_too_slow(headers: &HeaderMap) -> Response {
-    failure(headers, "Sign-in took too long", "Start again in the app.")
+    failure(headers, "Login took too long", "Start again in the app.")
 }
 
 fn shell(headers: &HeaderMap, account: Account) -> Response {
@@ -247,7 +247,7 @@ fn try_again(headers: &HeaderMap) -> Response {
     crate::auth::try_again(
         headers,
         StatusCode::BAD_GATEWAY,
-        "GitHub didn't sign you in",
+        "GitHub didn't log you in",
         "GitHub didn't answer. Try again in a moment.",
     )
 }
@@ -264,8 +264,8 @@ fn signed_in_notice(headers: &HeaderMap) -> Response {
     crate::auth::notice(
         headers,
         StatusCode::OK,
-        "Signed in",
-        "You're signed in to OpenAgents. Close this tab and go back to your computer.",
+        "Logged in",
+        "You're logged in to OpenAgents. Close this tab and go back to your computer.",
     )
 }
 
@@ -279,7 +279,7 @@ fn device(headers: &HeaderMap, status: StatusCode, title: &str, body: maud::Mark
         .respond(headers)
 }
 
-const DEVICE_TITLE: &str = "Sign in on another computer";
+const DEVICE_TITLE: &str = "Log in on another computer";
 
 fn device_code(headers: &HeaderMap) -> Response {
     device(
@@ -327,7 +327,7 @@ fn device_approve(headers: &HeaderMap) -> Response {
     device(
         headers,
         StatusCode::OK,
-        &format!("Sign in to Coder on {COMPUTER}?"),
+        &format!("Log in to Coder on {COMPUTER}?"),
         crate::device::approve_form("KPJT-HWLL", "Coder", COMPUTER, CSRF),
     )
 }
@@ -336,12 +336,12 @@ fn device_approved(headers: &HeaderMap) -> Response {
     device(
         headers,
         StatusCode::OK,
-        "Signed in",
+        "Logged in",
         crate::ui_page::empty_state(
             crate::ui_page::EmptyMedia::Icon(openagents_ui::icons::Icon::CheckCircle),
-            "Signed in",
+            "Logged in",
             &format!(
-                "Coder on {COMPUTER} is signed in to your account. You can go back to your computer."
+                "Coder on {COMPUTER} is logged in to your account. You can go back to your computer."
             ),
             crate::ui_page::action_link("Settings", crate::settings::PAGE),
         ),
@@ -352,11 +352,11 @@ fn device_denied(headers: &HeaderMap) -> Response {
     device(
         headers,
         StatusCode::OK,
-        "Sign-in denied",
+        "Login denied",
         crate::ui_page::empty_state(
             crate::ui_page::EmptyMedia::Icon(openagents_ui::icons::Icon::XCircle),
-            "Sign-in denied",
-            &format!("Coder on {COMPUTER} was not signed in. Nothing changed on your account."),
+            "Login denied",
+            &format!("Coder on {COMPUTER} was not logged in. Nothing changed on your account."),
             crate::ui_page::action_link("Home", "/"),
         ),
     )

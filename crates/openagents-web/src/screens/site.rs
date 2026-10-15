@@ -116,7 +116,7 @@ pub(crate) fn screens() -> Vec<Screen> {
                 state("gone", "Moved away", gone),
                 state("broken", "Something went wrong", broken),
                 state("unavailable", "Unavailable", unavailable),
-                state("sign-in-first", "Sign in first", sign_in_first),
+                state("sign-in-first", "Log in first", sign_in_first),
                 state("rate-limited", "Too many tries", rate_limited),
             ],
         ),

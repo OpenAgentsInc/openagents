@@ -31,7 +31,7 @@ pub(crate) const USAGE: &str = "usage: openagents studio COMMAND [OPTIONS]
                   workspace, turn auto-start on for the team's routes,
                   seat a team, start the host if none runs, and open
                   Verse in Everglade. The default team is a lead and two
-                  workers on the signed-in coding agents; TEAM is
+                  workers on the logged-in coding agents; TEAM is
                   NAME=ROUTE,NAME=ROUTE,... with the lead first, ROUTE
                   being PROVIDER:MODEL or a provider alone. --sim opens
                   the simulated team on a scratch repository with no

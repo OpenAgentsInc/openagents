@@ -905,11 +905,11 @@ impl Credentials for Saved<'_> {
             members_epoch: requester.members_epoch,
         };
         let (class, mut value) = self.0.release(&owner, now_unix())?.ok_or_else(|| {
-            "Save your own Claude sign-in in Settings > Claude, then ask again.".to_owned()
+            "Save your own Claude login in Settings > Claude, then ask again.".to_owned()
         })?;
         let env = class
             .environment(&value)
-            .map_err(|_| "Your saved Claude sign-in can't be used. Save it again.".to_owned());
+            .map_err(|_| "Your saved Claude login can't be used. Save it again.".to_owned());
         let mut bytes = std::mem::take(&mut value).into_bytes();
         bytes.fill(0);
         env
@@ -1700,7 +1700,7 @@ async fn person(app: &App, headers: &HeaderMap) -> Result<(Viewer, Requester), R
         refused(
             StatusCode::UNAUTHORIZED,
             "signed_out",
-            "Sign in first: coder login, or sign in on the website.",
+            "Log in first: coder login, or log in on the website.",
         )
     };
     let viewer = match bearer {
@@ -2318,7 +2318,7 @@ async fn offer_route(
     protect(
         html! {
             div.oa-thread-notice.oa-work-offer {
-                p { "The briefed agent can work on this here, with your own Claude sign-in: it makes the change, runs the checks, and opens a pull request." }
+                p { "The briefed agent can work on this here, with your own Claude login: it makes the change, runs the checks, and opens a pull request." }
                 @for (repo, issue) in &issues {
                     p { (repo) "#" (issue) }
                     (work_button(&app, &chat.owner, repo, *issue, "chat"))
@@ -2493,7 +2493,7 @@ pub(crate) fn list_body(
             }
             @if !saved {
                 div class="oa-thread-notice" role="alert" {
-                    p { "The briefed agent and Claude Code use your own Claude sign-in. " a href="/settings/claude#key" { "Save it in Settings" } " first, or pick " (SOLVER) ", which needs none." }
+                    p { "The briefed agent and Claude Code use your own Claude login. " a href="/settings/claude#key" { "Save it in Settings" } " first, or pick " (SOLVER) ", which needs none." }
                 }
             }
             section class="oa-settings-group" aria-labelledby="work-new" {
@@ -2514,9 +2514,9 @@ pub(crate) fn list_body(
                         }
                         label class="oa-settings-label" for="work-engine" { "Who works on it" }
                         select #work-engine name="engine" {
-                            option value="briefed" selected { "Briefed agent (your Claude sign-in)" }
-                            option value="bare" { "Claude Code alone (your Claude sign-in)" }
-                            option value="solver" { (SOLVER) " (a computer of its own, no Claude sign-in)" }
+                            option value="briefed" selected { "Briefed agent (your Claude login)" }
+                            option value="bare" { "Claude Code alone (your Claude login)" }
+                            option value="solver" { (SOLVER) " (a computer of its own, no Claude login)" }
                         }
                     }
                     div class="oa-settings-control" {

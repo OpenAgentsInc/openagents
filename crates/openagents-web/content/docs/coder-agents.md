@@ -4,11 +4,11 @@ Coder is one chat, whoever answers it. Each chat runs on one of these:
 
 | Who | What it needs on this computer |
 | --- | --- |
-| **Claude Code** | Claude Code installed and signed in to your Claude account (`claude`, then sign in). |
-| **Codex** | Codex installed and signed in with ChatGPT (`codex`, then sign in). |
+| **Claude Code** | Claude Code installed and logged in to your Claude account (`claude`, then log in). |
+| **Codex** | Codex installed and logged in with ChatGPT (`codex`, then log in). |
 | **OpenCode** | OpenCode installed ([opencode.ai](https://opencode.ai)). It can use its free model or the models you set up in it. |
-| **Coder's own loop** | Your openagents.com sign-in (`coder login`), or an OpenRouter key. |
-| **Other agents** | Devin CLI, Cursor, Grok Build, Amp, Goose, and others, each installed and signed in with its own program. |
+| **Coder's own loop** | Your openagents.com login (`coder login`), or an OpenRouter key. |
+| **Other agents** | Devin CLI, Cursor, Grok Build, Amp, Goose, and others, each installed and logged in with its own program. |
 
 Claude Code and Codex run on your own plans, so they cost you nothing
 through OpenAgents.
@@ -17,7 +17,7 @@ through OpenAgents.
 
 A new chat starts on **Auto**, shown at the input's top right. Coder looks
 at your message and picks who answers among the ones that are on and
-signed in here. With no other reason to choose, it tries Claude Code,
+logged in here. With no other reason to choose, it tries Claude Code,
 then OpenCode, then its own loop. Once it has answered, the whole chat
 stays with that agent and model; a new chat (`Ctrl+N`) can pick again.
 
@@ -78,7 +78,7 @@ model. A chat you reopen with `/resume`, or continue from your phone or
 the web, goes on with the agent, model, and payment it ran on. If that
 agent isn't on this computer any more, the line under the input says so
 and the chat doesn't move to another one. If
-`/models` says to sign in, run `/login`, or turn on OpenRouter BYOK in
+`/models` says to log in, run `/login`, or turn on OpenRouter BYOK in
 `/plugins` ([how](/docs/coder-plugins)).
 
 ## Preferences and pins

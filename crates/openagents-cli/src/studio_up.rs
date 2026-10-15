@@ -58,7 +58,7 @@ const HOST_WAIT: Duration = Duration::from_secs(30);
 const STOP_WAIT: Duration = Duration::from_secs(10);
 /// What Everglade and the terminal say when no seat's coding agent can
 /// sign in.
-pub(crate) const NO_ENGINE: &str = "No coding agent can sign in, so the studio's seats cannot work. Sign in to Codex or Claude Code, or run `openagents studio up --sim` for the simulated team.";
+pub(crate) const NO_ENGINE: &str = "No coding agent can log in, so the studio's seats cannot work. Log in to Codex or Claude Code, or run `openagents studio up --sim` for the simulated team.";
 
 /// Where the studio's pieces live on this computer.
 #[derive(Clone, Debug)]
@@ -1553,7 +1553,7 @@ mod tests {
             &mut record,
         )
         .unwrap();
-        assert!(!setup.engines_ready, "no coding agent signs in");
+        assert!(!setup.engines_ready, "no coding agent logs in");
         let during = Policy::load(&paths.root).unwrap().unwrap();
         assert!(during.admits("other") && during.admits("my-repo"));
         assert_eq!(during.routes().len(), 2);

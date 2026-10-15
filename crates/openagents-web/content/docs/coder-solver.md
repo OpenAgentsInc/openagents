@@ -11,8 +11,8 @@ Solver comes in the next Coder release.
 On the computer that runs it you need:
 
 - the project's Git checkout, with `git`;
-- the GitHub CLI, signed in: `gh auth login`;
-- Claude Code signed in (the default), or your openagents.com sign-in
+- the GitHub CLI, logged in: `gh auth login`;
+- Claude Code logged in (the default), or your openagents.com login
   (`coder login`) so it can run on Coder's own loop.
 
 ## From the chat

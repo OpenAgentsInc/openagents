@@ -7,7 +7,7 @@ reports on the issue.
 ## Before you start
 
 - Run `coder` in a checkout of the issue's repository.
-- Install the GitHub CLI and sign in: `gh auth login`.
+- Install the GitHub CLI and log in: `gh auth login`.
 
 ## Ask for it
 

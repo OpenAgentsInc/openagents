@@ -219,7 +219,7 @@ async fn tailscale_json(program: &Path, args: &[&str]) -> Result<serde_json::Val
     .map_err(|_| Error::Config(format!("cannot run {}", program.display())))?;
     if !output.status.success() {
         return Err(Error::Config(
-            "tailscale failed; is it running and signed in?".into(),
+            "tailscale failed; is it running and logged in?".into(),
         ));
     }
     serde_json::from_slice(&output.stdout)

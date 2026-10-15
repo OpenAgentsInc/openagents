@@ -1643,7 +1643,7 @@ fn engine(output: &Output, root: &Path, name: &str, word: &str, now: u64) -> Res
 
 /// What `show` and `engine` say when Devin can't take her coding here.
 const DEVIN_NOT_CONNECTED: &str = "Devin isn't connected on this computer: it needs a `devin` binary \
-     (DEVIN_BIN, PATH, or ~/.local/bin/devin) signed in with `devin auth login`.";
+     (DEVIN_BIN, PATH, or ~/.local/bin/devin) logged in with `devin auth login`.";
 
 /// Whether the Devin CLI on this computer can take a delegation: a `devin`
 /// binary and its stored login.

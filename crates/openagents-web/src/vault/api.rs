@@ -83,7 +83,7 @@ pub(crate) async fn caller(
     let viewer = service
         .authenticate(headers)
         .await
-        .map_err(|_| refusal(StatusCode::UNAUTHORIZED, "Sign in again to use your vault."))?;
+        .map_err(|_| refusal(StatusCode::UNAUTHORIZED, "Log in again to use your vault."))?;
     if write {
         let token = headers
             .get(TOKEN_HEADER)

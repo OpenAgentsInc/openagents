@@ -74,7 +74,7 @@ on PATH) and --questions the question sets it asks (default: the
 questions/ of the checkout it was built in, then ~/.openagents/questions);
 both arms get the same ones. The pinned door is CODER_DOOR_URL, CODER_DOOR_KEY (or CODER_AI_GATEWAY_KEY),
 and CODER_MODEL from this shell; the run's child never sees the key.
-Without a model key, the default door uses your signed-in Claude Code or
+Without a model key, the default door uses your logged-in Claude Code or
 Codex. Both arms use the same engine; login credentials stay outside the
 test sandbox.
 TYPESAFE_API_KEY, when set, is the decision door for decision graders and

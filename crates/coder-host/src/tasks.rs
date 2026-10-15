@@ -83,7 +83,7 @@ impl Passed {
             Passed::NotAllowed => {
                 "is not one of the engines this computer's Coder policy allows".into()
             }
-            Passed::NotSignedIn => "is not signed in on this computer".into(),
+            Passed::NotSignedIn => "is not logged in on this computer".into(),
             Passed::Refused { .. } | Passed::NearLimit => "isn't available right now".into(),
         }
     }

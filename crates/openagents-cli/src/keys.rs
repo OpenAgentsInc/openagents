@@ -28,15 +28,15 @@ pub(crate) const USAGE: &str =
   revoke KEY  Revoke a key, by id, the start of its id, or its name.
   rotate KEY  Make a new key with the same name and expiry, print it, then
               revoke the old one.
---kind signin (the default) is a sign-in key: an agent acting as you, as
+--kind signin (the default) is a login key: an agent acting as you, as
 coder login does. --kind api is an API key for calling models
-(https://api.openagents.com/v1); API keys don't expire. Signs in as
+(https://api.openagents.com/v1); API keys don't expire. Logs in as
 openagents mac does: OPENAGENTS_TOKEN, --account-dir, or coder login.";
 
 pub(crate) const LOGIN_USAGE: &str = "usage: openagents login --key [--account-dir DIR]
-Sign in with a sign-in key from Settings (Sign-in keys for agents), read from
+Log in with a login key from Settings (Login keys for agents), read from
 standard input or pasted at the prompt, never typed on the command line, and
-save it where Coder keeps its sign-in (or in DIR). To skip saving, set it in
+save it where Coder keeps its login (or in DIR). To skip saving, set it in
 the environment instead: OPENAGENTS_TOKEN=oa_sk_... openagents ...";
 
 /// What each command does, for the chat router's command tree.
@@ -174,7 +174,7 @@ pub fn login(output: &Output, words: &[String]) -> u8 {
     if !args.switch("key") || !args.positional().is_empty() {
         return output.usage(
             "login",
-            "sign in with --key, or with coder login for a code to approve",
+            "log in with --key, or with coder login for a code to approve",
             LOGIN_USAGE,
         );
     }
@@ -194,7 +194,7 @@ pub fn login(output: &Output, words: &[String]) -> u8 {
     let signed = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
-        .map_err(|_| "Couldn't start sign-in.".to_owned())
+        .map_err(|_| "Couldn't start login.".to_owned())
         .and_then(|runtime| {
             runtime
                 .block_on(openagents_login::sign_in_with_key(&origin, &key))
@@ -211,7 +211,7 @@ pub fn login(output: &Output, words: &[String]) -> u8 {
         &json!({"account": {"id": saved.account, "label": saved.label}, "origin": saved.origin, "saved": dir.join(openagents_login::FILE).display().to_string()}),
         |value| {
             format!(
-                "Signed in to OpenAgents as {} with a sign-in key.",
+                "Logged in to OpenAgents as {} with a login key.",
                 value["account"]["label"].as_str().unwrap_or("your account")
             )
         },
@@ -225,7 +225,7 @@ fn read_key_input() -> Result<String, String> {
     if !stdin.is_terminal() {
         return openagents_login::read_key(&mut stdin.lock());
     }
-    eprint!("Paste your sign-in key (from Settings, Sign-in keys for agents): ");
+    eprint!("Paste your login key (from Settings, Login keys for agents): ");
     let _ = std::io::stderr().flush();
     let stty = |arg: &str| {
         std::process::Command::new("stty")
@@ -327,7 +327,7 @@ impl Site {
                 let dir = sign_in_dir(dir);
                 let saved = Saved::load_file(&dir).ok_or_else(|| {
                     format!(
-                        "Not signed in here ({}). Sign in with: coder login, or set OPENAGENTS_TOKEN to a sign-in key.",
+                        "Not logged in here ({}). Log in with: coder login, or set OPENAGENTS_TOKEN to a login key.",
                         dir.display()
                     )
                 })?;
@@ -355,7 +355,7 @@ impl Site {
         }
         if status.as_u16() == 401 {
             return Err(
-                "Not signed in: the sign-in was revoked or expired. Sign in again with coder login, or a new key in OPENAGENTS_TOKEN.".into(),
+                "Not logged in: the login was revoked or expired. Log in again with coder login, or a new key in OPENAGENTS_TOKEN.".into(),
             );
         }
         Err(body["error"]["message"]
@@ -521,7 +521,7 @@ fn list_text(listed: &Value, kind: &str) -> String {
     let what = if kind == "api" {
         "API keys"
     } else {
-        "sign-in keys"
+        "login keys"
     };
     if keys.is_empty() {
         return format!(

@@ -2,7 +2,7 @@
 
 ## On the website
 
-[Settings](https://openagents.com/settings) lists the computers signed in
+[Settings](https://openagents.com/settings) lists the computers logged in
 to your account, each with **Remove**, which signs it out. To add one, run `coder login` on it;
 see [Connect a computer](/docs/connect-a-computer).
 
@@ -38,7 +38,7 @@ In [OpenAgents for iPhone](/docs/iphone), **Account → Computers** lists your c
 - The phones that can reach this Mac, each with **Remove**, which cuts it
   off at once.
 - Your project for Coder (**Choose folder…**), whether each coding agent is
-  signed in, and **Let my phone start Coder here**.
+  logged in, and **Let my phone start Coder here**.
 - Coder's recent work, and **Connect another phone**.
 
 On a computer without the Mac app, `openagents connect devices` lists the
@@ -57,7 +57,7 @@ never sends one twice.
 ## Tailscale
 
 You don't need Tailscale. If you already use it, **Account → Tailnet** can
-sign the app in to Tailscale to list your tailnet's devices. That sign-in
+log the app in to Tailscale to list your tailnet's devices. That login
 grants no access to any computer: access only ever comes from pairing.
 
 Next: [Plugins](/docs/plugins).

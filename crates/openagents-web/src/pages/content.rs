@@ -468,7 +468,7 @@ mod tests {
     /// The how-to verbs that start an instruction to the reader.
     const HOW_TO: [&str; 19] = [
         "open", "tap", "click", "install", "run", "download", "go to", "visit", "connect",
-        "sign in", "log in", "choose", "pick", "type", "scan", "enter", "paste", "press", "select",
+        "log in", "log in", "choose", "pick", "type", "scan", "enter", "paste", "press", "select",
     ];
 
     /// Instructions that rightly carry no link or command: the guide, the

@@ -271,7 +271,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             &redirect,
             oa_auth::Endpoints::default(),
         )?));
-        println!("GitHub sign-in returns to {redirect}");
+        println!("GitHub login returns to {redirect}");
     }
     if let Some(bucket) = vault_bucket.filter(|bucket| !bucket.trim().is_empty()) {
         // The vault's bucket keeps no soft-deleted copies and no versions,

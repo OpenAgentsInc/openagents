@@ -38,7 +38,7 @@ pub const CHANGELOG: &[Release] = &[
         version: "1.0.0",
         build: "59",
         title: "Where you left off",
-        what_to_test: "Everything from build 58 applies. Close the app and open it again: it opens on the chat you were in, or the first time, on a welcome with Start a chat. A new chat is a plain field with no cards. Ask a question and tap stop while the answer streams: it stops. Signed in under Settings, open Projects from your account: type a name to make a project, then tap it to start a chat in it. Your chats lists every chat newest first, each with its project. Running shows cloud runs with Stop.",
+        what_to_test: "Everything from build 58 applies. Close the app and open it again: it opens on the chat you were in, or the first time, on a welcome with Start a chat. A new chat is a plain field with no cards. Ask a question and tap stop while the answer streams: it stops. Logged in under Settings, open Projects from your account: type a name to make a project, then tap it to start a chat in it. Your chats lists every chat newest first, each with its project. Running shows cloud runs with Stop.",
         items: &[
             Item {
                 title: "Where you left off",
@@ -66,7 +66,7 @@ pub const CHANGELOG: &[Release] = &[
         version: "1.0.0",
         build: "58",
         title: "Attach in the composer",
-        what_to_test: "Everything from build 57 applies. Sign in under Settings, open one of your openagents.com chats from the menu, and tap the paperclip at the left of the reply field: attach a photo or a file (a PDF or a text file), ask about it, and send. The answer reads it. A new chat has no paperclip: it takes words only for now. The cards on a new chat are gray, in the app's own colors.",
+        what_to_test: "Everything from build 57 applies. Log in under Settings, open one of your openagents.com chats from the menu, and tap the paperclip at the left of the reply field: attach a photo or a file (a PDF or a text file), ask about it, and send. The answer reads it. A new chat has no paperclip: it takes words only for now. The cards on a new chat are gray, in the app's own colors.",
         items: &[
             Item {
                 title: "Attach in the composer",
@@ -82,7 +82,7 @@ pub const CHANGELOG: &[Release] = &[
         version: "1.0.0",
         build: "57",
         title: "Agents on your account",
-        what_to_test: "Everything from build 56 applies. Sign in under Settings, then open Running from the menu: each agent on your computers and in OpenAgents Cloud shows its stage, time, and cost so far, with Issue, Commit, and Pull request buttons that open GitHub. A run paused on its Claude plan shows Continue on your key and Continue with OpenAgents. The account's chats list updates by itself.",
+        what_to_test: "Everything from build 56 applies. Log in under Settings, then open Running from the menu: each agent on your computers and in OpenAgents Cloud shows its stage, time, and cost so far, with Issue, Commit, and Pull request buttons that open GitHub. A run paused on its Claude plan shows Continue on your key and Continue with OpenAgents. The account's chats list updates by itself.",
         items: &[
             Item {
                 title: "Links on agent rows",
@@ -114,7 +114,7 @@ pub const CHANGELOG: &[Release] = &[
         version: "1.0.0",
         build: "55",
         title: "Coder and the Verse",
-        what_to_test: "No sign-in is needed. The app has no tab bar now: the menu button at the top left opens the menu with Coder, Computers, Wallet, Verse, Settings, and your recent chats. On a new chat, the cards move on by themselves; tap Try it on one. Ask anything in Ask OpenAgents: the reply streams in, and a reply that names web pages shows a card for each. Tap Verse at the top (or Explore the Verse's Try it) to walk around the Grid with your avatar, then tap Coder to come back.",
+        what_to_test: "No login is needed. The app has no tab bar now: the menu button at the top left opens the menu with Coder, Computers, Wallet, Verse, Settings, and your recent chats. On a new chat, the cards move on by themselves; tap Try it on one. Ask anything in Ask OpenAgents: the reply streams in, and a reply that names web pages shows a card for each. Tap Verse at the top (or Explore the Verse's Try it) to walk around the Grid with your avatar, then tap Coder to come back.",
         items: &[
             Item {
                 title: "Coder and Verse",
@@ -138,7 +138,7 @@ pub const CHANGELOG: &[Release] = &[
         version: "1.0.0",
         build: "54",
         title: "OpenAgents 1.0 beta",
-        what_to_test: "No sign-in is needed. In Chat, ask anything or tap a suggested question: the reply should stream in. Open Wallet: it should show your balance, Receive, and Send. In Account, open each row: Computers, Appearance, Your keys, Identity keys, About this device, Changelog, and Report a problem. To reach your own computer, open Account > Computers > Connect a computer and follow the steps there.",
+        what_to_test: "No login is needed. In Chat, ask anything or tap a suggested question: the reply should stream in. Open Wallet: it should show your balance, Receive, and Send. In Account, open each row: Computers, Appearance, Your keys, Identity keys, About this device, Changelog, and Report a problem. To reach your own computer, open Account > Computers > Connect a computer and follow the steps there.",
         items: &[
             Item {
                 title: "Three tabs",
@@ -370,7 +370,7 @@ pub const CHANGELOG: &[Release] = &[
             },
             Item {
                 title: "Grok Build on your computer",
-                detail: "Coder on your computer can use Grok Build by default, after Codex and Claude Code, when it is installed and signed in.",
+                detail: "Coder on your computer can use Grok Build by default, after Codex and Claude Code, when it is installed and logged in.",
             },
         ],
     },
@@ -402,7 +402,7 @@ pub const CHANGELOG: &[Release] = &[
         version: "1.0.0",
         build: "40",
         title: "Coder runs the engine you asked for",
-        what_to_test: "With no computer paired, send \"Do a test delegation to claude\" in a new chat: the reply should say it needs a computer and offer Connect a computer, with no Gym test. With the latest OpenAgents on a paired computer, send \"Do a test delegation to claude\" in a new chat on the phone and tap Run Coder: Coder should start on Claude Code, or its start card should say why another engine is running, and the run should do a small check of your project instead of trying to sign in to Claude. Then open one of the computer's chats from the previous chats and ask \"What's the working directory right now?\": the reply should answer it, with no Coder run starting.",
+        what_to_test: "With no computer paired, send \"Do a test delegation to claude\" in a new chat: the reply should say it needs a computer and offer Connect a computer, with no Gym test. With the latest OpenAgents on a paired computer, send \"Do a test delegation to claude\" in a new chat on the phone and tap Run Coder: Coder should start on Claude Code, or its start card should say why another engine is running, and the run should do a small check of your project instead of trying to log in to Claude. Then open one of the computer's chats from the previous chats and ask \"What's the working directory right now?\": the reply should answer it, with no Coder run starting.",
         items: &[
             Item {
                 title: "Your engine, from any chat",
@@ -410,7 +410,7 @@ pub const CHANGELOG: &[Release] = &[
             },
             Item {
                 title: "Delegations do the work",
-                detail: "When you hand a task to Claude or another engine, the run does your task. It no longer treats the request itself as the work and gets stuck trying to sign in to that engine; a request with nothing more to do gets a small, harmless check of your project.",
+                detail: "When you hand a task to Claude or another engine, the run does your task. It no longer treats the request itself as the work and gets stuck trying to log in to that engine; a request with nothing more to do gets a small, harmless check of your project.",
             },
             Item {
                 title: "Answers stay answers",
@@ -430,7 +430,7 @@ pub const CHANGELOG: &[Release] = &[
         items: &[
             Item {
                 title: "Name the engine you want",
-                detail: "When you ask to hand work to Claude, Codex, or another coding engine and a computer can take it, the reply says which one you asked for. In a computer's chat, Run Coder starts on that engine, and if it can't, because it isn't signed in or has reached a limit, the start card says so and names the one running instead. This needs the latest OpenAgents on your computer.",
+                detail: "When you ask to hand work to Claude, Codex, or another coding engine and a computer can take it, the reply says which one you asked for. In a computer's chat, Run Coder starts on that engine, and if it can't, because it isn't logged in or has reached a limit, the start card says so and names the one running instead. This needs the latest OpenAgents on your computer.",
             },
             Item {
                 title: "Your message, once",
@@ -558,7 +558,7 @@ pub const CHANGELOG: &[Release] = &[
             },
             Item {
                 title: "Offers say which agent will run",
-                detail: "When a request needs a computer, the offer says which agent and model will run it, or that none is signed in or has room.",
+                detail: "When a request needs a computer, the offer says which agent and model will run it, or that none is logged in or has room.",
             },
         ],
     },
@@ -602,7 +602,7 @@ pub const CHANGELOG: &[Release] = &[
         version: "1.0.0",
         build: "31",
         title: "Connect your Mac",
-        what_to_test: "On a Mac, download OpenAgents for Mac from https://storage.googleapis.com/openagentsgemini-oa-updates/desktop/macos/1.0.0/OpenAgents-1.0.0.dmg, open it, drag OpenAgents to Applications, and open it: it shows a QR code. Tick Let this phone open a terminal on this Mac first if you want command cards. On the phone, tap Account, Computers, Connect a computer, and scan the code: both screens should say the computer is connected. On the Mac, choose a project folder and tick Let my phone start Coder here. In a new chat, ask for a change in your project on your Mac and tap Run Coder on your Mac: Coder's steps and reply should show in the chat. Ask who is in the Verse and tap Run on the command card. Then click Remove on the Mac: the phone should show the computer as Revoked. Codex or Claude Code must be signed in on the Mac.",
+        what_to_test: "On a Mac, download OpenAgents for Mac from https://storage.googleapis.com/openagentsgemini-oa-updates/desktop/macos/1.0.0/OpenAgents-1.0.0.dmg, open it, drag OpenAgents to Applications, and open it: it shows a QR code. Tick Let this phone open a terminal on this Mac first if you want command cards. On the phone, tap Account, Computers, Connect a computer, and scan the code: both screens should say the computer is connected. On the Mac, choose a project folder and tick Let my phone start Coder here. In a new chat, ask for a change in your project on your Mac and tap Run Coder on your Mac: Coder's steps and reply should show in the chat. Ask who is in the Verse and tap Run on the command card. Then click Remove on the Mac: the phone should show the computer as Revoked. Codex or Claude Code must be logged in on the Mac.",
         items: &[
             Item {
                 title: "Connect your Mac",
@@ -946,7 +946,7 @@ pub const CHANGELOG: &[Release] = &[
             },
             Item {
                 title: "Cloud fallback",
-                detail: "A computer with no coding agent signed in can still finish a Coder turn through the OpenAgents cloud.",
+                detail: "A computer with no coding agent logged in can still finish a Coder turn through the OpenAgents cloud.",
             },
             Item {
                 title: "Trainer level and card",

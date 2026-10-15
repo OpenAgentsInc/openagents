@@ -536,7 +536,7 @@ pub fn load_problems(init: &claude_agent_sdk::protocol::SystemInit) -> Option<St
 fn summarize(problems: &[LoadProblem]) -> Option<String> {
     match problems {
         [] => None,
-        [LoadProblem::SignIn(name)] => Some(format!("{name} needs sign-in")),
+        [LoadProblem::SignIn(name)] => Some(format!("{name} needs login")),
         [LoadProblem::Failed(name)] => Some(format!("{name} didn't connect")),
         [LoadProblem::Plugin(Some(name))] => Some(format!("plugin {name} didn't load")),
         [LoadProblem::Plugin(None)] => Some("a plugin didn't load".to_owned()),
@@ -549,8 +549,8 @@ fn summarize(problems: &[LoadProblem]) -> Option<String> {
             let mut parts = Vec::new();
             match sign_in {
                 0 => {}
-                1 => parts.push("1 MCP server needs sign-in".to_owned()),
-                n => parts.push(format!("{n} MCP servers need sign-in")),
+                1 => parts.push("1 MCP server needs login".to_owned()),
+                n => parts.push(format!("{n} MCP servers need login")),
             }
             match failed {
                 0 => {}
@@ -1055,7 +1055,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             load_problems(&init).as_deref(),
-            Some("2 MCP servers need sign-in, 1 MCP server didn't connect, 1 plugin didn't load")
+            Some("2 MCP servers need login, 1 MCP server didn't connect, 1 plugin didn't load")
         );
         assert_eq!(load_problems(&init), None);
     }
@@ -1064,7 +1064,7 @@ mod tests {
     fn one_load_problem_is_named() {
         assert_eq!(
             summarize(&[LoadProblem::SignIn("stripe".into())]).as_deref(),
-            Some("stripe needs sign-in")
+            Some("stripe needs login")
         );
         assert_eq!(
             summarize(&[LoadProblem::Failed("openagents".into())]).as_deref(),
@@ -1077,7 +1077,7 @@ mod tests {
                 LoadProblem::SignIn("c".into()),
             ])
             .as_deref(),
-            Some("3 MCP servers need sign-in")
+            Some("3 MCP servers need login")
         );
         assert_eq!(summarize(&[]), None);
     }
@@ -1093,7 +1093,7 @@ mod tests {
         .unwrap();
         note_load_problems(&init);
         let now = std::time::Instant::now();
-        assert_eq!(load_warning(now).as_deref(), Some("stripe needs sign-in"));
+        assert_eq!(load_warning(now).as_deref(), Some("stripe needs login"));
         assert_eq!(load_warning(now + LOAD_WARNING_FOR), None);
     }
 

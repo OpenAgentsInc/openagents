@@ -495,7 +495,7 @@ pub(crate) fn settings_content(
                 }
                 div class="oa-settings-row" {
                     div class="oa-settings-text" {
-                        span class="oa-settings-label" { "Sign-in keys for agents" }
+                        span class="oa-settings-label" { "Login keys for agents" }
                         span class="oa-settings-hint" {
                             "Keys that let an agent act as you, without a code to approve."
                         }
@@ -553,9 +553,9 @@ pub(crate) fn settings_content(
                     h2 #settings-claude { "Claude" }
                     div class="oa-settings-row" {
                         div class="oa-settings-text" {
-                            span class="oa-settings-label" { "Claude Code sign-in" }
+                            span class="oa-settings-label" { "Claude Code login" }
                             span class="oa-settings-hint" {
-                                "Sign in inside your environment, or add your own Anthropic API key or cloud credential."
+                                "Log in inside your environment, or add your own Anthropic API key or cloud credential."
                             }
                             span class="oa-settings-hint" { (hint) }
                         }
@@ -602,7 +602,7 @@ fn chats_section(saved: Option<usize>) -> Markup {
                     span class="oa-settings-hint" {
                         @match saved {
                             Some(0) => { "You have no saved chats." }
-                            Some(_) => { "Your chats are saved to your account, so they show wherever you sign in." }
+                            Some(_) => { "Your chats are saved to your account, so they show wherever you log in." }
                             None => { "Your chats can't be read right now." }
                         }
                     }
@@ -782,7 +782,7 @@ const API_CREDITS: &str =
 pub(crate) const INSTALL: &str = "curl -fsSL https://claude.ai/install.sh | bash";
 /// Why a subscription token was not saved for an account off the
 /// allowlist (#11235).
-const TOKEN_REFUSED: &str = "Subscription tokens can't be saved here. Sign in to Claude inside your environment instead, or save an Anthropic API key. Nothing was saved.";
+const TOKEN_REFUSED: &str = "Subscription tokens can't be saved here. Log in to Claude inside your environment instead, or save an Anthropic API key. Nothing was saved.";
 
 /// The Claude page (#11235). For the subscription-token allowlist
 /// (`subscribe`, a ticket for its form) it leads with connecting a Claude
@@ -853,19 +853,19 @@ pub(crate) fn claude_content(
         }
         (MarkdownRoot::new(html! {
             h2 #sign-in {
-                @if tokens { "Or sign in inside your environment" } @else { "Sign in inside your environment" }
+                @if tokens { "Or log in inside your environment" } @else { "Log in inside your environment" }
             }
             p {
-                "Use your Claude Pro, Max, Team, or Enterprise plan by signing in to Claude Code where it runs. You sign in on Anthropic's own page, and OpenAgents never sees your login. On a plan, Claude Code runs one task at a time."
+                "Use your Claude Pro, Max, Team, or Enterprise plan by logging in to Claude Code where it runs. You log in on Anthropic's own page, and OpenAgents never sees your login. On a plan, Claude Code runs one task at a time."
             }
             ul {
                 li {
                     "On your computer: run " code { "claude" } " in a terminal, then type "
-                    code { "/login" } ". Coder uses that sign-in. To install Claude Code, run "
+                    code { "/login" } ". Coder uses that login. To install Claude Code, run "
                     code { (INSTALL) } "."
                 }
                 li {
-                    "On a Cloud computer: use Sign in to Claude on that computer. Its terminal opens with Claude Code; paste the code Anthropic shows back there. You sign in once per computer."
+                    "On a Cloud computer: use Log in to Claude on that computer. Its terminal opens with Claude Code; paste the code Anthropic shows back there. You log in once per computer."
                 }
             }
             h2 #key { "Or use your own key" }
@@ -883,12 +883,12 @@ pub(crate) fn claude_content(
                     p class="oa-page-meta" aria-label="Key hidden" { "••••••••••••••••" }
                     @if retired_token {
                         p role="status" {
-                            "Subscription tokens can't be saved here anymore. Yours keeps working until you remove it. To keep using your plan, sign in inside your environment instead."
+                            "Subscription tokens can't be saved here anymore. Yours keeps working until you remove it. To keep using your plan, log in inside your environment instead."
                         }
                     }
                 },
                 None if connected => {},
-                None => p { "Nothing saved. Without a key, Claude Code runs on the sign-in inside your environment, one task at a time." },
+                None => p { "Nothing saved. Without a key, Claude Code runs on the login inside your environment, one task at a time." },
             }
         }))
         @if saved.is_some() && !connected {
@@ -1064,7 +1064,7 @@ mod tests {
     fn the_claude_page_leads_with_signing_in_inside_your_environment() {
         let html = claude_content(None, None, ("t", "r"), ("t", "r")).into_string();
         // Sign-in first, through Claude Code itself (#11235).
-        let sign_in = html.find("Sign in inside your environment").unwrap();
+        let sign_in = html.find("Log in inside your environment").unwrap();
         let key = html.find("Or use your own key").unwrap();
         let form = html.find("<form").unwrap();
         assert!(sign_in < key && key < form, "{html}");
@@ -1072,7 +1072,7 @@ mod tests {
             "<code>claude</code>",
             "<code>/login</code>",
             INSTALL,
-            "Sign in to Claude on that computer",
+            "Log in to Claude on that computer",
             "OpenAgents never sees your login",
         ] {
             assert!(html.contains(needle), "{needle}");
@@ -1106,7 +1106,7 @@ mod tests {
         let on = claude_content(None, SUBSCRIBE, ("t", "r"), ("t", "r")).into_string();
         let lead = on.find("Use your Claude subscription").unwrap();
         let open = on.find(">Connect subscription<").unwrap();
-        let sign_in = on.find("Or sign in inside your environment").unwrap();
+        let sign_in = on.find("Or log in inside your environment").unwrap();
         let key = on.find("Or use your own key").unwrap();
         assert!(lead < open && open < sign_in && sign_in < key, "{on}");
         assert!(on.contains("<dialog id=\"connect-subscription\""), "{on}");

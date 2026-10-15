@@ -268,7 +268,7 @@ fn codex_auth_path() -> Option<std::path::PathBuf> {
 pub(super) fn codex_chatgpt_login() -> Result<(String, u64), String> {
     let path = codex_auth_path().ok_or(user_home::NO_HOME)?;
     let text = std::fs::read_to_string(&path)
-        .map_err(|_| "Codex isn't signed in on this computer (`codex login`)".to_owned())?;
+        .map_err(|_| "Codex isn't logged in on this computer (`codex login`)".to_owned())?;
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| d.as_secs());
@@ -293,7 +293,7 @@ pub(super) fn access_only_login(text: &str, now: u64) -> Result<(String, u64), S
     let tokens = &auth["tokens"];
     let access = tokens["access_token"].as_str().unwrap_or_default();
     if access.is_empty() {
-        return Err("Codex is signed in with an API key, not ChatGPT".to_owned());
+        return Err("Codex is logged in with an API key, not ChatGPT".to_owned());
     }
     let account = tokens["account_id"].as_str().unwrap_or_default();
     let expires = jwt_expiry(access).ok_or("the Codex access token has no expiry")?;

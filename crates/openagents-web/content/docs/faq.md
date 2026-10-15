@@ -6,7 +6,7 @@ Chatting with OpenAgents is free, and we don't count your messages. Coder
 runs on your own computer with the coding agents you already use there,
 such as Claude Code and Codex, and each one's own plan covers it. Coder's
 own loop on OpenAgents models is free up to a daily allowance when you're
-signed in. Pro, for cloud environments, will be $20 a month with 100
+logged in. Pro, for cloud environments, will be $20 a month with 100
 machine-hours; it isn't on sale yet. See [Pricing](/docs/pricing).
 
 ## Do I need a computer?

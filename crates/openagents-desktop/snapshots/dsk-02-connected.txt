@@ -7,7 +7,7 @@ vertical stack
       button "Choose folder…" -> choose_folder
   vertical stack [card]
     body "Coder uses Codex or Claude Code on this Mac" [bold]
-    body "✓  Codex · signed in"
-    body "–  Claude Code · not signed in"
+    body "✓  Codex · logged in"
+    body "–  Claude Code · not logged in"
   checkbox [ ] "Let my phone start Coder here" -> toggle_autostart (disabled)
   button "Done" -> done

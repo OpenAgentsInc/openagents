@@ -1,7 +1,7 @@
 ┌─ OpenAgents ─────────────────────────────────────────────────────────────┐
 │ model    Gemini 3.8 Flash                                                │
 │ folder   ~/work/openagents                                               │
-│ account  signed in as a person with a long display name that wraps       │
+│ account  logged in as a person with a long display name that wraps       │
 │                                                                          │
 │ Ask anything about this folder, or hand Coder a change to make.          │
 │                                                                          │

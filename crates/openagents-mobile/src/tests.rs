@@ -307,7 +307,7 @@ fn live_control_server_answers() {
         if !packet.tailnet_loading {
             let text = values(&packet.tailnet.expect("view"));
             assert!(
-                text.contains(&"Sign in with Tailscale".to_string())
+                text.contains(&"Log in with Tailscale".to_string())
                     || text.contains(&"Tailnet".to_string()),
                 "{text:?}"
             );

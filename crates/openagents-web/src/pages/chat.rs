@@ -180,7 +180,7 @@ pub(crate) async fn validate_form(
         crate::chat_owner::Who::Unchecked(_) => {
             return Err(refusal(
                 StatusCode::SERVICE_UNAVAILABLE,
-                "We couldn't check your sign-in. Try again in a minute.",
+                "We couldn't check your login. Try again in a minute.",
             ));
         }
         who => match who.writer() {

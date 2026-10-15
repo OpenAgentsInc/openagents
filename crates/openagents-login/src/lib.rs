@@ -89,7 +89,7 @@ pub fn read_key(input: &mut impl std::io::BufRead) -> Result<String, String> {
             .map_err(|_| "Couldn't read the key.".to_string())?;
         if read == 0 {
             return Err(
-                "No key was given. Paste the key from Settings, Sign-in keys for agents.".into(),
+                "No key was given. Paste the key from Settings, Login keys for agents.".into(),
             );
         }
         let key = line.trim();
@@ -99,7 +99,7 @@ pub fn read_key(input: &mut impl std::io::BufRead) -> Result<String, String> {
         if !is_sign_in_key(key) {
             line.fill_secret();
             return Err(
-                "That isn't a sign-in key. It starts with oa_sk_; make one in Settings, Sign-in keys for agents."
+                "That isn't a login key. It starts with oa_sk_; make one in Settings, Login keys for agents."
                     .into(),
             );
         }
@@ -193,7 +193,7 @@ impl std::fmt::Display for Error {
                 f,
                 "Couldn't reach {origin}. Check your connection and try again."
             ),
-            Self::Denied => f.write_str("Sign-in was denied on the website."),
+            Self::Denied => f.write_str("Login was denied on the website."),
             Self::Expired => {
                 f.write_str("The code expired before it was approved. Run login again.")
             }
@@ -448,7 +448,7 @@ pub async fn start_paired(
         return Err(Error::Refused(
             body["error_description"]
                 .as_str()
-                .unwrap_or("The site didn't start sign-in. Try again.")
+                .unwrap_or("The site didn't start login. Try again.")
                 .to_string(),
         ));
     }
@@ -513,7 +513,7 @@ async fn poll_with(http: &reqwest::Client, origin: &str, started: &Started) -> R
         _ => Err(Error::Refused(
             body["error_description"]
                 .as_str()
-                .unwrap_or("Sign-in stopped. Try again.")
+                .unwrap_or("Login stopped. Try again.")
                 .to_string(),
         )),
     }
@@ -545,7 +545,7 @@ pub async fn wait(origin: &str, started: &Started) -> Result<Saved, Error> {
 pub async fn sign_in_with_key(origin: &str, key: &str) -> Result<Saved, Error> {
     if !is_sign_in_key(key) {
         return Err(Error::Refused(
-            "That isn't a sign-in key. It starts with oa_sk_.".into(),
+            "That isn't a login key. It starts with oa_sk_.".into(),
         ));
     }
     let http = client()?;

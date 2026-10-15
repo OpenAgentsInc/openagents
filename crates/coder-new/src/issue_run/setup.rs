@@ -126,7 +126,7 @@ pub async fn prepare(
             return fail(
                 transcript,
                 &mut card,
-                format!("Cannot read issue #{number} with gh. Is gh signed in?"),
+                format!("Cannot read issue #{number} with gh. Is gh logged in?"),
             );
         }
     };

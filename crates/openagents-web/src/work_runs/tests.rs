@@ -399,7 +399,7 @@ async fn a_run_without_a_saved_claude_sign_in_stops_and_says_so() {
         .unwrap()
         .unwrap();
     let none = Fake {
-        refuse: Some("Save your own Claude sign-in in Settings > Claude, then ask again."),
+        refuse: Some("Save your own Claude login in Settings > Claude, then ask again."),
     };
     assert!(claim(&store, &none, "h").await.unwrap().is_none());
     let stopped = load(&store, &owner, &run.id).await.unwrap().unwrap();

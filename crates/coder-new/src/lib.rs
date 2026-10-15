@@ -148,7 +148,7 @@ pub const RAIL_NOTICE_TTL: std::time::Duration = std::time::Duration::from_secs(
 /// /models' title on Auto with no OpenAgents sign-in and no key: the
 /// sign-in is an extra line, never instead of the list.
 pub const SIGNED_OUT_MODELS_TITLE: &str =
-    "What runs here · Sign in with coder login for OpenAgents' models too";
+    "What runs here · Log in with coder login for OpenAgents' models too";
 
 /// The plugin prefix of a row in the signed-out /models list: picking it
 /// runs the chat on that harness (`usable:codex`, `usable:agent:grok-build`).
@@ -2866,7 +2866,7 @@ impl App {
         if catalog.is_empty() && agent_models::listed(id).is_some() {
             // Oh My Pi read its list and nothing on it can chat.
             self.rail_notice(
-                format!("{name} has no model here that can chat. Sign in to a provider in {name}, then try /models again."),
+                format!("{name} has no model here that can chat. Log in to a provider in {name}, then try /models again."),
                 RAIL_NOTICE_TTL,
             );
             return;

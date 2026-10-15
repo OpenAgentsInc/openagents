@@ -126,7 +126,7 @@ async fn environment_text(repo: &Path, engine: Engine) -> String {
             lines.push("model access: Vertex AI".to_owned());
         }
         Engine::Coder => lines.push(format!(
-            "openagents sign-in: {}",
+            "openagents login: {}",
             if crate::home::data_dir()
                 .as_deref()
                 .and_then(crate::connection_tools::signed_in)

@@ -144,7 +144,7 @@ pub(crate) async fn claim(app: &App, headers: &HeaderMap, account_id: &str) -> u
     };
     let moved = adopt_all(&app.config.chat_store, &browser, &account_owner(account_id)).await;
     if moved > 0 {
-        println!("openagents-web: moved {moved} chats to an account at sign-in");
+        println!("openagents-web: moved {moved} chats to an account at login");
     }
     moved
 }

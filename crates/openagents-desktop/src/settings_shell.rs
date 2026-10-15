@@ -211,14 +211,14 @@ fn change_providers(file: &Path, action: &Action) -> Result<Step, String> {
         }
         Action::ProviderConnect => Ok(Step::Run {
             provider: Provider::OpenRouter.word().to_owned(),
-            line: "Sign in to OpenRouter in your browser and approve a key for OpenAgents…".into(),
+            line: "Log in to OpenRouter in your browser and approve a key for OpenAgents…".into(),
             work: Box::new(move || {
                 let key = model_access::connect::connect(
                     &|url| {
                         if model_access::connect::open_browser(url) {
                             Ok(())
                         } else {
-                            Err("Couldn't open your browser to sign in to OpenRouter.".into())
+                            Err("Couldn't open your browser to log in to OpenRouter.".into())
                         }
                     },
                     &|| false,

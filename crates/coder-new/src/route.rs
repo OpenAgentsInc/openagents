@@ -285,7 +285,7 @@ fn doors(execution: &ExecutionSettings, has_key: bool, favor: Favor) -> Plan {
         }
         if lanes.is_empty() && !execution.free_tier {
             notes.push(
-                "you're not signed in (run coder login) and no GEMINI_API_KEY is set".to_owned(),
+                "you're not logged in (run coder login) and no GEMINI_API_KEY is set".to_owned(),
             );
         }
         return Plan {
@@ -492,7 +492,7 @@ impl Plan {
         let fix = if self.signed_in {
             "Try again in a moment, or connect another model in /plugins."
         } else {
-            "Sign in with `coder login` to get answers, or connect another model in /plugins."
+            "Log in with `coder login` to get answers, or connect another model in /plugins."
         };
         if reasons.is_empty() {
             return format!("Nothing here can answer yet. {fix}");

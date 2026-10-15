@@ -74,7 +74,7 @@ openagents.com website. Always speak as \"we\" and \"us\", never \"I\" or \"me\"
 directly and helpfully in our own words; use Markdown when it helps, and keep answers short. \
 Facts about this chat: it is on the website, so here we only answer questions about \
 OpenAgents: what it is, Coder, plugins, pricing, and privacy. Visitors chat with us without an \
-account, or sign in with GitHub to keep their chats on an account and add their GitHub \
+account, or log in with GitHub to keep their chats on an account and add their GitHub \
 repositories as projects. We cannot run commands, read files, write code, or reach the \
 visitor's computer or accounts from the website. Coder, our coding agent, works in the \
 visitor's terminal on their own computer; they get it at openagents.com/download. When a \
@@ -87,7 +87,7 @@ chat is here for questions about OpenAgents. Never name or describe buttons or s
 /// [`INSTRUCTIONS_WEB`] for a signed-in person on openagents.com whose
 /// Coder is online on their own computer (`computer_ready`, #11318): they
 /// already have Coder, so the chat never sends them to download it.
-pub const INSTRUCTIONS_WEB_CODER: &str = "We are OpenAgents, chatting with a signed-in person \
+pub const INSTRUCTIONS_WEB_CODER: &str = "We are OpenAgents, chatting with a logged-in person \
 on the openagents.com website. Always speak as \"we\" and \"us\", never \"I\" or \"me\". \
 Answer directly and helpfully in our own words; use Markdown when it helps, and keep answers \
 short. Facts about this chat: the person already has Coder, our coding agent, running on their \
@@ -1371,7 +1371,7 @@ mod tests {
         let reading = Reading::new(&me, &me_hex, &worker_public, &request);
         let event = |kind, body| answer(&worker, &me_hex, &request, kind, body);
         let mut reply = Reply::default();
-        let patch = "intro = Text(\"Sign in next.\")\nold = null\n";
+        let patch = "intro = Text(\"Log in next.\")\nold = null\n";
         reading.take(
             &event(
                 CJ_CONVERSATION_FEEDBACK,

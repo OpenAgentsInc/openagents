@@ -46,8 +46,8 @@ pub(crate) const USAGE: &str = "usage: openagents mac COMMAND
   serve [--computer NAME] [--root DIR] [--repo OWNER/NAME[=PATH]]... [--min-free-gb N] [--once]
               Run on the Mac: take your account's jobs and run each in its own
               worktree and build folder. Signing and App Store keys stay here.
-Signs in as Coder does (coder login), or with --account-dir DIR, or with a
-sign-in key in OPENAGENTS_TOKEN (and OPENAGENTS_ORIGIN). The repository defaults to
+Logs in as Coder does (coder login), or with --account-dir DIR, or with a
+login key in OPENAGENTS_TOKEN (and OPENAGENTS_ORIGIN). The repository defaults to
 OpenAgentsInc/openagents. See docs/cloud/linked-mac.md.";
 
 /// What each command does, for the chat router's command tree.
@@ -206,7 +206,7 @@ pub(crate) fn saved(dir: Option<&str>) -> Result<Saved, String> {
     );
     let saved = Saved::load_file(&dir).ok_or_else(|| {
         format!(
-            "Not signed in here ({}). Sign in with: coder login, or set OPENAGENTS_TOKEN to a sign-in key",
+            "Not logged in here ({}). Log in with: coder login, or set OPENAGENTS_TOKEN to a login key",
             dir.display()
         )
     })?;
@@ -214,7 +214,7 @@ pub(crate) fn saved(dir: Option<&str>) -> Result<Saved, String> {
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |since| since.as_secs());
     if saved.expired(now) {
-        return Err("This sign-in has expired. Sign in again with: coder login".into());
+        return Err("This login has expired. Log in again with: coder login".into());
     }
     Ok(saved)
 }
@@ -246,7 +246,7 @@ impl Site {
             return Ok(body);
         }
         if status.as_u16() == 401 {
-            return Err("This sign-in stopped working. Sign in again with: coder login".into());
+            return Err("This login stopped working. Log in again with: coder login".into());
         }
         Err(body["error"]["message"]
             .as_str()

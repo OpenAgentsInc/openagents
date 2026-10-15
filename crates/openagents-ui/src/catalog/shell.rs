@@ -78,7 +78,7 @@ pub(super) fn composer(pane: Pane) -> Markup {
         .send(Button::icon(Icon::ArrowRight, "Send").size(ControlSize::Sm));
     let off = Composer::new(pane.id("composer-off"), "/ui")
         .enhanced(false)
-        .placeholder("Sign in to start a task")
+        .placeholder("Log in to start a task")
         .disabled(true);
     html! {
         (specimen("Composer ComposerDropdown ModelPickerTrigger HxGet", "Full composer", full))
@@ -335,11 +335,11 @@ pub(super) fn breadcrumb(pane: Pane) -> Markup {
 
 pub(super) fn account_menu(pane: Pane) -> Markup {
     html! {
-        (specimen("AccountMenu", "Signed in", AccountMenu::new("Ada Lovelace")
+        (specimen("AccountMenu", "Logged in", AccountMenu::new("Ada Lovelace")
             .id(pane.id("account-plain"))
             .item(MenuItem::link("Settings", "/ui#account-menu").icon(Icon::Settings))
             .item(MenuItem::separator())
-            .item(MenuItem::button("Sign out").icon(Icon::ExitLogout))))
+            .item(MenuItem::button("Log out").icon(Icon::ExitLogout))))
         (specimen("AccountMenu", "An admin, more entries", AccountMenu::new("Grace Hopper")
             .id(pane.id("account-admin"))
             .item(MenuItem::link("Settings", "/ui#account-menu").icon(Icon::Settings))

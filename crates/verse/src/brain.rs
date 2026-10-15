@@ -204,7 +204,7 @@ fn run(player: &str, door: Option<ResponsesDoor>, asks: &Receiver<Ask>, replies:
     while let Ok(ask) = asks.recv() {
         let Some(door) = &door else {
             let _ = replies.send(Reply::Failed(
-                "I have no model to think with yet. Sign in with Coder, or set \
+                "I have no model to think with yet. Log in with Coder, or set \
                  OPENAGENTS_API_KEY or CODER_DOOR_KEY, then reopen Verse."
                     .to_owned(),
             ));

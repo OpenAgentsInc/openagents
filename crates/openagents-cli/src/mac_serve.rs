@@ -256,7 +256,7 @@ fn actor_client(
     headers.insert(
         reqwest::header::AUTHORIZATION,
         reqwest::header::HeaderValue::from_str(&bearer)
-            .map_err(|_| "This sign-in can't be sent.".to_owned())?,
+            .map_err(|_| "This login can't be sent.".to_owned())?,
     );
     let name: String = computer
         .bytes()
@@ -441,7 +441,7 @@ pub(crate) fn serve(saved: &Saved, settings: &Settings) -> Result<(), String> {
                             wait = Duration::ZERO;
                         }
                         Err(Answer::SignedOut) => {
-                            return Err("This Mac's sign-in stopped working. Sign in \
+                            return Err("This Mac's login stopped working. Log in \
                                             again with coder login."
                                 .into());
                         }
@@ -455,7 +455,7 @@ pub(crate) fn serve(saved: &Saved, settings: &Settings) -> Result<(), String> {
             }
             Err(Answer::SignedOut) => {
                 return Err(
-                    "This Mac's sign-in stopped working. Sign in again with coder login.".into(),
+                    "This Mac's login stopped working. Log in again with coder login.".into(),
                 );
             }
             Err(Answer::Unknown) => QUIET_EVERY,

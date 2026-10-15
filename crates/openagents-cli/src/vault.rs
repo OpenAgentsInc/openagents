@@ -63,7 +63,7 @@ pub(crate) const USAGE: &str = "usage: openagents vault COMMAND
   serve-local [--model PATH] [--port N] [--allow-origin ORIGIN] [--print]
               Run the model on this computer so your vault page in the browser
               can ask it too.
-FILE is a file's name or the start of its id. Signs in as Coder does
+FILE is a file's name or the start of its id. Logs in as Coder does
 (coder login), or with --account-dir DIR. See docs/security/sensitive-data-vault.md.";
 
 /// What each command does, for the chat router's command tree.

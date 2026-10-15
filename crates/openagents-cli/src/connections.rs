@@ -30,7 +30,7 @@ pub(crate) const USAGE: &str = "usage: openagents connections [COMMAND] [--accou
               read every tab of your Google Sheets. --feature asks for one
               more thing on its own: gmail (read mail), gmail_compose (write
               drafts), calendar (read events), calendar_events (add events
-              you confirm). Open the link signed in to openagents.com as
+              you confirm). Open the link logged in to openagents.com as
               you; Google asks you to allow it.
   remove google
               Disconnect Google. Your projects keep their Drive sources for
@@ -53,7 +53,7 @@ pub(crate) const USAGE: &str = "usage: openagents connections [COMMAND] [--accou
   access remove WHO
               Admins: take someone off the list.
 Attach a Drive folder or file to a project with openagents projects sources
-add PROJECT LINK; chats in that project then answer from it. Sign in as
+add PROJECT LINK; chats in that project then answer from it. Log in as
 openagents login or coder login saved it, or OPENAGENTS_TOKEN.";
 
 /// What each command does, for the chat router's command tree.
@@ -400,7 +400,7 @@ fn consent_text(consent: &Value, opened: bool) -> String {
     let mut out = if opened {
         format!("Opened {url} in your browser.")
     } else {
-        format!("Open this link in a browser signed in to openagents.com as you:\n{url}")
+        format!("Open this link in a browser logged in to openagents.com as you:\n{url}")
     };
     out.push_str(
         "\nGoogle asks you to allow read-only access; then check with: openagents connections",
@@ -561,7 +561,7 @@ mod tests {
             false,
         );
         assert!(text.contains("https://openagents.com/auth/google/connect?scope=drive"));
-        assert!(text.contains("signed in to openagents.com"));
+        assert!(text.contains("logged in to openagents.com"));
     }
 
     #[test]

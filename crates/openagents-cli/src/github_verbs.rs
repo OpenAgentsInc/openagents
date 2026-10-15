@@ -29,7 +29,7 @@ pub(crate) const PROJECT_USAGE: &str = "usage: openagents board COMMAND [OPTIONS
         owner the issue is on.
 The board is --project, else `project.number` in .openagents/coder-issues.json;
 the status field is that file's `project.field` (\"Status\"). Uses GH_TOKEN,
-GITHUB_TOKEN, or the GitHub CLI's sign-in; boards need the project scope
+GITHUB_TOKEN, or the GitHub CLI's login; boards need the project scope
 (`gh auth refresh -s project`). Your openagents.com projects are
 openagents projects.";
 
@@ -53,7 +53,7 @@ impl TokenRest {
     /// This computer's GitHub sign-in.
     pub(crate) fn here() -> Result<Self, String> {
         let token = token().ok_or(
-            "There's no GitHub sign-in on this computer. Run `gh auth login -s project`, \
+            "There's no GitHub login on this computer. Run `gh auth login -s project`, \
              or set GH_TOKEN.",
         )?;
         let client = reqwest::blocking::Client::builder()

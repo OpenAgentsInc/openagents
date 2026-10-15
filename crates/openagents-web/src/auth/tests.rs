@@ -350,7 +350,7 @@ async fn first_github_sign_in_creates_the_account_and_signs_the_browser_in() {
         .through_github(&world, "%2Fdocs", "login=octo-local")
         .await;
     assert_eq!(done.status, StatusCode::OK, "{}", done.body);
-    assert!(done.body.contains("You're signed in"));
+    assert!(done.body.contains("You're logged in"));
     crate::copy_guard::assert_plain("/auth/github/callback", &done.body);
     assert!(done.body.contains("content=\"0;url=/docs\""));
     let session = done.set_cookie("oa_cloud_session").expect("session cookie");
@@ -399,7 +399,7 @@ fn octo_only() -> oa_auth::InviteOnly {
 /// cookie, nothing kept.
 fn assert_turned_away(browser: &Browser, done: &Answer) {
     assert_eq!(done.status, StatusCode::FORBIDDEN, "{}", done.body);
-    assert!(done.body.contains("Sign-in is invite-only for now"));
+    assert!(done.body.contains("Login is invite-only for now"));
     crate::copy_guard::assert_plain("/auth/github/callback", &done.body);
     assert!(!browser.0.contains_key("oa_cloud_session"));
     assert!(!browser.0.contains_key("oa_auth_flow"));
@@ -431,7 +431,7 @@ async fn the_web_servers_own_invite_list_sets_no_cookie_and_ends_the_session() {
     let mut browser = Browser::default();
     let login = browser.get(&world, "/login").await;
     assert!(login.body.contains("Continue with GitHub"));
-    assert!(login.body.contains("Sign-in is invite-only for now."));
+    assert!(login.body.contains("Login is invite-only for now."));
     assert!(!login.body.contains("creates your account"));
     let done = browser
         .through_github(&world, "%2F", "login=quiet-local")
@@ -531,7 +531,7 @@ async fn cancelling_on_github_signs_nobody_in() {
     let mut browser = Browser::default();
     let done = browser.through_github(&world, "%2F", "deny=1").await;
     assert_eq!(done.status, StatusCode::OK);
-    assert!(done.body.contains("GitHub sign-in was canceled"));
+    assert!(done.body.contains("GitHub login was canceled"));
     crate::copy_guard::assert_plain("/auth/github/callback", &done.body);
     assert!(done.set_cookie("oa_cloud_session").is_none());
     assert!(!browser.0.contains_key("oa_auth_flow"));
@@ -558,7 +558,7 @@ async fn a_callback_without_this_browsers_state_is_refused() {
     let path = callback.strip_prefix(ORIGIN).unwrap();
     let refused = victim.get(&world, path).await;
     assert_eq!(refused.status, StatusCode::BAD_REQUEST);
-    assert!(refused.body.contains("That sign-in expired"));
+    assert!(refused.body.contains("That login expired"));
     crate::copy_guard::assert_plain("/auth/github/callback", &refused.body);
     assert!(refused.set_cookie("oa_cloud_session").is_none());
 
@@ -853,13 +853,13 @@ async fn a_computer_signs_in_with_a_code_approved_on_the_website_and_settings_re
 
     let page = browser.get(&world, &link).await;
     assert_eq!(page.status, StatusCode::OK, "{}", page.body);
-    assert!(page.body.contains("Sign in to Coder on octo-mbp?"));
+    assert!(page.body.contains("Log in to Coder on octo-mbp?"));
     assert!(page.body.contains(&user_code));
     crate::copy_guard::assert_plain("/device", &page.body);
 
     let approved = device_decide(&world, &mut browser, &user_code, "approve").await;
     assert_eq!(approved.status, StatusCode::OK, "{}", approved.body);
-    assert!(approved.body.contains("Coder on octo-mbp is signed in"));
+    assert!(approved.body.contains("Coder on octo-mbp is logged in"));
 
     // The app picks up its own session, once.
     let (status, signed) = device_poll(&world, &started).await;
@@ -896,7 +896,7 @@ async fn a_computer_signs_in_with_a_code_approved_on_the_website_and_settings_re
         tenancy::sessions::SessionState::Revoked
     );
     let settings = browser.get(&world, "/settings").await;
-    assert!(settings.body.contains("No computers are signed in"));
+    assert!(settings.body.contains("No computers are logged in"));
 }
 
 #[tokio::test]
@@ -915,7 +915,7 @@ async fn deny_signs_nothing_in_and_an_app_signs_its_own_token_out() {
         "deny",
     )
     .await;
-    assert!(denied.body.contains("Sign-in denied"), "{}", denied.body);
+    assert!(denied.body.contains("Login denied"), "{}", denied.body);
     let (status, polled) = device_poll(&world, &started).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert_eq!(polled["error"], "access_denied");
@@ -1001,11 +1001,11 @@ async fn a_sign_in_key_acts_as_the_account_until_revoked() {
 
     // Settings offers it beside the API keys.
     let settings = browser.get(&world, "/settings").await;
-    assert!(settings.body.contains("Sign-in keys for agents"));
+    assert!(settings.body.contains("Login keys for agents"));
     let page = browser.get(&world, crate::sign_in_keys::PAGE).await;
     assert_eq!(page.status, StatusCode::OK, "{}", page.body);
     crate::copy_guard::assert_plain(crate::sign_in_keys::PAGE, &page.body);
-    assert!(page.body.contains("You have no sign-in keys."));
+    assert!(page.body.contains("You have no login keys."));
     let csrf = form_field(&page.body, crate::sign_in_keys::PAGE, "csrf");
     let request = form_field(&page.body, crate::sign_in_keys::PAGE, "request");
     let made = browser
@@ -1100,7 +1100,7 @@ async fn a_sign_in_key_acts_as_the_account_until_revoked() {
     assert!(
         asked
             .body
-            .contains("Approve sign-ins from the website while signed in."),
+            .contains("Approve logins from the website while logged in."),
         "{}",
         asked.body
     );
@@ -1135,7 +1135,7 @@ async fn a_sign_in_key_acts_as_the_account_until_revoked() {
     let (status, _) = agent_call(&world, "GET", "/v1/keys", None, &key).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
     let page = browser.get(&world, crate::sign_in_keys::PAGE).await;
-    assert!(page.body.contains("You have no sign-in keys."));
+    assert!(page.body.contains("You have no login keys."));
 
     // An expired key is refused the same way.
     let account = accounts(&world).accounts.keys().next().unwrap().clone();

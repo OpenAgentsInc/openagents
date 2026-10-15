@@ -17,10 +17,10 @@ Your choices are saved and kept when you quit.
 
 | Plugin | Starts | What it does |
 | --- | --- | --- |
-| **Claude Code** | On | Runs chats on Claude Code with this computer's Claude sign-in: everything Claude Code can do, with your own settings and skills, plus Coder's handoffs to other agents. While it's on and signed in, new chats can run on it. |
-| **Codex** | On | Runs chats on Codex with this computer's ChatGPT sign-in, with its own models. Auto can pick it, or you can choose it with `Shift+Tab`. |
+| **Claude Code** | On | Runs chats on Claude Code with this computer's Claude login: everything Claude Code can do, with your own settings and skills, plus Coder's handoffs to other agents. While it's on and logged in, new chats can run on it. |
+| **Codex** | On | Runs chats on Codex with this computer's ChatGPT login, with its own models. Auto can pick it, or you can choose it with `Shift+Tab`. |
 | **OpenCode** | On | Runs chats on OpenCode, with its free model or the models you set up in it; Coder checks each step before it runs. Listed only when OpenCode is installed. |
-| **Coder loop** | On | Coder's own coding loop, on OpenAgents models with your sign-in or on your OpenRouter key. |
+| **Coder loop** | On | Coder's own coding loop, on OpenAgents models with your login or on your OpenRouter key. |
 | **ACP Subagents** | On | Hands tasks to other coding agents installed here, such as Devin CLI, Cursor, Grok Build, Goose, Amp, or Kimi Code. |
 | **Solver** | On | Takes a GitHub issue to a pull request. See [Solve an issue](/docs/coder-solver). |
 | **Solver swarm** | On | Hands several issues to several Solvers at once. |
@@ -80,7 +80,7 @@ on this computer, each with a checkbox. New ones start on.
 - `Space` or `Enter` turns the chosen agent on or off.
 - `R` looks for installed agents again.
 
-Each agent uses its own sign-in. Install and sign in with its own program
+Each agent uses its own login. Install and log in with its own program
 first: for Cursor, `cursor-agent` with its login or `CURSOR_API_KEY`.
 Devin CLI bills its own paid service for each run; turn it off here if you
 don't want Coder to use it.

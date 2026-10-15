@@ -293,9 +293,9 @@ Models (the OpenAgents API):
                Also `inference models` and `inference rates`.
 
 Your account:
-  login        Sign in with a sign-in key from Settings (login --key), read
+  login        Log in with a login key from Settings (login --key), read
                from standard input, never the command line.
-  keys         Your sign-in keys (an agent acting as you) and API keys: list,
+  keys         Your login keys (an agent acting as you) and API keys: list,
                create, show, revoke, rotate.
 
 Keys, relays, and money:

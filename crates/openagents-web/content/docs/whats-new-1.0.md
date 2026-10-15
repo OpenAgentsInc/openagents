@@ -5,7 +5,7 @@ version from the [download page](/download).
 
 ## On the website
 
-- **Sign in with GitHub.** Click **Log in** at the top right, or go to
+- **Log in with GitHub.** Click **Log in** at the top right, or go to
   [/login](/login). Your chats then follow you to any browser.
 - **Pin, rename, archive, or delete a chat** from the **…** menu on its row.
   Search sits at the top of the sidebar. Find archived chats under
@@ -14,7 +14,7 @@ version from the [download page](/download).
 - **Connect your GitHub repositories** at [/projects](/projects) with
   **Connect GitHub**. You choose which repositories. Chats are grouped by
   project in the sidebar.
-- **See your signed-in computers** in [Settings](/settings), under
+- **See your logged-in computers** in [Settings](/settings), under
   **Computers**.
 
 ## In the terminal
@@ -31,7 +31,7 @@ On Windows, in PowerShell:
 irm https://openagents.com/cli/install.ps1 | iex
 ```
 
-- **Sign in to your account:** run `coder login`, then approve the code at
+- **Log in to your account:** run `coder login`, then approve the code at
   [openagents.com/device](https://openagents.com/device). Inside Coder, type `/login`.
 - **Sync your chats to the website and phone:** type `/sync on` in Coder;
   it saves your earlier chats too. Stop with `/sync off`. Remove this
@@ -41,7 +41,7 @@ irm https://openagents.com/cli/install.ps1 | iex
 - **Choose who answers:** the input says `Auto`. Press `Shift+Tab` to pick
   Claude Code, Codex, OpenCode, or another agent on your computer, and
   type `/models` to pick the model. See [Choose who answers](/docs/coder-agents).
-- **Use Coder free each day:** when you're signed in, Coder's own loop on
+- **Use Coder free each day:** when you're logged in, Coder's own loop on
   `auto` is free up to about $1 of model use a day. It starts again at
   midnight UTC. See [Pricing](/docs/pricing).
 - **Undo a turn** (in the next release): `/rewind` puts back the files a turn changed.

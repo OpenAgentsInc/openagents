@@ -8,8 +8,8 @@ vertical stack
     status "No folder chooser opened on this computer. Install zenity or kdialog, or start the desktop portal, then choose again."
   vertical stack [card]
     body "Coder uses Codex or Claude Code on this Mac" [bold]
-    body "–  Codex · not signed in"
-    body "–  Claude Code · not signed in"
-    status "Sign in to Codex or Claude Code on this Mac so Coder can work here: run `codex login`, or run `claude` and log in."
+    body "–  Codex · not logged in"
+    body "–  Claude Code · not logged in"
+    status "Log in to Codex or Claude Code on this Mac so Coder can work here: run `codex login`, or run `claude` and log in."
   checkbox [ ] "Let my phone start Coder here" -> toggle_autostart (disabled)
   button "Done" -> done

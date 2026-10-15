@@ -90,7 +90,7 @@ Exit codes with --print:
   64  The command line was wrong.
 
 Environment variables choose what answers a turn. If OpenCode, Claude Code,
-or Codex is installed and signed in, Coder hands the turn to it with a
+or Codex is installed and logged in, Coder hands the turn to it with a
 briefing that Jev prepares. CODER_DELEGATE sets when that happens: auto
 (the default), always, or off. CODER_DELEGATE_AGENT picks opencode,
 claude-code, or codex; CODER_DELEGATE_MODEL picks its model, and

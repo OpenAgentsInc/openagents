@@ -53,7 +53,7 @@ pub(crate) const USAGE: &str = "usage: openagents issue COMMAND [OPTIONS]
 The repository is the checkout here unless --repo names one; field and value
 names come from .openagents/coder-issues.json (`project`). create, comment,
 close, reopen, list, and view use GH_TOKEN, GITHUB_TOKEN, or the GitHub CLI's
-sign-in; `openagents board` lists and moves board items.";
+login; `openagents board` lists and moves board items.";
 
 /// What each command above does and where the phone runs it, for the
 /// chat router's command tree (`coder::cli_route::tree`).

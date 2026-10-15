@@ -44,7 +44,7 @@ another folder.
 | --- | --- |
 | `--mode auto` | Coder picks, as Auto does in the terminal (the default). |
 | `--mode coder` | Coder's own loop. |
-| `--mode codex` | Codex, on this computer's ChatGPT sign-in. |
+| `--mode codex` | Codex, on this computer's ChatGPT login. |
 
 A choice holds for the chat's later messages too; `--mode auto` lifts
 it. `--instructions TEXT` or `--instructions-file FILE` adds standing

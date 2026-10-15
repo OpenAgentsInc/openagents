@@ -972,7 +972,7 @@ mod tests {
             ),
             (
                 Runner::NotSignedIn { providers: vec![] },
-                "No coding agent is signed in on this computer. Sign in to one, then ask again: \
+                "No coding agent is logged in on this computer. Log in to one, then ask again: \
                  Codex (run `codex login`); Claude Code (run `claude` and log in).",
             ),
         ];

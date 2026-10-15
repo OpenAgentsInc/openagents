@@ -154,7 +154,7 @@ pub trait Hub: Send + Sync {
     /// # Errors
     /// Why it cannot tell; the claim then sets no assignee.
     fn viewer(&self) -> Result<String, String> {
-        Err("this tracker has no signed-in user".into())
+        Err("this tracker has no logged-in user".into())
     }
     /// Adds (`add`) or removes `login` as an assignee.
     ///
@@ -766,7 +766,7 @@ pub fn gh(dir: Option<&std::path::Path>, args: &[&str]) -> Result<String, String
         command.current_dir(dir);
     }
     let output = command.output().map_err(|_| {
-        "cannot run gh; install the GitHub CLI and sign in with `gh auth login`".to_owned()
+        "cannot run gh; install the GitHub CLI and log in with `gh auth login`".to_owned()
     })?;
     if !output.status.success() {
         let why = String::from_utf8_lossy(&output.stderr);
@@ -1058,7 +1058,7 @@ impl Hub for Gh {
         let login = gh(None, &["api", "user", "-q", ".login"])?;
         let login = login.trim();
         if login.is_empty() {
-            return Err("gh names no signed-in user".into());
+            return Err("gh names no logged-in user".into());
         }
         Ok(login.to_owned())
     }

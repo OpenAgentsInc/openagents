@@ -48,7 +48,7 @@ A bitcoin wallet on mainnet, with its keys on your phone. See
 
 - **Computers:** your computers, each with a one-word status, and
   **Connect a computer**. See [Manage computers](/docs/manage-computers).
-- **Tailnet:** an optional Tailscale sign-in that lists your tailnet's
+- **Tailnet:** an optional Tailscale login that lists your tailnet's
   devices.
 - **Identity keys:** this phone's public key, and its secret key behind
   **Reveal nsec**.

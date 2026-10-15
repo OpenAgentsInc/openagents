@@ -1116,7 +1116,7 @@ fn ui_engines(gate: &mut Gate) -> Outcome {
     if gate.transcript().iter().any(|row| {
         names
             .iter()
-            .any(|name| row.contains(&format!("{name} ·")) && row.contains("signed in"))
+            .any(|name| row.contains(&format!("{name} ·")) && row.contains("logged in"))
     }) {
         return Err("the transcript shows an engine's status".into());
     }

@@ -25,14 +25,14 @@ pub const FILE: &str = "free-agent.json";
 pub const OFF_VAR: &str = "CODER_NO_FREE_TIER";
 
 /// What the person reads when the day's free answers are used up.
-pub const USED_UP: &str = "Today's free answers are used up. Sign in with `coder login` for more.";
+pub const USED_UP: &str = "Today's free answers are used up. Log in with `coder login` for more.";
 
 /// What the person reads when the sign-up was refused for too many
 /// sign-ups from this network.
-pub const SIGNUP_LIMIT: &str = "Coder couldn't get its free answers right now (too many sign-ups from this network today). Sign in with `coder login`.";
+pub const SIGNUP_LIMIT: &str = "Coder couldn't get its free answers right now (too many sign-ups from this network today). Log in with `coder login`.";
 
 /// What the person reads when openagents.com can't be reached.
-pub const UNREACHABLE: &str = "Coder couldn't reach openagents.com for its free answers. Check the connection, or sign in with `coder login`.";
+pub const UNREACHABLE: &str = "Coder couldn't reach openagents.com for its free answers. Check the connection, or log in with `coder login`.";
 
 /// The most input the free tier takes is 8,000 characters (counted as
 /// bytes, framing included); Coder keeps well under it.
@@ -311,7 +311,7 @@ async fn register(cancel: &Arc<AtomicBool>) -> Result<Agent, String> {
             .as_str()
             .unwrap_or("the sign-up was refused");
         return Err(format!(
-            "Coder couldn't get its free answers: {}. Sign in with `coder login`.",
+            "Coder couldn't get its free answers: {}. Log in with `coder login`.",
             why.trim().trim_end_matches('.')
         ));
     }
@@ -389,7 +389,7 @@ pub async fn chat(
             Err(Asked::Revoked) => {
                 forget();
                 return Err(
-                    "Coder's free answers key was turned off. Sign in with `coder login`.".into(),
+                    "Coder's free answers key was turned off. Log in with `coder login`.".into(),
                 );
             }
             Err(Asked::Failed(why)) => return Err(why),
@@ -436,7 +436,7 @@ async fn ask(
     }
     if status == 429 {
         return Err(Asked::Failed(
-            "Coder's free answers are busy right now. Try again in a minute, or sign in with `coder login`.".to_owned(),
+            "Coder's free answers are busy right now. Try again in a minute, or log in with `coder login`.".to_owned(),
         ));
     }
     if !(200..300).contains(&status) {

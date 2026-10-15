@@ -64,15 +64,15 @@ pub(crate) fn service(app: &App) -> Result<&CloudSession, Response> {
     let Some(service) = app.config.cloud.as_deref() else {
         return Err(failure(
             StatusCode::SERVICE_UNAVAILABLE,
-            "Sign-in unavailable",
+            "Login unavailable",
             "This server doesn't offer accounts.",
         ));
     };
     service.health().map_err(|_| {
         failure(
             StatusCode::SERVICE_UNAVAILABLE,
-            "Sign-in unavailable",
-            "Sign-in isn't working right now. Try again later.",
+            "Login unavailable",
+            "Login isn't working right now. Try again later.",
         )
     })?;
     Ok(service)
@@ -173,7 +173,7 @@ async fn sign_in(State(app): State<App>, headers: HeaderMap) -> Response {
                     .autocomplete("off")
                     .spellcheck(false),
             ))
-            (Button::new("Sign in").kind(ButtonType::Submit).size(openagents_ui::actions::ControlSize::Lg).block(true))
+            (Button::new("Log in").kind(ButtonType::Submit).size(openagents_ui::actions::ControlSize::Lg).block(true))
         }
     };
     let content = crate::ui_page::auth_card(
@@ -182,7 +182,7 @@ async fn sign_in(State(app): State<App>, headers: HeaderMap) -> Response {
         form,
     );
     let mut response = protect(
-        UiPage::new("Sign in")
+        UiPage::new("Log in")
             .path(SIGN_IN)
             .account(Account::Unknown)
             .bare()
@@ -294,8 +294,8 @@ async fn sign_out(
         Ok(()) => see_other("/"),
         Err(_) => failure(
             StatusCode::SERVICE_UNAVAILABLE,
-            "Signed out here",
-            "This browser is signed out, but we couldn't reach your account to end the session everywhere. Try signing out again later.",
+            "Logged out here",
+            "This browser is logged out, but we couldn't reach your account to end the session everywhere. Try logging out again later.",
         ),
     };
     for cookie in service.clear_cookies() {

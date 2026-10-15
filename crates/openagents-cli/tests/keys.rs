@@ -275,7 +275,7 @@ fn keys_list_create_show_revoke_and_rotate() {
     book.lock().unwrap().retain(|(t, _)| *t != first);
     let refused = run(&["keys", "list"]);
     assert!(!refused.status.success());
-    assert!(String::from_utf8_lossy(&refused.stderr).contains("Not signed in"));
+    assert!(String::from_utf8_lossy(&refused.stderr).contains("Not logged in"));
 }
 
 #[test]
@@ -308,7 +308,7 @@ fn login_key_reads_stdin_and_the_saved_key_signs_keys_in() {
         "{text}{}",
         String::from_utf8_lossy(&signed.stderr)
     );
-    assert!(text.contains("Signed in to OpenAgents as Octo with a sign-in key."));
+    assert!(text.contains("Logged in to OpenAgents as Octo with a login key."));
     assert!(!text.contains("oa_sk_"));
     let saved = home.path().join(".openagents/coder/account.json");
     assert!(std::fs::read_to_string(&saved).unwrap().contains(&token(1)));

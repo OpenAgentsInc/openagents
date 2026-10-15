@@ -1,8 +1,8 @@
 use super::*;
 
-const LANG_REPLY: &str = "Install Coder, then sign in.\n\n```openui-lang\nroot = Steps([install, signin])\ninstall = Step(\"Install Coder\", [Command(\"curl -fsSL https://openagents.com/cli/install.sh | bash\")])\nsignin = Step(\"Sign in\", [CodeBlock(\"coder login\")])\n```\n";
+const LANG_REPLY: &str = "Install Coder, then log in.\n\n```openui-lang\nroot = Steps([install, signin])\ninstall = Step(\"Install Coder\", [Command(\"curl -fsSL https://openagents.com/cli/install.sh | bash\")])\nsignin = Step(\"Log in\", [CodeBlock(\"coder login\")])\n```\n";
 
-const JSON_REPLY: &str = "Install Coder, then sign in.\n\n```ui-json\n{\"type\":\"Steps\",\"steps\":[{\"type\":\"Step\",\"title\":\"Install Coder\",\"children\":[{\"type\":\"Command\",\"unix\":\"curl -fsSL https://openagents.com/cli/install.sh | bash\"}]},{\"type\":\"Step\",\"title\":\"Sign in\",\"children\":[{\"type\":\"CodeBlock\",\"code\":\"coder login\"}]}]}\n```\n";
+const JSON_REPLY: &str = "Install Coder, then log in.\n\n```ui-json\n{\"type\":\"Steps\",\"steps\":[{\"type\":\"Step\",\"title\":\"Install Coder\",\"children\":[{\"type\":\"Command\",\"unix\":\"curl -fsSL https://openagents.com/cli/install.sh | bash\"}]},{\"type\":\"Step\",\"title\":\"Log in\",\"children\":[{\"type\":\"CodeBlock\",\"code\":\"coder login\"}]}]}\n```\n";
 
 #[test]
 fn the_checked_in_prompts_parse() {
@@ -75,7 +75,7 @@ fn openui_lang_draws_before_the_block_closes_and_json_does_not() {
     // Cut inside the second step: the first statements already draw.
     let lang = cut(LANG_REPLY, "signin = Step");
     assert!(renders(Format::Lang, &lang), "{lang}");
-    let json = cut(JSON_REPLY, "{\"type\":\"Step\",\"title\":\"Sign in\"");
+    let json = cut(JSON_REPLY, "{\"type\":\"Step\",\"title\":\"Log in\"");
     assert!(!renders(Format::Json, &json), "{json}");
     assert!(renders(Format::Json, JSON_REPLY));
     assert!(!renders(Format::Lang, "Install Coder, then"));

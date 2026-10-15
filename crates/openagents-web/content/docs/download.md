@@ -29,7 +29,7 @@ latest release for your computer: Apple silicon or Intel on macOS,
 x86_64 or ARM on Linux (including musl systems such as Alpine), and
 x86_64 on Windows (Windows on ARM runs that build too).
 
-Next, sign in and send a first message: [Coder quick start](/docs/coder).
+Next, log in and send a first message: [Coder quick start](/docs/coder).
 
 ## What gets installed
 

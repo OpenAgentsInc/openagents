@@ -165,8 +165,8 @@ impl Status {
     #[must_use]
     pub fn action(&self) -> Option<&'static str> {
         match (self.engine, self.state) {
-            (Engine::Claude, State::SignedOut) => Some("Sign in to Claude"),
-            (Engine::Claude, State::Expiring | State::Expired) => Some("Renew Claude sign-in"),
+            (Engine::Claude, State::SignedOut) => Some("Log in to Claude"),
+            (Engine::Claude, State::Expiring | State::Expired) => Some("Renew Claude login"),
             _ => None,
         }
     }
@@ -178,7 +178,7 @@ impl Status {
     pub fn terminal_notice(&self) -> Option<String> {
         match self.state {
             State::SignedOut | State::Expiring | State::Expired => Some(format!(
-                "{} Run `claude` in a terminal on this computer and type /login to sign in through Anthropic's own flow.",
+                "{} Run `claude` in a terminal on this computer and type /login to log in through Anthropic's own flow.",
                 self.summary()
             )),
             State::RateLimited => Some(self.summary()),
@@ -190,8 +190,8 @@ impl Status {
     #[must_use]
     pub fn headline(&self) -> &'static str {
         match self.state {
-            State::SignedOut => "Not signed in",
-            State::SignedIn => "Signed in",
+            State::SignedOut => "Not logged in",
+            State::SignedIn => "Logged in",
             State::Expiring => "Login expiring soon",
             State::Expired => "Login expired",
             State::RateLimited => "Usage limit reached",
@@ -220,33 +220,33 @@ impl Status {
         };
         match self.state {
             State::SignedOut => format!(
-                "{engine}, and it is not signed in. Sign in to Claude to use your own plan or API key."
+                "{engine}, and it is not logged in. Log in to Claude to use your own plan or API key."
             ),
-            State::SignedIn => format!("{engine}, signed in with {account}."),
+            State::SignedIn => format!("{engine}, logged in with {account}."),
             State::ApiKey => format!("{engine}, using {account}."),
             State::Expiring => match self.expires_at {
                 Some(at) => format!(
-                    "{engine}, signed in with {account}. The login expires {}. Renew the sign-in before then so background tasks keep running.",
+                    "{engine}, logged in with {account}. The login expires {}. Renew the login before then so background tasks keep running.",
                     utc(at)
                 ),
                 None => format!(
-                    "{engine}, signed in with {account}. Claude Code says the login expires soon. Renew the sign-in so background tasks keep running."
+                    "{engine}, logged in with {account}. Claude Code says the login expires soon. Renew the login so background tasks keep running."
                 ),
             },
             State::Expired => format!(
-                "{engine}, and its login has expired or stopped working. Renew the sign-in to keep using {account}."
+                "{engine}, and its login has expired or stopped working. Renew the login to keep using {account}."
             ),
             State::RateLimited => match self.resets_at {
                 Some(at) => format!(
-                    "{engine}, signed in with {account}. Claude Code reported a usage limit that resets {}. Tasks on this plan wait until then. OpenAgents keeps no usage ledger for your plan.",
+                    "{engine}, logged in with {account}. Claude Code reported a usage limit that resets {}. Tasks on this plan wait until then. OpenAgents keeps no usage ledger for your plan.",
                     utc(at)
                 ),
                 None => format!(
-                    "{engine}, signed in with {account}. Claude Code reported a usage limit without a reset time. OpenAgents keeps no usage ledger for your plan."
+                    "{engine}, logged in with {account}. Claude Code reported a usage limit without a reset time. OpenAgents keeps no usage ledger for your plan."
                 ),
             },
             State::Unavailable => format!(
-                "{engine}, but it did not report a sign-in status. Check that the engine is installed on this computer."
+                "{engine}, but it did not report a login status. Check that the engine is installed on this computer."
             ),
         }
     }

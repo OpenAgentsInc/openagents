@@ -92,7 +92,7 @@ title = "Earlier ideas"
 [[promise]]
 id = "A1"
 group = "A"
-statement = "You have one OpenAgents account, signed in with GitHub, that works on every surface."
+statement = "You have one OpenAgents account, logged in with GitHub, that works on every surface."
 surfaces = ["web", "terminal", "mobile", "desktop"]
 status = "launching"
 link = "/login"
@@ -122,7 +122,7 @@ evidence = [
 [[promise]]
 id = "A3"
 group = "A"
-statement = "You can try a chat before you make an account, and those chats move to your account when you sign in."
+statement = "You can try a chat before you make an account, and those chats move to your account when you log in."
 surfaces = ["web"]
 status = "launching"
 link = "/"
@@ -135,7 +135,7 @@ evidence = [
 [[promise]]
 id = "A4"
 group = "A"
-statement = "You see and manage every computer signed in to your account."
+statement = "You see and manage every computer logged in to your account."
 surfaces = ["web"]
 status = "launching"
 link = "/settings"
@@ -782,7 +782,7 @@ status = "partial"
 link = "/auth.md"
 issues = [11084]
 episodes = [144, 165, 168, 195]
-note = "Claude, ChatGPT, Cursor, and other MCP apps sign in to openagents.com/mcp with your account; adding your own tools to Coder comes later."
+note = "Claude, ChatGPT, Cursor, and other MCP apps log in to openagents.com/mcp with your account; adding your own tools to Coder comes later."
 evidence = [
   { test = "crates/openagents-web/src/oauth.rs::a_token_request_must_match_the_code" },
   { test = "crates/openagents-web/src/tests.rs::the_oauth_metadata_is_served_here_and_mcp_401s_name_it" },
@@ -1202,7 +1202,7 @@ issues = [11137, 11147]
 [[promise]]
 id = "K9"
 group = "K"
-statement = "Agents can sign in with their own Nostr key."
+statement = "Agents can log in with their own Nostr key."
 surfaces = ["network"]
 status = "later"
 issues = [11148]

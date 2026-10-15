@@ -66,8 +66,7 @@ pub(crate) const KEYED_PATH: &str = "/mcp";
 /// send instead: `401` with the challenge for no bearer or a refused one.
 async fn signed_in(app: &App, headers: &HeaderMap) -> Result<String, Response> {
     let challenge = || {
-        let mut response =
-            (StatusCode::UNAUTHORIZED, "Sign in to use this server.").into_response();
+        let mut response = (StatusCode::UNAUTHORIZED, "Log in to use this server.").into_response();
         response.headers_mut().insert(
             header::WWW_AUTHENTICATE,
             crate::oauth::challenge(&crate::wellknown::origin(app)),
@@ -332,7 +331,7 @@ fn keyed_tools(account: Option<&str>) -> Value {
         list.push(json!({
             "name": "whoami",
             "title": "Who am I",
-            "description": "The OpenAgents account this connection is signed in as.",
+            "description": "The OpenAgents account this connection is logged in as.",
             "inputSchema": {"type": "object", "properties": {}},
             "annotations": {"readOnlyHint": true}
         }));
@@ -356,7 +355,7 @@ async fn call(app: &App, params: &Value, account: Option<&str>) -> Result<Value,
         "list_models" => Ok(list_models(app).await),
         "list_payment_methods" => Ok(list_payment_methods(app).await),
         "whoami" if account.is_some() => Ok(format!(
-            "Signed in to OpenAgents ({SITE}) as account {}.",
+            "Logged in to OpenAgents ({SITE}) as account {}.",
             account.unwrap_or_default()
         )),
         other => return Err(Fault::new(-32602, format!("No tool named {other}."))),

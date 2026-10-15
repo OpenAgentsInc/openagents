@@ -128,7 +128,7 @@ impl Http {
             .map_err(|_| "The vault service stopped answering.".to_owned())?
             .to_vec();
         if status == 401 {
-            return Err("This sign-in stopped working. Sign in again with: coder login".into());
+            return Err("This login stopped working. Log in again with: coder login".into());
         }
         Ok(Reply { status, bytes })
     }

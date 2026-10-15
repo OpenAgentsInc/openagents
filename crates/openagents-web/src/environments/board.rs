@@ -332,12 +332,12 @@ mod tests {
         assert_eq!(done.status, "done");
         assert_eq!(done.finished_unix, Some(2_000));
         let mut failed = run(RunState::Failed);
-        failed.error = Some("Claude Code is not signed in.\nmore".into());
+        failed.error = Some("Claude Code is not logged in.\nmore".into());
         let failed = item(&failed, 0, 5_000);
         assert_eq!(failed.status, "failed");
         assert_eq!(
             failed.line.as_deref(),
-            Some("Failed: Claude Code is not signed in.")
+            Some("Failed: Claude Code is not logged in.")
         );
         let stopped = item(&run(RunState::Stopped), 1, 5_000);
         assert_eq!(stopped.status, "stopped");

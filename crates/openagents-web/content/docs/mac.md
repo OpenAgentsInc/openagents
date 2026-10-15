@@ -36,11 +36,11 @@ pasted image is dropped.
 ## Coder on this Mac
 
 When you ask for coding work in a chat, Coder starts right here, in your
-project, with the first coding agent that's signed in on this Mac. Its
+project, with the first coding agent that's logged in on this Mac. Its
 steps stream into the chat, and when it finishes you can open **What
 changed** to see the diff. See [Coder](/docs/coder).
 
-The sidebar shows each coding agent, whether it's signed in, and how much
+The sidebar shows each coding agent, whether it's logged in, and how much
 of its usage window you've used; **Settings → Coder** shows the details.
 
 **Saved sessions** lists the Codex and Claude Code sessions saved on this

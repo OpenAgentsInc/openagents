@@ -1156,7 +1156,7 @@ mod tests {
                 tier: Some("canned".into()),
                 answer: Some("meta.github.website@1".into()),
                 text: Some(
-                    "Sign in with GitHub, open Projects at https://openagents.com/projects, and connect GitHub."
+                    "Log in with GitHub, open Projects at https://openagents.com/projects, and connect GitHub."
                         .into(),
                 ),
                 first_ms: Some(900),
@@ -1250,7 +1250,7 @@ mod tests {
         assert!(md.contains("pricing.plan#1"), "{md}");
     }
 
-    const DRAWN: &str = "Install it.\n\n```openui-lang\nroot = Steps([install, signin])\ninstall = Step(\"Install Coder\", [Command(\"curl -fsSL https://openagents.com/cli/install.sh | bash\")])\nsignin = Step(\"Sign in\", [CodeBlock(\"coder login\"), Button(\"Approve sign-in\", \"/device\"), CodeBlock(\"/sync on\")])\n```\n";
+    const DRAWN: &str = "Install it.\n\n```openui-lang\nroot = Steps([install, signin])\ninstall = Step(\"Install Coder\", [Command(\"curl -fsSL https://openagents.com/cli/install.sh | bash\")])\nsignin = Step(\"Log in\", [CodeBlock(\"coder login\"), Button(\"Approve login\", \"/device\"), CodeBlock(\"/sync on\")])\n```\n";
 
     #[test]
     fn a_reply_is_read_for_the_components_it_draws() {

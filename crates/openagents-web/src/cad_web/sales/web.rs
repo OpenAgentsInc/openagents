@@ -93,7 +93,7 @@ async fn product(
                         div.oa-cad-files {(Button::new("Update preview").kind(ButtonType::Submit).variant(ButtonVariant::Outline).attr("name","intent").attr("value","preview")) (Button::new(format!("Buy for {} sats",l.sats)).kind(ButtonType::Submit).attr("name","intent").attr("value","buy"))}
                         p data-shop-status="" role="status" aria-live="polite" {}
                     }
-                } @else {(ButtonLink::new("Sign in to customize and buy",crate::auth::login_href(&format!("/cad-shop/{id}"),false)))}
+                } @else {(ButtonLink::new("Log in to customize and buy",crate::auth::login_href(&format!("/cad-shop/{id}"),false)))}
                 p {"Includes STEP, STL, and PDF and DXF drawings for your dimensions."}
             }
         },

@@ -7,11 +7,11 @@
   message with it. On the website, the site signs your messages for you.
 - **In the web chat** on openagents.com, we save your chats on our servers.
   Our team can read them.
-  - **Signed in** (with GitHub), your chats belong to your account: you see
-    them in any browser where you sign in, and after you sign out, someone
+  - **Logged in** (with GitHub), your chats belong to your account: you see
+    them in any browser where you log in, and after you log out, someone
     else using that browser doesn't. Chats you started in that browser
-    before signing in move to your account when you sign in.
-  - **Not signed in,** a random cookie tells this browser's chats apart.
+    before logging in move to your account when you log in.
+  - **Not logged in,** a random cookie tells this browser's chats apart.
     Only this browser opens them, and anyone using it can. If you clear
     your cookies, you can't open them again.
   - **Deleting.** To delete a chat, open it and choose **Delete chat**. To
@@ -20,16 +20,16 @@
     servers right away, though our storage provider may keep a copy we can
     recover for up to 7 days. Chats you don't delete stay; there's no time
     limit yet.
-  - **Exporting.** Signed in, open
+  - **Exporting.** Logged in, open
     [Settings](https://openagents.com/settings) and choose **Download**
     under **Your data** (or go straight to
     [openagents.com/settings/export](https://openagents.com/settings/export)).
     You get one file with every chat (each with a Markdown copy to read),
-    your projects, your uploaded traces, your signed-in computers, and your
+    your projects, your uploaded traces, your logged-in computers, and your
     settings. It opens in any text editor, without OpenAgents. It holds only
     your own account's things, and never a key, token, or password: an API
     key shows by name only, and a saved Claude credential by its kind only.
-    From a terminal signed in with `coder login`, `coder export --account`
+    From a terminal logged in with `coder login`, `coder export --account`
     saves the same file (`--output FILE` to choose where).
 - **In the Mac app, Terminal, and phone app,** your chats are saved on your
   device, encrypted with its key (on a computer, by its host). Your
@@ -88,7 +88,7 @@ for it.
   computer, whether the visit came from a person, an AI agent, or a
   crawler, how fast the page loaded, and a few actions: sending a chat,
   getting an answer, clicking a suggestion or a card, clicking a download,
-  copying the install command, and signing in.
+  copying the install command, and logging in.
 - **What we don't:** your IP address, cookies, your account, what you
   write, or anything that tells one visitor from another. We keep hourly
   totals, so we can't tell whether two visits came from one person.
@@ -109,7 +109,7 @@ secure, do see IP addresses; they're deleted after 30 days.
 - The Mac app keeps its keys in the Mac's keychain.
 - Coder works on your computer, in your projects. Like Codex or Claude Code
   on their own, the coding agent it runs sends what it reads to that
-  agent's model provider, under your sign-in there.
+  agent's model provider, under your login there.
 - By default Coder approves its own steps, including a push, so it can
   finish without stopping to ask. To run it inside a stricter boundary, see
   `coder.access` in the [settings reference](/docs/settings). In the

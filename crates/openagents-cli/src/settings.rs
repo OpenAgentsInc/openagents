@@ -25,7 +25,7 @@ pub(crate) const USAGE: &str = "usage: openagents settings COMMAND [OPTIONS]
                           Test your keys now.
   provider-key clear PROVIDER
                           Remove one of your keys.
-Every coding agent signed in on this computer is used, Codex first; nothing
+Every coding agent logged in on this computer is used, Codex first; nothing
 needs enabling. Agents: codex, claude, grok, devin, opencode.
 Keys:
   coder.disabled                  Coding agents turned off, comma-separated
@@ -207,7 +207,7 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
                 }),
                 |_| {
                     if on {
-                        format!("{name} is on: Coder uses it whenever it is signed in here.")
+                        format!("{name} is on: Coder uses it whenever it is logged in here.")
                     } else {
                         format!("{name} is off: Coder will not use it.")
                     }

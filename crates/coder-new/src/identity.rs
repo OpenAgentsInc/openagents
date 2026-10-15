@@ -101,7 +101,7 @@ pub fn prompt_with(menu: Menu, model: &str) -> String {
              the OpenAgents models listed there; asked how, say that in one line."
             .to_owned(),
         Menu::Nothing => "There is no model to pick here now: OpenAgents picks each turn's \
-             model. Asked how to run a certain model, say in one line that signing in to \
+             model. Asked how to run a certain model, say in one line that logging in to \
              OpenAgents, or turning on Claude Code or OpenRouter BYOK in /plugins, adds models \
              to pick in /models."
             .to_owned(),

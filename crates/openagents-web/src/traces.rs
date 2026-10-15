@@ -998,7 +998,7 @@ async fn api_owner(app: &App, headers: &HeaderMap) -> Result<String, Response> {
         Err(SessionError::Unauthenticated | SessionError::InvalidRequest) => Err(refused(
             StatusCode::UNAUTHORIZED,
             "signed_out",
-            "Sign in first, or sign Coder in with coder login.",
+            "Log in first, or log Coder in with coder login.",
         )),
         Err(_) => Err(refused(
             StatusCode::SERVICE_UNAVAILABLE,
