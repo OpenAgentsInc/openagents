@@ -1,7 +1,7 @@
 //! SPACE 0.8 HTTP driver (#11728). Run upstream as a separate service.
 //!
-//! Core and memory-preserving Suspend use the public `/v1` API. Snapshot
-//! restore and fork are absent from that API at the pinned upstream commit;
+//! Core and memory-preserving Suspend use the public `/v1` API. Creating from
+//! a saved snapshot and forking are absent from that API at the pinned commit;
 //! those profiles remain unsupported. Command attachment uses the configured
 //! data-plane origin and a session token, never the management credential.
 //! Secrets travel over process stdin: SPACE persists command `env` in its
