@@ -153,6 +153,18 @@ pub fn write(
         .into_iter()
         .flatten()
         .collect();
+    // A URDF is a tree: a joint closing a loop (crate::solve) has no place in it.
+    if let Some(j) = assembly["joints"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|j| crate::solve::closes(j))
+    {
+        return Err(format!(
+            "Joint {} closes a loop, and a URDF describes a tree of links; export the mechanism without its closing joints, or as STEP.",
+            j["id"].as_str().unwrap_or_default()
+        ));
+    }
     let joints: BTreeMap<&str, &Value> = assembly["joints"]
         .as_array()
         .into_iter()

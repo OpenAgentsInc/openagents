@@ -31,7 +31,7 @@ properties.
 | STEP AP242 export with the assembly | Products per part and per placed subassembly, an occurrence per instance; parts built afresh so their exact solids write cleanly | same test: 7 occurrences, 5 products, reads back to the same volume and box |
 | glTF, STL, 3MF | glb (ours), STL (kernel), 3MF with components (ours) | `exports_step_3mf_and_glb_and_reads_step_back`, the tree test |
 | WebAssembly and native builds of one API | `crates/cad-wasm` (wasm32-unknown-unknown, wasm-bindgen) and `cad-lab serve` | `scripts/cad-wasm-test.sh`: check, faces, Solid API, DXF and all exports under Node |
-| Agent tooling: typed tools, an MCP server, checks | 19 `cad_*` tools; `cad-lab mcp` (stdio JSON-RPC); checks on every edit | `an_mcp_client_lists_and_calls_the_cad_tools`, `every_tool_is_declared...` |
+| Agent tooling: typed tools, an MCP server, checks | 20 `cad_*` tools; `cad-lab mcp` (stdio JSON-RPC); checks on every edit | `an_mcp_client_lists_and_calls_the_cad_tools`, `every_tool_is_declared...` |
 | URDF | #11643 (another agent) | |
 
 ## Not covered, and why

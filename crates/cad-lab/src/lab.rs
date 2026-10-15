@@ -844,7 +844,13 @@ impl Lab {
         document: &Value,
         eval: &cad::Evaluation,
     ) -> Result<(PathBuf, u64), String> {
-        let urdf = cad::urdf::write(id, document, &eval.report, Some(&eval.built.solids))?;
+        // As built: joint frames named on faces are numbers there.
+        let urdf = cad::urdf::write(
+            id,
+            &eval.built.assembly,
+            &eval.report,
+            Some(&eval.built.solids),
+        )?;
         let dir = self.version_dir(id, n).join("out").join("urdf");
         // The pin lists every file, so the folder is written afresh.
         let _ = std::fs::remove_dir_all(&dir);
