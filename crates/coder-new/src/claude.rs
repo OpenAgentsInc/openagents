@@ -1008,20 +1008,27 @@ pub(crate) async fn read_turn(
             }
             // A subagent's progress and end, background ones included,
             // which settle after the call that started them returned
-            // (#11482).
+            // (#11482). A Bash task's reports carry the Bash call's id and
+            // are no agent's: they show nothing (rc.14).
             Ok(SdkMessage::System(SdkSystemMessage::TaskProgress(progress))) => {
-                if let Some(id) = progress.tool_use_id.as_deref() {
-                    emit(stream.agent_progress(id, progress.usage.total_tokens));
+                if let Some(event) = progress
+                    .tool_use_id
+                    .as_deref()
+                    .and_then(|id| stream.agent_progress(id, progress.usage.total_tokens))
+                {
+                    emit(event);
                 }
             }
             Ok(SdkMessage::System(SdkSystemMessage::TaskNotification(settled))) => {
-                if let Some(id) = settled.tool_use_id.as_deref() {
-                    emit(stream.agent_settled(
+                if let Some(event) = settled.tool_use_id.as_deref().and_then(|id| {
+                    stream.agent_settled(
                         id,
                         &settled.status,
                         &settled.summary,
                         settled.usage.as_ref().map_or(0, |usage| usage.total_tokens),
-                    ));
+                    )
+                }) {
+                    emit(event);
                 }
             }
             Ok(SdkMessage::System(SdkSystemMessage::ApiRetry(retry))) => {

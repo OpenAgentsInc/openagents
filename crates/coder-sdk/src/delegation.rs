@@ -122,8 +122,13 @@ impl Request {
         if request.to.is_empty() || request.to.len() > 64 {
             return Err("Name the agent in `to`.".into());
         }
-        if request.task.trim().is_empty() {
-            return Err("Give the agent a task.".into());
+        // An empty task, or one with no word in it (`...`, `{}`), starts
+        // nothing: no agent, no tray row, no notice (rc.14).
+        if !request.task.chars().any(char::is_alphanumeric) {
+            return Err(
+                "A delegation needs a task: give the agent the whole task with the context it needs."
+                    .into(),
+            );
         }
         if request.task.len() > TASK_MAX {
             return Err(format!("The task is longer than {TASK_MAX} bytes."));

@@ -202,6 +202,40 @@ async fn a_writing_child_outside_git_is_refused_and_reported_short() {
     assert!(error.contains("agent tray"), "{error}");
 }
 
+/// rc.14: a delegation with no task starts nothing: the model hears why,
+/// and no card, tray row or notice appears.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_empty_task_is_refused_before_any_agent_shows() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut execution = execution();
+    execution.cwd = dir.path().to_owned();
+    execution.fleet = None;
+    for task in ["", "   \n", "...", "{}"] {
+        let mut events = Vec::new();
+        let error = execute(
+            &execution,
+            CODER,
+            json!({"to": "claude", "task": task, "background": true}),
+            None,
+            &Arc::new(AtomicBool::new(false)),
+            &mut |event| events.push(event),
+        )
+        .await
+        .unwrap_err();
+        assert!(error.contains("A delegation needs a task"), "{error}");
+        assert!(events.is_empty(), "{task:?} drew {events:?}");
+    }
+    // The schema the harness sees requires a non-empty task.
+    let schema = coder_sdk::delegation::schema();
+    assert!(
+        schema["required"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("task"))
+    );
+    assert_eq!(schema["properties"]["task"]["minLength"], 1);
+}
+
 /// A git repository with one commit, for a writing child's worktree.
 #[cfg(unix)]
 fn repo(dir: &std::path::Path) {

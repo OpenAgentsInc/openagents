@@ -387,6 +387,15 @@ impl App {
     }
 
     pub(crate) fn composer_arrow(&mut self, up: bool) {
+        // Focus on a rail that left the screen is stale: the arrows go back
+        // to the input.
+        if self.footer_focused
+            && self.selected_agent.is_none()
+            && self.mode != crate::Mode::Demo
+            && self.rail_agents().is_empty()
+        {
+            self.footer_focused = false;
+        }
         // An open agent conversation is a selected footer row, so the footer
         // owns Up/Down there: Down opens the next agent and Up the previous
         // one, back to the main conversation.
@@ -470,9 +479,15 @@ impl App {
                 h.index = Some(index - 1);
                 h.applied = Some((index - 1, entry.id, false));
             }
-        } else if !self.delegations.is_empty() || self.mode == crate::Mode::Demo {
+        } else if self.mode == crate::Mode::Demo {
             self.footer_focused = true;
             self.select_agent(Some(0));
+        // Down past the newest prompt steps onto the rail only while the
+        // rail is on screen: an agent that already left it is not opened
+        // by a key that names nothing visible (owner, rc.14).
+        } else if let Some(first) = self.rail_agents().first().copied() {
+            self.footer_focused = true;
+            self.select_agent(Some(first));
         }
     }
 }
@@ -704,6 +719,53 @@ mod tests {
         assert_eq!(a.draft.text, "pending");
         a.handle(key(crossterm::event::KeyCode::Down));
         assert!(a.queued_prompts.is_empty());
+    }
+    fn finished_agent(app: &mut App) {
+        app.delegations.push(crate::live::Delegation {
+            id: "t1".into(),
+            name: "Claude".into(),
+            task: "find the parser".into(),
+            chat: crate::live::Chat::default(),
+            started_at: 0,
+            elapsed_seconds: 1,
+            running: false,
+            draft: Draft::default(),
+            composer: Default::default(),
+            scroll: 0,
+            background: false,
+        });
+    }
+    /// rc.14: once a finished agent left the rail, Down opened its full
+    /// screen anyway. A key acts only on what is on screen.
+    #[test]
+    fn down_opens_an_agent_only_while_the_rail_shows_it() {
+        use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
+        let key = |code| Event::Key(KeyEvent::new(code, KeyModifiers::NONE));
+        let mut a = app();
+        finished_agent(&mut a);
+        // On the rail: Down steps onto it and opens the agent.
+        assert_eq!(a.rail_agents(), vec![0]);
+        assert!(crate::ui::rail_height(&a) > 0);
+        a.handle(key(KeyCode::Down));
+        assert_eq!(a.selected_agent, Some(0));
+        assert!(a.footer_focused);
+        a.handle(key(KeyCode::Esc));
+        assert_eq!(a.selected_agent, None);
+        assert!(!a.footer_focused);
+        // Gone from the rail: Down, Up and Enter stay with the input.
+        a.elapsed_seconds = 1 + crate::RAIL_KEEP_SECONDS;
+        assert!(a.rail_agents().is_empty());
+        assert_eq!(crate::ui::rail_height(&a), 0);
+        for code in [KeyCode::Down, KeyCode::Down, KeyCode::Up, KeyCode::Enter] {
+            a.handle(key(code));
+            assert_eq!(a.selected_agent, None, "{code:?}");
+            assert!(!a.footer_focused, "{code:?}");
+        }
+        // A stale focus on a rail that left is dropped, not acted on.
+        a.footer_focused = true;
+        a.handle(key(KeyCode::Down));
+        assert_eq!(a.selected_agent, None);
+        assert!(!a.footer_focused);
     }
     #[test]
     fn restoration_and_footer_entry_are_separate_presses() {

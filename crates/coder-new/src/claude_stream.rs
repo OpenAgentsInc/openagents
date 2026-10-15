@@ -157,6 +157,7 @@ impl Stream {
                 spoke: false,
             },
         );
+        remember_agent_call(id);
         self.under(
             Some(id),
             RuntimeEvent::Tool {
@@ -214,21 +215,38 @@ impl Stream {
         ))
     }
 
+    /// Whether `id` is a call that started a subagent: one this turn
+    /// opened, or one an earlier turn did that still runs in the
+    /// background.
+    fn is_agent_call(&self, id: &str) -> bool {
+        self.agents.contains_key(id)
+            || lock(&AGENT_CALLS)
+                .as_ref()
+                .is_some_and(|calls| calls.contains(id))
+    }
+
     /// A subagent's tokens so far, from Claude Code's progress report on
-    /// the call `id` that started it (#11482).
-    pub(crate) fn agent_progress(&mut self, id: &str, tokens: u64) -> RuntimeEvent {
-        self.under(Some(id), RuntimeEvent::Tokens(tokens))
+    /// the call `id` that started it (#11482). Claude Code reports a long
+    /// or background Bash call the same way, under the Bash call's id:
+    /// that is no agent, so it shows nothing here (rc.14).
+    pub(crate) fn agent_progress(&mut self, id: &str, tokens: u64) -> Option<RuntimeEvent> {
+        self.is_agent_call(id)
+            .then(|| self.under(Some(id), RuntimeEvent::Tokens(tokens)))
     }
 
     /// A subagent settled, as Claude Code reports it for the call `id` that
     /// started it: done, or stopped or failed with its `summary` (#11482).
+    /// A settled Bash task is no agent and shows nothing here.
     pub(crate) fn agent_settled(
         &mut self,
         id: &str,
         status: &str,
         summary: &str,
         tokens: u64,
-    ) -> RuntimeEvent {
+    ) -> Option<RuntimeEvent> {
+        if !self.is_agent_call(id) {
+            return None;
+        }
         let mut output = if status == "completed" {
             json!({})
         } else if summary.trim().is_empty() {
@@ -239,7 +257,7 @@ impl Stream {
         if tokens > 0 {
             output["tokens"] = json!(tokens);
         }
-        self.under(
+        Some(self.under(
             Some(id),
             RuntimeEvent::Tool {
                 name: AGENT_RUN.into(),
@@ -247,7 +265,7 @@ impl Stream {
                 output,
                 running: false,
             },
-        )
+        ))
     }
 
     /// `event` as it reaches the screen: in the subagent `parent`'s own
@@ -586,6 +604,23 @@ static WARNING: Mutex<Option<(String, std::time::Instant)>> = Mutex::new(None);
 /// The newest session's context: its id, the tokens it holds, its window.
 static CONTEXT: Mutex<Option<(String, u64, u64)>> = Mutex::new(None);
 
+/// The calls that started a subagent in this process, so a background
+/// agent's progress and end in a later turn still find it, while the same
+/// reports about a Bash call never turn into an agent (rc.14).
+static AGENT_CALLS: Mutex<Option<HashSet<String>>> = Mutex::new(None);
+
+/// The most subagent calls [`AGENT_CALLS`] remembers before it starts over.
+const AGENT_CALLS_MAX: usize = 4_096;
+
+fn remember_agent_call(id: &str) {
+    let mut calls = lock(&AGENT_CALLS);
+    let calls = calls.get_or_insert_with(HashSet::new);
+    if calls.len() >= AGENT_CALLS_MAX {
+        calls.clear();
+    }
+    calls.insert(id.to_owned());
+}
+
 fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     mutex
         .lock()
@@ -913,17 +948,46 @@ mod tests {
         // In a later turn the stream is new; the id carries the agent.
         let mut later = Stream::default();
         assert!(
-            matches!(later.agent_progress("t1", 14_180), RuntimeEvent::Delegation { id, event, .. }
+            matches!(later.agent_progress("t1", 14_180), Some(RuntimeEvent::Delegation { id, event, .. })
             if id == "t1" && matches!(event.as_ref(), RuntimeEvent::Tokens(14_180)))
         );
-        let done = later.agent_settled("t1", "completed", "3 files", 15_000);
+        let done = later
+            .agent_settled("t1", "completed", "3 files", 15_000)
+            .unwrap();
         assert!(matches!(&done, RuntimeEvent::Delegation { event, .. }
             if matches!(event.as_ref(), RuntimeEvent::Tool { running: false, output, .. }
                 if output["tokens"] == 15_000 && output.get("error").is_none())));
-        let failed = later.agent_settled("t2", "failed", "", 0);
+        stream.start_agent("t2", &json!({"description": "other"}));
+        let failed = later.agent_settled("t2", "failed", "", 0).unwrap();
         assert!(matches!(&failed, RuntimeEvent::Delegation { event, .. }
             if matches!(event.as_ref(), RuntimeEvent::Tool { output, .. }
                 if output["error"].is_string() && output.get("tokens").is_none())));
+    }
+
+    /// rc.14: a 7 s Bash call made Claude Code report a task under the
+    /// Bash call's id; Coder drew it as an agent "Claude" with no task,
+    /// whose end swallowed the Bash call's own result.
+    #[test]
+    fn a_bash_task_report_is_no_delegation() {
+        let mut stream = Stream::default();
+        assert!(stream.agent_progress("toolu_bash", 0).is_none());
+        assert!(
+            stream
+                .agent_settled("toolu_bash", "completed", "done", 0)
+                .is_none()
+        );
+        // So the Bash call's result is the Bash call's, not an agent's end.
+        assert!(
+            stream
+                .end_agent("toolu_bash", "Kiki Studios now has ...", false, None)
+                .is_none()
+        );
+        let mut later = Stream::default();
+        assert!(
+            later
+                .agent_settled("toolu_bash", "completed", "", 0)
+                .is_none()
+        );
     }
 
     #[test]
