@@ -118,6 +118,10 @@ To go through the whole flow:
    holds. A host whose owner key lives elsewhere makes her unattested and
    she says so.
 1. Type a request, or keep her suggestion, and press Enter.
+   - While she works, Enter sends your request after she finishes: her
+     host holds it until her turn ends, and the key strip says "ENTER SENDS
+     AFTER ALICE FINISHES". Her host can't take a request mid-turn, and F7
+     stops her whole run rather than one turn, so Enter never stops her.
    - A read-only request, such as `run the atif tests and tell me if they
      pass`, runs as a turn of her Coder session and opens a pane titled
      `driven by alice` with Coder's own terminal following it, so you watch

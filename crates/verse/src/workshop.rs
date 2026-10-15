@@ -15,8 +15,9 @@
 //! Walk up to her and press the interact key to open her panel, anchored
 //! to the bottom of the window ([`Workshop::rows`]): a status row that
 //! always shows, her transcript, a pending proposal when one waits, the
-//! input line, and the key strip. ENTER sends a request, or CONFIRMs a
-//! proposal on an empty line; ESC REJECTs it, or closes the panel. F2 shows
+//! input line, and the key strip. ENTER sends a request (while she works,
+//! her host holds it until her turn ends, and the strip says so), or
+//! CONFIRMs a proposal on an empty line; ESC REJECTs it, or closes the panel. F2 shows
 //! her memory, F3 her day plan, F4 her journal, F7 stops her, and F8 pauses
 //! or resumes her, each of the last two only after CONFIRM.
 //!
@@ -1463,8 +1464,16 @@ impl Workshop {
         } else if self.asking.is_some() || self.pending().is_some() {
             "ENTER CONFIRM  ESC REJECT".to_string()
         } else {
+            // While she works, Enter waits for her (#11685): her host
+            // queues a request until her turn ends and can't take one
+            // mid-turn, and her stop ends her run rather than a turn.
             format!(
-                "ENTER SEND  ESC CLOSE  F2 MEMORY  F3 PLAN  F4 JOURNAL  F7 STOP  F8 {}  PGUP PGDN{}",
+                "{}  ESC CLOSE  F2 MEMORY  F3 PLAN  F4 JOURNAL  F7 STOP  F8 {}  PGUP PGDN{}",
+                if self.busy() {
+                    format!("ENTER SENDS AFTER {} FINISHES", self.name.to_uppercase())
+                } else {
+                    "ENTER SEND".to_string()
+                },
                 if paused { "RESUME" } else { "PAUSE" },
                 if self.busy() {
                     "  CTRL+` HER PANE (ANY KEY TAKES IT BACK)"
@@ -1881,7 +1890,18 @@ mod tests {
                 .0
                 .starts_with("ASK ALICE > run the atif tests ? now")
         );
-        assert!(rows[11].0.starts_with("ENTER SEND"));
+        assert!(rows[11].0.starts_with("ENTER SEND  "));
+        // While she works, Enter says it waits for her (#11685).
+        let mut busy = view();
+        busy.busy = true;
+        let (mut working, _fake) = connected(busy);
+        working.open = true;
+        let rows = working.rows(80, 12);
+        assert!(
+            rows[11].0.starts_with("ENTER SENDS AFTER ALICE FINISHES"),
+            "{}",
+            rows[11].0
+        );
         // The scroll bar shows at the right edge at all times.
         assert!(rows[1].0.ends_with('|') || rows[1].0.ends_with('#'));
         let start = Instant::now();
