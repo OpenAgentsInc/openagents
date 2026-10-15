@@ -23,7 +23,10 @@ use std::collections::BTreeSet;
 /// the trace, code lines and diffs, turns, bubbles, markers, attachments
 /// and questionnaires (`trace.css`, `code-lines.css`, `transcript.css`,
 /// about 13 KB).
-pub const STYLESHEET_BUDGET_BYTES: usize = 345_000;
+/// Raised to 353,000 on 2026-10-15 for the pages on their own: log in,
+/// sign up, the device and app approval cards, and empty states
+/// (`auth-card.css`, about 7 KB).
+pub const STYLESHEET_BUDGET_BYTES: usize = 353_000;
 
 /// Classes that components emit on purpose with no rule of their own:
 /// script hooks (`querySelector`, Alpine roots) and structural wrappers

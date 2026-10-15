@@ -1,0 +1,309 @@
+/*
+ * Pages on their own, without the app shell (`UiPage::bare` in
+ * openagents-web): log in, sign up, the device and app approval cards,
+ * and notices. shadcn's login block (a centered card under the mark), its
+ * Card (`data-slot="card"`), and its Empty (`data-slot="empty"`), over our
+ * semantic tokens so they follow Coder Light and Coder Noir.
+ */
+
+.oa-auth {
+  position: relative;
+  height: 100%;
+  overflow-y: auto;
+  display: flex;
+  background-color: var(--color-surface-secondary);
+  background-image: radial-gradient(var(--color-border) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+
+.oa-auth-corner {
+  position: absolute;
+  top: calc(var(--spacing) * 4);
+  right: calc(var(--spacing) * 4);
+}
+
+.oa-auth-main {
+  margin: auto;
+  width: 100%;
+  max-width: 26rem;
+  padding: calc(var(--spacing) * 16) calc(var(--spacing) * 4);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(var(--spacing) * 6);
+}
+
+.oa-auth-main > *,
+.oa-auth-card > *,
+.oa-auth-login-form > * { min-width: 0; max-width: 100%; }
+
+.oa-auth-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--spacing) * 2);
+  color: var(--color-text);
+  font-weight: var(--font-weight-semibold);
+  font-size: 1.0625rem;
+  letter-spacing: -0.01em;
+  text-decoration: none;
+}
+
+.oa-auth-brand img { display: block; border-radius: var(--radius-sm); }
+
+.oa-auth-card {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--spacing) * 6);
+  padding: calc(var(--spacing) * 8) calc(var(--spacing) * 6);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-2xl);
+  background: var(--color-surface-elevated);
+  color: var(--color-text);
+  box-shadow: var(--shadow-100);
+}
+
+.oa-auth-card-header {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--spacing) * 1.5);
+  text-align: center;
+}
+
+.oa-auth-card-header h1,
+.oa-empty-state h1 {
+  margin: 0;
+  font-size: 1.25rem;
+  line-height: 1.3;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+}
+
+.oa-auth-card-description {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+
+.oa-auth-card-description code,
+.oa-empty-state-description code {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  padding: 0.1em 0.35em;
+  border-radius: var(--radius-xs);
+  background: var(--color-background-primary-soft);
+  color: var(--color-text);
+}
+
+.oa-auth-card-content,
+.oa-auth-login-form,
+.oa-device-form {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--spacing) * 4);
+}
+
+.oa-auth-switch {
+  margin: 0;
+  text-align: center;
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+}
+
+.oa-auth-switch a,
+.oa-auth-fine-print a,
+.oa-auth-dev a {
+  color: var(--color-text);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.oa-auth-fine-print {
+  margin: 0;
+  max-width: 22rem;
+  text-align: center;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+  text-wrap: balance;
+}
+
+.oa-auth-fine-print strong { color: var(--color-text); font-weight: var(--font-weight-medium); }
+
+/* A developer's note on this computer's own address. */
+.oa-auth-dev {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--spacing) * 2);
+  padding: calc(var(--spacing) * 3);
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+}
+
+.oa-auth-dev p { margin: 0; }
+
+.oa-auth-command {
+  margin: 0;
+  padding: calc(var(--spacing) * 2.5) calc(var(--spacing) * 3);
+  border-radius: var(--radius-md);
+  background: var(--color-background-primary-soft);
+  color: var(--color-text);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1.6;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+/* The device and app approval cards. */
+.oa-device-code-field input {
+  font-family: var(--font-mono);
+  font-size: 1.125rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.oa-device-code {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(var(--spacing) * 1);
+  padding: calc(var(--spacing) * 4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  background: var(--color-surface-secondary);
+}
+
+.oa-device-code-label {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+}
+
+.oa-device-code-value {
+  font-family: var(--font-mono);
+  font-size: 2rem;
+  line-height: 1.2;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.14em;
+  color: var(--color-text);
+}
+
+.oa-device-who {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--spacing) * 3);
+  padding: calc(var(--spacing) * 3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+.oa-device-who-icon {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  background: var(--color-background-primary-soft);
+  color: var(--color-text);
+}
+
+.oa-device-who-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font-size: 0.875rem;
+  line-height: 1.35;
+}
+
+.oa-device-who-text span {
+  color: var(--color-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.oa-device-note {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+}
+
+.oa-device-note strong { color: var(--color-text); font-weight: var(--font-weight-medium); }
+
+.oa-device-decide { margin: 0; }
+
+.oa-auth-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: calc(var(--spacing) * 3);
+}
+
+/* shadcn's Empty: a big muted code or an icon, a heading, one line, and
+   the ways on. */
+.oa-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(var(--spacing) * 2);
+  width: 100%;
+  max-width: 26rem;
+  text-align: center;
+}
+
+.oa-empty-state-code {
+  margin: 0 0 calc(var(--spacing) * 2);
+  font-size: clamp(4.5rem, 14vw, 7rem);
+  line-height: 1;
+  font-weight: var(--font-weight-bold);
+  letter-spacing: -0.05em;
+  color: var(--color-text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.oa-empty-state-media {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  margin: 0 0 calc(var(--spacing) * 2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  background: var(--color-surface-elevated);
+  color: var(--color-text-secondary);
+  box-shadow: var(--shadow-100);
+}
+
+.oa-empty-state-description {
+  margin: 0;
+  max-width: 22rem;
+  color: var(--color-text-secondary);
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  text-wrap: pretty;
+}
+
+.oa-empty-state-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: calc(var(--spacing) * 2);
+  margin-top: calc(var(--spacing) * 4);
+}
+
+/* Inside the app shell (someone signed in): centered in the main area. */
+.oa-empty-state-page {
+  display: flex;
+  flex: 1 0 auto;
+  align-items: center;
+  justify-content: center;
+  min-height: 100%;
+  padding: calc(var(--spacing) * 12) calc(var(--spacing) * 4);
+}

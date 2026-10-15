@@ -28,9 +28,9 @@ use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use maud::{Markup, html};
-use openagents_ui::actions::{Button, ButtonType, ButtonVariant, Color};
-use openagents_ui::content::{MarkdownRoot, PageColumn};
+use openagents_ui::actions::{Button, ButtonType, ButtonVariant, Color, ControlSize};
 use openagents_ui::forms::{Field, Input};
+use openagents_ui::icons::{Icon, IconSize};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -38,7 +38,7 @@ use crate::App;
 use crate::account::Account;
 use crate::cloud::session::{CloudSession, SessionError, Viewer};
 use crate::cloud::{protect, refused, service};
-use crate::ui_page::{UiPage, action_link};
+use crate::ui_page::{EmptyMedia, UiPage, action_link, auth_card, empty_state, signed_in_as};
 
 pub(crate) const PAGE: &str = "/device";
 const CODE: &str = "/v1/device/code";
@@ -263,7 +263,8 @@ fn respond(
             .path(PAGE)
             .status(status)
             .account(account)
-            .content(PageColumn::new(body))
+            .bare()
+            .content(html! { (body) (signed_in_as(&viewer.account_label)) })
             .respond(headers),
     )
 }
@@ -278,55 +279,86 @@ pub(crate) fn problem_text(code: &str) -> &'static str {
     }
 }
 
-/// The form to type a code, with an optional problem above it.
+/// The form to type a code, with an optional problem above it: a card
+/// with the code field and Continue.
 pub(crate) fn code_form(typed: &str, problem: Option<&str>) -> Markup {
     let field = Field::new("device-code", "Code")
         .required(true)
         .error_opt(problem)
         .description("The code your computer shows, like BCDF-GHJK.");
-    html! {
-        (MarkdownRoot::new(html! {
-            h1 { "Sign in on another computer" }
-            p { "Enter the code " code { "coder login" } " shows in your terminal." }
-        }))
-        form method="get" action=(PAGE) autocomplete="off" {
-            (field.clone().control(
-                Input::new("code")
-                    .aria(field.aria())
-                    .value(typed)
-                    .required(true)
-                    .autocomplete("off")
-                    .spellcheck(false)
-                    .autofocus(true)
-                    .invalid(problem.is_some()),
-            ))
-            p { (Button::new("Continue").kind(ButtonType::Submit)) }
-        }
-    }
+    auth_card(
+        "Sign in on another computer",
+        Some(html! { "Enter the code " code { "coder login" } " shows in your terminal." }),
+        html! {
+            form.oa-device-form method="get" action=(PAGE) autocomplete="off" {
+                div.oa-device-code-field {
+                    (field.clone().control(
+                        Input::new("code")
+                            .aria(field.aria())
+                            .value(typed)
+                            .required(true)
+                            .autocomplete("off")
+                            .spellcheck(false)
+                            .autofocus(true)
+                            .invalid(problem.is_some()),
+                    ))
+                }
+                (Button::new("Continue").kind(ButtonType::Submit).size(ControlSize::Lg).block(true))
+            }
+        },
+    )
 }
 
-/// "Sign in to Coder on <computer>?" with Approve and Deny.
+/// "Sign in to Coder on <computer>?": the code shown large, what's
+/// asking, and Deny and Approve.
 pub(crate) fn approve_form(code: &str, app: &str, computer: &str, csrf: &str) -> Markup {
-    html! {
-        (MarkdownRoot::new(html! {
-            h1 { "Sign in to " (app) " on " (computer) "?" }
-            p { "Code " strong { (code) } ". Approve only if you started this sign-in and the code matches the one on your computer." }
-            p { (app) " on " (computer) " will be able to use your OpenAgents account. You can remove it any time in Settings." }
-        }))
-        form method="post" action=(PAGE) {
-            input type="hidden" name="csrf" value=(csrf);
-            input type="hidden" name="code" value=(code);
-            div.oa-page-actions {
-                (Button::new("Approve").kind(ButtonType::Submit).name("decision").value("approve"))
-                (Button::new("Deny")
-                    .kind(ButtonType::Submit)
-                    .variant(ButtonVariant::Soft)
-                    .color(Color::Secondary)
-                    .name("decision")
-                    .value("deny"))
+    let icon = if app == "Coder" {
+        Icon::Terminal
+    } else {
+        Icon::Desktop
+    };
+    auth_card(
+        &format!("Sign in to {app} on {computer}?"),
+        Some(
+            html! { "Approve only if you started this sign-in and the code matches the one on your computer." },
+        ),
+        html! {
+            div.oa-device-code data-slot="device-code" {
+                span.oa-device-code-label { "Code" }
+                strong.oa-device-code-value { (code) }
             }
-        }
-    }
+            div.oa-device-who {
+                span.oa-device-who-icon aria-hidden="true" { (icon.size(IconSize::Md)) }
+                span.oa-device-who-text {
+                    strong { (app) }
+                    span { "on " (computer) }
+                }
+            }
+            p.oa-device-note {
+                (app) " on " (computer) " will be able to use your OpenAgents account. You can remove it any time in Settings."
+            }
+            form.oa-device-decide method="post" action=(PAGE) {
+                input type="hidden" name="csrf" value=(csrf);
+                input type="hidden" name="code" value=(code);
+                div.oa-auth-actions {
+                    (Button::new("Deny")
+                        .kind(ButtonType::Submit)
+                        .variant(ButtonVariant::Outline)
+                        .color(Color::Secondary)
+                        .size(ControlSize::Lg)
+                        .block(true)
+                        .name("decision")
+                        .value("deny"))
+                    (Button::new("Approve")
+                        .kind(ButtonType::Submit)
+                        .size(ControlSize::Lg)
+                        .block(true)
+                        .name("decision")
+                        .value("approve"))
+                }
+            }
+        },
+    )
 }
 
 /// `GET /device[?code=]`.
@@ -435,28 +467,27 @@ async fn decide(
         Err(error) => return refused(error),
     };
     let body = match decided {
-        Ok(request) if approve => html! {
-            (MarkdownRoot::new(html! {
-                h1 { (request.app) " on " (request.computer) " is signed in" }
-                // The phone app signs in as "OpenAgents" (#11107); Coder
-                // in a terminal as "Coder".
+        Ok(request) if approve => empty_state(
+            EmptyMedia::Icon(Icon::CheckCircle),
+            &format!("{} on {} is signed in", request.app, request.computer),
+            // The phone app signs in as "OpenAgents" (#11107); Coder in a
+            // terminal as "Coder".
+            html! {
                 @if request.app == "OpenAgents" {
-                    p { "Go back to the OpenAgents app. You can close this tab." }
+                    "Go back to the OpenAgents app. You can close this tab."
                 } @else {
-                    p {
-                        "Go back to your terminal. To show its chats here, type "
-                        code { "/sync on" } " in Coder. You can close this tab."
-                    }
+                    "Go back to your terminal. To show its chats here, type "
+                    code { "/sync on" } " in Coder. You can close this tab."
                 }
-            }))
-            p { (action_link("Settings", crate::settings::PAGE)) }
-        },
-        Ok(request) => html! {
-            (MarkdownRoot::new(html! {
-                h1 { "Sign-in denied" }
-                p { (request.app) " on " (request.computer) " was not signed in." }
-            }))
-        },
+            },
+            action_link("Settings", crate::settings::PAGE),
+        ),
+        Ok(request) => empty_state(
+            EmptyMedia::Icon(Icon::XCircle),
+            "Sign-in denied",
+            &format!("{} on {} was not signed in.", request.app, request.computer),
+            action_link("Home", "/"),
+        ),
         Err(problem) => code_form(&form.code, Some(problem_text(&problem))),
     };
     let title = if approve {

@@ -2249,7 +2249,8 @@ async fn unknown_addresses_and_documents_answer_404_in_the_frame() {
     for uri in ["/nope", "/terms/../../etc/passwd", "/u/-bad-"] {
         let (status, body) = get(router(config(root.path().into())), uri).await;
         assert_eq!(status, StatusCode::NOT_FOUND, "{uri}");
-        assert!(body.contains("class=\"oa-wordmark\""), "{uri}");
+        assert!(body.contains("class=\"oa-auth-brand\""), "{uri}");
+        assert!(body.contains("oa-empty-state-code"), "{uri}");
     }
 }
 
@@ -2914,8 +2915,8 @@ async fn owned_pages_removed_sections_and_the_task_browser_never_go_upstream() {
         let (status, _, body) = get_with(site.clone(), uri, "openagents.com").await;
         assert_eq!(status, StatusCode::NOT_FOUND, "{uri}");
         assert!(
-            body.contains("class=\"oa-wordmark\""),
-            "{uri}: in the site's frame"
+            body.contains("class=\"oa-auth-brand\""),
+            "{uri}: under the site's mark"
         );
     }
     for host in ["openagents.com", "new.openagents.com"] {

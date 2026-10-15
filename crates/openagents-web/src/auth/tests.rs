@@ -241,7 +241,16 @@ async fn signed_out_header_offers_log_in_and_sign_up_and_login_offers_github() {
 
     let login = browser.get(&world, "/login?return_to=%2Fcloud%2Fapp").await;
     assert_eq!(login.status, StatusCode::OK);
-    assert!(login.body.contains("Log in to OpenAgents"));
+    assert!(login.body.contains("Welcome back"));
+    // On its own: no app shell, the terms line under the card, and the
+    // way to sign up instead.
+    assert!(!login.body.contains("oa-sidebar") && login.body.contains("data-slot=\"card\""));
+    assert!(login.body.contains("href=\"/terms\"") && login.body.contains("href=\"/privacy\""));
+    assert!(
+        login
+            .body
+            .contains("href=\"/signup?return_to=%2Fcloud%2Fapp\"")
+    );
     crate::copy_guard::assert_plain("/login", &login.body);
     assert!(login.body.contains("Continue with GitHub"));
     assert!(
@@ -301,7 +310,7 @@ async fn signed_out_links_preview_the_page_they_open_not_the_sign_in_page() {
         );
         let login = browser.get(&world, &first.location()).await;
         assert_eq!(login.status, StatusCode::OK, "{path}");
-        assert!(login.body.contains("Log in to OpenAgents"), "{path}");
+        assert!(login.body.contains("Welcome back"), "{path}");
         assert_eq!(og(&login.body, "og:title"), title);
         assert_eq!(
             og(&login.body, "og:url"),

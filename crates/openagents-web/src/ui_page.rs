@@ -99,6 +99,7 @@ pub struct UiPage {
     scripts: bool,
     toggle: bool,
     boost: bool,
+    bare: bool,
     status: StatusCode,
 }
 
@@ -124,6 +125,7 @@ impl UiPage {
             scripts: true,
             toggle: true,
             boost: false,
+            bare: false,
             status: StatusCode::OK,
         }
     }
@@ -236,6 +238,15 @@ impl UiPage {
         self
     }
 
+    /// A page on its own, without the app shell: the mark and name over a
+    /// centered column ([`auth_card`], [`empty_state`]), with the theme
+    /// toggle in the corner. Sign-in, sign-up, the device and app approval
+    /// pages, and notices for someone not signed in.
+    pub fn bare(mut self) -> Self {
+        self.bare = true;
+        self
+    }
+
     /// The status [`UiPage::respond`] answers with (default `200`).
     pub fn status(mut self, status: StatusCode) -> Self {
         self.status = status;
@@ -251,6 +262,10 @@ impl UiPage {
 
     /// The whole HTML document for a request with these headers.
     pub fn render(self, headers: &HeaderMap) -> Markup {
+        if self.bare {
+            return self.render_bare(headers);
+        }
+        let head = self.document_head();
         let current = self.section.as_deref();
         let scripts = self.scripts;
         let mut sidebar = Sidebar::new()
@@ -406,6 +421,17 @@ impl UiPage {
         if let Some(composer) = self.composer {
             shell = shell.composer(composer);
         }
+        Document::new(self.title)
+            .theme(theme::from_headers(headers))
+            .boost(self.boost && scripts)
+            .head(head)
+            .body(shell)
+            .render()
+    }
+
+    /// The `<head>` both layouts share: the mark, the page's metadata, the
+    /// design language, and the page's own extra head.
+    fn document_head(&self) -> Markup {
         let canonical = self
             .canonical
             .as_deref()
@@ -418,20 +444,45 @@ impl UiPage {
             ),
             None => crate::agent_ready::head(&self.title, self.description.as_deref(), canonical),
         };
+        html! {
+            link rel="icon" type="image/svg+xml" href="/favicon.svg";
+            (PreEscaped(metadata))
+            (PreEscaped(theme::style_tag()))
+            @if self.scripts {
+                (PreEscaped(theme::script_tags()))
+                (PreEscaped(crate::agent_ready::webmcp_tag()))
+            }
+            @if let Some(head) = &self.head { (head) }
+        }
+    }
+
+    /// [`UiPage::bare`]: our mark and name, the page's content centered
+    /// under it, and the theme toggle in the corner.
+    fn render_bare(self, headers: &HeaderMap) -> Markup {
+        let head = self.document_head();
+        let toggle = self.toggle.then(|| {
+            ThemeToggle::new()
+                .fallback_action(theme::TOGGLE_PATH)
+                .return_to(self.return_to.clone())
+        });
+        let body = html! {
+            div.oa-auth data-slot="auth-layout" {
+                @if let Some(toggle) = toggle {
+                    div.oa-auth-corner { (toggle) }
+                }
+                main.oa-auth-main {
+                    a.oa-auth-brand href="/" {
+                        img src="/favicon.svg" alt="" width="24" height="24";
+                        span { "OpenAgents" }
+                    }
+                    @if let Some(content) = &self.content { (content) }
+                }
+            }
+        };
         Document::new(self.title)
             .theme(theme::from_headers(headers))
-            .boost(self.boost && scripts)
-            .head(html! {
-                link rel="icon" type="image/svg+xml" href="/favicon.svg";
-                (PreEscaped(metadata))
-                (PreEscaped(theme::style_tag()))
-                @if scripts {
-                    (PreEscaped(theme::script_tags()))
-                    (PreEscaped(crate::agent_ready::webmcp_tag()))
-                }
-                @if let Some(head) = &self.head { (head) }
-            })
-            .body(shell)
+            .head(head)
+            .body(body)
             .render()
     }
 
@@ -495,7 +546,78 @@ pub fn action_link(label: &str, href: &str) -> ButtonLink {
         .variant(ButtonVariant::Outline)
 }
 
-/// A page answered with `status`: a heading, a sentence, and a way back.
+/// shadcn's Card for a page on its own ([`UiPage::bare`]): a centered
+/// heading and line (`card-header`), then the card's content.
+pub fn auth_card(title: &str, description: Option<Markup>, content: impl Render) -> Markup {
+    html! {
+        div.oa-auth-card data-slot="card" {
+            div.oa-auth-card-header data-slot="card-header" {
+                h1 { (title) }
+                @if let Some(description) = description {
+                    p.oa-auth-card-description data-slot="card-description" { (description) }
+                }
+            }
+            div.oa-auth-card-content data-slot="card-content" { (content) }
+        }
+    }
+}
+
+/// "Signed in as <name>" under a card, for the pages that act for the
+/// signed-in person ([`UiPage::bare`] has no account menu).
+pub fn signed_in_as(name: &str) -> Markup {
+    html! {
+        p.oa-auth-fine-print { "Signed in as " strong { (name) } }
+    }
+}
+
+/// What an [`empty_state`] shows above its heading: a status code in large
+/// muted type, or an icon in a soft square.
+pub enum EmptyMedia {
+    Code(u16),
+    Icon(Icon),
+}
+
+/// shadcn's Empty: a status code or icon, a plain heading, one line, and
+/// the ways on.
+pub fn empty_state(
+    media: EmptyMedia,
+    title: &str,
+    text: impl Render,
+    actions: impl Render,
+) -> Markup {
+    html! {
+        div.oa-empty-state data-slot="empty" {
+            @match media {
+                EmptyMedia::Code(code) => {
+                    p.oa-empty-state-code aria-hidden="true" { (code) }
+                }
+                EmptyMedia::Icon(icon) => {
+                    div.oa-empty-state-media data-slot="empty-media" aria-hidden="true" {
+                        (icon.size(IconSize::Lg))
+                    }
+                }
+            }
+            h1 { (title) }
+            p.oa-empty-state-description { (text) }
+            div.oa-empty-state-actions { (actions) }
+        }
+    }
+}
+
+/// The big muted code an [`empty_state`] shows for `status`: the number for
+/// a missing page, an icon otherwise.
+pub fn empty_media(status: StatusCode) -> EmptyMedia {
+    match status {
+        StatusCode::NOT_FOUND => EmptyMedia::Code(404),
+        status if status.is_server_error() => EmptyMedia::Icon(Icon::Warning),
+        StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED => EmptyMedia::Icon(Icon::Lock),
+        _ => EmptyMedia::Icon(Icon::InfoCircle),
+    }
+}
+
+/// A page answered with `status`: a heading, a sentence, and a way back,
+/// drawn as an empty state. Someone signed in keeps the app's left panel
+/// (their chats are a way back too); anyone else sees the page on its own.
 /// It runs no script, so it is safe under any page's policy.
 pub fn problem(
     headers: &HeaderMap,
@@ -504,15 +626,20 @@ pub fn problem(
     text: &str,
     back: (&str, &str),
 ) -> Response {
-    let content = PageColumn::new(html! {
-        (MarkdownRoot::new(html! { h1 { (title) } p { (text) } }))
-        div.oa-page-actions { (action_link(back.1, back.0)) }
-    });
-    UiPage::new(title)
-        .status(status)
-        .scriptless()
-        .content(content)
-        .respond(headers)
+    let primary = ButtonLink::new(back.1, back.0);
+    let actions = html! {
+        (primary)
+        @if back.0 != "/" { (action_link("Home", "/")) }
+        @else { (action_link("Docs", DOCS)) }
+    };
+    let empty = empty_state(empty_media(status), title, text, actions);
+    let page = UiPage::new(title).status(status).scriptless();
+    if matches!(crate::account::current(), Account::SignedIn { .. }) {
+        page.content(html! { div.oa-empty-state-page { (empty) } })
+            .respond(headers)
+    } else {
+        page.bare().content(empty).respond(headers)
+    }
 }
 
 /// Whether the visitor collapsed the left panel (the shell script's
@@ -813,7 +940,13 @@ mod tests {
             .unwrap();
         let html = String::from_utf8(body.to_vec()).unwrap();
         assert!(html.contains("<h1>Not found</h1>"), "{html}");
-        assert!(html.contains("<p>Nothing &lt;here&gt;.</p>"), "{html}");
+        assert!(
+            html.contains("<p class=\"oa-empty-state-description\">Nothing &lt;here&gt;.</p>"),
+            "{html}"
+        );
+        // Signed out: on its own, the code large over the heading.
+        assert!(html.contains("data-slot=\"empty\"") && !html.contains("oa-sidebar"));
+        assert!(html.contains(">404</p>"), "{html}");
         assert!(html.contains("href=\"/\""), "{html}");
         assert!(!html.to_ascii_lowercase().contains("<script src"), "{html}");
     }

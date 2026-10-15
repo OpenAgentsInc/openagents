@@ -16,16 +16,16 @@ use axum::extract::{Query, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::get;
-use maud::{PreEscaped, html};
-use openagents_ui::actions::{ButtonLink, ButtonVariant, Color, ControlSize};
-use openagents_ui::content::{MarkdownRoot, PageColumn};
+use maud::{Markup, PreEscaped, html};
+use openagents_ui::actions::{Alert, ButtonLink, ButtonVariant, Color, ControlSize, Variant};
+use openagents_ui::icons::Icon;
 use serde::Deserialize;
 
 use crate::App;
 use crate::account::Account;
 use crate::cloud::protect;
 use crate::cloud::session::SessionError;
-use crate::ui_page::{UiPage, action_link};
+use crate::ui_page::{EmptyMedia, UiPage, action_link, auth_card, empty_media, empty_state};
 
 pub(crate) fn routes() -> Router<App> {
     Router::new()
@@ -82,12 +82,7 @@ async fn page(app: &App, headers: &HeaderMap, back: Back, signup: bool) -> Respo
         if crate::cloud::ready(app) {
             return protect(Redirect::to(crate::cloud::SIGN_IN).into_response());
         }
-        return notice(
-            headers,
-            StatusCode::SERVICE_UNAVAILABLE,
-            "Sign-in isn't available",
-            "This server doesn't sign people in.",
-        );
+        return unavailable_page(headers, crate::local_request(headers));
     }
     let invite_only = app
         .config
@@ -97,8 +92,10 @@ async fn page(app: &App, headers: &HeaderMap, back: Back, signup: bool) -> Respo
     sign_in_page(headers, signup, invite_only, &return_to)
 }
 
-/// The sign-in page (`/login`, or `/signup` when `signup`): one GitHub
-/// button, a line of context, and nothing else.
+/// The sign-in page (`/login`, or `/signup` when `signup`): shadcn's
+/// login block on its own, without the app shell. Our mark and name, a
+/// card with one GitHub button, the way to the other page, and the terms
+/// line under it.
 pub(crate) fn sign_in_page(
     headers: &HeaderMap,
     signup: bool,
@@ -112,27 +109,47 @@ pub(crate) fn sign_in_page(
         .size(ControlSize::Lg)
         .block(true)
         .icon_start(PreEscaped(GITHUB_MARK));
-    let content = PageColumn::new(html! {
-        div.oa-sign-in {
-            (MarkdownRoot::new(html! {
-                h1 { @if signup { "Create your account" } @else { "Log in to OpenAgents" } }
-            }))
-            (continue_button)
-            p.oa-page-meta {
+    let (heading, line) = if signup {
+        ("Create your account", "Sign up with your GitHub account.")
+    } else {
+        ("Welcome back", "Log in with your GitHub account.")
+    };
+    let card = auth_card(
+        heading,
+        Some(html! { (line) }),
+        html! {
+            div.oa-auth-login-form data-slot="login-form" {
                 @if invite_only {
-                    "Sign-in is invite-only for now."
-                } @else if signup {
-                    "Already have an account? " a href=(login_href(return_to, false)) { "Log in" }
-                } @else {
-                    "New here? Continuing with GitHub creates your account."
+                    (Alert::new()
+                        .color(Color::Info)
+                        .variant(Variant::Soft)
+                        .title("Sign-in is invite-only for now.")
+                        .description("If you were invited, continue with GitHub."))
+                }
+                (continue_button)
+                @if !invite_only {
+                    p.oa-auth-switch {
+                        @if signup {
+                            "Already have an account? " a href=(login_href(return_to, false)) { "Log in" }
+                        } @else {
+                            "New here? " a href=(login_href(return_to, true)) { "Sign up" }
+                        }
+                    }
                 }
             }
+        },
+    );
+    let content = html! {
+        (card)
+        p.oa-auth-fine-print {
+            "By continuing, you agree to our " a href="/terms" { "Terms" }
+            " and " a href="/privacy" { "Privacy Policy" } "."
         }
-    })
-    .centered();
+    };
     let mut page = UiPage::new(title)
         .path(path)
         .account(Account::Unknown)
+        .bare()
         .content(content);
     // A link to a page only signed-in people open lands here when a link
     // reader fetches it: its preview names that page's kind, never "Log in"
@@ -384,16 +401,17 @@ async fn finish(
     // that began on github.com, so continue with a same-site step: the next
     // request then carries the cookie.
     let back = flow.return_to.clone();
-    let content = PageColumn::new(html! {
-        (MarkdownRoot::new(html! {
-            h1 { "You're signed in" }
-            p { a href=(back) { "Continue" } }
-        }))
-    });
+    let content = empty_state(
+        EmptyMedia::Icon(Icon::CheckCircle),
+        "You're signed in",
+        "Taking you back now.",
+        ButtonLink::new("Continue", &back),
+    );
     let mut response = protect(
         UiPage::new("Signed in")
             .account(Account::Unknown)
             .scriptless()
+            .bare()
             .head(html! { meta http-equiv="refresh" content=(format!("0;url={back}")); })
             .content(content)
             .respond(headers),
@@ -404,40 +422,84 @@ async fn finish(
     response
 }
 
+/// The command that runs sign-in on this computer with the GitHub fixture
+/// (docs/auth/github.md, "Local testing").
+const LOCAL_SIGN_IN: &str = "cargo run -p openagents-web --example github_auth_fixture -- \\\n  \"$TMPDIR/oa-github\" 127.0.0.1:4301 \\\n  --github-oauth ~/work/.secrets/github-oauth-local.json";
+
+/// `/login` on a server that doesn't sign people in: the login card with
+/// the notice. On this computer's own address (`local`, never a public
+/// host) it adds how a developer runs sign-in locally.
+pub(crate) fn unavailable_page(headers: &HeaderMap, local: bool) -> Response {
+    let card = auth_card(
+        "Sign-in isn't available",
+        Some(html! { "This server doesn't sign people in." }),
+        html! {
+            div.oa-auth-login-form data-slot="login-form" {
+                @if local {
+                    div.oa-auth-dev {
+                        p { "For developers: sign-in runs on this computer with the GitHub fixture. Run:" }
+                        pre.oa-auth-command { code { (LOCAL_SIGN_IN) } }
+                        p {
+                            "Then open " a href="http://127.0.0.1:4301/login" { "127.0.0.1:4301/login" }
+                            " (docs/auth/github.md, Local testing)."
+                        }
+                    }
+                }
+                (ButtonLink::new("Home", "/").size(ControlSize::Lg).block(true))
+            }
+        },
+    );
+    protect(
+        UiPage::new("Sign-in isn't available")
+            .path("/login")
+            .status(StatusCode::SERVICE_UNAVAILABLE)
+            .account(Account::Unknown)
+            .scriptless()
+            .bare()
+            .content(card)
+            .respond(headers),
+    )
+}
+
+/// A sign-in that didn't finish: an empty state with Try again (back to
+/// `/login`) and Home, on its own page.
 pub(crate) fn try_again(
     headers: &HeaderMap,
     status: StatusCode,
     title: &str,
     text: &str,
 ) -> Response {
-    let content = PageColumn::new(html! {
-        (MarkdownRoot::new(html! { h1 { (title) } p { (text) } }))
-        div.oa-page-actions {
-            (ButtonLink::new("Try again", "/login").variant(ButtonVariant::Solid))
-            (action_link("Home", "/"))
-        }
-    });
-    protect(
-        UiPage::new(title)
-            .status(status)
-            .account(Account::Unknown)
-            .scriptless()
-            .content(content)
-            .respond(headers),
-    )
+    let actions = html! {
+        (ButtonLink::new("Try again", "/login").variant(ButtonVariant::Solid))
+        (action_link("Home", "/"))
+    };
+    bare_notice(headers, status, title, text, actions)
 }
 
+/// A sign-in notice (not available here, invite-only): an empty state with
+/// a way home, on its own page.
 pub(crate) fn notice(headers: &HeaderMap, status: StatusCode, title: &str, text: &str) -> Response {
-    let content = PageColumn::new(html! {
-        (MarkdownRoot::new(html! { h1 { (title) } p { (text) } }))
-        div.oa-page-actions { (action_link("Home", "/").color(Color::Secondary)) }
-    });
+    let actions = html! {
+        (ButtonLink::new("Home", "/"))
+        (action_link("Docs", crate::layout::DOCS))
+    };
+    bare_notice(headers, status, title, text, actions)
+}
+
+fn bare_notice(
+    headers: &HeaderMap,
+    status: StatusCode,
+    title: &str,
+    text: &str,
+    actions: Markup,
+) -> Response {
     protect(
         UiPage::new(title)
             .status(status)
             .account(Account::Unknown)
             .scriptless()
-            .content(content)
+            .bare()
+            .content(empty_state(empty_media(status), title, text, actions))
             .respond(headers),
     )
 }

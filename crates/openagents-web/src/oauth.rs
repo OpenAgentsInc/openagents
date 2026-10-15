@@ -49,8 +49,8 @@ use base64::Engine;
 use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
 use hmac::{Hmac, Mac};
 use maud::{Markup, html};
-use openagents_ui::actions::{Button, ButtonType, ButtonVariant, Color};
-use openagents_ui::content::{MarkdownRoot, PageColumn};
+use openagents_ui::actions::{Button, ButtonType, ButtonVariant, Color, ControlSize};
+use openagents_ui::icons::{Icon, IconSize};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -59,7 +59,7 @@ use crate::App;
 use crate::account::Account;
 use crate::cloud::session::{CloudSession, SessionError, Viewer};
 use crate::cloud::{failure, protect, refused};
-use crate::ui_page::UiPage;
+use crate::ui_page::{UiPage, auth_card, signed_in_as};
 
 /// RFC 9728 metadata for the origin.
 pub(crate) const RESOURCE_METADATA: &str = "/.well-known/oauth-protected-resource";
@@ -885,33 +885,48 @@ async fn authorize(State(app): State<App>, headers: HeaderMap, uri: Uri) -> Resp
     response
 }
 
-/// "Let <app> use your OpenAgents account?" with Approve and Deny.
+/// "Let <app> use your OpenAgents account?": a card naming the app and
+/// where it goes back to, with Deny and Approve.
 pub(crate) fn consent_form(request: &Authorization, query: &str, csrf: &str) -> Markup {
     let name = &request.client.name;
     let place = computer_label(&request.redirect_uri);
-    html! {
-        (MarkdownRoot::new(html! {
-            h1 { "Let " (name) " use your OpenAgents account?" }
-            p {
-                (name) " will be able to use OpenAgents as you: your chats, your projects, and anything else your account can do. Approve only if you just asked "
-                (name) " to sign in."
+    auth_card(
+        &format!("Let {name} use your OpenAgents account?"),
+        Some(html! { "Approve only if you just asked " (name) " to sign in." }),
+        html! {
+            div.oa-device-who {
+                span.oa-device-who-icon aria-hidden="true" { (Icon::ConnectApps.size(IconSize::Md)) }
+                span.oa-device-who-text {
+                    strong { (name) }
+                    span { "goes back to " (place) }
+                }
             }
-            p { "After you choose, you go back to " strong { (place) } ". You can remove " (name) " any time in Settings." }
-        }))
-        form method="post" action=(AUTHORIZE) {
-            input type="hidden" name="csrf" value=(csrf);
-            input type="hidden" name="request" value=(query);
-            div.oa-page-actions {
-                (Button::new("Approve").kind(ButtonType::Submit).name("decision").value("approve"))
-                (Button::new("Deny")
-                    .kind(ButtonType::Submit)
-                    .variant(ButtonVariant::Soft)
-                    .color(Color::Secondary)
-                    .name("decision")
-                    .value("deny"))
+            p.oa-device-note {
+                (name) " will be able to use OpenAgents as you: your chats, your projects, and anything else your account can do. After you choose, you go back to "
+                strong { (place) } ". You can remove " (name) " any time in Settings."
             }
-        }
-    }
+            form.oa-device-decide method="post" action=(AUTHORIZE) {
+                input type="hidden" name="csrf" value=(csrf);
+                input type="hidden" name="request" value=(query);
+                div.oa-auth-actions {
+                    (Button::new("Deny")
+                        .kind(ButtonType::Submit)
+                        .variant(ButtonVariant::Outline)
+                        .color(Color::Secondary)
+                        .size(ControlSize::Lg)
+                        .block(true)
+                        .name("decision")
+                        .value("deny"))
+                    (Button::new("Approve")
+                        .kind(ButtonType::Submit)
+                        .size(ControlSize::Lg)
+                        .block(true)
+                        .name("decision")
+                        .value("approve"))
+                }
+            }
+        },
+    )
 }
 
 /// The consent page's policy: the account pages' own, with the form also
@@ -955,8 +970,12 @@ pub(crate) fn consent_page_as(
         UiPage::new(title)
             .path(AUTHORIZE)
             .status(StatusCode::OK)
+            .bare()
+            .content(html! {
+                (body)
+                @if let Account::SignedIn { name, .. } = &account { (signed_in_as(name)) }
+            })
             .account(account)
-            .content(PageColumn::new(body.clone()))
             .respond(headers),
     );
     if let Ok(policy) = HeaderValue::from_str(&consent_policy(&request.redirect_uri)) {

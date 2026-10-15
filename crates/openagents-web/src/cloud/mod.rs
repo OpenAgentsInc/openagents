@@ -29,7 +29,6 @@ use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use maud::html;
 use openagents_ui::actions::{Button, ButtonType};
-use openagents_ui::content::{MarkdownRoot, PageColumn};
 use openagents_ui::forms::{Field, Input, InputType};
 use serde::Deserialize;
 
@@ -164,7 +163,7 @@ async fn sign_in(State(app): State<App>, headers: HeaderMap) -> Response {
     };
     let key = Field::new("sign-in-key", "Account key").required(true);
     let form = html! {
-        form method="post" action=(SIGN_IN) autocomplete="off" {
+        form.oa-auth-login-form data-slot="login-form" method="post" action=(SIGN_IN) autocomplete="off" {
             input type="hidden" name="csrf" value=(csrf.token);
             (key.clone().control(
                 Input::new("credential")
@@ -174,20 +173,19 @@ async fn sign_in(State(app): State<App>, headers: HeaderMap) -> Response {
                     .autocomplete("off")
                     .spellcheck(false),
             ))
-            p { (Button::new("Sign in").kind(ButtonType::Submit)) }
+            (Button::new("Sign in").kind(ButtonType::Submit).size(openagents_ui::actions::ControlSize::Lg).block(true))
         }
     };
-    let content = PageColumn::new(html! {
-        (MarkdownRoot::new(html! {
-            h1 { "Sign in" }
-            p { "Enter your OpenAgents account key." }
-        }))
-        (form)
-    });
+    let content = crate::ui_page::auth_card(
+        "Welcome back",
+        Some(html! { "Enter your OpenAgents account key." }),
+        form,
+    );
     let mut response = protect(
         UiPage::new("Sign in")
             .path(SIGN_IN)
             .account(Account::Unknown)
+            .bare()
             .content(content)
             .respond(&headers),
     );

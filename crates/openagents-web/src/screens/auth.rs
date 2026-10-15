@@ -75,6 +75,11 @@ pub(crate) fn screens() -> Vec<Screen> {
                     "No sign-in on this server",
                     sign_in_unavailable,
                 ),
+                state(
+                    "unavailable-local",
+                    "No sign-in, on this computer",
+                    sign_in_unavailable_local,
+                ),
                 state("signed-in", "Signed in", signed_in_notice),
             ],
         },
@@ -248,12 +253,11 @@ fn try_again(headers: &HeaderMap) -> Response {
 }
 
 fn sign_in_unavailable(headers: &HeaderMap) -> Response {
-    crate::auth::notice(
-        headers,
-        StatusCode::SERVICE_UNAVAILABLE,
-        "Sign-in isn't available",
-        "This server doesn't sign people in.",
-    )
+    crate::auth::unavailable_page(headers, false)
+}
+
+fn sign_in_unavailable_local(headers: &HeaderMap) -> Response {
+    crate::auth::unavailable_page(headers, true)
 }
 
 fn signed_in_notice(headers: &HeaderMap) -> Response {
@@ -270,7 +274,8 @@ fn device(headers: &HeaderMap, status: StatusCode, title: &str, body: maud::Mark
         .path("/device")
         .status(status)
         .account(signed_in())
-        .content(PageColumn::new(body))
+        .bare()
+        .content(html! { (body) (crate::ui_page::signed_in_as(NAME)) })
         .respond(headers)
 }
 
@@ -332,10 +337,14 @@ fn device_approved(headers: &HeaderMap) -> Response {
         headers,
         StatusCode::OK,
         "Signed in",
-        html! {
-            h1 { "Signed in" }
-            p { "Coder on " (COMPUTER) " is signed in to your account. You can go back to your computer." }
-        },
+        crate::ui_page::empty_state(
+            crate::ui_page::EmptyMedia::Icon(openagents_ui::icons::Icon::CheckCircle),
+            "Signed in",
+            &format!(
+                "Coder on {COMPUTER} is signed in to your account. You can go back to your computer."
+            ),
+            crate::ui_page::action_link("Settings", crate::settings::PAGE),
+        ),
     )
 }
 
@@ -344,10 +353,12 @@ fn device_denied(headers: &HeaderMap) -> Response {
         headers,
         StatusCode::OK,
         "Sign-in denied",
-        html! {
-            h1 { "Sign-in denied" }
-            p { "Coder on " (COMPUTER) " was not signed in. Nothing changed on your account." }
-        },
+        crate::ui_page::empty_state(
+            crate::ui_page::EmptyMedia::Icon(openagents_ui::icons::Icon::XCircle),
+            "Sign-in denied",
+            &format!("Coder on {COMPUTER} was not signed in. Nothing changed on your account."),
+            crate::ui_page::action_link("Home", "/"),
+        ),
     )
 }
 
