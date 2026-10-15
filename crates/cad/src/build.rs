@@ -60,13 +60,13 @@ pub struct Built {
 }
 
 fn run(s: &mut Session, op: &str, params: &Value) -> Result<Value, String> {
-    let started = std::time::Instant::now();
+    let started = crate::sys::Timer::start();
     let result = s.execute(op, params).map_err(|e| e.to_string());
     // `CAD_TRACE=1` prints each kernel step and how long it took.
     if std::env::var_os("CAD_TRACE").is_some() {
         eprintln!(
             "cad: {op} {} ms {}",
-            started.elapsed().as_millis(),
+            started.ms(),
             params.get("name").and_then(Value::as_str).unwrap_or("")
         );
     }
@@ -525,6 +525,10 @@ fn planar_axes(n: [f64; 3], x_dir: Option<[f64; 3]>) -> ([f64; 3], [f64; 3]) {
 /// folder in the system's temporary directory.
 #[must_use]
 pub fn default_cache() -> PathBuf {
+    // In the browser, a folder of the kernel's in-memory file store.
+    if cfg!(target_arch = "wasm32") {
+        return PathBuf::from("/cad/parts");
+    }
     std::env::var_os("CAD_PART_CACHE").map_or_else(
         || std::env::temp_dir().join("openagents-cad-parts"),
         PathBuf::from,
@@ -549,13 +553,9 @@ pub fn store_file(cache: &Path, bytes: &[u8], extension: &str) -> Result<String,
         .iter()
         .map(|b| format!("{b:02x}"))
         .collect();
-    let dir = files_dir(cache);
-    std::fs::create_dir_all(&dir).map_err(|e| format!("The file store: {e}"))?;
-    let path = dir.join(format!("{hex}.{extension}"));
-    if !path.is_file() {
-        let temporary = dir.join(format!("{hex}.{}.tmp", std::process::id()));
-        std::fs::write(&temporary, bytes).map_err(|e| format!("The file store: {e}"))?;
-        std::fs::rename(&temporary, &path).map_err(|e| format!("The file store: {e}"))?;
+    let path = files_dir(cache).join(format!("{hex}.{extension}"));
+    if !crate::sys::exists(&path) {
+        crate::sys::write(&path, bytes).map_err(|e| format!("The file store: {e}"))?;
     }
     Ok(format!("sha256:{hex}"))
 }
@@ -569,7 +569,7 @@ fn stored_path(files: &Path, reference: &str, extension: &str) -> Result<PathBuf
         ));
     }
     let path = files.join(format!("{}.{extension}", hex.to_lowercase()));
-    if path.is_file() {
+    if crate::sys::exists(&path) {
         Ok(path)
     } else {
         Err(format!(
@@ -648,10 +648,9 @@ fn build_part(
     let digest = part_digest(part, parameters);
     let step = cache.join(format!("{digest}.step"));
     let meta_path = cache.join(format!("{digest}.json"));
-    if step.is_file()
-        && let Some(meta) = std::fs::read_to_string(&meta_path)
-            .ok()
-            .and_then(|t| serde_json::from_str(&t).ok())
+    if crate::sys::exists(&step)
+        && let Some(meta) =
+            crate::sys::read_text(&meta_path).and_then(|t| serde_json::from_str(&t).ok())
     {
         return Ok(PartBuild { step, meta });
     }
@@ -727,18 +726,18 @@ fn build_part(
             "Part {key} has no solid yet: add a feature that makes one (an extrude, a revolve, a box or a cylinder)."
         )]);
     }
-    std::fs::create_dir_all(cache).map_err(|e| vec![format!("The part cache: {e}")])?;
+    crate::sys::ensure_dir(cache).map_err(|e| vec![format!("The part cache: {e}")])?;
     let names: Vec<&Value> = bodies.iter().map(|b| &b["name"]).collect();
-    let temporary = cache.join(format!("{digest}.{}.step", std::process::id()));
+    let temporary = cache.join(format!("{digest}.{}.step", crate::sys::pid()));
     run(
         &mut s,
         "file.export",
         &json!({"path": temporary.to_string_lossy(), "format": "step", "bodies": names}),
     )
     .map_err(|e| vec![format!("Part {key} couldn't be written: {e}")])?;
-    std::fs::rename(&temporary, &step).map_err(|e| vec![e.to_string()])?;
+    crate::sys::rename(&temporary, &step).map_err(|e| vec![e])?;
     let meta = json!({"bodies": bodies, "warnings": warnings, "sketches": sketches});
-    let _ = std::fs::write(&meta_path, meta.to_string());
+    let _ = crate::sys::write(&meta_path, meta.to_string().as_bytes());
     Ok(PartBuild { step, meta })
 }
 
@@ -810,23 +809,14 @@ pub fn fresh_parts(built: &Built) -> Result<BTreeMap<String, Session>, Vec<Strin
         .collect();
     keys.sort();
     keys.dedup();
-    let results: Vec<(String, Result<Session, Vec<String>>)> = std::thread::scope(|scope| {
-        let jobs: Vec<_> = keys
-            .iter()
-            .map(|key| {
-                scope.spawn(move || {
-                    (
-                        key.clone(),
-                        replay(&built.assembly, key, None, &built.cache),
-                    )
-                })
-            })
-            .collect();
-        jobs.into_iter().filter_map(|job| job.join().ok()).collect()
+    let results = crate::sys::parallel(&keys, keys.len(), |key| {
+        replay(&built.assembly, key, None, &built.cache)
     });
     let mut out = BTreeMap::new();
-    for (key, result) in results {
-        out.insert(key, result?);
+    for (key, result) in keys.into_iter().zip(results) {
+        let session = result
+            .unwrap_or_else(|| Err(vec![format!("Part {key}'s build stopped unexpectedly.")]))?;
+        out.insert(key, session);
     }
     Ok(out)
 }
@@ -909,21 +899,13 @@ pub fn build_with(document: &Value, cache: &Path) -> Result<Built, Vec<String>> 
     // Every part builds (or comes from the cache), each in a session of
     // its own, side by side; only placed ones go into the assembly.
     let all: Vec<(&String, &Value)> = parts.iter().collect();
-    let results: Vec<Result<PartBuild, Vec<String>>> = std::thread::scope(|scope| {
-        let jobs: Vec<_> = all
-            .iter()
-            .map(|(key, part)| {
-                let parameters = &parameters;
-                scope.spawn(move || build_part(key, part, parameters, cache))
-            })
-            .collect();
-        jobs.into_iter()
-            .map(|job| {
-                job.join()
-                    .unwrap_or_else(|_| Err(vec!["A part's build stopped unexpectedly.".into()]))
-            })
-            .collect()
-    });
+    let results: Vec<Result<PartBuild, Vec<String>>> =
+        crate::sys::parallel(&all, all.len(), |(key, part)| {
+            build_part(key, part, &parameters, cache)
+        })
+        .into_iter()
+        .map(|r| r.unwrap_or_else(|| Err(vec!["A part's build stopped unexpectedly.".into()])))
+        .collect();
     let mut built_parts = Vec::new();
     let mut errors = Vec::new();
     for ((key, part), result) in all.iter().zip(results) {
@@ -1203,31 +1185,17 @@ pub fn interference(built: &mut Built, assembly: &Value) -> (Vec<String>, Vec<Va
         }
     }
     let solids = &built.solids;
-    let threads = std::thread::available_parallelism()
-        .map_or(4, |n| n.get())
-        .clamp(1, 12);
-    let measured: Vec<(usize, usize, f64)> = std::thread::scope(|scope| {
-        let jobs: Vec<_> = pairs
-            .chunks(pairs.len().div_ceil(threads).max(1))
-            .map(|chunk| {
-                scope.spawn(move || {
-                    chunk
-                        .iter()
-                        .map(|&(i, j)| {
-                            (
-                                i,
-                                j,
-                                crate::overlap::volume(&solids[i].mesh, &solids[j].mesh),
-                            )
-                        })
-                        .collect::<Vec<_>>()
-                })
-            })
-            .collect();
-        jobs.into_iter()
-            .flat_map(|job| job.join().unwrap_or_default())
-            .collect()
-    });
+    let measured: Vec<(usize, usize, f64)> =
+        crate::sys::parallel(&pairs, crate::sys::cores(), |&(i, j)| {
+            (
+                i,
+                j,
+                crate::overlap::volume(&solids[i].mesh, &solids[j].mesh),
+            )
+        })
+        .into_iter()
+        .flatten()
+        .collect();
     for (i, j, volume) in measured {
         if volume < crate::overlap::IGNORED_MM3 {
             continue;

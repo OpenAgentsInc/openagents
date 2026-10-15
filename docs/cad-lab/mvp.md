@@ -81,7 +81,10 @@ version.
    exact integrals on every edit when `smlibpy` is installed (#11628).
 6. **Verse:** the glTF is ready for it; placing a version in a Verse zone is
    a follow-up.
-7. **Browser builds:** the engine compiles for wasm32; the Lab runs it
-   natively and the browser only views the glTF.
-8. **DXF, drawings, STEP import as a feature, sheet metal**: the kernel has
-   them; the documents don't expose them yet (#11628).
+7. **Browser builds:** `crates/cad-wasm` runs the engine as WebAssembly
+   (check, Solid API, faces, DXF, exports; `scripts/cad-wasm-test.sh`), but
+   no web page uses it yet: the web chat still calls the local Lab and
+   views the glTF.
+8. **DXF and STEP import:** done (#11628). 2D drawings with projected and
+   hidden lines, and sheet metal, are not exposed (see
+   [parity.md](parity.md)).

@@ -2692,6 +2692,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "cad-wasm"
+version = "1.0.0-rc.13"
+dependencies = [
+ "cad",
+ "serde_json",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "calendrical_calculations"
 version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"

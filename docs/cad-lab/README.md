@@ -224,6 +224,22 @@ WebGL isn't there), its mass and centre of mass, its size and counts, the
 render or the exports the turn made, and **Compare with** the version
 before.
 
+## In the browser
+
+`crates/cad-wasm` is the same engine built for `wasm32-unknown-unknown`
+(SolidCraft's kernel builds for it; our crate swaps threads for a loop,
+the disk for the kernel's in-memory file store, and the clock for none,
+in `crates/cad/src/sys.rs`). A page holds its documents and calls
+`run(tool, args)` for `cad_check`, `cad_solid`, `cad_faces`,
+`cad_import_dxf` and `cad_export_dxf`, with the Lab's arguments and
+answers, and `export_file(document, format)` for glb, STEP, 3MF or STL
+bytes. Versions, renders and the file store stay with the Lab.
+
+`scripts/cad-wasm-test.sh` builds it, runs `wasm-bindgen`, and drives it
+under Node: a filleted plate with a hole rebuilds and checks in about
+180 ms to within 0.01% of its analytic volume, and exports all four formats.
+The `.wasm` is 26 MB before `wasm-opt` and compression.
+
 ## Where it runs
 
 - `cad-lab serve [--port 8794] [--dir DIR]` binds to loopback only. The web

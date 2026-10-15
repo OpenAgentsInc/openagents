@@ -50,6 +50,38 @@ pub fn write(built: &mut Built, format: &str, path: &Path) -> Result<u64, String
     }
 }
 
+/// The built document as `format`, in memory (what the browser build hands
+/// the page as a download).
+///
+/// # Errors
+/// The format is unknown, or the kernel refused.
+pub fn bytes(built: &mut Built, format: &str) -> Result<Vec<u8>, String> {
+    match format {
+        "glb" => Ok(glb(&built.solids)),
+        "step" => crate::tree::step(built).map(String::into_bytes),
+        "3mf" => crate::tree::threemf(built),
+        "stl" => {
+            // Through the kernel's file layer: the disk natively, its
+            // in-memory store in the browser.
+            let path = built
+                .cache
+                .join(format!("export-{}.stl", crate::sys::pid()));
+            crate::sys::ensure_dir(&built.cache)?;
+            built
+                .session
+                .execute(
+                    "file.export",
+                    &json!({"path": path.to_string_lossy(), "format": "stl"}),
+                )
+                .map_err(|e| e.to_string())?;
+            let out = crate::sys::read(&path).ok_or("The STL wasn't written.")?;
+            let _ = solidcraft_engine::io::vfs::remove(&path.to_string_lossy());
+            Ok(out)
+        }
+        other => Err(format!("I can export {}, not {other}.", FORMATS.join(", "))),
+    }
+}
+
 fn pad4(bytes: &mut Vec<u8>, with: u8) {
     while bytes.len() % 4 != 0 {
         bytes.push(with);

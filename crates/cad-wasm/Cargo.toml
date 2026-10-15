@@ -1,0 +1,24 @@
+[package]
+name = "cad-wasm"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "The CAD engine (crates/cad) built for the browser: the stateless cad_* tools (check, solid, faces, exports, DXF) on documents the page holds, as WebAssembly."
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+cad = { path = "../cad" }
+serde_json = "1"
+
+# Only the browser build exports through wasm-bindgen; natively the same
+# functions run for the tests.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+# The `wasm-bindgen` CLI that `scripts/cad-wasm-test.sh` runs must be the
+# version Cargo.lock resolves here; the script checks.
+wasm-bindgen = "0.2.128"
+
+[lints]
+workspace = true

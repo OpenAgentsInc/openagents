@@ -23,6 +23,7 @@ pub mod mass;
 pub mod overlap;
 pub mod refs;
 pub mod render;
+pub mod sys;
 pub mod tree;
 pub mod xf;
 
@@ -48,7 +49,7 @@ pub fn evaluate(document: &Value) -> Result<Evaluation, Vec<String>> {
 
 /// [`evaluate`], keeping built parts in `cache`.
 pub fn evaluate_with(document: &Value, cache: &std::path::Path) -> Result<Evaluation, Vec<String>> {
-    let started = std::time::Instant::now();
+    let started = sys::Timer::start();
     let mut built = build::build_with(document, cache)?;
     let (problems, contacts) = build::interference(&mut built, document);
     if !problems.is_empty() {
@@ -129,7 +130,7 @@ pub fn evaluate_with(document: &Value, cache: &std::path::Path) -> Result<Evalua
         "size_mm": size,
         "warnings": built.warnings,
         "sketches": built.sketches,
-        "build_ms": started.elapsed().as_millis() as u64,
+        "build_ms": started.ms(),
     });
     let mut report = report;
     // Parts flagged for it: SMLib's exact mass properties must agree.
