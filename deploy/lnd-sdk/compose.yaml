@@ -18,6 +18,11 @@ services:
     command: ["--lnddir=/data", "--bitcoin.regtest", "--bitcoin.node=bitcoind", "--bitcoind.rpchost=bitcoin:18443", "--bitcoind.rpcuser=regtest", "--bitcoind.rpcpass=regtest-only", "--bitcoind.zmqpubrawblock=tcp://bitcoin:28332", "--bitcoind.zmqpubrawtx=tcp://bitcoin:28333", "--noseedbackup", "--rpclisten=0.0.0.0:10009", "--listen=0.0.0.0:9735", "--bitcoin.defaultchanconfs=1", "--bitcoin.defaultremotedelay=4", "--watchtower.active", "--watchtower.listen=0.0.0.0:9911", "--tlsextraip=127.0.0.1"]
     ports: ["127.0.0.1::10009"]
     volumes: ["tower:/data"]
+  litd:
+    image: lightninglabs/lightning-terminal:v0.17.0-alpha@sha256:fd6d6040f78e0a342437312f3a3c154f4b63d79172c6b466e2dfd242b06b4a1c
+    command: ["--lit-dir=/lit", "--network=regtest", "--lnd-mode=remote", "--remote.lnd.rpcserver=alice:10009", "--remote.lnd.macaroonpath=/lnd/data/chain/bitcoin/regtest/admin.macaroon", "--remote.lnd.tlscertpath=/lnd/tls.cert", "--httpslisten=0.0.0.0:8443", "--disableui", "--autopilot.disable", "--faraday-mode=disable", "--loop-mode=disable", "--pool-mode=disable", "--taproot-assets-mode=disable"]
+    ports: ["127.0.0.1::8443"]
+    volumes: ["alice:/lnd:ro", "litd:/lit"]
   signer:
     image: lightninglabs/lnd:v0.21.1-beta@sha256:4af8f9bbf98c8b86b0e54b065d6ea45d1387256a43fa9270c11ef849511abae0
     command: ["--lnddir=/data", "--bitcoin.regtest", "--bitcoin.node=nochainbackend", "--noseedbackup", "--nolisten", "--nobootstrap", "--rpclisten=0.0.0.0:10009", "--restlisten=127.0.0.1:8080", "--tlsextradomain=signer"]
@@ -32,6 +37,7 @@ services:
     command: ["--tapddir=/tap", "--network=regtest", "--lnd.host=alice:10009", "--lnd.tlspath=/lnd/tls.cert", "--lnd.macaroonpath=/lnd/data/chain/bitcoin/regtest/admin.macaroon", "--rpclisten=0.0.0.0:10029"]
     volumes: ["alice:/lnd:ro", "tapd:/tap"]
 volumes:
+  litd:
   signer:
   signer-public:
   tower:

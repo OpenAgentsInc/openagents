@@ -15,6 +15,7 @@ use std::{
 #[derive(Default)]
 pub struct Fake {
     pub node_id: String,
+    pub available_sats: u64,
     pub records: Mutex<BTreeMap<[u8; 32], PaymentRecord>>,
     pub outcome: Mutex<Option<Result<Proof>>>,
     pub sends: AtomicUsize,
@@ -42,7 +43,7 @@ impl LightningRail for Fake {
         Ok(Balance {
             onchain_total_sats: 0,
             onchain_spendable_sats: 0,
-            lightning_total_sats: 0,
+            lightning_total_sats: self.available_sats,
             anchor_reserve_sats: 0,
         })
     }

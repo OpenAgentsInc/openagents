@@ -185,6 +185,38 @@ impl LiveRails {
 }
 
 impl Rails for LiveRails {
+    fn spark_funding_invoice(&self, amount_sats: u64) -> Result<Option<Invoice>, String> {
+        let spark = self.spark()?;
+        spark.sync()?;
+        let balance = spark.balance()?;
+        if balance >= amount_sats {
+            return Ok(None);
+        }
+        let top_up = (amount_sats - balance).max(self.top_up_min_sats);
+        let bolt11 = spark.invoice(Some(top_up), "OpenAgents payout wallet top-up")?;
+        let parsed: lightning_invoice::Bolt11Invoice =
+            bolt11.parse().map_err(|_| "invalid Spark refill invoice")?;
+        if parsed.amount_milli_satoshis() != top_up.checked_mul(1000) {
+            return Err("incorrect Spark refill amount".into());
+        }
+        Ok(Some(Invoice {
+            payment_hash: parsed.payment_hash().to_string(),
+            bolt11,
+            amount_msat: i64::try_from(top_up.checked_mul(1000).ok_or("invalid refill amount")?)
+                .map_err(|_| "invalid refill amount")?,
+        }))
+    }
+    fn await_spark_funding(&self, amount_sats: u64) -> Result<(), String> {
+        let spark = self.spark()?;
+        for _ in 0..30 {
+            spark.sync()?;
+            if spark.balance()? >= amount_sats {
+                return Ok(());
+            }
+            std::thread::sleep(Duration::from_secs(2));
+        }
+        Err("the top-up has not reached the Spark wallet yet".into())
+    }
     fn lightning_invoice(&self, address: &str, amount_msat: i64) -> Result<Invoice, String> {
         let terms = get_json(&self.http, &lnurlp_url(address)?)?;
         let (callback, metadata) = pay_request_terms(&terms, amount_msat)?;
@@ -214,26 +246,22 @@ impl Rails for LiveRails {
     }
 
     fn fund_spark(&self, amount_sats: u64) -> Result<(), String> {
-        let spark = self.spark()?;
-        spark.sync()?;
-        let balance = spark.balance()?;
-        if balance >= amount_sats {
+        self.fund_spark_shadow(amount_sats, &|_| {})
+    }
+    fn fund_spark_shadow(
+        &self,
+        amount_sats: u64,
+        observe: &dyn Fn(&Invoice),
+    ) -> Result<(), String> {
+        let Some(invoice) = self.spark_funding_invoice(amount_sats)? else {
             return Ok(());
-        }
-        let top_up = (amount_sats - balance).max(self.top_up_min_sats);
-        let invoice = spark.invoice(Some(top_up), "OpenAgents payout wallet top-up")?;
-        let cap = (top_up * 10).max(5_000); // 1% in msat, at least 5 sats
+        };
+        observe(&invoice);
+        let cap = (invoice.amount_msat / 100).max(5_000);
         self.wallet
-            .pay(&invoice, cap, PAY_WAIT)
+            .pay(&invoice.bolt11, cap as u64, PAY_WAIT)
             .map_err(|e| format!("paying the top-up: {e}"))?;
-        for _ in 0..30 {
-            spark.sync()?;
-            if spark.balance()? >= amount_sats {
-                return Ok(());
-            }
-            std::thread::sleep(Duration::from_secs(2));
-        }
-        Err("the top-up has not reached the Spark wallet yet".into())
+        self.await_spark_funding(amount_sats)
     }
 
     fn pay_spark(&self, address: &str, amount_sats: u64, key: &str) -> Outcome {
@@ -274,10 +302,11 @@ impl Rails for LiveRails {
     fn lookup_spark(&self, key: &str) -> Result<Lookup, String> {
         let spark = self.spark()?;
         spark.sync()?;
-        let row = spark
-            .payments(1_000)?
-            .into_iter()
-            .find(|row| row.id == key && !row.received);
+        let row = spark.payment(key)?;
+        if row.id != key || row.received {
+            return Err("the payout transfer does not match".into());
+        }
+        let row = Some(row);
         Ok(match row {
             None => Lookup::Absent,
             Some(row) => match row.status.as_str() {
@@ -381,13 +410,94 @@ fn open_spark(home: &Path, network: Network) -> Result<Option<SparkNode>, String
 }
 
 /// `pay payouts`: the worker loop.
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LndPayoutSettings {
+    endpoint: String,
+    certificate_sha256: String,
+    node: String,
+    network: String,
+    account_macaroon: PathBuf,
+    policy: PathBuf,
+    observations: PathBuf,
+    funding_journal: PathBuf,
+}
+fn routed_rails(
+    path: &Path,
+    old: Arc<LiveRails>,
+    network: Network,
+) -> Result<lnd_sdk::payout::Router<lnd_sdk::service::DeferredClient, LiveRails>, String> {
+    let mut s: LndPayoutSettings = serde_json::from_slice(
+        &std::fs::read(path).map_err(|_| "Could not read payout settings.")?,
+    )
+    .map_err(|_| "The payout settings are invalid.")?;
+    let base = path.parent().unwrap_or(Path::new("."));
+    for file in [
+        &mut s.account_macaroon,
+        &mut s.policy,
+        &mut s.observations,
+        &mut s.funding_journal,
+    ] {
+        if file.is_relative() {
+            *file = base.join(&*file);
+        }
+    }
+    let expected = match network {
+        Network::Bitcoin => "mainnet",
+        Network::Testnet => "testnet",
+        Network::Signet => "signet",
+        Network::Regtest => "regtest",
+    };
+    if s.network != expected {
+        return Err("The payout wallets use different Bitcoin networks.".into());
+    }
+    let _: secp256k1::PublicKey = s
+        .node
+        .parse()
+        .map_err(|_| "The payout node identity is invalid.")?;
+    let pin = openagents_wallet::parse_hash32(&s.certificate_sha256)
+        .map_err(|_| "The payout certificate fingerprint is invalid.")?;
+    lnd_sdk::payout::Policy::load(&s.policy).map_err(|e| e.to_string())?;
+    let rail = lnd_sdk::service::DeferredClient {
+        config: lnd_sdk::transport::Config::new(s.endpoint, pin),
+        macaroon: s.account_macaroon,
+        node: s.node,
+        network: s.network,
+        connected: tokio::sync::Mutex::new(None),
+    };
+    Ok(lnd_sdk::payout::Router {
+        old,
+        wallet: lnd_sdk::service::Wallet::new(Arc::new(rail)).map_err(|e| e.to_string())?,
+        policy: s.policy,
+        observations: s.observations,
+        funding_journal: s.funding_journal,
+    })
+}
 pub(crate) fn payouts(output: &Output, words: &[String], usage: &str) -> u8 {
-    let args = match Args::parse(words, &["once"]) {
+    let args = match Args::parse(words, &["once", "check"]) {
         Ok(args) => args,
         Err(message) => return output.usage("pay", &message, usage),
     };
     let Some(path) = ledger_path(&args) else {
         return output.usage("pay", "payouts needs --ledger FILE", usage);
+    };
+    if args.option("require-sent-after").is_some() && !args.switch("once") && !args.switch("check")
+    {
+        return output.usage("pay", "The restart payout check needs --once.", usage);
+    }
+    if args.switch("check") && args.option("require-sent-after").is_none() {
+        return output.usage(
+            "pay",
+            "The payout check needs --require-sent-after TIME.",
+            usage,
+        );
+    }
+    let required_since = match args.option("require-sent-after") {
+        Some(value) => match value.parse::<i64>() {
+            Ok(time) if time > 0 && time <= now() => Some(time),
+            _ => return output.usage("pay", "The payout check needs a valid restart time.", usage),
+        },
+        None => None,
     };
     let interval: u64 = match args.number("interval", 60) {
         Ok(n) => n,
@@ -402,7 +512,11 @@ pub(crate) fn payouts(output: &Output, words: &[String], usage: &str) -> u8 {
         Ok(opened) => opened,
         Err(error) => return output.fail("pay", &error.to_string()),
     };
-    let spark = match open_spark(&spark_home(&args), config.network) {
+    let spark = match if args.switch("check") {
+        Ok(None)
+    } else {
+        open_spark(&spark_home(&args), config.network)
+    } {
         Ok(spark) => spark,
         Err(why) => {
             let _ = wallet.stop();
@@ -417,32 +531,47 @@ pub(crate) fn payouts(output: &Output, words: &[String], usage: &str) -> u8 {
         Ok(http) => http,
         Err(e) => return output.fail("pay", &e.to_string()),
     };
-    let rails = LiveRails {
+    let old = Arc::new(LiveRails {
         wallet: Arc::new(wallet),
         currency: currency(config.network),
         http,
         spark,
         top_up_min_sats: TOP_UP_MIN_SATS,
-    };
-    output.line(
-        &json!({"event": "payouts", "ledger": path.display().to_string(), "relay": relay,
-                "spark": rails.spark.is_some(), "network": config.network.as_str(),
-                "interval_secs": interval}),
-        |v| {
-            format!(
-                "paying out from {} every {}s (Spark rail {})",
-                v["ledger"].as_str().unwrap_or(""),
-                v["interval_secs"],
-                if v["spark"].as_bool() == Some(true) {
-                    "on"
-                } else {
-                    "off"
-                }
-            )
+    });
+    let routed = match args.option("lnd") {
+        Some(path) => match routed_rails(Path::new(path), old.clone(), config.network) {
+            Ok(router) => Some(router),
+            Err(why) => return output.fail("pay", &why),
         },
-    );
+        None => None,
+    };
+    let rails: &dyn Rails = routed
+        .as_ref()
+        .map_or(old.as_ref() as &dyn Rails, |router| router as &dyn Rails);
+    if !args.switch("check") {
+        output.line(
+            &json!({"event": "payouts", "ledger": path.display().to_string(), "relay": relay,
+                "spark": old.spark.is_some(), "network": config.network.as_str(),
+                "interval_secs": interval}),
+            |v| {
+                format!(
+                    "paying out from {} every {}s (Spark rail {})",
+                    v["ledger"].as_str().unwrap_or(""),
+                    v["interval_secs"],
+                    if v["spark"].as_bool() == Some(true) {
+                        "on"
+                    } else {
+                        "off"
+                    }
+                )
+            },
+        );
+    }
     let policy = Policy::default();
     loop {
+        if args.switch("check") {
+            break;
+        }
         let mut resolve = |ledger: &mut Ledger, party: &str, at: i64| {
             let release = ledger.latest_release(party)?;
             ledger.resolve_payee(party, at, || {
@@ -456,7 +585,7 @@ pub(crate) fn payouts(output: &Output, words: &[String], usage: &str) -> u8 {
         let mut new_id = || uuid::Uuid::new_v4().to_string();
         match pay_ledger::payout::tick(
             &mut ledger,
-            &rails,
+            rails,
             &policy,
             now(),
             &mut resolve,
@@ -473,12 +602,64 @@ pub(crate) fn payouts(output: &Output, words: &[String], usage: &str) -> u8 {
                 });
             }
         }
+        if let Ok(rows) = ledger.payouts(Some(&[PayoutState::Unknown])) {
+            let overdue = rows
+                .iter()
+                .filter(|row| now().saturating_sub(row.created_at) > 3600)
+                .count();
+            if overdue > 0 {
+                output.line(
+                    &json!({"event": "payouts_need_attention", "over_one_hour": overdue}),
+                    |_| format!("{overdue} payouts need payment confirmation."),
+                );
+            }
+        }
         if args.switch("once") {
             break;
         }
         std::thread::sleep(Duration::from_secs(interval.max(1)));
     }
-    match rails.wallet.stop() {
+    if let Some(since) = required_since {
+        let rows = match ledger.payouts(None) {
+            Ok(rows) => rows,
+            Err(_) => {
+                let _ = old.wallet.stop();
+                return output.fail("pay", "Could not read payouts for the restart check.");
+            }
+        };
+        let overdue = rows.iter().any(|row| {
+            row.state == PayoutState::Unknown && now().saturating_sub(row.created_at) > 3600
+        });
+        if overdue {
+            let _ = old.wallet.stop();
+            return output.fail(
+                "pay",
+                "A payout has needed payment confirmation for over an hour.",
+            );
+        }
+        let confirmed = rows.iter().any(|row| {
+            row.state == PayoutState::Sent
+                && row.created_at >= since
+                && row.updated_at >= since
+                && row.rail == "lightning"
+                && row
+                    .wallet_reference
+                    .as_deref()
+                    .is_some_and(|r| matches!(rails.lookup_lightning(r), Ok(Lookup::Sent { .. })))
+        });
+        if !confirmed {
+            let _ = old.wallet.stop();
+            return output.fail(
+                "pay",
+                "No completed payout has been confirmed since the restart.",
+            );
+        }
+        output.line(
+            &json!({"event": "payout_check", "confirmed": true, "since": since}),
+            |_| "Payout confirmed after restart.".into(),
+        );
+    }
+    match old.wallet.stop() {
         Ok(()) => 0,
         Err(e) => output.fail("pay", &e.to_string()),
     }

@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "mode": "mdk",
+  "mainnet_approved": false,
+  "canary_parties": [],
+  "account_id": "",
+  "account_limit_sats": 0
+}

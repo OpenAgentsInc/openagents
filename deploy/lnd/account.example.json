@@ -1,0 +1,11 @@
+{
+  "endpoint": "https://127.0.0.1:8443",
+  "certificate_sha256": "REPLACE_WITH_LITD_CERTIFICATE_SHA256",
+  "operator_macaroon": "/var/lib/openagents-lit/mainnet/lit.macaroon",
+  "mainnet_approved": false,
+  "label": "openagents-payout-worker",
+  "limit_sats": 0,
+  "expires_at": 0,
+  "credential_output": "/run/openagents-lnd/account.macaroon",
+  "journal": "/var/lib/openagents-lnd/payout-account.json"
+}

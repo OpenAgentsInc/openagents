@@ -24,6 +24,8 @@ pub(crate) enum Backend {
 pub(crate) struct ReceiveSettings {
     #[serde(default)]
     pub backend: Backend,
+    #[serde(default)]
+    pub all_resources: bool,
     pub endpoint: String,
     pub certificate_sha256: String,
     pub node_id: String,
@@ -79,6 +81,9 @@ impl ReceiveSettings {
         };
         if front.config().network != expected {
             return Err("The two receiving wallets use different Bitcoin networks.".into());
+        }
+        if self.all_resources {
+            return Ok(front.with_default_receiver(self.receiver()?, self.backend == Backend::Lnd));
         }
         // Exact resource identity, never a path prefix shared with other sellers.
         // Keep this node known after rollback to observe its original invoices.

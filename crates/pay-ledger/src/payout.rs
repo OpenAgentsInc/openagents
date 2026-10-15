@@ -120,7 +120,7 @@ pub struct Payout {
     /// `lightning` or `spark`.
     pub rail: String,
     pub state: PayoutState,
-    /// The payment hash (Lightning) or transfer id (Spark).
+    /// Legacy MDK hash, `lnd:node:hash`, or Spark transfer ID.
     pub wallet_reference: Option<String>,
     /// This payee's attempt number since its last payout that did not fail.
     pub attempts: i64,
@@ -383,6 +383,42 @@ pub enum Lookup {
 
 /// The two payout rails. Every call blocks.
 pub trait Rails {
+    /// Choose once, before `begin_send`. Recovery uses this saved reference.
+    fn lightning_reference(
+        &self,
+        _party: &str,
+        invoice: &Invoice,
+    ) -> std::result::Result<String, String> {
+        Ok(invoice.payment_hash.clone())
+    }
+    fn pay_lightning_reference(
+        &self,
+        invoice: &Invoice,
+        _reference: &str,
+        max_fee_msat: i64,
+    ) -> Outcome {
+        self.pay_lightning(invoice, max_fee_msat)
+    }
+    fn fund_spark_for(&self, _party: &str, amount_sats: u64) -> std::result::Result<(), String> {
+        self.fund_spark(amount_sats)
+    }
+    /// Create a refill invoice only when the Spark balance needs it.
+    fn spark_funding_invoice(
+        &self,
+        _amount_sats: u64,
+    ) -> std::result::Result<Option<Invoice>, String> {
+        Err("Spark funding is unavailable".into())
+    }
+    fn await_spark_funding(&self, _amount_sats: u64) -> std::result::Result<(), String> {
+        Err("Spark funding is unavailable".into())
+    }
+    fn fund_spark_shadow(
+        &self,
+        amount_sats: u64,
+        _observe: &dyn Fn(&Invoice),
+    ) -> std::result::Result<(), String> {
+        self.fund_spark(amount_sats)
+    }
     /// Resolve a Lightning address (LNURL-pay) to an invoice for exactly
     /// `amount_msat`.
     fn lightning_invoice(
@@ -595,7 +631,7 @@ fn send(
     let amount_sats = u64::try_from(sats).map_err(|_| Error::Invalid("payout amount"))?;
     // Get the wallet reference, then journal it, then pay.
     let outcome = if spark {
-        if let Err(why) = rails.fund_spark(amount_sats) {
+        if let Err(why) = rails.fund_spark_for(&p.party, amount_sats) {
             return fail(ledger, steps, format!("funding the Spark wallet: {why}"));
         }
         ledger.begin_send(&p.id, &p.id, None, sent_msat, now)?;
@@ -616,15 +652,13 @@ fn send(
                 ),
             );
         }
-        ledger.begin_send(
-            &p.id,
-            &invoice.payment_hash,
-            Some(&invoice.bolt11),
-            sent_msat,
-            now,
-        )?;
+        let reference = match rails.lightning_reference(&p.party, &invoice) {
+            Ok(reference) => reference,
+            Err(why) => return fail(ledger, steps, why),
+        };
+        ledger.begin_send(&p.id, &reference, Some(&invoice.bolt11), sent_msat, now)?;
         steps.push(step(p, PayoutState::Sending, None));
-        rails.pay_lightning(&invoice, policy.fee_cap_msat(sent_msat))
+        rails.pay_lightning_reference(&invoice, &reference, policy.fee_cap_msat(sent_msat))
     };
     let (state, fee, error) = match outcome {
         Outcome::Sent { fee_msat } => (PayoutState::Sent, Some(fee_msat), None),

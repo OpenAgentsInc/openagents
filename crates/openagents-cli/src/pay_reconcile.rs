@@ -339,7 +339,17 @@ pub(crate) fn reconcile(output: &Output, words: &[String], usage: &str) -> u8 {
                 let records = wallet.payments().map_err(|e| e.to_string())?;
                 let balance = wallet.balance().map_err(|e| e.to_string())?;
                 let secondary = WalletView {
-                    payments: records.iter().map(receiver_payment).collect(),
+                    payments: records
+                        .iter()
+                        .map(|record| {
+                            let mut payment = receiver_payment(record);
+                            if record.direction == PaymentDirection::Outbound {
+                                payment.reference =
+                                    format!("lnd:{}:{}", wallet.node_id(), payment.reference);
+                            }
+                            payment
+                        })
+                        .collect(),
                     complete: true,
                     balance_msat: i64::try_from(balance.lightning_total_sats)
                         .ok()

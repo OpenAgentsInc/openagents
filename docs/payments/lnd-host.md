@@ -238,3 +238,66 @@ authorizes signing. A compromised watch-only process can request signatures.
 Keep payout limits and monitoring in force. TLS and transport credentials
 remain on the watch-only host. Follow the pinned upstream
 [remote-signing instructions](https://github.com/lightningnetwork/lnd/blob/v0.21.1-beta/docs/remote-signing.md).
+
+## Payout rollout (#11757)
+
+Production remains on MDK. Before activating LND, complete owner decision 3
+and the custody review in #11761. The worker uses the same ledger for
+plugin author, affiliate, and Pylon shares. Spark-address payments still use
+the payout Spark wallet; only its refill invoice changes sender.
+
+1. Stage the checked CLI with `deploy/lnd/stage-payouts.sh COMMIT BINARY SHA256`.
+   It creates settings only when absent and preserves the running worker.
+   Keep `/etc/openagents-pay/payout-policy.json` outside release directories.
+   The template selects `mdk` with no LND spending approval or account limit.
+2. Install the pinned litd image in `deploy/lnd/litd.compose.yaml` on the
+   LND host. Set `rpcmiddleware.enable=true` in LND and restart it during
+   the approved window. Bind litd to loopback, disable its UI and unrelated
+   services, and mount only its LND certificate and operator macaroon.
+   Follow [litd's account documentation](https://github.com/lightninglabs/lightning-terminal/blob/v0.17.0-alpha/docs/accounts.md).
+3. Choose a total LND allowance and expiration. Run `lnd-account` with an
+   approved copy of `deploy/lnd/account.example.json`. It saves an intent
+   before creation, writes the credential privately, and refuses repeated
+   creation. An uncertain creation needs operator recovery, never a new
+   account or balance reset. Put only the returned account credential in
+   `lnd-oa-lnd-1-payout-account`; grant the pay-host service account accessor
+   only on that secret. Deliver it as a mode-0600 tmpfs file at the configured
+   `account_macaroon` path before enabling LND sends. Never give the payout
+   process litd's operator credential or LND's unrestricted payout macaroon.
+4. Set persisted `mode` to `shadow` and activate the candidate with
+   `deploy/lnd/activate-payouts.sh COMMIT /etc/openagents-pay/lnd-payout.json`.
+   Have an approved test payout queued. Shadow sends on MDK and records LND
+   fee estimates for Lightning payouts and Spark refill invoices. Estimates
+   time out after 12 seconds; estimate or observation failures do not change
+   the sender. Observe one week and compare estimates with actual MDK fees.
+5. After approval, put only our test payee IDs in `canary_parties`, enter the
+   real account ID and allowance, set `mainnet_approved`, then select `canary`.
+   Expand to one cohort only after a successful real-wallet test. An LND
+   reference stores `lnd:node:hash` before dispatch. Legacy hashes mean MDK.
+   The adapter checks the available allowance before dispatch. litd can mask
+   an over-budget streaming request with a request-state error; concurrent
+   allowance changes still require original-hash recovery.
+   Recover every unresolved row directly on its original backend. An LND
+   refill also keeps its original hash across restart and rollback.
+6. Roll back by changing only policy `mode` to `mdk`. Leave the LND settings,
+   account credential, and original node available for recovery. Deploys do
+   not rewrite this file or recreate the litd account. A candidate stays
+   active only after `payouts --check --require-sent-after UNIX` confirms a
+   completed Lightning payout directly on its node. A failed gate restores
+   the previous worker; it does not alter spending policy.
+
+Use the existing reconciliation timer with `--routes` retaining both receive
+nodes and `--resolve`. LND outbound records carry the original node in their
+reference. Check node payment status, then ledger rows, then reconciliation,
+then website stats. Unknown payouts over an hour are reported and fail the
+rollout check. Reconciliation must remain clean daily for two weeks, with
+zero duplicate sends or overdue unknown rows. Save a real-wallet rollback
+and reversal test. Record liquidity fees as operating expenses separately
+from payee shares; unexpected outbound payments still require investigation.
+
+After those checks and approval, `[lnd_receive] all_resources = true` with
+`backend = "lnd"` selects LND for plugin and hosted x402 receipts. Keep
+`all_resources` and both credentials configured during rollback; change only
+`backend` to `mdk` so old invoices still settle. Pro retains its separate MDK
+compatibility hold. Keep the LDK receiver warm for a month; retiring it is an
+owner action. No live payout or receipt switch was made for #11757.

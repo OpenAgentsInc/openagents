@@ -11464,6 +11464,7 @@ dependencies = [
  "jsonschema",
  "knowledge",
  "libc",
+ "lightning-invoice 0.34.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "lnd-sdk",
  "mac-jobs",
  "microcoder",

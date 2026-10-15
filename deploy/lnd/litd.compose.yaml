@@ -1,0 +1,16 @@
+# Activate only after owner decision 3. Mount credentials, never the LND wallet database.
+services:
+  litd:
+    image: lightninglabs/lightning-terminal:v0.17.0-alpha@sha256:fd6d6040f78e0a342437312f3a3c154f4b63d79172c6b466e2dfd242b06b4a1c
+    network_mode: host
+    command: ["--configfile=/etc/lit.conf"]
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=16m"]
+    volumes:
+      - /etc/openagents-lit/lit.conf:/etc/lit.conf:ro
+      - /var/lib/openagents-lit:/var/lib/openagents-lit
+      - /var/lib/openagents-lnd/lnd/tls.cert:/var/lib/openagents-lnd/lnd/tls.cert:ro
+      - /var/lib/openagents-lnd/lnd/data/chain/bitcoin/mainnet/admin.macaroon:/var/lib/openagents-lnd/lnd/data/chain/bitcoin/mainnet/admin.macaroon:ro

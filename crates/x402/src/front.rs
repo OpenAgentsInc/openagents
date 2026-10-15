@@ -334,6 +334,7 @@ struct ResourceReceivers {
 pub struct Front<S: ReplayStore> {
     config: Config,
     receiver: Arc<dyn Receiver>,
+    default_receivers: Vec<Arc<dyn Receiver>>,
     resource_receivers: std::collections::HashMap<String, ResourceReceivers>,
     facilitator: Facilitator<S>,
     sink: Arc<dyn SettlementSink>,
@@ -409,6 +410,7 @@ impl<S: ReplayStore> Front<S> {
         }
         Ok(Self {
             config,
+            default_receivers: vec![receiver.clone()],
             receiver,
             resource_receivers: std::collections::HashMap::new(),
             facilitator,
@@ -420,6 +422,20 @@ impl<S: ReplayStore> Front<S> {
         })
     }
 
+    /// Switch all routes while retaining both issuers for original-invoice recovery.
+    pub fn with_default_receiver(mut self, receiver: Arc<dyn Receiver>, selected: bool) -> Self {
+        if !self
+            .default_receivers
+            .iter()
+            .any(|known| known.pay_to() == receiver.pay_to())
+        {
+            self.default_receivers.push(receiver.clone());
+        }
+        if selected {
+            self.receiver = receiver;
+        }
+        self
+    }
     /// Select an issuer for one exact resource. Keep the secondary configured
     /// when rolling back so its open invoices can still settle on their node.
     pub fn with_resource_receiver(
@@ -436,7 +452,7 @@ impl<S: ReplayStore> Front<S> {
             .entry(resource.into())
             .or_insert_with(|| ResourceReceivers {
                 active: self.receiver.clone(),
-                known: vec![self.receiver.clone()],
+                known: self.default_receivers.clone(),
             });
         if !binding
             .known
@@ -465,7 +481,11 @@ impl<S: ReplayStore> Front<S> {
                 .iter()
                 .find(|r| r.pay_to() == payee)
                 .map(|r| r.as_ref()),
-            None => (self.receiver.pay_to() == payee).then_some(self.receiver.as_ref()),
+            None => self
+                .default_receivers
+                .iter()
+                .find(|r| r.pay_to() == payee)
+                .map(|r| r.as_ref()),
         }
     }
 

@@ -1,0 +1,10 @@
+{
+  "endpoint": "https://10.128.0.103:10009",
+  "certificate_sha256": "REPLACE_WITH_NODE_CERTIFICATE_SHA256",
+  "node": "03bb4d4950167daf3f9693c6cdb70cbe160ebbd19afacc1ea509116b2d716c4acd",
+  "network": "mainnet",
+  "account_macaroon": "/run/openagents-lnd-payout/account.macaroon",
+  "policy": "/etc/openagents-pay/payout-policy.json",
+  "observations": "/var/lib/openagents-pay/lnd-shadow.json",
+  "funding_journal": "/var/lib/openagents-pay/lnd-spark-funding.json"
+}

@@ -8,8 +8,8 @@ See [the phased plan](../../docs/payments/2026-10-15-lnd-sdk-plan.md).
 0.21 version gate. Idempotent reads retry briefly. Payment sends and invoice
 creation never retry after an uncertain response. Recover a payment by its
 original hash. The blocking `service::Wallet` adapter owns a dedicated runtime;
-`service::Rails` uses it for Lightning and delegates address resolution and
-Spark operations to the existing provider.
+`service::Rails` uses it for Lightning, including durable Spark refill
+invoices. Address resolution and Spark transfers use the existing provider.
 
 `settlements` resumes from the consumer's saved settlement index and catches
 up on old invoices on first use. A `SettlementSink` must commit each effect

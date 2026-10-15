@@ -2422,3 +2422,17 @@ decision 5 before deploying or moving the node's seed. Follow
 [the remote-signer runbook](docs/payments/lnd-host.md#remote-signer-11756),
 including removal of old seed-bearing disks and snapshots. No production
 signer was created, and no production seed was read or moved.
+
+## Approve and observe the LND payout rollout (#11757)
+
+Before LND sends, complete decision 3 and counsel review (#11761), approve
+the litd allowance and canary payees, and publish the capped credential.
+The candidate and persisted-policy templates leave MDK selected. Run one
+week of shadow estimates, then our own test payees and one cohort. Require
+a directly confirmed payout after every worker restart. Observe two weeks
+with zero duplicate sends, no unknown row over an hour, and clean daily
+reconciliation; save a mainnet rollback and reversal test. Only then approve
+plugin and hosted x402 receives on LND. Keep the LDK receiver warm a month
+before retirement. Pro's MDK compatibility check remains separate. No
+production payout or receive setting was switched during implementation.
+Follow [the rollout procedure](docs/payments/lnd-host.md#payout-rollout-11757).

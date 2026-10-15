@@ -46,6 +46,21 @@ impl Macaroon {
     pub fn role(&self) -> Role {
         self.role
     }
+    /// Save a newly issued credential without exposing it or replacing another one.
+    pub fn write_new(&self, path: &Path) -> Result<()> {
+        use std::io::Write;
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let mut file = options.open(path).map_err(|_| Error::PermissionDenied)?;
+        file.write_all(&self.bytes)
+            .and_then(|()| file.sync_all())
+            .map_err(|_| Error::Checkpoint)
+    }
 }
 impl fmt::Debug for Macaroon {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

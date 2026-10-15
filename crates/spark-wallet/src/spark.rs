@@ -103,6 +103,15 @@ pub struct SparkNode {
 }
 
 impl SparkNode {
+    /// Look up an unresolved transfer directly, even after it leaves recent history.
+    pub fn payment(&self, id: &str) -> Result<crate::model::PaymentRow, String> {
+        self.runtime
+            .block_on(self.sdk.get_payment(breez_sdk_spark::GetPaymentRequest {
+                payment_id: id.into(),
+            }))
+            .map(|response| row(&response.payment))
+            .map_err(|error| describe("read", &error.to_string()))
+    }
     /// Start the SDK with a mnemonic, keeping its records in `storage`.
     /// Blocking; it reaches the Spark operators.
     pub fn open(

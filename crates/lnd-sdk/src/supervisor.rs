@@ -58,6 +58,11 @@ impl Regtest {
             project,
         };
         let mut compose = include_str!("../../../deploy/lnd-sdk/compose.yaml").to_owned();
+        compose = compose.replacen(
+            "\"--wtclient.active\"",
+            "\"--wtclient.active\", \"--rpcmiddleware.enable\"",
+            1,
+        );
         if recoverable {
             compose = compose.replacen("\"--noseedbackup\", ", "", 1);
         }
@@ -394,6 +399,52 @@ impl Regtest {
                 )
                 .map_err(|_| Error::Invalid("regtest credential"))?,
             )?,
+        ))
+    }
+    pub fn start_accounts(&self) -> Result<(crate::transport::Config, crate::macaroon::Macaroon)> {
+        use sha2::{Digest, Sha256};
+        self.command(&["up", "-d", "litd"])?;
+        self.wait(|| {
+            self.command(&[
+                "exec",
+                "-T",
+                "litd",
+                "litcli",
+                "--tlscertpath=/lit/tls.cert",
+                "--macaroonpath=/lit/regtest/lit.macaroon",
+                "getinfo",
+            ])
+            .map(|_| ())
+        })?;
+        let endpoint = String::from_utf8(self.command(&["port", "litd", "8443"])?)
+            .map_err(|_| Error::Unavailable)?;
+        let cert = self.command(&["exec", "-T", "litd", "cat", "/lit/tls.cert"])?;
+        let der = rustls_pemfile::certs(&mut cert.as_slice())
+            .next()
+            .ok_or(Error::CertificatePin)?
+            .map_err(|_| Error::CertificatePin)?;
+        let hex = self.command(&[
+            "exec",
+            "-T",
+            "litd",
+            "od",
+            "-An",
+            "-v",
+            "-tx1",
+            "/lit/regtest/lit.macaroon",
+        ])?;
+        let bytes = hex::decode(
+            hex.into_iter()
+                .filter(|b| !b.is_ascii_whitespace())
+                .collect::<Vec<_>>(),
+        )
+        .map_err(|_| Error::Invalid("litd credential"))?;
+        Ok((
+            crate::transport::Config::new(
+                format!("https://{}", endpoint.trim()),
+                Sha256::digest(der).into(),
+            ),
+            crate::macaroon::Macaroon::new(crate::macaroon::Role::Ops, 0, bytes)?,
         ))
     }
 }

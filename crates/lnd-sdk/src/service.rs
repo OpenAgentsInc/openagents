@@ -6,6 +6,66 @@ use openagents_wallet::{
 };
 use std::{sync::Arc, time::Duration};
 
+/// Opens the optional payout node on first use, so its outage cannot prevent MDK rollback.
+pub struct DeferredClient {
+    pub config: crate::transport::Config,
+    pub macaroon: std::path::PathBuf,
+    pub node: String,
+    pub network: String,
+    pub connected: tokio::sync::Mutex<Option<crate::Client>>,
+}
+impl DeferredClient {
+    async fn client(&self) -> Result<crate::Client> {
+        let mut saved = self.connected.lock().await;
+        if let Some(client) = &*saved {
+            return Ok(client.clone());
+        }
+        let client = crate::Client::connect(
+            &self.config,
+            crate::macaroon::Macaroon::from_file(crate::macaroon::Role::Payout, 0, &self.macaroon)?,
+        )
+        .await?;
+        if client.node_id() != self.node || client.network() != self.network {
+            return Err(Error::NodeMismatch);
+        }
+        *saved = Some(client.clone());
+        Ok(client)
+    }
+}
+#[async_trait]
+impl LightningRail for DeferredClient {
+    fn node_id(&self) -> String {
+        self.node.clone()
+    }
+    async fn estimate(&self, i: &str) -> Result<u64> {
+        self.client().await?.estimate(i).await
+    }
+    async fn receive_exact(&self, a: u64, h: [u8; 32], e: u32) -> Result<IssuedInvoice> {
+        self.client().await?.receive_exact(a, h, e).await
+    }
+    async fn pay(&self, i: &str, f: u64, w: Duration) -> Result<Proof> {
+        self.client().await?.pay(i, f, w).await
+    }
+    async fn lookup(&self, h: [u8; 32]) -> Result<Option<PaymentRecord>> {
+        self.client().await?.lookup(h).await
+    }
+    async fn payments(&self) -> Result<Vec<PaymentRecord>> {
+        self.client().await?.payments().await
+    }
+    async fn balance(&self) -> Result<Balance> {
+        self.client().await?.balance().await
+    }
+    async fn channels(&self) -> Result<Vec<Channel>> {
+        self.client().await?.channels().await
+    }
+    async fn health(&self) -> Result<Health> {
+        self.client().await?.health().await
+    }
+    async fn funding_address(&self) -> Result<String> {
+        Err(Error::PermissionDenied)
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Health {
     pub synced_to_chain: bool,
@@ -18,6 +78,9 @@ pub struct Health {
 }
 #[async_trait]
 pub trait LightningRail: Send + Sync + 'static {
+    async fn estimate(&self, _invoice: &str) -> Result<u64> {
+        Err(Error::PermissionDenied)
+    }
     fn node_id(&self) -> String;
     async fn receive_exact(
         &self,
@@ -58,6 +121,16 @@ impl<R: LightningRail> Clone for Wallet<R> {
     }
 }
 impl<R: LightningRail> Wallet<R> {
+    pub fn estimate(&self, invoice: &str) -> Result<u64> {
+        let invoice = invoice.to_owned();
+        self.run(move |rail| {
+            Box::pin(async move {
+                tokio::time::timeout(Duration::from_secs(12), rail.estimate(&invoice))
+                    .await
+                    .unwrap_or(Err(Error::Timeout))
+            })
+        })
+    }
     pub fn new(rail: Arc<R>) -> Result<Self> {
         Self::start(move |_| Ok(rail))
     }
@@ -231,6 +304,7 @@ pub struct Rails<R: LightningRail, D> {
     pub wallet: Wallet<R>,
     pub delegate: D,
     pub payment_timeout: Duration,
+    pub funding_journal: std::path::PathBuf,
 }
 impl<R: LightningRail, D: pay_ledger::payout::Rails> pay_ledger::payout::Rails for Rails<R, D> {
     fn lightning_invoice(
@@ -255,6 +329,19 @@ impl<R: LightningRail, D: pay_ledger::payout::Rails> pay_ledger::payout::Rails f
         });
         if !valid || invoice.amount_msat <= 0 || max_fee_msat < 0 {
             return Outcome::Failed("invalid payment terms".into());
+        }
+        // Check the account's allowance before dispatch. litd 0.17 can mask a
+        // budget rejection with its missing-request-state error on streaming RPCs.
+        // A concurrent change can still race this read; that send stays unknown.
+        match self.wallet.balance() {
+            Ok(balance)
+                if u128::from(balance.lightning_total_sats) * 1000
+                    < invoice.amount_msat as u128 + max_fee_msat as u128 =>
+            {
+                return Outcome::Failed("the payout allowance is too low".into());
+            }
+            Ok(_) => {}
+            Err(_) => return Outcome::Failed("could not check the payout allowance".into()),
         }
         match self
             .wallet
@@ -292,7 +379,81 @@ impl<R: LightningRail, D: pay_ledger::payout::Rails> pay_ledger::payout::Rails f
         }
     }
     fn fund_spark(&self, amount_sats: u64) -> std::result::Result<(), String> {
-        self.delegate.fund_spark(amount_sats)
+        use crate::liquidity::Journal;
+        use serde_json::json;
+        let mut saved = Journal::open(&self.funding_journal).map_err(|e| e.to_string())?;
+        let node = self.wallet.node_id();
+        if saved.entries.get("node").is_some_and(|v| v != &json!(node)) {
+            return Err("funding wallet changed".into());
+        }
+        saved.save("node", json!(node)).map_err(|e| e.to_string())?;
+        if let Some(pending) = saved
+            .entries
+            .get("funding")
+            .filter(|v| v["state"] != "confirmed" && v["state"] != "failed")
+        {
+            let hash = pending["hash"].as_str().ok_or("missing funding hash")?;
+            // Direct lookup, even after rollback or a long history. Never send again.
+            match self.lookup_lightning(hash)? {
+                pay_ledger::payout::Lookup::Sent { .. } => {}
+                pay_ledger::payout::Lookup::Failed(why) => {
+                    let mut record = pending.clone();
+                    record["state"] = json!("failed");
+                    saved
+                        .save(&format!("refill:{hash}"), record.clone())
+                        .map_err(|e| e.to_string())?;
+                    saved.save("funding", record).map_err(|e| e.to_string())?;
+                    return Err(why);
+                }
+                _ => {
+                    return Err("the previous Spark refill still needs payment confirmation".into());
+                }
+            }
+        } else {
+            let Some(invoice) = self.delegate.spark_funding_invoice(amount_sats)? else {
+                return Ok(());
+            };
+            let decoded = crate::router::invoice(&invoice.bolt11).map_err(|e| e.to_string())?;
+            if decoded.payment_hash().to_string() != invoice.payment_hash
+                || decoded
+                    .amount_milli_satoshis()
+                    .and_then(|v| i64::try_from(v).ok())
+                    != Some(invoice.amount_msat)
+                || invoice.amount_msat <= 0
+            {
+                return Err("invalid Spark refill invoice".into());
+            }
+            saved
+                .save(
+                    "funding",
+                    json!({"state": "unknown", "hash": invoice.payment_hash,
+                "invoice": invoice.bolt11, "amount_msat": invoice.amount_msat}),
+                )
+                .map_err(|e| e.to_string())?;
+            match self.pay_lightning(&invoice, (invoice.amount_msat / 100).max(5000)) {
+                pay_ledger::payout::Outcome::Sent { .. } => {}
+                pay_ledger::payout::Outcome::Failed(why) => {
+                    let mut record = saved.entries["funding"].clone();
+                    record["state"] = json!("failed");
+                    saved
+                        .save(&format!("refill:{}", invoice.payment_hash), record.clone())
+                        .map_err(|e| e.to_string())?;
+                    saved.save("funding", record).map_err(|e| e.to_string())?;
+                    return Err(why);
+                }
+                pay_ledger::payout::Outcome::Unknown(_) => {
+                    return Err("the Spark refill needs payment confirmation".into());
+                }
+            }
+        }
+        self.delegate.await_spark_funding(amount_sats)?;
+        let mut record = saved.entries["funding"].clone();
+        record["state"] = json!("confirmed");
+        let hash = record["hash"].as_str().ok_or("missing funding hash")?;
+        saved
+            .save(&format!("refill:{hash}"), record.clone())
+            .map_err(|e| e.to_string())?;
+        saved.save("funding", record).map_err(|e| e.to_string())
     }
     fn pay_spark(&self, address: &str, amount_sats: u64, key: &str) -> pay_ledger::payout::Outcome {
         self.delegate.pay_spark(address, amount_sats, key)

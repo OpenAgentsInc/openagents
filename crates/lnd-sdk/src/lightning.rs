@@ -3,13 +3,27 @@ use crate::{
     Error, Result,
     error::{signed, unsigned},
     macaroon::Macaroon,
-    proto::{lnrpc, verrpc},
+    proto::lnrpc,
     service::{Health, LightningRail},
     transport::{self, AuthChannel, Config},
 };
 use async_trait::async_trait;
 use openagents_wallet::{Balance, Channel, IssuedInvoice, PaymentRecord, Proof};
 use std::time::Duration;
+
+fn supported_version(version: &str) -> bool {
+    let release = version.split_ascii_whitespace().next().unwrap_or("");
+    let release = release
+        .strip_prefix('v')
+        .unwrap_or(release)
+        .split('-')
+        .next()
+        .unwrap_or("");
+    let parts: Vec<_> = release.split('.').collect();
+    let supported =
+        parts.len() == 3 && parts[0] == "0" && parts[1] == "21" && parts[2].parse::<u32>().is_ok();
+    supported
+}
 
 #[derive(Clone)]
 pub struct Client {
@@ -32,12 +46,9 @@ impl Client {
             async move { rpc.get_info(lnrpc::GetInfoRequest {}).await }
         })
         .await?;
-        let version = transport::read(|| {
-            let mut rpc = verrpc::versioner_client::VersionerClient::new(channel.clone());
-            async move { rpc.get_version(verrpc::VersionRequest {}).await }
-        })
-        .await?;
-        if !allow_version_mismatch && (version.app_major != 0 || version.app_minor != 21) {
+        // Account credentials support GetInfo but litd rejects Versioner RPCs.
+        // The authenticated GetInfo version still gates the same major/minor.
+        if !allow_version_mismatch && !supported_version(&info.version) {
             return Err(Error::VersionMismatch);
         }
         let node =
@@ -151,6 +162,13 @@ impl Client {
 }
 #[async_trait]
 impl LightningRail for Client {
+    async fn estimate(&self, invoice: &str) -> Result<u64> {
+        let estimate = self.estimate_route_fee(invoice.into(), 10).await?;
+        if estimate.failure_reason != lnrpc::PaymentFailureReason::FailureReasonNone as i32 {
+            return Err(crate::router::failure(estimate.failure_reason));
+        }
+        unsigned(estimate.routing_fee_msat)
+    }
     fn node_id(&self) -> String {
         self.node_id.clone()
     }
@@ -554,12 +572,7 @@ impl Client {
         {
             return Err(Error::NodeMismatch);
         }
-        let version = transport::read(|| {
-            let mut rpc = verrpc::versioner_client::VersionerClient::new(self.channel.clone());
-            async move { rpc.get_version(verrpc::VersionRequest {}).await }
-        })
-        .await?;
-        if !self.allow_version_mismatch && (version.app_major != 0 || version.app_minor != 21) {
+        if !self.allow_version_mismatch && !supported_version(&info.version) {
             return Err(Error::VersionMismatch);
         }
         Ok(())

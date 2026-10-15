@@ -51,6 +51,7 @@ impl lnrpc::lightning_server::Lightning for Mock {
         self.reads.fetch_add(1, Ordering::SeqCst);
         #[allow(deprecated)]
         Ok(Response::new(lnrpc::GetInfoResponse {
+            version: format!("0.{}.1-beta", self.minor),
             identity_pubkey: format!(
                 "02{}",
                 if self.changed.load(Ordering::SeqCst) {
@@ -301,6 +302,23 @@ async fn denied_settlement_subscriptions_do_not_retry() {
 }
 #[test]
 fn credentials_and_status_errors_do_not_disclose_bytes() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("payout.macaroon");
+    credential().write_new(&path).unwrap();
+    assert!(credential().write_new(&path).is_err());
+    assert!(Macaroon::from_file(Role::Payout, 7, &path).is_ok());
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(
+            std::fs::metadata(&path).unwrap().permissions().mode() & 0o077,
+            0
+        );
+        let link = dir.path().join("credential-link");
+        std::os::unix::fs::symlink(&path, &link).unwrap();
+        assert!(credential().write_new(&link).is_err());
+        assert!(Macaroon::from_file(Role::Payout, 7, &link).is_err());
+    }
     assert_eq!(format!("{}", credential()), "macaroon(Payout, 7)");
     assert!(!format!("{:?}", credential()).contains("queued-test"));
     let e = Error::from(Status::permission_denied("must not appear"));
@@ -404,11 +422,31 @@ fn payout_worker_recovers_an_unknown_send_without_sending_again() {
             verified_at: START,
         })
         .unwrap();
-    let fake = Arc::new(fake::Fake::default());
-    let rails = service::Rails {
+    let fake = Arc::new(fake::Fake {
+        node_id: "test-node".into(),
+        available_sats: 1_000_000,
+        ..Default::default()
+    });
+    let payout_policy = dir.path().join("policy.json");
+    std::fs::write(
+        &payout_policy,
+        serde_json::to_vec(&crate::payout::Policy {
+            version: 1,
+            mode: crate::payout::Mode::Lnd,
+            mainnet_approved: true,
+            canary_parties: vec![],
+            account_id: "test-account".into(),
+            account_limit_sats: 100_000,
+        })
+        .unwrap(),
+    )
+    .unwrap();
+    let rails = crate::payout::Router {
         wallet: Wallet::new(fake.clone()).unwrap(),
-        delegate: Delegate,
-        payment_timeout: Duration::from_secs(2),
+        old: Arc::new(Delegate),
+        policy: payout_policy.clone(),
+        observations: dir.path().join("shadow.json"),
+        funding_journal: dir.path().join("funding.json"),
     };
     let mut next = 0;
     let mut run = |ledger: &mut Ledger, now: i64| {
@@ -427,6 +465,26 @@ fn payout_worker_recovers_an_unknown_send_without_sending_again() {
     };
     run(&mut ledger, START + 200);
     assert_eq!(ledger.payouts(None).unwrap()[0].state, PayoutState::Unknown);
+    assert!(
+        ledger.payouts(None).unwrap()[0]
+            .wallet_reference
+            .as_deref()
+            .unwrap()
+            .starts_with("lnd:test-node:")
+    );
+    std::fs::write(
+        &payout_policy,
+        serde_json::to_vec(&crate::payout::Policy {
+            version: 1,
+            mode: crate::payout::Mode::Mdk,
+            mainnet_approved: false,
+            canary_parties: vec![],
+            account_id: "test-account".into(),
+            account_limit_sats: 100_000,
+        })
+        .unwrap(),
+    )
+    .unwrap();
     drop(ledger);
     let mut ledger = Ledger::open(&path).unwrap();
     run(&mut ledger, START + 260);

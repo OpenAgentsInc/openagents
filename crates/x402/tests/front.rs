@@ -860,6 +860,76 @@ mod funded;
 mod quoted_release;
 
 #[test]
+fn default_receiver_switch_preserves_both_nodes_across_rollback() {
+    let mut f = fixture("default-receive-switch", TestNode::new(Some(NOW)));
+    let mut secondary = TestNode::new(Some(NOW));
+    secondary.key = [10; 32];
+    secondary.counter = AtomicU64::new(100);
+    secondary.received = Some(21000);
+    let secondary = Arc::new(secondary);
+    let request = || post("/v1/messages", b"credit", vec![]);
+    let original = f.front.handle(&request(), NOW).0;
+    f.front = f.front.with_default_receiver(secondary.clone(), true);
+    let on_lnd = f.front.handle(&request(), NOW).0;
+    assert_eq!(
+        f.front.pay_to_for_resource("api:invoke"),
+        secondary.pay_to()
+    );
+    assert_eq!(
+        f.front.pay_to_for_resource("x:future-hosted-resource"),
+        secondary.pay_to()
+    );
+    let old_proof = x402_signature(&f.node, &original);
+    assert_eq!(
+        f.front
+            .handle(
+                &post(
+                    "/v1/messages",
+                    b"credit",
+                    vec![(PAYMENT_SIGNATURE, old_proof)]
+                ),
+                NOW
+            )
+            .0
+            .status,
+        200
+    );
+    let new_proof = x402_signature(&secondary, &on_lnd);
+    f.front = f.front.with_default_receiver(f.node.clone(), true);
+    assert_eq!(f.front.pay_to_for_resource("api:invoke"), f.node.pay_to());
+    assert_eq!(
+        f.front
+            .handle(
+                &post(
+                    "/v1/messages",
+                    b"credit",
+                    vec![(PAYMENT_SIGNATURE, new_proof.clone())]
+                ),
+                NOW
+            )
+            .0
+            .status,
+        200
+    );
+    assert_ne!(
+        f.front
+            .handle(
+                &post(
+                    "/v1/messages",
+                    b"credit",
+                    vec![(PAYMENT_SIGNATURE, new_proof)]
+                ),
+                NOW
+            )
+            .0
+            .status,
+        200
+    );
+    assert_eq!(f.ledger.rows.lock().unwrap().len(), 2);
+    let _ = std::fs::remove_dir_all(&f.dir);
+}
+
+#[test]
 fn resource_receiver_switch_keeps_original_invoices_and_other_routes() {
     let mut f = fixture("receive-switch", TestNode::new(Some(NOW)));
     let mut secondary = TestNode::new(Some(NOW));

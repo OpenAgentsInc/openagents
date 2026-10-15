@@ -44,6 +44,7 @@ pub(crate) const USAGE: &str = "usage: openagents pay COMMAND [OPTIONS]
                           cannot be written the call gets a 503, nothing runs,
                           and the same proof stays good for a retry.
   payouts --ledger FILE [--relay URL] [--interval SECS] [--spark-home DIR] [--once]
+                          [--lnd SETTINGS.json] [--check --require-sent-after UNIX]
                           Pay the ledger's accrued shares out from this
                           computer's wallet, every SECS (default 60): per
                           payee, once its owed amount reaches 100 sats (Spark
@@ -63,6 +64,9 @@ pub(crate) const USAGE: &str = "usage: openagents pay COMMAND [OPTIONS]
                           shares and the payee backs off (5 min, doubling, at
                           most 6 h). OPENAGENTS_PAY_LEDGER and
                           OPENAGENTS_PAY_SPARK_HOME stand in for the flags.
+                          Optional LND settings read a saved spending policy.
+                          --check sends nothing and requires a completed
+                          payout confirmed after the given restart time.
   payout-list --ledger FILE [--open]
                           List payouts: state, rail, amounts, and the wallet
                           reference; --open lists planned, sending, and
