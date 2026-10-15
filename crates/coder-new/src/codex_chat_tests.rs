@@ -132,6 +132,7 @@ fn a_live_codex_chat() {
 /// call names its model and how long it took, and Codex's plan windows
 /// are kept.
 #[test]
+#[cfg(unix)]
 fn a_recorded_codex_turn_streams_its_thinking_and_names_its_call() {
     let dir = tempfile::tempdir().unwrap();
     let fixture = format!(

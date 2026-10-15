@@ -618,9 +618,23 @@ struct Events<'a> {
     text: String,
     first_text_ms: Option<u64>,
     thought: crate::claude_stream::Thought,
-    /// Each tool call's name and input so far, by its id.
-    tools: std::collections::BTreeMap<String, (String, String, Value)>,
+    /// Each tool call so far, by its id.
+    tools: std::collections::BTreeMap<String, Call>,
     tokens: u64,
+}
+
+/// One OpenCode tool call as its ACP updates arrive.
+struct Call {
+    /// OpenCode's own name for the tool.
+    own: String,
+    /// Claude Code's name for it.
+    name: String,
+    /// OpenCode's arguments so far.
+    raw: Value,
+    /// The input the chat shows for this call, once it has one. The chat
+    /// matches a call's later events to it by name and this exact input
+    /// (`live::Chat::tool`), so every later event repeats it (#11686).
+    shown: Option<Value>,
 }
 
 impl Events<'_> {
@@ -628,6 +642,33 @@ impl Events<'_> {
         for event in self.thought.end(None) {
             (self.emit)(event);
         }
+    }
+
+    /// Shows `id`'s call as it stands. A call opens before OpenCode sends
+    /// its arguments; it shows once they arrive (or once it ends), so the
+    /// chat never holds an empty placeholder that its finished event can't
+    /// match, and two calls opening at once stay two calls (#11686).
+    fn show(&mut self, id: &str, output: Value, running: bool) {
+        let Some(call) = self.tools.get_mut(id) else {
+            return;
+        };
+        let has_arguments = call
+            .raw
+            .as_object()
+            .is_some_and(|fields| !fields.is_empty());
+        if call.shown.is_none() && running && !has_arguments {
+            return;
+        }
+        let input = call
+            .shown
+            .get_or_insert_with(|| coder_sdk::opencode::args_to_claude(&call.own, &call.raw))
+            .clone();
+        (self.emit)(RuntimeEvent::Tool {
+            name: call.name.clone(),
+            input,
+            output,
+            running,
+        });
     }
 }
 
@@ -673,14 +714,17 @@ impl acp_client::Handler for Events<'_> {
             } => {
                 let own = tool.unwrap_or_else(|| title.clone());
                 let name = coder_sdk::opencode::tool_name(&own);
-                let input = coder_sdk::opencode::args_to_claude(&own, &raw_input);
-                self.tools.insert(id, (own, name.clone(), raw_input));
-                (self.emit)(RuntimeEvent::Tool {
-                    name,
-                    input,
-                    output: Value::Null,
-                    running: status != "completed" && status != "failed",
-                });
+                let running = status != "completed" && status != "failed";
+                self.tools.insert(
+                    id.clone(),
+                    Call {
+                        own,
+                        name,
+                        raw: raw_input,
+                        shown: None,
+                    },
+                );
+                self.show(&id, Value::Null, running);
             }
             Update::ToolCallUpdate {
                 id,
@@ -689,17 +733,21 @@ impl acp_client::Handler for Events<'_> {
                 text,
                 raw_input,
             } => {
-                let (own, name, held) = self.tools.entry(id.clone()).or_insert_with(|| {
-                    let own = title.unwrap_or(id);
-                    (own.clone(), coder_sdk::opencode::tool_name(&own), json!({}))
-                });
-                // OpenCode sends the command and its description here,
-                // after the call opened.
-                if let Some(Value::Object(fields)) = raw_input {
-                    if !held.is_object() {
-                        *held = json!({});
+                let call = self.tools.entry(id.clone()).or_insert_with(|| {
+                    let own = title.unwrap_or_else(|| id.clone());
+                    Call {
+                        name: coder_sdk::opencode::tool_name(&own),
+                        own,
+                        raw: json!({}),
+                        shown: None,
                     }
-                    if let Some(object) = held.as_object_mut() {
+                });
+                // OpenCode sends the arguments here, after the call opened.
+                if let Some(Value::Object(fields)) = raw_input {
+                    if !call.raw.is_object() {
+                        call.raw = json!({});
+                    }
+                    if let Some(object) = call.raw.as_object_mut() {
                         object.extend(fields);
                     }
                 }
@@ -709,14 +757,10 @@ impl acp_client::Handler for Events<'_> {
                     Some(text) => json!({"output": text}),
                     None => Value::Null,
                 };
-                (self.emit)(RuntimeEvent::Tool {
-                    name: name.clone(),
-                    input: coder_sdk::opencode::args_to_claude(own, held),
-                    output,
-                    running: status
-                        .as_deref()
-                        .is_none_or(|status| status != "completed" && status != "failed"),
-                });
+                let running = status
+                    .as_deref()
+                    .is_none_or(|status| status != "completed" && status != "failed");
+                self.show(&id, output, running);
             }
             _ => {}
         }
@@ -849,6 +893,99 @@ mod tests {
             "Update Required Your version of Cursor is no longer supported."
         );
         assert_eq!(plain_error("plain words"), "plain words");
+    }
+
+    /// #11686: OpenCode opens a call before it sends the arguments (an
+    /// empty `rawInput`), then fills them in and finishes it. The chat ends
+    /// up with one finished call per tool call, with its arguments, also
+    /// when two calls open at once; none is left running to be marked
+    /// failed when the turn ends.
+    #[test]
+    fn a_call_that_opens_without_arguments_is_one_call() {
+        use acp_client::{Handler, Update};
+        let mut seen: Vec<RuntimeEvent> = Vec::new();
+        let mut emit = |event: RuntimeEvent| seen.push(event);
+        let mut events = Events {
+            emit: &mut emit,
+            started: std::time::Instant::now(),
+            text: String::new(),
+            first_text_ms: None,
+            thought: crate::claude_stream::Thought::default(),
+            tools: std::collections::BTreeMap::new(),
+            tokens: 0,
+        };
+        let open = |id: &str| Update::ToolCall {
+            id: id.into(),
+            title: "read".into(),
+            kind: "read".into(),
+            status: "pending".into(),
+            raw_input: json!({}),
+            tool: Some("read".into()),
+        };
+        let fill = |id: &str, path: &str| Update::ToolCallUpdate {
+            id: id.into(),
+            title: None,
+            status: Some("in_progress".into()),
+            text: None,
+            raw_input: Some(json!({"filePath": path})),
+        };
+        let finish = |id: &str, text: &str| Update::ToolCallUpdate {
+            id: id.into(),
+            title: None,
+            status: Some("completed".into()),
+            text: Some(text.into()),
+            raw_input: None,
+        };
+        events.update(open("c1"));
+        events.update(open("c2"));
+        events.update(fill("c1", "/r/README.md"));
+        events.update(fill("c2", "/r/a.txt"));
+        events.update(finish("c2", "1: a"));
+        events.update(finish("c1", "1: # Heading"));
+
+        let mut chat = crate::live::Chat::default();
+        for event in seen {
+            if let RuntimeEvent::Tool {
+                name,
+                input,
+                output,
+                running,
+            } = event
+            {
+                chat.tool(name, input, output, running);
+            }
+        }
+        chat.stop_tools("The turn ended before this tool reported a result.");
+        let calls: Vec<(String, Value, Value, bool)> = chat
+            .entries
+            .iter()
+            .filter_map(|entry| match entry {
+                crate::live::Entry::Tool {
+                    name,
+                    input,
+                    output,
+                    running,
+                } => Some((name.clone(), input.clone(), output.clone(), *running)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            calls,
+            [
+                (
+                    "Read".to_owned(),
+                    json!({"file_path": "/r/README.md"}),
+                    json!({"output": "1: # Heading"}),
+                    false
+                ),
+                (
+                    "Read".to_owned(),
+                    json!({"file_path": "/r/a.txt"}),
+                    json!({"output": "1: a"}),
+                    false
+                ),
+            ]
+        );
     }
 
     fn message(role: &str, content: &str) -> Message {

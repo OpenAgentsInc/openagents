@@ -5136,6 +5136,7 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
 
     /// The recorded Free-account Devin turn (#11583), with `keep` choosing
     /// which `session/update` kinds stay, run as a delegation on `model`.
+    #[cfg(unix)]
     async fn free_devin_turn(
         model: Option<&str>,
         keep: impl Fn(&str) -> bool,

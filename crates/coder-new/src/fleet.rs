@@ -936,7 +936,8 @@ fn write_transcript(
     }
 }
 
-#[cfg(test)]
+// The fake agents these tests run are shell scripts.
+#[cfg(all(test, unix))]
 mod tests;
 
 #[cfg(test)]

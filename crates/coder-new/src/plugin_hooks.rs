@@ -215,6 +215,7 @@ mod tests {
     /// once it is on, the rewrite waits for the person, and turning that on
     /// is kept.
     #[test]
+    #[cfg(unix)]
     fn an_installed_plugins_hooks_register_once_it_is_on() {
         let home = tempfile::tempdir().unwrap();
         let layout = Layout::new(home.path(), None).unwrap();
