@@ -4,9 +4,10 @@ Owner decision, 2026-10-15: add both ONNX Runtime (ORT) and native Psionic
 execution so the same models can be benchmarked on both. Start with
 [`s1-llm-auto-router`](s1-llm-auto-router.md) on CPU. Keep both engines
 available after the comparison, and reuse the ORT integration for other
-models. The shared contract and reference fixtures (#11700) and optional
-ORT CPU execution (#11701), and native ModernBERT CPU execution (#11702)
-are implemented in `psionic-inference`; the remaining milestones are planned.
+models. The shared contract and fixtures (#11700), optional ORT CPU
+execution (#11701), native ModernBERT CPU execution (#11702), and CPU
+benchmarks (#11703) are implemented in `psionic-inference`. The remaining
+milestones are planned.
 
 ## Scope and current evidence
 
@@ -167,6 +168,39 @@ Routing adoption follows the [router experiment plan](s1-llm-auto-router.md#expe
 evaluate representative tasks, cheap-answer precision, calibration, and
 outcomes before shadowing and promotion. Passing execution parity does
 not prove that the model makes suitable routing judgments.
+
+## CPU results (2026-10-15, #11703)
+
+The [retained study](../../../crates/psionic/crates/psionic-inference/fixtures/reports/cpu-2026-10-15/study.json)
+contains 28,000 timed inferences on an i7-14700K, with warm caches and
+affinity to four distinct P cores. Each configuration has two alternating
+A/B runs of 1,000 samples. This is a shared machine; other work was not
+stopped. Values below are medians of the two run medians; p99 columns show
+the range across those runs.
+
+| Case | ORT p50 | Native p50 | ORT p99 | Native p99 |
+| --- | --- | --- | --- | --- |
+| `route-v1`, 1 thread | 9.1 ms | 16.1 ms | 15.2 ms | 24.9–25.2 ms |
+| `route-v1`, 4 threads | 4.0 ms | 8.6 ms | 5.8–6.2 ms | 11.8 ms |
+| Text to answer, 4 threads | 4.0 ms | 8.6 ms | 6.0–6.1 ms | 11.9–14.8 ms |
+| 512 tokens, 4 threads | 81.2 ms | 112.0 ms | 83.8–84.8 ms | 132.2–156.4 ms |
+
+Both engines miss the 20 ms target at 512 tokens. Four concurrent
+single-thread instances deliver about 347 requests/s with ORT and 204
+with native. Every run passes the 100 reference decisions first.
+
+Eight additional focused probes keep model instances loaded while taking
+memory snapshots. At concurrency 1 with four threads on `route-v1`, ORT
+uses 391 MB resident and peaks at 450 MB; native uses 357 MB resident and
+peaks at 518 MB. The baseline runs' resident-memory field was taken after
+teardown and is not serving-memory evidence; the study records the
+correction and separate probe files.
+
+Unstripped release executables are 30.7 MB for native-only and 31.8 MB
+with both engines. The CPU ORT library adds 24.3 MB: a combined increment
+of 25.4 MB, excluding model assets and platform libraries. Apple Silicon
+CPU measurements remain in `NEEDS_OWNER.md`; HTTP and accelerator
+measurements follow in later milestones.
 
 ## References
 

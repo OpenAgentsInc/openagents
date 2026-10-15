@@ -1,0 +1,28 @@
+{
+  "schema": "psionic.model.benchmark.study.v1",
+  "rounds": 2,
+  "samples_per_run": 1000,
+  "native_only_binary": {
+    "bytes": 30672456,
+    "sha256": "08ab9d0c8891ed78422b6dcfb6d3f5cb93fa90492ff7f2977b5d8f5f96427462"
+  },
+  "both_engines_binary": {
+    "bytes": 31843224,
+    "sha256": "8e0eee15f5ab56c01812c2c83abf2b216ebb4d4ead2f8e24cabf48462cfd57ef"
+  },
+  "ort_library": {
+    "bytes": 24272944,
+    "sha256": "aa4079d18f4ea7a5f3a94d80cd4bbe0f2740436626622d64d793803a20381083"
+  },
+  "remaining_coverage": [
+    "Apple Silicon CPU",
+    "cold filesystem caches",
+    "accelerators",
+    "HTTP"
+  ],
+  "incremental_both_engines_bytes": 25443712,
+  "timing_source_commit": "f26c309299",
+  "memory_source_commit": "a9d226db07",
+  "memory_notes": "The 28 baseline timing runs recorded resident memory after model teardown. Do not use that field as serving memory. Their peak RSS remains a process high-water mark. The eight focused probes keep every model instance loaded through the snapshot and are the serving-memory evidence. Their 32 timing samples are not tail-latency evidence.",
+  "scope_notes": "Linux i7-14700K, four distinct P cores selected with taskset, warm filesystem caches, two alternating A/B rounds and 1,000 samples per configuration. Other work on this shared machine was not stopped; retained load observations bound interpretation. Package numbers are unstripped release binaries plus the CPU ORT shared library, excluding model assets and platform-provided libraries. HTTP and accelerator work follows in later issues."
+}

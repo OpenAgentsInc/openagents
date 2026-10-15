@@ -223,10 +223,12 @@ and package size. Both CPU engines are now implemented in `psionic-inference` (#
 - It runs GGUF decoder LLMs (Llama, Gemma 4, Qwen 2/3/3.5/3.8, Mistral, gpt-oss) and the Clef decision lane.
 - `GgufEmbeddingFamily { Bert, NomicBert }` and a WordPiece tokenizer exist only as metadata and tokenizer loading.
 - `/v1/embeddings` on CPU is a `ByteProjectionEmbedder`, a single projection layer, not a BERT forward pass.
-- It has no ONNX support, and no ModernBERT, DeBERTa or XLM-R code.
+- It now has optional ORT CPU execution and a native ModernBERT encoder in `psionic-inference`. DeBERTa and XLM-R are not implemented.
 - It already has the parts the port would reuse: rotary embeddings, sliding-window masks (decoder side), a threaded AVX-512 GEMM (`qwen35/cpu_gemm.rs`), safetensors loading (the Clef head), and a `/v1/systemone` route that already speaks the answer shape (`psionic-serve/src/clef/`).
 
 ### The gaps
+
+This table records the implementation scope; the [roadmap](psionic-onnx-native-roadmap.md) tracks completed work and measured results.
 
 | # | Gap | What it takes | Size |
 | --- | --- | --- | --- |

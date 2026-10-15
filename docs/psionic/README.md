@@ -36,13 +36,14 @@ The Pylon provider ([`docs/compute/pylon.md`](../compute/pylon.md)) runs
 jobs on a local `psionic-openai-server`. `scripts/pylon-psionic.sh` builds
 and starts it.
 
-## Planned ONNX and native execution
+## ONNX Runtime and native small models
 
 The [ORT and native roadmap](../research/decisionmodels/psionic-onnx-native-roadmap.md)
-plans optional ONNX Runtime execution alongside native Psionic models,
-with shared correctness fixtures and benchmarks. It starts with the
-`s1-llm-auto-router` on CPU, then adds other models and accelerator
-comparisons. This support is planned, not implemented.
+tracks optional ONNX Runtime execution alongside native Psionic models.
+The `psionic-inference` crate implements both CPU engines for
+`s1-llm-auto-router`, shared reference fixtures, and a benchmark runner.
+The roadmap records the measured CPU comparison and the remaining
+serving, model-family, and accelerator work.
 
 ## History
 

@@ -1,3 +1,15 @@
+## Run Psionic CPU comparisons on Apple Silicon (#11703)
+
+The ORT/native CPU runner and Linux evidence are on `main`. This session
+has no Apple Silicon device result. On a Mac, run the paired matrix in
+[the inference crate guide](crates/psionic/crates/psionic-inference/README.md#cpu-benchmark)
+with the pinned router and an explicitly provisioned ARM64 ORT 1.28.0
+library. Use two or more alternating rounds and 1,000 samples per case;
+omit the Linux-only `--cpus` option. Retain the hardware, versions, raw
+results, package sizes, and measured model memory beside the Linux report.
+The Linux 512-token runs miss the 20 ms p99 target for both engines; do not
+assume the Mac meets it. Core ML and mobile qualification follow #11706.
+
 ## Deploy project uploads and CAD updates (#11679, #11661, #11662, #11663, #11664, #11665, #11666, #11680)
 
 The resumable server, CLI, checked CAD face pulls, shared configurators,
