@@ -32,6 +32,9 @@ UPLOAD
   then
     last=$next
     printf 'Saved encrypted channel backup: %s\n' "$object"
+  else
+    # Restart through systemd so OnFailure alerts on every failed upload.
+    exit 1
   fi
   rm -f "$runtime/upload.age" "$runtime/upload.scb"
 done

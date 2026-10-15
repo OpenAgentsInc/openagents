@@ -138,3 +138,12 @@ captures the streamed SCB within a minute. It stops the only writer, deletes
 all of that test node's databases, initializes a fresh wallet from seed plus
 SCB, checks the same node identity, mines its peer's force-close, and checks
 the recovered on-chain balance. It never reads a production seed or database.
+
+The 2026-10-15 drill passed: 99,888,490 regtest sats were recovered on-chain.
+The existing payment and settlement-restart drill also passed. On GCP,
+`oa-lnd-tower-1` is at `10.42.0.193:9911`, with tower key
+`03fb064f0ff4fbe972a6b82f586b812fa2332c40a56c869cd5ef048f031a8b4b42`.
+Encrypted zero-channel SCBs first arrived at 21:29 UTC. Checks using the node's
+service account returned HTTP 403 for both object reads and recovery-key reads.
+A live channel-change timing check and funded-channel tower sessions await the
+owner's funding decision; neither requires reading the production seed.

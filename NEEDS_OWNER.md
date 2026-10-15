@@ -1,3 +1,14 @@
+## Fund the experimental LND node before live channel checks (#11753)
+
+The fresh `oa-lnd-1` node is unfunded. Encrypted SCBs reach the write-only
+GCS bucket, and its account receives HTTP 403 for backup reads and age-key
+reads. The seed-plus-SCB drill recovers regtest funds after a peer force-close;
+it verifies both tower registrations and an acknowledged session. After
+approving the liquidity budget in #11755, check an SCB upload within a minute
+of the first live channel change and acknowledged tower sessions after a
+payment. Follow [the runbook](docs/payments/lnd-host.md#channel-backups-and-watchtowers).
+No production seed was read for the drill. Customer traffic remains unchanged.
+
 ## Qualify Psionic on Apple and mobile devices (#11706)
 
 The Rust APIs and comparison driver support native Metal and ORT Core ML

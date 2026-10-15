@@ -26,6 +26,8 @@ for unit in openagents-lnd-backups.service openagents-lnd-backup-upload.service 
   curl -fsSL "$base/$unit" -o "/etc/systemd/system/$unit"
 done
 install -m 0755 "$binary" /opt/openagents-lnd/lnd-backups
+printf '%s\n' "$commit" > /opt/openagents-lnd/BACKUPS_COMMIT
+sha256sum /opt/openagents-lnd/lnd-backups > /opt/openagents-lnd/BACKUPS_SHA256
 /opt/openagents-lnd/lncli --lnddir=/var/lib/openagents-lnd/lnd --network=mainnet bakemacaroon --root_key_id=203 --ip_address=127.0.0.1 --save_to=/var/lib/openagents-lnd/backup.macaroon info:read offchain:read >/dev/null
 chmod 0600 /var/lib/openagents-lnd/backup.macaroon
 jq '.macaroon="/run/openagents-lnd-backup/readonly.macaroon" | .output="/run/openagents-lnd-backup/channel.backup"' /etc/openagents-lnd/health.json > /etc/openagents-lnd/backups.json
