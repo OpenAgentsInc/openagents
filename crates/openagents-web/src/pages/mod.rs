@@ -1,6 +1,7 @@
 //! The public pages, one module per section.
 
 pub(crate) mod affiliates;
+pub(crate) mod agent_docs;
 pub(crate) mod api_docs;
 mod att;
 mod blue_rush;
@@ -86,6 +87,7 @@ pub(crate) fn routes() -> Router<App> {
         .merge(cad::routes())
         .merge(content::routes())
         .merge(api_docs::routes())
+        .merge(agent_docs::routes())
         .merge(download::routes())
         .merge(connect::routes())
         .merge(profile::routes())

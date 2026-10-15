@@ -3600,6 +3600,85 @@ async fn the_api_docs_list_every_guide_and_serve_markdown() {
     );
 }
 
+/// The docs for agents: the index lists every page, each page answers as
+/// HTML (in plain words) and as Markdown, the agents `llms.txt`, the
+/// site's `llms.txt` and `llms-full.txt`, the sitemap, and the docs MCP
+/// server list it, and every site link in a page answers `200`.
+#[tokio::test]
+async fn the_agent_docs_list_every_page_and_serve_markdown() {
+    use crate::pages::agent_docs::AGENT_DOCS;
+    let root = tempfile::tempdir().unwrap();
+    let site = || router(config(root.path().join("tasks")));
+    let (_, docs) = get(site(), "/docs").await;
+    assert!(docs.contains("href=\"/docs/agents\""));
+    assert!(docs.contains("href=\"/docs/agents/start-here\""));
+    let (status, index) = get(site(), "/docs/agents").await;
+    assert_eq!(status, StatusCode::OK);
+    crate::copy_guard::assert_plain("/docs/agents", &index);
+    let (_, _, llms) = get_with(site(), "/docs/agents/llms.txt", LOCAL).await;
+    let (_, _, site_llms) = get_with(site(), "/llms.txt", LOCAL).await;
+    let (_, _, full) = get_with(site(), "/llms-full.txt", LOCAL).await;
+    let (_, _, sitemap) = get_with(site(), "/sitemap.xml", LOCAL).await;
+    let (status, _, index_md) = get_with(site(), "/docs/agents.md", LOCAL).await;
+    assert_eq!(status, StatusCode::OK);
+    let listed = crate::docs_mcp::list_docs();
+    for (slug, _) in AGENT_DOCS {
+        let path = format!("/docs/agents/{slug}");
+        assert!(index.contains(&format!("href=\"{path}\"")), "{slug}");
+        let md = format!("https://openagents.com{path}.md");
+        assert!(llms.contains(&md), "{slug}");
+        assert!(site_llms.contains(&md), "{slug} in /llms.txt");
+        assert!(
+            full.contains(&format!("Source: https://openagents.com{path}\n")),
+            "{slug}"
+        );
+        assert!(
+            sitemap.contains(&format!("{path}<")),
+            "{slug} in the sitemap"
+        );
+        assert!(index_md.contains(&format!("({path}.md)")), "{slug}");
+        assert!(
+            listed.contains(&format!("agents/{slug} |")),
+            "{slug} in list_docs"
+        );
+        let (status, html) = get(site(), &path).await;
+        assert_eq!(status, StatusCode::OK, "{slug}");
+        crate::copy_guard::assert_plain(&path, &html);
+        let main = &html[html.find("<main").unwrap()..html.find("</main>").unwrap()];
+        assert!(!main.contains("{{"), "{slug} has an undrawn table");
+        for target in main.split("href=\"").skip(1) {
+            let target = &target[..target.find('"').unwrap()];
+            if target.starts_with('/') && !target.starts_with("/static/") {
+                let path = target.split('#').next().unwrap();
+                let (status, _) = get(site(), path).await;
+                assert_eq!(status, StatusCode::OK, "{slug} links {target}");
+            }
+        }
+        let (status, headers, markdown) = get_with(site(), &format!("{path}.md"), LOCAL).await;
+        assert_eq!(status, StatusCode::OK, "{slug}.md");
+        assert!(
+            headers[header::CONTENT_TYPE]
+                .to_str()
+                .unwrap()
+                .starts_with("text/markdown")
+        );
+        assert!(markdown.contains("\n# "), "{slug}.md has its title");
+        assert!(!markdown.contains("{{"), "{slug}.md has an undrawn table");
+        assert_eq!(
+            crate::agent_ready::twin(&path).as_deref(),
+            Some(format!("{path}.md").as_str())
+        );
+    }
+    assert_eq!(
+        get(site(), "/docs/agents/nope").await.0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        get(site(), "/docs/agents/nope.md").await.0,
+        StatusCode::NOT_FOUND
+    );
+}
+
 /// The models page draws the rate card the gateway serves at
 /// `GET /v1/rates`, every row with its list price, margin, price, and
 /// sats; without a gateway it draws the published card, the card a

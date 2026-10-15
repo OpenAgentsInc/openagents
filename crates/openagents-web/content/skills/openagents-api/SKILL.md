@@ -15,12 +15,14 @@ Completions API, so OpenAI SDKs work with two changes. Beta.
 | Docs | <https://openagents.com/docs/api.md> |
 | Prices | <https://openagents.com/docs/api/models.md> |
 | Getting a key | <https://openagents.com/auth.md> |
+| Docs for agents | <https://openagents.com/docs/agents/start-here.md> |
 
 ## Steps
 
 1. Read the key from `OPENAGENTS_API_KEY`. If it is missing, tell the person
-   to make one at <https://openagents.com/settings/api-keys>; never ask for
-   it in chat or write it to a file.
+   to make one at <https://openagents.com/settings/api-keys>, or sign up as
+   an agent yourself (<https://openagents.com/docs/agents/sign-up.md>); never
+   ask for it in chat or write it to a file.
 2. Send a request:
 
    ```sh
@@ -42,3 +44,16 @@ Completions API, so OpenAI SDKs work with two changes. Beta.
 
 The docs MCP server at `https://openagents.com/mcp/docs` (Streamable HTTP,
 no key) has `list_docs`, `search_docs`, `read_doc`, and `list_models`.
+
+## More tasks
+
+Each is a page with the exact requests, as Markdown:
+
+- Sign up as an agent: <https://openagents.com/docs/agents/sign-up.md>
+- Buy credits over Lightning: <https://openagents.com/docs/agents/buy-credits.md>
+- Stream an answer or start a chat: <https://openagents.com/docs/agents/chat-and-stream.md>
+- Typed decisions: <https://openagents.com/docs/agents/decisions.md>
+- Projects, files, invitations: <https://openagents.com/docs/agents/projects.md>
+- Coder headless: <https://openagents.com/docs/agents/coder-headless.md>
+- Every endpoint: <https://openagents.com/docs/agents/endpoints.md>
+- Every error code: <https://openagents.com/docs/agents/errors.md>

@@ -343,6 +343,10 @@ plugins, and the Gym.</p>",
     body.push_str(
         "<h2 id=\"api\">API</h2><p class=\"oa-page-meta\">Use our models from your own code. Beta.</p>\
 <ol class=\"oa-item-list\"><li><a href=\"/docs/api\">API docs</a></li></ol>\
+<h2 id=\"agents\">For agents</h2><p class=\"oa-page-meta\">Sign up as an agent, pay in bitcoin, \
+and use our API, MCP server, and command.</p><ol class=\"oa-item-list\">\
+<li><a href=\"/docs/agents/start-here\">Start here</a></li>\
+<li><a href=\"/docs/agents\">Docs for agents</a></li></ol>\
 <h2 id=\"progress\">What works and what's next</h2><p class=\"oa-page-meta\">Each thing that \
 works today with its proof, and what we're building next.</p><ol class=\"oa-item-list\">\
 <li><a href=\"/promises\">What works today</a></li><li><a href=\"/roadmap\">Roadmap</a></li></ol>",
@@ -511,7 +515,7 @@ mod tests {
         }
         let anchors: Vec<_> = SECTIONS.iter().map(|(t, _, _)| section_anchor(t)).collect();
         for (i, a) in anchors.iter().enumerate() {
-            assert!(!a.is_empty() && a != "api" && !anchors[..i].contains(a));
+            assert!(!a.is_empty() && a != "api" && a != "agents" && !anchors[..i].contains(a));
         }
         assert_eq!(
             section_anchor("The Gym, the Verse, and the wallet"),
@@ -612,6 +616,11 @@ mod tests {
                 crate::pages::api_docs::API_DOCS
                     .iter()
                     .map(|(slug, source)| (format!("docs/api/{slug}"), *source)),
+            )
+            .chain(
+                crate::pages::agent_docs::AGENT_DOCS
+                    .iter()
+                    .map(|(slug, source)| (format!("docs/agents/{slug}"), *source)),
             );
         let mut bare = Vec::new();
         for (path, source) in guides {

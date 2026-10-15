@@ -23,6 +23,7 @@ use sha2::{Digest, Sha256};
 
 use crate::App;
 use crate::markdown;
+use crate::pages::agent_docs::AGENT_DOCS;
 use crate::pages::api_docs::API_DOCS;
 use crate::pages::content::{DOCS, PRIVACY, SECTIONS, TERMS};
 
@@ -96,6 +97,7 @@ pub(crate) fn routes() -> Router<App> {
         .route("/index.md", get(home_md))
         .route("/docs.md", get(docs_md))
         .route("/docs/api.md", get(api_md))
+        .route("/docs/agents.md", get(agents_md))
         .route("/terms.md", get(terms_md))
         .route("/privacy.md", get(privacy_md))
         .route("/download.md", get(download_md))
@@ -121,11 +123,17 @@ pub(crate) fn twin(path: &str) -> Option<String> {
         .unwrap_or(path);
     match path {
         "/" => return Some("/index.md".to_owned()),
-        "/docs" | "/docs/api" | "/terms" | "/privacy" | "/download" | "/pricing" | "/promises"
-        | "/roadmap" => {
+        "/docs" | "/docs/api" | "/docs/agents" | "/terms" | "/privacy" | "/download"
+        | "/pricing" | "/promises" | "/roadmap" => {
             return Some(format!("{path}.md"));
         }
         _ => {}
+    }
+    if let Some(slug) = path.strip_prefix("/docs/agents/") {
+        return AGENT_DOCS
+            .iter()
+            .any(|(name, _)| *name == slug)
+            .then(|| format!("{path}.md"));
     }
     if let Some(slug) = path.strip_prefix("/docs/api/") {
         return API_DOCS
@@ -317,6 +325,7 @@ pub(crate) fn site_index_json() -> Value {
             "llms_full_txt": format!("{SITE}/llms-full.txt"),
             "docs": format!("{SITE}/docs.md"),
             "api_docs": format!("{SITE}/docs/api.md"),
+            "agent_docs": format!("{SITE}/docs/agents.md"),
             "api_catalog": format!("{SITE}/.well-known/api-catalog"),
             "openapi": format!("{SITE}/openapi.json"),
             "ai_catalog": format!("{SITE}/.well-known/ai-catalog.json"),
@@ -507,6 +516,7 @@ fn home_markdown() -> String {
 - [Download](/download.md): the apps and Coder for your computer.\n\
 - [Docs](/docs.md): guides to the chat, Coder, the apps, plugins, and the Gym.\n\
 - [API](/docs/api.md): use our models from your own code. Beta.\n\
+- [For agents](/docs/agents.md): sign up as an agent, pay in bitcoin, and use our API, MCP server, and command.\n\
 - [Pricing](/pricing.md)\n\
 - [What works today](/promises.md): each thing that works, with its proof.\n\
 - [Roadmap](/roadmap.md): what comes next.\n\n",
@@ -518,6 +528,8 @@ fn home_markdown() -> String {
 
 /// Where an agent finds the site's machine-readable documents.
 const AGENT_LINKS: &str = "## For agents\n\n\
+- [Start here](/docs/agents/start-here.md), then the [docs for agents](/docs/agents.md): \
+tutorials and reference.\n\
 - [llms.txt](/llms.txt) and [llms-full.txt](/llms-full.txt): every guide, as Markdown.\n\
 - Any page as Markdown: add `.md` to its address, or send `Accept: text/markdown`.\n\
 - [auth.md](/auth.md): register as an agent yourself, or get and use an API key.\n\
@@ -573,9 +585,11 @@ async fn docs_md() -> Response {
     let body = format!(
         "# Docs\n\nGuides to OpenAgents: the chat, Coder, the apps, plugins, and the Gym.\n{}\n\
 ## API\n\n- [API docs](/docs/api.md): {API_LEAD}\n\n\
+## For agents\n\n- [Docs for agents](/docs/agents.md): {}\n\n\
 ## What works and what's next\n\n- [What works today](/promises.md): each thing that works today, \
 with its proof.\n- [Roadmap](/roadmap.md): what we're building next.\n",
-        guide_list(false)
+        guide_list(false),
+        crate::pages::agent_docs::LEAD
     );
     markdown_response(
         with_frontmatter(
@@ -597,6 +611,19 @@ async fn api_md() -> Response {
     )
 }
 
+async fn agents_md() -> Response {
+    let canonical = format!("{SITE}/docs/agents");
+    markdown_response(
+        with_frontmatter(
+            "For agents",
+            crate::pages::agent_docs::LEAD,
+            &canonical,
+            &crate::pages::agent_docs::index_markdown(),
+        ),
+        &canonical,
+    )
+}
+
 // ---------------------------------------------------------------------
 // llms.txt, llms-full.txt, auth.md
 
@@ -607,7 +634,9 @@ pub(crate) fn llms_txt(methods: &[crate::payments::Method]) -> String {
         "# OpenAgents\n\n> {DESCRIPTION} Coder, its coding agent, works on your own computer \
 with the coding agents you already use. Developers can call our models through the OpenAgents API.\n\n\
 Every page here is also Markdown: add `.md` to its address, or send `Accept: text/markdown`.\n\
-{}\n## API\n\n- [API docs]({SITE}/docs/api.md): {API_LEAD}\n{}\
+{}\n## For agents\n\n{}\n\
+- [Start here]({SITE}/docs/agents/start-here.md) if you are an agent: what we offer, sign-up, keys, and errors.\n\
+- [Docs for agents]({SITE}/docs/agents.md): every page below, grouped.\n{}\n## API\n\n- [API docs]({SITE}/docs/api.md): {API_LEAD}\n{}\
 - [Authentication]({SITE}/auth.md): get an API key and send it.\n\
 - [Agent sign-up]({SITE}/auth.md#register-yourself-as-an-agent): an agent registers itself with a small proof of work (`POST {SITE}/v1/agents/register`), gets a key and a small daily free tier, and pays over Lightning past it.\n\
 - [For agents]({SITE}/docs/api/for-agents.md): find us, say who you are, and pay. {}\n\
@@ -619,7 +648,7 @@ Every page here is also Markdown: add `.md` to its address, or send `Accept: tex
 - [Agent card]({SITE}/.well-known/agent-card.json): A2A agent card.\n\
 - [Agent skills]({SITE}/.well-known/agent-skills/index.json): skills an agent can install.\n\n\
 ## Optional\n\n\
-- [Everything in one file]({SITE}/llms-full.txt): every guide and API guide.\n\
+- [Everything in one file]({SITE}/llms-full.txt): every guide, API guide, and page for agents.\n\
 - [Pricing]({SITE}/pricing.md)\n\
 - [What works today]({SITE}/promises.md): each thing that works, with its proof.\n\
 - [Roadmap]({SITE}/roadmap.md): what comes next.\n\
@@ -627,6 +656,8 @@ Every page here is also Markdown: add `.md` to its address, or send `Accept: tex
 - [Terms of service]({SITE}/terms.md)\n\
 - [Privacy policy]({SITE}/privacy.md)\n",
         guide_list(true),
+        crate::pages::agent_docs::LEAD,
+        crate::pages::agent_docs::list(true),
         api_list(true),
         crate::payments::sentence(methods)
     )
@@ -651,6 +682,13 @@ async fn llms_full(State(app): State<App>) -> Response {
         let source = crate::pages::api_docs::source(&app, source).await;
         out.push_str(&format!(
             "\n---\n\nSource: {SITE}/docs/api/{slug}\n\n{}\n",
+            source.trim()
+        ));
+    }
+    for (slug, source) in AGENT_DOCS {
+        let source = crate::pages::api_docs::source(&app, source).await;
+        out.push_str(&format!(
+            "\n---\n\nSource: {SITE}/docs/agents/{slug}\n\n{}\n",
             source.trim()
         ));
     }
@@ -782,6 +820,7 @@ pub(crate) fn public_paths() -> Vec<String> {
         "/download",
         "/docs",
         "/docs/api",
+        "/docs/agents",
         "/pilot",
         "/live",
         "/stats",
@@ -795,6 +834,11 @@ pub(crate) fn public_paths() -> Vec<String> {
     .collect();
     paths.extend(DOCS.iter().map(|(slug, _)| format!("/docs/{slug}")));
     paths.extend(API_DOCS.iter().map(|(slug, _)| format!("/docs/api/{slug}")));
+    paths.extend(
+        AGENT_DOCS
+            .iter()
+            .map(|(slug, _)| format!("/docs/agents/{slug}")),
+    );
     paths
 }
 
@@ -865,6 +909,8 @@ pub(crate) fn api_catalog_json(origin: &str, methods: &[crate::payments::Method]
             "service-doc": [
                 {"href": format!("{origin}/docs/api"), "type": "text/html"},
                 {"href": format!("{origin}/docs/api.md"), "type": "text/markdown"},
+                {"href": format!("{origin}/docs/agents/start-here"), "type": "text/html", "title": "For agents: start here"},
+                {"href": format!("{origin}/docs/agents.md"), "type": "text/markdown", "title": "Docs for agents: tutorials and reference"},
                 {"href": format!("{origin}/docs/api/for-agents"), "type": "text/html", "title": "For agents: find, log in, pay"},
                 {"href": format!("{origin}/docs/api/pay-per-request"), "type": "text/html", "title": "Pay per request"},
                 {"href": format!("{origin}/auth.md#register-yourself-as-an-agent"), "type": "text/markdown", "title": "Register as an agent"}

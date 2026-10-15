@@ -215,7 +215,15 @@ fn guides() -> Vec<Guide> {
         path: format!("/docs/api/{slug}"),
         source,
     });
-    docs.chain(api).collect()
+    let agents = crate::pages::agent_docs::AGENT_DOCS
+        .iter()
+        .map(|(slug, source)| Guide {
+            name: format!("agents/{slug}"),
+            title: markdown::title(source, slug),
+            path: format!("/docs/agents/{slug}"),
+            source,
+        });
+    docs.chain(api).chain(agents).collect()
 }
 
 /// A JSON-RPC error.
@@ -367,7 +375,7 @@ async fn call(app: &App, params: &Value, account: Option<&str>) -> Result<Value,
     })
 }
 
-fn list_docs() -> String {
+pub(crate) fn list_docs() -> String {
     let mut out = String::from("| Name | Title | Address | Summary |\n| --- | --- | --- | --- |\n");
     for guide in guides() {
         out.push_str(&format!(

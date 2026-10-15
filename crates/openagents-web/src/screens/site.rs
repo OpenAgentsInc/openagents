@@ -26,13 +26,22 @@ pub(crate) fn screens() -> Vec<Screen> {
         page(
             "docs",
             "Docs",
-            &["/docs", "/docs/{slug}", "/docs/api", "/docs/api/{slug}"],
+            &[
+                "/docs",
+                "/docs/{slug}",
+                "/docs/api",
+                "/docs/api/{slug}",
+                "/docs/agents",
+                "/docs/agents/{slug}",
+            ],
             vec![
                 state("index", "Docs index", docs_index),
                 state("article", "One guide", docs_article),
                 state("missing", "No guide by that name", docs_missing),
                 state("api-index", "API docs index", api_index),
                 state("api-guide", "One API guide", api_guide),
+                state("agents-index", "Docs for agents index", agents_index),
+                state("agents-page", "One page for agents", agents_page),
             ],
         ),
         page(
@@ -179,6 +188,15 @@ fn api_guide(headers: &HeaderMap) -> Response {
         .find(|(_, (name, _))| *name == "quickstart")
         .expect("the quickstart guide");
     crate::pages::api_docs::guide_page(headers, index, source)
+}
+
+fn agents_index(headers: &HeaderMap) -> Response {
+    crate::pages::agent_docs::index_page(headers)
+}
+
+fn agents_page(headers: &HeaderMap) -> Response {
+    let (_, source) = crate::pages::agent_docs::AGENT_DOCS[0];
+    crate::pages::agent_docs::page_view(headers, 0, source)
 }
 
 fn pricing(headers: &HeaderMap) -> Response {
