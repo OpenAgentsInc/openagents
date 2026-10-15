@@ -39,5 +39,21 @@ frozen evidence. Recipes cover 3D assets and authoring, Coder plugins and
 tools, CLI wiring, world wire/client/server changes, and agent history.
 Source verification does not establish successful edits or model quality.
 
+Prepare a bounded model request with `prepare-build --repo DIR --rev COMMIT
+--workspace NAME --task TEXT --model NAME --anchors FILE --out DIR`.
+The anchors JSON is an array of `{path,symbol,start,end}` objects; a symbol
+selects its own source span. `build --repo DIR --input FILE --out DIR
+--endpoint URL` uses an explicitly selected Chat Completions-compatible model
+endpoint and `CODE_INDEX_MODEL_TOKEN` when authentication is needed.
+`--responses FILE` consumes frozen typed responses instead of calling a model.
+The teacher can request additional source within the call and byte budgets.
+
+The saved `build.json` binds requests, responses, model names, prompt version,
+source references, and the compiled artifact. `replay-build --repo DIR
+--input FILE --out DIR` recompiles it without a model call and refuses changed
+requests or artifact digests. Cost remains unknown when the provider does not
+report it. Build records remain private; private trace context needs a separate
+explicit disclosure choice.
+
 Run `cargo test -p code-index` and `cargo fmt -p code-index`. See the
 [roadmap](../../docs/code-graph/task-index-roadmap.md) for experiment scope.

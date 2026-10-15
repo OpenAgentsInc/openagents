@@ -1,5 +1,6 @@
 //! Source-backed task knowledge, kept separate from the structural graph.
 
+pub mod builder;
 pub mod demand;
 pub mod episodes;
 pub mod pilot;
