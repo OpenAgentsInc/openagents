@@ -69,10 +69,9 @@ version.
 2. **Stable references:** done (#11628): features name faces and edges
    (`body:top`, `{"between": [...]}`), resolved through the kernel's
    persistent naming on every build; points still work.
-3. **Assembly structure in exports:** STEP and 3MF carry every placed solid
-   flat, not an assembly tree with instances; URDF (the kernel writes it) is
-   not wired to our joints yet. Robot Lab and Lagrange 2 read mass from the
-   report today.
+3. **Assembly structure in exports:** done for STEP (AP242) and 3MF
+   (#11628): parts once, placed by instances, subassemblies nested. URDF
+   from our joints is #11643.
 4. **Interference by sampling:** overlaps are measured on triangles over a
    28³ grid; slivers thinner than a grid cell can be missed. Exact checks
    wait on a faster kernel intersection for touching curved faces.

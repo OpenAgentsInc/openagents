@@ -50,6 +50,11 @@ pub struct Built {
     /// Each sketch of each placed part and the degrees of freedom its
     /// constraints and dimensions leave (`{part, sketch, dof, status}`).
     pub sketches: Vec<Value>,
+    /// The assembly it was built from, subassemblies expanded (groups and
+    /// the instances under them), for exports that keep the tree.
+    pub assembly: Value,
+    /// Where its parts are kept (and its imported files).
+    pub cache: PathBuf,
 }
 
 fn run(s: &mut Session, op: &str, params: &Value) -> Result<Value, String> {
@@ -148,7 +153,7 @@ const MAKERS: [&str; 10] = [
 ];
 
 /// Runs one feature of `part`; the error names the feature.
-fn feature(s: &mut Session, part: &str, f: &Value) -> Result<Value, String> {
+fn feature(s: &mut Session, part: &str, f: &Value, files: &Path) -> Result<Value, String> {
     let id = f["id"].as_str().unwrap_or_default();
     let op = f["op"].as_str().unwrap_or_default();
     let params = f.get("params").cloned().unwrap_or(json!({}));
@@ -209,6 +214,18 @@ fn feature(s: &mut Session, part: &str, f: &Value) -> Result<Value, String> {
             let solved = run(s, "sketch.solve", &json!({})).unwrap_or_default();
             run(s, "sketch.finish", &json!({})).map_err(&fail)?;
             return Ok(json!({"sketch": id, "dof": solved["dof"], "status": solved["status"]}));
+        }
+        "solid.import_step" => {
+            // A STEP file (AP203, AP214 or AP242) kept in the file store by
+            // its digest: its solids become this feature's.
+            let path = stored_path(files, params["file"].as_str().unwrap_or_default(), "step")
+                .map_err(&fail)?;
+            run(
+                s,
+                "file.insert_step",
+                &json!({"path": path.to_string_lossy(), "name": scoped(part, id)}),
+            )
+            .map_err(&fail)?;
         }
         "block" => {
             for (i, step) in params["ops"].as_array().into_iter().flatten().enumerate() {
@@ -512,6 +529,53 @@ pub fn default_cache() -> PathBuf {
     )
 }
 
+/// Where files a document refers to by digest (imported STEP models) are
+/// kept: `files` beside the built parts. Unlike the built parts, these
+/// can't be made again, so this folder is kept.
+#[must_use]
+pub fn files_dir(cache: &Path) -> PathBuf {
+    cache.join("files")
+}
+
+/// Keeps `bytes` in the file store under their SHA-256 and returns the
+/// reference a feature names them by (`sha256:<hex>`).
+///
+/// # Errors
+/// The store can't be written.
+pub fn store_file(cache: &Path, bytes: &[u8], extension: &str) -> Result<String, String> {
+    let hex: String = Sha256::digest(bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    let dir = files_dir(cache);
+    std::fs::create_dir_all(&dir).map_err(|e| format!("The file store: {e}"))?;
+    let path = dir.join(format!("{hex}.{extension}"));
+    if !path.is_file() {
+        let temporary = dir.join(format!("{hex}.{}.tmp", std::process::id()));
+        std::fs::write(&temporary, bytes).map_err(|e| format!("The file store: {e}"))?;
+        std::fs::rename(&temporary, &path).map_err(|e| format!("The file store: {e}"))?;
+    }
+    Ok(format!("sha256:{hex}"))
+}
+
+/// The stored file a `sha256:<hex>` reference names.
+fn stored_path(files: &Path, reference: &str, extension: &str) -> Result<PathBuf, String> {
+    let hex = reference.strip_prefix("sha256:").unwrap_or_default();
+    if hex.len() != 64 || !hex.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err(format!(
+            "file must be a stored file's reference, sha256:<64 hex digits> (got \"{reference}\")"
+        ));
+    }
+    let path = files.join(format!("{}.{extension}", hex.to_lowercase()));
+    if path.is_file() {
+        Ok(path)
+    } else {
+        Err(format!(
+            "the file {reference} isn't in this Lab's file store; import it again"
+        ))
+    }
+}
+
 /// The kernel session with the materials and parameters every build uses.
 fn session(parameters: &[Value]) -> Result<Session, Vec<String>> {
     let mut s = Session::default();
@@ -600,7 +664,7 @@ fn build_part(
         }
         let copies = COPIES.contains(&f["op"].as_str().unwrap_or_default());
         let before = copies.then(|| volumes(&s));
-        let info = feature(&mut s, key, f).map_err(|e| vec![e])?;
+        let info = feature(&mut s, key, f, &files_dir(cache)).map_err(|e| vec![e])?;
         if info.is_object() {
             sketches.push(info);
         }
@@ -682,8 +746,13 @@ fn build_part(
 ///
 /// # Errors
 /// The document or the part doesn't build, or has no such part or feature.
-pub fn faces_of(document: &Value, key: &str, upto: Option<&str>) -> Result<Value, Vec<String>> {
-    let mut s = replay(document, key, upto)?;
+pub fn faces_of(
+    document: &Value,
+    key: &str,
+    upto: Option<&str>,
+    cache: &Path,
+) -> Result<Value, Vec<String>> {
+    let mut s = replay(document, key, upto, cache)?;
     let mut out = crate::refs::list(&mut s, key);
     out["part"] = json!(key);
     out["after"] = json!(upto.unwrap_or("the last feature"));
@@ -695,7 +764,12 @@ pub fn faces_of(document: &Value, key: &str, upto: Option<&str>) -> Result<Value
 ///
 /// # Errors
 /// The part doesn't build that far, or `sketch` isn't one of its sketches.
-pub fn sketch_dxf(document: &Value, key: &str, sketch: &str) -> Result<(String, u64), Vec<String>> {
+pub fn sketch_dxf(
+    document: &Value,
+    key: &str,
+    sketch: &str,
+    cache: &Path,
+) -> Result<(String, u64), Vec<String>> {
     let assembly = doc::as_assembly(document);
     let is_sketch = assembly["parts"][key]["features"]
         .as_array()
@@ -705,7 +779,7 @@ pub fn sketch_dxf(document: &Value, key: &str, sketch: &str) -> Result<(String, 
     if !is_sketch {
         return Err(vec![format!("{key} has no sketch {sketch}.")]);
     }
-    let mut s = replay(document, key, Some(sketch))?;
+    let mut s = replay(document, key, Some(sketch), cache)?;
     let out = run(
         &mut s,
         "sketch.export_dxf",
@@ -718,9 +792,51 @@ pub fn sketch_dxf(document: &Value, key: &str, sketch: &str) -> Result<(String, 
     ))
 }
 
+/// Each placed part of a built document built afresh in a session of its
+/// own (not read back from the part cache), side by side: exact exports
+/// write these, since a solid read back from STEP doesn't always write out
+/// again cleanly.
+///
+/// # Errors
+/// A part doesn't build.
+pub fn fresh_parts(built: &Built) -> Result<BTreeMap<String, Session>, Vec<String>> {
+    let mut keys: Vec<String> = built.assembly["instances"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|i| i["part"].as_str().map(str::to_owned))
+        .collect();
+    keys.sort();
+    keys.dedup();
+    let results: Vec<(String, Result<Session, Vec<String>>)> = std::thread::scope(|scope| {
+        let jobs: Vec<_> = keys
+            .iter()
+            .map(|key| {
+                scope.spawn(move || {
+                    (
+                        key.clone(),
+                        replay(&built.assembly, key, None, &built.cache),
+                    )
+                })
+            })
+            .collect();
+        jobs.into_iter().filter_map(|job| job.join().ok()).collect()
+    });
+    let mut out = BTreeMap::new();
+    for (key, result) in results {
+        out.insert(key, result?);
+    }
+    Ok(out)
+}
+
 /// A part's history replayed in a session of its own, up to and including
 /// the feature `upto` (all of it when `None`).
-fn replay(document: &Value, key: &str, upto: Option<&str>) -> Result<Session, Vec<String>> {
+fn replay(
+    document: &Value,
+    key: &str,
+    upto: Option<&str>,
+    cache: &Path,
+) -> Result<Session, Vec<String>> {
     let assembly = doc::as_assembly(document);
     let problems = doc::check_assembly(&assembly);
     if !problems.is_empty() {
@@ -745,7 +861,7 @@ fn replay(document: &Value, key: &str, upto: Option<&str>) -> Result<Session, Ve
     let mut s = session(&parameters)?;
     for f in &features {
         if f["suppressed"] != true {
-            let _ = feature(&mut s, key, f).map_err(|e| vec![e])?;
+            let _ = feature(&mut s, key, f, &files_dir(cache)).map_err(|e| vec![e])?;
         }
         if upto.is_some_and(|u| f["id"] == u) {
             break;
@@ -991,6 +1107,8 @@ pub fn build_with(document: &Value, cache: &Path) -> Result<Built, Vec<String>> 
         occurrences,
         warnings,
         sketches,
+        assembly,
+        cache: cache.to_path_buf(),
     })
 }
 

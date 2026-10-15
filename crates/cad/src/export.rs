@@ -24,7 +24,19 @@ pub fn write(built: &mut Built, format: &str, path: &Path) -> Result<u64, String
             std::fs::write(path, &bytes).map_err(|e| e.to_string())?;
             Ok(bytes.len() as u64)
         }
-        "3mf" | "step" | "stl" => {
+        // The assembly's tree: parts once each, placed by their instances,
+        // subassemblies as their own products and objects.
+        "step" => {
+            let text = crate::tree::step(built)?;
+            std::fs::write(path, &text).map_err(|e| e.to_string())?;
+            Ok(text.len() as u64)
+        }
+        "3mf" => {
+            let bytes = crate::tree::threemf(built)?;
+            std::fs::write(path, &bytes).map_err(|e| e.to_string())?;
+            Ok(bytes.len() as u64)
+        }
+        "stl" => {
             let report = built
                 .session
                 .execute(

@@ -67,7 +67,7 @@ pub fn density(material: &str) -> Option<f64> {
 
 /// The modelling operations a part's history may use (besides `sketch`
 /// and `block`). They are the kernel's own operation names.
-pub const OPERATIONS: [&str; 31] = [
+pub const OPERATIONS: [&str; 32] = [
     "solid.extrude",
     "solid.revolve",
     "solid.sweep",
@@ -99,10 +99,11 @@ pub const OPERATIONS: [&str; 31] = [
     "solid.remove",
     "solid.thread",
     "appearance.assign",
+    "solid.import_step",
 ];
 
 /// The direct operations a block may run: every modelling operation.
-pub const DIRECT: [&str; 31] = OPERATIONS;
+pub const DIRECT: [&str; 32] = OPERATIONS;
 
 /// The constraints a sketch may hold between its entities (curve ids such
 /// as `l1`, point ids such as `p2`, or `l1.start`, `c1.center`, and `x` or
@@ -622,7 +623,11 @@ fn feature_problems(part: &str, feature: &Value, seen: &BTreeSet<String>) -> Vec
             Some(ops) if !ops.is_empty() => {
                 for step in ops {
                     let sop = step["op"].as_str().unwrap_or_default();
-                    if !DIRECT.contains(&sop) {
+                    if sop == "solid.import_step" {
+                        out.push(format!(
+                            "Block {part}.{id} can't import a file; make it a solid.import_step feature of its own."
+                        ));
+                    } else if !DIRECT.contains(&sop) {
                         out.push(format!(
                             "Block {part}.{id} can't run \"{sop}\"; a block runs direct operations: {}.",
                             DIRECT.join(", ")

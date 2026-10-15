@@ -151,7 +151,7 @@ How the model works (millimetres and degrees; X forward, Y left, Z up; the groun
 - Subassemblies: cad_assemble templates {"bogie":{"instances":[...],"joints":[...]}} defines one from this document's parts; an instance {"id":"bogie_l","assembly":"bogie"} places a copy, whose instances are then named by path ("bogie_l.wheel"). cad_from_json writes a whole document at once.
 - Make each change in as few calls as you can: one cad_assemble can move instances and set joints together. When a check refuses an edit, change only what it names (move the instance it names, or declare the contact), not the parts' histories. To undo changes to a part, cad_set_part with from_version (the version whose part to bring back).
 - Work it out as numbers first: where each part sits, where it touches its neighbours. When a check refuses an overlap, it says which instances and where; move one, or declare the contact if they are meant to touch.
-- To look at it: cad_render {view: hero|rear|plan|front|side|iso|under|detail, focus?: [instance ids]}. To compare: cad_compare (a = the earlier version). Exports: cad_export (glb for the web and Verse, 3mf, step: exact solids).
+- To look at it: cad_render {view: hero|rear|plan|front|side|iso|under|detail, focus?: [instance ids]}. To compare: cad_compare (a = the earlier version). Exports: cad_export (glb for the web and Verse, 3mf, step: exact solids; step and 3mf keep the assembly tree). cad_import_step brings a STEP model from other CAD into a part as a feature.
 "##;
 
 /// The CAD Lab cards a reply keeps.

@@ -22,6 +22,7 @@ pub mod mass;
 pub mod overlap;
 pub mod refs;
 pub mod render;
+pub mod tree;
 pub mod xf;
 
 use std::collections::BTreeMap;
@@ -242,7 +243,8 @@ mod tests {
             "{why}"
         );
         // What a feature can name, after the extrude.
-        let listed = build::faces_of(&plate(40.0), "tray", Some("body")).unwrap();
+        let listed =
+            build::faces_of(&plate(40.0), "tray", Some("body"), &build::default_cache()).unwrap();
         let text = listed.to_string();
         for name in ["body:top", "body:start", "body:side:l3"] {
             assert!(text.contains(name), "{name}: {text:.600}");
@@ -415,8 +417,13 @@ mod tests {
         let expected = (slot - pi * 4.0) * 4.0;
         assert!((v - expected).abs() / v < 0.005, "dxf {v} vs {expected}");
         // Out again: the sketch as DXF, and a section of the solid.
-        let (text, entities) = build::sketch_dxf(&with_draw(json!(steps)), "plate", "outline")
-            .unwrap_or_else(|p| panic!("{p:?}"));
+        let (text, entities) = build::sketch_dxf(
+            &with_draw(json!(steps)),
+            "plate",
+            "outline",
+            &build::default_cache(),
+        )
+        .unwrap_or_else(|p| panic!("{p:?}"));
         assert!(
             entities >= 5 && text.contains("ARC") && text.contains("CIRCLE"),
             "{entities} {text:.300}"
@@ -424,6 +431,139 @@ mod tests {
         let (cut, lines) = dxf::section(&eval.built, "XY", 2.0).unwrap();
         assert!(lines > 20 && cut.contains("LINE"), "{lines}");
         assert!(dxf::section(&eval.built, "XY", 50.0).is_err());
+    }
+
+    #[test]
+    fn step_and_3mf_keep_the_assembly_tree_and_step_comes_back_as_a_feature() {
+        let mut a = cubes();
+        a["parts"]["rod"] = doc::new_part("rod", "Rod", "Steel", None);
+        a["parts"]["rod"]["features"] =
+            json!([{"id": "c", "op": "solid.cylinder", "params": {"radius": 2, "height": 30}}]);
+        a["assemblies"] = json!({"stack": {"instances": [
+            {"id": "base", "part": "cube"}, {"id": "top", "part": "cube", "parent": "base", "at": [0, 0, 10], "rotate": [0, 0, 30]}]}});
+        a["instances"] = json!([
+            {"id": "left", "assembly": "stack", "at": [0, 40, 0]},
+            {"id": "right", "assembly": "stack", "at": [0, -40, 0], "rotate": [0, 0, 90]},
+            {"id": "post", "part": "rod", "at": [60, 0, 0]}
+        ]);
+        let mut eval = evaluate(&a).unwrap_or_else(|p| panic!("{p:?}"));
+        let total = eval.report["mass"]["volume_cm3"].as_f64().unwrap() * 1000.0;
+        let dir = std::env::temp_dir().join(format!("cad-tree-{}", std::process::id()));
+        export::write(&mut eval.built, "step", &dir.join("a.step")).unwrap();
+        export::write(&mut eval.built, "3mf", &dir.join("a.3mf")).unwrap();
+        let step = std::fs::read_to_string(dir.join("a.step")).unwrap();
+        // The whole, two subassemblies, two parts; seven placements.
+        assert!(step.contains("AP242_MANAGED_MODEL_BASED_3D_ENGINEERING"));
+        assert_eq!(
+            step.matches("NEXT_ASSEMBLY_USAGE_OCCURRENCE(").count(),
+            7,
+            "{step:.2000}"
+        );
+        assert_eq!(step.matches("=PRODUCT(").count(), 5);
+        assert!(step.contains("'stack (right)'"), "{step:.3000}");
+        // Read back: the same solids, the same volume, in the same places.
+        let mut back = solidcraft_engine::Session::default();
+        let read = back
+            .execute(
+                "file.insert_step",
+                &json!({"path": dir.join("a.step").to_string_lossy()}),
+            )
+            .unwrap();
+        assert_eq!(
+            read["created_bodies"].as_array().unwrap().len(),
+            5,
+            "{read}"
+        );
+        let measured = back.execute("inspect.measure", &json!({})).unwrap();
+        let v = measured["total"]["volume_mm3"].as_f64().unwrap();
+        assert!((v - total).abs() / total < 0.005, "{v} vs {total}");
+        let mut lo = [f64::MAX; 3];
+        let mut hi = [f64::MIN; 3];
+        for b in &back.world_state().bodies {
+            for p in &b.mesh().positions {
+                for (k, x) in [p.x, p.y, p.z].into_iter().enumerate() {
+                    lo[k] = lo[k].min(x);
+                    hi[k] = hi[k].max(x);
+                }
+            }
+        }
+        let ours = render::bounds(&eval.built, &[]);
+        for (k, (l, h)) in [
+            (ours.min.x, ours.max.x),
+            (ours.min.y, ours.max.y),
+            (ours.min.z, ours.max.z),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            assert!(
+                (lo[k] - l).abs() < 0.5 && (hi[k] - h).abs() < 0.5,
+                "{k}: {lo:?} {hi:?} vs {ours:?}"
+            );
+        }
+        // The 3MF: one build item, the whole, made of components.
+        let bytes = std::fs::read(dir.join("a.3mf")).unwrap();
+        let mut package = zip::ZipArchive::new(std::io::Cursor::new(bytes.clone())).unwrap();
+        let mut model = String::new();
+        std::io::Read::read_to_string(
+            &mut package.by_name("3D/3dmodel.model").unwrap(),
+            &mut model,
+        )
+        .unwrap();
+        // Two meshes, two parts, two subassemblies and the whole; one item.
+        assert_eq!(model.matches("<mesh>").count(), 2, "{model:.1500}");
+        assert_eq!(model.matches("<components>").count(), 5);
+        assert_eq!(model.matches("<component ").count(), 2 + 4 + 3);
+        assert_eq!(model.matches("<item ").count(), 1);
+        // Another reader places every solid from the tree: the same volume.
+        let (objects, _) = solidcraft_engine::io::read_3mf(&bytes).unwrap();
+        let mut placed = 0.0;
+        for o in &objects {
+            placed += mass::integrals(&solidcraft_engine::geom::Mesh {
+                positions: o.positions.clone(),
+                triangles: o.triangles.clone(),
+                ..Default::default()
+            })
+            .volume;
+        }
+        assert!(
+            (placed - total).abs() / total < 0.01,
+            "3mf {placed} vs {total}"
+        );
+        // A STEP file comes back as a feature of a part (AP242 as we write
+        // it, and AP214 too), and later features work on it.
+        let cache = build::default_cache();
+        for schema in ["AP242", "AP214"] {
+            let mut text = std::fs::read_to_string(dir.join("a.step")).unwrap();
+            if schema == "AP214" {
+                text = text.replace(
+                    "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }",
+                    "AUTOMOTIVE_DESIGN { 1 0 10303 214 3 1 1 }",
+                );
+            }
+            let file = build::store_file(&cache, text.as_bytes(), "step").unwrap();
+            let mut part = doc::new_part("copy", "Copy", "Steel", None);
+            part["features"] = json!([
+                {"id": "model", "op": "solid.import_step", "params": {"file": file}},
+                {"id": "notch", "op": "solid.box", "params": {"length": 4, "width": 4, "height": 40, "center": [60, 0, 0], "operation": "cut"}}
+            ]);
+            let eval = evaluate(&part).unwrap_or_else(|p| panic!("{schema}: {p:?}"));
+            let v = eval.report["mass"]["volume_cm3"].as_f64().unwrap() * 1000.0;
+            // The notch takes the rod's middle: π·2²·30 minus nothing else.
+            let notch = std::f64::consts::PI * 4.0 * 30.0
+                - (v - (total - std::f64::consts::PI * 4.0 * 30.0)).max(0.0);
+            assert!(v < total - 100.0 && notch > 0.0, "{schema}: {v} vs {total}");
+        }
+        let missing = json!({"kind": "part.v1", "id": "x", "features": [{"id": "m", "op": "solid.import_step",
+            "params": {"file": format!("sha256:{}", "0".repeat(64))}}]});
+        assert!(
+            evaluate(&missing)
+                .err()
+                .unwrap()
+                .join(" ")
+                .contains("isn't in this Lab")
+        );
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

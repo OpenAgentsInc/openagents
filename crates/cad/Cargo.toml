@@ -11,6 +11,8 @@ description = "CAD Lab's core: typed part.v1 and assembly.v1 documents built on 
 solidcraft-engine = { git = "https://github.com/bherbruck/solidcraft", rev = "229de1484ce7c4df3c28df5e5c111078ca9e53a3" }
 serde_json = "1"
 sha2 = "0.10"
+# 3MF packages with the assembly tree (the version SolidCraft's io already uses).
+zip = { version = "3", default-features = false, features = ["deflate"] }
 
 [lints]
 workspace = true

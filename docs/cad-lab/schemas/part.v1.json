@@ -51,7 +51,8 @@
               "solid.web",
               "solid.remove",
               "solid.thread",
-              "appearance.assign"
+              "appearance.assign",
+              "solid.import_step"
             ]
           },
           "params": {

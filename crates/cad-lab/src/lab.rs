@@ -266,6 +266,7 @@ impl Lab {
             "cad_faces" => self.faces(args),
             "cad_solid" => self.solid(args),
             "cad_import_dxf" => self.import_dxf(args),
+            "cad_import_step" => self.import_step(args),
             "cad_export_dxf" => self.export_dxf(args),
             other => Err(format!("{other} isn't a CAD Lab tool.")),
         };
@@ -912,6 +913,53 @@ impl Lab {
         Ok(out)
     }
 
+    /// A STEP model (AP203, AP214 or AP242) as a feature of a part: the file
+    /// is kept in the Lab's file store by its digest and the feature names
+    /// it, so later features (cuts, fillets, holes) build on it.
+    fn import_step(&self, args: &Value) -> Result<Value, String> {
+        let feature = arg_str(args, "feature")
+            .ok_or("Name the new feature (feature), e.g. \"bracket\".")?
+            .to_owned();
+        let bytes = match (arg_str(args, "path"), arg_str(args, "step")) {
+            (Some(path), None) => {
+                let lower = path.to_lowercase();
+                if !(lower.ends_with(".step") || lower.ends_with(".stp")) {
+                    return Err("path must be a .step or .stp file.".into());
+                }
+                std::fs::read(path).map_err(|e| format!("{path}: {e}"))?
+            }
+            (None, Some(text)) => text.as_bytes().to_vec(),
+            _ => return Err("Give the STEP file's path, or its text (step), not both.".into()),
+        };
+        if !String::from_utf8_lossy(&bytes[..bytes.len().min(64)]).contains("ISO-10303-21") {
+            return Err("That isn't a STEP file (it doesn't start with ISO-10303-21).".into());
+        }
+        let file = cad::build::store_file(&self.root.join(".parts"), &bytes, "step")?;
+        let after = arg_str(args, "after").map(str::to_owned);
+        let mut out = self.change(args, |document| {
+            let (part, found) = Self::part_of(document, args)?;
+            let list = found["features"].as_array_mut().ok_or("bad part")?;
+            if list.iter().any(|f| f["id"] == feature.as_str()) {
+                return Err(format!("{part} already has a feature {feature}."));
+            }
+            let at = match &after {
+                Some(id) => list
+                    .iter()
+                    .position(|f| f["id"] == id.as_str())
+                    .map(|i| i + 1)
+                    .ok_or_else(|| format!("{part} has no feature {id}."))?,
+                None => list.len(),
+            };
+            list.insert(
+                at,
+                json!({"id": feature, "op": "solid.import_step", "params": {"file": file}}),
+            );
+            Ok(format!("{part}: {feature} from a STEP file"))
+        })?;
+        out["file"] = json!(file);
+        Ok(out)
+    }
+
     /// DXF out: a sketch of a part, or the whole version cut by a plane.
     fn export_dxf(&self, args: &Value) -> Result<Value, String> {
         let (id, n, document, _) = self.pick(args)?;
@@ -919,7 +967,8 @@ impl Lab {
             Some(sketch) => {
                 let part = arg_str(args, "part").ok_or("Name the part (part) the sketch is in.")?;
                 let (text, entities) =
-                    cad::build::sketch_dxf(&document, part, sketch).map_err(|p| p.join(" "))?;
+                    cad::build::sketch_dxf(&document, part, sketch, &self.root.join(".parts"))
+                        .map_err(|p| p.join(" "))?;
                 (text, entities, format!("{part}-{sketch}"))
             }
             None => {
@@ -945,8 +994,13 @@ impl Lab {
     fn faces(&self, args: &Value) -> Result<Value, String> {
         let (id, n, document, _) = self.pick(args)?;
         let part = arg_str(args, "part").ok_or("Name the part (part).")?;
-        let mut out = cad::build::faces_of(&document, part, arg_str(args, "after"))
-            .map_err(|p| p.join(" "))?;
+        let mut out = cad::build::faces_of(
+            &document,
+            part,
+            arg_str(args, "after"),
+            &self.root.join(".parts"),
+        )
+        .map_err(|p| p.join(" "))?;
         out["doc"] = json!(id);
         out["version"] = json!(n);
         out["how"] = json!(
@@ -1318,6 +1372,9 @@ fn takes(name: &str) -> &'static [&'static str] {
             "author",
         ],
         "cad_export_dxf" => &["doc", "version", "part", "sketch", "plane", "at"],
+        "cad_import_step" => &[
+            "doc", "part", "feature", "path", "step", "after", "summary", "author",
+        ],
         "cad_versions" => &["doc"],
         "cad_compare" => &["doc", "a", "b"],
         "cad_export" => &["doc", "version", "formats"],
@@ -1434,6 +1491,14 @@ pub fn tools() -> Value {
             "offset": {"type": "number", "description": "mm along the plane's normal"},
             "scale": {"type": "number", "description": "multiply the drawing by this (default 1)"},
             "at": {"type": "string", "description": "move the drawing by [x, y] mm, as JSON"},
+            "after": {"type": "string", "description": "insert after this feature id"},
+            "summary": summary}}},
+        {"name": "cad_import_step", "description": "Bring a STEP model (AP203, AP214 or AP242, from any CAD) into a part as a feature: its exact solids, which later features can cut, fillet or join. The file is kept with the Lab by its digest.",
+         "parameters": {"type": "object", "required": ["doc", "part", "feature", "summary"], "properties": {
+            "doc": doc, "part": part,
+            "feature": {"type": "string", "description": "the new feature's id, e.g. bracket"},
+            "path": {"type": "string", "description": "a .step or .stp file on this computer"},
+            "step": {"type": "string", "description": "or the STEP file's text"},
             "after": {"type": "string", "description": "insert after this feature id"},
             "summary": summary}}},
         {"name": "cad_export_dxf", "description": "A 2D DXF drawing out of a version: one sketch of a part (part and sketch), or the whole model cut by a plane (plane XY, XZ or YZ at a distance in mm), for laser cutting, CNC or another CAD's 2D tools.",
@@ -1670,6 +1735,25 @@ mod tests {
         assert!(cut["entities"].as_u64().unwrap_or(0) >= 4, "{cut}");
         let text = std::fs::read_to_string(cut["path"].as_str().unwrap()).unwrap();
         assert!(text.contains("ENTITIES"));
+        // The gasket as STEP, back into another part as a feature.
+        let exported = lab.run("cad_export", &json!({"doc": "gasket", "formats": ["step"]}));
+        let path = exported["files"][0]["path"].as_str().unwrap().to_owned();
+        let imported = lab.run(
+            "cad_import_step",
+            &json!({"doc": "gasket", "part": "gasket", "feature": "again",
+            "path": path, "summary": "The gasket again, from STEP"}),
+        );
+        assert_eq!(imported["version"], 4, "{imported}");
+        assert!(imported["file"].as_str().unwrap().starts_with("sha256:"));
+        let bad = lab.run(
+            "cad_import_step",
+            &json!({"doc": "gasket", "part": "gasket", "feature": "x",
+            "step": "not a model", "summary": "x"}),
+        );
+        assert!(
+            bad["error"].as_str().unwrap().contains("isn't a STEP file"),
+            "{bad}"
+        );
     }
 
     #[test]

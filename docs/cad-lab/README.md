@@ -187,7 +187,8 @@ message (workspace rule: no keyword routing).
 | `cad_check(doc, version?)` | Rebuild and check a version again |
 | `cad_versions(doc)` | Each version's summary, author, mass and parts |
 | `cad_compare(doc, a?, b?)` | What changed: parts, features, instances, joints, mass and centre of mass |
-| `cad_export(doc, version?, formats?)` | glTF binary (`.glb`, for the web and Verse), 3MF, STEP (exact solids) and STL |
+| `cad_export(doc, version?, formats?)` | glTF binary (`.glb`, for the web and Verse), 3MF, STEP (exact solids) and STL; STEP (AP242) and 3MF keep the assembly tree: each part once in its own frame, placed by its instances, subassemblies as products or objects of their own |
+| `cad_import_step(doc, part, feature, path? / step?)` | A STEP model (AP203, AP214 or AP242) as a feature of a part (`solid.import_step`, the file kept in the Lab's store by its SHA-256) |
 | `cad_solid(ops, sketches?, material?, formats?)` | Direct operations with no document: mass, size and checks, and files if asked; nothing saved |
 | `cad_import_dxf(doc, part, feature, dxf, plane?, offset?, scale?, at?)` | A DXF drawing as a new sketch: touching lines and arcs become polylines (JSON the part keeps), with circles, splines and text |
 | `cad_export_dxf(doc, version?, part?, sketch?, plane?, at?)` | A sketch as DXF, or the whole model cut by a plane |
