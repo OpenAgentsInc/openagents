@@ -117,11 +117,10 @@ Yes. The apps, the chat service, Coder, and the protocols are at
 [github.com/OpenAgentsInc/openagents](https://github.com/OpenAgentsInc/openagents),
 under the Apache License 2.0.
 
-## When is version 1.0 out?
+## Is version 1.0 out?
 
-Coder 1.0 is in release candidates now; the [download page](/download)
-shows the latest. Stable releases come after testing, and Coder updates
-itself when they're out.
+Yes. Coder 1.0.0 is out; get it from the [download page](/download).
+Coder updates itself when a newer release is out.
 
 ## How do I see what changed in a build?
 

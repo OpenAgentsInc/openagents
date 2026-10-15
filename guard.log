@@ -1,0 +1,1102 @@
+   Compiling proc-macro2 v1.0.107
+   Compiling unicode-ident v1.0.26
+   Compiling quote v1.0.47
+   Compiling libc v0.2.189
+   Compiling serde_core v1.0.229
+   Compiling cfg-if v1.0.5
+   Compiling serde v1.0.229
+   Compiling foldhash v0.2.0
+   Compiling equivalent v1.0.2
+   Compiling memchr v2.8.3
+   Compiling shlex v2.0.1
+   Compiling find-msvc-tools v0.1.13
+   Compiling itoa v1.0.18
+   Compiling log v0.4.34
+   Compiling typenum v1.20.1
+   Compiling bitflags v2.13.2
+   Compiling version_check v0.9.5
+   Compiling zmij v1.0.23
+   Compiling subtle v2.6.1
+   Compiling critical-section v1.2.0
+   Compiling portable-atomic v1.15.0
+   Compiling generic-array v0.14.7
+   Compiling serde_json v1.0.151
+   Compiling jobserver v0.1.35
+   Compiling cc v1.4.7
+   Compiling getrandom v0.2.17
+   Compiling rand_core v0.6.4
+   Compiling errno v0.3.14
+   Compiling scopeguard v1.2.0
+   Compiling syn v3.0.6
+   Compiling syn v2.0.119
+   Compiling serde_derive v1.0.229
+   Compiling pin-project-lite v0.2.17
+   Compiling parking_lot_core v0.9.12
+   Compiling lock_api v0.4.14
+   Compiling signal-hook-registry v1.4.8
+   Compiling cpufeatures v0.2.17
+   Compiling rand_core v0.10.1
+   Compiling const-oid v0.9.6
+   Compiling bytes v1.12.1
+   Compiling hashbrown v0.17.1
+   Compiling smallvec v1.16.1
+   Compiling indexmap v2.14.2
+   Compiling mio v1.2.3
+   Compiling futures-core v0.3.34
+   Compiling thiserror v2.0.20
+   Compiling zeroize_derive v1.5.0
+   Compiling thiserror-impl v2.0.20
+   Compiling zeroize v1.9.0
+   Compiling socket2 v0.6.5
+   Compiling tokio-macros v2.7.2
+   Compiling futures-sink v0.3.34
+   Compiling futures-channel v0.3.34
+   Compiling futures-io v0.3.34
+   Compiling slab v0.4.12
+   Compiling futures-macro v0.3.34
+   Compiling futures-task v0.3.34
+   Compiling futures-util v0.3.34
+   Compiling synstructure v0.14.0
+   Compiling base64 v0.22.1
+   Compiling once_cell v1.21.4
+   Compiling const-oid v0.10.2
+   Compiling zerofrom-derive v0.1.8
+   Compiling zerocopy v0.8.57
+   Compiling yoke-derive v0.8.3
+   Compiling zerofrom v0.1.8
+   Compiling zerocopy-derive v0.8.57
+   Compiling hybrid-array v0.4.15
+   Compiling stable_deref_trait v1.2.1
+   Compiling cmov v0.5.4
+   Compiling yoke v0.8.3
+   Compiling ctutils v0.4.2
+   Compiling block-buffer v0.12.1
+   Compiling crypto-common v0.2.2
+   Compiling zerovec-derive v0.11.6
+   Compiling digest v0.11.3
+   Compiling crypto-common v0.1.7
+   Compiling block-buffer v0.10.4
+   Compiling http v1.5.0
+   Compiling zerovec v0.11.8
+   Compiling digest v0.10.7
+   Compiling displaydoc v0.2.7
+   Compiling getrandom v0.4.3
+   Compiling sha2 v0.10.9
+   Compiling percent-encoding v2.3.2
+   Compiling ring v0.17.14
+   Compiling tinystr v0.8.4
+   Compiling rustls-pki-types v1.15.1
+   Compiling cpufeatures v0.3.1
+   Compiling litemap v0.8.3
+   Compiling writeable v0.6.4
+   Compiling zerotrie v0.2.5
+   Compiling icu_locale_core v2.3.0
+   Compiling potential_utf v0.1.6
+   Compiling utf8_iter v1.0.4
+   Compiling icu_properties_data v2.3.0
+   Compiling untrusted v0.9.0
+   Compiling httparse v1.10.1
+   Compiling icu_normalizer_data v2.3.0
+   Compiling parking_lot v0.12.5
+   Compiling tokio v1.53.1
+   Compiling icu_collections v2.3.0
+   Compiling icu_provider v2.3.1
+   Compiling form_urlencoded v1.2.2
+   Compiling rustls v0.23.45
+   Compiling libm v0.2.16
+   Compiling sha2 v0.11.0
+   Compiling user-home v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/user-home)
+   Compiling getrandom v0.3.4
+   Compiling ryu v1.0.23
+   Compiling ppv-lite86 v0.2.21
+   Compiling webpki-roots v1.0.9
+   Compiling tracing-core v0.1.36
+   Compiling tracing-attributes v0.1.31
+   Compiling tracing v0.1.44
+   Compiling pkg-config v0.3.34
+   Compiling rustls-webpki v0.103.15
+   Compiling secp256k1-sys v0.11.0
+   Compiling crc32fast v1.5.2
+   Compiling icu_normalizer v2.3.0
+   Compiling heck v0.5.0
+   Compiling icu_properties v2.3.0
+   Compiling idna_adapter v1.2.2
+   Compiling idna v1.1.0
+   Compiling url v2.5.8
+   Compiling chacha20 v0.10.2
+   Compiling rustix v1.1.5
+   Compiling rand v0.10.2
+   Compiling http-body v1.1.0
+   Compiling ryu-js v1.0.3
+   Compiling sync_wrapper v1.0.2
+   Compiling cfg_aliases v0.2.2
+   Compiling tower-service v0.3.3
+   Compiling tokio-util v0.7.19
+   Compiling fastrand v2.5.0
+   Compiling rand_core v0.9.5
+   Compiling ipnet v2.12.2
+   Compiling rand_chacha v0.9.0
+   Compiling tower-layer v0.3.3
+   Compiling rand v0.9.5
+   Compiling unicode-width v0.2.0
+   Compiling atomic-waker v1.1.2
+   Compiling tree-sitter-language v0.1.8
+   Compiling simd-adler32 v0.3.10
+   Compiling try-lock v0.2.5
+   Compiling want v0.3.1
+   Compiling tokio-rustls v0.26.5
+   Compiling http-body-util v0.1.5
+   Compiling httpdate v1.0.3
+   Compiling arrayvec v0.7.8
+   Compiling hyper v1.11.1
+   Compiling tower v0.5.3
+   Compiling hyper-util v0.1.20
+   Compiling data-encoding v2.11.1
+   Compiling miniz_oxide v0.9.1
+   Compiling autocfg v1.5.1
+   Compiling rustversion v1.0.23
+   Compiling zlib-rs v0.6.8
+   Compiling num-traits v0.2.19
+   Compiling flate2 v1.1.10
+   Compiling hashbrown v0.16.1
+   Compiling regex-syntax v0.8.11
+   Compiling unicode-segmentation v1.13.3
+   Compiling fnv v1.0.7
+   Compiling hyper-rustls v0.27.9
+   Compiling tower-http v0.6.11
+   Compiling secp256k1 v0.31.1
+   Compiling base64 v0.23.1
+   Compiling nostr v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/nostr)
+   Compiling serde_urlencoded v0.7.1
+   Compiling aho-corasick v1.1.5
+   Compiling deranged v0.5.8
+   Compiling time-core v0.1.9
+   Compiling num-conv v0.2.2
+   Compiling tempfile v3.27.0
+   Compiling powerfmt v0.2.0
+   Compiling regex-automata v0.4.18
+   Compiling convert_case v0.10.0
+   Compiling sha1 v0.11.0
+   Compiling objc2 v0.6.4
+   Compiling unicode-xid v0.2.6
+   Compiling derive_more-impl v2.1.1
+   Compiling tungstenite v0.30.0
+   Compiling webpki-roots v0.26.11
+   Compiling objc2-encode v4.1.0
+   Compiling tokio-tungstenite v0.30.0
+   Compiling derive_more v2.1.1
+   Compiling paper-mono v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/paper-mono)
+   Compiling same-file v1.0.6
+   Compiling either v1.18.0
+   Compiling walkdir v2.5.0
+   Compiling reqwest v0.12.28
+   Compiling strsim v0.11.1
+   Compiling itertools v0.14.0
+   Compiling quick-xml v0.42.0
+   Compiling static_assertions v1.1.0
+   Compiling atif v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/atif)
+   Compiling glam v0.30.10
+   Compiling num_threads v0.1.7
+   Compiling time v0.3.55
+   Compiling regex v1.13.1
+   Compiling strum_macros v0.28.0
+   Compiling onig_sys v69.9.3
+   Compiling lru v0.18.4
+   Compiling strum v0.28.0
+   Compiling openui-lang v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/openui-lang)
+   Compiling winnow v1.0.4
+   Compiling toml_parser v1.1.3+spec-1.1.0
+   Compiling toml_datetime v0.7.5+spec-1.1.0
+   Compiling serde_spanned v1.1.1
+   Compiling winnow v0.7.15
+   Compiling toml_writer v1.1.2+spec-1.1.0
+   Compiling ident_case v1.0.1
+   Compiling darling_core v0.24.1
+   Compiling toml v0.9.12+spec-1.1.0
+   Compiling roxmltree v0.21.1
+   Compiling ref-cast v1.0.27
+   Compiling linked-hash-map v0.5.6
+   Compiling yaml-rust v0.4.5
+   Compiling block2 v0.6.2
+   Compiling dispatch2 v0.3.1
+   Compiling objc2-core-foundation v0.3.2
+   Compiling darling_macro v0.24.1
+   Compiling plist v1.10.1
+   Compiling castaway v0.2.4
+   Compiling bytemuck_derive v1.12.1
+   Compiling ref-cast-impl v1.0.27
+   Compiling serde_derive_internals v0.30.0
+   Compiling fs2 v0.4.3
+   Compiling litrs v1.0.0
+   Compiling instability v0.3.13
+   Compiling signal-hook v0.3.18
+   Compiling document-features v0.2.12
+   Compiling schemars_derive v1.2.2
+   Compiling bytemuck v1.25.2
+   Compiling compact_str v0.9.1
+   Compiling darling v0.24.1
+   Compiling unicode-truncate v2.0.1
+   Compiling kasuari v0.4.12
+   Compiling indoc v2.0.7
+   Compiling dyn-clone v1.0.20
+   Compiling semver v1.0.28
+   Compiling onig v6.5.3
+   Compiling schemars v1.2.2
+   Compiling ratatui-core v0.1.2
+   Compiling bincode v1.3.3
+   Compiling robot-description v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/robot-description)
+   Compiling core-foundation-sys v0.8.7
+   Compiling tinyvec v1.13.3
+   Compiling bit-vec v0.8.0
+   Compiling syntect v5.3.0
+   Compiling bit-set v0.8.0
+   Compiling signal-hook-mio v0.2.5
+   Compiling tree-sitter v0.27.0
+   Compiling line-clipping v0.3.8
+   Compiling pulldown-cmark v0.13.4
+   Compiling ratatui-widgets v0.3.2
+   Compiling crossterm v0.29.0
+   Compiling fancy-regex v0.16.2
+   Compiling two-face v0.4.5
+   Compiling tree-sitter-typescript v0.23.2
+   Compiling tree-sitter-python v0.25.0
+   Compiling tree-sitter-go v0.25.0
+   Compiling tree-sitter-c v0.24.2
+   Compiling robot-lab v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/robot-lab)
+   Compiling tree-sitter-json v0.24.8
+   Compiling tree-sitter-javascript v0.25.0
+   Compiling tree-sitter-rust v0.24.2
+   Compiling tree-sitter-css v0.25.0
+   Compiling tree-sitter-html v0.23.2
+   Compiling tree-sitter-bash v0.25.1
+   Compiling tree-sitter-cpp v0.23.4
+   Compiling pulldown-cmark-escape v0.11.0
+   Compiling streaming-iterator v0.1.9
+   Compiling unicase v2.9.0
+   Compiling nostr-transport v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/nostr-transport)
+   Compiling code-highlight v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/code-highlight)
+   Compiling ratatui-crossterm v0.1.2
+   Compiling ratatui-macros v0.7.2
+   Compiling coder-history v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/coder-history)
+   Compiling is_ci v1.2.0
+   Compiling supports-color v3.0.2
+   Compiling ratatui v0.30.2
+   Compiling tree-sitter-highlight v0.27.0
+   Compiling markdown-stream v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/markdown-stream)
+   Compiling receipts v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/receipts)
+   Compiling fsevent-sys v4.1.0
+   Compiling notify-types v2.1.0
+   Compiling qrcodegen v1.8.0
+   Compiling web-time v1.1.0
+   Compiling notify v8.2.0
+   Compiling anyhow v1.0.104
+   Compiling rustc-hash v2.1.3
+   Compiling workbench v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/workbench)
+   Compiling ahash v0.8.12
+   Compiling coder-connect v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/coder-connect)
+   Compiling leb128fmt v0.1.0
+   Compiling wasmtime-internal-core v48.0.5
+   Compiling cobs v0.3.0
+   Compiling postcard-derive v0.2.2
+   Compiling vcpkg v0.2.15
+   Compiling libsqlite3-sys v0.28.0
+   Compiling postcard v1.1.3
+   Compiling rustc_version v0.4.1
+   Compiling fdeflate v0.3.7
+   Compiling miniz_oxide v0.8.9
+   Compiling png v0.18.1
+   Compiling hashbrown v0.14.5
+   Compiling inout v0.1.4
+   Compiling cranelift-srcgen v0.135.5
+   Compiling oa-tokens v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/oa-tokens)
+   Compiling cranelift-assembler-x64-meta v0.135.5
+   Compiling cipher v0.4.4
+   Compiling hashlink v0.9.1
+   Compiling cranelift-bitset v0.135.5
+   Compiling iana-time-zone v0.1.65
+   Compiling bumpalo v3.20.3
+   Compiling fallible-iterator v0.3.0
+   Compiling fallible-streaming-iterator v0.1.9
+   Compiling hex v0.4.3
+   Compiling base64ct v1.8.3
+   Compiling rustc-hash v1.1.0
+   Compiling pem-rfc7468 v1.0.0
+   Compiling naga-types v30.0.1
+   Compiling jev v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/jev)
+   Compiling rusqlite v0.31.0
+   Compiling chrono v0.4.45
+   Compiling font-types v0.12.5
+   Compiling objc2-foundation v0.3.2
+   Compiling naga v30.0.1
+   Compiling coder-lease v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/coder-lease)
+   Compiling supervise v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/supervise)
+   Compiling pulley-macros v48.0.5
+   Compiling target-lexicon v0.13.5
+   Compiling bit-vec v0.9.1
+   Compiling bit-set v0.10.0
+   Compiling wasmparser v0.254.2
+   Compiling rust-native v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/rust-native)
+   Compiling coder-access v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/coder-access)
+   Compiling objc2-metal v0.3.2
+   Compiling read-fonts v0.41.0
+   Compiling der v0.8.2
+   Compiling cranelift-entity v0.135.5
+   Compiling objc2-core-graphics v0.3.2
+   Compiling half v2.7.1
+   Compiling coder-boundary v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/coder-boundary)
+   Compiling gimli v0.33.0
+   Compiling codespan-reporting v0.13.1
+   Compiling universal-hash v0.5.1
+   Compiling wasmtime-internal-versioned-export-macros v48.0.5
+   Compiling cranelift-isle v0.135.5
+   Compiling byteorder v1.5.0
+   Compiling opaque-debug v0.3.1
+   Compiling raw-window-handle v0.6.2
+   Compiling wgpu-types v30.0.1
+   Compiling polyval v0.6.2
+   Compiling objc2-quartz-core v0.3.2
+   Compiling cranelift-bforest v0.135.5
+   Compiling spki v0.8.0
+   Compiling pulley-interpreter v48.0.5
+   Compiling pay-ledger v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/pay-ledger)
+   Compiling curve25519-dalek v5.0.0
+   Compiling route-contract v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/route-contract)
+   Compiling coder-ui v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/coder-ui)
+   Compiling model-access v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/model-access)
+   Compiling wgpu-hal v30.0.1
+   Compiling coder-engine-status v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/coder-engine-status)
+   Compiling zune-core v0.5.3
+   Compiling base16ct v1.0.0
+   Compiling cranelift-codegen-shared v0.135.5
+   Compiling object v0.39.1
+   Compiling pxfm v0.1.30
+   Compiling spin v0.9.9
+   Compiling lazy_static v1.5.0
+   Compiling moxcms v0.8.1
+   Compiling cranelift-codegen-meta v0.135.5
+   Compiling serdect v0.4.3
+   Compiling zune-jpeg v0.5.15
+   Compiling pkcs8 v0.11.0
+   Compiling raw-window-metal v1.1.0
+   Compiling wgpu-naga-bridge v30.0.1
+   Compiling ghash v0.5.1
+   Compiling skrifa v0.44.0
+   Compiling aes v0.8.4
+   Compiling ctr v0.9.2
+   Compiling cranelift-assembler-x64 v0.135.5
+   Compiling physics v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/physics)
+   Compiling aead v0.5.2
+   Compiling signature v3.0.0
+   Compiling n0-error-macros v1.0.1
+   Compiling spez v0.1.2
+   Compiling libloading v0.8.9
+   Compiling cpp_demangle v0.5.1
+   Compiling crossbeam-utils v0.8.23
+   Compiling profiling v1.0.18
+   Compiling simdutf8 v0.1.5
+   Compiling byteorder-lite v0.1.0
+   Compiling image v0.25.10
+   Compiling n0-error v1.0.1
+   Compiling ed25519 v3.0.0
+   Compiling aes-gcm v0.10.3
+   Compiling cranelift-codegen v0.135.5
+   Compiling wasm-encoder v0.254.2
+   Compiling core-foundation v0.10.1
+   Compiling objc2-security v0.3.2
+   Compiling openrouter v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/openrouter)
+   Compiling wgpu-core v30.0.1
+   Compiling n0-future v0.3.2
+   Compiling zstd-sys v2.1.1+zstd.1.5.7
+   Compiling pin-project-internal v1.1.13
+   Compiling arbitrary v1.4.2
+   Compiling verse-world v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/verse-world)
+   Compiling rtrb v0.4.0
+   Compiling diatomic-waker v0.2.3
+   Compiling cordyceps v0.3.5
+   Compiling crossbeam-epoch v0.9.21
+   Compiling wasmtime-internal-component-util v48.0.5
+   Compiling termcolor v1.4.1
+   Compiling knowledge v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/knowledge)
+   Compiling spin v0.10.1
+   Compiling parking v2.2.1
+   Compiling inflections v1.1.1
+   Compiling gltf-derive v1.4.1
+   Compiling inference v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/inference)
+   Compiling futures-lite v2.6.1
+   Compiling futures-buffered v0.2.13
+   Compiling wasmprinter v0.254.2
+   Compiling verse-engine v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/verse-engine)
+   Compiling cranelift-control v0.135.5
+   Compiling pin-project v1.1.13
+   Compiling objc2-system-configuration v0.3.2
+   Compiling ed25519-dalek v3.0.0
+   Compiling wgpu-core-deps-apple v30.0.1
+   Compiling regalloc2 v0.15.2
+   Compiling xp-ledger v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/xp-ledger)
+   Compiling security-framework-sys v2.17.0
+   Compiling codex-transport v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/codex-transport)
+   Compiling wgpu v30.0.1
+   Compiling uuid v1.26.1
+   Compiling world-tree v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/world-tree)
+   Compiling hmac v0.12.1
+   Compiling system-configuration-sys v0.6.0
+   Compiling id-arena v2.3.0
+   Compiling rustc-demangle v0.1.28
+   Compiling crossbeam-deque v0.8.8
+   Compiling wasmtime-environ v48.0.5
+   Compiling security-framework v3.7.0
+   Compiling gltf-json v1.4.1
+   Compiling coder-pty v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/coder-pty)
+   Compiling jev-hosted v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/jev-hosted)
+   Compiling noq-udp v1.3.0
+   Compiling async-trait v0.1.92
+   Compiling zeno v0.3.3
+   Compiling base64 v0.13.1
+   Compiling zstd-safe v7.3.0
+   Compiling toml_datetime v1.1.1+spec-1.1.0
+   Compiling urlencoding v2.1.3
+   Compiling yazi v0.2.1
+   Compiling data-encoding-macro-internal v0.1.19
+   Compiling swash v0.2.10
+   Compiling gltf v1.4.1
+   Compiling toml_edit v0.25.13+spec-1.1.0
+   Compiling wasm-metadata v0.254.2
+   Compiling rustls-platform-verifier v0.7.1
+   Compiling wit-parser v0.254.2
+   Compiling wasm-encoder v0.259.0
+   Compiling vte v0.15.0
+   Compiling futures-executor v0.3.34
+   Compiling wasmtime-internal-unwinder v48.0.5
+   Compiling n0-dns-resolver v0.1.0
+   Compiling rayon-core v1.13.0
+   Compiling siphasher v1.0.3
+   Compiling unicode-bidi v0.3.18
+   Compiling futures v0.3.34
+   Compiling coder-vt v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/coder-vt)
+   Compiling wast v259.0.0
+   Compiling wit-component v0.254.2
+   Compiling system-configuration v0.8.0
+   Compiling reqwest v0.13.5
+   Compiling proc-macro-crate v3.5.0
+   Compiling data-encoding-macro v0.1.21
+   Compiling wasmtime-internal-fiber v48.0.5
+   Compiling wasmtime-internal-jit-debug v48.0.5
+   Compiling encoding_rs v0.8.41
+   Compiling noq v1.3.0
+   Compiling iroh-dns v1.3.0
+   Compiling serde_path_to_error v0.1.20
+   Compiling rand_pcg v0.10.2
+   Compiling enum-assoc v1.4.1
+   Compiling blake3 v1.8.7
+   Compiling dirs-sys-next v0.1.2
+   Compiling simple-dns v0.12.0
+   Compiling netdev v0.46.3
+   Compiling pollster v0.4.0
+   Compiling sorted-index-buffer v0.2.1
+   Compiling wasmtime-internal-cranelift v48.0.5
+   Compiling lru-slab v0.1.3
+   Compiling wasmtime-internal-component-macro v48.0.5
+   Compiling identity-hash v0.1.0
+   Compiling fixedbitset v0.4.2
+   Compiling wasmtime-internal-cache v48.0.5
+   Compiling petgraph v0.6.5
+   Compiling noq-proto v1.3.0
+   Compiling cranelift-frontend v0.135.5
+   Compiling cranelift-native v0.135.5
+   Compiling directories-next v2.0.0
+   Compiling iroh-base v1.3.0
+   Compiling num_enum_derive v0.7.6
+   Compiling terminal-core v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/terminal-core)
+   Compiling zstd v0.13.3
+   Compiling wasmtime-internal-wit-bindgen v48.0.5
+   Compiling wat v1.259.0
+   Compiling verse-net v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/verse-net)
+   Compiling debugid v0.8.0
+   Compiling wasmtime v48.0.5
+   Compiling acto v0.8.2
+   Compiling secret-screen v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/secret-screen)
+   Compiling arc-swap v1.9.2
+   Compiling tokio-stream v0.1.19
+   Compiling iroh-relay v1.3.0
+   Compiling netwatch v0.19.3
+   Compiling iroh-metrics-derive v1.0.1
+   Compiling mac-addr v0.3.0
+   Compiling sha1_smol v1.0.1
+   Compiling constant_time_eq v0.4.2
+   Compiling verse-gfx v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/verse-gfx)
+   Compiling verse-pbr v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/verse-pbr)
+   Compiling multiversion_no_op v1.0.0
+   Compiling tokio-websockets v0.13.3
+   Compiling iroh-metrics v1.0.2
+   Compiling fxprof-processed-profile v0.8.1
+   Compiling rayon v1.12.0
+   Compiling wasm-compose v0.254.2
+   Compiling num_enum v0.7.6
+   Compiling n0-watcher v1.0.0
+   Compiling addr2line v0.26.1
+   Compiling wasmtime-internal-jit-icache-coherence v48.0.5
+   Compiling iroh v1.3.0
+   Compiling serde_bytes v0.11.19
+   Compiling slotmap v1.1.1
+   Compiling program-launch v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/program-launch)
+   Compiling smol_str v0.1.24
+   Compiling mach2 v0.6.0
+   Compiling float-cmp v0.9.0
+   Compiling seize v0.5.1
+   Compiling papaya v0.2.5
+   Compiling strict-num v0.1.1
+   Compiling verse-core v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/verse-core)
+   Compiling openagents-x402 v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/x402)
+   Compiling hickory-proto v0.26.3
+   Compiling polycool v0.4.0
+   Compiling backon v1.6.0
+   Compiling arrayref v0.3.9
+   Compiling tiny-skia-path v0.12.0
+   Compiling kurbo v0.13.1
+   Compiling swarm-discovery v0.6.3
+   Compiling plugin v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/plugin)
+   Compiling pylon v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/pylon)
+   Compiling acp-client v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/acp-client)
+   Compiling boat v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/boat)
+   Compiling playtest v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/playtest)
+   Compiling coder-reach v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/coder-reach)
+   Compiling github-actions v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/github-actions)
+   Compiling which v8.0.6
+   Compiling bitcoin-io v0.1.101
+   Compiling claude_agent_sdk v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/claude_agent_sdk)
+   Compiling openagents-chat v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/openagents-chat)
+   Compiling coder-delegate v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/coder-delegate)
+   Compiling fontdb v0.24.0
+   Compiling iroh-mdns-address-lookup v0.5.0
+   Compiling svgtypes v0.16.1
+   Compiling harfrust v0.12.0
+   Compiling hook-log v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/hook-log)
+   Compiling simplecss v0.2.2
+   Compiling unicode-vo v0.1.0
+   Compiling data-url v0.3.2
+   Compiling xmlwriter v0.1.0
+   Compiling unicode-script v0.5.8
+   Compiling pico-args v0.5.0
+   Compiling imagesize v0.15.0
+   Compiling usvg v0.48.1
+   Compiling coder-host-wire v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/coder-host-wire)
+   Compiling tiny-skia v0.12.0
+   Compiling background v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/background)
+   Compiling openagents-connect v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/openagents-connect)
+   Compiling coder-service v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/coder-service)
+   Compiling coder-sdk v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/coder-sdk)
+   Compiling unicode-normalization v0.1.25
+   Compiling rgb v0.8.53
+   Compiling hex-conservative v0.2.3
+   Compiling coder-link v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/coder-link)
+   Compiling memory-stream v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/memory-stream)
+   Compiling mime v0.3.17
+   Compiling axum-core v0.5.6
+   Compiling coder-host v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/coder-host)
+   Compiling bitcoin_hashes v0.14.101
+   Compiling resvg v0.48.1
+   Compiling verse-content v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/verse-content)
+   Compiling microcoder-loop v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/microcoder-loop)
+   Compiling gym v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/gym)
+warning: associated function `start_loopback` is never used
+   --> crates/coder-sdk/src/bridge.rs:302:19
+    |
+237 | impl Host {
+    | --------- associated function in this implementation
+...
+302 |     pub(crate) fn start_loopback(
+    |                   ^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `loopback_token` is never used
+   --> crates/coder-sdk/src/bridge.rs:417:4
+    |
+417 | fn loopback_token() -> std::io::Result<String> {
+    |    ^^^^^^^^^^^^^^
+
+warning: `coder-sdk` (lib) generated 2 warnings
+   Compiling der_derive v0.7.3
+   Compiling utf8parse v0.2.2
+   Compiling verse-zone-everglade v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/verse-zone-everglade)
+   Compiling town-clock v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/town-clock)
+   Compiling flagset v0.4.7
+   Compiling der v0.7.10
+   Compiling townsfolk v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/townsfolk)
+   Compiling anstyle-parse v1.0.0
+   Compiling coder-environment v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/coder-environment)
+   Compiling verse-private v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/verse-private)
+   Compiling rand_chacha v0.3.1
+   Compiling secp256k1-sys v0.10.1
+   Compiling colorchoice v1.0.5
+   Compiling matchit v0.8.4
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling anstyle-query v1.1.5
+   Compiling unicode-properties v0.1.4
+   Compiling stringprep v0.1.5
+   Compiling anstream v1.0.0
+   Compiling axum v0.8.9
+   Compiling rand v0.8.8
+   Compiling coder-cloud v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/coder-cloud)
+   Compiling spki v0.7.3
+   Compiling computer-driver v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/computer-driver)
+   Compiling md-5 v0.11.0
+   Compiling hmac v0.13.0
+   Compiling proc-macro2-diagnostics v0.10.1
+   Compiling fallible-iterator v0.2.0
+   Compiling hex_lit v0.1.1
+   Compiling clap_lex v1.1.1
+   Compiling clap_builder v4.6.7
+   Compiling postgres-protocol v0.6.12
+   Compiling coder-working-computer v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/coder-working-computer)
+   Compiling tenancy v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/tenancy)
+   Compiling verse-zone-grove v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/verse-zone-grove)
+   Compiling phf_shared v0.13.1
+   Compiling openagents-wallet v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/wallet)
+   Compiling verse-lagrange v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/verse-lagrange)
+   Compiling num-integer v0.1.47
+   Compiling clap_derive v4.6.7
+   Compiling bstr v1.13.1
+   Compiling thiserror v1.0.69
+   Compiling num-bigint-dig v0.8.6
+   Compiling jiff-core v0.1.1
+   Compiling jiff-tzdb v0.1.8
+   Compiling bitcoin v0.32.102
+   Compiling jiff v0.2.37
+   Compiling globset v0.4.20
+   Compiling clap v4.6.7
+   Compiling num-iter v0.1.46
+   Compiling retail-cloud v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/retail-cloud)
+   Compiling phf v0.13.1
+   Compiling secp256k1 v0.29.1
+   Compiling verse-water-spells v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/verse-water-spells)
+   Compiling coder-environment-setup v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/coder-environment-setup)
+   Compiling postgres-types v0.2.14
+   Compiling pkcs8 v0.10.2
+   Compiling base58ck v0.1.101
+   Compiling pbkdf2 v0.12.2
+   Compiling whoami v2.1.3
+   Compiling salsa20 v0.10.2
+   Compiling snap-rules v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/snap-rules)
+   Compiling thiserror-impl v1.0.69
+   Compiling bitcoin-units v0.1.101
+   Compiling bech32 v0.11.1
+   Compiling coder v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/coder)
+   Compiling oa-copy v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/oa-copy)
+   Compiling scrypt v0.11.0
+   Compiling tokio-postgres v0.7.18
+   Compiling snap-share v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/snap-share)
+   Compiling pkcs1 v0.7.5
+   Compiling maud_macros v0.27.0
+   Compiling verse-zone-water v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/verse-zone-water)
+   Compiling compute-workbench v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/compute-workbench)
+   Compiling coder-environment-build v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/coder-environment-build)
+   Compiling ignore v0.4.33
+   Compiling verse-zone-lagrange v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/verse-zone-lagrange)
+   Compiling verse-lagrange2 v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/verse-lagrange2)
+   Compiling ext-eval v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/ext-eval)
+   Compiling bip39 v2.2.2
+   Compiling hkdf v0.12.4
+   Compiling coder-terminal v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/coder-terminal)
+   Compiling gym-bridge v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/gym-bridge)
+   Compiling capability v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/capability)
+   Compiling openagents-ui v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/openagents-ui)
+   Compiling gym-leaderboard v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/gym-leaderboard)
+   Compiling robot-sim v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/robot-sim)
+   Compiling verse-game v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/verse-game)
+   Compiling signature v2.2.0
+   Compiling openagents-deck v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/openagents-deck)
+   Compiling retail-service v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/retail-service)
+   Compiling verse-gym v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/verse-gym)
+   Compiling rsa v0.9.10
+   Compiling snap-web v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/snap-web)
+   Compiling verse-zone-robotlab v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/verse-zone-robotlab)
+   Compiling oa-vault v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/oa-vault)
+   Compiling verse-zone-lagrange2 v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/verse-zone-lagrange2)
+   Compiling coder-environment-verify v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/coder-environment-verify)
+   Compiling retail-qualify v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/retail-qualify)
+   Compiling verse-zone-coast v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/verse-zone-coast)
+   Compiling maud v0.27.0
+   Compiling actors v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/actors)
+   Compiling oauth2 v5.0.0
+   Compiling lightning-types v0.3.5
+   Compiling commercial-accounts v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/commercial-accounts)
+   Compiling x509-cert v0.2.5
+   Compiling verse-imported v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/verse-imported)
+   Compiling verse-zone-lab v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/verse-zone-lab)
+   Compiling verse-zone-crypt v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/verse-zone-crypt)
+   Compiling terminal-control v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/terminal-control)
+   Compiling zopfli v0.8.4
+   Compiling coder-scheduler v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/coder-scheduler)
+   Compiling zip v3.0.0
+   Compiling verse v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/verse)
+   Compiling mac-jobs v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/mac-jobs)
+   Compiling oa-att v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/oa-att)
+   Compiling lightning-invoice v0.34.1
+   Compiling oa-auth v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/oa-auth)
+   Compiling coder-project v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/coder-project)
+   Compiling coder-environment-operator v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/coder-environment-operator)
+   Compiling oa-vault-web v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/oa-vault-web)
+   Compiling oa-connections v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/oa-connections)
+   Compiling oa-seal v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/oa-seal)
+   Compiling coder-demo-ui v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/coder-demo-ui)
+   Compiling rust-native-web v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/rust-native-web)
+   Compiling agent-fleet v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/agent-fleet)
+warning: function `next_value` is never used
+ --> crates/rust-native-web/src/editing.rs:3:15
+  |
+3 | pub(crate) fn next_value<'a>(
+  |               ^^^^^^^^^^
+  |
+  = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `rust-native-web` (lib) generated 1 warning
+   Compiling discovery v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/discovery)
+   Compiling ttf-parser v0.25.1
+warning: methods `dynamic_poses` and `movement_confirmations` are never used
+  --> crates/verse-world/src/play/framed_movement.rs:52:19
+   |
+ 8 | impl Game {
+   | --------- methods in this implementation
+...
+52 |     pub(crate) fn dynamic_poses(&self) -> Vec<crate::service::wire::ColliderPose> {
+   |                   ^^^^^^^^^^^^^
+...
+66 |     pub(crate) fn movement_confirmations(&self, life: LifeId) -> Vec<crate::movement::Baseline> {
+   |                   ^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: multiple fields are never read
+   --> crates/verse-world/src/play/multiplayer.rs:136:5
+    |
+135 | pub(crate) struct PortablePlayer {
+    |                   -------------- fields in this struct
+136 |     definition: crate::content::Character,
+    |     ^^^^^^^^^^
+137 |     catalog_remaining: BTreeMap<u8, f32>,
+    |     ^^^^^^^^^^^^^^^^^
+138 |     dice: Option<crate::spells::Dice>,
+    |     ^^^^
+139 |     combat: crate::rules::transfer::Portable,
+    |     ^^^^^^
+140 |     controls: Controls,
+    |     ^^^^^^^^
+141 |     bow_remaining: f32,
+    |     ^^^^^^^^^^^^^
+142 |     time: f32,
+    |     ^^^^
+143 |     yaw: f32,
+    |     ^^^
+144 |     appearance: verse_engine::director::Actor,
+    |     ^^^^^^^^^^
+    |
+    = note: `PortablePlayer` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: methods `take_transfer_player`, `take_resident_player`, and `put_transfer_player` are never used
+   --> crates/verse-world/src/play/multiplayer.rs:147:19
+    |
+146 | impl Game {
+    | --------- methods in this implementation
+147 |     pub(crate) fn take_transfer_player(&mut self, actor: u64) -> Result<PortablePlayer, String> {
+    |                   ^^^^^^^^^^^^^^^^^^^^
+...
+156 |     pub(crate) fn take_resident_player(&mut self, actor: u64) -> Result<PortablePlayer, String> {
+    |                   ^^^^^^^^^^^^^^^^^^^^
+...
+286 |     pub(crate) fn put_transfer_player(
+    |                   ^^^^^^^^^^^^^^^^^^^
+
+warning: methods `account_spawn` and `migrate_content` are never used
+    --> crates/verse-world/src/play/multiplayer.rs:428:19
+     |
+ 334 | impl Game {
+     | --------- methods in this implementation
+...
+ 428 |     pub(crate) fn account_spawn(&self) -> Result<Vec3, String> {
+     |                   ^^^^^^^^^^^^^
+...
+1458 |     pub(crate) fn migrate_content(
+     |                   ^^^^^^^^^^^^^^^
+
+warning: method `live_hostiles` is never used
+    --> crates/verse-world/src/rules.rs:1124:19
+     |
+ 225 | impl Simulation {
+     | --------------- method in this implementation
+...
+1124 |     pub(crate) fn live_hostiles(&self) -> usize {
+     |                   ^^^^^^^^^^^^^
+
+warning: fields `state` and `elapsed` are never read
+ --> crates/verse-world/src/rules/transfer.rs:5:5
+  |
+4 | pub(crate) struct Portable {
+  |                   -------- fields in this struct
+5 |     state: PlayerState,
+  |     ^^^^^
+6 |     elapsed: f32,
+  |     ^^^^^^^
+  |
+  = note: `Portable` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: method `defeated` is never used
+ --> crates/verse-world/src/rules/transfer.rs:9:19
+  |
+8 | impl Portable {
+  | ------------- method in this implementation
+9 |     pub(crate) fn defeated(&self) -> bool {
+  |                   ^^^^^^^^
+
+warning: method `put_player` is never used
+  --> crates/verse-world/src/rules/transfer.rs:58:19
+   |
+13 | impl Simulation {
+   | --------------- method in this implementation
+...
+58 |     pub(crate) fn put_player(&mut self, id: u32, mut portable: Portable) -> Result<(), String> {
+   |                   ^^^^^^^^^^
+
+warning: methods `fork`, `committed_controls`, `principal`, and `refresh_binding` are never used
+   --> crates/verse-world/src/service/auth.rs:139:19
+    |
+136 | impl Gateway {
+    | ------------ methods in this implementation
+...
+139 |     pub(super) fn fork(&self) -> Self {
+    |                   ^^^^
+...
+251 |     pub(super) fn committed_controls(&self) -> BTreeMap<ConnectionId, super::wire::Control> {
+    |                   ^^^^^^^^^^^^^^^^^^
+...
+565 |     pub(super) fn principal(&self, connection: ConnectionId) -> Result<Principal, String> {
+    |                   ^^^^^^^^^
+...
+569 |     pub(super) fn refresh_binding(&mut self, connection: ConnectionId) -> Result<(), String> {
+    |                   ^^^^^^^^^^^^^^^
+
+warning: method `fork` is never used
+   --> crates/verse-world/src/service/replication.rs:206:19
+    |
+205 | impl Sender {
+    | ----------- method in this implementation
+206 |     pub(super) fn fork(&self) -> Self {
+    |                   ^^^^
+
+warning: method `history_roots` is never used
+   --> crates/verse-world/src/service/rewards.rs:184:31
+    |
+183 | impl Checkpoint {
+    | --------------- method in this implementation
+184 |     pub(in crate::service) fn history_roots(&self) -> Vec<Option<[u8; 32]>> {
+    |                               ^^^^^^^^^^^^^
+
+warning: methods `revision`, `history_capacity`, and `attach` are never used
+   --> crates/verse-world/src/service/rewards.rs:262:19
+    |
+232 | impl Ledger {
+    | ----------- methods in this implementation
+...
+262 |     pub(super) fn revision(&self) -> u64 {
+    |                   ^^^^^^^^
+...
+266 |     pub(super) fn history_capacity(&self) -> Result<bool, String> {
+    |                   ^^^^^^^^^^^^^^^^
+...
+272 |     pub(super) fn attach(&mut self, archive: history::History) -> Result<(), String> {
+    |                   ^^^^^^
+
+warning: struct `SyncProfile` is never constructed
+  --> crates/verse-world/src/service/rewards/history.rs:52:12
+   |
+52 | pub struct SyncProfile {
+   |            ^^^^^^^^^^^
+
+warning: static `SLOW` is never used
+  --> crates/verse-world/src/service/rewards/history.rs:64:8
+   |
+64 | static SLOW: Mutex<Vec<SyncProfile>> = Mutex::new(Vec::new());
+   |        ^^^^
+
+warning: constant `SYNC_WORKERS` is never used
+  --> crates/verse-world/src/service/rewards/history.rs:66:7
+   |
+66 | const SYNC_WORKERS: usize = 16;
+   |       ^^^^^^^^^^^^
+
+warning: constant `SLOW_KEPT` is never used
+  --> crates/verse-world/src/service/rewards/history.rs:67:7
+   |
+67 | const SLOW_KEPT: usize = 8;
+   |       ^^^^^^^^^
+
+warning: function `record_sync` is never used
+  --> crates/verse-world/src/service/rewards/history.rs:68:4
+   |
+68 | fn record_sync(mut profile: SyncProfile) {
+   |    ^^^^^^^^^^^
+
+warning: function `record_directory_sync` is never used
+  --> crates/verse-world/src/service/rewards/history.rs:79:4
+   |
+79 | fn record_directory_sync(ms: f64) {
+   |    ^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `slow_syncs` is never used
+  --> crates/verse-world/src/service/rewards/history.rs:91:8
+   |
+91 | pub fn slow_syncs() -> Vec<SyncProfile> {
+   |        ^^^^^^^^^^
+
+warning: multiple associated items are never used
+   --> crates/verse-world/src/service/rewards/history.rs:101:31
+    |
+100 | impl History {
+    | ------------ associated items in this implementation
+101 |     pub(in crate::service) fn open(path: &Path) -> Result<Self, String> {
+    |                               ^^^^
+...
+135 |     pub(in crate::service) fn temporary() -> Result<Self, String> {
+    |                               ^^^^^^^^^
+...
+151 |     pub(in crate::service) fn reachable(
+    |                               ^^^^^^^^^
+...
+186 |     pub(in crate::service) fn verify_node(&self, digest: [u8; 32]) -> Result<(), String> {
+    |                               ^^^^^^^^^^^
+...
+189 |     pub(super) fn same_directory(&self, other: &Self) -> bool {
+    |                   ^^^^^^^^^^^^^^
+...
+192 |     pub(in crate::service) fn defer_writes(&self) {
+    |                               ^^^^^^^^^^^^
+...
+195 |     pub(in crate::service) fn has_capacity(&self) -> Result<bool, String> {
+    |                               ^^^^^^^^^^^^
+...
+205 |     pub(in crate::service) fn synchronize(&self) -> Result<(), String> {
+    |                               ^^^^^^^^^^^
+...
+304 |     fn publish_all(
+    |        ^^^^^^^^^^^
+
+warning: method `history_roots` is never used
+  --> crates/verse-world/src/service/rewards/books.rs:38:31
+   |
+37 | impl Book {
+   | --------- method in this implementation
+38 |     pub(in crate::service) fn history_roots(&self) -> [history::Root; 2] {
+   |                               ^^^^^^^^^^^^^
+
+warning: methods `realm_character`, `activate_books`, `register_book`, `take_book`, and `put_book` are never used
+   --> crates/verse-world/src/service/rewards/books.rs:43:31
+    |
+ 42 | impl Ledger {
+    | ----------- methods in this implementation
+ 43 |     pub(in crate::service) fn realm_character(&self, actor: u64) -> Option<u64> {
+    |                               ^^^^^^^^^^^^^^^
+...
+ 46 |     pub(in crate::service) fn activate_books(
+    |                               ^^^^^^^^^^^^^^
+...
+170 |     pub(in crate::service) fn register_book(
+    |                               ^^^^^^^^^^^^^
+...
+193 |     pub(in crate::service) fn take_book(
+    |                               ^^^^^^^^^
+...
+208 |     pub(in crate::service) fn put_book(
+    |                               ^^^^^^^^
+
+warning: field `owner` is never read
+   --> crates/verse-world/src/service/save.rs:110:16
+    |
+109 | pub(super) struct Prepared {
+    |                   -------- field in this struct
+110 |     pub(super) owner: [u8; 32],
+    |                ^^^^^
+
+warning: methods `instance` and `expanded` are never used
+   --> crates/verse-world/src/service/save.rs:168:19
+    |
+125 | impl Prepared {
+    | ------------- methods in this implementation
+...
+168 |     pub(super) fn instance(&self) -> u64 {
+    |                   ^^^^^^^^
+...
+182 |     pub(super) fn expanded(&self) -> Result<serde_json::Value, String> {
+    |                   ^^^^^^^^
+
+warning: function `count_world_encoding` is never used
+   --> crates/verse-world/src/service/save.rs:236:4
+    |
+236 | fn count_world_encoding(metadata_bytes: usize, world: &str) -> Result<usize, String> {
+    |    ^^^^^^^^^^^^^^^^^^^^
+
+warning: method `transfer_cooldowns` is never used
+  --> crates/verse-world/src/utilities.rs:58:19
+   |
+57 | impl Controls {
+   | ------------- method in this implementation
+58 |     pub(crate) fn transfer_cooldowns(&self, source_time: f32, destination_time: f32) -> Self {
+   |                   ^^^^^^^^^^^^^^^^^^
+
+warning: `verse-world` (lib) generated 26 warnings
+   Compiling openagents-web v1.0.0 (/Users/christopherdavid/work/oa-wt-site-v1/crates/openagents-web)
+warning: unused import: `IntoResponse`
+  --> crates/openagents-web/src/pages/contact.rs:20:22
+   |
+20 | use axum::response::{IntoResponse, Response};
+   |                      ^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+   --> crates/openagents-web/src/environments/tests.rs:839:9
+    |
+839 |     let mut config = crate::Config::development(dir.path().join("tasks"));
+    |         ----^^^^^^
+    |         |
+    |         help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates/openagents-web/src/github_refs.rs:44:9
+   |
+44 |     let mut push_text = |out: &mut Vec<Piece>, text: &str| match out.last_mut() {
+   |         ----^^^^^^^^^
+   |         |
+   |         help: remove this `mut`
+
+warning: constant `ROWS` is never used
+  --> crates/openagents-web/src/pages/chat_sidebar.rs:31:7
+   |
+31 | const ROWS: &str = "#chat-sidebar-rows";
+   |       ^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `chosen` is never used
+   --> crates/openagents-web/src/projects/mod.rs:172:21
+    |
+172 | pub(crate) async fn chosen(app: &App, value: &str) -> Option<String> {
+    |                     ^^^^^^
+
+warning: function `others` is never used
+   --> crates/openagents-web/src/projects/shared_chats.rs:182:21
+    |
+182 | pub(crate) async fn others(app: &App, projects: &[Project], viewer: &str) -> Vec<Conversation> {
+    |                     ^^^^^^
+
+warning: `openagents-web` (lib test) generated 6 warnings (run `cargo fix --lib -p openagents-web --tests` to apply 3 suggestions)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3m 15s
+     Running unittests src/lib.rs (/Users/christopherdavid/work/openagents-target-site-v1/debug/deps/openagents_web-6b9bae60f524d863)
+
+running 2 tests
+test coder_commands_guard::the_guard_reads_commands_from_copy ... ok
+test coder_commands_guard::every_coder_command_the_site_names_is_in_the_published_release ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 759 filtered out; finished in 0.22s
+
