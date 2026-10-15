@@ -534,6 +534,7 @@ pub(crate) fn payouts(output: &Output, words: &[String], usage: &str) -> u8 {
         }
     };
     let http = match reqwest::blocking::Client::builder()
+        .https_only(true)
         .timeout(Duration::from_secs(20))
         .redirect(reqwest::redirect::Policy::limited(3))
         .build()
