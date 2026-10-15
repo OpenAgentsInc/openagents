@@ -59,7 +59,12 @@ done
 # Create a password only for a node that has never been initialized. The
 # helper refuses if the existing Secret Manager password would be reused.
 if [[ ! -f /var/lib/openagents-lnd/lnd/data/chain/bitcoin/mainnet/wallet.db ]]; then
-  /usr/local/sbin/openagents-lnd-secrets --initialize-password
+  if [[ -f "$cache/password-created" ]]; then
+    /usr/local/sbin/openagents-lnd-secrets
+  else
+    /usr/local/sbin/openagents-lnd-secrets --initialize-password
+    touch "$cache/password-created"
+  fi
 fi
 systemctl daemon-reload
 systemctl enable --now openagents-lnd
