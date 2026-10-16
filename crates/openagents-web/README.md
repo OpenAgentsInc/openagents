@@ -361,3 +361,8 @@ site with `--sand-build OUTDIR`. The production image includes it at
 `/srv/sand`. Shared drawings and votes use the site's chat storage under
 `sand-garden/gallery.json`. Creators can delete from their original browser;
 site admins can sign in on openagents.com and delete any gallery entry.
+
+The research-based V2 landing page is at `/studios/blue-rush-v2`, with a
+parent interview at `/studios/blue-rush-v2/interview`. On the studio domain,
+these paths are `/v2` and `/v2/interview`. V1 stays at its existing address.
+The interview returns a text download and does not save responses.

@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="850" viewBox="0 0 900 850">
+<defs>
+ <linearGradient id="sky" x2="0" y2="1"><stop stop-color="#d8efff"/><stop offset="1" stop-color="#f6faff"/></linearGradient>
+ <linearGradient id="sea" x2=".5" y2="1"><stop stop-color="#71dce0"/><stop offset="1" stop-color="#159ae0"/></linearGradient>
+ <linearGradient id="roof" x2="1" y2="1"><stop stop-color="#146ef5"/><stop offset="1" stop-color="#1757b8"/></linearGradient>
+ <pattern id="ripples" width="100" height="48" patternUnits="userSpaceOnUse"><path d="M8 20q16 8 32 0m18 22q15 6 30 0" fill="none" stroke="#ddffff" stroke-width="3" stroke-linecap="round" opacity=".45"/></pattern>
+ <filter id="shadow" x="-.3" y="-.3" width="1.6" height="1.8"><feDropShadow dx="0" dy="16" stdDeviation="13" flood-color="#12758f" flood-opacity=".14"/></filter>
+ <g id="plant"><path d="M0 0v-35" stroke="#2c7d60" stroke-width="4"/><path d="M0-14q-24 2-22-19Q0-35 0-14m1-10q1-24 21-24Q27-27 1-24" fill="#52b581"/></g>
+ <g id="person"><ellipse cy="18" rx="15" ry="6" fill="#12304a" opacity=".1"/><path d="M-6 2l-3 17m15-17 3 17" stroke="#12304a" stroke-width="6" stroke-linecap="round"/><path d="M-11-21q11-8 22 0l-1 25h-20z" fill="#ff806b"/><path d="M-11-17l-8 15m30-15 12 11" stroke="#bc7951" stroke-width="6" stroke-linecap="round"/><circle cy="-36" r="11" fill="#bc7951"/><path d="M-12-37q-2-18 14-13 12 2 10 14l-8-7-16 6" fill="#12304a"/></g>
+</defs>
+<rect x="15" y="30" width="870" height="770" rx="200" fill="url(#sky)"/>
+<circle cx="703" cy="148" r="49" fill="#ffe4a1"/><circle cx="703" cy="148" r="64" fill="none" stroke="#ffe4a1" stroke-width="2" opacity=".6"/>
+<g fill="#fff"><path d="M123 163q8-23 31-19 17-36 47-6 26-8 34 25z"/><path d="M468 104q10-25 30-17 25-35 44 0 24-6 30 17z"/><path d="M705 267q10-25 30-17 25-35 44 0 24-6 30 17z"/></g>
+<path d="M96 370q166-73 355-43t362 6v213H67z" fill="#a3dedc"/>
+<path d="M95 389q171-70 358-18t360-12v214H67z" fill="#78c8da"/>
+<path d="M41 440q118-74 282-25t316-10 221 22v200q-15 159-171 164H189Q43 767 41 638z" fill="url(#sea)"/>
+<path d="M41 440q118-74 282-25t316-10 221 22v200q-15 159-171 164H189Q43 767 41 638z" fill="url(#ripples)"/>
+<!-- Floating platforms and connecting walkways. -->
+<g filter="url(#shadow)">
+ <path d="M138 465l269-130 242 125-267 153z" fill="#c1d8cc"/><path d="M138 465v31l244 143 267-153v-26L382 613z" fill="#437f94"/>
+ <path d="M138 465l269-130 242 125-267 153z" fill="#f4e3bd" stroke="#fff4d7" stroke-width="6"/>
+ <path d="M496 601l151-86 150 83-149 91z" fill="#f0dbb2" stroke="#fff1d0" stroke-width="5"/><path d="M496 601v18l153 90 148-91v-20l-149 91z" fill="#4a8296"/>
+ <path d="M421 572l34-19 122 69-34 20z" fill="#cda878"/><path d="M435 566l120 69m-99-81 120 69" stroke="#f3d3a9" stroke-width="3"/>
+ <path d="M199 620l103-60 107 61-104 60z" fill="#f0dbb2" stroke="#fff1d0" stroke-width="5"/><path d="M199 620v17l106 61 104-61v-16l-104 60z" fill="#4a8296"/>
+</g>
+<!-- Blue-roofed maker home, greenhouse, and energy. -->
+<path d="M236 415v-119l122 63v127z" fill="#fff5de"/><path d="M358 359l110-64v129l-110 62z" fill="#f5d3ab"/>
+<path d="M216 301l105-110 156 99-119 79z" fill="url(#roof)"/><path d="M321 191l111 63 45 36-156-99z" fill="#52d6ca"/>
+<path d="M269 275l51-53 88 56-53 51z" fill="#123e77" stroke="#a5d8ef" stroke-width="3"/><path d="M291 253l86 55m-72-71 87 56m-69-68-48 52m76-34-50 54m77-37-50 54" stroke="#67b6da" stroke-width="2"/>
+<path d="M260 346l49 26v49l-49-26z" fill="#83d8e6" stroke="#123e77" stroke-width="6"/><path d="M285 359v50m-24-40 48 26" stroke="#fff7db" stroke-width="4"/>
+<path d="M387 385l41-24v83l-41 24z" fill="#146ef5"/><circle cx="418" cy="415" r="3" fill="#ffe4a1"/>
+<path d="M467 392v-73l56-63 66 39v70l-66 39z" fill="#c9f2dc" fill-opacity=".85" stroke="#4d997f" stroke-width="4"/><path d="M467 319l56 33 66-57m-66 57v52m0-148v96" fill="none" stroke="#4d997f" stroke-width="4"/>
+<use href="#plant" x="514" y="370"/><use href="#plant" transform="translate(554 355) scale(.7)"/>
+<path d="M510 375l17 9 38-22-15-9z" fill="#bf865f"/>
+<!-- Planter beds and friendly robot. -->
+<g><path d="M193 467l44-25 77 44-44 26z" fill="#c08a58"/><path d="M193 467v18l77 44v-17z" fill="#986b4e"/><path d="M270 512l44-26v18l-44 25z" fill="#ba8052"/><use href="#plant" x="231" y="477"/><use href="#plant" transform="translate(270 496) scale(.8)"/></g>
+<g transform="translate(449 482)"><ellipse cy="34" rx="26" ry="8" fill="#12304a" opacity=".13"/><path d="M-12 20v13m24-13v13" stroke="#12304a" stroke-width="9" stroke-linecap="round"/><rect x="-24" y="-13" width="48" height="36" rx="13" fill="#f6faff" stroke="#146ef5" stroke-width="3"/><rect x="-20" y="-42" width="40" height="29" rx="10" fill="#f6faff" stroke="#146ef5" stroke-width="3"/><rect x="-14" y="-35" width="28" height="15" rx="6" fill="#12304a"/><circle cx="-7" cy="-28" r="3" fill="#52d6ca"/><circle cx="7" cy="-28" r="3" fill="#52d6ca"/><path d="M0-43v-10" stroke="#146ef5" stroke-width="3"/><circle cy="-56" r="5" fill="#ff806b"/><path d="M-25-4l-11 10m61-10 15-17" stroke="#146ef5" stroke-width="7" stroke-linecap="round"/><circle cy="4" r="6" fill="#52d6ca"/></g>
+<!-- Children trying a small boat beside the workshop. -->
+<use href="#person" transform="translate(584 576) scale(1.08)"/>
+<use href="#person" transform="translate(650 613) scale(.88)"/>
+<path d="M639 592q-13-21 1-35 20-17 25 9l-3 9q-12-17-23-10z" fill="#12304a"/>
+<path d="M632 594l19 10 8-17-19-11z" fill="#52d6ca"/>
+<path d="M690 632l53-29 30 17-50 31z" fill="#ff806b"/><path d="M690 632l33 19 50-31-20 29-31 17z" fill="#c54f41"/><path d="M729 626v-48l28 32z" fill="#fff4d7"/><path d="M729 578v48" stroke="#12304a" stroke-width="3"/>
+<path d="M611 538l28-16 70 39-29 18z" fill="#a67650"/><path d="M626 548v25m66-6v25" stroke="#a67650" stroke-width="7"/><path d="M643 539l16-9 24 13-16 10z" fill="#146ef5"/>
+<!-- Dockside details. -->
+<path d="M260 637l47-27 45 26-47 28z" fill="#83d8e6" stroke="#146ef5" stroke-width="4"/><path d="M281 625l25 14 25-14m-25 14v23" fill="none" stroke="#f6faff" stroke-width="3"/>
+<path d="M169 547q-25 11-36 0l-12-8q29-7 48 8" fill="#fff"/><path d="M160 541l-14-18 24 12" fill="#f6faff"/>
+<g fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"><path d="M162 685q13-10 26 0 13-10 26 0"/><path d="M570 730q13-10 26 0 13-10 26 0"/><path d="M737 457q13-10 26 0 13-10 26 0"/></g>
+<g fill="#12304a"><path d="M574 168q10-10 20 0 10-10 20 0-10-3-20 5-10-8-20-5"/><path d="M616 195q7-8 14 0 7-8 14 0-7-3-14 4-7-7-14-4"/></g>
+<circle cx="785" cy="332" r="10" fill="#ff806b"/><path d="M785 315v-10m0 54v-10m-17-17h-10m54 0h-10" stroke="#ff806b" stroke-width="3" stroke-linecap="round"/>
+</svg>

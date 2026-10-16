@@ -1,3 +1,10 @@
+## Review the Blue Rush V2 branding before publishing (#11838)
+
+Review `http://127.0.0.1:4390/studios/blue-rush-v2` and its `/interview`
+page. The interview downloads answers for participants to share with their
+inviter; provide a booking or survey URL if responses should go elsewhere.
+V1 stays available. Publish V2 after reviewing the new branding.
+
 ## Review the Blue Rush sand garden before publishing (#11834)
 
 Review the editor and gallery at
