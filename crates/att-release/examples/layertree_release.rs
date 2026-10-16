@@ -49,8 +49,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let digest = build["image_digest"]
                 .as_str()
                 .ok_or("missing image digest")?;
+            let (workload, changes) = match build["probe_example"].as_str() {
+                None | Some("attestation_probe") => (
+                    "layertree-signet-probe",
+                    "We reproduced the signet attestation probe on two machines. This image signs no Bitcoin transaction.",
+                ),
+                Some("key_lifecycle_probe") => (
+                    "layertree-signet-key-probe",
+                    "We test key recovery and synthetic transaction signing inside TDX. This image accepts no signing requests.",
+                ),
+                _ => return Err("unknown research image profile".into()),
+            };
             let release = att::Release {
-                v: att::RELEASE_V.into(), requires: vec![], workload: "layertree-signet-probe".into(),
+                v: att::RELEASE_V.into(), requires: vec![], workload: workload.into(),
                 publisher: signer.pubkey().into(),
                 image: att::Image { reference: "us-central1-docker.pkg.dev/openagentsgemini/layertree-research/attestation-probe".into(), digest: digest.into() },
                 platforms: vec![att::Platform { kind: "gcp-confidential-space".into(), hwmodel: "GCP_INTEL_TDX".into(), support: "STABLE".into() }],
@@ -61,7 +72,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     recipe_digest: format!("sha256:{:x}", Sha256::digest(fs::read(&args[3])?)) },
                 rebuilds: builders.into_iter().map(|builder| att::Rebuild { builder, digest: digest.into() }).collect(),
                 transparency: vec![],
-                changes: "We reproduced the signet attestation probe on two machines. This image signs no Bitcoin transaction.".into(),
+                changes: changes.into(),
                 published_at: now,
             };
             let event = att::release_event(&signer, &release, now)?;
@@ -78,7 +89,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let draft: Event = read(&args[2])?;
             let mut release = att::parse_release(&draft)?;
             if release.publisher != signer.pubkey()
-                || release.workload != "layertree-signet-probe"
+                || !matches!(
+                    release.workload.as_str(),
+                    "layertree-signet-probe" | "layertree-signet-key-probe"
+                )
                 || !release.transparency.is_empty()
             {
                 return Err("use this research publisher's unlogged draft".into());
