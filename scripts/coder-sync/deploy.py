@@ -102,7 +102,7 @@ def build():
         return
     versions = json.loads(g("artifacts", "docker", "images", "list", image, "--include-tags", "--format=json"))
     builders = [v for v in versions if any(t == "builder" or t.startswith("builder-") for t in v.get("tags", []))]
-    cache = f"{image}:builder"
+    cache = "rust:1.98.1-slim-trixie"
     if builders:
         cache = f"{image}@{max(builders, key=lambda v: v['createTime'])['version']}"
     scratch = os.environ.get("OPENAGENTS_SCRATCH") or subprocess.check_output(["openagents", "scratch"], text=True).strip()

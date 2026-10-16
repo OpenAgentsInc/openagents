@@ -106,7 +106,8 @@ python3 scripts/coder-sync/deploy.py deploy
 
 The script exports only committed build inputs, builds on Cloud Build using
 the automation service account, and tags the image with the full Git commit.
-It reuses the latest published builder by digest and publishes new caches with
+It copies the latest published builder's Cargo registry, Git sources, and
+compiled dependencies by digest and publishes new caches with
 commit-specific tags, preserving Artifact Registry tag immutability. It refuses
 a dirty checkout or one behind `origin/main`. Each Cloud Run
 service has `max-instances=1`, a 3,600-second timeout, and its own database

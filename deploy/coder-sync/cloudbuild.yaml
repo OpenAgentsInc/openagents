@@ -3,14 +3,14 @@ steps:
     entrypoint: bash
     args: [-c, 'docker pull ${_CACHE_IMAGE} || true']
   - name: gcr.io/cloud-builders/docker
-    args: [build, -f, deploy/coder-sync/Dockerfile, --target, build, --cache-from, '${_CACHE_IMAGE}', -t, 'us-central1-docker.pkg.dev/openagentsgemini/openagents/coder-sync:builder-${_TAG}', .]
+    args: [build, --build-arg, 'CACHE_IMAGE=${_CACHE_IMAGE}', -f, deploy/coder-sync/Dockerfile, --target, build, --cache-from, '${_CACHE_IMAGE}', -t, 'us-central1-docker.pkg.dev/openagentsgemini/openagents/coder-sync:builder-${_TAG}', .]
   - name: gcr.io/cloud-builders/docker
-    args: [build, -f, deploy/coder-sync/Dockerfile, --cache-from, 'us-central1-docker.pkg.dev/openagentsgemini/openagents/coder-sync:builder-${_TAG}', -t, 'us-central1-docker.pkg.dev/openagentsgemini/openagents/coder-sync:${_TAG}', .]
+    args: [build, --build-arg, 'CACHE_IMAGE=${_CACHE_IMAGE}', -f, deploy/coder-sync/Dockerfile, --cache-from, 'us-central1-docker.pkg.dev/openagentsgemini/openagents/coder-sync:builder-${_TAG}', -t, 'us-central1-docker.pkg.dev/openagentsgemini/openagents/coder-sync:${_TAG}', .]
 images:
   - 'us-central1-docker.pkg.dev/openagentsgemini/openagents/coder-sync:${_TAG}'
   - 'us-central1-docker.pkg.dev/openagentsgemini/openagents/coder-sync:builder-${_TAG}'
 substitutions:
-  _CACHE_IMAGE: us-central1-docker.pkg.dev/openagentsgemini/openagents/coder-sync:builder
+  _CACHE_IMAGE: rust:1.98.1-slim-trixie
 options:
   logging: CLOUD_LOGGING_ONLY
 timeout: 1800s
