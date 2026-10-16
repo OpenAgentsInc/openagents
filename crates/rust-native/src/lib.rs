@@ -17,6 +17,7 @@ pub mod press;
 pub mod selection;
 pub mod style;
 pub mod surface;
+#[cfg(feature = "syntax")]
 pub mod syntax;
 pub mod view;
 

@@ -21,6 +21,7 @@ def main():
     parser.add_argument("--account", default="acct_83d16a35955ef908")
     parser.add_argument("--deployment", choices=["both", "staging", "production"], default="both")
     parser.add_argument("--skip-build", action="store_true", help="Reuse the fixture binaries just built from this checkout")
+    parser.add_argument("--custom-agents", type=Path, help="Run the custom-agent UI check with this installed fixture runner")
     args = parser.parse_args()
     target = args.target_dir.expanduser().resolve()
     if target.is_relative_to(ROOT) or target.name in ("coder-desktop-target-agent0", "coder-desktop-target-agent3"):
@@ -32,6 +33,9 @@ def main():
     scratch.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ, RUSTUP_TOOLCHAIN="1.98.1", CARGO_TARGET_DIR=str(target),
                BROWSER="/usr/bin/true", NO_OPEN_BROWSER="1", ZERON_ACCOUNT_FIXTURE="1")
+    if args.custom_agents:
+        env["OA_CUSTOM_AGENT_FIXTURE_RUNNER"] = str(args.custom_agents.expanduser().resolve())
+        env["OA_CUSTOM_AGENT_UI"] = "1"
     if not args.skip_build:
         for command in (["cargo", "build", "--locked", "-p", "zeron", "--profile", "mobile"],
                         ["cargo", "build", "--locked", "-p", "zeron-engine", "--example", "mobile_sync_fixture"],
@@ -61,7 +65,7 @@ def main():
                 "-derivedDataPath", str(target / "ios-derived"), "CODE_SIGNING_ALLOWED=YES", "CODE_SIGN_IDENTITY=-",
                 "SWIFT_ACTIVE_COMPILATION_CONDITIONS=DEBUG CODER_ACCOUNT_FIXTURE",
                 "-resultBundlePath", str(scratch / (run.name + ".xcresult")),
-                "-only-testing:ZeronUITests/OpenAgentsLiveSyncTests", "test"]
+                "-only-testing:ZeronUITests/" + ("OpenAgentsCustomAgentTests" if args.custom_agents else "OpenAgentsLiveSyncTests"), "test"]
             with scratch.joinpath(run.name + "-uitest.log").open("w") as log:
                 result = subprocess.run(command, cwd=ROOT, env=test_env, stdout=log, stderr=subprocess.STDOUT)
             if result.returncode:
@@ -86,7 +90,9 @@ def main():
         if process.returncode:
             raise RuntimeError("Coordinator cleanup failed.")
         report = json.loads(run.joinpath("result.json").read_text())
-        if len(report["checks"]) != 6 or not all(report["checks"].values()) or not report["child_stopped"] or not report["registry_fixtures_removed"] or report["host_restarts"] != 1:
+        expected_checks = 3 if args.custom_agents else 6
+        expected_restarts = 0 if args.custom_agents else 1
+        if len(report["checks"]) != expected_checks or not all(report["checks"].values()) or not report["child_stopped"] or not report["registry_fixtures_removed"] or report["host_restarts"] != expected_restarts:
             raise RuntimeError("Incomplete host-side assertions or cleanup.")
         print("PASS " + name + " cleanup", flush=True)
     print("Rebuild the normal core and bindings without ZERON_ACCOUNT_FIXTURE before committing or archiving.")

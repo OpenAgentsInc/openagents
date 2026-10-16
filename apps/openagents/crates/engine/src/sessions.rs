@@ -576,6 +576,14 @@ impl SessionsEngine {
         startup_retry: bool,
         idle: bool,
     ) -> Result<String, EngineError> {
+        if request.model_options.contains_key("openagentsAssignment") {
+            let host = self.inner.doc_host().ok_or_else(|| {
+                EngineError::Other("This computer is not ready for custom agents.".into())
+            })?;
+            request = host
+                .prepare_custom_agent(chat_id, harness_id, request)
+                .await?;
+        }
         // Project-less chats store a home-relative cwd (the creating device
         // can't know the host's home); expand it here, on the host, where the
         // run spawns, creating a new chat's scratch folder.

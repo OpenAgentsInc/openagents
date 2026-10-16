@@ -22,6 +22,7 @@ path = "tests/fixtures/pi_rpc.rs"
 required-features = ["native-fixture"]
 
 [dependencies]
+openagents-sdk = { path = "../../../../crates/openagents-sdk" }
 coder-brand.workspace = true
 zeron-voice-media.workspace = true
 zeron-proto.workspace = true

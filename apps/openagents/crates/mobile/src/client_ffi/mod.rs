@@ -12,7 +12,9 @@
 //! (`snapshot()` / `subscribe()`), never over FFI.
 
 mod account;
+mod custom_agents;
 pub use account::*;
+pub use custom_agents::*;
 mod saved;
 pub use saved::*;
 mod session;

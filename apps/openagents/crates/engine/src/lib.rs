@@ -85,6 +85,8 @@ pub(crate) const LEGACY_UNKNOWN_DEVICE_NAME: &str = "unknown-device";
 
 #[derive(Debug, thiserror::Error)]
 pub enum EngineError {
+    #[error("{0}")]
+    AgentService(#[from] coder_account::openagents::Error),
     #[error(transparent)]
     Token(#[from] zeron_rpc::TokenError),
     #[error("doc: {0}")]
@@ -360,6 +362,8 @@ impl EngineCore {
 
     /// Attach the auth service (before building the RPC service / relays).
     pub fn set_auth(&self, auth: Auth) {
+        self.doc_host
+            .start_custom_agents(auth.clone(), self.registry.clone());
         *self
             .auth
             .lock()

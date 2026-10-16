@@ -53,7 +53,7 @@ impl HarnessInfo {
 
     /// Listed by the device and usable (installed, not disabled).
     pub fn offered(&self) -> bool {
-        self.installed && self.enabled != Some(false)
+        self.id != "sdk" && self.installed && self.enabled != Some(false)
     }
 }
 

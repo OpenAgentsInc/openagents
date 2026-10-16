@@ -303,6 +303,7 @@ pub mod opencode;
 pub mod pi;
 pub mod process;
 mod scratch;
+pub mod sdk;
 pub mod shell_env;
 pub(crate) mod skills;
 #[cfg(windows)]

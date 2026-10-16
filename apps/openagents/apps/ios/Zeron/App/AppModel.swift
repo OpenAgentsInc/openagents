@@ -38,6 +38,8 @@ final class AppModel {
     }
 
     @MainActor lazy var voice = RemoteVoiceController(app: self)
+    private(set) var customAgents: CoreAgents?
+    private lazy var agentsBridge = AgentsBridge(app: self)
     private(set) var savedHistory: CoreSavedHistory?
     private(set) var savedSnapshot: SavedHistorySnapshot?
     private lazy var savedBridge = SavedHistoryBridge(app: self)
@@ -179,6 +181,7 @@ final class AppModel {
                 do {
                     let config = CoreConfig(edgeUrl: Self.edgeURL, dataDir: Self.coreDir.path, deviceId: Self.deviceId, deviceName: UIDevice.current.name, platform: "ios", appVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0")
                     install(try account.connect(config: config, listener: bridge))
+                    customAgents = account.customAgents(listener: agentsBridge)
                     savedHistory = try account.savedHistory(listener: savedBridge)
                     handleSavedHistory()
                     AccountProfile(name: name, email: nil, orgName: nil).save()
@@ -206,6 +209,10 @@ final class AppModel {
         }
         observers.values.forEach { $0() }
     }
+    fileprivate func handleAgents() {
+        observers.values.forEach { $0() }
+    }
+
     fileprivate func handleSavedHistory() {
         savedSnapshot = savedHistory?.snapshot()
         observers.values.forEach { $0() }
@@ -852,5 +859,13 @@ private final class SavedHistoryBridge: SavedHistoryListener {
     init(app: AppModel) { self.app = app }
     func onSavedHistoryChanged() {
         DispatchQueue.main.async { [weak self] in self?.app?.handleSavedHistory() }
+    }
+}
+
+private final class AgentsBridge: CustomAgentsListener {
+    weak var app: AppModel?
+    init(app: AppModel) { self.app = app }
+    func onCustomAgentsChanged(snapshot: CustomAgentsSnapshot) {
+        DispatchQueue.main.async { [weak self] in self?.app?.handleAgents() }
     }
 }

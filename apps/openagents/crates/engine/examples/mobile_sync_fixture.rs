@@ -18,6 +18,9 @@ use std::{
 use tokio::sync::Mutex;
 use zeron_rpc::{RpcClient, methods};
 
+#[path = "custom_agent_fixture/mod.rs"]
+mod custom_agent_fixture;
+
 const ACCOUNT: &str = "acct_83d16a35955ef908";
 const TITLE: &str = "OpenAgents mobile live fixture";
 struct Fixture {
@@ -223,6 +226,9 @@ impl Fixture {
         Ok(())
     }
     async fn cleanup(&mut self) -> Result<()> {
+        if std::env::var_os("OA_CUSTOM_AGENT_UI").is_some() {
+            custom_agent_fixture::cleanup_phone(self).await?;
+        }
         if self.child.is_none() {
             self.start().await?;
         }
@@ -353,6 +359,20 @@ async fn main() -> Result<()> {
         restarts: 0,
         checks: BTreeMap::new(),
     };
+    if let Some(runner) = std::env::var_os("OA_CUSTOM_AGENT_FIXTURE_RUNNER") {
+        let data = root.join("data");
+        std::fs::create_dir_all(&data)?;
+        std::fs::write(
+            data.join("sdk-runners.json"),
+            serde_json::to_vec(
+                &json!({"fixture":{"label":"Fixture Rust agent","sha256":zeron_harness::sdk::executable_digest(std::path::Path::new(&runner))?,"executable":runner,"args":[]}}),
+            )?,
+        )?;
+        if std::env::var_os("OA_CUSTOM_AGENT_UI").is_none() {
+            fixture.start().await?;
+            return custom_agent_fixture::run(&mut fixture).await;
+        }
+    }
     fixture.start().await?;
     fixture.seed().await?;
     let http = tokio::net::TcpListener::bind("127.0.0.1:0").await?;

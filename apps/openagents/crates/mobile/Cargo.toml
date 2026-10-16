@@ -24,6 +24,8 @@ bindgen = ["uniffi/cli"]
 
 [dependencies]
 coder-account.workspace = true
+rust-native = { path = "../../../../crates/rust-native", default-features = false }
+sha2.workspace = true
 reqwest = { workspace = true, optional = true }
 zeron-voice-session.workspace = true
 zeron-orb.workspace = true
@@ -46,4 +48,5 @@ zeron-syntax.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
+oa-copy = { path = "../../../../crates/oa-copy" }
 tempfile.workspace = true

@@ -154,6 +154,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "agent-contract"
+version = "1.0.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "ahash"
 version = "0.8.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5868,6 +5875,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "markdown-stream"
+version = "1.0.0"
+dependencies = [
+ "pulldown-cmark 0.13.4",
+]
+
+[[package]]
 name = "markup5ever"
 version = "0.39.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6542,6 +6556,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "oa-copy"
+version = "1.0.0"
+
+[[package]]
 name = "objc"
 version = "0.2.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7151,6 +7169,7 @@ dependencies = [
 name = "openagents-sdk"
 version = "1.0.0"
 dependencies = [
+ "agent-contract",
  "base64 0.22.1",
  "getrandom 0.4.3",
  "httpdate",
@@ -7205,6 +7224,13 @@ dependencies = [
  "libc",
  "pkg-config",
  "vcpkg",
+]
+
+[[package]]
+name = "openui-lang"
+version = "1.0.0"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
@@ -8113,6 +8139,17 @@ dependencies = [
  "getopts",
  "memchr",
  "pulldown-cmark-escape",
+ "unicase",
+]
+
+[[package]]
+name = "pulldown-cmark"
+version = "0.13.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e9f068eba8e7071c5f9511831b44f32c740d5adf574e990f946ddb53db2f314e"
+dependencies = [
+ "bitflags 2.13.1",
+ "memchr",
  "unicase",
 ]
 
@@ -9154,6 +9191,18 @@ checksum = "f6cc0c81648b20b70c491ff8cce00c1c3b223bb8ed2b5d41f0e54c6c4c0a3594"
 dependencies = [
  "sha2",
  "walkdir",
+]
+
+[[package]]
+name = "rust-native"
+version = "1.0.0"
+dependencies = [
+ "markdown-stream",
+ "openui-lang",
+ "pulldown-cmark 0.13.4",
+ "serde",
+ "serde_json",
+ "unicode-segmentation",
 ]
 
 [[package]]
@@ -13837,6 +13886,7 @@ dependencies = [
  "deser-hjson",
  "futures",
  "libc",
+ "openagents-sdk",
  "reqwest",
  "semver",
  "serde",
@@ -13859,7 +13909,7 @@ dependencies = [
 name = "zeron-markdown"
 version = "0.2.113"
 dependencies = [
- "pulldown-cmark",
+ "pulldown-cmark 0.12.2",
 ]
 
 [[package]]
@@ -13891,9 +13941,12 @@ version = "0.2.113"
 dependencies = [
  "async-trait",
  "coder-account",
+ "oa-copy",
  "reqwest",
+ "rust-native",
  "serde",
  "serde_json",
+ "sha2",
  "similar",
  "tempfile",
  "thiserror 2.0.20",
@@ -13951,7 +14004,7 @@ version = "0.2.113"
 dependencies = [
  "chrono",
  "coder-brand",
- "pulldown-cmark",
+ "pulldown-cmark 0.12.2",
  "serde",
  "serde_json",
  "uuid",
@@ -14107,7 +14160,7 @@ dependencies = [
  "objc2-foundation 0.3.2",
  "objc2-web-kit",
  "png 0.18.1",
- "pulldown-cmark",
+ "pulldown-cmark 0.12.2",
  "raw-window-handle",
  "reqwest",
  "roxmltree 0.21.1",

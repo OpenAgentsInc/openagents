@@ -55,6 +55,8 @@ final class NewSessionViewController: UIViewController, UIGestureRecognizerDeleg
     private let mark = UIImageView()
     private var draft: NewSessionDraft
     private var models: [ModelChoice] = []
+    private var agentsObservation: AnyObject?
+    private var waitingForAgent = false
 
     /// Embedded in the iPad split's main column (no sheet chrome).
     private let embedded: Bool
@@ -179,6 +181,8 @@ final class NewSessionViewController: UIViewController, UIGestureRecognizerDeleg
             // No projects yet: run on the first reachable host.
             draft.hostId = app.hostOptions.first(where: \.online)?.id ?? app.hostOptions.first?.id
         }
+        agentsObservation = app.observe { [weak self] in self?.agentsChanged() }
+        app.customAgents?.refresh()
         loadModels()
     }
 
@@ -250,7 +254,7 @@ final class NewSessionViewController: UIViewController, UIGestureRecognizerDeleg
             // The project, then the host it runs on.
             chips.append(ComposerChip(id: "project", title: p.groupName, symbol: nil, icon: ProjectTile.image(name: p.groupName, colorIndex: p.colorIndex)))
             chips.append(ComposerChip(id: "host", title: p.deviceName, symbol: "desktopcomputer"))
-            if p.git {
+            if p.git && app.customAgents?.snapshot().selected == nil {
                 chips.append(ComposerChip(id: "branch", title: draft.worktree ? "New worktree" : (draft.branch ?? "Current branch"), symbol: nil, icon: BranchIcon.sized()))
             }
         } else {
@@ -262,8 +266,8 @@ final class NewSessionViewController: UIViewController, UIGestureRecognizerDeleg
         // Never the harness name in place of a model: a model this host
         // hasn't listed still gets its catalog label.
         let modelTitle = model?.label ?? draft.model.map { modelLabel(harness: draft.harness, model: $0) } ?? fallbackModels(harness: draft.harness).first?.label ?? HarnessNames.label(draft.harness)
-        chips.append(ComposerChip(id: "model", title: modelTitle, symbol: nil, icon: BrandMarks.image(for: draft.harness, side: 13)))
-        if let efforts = model?.efforts, !efforts.isEmpty {
+        chips.append(ComposerChip(id: "model", title: app.customAgents?.snapshot().selected?.name ?? modelTitle, symbol: nil, icon: BrandMarks.image(for: draft.harness, side: 13)))
+        if app.customAgents?.snapshot().selected == nil, let efforts = model?.efforts, !efforts.isEmpty {
             chips.append(ComposerChip(id: "effort", title: (draft.effort ?? efforts[efforts.count / 2]).capitalized, symbol: "gauge.with.dots.needle.67percent"))
         }
         composer.chips = chips
@@ -381,16 +385,63 @@ final class NewSessionViewController: UIViewController, UIGestureRecognizerDeleg
 
     private func modelMenu() -> UIMenu {
         let byHarness = Dictionary(grouping: models, by: \.harness)
-        return UIMenu(title: "Model", children: byHarness.keys.sorted().map { h in
+        var sections: [UIMenuElement] = byHarness.keys.sorted().map { h in
             UIMenu(title: byHarness[h]!.first!.harnessLabel, image: BrandMarks.image(for: h, side: 16), options: .displayInline, children: byHarness[h]!.map { m in
                 UIAction(title: m.label, state: m.harness == draft.harness && m.id == draft.model ? .on : .off) { [weak self] _ in
+                    self?.app.customAgents?.clearSelection()
                     self?.draft.harness = m.harness
                     self?.draft.model = m.id
                     self?.draft.effort = nil
                     self?.refreshChips()
                 }
             })
-        })
+        }
+        if let agents = app.customAgents {
+            let snapshot = agents.snapshot()
+            sections.append(UIMenu(title: "Your agents", options: .displayInline, children: snapshot.rows.map { agent in
+                UIAction(title: agent.name, subtitle: agent.runtime == "sdk" ? "SDK runner" : HarnessNames.label(agent.runtime), state: snapshot.selected?.id == agent.id ? .on : .off) { [weak self] _ in
+                    do { try agents.select(id: agent.id); self?.refreshChips() }
+                    catch { self?.showAgentError(error.localizedDescription) }
+                }
+            }))
+            var actions: [UIMenuElement] = [UIAction(title: "Create agent…", image: UIImage(systemName: "plus")) { [weak self] _ in self?.openAgentForm(id: nil) }]
+            if let selected = snapshot.selected {
+                actions.append(UIAction(title: "Edit agent…", image: UIImage(systemName: "pencil")) { [weak self] _ in self?.openAgentForm(id: selected.id) })
+            }
+            sections.append(UIMenu(options: .displayInline, children: actions))
+        }
+        return UIMenu(title: "Agents and models", children: sections)
+    }
+
+    private func openAgentForm(id: String?) {
+        guard let agents = app.customAgents else { return }
+        do {
+            if let id { try agents.editForm(id: id) } else { try agents.createForm() }
+            present(UINavigationController(rootViewController: AgentFormController(app: app, agents: agents)), animated: true)
+        } catch { showAgentError(error.localizedDescription) }
+    }
+
+    private func showAgentError(_ message: String) {
+        guard presentedViewController == nil else { return }
+        let alert = UIAlertController(title: "Couldn't assign the task", message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, animated: true)
+    }
+
+    private func agentsChanged() {
+        refreshChips()
+        guard waitingForAgent, let snapshot = app.customAgents?.snapshot() else { return }
+        if let chat = snapshot.assignmentChat, !created {
+            created = true
+            waitingForAgent = false
+            app.newSessionText = ""
+            app.newSessionImages = []
+            onCreated(chat, DraftHandoff.capture(from: self, composer: composer, text: composer.text))
+        } else if !snapshot.assigning {
+            waitingForAgent = false
+            hero.text = "What are we building?"
+            if let notice = snapshot.notice { showAgentError(notice) }
+        }
     }
 
     private func effortMenu() -> UIMenu {
@@ -406,6 +457,16 @@ final class NewSessionViewController: UIViewController, UIGestureRecognizerDeleg
     /// False when the session couldn't be created (the prompt stays put).
     private func create(text: String, images: [StagedImage]) -> Bool {
         app.lastDraft = draft
+        if let agents = app.customAgents, agents.snapshot().selected != nil {
+            guard !waitingForAgent, let core = app.client else { return false }
+            guard images.isEmpty else { showAgentError("Send the text first, then add images in the conversation."); return false }
+            do {
+                try agents.assign(core: core, host: deviceId, project: project?.id, task: text)
+                waitingForAgent = true
+                hero.text = "Waiting for your computer…"
+            } catch { showAgentError(error.localizedDescription) }
+            return false
+        }
         guard let chatId = app.createSession(draft: draft, text: text, images: images) else {
             let alert = UIAlertController(title: "Couldn't start the session", message: "Choose a project or a host that can run it.", preferredStyle: .alert)
             alert.addAction(UIAlertAction(title: "OK", style: .default))

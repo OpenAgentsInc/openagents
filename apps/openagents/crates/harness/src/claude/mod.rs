@@ -251,6 +251,14 @@ impl ClaudeHarness {
         } else {
             args.extend(["--permission-mode".into(), "default".into()]);
         }
+        if request.model_options.contains_key("openagentsAssignment")
+            && let Some(instructions) = request
+                .model_options
+                .get("openagentsInstructions")
+                .and_then(Value::as_str)
+        {
+            args.extend(["--append-system-prompt".into(), instructions.into()]);
+        }
         let mut settings = serde_json::Map::new();
         if option_is_on(&request.model_options, "fastMode") {
             settings.insert("fastMode".into(), Value::Bool(true));

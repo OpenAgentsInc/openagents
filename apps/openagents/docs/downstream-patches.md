@@ -38,3 +38,18 @@ Keep fork-specific changes here so upstream updates can review each integration.
   `SavedTranscriptController` mounts the phone's Rust layout and normal cells;
   `MainTabController` treats it as a chat when hiding the global new-session bar.
   Opening a saved chat starts no harness; replies are added by #11893–#11894.
+
+## Custom agents (#11903–#11908)
+
+The SDK owns private definitions and assignments. `doc_host::custom_agents`
+admits pinned assignments into the existing session command ledger. Claude and
+Codex receive verified custom instructions through their native instruction
+parameters. The SDK runner harness resolves names only through the operator's
+`sdk-runners.json`; no definition supplies a command. `HarnessId::Sdk` is an
+additive wire value; older app hosts cannot run it.
+
+`client_ffi::custom_agents` owns account isolation, saved retry requests, agent
+selection, and the Rust Native form. UIKit's `AgentFormController` renders that
+form and forwards versioned field and activation events. The new-session menu
+adds personal agents beside existing models. Rust Native's optional syntax
+feature keeps forms independent of the app's separate syntax-engine version.

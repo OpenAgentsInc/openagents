@@ -1226,6 +1226,8 @@ public protocol CoreAccountProtocol: AnyObject, Sendable {
      */
     func connect(config: CoreConfig, listener: ClientListener) throws  -> CoreClient
     
+    func customAgents(listener: CustomAgentsListener)  -> CoreAgents
+    
     func restore() 
     
     /**
@@ -1349,6 +1351,16 @@ open func connect(config: CoreConfig, listener: ClientListener)throws  -> CoreCl
             self.uniffiCloneHandle(),
         FfiConverterTypeCoreConfig_lower(config),
         FfiConverterTypeClientListener_lower(listener),uniffiCallStatus
+    )
+})
+}
+    
+open func customAgents(listener: CustomAgentsListener) -> CoreAgents  {
+    return try!  FfiConverterTypeCoreAgents_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_zeron_mobile_fn_method_coreaccount_custom_agents(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeCustomAgentsListener_lower(listener),uniffiCallStatus
     )
 })
 }
@@ -1478,6 +1490,216 @@ public func FfiConverterTypeCoreAccount_lift(_ handle: UInt64) throws -> CoreAcc
 #endif
 public func FfiConverterTypeCoreAccount_lower(_ value: CoreAccount) -> UInt64 {
     return FfiConverterTypeCoreAccount.lower(value)
+}
+
+
+
+
+
+
+public protocol CoreAgentsProtocol: AnyObject, Sendable {
+    
+    func activate(instance: String, revision: UInt64, key: String) throws 
+    
+    func assign(core: CoreClient, host: String, project: String?, task: String) throws 
+    
+    func changeField(instance: String, revision: UInt64, key: String, value: String) throws 
+    
+    func clearSelection() 
+    
+    func createForm() throws 
+    
+    func editForm(id: String) throws 
+    
+    func refresh() 
+    
+    func select(id: String) throws 
+    
+    func snapshot()  -> CustomAgentsSnapshot
+    
+}
+open class CoreAgents: CoreAgentsProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_zeron_mobile_fn_clone_coreagents(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_zeron_mobile_fn_free_coreagents(handle, $0) }
+    }
+
+    
+
+    
+open func activate(instance: String, revision: UInt64, key: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_zeron_mobile_fn_method_coreagents_activate(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(instance),
+        FfiConverterUInt64.lower(revision),
+        FfiConverterString.lower(key),uniffiCallStatus
+    )
+}
+}
+    
+open func assign(core: CoreClient, host: String, project: String?, task: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_zeron_mobile_fn_method_coreagents_assign(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeCoreClient_lower(core),
+        FfiConverterString.lower(host),
+        FfiConverterOptionString.lower(project),
+        FfiConverterString.lower(task),uniffiCallStatus
+    )
+}
+}
+    
+open func changeField(instance: String, revision: UInt64, key: String, value: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_zeron_mobile_fn_method_coreagents_change_field(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(instance),
+        FfiConverterUInt64.lower(revision),
+        FfiConverterString.lower(key),
+        FfiConverterString.lower(value),uniffiCallStatus
+    )
+}
+}
+    
+open func clearSelection()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_zeron_mobile_fn_method_coreagents_clear_selection(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+open func createForm()throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_zeron_mobile_fn_method_coreagents_create_form(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+open func editForm(id: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_zeron_mobile_fn_method_coreagents_edit_form(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(id),uniffiCallStatus
+    )
+}
+}
+    
+open func refresh()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_zeron_mobile_fn_method_coreagents_refresh(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+open func select(id: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_zeron_mobile_fn_method_coreagents_select(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(id),uniffiCallStatus
+    )
+}
+}
+    
+open func snapshot() -> CustomAgentsSnapshot  {
+    return try!  FfiConverterTypeCustomAgentsSnapshot_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_zeron_mobile_fn_method_coreagents_snapshot(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCoreAgents: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = CoreAgents
+
+    public static func lift(_ handle: UInt64) throws -> CoreAgents {
+        return CoreAgents(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: CoreAgents) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CoreAgents {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: CoreAgents, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCoreAgents_lift(_ handle: UInt64) throws -> CoreAgents {
+    return try FfiConverterTypeCoreAgents.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCoreAgents_lower(_ value: CoreAgents) -> UInt64 {
+    return FfiConverterTypeCoreAgents.lower(value)
 }
 
 
@@ -2827,6 +3049,204 @@ public func FfiConverterTypeCoreSavedHistory_lift(_ handle: UInt64) throws -> Co
 #endif
 public func FfiConverterTypeCoreSavedHistory_lower(_ value: CoreSavedHistory) -> UInt64 {
     return FfiConverterTypeCoreSavedHistory.lower(value)
+}
+
+
+
+
+
+
+public protocol CustomAgentsListener: AnyObject, Sendable {
+    
+    func onCustomAgentsChanged(snapshot: CustomAgentsSnapshot) 
+    
+}
+open class CustomAgentsListenerImpl: CustomAgentsListener, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_zeron_mobile_fn_clone_customagentslistener(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_zeron_mobile_fn_free_customagentslistener(handle, $0) }
+    }
+
+    
+
+    
+open func onCustomAgentsChanged(snapshot: CustomAgentsSnapshot)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_zeron_mobile_fn_method_customagentslistener_on_custom_agents_changed(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeCustomAgentsSnapshot_lower(snapshot),uniffiCallStatus
+    )
+}
+}
+    
+
+    
+}
+
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceCustomAgentsListener {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    //
+    // Store the vtable directly.
+    static let vtable: UniffiVTableCallbackInterfaceCustomAgentsListener = UniffiVTableCallbackInterfaceCustomAgentsListener(
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
+            do {
+                try FfiConverterTypeCustomAgentsListener.handleMap.remove(handle: uniffiHandle)
+            } catch {
+                print("Uniffi callback interface CustomAgentsListener: handle missing in uniffiFree")
+            }
+        },
+        uniffiClone: { (uniffiHandle: UInt64) -> UInt64 in
+            do {
+                return try FfiConverterTypeCustomAgentsListener.handleMap.clone(handle: uniffiHandle)
+            } catch {
+                fatalError("Uniffi callback interface CustomAgentsListener: handle missing in uniffiClone")
+            }
+        },
+        onCustomAgentsChanged: { (
+            uniffiHandle: UInt64,
+            snapshot: RustBuffer,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterTypeCustomAgentsListener.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.onCustomAgentsChanged(
+                     snapshot: try FfiConverterTypeCustomAgentsSnapshot_lift(snapshot)
+                )
+            }
+
+            
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        }
+    )
+
+    // Rust stores this pointer for future callback invocations, so it must live
+    // for the process lifetime (not just for the init function call).
+    //
+    // `nonisolated(unsafe)` is needed under Swift 6 strict concurrency.
+    // This is safe because the pointee is initialized once during static init
+    // and never mutated by either side of the FFI.  Its fields are C function pointers.
+    nonisolated(unsafe) static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceCustomAgentsListener> = {
+        let ptr = UnsafeMutablePointer<UniffiVTableCallbackInterfaceCustomAgentsListener>.allocate(capacity: 1)
+        ptr.initialize(to: vtable)
+        return UnsafePointer(ptr)
+    }()
+}
+
+private func uniffiCallbackInitCustomAgentsListener() {
+    uniffi_zeron_mobile_fn_init_callback_vtable_customagentslistener(UniffiCallbackInterfaceCustomAgentsListener.vtablePtr)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCustomAgentsListener: FfiConverter {
+    fileprivate static let handleMap = UniffiHandleMap<CustomAgentsListener>()
+
+    typealias FfiType = UInt64
+    typealias SwiftType = CustomAgentsListener
+
+    public static func lift(_ handle: UInt64) throws -> CustomAgentsListener {
+        if ((handle & 1) == 0) {
+            // Rust-generated handle, construct a new class that uses the handle to implement the
+            // interface
+            return CustomAgentsListenerImpl(unsafeFromHandle: handle)
+        } else {
+            // Swift-generated handle, get the object from the handle map
+            return try handleMap.remove(handle: handle)
+        }
+    }
+
+    public static func lower(_ value: CustomAgentsListener) -> UInt64 {
+         if let rustImpl = value as? CustomAgentsListenerImpl {
+             // Rust-implemented object.  Clone the handle and return it
+            return rustImpl.uniffiCloneHandle()
+         } else {
+            // Swift object, generate a new vtable handle and return that.
+            return handleMap.insert(obj: value)
+         }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CustomAgentsListener {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: CustomAgentsListener, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCustomAgentsListener_lift(_ handle: UInt64) throws -> CustomAgentsListener {
+    return try FfiConverterTypeCustomAgentsListener.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCustomAgentsListener_lower(_ value: CustomAgentsListener) -> UInt64 {
+    return FfiConverterTypeCustomAgentsListener.lower(value)
 }
 
 
@@ -7158,6 +7578,154 @@ public func FfiConverterTypeCoreConfig_lift(_ buf: RustBuffer) throws -> CoreCon
 #endif
 public func FfiConverterTypeCoreConfig_lower(_ value: CoreConfig) -> RustBuffer {
     return FfiConverterTypeCoreConfig.lower(value)
+}
+
+
+public struct CustomAgentRow: Equatable, Hashable {
+    public var id: String
+    public var revision: UInt64
+    public var name: String
+    public var runtime: String
+    public var model: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, revision: UInt64, name: String, runtime: String, model: String?) {
+        self.id = id
+        self.revision = revision
+        self.name = name
+        self.runtime = runtime
+        self.model = model
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension CustomAgentRow: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCustomAgentRow: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CustomAgentRow {
+        return
+            try CustomAgentRow(
+                id: FfiConverterString.read(from: &buf), 
+                revision: FfiConverterUInt64.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                runtime: FfiConverterString.read(from: &buf), 
+                model: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: CustomAgentRow, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterUInt64.write(value.revision, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterString.write(value.runtime, into: &buf)
+        FfiConverterOptionString.write(value.model, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCustomAgentRow_lift(_ buf: RustBuffer) throws -> CustomAgentRow {
+    return try FfiConverterTypeCustomAgentRow.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCustomAgentRow_lower(_ value: CustomAgentRow) -> RustBuffer {
+    return FfiConverterTypeCustomAgentRow.lower(value)
+}
+
+
+public struct CustomAgentsSnapshot: Equatable, Hashable {
+    public var generation: UInt64
+    public var rows: [CustomAgentRow]
+    public var selected: CustomAgentRow?
+    public var formJson: String?
+    public var notice: String?
+    public var saving: Bool
+    public var saved: CustomAgentRow?
+    public var assigning: Bool
+    public var assignmentChat: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(generation: UInt64, rows: [CustomAgentRow], selected: CustomAgentRow?, formJson: String?, notice: String?, saving: Bool, saved: CustomAgentRow?, assigning: Bool, assignmentChat: String?) {
+        self.generation = generation
+        self.rows = rows
+        self.selected = selected
+        self.formJson = formJson
+        self.notice = notice
+        self.saving = saving
+        self.saved = saved
+        self.assigning = assigning
+        self.assignmentChat = assignmentChat
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension CustomAgentsSnapshot: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCustomAgentsSnapshot: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CustomAgentsSnapshot {
+        return
+            try CustomAgentsSnapshot(
+                generation: FfiConverterUInt64.read(from: &buf), 
+                rows: FfiConverterSequenceTypeCustomAgentRow.read(from: &buf), 
+                selected: FfiConverterOptionTypeCustomAgentRow.read(from: &buf), 
+                formJson: FfiConverterOptionString.read(from: &buf), 
+                notice: FfiConverterOptionString.read(from: &buf), 
+                saving: FfiConverterBool.read(from: &buf), 
+                saved: FfiConverterOptionTypeCustomAgentRow.read(from: &buf), 
+                assigning: FfiConverterBool.read(from: &buf), 
+                assignmentChat: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: CustomAgentsSnapshot, into buf: inout [UInt8]) {
+        FfiConverterUInt64.write(value.generation, into: &buf)
+        FfiConverterSequenceTypeCustomAgentRow.write(value.rows, into: &buf)
+        FfiConverterOptionTypeCustomAgentRow.write(value.selected, into: &buf)
+        FfiConverterOptionString.write(value.formJson, into: &buf)
+        FfiConverterOptionString.write(value.notice, into: &buf)
+        FfiConverterBool.write(value.saving, into: &buf)
+        FfiConverterOptionTypeCustomAgentRow.write(value.saved, into: &buf)
+        FfiConverterBool.write(value.assigning, into: &buf)
+        FfiConverterOptionString.write(value.assignmentChat, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCustomAgentsSnapshot_lift(_ buf: RustBuffer) throws -> CustomAgentsSnapshot {
+    return try FfiConverterTypeCustomAgentsSnapshot.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCustomAgentsSnapshot_lower(_ value: CustomAgentsSnapshot) -> RustBuffer {
+    return FfiConverterTypeCustomAgentsSnapshot.lower(value)
 }
 
 
@@ -17121,6 +17689,30 @@ fileprivate struct FfiConverterOptionTypeContextUsage: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeCustomAgentRow: FfiConverterRustBuffer {
+    typealias SwiftType = CustomAgentRow?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeCustomAgentRow.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeCustomAgentRow.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeFrameImage: FfiConverterRustBuffer {
     typealias SwiftType = FrameImage?
 
@@ -17647,6 +18239,31 @@ fileprivate struct FfiConverterSequenceTypeCaptionSpan: FfiConverterRustBuffer {
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeCaptionSpan.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeCustomAgentRow: FfiConverterRustBuffer {
+    typealias SwiftType = [CustomAgentRow]
+
+    public static func write(_ value: [CustomAgentRow], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeCustomAgentRow.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [CustomAgentRow] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [CustomAgentRow]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeCustomAgentRow.read(from: &buf))
         }
         return seq
     }
@@ -19216,6 +19833,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_zeron_mobile_checksum_method_coreaccount_connect() != 28466) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_zeron_mobile_checksum_method_coreaccount_custom_agents() != 22300) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_zeron_mobile_checksum_method_coreaccount_restore() != 63699) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -19238,6 +19858,36 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_zeron_mobile_checksum_method_coreaccount_stored_login_present() != 30984) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_zeron_mobile_checksum_method_coreagents_activate() != 29136) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_zeron_mobile_checksum_method_coreagents_assign() != 11356) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_zeron_mobile_checksum_method_coreagents_change_field() != 61730) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_zeron_mobile_checksum_method_coreagents_clear_selection() != 8165) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_zeron_mobile_checksum_method_coreagents_create_form() != 18628) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_zeron_mobile_checksum_method_coreagents_edit_form() != 40492) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_zeron_mobile_checksum_method_coreagents_refresh() != 51429) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_zeron_mobile_checksum_method_coreagents_select() != 12769) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_zeron_mobile_checksum_method_coreagents_snapshot() != 35024) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_zeron_mobile_checksum_method_customagentslistener_on_custom_agents_changed() != 8983) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_zeron_mobile_checksum_method_coresavedhistory_action() != 49118) {
@@ -19495,6 +20145,7 @@ private let initializationResult: InitializationResult = {
 
     uniffiCallbackInitAccountListener()
     uniffiCallbackInitClientListener()
+    uniffiCallbackInitCustomAgentsListener()
     uniffiCallbackInitLayoutListener()
     uniffiCallbackInitPlatformMeasurer()
     uniffiCallbackInitSavedHistoryListener()

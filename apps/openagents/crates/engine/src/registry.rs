@@ -319,6 +319,10 @@ impl HarnessRegistry {
     /// Load `harness-prefs.json` from the engine data dir and remember the
     /// path for writes. Corrupt/missing files fall back to the default set.
     pub fn load_prefs(&self, data_dir: &Path) {
+        if let Ok(runner) = zeron_harness::sdk::SdkHarness::load(&data_dir.join("sdk-runners.json"))
+        {
+            self.register(Arc::new(runner));
+        }
         let path = data_dir.join("harness-prefs.json");
         let loaded = std::fs::read_to_string(&path)
             .ok()

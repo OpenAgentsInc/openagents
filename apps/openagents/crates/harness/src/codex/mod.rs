@@ -776,6 +776,8 @@ impl CodexHarness {
         // kills every command.
         request.sandbox = if title_only {
             zeron_proto::SandboxLevel::ReadOnly
+        } else if request.model_options.contains_key("openagentsAssignment") {
+            request.sandbox
         } else {
             zeron_proto::SandboxLevel::DangerFullAccess
         };
@@ -1106,6 +1108,15 @@ async fn run_session(session: Session) {
                     "features.memories": false
                 }),
             );
+        }
+        if !title_only
+            && request.model_options.contains_key("openagentsAssignment")
+            && let Some(instructions) = request
+                .model_options
+                .get("openagentsInstructions")
+                .and_then(Value::as_str)
+        {
+            p.insert("developerInstructions".into(), instructions.into());
         }
         p.insert("cwd".into(), Value::String(request.cwd.clone()));
         if let Some(mcp) = request.mcp.as_ref().filter(|_| !title_only) {

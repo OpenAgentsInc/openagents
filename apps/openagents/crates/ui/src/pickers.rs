@@ -6024,6 +6024,7 @@ pub(crate) fn harness_brand_icon(harness: HarnessId) -> (&'static str, Option<gp
             crate::icons::CLAUDE_MARK,
             Some(crate::icons::claude_brand()),
         ),
+        HarnessId::Sdk => (crate::icons::TERMINAL, None),
         HarnessId::Codex => (crate::icons::OPENAI_MARK, None),
         HarnessId::Cursor => (crate::icons::CURSOR_MARK, None),
         // Cognition's mark (the Devin product icon), monochrome.
@@ -6087,7 +6088,7 @@ fn offered_harnesses_impl(list: &[HarnessDescriptor], allow_mock: bool) -> Vec<H
     visible_harnesses_impl(list, allow_mock)
         .into_iter()
         .filter(|d| {
-            d.installed
+            d.id != HarnessId::Sdk && d.installed
                 && (zeron_engine::registry::descriptor_enabled(d)
                     || (allow_mock && d.id == HarnessId::Mock))
         })

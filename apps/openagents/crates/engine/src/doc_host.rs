@@ -16,6 +16,8 @@
 //! another device POSTs a durable nudge to that device's room (§7 cold-chat delivery);
 //! the host's relay receives it and warm-opens the doc, which drains the queue.
 
+mod custom_agents;
+
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, AtomicUsize, Ordering};
@@ -245,6 +247,7 @@ pub struct DocHostConfig {
 }
 
 struct DocHostInner {
+    custom_agents: OnceLock<custom_agents::AgentHost>,
     store: Arc<DocsStore>,
     config: DocHostConfig,
     /// Set-once (first wins), cleared by `shutdown_workers`: sessions and
@@ -970,6 +973,7 @@ impl DocHost {
     pub fn new(store: Arc<DocsStore>, config: DocHostConfig) -> Self {
         let host = Self {
             inner: Arc::new(DocHostInner {
+                custom_agents: OnceLock::new(),
                 store,
                 config,
                 sessions: Mutex::new(None),
