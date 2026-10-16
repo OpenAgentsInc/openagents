@@ -1,8 +1,9 @@
 # Computers: one public API over supported places work can run
 
-2026-10-15. Status: public lifecycle implemented in
-[#11801](https://github.com/OpenAgentsInc/openagents/issues/11801), with commands,
-files, placement, and other capabilities tracked separately. The implemented
+2026-10-16. Status: public lifecycle implemented in
+[#11801](https://github.com/OpenAgentsInc/openagents/issues/11801) and command
+sessions in [#11802](https://github.com/OpenAgentsInc/openagents/issues/11802).
+Files, placement, and other capabilities are tracked separately. The implemented
 slice below is distinct from the proposed resource and later operations.
 Deployment and live qualification evidence belongs to the implementation issue.
 
@@ -33,8 +34,9 @@ hardware, electricity, or any other service cost is zero.
 
 Deployed on 2026-10-16 for accounts with cloud access. The
 [verification record](computers-lifecycle-evidence.json) pins both running
-images, test results, and the dedicated-account staging workflows. Commands,
-files, and other backends remain separate work.
+images, test results, and the dedicated-account staging workflows. Command
+sessions have a [separate verification record](computers-commands-evidence.json).
+Files and other backends remain separate work.
 
 The account-authenticated lifecycle uses `api.openagents.com/v1`. It accepts
 live `sess_` sessions, `oa_sk_` sign-in keys, and account-bound `oak_` keys whose
@@ -86,6 +88,10 @@ The app OpenAPI example generates the implemented slice in
 `#11804` extends this baseline after commands and files are implemented.
 
 ## Command sessions
+
+Deployed on 2026-10-16 under the same account access gate. The
+[verification record](computers-commands-evidence.json) pins the backend and
+website images, targeted tests, and real Boat checks.
 
 Commands use the existing turn queue and computer lifecycle. Separate internal
 queue states prevent older workers from executing public commands as legacy

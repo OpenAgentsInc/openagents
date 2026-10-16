@@ -1,0 +1,555 @@
+{
+  "schema": "openagents.computers.commands.evidence.v1",
+  "issue": 11802,
+  "date": "2026-10-16",
+  "status": "deployed and checked on Boat",
+  "implementation_sources": [
+    "c00c1ee3539115528bec2d5d4dfe0cf31f7b20e1",
+    "b513e4c24f6f8a654ab72cb5256a8900a1b0c7bf",
+    "e53fe9a58398d5311eaf9bc48f01272f4e1afc15"
+  ],
+  "backend": {
+    "source": "e53fe9a58398d5311eaf9bc48f01272f4e1afc15",
+    "image": "us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/oa-computers@sha256:3b695ba580c2f0f982765f832a696b04bc42b51dfec499f5277d507fe847c966",
+    "staging_revision": "oa-computers-staging-00005-gh6",
+    "production_revision": "oa-computers-00004-nxz"
+  },
+  "frontend": {
+    "source": "b513e4c24f6f8a654ab72cb5256a8900a1b0c7bf",
+    "image": "us-central1-docker.pkg.dev/openagentsgemini/openagents/openagents-web@sha256:b85d7920d98e6737161b78e325b58358d0ab403ad7637d5e3e6dc946dccb2d79",
+    "staging_revision": "openagents-web-1-staging-b513e4c24f-085550",
+    "production_revision": "coder-web-b85d7920d9-20261016093310"
+  },
+  "checks": {
+    "rust": {
+      "passed": 86,
+      "failed": 0,
+      "ignored": 1,
+      "ignored_reason": "Existing slow working-computer exhaustive state exploration; not a release gate.",
+      "computer_driver_boat": 8,
+      "working_computer": 34,
+      "oa_computers_postgres_and_unit": 9,
+      "web_app_openapi": 4,
+      "web_composed_reference": 1,
+      "web_computers_api": 2,
+      "web_copy_guard": 3,
+      "web_api_docs": 2,
+      "web_phone_api": 18,
+      "web_api_alias": 5
+    },
+    "python_reference_tests": 4,
+    "format": "passed",
+    "public_reference_staging_operations": 78,
+    "public_reference_production_operations": 78,
+    "site_staging": {
+      "passed": 99,
+      "failed": 0,
+      "skipped": 2
+    },
+    "site_candidate": {
+      "passed": 58,
+      "failed": 0,
+      "skipped": 2,
+      "waiting_before_traffic": 8
+    },
+    "site_production": {
+      "passed": 66,
+      "failed": 0,
+      "skipped": 2
+    }
+  },
+  "recovery_checks": [
+    "Real API subprocess killed after provider execution writes a counter, while its start reply is held. Restart and retry retain the command ID; the counter remains one.",
+    "Lost start response and duplicate reconciliation observe the existing ID. Missing proof after dispatch becomes unknown rather than running again.",
+    "Lost stop response is resolved by observing process termination; cancellation kills a parent and child process.",
+    "Older worker queue queries skip public command substates. Legacy turn submission, follow-up, stop, and results remain covered.",
+    "Database output updates cannot shrink retained bytes, clear a truncation flag, or replace a terminal result.",
+    "Cross-account IDs, invalid cwd/environment/credentials, oversized requests, expired output, and hostile origins are refused."
+  ],
+  "limits": {
+    "retained_bytes_per_stream": 262144,
+    "chunk_bytes_per_stream": 65536,
+    "retention_seconds": 604800,
+    "default_timeout_seconds": 600,
+    "max_timeout_seconds": 3600,
+    "queue_limit": 16,
+    "command_bytes": 65536,
+    "environment_max_variables": 16,
+    "environment_max_value_bytes": 4096,
+    "output_encoding": "base64",
+    "interactive": false,
+    "automatic_retry_after_uncertain_dispatch": false
+  },
+  "live_findings": [
+    "The Boat guest runs as a regular user. Commands use workspace beneath its home, not /workspace; the process fixture now uses the same home layout.",
+    "GNU head buffers short FIFO output by default. Unbuffered capture is required; a regression check reads both streams while the process is still running.",
+    "The staging cleanup poll saw one503. A new temporary test session confirmed deletion and absence from the list, then was revoked. The original temporary session was also revoked.",
+    "The production credential was recovered from the approved file on the Mac over Tailscale at the owner request. Only its dedicated account was added to the existing access list."
+  ],
+  "staging": {
+    "base": "https://staging.openagents.com",
+    "account": "acct_dc7a799879686fc5",
+    "computer": "cmp_05d52a8c9c6d9a0d8e37",
+    "commands": [
+      "trn_7c15650e277fe7489f0a",
+      "trn_29f2742daaaa8a892367",
+      "trn_e01b1a5acc02fb255274",
+      "trn_0677f55a0ec3c1592f38",
+      "trn_46982bf51ecce7e442b9"
+    ],
+    "passed": true,
+    "cleaned": true,
+    "cleanup_errors": [],
+    "elapsed_seconds": 489.247,
+    "request_and_observation_count": 253,
+    "assertions": [
+      {
+        "check": "immediate_stdout_stderr_and_retry",
+        "passed": true,
+        "chunks": [
+          {
+            "stdout_bytes": 5,
+            "stderr_bytes": 5,
+            "terminal": true,
+            "has_more": false,
+            "gaps": {
+              "stdout": false,
+              "stderr": false
+            }
+          }
+        ]
+      },
+      {
+        "check": "flooding_and_nonreading_client",
+        "passed": true,
+        "stdout_bytes": 262144,
+        "stderr_bytes": 262144,
+        "chunks": 4
+      },
+      {
+        "check": "cancel_latency",
+        "seconds": 4.83
+      },
+      {
+        "check": "parent_child_termination_and_single_effect",
+        "passed": true
+      }
+    ],
+    "mutations": [
+      {
+        "method": "POST",
+        "path": "/api/v1/sessions",
+        "status": 200,
+        "seconds": 0.647,
+        "elapsed_seconds": 0.894,
+        "state": null,
+        "desired": null,
+        "error": null
+      },
+      {
+        "method": "POST",
+        "path": "/v1/computers",
+        "status": 202,
+        "seconds": 0.306,
+        "elapsed_seconds": 1.878,
+        "state": "new",
+        "desired": "running",
+        "error": null
+      },
+      {
+        "method": "POST",
+        "path": "/v1/computers/cmp_05d52a8c9c6d9a0d8e37/commands",
+        "status": 202,
+        "seconds": 0.266,
+        "elapsed_seconds": 68.977,
+        "state": "queued",
+        "desired": null,
+        "error": null
+      },
+      {
+        "method": "POST",
+        "path": "/v1/computers/cmp_05d52a8c9c6d9a0d8e37/commands",
+        "status": 200,
+        "seconds": 0.26,
+        "elapsed_seconds": 71.679,
+        "state": "succeeded",
+        "desired": null,
+        "error": null
+      },
+      {
+        "method": "POST",
+        "path": "/v1/computers/cmp_05d52a8c9c6d9a0d8e37/commands",
+        "status": 400,
+        "seconds": 0.173,
+        "elapsed_seconds": 72.562,
+        "state": null,
+        "desired": null,
+        "error": "invalid"
+      },
+      {
+        "method": "POST",
+        "path": "/v1/computers/cmp_05d52a8c9c6d9a0d8e37/commands",
+        "status": 202,
+        "seconds": 0.279,
+        "elapsed_seconds": 72.841,
+        "state": "queued",
+        "desired": null,
+        "error": null
+      },
+      {
+        "method": "POST",
+        "path": "/v1/computers/cmp_05d52a8c9c6d9a0d8e37/commands",
+        "status": 202,
+        "seconds": 0.299,
+        "elapsed_seconds": 176.062,
+        "state": "queued",
+        "desired": null,
+        "error": null
+      },
+      {
+        "method": "POST",
+        "path": "/v1/computers/cmp_05d52a8c9c6d9a0d8e37/commands/trn_e01b1a5acc02fb255274/cancel",
+        "status": 202,
+        "seconds": 0.231,
+        "elapsed_seconds": 267.196,
+        "state": "running",
+        "desired": null,
+        "error": null
+      },
+      {
+        "method": "POST",
+        "path": "/v1/computers/cmp_05d52a8c9c6d9a0d8e37/commands",
+        "status": 202,
+        "seconds": 0.281,
+        "elapsed_seconds": 272.076,
+        "state": "queued",
+        "desired": null,
+        "error": null
+      },
+      {
+        "method": "POST",
+        "path": "/v1/computers/cmp_05d52a8c9c6d9a0d8e37/commands",
+        "status": 202,
+        "seconds": 0.323,
+        "elapsed_seconds": 374.5,
+        "state": "queued",
+        "desired": null,
+        "error": null
+      },
+      {
+        "method": "DELETE",
+        "path": "/v1/computers/cmp_05d52a8c9c6d9a0d8e37?kind=cloud",
+        "status": 202,
+        "seconds": 0.208,
+        "elapsed_seconds": 483.9,
+        "state": "turn",
+        "desired": "deleted",
+        "error": null
+      },
+      {
+        "method": "POST",
+        "path": "/v1/device/sign-out",
+        "status": 200,
+        "seconds": 0.442,
+        "elapsed_seconds": 489.039,
+        "state": null,
+        "desired": null,
+        "error": null
+      }
+    ],
+    "temporary_session_created": true,
+    "cleanup_recovery": {
+      "initial_errors": [
+        "RuntimeError: Observation failed"
+      ],
+      "checks": [
+        {
+          "method": "POST",
+          "path": "/api/v1/sessions",
+          "status": 200,
+          "seconds": 0.376,
+          "elapsed_seconds": 0.376,
+          "state": null,
+          "desired": null,
+          "error": null
+        },
+        {
+          "method": "GET",
+          "path": "/v1/account",
+          "status": 200,
+          "seconds": 0.194,
+          "elapsed_seconds": 0.57,
+          "state": null,
+          "desired": null,
+          "error": null
+        },
+        {
+          "method": "GET",
+          "path": "/v1/computers/cmp_05d52a8c9c6d9a0d8e37",
+          "status": 200,
+          "seconds": 0.231,
+          "elapsed_seconds": 0.802,
+          "state": "deleting",
+          "desired": "deleted",
+          "error": null
+        },
+        {
+          "method": "GET",
+          "path": "/v1/computers/cmp_05d52a8c9c6d9a0d8e37",
+          "status": 200,
+          "seconds": 0.19,
+          "elapsed_seconds": 3.992,
+          "state": "deleting",
+          "desired": "deleted",
+          "error": null
+        },
+        {
+          "method": "GET",
+          "path": "/v1/computers/cmp_05d52a8c9c6d9a0d8e37",
+          "status": 200,
+          "seconds": 0.205,
+          "elapsed_seconds": 7.197,
+          "state": "deleting",
+          "desired": "deleted",
+          "error": null
+        },
+        {
+          "method": "GET",
+          "path": "/v1/computers/cmp_05d52a8c9c6d9a0d8e37",
+          "status": 200,
+          "seconds": 0.2,
+          "elapsed_seconds": 10.397,
+          "state": "deleted",
+          "desired": "deleted",
+          "error": null
+        },
+        {
+          "method": "GET",
+          "path": "/v1/computers?kind=cloud",
+          "status": 200,
+          "seconds": 0.183,
+          "elapsed_seconds": 10.581,
+          "state": null,
+          "desired": null,
+          "error": null
+        },
+        {
+          "method": "POST",
+          "path": "/v1/device/sign-out",
+          "status": 200,
+          "seconds": 0.293,
+          "elapsed_seconds": 10.874,
+          "state": null,
+          "desired": null,
+          "error": null
+        },
+        {
+          "method": "GET",
+          "path": "/v1/computers/capabilities",
+          "status": 401,
+          "seconds": 0.171,
+          "elapsed_seconds": 11.045,
+          "state": null,
+          "desired": null,
+          "error": "signed_out"
+        }
+      ]
+    }
+  },
+  "production": {
+    "base": "https://api.openagents.com",
+    "account": "acct_83d16a35955ef908",
+    "computer": "cmp_57b07a2a9a6e3112333c",
+    "commands": [
+      "trn_cb7aa0abccd409bb86d3",
+      "trn_e3f3887a6914ecfcb257",
+      "trn_867e59c0b76019aa1e8f",
+      "trn_515cdda5a5a426089bf4",
+      "trn_806382d90f5e6b364d42"
+    ],
+    "passed": true,
+    "cleaned": true,
+    "cleanup_errors": [],
+    "elapsed_seconds": 604.649,
+    "request_and_observation_count": 310,
+    "assertions": [
+      {
+        "check": "released_1_0_computer_removal",
+        "result": "expected not_found",
+        "passed": true
+      },
+      {
+        "check": "immediate_stdout_stderr_and_retry",
+        "passed": true,
+        "chunks": [
+          {
+            "stdout_bytes": 5,
+            "stderr_bytes": 5,
+            "terminal": true,
+            "has_more": false,
+            "gaps": {
+              "stdout": false,
+              "stderr": false
+            }
+          }
+        ]
+      },
+      {
+        "check": "flooding_and_nonreading_client",
+        "passed": true,
+        "stdout_bytes": 262144,
+        "stderr_bytes": 262144,
+        "chunks": 4
+      },
+      {
+        "check": "cancel_latency",
+        "seconds": 5.215
+      },
+      {
+        "check": "parent_child_termination_and_single_effect",
+        "passed": true
+      }
+    ],
+    "mutations": [
+      {
+        "method": "POST",
+        "path": "/v1/computers",
+        "status": 202,
+        "seconds": 0.24,
+        "elapsed_seconds": 1.538,
+        "state": "new",
+        "desired": "running",
+        "error": null
+      },
+      {
+        "method": "POST",
+        "path": "/v1/computers/cmp_57b07a2a9a6e3112333c/stop",
+        "status": 202,
+        "seconds": 0.171,
+        "elapsed_seconds": 78.751,
+        "state": "awake",
+        "desired": "stopped",
+        "error": null
+      },
+      {
+        "method": "POST",
+        "path": "/v1/computers",
+        "status": 200,
+        "seconds": 0.233,
+        "elapsed_seconds": 100.987,
+        "state": "stopped",
+        "desired": "stopped",
+        "error": null
+      },
+      {
+        "method": "POST",
+        "path": "/v1/computers/cmp_57b07a2a9a6e3112333c/wake",
+        "status": 202,
+        "seconds": 0.196,
+        "elapsed_seconds": 101.183,
+        "state": "stopped",
+        "desired": "running",
+        "error": null
+      },
+      {
+        "method": "POST",
+        "path": "/v1/computers/cmp_57b07a2a9a6e3112333c/commands",
+        "status": 202,
+        "seconds": 0.352,
+        "elapsed_seconds": 152.057,
+        "state": "queued",
+        "desired": null,
+        "error": null
+      },
+      {
+        "method": "POST",
+        "path": "/v1/computers/cmp_57b07a2a9a6e3112333c/commands",
+        "status": 200,
+        "seconds": 0.259,
+        "elapsed_seconds": 154.714,
+        "state": "succeeded",
+        "desired": null,
+        "error": null
+      },
+      {
+        "method": "POST",
+        "path": "/v1/computers/cmp_57b07a2a9a6e3112333c/commands",
+        "status": 400,
+        "seconds": 0.158,
+        "elapsed_seconds": 155.53,
+        "state": null,
+        "desired": null,
+        "error": "invalid"
+      },
+      {
+        "method": "POST",
+        "path": "/v1/computers/cmp_57b07a2a9a6e3112333c/commands",
+        "status": 202,
+        "seconds": 0.24,
+        "elapsed_seconds": 155.77,
+        "state": "queued",
+        "desired": null,
+        "error": null
+      },
+      {
+        "method": "POST",
+        "path": "/v1/computers/cmp_57b07a2a9a6e3112333c/commands",
+        "status": 202,
+        "seconds": 0.242,
+        "elapsed_seconds": 250.297,
+        "state": "queued",
+        "desired": null,
+        "error": null
+      },
+      {
+        "method": "POST",
+        "path": "/v1/computers/cmp_57b07a2a9a6e3112333c/commands/trn_867e59c0b76019aa1e8f/cancel",
+        "status": 202,
+        "seconds": 0.408,
+        "elapsed_seconds": 348.167,
+        "state": "running",
+        "desired": null,
+        "error": null
+      },
+      {
+        "method": "POST",
+        "path": "/v1/computers/cmp_57b07a2a9a6e3112333c/commands",
+        "status": 202,
+        "seconds": 0.306,
+        "elapsed_seconds": 353.28,
+        "state": "queued",
+        "desired": null,
+        "error": null
+      },
+      {
+        "method": "POST",
+        "path": "/v1/computers/cmp_57b07a2a9a6e3112333c/commands",
+        "status": 202,
+        "seconds": 0.334,
+        "elapsed_seconds": 444.0,
+        "state": "queued",
+        "desired": null,
+        "error": null
+      },
+      {
+        "method": "DELETE",
+        "path": "/v1/computers/cmp_57b07a2a9a6e3112333c?kind=cloud",
+        "status": 202,
+        "seconds": 0.166,
+        "elapsed_seconds": 541.182,
+        "state": "turn",
+        "desired": "deleted",
+        "error": null
+      }
+    ],
+    "temporary_session_created": false,
+    "cleanup_recovery": null
+  },
+  "boundaries": [
+    "Boat disk-only stop and wake; no SPACE or memory-restore claim.",
+    "No stdin, interactive terminal, preview, or daemon lifetime.",
+    "No separate attach bearer: each bounded output read checks native account authority.",
+    "No owner production account or owner computer used; no chat, project, or draft created.",
+    "No frozen Coder release, package publication, GitHub workflow, real model call, or full workspace release gate."
+  ]
+}

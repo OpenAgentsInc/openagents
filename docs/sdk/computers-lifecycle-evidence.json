@@ -298,9 +298,20 @@
     "fixed_public_stop_status": 202
   },
   "production_account_qualification": {
-    "status": "owner_action",
-    "reason": "The documented dedicated production test credential is missing. No owner account or computers were used.",
-    "instructions": "NEEDS_OWNER.md, issue #11801"
+    "status": "passed",
+    "date": "2026-10-16",
+    "account": "acct_83d16a35955ef908",
+    "computer": "cmp_57b07a2a9a6e3112333c",
+    "checks": [
+      "create and observe awake",
+      "explicit stop and observe stopped",
+      "same create retry preserves identity and stopped intent",
+      "explicit wake and observe awake",
+      "released Coder1.0.0 computer removal returns expected not_found",
+      "delete and observe deleted, absent from list"
+    ],
+    "followup_evidence": "computers-commands-evidence.json",
+    "note": "Completed alongside #11802 with its newer image pins. Original qualification records remain unchanged. Credential recovered from approved Mac path over Tailscale at owner request; no owner account used."
   },
   "cleanup": {
     "successful_staging_run": true,

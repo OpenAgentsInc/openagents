@@ -115,9 +115,11 @@ implementation issues; proposed fields/endpoints remain proposals until shipped.
 For the first desktop milestone, start #11825 and #11827. The Computers
 account boundary in [#11801](https://github.com/OpenAgentsInc/openagents/issues/11801)
 is deployed; its [verification record](computers-lifecycle-evidence.json) pins
-both images and the completed staging workflows. Continue with command sessions
-[#11802](https://github.com/OpenAgentsInc/openagents/issues/11802), then files
-[#11803](https://github.com/OpenAgentsInc/openagents/issues/11803), in the owner's
+both images and the completed staging workflows. Command sessions
+[#11802](https://github.com/OpenAgentsInc/openagents/issues/11802) are deployed;
+their [verification record](computers-commands-evidence.json) covers bounded
+output, retries, cancellation, and timeout. Continue with files
+[#11803](https://github.com/OpenAgentsInc/openagents/issues/11803) in the owner's
 requested sequence. Keep using the same worktree and push and close each issue
 before starting the next one.
 
