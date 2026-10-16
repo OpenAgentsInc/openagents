@@ -11788,15 +11788,18 @@ dependencies = [
 name = "openagents-wallet"
 version = "1.0.0"
 dependencies = [
+ "bitcoin",
  "hex",
  "hmac 0.12.1",
  "ldk-node",
  "libc",
+ "lightning-invoice 0.34.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "nostr",
  "rusqlite",
  "serde",
  "serde_json",
  "sha2 0.10.9",
+ "tempfile",
  "thiserror 2.0.20",
  "user-home",
 ]

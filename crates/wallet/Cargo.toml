@@ -30,4 +30,7 @@ default = ["ldk"]
 ldk = ["dep:ldk-node"]
 
 [dev-dependencies]
+bitcoin = "0.32"
+lightning-invoice = { version = "0.34.1", features = ["std"] }
+tempfile = "3"
 nostr = { path = "../nostr" }

@@ -103,3 +103,24 @@ same scoped statements, private downloads, reconciliation details, and a
 versioned destination form with a session-bound forgery token. Isolated ledger,
 fake-rail, and real HTTP tests cover conservation, scoped access, revocation,
 conflicting destination changes, and restart recovery without owner funds.
+
+## Embedded and hosted wallets (#11760)
+
+Both Lightning implementations use `openagents_wallet::LightningWallet`.
+
+| Surface | Wallet | Reason |
+| --- | --- | --- |
+| A person's `openagents x402 node`, per-machine and agent Lightning nodes | Embedded LDK | The person holds the node key; the Rust library runs in the process. MDK's LSP remains available for JIT inbound. |
+| Mobile embedded Lightning features | Embedded LDK | A Go daemon cannot run inside the mobile library. This does not migrate the phone's current personal Spark wallet. |
+| Personal phone and computer Spark balances | Spark | Personal wallets remain separate from the hosted payment node. |
+| Hosted central receive and payouts | LND through `lnd-sdk` | Scoped RPC credentials, server operations, and the reviewed experimental rollout. MDK remains selected until approval. |
+| Server asset trial | Integrated litd LND/tapd | The pinned asset-channel implementation needs in-process funding hooks; a separate tapd cannot add them to standalone LND. Owner decisions 6 and 7 remain open. |
+| Embedded Taproot Assets | `tap-ldk` research | Keep its litd interoperability work; no production asset-wallet switch is approved. |
+
+The shared assertions live in `crates/wallet/tests/support/contract.rs`. They
+check exact invoice amounts down to one millisatoshi, description hashes, signatures,
+expiry, node binding, completed payment records, fee caps, and proof hashes.
+LDK tests use a real unstarted node with a fresh regtest seed and fake completed
+records. LND tests use a fake service through the blocking wallet adapter, then
+real funded Docker regtest nodes for payment, lookup, repeat-payment recovery,
+and redacted payment history. These checks need no owner's wallet or login.

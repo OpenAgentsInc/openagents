@@ -174,3 +174,9 @@ mod tests {
         assert!(parse_hash32(&"zz".repeat(32)).is_err());
     }
 }
+
+#[cfg(test)]
+use crate as contract_wallet;
+#[cfg(test)]
+#[path = "../tests/support/contract.rs"]
+mod wallet_contract;

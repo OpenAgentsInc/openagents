@@ -860,6 +860,33 @@ mod tests {
     const SIGNET: &str = "lntbs10n1p4tnqv0hp5424242424242424242424242424242424242424242424242424qnp4qgr8w0u4scfnaxrqv2hjaw6xvq7jfmqactz27fwnrju8x9e7vrar2pp5zf733s3jrl38kzspmmx038d6jkfce5psal06hvtrm0zwd20tu8lqsp5r3ctfk3dlesws3jjejl8qsj0uyl9a6ek7nwyr9vpuqx6z3v7a6ns9qyysgqcqzp2xqzjcuj9y7t5aae4z5g95mw2cdgzma3fxzjxjs9t9a8tj7ur53sc6eaczwhcz07aw82a6jl38ssjg7uyf60llg58aq0uqrxq8pszfzmk8lxqps636mq";
 
     #[test]
+    fn shared_wallet_contract_with_an_offline_node_and_completed_record() {
+        let root = tempfile::tempdir().unwrap();
+        let config =
+            WalletConfig::new(crate::Network::Regtest, Some("http://127.0.0.1:1")).unwrap();
+        let wallet = LdkWallet::build(
+            root.path(),
+            &config,
+            &mnemonic_from_entropy(&[19; 32]).unwrap(),
+        )
+        .unwrap();
+        // The real embedded node signs invoices without starting or fetching a chain.
+        crate::wallet_contract::bound(&wallet);
+        crate::wallet_contract::receive(&wallet);
+        assert!(wallet.channels().unwrap().is_empty());
+        assert_eq!(wallet.balance().unwrap().lightning_total_sats, 0);
+        let (invoice, record) = crate::wallet_contract::fixture(
+            7,
+            crate::wallet_contract::AMOUNT,
+            crate::wallet_contract::REQUEST,
+            600,
+        );
+        let proof = proof_from(&record, &invoice.bolt11).unwrap();
+        crate::wallet_contract::completed(&proof, &record, &invoice.bolt11, 10);
+        assert_eq!(proof_from(&record, &invoice.bolt11), Some(proof));
+    }
+
+    #[test]
     fn restored_wallet_keeps_its_node_id_and_addresses() {
         let root =
             std::env::temp_dir().join(format!("openagents-wallet-restore-{}", std::process::id()));
