@@ -35,9 +35,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "prepare" if args.len() == 6 => {
             let build: Value = read(&args[2])?;
             if build["schema"] != "openagents.layertree.image-build.v1"
-                || build["signing_service"] != false
+                || build["signing_service"] != (build["probe_example"] == "signet_service")
             {
-                return Err("use a non-signing research build record".into());
+                return Err("use a supported research build record".into());
             }
             let builders: Vec<String> = read(&args[4])?;
             if builders.len() != 2
@@ -58,6 +58,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     "layertree-signet-key-probe",
                     "We test key recovery and synthetic transaction signing inside TDX. This image accepts no signing requests.",
                 ),
+                Some("signet_service") => (
+                    "layertree-signet",
+                    "We run one fresh-key signet tree inside TDX with an in-guest Bitcoin validator, two-phase signing, and mirror receipts. Restarts require the old tree to unroll.",
+                ),
                 _ => return Err("unknown research image profile".into()),
             };
             let release = att::Release {
@@ -68,7 +72,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 measurements: vec![], gpu: None, models: vec![], components: vec![],
                 source: att::Source { repo: "https://github.com/OpenAgentsInc/openagents".into(),
                     commit: build["source_commit"].as_str().ok_or("missing source commit")?.into(),
-                    recipe: "deploy/layertree/reproducible-probe.Dockerfile".into(),
+                    recipe: build["recipe"].as_str().ok_or("missing build recipe")?.into(),
                     recipe_digest: format!("sha256:{:x}", Sha256::digest(fs::read(&args[3])?)) },
                 rebuilds: builders.into_iter().map(|builder| att::Rebuild { builder, digest: digest.into() }).collect(),
                 transparency: vec![],
@@ -91,7 +95,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if release.publisher != signer.pubkey()
                 || !matches!(
                     release.workload.as_str(),
-                    "layertree-signet-probe" | "layertree-signet-key-probe"
+                    "layertree-signet-probe" | "layertree-signet-key-probe" | "layertree-signet"
                 )
                 || !release.transparency.is_empty()
             {

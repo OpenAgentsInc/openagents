@@ -34,11 +34,23 @@ fn unchunk(mut input: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     }
 }
 pub fn token(report: &[u8; 64]) -> Result<String, Box<dyn std::error::Error>> {
-    let nonce = hex(&report[..32]);
+    token_with_nonces(&[hex(&report[..32])])
+}
+
+/// Bind the report, caller challenge, and actual TLS certificate in one token.
+pub fn channel_token(
+    report: &[u8; 64],
+    challenge: &[u8; 32],
+    certificate_sha256: &[u8; 32],
+) -> Result<String, Box<dyn std::error::Error>> {
+    token_with_nonces(&[hex(&report[..32]), hex(challenge), hex(certificate_sha256)])
+}
+
+fn token_with_nonces(nonces: &[String]) -> Result<String, Box<dyn std::error::Error>> {
     let body = serde_json::json!({
         "audience":"openagents.layertree.route.v1",
         "token_type":"PKI",
-        "nonces":[nonce],
+        "nonces":nonces,
     })
     .to_string();
     let request = format!(

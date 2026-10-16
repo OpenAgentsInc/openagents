@@ -1,0 +1,10 @@
+{
+  "operator_key": "UNCONFIGURED",
+  "tree_id": "UNCONFIGURED",
+  "depth": 4,
+  "dust_min": 330,
+  "unroll_delay": 12,
+  "radix": 128,
+  "mirrors": [],
+  "mirror_threshold": 2
+}

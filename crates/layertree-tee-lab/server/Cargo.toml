@@ -1,0 +1,25 @@
+[package]
+name = "layertree-signet-service"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+layertree-tee-lab = { path = "..", features = ["events"] }
+bitcoin = { version = "=0.32.102", default-features = false, features = ["std", "rand-std"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "=1.0.151", features = ["arbitrary_precision"] }
+reqwest = { version = "=0.12.28", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+rustls = { version = "=0.23.45", default-features = false, features = ["std", "ring", "tls12"] }
+rcgen = { version = "=0.14.10", default-features = false, features = ["crypto", "ring"] }
+httparse = "=1.10.1"
+
+[[bin]]
+name = "layertree-signet-service"
+path = "src/main.rs"
+
+[[bin]]
+name = "layertree-signet-mirror"
+path = "src/bin/mirror.rs"

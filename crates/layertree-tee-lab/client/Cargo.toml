@@ -9,9 +9,12 @@ publish = false
 
 [dependencies]
 layertree-tee-lab = { path = "..", features = ["events"] }
+layertree-signet-service = { path = "../server" }
 oa-att = { path = "../../oa-att" }
 att-release = { path = "../../att-release" }
 nostr = { path = "../../nostr" }
 bitcoin = { version = "=0.32.102", default-features = false, features = ["std"] }
 serde_json = "=1.0.151"
+serde = { version = "1", features = ["derive"] }
+reqwest = { version = "=0.12.28", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 time = { version = "=0.3.55", default-features = false, features = ["parsing"] }

@@ -35,6 +35,8 @@ pub mod output;
 pub mod predicate;
 #[cfg(kani)]
 mod proofs;
+#[cfg(feature = "events")]
+pub mod rpc;
 pub mod rules;
 pub mod tree;
 pub mod unroll;
