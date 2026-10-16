@@ -1,0 +1,21 @@
+substitutions:
+  _COMMIT: ''
+  _IMAGE: us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/space-key-broker
+steps:
+  - name: gcr.io/cloud-builders/git
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -eu
+        git init -q src
+        cd src
+        git fetch -q --depth 1 https://github.com/OpenAgentsInc/openagents.git ${_COMMIT}
+        git checkout -q FETCH_HEAD
+  - name: gcr.io/cloud-builders/docker
+    dir: src
+    args: [build, -f, deploy/space-service/key-broker.Dockerfile, -t, '${_IMAGE}:${_COMMIT}', .]
+images: ['${_IMAGE}:${_COMMIT}']
+options:
+  machineType: E2_HIGHCPU_8
+timeout: 1800s

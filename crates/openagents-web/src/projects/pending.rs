@@ -73,8 +73,13 @@ pub(crate) async fn record(store: &Store, github: u64, pending: &Pending) -> Res
 }
 
 /// The invitations waiting for `github`, soonest to expire first, with
-/// each one's name for Decline. Expired ones are dropped as they're seen.
-pub(crate) async fn waiting(store: &Store, github: u64) -> Vec<(String, Pending)> {
+/// each one's name for Decline. Drop expired invitations and invitations to
+/// projects the person already belongs to, including through another invitation.
+pub(crate) async fn waiting(
+    store: &Store,
+    github: u64,
+    projects: &[oa_auth::repos::Project],
+) -> Vec<(String, Pending)> {
     let Ok(keys) = store.folder_keys_limit(&folder(github), MOST * 4).await else {
         return Vec::new();
     };
@@ -87,7 +92,9 @@ pub(crate) async fn waiting(store: &Store, github: u64) -> Vec<(String, Pending)
         let Ok(pending) = serde_json::from_slice::<Pending>(&bytes) else {
             continue;
         };
-        if pending.expires_unix <= now {
+        if pending.expires_unix <= now
+            || projects.iter().any(|project| project.id == pending.project)
+        {
             store.delete_key(&key, &generation).await.ok();
             continue;
         }

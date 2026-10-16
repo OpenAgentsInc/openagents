@@ -23,6 +23,7 @@ use crate::sizes::{self, Provisioning, Size};
 use crate::time;
 use boat::Nullable;
 use boat::models::*;
+use serde::Serialize;
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::{Arc, Mutex};
@@ -167,6 +168,19 @@ pub enum Reply {
     Finished(CommandResponse),
     Started(CommandStartedResponse),
     Stream(mpsc::Receiver<CommandStreamFrame>),
+}
+
+/// One provider's image archive size, separate from restored content size.
+#[derive(Serialize)]
+struct ProviderArchiveSize {
+    bytes: Option<u64>,
+    source: ArchiveSizeSource,
+}
+
+#[derive(Serialize)]
+enum ArchiveSizeSource {
+    #[serde(rename = "gce.images.archiveSizeBytes")]
+    GceImage,
 }
 
 fn suffix_of(id: &str) -> Res<String> {
@@ -2132,7 +2146,8 @@ wc -c < "$d/err" 2>/dev/null || echo 0
                 generation: Some(label_i64(&i, "oa-boat-stopn")),
                 created_at: time::format(stop),
                 completed_at: Nullable::Value(time::format(stop)),
-                size_bytes: i.disk_gb.map(|g| g * 1024 * 1024 * 1024),
+                // This checkpoint keeps a disk; it does not measure a delta.
+                size_bytes: None,
                 ..Default::default()
             });
         Ok(SnapshotLatestResponse {
@@ -2171,6 +2186,13 @@ wc -c < "$d/err" 2>/dev/null || echo 0
         let mut extra = BTreeMap::new();
         extra.insert("image".into(), json!(image.self_link));
         extra.insert("diskGb".into(), json!(image.disk_gb));
+        extra.insert(
+            "providerArchiveSize".into(),
+            json!(ProviderArchiveSize {
+                bytes: image.archive_bytes.and_then(|n| u64::try_from(n).ok()),
+                source: ArchiveSizeSource::GceImage,
+            }),
+        );
         NamedSnapshot {
             name: image.name.clone(),
             status: status.into(),
@@ -2182,9 +2204,8 @@ wc -c < "$d/err" 2>/dev/null || echo 0
                 .unwrap_or_default(),
             snapshot_id: (status == "ready").then(|| image.id.clone()),
             type_: image.labels.get("oa-boat-type").cloned(),
-            size_bytes: image
-                .archive_bytes
-                .or(Some(image.disk_gb * 1024 * 1024 * 1024)),
+            // Neither archive bytes nor disk capacity measures restored content.
+            size_bytes: None,
             created_at: image
                 .creation
                 .as_deref()

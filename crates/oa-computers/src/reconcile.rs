@@ -227,13 +227,25 @@ impl<D: Drivers + 'static> Reconciler<D> {
         let woke = e.desired == Desired::Running && wakes_from(&e.record.phase);
         // Recover public commands before the legacy lifecycle tick can expire a
         // turn after a service restart. Recovery observes the same identity.
-        let active_command = if matches!(e.record.phase, Phase::Turn { .. }) {
-            self.store
-                .next_turn(&e.id)
-                .await
-                .ok()
-                .flatten()
-                .filter(|t| t.api_command)
+        let active_command = if let Phase::Turn { generation } = e.record.phase {
+            match self.store.recovering_turn(&e.id, generation).await {
+                Ok(turn) => turn.filter(|t| t.api_command),
+                Err(error) => {
+                    renewer.abort();
+                    let _ = self
+                        .store
+                        .release(
+                            &e.id,
+                            &self.settings.holder,
+                            self.backoff(e.attempts),
+                            e.attempts.saturating_add(1),
+                            Some(&error.to_string()),
+                            false,
+                        )
+                        .await;
+                    return;
+                }
+            }
         } else {
             None
         };

@@ -54,7 +54,12 @@ What exists:
 - Complete spike teardown. The estimated list-price resource cost was
   $0.82; this is neither a production cost model nor an actual billing total.
 
-What remains unproved or unavailable:
+Limits recorded in the initial 2026-10-15 spike:
+
+Later work adds the deployment registry, fast Direct API creates, and verified
+Environment artifacts. The [current qualification results](space.md) describe
+those implementations and their limits; the list below preserves the original
+assessment. Maintained deployment and customer rollout remain open.
 
 - The pinned Kind HTTP create path chooses a cold boot even with a ready
   base snapshot. The fast node snapshot result does not meet the HTTP

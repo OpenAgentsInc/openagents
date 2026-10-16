@@ -106,6 +106,13 @@ on each node. The privacy check scans both nodes' disk and memory files and
 checks each base against its own recorded hash. Customer creates and useful
 build/test verification use the Rust HTTP driver.
 
+Both backends passed all three tests on fresh computers. The GCE fork also
+reran the frozen installation without changing its inventory. The
+[qualification evidence](evidence/2026-10-16-space-environments.json) retains
+source pins, full command records, failed attempts, and cleanup. All 12 test
+computer records, the image, the SPACE template, and the disposable host and
+network resources were deleted. The saved test version was retired.
+
 ## Driver
 
 Build `oa-computers` with `--features space`, set

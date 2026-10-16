@@ -1,0 +1,266 @@
+{
+  "schema": "openagents.space_environment_qualification.v1",
+  "issue": 11811,
+  "date": "2026-10-16",
+  "scope": "Immutable Environment artifacts and isolated dual-backend qualification. Maintained deployment and customer rollout remain #11814 and #11816.",
+  "owner": {
+    "workspace": "qualification-11811",
+    "principal": "synthetic-fixture"
+  },
+  "customer_account_used": false,
+  "upstream": {
+    "repository": "https://github.com/perplexityai/SPACE",
+    "commit": "de87b436c35dac056564bdd5b2a113c9046e189b",
+    "source_patch": null
+  },
+  "environment": {
+    "id": "environment-11811",
+    "saved_version": "v1",
+    "build_id": "build-8",
+    "verification_id": "verify-2",
+    "image_manifest_digest": "d6a393d826fc2b7e83215746ddf0372a14760abebdb5841ad606263cb0668c6b",
+    "gce_image": {
+      "name": "oaenv-build-8-6d90501c6584ca4cc0f87404",
+      "id": "4427052124794203176"
+    },
+    "space": {
+      "reference": "oaenv-build-8-6d90501c6584ca4cc0f87404-space@sha256:e6acdf145f1ae239fce3c8de014d8aaa975ab3aceb7106557a6ca587defddef2",
+      "rootfs_digest": "e6acdf145f1ae239fce3c8de014d8aaa975ab3aceb7106557a6ca587defddef2",
+      "inputs_digest": "a82066037ece128d0184d8d33043aebd5cec12c0da42b192fb3124e9acaa901f",
+      "native_build": "01a14677-16a8-742e-be61-ed4a86d90111",
+      "shape": {
+        "vcpus": 2,
+        "memory_mib": 4096
+      },
+      "compatibility": {
+        "platform": {
+          "os": "linux",
+          "architecture": "x86_64"
+        },
+        "guest_daemon": {
+          "revision": "0.8.0",
+          "digest": "fd1fb952b76bd22ff22ea96222b4ad45165950b7d04a4c433603d4aa76e20a65"
+        },
+        "kernel": {
+          "revision": "legacy-e20e46d0c36c",
+          "digest": "e20e46d0c36c55c0d1014eb20576171b3f3d922260d9f792017aeff53af3d4f2"
+        },
+        "host_runtime": {
+          "revision": "1.15.1",
+          "digest": "7e8b57e88c459396d4680d83dcdd8c7f72305447cb55b11f4ac98ad70a3f7825"
+        },
+        "snapshot_format": "firecracker-snapshot-9.0.0",
+        "boot_profile_digest": "5cae33577a740ab49e0afc6c67f4a13a3aa8b18caeb2f5683179f21189ee4ba3"
+      },
+      "snapshots": [
+        {
+          "worker": "space-local-worker",
+          "snapshot_hash": "118f4d4f3af84c5e133e55affba2f00780ee6a5f22e177dd2f15ade089bd9e04",
+          "vcpu": 2,
+          "memory_mib": 4096
+        },
+        {
+          "worker": "space-local-worker4",
+          "snapshot_hash": "f4e7829149fa36bfaebe523e80ac84b98caa0f98322db44142357f695b6f089c",
+          "vcpu": 2,
+          "memory_mib": 4096
+        }
+      ]
+    },
+    "retired_after_qualification": true
+  },
+  "source": {
+    "repository": "OpenAgentsInc/openagents",
+    "revision": "a0b6bd41b716e29ffb05e989a56c2559077164dd",
+    "tree": "275aeec82507de5ef9c2047c6f2f655cf36fb023",
+    "bundle_sha256": "cbc324dbdf733357cdcbda3a55b549af1449eed7c21f2fed38981c7b2f2e68b9",
+    "temporary_branch_deleted": true
+  },
+  "tools": {
+    "coder_version": "1.0.0",
+    "coder_source": "3230ded51181aa438656825da8245cea6c8e717c",
+    "coder_release_archive_sha256": "07d30ec2a1b8fafa4a802e4de0615808bcfd428903473e916a9f8a227abc79f4",
+    "rust": "1.97.1",
+    "space_inventory": [
+      {
+        "name": "/usr/local/bin/rustc",
+        "digest": "d3a664c970a9fd8361b64194861bebc1ae37b9054e5ee3400dc1c9e691797eea"
+      },
+      {
+        "name": "/usr/local/bin/cargo",
+        "digest": "828980723df339d62434390e9fb8ef8831036583343ae2316b7ab5646b5c1953"
+      },
+      {
+        "name": "/usr/bin/git",
+        "digest": "5516c9f362c29376ab9a499a33082f9f611941d8c75930c880e30ad109e39c9a"
+      },
+      {
+        "name": "/usr/bin/cc",
+        "digest": "b5f1b773a7c733738352000c92a077dc5852a1a2fc6d836b1e411be1e9ec5f88"
+      },
+      {
+        "name": "/etc/ssl/certs/ca-certificates.crt",
+        "digest": "9481fcd95f41b221f02f14d896535fe500bec539bc563c4cdca1acee483a8bdd"
+      },
+      {
+        "name": "space-base",
+        "digest": "0d1ae715721a0bfa20706d2de5e5e43d3a3836c3f897a73fcb23720130370554"
+      },
+      {
+        "name": "provider-root-authorized-keys",
+        "digest": "eea3d40848b58ff1387b05bd946bd4a9b6beea3f7a37b5697412fa2aa5f3dedc"
+      },
+      {
+        "name": "provider-user-authorized-keys",
+        "digest": "eea3d40848b58ff1387b05bd946bd4a9b6beea3f7a37b5697412fa2aa5f3dedc"
+      },
+      {
+        "name": "rust-1.97.1-x86_64-unknown-linux-gnu",
+        "digest": "88f28fa9af20594179f85d6df67078dfd6fa93e2f6da5e1e9b0ac4997988ca4f"
+      },
+      {
+        "name": "coder-1.0.0",
+        "digest": "6bedc8cc2ea7626838b51ec3c12979383237528bc7ba0862e184679c38f0861d"
+      }
+    ]
+  },
+  "verification": {
+    "space": {
+      "computer": "sbx_01a1468c-7b03-7386-995a-49f1bf8fa50e",
+      "source": "Frozen Git bundle uploaded through the Rust driver, hash-checked, checked out at the exact commit, then independently verified.",
+      "offline": true,
+      "passed_tests": 3,
+      "fresh_build": true,
+      "released_runtime_and_tools_checked": true,
+      "actual_shape_checked": true,
+      "cleanup_confirmed": true,
+      "evidence_digest": "2d1227daef5dffd2c65b38f207542e7a4d231a10322d091e917f3bdebc94cf4d",
+      "cleanup_evidence_digest": "47be3a7db7136eda0ab1314f9a60586cc55a61e192da253ec7b0d51f23727061"
+    },
+    "gce": {
+      "job": "vj-3254e3bc2e363c5543c5f97c",
+      "baseline": {
+        "computer": "verifier-vj-3254e3bc2e363c5543c5f97c",
+        "role": "baseline",
+        "generation": 1,
+        "resource": "bx_gjk13sjsvy",
+        "hydrated": true,
+        "cleanup": {
+          "state": "complete",
+          "evidence": "del_gjk13sjsvy"
+        },
+        "usage": [
+          "seconds=99 dollars=0.001843"
+        ]
+      },
+      "fork": {
+        "computer": "verifier-fork-vj-3254e3bc2e363c5543c5f97c",
+        "role": "fork",
+        "generation": 1,
+        "resource": "bx_jqmqlyp874",
+        "hydrated": true,
+        "cleanup": {
+          "state": "complete",
+          "evidence": "del_jqmqlyp874"
+        },
+        "usage": [
+          "seconds=80 dollars=0.001489"
+        ]
+      },
+      "verdict": "passed",
+      "passed_tests": 3,
+      "offline": true,
+      "fresh_build": true,
+      "idempotence_inventory_unchanged": true,
+      "evidence_digest": "a9ee4d484966d2ea349bd9f8ddc9ead40d27870eab9a3ab8da14dafefa1c4a47",
+      "evidence_status": "complete"
+    }
+  },
+  "privacy": {
+    "scope": "SPACE published disk and clean base memory on both nodes",
+    "files_checked": 18,
+    "canary_matches": 0,
+    "all_base_hashes_verified": true,
+    "provider_public_admission_keys_checked_against_pinned_seed": true,
+    "no_private_computer_checkpoint_published": true,
+    "publication_evidence_digest": "c8be17434c1f34fdb03ca22d1152ed35498ec0cd05e4e081a8bde83334549348",
+    "privacy_evidence_digest": "1674001a2017bd6df8bdaff81f07cf7b1333edb5ce76e11d943e1072f1b4433d"
+  },
+  "checks": [
+    {
+      "scope": "Initial environment/build/verify/operator changes",
+      "passed": 114,
+      "log": "gce/environment-11811-environment-v4.log"
+    },
+    {
+      "scope": "Computers with SPACE and isolated PostgreSQL",
+      "passed": 29,
+      "log": "gce/environment-11811-computers-v3.log"
+    },
+    {
+      "scope": "Web Computers API",
+      "passed": 5,
+      "log": "gce/environment-11811-web-v4.log"
+    },
+    {
+      "scope": "Cloud Environment and image consumers",
+      "passed": 7,
+      "logs": [
+        "gce/environment-11811-cloud-environments-v4.log",
+        "gce/environment-11811-cloud-images-v4.log"
+      ]
+    },
+    {
+      "scope": "Build and sanitation",
+      "passed": 25,
+      "log": "gce/environment-11811-build-latest.log"
+    },
+    {
+      "scope": "Verifier, including elapsed-time and unused-fork cleanup regressions",
+      "passed": 16,
+      "log": "gce/environment-11811-clock-verify-v25.log"
+    },
+    {
+      "scope": "Operator with SPACE",
+      "passed": 48,
+      "log": "gce/environment-11811-clock-operator-v25.log"
+    }
+  ],
+  "formatting": "cargo fmt for edited packages; git diff --check; Python syntax checks passed.",
+  "measured_source": {
+    "base_commit": "b73efa585dcdafc9be0405981bcc9f1160b92e62",
+    "source_file_manifest": "source/environment-11811-measured-source-files.json",
+    "source_delta": "source/environment-11811-measured-source-delta.tgz",
+    "source_delta_sha256": "7fe14e237a36864aed3d1304f78f178baacd91ab886cfccb5d2e0b0a56f051a7",
+    "space_verifier_overlay": "source/environment-11811-source-overlay-v23.json",
+    "space_verifier_binary_sha256": "7c765ef004de79564fe349d5ced69c5bb767e89105daee291e9d1601cdd9b041",
+    "gce_verifier_overlay": "source/environment-11811-source-overlay-v25.json",
+    "gce_verifier_overlay_archive": "source/environment-11811-verifier-clock-v25.tgz",
+    "gce_verifier_binary_sha256": "999646b6ef06b41d4af1f54849deb2c2e604cd76c8cab8be2709298d8460d681",
+    "reproduction": "Extract only the paths in the source manifest from the base commit, apply the source delta, then apply the phase overlay. The primary builder frozen inputs and command evidence are retained separately. These phase records describe the measured binaries without attributing the whole build tree to a later main commit."
+  },
+  "failed_attempts": {
+    "retained": true,
+    "gce": "Three early builder failures and four cancelled builds preceded build-8. The first fresh verifier failed because provisioning time consumed the next step timeout; the new attempt passed after the elapsed-time fix.",
+    "space": "Unacknowledged 503 submissions were observed and their owned namespaces deleted without resubmitting. Accepted source/sanitation failures and a 1 GiB build OOM were retained. The final native build uses 4 GiB and direct I/O. The first fresh create failed before allocation because the worker lacked the published template. Native authenticated template transfer and a new verified create resolved it.",
+    "cleanup": "The first GCE image-deletion observation was early; both Google Cloud and Boat later confirmed absence before the final cleanup receipt.",
+    "test_build_cache": "The first post-fix test run reused the pre-fix build after restoring an earlier source timestamp. Touching the extracted Rust files rebuilt it; the retained v25 checks and live verification use that rebuilt binary."
+  },
+  "cleanup": {
+    "computer_records_deleted": 12,
+    "allocated_gce_computers": 11,
+    "allocated_gce_vms_and_disks_absent": true,
+    "gce_image_absent": true,
+    "space_sandboxes": 0,
+    "space_template_deleted": true,
+    "space_publication_directories_absent_on_both_nodes": true,
+    "space_host_and_network_resources_absent": true,
+    "qualification_credential_copies_removed": true,
+    "source_fixture_branch_deleted": true
+  },
+  "retained_evidence": {
+    "path": "2026-10-16-space-environments-receipts.tar.gz",
+    "sha256": "39450175968a865e1311c4b8a504871f56cdfda9f1a7cf93fea30aa69f96746a",
+    "bytes": 2480985
+  }
+}
