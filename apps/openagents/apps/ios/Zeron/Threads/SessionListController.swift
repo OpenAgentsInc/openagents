@@ -9,12 +9,14 @@ class SessionListController: UIViewController, UICollectionViewDelegate {
         case session(String)
         case header(String)
         case savedChat(String)
+        case savedProject(String)
         case savedControl(SavedControl)
     }
 
-    enum SavedControl: Hashable { case refresh, archived, projects, more, myChats, login, notice }
+    enum SavedControl: Hashable { case refresh, archived, projects, invitations, more, myChats, login, notice }
     var showsSavedChats: Bool { false }
     private var savedRows: [String: SavedChatRow] = [:]
+    private var savedProjects: [String: SavedProjectRow] = [:]
 
     let app: AppModel
     var collectionView: UICollectionView!
@@ -82,6 +84,16 @@ class SessionListController: UIViewController, UICollectionViewDelegate {
             cell.accessories = [.disclosureIndicator()]
             cell.accessibilityIdentifier = "saved-chat-" + id
         }
+        let savedProjectReg = UICollectionView.CellRegistration<UICollectionViewListCell, String> { [weak self] cell, _, id in
+            guard let project = self?.savedProjects[id] else { return }
+            var c = UIListContentConfiguration.cell()
+            c.text = project.name
+            c.image = UIImage(systemName: "folder")
+            c.textProperties.color = Palette.text
+            cell.contentConfiguration = c
+            cell.accessories = [.disclosureIndicator()]
+            cell.accessibilityIdentifier = "home-project-" + id
+        }
         let savedControlReg = UICollectionView.CellRegistration<UICollectionViewListCell, SavedControl> { [weak self] cell, _, item in
             var c = UIListContentConfiguration.cell()
             c.text = self?.savedControlTitle(item)
@@ -114,6 +126,7 @@ class SessionListController: UIViewController, UICollectionViewDelegate {
             switch item {
             case let .session(id): cv.dequeueConfiguredReusableCell(using: sessionReg, for: path, item: id)
             case let .savedChat(id): cv.dequeueConfiguredReusableCell(using: savedReg, for: path, item: id)
+            case let .savedProject(id): cv.dequeueConfiguredReusableCell(using: savedProjectReg, for: path, item: id)
             case let .savedControl(item): cv.dequeueConfiguredReusableCell(using: savedControlReg, for: path, item: item)
             case let .folder(id): cv.dequeueConfiguredReusableCell(using: folderReg, for: path, item: id)
             case let .header(id) where self?.collapsible == true: cv.dequeueConfiguredReusableCell(using: sectionReg, for: path, item: id)
@@ -185,7 +198,7 @@ class SessionListController: UIViewController, UICollectionViewDelegate {
             snapshot.appendItems(items, toSection: s.id)
         }
         appendSavedChats(to: &snapshot)
-        changed += snapshot.itemIdentifiers.filter { if case .header("oa-saved-history") = $0 { return dataSource.snapshot().itemIdentifiers.contains($0) }; if case .savedChat = $0 { return dataSource.snapshot().itemIdentifiers.contains($0) }; if case .savedControl = $0 { return dataSource.snapshot().itemIdentifiers.contains($0) }; return false }
+        changed += snapshot.itemIdentifiers.filter { if case let .header(id) = $0, id == "oa-saved-history" || id == "oa-shared-projects" { return dataSource.snapshot().itemIdentifiers.contains($0) }; if case .savedProject = $0 { return dataSource.snapshot().itemIdentifiers.contains($0) }; if case .savedChat = $0 { return dataSource.snapshot().itemIdentifiers.contains($0) }; if case .savedControl = $0 { return dataSource.snapshot().itemIdentifiers.contains($0) }; return false }
         sessions = nextSessions
         folders = nextFolders
         let present = Set(snapshot.itemIdentifiers)
@@ -202,11 +215,22 @@ class SessionListController: UIViewController, UICollectionViewDelegate {
 
     private func appendSavedChats(to snapshot: inout NSDiffableDataSourceSnapshot<String, Item>) {
         savedRows = [:]
+        savedProjects = [:]
         guard showsSavedChats, let state = app.savedSnapshot, state.signedIn else { return }
+        let projectsSection = "oa-shared-projects"
+        headers[projectsSection] = "Shared projects"
+        headerStates[projectsSection] = .init(id: projectsSection, title: "Shared projects", count: state.projects.count, collapsed: collapsed.contains(projectsSection), live: nil)
+        snapshot.appendSections([projectsSection])
+        snapshot.appendItems([.header(projectsSection)], toSection: projectsSection)
+        if !collapsed.contains(projectsSection) {
+            savedProjects = Dictionary(uniqueKeysWithValues: state.projects.map { ($0.id, $0) })
+            snapshot.appendItems(state.projects.map { .savedProject($0.id) }, toSection: projectsSection)
+            snapshot.appendItems([.savedControl(.invitations)], toSection: projectsSection)
+        }
         let section = "oa-saved-history"
         snapshot.appendSections([section])
-        headers[section] = "OpenAgents chats"
-        headerStates[section] = .init(id: section, title: "OpenAgents chats", count: state.rows.count, collapsed: collapsed.contains(section), live: nil)
+        headers[section] = state.project ?? "OpenAgents chats"
+        headerStates[section] = .init(id: section, title: state.project ?? "OpenAgents chats", count: state.rows.count, collapsed: collapsed.contains(section), live: nil)
         snapshot.appendItems([.header(section)], toSection: section)
         guard !collapsed.contains(section) else { return }
         var controls: [Item] = [.savedControl(.refresh), .savedControl(.archived), .savedControl(.projects)]
@@ -226,7 +250,8 @@ class SessionListController: UIViewController, UICollectionViewDelegate {
         switch item {
         case .refresh: return "Refresh chats"
         case .archived: return app.savedSnapshot?.archived == true ? "Active chats" : "Archived chats"
-        case .projects: return "Shared projects"
+        case .projects: return "All shared projects"
+        case .invitations: return "Project invitations"
         case .more: return "Load more chats"
         case .myChats: return "My chats"
         case .login: return "Sign in again"
@@ -250,6 +275,7 @@ class SessionListController: UIViewController, UICollectionViewDelegate {
             case .more: try app.savedHistory?.action(action: .moreChats)
             case .myChats: try app.savedHistory?.action(action: .selectProject(id: nil))
             case .projects: navigationController?.pushViewController(SavedProjectsController(app: app), animated: true)
+            case .invitations: app.openProjectInvitations()
             case .login: app.restoreAccount()
             case .notice: break
             }
@@ -265,6 +291,14 @@ class SessionListController: UIViewController, UICollectionViewDelegate {
             openSession(id)
         case let .folder(id):
             openFolder(id)
+        case let .savedProject(id):
+            do {
+                try app.savedHistory?.action(action: .selectProject(id: id))
+                collapsed.remove("oa-saved-history")
+                UserDefaults.standard.set(Array(collapsed), forKey: "collapsedSections")
+                reload(animated: true)
+            }
+            catch { Toast.show("Couldn’t open this project. Try again.", in: view.window) }
         case let .savedChat(id):
             do {
                 try app.savedHistory?.action(action: .open(id: id))

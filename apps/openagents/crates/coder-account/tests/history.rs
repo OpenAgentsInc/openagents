@@ -37,6 +37,8 @@ impl CredentialStore for Store {
 struct Server {
     status: AtomicUsize,
     count: AtomicUsize,
+    shared_count: AtomicUsize,
+    projects: Mutex<Vec<serde_json::Value>>,
     reads: AtomicUsize,
     delayed: AtomicBool,
     started: tokio::sync::Notify,
@@ -65,10 +67,14 @@ async fn list(State(s): State<Arc<Server>>, Query(q): Query<HashMap<String, Stri
         .get("after")
         .map(|s| usize::from_str_radix(&s[..8], 16).unwrap() + 1)
         .unwrap_or(0);
-    let end = (start + limit).min(s.count.load(Ordering::SeqCst));
+    let count = if q.contains_key("project") {
+        s.shared_count.load(Ordering::SeqCst)
+    } else {
+        s.count.load(Ordering::SeqCst)
+    };
+    let end = (start + limit).min(count);
     let rows:Vec<_>=(start..end).map(|n|json!({"id":id(n),"title":"Same title","revision":1,"updated_unix":n+1,"pinned_unix":if n==204{Some(1)}else{None},"archived_unix":if n==5{Some(1)}else{None},"project":"prj_0000000000000001","source":match n%3{0=>"web",1=>"terminal",_=>"phone"},"messages":405})).collect();
-    Json(json!({"data":rows,"next":(end<s.count.load(Ordering::SeqCst)).then(||id(end-1))}))
-        .into_response()
+    Json(json!({"data":rows,"next":(end<count).then(||id(end-1))})).into_response()
 }
 async fn setup() -> (
     Arc<Controller>,
@@ -81,10 +87,28 @@ async fn setup() -> (
     let origin = format!("http://{}", listener.local_addr().unwrap());
     let server = Arc::new(Server::default());
     server.count.store(205, Ordering::SeqCst);
-    let router=Router::new()
-        .route("/v1/account",get(|h:HeaderMap|async move {let account=if h["authorization"].to_str().unwrap().ends_with('1'){"acct_a"}else{"acct_b"};Json(json!({"account":{"id":account,"label":account},"workspaces":[]}))}))
-        .route("/v1/history",get(list))
-        .route("/v1/history/projects",get(||async{Json(json!({"data":[{"id":"prj_0000000000000001","name":"Shared project","shared":true}],"next":null}))}))
+    server.shared_count.store(205, Ordering::SeqCst);
+    *server.projects.lock().unwrap() =
+        vec![json!({"id":"prj_0000000000000001","name":"Shared project","shared":true})];
+    let router = Router::new()
+        .route(
+            "/v1/account",
+            get(|h: HeaderMap| async move {
+                let account = if h["authorization"].to_str().unwrap().ends_with('1') {
+                    "acct_a"
+                } else {
+                    "acct_b"
+                };
+                Json(json!({"account":{"id":account,"label":account},"workspaces":[]}))
+            }),
+        )
+        .route("/v1/history", get(list))
+        .route(
+            "/v1/history/projects",
+            get(|State(s): State<Arc<Server>>| async move {
+                Json(json!({"data":s.projects.lock().unwrap().clone(),"next":null}))
+            }),
+        )
         .with_state(server.clone());
     tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
     let client = Client::new(Deployment::new(&format!("{origin}/v1"), &origin).unwrap()).unwrap();
@@ -215,4 +239,30 @@ async fn removed_shared_access_clears_its_rows_and_name() {
         snapshot.state,
         LoadState::Failed { stale: false, .. }
     ));
+}
+
+#[tokio::test]
+async fn a_new_account_lists_shared_projects_without_owned_chats_or_computers() {
+    let (_controller, h, s, _root, _client) = setup().await;
+    // This fixture mounts only the account and history APIs, with no host.
+    s.count.store(0, Ordering::SeqCst);
+    s.shared_count.store(2, Ordering::SeqCst);
+    *s.projects.lock().unwrap() = vec![
+        json!({"id":"prj_0000000000000001","name":"Studio","shared":true}),
+        json!({"id":"prj_0000000000000002","name":"House","shared":true}),
+    ];
+    h.refresh_projects().unwrap();
+    h.more_projects().await;
+    h.more().await;
+    let snapshot = h.snapshot();
+    assert!(snapshot.rows.is_empty());
+    assert_eq!(snapshot.projects.len(), 2);
+    h.project(Some(&snapshot.projects[0])).unwrap();
+    h.more().await;
+    assert_eq!(h.snapshot().rows.len(), 2);
+    s.shared_count.store(0, Ordering::SeqCst);
+    h.project(Some(&snapshot.projects[1])).unwrap();
+    h.more().await;
+    assert_eq!(h.snapshot().project.as_ref().unwrap().name, "House");
+    assert!(h.snapshot().rows.is_empty());
 }

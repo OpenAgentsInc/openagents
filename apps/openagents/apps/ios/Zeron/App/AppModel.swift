@@ -163,6 +163,10 @@ final class AppModel {
         #endif
         return "https://openagents.com"
     }
+    func openProjectInvitations() {
+        guard let site = URL(string: Self.accountWebsite), let url = URL(string: "projects", relativeTo: site)?.absoluteURL else { return }
+        UIApplication.shared.open(url)
+    }
     func beginAccountSignIn() { account?.signIn(deviceName: UIDevice.current.name) }
     func restoreAccount() { account?.restore() }
     func cancelAccountSignIn() { account?.cancel() }

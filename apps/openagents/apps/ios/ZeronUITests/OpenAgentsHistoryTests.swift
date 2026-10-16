@@ -60,6 +60,46 @@ final class OpenAgentsHistoryTests: XCTestCase {
         XCTAssertTrue(app.buttons["account-sign-in"].waitForExistence(timeout: 15))
         XCTAssertFalse(pinned.exists)
     }
+    func testSharedProjectsWithoutComputer() throws {
+        guard let base = ProcessInfo.processInfo.environment["CODER_HISTORY_FIXTURE"] else { throw XCTSkip("Local fixture only") }
+        let app = XCUIApplication()
+        app.launchArguments = ["-account-fixture", "-account-api", base + "/v1", "-account-site", base,
+                               "-account-test-credential-url", base + "/fixture-key", "-edge", base]
+        app.launch()
+        let projects = app.cells["section-oa-shared-projects"]
+        XCTAssertTrue(projects.waitForExistence(timeout: 20))
+        if projects.value as? String == "Collapsed" { projects.tap() }
+        let shared = app.cells["home-project-prj_0000000000000001"]
+        let empty = app.cells["home-project-prj_0000000000000002"]
+        XCTAssertTrue(shared.waitForExistence(timeout: 20))
+        XCTAssertTrue(empty.exists)
+        XCTAssertTrue(app.cells["saved-invitations"].exists)
+        let home = XCTAttachment(screenshot: app.screenshot())
+        home.name = "shared-projects-on-home-without-computer"
+        home.lifetime = .keepAlways
+        add(home)
+        let chats = app.cells["section-oa-saved-history"]
+        XCTAssertTrue(chats.waitForExistence(timeout: 10))
+        if chats.value as? String != "Collapsed" { chats.tap() }
+        empty.tap()
+        XCTAssertTrue(app.cells["saved-notice"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["No chats here yet."].waitForExistence(timeout: 10))
+        XCUIDevice.shared.press(.home)
+        let joined = expectation(description: "Accept the local fixture invitation")
+        URLSession.shared.dataTask(with: URL(string: base + "/join-project")!) { _, _, _ in joined.fulfill() }.resume()
+        wait(for: [joined], timeout: 5)
+        app.activate()
+        XCTAssertTrue(app.cells["home-project-prj_0000000000000003"].waitForExistence(timeout: 15))
+        shared.tap()
+        let chat = app.cells["saved-chat-00000001-1234-4234-8234-123456789abc"]
+        XCTAssertTrue(chat.waitForExistence(timeout: 15))
+        chat.tap()
+        XCTAssertTrue(app.scrollViews["transcript"].waitForExistence(timeout: 15))
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = "shared-project-chat-without-computer"
+        shot.lifetime = .keepAlways
+        add(shot)
+    }
     func testRichAccountHistory() throws {
         guard let base = ProcessInfo.processInfo.environment["CODER_HISTORY_FIXTURE"] else { throw XCTSkip("Local fixture only") }
         let app = XCUIApplication()

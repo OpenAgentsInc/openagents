@@ -240,6 +240,15 @@ impl CoreSavedHistory {
     fn current(&self) -> bool {
         !self.cancel.is_cancelled() && self.lease.is_current()
     }
+    fn refresh_lists(&self) {
+        let runtime = zeron_client::runtime::shared();
+        if self.history.refresh().is_ok() {
+            runtime.spawn(self.history.more());
+        }
+        if self.history.refresh_projects().is_ok() {
+            runtime.spawn(self.history.more_projects());
+        }
+    }
     fn attachment(&self, key: &str) -> Option<(AttachmentRef, String)> {
         let snapshot = self.reader.snapshot();
         for message in snapshot.messages.iter() {
@@ -405,9 +414,12 @@ impl CoreSavedHistory {
             .set_following(visible && self.foreground.load(Ordering::SeqCst));
     }
     pub fn set_foreground(&self, active: bool) {
-        self.foreground.store(active, Ordering::SeqCst);
+        let was_active = self.foreground.swap(active, Ordering::SeqCst);
         self.reader
             .set_following(active && self.visible.load(Ordering::SeqCst));
+        if active && !was_active && self.current() {
+            self.refresh_lists();
+        }
     }
     pub fn action(&self, action: SavedHistoryAction) -> CoreResult<()> {
         if !self.current() {
@@ -419,8 +431,7 @@ impl CoreSavedHistory {
                 runtime.spawn(self.history.more());
             }
             SavedHistoryAction::RefreshChats => {
-                self.history.refresh().map_err(failed)?;
-                runtime.spawn(self.history.more());
+                self.refresh_lists();
             }
             SavedHistoryAction::ToggleArchived => {
                 self.archived.fetch_xor(true, Ordering::SeqCst);
@@ -447,6 +458,7 @@ impl CoreSavedHistory {
                     .transpose()?;
                 self.reader.clear();
                 self.history.project(project).map_err(failed)?;
+                self.archived.store(false, Ordering::SeqCst);
                 runtime.spawn(self.history.more());
             }
             SavedHistoryAction::Open { id } => {
