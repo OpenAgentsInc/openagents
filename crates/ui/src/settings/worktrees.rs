@@ -163,7 +163,7 @@ impl WorktreeSettingsCard {
                 .await
                 .map_err(|error| match error {
                     zeron_rpc::RpcError::UnknownMethod(_) => {
-                        "Update Zeron on the selected device to configure worktree locations."
+                        "Update Coder on the selected device to configure worktree locations."
                             .to_string()
                     }
                     _ => error.to_string(),

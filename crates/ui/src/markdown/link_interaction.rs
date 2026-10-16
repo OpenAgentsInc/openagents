@@ -424,7 +424,7 @@ impl Element for LinkRanges {
                 };
                 card = card.child(action_row(
                     LinkAction::Internal,
-                    "Open in Zeron",
+                    "Open in Coder",
                     if file_resolved {
                         icons::DOCUMENT
                     } else {
@@ -504,13 +504,13 @@ impl Element for LinkRanges {
                                     .text_color(theme.text_muted),
                             )
                         }))
-                        .child("Open links in Zeron")
+                        .child("Open links in Coder")
                         .track_focus(&state.menu_focus[6])
                         .role(Role::Button)
                         .aria_label(if open_in_zeron {
-                            "Open links in Zeron, checked"
+                            "Open links in Coder, checked"
                         } else {
-                            "Open links in Zeron, unchecked"
+                            "Open links in Coder, unchecked"
                         })
                         .focus_visible(|s| s.bg(crate::theme::card_selected_bg()))
                         .on_click(move |_, window, cx| {

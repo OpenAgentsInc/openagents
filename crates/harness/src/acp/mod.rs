@@ -646,7 +646,7 @@ pub async fn install_antigravity_release(
     }
     if !crate::code_signature::SUPPORTED {
         return Err(HarnessError::Install(format!(
-            "Antigravity {} is not pinned by this build of Zeron; update Zeron to install it",
+            "Antigravity {} is not pinned by this build of Coder; update Coder to install it",
             release.version
         )));
     }

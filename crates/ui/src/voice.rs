@@ -408,10 +408,10 @@ impl VoiceController {
                 "Check microphone permission and your audio devices."
             }
             Some(VoiceRejection::MicrophonePermissionDenied) => {
-                "Allow Zeron to use the microphone in System Settings → Privacy & Security → Microphone."
+                "Allow Coder to use the microphone in System Settings → Privacy & Security → Microphone."
             }
             Some(VoiceRejection::MicrophoneMetadataMissing) => {
-                "Microphone setup is missing. Rebuild or reinstall Zeron, then restart it."
+                "Microphone setup is missing. Rebuild or reinstall Coder, then restart it."
             }
             Some(VoiceRejection::Busy) => "Another window already owns the voice session.",
             Some(_) => "Voice could not connect. Try again in a moment.",

@@ -962,7 +962,7 @@ fn encode_png(image: *mut c_void) -> Result<Vec<u8>, String> {
         }
         let len: usize = msg_send![data, length];
         if len as u64 > crate::attachments::MAX_ATTACHMENT_BYTES {
-            return Err("The captured window is larger than Zeron's 24 MB image limit.".into());
+            return Err("The captured window is larger than Coder's 24 MB image limit.".into());
         }
         let bytes: *const u8 = msg_send![data, bytes];
         if bytes.is_null() || len == 0 {

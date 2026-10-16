@@ -1573,7 +1573,7 @@ impl AgentAccounts {
                 &[("Content-Type", "text/html; charset=utf-8")],
                 &format!(
                     "<!doctype html><title>Sign-in failed</title><p>{}</p>\
-                     <p>Return to Zeron to try again.</p>",
+                     <p>Return to Coder to try again.</p>",
                     html_escape(&zeron_harness::redact::redact_output(&error.to_string()))
                 ),
             ),
