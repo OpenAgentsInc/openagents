@@ -88,4 +88,4 @@ It reads your key from `OPENAGENTS_API_KEY`. With no key,
 - [Models and prices](/docs/api/models): every model and what it costs.
 - [Which model to use](/docs/api/decisions): pick by task, price, and speed.
 - [Errors](/docs/api/errors): what each error means and what to do.
-- The OpenAPI description of qualified public routes: `https://api.openagents.com/v1/openapi.json`.
+- The OpenAPI description of supported public routes: `https://api.openagents.com/v1/openapi.json`.
