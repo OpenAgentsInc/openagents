@@ -10,7 +10,12 @@ The remaining check must show the job's computer in the test account's normal
 list, verify the selected source and command, exercise restart and cancellation,
 and confirm deletion. Scoped permission/revocation fixtures, SDK fault tests,
 and the runtime identity's real IAM checks are automated; they do not establish
-this end-to-end GitHub result. See the [migration inventory](docs/sdk/solver-computers.md).
+this end-to-end GitHub result. Keep `OPENAGENTS_SOLVER_PUBLIC_ACCOUNTS` empty
+until the check passes. For qualification, enable only the dedicated staging
+account and set `OPENAGENTS_SOLVER_PUBLIC_IMAGE` to the approved Solver image's
+complete digest; remove that temporary admission after cleanup. See the
+[migration inventory](docs/sdk/solver-computers.md) and
+[verification record](docs/sdk/solver-computers-evidence.json).
 
 ## Check Coder Desktop GitHub approval and Keychain (#11829, #11832)
 

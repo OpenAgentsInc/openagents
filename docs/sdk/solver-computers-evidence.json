@@ -1,0 +1,253 @@
+{
+  "schema": "openagents.sdk.solver-computers-evidence.v1",
+  "issue": 11807,
+  "source": "afa2d76e1906f3ec1520f59773468414e95550ca",
+  "date": "2026-10-16",
+  "status": "deployed_with_github_qualification_pending",
+  "tests": {
+    "solver_box": 14,
+    "openagents_sdk": 36,
+    "coder_environment_operator": 40,
+    "oa_computers": 29,
+    "web": 801,
+    "web_copy_guard_separate": 1,
+    "web_ignored": 15,
+    "web_filtered_in_main_run": 4,
+    "remaining_excluded_tests": [
+      "cloud::tests::cad_gate::pro_and_admins_pass_and_a_test_run_can_ask_to_be_free",
+      "pilot::tests::private_configuration_rejects_public_modes_symlinks_and_oversized_files",
+      "tests::the_api_docs_list_every_guide_and_serve_markdown"
+    ],
+    "rust_files_format_checked": 21,
+    "postgres": "temporary local database; stopped after checks",
+    "scope": [
+      "lost create and command replies reuse the same identities",
+      "process restart reattaches; duplicate worker excluded by file lock",
+      "output gaps, failed commands, and missing summaries do not become success",
+      "already-done summaries preserve the existing result rules",
+      "repository revocation blocks new work while cleanup remains allowed",
+      "separate public queue and record IDs reject legacy custody",
+      "Vertex delivery is encrypted, short lived, and restricted to its job",
+      "cloud deletion cannot remove an enrolled computer with the same ID",
+      "pinned source remains fixed when origin/main advances"
+    ]
+  },
+  "runtime_iam": {
+    "runtime": "oa-solver-runtime@openagentsgemini.iam.gserviceaccount.com",
+    "minted_by": "oa-solver-dispatch",
+    "expires_at": "2026-10-16T20:17:51Z",
+    "project_permissions": [
+      "aiplatform.endpoints.predict",
+      "serviceusage.services.use"
+    ],
+    "repository_permissions": [
+      "artifactregistry.repositories.downloadArtifacts"
+    ],
+    "boat_secret_permissions": [],
+    "secret_value_read": false,
+    "model_call_made": false,
+    "local_operator_minter_verified": true,
+    "local_mint_retry_succeeded": true
+  },
+  "deployments": {
+    "dispatcher": {
+      "host": "oa-solver-dispatch-1",
+      "source": "afa2d76e1906f3ec1520f59773468414e95550ca",
+      "active": true,
+      "restarts_after_deploy": 0,
+      "state_directory_mode": "0700",
+      "active_jobs_before_deploy": 0
+    },
+    "https://openagents.com": {
+      "source": "afa2d76e1906f3ec1520f59773468414e95550ca",
+      "release_metadata_verified": true
+    },
+    "https://staging.openagents.com": {
+      "source": "afa2d76e1906f3ec1520f59773468414e95550ca",
+      "release_metadata_verified": true
+    },
+    "services": {
+      "coder": [
+        {
+          "revision": "coder-web-dbf6bc3c18-20261016202523",
+          "percent": 100,
+          "labels": {
+            "cloud.googleapis.com/location": "us-central1",
+            "run.googleapis.com/startupProbeType": "Custom",
+            "serving.knative.dev/configuration": "coder",
+            "serving.knative.dev/configurationGeneration": "335",
+            "serving.knative.dev/route": "coder",
+            "serving.knative.dev/service": "coder",
+            "serving.knative.dev/serviceUid": "0c72082e-7726-4089-8dba-53a204dd71fb"
+          },
+          "images": {
+            "web": "us-central1-docker.pkg.dev/openagentsgemini/openagents/openagents-web@sha256:dbf6bc3c18e32df61dae109de238c2575334fd35bf3cc530d777f4d7488f4174",
+            "gateway": "us-central1-docker.pkg.dev/openagentsgemini/openagents/openagents-stack@sha256:bdcf1e20765f3f02d9615d47b25b86eeab4957531adde56165ec17b2733eaf8c"
+          },
+          "solver_rollout": {}
+        }
+      ],
+      "openagents-web-1-staging": [
+        {
+          "revision": "openagents-web-1-staging-sdk7-afa2d76e19",
+          "percent": 100,
+          "labels": {
+            "cloud.googleapis.com/location": "us-central1",
+            "run.googleapis.com/startupProbeType": "Custom",
+            "serving.knative.dev/configuration": "openagents-web-1-staging",
+            "serving.knative.dev/configurationGeneration": "176",
+            "serving.knative.dev/route": "openagents-web-1-staging",
+            "serving.knative.dev/service": "openagents-web-1-staging",
+            "serving.knative.dev/serviceUid": "3d99251f-e890-44a9-84eb-ab4f82d14c9d"
+          },
+          "images": {
+            "web": "us-central1-docker.pkg.dev/openagentsgemini/openagents/openagents-web@sha256:dbf6bc3c18e32df61dae109de238c2575334fd35bf3cc530d777f4d7488f4174",
+            "gateway": "us-central1-docker.pkg.dev/openagentsgemini/openagents/openagents-stack@sha256:e98aeb0de74d7091e60010496dc67d1995a6ae1abdd146123082aab543e040c2",
+            "worker": "us-central1-docker.pkg.dev/openagentsgemini/openagents/openagents-stack@sha256:e98aeb0de74d7091e60010496dc67d1995a6ae1abdd146123082aab543e040c2"
+          },
+          "solver_rollout": {}
+        }
+      ],
+      "oa-computers": [
+        {
+          "revision": "oa-computers-registry-afa2d76e19-202123",
+          "percent": 100,
+          "labels": {
+            "cloud.googleapis.com/location": "us-central1",
+            "openagents-commit": "afa2d76e1906f3ec1520f59773468414e95550ca",
+            "run.googleapis.com/startupProbeType": "Default",
+            "serving.knative.dev/configuration": "oa-computers",
+            "serving.knative.dev/configurationGeneration": "8",
+            "serving.knative.dev/route": "oa-computers",
+            "serving.knative.dev/service": "oa-computers",
+            "serving.knative.dev/serviceUid": "657cdb18-41be-45be-bfd1-199ff1364aa3"
+          },
+          "images": {
+            "oa-computers-1": "us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/oa-computers@sha256:58a19e029b2c761c25e111e085d8ebf17daa8d9aa578381d7cc9118dbf5d8ee1"
+          },
+          "solver_rollout": {}
+        }
+      ],
+      "oa-computers-staging": [
+        {
+          "revision": "oa-computers-staging-registry-afa2d76e19-202045",
+          "percent": 100,
+          "labels": {
+            "cloud.googleapis.com/location": "us-central1",
+            "openagents-commit": "afa2d76e1906f3ec1520f59773468414e95550ca",
+            "run.googleapis.com/startupProbeType": "Default",
+            "serving.knative.dev/configuration": "oa-computers-staging",
+            "serving.knative.dev/configurationGeneration": "11",
+            "serving.knative.dev/route": "oa-computers-staging",
+            "serving.knative.dev/service": "oa-computers-staging",
+            "serving.knative.dev/serviceUid": "d310c491-ad1c-486f-bb32-65f5dc5660a8"
+          },
+          "images": {
+            "oa-computers-1": "us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/oa-computers@sha256:58a19e029b2c761c25e111e085d8ebf17daa8d9aa578381d7cc9118dbf5d8ee1"
+          },
+          "solver_rollout": {}
+        }
+      ]
+    }
+  },
+  "qualification": {
+    "full_github_job_passed": false,
+    "reason": "The approved dedicated production test account has no GitHub connection or project. No separate approved GitHub test session was found on the Mac.",
+    "owner_step": "NEEDS_OWNER.md: Provide a GitHub-connected test account for Solver (#11807)",
+    "rollout": "No accounts enabled by this deployment; new shared-computer jobs require explicit account admission and a pinned image.",
+    "model_calls_made": false,
+    "github_writes_made": false,
+    "owner_account_used": false
+  },
+  "live_checks": {
+    "checks": [
+      {
+        "origin": "https://api.openagents.com",
+        "dedicated_account_verified": true,
+        "checks": [
+          {
+            "path": "/v1/work/computer-session",
+            "forged_credential_status": 403
+          },
+          {
+            "path": "/v1/work/computer-token",
+            "forged_credential_status": 403
+          },
+          {
+            "path": "/v1/computers",
+            "forged_credential_status": 403
+          }
+        ],
+        "regular_session_job_import_status": 403,
+        "created_jobs": 0,
+        "created_computers": 0
+      },
+      {
+        "origin": "https://staging.openagents.com",
+        "dedicated_account_verified": true,
+        "checks": [
+          {
+            "path": "/v1/work/computer-session",
+            "forged_credential_status": 403
+          },
+          {
+            "path": "/v1/work/computer-token",
+            "forged_credential_status": 403
+          },
+          {
+            "path": "/v1/computers",
+            "forged_credential_status": 403
+          }
+        ],
+        "regular_session_job_import_status": 403,
+        "created_jobs": 0,
+        "created_computers": 0
+      }
+    ],
+    "temporary_staging_session_revoked": true,
+    "full_github_job_qualified": false
+  },
+  "checks": {
+    "staging_read_only_smoke": {
+      "passed": 14,
+      "failed": 0,
+      "skipped": 1
+    },
+    "candidate_read_only_smoke": {
+      "passed": 13,
+      "failed": 0,
+      "skipped": 1,
+      "expected_gateway_waits": 1
+    },
+    "production_read_only_smoke_first": {
+      "passed": 13,
+      "failed": 1,
+      "skipped": 1,
+      "failure": "/cli/install.sh returned 500 once after traffic shift"
+    },
+    "production_installer_retry": {
+      "passed": 1,
+      "failed": 0,
+      "skipped": 1
+    },
+    "reference_operations_staging": 112,
+    "reference_operations_production": 112,
+    "computers_operations_staging": 18,
+    "computers_operations_production": 18,
+    "generated_route_inventory": "Regenerated with python3 scripts/api/public_reference.py --write-inventory; source and forwarding checks pass.",
+    "unrelated_reliability_followup": 11891,
+    "model_questions_in_smokes": 0
+  },
+  "builds": {
+    "web": "d400fb16-6cc7-400b-aab9-0cbdd2051a2d",
+    "service": "a252c4c1-029f-4b2d-8096-398ff866db35",
+    "dispatcher": "e70b97c4-260e-4298-aace-5619ee7cab1c"
+  },
+  "retained_evidence": {
+    "path": "evidence/solver-computers-2026-10-16.tar.gz",
+    "files": 14,
+    "bytes": 32736,
+    "sha256": "0934af32600bc8f274d40c10fba9f4c80117f8de4bac6e01e8bc940f37a35d67",
+    "tests_log_sha256": "930eea3dc6b4d41eb4a64bbcc6ecb571860be9a6843c9d37185f20ba106258a8"
+  }
+}

@@ -2,8 +2,11 @@
 
 2026-10-16. Implementation and qualification for
 [#11807](https://github.com/OpenAgentsInc/openagents/issues/11807).
-Verification and deployment are in progress. The final deployment record belongs
-in `solver-computers-evidence.json` in this directory.
+The [verification record](solver-computers-evidence.json) lists the tested source,
+checks, deployed revisions, retained logs, and remaining GitHub account requirement.
+The web, Computers service, and dispatcher run the tested source in production;
+the web and Computers service also run it in staging. Explicit rollout admission
+remains empty.
 
 Solver's job queue, repository permission, model payer, and result handling stay
 with the work service. The new computer provider uses
@@ -159,3 +162,22 @@ public jobs keep their saved requests and recovery path. Keep a migration-aware
 web service and dispatcher available until the public cleanup index is empty
 before downgrading either binary. Original jobs retain their original owner
 throughout rollout and rollback.
+
+## Verification limits
+
+The tested source passes 119 affected-package tests, 801 web tests, and a
+separate web source-copy check. Fifteen web tests remain ignored. Three
+previously identified web checks were excluded; their names are in the evidence.
+Formatting covers the 21 changed Rust files. Both changed shell scripts pass
+syntax checks. The runtime identity was minted through the dispatcher identity
+and a local operator; real IAM checks confirm prediction, service usage, and
+image download permissions, with image upload and Boat-secret access denied.
+No model call was made for those checks.
+
+The approved production test account has no GitHub connection or project. The
+Mac's dedicated test credential files did not provide another approved GitHub
+session. The full synthetic repository job, list visibility, live worker
+restart, cancellation, and deletion check remains unqualified. The fixtures and
+IAM checks establish their stated boundaries; they do not replace that run.
+The required test account is recorded in [`NEEDS_OWNER.md`](../../NEEDS_OWNER.md).
+Keep rollout admission empty until that check passes.
