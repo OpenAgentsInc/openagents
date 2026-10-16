@@ -535,3 +535,20 @@ adds follower observations, assigns contiguous sequence numbers, and saves
 input hashes beside the output. The raw journals retain notification IDs,
 detection tips, and times. The week-long signet run and staged signet
 attacks remain required before #11794 can close.
+
+To start from the attestation client's public capture, use the confirmed
+genesis `state-after.json`, its confirmation height, and a JSON file with
+only the `sources` object's contents:
+
+```sh
+layertree-follow bootstrap --snapshot GENESIS_CAPTURE/state-after.json \
+  --sources sources.json --output NEW_MEMBER_DIRECTORY --network signet \
+  --rpc http://127.0.0.1:38332 --height CONFIRMATION_HEIGHT --member MEMBER_POSITION \
+  --webhook-env LAYERTREE_TEST_ALARM_WEBHOOK
+layertree-follow --config NEW_MEMBER_DIRECTORY/follower.json --once
+```
+
+The converter checks the tree, output bytes, and member's exact unroll
+payout before writing public bootstrap files. The subsequent follower
+check compares that output with Core. First qualify the capture through
+the attestation client; this converter does not verify hardware reports.

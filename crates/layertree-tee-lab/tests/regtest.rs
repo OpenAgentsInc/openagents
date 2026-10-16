@@ -1708,7 +1708,18 @@ fn independent_follower_processes_detect_theft_and_notify() {
     let package = root.join("genesis.bin");
     std::fs::write(&package, run.unroll.encode()).unwrap();
     let params = run.params();
-    let unroll_key = run.enclave.state().unwrap().output.unroll_key;
+    let snapshot = root.join("genesis-snapshot.json");
+    std::fs::write(
+        &snapshot,
+        serde_json::to_vec(&layertree_tee_lab::rpc::snapshot(
+            &run.enclave,
+            Some(&run.unroll),
+            Some(run.confirmed_at),
+            None,
+        ))
+        .unwrap(),
+    )
+    .unwrap();
     let rpc = format!("http://{}", run.chain.rpc.addr);
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     listener.set_nonblocking(true).unwrap();
@@ -1785,8 +1796,9 @@ fn independent_follower_processes_detect_theft_and_notify() {
         .pubkey;
     let mut configs = Vec::new();
     for member in [0, 2, 5] {
-        let state = root.join(format!("member-{member}"));
-        let path = root.join(format!("member-{member}.json"));
+        let output = root.join(format!("member-{member}"));
+        let path = output.join("follower.json");
+        let state = output.join("state");
         let mut sources = if member == 2 {
             json!({"https":[format!("http://{http}")]})
         } else {
@@ -1796,8 +1808,34 @@ fn independent_follower_processes_detect_theft_and_notify() {
         if member == 5 {
             sources = json!({"relays":[{"url":relay,"publisher":publisher}]});
         }
-        let config = json!({"schema":"layertree.follower.v1","network":"regtest","rpc":rpc,"tree_open":creation,"operator_key":hex::encode(params.operator_key),"unroll_key":hex::encode(unroll_key.serialize()),"unroll":package,"member":member,"sources":sources,"state":state,"webhook_env":"LAYERTREE_ALARM_WEBHOOK"});
-        std::fs::write(&path, serde_json::to_vec_pretty(&config).unwrap()).unwrap();
+        let source_path = root.join(format!("sources-{member}.json"));
+        std::fs::write(&source_path, serde_json::to_vec(&sources).unwrap()).unwrap();
+        let generated = Command::new(env!("CARGO_BIN_EXE_layertree-follow"))
+            .args(["bootstrap", "--snapshot"])
+            .arg(&snapshot)
+            .arg("--sources")
+            .arg(&source_path)
+            .arg("--output")
+            .arg(&output)
+            .args([
+                "--network",
+                "regtest",
+                "--rpc",
+                &rpc,
+                "--height",
+                &run.confirmed_at.to_string(),
+                "--member",
+                &member.to_string(),
+                "--webhook-env",
+                "LAYERTREE_ALARM_WEBHOOK",
+            ])
+            .output()
+            .unwrap();
+        assert!(
+            generated.status.success(),
+            "{}",
+            String::from_utf8_lossy(&generated.stderr)
+        );
         configs.push((path, state));
     }
     let check = |configs: &[(PathBuf, PathBuf)], expected: i32| {

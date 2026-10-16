@@ -1,4 +1,5 @@
 //! Opt-in research follower: no wallet, signing endpoint, or mainnet mode.
+pub mod bootstrap;
 pub mod chain;
 mod inline_file;
 mod journal;
@@ -240,6 +241,9 @@ impl Config {
 }
 
 pub fn run(cfg: Config, once: bool, until: Option<u64>) -> Result<u8, String> {
+    if once && until.is_some() {
+        return Err("Choose either --once or --until.".into());
+    }
     if !once && until.is_none() {
         return Err("Choose --once or an end time with --until UNIX_SECONDS.".into());
     }

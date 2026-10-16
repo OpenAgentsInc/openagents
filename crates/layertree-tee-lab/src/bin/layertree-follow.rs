@@ -3,6 +3,53 @@ use layertree_tee_lab::follow_live::{self, Config};
 use std::{path::PathBuf, process::ExitCode};
 fn run() -> Result<u8, String> {
     let mut input = std::env::args().skip(1).peekable();
+    if input.peek().is_some_and(|arg| arg == "bootstrap") {
+        input.next();
+        let mut values = std::collections::BTreeMap::new();
+        while let Some(arg) = input.next() {
+            if ![
+                "--snapshot",
+                "--sources",
+                "--output",
+                "--network",
+                "--rpc",
+                "--height",
+                "--member",
+                "--webhook-env",
+            ]
+            .contains(&arg.as_str())
+            {
+                return Err(format!("Unknown bootstrap option: {arg}."));
+            }
+            let value = input
+                .next()
+                .ok_or_else(|| format!("{arg} needs a value."))?;
+            if values.insert(arg, value).is_some() {
+                return Err("Choose each bootstrap option once.".into());
+            }
+        }
+        let get = |key: &str| {
+            values
+                .get(key)
+                .map(String::as_str)
+                .ok_or_else(|| format!("Choose {key}."))
+        };
+        follow_live::bootstrap::snapshot(
+            std::path::Path::new(get("--snapshot")?),
+            std::path::Path::new(get("--sources")?),
+            std::path::Path::new(get("--output")?),
+            get("--network")?,
+            get("--rpc")?,
+            get("--height")?
+                .parse()
+                .map_err(|_| "Choose a confirmation height.")?,
+            get("--member")?
+                .parse()
+                .map_err(|_| "Choose a member position.")?,
+            get("--webhook-env")?,
+        )?;
+        return Ok(0);
+    }
     if input.peek().is_some_and(|arg| arg == "publish") {
         input.next();
         let mut relay = None;
@@ -47,7 +94,7 @@ fn run() -> Result<u8, String> {
             }
             "--help" | "-h" => {
                 println!(
-                    "layertree-follow --config FILE (--once | --until UNIX_SECONDS)\nlayertree-follow publish --relay URL --directory PATH --receipts FILE [--secret-env NAME]"
+                    "layertree-follow --config FILE (--once | --until UNIX_SECONDS)\nlayertree-follow publish --relay URL --directory PATH --receipts FILE [--secret-env NAME]\nlayertree-follow bootstrap --snapshot FILE --sources FILE --output NEW_DIRECTORY --network signet|regtest --rpc URL --height N --member N --webhook-env NAME"
                 );
                 return Ok(0);
             }
