@@ -321,43 +321,52 @@ connection setup and the client's preceding network check.
 ### Remaining measurements
 
 Both directed Lightning paths and the description-hash invoice shape have
-measured results above. The larger swap remains under observation for refund
-completion. The remaining 79,970-sat change and 20,000-sat receive VTXOs enter an
-automatic refresh round from a batch with expiry height 326840. That refresh
-is not yet a stopped-daemon expiry test.
+measured results above. The study resumed on October 16 after the earlier
+04:00 UTC checkpoint. The cooperative leave confirms at height 326551,
+returning 199,202 sats from the 199,745-sat VTXO: a 543-sat user cost.
+Its whole-transaction miner fee is 212 sats. The fee-funding transfer
+confirms at 326553 and pays a 156-sat miner fee. Both outputs belong to
+the backing wallet; no additional funding was needed.
 
-The Rust client queues a cooperative leave of the 199,745-sat boarded VTXO.
-A unilateral-exit preview requires one confirmed 10,000-sat backing-wallet fee
-input; the LDK test wallet broadcasts that funding transfer. The cooperative
-transaction is broadcast but unconfirmed; it pays 199,202 sats back to the wallet, a 543-sat difference from its VTXO, and carries a
-212-sat whole-transaction miner fee. The unilateral exit has not started.
-Both paths still need measured completion, cost, and wait. No completed exit or
-expiry-window soak result is claimed. The operator advertises a 144-block VTXO
-exit delay and a 504-block free refresh window; these are terms, not measured
-waiting times.
+The refresh round confirms at 326551, producing separate 79,970-sat and
+20,000-sat VTXOs with batch expiry 327559. The 20,030-sat Ark contribution
+to the failed larger swap also returns as a live refreshed VTXO. The
+snapshot's separate uncertain 502-sat credit reservation remains unresolved
+and is not retried.
 
-The confirmed boarding transfer and LDK channel funding each pay 156 sats
-in miner fees. The unconfirmed exit-fee funding transaction carries a
-156-sat miner fee. The confirmed Ark boarding batch pays 277 sats in
-total; the wallet separately records its 255-sat boarding charge. The test does
-not count the two earlier unbroadcast transfer IDs as payments. The public
-funding faucet grants 1,000,000 signet sats; a subsequent request receives HTTP
-429 and is not retried.
+The unilateral exit of the 79,970-sat VTXO starts at height 326574. Its
+initial status reports two recovery transactions across two layers, one
+broadcast and one blocked on its ancestor. The plan uses 2 sat/vB and
+both confirmed backing-wallet inputs are visible. It estimates 1,202 sats
+of CPFP fees and 400 sats for the eventual sweep; only the reported
+601 sats spent so far are an observed cost. The initial best-case wait
+is 147 blocks. These are intermediate results, not a completed sweep.
 
-The study pauses at height 326549, on October 16 at 04:00 UTC. The leave,
-refresh, and fee-funding transactions are all still unconfirmed. The scratch
-processes and GCP builder are stopped; their private state and build cache stay
-on the builder's disk. #11770 stays open and blocked on chain progress. This
-pause is not the start or completion of an expiry-window measurement.
+Public Esplora address scans returned HTTP 429. The scratch proxy now
+uses Lightning Labs' Esplora for reads, with public default-signet
+broadcasts and fee estimates: Lightning Labs' broadcast endpoint returns
+404, and its fee estimate was 75 sat/vB versus the public endpoint's 2.
+After synchronization the backing-wallet outputs become usable. Public
+metadata diagnostics on a consistent private database copy confirm both
+credits, their ownership, and their block heights. A proposed credit
+repair was tested only on a copy; no live wallet database repair was
+applied.
 
-To continue, start `oa-lnd-builder` in `openagentsgemini`, zone
-`us-central1-a`, and run `python3 ~/wavelength-spike/resume-study.py` through
-IAP SSH. Inspect the original transaction IDs in
-`confirmation-wait-start.json`, then use the confirmed refreshed VTXOs for
-one unilateral exit and a separate offline refresh observation. Preserve both
-uncertain send records and check their original hashes; do not create
-replacement payments. The source archive includes the resume, exit, and pause
-helpers. No unattended continuation or new payment is scheduled.
+The separate 20,000-sat VTXO is reserved for the stopped-daemon refresh
+observation. Its free refresh window starts at height 327055; that window
+has not elapsed. The operator's 144-block relative exit delay and
+504-block free refresh window are terms, not measured waiting times. The
+LDK channel commitment also confirms at 326553; its delayed sweep remains
+under observation. No completed unilateral exit or expiry-window soak is
+claimed.
+
+The GCP builder and the three scratch processes are running. Saved
+`force-exit-started.json` and `force-exit-status-latest.json` identify the
+existing exit; inspect its status rather than starting another. Keep the
+original uncertain payment records, private upgraded copies, and both
+wallets. The source archive includes the resume, exit, provider-switch,
+and pause helpers. No replacement payment or additional faucet request
+is scheduled.
 
 ### Verdict
 
