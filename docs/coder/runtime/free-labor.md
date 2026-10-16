@@ -101,6 +101,11 @@ memory; no secret key is serialized into its journal. Its API is:
   confirmed order and original linkage, persist dispatch intent, submit the
   immutable task, and invoke `coder::task::owner::execute` under the separate
   grant.
+- `execution::prepare_frozen`: validate an already admitted CJ attempt's exact
+  command bytes, requirements, local task ID, and separate operator grant.
+  A native repair host can assign each attempt a distinct local task while
+  preserving the commercial order's CJ request and run; this helper neither
+  admits an order nor dispatches it.
 - `reconcile()`: recover that same task identity. A missing or not-started task
   remains unknown; a different frozen intent refuses. It never starts another
   attempt.

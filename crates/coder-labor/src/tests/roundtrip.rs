@@ -100,9 +100,22 @@ async fn transmit(
 async fn bounded_coding_order_runs_separate_buyer_check_and_accepts_over_relay() {
     Box::pin(roundtrip(false, false)).await;
 }
-#[tokio::test]
-async fn paid_order_runs_actual_provider_checker_and_exact_central_funding() {
-    Box::pin(roundtrip(true, false)).await;
+#[test]
+fn paid_order_runs_actual_provider_checker_and_exact_central_funding() {
+    // This debug fixture holds the complete paid protocol closure across
+    // awaits; keep that host-side future off the harness's small thread stack.
+    std::thread::Builder::new()
+        .stack_size(16 * 1024 * 1024)
+        .spawn(|| {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(Box::pin(roundtrip(true, false)));
+        })
+        .unwrap()
+        .join()
+        .unwrap();
 }
 #[tokio::test]
 async fn paid_failed_actual_checker_retains_rejection_and_cannot_invoice_or_accrue() {
@@ -1777,4 +1790,88 @@ fn work_history(f: &Fixture, provider: store::Store, grant_bytes: &[u8], root: &
         );
     }
     assert_eq!(histories[0], histories[1]);
+}
+
+#[test]
+fn each_admitted_attempt_keeps_its_input_and_exact_separate_local_grant() {
+    let directory = tempfile::tempdir().unwrap();
+    let work = repository(
+        directory.path(),
+        "attempt-grant",
+        "lib.rs",
+        b"pub fn answer() -> u32 { 41 }\n",
+    );
+    let intent = intent(&work, "produce the agreed deliverable");
+    let mut grant = make_grant(&intent, "labor-request", &tool("true"), vec![]);
+    let input = json!({"v":"coder.free-labor.command.v1","requires":[],"intent":intent,"source_snapshot":grant["expected_source_snapshot"],
+        "expected_output_digest":nostr::contracts::digest_bytes(b"agreed output")});
+    let requirements = json!({"v":"coder.free-labor.requirements.v1","requires":[],"program_digest":nostr::contracts::digest_bytes(&std::fs::read(grant["program"].as_str().unwrap()).unwrap()),
+        "arguments_digest":nostr::contracts::digest_bytes(&jcs(&grant["arguments"]).unwrap()),"write_workspace":grant["write_workspace"],
+        "wall_seconds":grant["wall_seconds"],"stream_bytes":grant["stream_bytes"],"memory_bytes":grant["memory_bytes"]});
+    let mut f = fixture_with(Some((input.clone(), requirements.clone())));
+    let mut book = agreed(&f, f.provider);
+    let event = link(&mut f, &mut book);
+    let mut execute = book.check_execute(&event, f.now).unwrap();
+    execute.attempt = 2;
+    grant["task_id"] = json!("labor-request-attempt-2");
+    let raw = serde_json::to_vec(&grant).unwrap();
+    let (command, _) = crate::execution::prepare_frozen(
+        &input,
+        &requirements,
+        &execute,
+        "labor-request-attempt-2",
+        &raw,
+        f.now,
+    )
+    .unwrap();
+    assert_eq!(command.task_id, "labor-request-attempt-2");
+    assert!(matches!(command.action,task::Action::Submit{intent:actual} if actual==intent));
+    assert!(
+        crate::execution::prepare_frozen(
+            &input,
+            &requirements,
+            &execute,
+            "another-task",
+            &raw,
+            f.now
+        )
+        .is_err()
+    );
+    let mut changed = input.clone();
+    changed["intent"]["prompt"] = json!("changed instructions");
+    assert!(
+        crate::execution::prepare_frozen(
+            &changed,
+            &requirements,
+            &execute,
+            "labor-request-attempt-2",
+            &raw,
+            f.now
+        )
+        .is_err()
+    );
+    let mut changed = requirements.clone();
+    changed["wall_seconds"] = json!(1);
+    assert!(
+        crate::execution::prepare_frozen(
+            &input,
+            &changed,
+            &execute,
+            "labor-request-attempt-2",
+            &raw,
+            f.now
+        )
+        .is_err()
+    );
+    assert!(
+        crate::execution::prepare_frozen(
+            &input,
+            &requirements,
+            &execute,
+            "labor-request-attempt-2",
+            &raw,
+            execute.deadline
+        )
+        .is_err()
+    );
 }

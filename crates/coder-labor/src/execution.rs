@@ -12,8 +12,42 @@ pub(crate) fn prepare(
     now: u64,
 ) -> Result<(Command, Grant)> {
     let execute = book.check_execute(event, now)?;
-    let grant = Grant::parse(grant_bytes).map_err(|e| e.to_string())?;
     let input = book.blobs.resolve(&book.labor().execution.input)?;
+    let requirements = book.blobs.resolve(&book.labor().execution.requirements)?;
+    prepare_frozen(
+        input,
+        requirements,
+        &execute,
+        &execute.request,
+        grant_bytes,
+        now,
+    )
+}
+
+/// Match a separately granted task-owner command to one exact admitted CJ
+/// attempt. This validates bytes and bounds; it does not admit an order or
+/// dispatch. Native repair hosts give each attempt its own local task ID while
+/// retaining the order's original CJ request and run.
+pub fn prepare_frozen(
+    input: &Value,
+    requirements: &Value,
+    execute: &nostr::execution::Execute,
+    local_task: &str,
+    grant_bytes: &[u8],
+    now: u64,
+) -> Result<(Command, Grant)> {
+    let grant = Grant::parse(grant_bytes).map_err(|e| e.to_string())?;
+    let input_ref = execute
+        .input_artifact
+        .as_ref()
+        .ok_or("the admitted command has no artifact input")?;
+    nostr::contracts::check_artifact_bytes(input_ref, &jcs(input).map_err(|e| e.to_string())?)
+        .map_err(|e| e.to_string())?;
+    nostr::contracts::check_artifact_bytes(
+        &execute.requirements,
+        &jcs(requirements).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())?;
     exact(
         input,
         "coder.free-labor.command.v1",
@@ -21,7 +55,6 @@ pub(crate) fn prepare(
     )?;
     let intent: TaskIntent =
         serde_json::from_value(input["intent"].clone()).map_err(|e| e.to_string())?;
-    let requirements = book.blobs.resolve(&book.labor().execution.requirements)?;
     exact(
         requirements,
         "coder.free-labor.requirements.v1",
@@ -39,7 +72,7 @@ pub(crate) fn prepare(
         .source_revision
         .as_ref()
         .is_none_or(|revision| revision.len() != 40)
-        || grant.task_id != execute.request
+        || grant.task_id != local_task
         || grant.expected_revision != 1
         || grant.expected_source_snapshot.as_deref() != input["source_snapshot"].as_str()
         || grant.intent_digest
@@ -59,6 +92,8 @@ pub(crate) fn prepare(
         || requirements["stream_bytes"] != grant.stream_bytes
         || requirements["memory_bytes"] != grant.memory_bytes
         || grant.requirements.is_some()
+        || grant.adapter_configuration.is_some()
+        || now >= execute.deadline
         || execute
             .bounds
             .wall_ms
@@ -73,8 +108,8 @@ pub(crate) fn prepare(
     }
     let command = Command {
         schema: task::COMMAND_SCHEMA.into(),
-        command_id: format!("labor-{}", execute.request),
-        task_id: execute.request,
+        command_id: format!("labor-{local_task}"),
+        task_id: local_task.into(),
         expected_revision: None,
         action: Action::Submit { intent },
     };
