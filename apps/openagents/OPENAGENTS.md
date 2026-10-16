@@ -37,6 +37,31 @@ about 900 crates. `coder-account` uses the SDK from this repository by path
 (`../../crates/openagents-sdk`), so SDK changes and app changes land in
 one commit.
 
+## The owner's everyday app
+
+The owner's daily desktop app is the development bundle built from a clean
+worktree of `main` at `~/work/openagents-app`. Its data (chats, settings, the
+device identity on `coder-sync`) lives outside any checkout, in
+`~/Library/Application Support/OpenAgents Dev/data`. It was moved there on
+2026-10-16 from the archived fork's `~/work/coder-desktop/target/macos-dev/data`,
+which is kept as a backup. Never run the old bundle again: it has the same
+device identity.
+
+Update and relaunch (quit the app first):
+
+```sh
+git -C ~/work/openagents-app fetch origin main
+git -C ~/work/openagents-app checkout --detach origin/main
+cd ~/work/openagents-app/apps/openagents
+ZERON_DEV_DATA_DIR="$HOME/Library/Application Support/OpenAgents Dev/data" scripts/run-macos-dev.sh
+```
+
+The data directory is written into the bundle, so opening
+`~/work/openagents-app/apps/openagents/target/macos-dev/Coder Dev.app` from the
+Dock or Finder uses the same data. Agents testing their own builds keep the
+default checkout-local data and a different `ZERON_DEV_IPC_PORT`, never this
+directory.
+
 ## Pull upstream Zeron
 
 From the repository root, on a clean `main`:
