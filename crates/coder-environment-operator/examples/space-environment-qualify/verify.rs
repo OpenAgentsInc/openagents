@@ -125,6 +125,10 @@ pub(super) async fn run(state: &Path, args: &[String]) -> Result<()> {
         args.get(2).ok_or("Choose the frozen check plan.")?,
     )?)?;
     job.validate()?;
+    let bundle = fs::read(args.get(4).ok_or("Choose the frozen source bundle.")?)?;
+    if env::digest(&bundle) != job.inputs.source.digest {
+        return Err("The source bundle does not match the build's source pin.".into());
+    }
     compatibility.validate()?;
     frozen_plan.validate()?;
     if frozen_plan.checks.len() != 1
@@ -274,7 +278,13 @@ pub(super) async fn run(state: &Path, args: &[String]) -> Result<()> {
         return Err("A fresh verifier was already requested. Inspect and delete it before another qualification.".into());
     }
     let request = CreateRequest {
-        operation: format!("{}-fresh-space", job.id),
+        operation: format!(
+            "{}-fresh-space{}",
+            job.id,
+            args.get(5)
+                .map(|attempt| format!("-{attempt}"))
+                .unwrap_or_default()
+        ),
         size: Some("small".into()),
         image: Some(template.reference.clone()),
         ttl_seconds: Some(900),
@@ -345,7 +355,11 @@ done
         }
         if inventory.len() != 5 { return Err("The fresh tool inventory is incomplete.".into()); }
         check(&driver, &mut verification, &job, rootfs, &computer, "shape", "environment.space.shape", "set -eu\ntest \"$(getconf _NPROCESSORS_ONLN)\" = 2\nawk '/^MemTotal:/ {print; if ($2 < 3800000 || $2 > 4194304) exit 1}' /proc/meminfo\n".into()).await?;
-        let materialize = coder_environment_operator::space::source_command(&job.inputs.source, coder_environment_setup::source::Mode::Materialize)?;
+        let bundle_path = "/home/user/environment-11811-source.bundle";
+        start(&mut verification,&job,rootfs,&computer,"source-upload","environment.space.source-upload",json!({"path":bundle_path,"digest":job.inputs.source.digest,"bytes":bundle.len()}))?;
+        done(driver.put_file(&computer,bundle_path,&bundle).await)?;
+        result(&mut verification,"source-upload",&ExecOutput {code:0,stdout:serde_json::to_string(&json!({"path":bundle_path,"digest":job.inputs.source.digest,"bytes":bundle.len()}))?,stderr:String::new()})?;
+        let materialize = format!("printf '%s\\n' '{}  {bundle_path}' | sha256sum --check\ngit init -q .\ngit bundle verify {bundle_path}\ngit fetch -q --no-tags {bundle_path} {}\ngit checkout -q --detach {}\n",job.inputs.source.digest,job.inputs.source.revision,job.inputs.source.revision);
         let verify = coder_environment_operator::space::source_command(&job.inputs.source, coder_environment_setup::source::Mode::Verify)?;
         let source = check(&driver, &mut verification, &job, rootfs, &computer, "source", "environment.space.source", format!("set -eu\nmkdir -p /workspace\ncd /workspace\n(\n{materialize}\n)\n{verify}")).await?;
         if !coder_environment_setup::source::Report::parse(&source.stdout).is_some_and(|report| report.verified(&job.inputs.source)) { return Err("The fresh checkout did not match its source pin.".into()); }

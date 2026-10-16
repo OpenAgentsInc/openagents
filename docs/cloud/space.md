@@ -85,6 +85,27 @@ Boat remains the production default. The maintained private deployment and
 public SDK rollout remain separate work in #11814 and #11816; durable lifecycle
 recovery remains #11812.
 
+## Environment artifacts
+
+An Environment version preserves its Boat/GCE image identity and can also name a
+SPACE artifact. The SPACE entry pins the root filesystem, released Coder 1.0.0,
+tool inventory, guest daemon, kernel, Firecracker, snapshot format, and supported
+shapes. Admission checks the saved version before requesting a computer and
+refuses missing, withdrawn, or incompatible artifacts. Private computers keep
+references to the artifacts they need for restore.
+
+The issue 11811 qualification builds a standalone Rust library with three tests,
+Rust 1.97.1, Git, CAs, a C compiler, and the released command-line tools. SPACE
+uses 2 vCPUs and 4096 MiB. Publication removes the synthetic account files and
+checkout, clears free disk blocks, and preserves the provider's guest services
+and public admission keys. A base snapshot starts from that clean disk.
+
+The Direct worker receives the exact published disk through the native template
+transfer API and rebuilds its base locally. Base snapshots have separate hashes
+on each node. The privacy check scans both nodes' disk and memory files and
+checks each base against its own recorded hash. Customer creates and useful
+build/test verification use the Rust HTTP driver.
+
 ## Driver
 
 Build `oa-computers` with `--features space`, set

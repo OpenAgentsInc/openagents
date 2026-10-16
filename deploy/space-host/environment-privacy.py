@@ -24,7 +24,9 @@ assert published['name'] == template and published['content_hash'] == rootfs
 base = next(row for row in published['snapshots']
             if row['vcpu'] == 2 and row['memory_mib'] == 4096)
 assert re.fullmatch(r'(sha256:)?[a-f0-9]{64}', base['snapshot_hash'])
-report_path = state / 'raw-privacy.json'
+report_name = sys.argv[2] if len(sys.argv) > 2 else 'raw-privacy.json'
+assert re.fullmatch(r'raw-privacy(?:-[a-z0-9-]+)?\.json', report_name)
+report_path = state / report_name
 assert not report_path.exists(), 'Keep the previous privacy evidence'
 nodes = ['space-local-worker', 'space-local-worker4']
 canary = 'oa-qualification-private-canary-11811'
@@ -32,7 +34,7 @@ report = {'schema': 'openagents.space.environment_privacy_check.v1',
           'job': work['job'], 'inputs_digest': work['inputs_digest'],
           'rootfs_digest': rootfs.removeprefix('sha256:'),
           'snapshot_hash': base['snapshot_hash'], 'files': [],
-          'canary_matches': 0, 'disk_only_publication': True,
+          'canary_matches': 0, 'base_snapshots': [], 'disk_only_publication': True,
           'base_created_from_published_disk': True}
 
 # Admission public keys belong to the pinned provider seed. Customer SSH
@@ -96,6 +98,11 @@ for node in nodes:
     snapshot_dir = directory + '/snapshots/' + rootfs + '/2vcpu-4096mib'
     if subprocess.run(['docker', 'exec', node, 'test', '-f',
                        snapshot_dir + '/snapshot.base'], capture_output=True).returncode == 0:
+        observed = run('docker', 'exec', node, '/space/bin/space-tmplmgr', 'get',
+                       '--template', template, '--content-hash', rootfs)
+        local_base = re.search(r'^snapshot:\s+([a-f0-9]{64}) \(vcpu=2, mem=4096MiB\)',
+                               observed, re.MULTILINE)
+        assert local_base, 'The local clean base identity is missing'
         combined = hashlib.sha256()
         for name in ('snapshot.base', 'vmstate.base'):
             path = snapshot_dir + '/' + name
@@ -112,7 +119,11 @@ for node in nodes:
                 if process.poll() is None:
                     process.kill()
                     process.wait()
-        assert combined.hexdigest() == base['snapshot_hash'].removeprefix('sha256:')
+        assert combined.hexdigest() == local_base.group(1)
+        report['base_snapshots'].append({'worker': node, 'snapshot_hash': combined.hexdigest(),
+                                         'vcpu': 2, 'memory_mib': 4096})
+assert any(row['snapshot_hash'] == base['snapshot_hash'].removeprefix('sha256:')
+           for row in report['base_snapshots']), 'The published base was not inspected'
 assert disk_seen, 'The published disk was not inspected'
 assert memory_seen, 'The clean base memory was not inspected'
 report['passed'] = True
