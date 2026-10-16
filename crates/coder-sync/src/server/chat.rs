@@ -177,6 +177,9 @@ async fn append(
     if bytes.len() > ROW_LIMIT {
         return Err(Failure(StatusCode::PAYLOAD_TOO_LARGE, "too_large"));
     }
+    let mut db = state.database.connect().await?;
+    let tx = db.transaction().await?;
+    let head = claim(&tx, id, account).await?;
     if !state
         .rooms
         .admit_push(Room::Chat(id.into()), device, bytes.len())
@@ -184,9 +187,7 @@ async fn append(
     {
         return Err(Failure(StatusCode::TOO_MANY_REQUESTS, "quota"));
     }
-    let mut db = state.database.connect().await?;
-    let tx = db.transaction().await?;
-    let head = claim(&tx, id, account).await?;
+
     if let Some(row) = tx
         .query_opt(
             "SELECT seq FROM chat_batches WHERE chat_id=$1 AND batch_id=$2",

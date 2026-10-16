@@ -517,3 +517,21 @@ async fn paginated_http_and_websocket_replay_do_not_skip_rows() {
     assert_eq!(sink.0.lock().unwrap().1.len(), 300);
     client.shutdown().await;
 }
+
+#[tokio::test]
+async fn another_account_cannot_spend_the_owners_push_quota() {
+    let server = TestServer::start().await;
+    let room = server.room();
+    assert_eq!(push(&room, "owner-first", b"first").await["seq"], 1);
+    for _ in 0..9 {
+        let response = reqwest::Client::new()
+            .post(format!("{room}/rows?batchId=intruder&device=writer"))
+            .bearer_auth("another-account")
+            .body(vec![0u8; 1024 * 1024])
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 403);
+    }
+    assert_eq!(push(&room, "owner-next", b"next").await["seq"], 2);
+}
