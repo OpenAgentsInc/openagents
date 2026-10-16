@@ -236,6 +236,34 @@ closure overflow without mutation. The unknown-dispatch check injects the
 persisted intent-before-submit state; it is explicitly a recovery fixture,
 not a claimed operating-system crash experiment.
 
+## Delivery roles after execution
+
+`crates/labor-roles` carries an order from submission to its final record
+with every role a separate participant: a worker, a reviewer, a buyer and a
+resolver, each a `host::Host` with its own key, `0700` directory and
+journal, exchanging signed private `3188` records sealed to the other
+roles. The terms admit only distinct role keys with declared operators
+where the buyer, the provider side, a non-buyer reviewer and the resolver
+are separately operated, rework bounded to three with its own deadline, and
+a rights policy whose recipients include every role.
+
+| Role behavior | Supported |
+| --- | --- |
+| Rework | Up to `max_reworks` replacements, each naming the buyer's `request_rework` review of the previous submission, contesting only existing criteria, before `rework_due_at`. Numbers are contiguous; same-number substitution is a conflict; nothing follows acceptance. |
+| Verification | Only the pinned reviewer; every criterion once; the overall verdict must follow from the criteria. |
+| Review | Only the buyer, before the review deadline; accept needs passed verification and a timely available delivery receipt. |
+| Unavailable buyer | The resolver may record the delivery receipt and accept a timely conforming submission. |
+| Resolver | `labor-evidence-v1`: accept only timely, available, passed work; reject only on a failed verification, established non-delivery, or cancellation with no qualifying delivery; otherwise unresolved. Every known dispute must be assessed; after `resolution_due_at` only unresolved. |
+| Cancellation | Mutual cancellation owes zero only with both parties' cancellations and no qualifying delivery; a buyer cannot cancel delivered conforming work away; acceptance survives later cancellation. |
+| Finals | Buyer acceptance, resolver decision, or mutual cancellation, with full/zero/null amounts; supersession only by an assessed resolution and never of an uncontested acceptance; competing finals are a conflict that stops funding. |
+| Obligations | A passing check owes nothing. A final acceptance creates an obligation whose collection is unknown until the central receive adapter's receipt is recorded with `pay-ledger`'s `record_worker_earned` (exact retries idempotent, a second payment refused). A funded acceptance later superseded by rejection is retained as a refund owed; no transfer happens. |
+| Rights | `perform-and-review-order` for recipients only; `separate-grant` uses need a grant from both buyer and provider. |
+| Recovery | Every retained record is journaled atomically; a restart replays the journal through the same checks, including funding. Duplicates replay as duplicates. |
+
+Run `cargo test -p labor-roles`. The fixtures use synthetic keys and
+operators, synthetic deliverable digests, and fake funding receipts; they do
+not run the worker's code (that stays with this crate's task owner path).
+
 ## Remaining product work
 
 The free-order experiment from
@@ -243,6 +271,8 @@ The free-order experiment from
 explicit paid lane have scoped local acceptance checks. Their fixtures do not
 demonstrate model coding quality, independent operators, a public relay
 deployment, general checker execution, arbitrary instruction policies,
-nonzero rework, resolver adjudication, or real commercial settlement. Generalize
-those roles only with their own host admission and acceptance evidence. Real
+or real commercial settlement. Nonzero rework, resolver adjudication and
+independently operated roles are now in `crates/labor-roles` after
+execution; joining them to this crate's execution path (a rework attempt's
+context manifest and fresh dispatch) and to `openagents labor` is next. Real
 funding, payout, and complete costs remain owner qualification steps.

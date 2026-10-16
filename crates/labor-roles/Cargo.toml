@@ -1,0 +1,21 @@
+[package]
+name = "labor-roles"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "NIP-LAB delivery roles after execution: independently operated worker, reviewer, buyer and resolver hosts, bounded rework, resolver adjudication, cancellation and unavailable buyers, rights, and obligations recorded through pay-ledger."
+
+[dependencies]
+nostr = { path = "../nostr" }
+pay-ledger = { path = "../pay-ledger" }
+secp256k1 = "0.31.1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

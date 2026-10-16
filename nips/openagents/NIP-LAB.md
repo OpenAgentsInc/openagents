@@ -4,8 +4,12 @@
 [NIP-MKT](NIP-MKT.md) are normative. This is the
 `openagents.labor.v1` market profile, with a bounded Rust host and explicit
 paid fulfillment in `crates/coder-labor`. See the
-[runtime guide](../../docs/coder/runtime/free-labor.md) for fixture limits and
-remaining rework, resolver, and independent-operation roles. It assigns no new event kinds.
+[runtime guide](../../docs/coder/runtime/free-labor.md) for fixture limits.
+The delivery roles after execution (independently operated worker,
+reviewer, buyer and resolver hosts, bounded nonzero rework, resolver
+adjudication, cancellation, an unavailable buyer, rights, and obligations
+funded through `pay-ledger`) are in `crates/labor-roles`, fixture-tested
+with four isolated participants and fake funding. It assigns no new event kinds.
 
 **Name provenance:** OpenAgents already used
 [NIP-LBR v1](https://github.com/OpenAgentsInc/openagents/blob/8f84d05896ef14edee491621bf977ee5315cc8ed/docs/nips/LBR.md)

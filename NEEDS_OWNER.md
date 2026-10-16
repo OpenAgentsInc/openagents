@@ -1,3 +1,14 @@
+## Qualify a paid labor order between separately run parties (#11748)
+
+Labor orders with a separate worker, reviewer, buyer and dispute resolver
+now work end to end in our Rust code, but only with test keys and pretend
+payments. To count them as real, have four different people or companies
+(one each for buyer, worker, reviewer and resolver) run one small paid
+coding order with real bitcoin: one rework round, the buyer's acceptance,
+and the payment arriving. Then run a second order where the buyer goes
+quiet and the resolver accepts the work. See
+[the labor guide](docs/coder/runtime/free-labor.md#delivery-roles-after-execution).
+
 ## Qualify raw TDX, SEV-SNP and NVIDIA attestation on real machines (#11745)
 
 Our verifier now checks raw Intel TDX quotes, AMD SEV-SNP reports and NVIDIA
