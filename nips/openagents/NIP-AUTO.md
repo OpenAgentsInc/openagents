@@ -338,7 +338,7 @@ fencing, operation adapters, and crash fixtures remain implementation work.
 ## Rust native controller profile
 
 The initial `automation-host` profile admits owner-signed once, fixed UTC
-interval, and native source-watch plans against a separately admitted COORD
+interval, native source-watch, and checked continuation plans against an admitted COORD
 container. It shares the
 standing-job calendar and allowance primitives with Coder. Original plan and
 control declarations, skipped slot ranges, typed occurrences, RUN history, and
@@ -380,8 +380,17 @@ one separately counted revalidation under the cancellation fence and checks the
 original source snapshot again at the actual COORD intake boundary. A changed,
 unavailable, or stale source blocks intake and retains the occurrence hold.
 
-Checked continuation, broader occurrence cleanup recovery,
-and effectful session/environment adapters remain unfinished in
-#11735. Their records have closed validators, but unsupported triggers and
-bindings refuse at admission. A queue acknowledgment or model self-claim cannot
-complete work. See [the runtime guide](../../crates/automation-host/README.md).
+The independently keyed continuation receiver uses its own pinned CAP/CJ
+binding and durable identity book. Its completion rule belongs to the protected
+frame and counts at most 16 actual independently checked occurrences. The
+coordinator supplies authenticated child results and unresolved descendants;
+the checker cannot substitute a model's completion text. Only a policy-valid
+`continue` permits another occurrence after the minimum interval. A saved
+checker reply recovers exactly without another call. Budget or occurrence
+exhaustion stops scheduling without claiming success.
+
+Broader occurrence cleanup recovery remains unfinished in #11735. The profile
+refuses session/environment/effect bindings before activation; these require
+adapters that await their actual terminal work and cleanup. A queue
+acknowledgment cannot complete work. See
+[the runtime guide](../../crates/automation-host/README.md).

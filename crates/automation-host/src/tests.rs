@@ -27,6 +27,9 @@ fn bounds(calls: u64, wall: u64, bytes: u64) -> Value {
  {"bound":"output_bytes","ceiling":bytes,"assurance":"host","mechanism":"native-bytes"}])
 }
 fn setup(trigger: Value) -> (tempfile::TempDir, Automation, Value) {
+    setup_goal(trigger, None)
+}
+fn setup_goal(trigger: Value, goal: Option<u64>) -> (tempfile::TempDir, Automation, Value) {
     let t = tempfile::tempdir().unwrap();
     let coor =
         coordination_host::book::Coordinator::initialize(t.path().join("coor"), secret(1)).unwrap();
@@ -58,6 +61,11 @@ fn setup(trigger: Value) -> (tempfile::TempDir, Automation, Value) {
         coor.control_grants(&event(1, 1, ctl, 100), 100).unwrap();
     }
     let acceptance=coor.put_local_json(&json!({"v":"openagents.coordination-native-check-policy.v1","requires":[],"check":"exact-admitted-output"})).unwrap();
+    let rule=goal.map(|minimum|coor.put_local_json(&json!({"v":"openagents.automation-native-completion-rule.v1","requires":[],"check":"verified-occurrence-count","minimum_successes":minimum,"acceptance":acceptance})).unwrap());
+    let mut criteria = vec![acceptance.clone()];
+    if let Some(rule) = &rule {
+        criteria.push(rule.clone());
+    }
     let text = coor
         .put_local_bytes(b"Objective", "text/plain", None)
         .unwrap();
@@ -69,7 +77,7 @@ fn setup(trigger: Value) -> (tempfile::TempDir, Automation, Value) {
         )
         .unwrap();
     let instructions=coor.put_local_json(&json!({"v":"openagents.instructions.v1","requires":[],"task":task,"revision":0,"resolver":{"id":format!("{}:coord/empty-instructions",key(1)),"artifact":precedence},"precedence":precedence,"snapshot":snapshot,"entries":[]})).unwrap();
-    let frame=coor.put_local_json(&json!({"v":"openagents.task-frame.v1","requires":[],"task":task,"owner":key(1),"controller":key(1),"revision":0,"previous":null,"objective":text,"origin":"user","constraints":[],"acceptance":[acceptance],"snapshot":snapshot,"instructions":instructions,"variables":[],"attempts":[],"unresolved":[],"corrections":[]})).unwrap();
+    let frame=coor.put_local_json(&json!({"v":"openagents.task-frame.v1","requires":[],"task":task,"owner":key(1),"controller":key(1),"revision":0,"previous":null,"objective":text,"origin":"user","constraints":[],"acceptance":criteria,"snapshot":snapshot,"instructions":instructions,"variables":[],"attempts":[],"unresolved":[],"corrections":[]})).unwrap();
     coor.frame(&event(1,1,json!({"v":"openagents.coordination-native-frame.v1","requires":[],"coordinator":scope,"command":workspace_host::artifact::token(),"expected_revision":coor.scope(&scope).unwrap()["revision"],"frame":frame}),100),&coor.get_local_bytes(&frame).unwrap(),100).unwrap();
     let descriptor: Value = serde_json::from_slice(&coor.get_local_bytes(&scope).unwrap()).unwrap();
     let context = |recipient: u8| {
@@ -92,7 +100,23 @@ fn setup(trigger: Value) -> (tempfile::TempDir, Automation, Value) {
     let target_lock = lock(&target);
     let target_context = context(2);
     let requirements=coor.put_local_json(&json!({"v":"openagents.automation-native-requirements.v1","requires":[],"spend_microunits":0})).unwrap();
-    let auto = Automation::initialize(
+    let evaluator = rule.map(|rule| {
+        crate::evaluator::Evaluator::initialize(
+            t.path().join("evaluator3"),
+            secret(3),
+            crate::evaluator::Policy {
+                controller: key(5),
+                coordinator: key(1),
+                scope: scope.clone(),
+                producer: key(2),
+                rule,
+                until: 1000,
+            },
+        )
+        .unwrap()
+    });
+    let evaluation_binding = evaluator.as_ref().map(|e| e.binding().unwrap());
+    let mut auto = Automation::initialize(
         t.path().join("auto"),
         secret(5),
         Policy {
@@ -101,13 +125,22 @@ fn setup(trigger: Value) -> (tempfile::TempDir, Automation, Value) {
             worker: key(2),
             checker: key(3),
             source: None,
+            evaluator: evaluation_binding.clone(),
             max_plans: 4,
             until: 1000,
         },
         coor,
     )
     .unwrap();
-    let plan = json!({"v":"openagents.automation-plan.v1","requires":[],"automation":workspace_host::artifact::token(),"run":workspace_host::artifact::token(),"owner":key(1),"controller":key(5),"coordinator":scope,"frame":frame,"policy":auto.policy().unwrap(),"reservation":claim_body["reservation"],"task":parent_task,"target":target,"lock":target_lock,"payload":payload,"context":target_context,"requirements":requirements,"acceptance":acceptance,"effects":effects(),"per_occurrence":bounds(3,100000,65536),"aggregate":bounds(24,800000,524288),"max_occurrences":8,"max_observations":16,"starts_at":100,"expires_at":900,"retain_until":2000,"trigger":trigger,"completion":null});
+    if let Some(evaluator) = evaluator {
+        auto = auto.mount_evaluator(evaluator).unwrap();
+    }
+    let mut plan = json!({"v":"openagents.automation-plan.v1","requires":[],"automation":workspace_host::artifact::token(),"run":workspace_host::artifact::token(),"owner":key(1),"controller":key(5),"coordinator":scope,"frame":frame,"policy":auto.policy().unwrap(),"reservation":claim_body["reservation"],"task":parent_task,"target":target,"lock":target_lock,"payload":payload,"context":target_context,"requirements":requirements,"acceptance":acceptance,"effects":effects(),"per_occurrence":bounds(3,100000,65536),"aggregate":bounds(24,800000,524288),"max_occurrences":8,"max_observations":16,"starts_at":100,"expires_at":900,"retain_until":2000,"trigger":trigger,"completion":null});
+    if let Some(binding) = evaluation_binding {
+        plan["completion"] = json!({"target":binding["target"],"lock":binding["lock"],"context":binding["context"],"requirements":binding["requirements"],"bounds":bounds(1,30000,1048576)});
+        plan["per_occurrence"] = bounds(4, 100000, 1048576);
+        plan["aggregate"] = bounds(24, 2400000, 25165824);
+    }
     (t, auto, plan)
 }
 #[test]
@@ -763,6 +796,7 @@ fn watched_with(
             worker: key(2),
             checker: key(3),
             source: Some(bundle),
+            evaluator: None,
             max_plans: 4,
             until: 1000,
         },
@@ -976,5 +1010,285 @@ fn source_revalidation_uses_the_same_observation_cap_and_expiry_stops_new_reads(
     assert_eq!(
         auto.coordinator.scope(&plan["coordinator"]).unwrap()["calls"],
         0
+    );
+}
+fn checked_occurrence(t: &tempfile::TempDir, auto: &Automation, reference: &Value, at: u64) {
+    let request = auto
+        .advance(reference, at)
+        .unwrap_or_else(|e| panic!("advance at {at}: {e}"))
+        .unwrap();
+    let worker =
+        coordination_host::worker::Worker::open(t.path().join("goal-worker2"), secret(2), at)
+            .unwrap();
+    let (result, files) = worker
+        .run_gated(&auto.coordinator, &request, at, auto)
+        .unwrap();
+    auto.record_result(reference, &result, &files, at + 1)
+        .unwrap();
+    auto.check(
+        reference,
+        &coordination_host::checks::Checker::new(secret(3)),
+        at + 2,
+    )
+    .unwrap();
+}
+#[test]
+fn actual_independent_continuation_requires_a_valid_decision_and_the_minimum_interval() {
+    let (t, auto, mut plan) = setup_goal(
+        json!({"kind":"continuation","minimum_interval_seconds":20}),
+        Some(2),
+    );
+    plan["payload"] = auto
+        .coordinator
+        .put_local_json(&json!({"model_claim":"complete"}))
+        .unwrap();
+    let reference = admitted(&auto, &plan);
+    auto.tick(&reference, 100).unwrap();
+    checked_occurrence(&t, &auto, &reference, 100);
+    auto.tick(&reference, 105).unwrap();
+    assert_eq!(auto.inspect(&reference).unwrap()["state"]["occurrences"], 1);
+    assert_eq!(
+        auto.inspect(&reference).unwrap()["state"]["status"],
+        "active"
+    );
+    let first_ref = auto.evaluate(&reference, 105).unwrap();
+    let first = auto.store.json(&first_ref).unwrap();
+    assert_eq!(first["decision"], "continue");
+    let inspected = auto.inspect(&reference).unwrap();
+    let first_at = inspected["evaluations"]
+        .as_object()
+        .unwrap()
+        .values()
+        .last()
+        .unwrap()["at"]
+        .as_u64()
+        .unwrap();
+    assert!(inspected["state"]["active"].is_null());
+    auto.tick(&reference, first_at + 19).unwrap();
+    assert_eq!(auto.inspect(&reference).unwrap()["state"]["occurrences"], 1);
+    auto.tick(&reference, first_at + 20).unwrap();
+    assert_eq!(auto.inspect(&reference).unwrap()["state"]["occurrences"], 2);
+    checked_occurrence(&t, &auto, &reference, first_at + 20);
+    let final_ref = auto.evaluate(&reference, first_at + 25).unwrap();
+    let final_result = auto.store.json(&final_ref).unwrap();
+    assert_eq!(final_result["decision"], "complete");
+    let completed = auto.inspect(&reference).unwrap();
+    assert_eq!(completed["state"]["status"], "complete");
+    assert!(completed["state"]["active"].is_null());
+    assert_eq!(completed["accounting"]["spent"]["calls"], 8);
+    assert_eq!(
+        auto.coordinator.scope(&plan["coordinator"]).unwrap()["calls"],
+        8
+    );
+}
+#[test]
+fn continuation_refuses_a_missing_checker_changed_pins_and_unprotected_criteria() {
+    let (_t, mut auto, plan) = setup_goal(
+        json!({"kind":"continuation","minimum_interval_seconds":20}),
+        Some(2),
+    );
+    let mut bad = plan.clone();
+    bad["completion"]["target"] = auto.coordinator.data_operation().unwrap();
+    assert!(
+        auto.admit(&event(1, 5, bad, 100), &BTreeMap::new(), 100)
+            .is_err()
+    );
+    let mut bad = plan.clone();
+    bad["completion"] = Value::Null;
+    assert!(
+        auto.admit(&event(1, 5, bad, 100), &BTreeMap::new(), 100)
+            .is_err()
+    );
+    let mut bad = plan.clone();
+    bad["per_occurrence"] = bounds(3, 100000, 1048576);
+    assert!(
+        auto.admit(&event(1, 5, bad, 100), &BTreeMap::new(), 100)
+            .unwrap_err()
+            .contains("allowance")
+    );
+    let evaluator = auto.evaluator.take().unwrap();
+    assert!(
+        auto.admit(&event(1, 5, plan.clone(), 100), &BTreeMap::new(), 100)
+            .unwrap_err()
+            .contains("mounted")
+    );
+    auto = auto.mount_evaluator(evaluator).unwrap();
+    let mut frame: Value =
+        serde_json::from_slice(&auto.coordinator.get_local_bytes(&plan["frame"]).unwrap()).unwrap();
+    frame["revision"] = json!(1);
+    frame["previous"] = plan["frame"].clone();
+    frame["acceptance"] = json!([plan["acceptance"]]);
+    let newer = auto.coordinator.put_local_json(&frame).unwrap();
+    auto.coordinator.frame(&event(1,1,json!({"v":"openagents.coordination-native-frame.v1","requires":[],"coordinator":plan["coordinator"],"command":workspace_host::artifact::token(),"expected_revision":auto.coordinator.scope(&plan["coordinator"]).unwrap()["revision"],"frame":newer}),100),&auto.coordinator.get_local_bytes(&newer).unwrap(),100).unwrap();
+    assert!(
+        auto.admit(&event(1, 5, plan, 100), &BTreeMap::new(), 100)
+            .is_err()
+    );
+    assert!(auto.state().unwrap().plans.is_empty());
+}
+#[test]
+fn an_unresolved_child_prevents_completion_even_when_the_success_count_is_met() {
+    let (t, auto, plan) = setup_goal(
+        json!({"kind":"continuation","minimum_interval_seconds":20}),
+        Some(1),
+    );
+    let reference = admitted(&auto, &plan);
+    auto.tick(&reference, 100).unwrap();
+    checked_occurrence(&t, &auto, &reference, 100);
+    let inspected = auto.inspect(&reference).unwrap();
+    let occurrence = inspected["occurrences"]
+        .as_object()
+        .unwrap()
+        .values()
+        .next()
+        .unwrap();
+    let mut proposal: Value = serde_json::from_slice(
+        &auto
+            .coordinator
+            .get_local_bytes(&occurrence["proposal"])
+            .unwrap(),
+    )
+    .unwrap();
+    proposal["task"] = json!(workspace_host::artifact::token());
+    let pr = auto
+        .coordinator
+        .propose(
+            &event(5, 1, proposal.clone(), 104),
+            &auto.input_files(&proposal["input"]).unwrap(),
+            104,
+        )
+        .unwrap()["value"]
+        .clone();
+    auto.coordinator.claim(&event(5,1,json!({"v":"openagents.claim-request.v1","requires":[],"proposal":pr,"worker":key(2),"resources":[],"expected_revision":auto.coordinator.scope(&plan["coordinator"]).unwrap()["revision"],"requested_until":190,"reservation":plan["reservation"]}),104),104).unwrap();
+    let evaluation = auto.evaluate(&reference, 105).unwrap();
+    assert_eq!(auto.store.json(&evaluation).unwrap()["decision"], "unknown");
+    auto.tick(&reference, 500).unwrap();
+    let blocked = auto.inspect(&reference).unwrap();
+    assert_eq!(blocked["state"]["status"], "blocked");
+    assert_eq!(blocked["state"]["occurrences"], 1);
+    assert!(blocked["state"]["active"].is_object());
+}
+#[test]
+fn pause_fences_independent_checker_admission_and_exhaustion_does_not_claim_success() {
+    let (t, auto, plan) = setup_goal(
+        json!({"kind":"continuation","minimum_interval_seconds":20}),
+        Some(2),
+    );
+    let reference = admitted(&auto, &plan);
+    auto.tick(&reference, 100).unwrap();
+    checked_occurrence(&t, &auto, &reference, 100);
+    let (request, files) = {
+        let _guard = auto.store.lock().unwrap();
+        let mut state = auto.state().unwrap();
+        let id = plan["automation"].as_str().unwrap().to_string();
+        let mut record = state.plans[&id].clone();
+        let event = auto
+            .prepare_evaluation(&mut state, &mut record, 105)
+            .unwrap();
+        let files = auto.evaluation_files(&state, &record).unwrap();
+        state.plans.insert(id, record);
+        auto.save(&state).unwrap();
+        (event, files)
+    };
+    let pause = control(&auto, &reference, "pause", 106);
+    auto.control(&event(1, 5, pause, 106), 106).unwrap();
+    assert!(
+        auto.evaluator
+            .as_ref()
+            .unwrap()
+            .run(&auto.coordinator, &request, &files, 106, &auto)
+            .is_err()
+    );
+    assert_eq!(
+        auto.coordinator.scope(&plan["coordinator"]).unwrap()["calls"],
+        3
+    );
+    let (t, auto, mut plan) = setup_goal(
+        json!({"kind":"continuation","minimum_interval_seconds":20}),
+        Some(2),
+    );
+    plan["max_occurrences"] = json!(1);
+    let reference = admitted(&auto, &plan);
+    auto.tick(&reference, 100).unwrap();
+    checked_occurrence(&t, &auto, &reference, 100);
+    let evaluation = auto.evaluate(&reference, 105).unwrap();
+    assert_eq!(
+        auto.store.json(&evaluation).unwrap()["decision"],
+        "continue"
+    );
+    auto.tick(&reference, 200).unwrap();
+    assert_eq!(
+        auto.inspect(&reference).unwrap()["state"]["status"],
+        "exhausted"
+    );
+    assert_eq!(
+        auto.coordinator.scope(&plan["coordinator"]).unwrap()["calls"],
+        4
+    );
+}
+
+#[test]
+fn lost_evaluation_reply_recovers_exact_signed_result_after_restart_without_another_call() {
+    let (t, auto, plan) = setup_goal(
+        json!({"kind":"continuation","minimum_interval_seconds":20}),
+        Some(2),
+    );
+    let reference = admitted(&auto, &plan);
+    auto.tick(&reference, 100).unwrap();
+    checked_occurrence(&t, &auto, &reference, 100);
+    let (request, files) = {
+        let _guard = auto.store.lock().unwrap();
+        let mut state = auto.state().unwrap();
+        let id = plan["automation"].as_str().unwrap().to_string();
+        let mut record = state.plans[&id].clone();
+        let request = auto
+            .prepare_evaluation(&mut state, &mut record, 105)
+            .unwrap();
+        let files = auto.evaluation_files(&state, &record).unwrap();
+        state.plans.insert(id, record);
+        auto.save(&state).unwrap();
+        (request, files)
+    };
+    let evaluator = auto.evaluator.as_ref().unwrap();
+    let (response, returned) = evaluator
+        .run(&auto.coordinator, &request, &files, 105, &auto)
+        .unwrap();
+    let root = auto.store.root().to_path_buf();
+    let evaluator_root = t.path().join("evaluator3");
+    drop(auto);
+    let auto = Automation::open(
+        root,
+        secret(5),
+        coordination_host::book::Coordinator::open(t.path().join("coor"), secret(1)).unwrap(),
+    )
+    .unwrap()
+    .mount_evaluator(crate::evaluator::Evaluator::open(evaluator_root, secret(3)).unwrap())
+    .unwrap();
+    let (retry, retried) = auto
+        .evaluator
+        .as_ref()
+        .unwrap()
+        .run(&auto.coordinator, &request, &files, 106, &auto)
+        .unwrap();
+    assert_eq!(retry, response);
+    assert_eq!(retried, returned);
+    let result = auto.evaluate(&reference, 106).unwrap();
+    assert_eq!(auto.evaluate(&reference, 107).unwrap(), result);
+    assert_eq!(
+        auto.coordinator.scope(&plan["coordinator"]).unwrap()["calls"],
+        4
+    );
+    let state = auto.state().unwrap();
+    let record = &state.plans[plan["automation"].as_str().unwrap()];
+    let mut contradictory = auto.store.json(&result).unwrap();
+    contradictory["decision"] = json!("complete");
+    assert!(
+        !auto
+            .check_evaluation_policy(
+                record,
+                &contradictory,
+                &auto.coordinator.scope(&plan["coordinator"]).unwrap()
+            )
+            .unwrap()
     );
 }

@@ -1,6 +1,6 @@
 # Finite automation
 
-`automation-host` implements the initial once/UTC interval and native source-watch runtime for
+`automation-host` implements the finite schedule, native source-watch, and checked continuation runtime for
 [NIP-AUTO](../../nips/openagents/NIP-AUTO.md). `standing-jobs` supplies shared
 scheduling and budget primitives; `coordination-host` owns actual task admission,
 worker intake, original worker results, independent checks, and ancestor budgets.
@@ -67,6 +67,29 @@ Occurrence `settled` references the authenticated worker terminal record;
 conservative accounting receipts stay in `usage`.
 Queued pause/cancel blocks source intake before its read is charged.
 
-Continuation, broader occurrence cleanup recovery, and
-session/environment/effect adapters remain in #11735. Unsupported bindings refuse
-before activation. The released Coder commands remain unchanged.
+For checked continuation, admit a native completion rule into the protected
+frame alongside the exact-output acceptance rule before reserving the parent.
+The closed rule has `v: openagents.automation-native-completion-rule.v1`,
+`requires: []`, `check: verified-occurrence-count`, `minimum_successes` (1–16),
+and the exact output `acceptance` reference. `evaluator-init` stores its separate
+checker policy (`controller`, `coordinator`, `scope`, `producer`, `rule`, `until`);
+`evaluator-binding` exports the pins. Set the AUTO policy's optional `evaluator`
+to that bundle and mount it with `--evaluation-state` and `--checker-key-file`.
+Keep one CJ identity book per evaluator key.
+
+A continuation plan requires that exact `completion` binding, one checker call,
+at most 30 seconds, and 1 MiB input/output bounds. Each occurrence reserves at
+least four calls, or five with source revalidation. After `check`, `evaluate`
+executes the independent pinned checker through CJ. It reads authenticated
+current coordinator facts, counts independently checked occurrences, and
+requires every managed child to have settled. Only a policy-valid `continue`
+permits another occurrence after the minimum interval. Model text cannot
+satisfy the rule. Exact saved replies survive restart without a second call.
+Exhausted budgets or occurrence limits stop scheduling without claiming the
+objective succeeded.
+
+Broader occurrence cleanup recovery remains in #11735. This native profile
+supports fixed data execution and read-only Git observations. It refuses
+session/environment/effect bindings before activation; those adapters must
+await their own terminal work and cleanup. The released Coder commands remain
+unchanged.

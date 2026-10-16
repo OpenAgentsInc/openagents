@@ -4,7 +4,10 @@ pub mod host;
 
 pub mod cli;
 mod controls;
+pub mod evaluator;
 mod execution;
+mod goal_plans;
+mod goals;
 mod plans;
 mod polls;
 mod records;

@@ -9,7 +9,7 @@ use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
 };
-pub const USAGE: &str = "usage: automation-host ACTION --state DIR --key-file FILE --coordinator-state DIR --coordinator-key-file FILE [--input FILE] [--json]\nActions: init, policy, put, inspect, admit, tick, advance, run, result, check, control, sign, transport, invoke, serve, recover, source-init, source-binding.\nWorker actions need --worker-state and --worker-key-file. Checking needs --checker-key-file. Source watches also need --sources, --source-state, and --source-key-file. Source-init and source-binding need only their own state/key and input policy.";
+pub const USAGE: &str = "usage: automation-host ACTION --state DIR --key-file FILE --coordinator-state DIR --coordinator-key-file FILE [--input FILE] [--json]\nActions: init, policy, put, inspect, admit, tick, advance, run, result, check, control, sign, transport, invoke, serve, recover, source-init, source-binding, evaluator-init, evaluator-binding, evaluate.\nWorker actions need --worker-state and --worker-key-file. Checking needs --checker-key-file. Source watches also need --sources, --source-state, and --source-key-file. Source/evaluator initialization and binding commands use their own state/key. Continuation evaluation also needs --evaluation-state and --checker-key-file.";
 fn key(path: &Path) -> Result<secp256k1::SecretKey> {
     let meta = std::fs::metadata(path).map_err(|e| e.to_string())?;
     if !meta.is_file() || meta.len() > 256 {
@@ -64,6 +64,21 @@ pub fn run(args: Vec<String>) -> Result<Value> {
     };
     let secret = key(Path::new(&option("--key-file")?))?;
     let root = PathBuf::from(option("--state")?);
+    if args[0] == "evaluator-init" {
+        let policy = serde_json::from_value(read(Path::new(&option("--input")?))?)
+            .map_err(|_| "evaluation policy")?;
+        let evaluator = crate::evaluator::Evaluator::initialize(root, secret, policy)?;
+        return Ok(json!({"created":true,"binding":evaluator.binding()?}));
+    }
+    if args[0] == "evaluator-binding" {
+        let evaluator = crate::evaluator::Evaluator::open(root, secret)?;
+        let artifacts = evaluator
+            .binding_files()?
+            .into_iter()
+            .map(|(d, b)| Ok((d, contracts::parse_strict(&b).map_err(|e| e.to_string())?)))
+            .collect::<Result<BTreeMap<_, _>>>()?;
+        return Ok(json!({"binding":evaluator.binding()?,"artifacts":artifacts}));
+    }
     if args[0] == "source-init" {
         let policy = serde_json::from_value(read(Path::new(&option("--input")?))?)
             .map_err(|_| "source policy")?;
@@ -131,6 +146,12 @@ pub fn run(args: Vec<String>) -> Result<Value> {
             key(Path::new(&option("--source-key-file")?))?,
         )?)?;
     }
+    if args.iter().any(|a| a == "--evaluation-state") {
+        host = host.mount_evaluator(crate::evaluator::Evaluator::open(
+            PathBuf::from(option("--evaluation-state")?),
+            key(Path::new(&option("--checker-key-file")?))?,
+        )?)?;
+    }
     let reference = &input["plan"];
     match args[0].as_str() {
         "put" => host.put_local_json(&input),
@@ -196,6 +217,7 @@ pub fn run(args: Vec<String>) -> Result<Value> {
                 .collect::<Result<BTreeMap<_, _>>>()?;
             Ok(json!({"event":event,"artifacts":artifacts}))
         }
+        "evaluate" => host.evaluate(reference, now),
         "check" => host.check(
             reference,
             &coordination_host::checks::Checker::new(key(Path::new(&option(

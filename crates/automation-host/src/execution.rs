@@ -151,6 +151,18 @@ impl Automation {
                 ),
                 _ => return Err("occurrence phase".into()),
             };
+            if matches!(phase, "propose" | "claim") {
+                let bytes = self.coordinator.get_local_bytes(&value)?;
+                self.store
+                    .put(&bytes, "application/json", value["schema"].as_str())?;
+                if phase == "claim" {
+                    let claim = contracts::parse_strict(&bytes).map_err(|e| e.to_string())?;
+                    let reservation = &claim["reservation"];
+                    let bytes = self.coordinator.get_local_bytes(reservation)?;
+                    self.store
+                        .put(&bytes, "application/json", reservation["schema"].as_str())?;
+                }
+            }
             let item = record
                 .occurrences
                 .get_mut(&active)
@@ -273,6 +285,7 @@ impl Automation {
             let check_body =
                 contracts::parse_strict(&self.coordinator.get_local_bytes(&check_ref)?)
                     .map_err(|e| e.to_string())?;
+            self.store.put_json(&check_body)?;
             if check_body["passed"] != true {
                 return Err("unknown: independent occurrence check did not pass".into());
             }
@@ -324,13 +337,21 @@ impl Automation {
             active.clone(),
             json!({"reference":outcome_ref,"ordinal":occurrence["body"]["ordinal"]}),
         );
-        record.occurrences.get_mut(&active).ok_or("occurrence")?["phase"] = json!("settled");
-        record.active = None;
-        let status = if record.body["trigger"]["kind"] == "once" {
-            "complete"
-        } else {
-            "active"
-        };
+        record.occurrences.get_mut(&active).ok_or("occurrence")?["phase"] =
+            json!(if record.body["completion"].is_null() {
+                "settled"
+            } else {
+                "evaluate"
+            });
+        if record.body["completion"].is_null() {
+            record.active = None;
+        }
+        let status =
+            if record.body["trigger"]["kind"] == "once" && record.body["completion"].is_null() {
+                "complete"
+            } else {
+                "active"
+            };
         self.transition(
             &mut state,
             &mut record,

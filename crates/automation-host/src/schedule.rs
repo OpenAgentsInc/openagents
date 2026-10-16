@@ -74,6 +74,10 @@ impl Automation {
             drop(_guard);
             return self.tick_source(reference, now);
         }
+        if record.body["trigger"]["kind"] == "continuation" {
+            drop(_guard);
+            return self.tick_continuation(reference, now);
+        }
         let status = record.state["status"]
             .as_str()
             .ok_or("plan status")?

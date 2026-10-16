@@ -8,6 +8,7 @@ pub use operations::Limits as NativeLimits;
 pub type Result<T> = std::result::Result<T, String>;
 mod admin;
 mod automation;
+mod automation_evaluation;
 mod automation_source;
 mod auxiliary;
 mod background;

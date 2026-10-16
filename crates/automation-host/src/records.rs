@@ -70,7 +70,7 @@ impl Automation {
             let body = json!({"v":nostr::run::RECORD_SCHEMA,"requires":[],"digest":nostr::run::logical_digest(&root).map_err(|e|e.to_string())?,"record":root});
             record.journal.push(body);
         }
-        let entry = json!({"run":plan["run"],"seq":record.journal.len(),"previous":record.journal.last().ok_or("RUN root")?["digest"],"controller":self.authority(),"generation":0,"type":"observed","subject":{"step":null,"iteration":null,"attempt":null},"time":now,"data":{"evidence":evidence,"sources":[],"complete":!record.accounting.unresolved(),"provenance":{"operation":"automation-transition","status":status,"occurrences":record.occurrences.len(),"observations":record.polls.len(),"next_slot":record.next_slot}}});
+        let entry = json!({"run":plan["run"],"seq":record.journal.len(),"previous":record.journal.last().ok_or("RUN root")?["digest"],"controller":self.authority(),"generation":0,"type":"observed","subject":{"step":null,"iteration":null,"attempt":null},"time":now,"data":{"evidence":evidence,"sources":[],"complete":!record.accounting.unresolved()&&record.active.is_none()&&record.pending.is_none(),"provenance":{"operation":"automation-transition","status":status,"occurrences":record.occurrences.len(),"observations":record.polls.len(),"next_slot":record.next_slot}}});
         let body = json!({"v":nostr::run::RECORD_SCHEMA,"requires":[],"digest":nostr::run::logical_digest(&entry).map_err(|e|e.to_string())?,"record":entry});
         let mut journal = nostr::run::Journal::default();
         for b in record.journal.iter().chain(std::iter::once(&body)) {
