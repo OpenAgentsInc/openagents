@@ -1,6 +1,7 @@
 //! Verify the chosen Google-backed TDX route and its exact tree output.
 //! The pure verifier accepts public evidence. `channel` adds pinned TLS.
 pub mod channel;
+pub mod nostr_mirror;
 use bitcoin::{TxOut, key::XOnlyPublicKey, secp256k1::Secp256k1};
 use layertree_tee_lab::{
     attest::report_data,

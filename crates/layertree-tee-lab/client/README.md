@@ -33,3 +33,16 @@ Current integration tests use real Google and Rekor evidence with a
 synthetic output. Public-signet output qualification and a live,
 challenge-bound TLS capture remain part of #11792/#11789. These tests do
 not claim that either live qualification has already happened.
+
+Public record files use the closed, unmerged [inline-file proposal
+#345](https://github.com/nostr-protocol/nips/pull/345) at commit
+`9ce5ab56710ee1686b8c7a6c793e7d402326229a`: base64 file event `1064` and
+header `1065`, fetched by exact event ID. This is a research transport;
+we do not claim official NIP-95 or relay feature support. Files contain only
+`openagents.layertree.mirror.v1`, the tree ID, and the public record/unroll
+bytes. Headers bind the file ID, MIME type, byte count, and SHA-256, with
+`t=layertree:<tree-id>` and `r=<on-chain record hash>` for discovery.
+Clients verify both event signatures, expected author/tree/hash, and the
+file hash and bounds before passing bytes to the chain-anchored follower.
+Publication requires acknowledgement and retrieval on a new connection.
+It uses a separate research Nostr key and publishes no wallet credentials.
