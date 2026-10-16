@@ -6,20 +6,15 @@ fn fixture() -> Value {
     serde_json::from_str(include_str!("fixtures/layertree-tdx-probe.json")).unwrap()
 }
 
-#[test]
-fn the_signet_probe_token_binds_its_image_and_test_key_hash() {
-    let probe = fixture();
+fn verify_probe(probe: Value, digest: &str, now: u64) {
     let claims = oa_att::token::verify(
         probe["token"].as_str().unwrap(),
         "openagents.layertree.route.v1",
-        1_792_135_600,
+        now,
     )
     .unwrap();
     assert_eq!(claims.hwmodel, "GCP_INTEL_TDX");
-    assert_eq!(
-        claims.image_digest,
-        "sha256:92c8b535757b1fa43f2ab85882d0fe58c42dbe29562c3cfcbb5b6953130448c6"
-    );
+    assert_eq!(claims.image_digest, digest);
     assert_eq!(claims.nonces, [probe["nonce"].as_str().unwrap()]);
     assert_eq!(claims.dbgstat, "disabled-since-boot");
     assert_eq!(
@@ -70,4 +65,22 @@ fn another_audience_and_a_modified_token_are_refused() {
         .is_err()
     );
     assert!(oa_att::token::verify(token, "openagents.layertree.route.v1", u64::MAX / 2).is_err());
+}
+
+#[test]
+fn the_signet_probe_token_binds_its_image_and_test_key_hash() {
+    verify_probe(
+        fixture(),
+        "sha256:92c8b535757b1fa43f2ab85882d0fe58c42dbe29562c3cfcbb5b6953130448c6",
+        1_792_135_600,
+    );
+}
+
+#[test]
+fn the_reproduced_image_reports_its_logged_digest() {
+    verify_probe(
+        serde_json::from_str(include_str!("fixtures/layertree-reproduced-tdx-probe.json")).unwrap(),
+        "sha256:97ebee658897e3e655c18e01c043b6ab9394ff63ab06b056aea6a6db0127671f",
+        1_792_136_800,
+    );
 }

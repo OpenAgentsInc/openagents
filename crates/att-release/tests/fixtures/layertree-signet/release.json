@@ -1,0 +1,22 @@
+{
+  "id": "37672c0b2be003bede3ef4db26f81c035c172392e819e1e20024dd505d307487",
+  "pubkey": "fc4d6cd08891e19627bca90ae667097d261b8290e54ada0bb7e959f06a390f8d",
+  "created_at": 1792136724,
+  "kind": 3202,
+  "tags": [
+    [
+      "t",
+      "oa:att-release:v1"
+    ],
+    [
+      "x",
+      "d635202795fe9035c3ccdb1328cace1490976c1069c30ab3b469d6e8f8e9845c"
+    ],
+    [
+      "w",
+      "layertree-signet-probe"
+    ]
+  ],
+  "content": "{\"changes\":\"We reproduced the signet attestation probe on two machines. This image signs no Bitcoin transaction.\",\"components\":[],\"gpu\":null,\"image\":{\"digest\":\"sha256:97ebee658897e3e655c18e01c043b6ab9394ff63ab06b056aea6a6db0127671f\",\"reference\":\"us-central1-docker.pkg.dev/openagentsgemini/layertree-research/attestation-probe\"},\"measurements\":[],\"models\":[],\"platforms\":[{\"hwmodel\":\"GCP_INTEL_TDX\",\"kind\":\"gcp-confidential-space\",\"support\":\"STABLE\"}],\"published_at\":1792136707,\"publisher\":\"fc4d6cd08891e19627bca90ae667097d261b8290e54ada0bb7e959f06a390f8d\",\"rebuilds\":[{\"builder\":\"ad8c8c7c0acdea0dc0c3635aa9860f16d3bd32c08e7fe89326e0284637812793\",\"digest\":\"sha256:97ebee658897e3e655c18e01c043b6ab9394ff63ab06b056aea6a6db0127671f\"},{\"builder\":\"4436af1610434a52d7daad6fc61a4ea1be117d9c02f36c75ae88571073069e82\",\"digest\":\"sha256:97ebee658897e3e655c18e01c043b6ab9394ff63ab06b056aea6a6db0127671f\"}],\"requires\":[],\"source\":{\"commit\":\"2bc0a8f11e79da4aaf3b70e19f43152a9b429108\",\"recipe\":\"deploy/layertree/reproducible-probe.Dockerfile\",\"recipe_digest\":\"sha256:68a4dc26903f2a84d0e945fd23241e0c105f9a3f40082ee78d96b56a67b483b6\",\"repo\":\"https://github.com/OpenAgentsInc/openagents\"},\"transparency\":[{\"index\":3275843513,\"log\":\"rekor\",\"url\":\"https://rekor.sigstore.dev\"}],\"v\":\"openagents.att-release.v1\",\"workload\":\"layertree-signet-probe\"}",
+  "sig": "412fb8e357d9d1abfee13234ce1a1db61d39d670db1886bacbaafe00dd18e405a328e4caa22e926ba6c678de86539ce3f8e43f6df7764b69c50f4e04e58e3966"
+}

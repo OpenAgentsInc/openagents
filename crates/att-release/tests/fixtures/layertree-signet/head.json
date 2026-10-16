@@ -1,0 +1,26 @@
+{
+  "id": "c8557a67939cf220806a009ca893d875dbaacc3426138e8ec889b9d8f6dfcbf3",
+  "pubkey": "fc4d6cd08891e19627bca90ae667097d261b8290e54ada0bb7e959f06a390f8d",
+  "created_at": 1792136724,
+  "kind": 30202,
+  "tags": [
+    [
+      "d",
+      "layertree-signet-probe"
+    ],
+    [
+      "t",
+      "oa:att-head:v1"
+    ],
+    [
+      "x",
+      "289e97ec257eb4cc777cd9e2924e4bd3a48c52217f472434a88e46be93ffc5c6"
+    ],
+    [
+      "e",
+      "37672c0b2be003bede3ef4db26f81c035c172392e819e1e20024dd505d307487"
+    ]
+  ],
+  "content": "{\"admitted\":[{\"effective_at\":1792137324,\"release\":\"37672c0b2be003bede3ef4db26f81c035c172392e819e1e20024dd505d307487\",\"retire_at\":null}],\"emergency\":null,\"generation\":1792136724,\"notice_seconds\":600,\"requires\":[],\"v\":\"openagents.att-head.v1\",\"workload\":\"layertree-signet-probe\"}",
+  "sig": "6a774756077ef94171cf236d84aae97f9d705989514e036b7e87d75e1c861ceaf438061d03cf7cecff7ea37a5c79504592ee462d56e9fd7906c431e3d8272520"
+}

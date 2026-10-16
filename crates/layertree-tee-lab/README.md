@@ -12,7 +12,7 @@ pre-signed, timelocked unroll that needs no enclave. The spec is
   `lightninglabs/layertree` commit `f6c4d29`, because the repository has no
   licence. One opt-in test reads upstream's published vectors from a local
   reference clone at test time.
-- **No network, no real keys, no money.** The only sockets are the opt-in regtest harness and `follow::HttpMirror`, which connects only where a test points it.
+- **Signet and regtest research only.** The model and tests use test keys. Opt-in chain and mirror clients connect where the harness points them. The attestation probe generates a key inside Confidential Space and exposes only its public key and token; it signs no Bitcoin transaction.
 
 ```sh
 cargo test --manifest-path crates/layertree-tee-lab/Cargo.toml
@@ -217,3 +217,89 @@ One example per kind (keys and hashes shortened):
 `light_client.result` is `ok` or a `LightError` (`OutputMismatch`,
 `RecordNotAnchored`, …); `attestation.result` is `attested` or an
 `AttestError`; `rejected.reject` names the `Reject` variant.
+
+## Reproduced signet image
+
+The attestation probe has a source build with pinned Rust, Debian, and
+BuildKit images. It runs no package-manager install during the build.
+The script uses a persistent BuildKit cache, fixed paths, a committed
+source tree, and that commit's timestamp. Buildx 0.31.1 was tested against
+Docker 29 locally and Docker 20 on the GCP builder.
+
+```sh
+ref=2bc0a8f11e79da4aaf3b70e19f43152a9b429108
+out="$(openagents scratch)/layertree-rebuild"
+scripts/layertree/build-image.sh "$ref" "$out"
+cat "$out/build.json"
+sha256sum "$out/image.oci.tar"
+```
+
+Run this on two separate machines with separate caches. The October 16
+local and GCP builds both produced image
+`sha256:97ebee658897e3e655c18e01c043b6ab9394ff63ab06b056aea6a6db0127671f`
+and byte-identical OCI archives, SHA-256
+`bee4ba8b56274b8798efea44b13bbe03b56b19aceef26ca99cc5308e8a2ea62a`.
+Both machines were operated by the same researcher; this is not an
+independent operator audit.
+
+[Public release evidence](../../docs/research/layertree/evidence/reproduced-image-2026-10-16.tar.gz)
+contains the NIP-ATT release and head, two separately signed machine
+rebuild statements, Rekor entry **3275843513** with its signed checkpoint
+and inclusion proof, and the real TDX token naming the image. The
+research publisher is
+`fc4d6cd08891e19627bca90ae667097d261b8290e54ada0bb7e959f06a390f8d`;
+it admits only workload `layertree-signet-probe`. It is separate from the
+production attestation publisher. The signed release's source commit and
+recipe hash identify exactly what to rebuild.
+
+From the checkout root, extract the archive into your scratch directory
+and verify it without contacting a relay or log:
+
+```sh
+repo=$PWD
+evidence="$(openagents scratch)/layertree-release-evidence"
+mkdir -p "$evidence"
+tar -xzf docs/research/layertree/evidence/reproduced-image-2026-10-16.tar.gz -C "$evidence"
+cargo run --locked -p att-release -- verify \
+  --release "$evidence/release.json" --head "$evidence/head.json" \
+  --publisher fc4d6cd08891e19627bca90ae667097d261b8290e54ada0bb7e959f06a390f8d \
+  --workload layertree-signet-probe --now 1792137325 \
+  --rekor "$evidence/rekor-entry.json" \
+  --log-key "$repo/crates/att-release/vectors/rekor.sigstore.dev.pub" \
+  --witness "$evidence/witness.json" \
+  --rebuild "$evidence/local-rebuild.json" --rebuild "$evidence/gcp-rebuild.json" --min-rebuilds 2
+cargo test -p att-release --test layertree_signet
+cargo test -p oa-att --test layertree_probe
+```
+
+The fixed time tests the recorded release policy after its 600-second
+notice; the token fixtures use their own recorded validity windows. They
+do not bypass freshness checks for a running service.
+
+To publish another research image, set `LAYERTREE_IMAGE_TAG` to a tag in
+the `layertree-research/attestation-probe` registry before running the build
+script. `att-release`'s `layertree_release` example prepares the release's
+canonical body and checks its real Rekor proof before signing the release
+and head. Its arguments accept private key *files*, never secret values;
+keep those files outside the repository. The existing `att-release rebuild`
+command signs each builder's matching result. Publication to Rekor is a
+separate explicit step using the prepared public body and a detached
+signature. The checked-in example neither publishes nor activates a
+payment service.
+
+The bounded hardware check uses the resulting immutable digest:
+
+```sh
+export LAYERTREE_ISSUE=11791
+export LAYERTREE_PROBE_IMAGE=us-central1-docker.pkg.dev/openagentsgemini/layertree-research/attestation-probe@sha256:97ebee658897e3e655c18e01c043b6ab9394ff63ab06b056aea6a6db0127671f
+scripts/layertree/attestation-probe.sh create tdx-space
+scripts/layertree/collect-probe.py oa-layertree-tdx-space-probe "$out/probe"
+scripts/layertree/attestation-probe.sh delete tdx-space
+```
+
+Wait for the workload to finish before collecting. Verify the token's
+chain, audience, validity, image digest, and recomputed key/parameter hash;
+`collect-probe.py` only extracts the public evidence. The October 16 check
+passed and its VM was deleted. Key sealing and the real signing service
+remain #11790 and #11789. The [route decision](../../docs/research/layertree/2026-10-16-attestation-routes.md)
+states the Google trust boundary and the unqualified SNP alternative.

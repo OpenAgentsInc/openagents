@@ -3,6 +3,8 @@
 set -euo pipefail
 project=${LAYERTREE_PROJECT:-openagentsgemini}
 zone=${LAYERTREE_ZONE:-us-central1-a}
+issue=${LAYERTREE_ISSUE:-11787}
+[[ $issue =~ ^[0-9]+$ ]] || { echo 'Use a GitHub issue number.' >&2; exit 2; }
 action=${1:?use create or delete}
 route=${2:?use snp, tdx, snp-space, or tdx-space}
 case "$route" in
@@ -27,7 +29,7 @@ case "$action" in
       --machine-type "$machine" --confidential-compute-type "$technology" \
       --maintenance-policy TERMINATE --shielded-secure-boot \
       --boot-disk-size 20GB --boot-disk-type pd-balanced \
-      --labels issue=11787,purpose=attestation-spike \
+      --labels "issue=$issue,purpose=attestation-spike" \
       --max-run-duration 7200s --instance-termination-action DELETE \
       "${args[@]}" --quiet
     if [[ -n ${OA_RUN_ID:-} ]]; then
@@ -36,7 +38,7 @@ case "$action" in
     ;;
   delete)
     label=$(gcloud compute instances describe "$vm" --project "$project" --zone "$zone" --format='value(labels.issue)')
-    [[ $label == 11787 ]] || { echo 'The instance is not this issue’s probe.' >&2; exit 2; }
+    [[ $label == "$issue" ]] || { echo 'The instance is not this issue’s probe.' >&2; exit 2; }
     gcloud compute instances delete "$vm" --project "$project" --zone "$zone" --quiet
     ;;
   *) echo 'Use create or delete.' >&2; exit 2 ;;
