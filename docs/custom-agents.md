@@ -1,8 +1,41 @@
 # Custom agents through the OpenAgents SDK
 
-2026-10-16. Status: implementation in progress under
+2026-10-16. Implemented under
 [#11902](https://github.com/OpenAgentsInc/openagents/issues/11902).
-The plan covers the SDK extension and first mobile test.
+The account API is deployed. The iOS app supports creating, editing, selecting,
+and assigning custom agents through the Rust SDK. The original delivery plan
+below records the review and intended boundaries; the implementation contract
+is [SDK custom agents](sdk/agents.md).
+
+## Delivered behavior and qualification
+
+Use **Create agent…** in the new-session agent picker. Save a name, instructions,
+runtime, model, and access settings, then choose a computer and project and send
+work. Your agents appear at the top of the picker. Assignments keep the saved
+revision, use the existing conversation and controls, and refuse unavailable
+runtimes instead of choosing another agent. Editing changes future assignments.
+Definitions created through the public Rust SDK appear in that same list.
+
+Supported runtimes are Claude Code, Codex, and an operator-installed Rust SDK
+runner. Register an SDK runner in the host's `sdk-runners.json` with an absolute
+executable path and SHA-256; a definition selects its name, never a command.
+The [runner guide](sdk/agents.md#run-an-independent-rust-agent) describes the contract.
+The app host must include this implementation; an older running desktop needs
+an update and restart. Android UI, public catalogs, remote code installation,
+schedules, and cloud allocation are outside this delivery.
+
+A narrow [NIP-AGENT profile](../nips/openagents/NIP-AGENT.md) is now specified and
+has producer/consumer fixtures for private portable exports. It allocates no new
+event kind. The mobile account flow uses the deployed HTTP SDK and existing
+session transport; it does not publish definitions to Nostr automatically.
+
+[Qualification evidence](sdk/agents-evidence.json) records targeted tests,
+staging and production checks, a dedicated-account simulator flow, and a real
+Codex/independent-runner scenario. That scenario verifies follow-ups, stop and
+child cleanup, pinned revisions, and recovery when an offline host restarts.
+Fixtures remove their chats, definitions, assignments, and test computers.
+A live Claude assignment and physical iPhone check remain in
+[NEEDS_OWNER.md](../NEEDS_OWNER.md); native Claude instruction binding is tested.
 
 People should be able to define an agent through the Rust SDK, see it beside
 Claude Code and Codex in the OpenAgents mobile app, and assign work to it through
@@ -23,9 +56,9 @@ and [route inventory](sdk/public-routes.md) establish three separate boundaries:
 account clients, execution hosts, and computer providers. Custom agents need
 the first two; creating an agent must not allocate a computer.
 
-The [Rust client](../crates/openagents-sdk/README.md) already supplies sign-in,
+At review time, the [Rust client](../crates/openagents-sdk/README.md) supplied sign-in,
 account access, saved history, and Computers. A custom-agent catalog, assignment
-contract, and third-party runner interface still need implementation. The
+contract, and third-party runner interface were missing; they are now implemented. The
 [managed-agent API](api/managed-agents.md) is a broader proposal, not live routes.
 
 The mobile app already has useful integration points:
@@ -55,8 +88,8 @@ repeatable isolated-host and simulator fixture to extend.
 | [#11867](https://github.com/OpenAgentsInc/openagents/issues/11867), [#11893](https://github.com/OpenAgentsInc/openagents/issues/11893) | Thread/reply qualification and server-run web chat continuation. Reuse contracts where applicable; saved-history reads cannot start custom-agent work. |
 | [#11896](https://github.com/OpenAgentsInc/openagents/issues/11896), [#11898](https://github.com/OpenAgentsInc/openagents/issues/11898) | One conversation list and one home per chat. Changing where an agent runs creates a linked continuation when the home changes. |
 
-Issue states above describe the review date. This planning pass does not claim,
-close, or expand these implementation issues.
+Issue states above describe the review date. The linked earlier issues provide
+context; delivery is tracked in #11902–#11909.
 
 ## Definition, runtime, and assignment
 
@@ -109,7 +142,7 @@ outside-checkout Rust example that creates an agent and assigns work without
 calling private app RPC or server APIs.
 
 Provisional HTTP families are `/v1/agent-definitions` and
-`/v1/agent-assignments`. These names are proposals pending the route audit.
+`/v1/agent-assignments`. These audited route families are now implemented.
 Do not overload `/v1/agents`, which already serves activity and agent-account
 registration, or `/v1/sessions`, which has a separate voice-service route.
 Resolve the older managed-agent proposal's route collisions before implementation.
@@ -222,7 +255,8 @@ removal, import compatibility, and deletion/revocation effects on pending work.
 Keep owner account IDs, definition IDs, host keys, and any future agent signing
 keys distinct. A saved definition does not need its own Nostr key.
 
-Treat `NIP-AGENT` as a working name, not an allocated or implemented standard.
+The resulting `NIP-AGENT` is an OpenAgents draft composition profile, not an
+official Nostr standard.
 Before adding the normative file, check the mapping with two consumers: the
 configured harness agent and the custom Rust runner. If existing AP/CAP/SESS
 fields express the full mapping, keep it as an application profile in SESS/CAP

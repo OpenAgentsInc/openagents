@@ -1518,3 +1518,31 @@ mod mcp_injection_tests {
         );
     }
 }
+
+#[cfg(test)]
+mod custom_agent_tests {
+    use super::*;
+    #[test]
+    fn admitted_custom_instructions_append_without_replacing_the_native_prompt() {
+        let mut request: RunRequest = serde_json::from_value(serde_json::json!({
+            "prompt":"Review this change", "cwd":"/workspace", "model":null,
+            "reasoning":null, "resume":null, "sandbox":"danger-full-access",
+            "modelOptions":{"openagentsInstructions":"Find correctness defects"}
+        }))
+        .unwrap();
+        assert!(
+            !ClaudeHarness::launch_args(&request)
+                .iter()
+                .any(|a| a == "--append-system-prompt")
+        );
+        request
+            .model_options
+            .insert("openagentsAssignment".into(), "a".repeat(64).into());
+        let args = ClaudeHarness::launch_args(&request);
+        assert!(
+            args.windows(2)
+                .any(|a| a[0] == "--append-system-prompt" && a[1] == "Find correctness defects")
+        );
+        assert!(!args.iter().any(|a| a == "--system-prompt"));
+    }
+}

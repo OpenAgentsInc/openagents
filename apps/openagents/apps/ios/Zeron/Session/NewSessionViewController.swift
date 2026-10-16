@@ -266,19 +266,20 @@ final class NewSessionViewController: UIViewController, UIGestureRecognizerDeleg
         // Never the harness name in place of a model: a model this host
         // hasn't listed still gets its catalog label.
         let modelTitle = model?.label ?? draft.model.map { modelLabel(harness: draft.harness, model: $0) } ?? fallbackModels(harness: draft.harness).first?.label ?? HarnessNames.label(draft.harness)
-        chips.append(ComposerChip(id: "model", title: app.customAgents?.snapshot().selected?.name ?? modelTitle, symbol: nil, icon: BrandMarks.image(for: draft.harness, side: 13)))
+        let custom = app.customAgents?.snapshot().selected
+        chips.insert(ComposerChip(id: "model", title: custom?.name ?? (app.customAgents?.selectionActive() == true ? "Choose agent" : modelTitle), symbol: custom == nil ? nil : "person.crop.circle", icon: custom == nil ? BrandMarks.image(for: draft.harness, side: 13) : nil), at: 0)
         if app.customAgents?.snapshot().selected == nil, let efforts = model?.efforts, !efforts.isEmpty {
             chips.append(ComposerChip(id: "effort", title: (draft.effort ?? efforts[efforts.count / 2]).capitalized, symbol: "gauge.with.dots.needle.67percent"))
         }
         composer.chips = chips
-        composer.chipMenus = [
+        if composer.chipMenus.isEmpty { composer.chipMenus = [
             "project": { [weak self] in self?.projectMenu() },
             "host": { [weak self] in self?.hostMenu() },
             "branch": { [weak self] in self?.branchMenu() },
             "model": { [weak self] in self?.modelMenu() },
             "effort": { [weak self] in self?.effortMenu() },
-        ]
-        mark.image = BrandMarks.image(for: draft.harness, side: 34)
+        ] }
+        mark.image = app.customAgents?.snapshot().selected != nil ? UIImage(systemName: "person.crop.circle") : BrandMarks.image(for: draft.harness, side: 34)
     }
 
     /// One entry per project — checkouts of one repository, on any device,
@@ -398,17 +399,18 @@ final class NewSessionViewController: UIViewController, UIGestureRecognizerDeleg
         }
         if let agents = app.customAgents {
             let snapshot = agents.snapshot()
-            sections.append(UIMenu(title: "Your agents", options: .displayInline, children: snapshot.rows.map { agent in
+            let personal = UIMenu(title: "Your agents", options: .displayInline, children: snapshot.rows.map { agent in
                 UIAction(title: agent.name, subtitle: agent.runtime == "sdk" ? "SDK runner" : HarnessNames.label(agent.runtime), state: snapshot.selected?.id == agent.id ? .on : .off) { [weak self] _ in
                     do { try agents.select(id: agent.id); self?.refreshChips() }
                     catch { self?.showAgentError(error.localizedDescription) }
                 }
-            }))
+            })
             var actions: [UIMenuElement] = [UIAction(title: "Create agent…", image: UIImage(systemName: "plus")) { [weak self] _ in self?.openAgentForm(id: nil) }]
             if let selected = snapshot.selected {
                 actions.append(UIAction(title: "Edit agent…", image: UIImage(systemName: "pencil")) { [weak self] _ in self?.openAgentForm(id: selected.id) })
             }
-            sections.append(UIMenu(options: .displayInline, children: actions))
+            sections.insert(personal, at: 0)
+            sections.insert(UIMenu(options: .displayInline, children: actions), at: 0)
         }
         return UIMenu(title: "Agents and models", children: sections)
     }
@@ -430,6 +432,7 @@ final class NewSessionViewController: UIViewController, UIGestureRecognizerDeleg
 
     private func agentsChanged() {
         refreshChips()
+        if let snapshot = app.customAgents?.snapshot() { composer.isUserInteractionEnabled = !snapshot.assigning }
         guard waitingForAgent, let snapshot = app.customAgents?.snapshot() else { return }
         if let chat = snapshot.assignmentChat, !created {
             created = true
@@ -457,7 +460,8 @@ final class NewSessionViewController: UIViewController, UIGestureRecognizerDeleg
     /// False when the session couldn't be created (the prompt stays put).
     private func create(text: String, images: [StagedImage]) -> Bool {
         app.lastDraft = draft
-        if let agents = app.customAgents, agents.snapshot().selected != nil {
+        if let agents = app.customAgents, agents.selectionActive() {
+            guard agents.snapshot().selected != nil else { showAgentError("Choose an available agent."); return false }
             guard !waitingForAgent, let core = app.client else { return false }
             guard images.isEmpty else { showAgentError("Send the text first, then add images in the conversation."); return false }
             do {

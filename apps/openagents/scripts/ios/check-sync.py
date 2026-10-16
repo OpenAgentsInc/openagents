@@ -22,6 +22,8 @@ def main():
     parser.add_argument("--deployment", choices=["both", "staging", "production"], default="both")
     parser.add_argument("--skip-build", action="store_true", help="Reuse the fixture binaries just built from this checkout")
     parser.add_argument("--custom-agents", type=Path, help="Run the custom-agent UI check with this installed fixture runner")
+    parser.add_argument("--simulator", default=SIMULATOR, help="Isolated simulator for this check")
+    parser.add_argument("--derived-data", type=Path, help="Isolated Xcode build directory")
     args = parser.parse_args()
     target = args.target_dir.expanduser().resolve()
     if target.is_relative_to(ROOT) or target.name in ("coder-desktop-target-agent0", "coder-desktop-target-agent3"):
@@ -61,8 +63,8 @@ def main():
             config = json.loads(run.joinpath("config.json").read_text())
             test_env = dict(env, TEST_RUNNER_CODER_MOBILE_SYNC_CONFIG=json.dumps(config), ZERON_SKIP_CORE="1")
             command = ["xcodebuild", "-project", "apps/ios/Zeron.xcodeproj", "-scheme", "Zeron",
-                "-configuration", "Debug", "-destination", "platform=iOS Simulator,id=" + SIMULATOR,
-                "-derivedDataPath", str(target / "ios-derived"), "CODE_SIGNING_ALLOWED=YES", "CODE_SIGN_IDENTITY=-",
+                "-configuration", "Debug", "-parallel-testing-enabled", "NO", "-destination", "platform=iOS Simulator,id=" + args.simulator,
+                "-derivedDataPath", str(args.derived_data or target / "ios-derived"), "CODE_SIGNING_ALLOWED=YES", "CODE_SIGN_IDENTITY=-",
                 "SWIFT_ACTIVE_COMPILATION_CONDITIONS=DEBUG CODER_ACCOUNT_FIXTURE",
                 "-resultBundlePath", str(scratch / (run.name + ".xcresult")),
                 "-only-testing:ZeronUITests/" + ("OpenAgentsCustomAgentTests" if args.custom_agents else "OpenAgentsLiveSyncTests"), "test"]
@@ -70,7 +72,13 @@ def main():
                 result = subprocess.run(command, cwd=ROOT, env=test_env, stdout=log, stderr=subprocess.STDOUT)
             if result.returncode:
                 raise RuntimeError("Native " + name + " check failed; inspect its result bundle.")
-            container = subprocess.check_output(["xcrun", "simctl", "get_app_container", SIMULATOR,
+            devices = json.loads(subprocess.check_output(["xcrun", "simctl", "list", "devices", "--json"], text=True))
+            simulator = next(device for group in devices["devices"].values() for device in group if device["udid"] == args.simulator)
+            if simulator["state"] == "Shutdown":
+                # Xcode can shut down even a nonparallel test destination after success.
+                subprocess.run(["xcrun", "simctl", "boot", args.simulator], check=True)
+                subprocess.run(["xcrun", "simctl", "bootstatus", args.simulator, "-b"], check=True)
+            container = subprocess.check_output(["xcrun", "simctl", "get_app_container", args.simulator,
                 "com.openagents.app", "data"], text=True).strip()
             proof = Path(container) / "Documents/account-fixture-result.json"
             report = json.loads(proof.read_text())

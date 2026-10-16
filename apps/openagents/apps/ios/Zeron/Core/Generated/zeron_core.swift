@@ -1515,6 +1515,8 @@ public protocol CoreAgentsProtocol: AnyObject, Sendable {
     
     func select(id: String) throws 
     
+    func selectionActive()  -> Bool
+    
     func snapshot()  -> CustomAgentsSnapshot
     
 }
@@ -1646,6 +1648,15 @@ open func select(id: String)throws   {try rustCallWithError(FfiConverterTypeCore
         FfiConverterString.lower(id),uniffiCallStatus
     )
 }
+}
+    
+open func selectionActive() -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_zeron_mobile_fn_method_coreagents_selection_active(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
 }
     
 open func snapshot() -> CustomAgentsSnapshot  {
@@ -19882,6 +19893,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_zeron_mobile_checksum_method_coreagents_select() != 12769) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_zeron_mobile_checksum_method_coreagents_selection_active() != 21158) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_zeron_mobile_checksum_method_coreagents_snapshot() != 35024) {

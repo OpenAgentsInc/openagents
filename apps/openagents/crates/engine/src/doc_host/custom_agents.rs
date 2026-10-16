@@ -122,27 +122,7 @@ impl DocHost {
             harness,
             &request,
         )?;
-        let descriptor = host
-            .registry
-            .descriptors()
-            .into_iter()
-            .find(|d| d.id == harness)
-            .ok_or_else(|| error("This runtime is not available on this computer."))?;
-        if !descriptor.installed || !crate::registry::descriptor_enabled(&descriptor) {
-            return Err(error("Enable this runtime on this computer."));
-        }
-        if let Some(model) = &request.model {
-            let models = tokio::time::timeout(
-                std::time::Duration::from_secs(30),
-                host.registry.discover_models(harness),
-            )
-            .await
-            .map_err(|_| error("The model list could not be loaded."))?
-            .map_err(|_| error("The model list could not be loaded."))?;
-            if !models.iter().any(|m| &m.id == model) {
-                return Err(error("This model is not available on this computer."));
-            }
-        }
+        admit_runtime(&host.registry, harness, &a.definition.spec).await?;
         if request.worktree.is_some() {
             return Err(error(
                 "Choose the project's existing folder for this agent.",
@@ -403,6 +383,15 @@ impl DocHost {
                 return Err(error("This conversation belongs to another assignment."));
             }
         } else {
+            let binding = self
+                .inner
+                .custom_agents
+                .get()
+                .ok_or_else(|| error("Sign in on this computer."))?;
+            admit_runtime(&binding.registry, harness, &a.definition.spec).await?;
+            if !lease.is_current() {
+                return Ok(());
+            }
             workspace.create_chat(
                 &a.chat,
                 a.spec.project.as_deref(),
@@ -459,6 +448,48 @@ impl DocHost {
         }
         Ok(())
     }
+}
+async fn admit_runtime(
+    registry: &HarnessRegistry,
+    harness: HarnessId,
+    spec: &coder_account::openagents::agents::AgentSpec,
+) -> Result<(), EngineError> {
+    spec.validate().map_err(error)?;
+    if !matches!(
+        harness,
+        HarnessId::ClaudeCode | HarnessId::Codex | HarnessId::Sdk | HarnessId::Mock
+    ) {
+        return Err(error("Choose a supported runtime for this agent."));
+    }
+    if matches!(harness, HarnessId::ClaudeCode | HarnessId::Sdk)
+        && spec.access != Access::HostDefault
+    {
+        return Err(error(
+            "This runtime uses this computer's access settings. Choose that access option.",
+        ));
+    }
+    let descriptor = registry
+        .descriptors()
+        .into_iter()
+        .find(|d| d.id == harness)
+        .ok_or_else(|| error("Install this runtime on the selected computer."))?;
+    if !descriptor.installed || !crate::registry::descriptor_enabled(&descriptor) {
+        return Err(error("Enable this runtime on the selected computer."));
+    }
+    if let Some(model) = &spec.model {
+        let models = tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            registry.discover_models(harness),
+        )
+        .await
+        .map_err(|_| error("The model list could not be loaded."))??;
+        if !models.iter().any(|m| &m.id == model) {
+            return Err(error(
+                "This model is not available on the selected computer.",
+            ));
+        }
+    }
+    Ok(())
 }
 fn entry(
     command: &AssignmentCommand,
@@ -529,26 +560,48 @@ fn terminal_result(
             Some("The result could not be confirmed. Open the conversation to check it.".into()),
         );
     };
-    for event in events.iter().rev() {
-        if let AgentEvent::Done {
-            status,
-            result,
-            error,
-            ..
-        } = &event.event
-        {
-            let state = match status {
-                DoneStatus::Completed => AssignmentState::Completed,
-                DoneStatus::Interrupted => AssignmentState::Stopped,
-                DoneStatus::Errored => AssignmentState::Failed,
-            };
-            return (state, result.as_deref().or(error.as_deref()).map(bounded));
+    terminal_events(events.iter().map(|e| &e.event))
+}
+fn terminal_events<'a>(
+    events: impl Iterator<Item = &'a AgentEvent>,
+) -> (AssignmentState, Option<String>) {
+    let mut text = String::new();
+    let mut terminal = None;
+    for event in events {
+        match event {
+            AgentEvent::TextDelta { text: fragment } => {
+                let remaining = 4096 - text.len();
+                text.extend(fragment.chars().scan(0usize, |bytes, ch| {
+                    *bytes += ch.len_utf8();
+                    (*bytes <= remaining).then_some(ch)
+                }));
+            }
+            AgentEvent::Done {
+                status,
+                result,
+                error,
+                ..
+            } => {
+                let state = match status {
+                    DoneStatus::Completed => AssignmentState::Completed,
+                    DoneStatus::Interrupted => AssignmentState::Stopped,
+                    DoneStatus::Errored => AssignmentState::Failed,
+                };
+                let summary = result
+                    .as_deref()
+                    .or(error.as_deref())
+                    .map(bounded)
+                    .or_else(|| (!text.is_empty()).then(|| text.clone()));
+                terminal = Some((state, summary));
+                text.clear();
+            }
+            _ => {}
         }
     }
-    (
+    terminal.unwrap_or((
         AssignmentState::Unknown,
         Some("The result could not be confirmed. Open the conversation to check it.".into()),
-    )
+    ))
 }
 
 #[cfg(test)]
@@ -648,6 +701,43 @@ mod tests {
             )
             .is_ok()
         );
+    }
+    #[test]
+    fn native_streamed_answers_supply_the_summary_without_reusing_an_earlier_turn() {
+        let done = || AgentEvent::Done {
+            status: DoneStatus::Completed,
+            result: None,
+            error: None,
+            session_id: None,
+        };
+        let events = [
+            AgentEvent::TextDelta {
+                text: "Earlier answer".into(),
+            },
+            done(),
+            AgentEvent::TextDelta {
+                text: "CUSTOM_".into(),
+            },
+            AgentEvent::TextDelta {
+                text: "AGENT_OK".into(),
+            },
+            done(),
+        ];
+        assert_eq!(
+            terminal_events(events.iter()),
+            (AssignmentState::Completed, Some("CUSTOM_AGENT_OK".into()))
+        );
+        assert_eq!(
+            terminal_events([done()].iter()),
+            (AssignmentState::Completed, None)
+        );
+        let events = [
+            AgentEvent::TextDelta {
+                text: "é".repeat(4096),
+            },
+            done(),
+        ];
+        assert_eq!(terminal_events(events.iter()).1.unwrap().len(), 4096);
     }
     #[test]
     fn summaries_preserve_utf8_and_command_ids_are_stable() {

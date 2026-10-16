@@ -1,10 +1,11 @@
-# Private agent definitions
+# Custom agents
 
-The implementation adds account-owned definitions to `openagents-sdk` and the
-public website handlers. Production qualification is tracked in
-[#11903](https://github.com/OpenAgentsInc/openagents/issues/11903); do not infer
-availability from the existence of a schema. The [custom-agent plan](../custom-agents.md)
-tracks assignment, mobile UI, runners, and protocol work separately.
+Account-owned definitions and durable assignments are deployed through the
+public website handlers and `openagents-sdk`. The iOS app's agent picker uses
+these same APIs for creation, editing, and delegation. Execution requires an
+updated app/headless host with the selected runtime installed and signed in.
+See the [delivery plan](../custom-agents.md) and
+[qualification evidence](agents-evidence.json) for scope and remaining device checks.
 
 Use `client.agents(&session)` with an app session or supported sign-in key.
 The server derives ownership from the authenticated account. Cookies, a supplied

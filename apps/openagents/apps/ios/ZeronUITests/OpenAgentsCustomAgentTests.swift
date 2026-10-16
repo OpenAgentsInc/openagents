@@ -19,8 +19,10 @@ final class OpenAgentsCustomAgentTests: XCTestCase {
         }
         XCTAssertTrue(app.buttons["new-session"].waitForExistence(timeout: 90))
         app.buttons["new-session"].tap()
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.25)).tap()
+        _ = app.keyboards.firstMatch.waitForNonExistence(timeout: 5)
         app.buttons["composer-chip-project"].tap()
-        app.buttons["Mobile fixture"].tap()
+        app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", (config["project"] ?? "Mobile fixture") + ",")).firstMatch.tap()
         app.buttons["composer-chip-model"].tap()
         app.buttons["Create agent…"].tap()
         let name = app.textViews["agent-name"]
@@ -53,8 +55,10 @@ final class OpenAgentsCustomAgentTests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.buttons["new-session"].waitForExistence(timeout: 60))
         app.buttons["new-session"].tap()
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.25)).tap()
+        _ = app.keyboards.firstMatch.waitForNonExistence(timeout: 5)
         app.buttons["composer-chip-model"].tap()
-        let saved = app.buttons["Phone custom agent fixture"]
+        let saved = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Phone custom agent fixture,")).firstMatch
         XCTAssertTrue(saved.waitForExistence(timeout: 30))
         saved.tap()
         app.buttons["composer-chip-model"].tap()
@@ -77,5 +81,13 @@ final class OpenAgentsCustomAgentTests: XCTestCase {
         result.name = "custom-agent-live-result"
         result.lifetime = .keepAlways
         add(result)
+        app.navigationBars.buttons.firstMatch.tap()
+        XCTAssertTrue(app.tabBars.buttons["Settings"].waitForExistence(timeout: 10))
+        app.tabBars.buttons["Settings"].tap()
+        let signOut = app.cells["settings-signout"]
+        for _ in 0..<6 where !signOut.isHittable { app.swipeUp() }
+        signOut.tap()
+        app.buttons["Sign Out"].tap()
+        XCTAssertTrue(app.buttons["account-sign-in"].waitForExistence(timeout: 10))
     }
 }

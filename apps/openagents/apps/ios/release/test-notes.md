@@ -1,19 +1,16 @@
-OpenAgents 1.0.0 (62)
+OpenAgents 1.0.0 (1004)
 
-Shared projects appear on Home, even when you have no connected computer
-and no chats of your own. Tap a project to see its chats. Empty projects
-appear too.
+Create your own agents from the agent picker when starting a conversation.
+Choose a name, instructions, and Claude Code, Codex, or an installed SDK runner.
+Your saved agents appear at the top of the picker and are available after reopening the app.
 
-Project invitations opens your invitations on openagents.com. Join there,
-then return to the app: your projects and chats refresh automatically.
-Pull to refresh also updates both lists.
+Try these steps:
+- Connect an updated computer with your chosen runtime signed in.
+- Open a new conversation, tap the agent picker, and choose Create agent.
+- Save the agent, choose a computer and project, and send a task.
+- Follow up, stop a running task, and reopen the conversation.
+- Edit the agent and start another conversation to try the new instructions.
 
-Check these steps:
-- Sign in to an account that belongs to a shared project.
-- Find the project on Home and open one of its chats.
-- Open an empty project; it says there are no chats yet.
-- Accept a project invitation on the website and return to the app.
-- Return to My chats to see your own conversations.
-
-Sharing a project does not connect someone else's computer. Limited
-computer sharing is still in development.
+SDK runners must be installed on the computer first. Creating an agent does not
+install software or start work. Shared projects and invitations from build 62
+are included.

@@ -53,7 +53,7 @@ final class AgentFormController: UIViewController, UITextViewDelegate {
         revision = (form["revision"] as? NSNumber)?.uint64Value ?? 0
         let focused = controls.first { $0.value.isFirstResponder }?.key
         let selection = focused.flatMap { (controls[$0] as? UITextView)?.selectedRange }
-        stack.arrangedSubviews.forEach { stack.removeArrangedSubview($0); $0.removeFromSuperview() }
+        var arranged: [UIView] = []
         var used = Set<String>()
         func append(_ node: [String: Any]) {
             guard let key = node["key"] as? String, let element = node["element"] as? [String: Any], let kind = element["kind"] as? String, let props = element["props"] as? [String: Any] else { return }
@@ -63,13 +63,17 @@ final class AgentFormController: UIViewController, UITextViewDelegate {
             let enabled = props["enabled"] as? Bool ?? true
             let control: UIView
             if kind == "field" {
-                let heading = UILabel()
+                let headingKey = "label:\(key)"
+                let heading = controls[headingKey] as? UILabel ?? UILabel()
+                controls[headingKey] = heading
+                used.insert(headingKey)
                 heading.text = label
                 heading.font = .preferredFont(forTextStyle: .headline)
-                stack.addArrangedSubview(heading)
+                arranged.append(heading)
                 let field = controls[key] as? UITextView ?? UITextView()
                 field.delegate = self
-                field.text = props["value"] as? String ?? ""
+                let value = props["value"] as? String ?? ""
+                if field.text != value { field.text = value }
                 field.font = .preferredFont(forTextStyle: .body)
                 field.backgroundColor = .secondarySystemBackground
                 field.layer.cornerRadius = 8
@@ -81,17 +85,18 @@ final class AgentFormController: UIViewController, UITextViewDelegate {
                 fieldKeys[ObjectIdentifier(field)] = key
                 control = field
             } else if kind == "button" || kind == "choice" {
-                let button = UIButton(type: .system)
+                let existing = controls[key] as? UIButton
+                let button = existing ?? UIButton(type: .system)
                 var config = UIButton.Configuration.tinted()
                 config.title = label
                 if props["selected"] as? Bool == true { config.image = UIImage(systemName: "checkmark.circle.fill"); config.imagePadding = 8 }
                 button.configuration = config
                 button.isEnabled = enabled
                 button.accessibilityIdentifier = "agent-\(key)"
-                button.addAction(UIAction { [weak self] _ in self?.activate(key) }, for: .touchUpInside)
+                if existing == nil { button.addAction(UIAction { [weak self] _ in self?.activate(key) }, for: .touchUpInside) }
                 control = button
             } else if kind == "text" {
-                let text = UILabel()
+                let text = controls[key] as? UILabel ?? UILabel()
                 text.text = props["value"] as? String
                 text.font = .preferredFont(forTextStyle: .body)
                 text.numberOfLines = 0
@@ -99,18 +104,30 @@ final class AgentFormController: UIViewController, UITextViewDelegate {
             } else { return }
             controls[key] = control
             used.insert(key)
-            stack.addArrangedSubview(control)
+            arranged.append(control)
         }
         append(root)
         controls = controls.filter { used.contains($0.key) }
         if let notice = snapshot.notice {
-            let label = UILabel()
+            let label = controls["notice"] as? UILabel ?? UILabel()
+            controls["notice"] = label
+            used.insert("notice")
             label.text = notice
             label.numberOfLines = 0
             label.textColor = .systemRed
             label.accessibilityIdentifier = "agent-notice"
-            stack.addArrangedSubview(label)
+            arranged.append(label)
         }
+        for child in stack.arrangedSubviews where !arranged.contains(where: { $0 === child }) {
+            stack.removeArrangedSubview(child)
+            child.removeFromSuperview()
+        }
+        for (index, child) in arranged.enumerated() {
+            if index < stack.arrangedSubviews.count && stack.arrangedSubviews[index] === child { continue }
+            if stack.arrangedSubviews.contains(where: { $0 === child }) { stack.removeArrangedSubview(child) }
+            stack.insertArrangedSubview(child, at: index)
+        }
+        controls = controls.filter { used.contains($0.key) }
         if let focused, let field = controls[focused] as? UITextView, field.isEditable {
             field.becomeFirstResponder()
             if let selection, NSMaxRange(selection) <= field.text.utf16.count { field.selectedRange = selection }
@@ -119,10 +136,11 @@ final class AgentFormController: UIViewController, UITextViewDelegate {
     func textViewDidChange(_ textView: UITextView) {
         guard let key = fieldKeys[ObjectIdentifier(textView)] else { return }
         do { try agents.changeField(instance: instance, revision: revision, key: key, value: textView.text) }
-        catch { render() }
+        catch { /* Restore the Rust-owned value after a rejected edit. */ }
+        render()
     }
     private func activate(_ key: String) {
-        do { try agents.activate(instance: instance, revision: revision, key: key) }
+        do { try agents.activate(instance: instance, revision: revision, key: key); render() }
         catch {
             let alert = UIAlertController(title: "Couldn't save the agent", message: error.localizedDescription, preferredStyle: .alert)
             alert.addAction(UIAlertAction(title: "OK", style: .default))

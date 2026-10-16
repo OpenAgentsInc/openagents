@@ -173,7 +173,7 @@ impl Fixture {
         let ipc = self.ipc.as_ref().unwrap();
         let folder = self.root.join("project");
         std::fs::create_dir_all(&folder)?;
-        ipc.call(methods::MUTATE, json!({"op":"createSpace","spaceId":self.space,"deviceId":self.device,"path":folder,"name":"Mobile fixture","gitDetected":false})).await?;
+        ipc.call(methods::MUTATE, json!({"op":"createSpace","spaceId":self.space,"deviceId":self.device,"path":folder,"name":custom_agent_fixture::project_name(self),"gitDetected":false})).await?;
         ipc.call(methods::MUTATE, json!({"op":"createChat","chatId":self.chat,"spaceId":self.space,"config":{"harness":"mock","sandbox":"workspace-write"}})).await?;
         ipc.call(
             methods::MUTATE,
@@ -367,6 +367,7 @@ async fn main() -> Result<()> {
         checks: BTreeMap::new(),
     };
     if let Some(runner) = std::env::var_os("OA_CUSTOM_AGENT_FIXTURE_RUNNER") {
+        let runner = PathBuf::from(runner);
         let data = root.join("data");
         std::fs::create_dir_all(&data)?;
         std::fs::write(
@@ -380,6 +381,9 @@ async fn main() -> Result<()> {
             return custom_agent_fixture::run(&mut fixture).await;
         }
     }
+    if std::env::var_os("OA_CUSTOM_AGENT_UI").is_some() {
+        custom_agent_fixture::capture_phone_baseline(&fixture).await?;
+    }
     fixture.start().await?;
     fixture.seed().await?;
     let http = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
@@ -387,7 +391,7 @@ async fn main() -> Result<()> {
     std::fs::write(
         root.join("config.json"),
         serde_json::to_vec_pretty(
-            &json!({"control":base,"credential_url":format!("{base}/credential/{}",fixture.nonce),"sync":edge,"title":TITLE,"chat":fixture.chat,"device":fixture.device}),
+            &json!({"control":base,"credential_url":format!("{base}/credential/{}",fixture.nonce),"sync":edge,"title":TITLE,"project":custom_agent_fixture::project_name(&fixture),"chat":fixture.chat,"device":fixture.device}),
         )?,
     )?;
     let state = Arc::new(Mutex::new(fixture));

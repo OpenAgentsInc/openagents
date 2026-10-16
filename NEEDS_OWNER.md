@@ -1,3 +1,18 @@
+## Check custom agents on iPhone (#11902, #11908, #11909)
+
+Update and restart OpenAgents Dev from current `main` after its active work
+finishes (`apps/openagents/OPENAGENTS.md` has the command). The running desktop
+predates custom-agent support; its five active tasks were left running.
+
+After installing OpenAgents TestFlight build 1004, create an agent from the
+new-session agent picker, select your connected computer and project, and send
+a task. Check follow-up, stop, and reopening the conversation on the phone.
+The dedicated-account fixtures qualify an independent Rust runner and Codex;
+a live Claude Code assignment needs an approved isolated provider credential.
+Its native instruction binding is tested. With your normal computer's Claude
+Code login, create a Claude-backed agent and verify its instructions and reply.
+Do not use the owner's account as an automated fixture.
+
 ## Check shared projects on iPhone (#11910)
 
 Install OpenAgents TestFlight build 62. With the invited account, accept the

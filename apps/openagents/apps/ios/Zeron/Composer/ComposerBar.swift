@@ -462,8 +462,12 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
             guard let id = b.accessibilityIdentifier?.replacingOccurrences(of: "composer-chip-", with: ""),
                   let provider = chipMenus[id]
             else { continue }
-            b.menu = provider()
-            b.showsMenuAsPrimaryAction = b.menu != nil
+            // Read current choices when opening, without replacing an open menu
+            // whenever presence or another account observation changes.
+            b.menu = UIMenu(children: [UIDeferredMenuElement.uncached { completion in
+                completion(provider()?.children ?? [])
+            }])
+            b.showsMenuAsPrimaryAction = true
         }
     }
 

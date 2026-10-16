@@ -231,26 +231,28 @@ fn form_view(
             Intent::Runner,
         ));
     }
-    children.push(text("model-label", "Model"));
-    children.push(choice(
-        "model-default".into(),
-        "Default model".into(),
-        form.spec.model.is_none(),
-        editable,
-        Intent::Model(None),
-    ));
-    for (i, model) in zeron_client::catalog::fallback_models(&form.spec.runtime)
-        .into_iter()
-        .take(24)
-        .enumerate()
-    {
+    if form.spec.runtime != "sdk" {
+        children.push(text("model-label", "Model"));
         children.push(choice(
-            format!("model-{i}"),
-            model.label,
-            form.spec.model.as_deref() == Some(&model.id),
+            "model-default".into(),
+            "Default model".into(),
+            form.spec.model.is_none(),
             editable,
-            Intent::Model(Some(model.id)),
+            Intent::Model(None),
         ));
+        for (i, model) in zeron_client::catalog::fallback_models(&form.spec.runtime)
+            .into_iter()
+            .take(24)
+            .enumerate()
+        {
+            children.push(choice(
+                format!("model-{i}"),
+                model.label,
+                form.spec.model.as_deref() == Some(&model.id),
+                editable,
+                Intent::Model(Some(model.id)),
+            ));
+        }
     }
     children.push(text("access-label", "Access"));
     children.push(choice(
@@ -676,6 +678,10 @@ impl CoreAgents {
         self.publish();
         Ok(())
     }
+    pub fn selection_active(&self) -> bool {
+        let _ = self.lease();
+        self.state.lock().unwrap().selected.is_some()
+    }
     pub fn clear_selection(&self) {
         let mut s = self.state.lock().unwrap();
         s.selected = None;
@@ -886,6 +892,7 @@ impl CoreAgents {
         self.publish();
         let weak = Arc::downgrade(self);
         zeron_client::runtime::shared().spawn(async move {
+            let mut refusal = None;
             let result = async {
                 let agents = lease.client().agents(lease.session())?;
                 let a = agents.assign(&request, &lease.cancel).await?;
@@ -893,19 +900,20 @@ impl CoreAgents {
                     if !lease.is_current() {
                         return Err(openagents::Error::Cancelled);
                     }
-                    if core.client.session_config(&a.chat).is_some() {
-                        return Ok(a.chat);
-                    }
                     let observed = agents.assignment(&a.id, &lease.cancel).await?;
                     if matches!(
                         observed.state,
                         openagents::agents::assignments::AssignmentState::Failed
                     ) {
                         let _ = std::fs::remove_file(&path);
+                        refusal = observed.result;
                         return Err(openagents::Error::Refused {
                             status: 409,
                             code: None,
                         });
+                    }
+                    if core.client.session_config(&a.chat).is_some() {
+                        return Ok(a.chat);
                     }
                     tokio::time::sleep(std::time::Duration::from_millis(250)).await;
                 }
@@ -923,7 +931,7 @@ impl CoreAgents {
                     s.assignment_chat = Some(chat);
                     let _ = std::fs::remove_file(&path);
                 }
-                Err(e) => s.notice = Some(e.to_string()),
+                Err(e) => s.notice = refusal.or_else(|| Some(e.to_string())),
             };
             s.bump();
             drop(s);
@@ -1034,6 +1042,15 @@ mod tests {
             deleted: false,
         });
         let view = form_view(&f, false).unwrap();
+        assert!(
+            view.activate(&Activation {
+                instance: f.instance.clone(),
+                revision: 1,
+                node: "model-default".into()
+            })
+            .is_err(),
+            "An SDK runner name must not be replaced by a model choice"
+        );
         assert!(matches!(
             view.activate(&Activation {
                 instance: f.instance.clone(),

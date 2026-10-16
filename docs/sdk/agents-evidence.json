@@ -1,24 +1,102 @@
 {
-  "issue": 11903,
+  "issues": [
+    11902,
+    11903,
+    11904,
+    11905,
+    11906,
+    11907,
+    11908,
+    11909
+  ],
   "date": "2026-10-16",
-  "status": "local checks passed; deployment pending",
+  "status": "API deployed; app qualification and TestFlight packaging",
   "checks": {
-    "sdk_tests_passed": 37,
-    "web_definition_tests_passed": 3,
-    "openapi_tests_passed": 5,
-    "route_ownership_tests_passed": 2,
-    "schema_regenerated": true,
-    "public_reference_operations": 59,
+    "sdk_tests_passed": 38,
+    "web_definition_and_http_sdk_tests_passed": 3,
+    "assignment_store_tests_passed": 1,
+    "private_profile_tests_passed": 1,
+    "rust_native_tests_passed": 130,
+    "rust_native_tests_ignored": 1,
+    "mobile_form_tests_passed": 3,
+    "host_assignment_tests_passed": 3,
+    "runner_tests_passed": 2,
+    "claude_instruction_binding_tests_passed": 1,
+    "client_catalog_tests_passed": 4,
     "formatting": "changed Rust files only",
-    "isolated_accounts": true,
-    "real_handler_sdk_flow": true,
-    "restart_and_concurrent_CAS": true
+    "deployed_public_reference_operations": 145,
+    "source_inventory_regenerated_after_main_merge": true
+  },
+  "deployment": {
+    "source_commit": "2295560e33",
+    "image": "sha256:79fe4153c95dd96b8e8ac8ea82977425af1a4b09449f4d9f6ca4247531f496e3",
+    "production_revision": "coder-web-79fe4153c9-20261016212132",
+    "staging": {
+      "passed": 99,
+      "failed": 0,
+      "skipped": 2
+    },
+    "promotion": {
+      "passed": 58,
+      "failed": 0,
+      "skipped": 2,
+      "expected_waiting": 8
+    },
+    "production_shift": {
+      "passed": 66,
+      "failed": 0,
+      "skipped": 2
+    }
+  },
+  "independent_sdk_consumer": {
+    "account": "acct_83d16a35955ef908",
+    "created_outside_checkout": true,
+    "agent": "53848f8a3e423175024d6d1086bdd6a6663e113207ebf3aa80e8693b5a6a25ad",
+    "revision": 1,
+    "deleted": true
+  },
+  "real_host_scenario": {
+    "account": "acct_83d16a35955ef908",
+    "assignments": [
+      {
+        "agent": "56b6fa9d76c19543a6d550f07eceb62a943828004e511c91ad4cd8a2d9f44e09",
+        "assigned_revision": 1,
+        "assignment": "ae24cc6236bd601a3c3ca7a2ef78e0554df76adedccf5e4c26be7709ef5b1659",
+        "chat": "ae24cc62-36bd-601a-3c3c-a7a2ef78e055",
+        "runtime": "sdk"
+      },
+      {
+        "agent": "c3758111d67de112696efba99e444fc18ecd56b48c35d2f259234b339c6a7bce",
+        "assigned_revision": 1,
+        "assignment": "fe23a502de798201edce636d4abde3f8bf0a308a5be2240dbd42d6bfd4e568ee",
+        "chat": "fe23a502-de79-8201-edce-636d4abde3f8",
+        "runtime": "codex"
+      }
+    ],
+    "checks": {
+      "codex_assignment_result": true,
+      "codex_followup": true,
+      "codex_pinned_revision": true,
+      "offline_restart": true,
+      "sdk_assignment_result": true,
+      "sdk_cancel_reaped_child": true,
+      "sdk_followup": true
+    },
+    "child_stopped": true,
+    "claude_live": false,
+    "fixture_chats_removed": true,
+    "host_restarts": 1,
+    "pass": true
   },
   "cleanup": {
-    "local_fixtures": "temporary test roots; no production account or host used"
+    "dedicated_account": true,
+    "isolated_host_home_data_and_project": true,
+    "fixture_chats_definitions_assignments_and_computers_removed": true,
+    "owned_children_stopped": true,
+    "owner_chats_created": false
   },
-  "remaining": [
-    "deploy the checked commit",
-    "run dedicated-account public API workflow"
+  "remaining_owner_checks": [
+    "Live Claude Code assignment using the computer's normal provider login; native instruction binding is tested.",
+    "Install the processed TestFlight build on an iPhone and check creation, delegation, follow-up, stop, and reopening."
   ]
 }

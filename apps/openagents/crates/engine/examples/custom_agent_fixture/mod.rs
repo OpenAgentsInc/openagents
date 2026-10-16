@@ -15,12 +15,19 @@ pub(super) async fn run(f: &mut Fixture) -> Result<()> {
     f.ipc.as_ref().unwrap().call(methods::MUTATE,json!({"op":"createSpace","spaceId":f.space,"deviceId":f.device,"path":folder,"name":"Custom agent fixture","gitDetected":false})).await?;
     let mut assignments = Vec::new();
     let mut definitions = Vec::new();
+    let mut evidence = Vec::new();
     let result = async {
         for (runtime, model) in [
             ("sdk", Some("fixture")),
             ("codex", None),
             ("claude-code", None),
         ] {
+            if runtime == "claude-code"
+                && std::env::var_os("OA_CUSTOM_AGENT_FIXTURE_SKIP_CLAUDE").is_some()
+            {
+                println!("OWNER CHECK: Claude Code needs an isolated provider credential.");
+                continue;
+            }
             let spec = AgentSpec {
                 name: format!("Fixture {runtime}"),
                 description: "Dedicated test only".into(),
@@ -42,7 +49,7 @@ pub(super) async fn run(f: &mut Fixture) -> Result<()> {
                 agent_revision: definition.revision,
                 host: f.device.clone(),
                 project: Some(f.space.clone()),
-                task: "Reply with CUSTOM_AGENT_OK".into(),
+                task: "Please answer.".into(),
             })?;
             let assignment = agents.assign(&request, &cancel).await?;
             assignments.push(assignment.clone());
@@ -70,8 +77,14 @@ pub(super) async fn run(f: &mut Fixture) -> Result<()> {
             );
             f.checks
                 .insert(format!("{runtime}_assignment_result"), true);
+            if runtime == "codex" {
+                let mut next = definition.spec.clone();
+                next.instructions = "Respond with NEW_AGENT_REVISION.".into();
+                let updated = agents.update(&definition.id, &agents.update_request(definition.revision, next)?, &cancel).await?;
+                *definitions.last_mut().unwrap() = updated;
+            }
             let follow = agents.command_request(AssignmentAction::FollowUp {
-                text: "Reply with CUSTOM_AGENT_OK again".into(),
+                text: "Answer again.".into(),
             })?;
             let queued = agents.command(&assignment.id, &follow, &cancel).await?;
             ensure!(
@@ -88,6 +101,11 @@ pub(super) async fn run(f: &mut Fixture) -> Result<()> {
                 "{runtime} follow-up failed: {:?}",
                 completed.state
             );
+            if runtime == "codex" {
+                ensure!(completed.result.as_deref().is_some_and(|r| r.contains("CUSTOM_AGENT_OK") && !r.contains("NEW_AGENT_REVISION")), "The assigned revision changed after editing the definition");
+                f.checks.insert("codex_pinned_revision".into(), true);
+            }
+            evidence.push(json!({"runtime":runtime,"agent":definition.id,"assigned_revision":1,"assignment":assignment.id,"chat":assignment.chat}));
             f.checks.insert(format!("{runtime}_followup"), true);
             if runtime == "sdk" {
                 let request = agents.command_request(AssignmentAction::FollowUp {
@@ -195,7 +213,7 @@ pub(super) async fn run(f: &mut Fixture) -> Result<()> {
     std::fs::write(
         f.root.join("result.json"),
         serde_json::to_vec_pretty(
-            &json!({"account":ACCOUNT,"checks":f.checks,"host_restarts":f.restarts,"fixture_chats_removed":true,"child_stopped":true,"pass":result.is_ok()}),
+            &json!({"account":ACCOUNT,"checks":f.checks,"host_restarts":f.restarts,"assignments":evidence,"claude_live":f.checks.contains_key("claude-code_assignment_result"),"fixture_chats_removed":true,"child_stopped":true,"pass":result.is_ok()}),
         )?,
     )?;
     result
@@ -227,15 +245,13 @@ pub(super) async fn cleanup_phone(f: &mut Fixture) -> Result<()> {
     );
     let agents = client.agents(&session)?;
     let cancel = coder_account::openagents::CancellationToken::new();
+    let baseline: Vec<String> =
+        serde_json::from_slice(&std::fs::read(f.root.join("agent-baseline.json"))?)?;
     let mut after = None;
     let mut definitions = vec![];
     loop {
         let page = agents.list(after.as_deref(), 100, &cancel).await?;
-        definitions.extend(page.data.into_iter().filter(|a| {
-            a.spec.name == "Phone custom agent fixture"
-                && a.spec.runtime == "sdk"
-                && a.spec.model.as_deref() == Some("fixture")
-        }));
+        definitions.extend(page.data.into_iter().filter(|a| !baseline.contains(&a.id)));
         after = page.next;
         if after.is_none() {
             break;
@@ -389,4 +405,38 @@ pub(super) fn provider_environment(
         }
     }
     Ok(env)
+}
+
+pub(super) async fn capture_phone_baseline(f: &Fixture) -> Result<()> {
+    let client = Client::new(Deployment::production())?;
+    let session = client.authenticate(&f.credential).await?;
+    ensure!(
+        session.account().id == ACCOUNT,
+        "Dedicated account required"
+    );
+    let agents = client.agents(&session)?;
+    let cancel = coder_account::openagents::CancellationToken::new();
+    let mut ids = vec![];
+    let mut after = None;
+    loop {
+        let page = agents.list(after.as_deref(), 100, &cancel).await?;
+        ids.extend(page.data.into_iter().map(|a| a.id));
+        after = page.next;
+        if after.is_none() {
+            break;
+        }
+    }
+    std::fs::write(
+        f.root.join("agent-baseline.json"),
+        serde_json::to_vec(&ids)?,
+    )?;
+    Ok(())
+}
+
+pub(super) fn project_name(f: &Fixture) -> String {
+    if std::env::var_os("OA_CUSTOM_AGENT_UI").is_some() {
+        format!("Phone agent {}", &f.nonce[..8])
+    } else {
+        "Mobile fixture".into()
+    }
 }
