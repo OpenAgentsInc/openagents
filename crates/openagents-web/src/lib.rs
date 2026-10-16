@@ -46,6 +46,8 @@ mod computer_runs;
 pub mod computers;
 mod computers_api;
 pub mod connections;
+mod custom_agents;
+mod custom_agents_openapi;
 mod demo;
 mod device;
 mod docs_mcp;
@@ -591,6 +593,7 @@ pub fn router(config: Config) -> Router {
         .merge(coder_sync::routes())
         .merge(phone_api::routes())
         .merge(history_api::routes())
+        .merge(custom_agents::routes())
         .merge(own_runs::routes())
         .merge(mac_jobs::routes())
         .merge(mac_jobs_page::routes())

@@ -1,0 +1,24 @@
+{
+  "issue": 11903,
+  "date": "2026-10-16",
+  "status": "local checks passed; deployment pending",
+  "checks": {
+    "sdk_tests_passed": 37,
+    "web_definition_tests_passed": 3,
+    "openapi_tests_passed": 5,
+    "route_ownership_tests_passed": 2,
+    "schema_regenerated": true,
+    "public_reference_operations": 59,
+    "formatting": "changed Rust files only",
+    "isolated_accounts": true,
+    "real_handler_sdk_flow": true,
+    "restart_and_concurrent_CAS": true
+  },
+  "cleanup": {
+    "local_fixtures": "temporary test roots; no production account or host used"
+  },
+  "remaining": [
+    "deploy the checked commit",
+    "run dedicated-account public API workflow"
+  ]
+}

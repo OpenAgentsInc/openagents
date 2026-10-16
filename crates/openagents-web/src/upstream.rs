@@ -191,6 +191,8 @@ pub fn owned(path: &str) -> bool {
         || crate::attribution::owns(path)
         || crate::oauth::owns(path)
         || crate::phone_api::owns(path)
+        || path == "/v1/agent-definitions"
+        || path.starts_with("/v1/agent-definitions/")
         || crate::own_runs::owns(path)
         || crate::mac_jobs::owns(path)
         || crate::work_runs::owns(path)

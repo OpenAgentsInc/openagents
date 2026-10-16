@@ -1,7 +1,8 @@
 # Custom agents through the OpenAgents SDK
 
-2026-10-16. Status: proposed implementation plan. This change documents the
-SDK extension and a first mobile test; it does not implement or release them.
+2026-10-16. Status: implementation in progress under
+[#11902](https://github.com/OpenAgentsInc/openagents/issues/11902).
+The plan covers the SDK extension and first mobile test.
 
 People should be able to define an agent through the Rust SDK, see it beside
 Claude Code and Codex in the OpenAgents mobile app, and assign work to it through
@@ -231,7 +232,14 @@ the host/client role. Keep the pinned official and Block files unchanged.
 
 ## Delivery sequence and first test
 
-These are proposed implementation slices, not newly created issues:
+Delivery issues: [#11903](https://github.com/OpenAgentsInc/openagents/issues/11903)
+(definitions), [#11904](https://github.com/OpenAgentsInc/openagents/issues/11904)
+(assignments), [#11905](https://github.com/OpenAgentsInc/openagents/issues/11905)
+(mobile), [#11906](https://github.com/OpenAgentsInc/openagents/issues/11906)
+(runners), [#11907](https://github.com/OpenAgentsInc/openagents/issues/11907)
+(protocol), [#11908](https://github.com/OpenAgentsInc/openagents/issues/11908)
+(qualification), and [#11909](https://github.com/OpenAgentsInc/openagents/issues/11909)
+(TestFlight).
 
 | Slice | Deliverable and exit check |
 | --- | --- |

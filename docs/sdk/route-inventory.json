@@ -28,6 +28,16 @@
       "line": 38
     },
     {
+      "path": "/v1/agent-definitions",
+      "source": "crates/openagents-web/src/custom_agents.rs",
+      "line": 247
+    },
+    {
+      "path": "/v1/agent-definitions/{id}",
+      "source": "crates/openagents-web/src/custom_agents.rs",
+      "line": 248
+    },
+    {
       "path": "/v1/history",
       "source": "crates/openagents-web/src/history_api.rs",
       "line": 21
@@ -323,29 +333,54 @@
       "line": 49
     },
     {
-      "path": "/v1/work/{id}",
-      "source": "crates/openagents-web/src/work_runs.rs",
-      "line": 120
-    },
-    {
-      "path": "/v1/work/{id}/events",
-      "source": "crates/openagents-web/src/work_runs.rs",
-      "line": 121
-    },
-    {
-      "path": "/v1/work/{id}/cancel",
-      "source": "crates/openagents-web/src/work_runs.rs",
-      "line": 122
-    },
-    {
-      "path": "/v1/work-hosts/{name}/claim",
+      "path": "/v1/work/computer-session",
       "source": "crates/openagents-web/src/work_runs.rs",
       "line": 123
     },
     {
-      "path": "/v1/work-hosts/{name}/runs/{id}",
+      "path": "/v1/work/computer-token",
       "source": "crates/openagents-web/src/work_runs.rs",
       "line": 124
+    },
+    {
+      "path": "/v1/work-hosts/{name}/runs/{id}/computer-token",
+      "source": "crates/openagents-web/src/work_runs.rs",
+      "line": 125
+    },
+    {
+      "path": "/v1/work/{id}",
+      "source": "crates/openagents-web/src/work_runs.rs",
+      "line": 129
+    },
+    {
+      "path": "/v1/work/{id}/events",
+      "source": "crates/openagents-web/src/work_runs.rs",
+      "line": 130
+    },
+    {
+      "path": "/v1/work/{id}/cancel",
+      "source": "crates/openagents-web/src/work_runs.rs",
+      "line": 131
+    },
+    {
+      "path": "/v1/work-hosts/{name}/claim",
+      "source": "crates/openagents-web/src/work_runs.rs",
+      "line": 132
+    },
+    {
+      "path": "/v1/work-hosts/{name}/runs/{id}",
+      "source": "crates/openagents-web/src/work_runs.rs",
+      "line": 133
+    },
+    {
+      "path": "/v1/work-hosts/{name}/runs/{id}/computer-credentials",
+      "source": "crates/openagents-web/src/work_runs.rs",
+      "line": 134
+    },
+    {
+      "path": "/v1/work-hosts/{name}/runs/{id}/computer-cleaned",
+      "source": "crates/openagents-web/src/work_runs.rs",
+      "line": 138
     }
   ],
   "web_constant_mounts": [

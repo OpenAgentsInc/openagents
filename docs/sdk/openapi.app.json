@@ -847,6 +847,622 @@
         }
       }
     },
+    "/v1/agent-definitions": {
+      "get": {
+        "operationId": "listAgentDefinitions",
+        "tags": [
+          "Custom agents"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 100
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        ],
+        "description": "Private account-owned definition. Does not install or execute an agent. Mutation request_id is retained durably: identical retries return the original result, changed inputs conflict. Deleted definitions and old revisions remain readable to their owner. Lists exclude deleted definitions and continue in ID order. Capacity is 128 active definitions, 4096 mutations, and 4 MiB per account, including history; no automatic history pruning. Updates and deletion require expected_revision. Maximum JSON body is 24 KiB.",
+        "responses": {
+          "200": {
+            "description": "The account-owned result; no-store, private.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomAgentPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createAgentDefinition",
+        "tags": [
+          "Custom agents"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [],
+        "description": "Private account-owned definition. Does not install or execute an agent. Mutation request_id is retained durably: identical retries return the original result, changed inputs conflict. Deleted definitions and old revisions remain readable to their owner. Lists exclude deleted definitions and continue in ID order. Capacity is 128 active definitions, 4096 mutations, and 4 MiB per account, including history; no automatic history pruning. Updates and deletion require expected_revision. Maximum JSON body is 24 KiB.",
+        "responses": {
+          "200": {
+            "description": "The account-owned result; no-store, private.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomAgentDefinition"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomAgentCreate"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agent-definitions/{id}": {
+      "get": {
+        "operationId": "getAgentDefinition",
+        "tags": [
+          "Custom agents"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          },
+          {
+            "name": "revision",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "description": "Private account-owned definition. Does not install or execute an agent. Mutation request_id is retained durably: identical retries return the original result, changed inputs conflict. Deleted definitions and old revisions remain readable to their owner. Lists exclude deleted definitions and continue in ID order. Capacity is 128 active definitions, 4096 mutations, and 4 MiB per account, including history; no automatic history pruning. Updates and deletion require expected_revision. Maximum JSON body is 24 KiB.",
+        "responses": {
+          "200": {
+            "description": "The account-owned result; no-store, private.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomAgentDefinition"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "updateAgentDefinition",
+        "tags": [
+          "Custom agents"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        ],
+        "description": "Private account-owned definition. Does not install or execute an agent. Mutation request_id is retained durably: identical retries return the original result, changed inputs conflict. Deleted definitions and old revisions remain readable to their owner. Lists exclude deleted definitions and continue in ID order. Capacity is 128 active definitions, 4096 mutations, and 4 MiB per account, including history; no automatic history pruning. Updates and deletion require expected_revision. Maximum JSON body is 24 KiB.",
+        "responses": {
+          "200": {
+            "description": "The account-owned result; no-store, private.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomAgentDefinition"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomAgentUpdate"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteAgentDefinition",
+        "tags": [
+          "Custom agents"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        ],
+        "description": "Private account-owned definition. Does not install or execute an agent. Mutation request_id is retained durably: identical retries return the original result, changed inputs conflict. Deleted definitions and old revisions remain readable to their owner. Lists exclude deleted definitions and continue in ID order. Capacity is 128 active definitions, 4096 mutations, and 4 MiB per account, including history; no automatic history pruning. Updates and deletion require expected_revision. Maximum JSON body is 24 KiB.",
+        "responses": {
+          "200": {
+            "description": "The account-owned result; no-store, private.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomAgentDefinition"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomAgentDelete"
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/keys": {
       "get": {
         "operationId": "listAccountKeys",
@@ -8656,6 +9272,162 @@
             "maxItems": 200,
             "items": {
               "$ref": "#/components/schemas/HistoryMessage"
+            }
+          },
+          "next": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "CustomAgentSpec": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "description",
+          "instructions",
+          "runtime",
+          "model",
+          "access"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80,
+            "description": "Nonblank, no control characters; at most 80 UTF-8 bytes."
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 512,
+            "description": "At most 512 UTF-8 bytes; no control characters."
+          },
+          "instructions": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 16384,
+            "description": "Nonblank, no NUL; at most 16,384 UTF-8 bytes."
+          },
+          "runtime": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9_.:-]+$"
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "access": {
+            "enum": [
+              "read_only",
+              "workspace_write"
+            ]
+          }
+        }
+      },
+      "CustomAgentDefinition": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "revision",
+          "spec",
+          "deleted"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "spec": {
+            "$ref": "#/components/schemas/CustomAgentSpec"
+          },
+          "deleted": {
+            "type": "boolean"
+          }
+        }
+      },
+      "CustomAgentCreate": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "request_id",
+          "spec"
+        ],
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "spec": {
+            "$ref": "#/components/schemas/CustomAgentSpec"
+          }
+        }
+      },
+      "CustomAgentUpdate": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "request_id",
+          "expected_revision",
+          "spec"
+        ],
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "spec": {
+            "$ref": "#/components/schemas/CustomAgentSpec"
+          }
+        }
+      },
+      "CustomAgentDelete": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "request_id",
+          "expected_revision"
+        ],
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      },
+      "CustomAgentPage": {
+        "type": "object",
+        "required": [
+          "data",
+          "next"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "$ref": "#/components/schemas/CustomAgentDefinition"
             }
           },
           "next": {

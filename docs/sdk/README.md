@@ -16,7 +16,8 @@ Start with the [delivery plan](delivery-plan.md),
 The [custom-agent plan](../custom-agents.md) proposes SDK-defined agents,
 assignment through the existing session flow, a creation screen in the
 OpenAgents mobile app at `apps/openagents/`, and a protocol mapping across
-the existing NIPs. This extension is not implemented yet.
+the existing NIPs. The [definition contract](agents.md) describes the first
+implementation slice; assignment and mobile delivery remain tracked work.
 
 [Coder Desktop](../coder-desktop/README.md) is the planned first external reference
 client: a separately maintained Zeron fork using the Rust SDK first, with

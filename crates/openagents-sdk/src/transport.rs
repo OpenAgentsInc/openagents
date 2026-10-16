@@ -216,7 +216,12 @@ impl Client {
         token: Option<&str>,
     ) -> Result<T, Error> {
         let response = self.send(method, segments, query, body, token).await?;
-        Self::decode(response, segments, 1024 * 1024).await
+        let limit = if segments.first() == Some(&"agent-definitions") {
+            4 * 1024 * 1024
+        } else {
+            1024 * 1024
+        };
+        Self::decode(response, segments, limit).await
     }
 
     pub(crate) async fn history_json<T: DeserializeOwned>(
@@ -371,6 +376,10 @@ impl Client {
                 Some("not_found") => Some("not_found"),
                 Some("invalid_cursor") => Some("invalid_cursor"),
                 Some("changed") => Some("changed"),
+                Some("version_conflict") => Some("version_conflict"),
+                Some("idempotency_conflict") => Some("idempotency_conflict"),
+                Some("invalid_agent") => Some("invalid_agent"),
+                Some("quota_exhausted") => Some("quota_exhausted"),
                 _ => None,
             };
             return Err(Error::Refused {
