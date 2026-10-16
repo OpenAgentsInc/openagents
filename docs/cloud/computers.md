@@ -154,6 +154,10 @@ does not change. Account usage reads are available through
 account-deletion cleanup, service cost measurements, and priced settlement remain
 follow-up work on #11815.
 
+The [usage verification record](../sdk/computers-usage-evidence.json) records the
+deployed builds, crash tests, dedicated-account lifecycle check, and remaining
+implementation scope.
+
 ### Turns
 
 A turn is one command on a computer for a chat. The API records it
