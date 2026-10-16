@@ -1,0 +1,51 @@
+# Production artifact sets, without the Kind build's test-hook features.
+substitutions:
+  _SPACE_COMMIT: de87b436c35dac056564bdd5b2a113c9046e189b
+  _IMAGE_ROOT: us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/oa-space-native
+steps:
+  - name: gcr.io/cloud-builders/git
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -eu
+        git init -q space
+        cd space
+        git fetch -q --depth 1 https://github.com/perplexityai/SPACE.git ${_SPACE_COMMIT}
+        git checkout -q FETCH_HEAD
+        test "$$(git rev-parse HEAD)" = '${_SPACE_COMMIT}'
+  - name: gcr.io/cloud-builders/docker
+    dir: space
+    entrypoint: bash
+    env: ['DOCKER_BUILDKIT=1']
+    args:
+      - -c
+      - |
+        set -eu
+        # Bound cold-build memory on the 32-vCPU Cloud Build machine. This
+        # changes the build budget only; production artifact sets stay intact.
+        sed -i '/^WORKDIR \/workspace/a ENV CARGO_BUILD_JOBS=8' docker/Dockerfile.rust-build-common
+        sha256sum docker/Dockerfile.rust-build-common
+        for component in worker api data-plane cluster-controller; do
+          docker build -f docker/Dockerfile.rust-build-common \
+            --target "build-artifacts-$$component" \
+            --build-arg "SPACE_RUST_ARTIFACT_SET=$$component" \
+            --build-arg SPACE_CARGO_RELEASE_LTO=false \
+            -t "space-rust-build-$$component:maintained" .
+          docker build -f "docker/Dockerfile.$$component" \
+            --build-arg "SPACE_RUST_BUILD_IMAGE=space-rust-build-$$component:maintained" \
+            --build-arg "SPACE_GIT_SHA=${_SPACE_COMMIT}" \
+            -t "${_IMAGE_ROOT}/$$component:${_SPACE_COMMIT}" .
+          docker push "${_IMAGE_ROOT}/$$component:${_SPACE_COMMIT}"
+          docker image inspect "${_IMAGE_ROOT}/$$component:${_SPACE_COMMIT}" \
+            --format '{{json .RepoDigests}}'
+        done
+images:
+  - '${_IMAGE_ROOT}/worker:${_SPACE_COMMIT}'
+  - '${_IMAGE_ROOT}/api:${_SPACE_COMMIT}'
+  - '${_IMAGE_ROOT}/data-plane:${_SPACE_COMMIT}'
+  - '${_IMAGE_ROOT}/cluster-controller:${_SPACE_COMMIT}'
+options:
+  machineType: E2_HIGHCPU_32
+  diskSizeGb: 250
+timeout: 3600s
