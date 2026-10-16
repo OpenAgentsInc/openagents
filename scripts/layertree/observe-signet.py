@@ -105,6 +105,25 @@ def available():
         return False
 
 
+def restart_late_window(state, now, kill_at):
+    """Retain an interrupted measurement and begin a full new week."""
+    previous = state.get('interrupted_soaks', [])
+    handled = {row['txid'] for window in previous for row in window['late_heartbeats']}
+    late = [row for row in state.get('late_heartbeats', []) if row['txid'] not in handled]
+    if not late or 'soak_began_at_unix' not in state:
+        return False
+    state.setdefault('interrupted_soaks', []).append({
+        'began_at_unix': state['soak_began_at_unix'],
+        'planned_end_at_unix': state['soak_ends_at_unix'],
+        'ended_at_unix': now, 'late_heartbeats': late,
+    })
+    state.update(soak_began_at_unix=now, soak_began_height=state['last_confirmation_height'],
+                 soak_ends_at_unix=now + 7 * 86400,
+                 qualification_window_fits_before_kill=now + 7 * 86400 + 1800 < kill_at)
+    state.pop('elapsed_week_observed_at_unix', None)
+    return True
+
+
 if args.preflight:
     print(json.dumps({'preflight': True, 'height': chain(), 'endpoint_available': available(),
                       'kill_at': args.kill_at, 'publishes_or_spends': False}))
@@ -118,6 +137,7 @@ state = json.loads(state_path.read_text()) if state_path.exists() else {
     'confirmations': [], 'missing_endpoint_checks': 0,
 }
 assert state['kill_at_unix'] == args.kill_at
+restart_late_window(state, time.time(), args.kill_at)
 save(state_path, state)
 
 state.setdefault('pending_publications', [])
@@ -159,6 +179,7 @@ while time.time() <= state['deadline_unix']:
                 if 'soak_began_at_unix' in state and gap > config['unroll_delay'] // 2:
                     state.setdefault('late_heartbeats', []).append(row)
                 state['last_confirmation_height'] = confirmed
+                restart_late_window(state, time.time(), args.kill_at)
                 capture = str(capture_for(state['transaction_id']))
                 state['pending_publications'].append({'txid': state['transaction_id'], 'capture': capture})
                 if state['step'] < len(state['normal_actions']) - 1:
@@ -169,7 +190,9 @@ while time.time() <= state['deadline_unix']:
         elif phase in {'soak_setup', 'soak'}:
             if phase == 'soak' and time.time() >= state['soak_ends_at_unix']:
                 state.setdefault('elapsed_week_observed_at_unix', time.time())
-            if height >= state['last_confirmation_height'] + config['unroll_delay'] // 2 - 1:
+            # Broadcast early enough to allow confirmation delays inside the
+            # six-block target. The twelve-block exit delay stays unchanged.
+            if height >= state['last_confirmation_height'] + config['unroll_delay'] // 3 - 1:
                 result = run('refresh')
                 state.update(phase='confirm', transaction_id=result['txid'], action='refresh')
             elif phase == 'soak_setup' and not state['pending_publications']:
@@ -188,7 +211,7 @@ while time.time() <= state['deadline_unix']:
         # Public file retries never hold up the next due heartbeat. Each
         # outbox already contains the exact signed pair, so retries reuse IDs.
         if state['pending_publications'] and state['phase'] not in {'paid', 'unroll', 'needs_review'}:
-            if height < state.get('last_confirmation_height', height) + 4:
+            if height < state.get('last_confirmation_height', height) + 2:
                 item = state['pending_publications'][0]
                 try:
                     cli('mirror', root, item['capture'], root / 'nostr-outbox' / item['txid'])
@@ -212,7 +235,7 @@ while time.time() <= state['deadline_unix']:
     print(json.dumps({'phase': state['phase'], 'height': height,
                       'last_error': state.get('last_error'),
                       'last_publication_error': state.get('last_publication_error')}), flush=True)
-    time.sleep(60)
+    time.sleep(15)
 else:
     state.update(phase='time_limit', stopped_at_unix=time.time())
     save(state_path, state)
