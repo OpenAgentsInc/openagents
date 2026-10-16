@@ -13,6 +13,11 @@ Start with the [delivery plan](delivery-plan.md),
 [Computers contract](computers.md), and umbrella
 [#11800](https://github.com/OpenAgentsInc/openagents/issues/11800).
 
+The [custom-agent plan](../custom-agents.md) proposes SDK-defined agents,
+assignment through the existing session flow, a creation screen in the
+OpenAgents mobile app at `apps/openagents/`, and a protocol mapping across
+the existing NIPs. This extension is not implemented yet.
+
 [Coder Desktop](../coder-desktop/README.md) is the planned first external reference
 client: a separately maintained Zeron fork using the Rust SDK first, with
 TypeScript where needed in its own repository. Its plan defines the application
