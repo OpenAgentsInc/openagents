@@ -1,7 +1,7 @@
 //! Storage facts stay with their account and the worker that observed them.
 
 use coder_working_computer::{
-    Computer, Phase, Trigger,
+    BootOrigin, Computer, Fact, Phase, Trigger,
     driver::{self, Held},
     on_driver::OnDriver,
     store::StoreError,
@@ -382,6 +382,85 @@ async fn expired_lost_stale_or_wrong_deployment_observations_are_fenced() {
             };
             record(&replacement_lease, &replacement, &observation(&current, "replacement")).await;
             assert_eq!(rig.events("fenced-storage").await.len(), 1);
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn historical_resource_cannot_be_recorded_as_the_active_boot() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let Some(rig) = Rig::new().await else { return };
+            let (lease, entry) = rig.boot("replacement-storage").await;
+            let historical_resource = entry.record.resource().unwrap();
+            let active_resource = "replacement-resource";
+            let at_ms = now_ms();
+
+            // Persist a valid recovery fixture with a deleted old allocation
+            // and its replacement, while keeping the old boot in history.
+            let mut current = entry.record.clone();
+            current.creates.last_mut().unwrap().deletion = Some(Fact::Done {
+                evidence: "old-resource-deleted".into(),
+                at_ms,
+            });
+            let mut allocation = current.creates.last().unwrap().clone();
+            allocation.operation = format!("{}-replacement", allocation.operation);
+            allocation.resource = Some(active_resource.into());
+            allocation.fact = Fact::Done {
+                evidence: active_resource.into(),
+                at_ms,
+            };
+            allocation.deletion = None;
+            let mut boot = current.boots.last().unwrap().clone();
+            boot.number += 1;
+            boot.resource = active_resource.into();
+            boot.origin = BootOrigin::Created;
+            boot.started_ms = at_ms;
+            current.creates.push(allocation);
+            current.boots.push(boot);
+            current.revision += 1;
+            current.updated_ms = at_ms;
+            lease.commit(&entry.record, &current).await.unwrap();
+            assert_eq!(lease.read().await.unwrap(), current);
+            assert_eq!(current.resource(), Some(active_resource));
+            assert!(
+                current
+                    .boots
+                    .iter()
+                    .any(|boot| boot.resource == historical_resource)
+            );
+
+            let fingerprint = entry.binding.as_ref().unwrap().fingerprint.as_str();
+            assert!(matches!(
+                lease
+                    .observe_storage(
+                        &current,
+                        Some(fingerprint),
+                        historical_resource,
+                        &observation(&entry.record, "historical"),
+                        at_ms,
+                    )
+                    .await,
+                Err(StoreError::Corrupt(_))
+            ));
+            assert!(rig.events("replacement-storage").await.is_empty());
+
+            let active = rig
+                .store
+                .get("replacement-storage", &entry.id)
+                .await
+                .unwrap()
+                .unwrap();
+            record(&lease, &active, &observation(&current, "active")).await;
+            let events = rig.events("replacement-storage").await;
+            assert_eq!(events.len(), 1);
+            assert_eq!(events[0]["resource"], active_resource);
+            assert_eq!(events[0]["boot"], current.boot().unwrap().number);
+            assert_eq!(
+                events[0]["evidence"]["storage_observation"]["computer"],
+                active_resource
+            );
+            assert!(!events[0].to_string().contains("snapshot-historical"));
         })
         .await;
 }

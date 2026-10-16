@@ -38,7 +38,7 @@ impl PgLease {
         outcome: &Outcome<StorageObservation>,
         observed_ms: u64,
     ) -> StoreResult<()> {
-        if current.id != self.id || !current.boots.iter().any(|boot| boot.resource == resource) {
+        if current.id != self.id || current.resource() != Some(resource) {
             return Err(StoreError::Corrupt("Storage resource identity mismatch."));
         }
         let mut connection = self.store.db.independent().await.map_err(io)?;
