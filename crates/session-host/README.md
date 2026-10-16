@@ -114,6 +114,13 @@ event and bounded artifact set. They do not repeat intake, charge, or native
 input. Session and native RUN identities remain separate from the CJ RUN.
 Cached replies still require current ownership and generation.
 
+The original CJ event is saved before dispatch. `SessionHost::advance` observes
+retained work without a connected client, stops expired or revoked work, and
+continues observing an earlier stop without repeating its signal. Revoked
+readers receive no private reply while local cleanup continues. Restart leaves
+lost engine work unknown. Admission, configuration, and disclosure share the
+original monotonic wall-time allowance; starting another phase does not reset it.
+
 This receiver currently drives the two synchronous loop adapters through the
 library. It requires one job, zero spend, 1–300 seconds of wall time, and
 64 KiB–1 MiB of output allowance. Polling after expiry requests a stop of the

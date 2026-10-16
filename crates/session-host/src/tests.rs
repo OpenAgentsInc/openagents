@@ -1544,6 +1544,7 @@ struct OpeningEngine {
     root: PathBuf,
     calls: Rc<std::cell::Cell<usize>>,
     crash: bool,
+    configuration_delay: std::time::Duration,
 }
 impl OpeningEngine {
     fn check_pending(&self) {
@@ -1577,6 +1578,7 @@ impl Engine for OpeningEngine {
         self.engine.profile()
     }
     fn check_configuration(&self, c: &crate::engine::Configuration) -> crate::Result<()> {
+        std::thread::sleep(self.configuration_delay);
         self.engine.check_configuration(c)
     }
     fn open(&mut self, resume: Option<&[u8]>) -> crate::Result<String> {
@@ -1636,6 +1638,7 @@ fn opening_intent_survives_lost_acknowledgment_and_process_death() {
                 root: fx.root.clone(),
                 calls: calls.clone(),
                 crash,
+                configuration_delay: std::time::Duration::ZERO,
             })],
             Box::new(fx.bindings.clone()),
         )

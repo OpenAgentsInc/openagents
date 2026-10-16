@@ -18,6 +18,8 @@ pub(crate) struct Transport {
     pub(crate) outcomes: BTreeMap<String, Value>,
     #[serde(default)]
     pub(crate) denied: BTreeSet<String>,
+    #[serde(default)]
+    pub(crate) requests: BTreeMap<String, Event>,
 }
 
 pub(crate) struct Target {
@@ -345,6 +347,7 @@ impl crate::host::SessionHost {
             until: BTreeMap::new(),
             outcomes: BTreeMap::new(),
             denied: BTreeSet::new(),
+            requests: BTreeMap::new(),
         });
         let key = state.transport.as_ref().ok_or("transport")?.service.key(
             &opened.principal,
@@ -434,6 +437,7 @@ impl crate::host::SessionHost {
             key.clone(),
             execute.deadline.min(now.saturating_add(wall_ms / 1000)),
         );
+        book.requests.insert(key.clone(), event.clone());
         self.save(&state)?;
         self.runtime_clocks
             .borrow_mut()
@@ -480,5 +484,60 @@ impl crate::host::SessionHost {
             return self.cj_cached(&state, &key, reply);
         }
         self.finish_runtime(&mut state, event, &opened, execute, &key, true, now)
+    }
+
+    /// Advance retained work without a client. This cannot admit or resend input.
+    /// Reader revocation withholds replies while cleanup continues locally.
+    pub fn advance(&self, now: u64) -> crate::Result<usize> {
+        let _guard = self.store.lock()?;
+        let mut state = self.state()?;
+        let Some(book) = &state.transport else {
+            return Ok(0);
+        };
+        let pending: Vec<_> = book
+            .requests
+            .iter()
+            .filter(|(key, _)| {
+                book.service
+                    .claims
+                    .get(*key)
+                    .is_some_and(|c| c.outcome.is_none())
+            })
+            .map(|(key, event)| (key.clone(), event.clone()))
+            .collect();
+        let mut advanced = 0;
+        for (key, event) in pending {
+            let opened = execution::open_environment_request(
+                &event,
+                self.pubkey(),
+                &self.secret,
+                event.created_at,
+                execution::Window::DEFAULT,
+            )
+            .map_err(|e| format!("{e:?}"))?;
+            let execution::Body::Execute(execute) = &opened.body else {
+                continue;
+            };
+            if self
+                .cj_reply_reader(&state, &opened.principal, &key)
+                .is_err()
+            {
+                let input = state
+                    .transport
+                    .as_ref()
+                    .and_then(|b| b.inputs.get(&key))
+                    .cloned();
+                if let Some(input) = input {
+                    self.cj_stop(&mut state, &input, now, "policy")?;
+                }
+                self.save(&state)?;
+            } else {
+                // One unavailable invocation must not prevent cleanup of others.
+                let _ = self.finish_runtime(&mut state, &event, &opened, execute, &key, true, now);
+                self.save(&state)?;
+            }
+            advanced += 1;
+        }
+        Ok(advanced)
     }
 }

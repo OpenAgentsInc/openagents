@@ -921,3 +921,13 @@ changing command IDs, bindings, runtime generations, or resume sessions cannot
 run the same consumed intent again. A new execution needs a new intent ID;
 changed bytes under a consumed ID conflict. Exact original command retries
 retain their earlier outcome without another native start.
+
+The native host retains the original CJ event before dispatch so its internal
+watchdog can observe that exact execution without a connected client. Deadline
+and current-authority checks precede further engine progress. Revoked readers
+receive no private reply; reader revocation does not prevent the host from
+stopping and observing its own exact native work. A saved stop intent prevents
+another signal, while subsequent observations may establish quiescence. A
+restart cannot replay an opening or input and cannot adopt another engine
+instance's native names. The whole initial admission and disclosure share one
+monotonic wall-time allowance; individual phases cannot restart that allowance.

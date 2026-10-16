@@ -274,6 +274,7 @@ pub struct SessionHost {
     bindings: Box<dyn Bindings>,
     reader: RefCell<Option<ReadScope>>,
     pub(crate) runtime_clocks: RefCell<BTreeMap<String, (std::time::Instant, u64)>>,
+    active_budget: RefCell<Option<(std::time::Instant, u64)>>,
     instance: String,
 }
 
@@ -288,6 +289,16 @@ struct ReadGuard<'a> {
 impl Drop for ReadGuard<'_> {
     fn drop(&mut self) {
         self.reader.replace(self.previous.take());
+    }
+}
+
+struct BudgetGuard<'a> {
+    clock: &'a RefCell<Option<(std::time::Instant, u64)>>,
+    previous: Option<(std::time::Instant, u64)>,
+}
+impl Drop for BudgetGuard<'_> {
+    fn drop(&mut self) {
+        self.clock.replace(self.previous.take());
     }
 }
 
@@ -327,6 +338,33 @@ fn validate_against(schema: &[u8], value: &Value) -> Result<()> {
 }
 
 impl SessionHost {
+    fn with_runtime_budget<T>(&self, key: &str, effect: impl FnOnce() -> Result<T>) -> Result<T> {
+        let clock = self
+            .runtime_clocks
+            .borrow()
+            .get(key)
+            .copied()
+            .ok_or("unknown: original runtime clock is unavailable")?;
+        let previous = self.active_budget.replace(Some(clock));
+        let _guard = BudgetGuard {
+            clock: &self.active_budget,
+            previous,
+        };
+        self.check_runtime_budget()?;
+        effect()
+    }
+
+    fn check_runtime_budget(&self) -> Result<()> {
+        if self
+            .active_budget
+            .borrow()
+            .is_some_and(|(started, millis)| started.elapsed().as_millis() >= u128::from(millis))
+        {
+            return Err("stale: runtime wall-time allowance expired before native input".into());
+        }
+        Ok(())
+    }
+
     fn cj_runtime_facts(
         &self,
         state: &State,
@@ -498,22 +536,24 @@ impl SessionHost {
             target: &execute.payload["target"],
         };
         let mut pending = Some((state, actor, body, input));
-        self.bindings
-            .with_continuation(&request, now, &mut |fence, current| {
-                let (state, actor, body, input) = pending
-                    .take()
-                    .ok_or("unknown: continuation callback cannot repeat")?;
-                self.submit_authenticated(
-                    state,
-                    actor,
-                    body,
-                    input,
-                    None,
-                    current,
-                    None,
-                    Some(fence),
-                )
-            })
+        self.with_runtime_budget(&key, || {
+            self.bindings
+                .with_continuation(&request, now, &mut |fence, current| {
+                    let (state, actor, body, input) = pending
+                        .take()
+                        .ok_or("unknown: continuation callback cannot repeat")?;
+                    self.submit_authenticated(
+                        state,
+                        actor,
+                        body,
+                        input,
+                        None,
+                        current,
+                        None,
+                        Some(fence),
+                    )
+                })
+        })
     }
 
     pub(crate) fn cj_observe(
@@ -602,6 +642,7 @@ impl SessionHost {
             bindings,
             reader: RefCell::new(None),
             runtime_clocks: RefCell::new(BTreeMap::new()),
+            active_budget: RefCell::new(None),
             instance: token(),
         };
         host.state()?;
@@ -1457,6 +1498,7 @@ impl SessionHost {
         now: u64,
         fence: Option<&env_host::runtime::RuntimeFence<'_>>,
     ) -> Result<Value> {
+        self.check_runtime_budget()?;
         if let Some(fence) = fence {
             fence.with_current(request, now, &mut || Ok(()))?;
         } else {
@@ -1492,6 +1534,7 @@ impl SessionHost {
         fence: Option<&env_host::runtime::ContinuationFence<'_>>,
         now: u64,
     ) -> Result<()> {
+        self.check_runtime_budget()?;
         let adapter = &state.adapters[&session.adapter];
         self.native_session(session, &adapter.engine)?;
         let Some(fence) = fence else {
@@ -1558,11 +1601,16 @@ impl SessionHost {
         engine: &str,
         effect: &mut dyn FnMut() -> Result<()>,
     ) -> Result<()> {
+        self.check_runtime_budget()?;
+        let mut checked = || {
+            self.check_runtime_budget()?;
+            effect()
+        };
         if let Some(fence) = fence {
-            return fence.with_current(request, now, effect);
+            return fence.with_current(request, now, &mut checked);
         }
         self.require_engine_execution(engine, fence)?;
-        self.bindings.with_current(request, now, effect)
+        self.bindings.with_current(request, now, &mut checked)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -2269,6 +2317,7 @@ impl SessionHost {
                 self.pending_control(state, session, signer, body, input, now)?;
                 let mut applied = None;
                 let mut effect = || {
+                    self.check_runtime_budget()?;
                     applied = Some(
                         self.engines
                             .borrow_mut()
@@ -3738,11 +3787,11 @@ impl SessionHost {
         let Some(active) = session.active.as_mut().filter(|t| t.id == turn["turn"]) else {
             return Ok(());
         };
-        if active.interrupted {
-            return Ok(());
-        }
+        let signal = !active.interrupted;
         active.interrupted = true;
-        active.stop_cause = Some(cause.into());
+        if signal {
+            active.stop_cause = Some(cause.into());
+        }
         let turn_id = active.id.clone();
         let adapter = state
             .adapters
@@ -3756,7 +3805,7 @@ impl SessionHost {
         self.save(state)?;
         // This cleanup may stop only the original active turn. Its durable
         // intent prevents a lost acknowledgment from repeating the command.
-        if let Some(native) = native {
+        if let Some(native) = native.filter(|_| signal) {
             let _ = self
                 .engines
                 .borrow_mut()
@@ -3914,119 +3963,125 @@ impl SessionHost {
             intake: &intake,
         };
         let mut state = Some(state);
-        self.bindings
-            .with_execution(&dispatch, now, &mut |fence, admitted, current| {
-                if admitted.0 != execute.payload {
-                    return Err("identity_mismatch: admitted session execution differs".into());
-                }
-                nostr::execution::require_pins(execute, &admitted.1)
-                    .map_err(|e| format!("{e:?}"))?;
-                let mut state = state
-                    .take()
-                    .ok_or("unknown: runtime callback cannot repeat")?;
-                let reference = execute.payload["input"]["artifact"].clone();
-                let bytes = &admitted.1[digest_of(&reference)];
-                let body = contracts::parse_strict_bounded(bytes, 1_048_576).map_err(contract)?;
-                self.store
-                    .put(bytes, "application/json", reference["schema"].as_str())?;
-                self.remember(&mut state, &opened.principal, &reference)?;
-                for (digest, bytes) in artifacts.iter().chain(admitted.1.iter()) {
-                    if digest_bytes(bytes) != *digest {
-                        return Err("identity_mismatch: runtime artifact bytes".into());
+        self.with_runtime_budget(key, || {
+            self.bindings
+                .with_execution(&dispatch, now, &mut |fence, admitted, current| {
+                    if admitted.0 != execute.payload {
+                        return Err("identity_mismatch: admitted session execution differs".into());
                     }
-                    let r = self.store.put(bytes, "application/octet-stream", None)?;
-                    self.remember(&mut state, &opened.principal, &r)?;
-                }
-                let event_ref = self.store.put(
-                    &serde_json::to_vec(event).map_err(|e| e.to_string())?,
-                    "application/json",
-                    None,
-                )?;
-                state.declarations.insert(
-                    format!("{}:cj:{}", digest_of(&reference), opened.principal),
-                    event_ref,
-                );
-                state
-                    .signers
-                    .entry(digest_of(&reference).into())
-                    .or_default()
-                    .insert(opened.principal.clone());
-                state
-                    .transport
-                    .as_mut()
-                    .ok_or("transport")?
-                    .inputs
-                    .insert(key.into(), reference.clone());
-                let preflight = (|| -> Result<()> {
-                    validate_against(&self.store.get(&target.input)?, &body)?;
-                    match body["v"].as_str() {
-                        Some("openagents.session-open.v1") if body["adapter"] == target.adapter => {
+                    nostr::execution::require_pins(execute, &admitted.1)
+                        .map_err(|e| format!("{e:?}"))?;
+                    let mut state = state
+                        .take()
+                        .ok_or("unknown: runtime callback cannot repeat")?;
+                    let reference = execute.payload["input"]["artifact"].clone();
+                    let bytes = &admitted.1[digest_of(&reference)];
+                    let body =
+                        contracts::parse_strict_bounded(bytes, 1_048_576).map_err(contract)?;
+                    self.store
+                        .put(bytes, "application/json", reference["schema"].as_str())?;
+                    self.remember(&mut state, &opened.principal, &reference)?;
+                    for (digest, bytes) in artifacts.iter().chain(admitted.1.iter()) {
+                        if digest_bytes(bytes) != *digest {
+                            return Err("identity_mismatch: runtime artifact bytes".into());
                         }
-                        Some("openagents.session-command.v1") => {
-                            let session = state
-                                .sessions
-                                .get(body["scope"]["session"].as_str().ok_or("session")?)
-                                .ok_or("not_admitted: unknown session")?;
-                            let adapter = if body["action"] == "replace_runtime" {
-                                &body["payload"]["adapter"]
-                            } else {
-                                &state.adapters[&session.adapter].reference
-                            };
-                            if *adapter != target.adapter
-                                || matches!(body["action"].as_str(), Some("steer" | "interrupt"))
-                            {
-                                return Err(
-                                    "not_admitted: session operation or adapter differs".into()
-                                );
-                            }
-                        }
-                        _ => {
-                            return Err(
-                                "unsupported_feature: session operation needs another endpoint"
-                                    .into(),
-                            );
-                        }
+                        let r = self.store.put(bytes, "application/octet-stream", None)?;
+                        self.remember(&mut state, &opened.principal, &r)?;
                     }
-                    self.cj_reader(&state, &opened.principal, Some(&reference))
-                })();
-                if let Err(error) = preflight {
-                    let reason = code(&error);
-                    let status = if reason == "conflict" {
-                        "conflict"
-                    } else {
-                        "refused"
-                    };
-                    let value = self.control_result(
-                        &mut state,
-                        &opened.principal,
-                        &reference,
-                        status,
+                    let event_ref = self.store.put(
+                        &serde_json::to_vec(event).map_err(|e| e.to_string())?,
+                        "application/json",
                         None,
-                        Some(reason),
-                        current,
                     )?;
+                    state.declarations.insert(
+                        format!("{}:cj:{}", digest_of(&reference), opened.principal),
+                        event_ref,
+                    );
+                    state
+                        .signers
+                        .entry(digest_of(&reference).into())
+                        .or_default()
+                        .insert(opened.principal.clone());
                     state
                         .transport
                         .as_mut()
                         .ok_or("transport")?
-                        .denied
-                        .insert(key.into());
-                    return self.cj_outcome(&mut state, key, &opened.principal, value, current);
-                }
-                self.save(&state)?;
-                let value = self.submit_authenticated(
-                    state,
-                    opened.principal.clone(),
-                    body,
-                    reference,
-                    Some(binding),
-                    current,
-                    Some(fence),
-                    None,
-                )?;
-                let mut state = self.state()?;
-                self.cj_outcome(&mut state, key, &opened.principal, value, current)
-            })
+                        .inputs
+                        .insert(key.into(), reference.clone());
+                    let preflight = (|| -> Result<()> {
+                        validate_against(&self.store.get(&target.input)?, &body)?;
+                        match body["v"].as_str() {
+                            Some("openagents.session-open.v1")
+                                if body["adapter"] == target.adapter => {}
+                            Some("openagents.session-command.v1") => {
+                                let session = state
+                                    .sessions
+                                    .get(body["scope"]["session"].as_str().ok_or("session")?)
+                                    .ok_or("not_admitted: unknown session")?;
+                                let adapter = if body["action"] == "replace_runtime" {
+                                    &body["payload"]["adapter"]
+                                } else {
+                                    &state.adapters[&session.adapter].reference
+                                };
+                                if *adapter != target.adapter
+                                    || matches!(
+                                        body["action"].as_str(),
+                                        Some("steer" | "interrupt")
+                                    )
+                                {
+                                    return Err(
+                                        "not_admitted: session operation or adapter differs".into(),
+                                    );
+                                }
+                            }
+                            _ => {
+                                return Err(
+                                    "unsupported_feature: session operation needs another endpoint"
+                                        .into(),
+                                );
+                            }
+                        }
+                        self.cj_reader(&state, &opened.principal, Some(&reference))
+                    })();
+                    if let Err(error) = preflight {
+                        let reason = code(&error);
+                        let status = if reason == "conflict" {
+                            "conflict"
+                        } else {
+                            "refused"
+                        };
+                        let value = self.control_result(
+                            &mut state,
+                            &opened.principal,
+                            &reference,
+                            status,
+                            None,
+                            Some(reason),
+                            current,
+                        )?;
+                        state
+                            .transport
+                            .as_mut()
+                            .ok_or("transport")?
+                            .denied
+                            .insert(key.into());
+                        return self.cj_outcome(&mut state, key, &opened.principal, value, current);
+                    }
+                    self.save(&state)?;
+                    let value = self.submit_authenticated(
+                        state,
+                        opened.principal.clone(),
+                        body,
+                        reference,
+                        Some(binding),
+                        current,
+                        Some(fence),
+                        None,
+                    )?;
+                    let mut state = self.state()?;
+                    self.cj_outcome(&mut state, key, &opened.principal, value, current)
+                })
+        })
     }
 }
 

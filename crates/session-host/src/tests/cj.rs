@@ -307,6 +307,9 @@ impl Real {
             "issued_at":self.fx.now,"expires_at":self.fx.now+300})
     }
     fn job(&mut self, body: &Value) -> (nostr::domain::Event, Binding) {
+        self.job_for(body, 300)
+    }
+    fn job_for(&mut self, body: &Value, seconds: u64) -> (nostr::domain::Event, Binding) {
         for bytes in self.fx.artifacts.values() {
             self.coordinator
                 .put_local_bytes(bytes, "application/octet-stream", None)
@@ -342,7 +345,7 @@ impl Real {
             "acceptance":frame["acceptance"][0],"reuse":"never"})),&BTreeMap::new(),self.fx.now).unwrap()["value"].clone();
         let claim=self.coordinator.claim(&self.signed(json!({"v":"openagents.claim-request.v1","requires":[],
             "proposal":proposal,"worker":pk(HOST),"resources":[],"expected_revision":self.revision(),
-            "requested_until":self.fx.now+300,"reservation":self.coordinator.scope(&self.scope).unwrap()["allowance"]})),
+            "requested_until":self.fx.now+seconds,"reservation":self.coordinator.scope(&self.scope).unwrap()["allowance"]})),
             self.fx.now).unwrap()["value"].clone();
         let event = self
             .coordinator
@@ -1225,6 +1228,150 @@ fn a_new_cj_attempt_can_return_a_native_duplicate_without_another_opening() {
         .count();
     assert_eq!(opens, 1);
     assert_eq!(r.coordinator.scope(&r.scope).unwrap()["calls"], 2);
+}
+
+#[test]
+fn one_wall_time_allowance_covers_intake_and_native_configuration() {
+    struct Delayed(Allocator);
+    impl Bindings for Delayed {
+        fn check(&self, a: &str, f: &str, n: u64) -> crate::Result<()> {
+            <Allocator as Bindings>::check(&self.0, a, f, n)
+        }
+        fn with_execution(
+            &self,
+            r: &env_host::runtime::RuntimeDispatch<'_>,
+            n: u64,
+            effect: &mut dyn FnMut(
+                &env_host::runtime::RuntimeFence<'_>,
+                &coordination_host::worker::Intake,
+                u64,
+            ) -> crate::Result<Value>,
+        ) -> crate::Result<Value> {
+            std::thread::sleep(std::time::Duration::from_millis(650));
+            self.0.with_runtime_execution(r, n, effect)
+        }
+    }
+    let mut r = Real::new();
+    let calls = Rc::new(std::cell::Cell::new(0));
+    let host = SessionHost::open(
+        r.fx.root.clone(),
+        secret(HOST),
+        vec![Box::new(OpeningEngine {
+            engine: LoopEngine::mid_turn(),
+            root: r.fx.root.clone(),
+            calls: calls.clone(),
+            crash: false,
+            configuration_delay: std::time::Duration::from_millis(650),
+        })],
+        Box::new(Delayed(r.allocator())),
+    )
+    .unwrap();
+    let opening = r.opening(&host);
+    let (event, binding) = r.job_for(&opening, 1);
+    let result = host
+        .serve(&event, &r.fx.artifacts, &binding, r.fx.now)
+        .unwrap();
+    assert_eq!(result.0.kind, execution::RESULT_KIND);
+    assert_eq!(calls.get(), 0);
+    assert_eq!(
+        r.coordinator
+            .record_result(&result.0, &result.1, r.fx.now)
+            .unwrap()["outcome"],
+        "failed"
+    );
+    assert_eq!(
+        host.serve(&event, &r.fx.artifacts, &binding, r.fx.now)
+            .unwrap(),
+        result
+    );
+    assert_eq!(calls.get(), 0);
+    assert_eq!(r.coordinator.scope(&r.scope).unwrap()["calls"], 1);
+}
+
+#[test]
+fn watchdog_finishes_or_stops_retained_work_without_client_polling() {
+    for mode in ["complete", "deadline", "monotonic", "revoked", "restart"] {
+        let mut r = Real::new();
+        let host = r.host(LoopEngine::mid_turn());
+        let opening = r.opened(&host);
+        let session = opening["session"].as_str().unwrap();
+        let command = r.submit_command(&host, &opening, if mode == "complete" { 1 } else { 20 });
+        let (event, binding) = r.job(&command);
+        host.serve(&event, &r.fx.artifacts, &binding, r.fx.now)
+            .unwrap();
+        let now = if mode == "deadline" {
+            r.fx.now + 301
+        } else {
+            r.fx.now
+        };
+        if mode == "monotonic" {
+            for clock in host.runtime_clocks.borrow_mut().values_mut() {
+                clock.0 = std::time::Instant::now() - std::time::Duration::from_secs(301);
+            }
+        }
+        if mode == "revoked" {
+            host.set_policy(Policy::default()).unwrap();
+        }
+        let host = if mode == "restart" {
+            drop(host);
+            r.host(LoopEngine::mid_turn())
+        } else {
+            host
+        };
+        assert_eq!(host.advance(now).unwrap(), 1);
+        if mode == "revoked" {
+            assert!(host.poll(&event, now).unwrap_err().contains("not_admitted"));
+            assert_eq!(host.status(session).unwrap()["phase"], "ready");
+            host.advance(now).unwrap();
+            host.set_policy(Policy {
+                owners: BTreeSet::from([pk(OWNER)]),
+                controllers: BTreeSet::new(),
+            })
+            .unwrap();
+            host.advance(now).unwrap();
+        }
+        let result = host.poll(&event, now).unwrap();
+        assert_eq!(result.0.kind, execution::RESULT_KIND);
+        let body = result
+            .1
+            .values()
+            .filter_map(|b| serde_json::from_slice::<Value>(b).ok())
+            .find(|b| b["v"] == "openagents.session-turn-result.v1")
+            .unwrap();
+        assert_eq!(
+            body["cause"],
+            match mode {
+                "complete" => "normal",
+                "restart" => "lost_observation",
+                "revoked" => "policy",
+                _ => "deadline",
+            }
+        );
+        assert_eq!(
+            host.started("loop-mid-turn"),
+            usize::from(mode != "restart")
+        );
+        assert_eq!(host.advance(now).unwrap(), 0);
+        assert_eq!(
+            host.serve(&event, &r.fx.artifacts, &binding, now).unwrap(),
+            result
+        );
+        let history = host
+            .store()
+            .json(&host.status(session).unwrap()["history"])
+            .unwrap();
+        let stops = history["native"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|r| host.store().json(r).unwrap()["method"] == "turn/interrupt")
+            .count();
+        assert_eq!(
+            stops,
+            usize::from(matches!(mode, "deadline" | "monotonic" | "revoked"))
+        );
+        assert_eq!(r.coordinator.scope(&r.scope).unwrap()["calls"], 2);
+    }
 }
 
 #[test]
