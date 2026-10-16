@@ -52,6 +52,16 @@ class LabTest(unittest.TestCase):
         return lab.call("lab_edit", {"document": "film", "patch": json.dumps(patch), "summary": summary,
                                      "render": False, **kw})
 
+    def test_a_silent_source_renders_without_a_music_track(self):
+        cut = {"fps": 30, "size": [320, 180], "out": str(TMP / "silent.mp4"),
+               "shots": [{"name": "silent", "src": self.cut["shots"][0]["src"], "dur": 2.0}]}
+        self.assertEqual(lab.check("cut.v1", cut)[0], [])
+        lab.create("silent", "cut.v1", "Silent clip", cut, "First", "test")
+        with (TMP / "silent.log").open("w") as log:
+            rendered = lab.do_render("silent", 1, "preview", log)
+        self.assertTrue(rendered.is_file())
+        self.assertAlmostEqual(lab.cutmod().probe(rendered)["dur"], 2.0, delta=0.1)
+
     def test_a_cut_ending_inside_an_animation_is_found(self):
         problems, _ = lab.check("cut.v1", lab.body("film", 1))
         self.assertTrue(any("cuts the card off" in p for p in problems), problems)

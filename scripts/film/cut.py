@@ -815,6 +815,8 @@ def level_db(shot, music, cut):
     """How much to lift a shot's own speech so it sits a little above the music
     around it: phone sound is far quieter than a mastered score. Applied after a
     gentle compressor, so loud words don't jump out."""
+    if music is None:
+        return 0.0
     speech = mean_db(expand(shot["src"]), shot.get("in", 0.0), shot["dur"])
     bed = mean_db(music, stream="0:a:0")
     if speech is None or bed is None:
@@ -878,8 +880,8 @@ def assemble(cut, segs, w, h, out, master):
     chain.append(post + "[v]")
 
     audio = []
-    music = expand(cut["music"])
-    inputs += ["-i", str(music)]
+    music = expand(cut["music"]) if cut.get("music") else None
+    inputs += ["-i", str(music)] if music else ["-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo"]
     music_timing = ""
     if "timeline" in cut:
         import timeline_bridge
@@ -922,7 +924,7 @@ def assemble(cut, segs, w, h, out, master):
         audio.append(f"[m]{''.join(beds)}amix=inputs={1 + len(beds)}:normalize=0:duration=first,"
                      f"loudnorm=I=-14:TP=-1.0:LRA=11[a]")
     else:
-        audio.append("[m]loudnorm=I=-14:TP=-1.0:LRA=11[a]")
+        audio.append("[m]anull[a]" if music is None else "[m]loudnorm=I=-14:TP=-1.0:LRA=11[a]")
     graph = ";".join(chain + audio)
     out.parent.mkdir(parents=True, exist_ok=True)
     run(["ffmpeg", "-v", "error", "-y", *inputs, "-filter_complex", graph, "-map", "[v]", "-map", "[a]",

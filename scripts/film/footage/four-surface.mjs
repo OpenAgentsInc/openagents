@@ -140,7 +140,7 @@ try {
   beat('web_answered');
   await until(() => {
     const frames = JSON.parse(fs.readFileSync(path.join(desktop, 'frames.json')));
-    return frames.at(-1).messages.length >= stageTwo.length && manifest.phone.at(-1)?.count === `${stageTwo.length} messages loaded` && manifest.web.at(-1)?.text.includes('One conversation, four screens');
+    return terminal.screen().includes('One conversation, four screens.') && frames.at(-1).messages.length >= stageTwo.length && manifest.phone.at(-1)?.count === `${stageTwo.length} messages loaded` && manifest.web.at(-1)?.text.includes('One conversation, four screens');
   }, 30);
   beat('all_four_finished');
   await c.sleep(700); beat('end');
@@ -155,6 +155,8 @@ try {
   if (terminal) { terminal.save(path.join(work, 'terminal.cast')); manifest.terminalStart = terminal.epoch0; terminal.input('\x03'); terminal.kill(); }
   if (native) { const p = path.join(work, 'desktop/stop'); fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, 'stop'); await until(() => native.exitCode !== null, 15).catch(() => native.kill()); }
   if (phoneTest) await until(() => phoneTest.exitCode !== null, 30).catch(() => phoneTest.kill());
+  manifest.desktopExit = native?.exitCode;
+  manifest.phoneTestExit = phoneTest?.exitCode;
   if (web) await web.close();
   const sync = JSON.parse(fs.readFileSync(path.join(state, 'sync.json')));
   let clean = true;
@@ -165,4 +167,5 @@ try {
   fs.rmSync(state, { recursive: true, force: true });
   server.close(); save();
 }
+if (!manifest.cleaned || manifest.desktopExit !== 0 || manifest.phoneTestExit !== 0) throw Error('Capture or cleanup did not pass; inspect the retained private logs.');
 console.log('Recorded four real applications:', work);
