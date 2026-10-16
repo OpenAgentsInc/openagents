@@ -1,0 +1,16 @@
+[Unit]
+Description=Refresh the private SPACE image reader
+After=network-online.target oa-space-k3s.service
+Wants=network-online.target
+Requires=oa-space-k3s.service
+RequiresMountsFor=/space
+
+[Service]
+Type=oneshot
+User=root
+Environment=KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+ExecStart=/usr/bin/python3 /space/config/deployment-tools/cluster-secrets.py --pull-only
+TimeoutStartSec=90
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true

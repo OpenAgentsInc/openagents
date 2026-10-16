@@ -49,7 +49,7 @@ def secret(name, token):
 
 
 def kubectl(*args, data=None, missing=False):
-    command = ["/usr/local/bin/k3s", "kubectl", *args]
+    command = ["/usr/local/bin/k3s", "kubectl", "--cache-dir=/space/kube-cache", *args]
     result = subprocess.run(command, input=json.dumps(data).encode() if data is not None else None,
                             capture_output=True, timeout=30)
     if result.returncode:
