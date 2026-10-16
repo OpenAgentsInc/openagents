@@ -1,6 +1,7 @@
 //! Engine adapters. An adapter states its exact feature matrix and steering
 //! facts; the host never upgrades an emulated or unsupported claim.
 use crate::Result;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
@@ -84,14 +85,42 @@ pub enum Observation {
     Lost,
 }
 
+/// Exact values delivered to and acknowledged by a native adapter. Artifact
+/// references stay in the host; adapters receive only admitted content.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Configuration {
+    pub settings: Value,
+    pub model: Vec<u8>,
+    pub recipient: Vec<u8>,
+    pub policy: Vec<u8>,
+}
+
 pub trait Engine {
     fn profile(&self) -> Profile;
+    /// Validate without starting a process, sending input, or changing state.
+    fn check_configuration(&self, _configuration: &Configuration) -> Result<()> {
+        Err("unsupported_feature: native configuration validation is not implemented".into())
+    }
     /// Whether this instance still owns this exact native session.
     fn owns(&self, _native: &str) -> bool {
         false
     }
     /// Open or resume a native session. Resume state is opaque bytes.
     fn open(&mut self, resume: Option<&[u8]>) -> Result<String>;
+    fn open_configured(
+        &mut self,
+        _resume: Option<&[u8]>,
+        _configuration: &Configuration,
+    ) -> Result<(String, Configuration)> {
+        Err("unsupported_feature: native configured opening is not implemented".into())
+    }
+    fn configure(
+        &mut self,
+        _native: &str,
+        _configuration: &Configuration,
+    ) -> Result<Configuration> {
+        Err("unsupported_feature: native configuration is not implemented".into())
+    }
     /// Stop this exact idle native session. Success acknowledges its closure.
     fn close(&mut self, _native: &str) -> Result<()> {
         Err("unsupported_feature: native close is not implemented".into())
@@ -118,12 +147,14 @@ struct Run {
     answer: Option<Value>,
     corrections: Vec<Value>,
     interrupted: bool,
+    effort: String,
 }
 
 #[derive(Default)]
 struct Native {
     turns: u64,
     run: Option<Run>,
+    configuration: Option<Configuration>,
 }
 
 /// A deterministic in-process engine. Its input is JSON
@@ -146,6 +177,8 @@ pub struct LoopEngine {
     pub fail_close: bool,
     /// Fault: lose the acknowledgment after consuming a steering correction.
     pub fail_steer: bool,
+    /// Fault: lose the acknowledgment after applying native settings.
+    pub fail_configure: bool,
 }
 
 fn features(pairs: &[(&'static str, Support)]) -> BTreeMap<&'static str, Support> {
@@ -169,13 +202,33 @@ fn settings_schema() -> Value {
         "properties":{"effort":{"enum":["low","high"]}}})
 }
 
+fn check_loop_configuration(configuration: &Configuration) -> Result<()> {
+    if configuration
+        .settings
+        .as_object()
+        .is_none_or(|o| o.len() != 1)
+        || !matches!(
+            configuration.settings["effort"].as_str(),
+            Some("low" | "high")
+        )
+    {
+        return Err("unsupported_feature: unsupported loop settings".into());
+    }
+    let model: Value = serde_json::from_slice(&configuration.model)
+        .map_err(|_| "malformed: loop model descriptor")?;
+    if model != json!({"model":"loop"}) {
+        return Err("unsupported_feature: loop model descriptor differs".into());
+    }
+    Ok(())
+}
+
 impl LoopEngine {
     /// Mid-turn steering with engine replay; the host emulates the queue.
     pub fn mid_turn() -> Self {
         use Support::*;
         Self::new(Profile {
             name: "loop-mid-turn",
-            engine: b"loop-engine 1 mid-turn".to_vec(),
+            engine: b"loop-engine 2 mid-turn configured".to_vec(),
             protocol: br#"{"type":"object"}"#.to_vec(),
             effects: json!({"reads":["artifact"],
                 "writes":[],"network":[],
@@ -207,7 +260,7 @@ impl LoopEngine {
         use Support::*;
         Self::new(Profile {
             name: "loop-boundary",
-            engine: b"loop-engine 1 boundary".to_vec(),
+            engine: b"loop-engine 2 boundary configured".to_vec(),
             protocol: br#"{"type":"object"}"#.to_vec(),
             effects: json!({"reads":["artifact"],
                 "writes":[],"network":[],
@@ -242,6 +295,7 @@ impl LoopEngine {
             protocol_fault: false,
             fail_close: false,
             fail_steer: false,
+            fail_configure: false,
         }
     }
     fn capture(
@@ -261,6 +315,56 @@ impl LoopEngine {
 }
 
 impl Engine for LoopEngine {
+    fn check_configuration(&self, configuration: &Configuration) -> Result<()> {
+        check_loop_configuration(configuration)
+    }
+    fn open_configured(
+        &mut self,
+        resume: Option<&[u8]>,
+        configuration: &Configuration,
+    ) -> Result<(String, Configuration)> {
+        check_loop_configuration(configuration)?;
+        let native = self.open(resume)?;
+        self.sessions
+            .get_mut(&native)
+            .ok_or("native session")?
+            .configuration = Some(configuration.clone());
+        self.capture(
+            "from_engine",
+            "session/configured",
+            Some(native.clone()),
+            &serde_json::to_value(configuration).map_err(|e| e.to_string())?,
+        );
+        Ok((native, configuration.clone()))
+    }
+    fn configure(&mut self, native: &str, configuration: &Configuration) -> Result<Configuration> {
+        check_loop_configuration(configuration)?;
+        let session = self
+            .sessions
+            .get_mut(native)
+            .ok_or("unknown: native session unavailable")?;
+        if session.run.is_some() {
+            return Err("conflict: configuration needs an idle engine".into());
+        }
+        if session.configuration.as_ref().is_none_or(|old| {
+            old.model != configuration.model
+                || old.recipient != configuration.recipient
+                || old.policy != configuration.policy
+        }) {
+            return Err("unsupported_feature: model, recipient, or policy changes require runtime replacement".into());
+        }
+        session.configuration = Some(configuration.clone());
+        self.capture(
+            "from_engine",
+            "session/configured",
+            Some(native.into()),
+            &serde_json::to_value(configuration).map_err(|e| e.to_string())?,
+        );
+        if self.fail_configure {
+            return Err("unknown: native configuration acknowledgment lost".into());
+        }
+        Ok(configuration.clone())
+    }
     fn owns(&self, native: &str) -> bool {
         self.sessions.contains_key(native)
     }
@@ -334,11 +438,19 @@ impl Engine for LoopEngine {
             return Err("conflict: a turn is already running".into());
         }
         session.turns += 1;
+        let effort = session
+            .configuration
+            .as_ref()
+            .and_then(|c| c.settings["effort"].as_str())
+            .unwrap_or("low")
+            .to_string();
+        let step_limit = if effort == "high" { 64 } else { 32 };
         session.run = Some(Run {
             turn: turn.into(),
             prompt: input["prompt"].as_str().unwrap_or_default().into(),
-            steps: input["steps"].as_u64().unwrap_or(1).clamp(1, 64),
+            steps: input["steps"].as_u64().unwrap_or(1).clamp(1, step_limit),
             ask: input["ask"].as_str().map(str::to_string),
+            effort,
             corrections: input["corrections"].as_array().cloned().unwrap_or_default(),
             ..Run::default()
         });
@@ -357,8 +469,7 @@ impl Engine for LoopEngine {
             return Observation::Lost;
         };
         if run.interrupted {
-            let output =
-                json!({"prompt":run.prompt,"interrupted":true,"corrections":run.corrections});
+            let output = json!({"prompt":run.prompt,"interrupted":true,"corrections":run.corrections,"effort":run.effort});
             let turn = run.turn.clone();
             session.run = None;
             self.capture("from_engine", "turn/completed", Some(turn), &output);
@@ -398,7 +509,7 @@ impl Engine for LoopEngine {
         if run.steps > 0 {
             return Observation::Running;
         }
-        let output = json!({"prompt":run.prompt,"corrections":run.corrections,"answer":run.answer,
+        let output = json!({"prompt":run.prompt,"corrections":run.corrections,"answer":run.answer,"effort":run.effort,
             "turn_number":session.turns});
         let turn = run.turn.clone();
         session.run = None;

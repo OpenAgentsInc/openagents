@@ -4,7 +4,7 @@
 //! never repeats an engine execution whose outcome is unknown.
 use crate::{
     Result,
-    engine::{Capture, Engine, Observation, Profile, Support},
+    engine::{Capture, Configuration, Engine, Observation, Profile, Support},
 };
 use nostr::{
     contracts::{self, SCHEMA_MEDIA_TYPE, digest_bytes},
@@ -189,6 +189,8 @@ struct Session {
     closing_native: bool,
     #[serde(default)]
     close_run: Vec<Value>,
+    #[serde(default)]
+    configuration_run: Vec<Value>,
     connection: String,
     ordinal: u64,
     generation: u64,
@@ -199,6 +201,8 @@ struct Session {
     admission: Value,
     source: Value,
     effective: Value,
+    #[serde(default)]
+    requested: Option<Value>,
     projection: Value,
     active: Option<Turn>,
     turn_revision: Option<u64>,
@@ -958,6 +962,9 @@ impl SessionHost {
 
     fn check_configuration(&self, adapter: &Adapter, reference: &Value) -> Result<Value> {
         let config = self.body(reference, "openagents.session-configuration.v1")?;
+        if config["bounds"] != json!([]) {
+            return Err("cannot_enforce: session configuration bounds are unsupported".into());
+        }
         if config["adapter"] != adapter.definition {
             return Err(refuse("identity_mismatch", "configuration adapter"));
         }
@@ -982,7 +989,22 @@ impl SessionHost {
         for field in ["recipient", "model", "policy"] {
             self.bytes(&config[field])?;
         }
+        self.engines
+            .borrow()
+            .get(&adapter.engine)
+            .ok_or("engine")?
+            .check_configuration(&self.configuration_values(&config)?)?;
         Ok(config)
+    }
+
+    fn configuration_values(&self, config: &Value) -> Result<Configuration> {
+        Ok(Configuration {
+            settings: contracts::parse_strict_bounded(&self.bytes(&config["settings"])?, 65_536)
+                .map_err(contract)?,
+            model: self.bytes(&config["model"])?,
+            recipient: self.bytes(&config["recipient"])?,
+            policy: self.bytes(&config["policy"])?,
+        })
     }
 
     fn effective(
@@ -1557,7 +1579,8 @@ impl SessionHost {
             "openagents.environment-materialization.v1",
         )?;
         self.bytes(&body["authorization"])?;
-        self.check_configuration(&adapter, &body["requested"])?;
+        let requested = self.check_configuration(&adapter, &body["requested"])?;
+        let configuration = self.configuration_values(&requested)?;
         let mut lineage = token();
         let mut resume = None;
         let mut import = None;
@@ -1673,6 +1696,7 @@ impl SessionHost {
             protocol_fault: None,
             closing_native: false,
             close_run: Vec::new(),
+            configuration_run: Vec::new(),
             connection: token(),
             ordinal: 0,
             generation: 0,
@@ -1683,6 +1707,7 @@ impl SessionHost {
             admission: admission_ref,
             source: body["source"].clone(),
             effective,
+            requested: Some(body["requested"].clone()),
             projection,
             active: None,
             turn_revision: None,
@@ -1740,13 +1765,16 @@ impl SessionHost {
                     {
                         return Err("stale: opening expired before native dispatch".into());
                     }
-                    native = Some(
-                        self.engines
-                            .borrow_mut()
-                            .get_mut(&adapter.engine)
-                            .ok_or("engine")?
-                            .open(resume.as_deref())?,
-                    );
+                    let applied = self
+                        .engines
+                        .borrow_mut()
+                        .get_mut(&adapter.engine)
+                        .ok_or("engine")?
+                        .open_configured(resume.as_deref(), &configuration)?;
+                    if applied.1 != configuration {
+                        return Err("unknown: native configuration differs from the request".into());
+                    }
+                    native = Some(applied.0);
                     Ok(())
                 });
             // Never turn a lost acknowledgment into a retryable refusal.
@@ -2109,7 +2137,11 @@ impl SessionHost {
             }
             "configure" => {
                 self.require(state, session, "configure")?;
-                if session.active.is_some() || session.queue.iter().any(|q| q.state == "queued") {
+                if session.active.is_some()
+                    || session.queue.iter().any(|q| q.state == "queued")
+                    || session.phase != "ready"
+                    || !session.quiescent
+                {
                     return Err(refuse(
                         "conflict",
                         "configure needs an idle session with an empty queue",
@@ -2120,9 +2152,101 @@ impl SessionHost {
                     .get(&session.adapter)
                     .ok_or("adapter")?
                     .clone();
-                self.check_configuration(&adapter, &payload["requested"])?;
+                let requested = self.check_configuration(&adapter, &payload["requested"])?;
+                let previous = self.store.json(&session.effective)?;
+                if ["model", "recipient", "policy"]
+                    .iter()
+                    .any(|field| requested[*field] != previous[*field])
+                {
+                    return Err("unsupported_feature: model, recipient, or policy changes require runtime replacement".into());
+                }
+                self.require_engine_execution(&adapter.engine, fence)?;
+                if fence.is_some() {
+                    let admission = self.store.json(&session.admission)?;
+                    let opening = self.store.json(&admission["request"])?;
+                    let engine = self.store.json(&adapter.reference)?["engine"].clone();
+                    let runtime = self.runtime_use(
+                        self.need_binding(binding)?,
+                        signer,
+                        &opening["lease"],
+                        &opening["materialization"],
+                        &engine,
+                    );
+                    self.check_binding(&runtime, now, fence)?;
+                }
+                let configuration = self.configuration_values(&requested)?;
+                let native = session.native.clone().ok_or("native session")?;
+                let run_id = token();
+                let mut run = Vec::new();
+                records.push(self.run_record(
+                    &mut run,
+                    &run_id,
+                    "created",
+                    json!({"request":digest_of(input)}),
+                    now,
+                )?);
+                records.push(self.run_record(
+                    &mut run,
+                    &run_id,
+                    "admitted",
+                    json!({"request":digest_of(input)}),
+                    now,
+                )?);
+                records.push(self.run_record(
+                    &mut run,
+                    &run_id,
+                    "dispatched",
+                    json!({"request":digest_of(input),"binding":native,"operation":"configure"}),
+                    now,
+                )?);
+                session.configuration_run = run;
+                session.quiescent = false;
+                self.pending_control(state, session, signer, body, input, now)?;
+                let mut applied = None;
+                let mut effect = || {
+                    applied = Some(
+                        self.engines
+                            .borrow_mut()
+                            .get_mut(&adapter.engine)
+                            .ok_or("engine")?
+                            .configure(&native, &configuration)?,
+                    );
+                    Ok(())
+                };
+                let acknowledgment = if let Some(fence) = fence {
+                    let admission = self.store.json(&session.admission)?;
+                    let opening = self.store.json(&admission["request"])?;
+                    let engine = self.store.json(&adapter.reference)?["engine"].clone();
+                    let runtime = self.runtime_use(
+                        self.need_binding(binding)?,
+                        signer,
+                        &opening["lease"],
+                        &opening["materialization"],
+                        &engine,
+                    );
+                    fence.with_current(&runtime, now, &mut effect)
+                } else {
+                    effect()
+                };
+                records.extend(self.capture(state, session, now)?);
+                if acknowledgment.is_err() || applied.as_ref() != Some(&configuration) {
+                    session.phase = "unknown".into();
+                    self.write_state(state, session, now)?;
+                    state.sessions.insert(session.id.clone(), session.clone());
+                    self.save(state)?;
+                    return Err("unknown: native configuration was not acknowledged".into());
+                }
+                records.push(self.run_record(
+                    &mut session.configuration_run,
+                    &run_id,
+                    "resolved",
+                    json!({"outcome":"completed","dispatched":true}),
+                    now,
+                )?);
+                session.quiescent = true;
                 session.effective =
                     self.effective(state, &payload["requested"], &session.owner.clone(), now)?;
+                session.requested = Some(payload["requested"].clone());
             }
             "archive" => session.archived = payload["archived"] == true,
             "close" => {
@@ -2260,11 +2384,12 @@ impl SessionHost {
         if sess::number(&intent, "expires_at").map_err(contract)? <= now {
             return Err(refuse("stale", "intent expired"));
         }
+        let requested = match &session.requested {
+            Some(reference) => reference.clone(),
+            None => self.store.json(&session.admission)?["requested"].clone(),
+        };
         if !same(&intent["configuration"], &session.effective)
-            && !same(
-                &intent["configuration"],
-                &self.store.json(&session.admission)?["requested"],
-            )
+            && !same(&intent["configuration"], &requested)
         {
             return Err(refuse(
                 "incompatible",
@@ -3050,18 +3175,31 @@ impl SessionHost {
             "queue":session.queue.iter().map(|q| json!({"intent":q.id,"state":q.state,"turn":q.turn})).collect::<Vec<_>>(),
             "interactions":session.interactions.iter().map(|i| json!({"interaction":i.reference,"state":i.state})).collect::<Vec<_>>(),
             "results":session.results,"steers":session.steers,"children":session.children,"read_only":session.read_only,
-            "admission":session.admission,"effective":session.effective,"protocol_fault":session.protocol_fault}),
+            "admission":session.admission,"effective":session.effective,"requested":session.requested,"protocol_fault":session.protocol_fault}),
         )
     }
 }
 
 impl SessionHost {
     pub(crate) fn cj_run_in_use(&self, state: &State, run: &str) -> Result<bool> {
+        for prior in state.priors.values() {
+            if prior.result["receipt"].is_null() {
+                continue;
+            }
+            let receipt = self.store.json(&prior.result["receipt"])?;
+            for reference in receipt["records"].as_array().ok_or("receipt records")? {
+                let record = self.store.json(reference)?;
+                if record["v"] == nostr::run::RECORD_SCHEMA && record["record"]["run"] == run {
+                    return Ok(true);
+                }
+            }
+        }
         for session in state.sessions.values() {
             if session
                 .opening_run
                 .iter()
                 .chain(&session.close_run)
+                .chain(&session.configuration_run)
                 .chain(session.active.iter().flat_map(|t| t.run.iter()))
                 .any(|r| r["record"]["run"] == run)
             {

@@ -490,7 +490,7 @@ impl Real {
             &mut self.fx.artifacts,
             &json!({"v":"openagents.turn-intent.v1","requires":[],
             "intent":id,"task_frame":self.frame,"input":input,"context":context,
-            "configuration":opening["requested"],"authorization":authorization,"bounds":[],
+            "configuration":host.status(session).unwrap()["requested"],"authorization":authorization,"bounds":[],
             "expires_at":self.fx.now+300}),
         );
         json!({"v":"openagents.session-command.v1","requires":[],"command":self.fx.next(),
@@ -1036,4 +1036,56 @@ fn continuation_holds_both_authorities_and_never_becomes_a_start_permission() {
             .is_err()
     );
     assert_eq!(r.coordinator.scope(&r.scope).unwrap()["calls"], 2);
+}
+
+#[test]
+fn cj_configuration_applies_native_settings_under_its_own_charge() {
+    let mut r = Real::new();
+    let host = r.host(LoopEngine::mid_turn());
+    let opening = r.opened(&host);
+    let session = opening["session"].as_str().unwrap();
+    let mut settings: Value =
+        serde_json::from_slice(&r.fx.artifacts[opening["requested"]["digest"].as_str().unwrap()])
+            .unwrap();
+    settings["settings"] = put_json(&mut r.fx.artifacts, &json!({"effort":"high"}));
+    let requested = put_json(&mut r.fx.artifacts, &settings);
+    let mut command = r.submit_command(&host, &opening, 1);
+    command["action"] = json!("configure");
+    command["payload"] = json!({"requested":requested});
+    assert_eq!(
+        host.submit(&r.fx.bundle(OWNER, &command), None, r.fx.now)
+            .unwrap()["status"],
+        "refused"
+    );
+    let (event, binding) = r.job(&command);
+    let result = host
+        .serve(&event, &r.fx.artifacts, &binding, r.fx.now)
+        .unwrap();
+    assert_eq!(result.0.kind, execution::RESULT_KIND);
+    let result = r
+        .coordinator
+        .record_result(&result.0, &result.1, r.fx.now)
+        .unwrap();
+    assert_eq!(result["outcome"], "completed");
+    assert_eq!(host.status(session).unwrap()["requested"], requested);
+    assert_eq!(r.coordinator.scope(&r.scope).unwrap()["calls"], 2);
+    r.release_attachment(&binding.grant);
+    let command = r.submit_command(&host, &opening, 1);
+    let (event, binding) = r.job(&command);
+    host.serve(&event, &r.fx.artifacts, &binding, r.fx.now)
+        .unwrap();
+    let result = host.poll(&event, r.fx.now).unwrap();
+    r.coordinator
+        .record_result(&result.0, &result.1, r.fx.now)
+        .unwrap();
+    let turn = result
+        .1
+        .values()
+        .filter_map(|b| serde_json::from_slice::<Value>(b).ok())
+        .find(|b| b["v"] == "openagents.session-turn-result.v1")
+        .unwrap();
+    let output: Value =
+        serde_json::from_slice(&result.1[turn["outputs"][0]["digest"].as_str().unwrap()]).unwrap();
+    assert_eq!(output["effort"], "high");
+    assert_eq!(r.coordinator.scope(&r.scope).unwrap()["calls"], 3);
 }

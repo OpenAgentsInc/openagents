@@ -835,3 +835,16 @@ delivery. Lost replies cannot repeat on retry or restart; uncertain steering
 blocks further input until terminal observation. Cached controls require current
 ownership and generation without redelivery. Question replies check their own
 expiry as well as the pending interaction's expiry.
+
+Configured opening and idle configuration changes deliver admitted content to
+the native adapter and require acknowledgment of the exact values applied.
+The loop adapters select only `{"model":"loop"}` and apply their closed
+`effort` setting to the native turn's step ceiling (`low`: 32; `high`: 64).
+Their model, recipient, and policy pins remain fixed within that binding.
+Unsupported configuration bounds refuse rather than appearing in effective
+enforcement. A configuration change has its own charged execution, saves its
+complete RUN intent and unknown command reply before native delivery, and
+changes the effective record only after a matching acknowledgment. Lost or
+different acknowledgments stay unknown and block further input or configuration
+changes without replay, including after restart. New turn intents name only
+the current requested or effective configuration, not obsolete opening settings.

@@ -148,7 +148,7 @@ impl Fx {
         let schema = serde_json::to_vec(&LoopEngine::mid_turn().profile().settings_schema).unwrap();
         let body = json!({"v":"openagents.session-configuration.v1","requires":[],"adapter":description["adapter"],
             "recipient":put(&mut self.artifacts,b"recipient","application/json",None),
-            "model":put(&mut self.artifacts,b"model","application/json",None),
+            "model":put_json(&mut self.artifacts,&json!({"model":"loop"})),
             "settings_schema":put(&mut self.artifacts,&schema,SCHEMA_MEDIA_TYPE,None),
             "settings":put(&mut self.artifacts,&serde_json::to_vec(&json!({"effort":effort})).unwrap(),"application/json",None),
             "policy":put(&mut self.artifacts,b"policy","application/json",None),"enforcement":null,"bounds":[]});
@@ -198,6 +198,7 @@ impl Fx {
         (body["session"].as_str().unwrap().into(), adapter)
     }
     fn intent(&mut self, host: &SessionHost, session: &str, input: Value, expires: u64) -> Value {
+        let status = host.status(session).unwrap();
         let admission = host
             .store()
             .json(&host.status(session).unwrap()["admission"])
@@ -206,7 +207,7 @@ impl Fx {
             "task_frame":put(&mut self.artifacts,b"frame","application/json",None),
             "input":put(&mut self.artifacts,&serde_json::to_vec(&input).unwrap(),"application/json",None),
             "context":put(&mut self.artifacts,b"context","application/json",None),
-            "configuration":admission["requested"],"authorization":put(&mut self.artifacts,b"authorization","application/json",None),
+            "configuration":if status["requested"].is_null(){&admission["requested"]}else{&status["requested"]},"authorization":put(&mut self.artifacts,b"authorization","application/json",None),
             "bounds":[],"expires_at":expires});
         put_json(&mut self.artifacts, &body)
     }
@@ -434,6 +435,127 @@ fn correction(fx: &mut Fx, mode: &str, text: &str) -> Value {
         &mut fx.artifacts,
         &json!({"v":"openagents.session-steer-correction.v1","requires":[],"correction":content,"mode":mode}),
     )
+}
+
+#[test]
+fn native_settings_apply_and_old_intents_cannot_use_a_changed_configuration() {
+    let mut fx = Fx::new();
+    let host = fx.host();
+    let adapter = host.admit_adapter("loop-mid-turn", fx.now).unwrap();
+    let mut opening = fx.open_body(&host, &adapter, json!({"kind":"new","artifact":null}));
+    opening["requested"] = fx.configuration(&host, &adapter, "high");
+    let binding = fx.binding();
+    assert_eq!(
+        fx.send(&host, OWNER, &opening, Some(&binding))["status"],
+        "accepted"
+    );
+    let session = opening["session"].as_str().unwrap();
+    let intent = fx.intent(
+        &host,
+        session,
+        json!({"prompt":"high","steps":1}),
+        fx.now + 600,
+    );
+    let command = fx.command(&host, session, "submit", json!({"intent":intent}));
+    let binding = fx.binding();
+    assert_eq!(
+        fx.send(&host, OWNER, &command, Some(&binding))["status"],
+        "accepted"
+    );
+    let result = fx.finish(&host, session);
+    assert_eq!(
+        host.store().json(&result["outputs"][0]).unwrap()["effort"],
+        "high"
+    );
+    let old_intent = fx.intent(
+        &host,
+        session,
+        json!({"prompt":"old","steps":1}),
+        fx.now + 600,
+    );
+    let requested = fx.configuration(&host, &adapter, "low");
+    let configure = fx.command(&host, session, "configure", json!({"requested":requested}));
+    assert_eq!(
+        fx.send(&host, OWNER, &configure, None)["status"],
+        "accepted"
+    );
+    let old = fx.command(&host, session, "submit", json!({"intent":old_intent}));
+    let binding = fx.binding();
+    assert_eq!(
+        fx.send(&host, OWNER, &old, Some(&binding))["reason"],
+        "incompatible"
+    );
+    let intent = fx.intent(
+        &host,
+        session,
+        json!({"prompt":"low","steps":1}),
+        fx.now + 600,
+    );
+    let command = fx.command(&host, session, "submit", json!({"intent":intent}));
+    assert_eq!(
+        fx.send(&host, OWNER, &command, Some(&binding))["status"],
+        "accepted"
+    );
+    let result = fx.finish(&host, session);
+    assert_eq!(
+        host.store().json(&result["outputs"][0]).unwrap()["effort"],
+        "low"
+    );
+}
+
+#[test]
+fn an_unknown_native_configuration_cannot_be_repeated_or_claimed_effective() {
+    let mut fx = Fx::new();
+    let mut engine = LoopEngine::mid_turn();
+    engine.fail_configure = true;
+    let host = fx.host_with(engine, LoopEngine::boundary());
+    let (session, adapter) = fx.open(&host, "loop-mid-turn");
+    let original = host.status(&session).unwrap()["effective"].clone();
+    let requested = fx.configuration(&host, &adapter, "high");
+    let command = fx.command(&host, &session, "configure", json!({"requested":requested}));
+    assert_eq!(fx.send(&host, OWNER, &command, None)["status"], "unknown");
+    assert_eq!(fx.send(&host, OWNER, &command, None)["status"], "unknown");
+    let second = fx.command(&host, &session, "configure", json!({"requested":requested}));
+    assert_eq!(fx.send(&host, OWNER, &second, None)["status"], "conflict");
+    assert_eq!(host.status(&session).unwrap()["effective"], original);
+    assert_eq!(host.status(&session).unwrap()["phase"], "unknown");
+    drop(host);
+    let host = fx.host();
+    assert_eq!(fx.send(&host, OWNER, &command, None)["status"], "unknown");
+    assert_eq!(fx.send(&host, OWNER, &second, None)["status"], "conflict");
+    assert_eq!(host.status(&session).unwrap()["effective"], original);
+}
+
+#[test]
+fn unsupported_model_and_configuration_bounds_refuse_before_native_opening() {
+    for bounds in [false, true] {
+        let mut fx = Fx::new();
+        let host = fx.host();
+        let adapter = host.admit_adapter("loop-mid-turn", fx.now).unwrap();
+        let mut opening = fx.open_body(&host, &adapter, json!({"kind":"new","artifact":null}));
+        let mut configuration: Value =
+            serde_json::from_slice(&fx.artifacts[opening["requested"]["digest"].as_str().unwrap()])
+                .unwrap();
+        if bounds {
+            configuration["bounds"] =
+                json!([{"bound":"wall_ms","ceiling":1,"assurance":"host","mechanism":"loop"}]);
+        } else {
+            configuration["model"] = put_json(&mut fx.artifacts, &json!({"model":"another"}));
+        }
+        opening["requested"] = put_json(&mut fx.artifacts, &configuration);
+        let binding = fx.binding();
+        let result = fx.send(&host, OWNER, &opening, Some(&binding));
+        assert_eq!(result["status"], "refused");
+        assert_eq!(
+            result["reason"],
+            if bounds {
+                "cannot_enforce"
+            } else {
+                "unsupported_feature"
+            }
+        );
+        assert!(host.status(opening["session"].as_str().unwrap()).is_err());
+    }
 }
 
 #[test]
@@ -1062,11 +1184,8 @@ struct OpeningEngine {
     calls: Rc<std::cell::Cell<usize>>,
     crash: bool,
 }
-impl Engine for OpeningEngine {
-    fn profile(&self) -> crate::engine::Profile {
-        self.engine.profile()
-    }
-    fn open(&mut self, resume: Option<&[u8]>) -> crate::Result<String> {
+impl OpeningEngine {
+    fn check_pending(&self) {
         let signer =
             nostr::domain::RelaySigner::from_secret_hex(&secret(HOST).display_secret().to_string())
                 .unwrap();
@@ -1090,9 +1209,30 @@ impl Engine for OpeningEngine {
                 .any(|p| p["result"]["status"] == "unknown")
         );
         self.calls.set(self.calls.get() + 1);
-        let opened = self.engine.open(resume);
+    }
+}
+impl Engine for OpeningEngine {
+    fn profile(&self) -> crate::engine::Profile {
+        self.engine.profile()
+    }
+    fn check_configuration(&self, c: &crate::engine::Configuration) -> crate::Result<()> {
+        self.engine.check_configuration(c)
+    }
+    fn open(&mut self, resume: Option<&[u8]>) -> crate::Result<String> {
+        self.check_pending();
+        let result = self.engine.open(resume);
         assert!(!self.crash, "simulated process death after native opening");
-        opened
+        result
+    }
+    fn open_configured(
+        &mut self,
+        resume: Option<&[u8]>,
+        c: &crate::engine::Configuration,
+    ) -> crate::Result<(String, crate::engine::Configuration)> {
+        self.check_pending();
+        let result = self.engine.open_configured(resume, c);
+        assert!(!self.crash, "simulated process death after native opening");
+        result
     }
     fn start(&mut self, native: &str, turn: &str, input: &[u8]) -> crate::Result<()> {
         self.engine.start(native, turn, input)

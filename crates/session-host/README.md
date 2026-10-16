@@ -35,6 +35,22 @@ the paths:
 Mapping Claude Code, Codex, and the ACP delegates to this host is still to
 come. Their steering rows stay in their own adapter crates.
 
+Configured opening passes the admitted settings and model, recipient, and
+policy content to the adapter. The adapter validates them without effects and
+must acknowledge the exact values it applied. Both loop adapters use the fixed
+model descriptor `{"model":"loop"}`. Their `effort` setting limits a turn to
+32 steps for `low` or 64 for `high`; native output records the setting used.
+Changing settings while idle calls the actual engine under its own charged
+execution. Model, recipient, and policy pins stay fixed for that native binding.
+Unsupported configuration bounds refuse.
+
+Configuration saves a complete RUN intent and unknown command reply before
+calling the engine. Only a matching acknowledgment changes the effective
+configuration. A lost or different acknowledgment keeps the original effective
+record, blocks new input and configuration changes, and cannot repeat on retry
+or restart. New intents must name the current requested or effective
+configuration; the opening's old settings cannot authorize a later turn.
+
 Adapter and feature operations pin complete CAP definitions, including input
 and output schemas, the engine and protocol identities, and the binding's
 actual effects. Each adapter has distinct operation IDs. Opening schemas pin
