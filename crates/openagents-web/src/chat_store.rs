@@ -973,6 +973,89 @@ impl Store {
         Ok(conversations)
     }
 
+    /// Bounded ID-order discovery, independent of activity and the legacy list cap.
+    pub(crate) async fn history_page<T>(
+        &self,
+        owner: &str,
+        after: Option<&str>,
+        limit: usize,
+        map: impl Fn(&Conversation) -> T,
+    ) -> Result<(Vec<T>, Option<String>), Error> {
+        validate_owner(owner)?;
+        let (ids, next) = self
+            .chat_ids_page(&owner_digest(owner), false, after, limit)
+            .await?;
+        let hidden = crate::test_runs::hidden(self, owner).await?;
+        let mut chats = Vec::new();
+        for id in ids {
+            if !hidden.contains(&id)
+                && let Some(loaded) = self.load(owner, &id).await?
+                && !loaded.conversation.deleted()
+            {
+                chats.push(map(&loaded.conversation));
+            }
+        }
+        Ok((chats, next))
+    }
+
+    /// Names only; at most `limit + 1` names in memory. The cursor is a public chat ID.
+    pub(crate) async fn chat_ids_page(
+        &self,
+        folder: &str,
+        shared: bool,
+        after: Option<&str>,
+        limit: usize,
+    ) -> Result<(Vec<String>, Option<String>), Error> {
+        valid_key(folder)?;
+        if !(1..=200).contains(&limit) || after.is_some_and(|id| !valid_id(id)) {
+            return Err(Error::Invalid("The chat cursor is invalid."));
+        }
+        let name_prefix = if shared { "c-" } else { "" };
+        let mut ids = match self.0.as_ref() {
+            Adapter::Disk(root) => {
+                let directory = root.join(folder);
+                let after = after.map(str::to_owned);
+                blocking(move || {
+                    let entries = match fs::read_dir(directory) {
+                        Ok(entries) => entries,
+                        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+                        Err(_) => {
+                            return Err(Error::Unavailable("The chat list could not be read."));
+                        }
+                    };
+                    let mut ids = std::collections::BTreeSet::new();
+                    for entry in entries {
+                        let entry = entry
+                            .map_err(|_| Error::Unavailable("The chat list could not be read."))?;
+                        let name = entry.file_name();
+                        let Some(id) = name
+                            .to_str()
+                            .and_then(|s| s.strip_prefix(name_prefix))
+                            .and_then(|s| s.strip_suffix(".json"))
+                        else {
+                            continue;
+                        };
+                        if valid_id(id) && after.as_deref().is_none_or(|a| id > a) {
+                            ids.insert(id.to_owned());
+                            if ids.len() > limit + 1 {
+                                ids.pop_last();
+                            }
+                        }
+                    }
+                    Ok(ids.into_iter().collect::<Vec<_>>())
+                })
+                .await?
+            }
+            Adapter::Gcs(gcs) => {
+                gcs.chat_ids_page(folder, name_prefix, after, limit + 1)
+                    .await?
+            }
+        };
+        let next = (ids.len() > limit).then(|| ids[limit - 1].clone());
+        ids.truncate(limit);
+        Ok((ids, next))
+    }
+
     /// Claim one answer per visitor across processes and replicas.
     ///
     /// A duplicate claim returns false, including a matching request identity.
@@ -1950,6 +2033,80 @@ impl Gcs {
             }
             page = listed.next;
         }
+    }
+
+    async fn chat_ids_page(
+        &self,
+        folder: &str,
+        name_prefix: &str,
+        after: Option<&str>,
+        count: usize,
+    ) -> Result<Vec<String>, Error> {
+        let prefix = format!("{}/{folder}/{name_prefix}", self.prefix);
+        let start = after
+            .map(|id| format!("{prefix}{id}.json/"))
+            .unwrap_or_else(|| prefix.clone());
+        let glob = format!("{prefix}????????-????-????-????-????????????.json");
+        let bearer = self.bearer().await?;
+        let mut token = String::new();
+        let mut ids = Vec::new();
+        // GCS may return a short page with a continuation. Keep filling the bounded page.
+        for _ in 0..=count {
+            let response = self
+                .client
+                .get(format!("{STORAGE_API}/storage/v1/b/{}/o", self.bucket))
+                .query(&[
+                    ("prefix", prefix.as_str()),
+                    ("matchGlob", glob.as_str()),
+                    ("startOffset", start.as_str()),
+                    ("maxResults", &(count - ids.len()).to_string()),
+                    ("fields", "items(name),nextPageToken"),
+                    ("pageToken", token.as_str()),
+                ])
+                .bearer_auth(&bearer)
+                .send()
+                .await
+                .map_err(|_| Error::Unavailable("The chat list could not be read."))?;
+            check_status(&response)?;
+            #[derive(Deserialize)]
+            struct Object {
+                name: String,
+            }
+            #[derive(Deserialize)]
+            struct Page {
+                #[serde(default)]
+                items: Vec<Object>,
+                #[serde(default, rename = "nextPageToken")]
+                next: String,
+            }
+            let page: Page = serde_json::from_slice(&limited_body(response, 128 * 1024).await?)
+                .map_err(|_| Error::Corrupt("The chat list is invalid."))?;
+            for object in page.items {
+                let id = object
+                    .name
+                    .strip_prefix(&prefix)
+                    .and_then(|s| s.strip_suffix(".json"))
+                    .filter(|id| valid_id(id))
+                    .ok_or(Error::Corrupt("The chat list is invalid."))?;
+                if after.is_some_and(|a| id <= a)
+                    || ids.last().is_some_and(|last: &String| id <= last.as_str())
+                {
+                    return Err(Error::Corrupt("The chat list cursor did not advance."));
+                }
+                ids.push(id.to_owned());
+                if ids.len() > count {
+                    return Err(Error::Corrupt("The chat page is too large."));
+                }
+            }
+            if ids.len() == count || page.next.is_empty() {
+                return Ok(ids);
+            }
+            if page.next == token {
+                return Err(Error::Corrupt("The chat list cursor did not advance."));
+            }
+            token = page.next;
+        }
+        Err(Error::Unavailable("The chat list could not be read."))
     }
 
     async fn list(&self, owner: &str) -> Result<Vec<String>, Error> {

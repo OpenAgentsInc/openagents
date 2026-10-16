@@ -58,6 +58,8 @@ mod cad_web;
 mod game_lab;
 mod github_refs;
 mod github_tools;
+mod history_api;
+mod history_openapi;
 mod lab;
 mod labs;
 mod layout;
@@ -579,6 +581,7 @@ pub fn router(config: Config) -> Router {
         .merge(device::routes())
         .merge(coder_sync::routes())
         .merge(phone_api::routes())
+        .merge(history_api::routes())
         .merge(own_runs::routes())
         .merge(mac_jobs::routes())
         .merge(mac_jobs_page::routes())

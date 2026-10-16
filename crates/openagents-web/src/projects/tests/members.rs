@@ -1091,3 +1091,6 @@ async fn an_invitation_by_github_username_waits_on_their_projects_page() {
     assert_eq!(status, StatusCode::BAD_REQUEST, "{refused}");
     assert_eq!(refused["error"]["code"], "unknown_github_user");
 }
+
+#[path = "history.rs"]
+mod history;

@@ -243,6 +243,609 @@
           }
         }
       }
+    },
+    "/v1/history": {
+      "get": {
+        "operationId": "listSavedChats",
+        "tags": [
+          "Saved history"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 100
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "description": "Last public ID from this same list. Empty filtered pages may still have next. ID-order discovery is not a snapshot; restart to find newly inserted earlier IDs.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "project",
+            "in": "query",
+            "description": "A currently authorized shared project ID. Omit for all owned chats, including archived.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A read-only saved page. No hosts are contacted and no seen/send state changes.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoryList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/history/projects": {
+      "get": {
+        "operationId": "listHistoryProjects",
+        "tags": [
+          "Saved history"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 100
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "description": "Last public ID from this same list. Empty filtered pages may still have next. ID-order discovery is not a snapshot; restart to find newly inserted earlier IDs.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A read-only saved page. No hosts are contacted and no seen/send state changes.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoryProjects"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/history/{id}/messages": {
+      "get": {
+        "operationId": "readSavedMessages",
+        "tags": [
+          "Saved history"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 100
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "description": "Last public ID from this same list. Empty filtered pages may still have next. ID-order discovery is not a snapshot; restart to find newly inserted earlier IDs.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "revision",
+            "in": "query",
+            "description": "Required with after. A changed transcript returns 409; restart without after.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A read-only saved page. No hosts are contacted and no seen/send state changes.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoryMessages"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/history/{id}/files/{file}": {
+      "get": {
+        "operationId": "readSavedFile",
+        "tags": [
+          "Saved history"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "file",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{32}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Saved attachment bytes. Current chat/project authorization is checked; missing saved bytes return 404.",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/history/{id}/captures/{capture}": {
+      "get": {
+        "operationId": "readSavedCapture",
+        "tags": [
+          "Saved history"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "capture",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Saved attachment bytes. Current chat/project authorization is checked; missing saved bytes return 404.",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -488,6 +1091,322 @@
                 "type": "string"
               }
             }
+          }
+        }
+      },
+      "HistorySummary": {
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "revision",
+          "updated_unix",
+          "pinned_unix",
+          "archived_unix",
+          "project",
+          "source",
+          "messages"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "updated_unix": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "pinned_unix": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "archived_unix": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "project": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "enum": [
+              "web",
+              "terminal",
+              "phone"
+            ]
+          },
+          "messages": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "HistoryProject": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "shared"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "shared": {
+            "type": "boolean"
+          }
+        }
+      },
+      "HistoryFile": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "size"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "png",
+              "jpeg",
+              "gif",
+              "webp",
+              "pdf",
+              "text",
+              "step",
+              "stl"
+            ]
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      },
+      "HistoryTool": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "required": [
+          "name",
+          "summary",
+          "status",
+          "input",
+          "output"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "running",
+              "done",
+              "failed"
+            ]
+          },
+          "input": {
+            "type": "string"
+          },
+          "output": {
+            "type": "string"
+          }
+        }
+      },
+      "HistoryMessage": {
+        "type": "object",
+        "required": [
+          "id",
+          "role",
+          "text",
+          "files",
+          "tool",
+          "generated_files",
+          "artifacts"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^msg_[0-9]+$"
+          },
+          "role": {
+            "enum": [
+              "user",
+              "assistant",
+              "tool",
+              "thinking"
+            ]
+          },
+          "text": {
+            "type": "string"
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HistoryFile"
+            }
+          },
+          "tool": {
+            "$ref": "#/components/schemas/HistoryTool"
+          },
+          "generated_files": {
+            "type": "array",
+            "maxItems": 0,
+            "items": {}
+          },
+          "artifacts": {
+            "type": "array",
+            "maxItems": 0,
+            "items": {}
+          }
+        }
+      },
+      "HistoryList": {
+        "type": "object",
+        "required": [
+          "data",
+          "next"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "maxItems": 200,
+            "items": {
+              "$ref": "#/components/schemas/HistorySummary"
+            }
+          },
+          "next": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "HistoryProjects": {
+        "type": "object",
+        "required": [
+          "data",
+          "next"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "maxItems": 200,
+            "items": {
+              "$ref": "#/components/schemas/HistoryProject"
+            }
+          },
+          "next": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "HistoryCapture": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "state",
+          "size",
+          "media"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "saved",
+              "unavailable",
+              "not_saved"
+            ]
+          },
+          "size": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "media": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "HistoryMessages": {
+        "type": "object",
+        "required": [
+          "thread",
+          "revision",
+          "data",
+          "next",
+          "captures"
+        ],
+        "properties": {
+          "captures": {
+            "type": "array",
+            "maxItems": 8,
+            "items": {
+              "$ref": "#/components/schemas/HistoryCapture"
+            }
+          },
+          "thread": {
+            "$ref": "#/components/schemas/HistorySummary"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "data": {
+            "type": "array",
+            "maxItems": 200,
+            "items": {
+              "$ref": "#/components/schemas/HistoryMessage"
+            }
+          },
+          "next": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       }

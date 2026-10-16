@@ -9,6 +9,7 @@ payments have separate activation conditions. This document does not claim
 those surfaces are already implemented or published.
 
 Start with the [delivery plan](delivery-plan.md),
+[saved chat reads](chat-history.md),
 [Computers contract](computers.md), and umbrella
 [#11800](https://github.com/OpenAgentsInc/openagents/issues/11800).
 

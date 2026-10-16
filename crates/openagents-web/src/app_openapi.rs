@@ -62,7 +62,7 @@ pub fn document() -> Value {
             "503": response("AccountError", "Account storage is unavailable.")
         }
     }});
-    json!({
+    let mut document = json!({
         "openapi": "3.1.0",
         "info": {"title": "OpenAgents app API", "version": "1"},
         "servers": [{"url": "https://api.openagents.com"}],
@@ -113,7 +113,9 @@ pub fn document() -> Value {
                 }}
             }
         }
-    })
+    });
+    crate::history_openapi::extend(&mut document);
+    document
 }
 
 /// Add the app's implemented operations without replacing unrelated gateway routes.

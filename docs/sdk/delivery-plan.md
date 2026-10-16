@@ -53,7 +53,10 @@ state and test the actual revocation bound. Default API credentials are
 bearer app sessions; supported sign-in keys and `oak_` keys have different
 route authority. Prefix matching never proves access.
 
-The existing history routes have distinct contracts:
+The [saved history API](chat-history.md) adds bounded ID-order discovery,
+archive/shared-project reads, revision-checked full transcripts, and saved
+files, captures, and tool details. Its schemas are in `openapi.app.json`;
+#11828 exposes the typed SDK methods. The legacy routes keep distinct contracts:
 
 - `GET /v1/threads`: offset/limit, at most 200 rows per page, with
   `threads`, `total`, `more`, and `next_offset`; excludes archived chats.
@@ -64,9 +67,8 @@ The existing history routes have distinct contracts:
   Saved attachment fields currently return null; stored tool details need
   a public read mapping.
 - Project-filtered chat lists use another cursor envelope/order. The
-  account store also has a 10,000-record listing ceiling. #11827 must
-  provide continuation or explicit limits, handle changes between pages,
-  and supply archived/shared-project discovery without weakening access.
+  legacy account list still has a 10,000-record ceiling; use `/v1/history`
+  for bounded continuation beyond it.
 
 Acceptance includes existing web and synced terminal/phone chats, long
 histories, saved attachments/tool/thinking content, archived chats, and

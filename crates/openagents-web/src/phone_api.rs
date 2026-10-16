@@ -117,7 +117,7 @@ pub(crate) fn owns(path: &str) -> bool {
     if path.starts_with("/v1/agents/") && path != "/v1/agents/actions" {
         return false;
     }
-    ["/v1/threads", "/v1/computers", "/v1/agents"]
+    ["/v1/threads", "/v1/computers", "/v1/agents", "/v1/history"]
         .iter()
         .any(|prefix| {
             path.strip_prefix(prefix)

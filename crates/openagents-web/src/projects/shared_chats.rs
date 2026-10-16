@@ -309,3 +309,39 @@ pub(crate) fn started_by(chat: &Conversation, viewer: &str, names: &Names) -> St
         .cloned()
         .unwrap_or_else(|| "A former member".into())
 }
+
+/// A bounded page of the shared project's index, including archived chats.
+pub(crate) async fn history_page<T>(
+    app: &App,
+    project: &Project,
+    viewer: &str,
+    after: Option<&str>,
+    limit: usize,
+    map: impl Fn(&Conversation) -> T,
+) -> Result<(Vec<T>, Option<String>), Error> {
+    let store = &app.config.chat_store;
+    let home = home_owner(project, viewer);
+    let (ids, next) = store
+        .chat_ids_page(&folder(&home, &project.id)?, true, after, limit)
+        .await?;
+    let mut chats = Vec::new();
+    for id in ids {
+        let Some((bytes, _)) = store.read_key(&key(&home, &project.id, &id)?).await? else {
+            continue;
+        };
+        let entry: Entry = serde_json::from_slice(&bytes)
+            .map_err(|_| Error::Corrupt("The chat list is invalid."))?;
+        if entry.schema != SCHEMA || entry.chat != id {
+            return Err(Error::Corrupt("The chat list is invalid."));
+        }
+        if let Some(loaded) = store.load(&entry.owner, &id).await?
+            && in_project(&loaded.conversation, &project.id)
+            && !crate::test_runs::hidden(store, &entry.owner)
+                .await?
+                .contains(&id)
+        {
+            chats.push(map(&loaded.conversation));
+        }
+    }
+    Ok((chats, next))
+}
