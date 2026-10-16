@@ -116,12 +116,16 @@ impl crate::host::SessionHost {
             && expired
             && let Some(input) = &input
         {
-            self.cj_stop(state, input, now)?;
+            self.cj_stop(state, input, now, "deadline")?;
         }
         let progress =
             match input {
                 Some(input) => {
-                    self.cj_progress(state, &input, &opened.principal, observe && !expired, now)?
+                    if observe && !expired {
+                        self.cj_observe(state, event, execute, key, &input, now)?
+                    } else {
+                        self.cj_progress(state, &input, &opened.principal, false, now)?
+                    }
                 }
                 None => return Err(
                     "unknown: native admission was not acknowledged; execution was not repeated"

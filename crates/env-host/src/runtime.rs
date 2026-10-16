@@ -41,6 +41,29 @@ pub struct RuntimeDispatch<'a> {
     pub intake: &'a nostr::domain::Event,
 }
 
+/// Exact original execution receiving a signal while it is still active.
+pub struct RuntimeContinuation<'a> {
+    pub runtime: RuntimeUse<'a>,
+    pub execute_event: &'a str,
+    pub target: &'a Value,
+}
+
+/// This proof permits only a signal to existing work. It cannot be passed
+/// where a new execution requires a RuntimeFence.
+pub struct ContinuationFence<'a> {
+    pub(crate) runtime: RuntimeFence<'a>,
+}
+impl ContinuationFence<'_> {
+    pub fn with_current(
+        &self,
+        request: &RuntimeUse<'_>,
+        now: u64,
+        effect: &mut dyn FnMut() -> Result<()>,
+    ) -> Result<()> {
+        self.runtime.with_current(request, now, effect)
+    }
+}
+
 /// A borrowed admission that exists only inside the allocator/coordinator
 /// callback. It cannot be constructed, cloned, or retained by the runtime.
 pub struct RuntimeFence<'a> {
@@ -87,6 +110,16 @@ impl RuntimeFence<'_> {
 }
 
 impl Allocator {
+    /// Check the original active execution without repeating its initial
+    /// intake or releasing its unknown accounting hold.
+    pub fn with_runtime_continuation(
+        &self,
+        request: &RuntimeContinuation<'_>,
+        now: u64,
+        effect: &mut dyn FnMut(&ContinuationFence<'_>, u64) -> Result<Value>,
+    ) -> Result<Value> {
+        self.runtime_continuation(request, now, effect)
+    }
     /// Hold both authorities through disclosure and dispatch of one exact
     /// registered external operation. Success does not settle the worker job.
     pub fn with_runtime_execution(

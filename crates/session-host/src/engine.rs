@@ -86,6 +86,10 @@ pub enum Observation {
 
 pub trait Engine {
     fn profile(&self) -> Profile;
+    /// Whether this instance still owns this exact native session.
+    fn owns(&self, _native: &str) -> bool {
+        false
+    }
     /// Open or resume a native session. Resume state is opaque bytes.
     fn open(&mut self, resume: Option<&[u8]>) -> Result<String>;
     /// Stop this exact idle native session. Success acknowledges its closure.
@@ -140,6 +144,8 @@ pub struct LoopEngine {
     pub protocol_fault: bool,
     /// Fault: lose the reply after the native session has closed.
     pub fail_close: bool,
+    /// Fault: lose the acknowledgment after consuming a steering correction.
+    pub fail_steer: bool,
 }
 
 fn features(pairs: &[(&'static str, Support)]) -> BTreeMap<&'static str, Support> {
@@ -235,6 +241,7 @@ impl LoopEngine {
             fail_open: false,
             protocol_fault: false,
             fail_close: false,
+            fail_steer: false,
         }
     }
     fn capture(
@@ -254,6 +261,9 @@ impl LoopEngine {
 }
 
 impl Engine for LoopEngine {
+    fn owns(&self, native: &str) -> bool {
+        self.sessions.contains_key(native)
+    }
     fn profile(&self) -> Profile {
         self.profile.clone()
     }
@@ -416,6 +426,9 @@ impl Engine for LoopEngine {
         run.corrections.push(correction.clone());
         self.capture("to_engine", "turn/steer", Some(turn.into()), &correction);
         self.capture("from_engine", "user/replay", Some(turn.into()), &correction);
+        if self.fail_steer {
+            return Err("unknown: steering acknowledgment lost".into());
+        }
         Ok(true)
     }
     fn interrupt(&mut self, native: &str, turn: &str) -> Result<()> {

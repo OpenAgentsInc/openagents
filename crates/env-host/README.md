@@ -15,6 +15,15 @@ either authority lock. A returned start acknowledgment does not settle the job.
 A lost callback acknowledgment stays unknown across restart and cannot dispatch
 again. The runtime still owns its exact capability and operation implementation.
 
+`with_runtime_continuation` separately checks a signal to the original charged
+execution. Its distinct borrowed `ContinuationFence` checks the same grant,
+engine, materialization, executor, current resource generation, and deadline
+under both authority locks. COORD requires the original running execution and
+current grants, frame, and token. The original call and unknown hold stay in
+place. This path cannot repeat initial intake, disclose its initial input again,
+or supply a `RuntimeFence` for another opening or turn. The runtime also checks
+that it still owns that exact active native turn before accepting a signal.
+
 ```sh
 env-host init --state DIR --key-file KEY --policy POLICY.json
 env-host submit --state DIR --key-file KEY --provider-root RESOURCES --input BUNDLE

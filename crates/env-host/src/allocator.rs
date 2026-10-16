@@ -2440,6 +2440,99 @@ impl Allocator {
 }
 
 impl Allocator {
+    pub(crate) fn runtime_continuation(
+        &self,
+        continuation: &crate::runtime::RuntimeContinuation<'_>,
+        now: u64,
+        effect: &mut dyn FnMut(&crate::runtime::ContinuationFence<'_>, u64) -> Result<Value>,
+    ) -> Result<Value> {
+        let request = &continuation.runtime;
+        let started = std::time::Instant::now();
+        let _guard = self.store.lock()?;
+        let state = self.state()?;
+        let lease = state
+            .leases
+            .values()
+            .find(|l| {
+                l.attachment
+                    .as_ref()
+                    .is_some_and(|a| a.id == request.attachment)
+            })
+            .ok_or("not_admitted: no current runtime attachment")?;
+        let attachment = lease.attachment.as_ref().ok_or("attachment")?;
+        if lease.status != "attached"
+            || attachment.status != "active"
+            || attachment.grant != *request.grant
+            || attachment.fingerprint != request.fingerprint
+            || attachment.request["controller"] != request.controller
+            || attachment.request["worker"] != request.executor
+            || lease.lease_ref != *request.lease
+            || lease.materialization.as_ref() != Some(request.materialization)
+        {
+            return Err("not_admitted: original active runtime attachment differs".into());
+        }
+        let materialization = self.body(
+            request.materialization,
+            "openagents.environment-materialization.v1",
+        )?;
+        let declaration = self.body(
+            &attachment.request["execute"],
+            "openagents.environment-execute.v1",
+        )?;
+        let plaintext = self.body(&declaration["body"], nostr::execution::SCHEMA)?;
+        if materialization["runtime"]["artifact"] != *request.engine
+            || declaration["event"]["id"] != continuation.execute_event
+            || plaintext["target"] != *continuation.target
+        {
+            return Err("identity_mismatch: original runtime execution differs".into());
+        }
+        let deadline = lease
+            .effective_expiry()
+            .min(attachment.expires_at)
+            .min(plaintext["deadline"].as_u64().ok_or("execute deadline")?);
+        if now.saturating_add(started.elapsed().as_secs()) >= deadline {
+            return Err("stale: runtime continuation expired".into());
+        }
+        self.provider.borrow_mut().check_current(
+            lease
+                .realized
+                .as_ref()
+                .ok_or("unavailable: original environment resource is not observed")?,
+        )?;
+        let reservation = self.body(
+            &attachment.request["reservation"],
+            "openagents.reservation.v1",
+        )?;
+        self.claims
+            .as_ref()
+            .ok_or("not_admitted: live runtime claim authority required")?
+            .with_continuation(
+                &attachment.request["claim"],
+                request.controller,
+                request.executor,
+                &declaration,
+                &plaintext,
+                &reservation,
+                &lease.request["frame"],
+                now.saturating_add(started.elapsed().as_secs()),
+                &mut |current| {
+                    let current = current.max(now.saturating_add(started.elapsed().as_secs()));
+                    if current >= deadline {
+                        return Err("stale: runtime continuation expired".into());
+                    }
+                    let fence = crate::runtime::ContinuationFence {
+                        runtime: crate::runtime::RuntimeFence {
+                            request: *request,
+                            deadline,
+                            admitted_at: current,
+                            started: std::time::Instant::now(),
+                        },
+                    };
+                    effect(&fence, current)
+                },
+            )
+    }
+
     pub(crate) fn runtime_execution(
         &self,
         request: &crate::runtime::RuntimeDispatch<'_>,

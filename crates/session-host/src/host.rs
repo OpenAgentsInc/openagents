@@ -53,9 +53,25 @@ pub trait Bindings {
     ) -> Result<()> {
         Err("cannot_enforce: authoritative runtime admission is not configured".into())
     }
+    fn with_continuation(
+        &self,
+        _request: &env_host::runtime::RuntimeContinuation<'_>,
+        _now: u64,
+        _effect: &mut dyn FnMut(&env_host::runtime::ContinuationFence<'_>, u64) -> Result<Value>,
+    ) -> Result<Value> {
+        Err("cannot_enforce: runtime continuation is not configured".into())
+    }
 }
 
 impl Bindings for env_host::allocator::Allocator {
+    fn with_continuation(
+        &self,
+        request: &env_host::runtime::RuntimeContinuation<'_>,
+        now: u64,
+        effect: &mut dyn FnMut(&env_host::runtime::ContinuationFence<'_>, u64) -> Result<Value>,
+    ) -> Result<Value> {
+        self.with_runtime_continuation(request, now, effect)
+    }
     fn check(&self, attachment: &str, fingerprint: &str, now: u64) -> Result<()> {
         self.check_dispatch(attachment, fingerprint, now)
     }
@@ -130,6 +146,8 @@ struct Turn {
     id: String,
     intent: Value,
     attachment: Value,
+    #[serde(default)]
+    binding: Option<Binding>,
     run: Vec<Value>,
     interrupted: bool,
     #[serde(default)]
@@ -292,6 +310,253 @@ fn validate_against(schema: &[u8], value: &Value) -> Result<()> {
 }
 
 impl SessionHost {
+    fn cj_runtime_facts(
+        &self,
+        state: &State,
+        event: &Event,
+        execute: &nostr::execution::Execute,
+        key: &str,
+        now: u64,
+    ) -> Result<(Binding, Value, Value)> {
+        let book = state.transport.as_ref().ok_or("no runtime invocation")?;
+        let claim = book
+            .service
+            .claims
+            .get(key)
+            .ok_or("no runtime invocation")?;
+        if claim.execute_event != event.id
+            || claim.fingerprint != execute.fingerprint
+            || claim.outcome.is_some()
+            || !claim.dispatch_intent
+            || book.until.get(key).is_none_or(|until| now >= *until)
+            || self
+                .runtime_clocks
+                .borrow()
+                .get(key)
+                .is_some_and(|(start, millis)| start.elapsed().as_millis() >= u128::from(*millis))
+        {
+            return Err("stale: original runtime execution is not active".into());
+        }
+        let input = book.inputs.get(key).ok_or("original input")?;
+        self.cj_reader(state, &event.pubkey, Some(input))?;
+        let turn = state
+            .turn_commands
+            .get(digest_of(input))
+            .ok_or("not_admitted: original operation started no turn")?;
+        let session = state
+            .sessions
+            .get(turn["session"].as_str().ok_or("session")?)
+            .ok_or("session")?;
+        let active = session
+            .active
+            .as_ref()
+            .filter(|a| a.id == turn["turn"])
+            .ok_or("stale: original native turn is no longer active")?;
+        if session.generation != turn["generation"]
+            || session.protocol_fault.is_some()
+            || session.opening
+            || session.closing_native
+            || active.interrupted
+            || !matches!(session.phase.as_str(), "running" | "blocked")
+        {
+            return Err("stale: original native turn cannot accept input".into());
+        }
+        let target = self.cj_target(state, &execute.payload["target"])?;
+        if !session.native.as_deref().is_some_and(|native| {
+            self.engines
+                .borrow()
+                .get(&state.adapters[&session.adapter].engine)
+                .is_some_and(|e| e.owns(native))
+        }) {
+            return Err(
+                "unknown: the original native session is no longer owned by this engine".into(),
+            );
+        }
+        if target.adapter != state.adapters[&session.adapter].reference {
+            return Err(
+                "identity_mismatch: native adapter differs from the original execution".into(),
+            );
+        }
+        let binding = active
+            .binding
+            .clone()
+            .ok_or("not_admitted: original native binding is unavailable")?;
+        if binding.fingerprint != execute.fingerprint || binding.grant != active.attachment {
+            return Err("identity_mismatch: original native binding differs".into());
+        }
+        let admission = self.store.json(&session.admission)?;
+        Ok((
+            binding,
+            self.store.json(&admission["request"])?,
+            target.engine,
+        ))
+    }
+
+    /// Deliver a signed question answer or steering control to the exact
+    /// active execution. This never starts another turn or consumes a call.
+    pub fn continue_turn(&self, event: &Event, bundle: &Bundle, now: u64) -> Result<Value> {
+        let opened = nostr::execution::open_environment_request(
+            event,
+            self.pubkey(),
+            &self.secret,
+            event.created_at,
+            nostr::execution::Window::DEFAULT,
+        )
+        .map_err(|e| format!("{e:?}"))?;
+        let nostr::execution::Body::Execute(execute) = &opened.body else {
+            return Err("original execute required".into());
+        };
+        if bundle.artifacts.len() > 256
+            || bundle.artifacts.values().map(Vec::len).sum::<usize>() > 8 * 1_048_576
+        {
+            return Err("limit_exceeded: session input artifacts".into());
+        }
+        let _guard = self.store.lock()?;
+        let mut state = self.state()?;
+        let book = state.transport.as_ref().ok_or("no runtime invocation")?;
+        let key = book
+            .service
+            .key(&opened.principal, &execute.request, execute.attempt);
+        let claim = book
+            .service
+            .claims
+            .get(&key)
+            .ok_or("no runtime invocation")?;
+        if claim.execute_event != event.id
+            || claim.fingerprint != execute.fingerprint
+            || now > claim.retain_until
+        {
+            return Err(
+                "idempotency_conflict: original runtime invocation differs or expired".into(),
+            );
+        }
+        let original = book.inputs.get(&key).ok_or("original input")?;
+        self.cj_reader(&state, &opened.principal, Some(original))?;
+        let session_id = state
+            .turn_commands
+            .get(digest_of(original))
+            .ok_or("original turn")?["session"]
+            .clone();
+        let (actor, body, input) = self.authenticate(&mut state, &bundle.event, now)?;
+        self.remember(&mut state, &actor, &input)?;
+        if actor != opened.principal || body["scope"]["session"] != session_id {
+            return Err("not_admitted: continuation requires the original session owner".into());
+        }
+        match body["v"].as_str() {
+            Some("openagents.session-interaction-response.v1") => {}
+            Some("openagents.session-command.v1")
+                if matches!(body["action"].as_str(), Some("steer" | "interrupt")) => {}
+            _ => {
+                return Err(
+                    "unsupported_feature: continuation cannot create or configure work".into(),
+                );
+            }
+        }
+        for (digest, bytes) in &bundle.artifacts {
+            if digest_bytes(bytes) != *digest {
+                return Err("identity_mismatch: continuation artifact bytes".into());
+            }
+            let reference = self.store.put(bytes, "application/octet-stream", None)?;
+            self.remember(&mut state, &actor, &reference)?;
+        }
+        sess::validate(&body).map_err(contract)?;
+        let cached = if body["v"] == "openagents.session-command.v1" {
+            state.priors.contains_key(&format!(
+                "{}:{}:{}",
+                self.pubkey(),
+                session_id.as_str().ok_or("session")?,
+                body["command"].as_str().ok_or("command")?
+            ))
+        } else {
+            state
+                .sessions
+                .get(session_id.as_str().ok_or("session")?)
+                .is_some_and(|s| {
+                    s.interactions
+                        .iter()
+                        .any(|i| same(&i.reference, &body["interaction"]) && i.claim.is_some())
+                })
+        };
+        if cached {
+            return self.submit_authenticated(state, actor, body, input, None, now, None, None);
+        }
+        let (binding, opening, engine) =
+            self.cj_runtime_facts(&state, event, execute, &key, now)?;
+        let runtime = self.runtime_use(
+            &binding,
+            &opened.principal,
+            &opening["lease"],
+            &opening["materialization"],
+            &engine,
+        );
+        let request = env_host::runtime::RuntimeContinuation {
+            runtime,
+            execute_event: &event.id,
+            target: &execute.payload["target"],
+        };
+        let mut pending = Some((state, actor, body, input));
+        self.bindings
+            .with_continuation(&request, now, &mut |fence, current| {
+                let (state, actor, body, input) = pending
+                    .take()
+                    .ok_or("unknown: continuation callback cannot repeat")?;
+                self.submit_authenticated(
+                    state,
+                    actor,
+                    body,
+                    input,
+                    None,
+                    current,
+                    None,
+                    Some(fence),
+                )
+            })
+    }
+
+    pub(crate) fn cj_observe(
+        &self,
+        state: &mut State,
+        event: &Event,
+        execute: &nostr::execution::Execute,
+        key: &str,
+        input: &Value,
+        now: u64,
+    ) -> Result<crate::transport::JobProgress> {
+        let facts = self.cj_runtime_facts(state, event, execute, key, now);
+        let mut progress = None;
+        let result = match facts {
+            Ok((binding, opening, engine)) => {
+                let runtime = self.runtime_use(
+                    &binding,
+                    &event.pubkey,
+                    &opening["lease"],
+                    &opening["materialization"],
+                    &engine,
+                );
+                let request = env_host::runtime::RuntimeContinuation {
+                    runtime,
+                    execute_event: &event.id,
+                    target: &execute.payload["target"],
+                };
+                self.bindings
+                    .with_continuation(&request, now, &mut |_, current| {
+                        if progress.is_some() {
+                            return Err("unknown: observation callback cannot repeat".into());
+                        }
+                        progress =
+                            Some(self.cj_progress(state, input, &event.pubkey, true, current)?);
+                        Ok(Value::Null)
+                    })
+            }
+            Err(error) => Err(error),
+        };
+        if result.is_err() {
+            self.cj_stop(state, input, now, "policy")?;
+            return self.cj_progress(state, input, &event.pubkey, false, now);
+        }
+        progress.ok_or("unknown: observation was not acknowledged".into())
+    }
+
     pub fn initialize(root: PathBuf, secret: SecretKey, policy: Policy) -> Result<()> {
         let store = Artifacts::new(root)?;
         if store.root().join("state.json").exists() {
@@ -957,7 +1222,7 @@ impl SessionHost {
             let reference = self.store.put(bytes, "application/octet-stream", None)?;
             self.remember(&mut state, &signer, &reference)?;
         }
-        self.submit_authenticated(state, signer, body, input, binding, now, None)
+        self.submit_authenticated(state, signer, body, input, binding, now, None, None)
     }
 
     fn submit_authenticated(
@@ -969,6 +1234,7 @@ impl SessionHost {
         binding: Option<&Binding>,
         now: u64,
         fence: Option<&env_host::runtime::RuntimeFence<'_>>,
+        continuation: Option<&env_host::runtime::ContinuationFence<'_>>,
     ) -> Result<Value> {
         let scope = self.read_scope(&state, &signer);
         self.with_read_scope(scope, || {
@@ -989,11 +1255,18 @@ impl SessionHost {
                 Some("openagents.session-open.v1") => {
                     self.open_session(&mut state, &signer, &body, &input, binding, now, fence)
                 }
-                Some("openagents.session-command.v1") => {
-                    self.command(&mut state, &signer, &body, &input, binding, now, fence)
-                }
+                Some("openagents.session-command.v1") => self.command(
+                    &mut state,
+                    &signer,
+                    &body,
+                    &input,
+                    binding,
+                    now,
+                    fence,
+                    continuation,
+                ),
                 Some("openagents.session-interaction-response.v1") => {
-                    self.respond(&mut state, &signer, &body, &input, now)
+                    self.respond(&mut state, &signer, &body, &input, now, continuation)
                 }
                 _ => Err(refuse("unsupported_feature", "operation")),
             };
@@ -1138,6 +1411,71 @@ impl SessionHost {
             return Err("not_admitted: this engine requires charged runtime execution".into());
         }
         Ok(())
+    }
+
+    fn check_continuation(
+        &self,
+        state: &State,
+        session: &Session,
+        fence: Option<&env_host::runtime::ContinuationFence<'_>>,
+        now: u64,
+    ) -> Result<()> {
+        let adapter = &state.adapters[&session.adapter];
+        let Some(fence) = fence else {
+            return self.require_engine_execution(&adapter.engine, None);
+        };
+        let active = session.active.as_ref().ok_or("stale: no active turn")?;
+        let admission = self.store.json(&session.admission)?;
+        let opening = self.store.json(&admission["request"])?;
+        let engine = self.store.json(&adapter.reference)?["engine"].clone();
+        let binding = active
+            .binding
+            .as_ref()
+            .ok_or("not_admitted: original runtime binding is unavailable")?;
+        let request = self.runtime_use(
+            &binding,
+            &session.owner,
+            &opening["lease"],
+            &opening["materialization"],
+            &engine,
+        );
+        fence.with_current(&request, now, &mut || Ok(()))
+    }
+
+    fn pending_control(
+        &self,
+        state: &mut State,
+        session: &Session,
+        actor: &str,
+        body: &Value,
+        input: &Value,
+        now: u64,
+    ) -> Result<()> {
+        let result = self.control_result(
+            state,
+            actor,
+            input,
+            "unknown",
+            None,
+            Some("unavailable"),
+            now,
+        )?;
+        state.priors.insert(
+            format!(
+                "{}:{}:{}",
+                self.pubkey(),
+                session.id,
+                body["command"].as_str().ok_or("command")?
+            ),
+            Prior {
+                fingerprint: digest_of(input).into(),
+                result,
+            },
+        );
+        let mut pending = session.clone();
+        pending.phase = "unknown".into();
+        state.sessions.insert(session.id.clone(), pending);
+        self.save(state)
     }
 
     fn runtime_effect(
@@ -1472,6 +1810,7 @@ impl SessionHost {
         binding: Option<&Binding>,
         now: u64,
         fence: Option<&env_host::runtime::RuntimeFence<'_>>,
+        continuation: Option<&env_host::runtime::ContinuationFence<'_>>,
     ) -> Result<Value> {
         let scope = &body["scope"];
         let key = format!(
@@ -1498,6 +1837,7 @@ impl SessionHost {
             binding,
             now,
             fence,
+            continuation,
         );
         state.sessions.insert(id, session);
         let result = outcome?;
@@ -1522,6 +1862,7 @@ impl SessionHost {
         binding: Option<&Binding>,
         now: u64,
         fence: Option<&env_host::runtime::RuntimeFence<'_>>,
+        continuation: Option<&env_host::runtime::ContinuationFence<'_>>,
     ) -> Result<Value> {
         if body["scope"]["authority"] != self.pubkey()
             || body["scope"]["generation"] != session.generation
@@ -1682,7 +2023,7 @@ impl SessionHost {
                     .get(&session.adapter)
                     .ok_or("adapter")?
                     .clone();
-                self.require_engine_execution(&adapter.engine, None)?;
+                self.check_continuation(state, session, continuation, now)?;
                 let steering = self
                     .engines
                     .borrow()
@@ -1696,6 +2037,8 @@ impl SessionHost {
                         if support != Support::Native || steering.native != "mid_turn" {
                             return Err(refuse("unsupported_feature", "native mid-turn steering"));
                         }
+                        self.pending_control(state, session, signer, body, input, now)?;
+                        self.check_continuation(state, session, continuation, now)?;
                         let replayed = self
                             .engines
                             .borrow_mut()
@@ -1715,6 +2058,8 @@ impl SessionHost {
                                 "this adapter has no steering emulation",
                             ));
                         }
+                        self.pending_control(state, session, signer, body, input, now)?;
+                        self.check_continuation(state, session, continuation, now)?;
                         self.engines
                             .borrow_mut()
                             .get_mut(&adapter.engine)
@@ -1749,6 +2094,7 @@ impl SessionHost {
                     .ok_or("adapter")?
                     .clone();
                 let native = session.native.clone().ok_or("native session")?;
+                self.pending_control(state, session, signer, body, input, now)?;
                 self.engines
                     .borrow_mut()
                     .get_mut(&adapter.engine)
@@ -2032,6 +2378,7 @@ impl SessionHost {
             id: turn.clone(),
             intent: intent_ref.clone(),
             attachment: grant.clone(),
+            binding: Some(binding.clone()),
             run: run.clone(),
             interrupted: false,
             stop_cause: None,
@@ -2134,6 +2481,7 @@ impl SessionHost {
             id: turn,
             intent: intent_ref.clone(),
             attachment: grant,
+            binding: Some(binding.clone()),
             run,
             interrupted: false,
             stop_cause: None,
@@ -2422,6 +2770,7 @@ impl SessionHost {
         body: &Value,
         input: &Value,
         now: u64,
+        continuation: Option<&env_host::runtime::ContinuationFence<'_>>,
     ) -> Result<Value> {
         let id = body["scope"]["session"]
             .as_str()
@@ -2431,7 +2780,8 @@ impl SessionHost {
             .sessions
             .remove(&id)
             .ok_or_else(|| refuse("not_admitted", "unknown session"))?;
-        let outcome = self.respond_session(state, &mut session, signer, body, input, now);
+        let outcome =
+            self.respond_session(state, &mut session, signer, body, input, now, continuation);
         state.sessions.insert(id, session);
         outcome
     }
@@ -2444,6 +2794,7 @@ impl SessionHost {
         body: &Value,
         input: &Value,
         now: u64,
+        continuation: Option<&env_host::runtime::ContinuationFence<'_>>,
     ) -> Result<Value> {
         let index = session
             .interactions
@@ -2493,6 +2844,9 @@ impl SessionHost {
         }
         if interaction.state != "pending"
             || interaction.expires_at <= now
+            || body["expires_at"]
+                .as_u64()
+                .is_none_or(|expiry| expiry <= now)
             || session
                 .active
                 .as_ref()
@@ -2510,7 +2864,7 @@ impl SessionHost {
             .get(&session.adapter)
             .ok_or("adapter")?
             .clone();
-        self.require_engine_execution(&adapter.engine, None)?;
+        self.check_continuation(state, session, continuation, now)?;
         // Claim first and persist delivery intent before the engine reply.
         let mut claimed = session.clone();
         claimed.interactions[index].state = "unknown".into();
@@ -2539,6 +2893,7 @@ impl SessionHost {
                 .extend(known.iter().cloned());
         }
         self.save(&snapshot)?;
+        self.check_continuation(state, session, continuation, now)?;
         let native = session.native.clone().ok_or("native session")?;
         let delivered = self
             .engines
@@ -2722,7 +3077,13 @@ impl SessionHost {
         Ok(false)
     }
 
-    pub(crate) fn cj_stop(&self, state: &mut State, input: &Value, now: u64) -> Result<()> {
+    pub(crate) fn cj_stop(
+        &self,
+        state: &mut State,
+        input: &Value,
+        now: u64,
+        cause: &str,
+    ) -> Result<()> {
         let Some(turn) = state.turn_commands.get(digest_of(input)).cloned() else {
             return Ok(());
         };
@@ -2735,7 +3096,7 @@ impl SessionHost {
             return Ok(());
         }
         active.interrupted = true;
-        active.stop_cause = Some("deadline".into());
+        active.stop_cause = Some(cause.into());
         let turn_id = active.id.clone();
         let native = session.native.clone().ok_or("native session")?;
         let adapter = state
@@ -2941,6 +3302,7 @@ impl SessionHost {
                     Some(binding),
                     current,
                     Some(fence),
+                    None,
                 )
             })
     }

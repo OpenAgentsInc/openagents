@@ -45,6 +45,20 @@ pub trait ClaimAuthority {
     fn bootstrap_receipt(&self, _: &nostr::domain::Event, _: &str, _: u64) -> Result<Value> {
         Err("unavailable: bootstrap accounting cannot be observed".into())
     }
+    fn with_continuation(
+        &self,
+        _claim: &Value,
+        _controller: &str,
+        _worker: &str,
+        _declaration: &Value,
+        _plaintext: &Value,
+        _reservation: &Value,
+        _frame: &Value,
+        _now: u64,
+        _effect: &mut dyn FnMut(u64) -> Result<Value>,
+    ) -> Result<Value> {
+        Err("cannot_enforce: fenced runtime continuation is not configured".into())
+    }
     fn bootstrap(
         &self,
         _: &nostr::domain::Event,
@@ -62,6 +76,30 @@ pub trait ClaimAuthority {
     }
 }
 impl ClaimAuthority for coordination_host::book::Coordinator {
+    fn with_continuation(
+        &self,
+        claim: &Value,
+        controller: &str,
+        worker: &str,
+        declaration: &Value,
+        plaintext: &Value,
+        reservation: &Value,
+        frame: &Value,
+        now: u64,
+        effect: &mut dyn FnMut(u64) -> Result<Value>,
+    ) -> Result<Value> {
+        self.with_environment_continuation(
+            claim,
+            controller,
+            worker,
+            declaration,
+            plaintext,
+            reservation,
+            frame,
+            now,
+            effect,
+        )
+    }
     fn check(
         &self,
         claim: &Value,

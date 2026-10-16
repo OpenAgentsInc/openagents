@@ -67,8 +67,24 @@ unknown and retains its COORD hold after restart. The loop profiles read
 artifacts and have no external resource writes; their internal bookkeeping is
 not a separately claimed workspace resource.
 
-Resident CLI transport, active-turn continuations, and real engine processes
-remain unfinished. This receiver does not advertise those roles.
+`SessionHost::continue_turn` accepts the original CJ event and a separately
+signed private question reply, steer, or interrupt command. The original
+request must still own the exact active native turn. ENV and COORD hold their
+current authority checks through delivery, including resource generation,
+executor registration, grants, frame, expiry, and original call accounting.
+This path neither starts a turn nor charges a second call. Its proof type
+cannot authorize opening or a new turn. Polling also checks current authority
+before advancing the loop; revoked or drained work receives a stop request.
+The engine instance must still own the native session before any new input.
+
+Steer and interrupt commands save an unknown pending reply before native
+delivery. A lost acknowledgment cannot repeat delivery on retry or restart.
+An uncertain steering command blocks further input for that turn. Exact cached
+controls still require the current owner and generation; reading a saved reply
+does not deliver anything. Replies also check their own expiry before delivery.
+
+Resident CLI transport and real engine processes remain unfinished. This
+receiver does not advertise those roles.
 
 The production binding reads the allocator's actual saved attachment. It
 checks the requesting controller, executor key, lease, materialization, and

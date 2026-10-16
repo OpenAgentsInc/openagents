@@ -291,9 +291,26 @@ impl Coordinator {
         Ok(result)
     }
     pub(crate) fn current_lease(&self, scope: &Scope, lease: &Lease, now: u64) -> Result<()> {
+        self.current_runtime_lease(scope, lease, now, false)
+    }
+    pub(crate) fn current_runtime_lease(
+        &self,
+        scope: &Scope,
+        lease: &Lease,
+        now: u64,
+        continuing: bool,
+    ) -> Result<()> {
         let grant = self.check(scope, &lease.actor, "claim", now)?;
+        let running = continuing
+            && lease.phase == "running"
+            && lease.dispatched
+            && lease.unknown
+            && lease.result.is_none()
+            && lease.own_calls > 0
+            && lease.execution.is_some();
         if !active(lease)
-            || lease.unknown
+            || (lease.unknown && !running)
+            || (continuing && !running)
             || matches!(lease.phase.as_str(), "cancel_requested" | "unknown")
             || now >= lease.body["expires_at"].as_u64().ok_or("lease expiry")?
             || lease.body["epoch"] != scope.descriptor["epoch"]

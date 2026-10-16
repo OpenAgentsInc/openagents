@@ -262,6 +262,14 @@ resource admission. Git dispatch additionally uses the source owner's scoped
 write grant, lease expiry, and required approval verifier. A signed claim alone
 cannot invoke the source outside that registered dispatcher.
 
+The mounted ENV authority has a separate continuation check for a signal to an
+already charged external runtime execution. It requires that exact running
+claim and prepared request, current executor registration, grants, frame,
+resource observations, token, ancestors, and deadline. It keeps the authority
+lock through the signal and leaves the call charge and unknown hold unchanged.
+It does not return initial input or permit another intake. New execution
+admission continues to refuse an already dispatched or unresolved claim.
+
 Background subscriptions admit read-only operations over explicit immutable
 source observations, with finite task/operation lifetimes, retained evidence,
 and a `retain_as_stale` policy. Session lifetimes, view publication, and automatic

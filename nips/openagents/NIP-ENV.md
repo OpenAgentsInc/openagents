@@ -606,6 +606,15 @@ prevents a queued native worker from starting. These checks do not enable a
 combined AUTO/ENV adapter or turn an engine enqueue acknowledgment into a
 terminal execution result.
 
+A native runtime continuation separately checks the original dispatched,
+charged execution while retaining its unknown accounting hold. Its borrowed
+proof has a distinct type from new execution admission. Both authorities hold
+their mutation locks through the signal, checking the exact request, target,
+grant, executor, installed engine, current resource generation, frame, token,
+and expiry. Drain or revocation refuses new input. The runtime must also own
+the exact original active turn; a continuation cannot open or start another
+execution, repeat initial intake, or increase the original call allowance.
+
 ### Native manifest bootstrap
 
 A host that implements `environment/bootstrap-manifest` initializes an owned

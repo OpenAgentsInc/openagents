@@ -510,6 +510,22 @@ impl Real {
         self.release_attachment(&binding.grant);
         opening
     }
+    fn input(&mut self, command: &mut Value, body: Value) {
+        let reference = &command["payload"]["intent"];
+        let mut intent: Value =
+            serde_json::from_slice(&self.fx.artifacts[reference["digest"].as_str().unwrap()])
+                .unwrap();
+        intent["input"] = put_json(&mut self.fx.artifacts, &body);
+        command["payload"]["intent"] = put_json(&mut self.fx.artifacts, &intent);
+    }
+    fn question(&mut self, host: &SessionHost, session: &str) -> Value {
+        let status = host.status(session).unwrap();
+        let response = put_json(&mut self.fx.artifacts, &json!({"text":"main"}));
+        json!({"v":"openagents.session-interaction-response.v1","requires":[],
+            "interaction":status["interactions"][0]["interaction"],
+            "scope":{"authority":pk(HOST),"session":session,"generation":status["generation"]},
+            "responder":pk(OWNER),"response":response,"expires_at":self.fx.now+300})
+    }
 }
 
 #[test]
@@ -705,5 +721,319 @@ fn cj_oversized_native_output_is_a_bounded_failure_without_repeating_the_turn() 
     assert_eq!(body["outcome"], "failed");
     assert_eq!(host.poll(&event, r.fx.now).unwrap(), result);
     assert_eq!(host.started("loop-mid-turn"), 1);
+    assert_eq!(r.coordinator.scope(&r.scope).unwrap()["calls"], 2);
+}
+
+#[test]
+fn cj_continuations_answer_and_steer_only_the_original_charged_turn() {
+    let mut r = Real::new();
+    let host = r.host(LoopEngine::mid_turn());
+    let opening = r.opened(&host);
+    let session = opening["session"].as_str().unwrap();
+    let mut command = r.submit_command(&host, &opening, 2);
+    r.input(
+        &mut command,
+        json!({"prompt":"work","steps":2,"ask":"which branch?"}),
+    );
+    let (event, binding) = r.job(&command);
+    host.serve(&event, &r.fx.artifacts, &binding, r.fx.now)
+        .unwrap();
+    host.poll(&event, r.fx.now).unwrap();
+    assert_eq!(host.status(session).unwrap()["phase"], "blocked");
+    let response = r.question(&host, session);
+    let mut expired = response.clone();
+    expired["expires_at"] = json!(r.fx.now);
+    assert_eq!(
+        host.continue_turn(&event, &r.fx.bundle(OWNER, &expired), r.fx.now)
+            .unwrap()["reason"],
+        "stale"
+    );
+    assert_eq!(
+        host.submit(&r.fx.bundle(OWNER, &response), None, r.fx.now)
+            .unwrap()["status"],
+        "refused"
+    );
+    let result = host
+        .continue_turn(&event, &r.fx.bundle(OWNER, &response), r.fx.now)
+        .unwrap();
+    assert_eq!(result["status"], "accepted", "{result}");
+    assert_eq!(
+        host.continue_turn(&event, &r.fx.bundle(OWNER, &response), r.fx.now)
+            .unwrap()["status"],
+        "duplicate"
+    );
+    let correction = correction(&mut r.fx, "native", "use tabs");
+    let status = host.status(session).unwrap();
+    let steer = r.fx.command(
+        &host,
+        session,
+        "steer",
+        json!({"turn":status["active_turn"],
+        "expected_turn_revision":status["turn_revision"],"correction":correction}),
+    );
+    assert_eq!(
+        host.continue_turn(&event, &r.fx.bundle(OWNER, &steer), r.fx.now)
+            .unwrap()["status"],
+        "accepted"
+    );
+    assert_eq!(
+        host.continue_turn(&event, &r.fx.bundle(OWNER, &steer), r.fx.now)
+            .unwrap()["status"],
+        "duplicate"
+    );
+    assert!(
+        host.continue_turn(&event, &r.fx.bundle(OWNER, &command), r.fx.now)
+            .is_err()
+    );
+    host.poll(&event, r.fx.now).unwrap();
+    let result = host.poll(&event, r.fx.now).unwrap();
+    let result = r
+        .coordinator
+        .record_result(&result.0, &result.1, r.fx.now)
+        .unwrap();
+    assert_eq!(result["outcome"], "completed");
+    assert_eq!(host.started("loop-mid-turn"), 1);
+    assert_eq!(r.coordinator.scope(&r.scope).unwrap()["calls"], 2);
+    assert_eq!(
+        host.continue_turn(&event, &r.fx.bundle(OWNER, &steer), r.fx.now)
+            .unwrap()["status"],
+        "duplicate"
+    );
+}
+
+#[test]
+fn current_coord_revocation_and_environment_drain_block_native_continuations() {
+    for drain in [false, true] {
+        let mut r = Real::new();
+        let host = r.host(LoopEngine::mid_turn());
+        let opening = r.opened(&host);
+        let session = opening["session"].as_str().unwrap();
+        let mut command = r.submit_command(&host, &opening, 2);
+        r.input(
+            &mut command,
+            json!({"prompt":"work","steps":2,"ask":"which branch?"}),
+        );
+        let (event, binding) = r.job(&command);
+        host.serve(&event, &r.fx.artifacts, &binding, r.fx.now)
+            .unwrap();
+        host.poll(&event, r.fx.now).unwrap();
+        let response = r.question(&host, session);
+        if drain {
+            r.attachment_control(&r.allocator(), &binding.grant, "drain");
+        } else {
+            r.coordinator
+                .control_grants(
+                    &r.signed(json!({"v":"openagents.coordination-native-control.v1",
+                "requires":[],"coordinator":r.scope,"command":workspace_host::artifact::token(),
+                "expected_revision":r.revision(),"actor":pk(HOST),"roles":["read","claim"],
+                "resources":[],"targets":[],"all":true,"until":r.fx.now+7200,
+                "revoke":true,"scope_revoke":false})),
+                    r.fx.now,
+                )
+                .unwrap();
+        }
+        assert!(
+            host.continue_turn(&event, &r.fx.bundle(OWNER, &response), r.fx.now)
+                .is_err()
+        );
+        let stopped = host.poll(&event, r.fx.now).unwrap();
+        assert_eq!(stopped.0.kind, execution::RESULT_KIND);
+        let turn = stopped
+            .1
+            .values()
+            .filter_map(|b| serde_json::from_slice::<Value>(b).ok())
+            .find(|b| b["v"] == "openagents.session-turn-result.v1")
+            .unwrap();
+        assert_eq!(turn["outcome"], "cancelled");
+        assert_eq!(turn["cause"], "policy");
+        assert_eq!(host.started("loop-mid-turn"), 1);
+        assert_eq!(r.coordinator.scope(&r.scope).unwrap()["calls"], 2);
+    }
+}
+
+#[test]
+fn lost_native_steering_and_answer_replies_are_not_delivered_again() {
+    for answering in [false, true] {
+        let mut r = Real::new();
+        let mut engine = LoopEngine::mid_turn();
+        engine.fail_steer = !answering;
+        engine.fail_answer = answering;
+        let host = r.host(engine);
+        let opening = r.opened(&host);
+        let session = opening["session"].as_str().unwrap();
+        let mut command = r.submit_command(&host, &opening, 2);
+        if answering {
+            r.input(
+                &mut command,
+                json!({"prompt":"work","steps":2,"ask":"branch?"}),
+            );
+        }
+        let (event, binding) = r.job(&command);
+        host.serve(&event, &r.fx.artifacts, &binding, r.fx.now)
+            .unwrap();
+        let control = if answering {
+            host.poll(&event, r.fx.now).unwrap();
+            r.question(&host, session)
+        } else {
+            let correction = correction(&mut r.fx, "native", "only once");
+            let status = host.status(session).unwrap();
+            r.fx.command(
+                &host,
+                session,
+                "steer",
+                json!({"turn":status["active_turn"],
+                "expected_turn_revision":status["turn_revision"],"correction":correction}),
+            )
+        };
+        let bundle = r.fx.bundle(OWNER, &control);
+        let unknown = host.continue_turn(&event, &bundle, r.fx.now).unwrap();
+        assert_eq!(unknown["status"], "unknown");
+        assert_eq!(
+            host.continue_turn(&event, &bundle, r.fx.now).unwrap(),
+            unknown
+        );
+        drop(host);
+        let host = r.host(LoopEngine::mid_turn());
+        assert_eq!(
+            host.continue_turn(&event, &bundle, r.fx.now).unwrap(),
+            unknown
+        );
+        assert_eq!(host.started("loop-mid-turn"), 0);
+        assert_eq!(r.coordinator.scope(&r.scope).unwrap()["calls"], 2);
+    }
+}
+
+#[test]
+fn continuation_holds_both_authorities_and_never_becomes_a_start_permission() {
+    use env_host::runtime::{RuntimeContinuation, RuntimeUse};
+    let mut r = Real::new();
+    let host = r.host(LoopEngine::mid_turn());
+    let opening = r.opened(&host);
+    let command = r.submit_command(&host, &opening, 2);
+    let (event, binding) = r.job(&command);
+    let engine = host.store().json(&r.adapter).unwrap()["engine"].clone();
+    let runtime = RuntimeUse {
+        attachment: &binding.attachment,
+        fingerprint: &binding.fingerprint,
+        grant: &binding.grant,
+        controller: &pk(OWNER),
+        executor: &pk(HOST),
+        lease: &opening["lease"],
+        materialization: &opening["materialization"],
+        engine: &engine,
+    };
+    let request = RuntimeContinuation {
+        runtime,
+        execute_event: &event.id,
+        target: &r.target,
+    };
+    let allocator = r.allocator();
+    let mut called = false;
+    assert!(
+        allocator
+            .with_runtime_continuation(&request, r.fx.now, &mut |_, _| {
+                called = true;
+                Ok(Value::Null)
+            })
+            .is_err()
+    );
+    assert!(!called);
+    host.serve(&event, &r.fx.artifacts, &binding, r.fx.now)
+        .unwrap();
+    assert!(
+        allocator
+            .with_runtime_use(&runtime, r.fx.now, &mut || {
+                called = true;
+                Ok(())
+            })
+            .is_err()
+    );
+    assert!(!called);
+    let revoke = r.signed(json!({"v":"openagents.coordination-native-control.v1",
+        "requires":[],"coordinator":r.scope,"command":workspace_host::artifact::token(),
+        "expected_revision":r.revision(),"actor":pk(HOST),"roles":["read","claim"],
+        "resources":[],"targets":[],"all":true,"until":r.fx.now+7200,
+        "revoke":true,"scope_revoke":false}));
+    let drain = json!({"v":"openagents.environment-attachment-control.v1","requires":[],
+        "attachment":binding.grant,"command":workspace_host::artifact::token(),
+        "expected_revision":allocator.status(&r.lease_id).unwrap()["revision"],
+        "action":"drain","evidence":[]});
+    let drain = r.env_bundle(OWNER, &drain);
+    let coord_root = r.fx._temp.path().join("coord");
+    let env_root = r.allocator_root.clone();
+    let resources = r.resource_root.clone();
+    let now = r.fx.now;
+    allocator
+        .with_runtime_continuation(&request, now, &mut |fence, current| {
+            let signer = nostr::domain::RelaySigner::from_secret_hex(
+                &secret(OWNER).display_secret().to_string(),
+            )
+            .unwrap();
+            let saved: Value = workspace_host::artifact::Artifacts::new(coord_root.clone())
+                .unwrap()
+                .load(&signer)
+                .unwrap();
+            assert_eq!(
+                saved["scopes"]
+                    .as_object()
+                    .unwrap()
+                    .values()
+                    .next()
+                    .unwrap()["calls"],
+                2
+            );
+            fence.with_current(&runtime, current, &mut || {
+                called = true;
+                Ok(())
+            })?;
+            let stranger = pk(STRANGER);
+            let mut wrong = runtime;
+            wrong.executor = &stranger;
+            assert!(
+                fence
+                    .with_current(&wrong, current, &mut || panic!("wrong executor"))
+                    .is_err()
+            );
+            for coor in [true, false] {
+                let coord_root = coord_root.clone();
+                let env_root = env_root.clone();
+                let resources = resources.clone();
+                let revoke = revoke.clone();
+                let drain = drain.clone();
+                let refused = std::thread::spawn(move || {
+                    let result = if coor {
+                        Coordinator::open(coord_root, secret(OWNER))
+                            .and_then(|h| h.control_grants(&revoke, now))
+                    } else {
+                        Allocator::open(
+                            env_root,
+                            secret(9),
+                            Box::new(LocalDirectories::new(resources).unwrap()),
+                        )
+                        .and_then(|h| h.submit(&drain, now))
+                    };
+                    result.unwrap_err()
+                })
+                .join()
+                .unwrap();
+                assert!(
+                    refused.contains("another workspace operation is in progress"),
+                    "{refused}"
+                );
+            }
+            Ok(Value::Null)
+        })
+        .unwrap();
+    assert!(called);
+    assert_eq!(
+        r.coordinator.control_grants(&revoke, now).unwrap()["status"],
+        "accepted"
+    );
+    assert_eq!(allocator.submit(&drain, now).unwrap()["status"], "accepted");
+    assert!(
+        allocator
+            .with_runtime_continuation(&request, now, &mut |_, _| panic!("revoked continuation"))
+            .is_err()
+    );
     assert_eq!(r.coordinator.scope(&r.scope).unwrap()["calls"], 2);
 }

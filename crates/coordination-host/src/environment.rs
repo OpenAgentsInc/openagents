@@ -27,6 +27,7 @@ impl Coordinator {
             reservation,
             frame,
             now,
+            false,
         )
     }
     fn environment_claim_locked(
@@ -40,6 +41,7 @@ impl Coordinator {
         reservation: &Value,
         frame: &Value,
         now: u64,
+        continuing: bool,
     ) -> Result<()> {
         let (scope, lease) = state
             .scopes
@@ -51,7 +53,7 @@ impl Coordinator {
                     .map(|l| (s, l))
             })
             .ok_or("not_admitted: actual environment claim unavailable")?;
-        self.current_lease(scope, lease, now)?;
+        self.current_runtime_lease(scope, lease, now, continuing)?;
         if scope
             .proposals
             .values()
@@ -69,7 +71,7 @@ impl Coordinator {
             .as_ref()
             .ok_or("not_admitted: prepare the exact environment execution first")?;
         if lease.actor != worker
-            || lease.dispatched
+            || lease.dispatched != continuing
             || lease.input.as_ref() != Some(plaintext)
             || plaintext["requires"] != serde_json::json!([nostr::environment::BINDING_FEATURE])
             || declaration["caller"] != self.authority()
@@ -125,6 +127,7 @@ impl Coordinator {
             reservation,
             frame,
             now,
+            false,
         )?;
         effect()
     }
@@ -165,6 +168,7 @@ impl Coordinator {
             reservation,
             frame,
             current,
+            false,
         )?;
         if actor != worker
             || self.external_operation(&plaintext["target"])?.worker != worker
@@ -180,6 +184,44 @@ impl Coordinator {
             return Err("stale: execution expired before runtime disclosure".into());
         }
         effect(&admitted, current)
+    }
+
+    /// Fence a signal to an already charged execution. This path cannot
+    /// disclose the initial input, debit another call, or restart execution.
+    pub fn with_environment_continuation(
+        &self,
+        claim: &Value,
+        controller: &str,
+        worker: &str,
+        declaration: &Value,
+        plaintext: &Value,
+        reservation: &Value,
+        frame: &Value,
+        now: u64,
+        effect: &mut dyn FnMut(u64) -> Result<Value>,
+    ) -> Result<Value> {
+        let started = std::time::Instant::now();
+        let _guard = self.store.lock()?;
+        let state = self.state()?;
+        let current = now.saturating_add(started.elapsed().as_secs());
+        self.environment_claim_locked(
+            &state,
+            claim,
+            controller,
+            worker,
+            declaration,
+            plaintext,
+            reservation,
+            frame,
+            current,
+            true,
+        )?;
+        if self.external_operation(&plaintext["target"])?.worker != worker
+            || plaintext["deadline"].as_u64().is_none_or(|v| v <= current)
+        {
+            return Err("not_admitted: original runtime execution is no longer current".into());
+        }
+        effect(current)
     }
 
     /// Charge one owner-admitted bootstrap against the actual container shared

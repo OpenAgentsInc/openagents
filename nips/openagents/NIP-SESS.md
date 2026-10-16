@@ -821,4 +821,17 @@ stopping that original turn before advancing it; only terminal native evidence
 proves quiescence. Oversized known output becomes a bounded failure; uncertain
 work stays unknown with its accounting hold. Native RUN identities cannot
 alias an existing CJ RUN. This profile does not yet provide resident CLI
-transport, active-turn continuation, or real engine processes.
+transport or real engine processes.
+
+Private active-turn continuations name their original CJ execution. New
+question replies and steering require that execution's exact current native
+turn, owner, generation, installed engine instance, and ENV/COORD authorities.
+The continuation proof cannot authorize a new opening or turn. It neither
+charges again nor frees the original unknown hold. New execution intake still
+refuses that already dispatched claim. Polls check the same current authorities
+before advancing the loop; a refusal requests stopping only the original turn.
+Steer and interrupt commands persist their unknown pending reply before native
+delivery. Lost replies cannot repeat on retry or restart; uncertain steering
+blocks further input until terminal observation. Cached controls require current
+ownership and generation without redelivery. Question replies check their own
+expiry as well as the pending interaction's expiry.
