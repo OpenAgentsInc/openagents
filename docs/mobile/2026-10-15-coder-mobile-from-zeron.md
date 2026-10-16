@@ -1,6 +1,6 @@
 # Coder on the phone: porting to the Zeron iOS app (2026-10-15)
 
-Status: assessment and recommendation. The owner asked:
+Status: approved plan (owner, 2026-10-15). Epic: [#11840](https://github.com/OpenAgentsInc/openagents/issues/11840). The owner asked:
 1. What's needed to move our iOS app onto the Zeron iOS app's UI, which
    ships inside our fork ([OpenAgentsInc/coder-desktop](https://github.com/OpenAgentsInc/coder-desktop),
    `apps/ios`)?
@@ -33,8 +33,6 @@ Related: [Coder Desktop](../coder-desktop/README.md), the
   use Nostr where it already fits us: device identity, and later the
   phone-to-computer command channel through NIP-HOST.
 
-The phone can run against `coder-sync` in about two weeks of focused work,
-and on TestFlight the week after.
 
 ## What the Zeron phone app is
 
@@ -127,10 +125,9 @@ A Rust server that answers the routes the current clients use, nothing more:
   A protocol change there is a `coder-sync` change. The fork's
   `FORK.md` should list this as a merge checkpoint.
 
-**Size:** about 4,000 lines of TypeScript, minus the 1,441-line legacy
-session room, comes to roughly 5,000–7,000 lines of Rust with tests. The
-wire formats already exist as Rust types in `zeron-sync` and `zeron-proto`,
-so the server can share them instead of re-deriving them.
+**Size:** about 4,000 lines of TypeScript, without the 1,441-line legacy
+session room. The wire formats already exist as Rust types in `zeron-sync`
+and `zeron-proto`, so the server can share them instead of re-deriving them.
 
 ## Option C: run Zeron's server as is
 
@@ -187,16 +184,16 @@ marketplace and the wallet):
 
 ## The plan
 
-| Step | What | Where | Rough time |
-| --- | --- | --- | --- |
-| P0 | Rename the iOS app like the desktop's D0: "Coder", our icon, bundle `com.openagents.coder.ios` (or the owner's choice, below), Zeron's sign-in and server address off, demo mode working | fork | 1–2 days |
-| P1 | `coder-sync` v1: chat rooms, registry room, device room, blobs on Cloud Storage, Postgres, and dev-mode auth; integration tests running the pinned `zeron-sync`/`zeron-client` against it | monorepo | about 1–1.5 weeks |
-| P2 | OpenAgents sign-in in the phone and desktop clients (device code, or the website's session through the SDK), and `coder-sync` checking our accounts | both | 2–3 days |
-| P3 | Coder Desktop (or `zeron headless`) hosts its sessions through `coder-sync`. The phone sees and drives them live | fork + deploy | 2–3 days |
-| P4 | Push through our `push-gateway`; TestFlight build | both | 2 days, once the owner asks for a TestFlight build |
-| P5 | Your OpenAgents chats in the phone (shared with desktop #11824) | both | with #11824 |
-| P6 | **Cloud computers:** start the headless Coder engine on a computer from the Computers API, so the phone can run sessions with no desktop on | both | after the Computers API's first milestone |
-| Later | Device room over NIP-HOST; Nostr device proofs; Android, once upstream's Android app exists | both | — |
+| Step | What | Where |
+| --- | --- | --- |
+| P0 | Rename the iOS app: **OpenAgents Coder**, our icon, bundle `com.openagents.coder`, Zeron's sign-in and server address off, demo mode working | fork |
+| P1 | `coder-sync` v1: chat rooms, registry room, device room, blobs on Cloud Storage, Postgres, and dev-mode auth; integration tests running the pinned `zeron-sync`/`zeron-client` against it | monorepo |
+| P2 | OpenAgents sign-in in the phone and desktop clients (device code, or the website's session through the SDK), and `coder-sync` checking our accounts | both |
+| P3 | Coder Desktop (or `zeron headless`) hosts its sessions through `coder-sync`. The phone sees and drives them live | fork + deploy |
+| P4 | TestFlight build (no push notifications in the first release) | both |
+| P5 | Your OpenAgents chats in the phone (shared with desktop #11824) | both |
+| P6 | **Cloud computers:** start the headless Coder engine on a computer from the Computers API, so the phone can run sessions with no desktop on | both |
+| Later | Push through our `push-gateway`; device room over NIP-HOST; Nostr device proofs; Android, once upstream's Android app exists | both |
 
 **Verification** (see [targets](../verification/targets.md)):
 - `coder-sync` keeps the properties the clients rely on: a gap-free, strictly
@@ -206,17 +203,15 @@ marketplace and the wallet):
 - These are a small Stateright model of a room, checked alongside the
   Computers target, with every counterexample becoming a test.
 
-## Owner decisions
+## Decisions (owner, 2026-10-15)
 
-1. **Bundle and App Store record.** Recommended: a new "Coder" app
-   (`com.openagents.coder.ios`) and keep `com.openagents.app` for the later
-   OpenAgents app. The alternative is to ship Coder under the existing
-   OpenAgents TestFlight record. That keeps the testers, but mixes the two
-   products.
-2. **Server address:** `sync.openagents.com` (recommended, a clean
-   WebSocket host), or under `api.openagents.com`.
-3. **Cloud Run with one instance, or a small GCE VM.** Recommended: Cloud
-   Run first. It's the same deploy path as our other services; move to GCE
-   only if the 60-minute WebSocket cap causes trouble.
-4. Whether the phone's first release needs push (P4) or can ship with
-   in-app status only.
+1. **The app is "OpenAgents Coder"** on the existing iOS bundle and App
+   Store record, `com.openagents.coder`. The Mac app uses
+   `com.openagents.coder.desktop`, so the IDs don't collide.
+2. **The server is `sync.openagents.com`.**
+3. **The first release has no push notifications.** Push comes later, through
+   our `push-gateway`.
+4. Cloud Run with one instance first (the recommendation; move to GCE only
+   if the WebSocket time limit causes trouble).
+
+Tracking: epic [#11840](https://github.com/OpenAgentsInc/openagents/issues/11840), with children #11841–#11854.
