@@ -1,5 +1,4 @@
 /target
-/crates/openagents-mobile/target/
 /crates/psionic/target/
 # Any nested Cargo workspace's build output.
 target/

@@ -25,7 +25,7 @@ author: openagents
 provenance:
   written_from: [reference]
   cites:
-    - bins/openagents-ios/README.md
+    - docs/mobile/retired-ios.md
     - docs/roadmap/2026-09-29-launch-roadmap.md
     - INVARIANTS.md
     - docs/breez/README.md
@@ -47,7 +47,7 @@ The Wallet is a bitcoin wallet on mainnet, built on Breez's Spark SDK, with its 
 
 ## Sources
 
-- `bins/openagents-ios/README.md`
+- `docs/mobile/retired-ios.md`
 - `docs/roadmap/2026-09-29-launch-roadmap.md`
 - `INVARIANTS.md`
 - `docs/breez/README.md`

@@ -21,7 +21,7 @@ author: openagents
 provenance:
   written_from: [reference]
   cites:
-    - bins/openagents-ios/README.md
+    - docs/mobile/retired-ios.md
     - docs/breez/spend-protocol.md
 evidence:
   - "2026-09-28: written from the cited documents and checked against them (#9923); the answer text awaits the owner's copy review."
@@ -39,5 +39,5 @@ An agent on one of your computers can ask your phone to pay an invoice. The requ
 
 ## Sources
 
-- `bins/openagents-ios/README.md`
+- `docs/mobile/retired-ios.md`
 - `docs/breez/spend-protocol.md`

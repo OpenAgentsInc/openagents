@@ -161,7 +161,7 @@ The violations are in less-watched paths. The crew agent (`crates/coder/src/task
 **Suggested action:**
 1. Add a ledger check, either as `crates/coder/tests/invariants_ledger.rs` or as a `scripts/` check in the docs gate. It parses backticked snake_case names in the Checked-by column and asserts that each has a `fn NAME` under `crates/`, `bins/` or `tests/`, with a `(manual)` escape.
 2. Re-point the 11 rows to their replacement tests (for example, the openagents-web chat tests for row 140).
-3. Fix the `gym/tests.rs` path to [crates/openagents-mobile/src/gym.rs](../../../../crates/openagents-mobile/src/gym.rs).
+3. Fix the `gym/tests.rs` path to [crates/openagents-mobile/src/gym.rs](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/crates/openagents-mobile/src/gym.rs).
 4. Verify: the ledger check fails on the current file, passes after the re-pointing, and fails again if a cited test is renamed.
 
 ### X-ROUTE-07 INVARIANTS.md has become an unreviewable change log

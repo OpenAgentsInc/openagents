@@ -1,5 +1,7 @@
 # Launch film footage: handoff (#11432)
 
+> Historical capture notes: the old mobile app and its phone capture tools were removed in #11901. Their source remains in Git history; current mobile work belongs in `apps/openagents`.
+
 State on 2026-10-12 (evening, cut 3). All of it runs locally against the
 1.0 stack on this Mac; nothing touches staging or production.
 

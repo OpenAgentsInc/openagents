@@ -23,7 +23,7 @@ provenance:
     - crates/openagents-desktop/README.md
     - crates/openagents-desktop/src/grid.rs
     - docs/verse/mobile.md
-    - bins/openagents-ios/README.md
+    - docs/mobile/retired-ios.md
     - docs/roadmap/2026-09-29-launch-roadmap.md
 evidence:
   - "2026-09-28: written from the cited documents and checked against them (#9923); the answer text awaits the owner's copy review."
@@ -46,5 +46,5 @@ The Verse is our shared world, and the Grid is its first place: a ground grid wh
 - `crates/openagents-desktop/README.md`
 - `crates/openagents-desktop/src/grid.rs`
 - `docs/verse/mobile.md`
-- `bins/openagents-ios/README.md`
+- `docs/mobile/retired-ios.md`
 - `docs/roadmap/2026-09-29-launch-roadmap.md`

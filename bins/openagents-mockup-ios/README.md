@@ -16,7 +16,7 @@ the spec's first rule, **IDIOT PROOF**: one obvious primary action, plain
 words only, a "Next:" line, and no dead ends.
 
 - Pure SwiftUI. No Rust, no network, no sign-in, and no code shared with
-  the real app in [`bins/openagents-ios`](../openagents-ios/README.md).
+  the real app in [`bins/openagents-ios`](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/bins/openagents-ios/README.md).
   Nothing here can break it, and it builds in seconds.
 - Its own app: bundle ID `com.openagents.mockup`, shown on the phone as
   **OpenAgents Mockup**, version 0.1.0. It installs next to the real app.

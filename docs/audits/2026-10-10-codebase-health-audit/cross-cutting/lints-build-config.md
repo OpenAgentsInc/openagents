@@ -173,7 +173,7 @@ Lint hygiene has a lot of no-op noise. There are 449 `#[allow]` attributes (503 
 
 **Locations:**
 - [Cargo.toml](../../../../Cargo.toml) (Cargo.toml:44-115)
-- [crates/openagents-mobile/Cargo.toml](../../../../crates/openagents-mobile/Cargo.toml) (Cargo.toml:122)
+- [crates/openagents-mobile/Cargo.toml](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/crates/openagents-mobile/Cargo.toml) (Cargo.toml:122)
 
 **Evidence:** These 7 crates have a Cargo.toml but no profile override: verse-game, verse-lagrange, verse-private, verse-water-spells, verse-zone-coast, verse-zone-crypt, verse-zone-water. crates/openagents-mobile/Cargo.toml has no `[profile]` section, and a separate workspace does not inherit the root profiles.
 
@@ -271,7 +271,7 @@ Lint hygiene has a lot of no-op noise. There are 449 `#[allow]` attributes (503 
 
 **Locations:**
 - [scripts/check-dependencies.sh](../../../../scripts/check-dependencies.sh) (check-dependencies.sh:19)
-- [crates/openagents-mobile/Cargo.toml](../../../../crates/openagents-mobile/Cargo.toml) (Cargo.toml:122-126)
+- [crates/openagents-mobile/Cargo.toml](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/crates/openagents-mobile/Cargo.toml) (Cargo.toml:122-126)
 - [docs/decision-models/2026-09-20-state-budget-choice/original-runner/Cargo.toml](../../../../docs/decision-models/2026-09-20-state-budget-choice/original-runner/Cargo.toml) (Cargo.toml:6)
 
 **Evidence:** check-dependencies.sh:19 runs only against the root workspace. There are 14 tracked Cargo.lock files. original-runner/Cargo.toml:6 reads `coder = { path = "/Users/christopherdavid/work/openagents/crates/coder" }`.
@@ -358,7 +358,7 @@ Lint hygiene has a lot of no-op noise. There are 449 `#[allow]` attributes (503 
 
 **Locations:**
 - [Cargo.toml](../../../../Cargo.toml) (Cargo.toml:32)
-- [crates/openagents-mobile/Cargo.toml](../../../../crates/openagents-mobile/Cargo.toml) (Cargo.toml:126)
+- [crates/openagents-mobile/Cargo.toml](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/crates/openagents-mobile/Cargo.toml) (Cargo.toml:126)
 - [crates/verse-bake/src/main.rs](../../../../crates/verse-bake/src/main.rs) (main.rs:241-248)
 - [crates/verse-bake/src/tests.rs](../../../../crates/verse-bake/src/tests.rs) (tests.rs:218)
 

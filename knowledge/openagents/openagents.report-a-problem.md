@@ -24,7 +24,7 @@ provenance:
   written_from: [reference]
   cites:
     - docs/game/playtesting.md
-    - bins/openagents-ios/README.md
+    - docs/mobile/retired-ios.md
     - docs/roadmap/2026-09-29-launch-roadmap.md
 evidence:
   - "2026-09-28: written from the cited documents and checked against them (#9923); the answer text awaits the owner's copy review."
@@ -44,5 +44,5 @@ Open Account > Report a problem, or long-press the tab bar on any screen, so the
 ## Sources
 
 - `docs/game/playtesting.md`
-- `bins/openagents-ios/README.md`
+- `docs/mobile/retired-ios.md`
 - `docs/roadmap/2026-09-29-launch-roadmap.md`

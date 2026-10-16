@@ -6,8 +6,7 @@
 #
 # Unless --no-build, the stack's binaries and Coder are rebuilt first, even
 # when the stack already runs, and a running stack whose binaries are now
-# newer than it is restarted. FILM_IOS=0 skips the iPhone app shot (it
-# builds bins/openagents-ios for a simulator, the first time a while).
+# newer than it is restarted. The previous iPhone app shot was removed in #11901.
 #
 # What runs: the whole 1.0 web stack on this Mac (scripts/dev/full-local.sh:
 # the gateway as account service and inference gateway, the chat worker,
@@ -21,9 +20,6 @@
 #                         phone-sized browser at /device;
 #   4. terminal-coder.mp4 Coder fixing a real repository's failing tests,
 #      web-sync.mp4       and the same chat appearing on the website;
-#   5. phone-app.mp4      the OpenAgents iPhone app (a simulator debug
-#                         build) on Running while Coder works the same task:
-#                         the card appears, works, and turns to Done.
 #
 # Model answers are real (the chat worker and Coder call real models
 # through the local gateway). Long waits are shortened in the edit; nothing
@@ -114,24 +110,8 @@ echo "Recording terminal-coder.mp4 and web-sync.mp4..."
 "$here/make-demo-repo.sh" "$FILM_REPO"
 node "$here/coder-session.mjs"
 
-if [ "${FILM_IOS:-1}" != 0 ]; then
-    echo "Recording phone-app.mp4 (the iPhone app)..."
-    # One simulator of its own, named plainly, kept between runs.
-    sim_file="$HOME/work/film-out/.film-sim-udid"
-    sim=$(cat "$sim_file" 2>/dev/null || true)
-    if [ -z "$sim" ] || ! xcrun simctl list devices | grep -q "$sim"; then
-        sim=$(xcrun simctl create iPhone com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro)
-        echo "$sim" > "$sim_file"
-    fi
-    xcrun simctl boot "$sim" 2>/dev/null || true
-    if [ "$build" = 1 ] || [ ! -f "$CARGO_TARGET_DIR/aarch64-apple-ios-sim/debug/libopenagents_mobile.a" ]; then
-        OPENAGENTS_IOS_DEVICE="$sim" "$root/bins/openagents-ios/build.sh" sim > "$work/ios-build.log" 2>&1 \
-            || { tail -20 "$work/ios-build.log" >&2; exit 1; }
-    fi
-    FILM_SIM="$sim" FILM_GATEWAY="http://127.0.0.1:$gateway_port" node "$here/phone-app.mjs"
-fi
 
-for clip in web-chat web-sync phone-approve terminal-coder phone-app; do
+for clip in web-chat web-sync phone-approve terminal-coder; do
     [ -f "$out/$clip.mp4" ] || continue
     ffprobe -v error -select_streams v:0 -show_entries stream=width,height,r_frame_rate:format=duration \
         -of compact=p=0:nk=1 "$out/$clip.mp4" | tr '\n' ' ' | sed "s|^|$clip.mp4: |"

@@ -20,7 +20,7 @@ author: openagents
 provenance:
   written_from: [reference]
   cites:
-    - bins/openagents-ios/README.md
+    - docs/mobile/retired-ios.md
     - docs/verse/mobile.md
     - docs/verse/lagrange-1.md
 evidence:
@@ -37,6 +37,6 @@ Lagrange 1 is a construction station zone in Verse, orbiting the Sun-Earth L1 po
 
 ## Sources
 
-- `bins/openagents-ios/README.md`
+- `docs/mobile/retired-ios.md`
 - `docs/verse/mobile.md`
 - `docs/verse/lagrange-1.md`

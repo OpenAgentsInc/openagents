@@ -28,7 +28,7 @@ provenance:
     - docs/coder/design/2026-09-29-auto-pairing.md
     - nips/openagents/NIP-HOST.md
     - INVARIANTS.md
-    - bins/openagents-ios/README.md
+    - docs/mobile/retired-ios.md
 evidence:
   - "2026-09-28: written from the cited documents and checked against them (#9923); the answer text awaits the owner's copy review."
   - "2026-09-29: rewritten from the cited documents for QR pairing with OpenAgents for Mac, which replaced the Tailscale and eight-character-code setup (#9978), and checked against them (#9995); the answer text awaits the owner's copy review."
@@ -50,4 +50,4 @@ No, you don't need Tailscale. Your phone connects to your computer by scanning t
 - `docs/coder/design/2026-09-29-auto-pairing.md`
 - `nips/openagents/NIP-HOST.md`
 - `INVARIANTS.md`
-- `bins/openagents-ios/README.md`
+- `docs/mobile/retired-ios.md`

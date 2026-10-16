@@ -77,7 +77,7 @@ app, [#9939](https://github.com/OpenAgentsInc/openagents/issues/9939)
 and `hosted.rs` (the hosted runner client). A real test ran end to end from
 the phone on 2026-09-29: "Test Project map on Coder", one tap, 2 of 6 → 5 of
 6 **Better**, **Add to the Gym**, a second trainer's check, and +25 XP on
-the menu and Profile ([simulator record](../../bins/openagents-ios/verification/2026-09-29-evals-in-chat/README.md)).
+the menu and Profile ([simulator record](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/bins/openagents-ios/verification/2026-09-29-evals-in-chat/README.md)).
 
 | ID | Build 21 |
 | --- | --- |
@@ -91,7 +91,7 @@ the menu and Profile ([simulator record](../../bins/openagents-ios/verification/
 | `FLOW-08` | Shipped: **RUN THE CHECK** on `CARD-06`; the live checks so far ran through the hosted runner from a second trainer key. |
 | `FLOW-09` | Shipped: news from the Gym's records and our changelog, without ids or banned words ([#9944](https://github.com/OpenAgentsInc/openagents/issues/9944)). Tapping a news item opens nothing yet. |
 | `FLOW-10` | Shipped for `eval-check`: the referee's award reached the menu and Profile live. `eval-adopt` works in tests; no adoption has been made. |
-| `CHK-01` to `CHK-13` | Re-checked against build 21 in the [simulator record](../../bins/openagents-ios/verification/2026-09-29-evals-in-chat/README.md#idiot-proof-re-checked-against-this-build). |
+| `CHK-01` to `CHK-13` | Re-checked against build 21 in the [simulator record](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/bins/openagents-ios/verification/2026-09-29-evals-in-chat/README.md#idiot-proof-re-checked-against-this-build). |
 
 ## Build 25: chat first
 

@@ -22,7 +22,7 @@ author: openagents
 provenance:
   written_from: [reference]
   cites:
-    - bins/openagents-ios/README.md
+    - docs/mobile/retired-ios.md
     - INVARIANTS.md
 evidence:
   - "2026-09-28: written from the cited documents and checked against them (#9923); the answer text awaits the owner's copy review."
@@ -41,5 +41,5 @@ In the Wallet, choose Send, then paste or scan what you're paying: a Lightning i
 
 ## Sources
 
-- `bins/openagents-ios/README.md`
+- `docs/mobile/retired-ios.md`
 - `INVARIANTS.md`

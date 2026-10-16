@@ -157,7 +157,7 @@ Severity: Medium · Category: testing · Effort: M
 Locations:
 - [tests/fixtures/nip01/admission-state-model.json](../../../../tests/fixtures/nip01/admission-state-model.json)
 - [tests/fixtures/README.md](../../../../tests/fixtures/README.md) (README.md:41)
-- [crates/openagents-mobile/Cargo.toml](../../../../crates/openagents-mobile/Cargo.toml) (Cargo.toml:126)
+- [crates/openagents-mobile/Cargo.toml](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/crates/openagents-mobile/Cargo.toml) (Cargo.toml:126)
 
 Evidence: Outside `bench/`, `git grep` for `admission-state-model` and `histories_checked` matches only the fixture itself (which records `"histories_checked": 111111`). The fixture was last touched in 9b5bb212f1 "Extract the public relay". `nip19/keys.json` is mentioned only in tests/fixtures/README.md:41 and has no code consumer. crates/openagents-mobile/Cargo.toml:126 holds `check-cfg = ['cfg(kani)']`, with no kani proofs anywhere.
 

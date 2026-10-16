@@ -22,7 +22,7 @@ provenance:
   written_from: [reference]
   cites:
     - docs/roadmap/2026-09-29-launch-roadmap.md
-    - bins/openagents-ios/docs/chat-later.md
+    - docs/mobile/retired-chat-plans.md
 evidence:
   - "2026-09-28: written from the cited documents and checked against them (#9923); the answer text awaits the owner's copy review."
 ---
@@ -40,4 +40,4 @@ Not yet: photo attachments, voice dictation, a model picker, and push notificati
 ## Sources
 
 - `docs/roadmap/2026-09-29-launch-roadmap.md`
-- `bins/openagents-ios/docs/chat-later.md`
+- `docs/mobile/retired-chat-plans.md`

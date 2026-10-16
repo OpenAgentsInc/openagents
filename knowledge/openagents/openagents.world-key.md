@@ -22,7 +22,7 @@ provenance:
   written_from: [reference]
   cites:
     - docs/verse/mobile.md
-    - bins/openagents-ios/README.md
+    - docs/mobile/retired-ios.md
     - INVARIANTS.md
 evidence:
   - "2026-09-28: written from the cited documents and checked against them (#9923); the answer text awaits the owner's copy review."
@@ -41,5 +41,5 @@ The Grid uses a separate key, the world key, which signs your presence there; it
 ## Sources
 
 - `docs/verse/mobile.md`
-- `bins/openagents-ios/README.md`
+- `docs/mobile/retired-ios.md`
 - `INVARIANTS.md`

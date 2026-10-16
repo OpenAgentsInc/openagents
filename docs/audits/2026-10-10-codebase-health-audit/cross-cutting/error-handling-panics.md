@@ -98,7 +98,7 @@ Error handling across the roughly 2.2M non-test Rust LOC is uneven. Very little 
 - [spark.rs:748-789](../../../../crates/spark-wallet/src/spark.rs)
 - [x402_spark.rs:27-45](../../../../crates/openagents-cli/src/x402_spark.rs)
 - [wallet.rs:388-389](../../../../crates/openagents-cli/src/wallet.rs)
-- [spend.rs:965-970](../../../../crates/openagents-mobile/src/spend.rs)
+- [spend.rs:965-970](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/crates/openagents-mobile/src/spend.rs)
 
 **Evidence:** `SparkNode::pay -> Result<Paid, String>` uses `.map_err(|error| describe("pay", &error.to_string()))`, and `describe()` renders "The payment did not go through ({detail})." `failure()` at spark.rs:783-789 chooses `InsufficientFunds` via `detail.to_ascii_lowercase().contains("insufficient")`. x402_spark.rs:44: `AgentPayFailure::Failed(message) => format!("{message} Nothing was paid.")`. x402_spark.rs:28 and wallet.rs:388 both create `let key = uuid::Uuid::new_v4().to_string();` on every run. spend.rs:969 maps `Failed` to `Refusal::PaymentFailed`.
 

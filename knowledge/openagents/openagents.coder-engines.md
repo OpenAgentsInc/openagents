@@ -29,7 +29,7 @@ provenance:
   cites:
     - docs/roadmap/2026-09-29-launch-roadmap.md
     - INVARIANTS.md
-    - bins/openagents-ios/README.md
+    - docs/mobile/retired-ios.md
     - crates/openagents-cli/src/settings.rs
     - crates/openagents-desktop/src/settings.rs
     - crates/coder/src/task/local.rs
@@ -62,7 +62,7 @@ Coder uses every coding agent signed in on your computer (Codex, Claude Code, Gr
 
 - `docs/roadmap/2026-09-29-launch-roadmap.md`
 - `INVARIANTS.md`
-- `bins/openagents-ios/README.md`
+- `docs/mobile/retired-ios.md`
 - `crates/openagents-cli/src/settings.rs`
 - `crates/openagents-desktop/src/settings.rs`
 - `crates/coder/src/task/local.rs`

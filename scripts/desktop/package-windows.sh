@@ -8,9 +8,7 @@
 #       [--bin-dir DIR] [--pfx FILE --pfx-password-file FILE]
 #       [--require-signing] [--no-msi]
 #
-#   --version V    Defaults to MARKETING_VERSION in
-#                  bins/openagents-ios/host/project.yml (the lockstep
-#                  version); the desktop crate's version must equal it.
+#   --version V    Defaults to the version in crates/openagents-desktop/Cargo.toml.
 #   --out DIR      Where the packages go (default target/desktop/windows).
 #   --bin-dir DIR  Package prebuilt openagents-desktop.exe, coder.exe,
 #                  microcoder.exe, and coder-boundary.exe from DIR instead
@@ -83,12 +81,9 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-marketing="$(sed -n 's/^[[:space:]]*MARKETING_VERSION:[[:space:]]*\([0-9][0-9.]*\)[[:space:]]*$/\1/p' \
-  "$root/bins/openagents-ios/host/project.yml" | head -n 1)"
 crate="$(sed -n 's/^version = "\(.*\)"$/\1/p' "$root/crates/openagents-desktop/Cargo.toml" | head -n 1)"
-[[ -n "$version" ]] || version="$marketing"
-[[ "$version" == "$marketing" && "$version" == "$crate" ]] ||
-  die "version $version must equal MARKETING_VERSION ($marketing) and the desktop crate's ($crate)"
+[[ -n "$version" ]] || version="$crate"
+[[ "$version" == "$crate" ]] || die "version $version must equal the desktop crate's ($crate)"
 # Windows Installer versions are numeric fields, each small.
 [[ "$version" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,5}$ ]] ||
   die "version '$version' must be MAJOR.MINOR.PATCH (numbers only) for an MSI"

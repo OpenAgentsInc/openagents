@@ -22,7 +22,7 @@ author: openagents
 provenance:
   written_from: [reference]
   cites:
-    - bins/openagents-ios/README.md
+    - docs/mobile/retired-ios.md
     - docs/roadmap/2026-09-29-launch-roadmap.md
     - INVARIANTS.md
 evidence:
@@ -41,6 +41,6 @@ In the Wallet, choose Receive and pick a method: a Lightning invoice, where you 
 
 ## Sources
 
-- `bins/openagents-ios/README.md`
+- `docs/mobile/retired-ios.md`
 - `docs/roadmap/2026-09-29-launch-roadmap.md`
 - `INVARIANTS.md`

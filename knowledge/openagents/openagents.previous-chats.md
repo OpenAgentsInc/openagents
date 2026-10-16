@@ -28,8 +28,8 @@ provenance:
   cites:
     - crates/openagents-web/src/pages/chat_sidebar.rs
     - docs/web/sidebar.md
-    - crates/openagents-mobile/src/account.rs
-    - bins/openagents-ios/README.md
+    - crates/coder/fixtures/retired-mobile-changelog.txt
+    - docs/mobile/retired-ios.md
 evidence:
   - "2026-09-28: written from the cited documents and checked against them (#9923); the answer text awaits the owner's copy review."
   - "2026-09-29: updated for QR pairing with OpenAgents for Mac, which replaced the Tailscale setup (#9978), and checked against the cited documents (#9995); the answer text awaits the owner's copy review."
@@ -50,5 +50,5 @@ On openagents.com your chats are in the left panel, newest first, under their pr
 
 - `crates/openagents-web/src/pages/chat_sidebar.rs`
 - `docs/web/sidebar.md`
-- `crates/openagents-mobile/src/account.rs`
-- `bins/openagents-ios/README.md`
+- `crates/coder/fixtures/retired-mobile-changelog.txt`
+- `docs/mobile/retired-ios.md`

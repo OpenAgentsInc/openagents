@@ -21,9 +21,7 @@
 #
 # What each pane runs:
 #
-#   Android   os/bin/android-emulator, with the OpenAgents app built with
-#             OPENAGENTS_MOBILE_PREVIEW=on for x86_64 (the Verse tab shows only
-#             in a preview build), opened on the Verse tab.
+#   Android   os/bin/android-emulator. The previous OpenAgents APK was removed.
 #   Website   scripts/dev/full-local.sh (gateway, chat worker, website on
 #             127.0.0.1:4301) in a Chromium app window on its own profile,
 #             with one starter question sent through the local stack.
@@ -58,7 +56,6 @@ web_port=4301
 cdp_port=9223
 serial=emulator-5554
 app=com.openagents.app
-apk="$target/openagents-android/gradle/app/outputs/apk/debug/app-debug.apk"
 web_class="chrome-127.0.0.1__-Default"
 log="$state/logs"
 mkdir -p "$state" "$log"
@@ -168,9 +165,6 @@ build() {
     say "openagents-desktop (preview)"
     OPENAGENTS_DESKTOP_PREVIEW=on lease_build $shell cargo build -p openagents-desktop \
         --bin openagents-desktop || return 1
-    say "Android app (preview, x86_64)"
-    OPENAGENTS_MOBILE_PREVIEW=on OPENAGENTS_ANDROID_ABI=x86_64 \
-        lease_build nix develop "$root/os#android" -c bash bins/openagents-android/build.sh package || return 1
     say "built"
 }
 
@@ -217,18 +211,7 @@ start_android() {
     fi
     wait_for 180 sh -c "[ \"\$(adb -s $serial shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')\" = 1 ]" \
         || { say "the emulator did not boot"; return 1; }
-    if [ -f "$apk" ]; then
-        local sum
-        sum=$(sha256sum "$apk" | cut -c1-64)
-        if [ "$(cat "$state/apk.sha256" 2>/dev/null)" != "$sum" ] \
-            || ! adb -s "$serial" shell pm path "$app" > /dev/null 2>&1; then
-            say "installing the Android app"
-            adb -s "$serial" install -r "$apk" > "$log/adb-install.log" 2>&1 && echo "$sum" > "$state/apk.sha256"
-        fi
-    else
-        say "no Android build at $apk; run oa-workspace build"
-    fi
-    adb -s "$serial" shell am start -S -n "$app/.MainActivity" --es tab verse > /dev/null 2>&1
+
 }
 
 verse_pid() { pgrep -f "^$target/debug/verse --owners-house" | head -1; }

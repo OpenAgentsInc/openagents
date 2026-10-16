@@ -83,7 +83,7 @@ Severity: high · Category: testing · Effort: M
 
 Locations:
 - [Cargo.toml](../../../../Cargo.toml) (`Cargo.toml:4-6`)
-- [coder_tab_tests.rs](../../../../crates/openagents-mobile/src/coder_tab_tests.rs)
+- [coder_tab_tests.rs](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/crates/openagents-mobile/src/coder_tab_tests.rs)
 - [coder_tab.rs](../../../../crates/openagents-chat-app/src/coder_tab.rs)
 - [openagents-chat-app lib.rs](../../../../crates/openagents-chat-app/src/lib.rs) (`lib.rs:34`)
 
@@ -102,9 +102,9 @@ Suggested action:
 Severity: medium · Category: security · Effort: S
 
 Locations:
-- [spend.rs](../../../../crates/openagents-mobile/src/spend.rs) (`spend.rs:41-42`, `spend.rs:832-888`, `spend.rs:1196`)
-- [AgentPayments.kt](../../../../bins/openagents-android/host/app/src/main/java/com/openagents/app/AgentPayments.kt) (`AgentPayments.kt:111-132`)
-- [AgentPayments.swift](../../../../bins/openagents-ios/host/App/AgentPayments.swift) (`AgentPayments.swift:207-222`)
+- [spend.rs](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/crates/openagents-mobile/src/spend.rs) (`spend.rs:41-42`, `spend.rs:832-888`, `spend.rs:1196`)
+- [AgentPayments.kt](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/bins/openagents-android/host/app/src/main/java/com/openagents/app/AgentPayments.kt) (`AgentPayments.kt:111-132`)
+- [AgentPayments.swift](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/bins/openagents-ios/host/App/AgentPayments.swift) (`AgentPayments.swift:207-222`)
 
 Evidence: Rust only sets `authenticate: w.request.amount_msat > AUTHENTICATE_ABOVE_MSAT` on the view (`spend.rs:1196`). `approve(&self, request, node, transport)` takes no proof of authentication; it re-reserves against the grant and pays. `AgentPayments.kt:123-127` still calls `bridge.spend(op, ...)` when `createConfirmDeviceCredentialIntent` returns null in the non-trust branch, and uses the deprecated `KeyguardManager` API under `@Suppress("DEPRECATION")`. iOS correctly gates on `LAContext`.
 
@@ -121,7 +121,7 @@ Suggested action:
 Severity: medium · Category: maintainability · Effort: L
 
 Locations:
-- [app.rs](../../../../crates/openagents-mobile/src/app.rs) (`app.rs:174-614` Request, `app.rs:831-894` App, `app.rs:901-1255` open, `app.rs:1295-1413` respond, `app.rs:1506-1825` call, `app.rs:2182-2349` packet)
+- [app.rs](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/crates/openagents-mobile/src/app.rs) (`app.rs:174-614` Request, `app.rs:831-894` App, `app.rs:901-1255` open, `app.rs:1295-1413` respond, `app.rs:1506-1825` call, `app.rs:2182-2349` packet)
 
 Evidence: `Request` starts at line 174 with about 90 variants. `respond()` is a chain of `if let Request::X = request { return ... }`. The trainer error JSON `{"schema":"openagents.trainer.v1","error":...}` is built three times (around 1322, 1343, 1368). The file is 2,564 lines.
 
@@ -138,11 +138,11 @@ Suggested action:
 Severity: medium · Category: duplication · Effort: L
 
 Locations:
-- [openagents-android PinchAdmission.kt](../../../../bins/openagents-android/host/app/src/main/java/com/openagents/app/PinchAdmission.kt)
+- [openagents-android PinchAdmission.kt](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/bins/openagents-android/host/app/src/main/java/com/openagents/app/PinchAdmission.kt)
 - [coder-android PinchAdmission.kt](../../../../bins/coder-android/host/app/src/main/java/com/openagents/coder/PinchAdmission.kt)
-- [QRScanner.kt](../../../../bins/openagents-android/host/app/src/main/java/com/openagents/app/QRScanner.kt)
-- [VerseSurface.kt](../../../../bins/openagents-android/host/app/src/main/java/com/openagents/app/VerseSurface.kt)
-- [project.yml](../../../../bins/openagents-ios/host/project.yml) (`project.yml:16-36`)
+- [QRScanner.kt](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/bins/openagents-android/host/app/src/main/java/com/openagents/app/QRScanner.kt)
+- [VerseSurface.kt](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/bins/openagents-android/host/app/src/main/java/com/openagents/app/VerseSurface.kt)
+- [project.yml](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/bins/openagents-ios/host/project.yml) (`project.yml:16-36`)
 
 Evidence: Line counts, Coder vs OpenAgents: PinchAdmission 22 vs 60, QRScanner 115 vs 101, GymPanel 201 vs 219, VerseSurface 577 vs 431, NativeRenderer 232 vs 497. The iOS `project.yml` compiles 10 files from `../../coder-ios/host/App` (NativeView, NativeChat, NativeTranscriptPainter, QRScanner, QRDecoder, SecretInputField, TerminalKeyboard, PinchAdmission, DeviceMotion, GymBoard).
 
@@ -159,9 +159,9 @@ Suggested action:
 Severity: medium · Category: security · Effort: M
 
 Locations:
-- [preview.rs](../../../../crates/openagents-mobile/src/preview.rs) (`preview.rs:1-29`)
-- [app.rs](../../../../crates/openagents-mobile/src/app.rs) (`app.rs:1077`, `app.rs:1305-1374`)
-- [Cargo.toml](../../../../crates/openagents-mobile/Cargo.toml) (`Cargo.toml:80-82`)
+- [preview.rs](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/crates/openagents-mobile/src/preview.rs) (`preview.rs:1-29`)
+- [app.rs](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/crates/openagents-mobile/src/app.rs) (`app.rs:1077`, `app.rs:1305-1374`)
+- [Cargo.toml](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/crates/openagents-mobile/Cargo.toml) (`Cargo.toml:80-82`)
 
 Evidence: `preview.rs:5` says "Release builds and normal debug builds hide them; their code stays." `preview::ON` is checked only at `app.rs:1077` and `2273`, `verse.rs:71/216/232`, `playtest.rs:50` and the Android exports. `respond()` handles `SetDisplayName`, `Trainer`, `TrainerProfile`, `TrainerExport` and `TrainerLink` with no `ON` check. `ts_control`, `ts_control_serde` and `ts_keys` are unconditional dependencies.
 
@@ -178,10 +178,10 @@ Suggested action:
 Severity: medium · Category: security · Effort: M
 
 Locations:
-- [MobileBridge.kt](../../../../bins/openagents-android/host/app/src/main/java/com/openagents/app/MobileBridge.kt)
-- [MobileBridge.swift](../../../../bins/openagents-ios/host/App/MobileBridge.swift) (`MobileBridge.swift:518-931`)
-- [app.rs](../../../../crates/openagents-mobile/src/app.rs) (`app.rs:297-352`, `app.rs:883`, `app.rs:1310-1374`)
-- [wallet.rs](../../../../crates/openagents-mobile/src/wallet.rs) (`wallet.rs:787-792`)
+- [MobileBridge.kt](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/bins/openagents-android/host/app/src/main/java/com/openagents/app/MobileBridge.kt)
+- [MobileBridge.swift](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/bins/openagents-ios/host/App/MobileBridge.swift) (`MobileBridge.swift:518-931`)
+- [app.rs](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/crates/openagents-mobile/src/app.rs) (`app.rs:297-352`, `app.rs:883`, `app.rs:1310-1374`)
+- [wallet.rs](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/crates/openagents-mobile/src/wallet.rs) (`wallet.rs:787-792`)
 
 Evidence: `Request` variants carry `world_secret_hex: String` (`app.rs:297, 308, 315, 322, 338, 345, 352, 505`), although `App` already holds `world: Option<SecretKey>` (`app.rs:883`, set at 1789). `MobileBridge.kt` has 7 occurrences of `world_secret_hex` and `MobileBridge.swift` has 8 (gym_world, trainer, trainer_profile, trainer_export, trainer_link, report_send, feedback_send, reports). `wallet.rs:788-792` clones the mnemonic then calls `drop(mnemonic)` without zeroing. There is no `zeroize` dependency.
 
@@ -197,10 +197,10 @@ Suggested action:
 Severity: medium · Category: concurrency · Effort: M
 
 Locations:
-- [wallet.rs](../../../../crates/openagents-mobile/src/wallet.rs) (`wallet.rs:788-826`)
-- [payees.rs](../../../../crates/openagents-mobile/src/payees.rs) (`payees.rs:246-256`)
-- [trainer.rs](../../../../crates/openagents-mobile/src/trainer.rs) (`trainer.rs:180-190`)
-- [spend.rs](../../../../crates/openagents-mobile/src/spend.rs) (`spend.rs:881`)
+- [wallet.rs](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/crates/openagents-mobile/src/wallet.rs) (`wallet.rs:788-826`)
+- [payees.rs](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/crates/openagents-mobile/src/payees.rs) (`payees.rs:246-256`)
+- [trainer.rs](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/crates/openagents-mobile/src/trainer.rs) (`trainer.rs:180-190`)
+- [spend.rs](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/crates/openagents-mobile/src/spend.rs) (`spend.rs:881`)
 
 Evidence: `wallet.rs` has 14 `std::thread::spawn` calls. The subscribe callback (821-825) spawns an OS thread per event, `std::thread::spawn(move || read(&shared, &home, generation, false))`, with no coalescing. `payees.rs:246` (`runtime()`) and `trainer.rs:180` (`RelayPublish`) build a new current-thread runtime per query or publish. `spend.rs:881` spawns a thread per approval.
 
@@ -216,8 +216,8 @@ Suggested action:
 Severity: medium · Category: error-handling · Effort: M
 
 Locations:
-- [wallet.rs](../../../../crates/openagents-mobile/src/wallet.rs) (`wallet.rs:244-248`, `wallet.rs:681`, `wallet.rs:1465-1469`)
-- [account_link.rs](../../../../crates/openagents-mobile/src/account_link.rs) (`account_link.rs:596-605`, `account_link.rs:1707-1716`)
+- [wallet.rs](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/crates/openagents-mobile/src/wallet.rs) (`wallet.rs:244-248`, `wallet.rs:681`, `wallet.rs:1465-1469`)
+- [account_link.rs](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/crates/openagents-mobile/src/account_link.rs) (`account_link.rs:596-605`, `account_link.rs:1707-1716`)
 
 Evidence: `write_json` drops serialization and IO errors (`let _ = std::fs::write(...)`). The words-saved marker (681) and the trust file (1467) are written with `let _ =`, and `acknowledge()` then sets `trust_acknowledged = true` regardless. `Link::keep` and `Poller::keep` are identical apart from `lock()` vs `lock(&self.state)`.
 
@@ -234,9 +234,9 @@ Suggested action:
 Severity: medium · Category: error-handling · Effort: M
 
 Locations:
-- [lib.rs](../../../../crates/openagents-mobile/src/lib.rs) (`lib.rs:103`, `lib.rs:130`, `lib.rs:190`)
-- [android.rs](../../../../crates/openagents-mobile/src/android.rs) (`android.rs:21-32`, `android.rs:53-86`)
-- [OpenAgentsMobile.h](../../../../bins/openagents-ios/host/App/OpenAgentsMobile.h)
+- [lib.rs](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/crates/openagents-mobile/src/lib.rs) (`lib.rs:103`, `lib.rs:130`, `lib.rs:190`)
+- [android.rs](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/crates/openagents-mobile/src/android.rs) (`android.rs:21-32`, `android.rs:53-86`)
+- [OpenAgentsMobile.h](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/bins/openagents-ios/host/App/OpenAgentsMobile.h)
 
 Evidence: `lib.rs` uses `16 * 1024`, `128 * 1024`, `1024` and `96` as literals. `android.rs` has `MAX_CONFIG_BYTES`, `MAX_REQUEST_BYTES` and `MAX_PACKET_BYTES` (2 MiB, checked at line 101) plus `LAST_PANIC`. The 14 `no_mangle` exports match the 14 hand-written declarations in `OpenAgentsMobile.h`, but nothing checks that they stay in sync.
 
@@ -253,8 +253,8 @@ Suggested action:
 Severity: medium · Category: concurrency · Effort: S
 
 Locations:
-- [MobileBridge.kt](../../../../bins/openagents-android/host/app/src/main/java/com/openagents/app/MobileBridge.kt) (`MobileBridge.kt:25`, `MobileBridge.kt:204-215`)
-- [exports.rs](../../../../crates/openagents-mobile/src/android/exports.rs) (`exports.rs:38-41`)
+- [MobileBridge.kt](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/bins/openagents-android/host/app/src/main/java/com/openagents/app/MobileBridge.kt) (`MobileBridge.kt:25`, `MobileBridge.kt:204-215`)
+- [exports.rs](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/crates/openagents-mobile/src/android/exports.rs) (`exports.rs:38-41`)
 
 Evidence: `catch (problem: Throwable) { break }` at `MobileBridge.kt:207` has no log and no restart. `APPS` and `VERSES` are `thread_local!` (`exports.rs:38-41`). `worker` is a `newSingleThreadExecutor` used via `worker.execute` at lines 58, 449, 517, 535 and 614; an exception in an `execute` task kills the thread, and the replacement thread sees an empty map.
 
@@ -270,7 +270,7 @@ Suggested action:
 Severity: medium · Category: security · Effort: S
 
 Locations:
-- [account_link.rs](../../../../crates/openagents-mobile/src/account_link.rs) (`account_link.rs:60`, `account_link.rs:229-239`, `account_link.rs:258-279`)
+- [account_link.rs](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/crates/openagents-mobile/src/account_link.rs) (`account_link.rs:60`, `account_link.rs:229-239`, `account_link.rs:258-279`)
 
 Evidence: `.build().unwrap_or_default()` falls back to a default `reqwest::Client`, which follows up to 10 redirects and has no timeout, while bearer tokens are attached per request. `response.bytes().await` has no cap, although `MAX_REPLY_BYTES = 16 KiB` (line 60) is applied elsewhere (line 782).
 
@@ -286,9 +286,9 @@ Suggested action:
 Severity: medium · Category: repo-hygiene · Effort: M
 
 Locations:
-- [bins/openagents-ios/verification](../../../../bins/openagents-ios/verification)
+- [bins/openagents-ios/verification](https://github.com/OpenAgentsInc/openagents/tree/e6783578b3900f0d60dd0d5f9033ab26e9371c74/bins/openagents-ios/verification)
 - [bins/coder-ios/verification](../../../../bins/coder-ios/verification)
-- [bins/openagents-android/verification](../../../../bins/openagents-android/verification)
+- [bins/openagents-android/verification](https://github.com/OpenAgentsInc/openagents/tree/e6783578b3900f0d60dd0d5f9033ab26e9371c74/bins/openagents-android/verification)
 - [bins/openagents-mockup-ios/verification](../../../../bins/openagents-mockup-ios/verification)
 
 Evidence: `git ls-files 'bins/*/verification/*'` lists 738 files totalling 81,976 KB by du; 145 contain `/Users/`.
@@ -306,9 +306,9 @@ Suggested action:
 Severity: low · Category: error-handling · Effort: L
 
 Locations:
-- [wallet.rs](../../../../crates/openagents-mobile/src/wallet.rs) (`wallet.rs:787-792`)
-- [payees.rs](../../../../crates/openagents-mobile/src/payees.rs) (`payees.rs:246-250`)
-- [account_link.rs](../../../../crates/openagents-mobile/src/account_link.rs) (`account_link.rs:258-279`)
+- [wallet.rs](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/crates/openagents-mobile/src/wallet.rs) (`wallet.rs:787-792`)
+- [payees.rs](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/crates/openagents-mobile/src/payees.rs) (`payees.rs:246-250`)
+- [account_link.rs](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/crates/openagents-mobile/src/account_link.rs) (`account_link.rs:258-279`)
 
 Evidence: Errors are user copy produced by `map_err(|_| ...)`, e.g. "The wallet's folder could not be created on this phone." (`wallet.rs:790`) and "Couldn't reach openagents.com. Check your connection." (`account_link.rs:274, 279`). The source error is discarded.
 
@@ -324,8 +324,8 @@ Suggested action:
 Severity: low · Category: maintainability · Effort: L
 
 Locations:
-- [wallet.rs](../../../../crates/openagents-mobile/src/wallet.rs) (`wallet.rs:697-747`)
-- [account_link.rs](../../../../crates/openagents-mobile/src/account_link.rs) (`account_link.rs:1448-1706`)
+- [wallet.rs](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/crates/openagents-mobile/src/wallet.rs) (`wallet.rs:697-747`)
+- [account_link.rs](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/crates/openagents-mobile/src/account_link.rs) (`account_link.rs:1448-1706`)
 
 Evidence: `forget()` resets `Shared`'s fields one at a time; `Poller::pass` spans about 1448-1706.
 
@@ -342,8 +342,8 @@ Severity: low · Category: architecture · Effort: M
 
 Locations:
 - [openagents-chat-app lib.rs](../../../../crates/openagents-chat-app/src/lib.rs) (`lib.rs:34`)
-- [openagents-mobile lib.rs](../../../../crates/openagents-mobile/src/lib.rs) (`lib.rs:18-66`)
-- [gym.rs](../../../../crates/openagents-mobile/src/gym.rs)
+- [openagents-mobile lib.rs](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/crates/openagents-mobile/src/lib.rs) (`lib.rs:18-66`)
+- [gym.rs](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/crates/openagents-mobile/src/gym.rs)
 
 Evidence: `include_str!("../../openagents-mobile/fixtures/gym-report.json")` at chat-app `lib.rs:34`. The 15 shims (wake, transcripts, router, outbox, hosted, gym, coder_tab, chats, first_run, eval_cards, coder_list, cli_run, chat_invites, basic_coder, basic_chats) are 2 lines each. 21 Markdown references under docs and crates still point at these shim paths.
 
@@ -360,7 +360,7 @@ Suggested action:
 Severity: low · Category: performance · Effort: S
 
 Locations:
-- [MobileBridge.swift](../../../../bins/openagents-ios/host/App/MobileBridge.swift) (`MobileBridge.swift:989-1012`, `MobileBridge.swift:1022-1046`, `MobileBridge.swift:1072-1092`)
+- [MobileBridge.swift](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/bins/openagents-ios/host/App/MobileBridge.swift) (`MobileBridge.swift:989-1012`, `MobileBridge.swift:1022-1046`, `MobileBridge.swift:1072-1092`)
 
 Evidence: `call()` hands raw `Data` to `DispatchQueue.main`, where `send()` runs `JSONDecoder.decode(AppPacket)` and also `JSONSerialization.jsonObject` to read `computers`. `attachImage`'s reply skips `settleLink`, `coder_go`, the terminal reset and `open_url`. `attachImage` is gated by `attachmentsEnabled` and chat is currently text only (#10093), so the divergence is latent.
 
@@ -377,7 +377,7 @@ Suggested action:
 Severity: low · Category: security · Effort: S
 
 Locations:
-- [link_fetch.rs](../../../../crates/openagents-mobile/src/link_fetch.rs) (`link_fetch.rs:22-52`, `link_fetch.rs:54-67`)
+- [link_fetch.rs](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/crates/openagents-mobile/src/link_fetch.rs) (`link_fetch.rs:22-52`, `link_fetch.rs:54-67`)
 
 Evidence: `allowed()` rejects IP literals and names ending in `.local`, `.localhost`, `.internal`, `.lan` or `.home.arpa`, but not DNS names that resolve to private addresses. `client()` builds a new `Client` per read.
 
@@ -393,8 +393,8 @@ Suggested action:
 Severity: low · Category: duplication · Effort: S
 
 Locations:
-- [verse.rs](../../../../crates/openagents-mobile/src/verse.rs) (`verse.rs:75-100`)
-- [android.rs](../../../../crates/openagents-mobile/src/android.rs) (`android.rs:130-150`)
+- [verse.rs](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/crates/openagents-mobile/src/verse.rs) (`verse.rs:75-100`)
+- [android.rs](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/crates/openagents-mobile/src/android.rs) (`android.rs:130-150`)
 
 Evidence: Both are `deny_unknown_fields` structs with the same `computer_hud` doc and `#[allow(dead_code)]`, plus `width`, `height`, `scale` and `world_secret_hex`.
 
@@ -410,10 +410,10 @@ Suggested action:
 Severity: low · Category: docs · Effort: S
 
 Locations:
-- [lib.rs](../../../../crates/openagents-mobile/src/lib.rs) (`lib.rs:5-16`)
-- [app.rs](../../../../crates/openagents-mobile/src/app.rs) (`app.rs:65`)
-- [MobileBridge.swift](../../../../bins/openagents-ios/host/App/MobileBridge.swift) (`MobileBridge.swift:152`)
-- [MobileBridge.kt](../../../../bins/openagents-android/host/app/src/main/java/com/openagents/app/MobileBridge.kt) (`MobileBridge.kt:176`)
+- [lib.rs](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/crates/openagents-mobile/src/lib.rs) (`lib.rs:5-16`)
+- [app.rs](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/crates/openagents-mobile/src/app.rs) (`app.rs:65`)
+- [MobileBridge.swift](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/bins/openagents-ios/host/App/MobileBridge.swift) (`MobileBridge.swift:152`)
+- [MobileBridge.kt](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/bins/openagents-android/host/app/src/main/java/com/openagents/app/MobileBridge.kt) (`MobileBridge.kt:176`)
 - [shell.rs](../../../../crates/openagents-chat-app/src/coder_tab/shell.rs) (`shell.rs:52`)
 
 Evidence: `lib.rs:5` says "The app has four surfaces" then describes Computers, Chat, Chats, Tailnet, Verse and Wallet. Three comments say "Chat / Code switch", while `shell.rs:52` says "The **Coder** / **Verse** switch".
@@ -463,7 +463,7 @@ Suggested action:
 Severity: low · Category: maintainability · Effort: S
 
 Locations:
-- [app.rs](../../../../crates/openagents-mobile/src/app.rs) (`app.rs:47-163`)
+- [app.rs](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/crates/openagents-mobile/src/app.rs) (`app.rs:47-163`)
 
 Evidence: Several "Honored only in debug builds" fields are each gated ad hoc.
 
@@ -478,9 +478,9 @@ Suggested action:
 Severity: low · Category: duplication · Effort: S
 
 Locations:
-- [wallet.rs](../../../../crates/openagents-mobile/src/wallet.rs) (`wallet.rs:250`)
-- [app.rs](../../../../crates/openagents-mobile/src/app.rs) (`app.rs:2516`)
-- [payees.rs](../../../../crates/openagents-mobile/src/payees.rs) (`payees.rs:387`)
+- [wallet.rs](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/crates/openagents-mobile/src/wallet.rs) (`wallet.rs:250`)
+- [app.rs](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/crates/openagents-mobile/src/app.rs) (`app.rs:2516`)
+- [payees.rs](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/crates/openagents-mobile/src/payees.rs) (`payees.rs:387`)
 
 Evidence: `wallet.rs:250` defines its own `now()`, and `app.rs:2516` has another.
 
@@ -495,7 +495,7 @@ Suggested action:
 Severity: low · Category: maintainability · Effort: L
 
 Locations:
-- [MainActivity.kt](../../../../bins/openagents-android/host/app/src/main/java/com/openagents/app/MainActivity.kt)
+- [MainActivity.kt](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/bins/openagents-android/host/app/src/main/java/com/openagents/app/MainActivity.kt)
 - [NativeTranscriptPainter.swift](../../../../bins/coder-ios/host/App/NativeTranscriptPainter.swift)
 
 Evidence: `MainActivity.kt` is 1,236 lines in OpenAgents and 619 in Coder. `NativeTranscriptPainter.swift` is 2,302 lines.

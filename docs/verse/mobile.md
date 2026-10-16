@@ -19,7 +19,7 @@ companion. Its one zone is [Everglade](everglade.md), through a walk-in arch
 ([below](#the-grids-portal-to-everglade)); its walk-in portal to Lagrange 1
 is hidden ([below](#the-grids-portal-to-lagrange-1)). See
 [presence in the OpenAgents app](#presence-in-the-openagents-app) and
-[OpenAgents for iOS](../../bins/openagents-ios/README.md).
+[OpenAgents for iOS](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/bins/openagents-ios/README.md).
 
 ### The Grid's sticks
 
@@ -268,7 +268,7 @@ arches are unchanged, and the tests keep the portal's path working with
 `WorldRuntime::open_grid_portal_for_tests`. To restore it, set the constant
 to `true` and drop these "hidden" notes (here, in
 [Lagrange 1](lagrange-1.md), and in the
-[iOS README](../../bins/openagents-ios/README.md)). The rest of this section
+[iOS README](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/bins/openagents-ios/README.md)). The rest of this section
 describes the portal as it works when shown.
 
 One arch stands on the bare world (the Grid), lettered **LAGRANGE 1** and
@@ -716,7 +716,7 @@ bare world needs:
 
 The tab has no Join or Leave control yet; it always joins the public relay
 while shown. The
-[verification record](../../bins/openagents-ios/verification/2026-09-28-verse-presence/README.md)
+[verification record](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/bins/openagents-ios/verification/2026-09-28-verse-presence/README.md)
 covers loopback tests and a production-relay exchange with the simulator.
 
 ## Shared code and platform boundaries

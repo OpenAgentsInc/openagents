@@ -24,7 +24,7 @@ provenance:
   cites:
     - docs/game/playtesting.md
     - INVARIANTS.md
-    - bins/openagents-ios/README.md
+    - docs/mobile/retired-ios.md
 evidence:
   - "2026-09-28: written from the cited documents and checked against them (#9923); the answer text awaits the owner's copy review."
 ---
@@ -42,4 +42,4 @@ Playtest logging keeps a short local log of structural events: which tab and scr
 
 - `docs/game/playtesting.md`
 - `INVARIANTS.md`
-- `bins/openagents-ios/README.md`
+- `docs/mobile/retired-ios.md`

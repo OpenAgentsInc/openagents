@@ -15,8 +15,7 @@
 #          [--skip-build] [--no-appimage] [--no-deb]
 #          [--appimage-runtime FILE]
 #
-#   --version V            package version (default: the phone app's MARKETING_VERSION
-#                          in bins/openagents-ios/host/project.yml)
+#   --version V            package version (default: crates/openagents-desktop/Cargo.toml)
 #   --out DIR              output directory (default: target/desktop/linux)
 #   --skip-build           package the binaries already in the target dir
 #   --no-appimage          skip the AppImage
@@ -75,7 +74,7 @@ done
 [[ "$(uname -s)" == Linux ]] || { echo "package-linux: run this on Linux" >&2; exit 1; }
 
 if [[ -z "$version" ]]; then
-  version="$(sed -n 's/^ *MARKETING_VERSION: *\([0-9][0-9.]*\) *$/\1/p' "$root/bins/openagents-ios/host/project.yml" | head -1)"
+  version="$(sed -n 's/^version = "\(.*\)"$/\1/p' "$root/crates/openagents-desktop/Cargo.toml" | head -1)"
 fi
 [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.+~-][0-9A-Za-z.+~-]+)?$ ]] \
   || { echo "package-linux: bad version '$version'" >&2; exit 1; }
@@ -144,7 +143,7 @@ glibc="$(for bin in "${binaries[@]}"; do objdump -T "$lib/$bin" 2>/dev/null; don
   | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1 || true)"
 echo "package-linux: needs ${glibc:-an unknown glibc} or newer"
 
-icon_src="$root/bins/openagents-ios/host/App/Assets.xcassets/AppIcon.appiconset/icon-1024.png"
+icon_src="$root/apps/openagents/apps/ios/Zeron/Assets.xcassets/AppIcon.appiconset/AppIcon1024.png"
 desktop_entry() {
   # $1: the Exec= command
   cat <<EOF

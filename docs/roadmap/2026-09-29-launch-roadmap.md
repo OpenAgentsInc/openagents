@@ -18,7 +18,7 @@ Status words follow the [glossary](../glossary.md): **Done** means landed on
 | --- | --- |
 | Date | Tuesday 2026-09-29 |
 | iOS | OpenAgents (`com.openagents.app`) 1.0.0 from a **public TestFlight link**. When this page was written the launch build was 16 (`e7989aa4e1`); builds 1 to 19 are now on TestFlight (18 `e1d499def7`: Chat with OpenAgents; 19 `99e3094bff`: new chats go to OpenAgents), build 20 brings the chat router's prepared answers and offers, and build 21 puts the Gym in chat ([M10](#m10-evals-in-chat-build-21); its upload is the release owner's step) |
-| Android | The signed OpenAgents APK 1.0.0 (16) from [`bins/openagents-android`](../../bins/openagents-android/README.md), from a draft GitHub release the owner publishes ([below](#android-at-launch)) |
+| Android | The signed OpenAgents APK 1.0.0 (16) from [`bins/openagents-android`](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/bins/openagents-android/README.md), from a draft GitHub release the owner publishes ([below](#android-at-launch)) |
 | Who | Anyone. The program is open; joining earns nothing by itself, and XP and titles come only from accepted contributions |
 | Feedback | In-app **Report a problem** (Account, or a long press on the tab bar), TestFlight feedback, the **Playtest report** GitHub issue template (label `playtest`), or the playtest email. In-app reports stay on the phone until the owner creates the triage key |
 | Runbook | [Day-0 launch checklist](../game/playtesting.md#day-0-launch-checklist-2026-09-29) and [season 1, week by week](../game/playtesting.md#season-1-week-by-week) |
@@ -68,7 +68,7 @@ Honest limits: Coder on your computers needs your own Mac or Linux computer
 on the same tailnet (chat with OpenAgents needs none). Coder's reply streams
 in paragraph by paragraph as it's written (`358975bdbd`). No attachments,
 dictation, model picker, or push notifications
-([what comes later](../../bins/openagents-ios/docs/chat-later.md)).
+([what comes later](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/bins/openagents-ios/docs/chat-later.md)).
 
 ### Verse: the Grid
 
@@ -280,9 +280,9 @@ What landed, in three waves of epic
 | `chat-router-v2`, the Gym's records, cards, and offers ([#9936](https://github.com/OpenAgentsInc/openagents/issues/9936), [#9943](https://github.com/OpenAgentsInc/openagents/issues/9943), [#9944](https://github.com/OpenAgentsInc/openagents/issues/9944)) | `06e471070e`, `17c7484f9f`, `0546032e17`, deployed | [router v2 measurement](../coder/measurements/2026-09-29-chat-router-v2.md) |
 | The authoring interview ([#9937](https://github.com/OpenAgentsInc/openagents/issues/9937), [#9945](https://github.com/OpenAgentsInc/openagents/issues/9945)) | `3353ef25f6`, `ebaa2af04a` | [interview record](../extensions/measurements/2026-09-29-authoring-interview-live.md) |
 | Credit: the referee, the ledger, adoption ([#9938](https://github.com/OpenAgentsInc/openagents/issues/9938)) | `9387ebb45b`, referee live | [XP guide](../coder/guides/xp.md) |
-| The phone: menu, first run, cards, sheets, a real hosted test ([#9939](https://github.com/OpenAgentsInc/openagents/issues/9939)) | `59b6908044` to `caf14e1a3b` | [simulator record](../../bins/openagents-ios/verification/2026-09-29-evals-in-chat/README.md) |
+| The phone: menu, first run, cards, sheets, a real hosted test ([#9939](https://github.com/OpenAgentsInc/openagents/issues/9939)) | `59b6908044` to `caf14e1a3b` | [simulator record](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/bins/openagents-ios/verification/2026-09-29-evals-in-chat/README.md) |
 | OpenAgents Mockup to revision 3 ([#9940](https://github.com/OpenAgentsInc/openagents/issues/9940)) | `b4c6e5f6ab` | `bins/openagents-mockup-ios/verification/` |
-| The EVALS board and Gym notes in the Verse ([#9942](https://github.com/OpenAgentsInc/openagents/issues/9942)) | `e736897fba` | [Verse record](../../bins/openagents-ios/verification/2026-09-29-verse-gym/README.md) |
+| The EVALS board and Gym notes in the Verse ([#9942](https://github.com/OpenAgentsInc/openagents/issues/9942)) | `e736897fba` | [Verse record](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/bins/openagents-ios/verification/2026-09-29-verse-gym/README.md) |
 
 The first real results: Project map took Coder from 2 of 6 tests to 5 of 6,
 Code finder to 4 of 6, and Test reader to 5 of 6, each **Better**, and each

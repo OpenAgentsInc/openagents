@@ -26,7 +26,7 @@ provenance:
     - docs/verse/gym.md
 evidence:
   - "2026-09-28: written from the cited documents and checked against them (#9936); the answer text awaits the owner's copy review."
-  - "2026-09-29: version 2 (#9941) says the Gym is in chat now (build 21, crates/openagents-mobile/src/account.rs), with the hosted runner's first live results (docs/extensions/measurements/2026-09-29-hosted-runner-live.md) and the EVALS board (docs/verse/gym.md)."
+  - "2026-09-29: version 2 (#9941) says the Gym is in chat now (build 21, crates/coder/fixtures/retired-mobile-changelog.txt), with the hosted runner's first live results (docs/extensions/measurements/2026-09-29-hosted-runner-live.md) and the EVALS board (docs/verse/gym.md)."
   - "2026-09-29: version bump (#9958) says capability, the on-screen word decided in #9957; the note's id and tags stay."
   - "2026-10-01: version 4 (#10087) says plugin, the one word for anything a person adds (skills, workflows, knowledge, Wasm, and tests); the note's id and tags stay."
   - "2026-10-09: version 5 stops offering the sample plugins (Project map and the rest) for testing in chat; they are test fixtures for the hosted runner now, not shown to people."

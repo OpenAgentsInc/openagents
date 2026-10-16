@@ -4,7 +4,7 @@ Specified September 28, 2026. Status: the data contract and generator are
 implemented in [`crates/gym-leaderboard`](../../crates/gym-leaderboard/), and
 the OpenAgents app's Grid has the **RESULTS** board with its boards list,
 board, and attempt screens, the trace viewer, and its replay on iOS
-([captures](../../bins/openagents-ios/verification/2026-09-28-gym-results/)).
+([captures](https://github.com/OpenAgentsInc/openagents/tree/e6783578b3900f0d60dd0d5f9033ab26e9371c74/bins/openagents-ios/verification/2026-09-28-gym-results)).
 
 The Gym building shows live run observations from a host the player
 connected. It doesn't show what OpenAgents has measured and published:

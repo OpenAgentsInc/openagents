@@ -18,7 +18,7 @@
         config.allowUnfree = true;
       };
 
-      # The SDK that builds `bins/coder-android` and `bins/openagents-android`:
+      # The SDK that builds `bins/coder-android`:
       # the platform and build tools that match `compileSdk`, and the NDK
       # their `ndkVersion` names, so Gradle finds it without a download. The
       # emulator and its system image stay in the module's SDK, the one

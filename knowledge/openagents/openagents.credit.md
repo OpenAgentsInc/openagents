@@ -24,10 +24,10 @@ provenance:
   cites:
     - docs/extensions/evaluation.md
     - nips/openagents/NIP-XP.md
-    - crates/openagents-mobile/src/account.rs
+    - crates/coder/fixtures/retired-mobile-changelog.txt
 evidence:
   - "2026-09-28: written from the cited documents and checked against them (#9936); the answer text awaits the owner's copy review."
-  - "2026-09-29: version 2 (#9941) says tests in chat are live in build 21 (crates/openagents-mobile/src/account.rs) instead of on their way; the referee's first live awards are in docs/extensions/measurements/2026-09-29-hosted-runner-live.md."
+  - "2026-09-29: version 2 (#9941) says tests in chat are live in build 21 (crates/coder/fixtures/retired-mobile-changelog.txt) instead of on their way; the referee's first live awards are in docs/extensions/measurements/2026-09-29-hosted-runner-live.md."
   - "2026-09-29: version 3 (#9958) says capability, the on-screen word decided in #9957."
   - "2026-10-01: version 4 (#10087) says plugin, the one word for anything a person adds (skills, workflows, knowledge, Wasm, and tests); the note's id and tags stay."
   - "2026-10-09: version 5 drops 'test a plugin in chat': the sample plugins that flow tested are no longer shown, so there is nothing to start from chat."
@@ -47,4 +47,4 @@ You can make your own plugin and its tests with us and add your results to the G
 
 - `docs/extensions/evaluation.md`
 - `nips/openagents/NIP-XP.md`
-- `crates/openagents-mobile/src/account.rs`
+- `crates/coder/fixtures/retired-mobile-changelog.txt`

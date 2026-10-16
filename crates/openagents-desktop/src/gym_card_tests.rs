@@ -213,7 +213,7 @@ impl openagents_chat_app::gym::Hosted for StandIn {
             live.queued = true;
             if finish {
                 live.outcome = Some(Ok(openagents_chat_app::gym::Outcome::from_report(
-                    include_bytes!("../../openagents-mobile/fixtures/gym-report.json"),
+                    include_bytes!("../../openagents-chat-app/fixtures/gym-report.json"),
                 )
                 .unwrap()));
             }

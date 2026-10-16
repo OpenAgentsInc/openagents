@@ -305,7 +305,7 @@ The individual scripts are in decent shape: almost every shell script uses `set 
 **Locations:**
 - [`scripts/dev/large-files-allowlist.txt`](../../../../scripts/dev/large-files-allowlist.txt), large-files-allowlist.txt:9-10
 - [`bins/coder-ios/verification`](../../../../bins/coder-ios/verification)
-- [`bins/openagents-ios/verification`](../../../../bins/openagents-ios/verification)
+- [`bins/openagents-ios/verification`](https://github.com/OpenAgentsInc/openagents/tree/e6783578b3900f0d60dd0d5f9033ab26e9371c74/bins/openagents-ios/verification)
 
 **Evidence:** Lines 9-10 of the allowlist are `assets/*` and `bins/*`. The file's header says `*` also matches `/`, so a file of any size anywhere under `bins/` passes the guard. The verifier did not re-measure the per-directory MB figures.
 

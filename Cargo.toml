@@ -5,8 +5,6 @@ exclude = [
     # The OpenAgents desktop and mobile apps: their own workspace (GPUI, Rust
     # 1.98.1, SQLite 0.30). See apps/openagents/OPENAGENTS.md.
     "apps/openagents",
-    # Its own workspace, for Breez's SQLite; see its Cargo.toml.
-    "crates/openagents-mobile",
     # Psionic, the ML and inference stack, is its own workspace: CUDA and
     # Metal backends, its own lints and dependency versions. See its README.
     "crates/psionic",

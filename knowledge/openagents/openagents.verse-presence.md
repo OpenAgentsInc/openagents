@@ -24,7 +24,7 @@ provenance:
   cites:
     - docs/verse/mobile.md
     - docs/roadmap/2026-09-29-launch-roadmap.md
-    - bins/openagents-ios/README.md
+    - docs/mobile/retired-ios.md
 evidence:
   - "2026-09-28: written from the cited documents and checked against them (#9923); the answer text awaits the owner's copy review."
 ---
@@ -42,4 +42,4 @@ While the Verse tab is showing, the app joins the Grid on our public relay and s
 
 - `docs/verse/mobile.md`
 - `docs/roadmap/2026-09-29-launch-roadmap.md`
-- `bins/openagents-ios/README.md`
+- `docs/mobile/retired-ios.md`

@@ -31,7 +31,7 @@ mod copy_guard_tests;
 
 #[cfg(test)]
 mod gym_fixture {
-    pub const REPORT: &str = include_str!("../../openagents-mobile/fixtures/gym-report.json");
+    pub const REPORT: &str = include_str!("../fixtures/gym-report.json");
 }
 pub mod cards;
 pub mod changes;

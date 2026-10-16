@@ -19,11 +19,11 @@ author: openagents
 provenance:
   written_from: [reference]
   cites:
-    - bins/openagents-ios/README.md
-    - crates/openagents-mobile/src/account.rs
+    - docs/mobile/retired-ios.md
+    - crates/coder/fixtures/retired-mobile-changelog.txt
 evidence:
   - "2026-09-28: written from the cited documents and checked against them (#9923); the answer text awaits the owner's copy review."
-  - "2026-09-29: version 2 (#9941) adds build 21, Test tools in chat, from its changelog entry in crates/openagents-mobile/src/account.rs; the answer is unchanged."
+  - "2026-09-29: version 2 (#9941) adds build 21, Test tools in chat, from its changelog entry in crates/coder/fixtures/retired-mobile-changelog.txt; the answer is unchanged."
   - "2026-10-09: tagged in-app: its steps are screens of the OpenAgents app, so the website's chat never shows the answer whole."
 ---
 
@@ -39,5 +39,5 @@ Account > About this device shows the app's version and build, and Account > Cha
 
 ## Sources
 
-- `bins/openagents-ios/README.md`
-- `crates/openagents-mobile/src/account.rs`
+- `docs/mobile/retired-ios.md`
+- `crates/coder/fixtures/retired-mobile-changelog.txt`

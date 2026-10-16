@@ -23,9 +23,9 @@ author: openagents
 provenance:
   written_from: [reference]
   cites:
-    - crates/openagents-mobile/src/computers_home.rs
+    - docs/mobile/retired-ios.md
     - docs/coder/guides/link-devices.md
-    - bins/openagents-ios/README.md
+    - docs/mobile/retired-ios.md
 evidence:
   - "2026-09-28: written from the cited documents and checked against them (#9923); the answer text awaits the owner's copy review."
   - "2026-09-29: rewritten from the cited documents for QR pairing with OpenAgents for Mac, which replaced the Tailscale and eight-character-code setup (#9978), and checked against them (#9995); the answer text awaits the owner's copy review."
@@ -43,6 +43,6 @@ Account > Computers lists your computers with a one-word status each. Connect a 
 
 ## Sources
 
-- `crates/openagents-mobile/src/computers_home.rs`
+- `docs/mobile/retired-ios.md`
 - `docs/coder/guides/link-devices.md`
-- `bins/openagents-ios/README.md`
+- `docs/mobile/retired-ios.md`

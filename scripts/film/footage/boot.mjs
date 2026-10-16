@@ -1,6 +1,6 @@
 // Boot clips for the launch film (#11432): each surface starting, from
 // cold, to its signed-in home screen, on the same test account that
-// sync-shoot.mjs then uses (written to FILM_WORK/setup.json).
+// the capture tools use (written to FILM_WORK/setup.json).
 //
 //   boot-terminal.mp4  a shell in ~/code/slugkit, `coder` typed, Coder's home
 //   boot-web.mp4       Chrome opening the website, signed in

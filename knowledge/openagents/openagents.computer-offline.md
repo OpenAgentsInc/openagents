@@ -21,7 +21,7 @@ author: openagents
 provenance:
   written_from: [reference]
   cites:
-    - bins/openagents-ios/docs/chat-later.md
+    - docs/mobile/retired-chat-plans.md
 evidence:
   - "2026-09-28: written from the cited documents and checked against them (#9923); the answer text awaits the owner's copy review."
 ---
@@ -36,4 +36,4 @@ Every message to Coder on a computer waits in the app's encrypted outbox until t
 
 ## Sources
 
-- `bins/openagents-ios/docs/chat-later.md`
+- `docs/mobile/retired-chat-plans.md`

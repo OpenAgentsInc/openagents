@@ -277,9 +277,8 @@ reports no new finding for them. The advertisement carries only the
 `EndpointId`, IP addresses, and a display label
 (`openagents_connect::nearby::advertised`); relay URLs are dropped.
 
-`crates/openagents-mobile` is its own workspace and lockfile; adding
-`openagents-connect` there (issue #9971) needs the same review of that
-graph.
+The current desktop and mobile app has its own workspace and lockfile in
+`apps/openagents`; review its dependency graph separately.
 
 The crate checks for `aarch64-apple-darwin`, `x86_64-apple-darwin`,
 `aarch64-apple-ios`, `aarch64-apple-ios-sim`, `aarch64-linux-android` (with

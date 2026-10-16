@@ -8,10 +8,6 @@ callbacks, as explicitly requested for that surface. Keep its application state,
 domain logic, permissions, and transport in Rust; the implemented observer keeps these in `coder-mobile` and `coder-connect`. Read `crates/rust-native/docs/spec.md` and `docs/coder/rust-native/architecture.md`
 before adding that boundary.
 The OpenAgents desktop and mobile apps at `apps/openagents/` (GPUI, UIKit, and Kotlin shells over Rust) are the named exception described in "One OpenAgents desktop app and one mobile app" below.
-The OpenAgents iOS host at `bins/openagents-ios/host` follows the same thin
-SwiftUI boundary; its application state lives in `crates/openagents-mobile`.
-The OpenAgents Android host at `bins/openagents-android/host` is thin Kotlin
-over the same crate, through its JNI surface (`src/android.rs`).
 The Android host at `bins/coder-android/host` uses the equivalent thin Kotlin
 boundary for Android framework widgets, `SurfaceView`, camera, sensors, and
 Keystore access. Keep domain state, Nostr, authorization, cache, and world
@@ -24,17 +20,10 @@ The Nix and shell under `os/` (CoderOS) are infrastructure in the same sense:
 they configure a machine and launch Rust programs, and product behavior
 belongs in Rust.
 
-To ship the OpenAgents iOS app to TestFlight (for example when asked from the
-phone), run `scripts/release/testflight.sh start` (add `--validate-only` for
-a dry run that archives and validates without uploading), then run
-`scripts/release/testflight.sh wait` again and again until it exits 0 (done)
-or 1 (failed; the reason is its last line); each `wait` returns within four
-minutes. Before a real upload, raise `CURRENT_PROJECT_VERSION` in
-`bins/openagents-ios/host/project.yml` to the build being shipped, add that
-build's entry at the top of `CHANGELOG` in
-`crates/openagents-mobile/src/account.rs`, commit, and push to `main`; the
-script refuses a dirty checkout or a build number App Store Connect already
-has. Report the build number and the script's last line.
+The current OpenAgents mobile app lives in `apps/openagents`. Read
+`apps/openagents/OPENAGENTS.md` for builds and
+`apps/openagents/apps/ios/release/README.md` for TestFlight releases.
+The previous mobile hosts and their dedicated Rust crate were removed in #11901.
 
 ## Coder binary freeze at 1.0.0 (owner, 2026-10-15, binding)
 
@@ -270,8 +259,7 @@ commit.
 Live tests and smokes against the owner's real computers must not leave
 chats in the owner's lists. Archive every Coder task a smoke creates when it
 ends (`coder task archive TASK_ID --reason ...` on the host, or NIP-HOST
-`task.archive`), as the `archiving` helper in
-`crates/openagents-mobile/src/tests.rs` does, and pass
+`task.archive`), and pass
 `--no-session-persistence` to a `claude -p` probe so it saves no Claude chat.
 Better still, don't use the owner's host at all: run a scratch host with
 `--state`, `--root`, and `--tasks` under a temporary directory and a
@@ -295,10 +283,6 @@ fixture, or an issue. The one exception is the Breez API key in
 `crates/spark-wallet/src/spark.rs` (shared by the phone and computers): the owner confirmed with the Breez
 team that it is a basic validation key that any shipped app exposes, and
 decided on 2026-09-28 to commit it (see `INVARIANTS.md`, Phone wallet).
-
-`crates/openagents-mobile` is its own Cargo workspace, because Breez's SQLite
-and `ldk-node` link different `libsqlite3-sys` versions. Build and test it
-with `--manifest-path crates/openagents-mobile/Cargo.toml`, not `-p`.
 
 ## Code Graph (#11622)
 
@@ -994,8 +978,5 @@ that memory.
 The day-to-day check is `cargo test -p` for the crates you edit, plus
 `cargo fmt`.
 
-`cargo fetch --locked --manifest-path crates/openagents-mobile/Cargo.toml`
-stops because Cargo wants to update that lock file. Leave the phone
-workspace until the lock file resolves. Relay release checks need
-PostgreSQL (`initdb`, `pg_ctl`, `createdb`). Psionic stays its own
+Relay release checks need PostgreSQL (`initdb`, `pg_ctl`, `createdb`). Psionic stays its own
 workspace, and this setup does not fetch it.

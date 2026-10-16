@@ -94,8 +94,7 @@ in
       default = "35";
       description = ''
         The Android API level of the platform and the system image. 35 is
-        Android 15, which is what `bins/coder-android` and
-        `bins/openagents-android` compile against.
+        Android 15, which is what `bins/coder-android` compiles against.
       '';
     };
 

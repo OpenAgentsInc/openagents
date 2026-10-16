@@ -2,7 +2,7 @@
   "schema": "openagents.route-map.sources.v1",
   "generated_by": "crates/coder/tests/route_map_sources.rs",
   "set": "chat-router-v5@0fc444292c46",
-  "bank": "chat-answers-v1@c2e5baa50550",
+  "bank": "chat-answers-v1@a7e38b5d361b",
   "routes": [
     {
       "id": "meta",
@@ -3670,6 +3670,19 @@
       "wasm": [
         "plugin-outline"
       ],
+      "workflows": [],
+      "skills": [],
+      "knowledge": [],
+      "tests": []
+    },
+    {
+      "dir": "crates/plugin-registry",
+      "slug": null,
+      "name": "Registry",
+      "summary": "Curator-signed NIP-REG catalogs with bounded sources and local trust.",
+      "publisher": null,
+      "version": null,
+      "wasm": [],
       "workflows": [],
       "skills": [],
       "knowledge": [],

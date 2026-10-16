@@ -22,8 +22,8 @@ author: openagents
 provenance:
   written_from: [reference]
   cites:
-    - bins/openagents-ios/docs/chat-later.md
-    - bins/openagents-ios/README.md
+    - docs/mobile/retired-chat-plans.md
+    - docs/mobile/retired-ios.md
 evidence:
   - "2026-09-28: written from the cited documents and checked against them (#9923); the answer text awaits the owner's copy review."
   - "2026-10-09: tagged in-app: its steps are screens of the OpenAgents app, so the website's chat never shows the answer whole."
@@ -41,5 +41,5 @@ In a Coder chat, a message after Coder finishes continues the same task, and a m
 
 ## Sources
 
-- `bins/openagents-ios/docs/chat-later.md`
-- `bins/openagents-ios/README.md`
+- `docs/mobile/retired-chat-plans.md`
+- `docs/mobile/retired-ios.md`

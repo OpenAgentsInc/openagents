@@ -32,7 +32,7 @@ provenance:
     - README.md
     - docs/web/cloud-reset.md
     - crates/openagents-web/src/pages/download.rs
-    - bins/openagents-ios/README.md
+    - docs/mobile/retired-ios.md
     - crates/coder-new/README.md
 evidence:
   - "2026-09-28: written from the cited documents and checked against them (#9923); the answer text awaits the owner's copy review."
@@ -63,5 +63,5 @@ OpenAgents is an open network of agents you work with through one conversation: 
 - `README.md`
 - `docs/web/cloud-reset.md`
 - `crates/openagents-web/src/pages/download.rs`
-- `bins/openagents-ios/README.md`
+- `docs/mobile/retired-ios.md`
 - `crates/coder-new/README.md`

@@ -347,9 +347,9 @@ On the terminal side, the coder-* crates are reasonable leaf crates: coder-vt is
 
 **Locations:**
 - [openagents-login/src/lib.rs:1-15](../../../../crates/openagents-login/src/lib.rs)
-- [account_link.rs:4-5](../../../../crates/openagents-mobile/src/account_link.rs)
-- [account_link.rs:834](../../../../crates/openagents-mobile/src/account_link.rs)
-- [account_link.rs:1286-1390](../../../../crates/openagents-mobile/src/account_link.rs)
+- [account_link.rs:4-5](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/crates/openagents-mobile/src/account_link.rs)
+- [account_link.rs:834](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/crates/openagents-mobile/src/account_link.rs)
+- [account_link.rs:1286-1390](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/crates/openagents-mobile/src/account_link.rs)
 
 **Evidence:** openagents-login, used by coder-new and coder-sync, requests `/device/code` and then polls `/device/token`, honoring `slow_down`. account_link.rs implements the same flow again: `format!("{origin}/device/code")` (834), polling `{origin}/device/token` at 1286-1330, and its own `"authorization_pending"` / `"slow_down"` handling at 1385-1386. openagents-mobile is its own excluded workspace, but a path dependency can still reach openagents-login.
 

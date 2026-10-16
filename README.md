@@ -88,8 +88,8 @@ that guard money and authority.
 | Web | Chat at [openagents.com](https://openagents.com), and Everglade in the browser at [openagents.com/everglade](https://openagents.com/everglade) (WebGPU or WebGL2). See [Everglade on the web](crates/everglade-web/README.md). |
 | Terminal | **Coder 1.0.0** on macOS, Linux and Windows. Install with `curl -fsSL https://openagents.com/cli/install.sh \| bash` (macOS and Linux) or `irm https://openagents.com/cli/install.ps1 \| iex` (Windows PowerShell), then run `coder` in a project folder. See [the download page](https://openagents.com/download) and [the GitHub release](https://github.com/OpenAgentsInc/openagents/releases/tag/coder-v1.0.0). |
 | API | `https://api.openagents.com/v1`: models (OpenAI-compatible), decisions, projects, and agent self-signup. See [the docs for agents](https://openagents.com/docs/agents). |
-| iOS | OpenAgents (`com.openagents.app`) on TestFlight: chat, the Gym's plugin tests and XP, Verse with Everglade, and a Spark wallet. See [OpenAgents for iOS](bins/openagents-ios/README.md). |
-| Android | The same app and Rust library. Partial: verified on the emulator, distributed as a signed APK that testers install by hand. See [OpenAgents for Android](bins/openagents-android/README.md). |
+| iOS | OpenAgents (`com.openagents.app`), the UIKit app over the Rust mobile core. See [OpenAgents for iOS](apps/openagents/apps/ios/README.md). |
+| Android | The current mobile core is shared; the Android shell is planned. See [the app guide](apps/openagents/OPENAGENTS.md). |
 | Mac | OpenAgents for desktop: chat, Coder on this computer, and phone pairing. See [OpenAgents desktop](crates/openagents-desktop/README.md). |
 
 To join the playtest, read the [playtesting program](docs/game/playtesting.md).
@@ -260,21 +260,11 @@ record the change for three plugins.
 
 ## The phone app and chat
 
-Rust builds every screen in [`crates/openagents-mobile`](crates/openagents-mobile/);
-thin SwiftUI and Kotlin hosts render it. The app has four tabs: **Chat**,
-**Verse**, **Wallet** (Spark and Lightning through Breez, amounts in
-[BIP 177](docs/breez/amounts.md) units), and **Account**.
-
-Chat needs no computer. Each message is an encrypted
-[NIP-CJ](nips/openagents/NIP-CJ.md) job to our
-[chat worker](docs/deployment/chat-worker.md). The
-[chat router](docs/coder/design/2026-09-28-chat-router.md) asks our
-[Decisions API](docs/api/decisions.md) (Clef first, with Jev, TypeSafe's
-System One model, as the backup; [`crates/jev`](crates/jev/README.md)) to
-pick the route: a reviewed prepared answer, a Gym card, or real work that dispatches
-Coder to your connected computer. Code, not the model, decides what to show.
-See the [app wireframe specification](docs/product/2026-09-28-app-wireframe.md)
-for where the app is going.
+The OpenAgents mobile app lives in [`apps/openagents`](apps/openagents/OPENAGENTS.md).
+Its UIKit shell uses the Rust mobile core, with sessions shared through
+`coder-sync`. See [the iOS guide](apps/openagents/apps/ios/README.md) for builds
+and [the release guide](apps/openagents/apps/ios/release/README.md) for TestFlight.
+The previous SwiftUI and Android app was removed in #11901.
 
 ## How OpenAgents makes money
 
@@ -379,7 +369,7 @@ AGENTS.md has the full crate list. The main groups:
 
 | Area | Paths |
 | --- | --- |
-| Apps | [`bins/openagents-ios`](bins/openagents-ios/README.md), [`bins/openagents-android`](bins/openagents-android/README.md), [`crates/openagents-mobile`](crates/openagents-mobile/) (its own Cargo workspace), [`crates/openagents-desktop`](crates/openagents-desktop/README.md), [`crates/openagents-terminal`](crates/openagents-terminal/), [`crates/openagents-web`](crates/openagents-web/README.md), and the earlier Coder apps in [`bins/coder-ios`](bins/coder-ios/) and [`bins/coder-android`](bins/coder-android/README.md) |
+| Apps | [`apps/openagents`](apps/openagents/OPENAGENTS.md) (the current desktop and mobile apps, in their own Cargo workspace), [`crates/openagents-desktop`](crates/openagents-desktop/README.md), [`crates/openagents-terminal`](crates/openagents-terminal/), [`crates/openagents-web`](crates/openagents-web/README.md), and the earlier Coder apps in [`bins/coder-ios`](bins/coder-ios/) and [`bins/coder-android`](bins/coder-android/README.md) |
 | Coder | [`coder-new`](crates/coder-new/README.md), [`coder`](crates/coder/), [`microcoder-loop`](crates/microcoder-loop/), [`microcoder`](crates/microcoder/), [`coder-delegate`](crates/coder-delegate/), [`acp-client`](crates/acp-client/), [`codex-transport`](crates/codex-transport/), [`coder-one`](crates/coder-one/), and [`microluna`](crates/microluna/README.md) (deprecated; kept for retained benchmark evidence) |
 | Host and devices | [`coder-host`](crates/coder-host/README.md), [`coder-service`](crates/coder-service/), [`coder-access`](crates/coder-access/README.md), [`coder-reach`](crates/coder-reach/README.md), [`coder-link`](crates/coder-link/README.md), [`coder-pty`](crates/coder-pty/README.md), [`coder-vt`](crates/coder-vt/README.md), [`coder-ssh`](crates/coder-ssh/README.md), [`coder-connect`](crates/coder-connect/README.md), and [`coder-computers`](crates/coder-computers/README.md) |
 | Machine | [`coder-lease`](crates/coder-lease/), [`supervise`](crates/supervise/), [`coder-boundary`](crates/coder-boundary/), and the CoderOS desktop in [`os/`](os/README.md) with [`coder-compositor`](crates/coder-compositor/README.md) |
@@ -407,13 +397,8 @@ change is `cargo test -p` for the crates you edited, plus `cargo fmt`.
 `./scripts/verify-rust.sh --crates coder,gym` runs formatting, Clippy, and
 tests for chosen packages.
 
-`crates/openagents-mobile` is its own Cargo workspace:
-
-```sh
-cargo test --manifest-path crates/openagents-mobile/Cargo.toml
-OPENAGENTS_IOS_DEVICE=<simulator-udid> bins/openagents-ios/build.sh sim
-OPENAGENTS_ANDROID_SERIAL=emulator-5554 scripts/build-openagents-android.sh run
-```
+The current desktop and mobile apps have their own workspace. See
+[`apps/openagents/OPENAGENTS.md`](apps/openagents/OPENAGENTS.md) for their checks.
 
 The full gate, `./scripts/verify-rust.sh --release`, is for releases only. See
 [verification](docs/verification.md). We use no GitHub workflows; checks run

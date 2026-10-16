@@ -22,7 +22,7 @@ provenance:
   written_from: [reference]
   cites:
     - docs/verse/tutorial-quests.md
-    - bins/openagents-ios/README.md
+    - docs/mobile/retired-ios.md
 evidence:
   - "2026-09-28: written from the cited documents and checked against them (#9923); the answer text awaits the owner's copy review."
   - "2026-10-09: tagged in-app: its steps are screens of the OpenAgents app, so the website's chat never shows the answer whole."
@@ -39,4 +39,4 @@ To keep your trainer key on the phone and still earn XP from a computer, tap Acc
 ## Sources
 
 - `docs/verse/tutorial-quests.md`
-- `bins/openagents-ios/README.md`
+- `docs/mobile/retired-ios.md`

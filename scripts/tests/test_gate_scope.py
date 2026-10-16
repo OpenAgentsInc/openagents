@@ -95,8 +95,8 @@ class NestedAndDependentTests(unittest.TestCase):
                    '[workspace]\nmembers = ["crates/*"]\n')
         self.write("crates/psionic/crates/psionic-serve/Cargo.toml",
                    '[package]\nname = "psionic-serve"\n')
-        self.write("crates/openagents-mobile/Cargo.toml",
-                   '[package]\nname = "openagents-mobile"\n')
+        self.write("crates/independent-app/Cargo.toml",
+                   '[package]\nname = "independent-app"\n')
         self.write("vendor/boltz-client/crates/lib/Cargo.toml",
                    '[package]\nname = "boltz-client"\n')
         self.metadata = fake_metadata(
@@ -123,12 +123,12 @@ class NestedAndDependentTests(unittest.TestCase):
     def test_nested_workspace_paths_use_their_own_manifest(self):
         plan = self.resolve([
             "crates/psionic/crates/psionic-serve/src/lib.rs",
-            "crates/openagents-mobile/src/lib.rs",
+            "crates/independent-app/src/lib.rs",
         ])
         self.assertEqual(plan["crates"], [])
         self.assertEqual(plan["nested"], [
-            {"manifest": "crates/openagents-mobile/Cargo.toml",
-             "packages": ["openagents-mobile"], "workspace": False},
+            {"manifest": "crates/independent-app/Cargo.toml",
+             "packages": ["independent-app"], "workspace": False},
             {"manifest": "crates/psionic/Cargo.toml",
              "packages": ["psionic-serve"], "workspace": False},
         ])
@@ -187,7 +187,7 @@ ROOT_MANIFEST = """[workspace]
 members = ["crates/*"]
 exclude = [
     # Its own workspace.
-    "crates/openagents-mobile",
+    "crates/independent-app",
     "crates/psionic",
     "vendor",
 ]

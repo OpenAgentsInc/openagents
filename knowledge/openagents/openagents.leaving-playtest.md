@@ -21,7 +21,7 @@ provenance:
   written_from: [reference]
   cites:
     - docs/game/playtesting.md
-    - bins/openagents-ios/README.md
+    - docs/mobile/retired-ios.md
 evidence:
   - "2026-09-28: written from the cited documents and checked against them (#9923); the answer text awaits the owner's copy review."
 ---
@@ -37,4 +37,4 @@ You can stop testing at any time. We delete session notes and recordings on requ
 ## Sources
 
 - `docs/game/playtesting.md`
-- `bins/openagents-ios/README.md`
+- `docs/mobile/retired-ios.md`

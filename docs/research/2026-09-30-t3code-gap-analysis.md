@@ -584,7 +584,7 @@ them. The [Windows notification receipt](../desktop/verification/2026-09-30-wind
 records current toast support and its limitation: clicking after the app quits
 has no registered COM activation path. The
 [push gateway](../deployment/push-gateway.md) and
-[phone wallet wake configuration](../../bins/openagents-ios/README.md#push-wakes-for-payment-requests)
+[phone wallet wake configuration](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/bins/openagents-ios/README.md#push-wakes-for-payment-requests)
 are separate infrastructure and flows. They do not prove complete background
 task notifications or live status on paired physical phones.
 

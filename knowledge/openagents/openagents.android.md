@@ -21,7 +21,7 @@ author: openagents
 provenance:
   written_from: [reference]
   cites:
-    - bins/openagents-android/README.md
+    - docs/mobile/retired-android.md
     - docs/roadmap/2026-09-29-launch-roadmap.md
 evidence:
   - "2026-09-28: written from the cited documents and checked against them (#9923); the answer text awaits the owner's copy review."
@@ -38,5 +38,5 @@ The Android app runs the same Rust library as the iPhone app, with the same four
 
 ## Sources
 
-- `bins/openagents-android/README.md`
+- `docs/mobile/retired-android.md`
 - `docs/roadmap/2026-09-29-launch-roadmap.md`

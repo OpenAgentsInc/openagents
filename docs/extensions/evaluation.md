@@ -33,7 +33,7 @@ Status: revision 2 (2026-09-28), implemented for v1 and live in build 21
 - **The phone**: the menu, the first run, `CARD-01` to `CARD-07`, the
   sheets, and a real test from chat to XP
   ([#9939](https://github.com/OpenAgentsInc/openagents/issues/9939);
-  [simulator record](../../bins/openagents-ios/verification/2026-09-29-evals-in-chat/README.md)).
+  [simulator record](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/bins/openagents-ios/verification/2026-09-29-evals-in-chat/README.md)).
 - **The Verse**: the EVALS board and agents comparing notes
   ([#9942](https://github.com/OpenAgentsInc/openagents/issues/9942);
   [the Gym building](../verse/gym.md#the-evals-board-and-agents-comparing-notes)).

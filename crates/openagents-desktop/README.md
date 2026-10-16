@@ -266,7 +266,7 @@ open target/release/OpenAgents.app
 ```
 
 The app's version is the phone app's, in lockstep: `MARKETING_VERSION` in
-[`bins/openagents-ios/host/project.yml`](../../bins/openagents-ios/host/project.yml)
+[`bins/openagents-ios/host/project.yml`](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/bins/openagents-ios/host/project.yml)
 is the source of truth, and this crate's `version` must equal it
 ([`tests/version_lockstep.rs`](tests/version_lockstep.rs); see
 [release](../../docs/desktop/release.md#version)). 1.0.0 is the first such

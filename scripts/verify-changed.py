@@ -9,7 +9,7 @@ that invalidate crate scoping entirely.
 The plan also names:
 
 - `nested`: changes inside workspaces the root `Cargo.toml` excludes
-  (`crates/psionic`, `crates/openagents-mobile`). Their packages are not
+  (`crates/psionic`). Their packages are not
   root members, so they are checked with `--manifest-path`, never `-p`.
 - `dependents`: root members that depend directly on a changed crate, so a
   change to a shared crate also checks its consumers.

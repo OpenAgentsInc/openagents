@@ -1,5 +1,7 @@
 # OpenAgents 1.0 on TestFlight (external testers)
 
+> Historical: this app was removed in #11901. Use the [current mobile app](../../apps/openagents/OPENAGENTS.md) and its [iOS release guide](../../apps/openagents/apps/ios/release/README.md).
+
 Issue: [#11093](https://github.com/OpenAgentsInc/openagents/issues/11093).
 App: `com.openagents.app`, App Store Connect app 6748620735, version 1.0.0.
 External group: **OpenAgents Beta Testers**, public link
@@ -38,7 +40,7 @@ Apple's reviewer needs no demo account, and **Sign-in required** is **No**.
 ## What to Test (set on each build)
 
 The build's What to Test text is `whatToTest` in
-[`bins/openagents-ios/testflight.json`](../../bins/openagents-ios/testflight.json)
+[`bins/openagents-ios/testflight.json`](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/bins/openagents-ios/testflight.json)
 (build 59's, below):
 
 > Welcome to the OpenAgents beta. No sign-in is needed.

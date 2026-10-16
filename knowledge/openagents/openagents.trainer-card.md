@@ -22,7 +22,7 @@ author: openagents
 provenance:
   written_from: [reference]
   cites:
-    - bins/openagents-ios/README.md
+    - docs/mobile/retired-ios.md
     - docs/verse/tutorial-quests.md
     - docs/verse/agent-trainer-leveling.md
 evidence:
@@ -41,6 +41,6 @@ Account > Trainer is your trainer card: your level, XP, XP to the next level, ti
 
 ## Sources
 
-- `bins/openagents-ios/README.md`
+- `docs/mobile/retired-ios.md`
 - `docs/verse/tutorial-quests.md`
 - `docs/verse/agent-trainer-leveling.md`

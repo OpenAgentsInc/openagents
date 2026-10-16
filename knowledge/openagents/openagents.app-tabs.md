@@ -20,11 +20,11 @@ author: openagents
 provenance:
   written_from: [reference]
   cites:
-    - bins/openagents-ios/README.md
-    - crates/openagents-mobile/src/account.rs
+    - docs/mobile/retired-ios.md
+    - crates/coder/fixtures/retired-mobile-changelog.txt
 evidence:
   - "2026-09-28: written from the cited documents and checked against them (#9923); the answer text awaits the owner's copy review."
-  - "2026-09-29: version 2 (#9941) says the Chat tab opens on the menu from build 21 (crates/openagents-mobile/src/account.rs); the answer is unchanged."
+  - "2026-09-29: version 2 (#9941) says the Chat tab opens on the menu from build 21 (crates/coder/fixtures/retired-mobile-changelog.txt); the answer is unchanged."
 ---
 
 ## Answer
@@ -40,5 +40,5 @@ The app has four tabs. Chat (the message icon) is where you talk with us and sta
 
 ## Sources
 
-- `bins/openagents-ios/README.md`
-- `crates/openagents-mobile/src/account.rs`
+- `docs/mobile/retired-ios.md`
+- `crates/coder/fixtures/retired-mobile-changelog.txt`

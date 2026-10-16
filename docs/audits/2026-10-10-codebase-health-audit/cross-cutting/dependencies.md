@@ -224,7 +224,7 @@ Severity: Medium · Category: architecture · Effort: L
 **Locations**
 - [crates/wallet/Cargo.toml](../../../../crates/wallet/Cargo.toml), lines 21-29
 - [crates/spark-wallet/Cargo.toml](../../../../crates/spark-wallet/Cargo.toml), lines 9-13
-- [crates/openagents-mobile/Cargo.toml](../../../../crates/openagents-mobile/Cargo.toml), lines 117-122
+- [crates/openagents-mobile/Cargo.toml](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/crates/openagents-mobile/Cargo.toml), lines 117-122
 - [Cargo.lock](../../../../Cargo.lock)
 
 **Evidence**
@@ -294,7 +294,7 @@ Severity: Medium · Category: security · Effort: S
 
 **Locations**
 - [scripts/check-dependencies.sh](../../../../scripts/check-dependencies.sh), lines 13-18
-- [crates/openagents-mobile/Cargo.toml](../../../../crates/openagents-mobile/Cargo.toml), lines 117-122
+- [crates/openagents-mobile/Cargo.toml](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/crates/openagents-mobile/Cargo.toml), lines 117-122
 - [mc-bridge/Cargo.toml](../../../../mc-bridge/Cargo.toml)
 - [crates/psionic/Cargo.lock](../../../../crates/psionic/Cargo.lock)
 
@@ -378,7 +378,7 @@ Severity: Low · Category: build · Effort: S
 **Locations**
 - [Cargo.toml](../../../../Cargo.toml), lines 1-13
 - [crates/psionic/Cargo.toml](../../../../crates/psionic/Cargo.toml)
-- [crates/openagents-mobile/Cargo.toml](../../../../crates/openagents-mobile/Cargo.toml), lines 122-139
+- [crates/openagents-mobile/Cargo.toml](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/crates/openagents-mobile/Cargo.toml), lines 122-139
 - [mc-bridge/Cargo.toml](../../../../mc-bridge/Cargo.toml)
 - [mc-bridge/rust-toolchain.toml](../../../../mc-bridge/rust-toolchain.toml)
 
@@ -512,7 +512,7 @@ Severity: Low · Category: security · Effort: S
 
 **Locations**
 - [crates/spark-wallet/Cargo.toml](../../../../crates/spark-wallet/Cargo.toml), lines 13 and 32
-- [crates/openagents-mobile/Cargo.toml](../../../../crates/openagents-mobile/Cargo.toml), line 59
+- [crates/openagents-mobile/Cargo.toml](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/crates/openagents-mobile/Cargo.toml), line 59
 
 **Evidence:** `breez-sdk-spark = { git = "https://github.com/breez/spark-sdk", tag = "0.26.0", ... }` appears three times, each with a different feature set.
 

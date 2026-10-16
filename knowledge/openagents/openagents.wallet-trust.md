@@ -22,9 +22,9 @@ author: openagents
 provenance:
   written_from: [reference]
   cites:
-    - crates/openagents-mobile/src/wallet.rs
     - docs/breez/wallet-design.md
-    - bins/openagents-ios/README.md
+    - docs/breez/wallet-design.md
+    - docs/mobile/retired-ios.md
 evidence:
   - "2026-09-28: written from the cited documents and checked against them (#9923); the answer text awaits the owner's copy review."
   - "2026-10-02: version 2 says a linked computer holds the keys too (#10202)."
@@ -42,6 +42,6 @@ The Wallet runs on Spark, not on a Lightning node of your own, and your keys sta
 
 ## Sources
 
-- `crates/openagents-mobile/src/wallet.rs`
 - `docs/breez/wallet-design.md`
-- `bins/openagents-ios/README.md`
+- `docs/breez/wallet-design.md`
+- `docs/mobile/retired-ios.md`

@@ -34,7 +34,7 @@
 //!   admitted-capability set's adoptions
 //!   ([`crate::router::capability::Admitted::of`]).
 //! - **The app's changelog**, `CHANGELOG` in
-//!   `crates/openagents-mobile/src/account.rs`, compiled in and read by
+//!   `crates/coder/fixtures/retired-mobile-changelog.txt`, compiled in and read by
 //!   [`changelog`].
 //! - **Our product notes**: the admitted entries of
 //!   `knowledge/openagents/` tagged `gym` (notes) or `tool` (the tool
@@ -217,10 +217,10 @@ pub fn catalog_slug(dir: &str) -> &str {
 }
 
 /// The changelog's path, which a build item cites.
-pub const CHANGELOG_PATH: &str = "crates/openagents-mobile/src/account.rs";
+pub const CHANGELOG_PATH: &str = "crates/coder/fixtures/retired-mobile-changelog.txt";
 
 /// The changelog source, compiled in.
-const CHANGELOG_SOURCE: &str = include_str!("../../openagents-mobile/src/account.rs");
+const CHANGELOG_SOURCE: &str = include_str!("../fixtures/retired-mobile-changelog.txt");
 
 /// How long the Jev request may take.
 pub const JUDGE_BUDGET: Duration = Duration::from_millis(1_500);

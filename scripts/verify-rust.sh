@@ -12,7 +12,7 @@
 #   --changed[=REF]  derive the crate set from paths changed since REF
 #                    (default origin/main), including uncommitted edits;
 #                    excluded nested workspaces (crates/psionic,
-#                    crates/openagents-mobile) run with --manifest-path,
+#                    apps/openagents) run with --manifest-path,
 #                    and direct dependents of changed crates get cargo check
 #   --no-dependents  skip the dependents check under --changed
 #   --keep-going     run later phases after one fails; the record names all

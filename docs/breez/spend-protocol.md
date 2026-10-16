@@ -27,9 +27,9 @@ Code:
 - The host's book and `coder host spend`: [`crates/coder-host/src/spend.rs`](../../crates/coder-host/src/spend.rs)
 - The x402 phone payer (`openagents x402 fetch|call --pay-with phone`):
   [`crates/openagents-cli/src/x402_phone.rs`](../../crates/openagents-cli/src/x402_phone.rs)
-- The phone: [`crates/openagents-mobile/src/spend.rs`](../../crates/openagents-mobile/src/spend.rs)
+- The phone: [`crates/openagents-mobile/src/spend.rs`](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/crates/openagents-mobile/src/spend.rs)
   and the iOS sheet in
-  [`bins/openagents-ios/host/App/AgentPayments.swift`](../../bins/openagents-ios/host/App/AgentPayments.swift)
+  [`bins/openagents-ios/host/App/AgentPayments.swift`](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/bins/openagents-ios/host/App/AgentPayments.swift)
 
 ## The flow
 
@@ -87,7 +87,7 @@ A relay whose NIP-PL executor holds the phone's push lease (`kind 3188`,
 `#p` the device key, which is the lease every OpenAgents phone registers)
 wakes the phone with the fixed wake body, never the artifact. The app
 registers the lease only in a build configured for push
-([iOS](../../bins/openagents-ios/README.md#push-wakes-for-payment-requests));
+([iOS](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/bins/openagents-ios/README.md#push-wakes-for-payment-requests));
 the owner steps (APNs key, push gateway credentials, and a push build) are
 in the workspace's `NEEDS_OWNER.md`. When the app comes to the foreground
 it sends `spend.list` to every computer at once instead of waiting for the
@@ -274,7 +274,7 @@ convenience over mode A, not a way to pay while the phone is off; that is
 Code: `AutoPay`, `Ledger::automatic`, and `Earlier` in
 [`crates/coder-access/src/spend.rs`](../../crates/coder-access/src/spend.rs);
 `Spending::trust`, `untrust`, `manual`, and `pay_automatic` in
-[`crates/openagents-mobile/src/spend.rs`](../../crates/openagents-mobile/src/spend.rs).
+[`crates/openagents-mobile/src/spend.rs`](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/crates/openagents-mobile/src/spend.rs).
 
 ## Trust and limits
 

@@ -8,11 +8,10 @@
     asc.py wait-valid --build N [--version 1.0.0] [--after ISO] [--timeout SECONDS]
                                            waits until build N (uploaded after ISO) is
                                            VALID and in Internal Testers
-    asc.py test-info [--file F]            sets the app's TestFlight test information
-                                           and Beta App Review details from F (default
-                                           bins/openagents-ios/testflight.json); fields
+    asc.py test-info --file F            sets the app's TestFlight test information
+                                           and Beta App Review details from F; fields
                                            F leaves out (the contact phone) stay as set
-    asc.py external --build N [--version 1.0.0] [--after ISO] [--file F] [--submit]
+    asc.py external --build N [--version 1.0.0] [--after ISO] --file F [--submit]
                                            sets build N's What to Test from F, adds it
                                            to F's external group, and with --submit
                                            sends it to Beta App Review
@@ -20,8 +19,8 @@
                                            build N's external and review states
 
 The key comes from ASC_API_KEY_ID, ASC_API_ISSUER_ID, and
-ASC_API_PRIVATE_KEY_PATH, which `testflight.sh` loads from the owner's env
-file. The key and the token are never printed.
+ASC_API_PRIVATE_KEY_PATH, loaded from the owner's environment file. The key
+and the token are never printed.
 
 Builds are always matched by their pre-release version (the marketing
 version) and, when waiting, by an upload time after the upload started:
@@ -42,9 +41,6 @@ import urllib.request
 
 APP_ID = "6748620735"
 API = "https://api.appstoreconnect.apple.com"
-# The TestFlight test information, review notes, and external group
-# (docs/mobile/testflight-1.0.md).
-INFO = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../bins/openagents-ios/testflight.json")
 
 
 def b64(data):
@@ -272,9 +268,12 @@ def main():
     parser.add_argument("--at-least", type=int, default=1)
     parser.add_argument("--after")
     parser.add_argument("--timeout", type=int, default=3600)
-    parser.add_argument("--file", default=INFO)
+    parser.add_argument("--file")
     parser.add_argument("--submit", action="store_true")
     args = parser.parse_args()
+
+    if args.command in ("test-info", "external") and not args.file:
+        parser.error(f"{args.command} needs --file with the current app’s test information")
 
     if args.command == "test-info":
         return test_info(load_info(args.file))

@@ -102,7 +102,7 @@ Rankings, Updates, the Coder screen, setup prompts (`SCR-07`, `SCR-10`,
 `SCR-12`, `SCR-14`), and the cinematic's shots before its end card, which
 build 21 doesn't have. The mockup draws some of these; skip them in
 scoring. In build 21, a real test runs on our computers and its result is
-real ([the live run](../../bins/openagents-ios/verification/2026-09-29-evals-in-chat/README.md#a-real-hosted-test-end-to-end)).
+real ([the live run](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/bins/openagents-ios/verification/2026-09-29-evals-in-chat/README.md#a-real-hosted-test-end-to-end)).
 
 ### Which build to use
 
@@ -520,9 +520,9 @@ Status words follow the [glossary](../glossary.md).
 
 | Piece | Status |
 | --- | --- |
-| The OpenAgents app on iOS (`com.openagents.app`) with four tabs: Chat, Verse (the Grid), Wallet, and Account ([README](../../bins/openagents-ios/README.md)) | Implemented. Version 1.0.0 builds 1 to 20: 16 added Report a problem, 17 chat with no computer, 18 Chat with OpenAgents (`e1d499def7`), 19 sends every new chat to OpenAgents (`99e3094bff`), 20 brings the chat router's prepared answers and offers, **Wrong answer**, and a simpler Wallet (`85b37f75c7`), and 21 puts the Gym in chat ([#9939](https://github.com/OpenAgentsInc/openagents/issues/9939), `59b6908044` to `caf14e1a3b`; the upload is the release owner's step). |
+| The OpenAgents app on iOS (`com.openagents.app`) with four tabs: Chat, Verse (the Grid), Wallet, and Account ([README](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/bins/openagents-ios/README.md)) | Implemented. Version 1.0.0 builds 1 to 20: 16 added Report a problem, 17 chat with no computer, 18 Chat with OpenAgents (`e1d499def7`), 19 sends every new chat to OpenAgents (`99e3094bff`), 20 brings the chat router's prepared answers and offers, **Wrong answer**, and a simpler Wallet (`85b37f75c7`), and 21 puts the Gym in chat ([#9939](https://github.com/OpenAgentsInc/openagents/issues/9939), `59b6908044` to `caf14e1a3b`; the upload is the release owner's step). |
 | **OpenAgents Mockup** (`com.openagents.mockup`, [README](../../bins/openagents-mockup-ios/README.md)): every screen of the [wireframe spec](../product/2026-09-28-app-wireframe.md) with fake data, for the [lo-fi playtest](#lo-fi-playtest) | Implemented (`1f73e0c4bd`), version 0.1.0; draws wireframe revision 3 since `b4c6e5f6ab`. Runs from Xcode or the simulator; its own TestFlight app waits on an App Store Connect record (an owner step). |
-| OpenAgents for Android ([`bins/openagents-android`](../../bins/openagents-android/README.md)), the same Rust library | Partial ([#9838](https://github.com/OpenAgentsInc/openagents/issues/9838)). Chat, Verse (with the Gym and RESULTS panels, `82663b935d`), Wallet (`e56d173480`, `e1aeec7413`; [#9861](https://github.com/OpenAgentsInc/openagents/issues/9861) closed), and Account work. Verified on the emulator only; a live tailnet chat, QR scanning, the terminal, and motion look haven't been checked on a device. Distributed as a signed release APK (1.0.0, version code 16, the iPhone build number) from a GitHub release that testers install by hand. |
+| OpenAgents for Android ([`bins/openagents-android`](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/bins/openagents-android/README.md)), the same Rust library | Partial ([#9838](https://github.com/OpenAgentsInc/openagents/issues/9838)). Chat, Verse (with the Gym and RESULTS panels, `82663b935d`), Wallet (`e56d173480`, `e1aeec7413`; [#9861](https://github.com/OpenAgentsInc/openagents/issues/9861) closed), and Account work. Verified on the emulator only; a live tailnet chat, QR scanning, the terminal, and motion look haven't been checked on a device. Distributed as a signed release APK (1.0.0, version code 16, the iPhone build number) from a GitHub release that testers install by hand. |
 | Public distribution | Planned for 2026-09-29: a public TestFlight link for iOS and a public APK download for Android (owner steps in the workspace's `NEEDS_OWNER.md`). |
 | TestFlight's own feedback: a tester takes a screenshot or uses **Send Beta Feedback** in the TestFlight app, and it reaches App Store Connect with the build number, device, and OS. Crash reports reach it too. | Exists, from Apple. `openagents playtest testflight` reads it into the triage inbox as drafts and log entries, without the tester's Apple identity ([#9905](https://github.com/OpenAgentsInc/openagents/issues/9905), [triage](playtest-triage.md#testflight-feedback)). |
 | The owner's build notes ("1.0.0 Build 13 Feedback") turned into commits by agents, followed by a build bump (for example `e84de16fd5`, `06d033d663`) | The current loop. It isn't written down anywhere except in commit history. |
@@ -1046,7 +1046,7 @@ Coder and Verse launch to playtesters on Tuesday 2026-09-29. Season 1
 - **The mockup** (OpenAgents Mockup) for [lo-fi sessions](#lo-fi-playtest),
   from a facilitator's phone until it has its own TestFlight app.
 - **Android:** the signed OpenAgents APK from
-  [`bins/openagents-android`](../../bins/openagents-android/README.md),
+  [`bins/openagents-android`](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/bins/openagents-android/README.md),
   linked publicly next to the TestFlight link. Android has Chat, Verse (the
   Grid and the Gym and RESULTS panels; the Lagrange 1 portal is hidden),
   Wallet, and Account, and
@@ -1102,7 +1102,7 @@ Published with the link so testers don't spend reports on them:
   in paragraph by paragraph, and chats open in one or two reads
   (`358975bdbd`, `fe6cf24aa2`). No photo attachments, voice dictation,
   model picker, or push notifications yet
-  ([what comes later](../../bins/openagents-ios/docs/chat-later.md)).
+  ([what comes later](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/bins/openagents-ios/docs/chat-later.md)).
 - **The Grid has no chat** and no name-tag levels; presence shows a pubkey
   prefix. The Lagrange 1 portal is hidden. Shared ball and block state can
   lag between players.
@@ -1447,7 +1447,7 @@ and the lo-fi round on the mockup and on build 21 is part of
 - [Phone app wireframe](../product/2026-09-28-app-wireframe.md): spec IDs,
   flows, the IDIOT PROOF checklist, and the v1 cut
 - [OpenAgents Mockup](../../bins/openagents-mockup-ios/README.md)
-- [OpenAgents for iOS](../../bins/openagents-ios/README.md)
+- [OpenAgents for iOS](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/bins/openagents-ios/README.md)
 - [Verse in the OpenAgents app](../verse/mobile.md), the
   [Gym building](../verse/gym.md), the
   [Gym leaderboard](../verse/gym-leaderboard.md), and

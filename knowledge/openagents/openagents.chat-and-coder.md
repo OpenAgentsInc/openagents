@@ -26,8 +26,8 @@ author: openagents
 provenance:
   written_from: [reference]
   cites:
-    - crates/openagents-mobile/src/basic_coder.rs
-    - crates/openagents-mobile/src/account.rs
+    - crates/openagents-chat/src/basic_coder.rs
+    - crates/coder/fixtures/retired-mobile-changelog.txt
     - INVARIANTS.md
 evidence:
   - "2026-09-28: written from the cited documents and checked against them (#9923); the answer text awaits the owner's copy review."
@@ -48,6 +48,6 @@ In this chat you talk with us, OpenAgents: we answer questions and help you plan
 
 ## Sources
 
-- `crates/openagents-mobile/src/basic_coder.rs`
-- `crates/openagents-mobile/src/account.rs`
+- `crates/openagents-chat/src/basic_coder.rs`
+- `crates/coder/fixtures/retired-mobile-changelog.txt`
 - `INVARIANTS.md`

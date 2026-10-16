@@ -262,7 +262,7 @@ Severity: low · Category: duplication · Effort: M
 
 Severity: low · Category: build · Effort: M
 
-**Locations:** [Cargo.toml](../../../../Cargo.toml) at Cargo.toml:1; [x402 Cargo.toml](../../../../crates/x402/Cargo.toml); [wallet Cargo.toml](../../../../crates/wallet/Cargo.toml); [rust-native Cargo.toml](../../../../crates/rust-native/Cargo.toml) at Cargo.toml:36; [openagents-mobile Cargo.toml](../../../../crates/openagents-mobile/Cargo.toml) at Cargo.toml:124; [psionic Cargo.toml](../../../../crates/psionic/Cargo.toml) at Cargo.toml:9.
+**Locations:** [Cargo.toml](../../../../Cargo.toml) at Cargo.toml:1; [x402 Cargo.toml](../../../../crates/x402/Cargo.toml); [wallet Cargo.toml](../../../../crates/wallet/Cargo.toml); [rust-native Cargo.toml](../../../../crates/rust-native/Cargo.toml) at Cargo.toml:36; [openagents-mobile Cargo.toml](https://github.com/OpenAgentsInc/openagents/blob/e6783578b3900f0d60dd0d5f9033ab26e9371c74/crates/openagents-mobile/Cargo.toml) at Cargo.toml:124; [psionic Cargo.toml](../../../../crates/psionic/Cargo.toml) at Cargo.toml:9.
 
 **Evidence:** `[workspace.lints]` contains only `unsafe_op_in_unsafe_fn = deny` plus `dbg_macro`/`todo`/`unimplemented`; there is no `undocumented_unsafe_blocks`. rust-native (36-42) and bitcoin-amount have local `[lints]` sections that mirror the workspace set, and bitcoin-amount also sets `unsafe_code = "forbid"`. openagents-mobile is excluded from the workspace and mirrors the lints locally (124-131). Only x402 (19 unsafe sites), wallet, oa-copy and openagents-ui have no `[lints]` section at all.
 
