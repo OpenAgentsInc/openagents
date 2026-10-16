@@ -1,0 +1,19 @@
+{
+  "issue": 11770,
+  "network": "default signet",
+  "observed_at": "2026-10-16T03:12:54.429679+00:00",
+  "release": "v0.1.2",
+  "release_commit": "903aec7f1bb38475b563a1a7b49e0711e2df20a5",
+  "snapshot_commit": "85cfb97905a27c420338c2a5bd688a4a7d2147b1",
+  "snapshot_waved_sha256": "ca4508207fdef7594ec2dd82110db42ddf391d2c3ecb7ec6c20788a11f86dd88",
+  "snapshot_wavecli_sha256": "26275bdb128879bfde5bae9a4ea890674c048aae0eb8898847c273b3ac25cdeb",
+  "snapshot_result": "wallet services failed: ARK_VERSION_MISMATCH selected 0, runtime bound to 1; database version 26 blocks direct downgrade to release version 19",
+  "omitted_unavailable_results": [
+    "snapshot-credit-raw.json",
+    "routed-receive-invoice.json",
+    "routed-receive-watch.json",
+    "routed-receive-summary.json"
+  ],
+  "additional_faucet_request": "HTTP 429; stopped without retries or IP changes",
+  "production_integration": false
+}

@@ -1,6 +1,6 @@
 # Lightning Labs Wavelength, and where it fits our LND plan
 
-Analysis, 2026-10-15. Status: **assessment; no code.** It reads
+Analysis, 2026-10-15. Status: **assessment with a signet spike; no production integration.** It reads
 [lightninglabs/wavelength](https://github.com/lightninglabs/wavelength) at
 `main` `85cfb979` (2026-10-15, after release `v0.1.2`), and relates it to
 [the LND plan](2026-10-15-lnd-sdk-plan.md) and its epic
@@ -18,7 +18,8 @@ Analysis, 2026-10-15. Status: **assessment; no code.** It reads
 8. [Pros and cons](#7-pros-and-cons)
 9. [Risks](#8-risks)
 10. [Recommendation](#9-recommendation)
-11. [Sources](#sources)
+11. [Signet spike](#10-signet-spike-11770)
+12. [Sources](#sources)
 
 ## Summary
 
@@ -274,6 +275,64 @@ node. No mainnet funds; no production change.
 - Taproot Assets stablecoin send and receive ship in the wallet verbs.
 - Lightning address or LNURL receive arrives, which would make Wavelength
   payees reachable by our payout worker.
+
+## 10. Signet spike (#11770)
+
+Measured on October 16, 2026 (UTC), on the isolated GCP `oa-lnd-builder`.
+The client is a standalone Rust scratch crate, with unchanged protos from
+[release v0.1.2](https://github.com/lightninglabs/wavelength/releases/tag/v0.1.2)
+(`903aec7f1bb38475b563a1a7b49e0711e2df20a5`). The daemon uses `lwwallet`
+and public signet services. These are fresh test wallets; no production crate
+uses Wavelength and no real bitcoin or treasury seed is involved.
+
+The [source and redacted evidence](evidence/wavelength-signet-2026-10-16.tar.gz)
+include a per-file manifest and the upstream proto license. The
+[checksum](evidence/wavelength-signet-2026-10-16.tar.gz.sha256) and
+[measurement metadata](evidence/wavelength-signet-2026-10-16.json) identify this
+checkpoint. Seeds, wallet databases, passwords, macaroons, and raw preimages
+are excluded.
+
+### Observed results
+
+| Check | Result |
+| --- | --- |
+| Setup and Rust gRPC | CLI creation and restart unlock work. Rust reads status, balance, activity, and boarding addresses, and creates Lightning invoices with a separate scoped macaroon. |
+| MCP | Live `tools/list` returns 17 wallet and Ark tools. Create, unlock, and seed tools are absent; calling `create` returns unknown tool. The scoped credential also fails a direct unlock attempt. This tests the API boundary, not OS isolation. |
+| Credits and the VTXO floor | The operator advertises a 1,000-sat floor. A 20,000-sat invoice uses the VTXO path; a 10-sat invoice uses server credits. A 500-sat credit receive settles. |
+| Released credit send | A 500-sat Lightning payment is observed complete after 44.55 seconds of polling (43 seconds in the server record). Its quote allows 2 sats of fees; the server debits 501 sats. Wallet activity reports zero fee and no preimage. Rust verifies the preimage and 1-sat fee through `swapclientrpc.GetSwap`. That lookup reports zero principal, so an adapter must retain the original invoice amount. |
+| Restart during credit receive | A wallet-issued 500-sat invoice is paid while `waved` is stopped. After CLI unlock, Rust finds one completed activity entry; the server book has one operation and one 500-sat credit. This does not establish VTXO receive recovery. |
+| Newer source snapshot | `85cfb97905a27c420338c2a5bd688a4a7d2147b1` builds with both required tags and Go 1.26.9. Its wallet services fail against the public operator with `ARK_VERSION_MISMATCH`: selected version 0, runtime version 1. A fresh credit send remains uncertain with 502 sats reserved; it is not retried. |
+| Upgrade and rollback | The snapshot advances the database from version 19 to 26. v0.1.2 refuses the newer database. The pre-upgrade copy restores the released daemon; the upgraded copy and uncertain payment record are kept separately. |
+| LDK comparison setup | Lightning Labs' Esplora rejects the LDK broadcast requests with HTTP 404. The test then uses a scratch Rust loopback proxy to the public default signet API; a 200,000-sat boarding transfer is verified in the mempool. The installed client uses `/tx`, so the error's trailing slash does not establish a client path bug. Two hub peers reject a 500,000-sat channel. A third accepts it and requires three confirmations. |
+
+Invoice creation takes 306 ms for the 20,000-sat receive and 186 ms for the
+10-sat credit receive. The measured 500-sat credit send RPC returns in 7 ms;
+the separate poll observes settlement after 44.55 seconds. RPC times exclude TLS
+connection setup and the client's preceding network check.
+
+### Remaining measurements
+
+The 200,000-sat deposit is confirmed at block 326546. Wavelength automatically
+adopts it into round `01a141c6-ad5b-7849-b4e5-1d2ce0c7971b`; that batch is
+broadcast and awaiting confirmation. The LDK channel has one of its three
+required confirmations at this checkpoint.
+
+Routed LDK-to-Wavelength payment, payment of the LDK
+request-hash invoice, VTXO receive recovery, and both exit paths are still
+pending. No completed exit cost or expiry-window soak result is claimed.
+The operator advertises a 144-block VTXO exit delay and a 504-block free
+refresh window; these are terms, not measured waiting times.
+
+### Verdict
+
+**Keep LDK for P4.** Wavelength's small-payment credit path works, but the
+released wallet response needs the lower-level swap lookup for proof and
+accurate fees. Its receive API accepts whole sats and a memo, which does not
+satisfy our exact-msat, request-hash invoice contract. The newer snapshot also
+needs a compatible operator and careful migration handling. Revisit a second
+`LightningWallet` implementation after these API and service gaps are resolved,
+with the remaining signet measurements complete. This is a research
+recommendation; it changes no payment rail.
 
 ## Sources
 
