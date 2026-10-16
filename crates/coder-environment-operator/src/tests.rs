@@ -321,8 +321,11 @@ fn liveness_and_breaker_messages_are_plain() {
     assert!(oa_copy::violations(&message, &[]).is_empty(), "{message}");
 }
 
-#[test]
-fn space_collection_keeps_private_computer_dependencies_and_never_touches_unowned_outputs() {
+pub(crate) fn space_job_fixture() -> (
+    Environment,
+    coder_environment_build::BuildJob,
+    coder_environment::artifacts::SpaceArtifact,
+) {
     let env = Environment::new(
         "env-1",
         ProjectLink {
@@ -400,6 +403,12 @@ fn space_collection_keeps_private_computer_dependencies_and_never_touches_unowne
     space.runtime = job.inputs.runtime.clone();
     job.space = Some(space.clone());
     job.validate().unwrap();
+    (env, job, space)
+}
+
+#[test]
+fn space_collection_keeps_private_computer_dependencies_and_never_touches_unowned_outputs() {
+    let (env, mut job, space) = space_job_fixture();
     assert_eq!(
         images::unused_space(&env, &[job.clone(), job.clone()], &[]),
         vec![space.clone()]

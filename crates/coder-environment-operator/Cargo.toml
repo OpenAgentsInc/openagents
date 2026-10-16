@@ -6,7 +6,16 @@ rust-version.workspace = true
 publish.workspace = true
 description = "The environment setup, build, and verify owners packaged as one service beside the resident Cloud operator: shared state layout, panel composition, wake and recovery loop, and Boat configuration."
 
+[features]
+space = ["dep:computer-driver", "computer-driver/space", "dep:base64", "tokio/net"]
+
+[[example]]
+name = "space-environment-qualify"
+required-features = ["space"]
+
 [dependencies]
+computer-driver = { path = "../computer-driver", optional = true }
+base64 = { version = "0.22", optional = true }
 boat = { path = "../boat" }
 codex-transport = { path = "../codex-transport" }
 coder-access = { path = "../coder-access", default-features = false }
@@ -23,6 +32,7 @@ serde_json = "1"
 tokio = { version = "1", features = ["macros", "rt", "sync", "time"] }
 
 [dev-dependencies]
+axum = "0.8"
 tempfile = "3"
 
 [lints]

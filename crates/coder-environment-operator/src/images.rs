@@ -100,6 +100,100 @@ pub fn unused_space(
         .collect()
 }
 
+/// Collect owned SPACE publications after a failed check or environment
+/// deletion. Saved versions and private computer bindings retain their
+/// templates even after withdrawal. A caller must supply a complete private
+/// binding inventory; a failed inventory read must not call this function.
+#[cfg(feature = "space")]
+pub async fn sweep_space(
+    client: &crate::space::TemplateClient,
+    env: &Environment,
+    jobs: &[BuildJob],
+    private_images: &[ImageIdentity],
+    state: &Path,
+) -> Result<Vec<String>, String> {
+    #[derive(Default, Serialize, Deserialize)]
+    struct SpaceDeleted {
+        complete: BTreeSet<String>,
+        operations: std::collections::BTreeMap<String, String>,
+    }
+    let file = state.join("space-images.json");
+    let mut saved: SpaceDeleted = match fs::read(&file) {
+        Ok(bytes) => serde_json::from_slice(&bytes)
+            .map_err(|_| "The SPACE cleanup record cannot be read.")?,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => SpaceDeleted::default(),
+        Err(_) => return Err("The SPACE cleanup record cannot be read.".into()),
+    };
+    let collectible: BTreeSet<String> = unused_space(env, jobs, private_images)
+        .into_iter()
+        .map(|artifact| artifact.digest())
+        .collect();
+    let retained_names: BTreeSet<&str> = env
+        .versions
+        .iter()
+        .map(|v| &v.image)
+        .chain(private_images)
+        .filter_map(|image| image.space.as_ref())
+        .filter_map(|space| {
+            space
+                .template
+                .reference
+                .rsplit_once('@')
+                .map(|(name, _)| name)
+        })
+        .collect();
+    let mut removed = vec![];
+    for job in jobs.iter().filter(|job| {
+        job.inputs.environment == env.id && job.inputs.space_requested && job.phase.terminal()
+    }) {
+        if job.validate().is_err()
+            || retained_names.contains(crate::space::template_name(job).as_str())
+            || saved.complete.contains(&job.id)
+            || job
+                .space
+                .as_ref()
+                .is_some_and(|space| !collectible.contains(&space.digest()))
+        {
+            continue;
+        }
+        // The stable delete key makes a lost acknowledgement safe to read or
+        // repeat; an unacknowledged native build submission is never repeated.
+        if !saved.operations.contains_key(&job.id) {
+            match client.delete_owned(job).await {
+                computer_driver::Outcome::Done { value } if value["absent"] == true => {
+                    saved.complete.insert(job.id.clone());
+                }
+                computer_driver::Outcome::Done { value } => {
+                    let operation = value["operation_id"]
+                        .as_str()
+                        .filter(|id| id.starts_with("op_") && coder_environment::valid_id(id))
+                        .ok_or("The SPACE deletion reply has no operation identity.")?;
+                    saved.operations.insert(job.id.clone(), operation.into());
+                }
+                computer_driver::Outcome::Failed { .. }
+                | computer_driver::Outcome::Unknown { .. } => continue,
+            }
+        }
+        if let Some(operation) = saved.operations.get(&job.id)
+            && let computer_driver::Outcome::Done { value } = client.operation(operation).await
+            && value["state"] == "succeeded"
+        {
+            saved.complete.insert(job.id.clone());
+            removed.push(crate::space::template_name(job));
+        }
+        fs::create_dir_all(state).map_err(|_| "Cannot retain SPACE cleanup.")?;
+        let temp = state.join("space-images.writing");
+        let mut output = fs::File::create(&temp).map_err(|_| "Cannot retain SPACE cleanup.")?;
+        use std::io::Write;
+        output
+            .write_all(&serde_json::to_vec(&saved).map_err(|_| "Cannot retain SPACE cleanup.")?)
+            .and_then(|()| output.sync_all())
+            .and_then(|()| fs::rename(&temp, &file))
+            .map_err(|_| "Cannot retain SPACE cleanup.")?;
+    }
+    Ok(removed)
+}
+
 /// Delete `environment`'s unused images (see [`unused`]). Returns the
 /// names deleted now.
 pub async fn sweep<P: Images>(owners: &Owners<P>, studio: &Path, environment: &str) -> Vec<String> {

@@ -7,25 +7,31 @@ Computers service and Rust HTTP driver.
 
 import hashlib
 import json
+import os
 from pathlib import Path
 import socket
 import subprocess
 import time
 
 HOME = Path.home()
-assert socket.gethostname().split('.')[0] == 'oa-space-spike-11810'
+ISSUE = os.environ.get('SPACE_SPIKE_ISSUE', '11810')
+assert ISSUE in ('11810', '11811')
+assert socket.gethostname().split('.')[0] == 'oa-space-spike-' + ISSUE
 assert HOME == Path('/var/lib/space-spike/home')
-profile = json.loads((HOME / 'evidence/direct-profile-11810.json').read_text())
+profile = json.loads((HOME / f'evidence/direct-profile-{ISSUE}.json').read_text())
 assert profile['prepared']
 node = profile['worker']
 assert node.startswith('space-local-worker')
 seed = HOME / '.space-devbox/kind/seed/build'
 manifest = json.loads((seed / 'manifest.json').read_text())
 assert manifest['name'] == 'seed'
-assert manifest['content_hash'] == 'sha256:2728d439a511dc9a8755ef229f718a20d12a8cad83fe0d198e3e541f0afcc0a5'
+if ISSUE == '11810':
+    assert manifest['content_hash'] == 'sha256:2728d439a511dc9a8755ef229f718a20d12a8cad83fe0d198e3e541f0afcc0a5'
+else:
+    assert manifest['content_hash'].startswith('sha256:') and len(manifest['content_hash']) == 71
 report = {'schema': 'openagents.space.direct_worker_preparation.v1', 'worker': node,
           'template': 'seed@' + manifest['content_hash'], 'execution': manifest['execution']}
-path = HOME / 'evidence/direct-worker-preparation-11810.json'
+path = HOME / f'evidence/direct-worker-preparation-{ISSUE}.json'
 assert not path.exists(), 'Inspect the existing preparation before repeating it'
 
 
@@ -46,10 +52,11 @@ run('docker', 'cp', str(binary), node + ':/space/bin/space-tmplmgr')
 control = binary.with_name('space-nodectl')
 assert control.is_file()
 run('docker', 'cp', str(control), node + ':/space/bin/space-nodectl')
-report['paused_inbound_facets'] = ['template-base-snapshot-policy', 'template-desired-state']
+report['paused_inbound_facets'] = (['template-base-snapshot-policy', 'template-desired-state']
+                                    if ISSUE == '11810' else [])
 for facet in report['paused_inbound_facets']:
     run('docker', 'exec', node, '/space/bin/space-nodectl', 'disable', facet,
-        'inbound', '--ttl', '6h', '--reason', 'isolated Direct API qualification 11810')
+        'inbound', '--ttl', '6h', '--reason', 'isolated Direct API qualification ' + ISSUE)
 save()
 probe = subprocess.run(['docker', 'exec', node, '/space/bin/space-tmplmgr', 'get',
     '--template', 'seed', '--content-hash', manifest['content_hash']], capture_output=True, text=True, timeout=30)
@@ -75,8 +82,8 @@ run('docker', 'exec', node, '/space/bin/space-tmplmgr', 'get', '--template', 'se
     '--content-hash', manifest['content_hash'])
 helper = None
 try:
-    helper = run('docker', 'create', '--label', 'openagents-issue=11810', 'space-seed-publish:local').strip()
-    grpcurl = HOME / 'grpcurl-11810'
+    helper = run('docker', 'create', '--label', 'openagents-issue=' + ISSUE, 'space-seed-publish:local').strip()
+    grpcurl = HOME / ('grpcurl-' + ISSUE)
     run('docker', 'cp', helper + ':/usr/local/bin/grpcurl', str(grpcurl))
     report['grpcurl_sha256'] = hashlib.sha256(grpcurl.read_bytes()).hexdigest()
     run('docker', 'cp', str(grpcurl), node + ':/space/bin/grpcurl')

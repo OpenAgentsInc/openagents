@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prepare one verified Direct worker on the disposable #11810 host.
+"""Prepare one verified Direct worker on a disposable SPACE host.
 
 Kind reports worker names; Direct requires UUIDs. Keep the worker's existing
 UUID, limit its API/controller DaemonSets to that node, and register it through
@@ -16,7 +16,9 @@ import urllib.request
 import uuid
 
 HOME = Path.home()
-assert socket.gethostname().split('.')[0] == 'oa-space-spike-11810'
+ISSUE = os.environ.get('SPACE_SPIKE_ISSUE', '11810')
+assert ISSUE in ('11810', '11811')
+assert socket.gethostname().split('.')[0] == 'oa-space-spike-' + ISSUE
 assert HOME == Path('/var/lib/space-spike/home')
 assert (HOME / 'install.log').read_text().rstrip().endswith('SPACE installation and first sandbox passed.')
 PIN = 'de87b436c35dac056564bdd5b2a113c9046e189b'
@@ -60,7 +62,7 @@ def save(path, value):
         out.write('\n')
 
 
-report_path = HOME / 'evidence/direct-profile-11810.json'
+report_path = HOME / f'evidence/direct-profile-{ISSUE}.json'
 assert not report_path.exists(), 'Inspect the existing Direct preparation before repeating it'
 status, listing = call('/v1/sandboxes')
 assert status == 200
@@ -122,7 +124,7 @@ step('removed only the unused Kubernetes registration')
 kube('set', 'env', 'deployment/space-api', 'SPACE_K8S_CONTROL_PLANE=false')
 kube('rollout', 'status', 'deployment/space-api', '--timeout=300s')
 status, admitted = call('/admin/api/v1/nodes', 'POST', {
-    'id': node_id, 'name': 'openagents-direct-worker-11810', 'address': address,
+    'id': node_id, 'name': 'openagents-direct-worker-' + ISSUE, 'address': address,
     'node_api_endpoint': address + ':9800', 'role': 'worker', 'verify': True})
 assert status in (200, 201) and admitted['id'] == node_id, 'Direct worker verification failed'
 report['admission_status'] = status

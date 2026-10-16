@@ -823,7 +823,7 @@ fn space_evidence(
         (
             "space-privacy",
             &["environment.space.privacy"],
-            &artifact.builder,
+            &artifact.verification.computer,
         ),
         (
             "space-cleanup",
@@ -954,4 +954,35 @@ async fn failed_or_stale_space_checks_cannot_publish_and_cancel_cleans_the_build
     assert_eq!(job.phase, Phase::Cancelled);
     assert!(matches!(job.cleanup, Cleanup::Complete { .. }));
     assert_eq!(count(&h, "capture_image"), 0);
+}
+
+#[tokio::test]
+async fn space_publication_requires_the_recipes_actual_toolchain_digest() {
+    let mut recipe = recipe(SCRIPT, &[]);
+    recipe.inputs.toolchain = Some(d('4'));
+    let h = harness_with(recipe);
+    let mut r = request("toolchain-space", 1);
+    r.space = true;
+    let job = h.builder.start(&r, 1_000).await.unwrap();
+    let mut artifact = space_artifact_for(&job);
+    assert!(matches!(
+        h.builder
+            .publish_space(&job.id, artifact.clone(), 2_000)
+            .await,
+        Err(BuildError::Refused(_))
+    ));
+    assert_eq!(count(&h, "capture_image"), 0);
+    artifact.inventory.push(coder_environment::NamedArtifact {
+        name: "toolchain".into(),
+        digest: d('4'),
+    });
+    space_evidence(&h, &job, &mut artifact, true);
+    assert_eq!(
+        h.builder
+            .publish_space(&job.id, artifact, 3_000)
+            .await
+            .unwrap()
+            .phase,
+        Phase::Ready
+    );
 }

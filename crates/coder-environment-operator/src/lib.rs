@@ -59,6 +59,8 @@ pub mod agent;
 pub mod boat;
 pub mod gce;
 pub mod images;
+#[cfg(feature = "space")]
+pub mod space;
 pub mod studio;
 
 pub const SCHEMA: &str = "openagents.environment.owners.v1";

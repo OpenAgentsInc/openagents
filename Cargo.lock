@@ -3698,6 +3698,8 @@ dependencies = [
 name = "coder-environment-operator"
 version = "1.0.0"
 dependencies = [
+ "axum 0.8.9",
+ "base64 0.22.1",
  "boat",
  "coder-access",
  "coder-cloud",
@@ -3706,6 +3708,7 @@ dependencies = [
  "coder-environment-setup",
  "coder-environment-verify",
  "coder-working-computer",
+ "computer-driver",
  "codex-transport",
  "oa-copy",
  "reqwest 0.12.28",

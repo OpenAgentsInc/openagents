@@ -495,6 +495,22 @@ impl<P: Commands + Images> Builder<P> {
                 "The SPACE image needs the current environment checks.",
             ));
         }
+        if recipe
+            .recipe
+            .inputs
+            .toolchain
+            .as_ref()
+            .is_some_and(|expected| {
+                !artifact
+                    .inventory
+                    .iter()
+                    .any(|item| &item.digest == expected)
+            })
+        {
+            return Err(BuildError::Refused(
+                "The SPACE image is missing the recipe's pinned toolchain.",
+            ));
+        }
         self.check_space_evidence(&job, &artifact)?;
         lease.update(now_ms, |j| {
             j.space = Some(artifact);
@@ -532,7 +548,7 @@ impl<P: Commands + Images> Builder<P> {
                 "space-privacy",
                 &artifact.privacy_evidence_digest,
                 &["environment.space.privacy"],
-                &artifact.builder,
+                &artifact.verification.computer,
             ),
             (
                 "space-cleanup",
