@@ -9,6 +9,7 @@ final class HomeViewController: UIViewController, UIDocumentPickerDelegate, UIDr
     private var token: AnyObject?
     private var home: CoreHome?
     private var revision: UInt64 = 0
+    private var submission: UInt64 = 0
     private var instance = ""
     private var screenKey = ""
     private var dragFrames: [String: (String, UInt64)] = [:]
@@ -210,12 +211,17 @@ final class HomeViewController: UIViewController, UIDocumentPickerDelegate, UIDr
     }
     private func activate(_ key: String, instance: String, revision: UInt64, value: String? = nil) {
         guard let home else { return }
+        submission &+= 1
+        let ticket = submission
+        let submitted = fieldDrafts
         Task { @MainActor [weak self] in
             guard let self else { return }
             do {
-                let fields = String(data: try JSONSerialization.data(withJSONObject: fieldDrafts), encoding: .utf8) ?? "{}"
+                let fields = String(data: try JSONSerialization.data(withJSONObject: submitted), encoding: .utf8) ?? "{}"
                 let json = try await home.activateForm(instance: instance, revision: revision, node: key, fields: fields)
-                fieldDrafts.removeAll()
+                if submission == ticket {
+                    for (key, value) in submitted where fieldDrafts[key] == value { fieldDrafts.removeValue(forKey: key) }
+                }
                 if let data = json.data(using: .utf8), let effect = try JSONSerialization.jsonObject(with: data) as? [String: Any] { handle(effect) }
                 render()
             } catch { Toast.show(error.localizedDescription, in: view.window); render() }

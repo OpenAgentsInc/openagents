@@ -24,6 +24,7 @@ pub struct HomePage {
     generation: Option<u64>,
     fields: BTreeMap<String, Entity<ComposerInput>>,
     field_screen: String,
+    submission: u64,
     notice: Option<String>,
     watch: Option<Task<()>>,
     _state_watch: Subscription,
@@ -44,6 +45,7 @@ impl HomePage {
             generation: None,
             fields: BTreeMap::new(),
             field_screen: String::new(),
+            submission: 0,
             notice: None,
             watch: None,
             _state_watch: state_watch,
@@ -297,7 +299,10 @@ impl HomePage {
             .fields
             .iter()
             .map(|(key, input)| (key.clone(), input.read(cx).text().to_owned()))
-            .collect();
+            .collect::<BTreeMap<String, String>>();
+        let submitted = fields.clone();
+        self.submission = self.submission.wrapping_add(1);
+        let ticket = self.submission;
         let task = Tokio::spawn(
             cx,
             async move { model.activate_form(activation, fields).await },
@@ -307,7 +312,13 @@ impl HomePage {
             let _ = this.update(cx, |this, cx| {
                 match result {
                     Ok(Ok(effect)) => {
-                        this.fields.clear();
+                        if this.submission == ticket {
+                            this.fields.retain(|key, input| {
+                                submitted
+                                    .get(key)
+                                    .is_none_or(|value| input.read(cx).text() != value.as_str())
+                            });
+                        }
                         this.effect(effect, cx);
                     }
                     Ok(Err(e)) => this.notice = Some(e),
