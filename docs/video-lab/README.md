@@ -5,6 +5,8 @@ renders of Verse scenes including the Draconia stuff we're doing and generally
 be able to edit videos and scenes, like the Episode 290 stuff we're doing. I
 want to vibe it conversationally in an OpenAgents chat, here or on the website."
 
+Making Video Lab one primitive across web, terminal, desktop and phone through the SDK: [assessment and roadmap](shared-primitive.md).
+
 Video Lab is not a new app. It is a set of chat tools, a render service, and
 an inline player that every OpenAgents chat surface shows: the web chat, Coder
 in the terminal, and the phone. You say "make the portal walk slower and start
