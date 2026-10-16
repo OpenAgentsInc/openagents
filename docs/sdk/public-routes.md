@@ -118,6 +118,9 @@ account-service app session or sign-in key in `Authorization: Bearer …`.
 Cookies alone and `oak_` API keys are refused. A sign-in key can create
 another sign-in key and revoke itself. Each request resolves the account;
 another account's key ID returns `404 unknown_key`.
+The website's `/v1/keys` also works. The older `/api/v1/keys` prefix does
+not mount these web handlers and continues to return `404`; use the API
+origin in the published reference.
 
 The default kind is `signin`; `sign-in` is an accepted input alias. Lists
 contain metadata, never tokens. Sign-in dates are Unix seconds; nullable

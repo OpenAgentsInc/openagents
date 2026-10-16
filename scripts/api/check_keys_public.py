@@ -9,8 +9,14 @@ import urllib.request
 import public_reference
 
 
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *_args, **_kwargs):
+        return None
+
+
 def check(api, website):
-    with urllib.request.urlopen(api + '/v1/openapi.json', timeout=30) as response:
+    opener = urllib.request.build_opener(NoRedirect())
+    with opener.open(api + '/v1/openapi.json', timeout=30) as response:
         document = json.load(response)
     operations = public_reference.check(document, expected_origin=api)
     probes = []
@@ -24,11 +30,18 @@ def check(api, website):
             request = urllib.request.Request(base + path, data=data, method=method,
                                              headers={'Content-Type': 'application/json'})
             try:
-                urllib.request.urlopen(request, timeout=30)
+                opener.open(request, timeout=30)
             except urllib.error.HTTPError as response:
-                status, headers, body = response.code, response.headers, json.load(response)
+                status, headers, raw = response.code, response.headers, response.read(65536)
             else:
                 raise AssertionError('Signed-out key operation unexpectedly succeeded')
+            # This older prefix never mounted the web-owned key handlers.
+            # Preserve its 404 rather than claiming all aliases serve every API.
+            if base == website + '/api/v1':
+                assert status == 404, (method, base + path, status)
+                probes.append({'method': method, 'url': base + path, 'status': status})
+                continue
+            body = json.loads(raw)
             assert status == 401, (method, base + path, status)
             assert body['error']['code'] == 'signed_out'
             assert headers['Cache-Control'] == 'no-store, private'
