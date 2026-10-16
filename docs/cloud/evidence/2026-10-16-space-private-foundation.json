@@ -57,7 +57,16 @@
       "transactionLogRetentionDays": 7,
       "transactionalLogStorageState": "CLOUD_STORAGE"
     },
-    "restore_proven": false
+    "restore_proven": false,
+    "server_ssl_mode": "ENCRYPTED_ONLY",
+    "client_verification": "verify-ca against the instance-exclusive CA",
+    "instance_ca_sha256": "9351cb33d02d5651a26f1b86a7a0cb5831045171181ea5e108f0fb77c7d1f95e",
+    "live_tls": "TLSv1.3",
+    "unencrypted_connection_refused": true,
+    "native_database": "space",
+    "native_database_owner": "space_bootstrap",
+    "credential_secret_version": 1,
+    "password_in_argv": false
   },
   "nodes": [
     {

@@ -43,6 +43,7 @@ def database():
         operation = cloud("beta", "sql", "instances", "create", PREFIX, f"--region={REGION}", "--database-version=POSTGRES_18",
             "--edition=ENTERPRISE", "--tier=db-custom-1-3840", "--availability-type=zonal", "--storage-type=SSD",
             "--storage-size=20GB", "--storage-auto-increase", "--storage-auto-increase-limit=40", "--no-assign-ip",
+            "--ssl-mode=ENCRYPTED_ONLY",
             f"--network=projects/{PROJECT}/global/networks/{PREFIX}", f"--allocated-ip-range-name={PREFIX}-sql",
             "--backup-start-time=04:00", "--enable-point-in-time-recovery", "--retained-backups-count=7",
             "--retained-transaction-log-days=7", "--deletion-protection", f"--labels={LABELS}", "--async")
@@ -51,7 +52,8 @@ def database():
     settings = instance["settings"]
     if settings.get("userLabels", {}).get("openagents-service") != "space":
         raise RuntimeError("A database with this name belongs to another deployment.")
-    if settings["ipConfiguration"].get("ipv4Enabled") or settings["tier"] != "db-custom-1-3840" or settings.get("storageAutoResizeLimit") not in (40, "40"):
+    if (settings["ipConfiguration"].get("ipv4Enabled") or settings["ipConfiguration"].get("sslMode") != "ENCRYPTED_ONLY"
+        or settings["tier"] != "db-custom-1-3840" or settings.get("storageAutoResizeLimit") not in (40, "40")):
         raise RuntimeError("The private database capacity settings differ.")
     print(json.dumps({"database": instance["name"], "state": instance["state"], "backups": settings["backupConfiguration"]}))
 
