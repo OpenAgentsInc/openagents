@@ -19,10 +19,12 @@ fn allowed(route: &str) -> &'static [&'static str] {
         // The traces gallery's real sample run quotes an agent naming the
         // Cursor provider it ran on (#11621).
         "/settings/traces" => &["cursor"],
-        // The docs for agents name the API's own fields, headers, and
-        // error types (`upstream`, `x-openagents-upstream`,
-        // `upstream_failed`) in code formatting.
-        path if path.starts_with("/docs/agents/") => &["upstream"],
+        // The docs for agents and the API reference name the API's own
+        // fields, headers, and error types (`upstream`,
+        // `x-openagents-upstream`, `upstream_failed`) in code formatting.
+        path if path.starts_with("/docs/agents/") || path.starts_with("/docs/api/") => {
+            &["upstream"]
+        }
         _ => &[],
     }
 }
