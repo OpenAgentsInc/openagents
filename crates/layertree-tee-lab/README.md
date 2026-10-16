@@ -24,6 +24,7 @@ LAYERTREE_VECTORS=~/work/projects/repos/layertree/spec/test-vectors.json \
 | Module | What |
 | --- | --- |
 | `tree` | leaf, Merkle-sum nodes, dense tree, proofs, vouchers, path maintenance |
+| `codec` | byte decoders: `dec64`, `Leaf::parse`, `Record::decode`/`encode` (the bytes the anchored hash covers), the unroll package wire form |
 | `output` | the tree output: `Q + H_state(r)·G` key path, the unroll tapleaf, `TREE_SPK_CCV` |
 | `rules` | the predicate the enclave enforces (spec 7.1 to 7.5), with one `Reject` per rule |
 | `enclave` | the in-process co-signer: its key never leaves, and it signs only what passes |
@@ -34,6 +35,32 @@ LAYERTREE_VECTORS=~/work/projects/repos/layertree/spec/test-vectors.json \
 `tests/lean_mirrors.rs` has property tests named after upstream's Lean
 theorems (`ExitK_no_inflation`, `Steps_sum`, `Reachable_ledger`, `payable`,
 `exit_available`, `voucher_no_replay`, `path_maintenance` and others).
+
+## Fuzzing
+
+Everything the enclave and light clients read from outside has a decoder
+that returns a typed `codec::DecodeError` and never panics, and each is the
+exact inverse of its encoder. `fuzz/` (its own workspace, nightly
+`cargo-fuzz`) has six targets: `leaf_roundtrip`, `enc64_roundtrip`,
+`record_decode`, `unroll_package_decode` (roundtrips assert
+`encode(decode(x)) == x`, so the encodings are injective), and
+`snp_report_parse` and `tdx_quote_parse`, which fuzz the SEV-SNP report and
+TDX quote v4 parse layers in `crates/att-platforms` (#11745) rather than a
+second copy. Seeds in `fuzz/corpus/*/seed-*` come from lab data and the
+synthetic att-platforms vectors (test keys only; regenerate with
+`LAYERTREE_WRITE_SEEDS=1` and `ATT_FUZZ_SEEDS=<corpus dir>`).
+
+```sh
+cargo install cargo-fuzz
+cd crates/layertree-tee-lab
+cargo +nightly fuzz build
+cargo +nightly fuzz run record_decode -- -max_total_time=1800
+# likewise leaf_roundtrip, enc64_roundtrip, unroll_package_decode,
+# snp_report_parse, tdx_quote_parse
+```
+
+A crash becomes a regression test in `tests/codec.rs` (or att-platforms'
+tests for the report parsers).
 
 No `bitcoind` was available when this was written. The regtest harness is
 the next step of P0 (see the spec, section 11).

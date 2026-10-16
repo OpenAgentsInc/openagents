@@ -182,7 +182,10 @@ The predicate approves nothing these forbid.
 - **proptest** properties named after each theorem (in the lab crate,
   `crates/layertree-tee-lab`).
 - Then **Kani** proofs on the Rust predicate itself.
-- **cargo-fuzz** and Kani on the attestation report parser.
+- **cargo-fuzz** and Kani on the attestation report parser. cargo-fuzz
+  targets now cover the lab's leaf, `enc64`, record and unroll-package
+  decoders and the SEV-SNP and TDX parse layers in `crates/att-platforms`
+  (`crates/layertree-tee-lab/fuzz/`, #11784); Kani is still to do.
 - **Lean** only if we need unbounded induction or to reuse their proofs, and
   only after a licence allows.
 - Later, if multiple enclaves coordinate off-chain, **TLA+** or their planned

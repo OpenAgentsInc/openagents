@@ -1,0 +1,61 @@
+[package]
+name = "layertree-tee-lab-fuzz"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+# Its own workspace, like the lab: never part of the monorepo build.
+[workspace]
+members = ["."]
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+layertree-tee-lab = { path = ".." }
+# The SEV-SNP and TDX parse layers live in att-platforms (#11745); fuzz
+# those rather than a second copy.
+att-platforms = { path = "../../att-platforms" }
+
+[[bin]]
+name = "leaf_roundtrip"
+path = "fuzz_targets/leaf_roundtrip.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "enc64_roundtrip"
+path = "fuzz_targets/enc64_roundtrip.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "record_decode"
+path = "fuzz_targets/record_decode.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "unroll_package_decode"
+path = "fuzz_targets/unroll_package_decode.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "snp_report_parse"
+path = "fuzz_targets/snp_report_parse.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "tdx_quote_parse"
+path = "fuzz_targets/tdx_quote_parse.rs"
+test = false
+doc = false
+bench = false

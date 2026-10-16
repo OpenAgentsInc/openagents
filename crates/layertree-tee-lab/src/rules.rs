@@ -170,36 +170,9 @@ pub struct Record {
 }
 
 impl Record {
+    /// The record's tagged hash over its bytes (`codec`'s `Record::encode`).
     pub fn hash(&self) -> [u8; 32] {
-        let mut buf = Vec::new();
-        buf.extend_from_slice(&self.prev.txid.to_byte_array());
-        buf.extend_from_slice(&self.prev.vout.to_le_bytes());
-        buf.extend_from_slice(&(self.changes.len() as u32).to_le_bytes());
-        for c in &self.changes {
-            buf.extend_from_slice(&c.pos.to_le_bytes());
-            for l in [&c.old, &c.new] {
-                match l {
-                    Some(l) => {
-                        buf.push(1);
-                        buf.extend_from_slice(&l.serialize());
-                    }
-                    None => buf.push(0),
-                }
-            }
-            buf.push(c.path.len() as u8);
-            for s in &c.path {
-                buf.push(s.right as u8);
-                buf.extend_from_slice(&s.sibling.hash);
-                buf.extend_from_slice(&s.sibling.sum.to_le_bytes());
-            }
-        }
-        buf.extend_from_slice(&self.new_root.hash);
-        buf.extend_from_slice(&self.new_root.sum.to_le_bytes());
-        match self.next_unroll_key {
-            Some(k) => buf.extend_from_slice(&k.serialize()),
-            None => buf.extend_from_slice(&[0u8; 32]),
-        }
-        tagged_hash(TAG_RECORD, &[&buf])
+        tagged_hash(TAG_RECORD, &[&self.encode()])
     }
 
     pub fn op_return(&self) -> ScriptBuf {

@@ -46,14 +46,14 @@ fn small_integer(cert: &x509_cert::Certificate, oid: &str) -> Result<u8> {
     Ok(digits.first().copied().unwrap_or(0))
 }
 
-/// Verify an SEV-SNP report. `arks` are pinned SHA-256 fingerprints of the
-/// product lines' ARKs (or a synthetic ARK in fixtures).
-pub fn verify(
-    report: &[u8],
-    collateral: &Collateral<'_>,
-    arks: &[String],
-    now: u64,
-) -> Result<Report> {
+/// Parse an SEV-SNP report's fixed layout without checking its signature:
+/// the length, a supported version and signing algorithm, and the guest
+/// policy. Never panics on any bytes.
+///
+/// # Errors
+///
+/// When the layout is not a supported report.
+pub fn parse(report: &[u8]) -> Result<Report> {
     if report.len() != REPORT {
         return Err("an SEV-SNP report is 1184 bytes".into());
     }
@@ -68,6 +68,28 @@ pub fn verify(
     if policy & (1 << 19) != 0 {
         return Err("the guest policy allows debugging".into());
     }
+    let mut report_data = [0u8; 64];
+    report_data.copy_from_slice(&report[80..144]);
+    let mut reported_tcb = [0u8; 8];
+    reported_tcb.copy_from_slice(&report[384..392]);
+    Ok(Report {
+        measurement: hex(&report[144..192]),
+        report_data,
+        chip_id: hex(&report[416..480]),
+        reported_tcb,
+        policy,
+    })
+}
+
+/// Verify an SEV-SNP report. `arks` are pinned SHA-256 fingerprints of the
+/// product lines' ARKs (or a synthetic ARK in fixtures).
+pub fn verify(
+    report: &[u8],
+    collateral: &Collateral<'_>,
+    arks: &[String],
+    now: u64,
+) -> Result<Report> {
+    let policy = parse(report)?.policy;
     // The chain VCEK → ASK → ARK, the ARK pinned, nothing revoked.
     let mut ders = vec![collateral.vcek.to_vec()];
     ders.extend(pki::pem_certs(collateral.ask)?);

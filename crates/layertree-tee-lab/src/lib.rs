@@ -6,6 +6,7 @@
 //! network, no real keys, no money. Outside the monorepo's default build.
 //!
 //! * `tree`: the Merkle-sum tree, proofs, vouchers, path maintenance.
+//! * `codec`: byte decoders for leaves, records, `enc64` and unroll packages.
 //! * `output`: the tree output (root-committed key path, unroll leaf).
 //! * `rules`: the predicate the enclave enforces.
 //! * `enclave`: the in-process co-signer; it signs only what passes.
@@ -15,6 +16,7 @@
 //! * `events` (feature `events`): the `layertree.events.v1` run log.
 
 pub mod attest;
+pub mod codec;
 pub mod enclave;
 #[cfg(feature = "events")]
 pub mod events;

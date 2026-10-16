@@ -1,0 +1,5 @@
+target
+corpus/*/*
+!corpus/*/seed-*
+artifacts
+coverage

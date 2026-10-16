@@ -597,3 +597,34 @@ fn a_raw_snp_endpoint_checks_binding_measurement_and_unknown_claims() {
     });
     assert!(crate::verify(&extra, &policy, &roots(), &collateral, NOW).is_err());
 }
+
+#[test]
+fn the_parse_layers_refuse_short_or_foreign_bytes() {
+    assert!(snp::parse(&[0; 100]).is_err());
+    assert!(snp::parse(&[0; 1184]).is_err(), "version 0 is not a report");
+    assert!(tdx::parse(&[0; 10]).is_err());
+    let q = quote([1; 32], false, 2);
+    assert!(tdx::parse(&q[..q.len() - 10]).is_err());
+    let parsed = tdx::parse(&q).unwrap();
+    assert_eq!(parsed.body.len(), 584);
+    assert!(parsed.pck_chain.contains("BEGIN CERTIFICATE"));
+    let r = report([1; 32], false, TCB);
+    assert_eq!(snp::parse(&r).unwrap().measurement, hex(&MEASUREMENT));
+}
+
+/// `ATT_FUZZ_SEEDS=<dir>` writes a synthetic report and quote as fuzz
+/// seeds (test keys only) for `crates/layertree-tee-lab/fuzz`.
+#[test]
+fn writes_fuzz_seeds_when_asked() {
+    let Some(dir) = std::env::var_os("ATT_FUZZ_SEEDS") else {
+        return;
+    };
+    let dir = std::path::PathBuf::from(dir);
+    for (target, bytes) in [
+        ("snp_report_parse", report([5; 32], false, TCB)),
+        ("tdx_quote_parse", quote([5; 32], false, 2)),
+    ] {
+        std::fs::create_dir_all(dir.join(target)).unwrap();
+        std::fs::write(dir.join(target).join("seed-synthetic"), bytes).unwrap();
+    }
+}

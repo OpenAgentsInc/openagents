@@ -118,14 +118,28 @@ fn fmspc_of(cert: &x509_cert::Certificate) -> Result<String> {
     Err("the PCK certificate names no FMSPC".into())
 }
 
-/// Verify a TDX quote end to end. `roots` are pinned SHA-256 fingerprints of
-/// Intel's SGX root (or a synthetic root in fixtures).
-pub fn verify(
-    quote: &[u8],
-    collateral: &Collateral<'_>,
-    roots: &[String],
-    now: u64,
-) -> Result<Report> {
+/// The sections of a DCAP quote v4 with QE report certification data and
+/// a PCK chain, without checking any signature. Never panics on any bytes.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Quote<'a> {
+    /// Header and TD report body: what the attestation key signs.
+    pub signed: &'a [u8],
+    pub body: &'a [u8],
+    pub quote_sig: &'a [u8],
+    pub attest_pub: &'a [u8],
+    pub qe_report: &'a [u8],
+    pub qe_sig: &'a [u8],
+    pub qe_auth: &'a [u8],
+    pub pck_chain: &'a str,
+}
+
+/// Parse a TDX quote's layout.
+///
+/// # Errors
+///
+/// When it is not a v4 ECDSA-256 TDX quote with QE certification data and
+/// a PEM PCK chain, or any section is truncated.
+pub fn parse(quote: &[u8]) -> Result<Quote<'_>> {
     if u16le(quote, 0)? != 4 || u16le(quote, 2)? != 2 || u32le(quote, 4)? != TEE_TDX {
         return Err("not a TDX quote v4 with an ECDSA-256 attestation key".into());
     }
@@ -152,6 +166,36 @@ pub fn verify(
     let pem = std::str::from_utf8(take(cert, at + 6, pem_len)?)
         .map_err(|_| "the PCK chain is not PEM")?;
     let pem = pem.trim_end_matches('\0');
+    Ok(Quote {
+        signed,
+        body,
+        quote_sig,
+        attest_pub,
+        qe_report,
+        qe_sig,
+        qe_auth,
+        pck_chain: pem,
+    })
+}
+
+/// Verify a TDX quote end to end. `roots` are pinned SHA-256 fingerprints of
+/// Intel's SGX root (or a synthetic root in fixtures).
+pub fn verify(
+    quote: &[u8],
+    collateral: &Collateral<'_>,
+    roots: &[String],
+    now: u64,
+) -> Result<Report> {
+    let Quote {
+        signed,
+        body,
+        quote_sig,
+        attest_pub,
+        qe_report,
+        qe_sig,
+        qe_auth,
+        pck_chain: pem,
+    } = parse(quote)?;
     // 1. The PCK chain ends at a pinned root and is not revoked.
     let chain = pki::chain(&pki::pem_certs(pem)?, roots, now)?;
     let issuer = chain.get(1).ok_or("the PCK chain has no issuing CA")?;
