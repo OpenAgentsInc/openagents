@@ -202,3 +202,18 @@ explicit delete intent; the example does not replay a saved delete.
 Generated bindings remain owned by the
 [public contract workflow](../../docs/sdk/computers.md#published-contract-and-generated-rust-bindings).
 Package publication remains an owner decision.
+
+## Agent Lab
+
+`Client::labs(session)` saves versioned drafts, suites, and finite experiments,
+starts and reads test runs, records review, stops or archives work, and explicitly
+promotes a candidate to the existing agent catalog. It uses the account-private
+`/v1/labs` API. Supporting computers prepare separate project copies and execute
+ordinary agent assignments. Saved `labs::Request<T>` values bind mutations to
+one account and deployment; persist them privately before sending and reuse
+the original request ID after an uncertain response. Lab JSON reads are bounded
+to 16 MiB so full version histories remain readable.
+
+See [Agent Lab](../../docs/agent-lab/README.md) and
+[`examples/agent_lab.rs`](examples/agent_lab.rs). These additions require a commit
+containing Agent Lab; the older Computers-only pin above does not include them.

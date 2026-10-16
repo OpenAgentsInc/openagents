@@ -279,3 +279,34 @@ fn comparisons_keep_every_trial_and_require_matching_evidence() {
     r.trials[3].evidence.as_mut().unwrap().runtime_version = "d".repeat(64);
     assert!(!r.comparison_eligible());
 }
+#[cfg(feature = "views")]
+#[test]
+fn editing_one_reference_preserves_the_others() {
+    let mut s = agent_lab::view::Workbench::new("references".into());
+    s.action("add-guidance").unwrap();
+    s.field("component:0", "First skill".into()).unwrap();
+    s.action("add-guidance").unwrap();
+    s.field("component:1", "Second skill".into()).unwrap();
+    s.field("component:0", "Changed first skill".into())
+        .unwrap();
+    assert_eq!(s.draft.draft.components.len(), 2);
+    assert!(s.draft.task(0).contains("Second skill"));
+    assert!(
+        s.draft
+            .draft
+            .agent_spec()
+            .unwrap()
+            .instructions
+            .contains("Changed first skill")
+    );
+    s.action("remove-reference:0").unwrap();
+    assert_eq!(s.draft.draft.components.len(), 1);
+    assert!(
+        s.draft
+            .draft
+            .agent_spec()
+            .unwrap()
+            .instructions
+            .contains("Second skill")
+    );
+}

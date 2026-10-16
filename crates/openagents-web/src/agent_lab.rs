@@ -670,6 +670,29 @@ async fn synchronize(app: &App, owner: &str, id: &str) -> Result<Run, Response> 
                 continue;
             }
             if let Some(a) = assignments.assignments.get(&t.assignment) {
+                let candidate = &r.candidates[t.candidate];
+                let expected_task = format!(
+                    "{}{}",
+                    t.evidence
+                        .as_ref()
+                        .and_then(|e| e.context.as_deref())
+                        .map(|c| format!("{c}\n\n"))
+                        .unwrap_or_default(),
+                    r.experiment.task(t.case)
+                );
+                if t.evidence.is_none()
+                    || a.definition != *candidate
+                    || a.spec.agent != candidate.id
+                    || a.spec.agent_revision != candidate.revision
+                    || a.spec.host != r.experiment.host
+                    || a.spec.project.as_deref() != Some(r.experiment.project.as_str())
+                    || a.spec.task != expected_task
+                {
+                    t.outcome = Outcome::Unknown;
+                    t.result = Some("This task does not match the saved test.".into());
+                    t.finished_ms = Some(now());
+                    continue;
+                }
                 t.chat = Some(a.chat.clone());
                 t.result = a.result.clone();
                 t.outcome = match a.state {
@@ -1130,6 +1153,43 @@ mod tests {
         assert!(stopped.trials.iter().all(|t| t.outcome == Outcome::Stopped));
         let reopened = labs.document(&d.id, &cancel).await.unwrap();
         assert_eq!(reopened, d);
+        // A legal version history can exceed the ordinary account JSON limit.
+        let mut large = starter();
+        large.draft.spec.instructions = "a".repeat(12000);
+        large.suite.cases = (0..8)
+            .map(|i| Case {
+                id: format!("case-{i}"),
+                title: format!("Test {i}"),
+                task: "b".repeat(12000),
+                check: Check::Contains {
+                    expected: "HELLO".into(),
+                },
+            })
+            .collect();
+        let mut document = None;
+        let mut last = None;
+        for n in 0..10 {
+            let request = labs.bind(SaveDocument {
+                request_id: format!("{:064x}", 100 + n),
+                expected_revision: n,
+                content: Content::Experiment {
+                    experiment: large.clone(),
+                },
+                summary: "Updated test version".into(),
+            });
+            let saved = labs
+                .save(document.as_deref(), &request, &cancel)
+                .await
+                .unwrap();
+            document = Some(saved.id.clone());
+            last = Some(saved);
+        }
+        let saved = labs
+            .document(document.as_deref().unwrap(), &cancel)
+            .await
+            .unwrap();
+        assert_eq!(Some(saved.clone()), last);
+        assert!(serde_json::to_vec(&saved).unwrap().len() > 1024 * 1024);
         task.abort();
         auth_task.abort();
     }

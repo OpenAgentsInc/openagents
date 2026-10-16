@@ -4836,6 +4836,796 @@
         }
       }
     },
+    "/v1/labs/kinds": {
+      "get": {
+        "operationId": "getAgentLabKinds",
+        "tags": [
+          "Labs"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [],
+        "description": "Account-private Agent Lab documents, finite test plans and reports. See docs/agent-lab/README.md and the Rust SDK labs module for typed bodies. No execution on reads, document save, card rendering or promotion. A supporting host prepares isolated inputs before using the normal agent assignment service. Mutations retain request_id receipts; changed retries conflict. Updates require expected_revision. Maximum request 192 KiB; per-account storage 16 MiB, 64 documents, 64 versions each, 128 runs, 8 active jobs and 8192 receipts. Trials are bounded to 32 and 30 minutes. Cost may be unknown. Host evidence is an account claim, not remote attestation.",
+        "responses": {
+          "200": {
+            "description": "Account-owned result; Cache-Control: no-store, private."
+          },
+          "400": {
+            "description": "Invalid fields or bounds."
+          },
+          "401": {
+            "description": "Sign in required."
+          },
+          "403": {
+            "description": "Access refused."
+          },
+          "404": {
+            "description": "Unknown account-owned reference."
+          },
+          "409": {
+            "description": "Version or request conflict."
+          },
+          "413": {
+            "description": "Body too large."
+          },
+          "429": {
+            "description": "Storage full."
+          },
+          "503": {
+            "description": "Service unavailable."
+          }
+        }
+      }
+    },
+    "/v1/labs/hosts": {
+      "get": {
+        "operationId": "getAgentLabHosts",
+        "tags": [
+          "Labs"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [],
+        "description": "Account-private Agent Lab documents, finite test plans and reports. See docs/agent-lab/README.md and the Rust SDK labs module for typed bodies. No execution on reads, document save, card rendering or promotion. A supporting host prepares isolated inputs before using the normal agent assignment service. Mutations retain request_id receipts; changed retries conflict. Updates require expected_revision. Maximum request 192 KiB; per-account storage 16 MiB, 64 documents, 64 versions each, 128 runs, 8 active jobs and 8192 receipts. Trials are bounded to 32 and 30 minutes. Cost may be unknown. Host evidence is an account claim, not remote attestation.",
+        "responses": {
+          "200": {
+            "description": "Account-owned result; Cache-Control: no-store, private."
+          },
+          "400": {
+            "description": "Invalid fields or bounds."
+          },
+          "401": {
+            "description": "Sign in required."
+          },
+          "403": {
+            "description": "Access refused."
+          },
+          "404": {
+            "description": "Unknown account-owned reference."
+          },
+          "409": {
+            "description": "Version or request conflict."
+          },
+          "413": {
+            "description": "Body too large."
+          },
+          "429": {
+            "description": "Storage full."
+          },
+          "503": {
+            "description": "Service unavailable."
+          }
+        }
+      },
+      "post": {
+        "operationId": "postAgentLabHosts",
+        "tags": [
+          "Labs"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [],
+        "description": "Account-private Agent Lab documents, finite test plans and reports. See docs/agent-lab/README.md and the Rust SDK labs module for typed bodies. No execution on reads, document save, card rendering or promotion. A supporting host prepares isolated inputs before using the normal agent assignment service. Mutations retain request_id receipts; changed retries conflict. Updates require expected_revision. Maximum request 192 KiB; per-account storage 16 MiB, 64 documents, 64 versions each, 128 runs, 8 active jobs and 8192 receipts. Trials are bounded to 32 and 30 minutes. Cost may be unknown. Host evidence is an account claim, not remote attestation.",
+        "responses": {
+          "200": {
+            "description": "Account-owned result; Cache-Control: no-store, private."
+          },
+          "400": {
+            "description": "Invalid fields or bounds."
+          },
+          "401": {
+            "description": "Sign in required."
+          },
+          "403": {
+            "description": "Access refused."
+          },
+          "404": {
+            "description": "Unknown account-owned reference."
+          },
+          "409": {
+            "description": "Version or request conflict."
+          },
+          "413": {
+            "description": "Body too large."
+          },
+          "429": {
+            "description": "Storage full."
+          },
+          "503": {
+            "description": "Service unavailable."
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/labs/documents": {
+      "get": {
+        "operationId": "getAgentLabDocuments",
+        "tags": [
+          "Labs"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "after",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "host",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "description": "Account-private Agent Lab documents, finite test plans and reports. See docs/agent-lab/README.md and the Rust SDK labs module for typed bodies. No execution on reads, document save, card rendering or promotion. A supporting host prepares isolated inputs before using the normal agent assignment service. Mutations retain request_id receipts; changed retries conflict. Updates require expected_revision. Maximum request 192 KiB; per-account storage 16 MiB, 64 documents, 64 versions each, 128 runs, 8 active jobs and 8192 receipts. Trials are bounded to 32 and 30 minutes. Cost may be unknown. Host evidence is an account claim, not remote attestation.",
+        "responses": {
+          "200": {
+            "description": "Account-owned result; Cache-Control: no-store, private."
+          },
+          "400": {
+            "description": "Invalid fields or bounds."
+          },
+          "401": {
+            "description": "Sign in required."
+          },
+          "403": {
+            "description": "Access refused."
+          },
+          "404": {
+            "description": "Unknown account-owned reference."
+          },
+          "409": {
+            "description": "Version or request conflict."
+          },
+          "413": {
+            "description": "Body too large."
+          },
+          "429": {
+            "description": "Storage full."
+          },
+          "503": {
+            "description": "Service unavailable."
+          }
+        }
+      },
+      "post": {
+        "operationId": "postAgentLabDocuments",
+        "tags": [
+          "Labs"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [],
+        "description": "Account-private Agent Lab documents, finite test plans and reports. See docs/agent-lab/README.md and the Rust SDK labs module for typed bodies. No execution on reads, document save, card rendering or promotion. A supporting host prepares isolated inputs before using the normal agent assignment service. Mutations retain request_id receipts; changed retries conflict. Updates require expected_revision. Maximum request 192 KiB; per-account storage 16 MiB, 64 documents, 64 versions each, 128 runs, 8 active jobs and 8192 receipts. Trials are bounded to 32 and 30 minutes. Cost may be unknown. Host evidence is an account claim, not remote attestation.",
+        "responses": {
+          "200": {
+            "description": "Account-owned result; Cache-Control: no-store, private."
+          },
+          "400": {
+            "description": "Invalid fields or bounds."
+          },
+          "401": {
+            "description": "Sign in required."
+          },
+          "403": {
+            "description": "Access refused."
+          },
+          "404": {
+            "description": "Unknown account-owned reference."
+          },
+          "409": {
+            "description": "Version or request conflict."
+          },
+          "413": {
+            "description": "Body too large."
+          },
+          "429": {
+            "description": "Storage full."
+          },
+          "503": {
+            "description": "Service unavailable."
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/labs/documents/{id}": {
+      "get": {
+        "operationId": "getAgentLabDocumentsId",
+        "tags": [
+          "Labs"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "description": "Account-private Agent Lab documents, finite test plans and reports. See docs/agent-lab/README.md and the Rust SDK labs module for typed bodies. No execution on reads, document save, card rendering or promotion. A supporting host prepares isolated inputs before using the normal agent assignment service. Mutations retain request_id receipts; changed retries conflict. Updates require expected_revision. Maximum request 192 KiB; per-account storage 16 MiB, 64 documents, 64 versions each, 128 runs, 8 active jobs and 8192 receipts. Trials are bounded to 32 and 30 minutes. Cost may be unknown. Host evidence is an account claim, not remote attestation.",
+        "responses": {
+          "200": {
+            "description": "Account-owned result; Cache-Control: no-store, private."
+          },
+          "400": {
+            "description": "Invalid fields or bounds."
+          },
+          "401": {
+            "description": "Sign in required."
+          },
+          "403": {
+            "description": "Access refused."
+          },
+          "404": {
+            "description": "Unknown account-owned reference."
+          },
+          "409": {
+            "description": "Version or request conflict."
+          },
+          "413": {
+            "description": "Body too large."
+          },
+          "429": {
+            "description": "Storage full."
+          },
+          "503": {
+            "description": "Service unavailable."
+          }
+        }
+      },
+      "put": {
+        "operationId": "putAgentLabDocumentsId",
+        "tags": [
+          "Labs"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "description": "Account-private Agent Lab documents, finite test plans and reports. See docs/agent-lab/README.md and the Rust SDK labs module for typed bodies. No execution on reads, document save, card rendering or promotion. A supporting host prepares isolated inputs before using the normal agent assignment service. Mutations retain request_id receipts; changed retries conflict. Updates require expected_revision. Maximum request 192 KiB; per-account storage 16 MiB, 64 documents, 64 versions each, 128 runs, 8 active jobs and 8192 receipts. Trials are bounded to 32 and 30 minutes. Cost may be unknown. Host evidence is an account claim, not remote attestation.",
+        "responses": {
+          "200": {
+            "description": "Account-owned result; Cache-Control: no-store, private."
+          },
+          "400": {
+            "description": "Invalid fields or bounds."
+          },
+          "401": {
+            "description": "Sign in required."
+          },
+          "403": {
+            "description": "Access refused."
+          },
+          "404": {
+            "description": "Unknown account-owned reference."
+          },
+          "409": {
+            "description": "Version or request conflict."
+          },
+          "413": {
+            "description": "Body too large."
+          },
+          "429": {
+            "description": "Storage full."
+          },
+          "503": {
+            "description": "Service unavailable."
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteAgentLabDocumentsId",
+        "tags": [
+          "Labs"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "description": "Account-private Agent Lab documents, finite test plans and reports. See docs/agent-lab/README.md and the Rust SDK labs module for typed bodies. No execution on reads, document save, card rendering or promotion. A supporting host prepares isolated inputs before using the normal agent assignment service. Mutations retain request_id receipts; changed retries conflict. Updates require expected_revision. Maximum request 192 KiB; per-account storage 16 MiB, 64 documents, 64 versions each, 128 runs, 8 active jobs and 8192 receipts. Trials are bounded to 32 and 30 minutes. Cost may be unknown. Host evidence is an account claim, not remote attestation.",
+        "responses": {
+          "200": {
+            "description": "Account-owned result; Cache-Control: no-store, private."
+          },
+          "400": {
+            "description": "Invalid fields or bounds."
+          },
+          "401": {
+            "description": "Sign in required."
+          },
+          "403": {
+            "description": "Access refused."
+          },
+          "404": {
+            "description": "Unknown account-owned reference."
+          },
+          "409": {
+            "description": "Version or request conflict."
+          },
+          "413": {
+            "description": "Body too large."
+          },
+          "429": {
+            "description": "Storage full."
+          },
+          "503": {
+            "description": "Service unavailable."
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/labs/documents/{id}/jobs": {
+      "post": {
+        "operationId": "postAgentLabDocumentsIdJobs",
+        "tags": [
+          "Labs"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "description": "Account-private Agent Lab documents, finite test plans and reports. See docs/agent-lab/README.md and the Rust SDK labs module for typed bodies. No execution on reads, document save, card rendering or promotion. A supporting host prepares isolated inputs before using the normal agent assignment service. Mutations retain request_id receipts; changed retries conflict. Updates require expected_revision. Maximum request 192 KiB; per-account storage 16 MiB, 64 documents, 64 versions each, 128 runs, 8 active jobs and 8192 receipts. Trials are bounded to 32 and 30 minutes. Cost may be unknown. Host evidence is an account claim, not remote attestation.",
+        "responses": {
+          "200": {
+            "description": "Account-owned result; Cache-Control: no-store, private."
+          },
+          "400": {
+            "description": "Invalid fields or bounds."
+          },
+          "401": {
+            "description": "Sign in required."
+          },
+          "403": {
+            "description": "Access refused."
+          },
+          "404": {
+            "description": "Unknown account-owned reference."
+          },
+          "409": {
+            "description": "Version or request conflict."
+          },
+          "413": {
+            "description": "Body too large."
+          },
+          "429": {
+            "description": "Storage full."
+          },
+          "503": {
+            "description": "Service unavailable."
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/labs/documents/{id}/promote": {
+      "post": {
+        "operationId": "postAgentLabDocumentsIdPromote",
+        "tags": [
+          "Labs"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "description": "Account-private Agent Lab documents, finite test plans and reports. See docs/agent-lab/README.md and the Rust SDK labs module for typed bodies. No execution on reads, document save, card rendering or promotion. A supporting host prepares isolated inputs before using the normal agent assignment service. Mutations retain request_id receipts; changed retries conflict. Updates require expected_revision. Maximum request 192 KiB; per-account storage 16 MiB, 64 documents, 64 versions each, 128 runs, 8 active jobs and 8192 receipts. Trials are bounded to 32 and 30 minutes. Cost may be unknown. Host evidence is an account claim, not remote attestation.",
+        "responses": {
+          "200": {
+            "description": "Account-owned result; Cache-Control: no-store, private."
+          },
+          "400": {
+            "description": "Invalid fields or bounds."
+          },
+          "401": {
+            "description": "Sign in required."
+          },
+          "403": {
+            "description": "Access refused."
+          },
+          "404": {
+            "description": "Unknown account-owned reference."
+          },
+          "409": {
+            "description": "Version or request conflict."
+          },
+          "413": {
+            "description": "Body too large."
+          },
+          "429": {
+            "description": "Storage full."
+          },
+          "503": {
+            "description": "Service unavailable."
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/labs/jobs": {
+      "get": {
+        "operationId": "getAgentLabJobs",
+        "tags": [
+          "Labs"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "after",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "host",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "description": "Account-private Agent Lab documents, finite test plans and reports. See docs/agent-lab/README.md and the Rust SDK labs module for typed bodies. No execution on reads, document save, card rendering or promotion. A supporting host prepares isolated inputs before using the normal agent assignment service. Mutations retain request_id receipts; changed retries conflict. Updates require expected_revision. Maximum request 192 KiB; per-account storage 16 MiB, 64 documents, 64 versions each, 128 runs, 8 active jobs and 8192 receipts. Trials are bounded to 32 and 30 minutes. Cost may be unknown. Host evidence is an account claim, not remote attestation.",
+        "responses": {
+          "200": {
+            "description": "Account-owned result; Cache-Control: no-store, private."
+          },
+          "400": {
+            "description": "Invalid fields or bounds."
+          },
+          "401": {
+            "description": "Sign in required."
+          },
+          "403": {
+            "description": "Access refused."
+          },
+          "404": {
+            "description": "Unknown account-owned reference."
+          },
+          "409": {
+            "description": "Version or request conflict."
+          },
+          "413": {
+            "description": "Body too large."
+          },
+          "429": {
+            "description": "Storage full."
+          },
+          "503": {
+            "description": "Service unavailable."
+          }
+        }
+      }
+    },
+    "/v1/labs/jobs/{id}": {
+      "get": {
+        "operationId": "getAgentLabJobsId",
+        "tags": [
+          "Labs"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "description": "Account-private Agent Lab documents, finite test plans and reports. See docs/agent-lab/README.md and the Rust SDK labs module for typed bodies. No execution on reads, document save, card rendering or promotion. A supporting host prepares isolated inputs before using the normal agent assignment service. Mutations retain request_id receipts; changed retries conflict. Updates require expected_revision. Maximum request 192 KiB; per-account storage 16 MiB, 64 documents, 64 versions each, 128 runs, 8 active jobs and 8192 receipts. Trials are bounded to 32 and 30 minutes. Cost may be unknown. Host evidence is an account claim, not remote attestation.",
+        "responses": {
+          "200": {
+            "description": "Account-owned result; Cache-Control: no-store, private."
+          },
+          "400": {
+            "description": "Invalid fields or bounds."
+          },
+          "401": {
+            "description": "Sign in required."
+          },
+          "403": {
+            "description": "Access refused."
+          },
+          "404": {
+            "description": "Unknown account-owned reference."
+          },
+          "409": {
+            "description": "Version or request conflict."
+          },
+          "413": {
+            "description": "Body too large."
+          },
+          "429": {
+            "description": "Storage full."
+          },
+          "503": {
+            "description": "Service unavailable."
+          }
+        }
+      }
+    },
+    "/v1/labs/jobs/{id}/actions": {
+      "post": {
+        "operationId": "postAgentLabJobsIdActions",
+        "tags": [
+          "Labs"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "description": "Account-private Agent Lab documents, finite test plans and reports. See docs/agent-lab/README.md and the Rust SDK labs module for typed bodies. No execution on reads, document save, card rendering or promotion. A supporting host prepares isolated inputs before using the normal agent assignment service. Mutations retain request_id receipts; changed retries conflict. Updates require expected_revision. Maximum request 192 KiB; per-account storage 16 MiB, 64 documents, 64 versions each, 128 runs, 8 active jobs and 8192 receipts. Trials are bounded to 32 and 30 minutes. Cost may be unknown. Host evidence is an account claim, not remote attestation.",
+        "responses": {
+          "200": {
+            "description": "Account-owned result; Cache-Control: no-store, private."
+          },
+          "400": {
+            "description": "Invalid fields or bounds."
+          },
+          "401": {
+            "description": "Sign in required."
+          },
+          "403": {
+            "description": "Access refused."
+          },
+          "404": {
+            "description": "Unknown account-owned reference."
+          },
+          "409": {
+            "description": "Version or request conflict."
+          },
+          "413": {
+            "description": "Body too large."
+          },
+          "429": {
+            "description": "Storage full."
+          },
+          "503": {
+            "description": "Service unavailable."
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/labs/jobs/{id}/host": {
+      "post": {
+        "operationId": "postAgentLabJobsIdHost",
+        "tags": [
+          "Labs"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "description": "Account-private Agent Lab documents, finite test plans and reports. See docs/agent-lab/README.md and the Rust SDK labs module for typed bodies. No execution on reads, document save, card rendering or promotion. A supporting host prepares isolated inputs before using the normal agent assignment service. Mutations retain request_id receipts; changed retries conflict. Updates require expected_revision. Maximum request 192 KiB; per-account storage 16 MiB, 64 documents, 64 versions each, 128 runs, 8 active jobs and 8192 receipts. Trials are bounded to 32 and 30 minutes. Cost may be unknown. Host evidence is an account claim, not remote attestation.",
+        "responses": {
+          "200": {
+            "description": "Account-owned result; Cache-Control: no-store, private."
+          },
+          "400": {
+            "description": "Invalid fields or bounds."
+          },
+          "401": {
+            "description": "Sign in required."
+          },
+          "403": {
+            "description": "Access refused."
+          },
+          "404": {
+            "description": "Unknown account-owned reference."
+          },
+          "409": {
+            "description": "Version or request conflict."
+          },
+          "413": {
+            "description": "Body too large."
+          },
+          "429": {
+            "description": "Storage full."
+          },
+          "503": {
+            "description": "Service unavailable."
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/home/projects": {
       "get": {
         "operationId": "homeProjects",

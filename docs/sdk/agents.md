@@ -129,3 +129,11 @@ missing results, and unsuccessful process exits.
 
 Private Nostr export uses [NIP-AGENT](../../nips/openagents/NIP-AGENT.md) and
 `nostr::agent_profile`; exporting configuration does not execute it.
+
+## Test an agent in Agent Lab
+
+Use [`Client::labs(session)`](../../crates/openagents-sdk/src/labs.rs) to save
+an experiment and run a finite set of tasks through the same assignment service.
+The [Agent Lab guide](../agent-lab/README.md) covers the shared mobile/browser
+workbench, checks, comparisons, supported references, and explicit promotion.
+Saving a Lab document or opening its report does not start an agent.

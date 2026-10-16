@@ -2,7 +2,7 @@ import XCTest
 
 /// The coordinator supplies a dedicated account and an isolated host with a Rust runner.
 final class OpenAgentsAgentLabTests: XCTestCase {
-    func testSaveRunReviewAndUseAgent() throws {
+    func testSaveRunInspectAndUseAgent() throws {
         continueAfterFailure = false
         guard let raw = ProcessInfo.processInfo.environment["CODER_MOBILE_SYNC_CONFIG"],
               let data = raw.data(using: .utf8), let config = try JSONSerialization.jsonObject(with: data) as? [String: String] else { throw XCTSkip("Run with the Agent Lab coordinator.") }
@@ -19,6 +19,8 @@ final class OpenAgentsAgentLabTests: XCTestCase {
         let name = app.textViews["lab-name"]
         XCTAssertTrue(name.waitForExistence(timeout: 15))
         name.tap(); name.typeText(" phone fixture")
+        let title = app.textViews["lab-title"]
+        title.tap(); title.typeText(" phone " + String(try XCTUnwrap(config["device"]).prefix(8)))
         func reveal(_ element: XCUIElement, up: Bool = true) {
             for _ in 0..<25 where !element.isHittable { if up { app.swipeUp() } else { app.swipeDown() } }
             XCTAssertTrue(element.isHittable)
@@ -29,6 +31,10 @@ final class OpenAgentsAgentLabTests: XCTestCase {
         reveal(namedProject); namedProject.tap()
         let runner = app.buttons["lab-runner:fixture"]
         reveal(runner); runner.tap()
+        let guidance = app.buttons["lab-add-guidance"]
+        reveal(guidance); guidance.tap()
+        let reference = app.textViews["lab-component:0"]
+        reveal(reference); reference.tap(); reference.typeText("Reply briefly.")
         let save = app.buttons["lab-save"]
         reveal(save); save.tap()
         let run = app.buttons["lab-start"]

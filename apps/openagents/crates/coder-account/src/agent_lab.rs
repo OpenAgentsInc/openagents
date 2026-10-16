@@ -245,6 +245,7 @@ impl Lab {
                 .map_err(|_| "Couldn't open this experiment.")?
             {
                 s.draft = experiment;
+                s.inputs.clear();
                 s.document = Some(id.clone());
                 s.base = v.number;
                 s.dirty = false;

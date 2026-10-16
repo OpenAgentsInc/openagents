@@ -262,30 +262,69 @@ impl Workbench {
             ));
         }
         if self.draft.draft.spec.runtime == "codex" {
-            n.push(button("access-read", "Read only", enabled));
+            n.push(button(
+                "access-read",
+                if self.draft.draft.spec.access == agent_contract::Access::ReadOnly {
+                    "✓ Read only"
+                } else {
+                    "Read only"
+                },
+                enabled,
+            ));
             n.push(button(
                 "access-write",
-                "Allow edits in the test copy",
+                if self.draft.draft.spec.access == agent_contract::Access::WorkspaceWrite {
+                    "✓ Allow edits in the test copy"
+                } else {
+                    "Allow edits in the test copy"
+                },
                 enabled,
             ));
         }
-        n.push(field(
-            "guidance",
-            "Extra guidance",
-            self.component(false),
-            8192,
-            true,
-            enabled,
+        for (i, c) in self.draft.draft.components.iter().enumerate() {
+            let label = match c {
+                Component::Skill { name, text, .. } | Component::Memory { name, text, .. } => {
+                    n.push(field(
+                        format!("component:{i}"),
+                        name,
+                        text,
+                        8192,
+                        true,
+                        enabled,
+                    ));
+                    name.clone()
+                }
+                Component::ToolContext { .. } => format!("Lab reference {}", i + 1),
+            };
+            n.push(button(
+                format!("remove-reference:{i}"),
+                format!("Remove {label}"),
+                enabled,
+            ));
+        }
+        n.push(button(
+            "add-guidance",
+            "Add extra guidance",
+            enabled && self.draft.draft.components.len() < 8,
         ));
-        n.push(field(
-            "memory",
-            "Reference notes",
-            self.component(true),
-            8192,
-            true,
-            enabled,
+        n.push(button(
+            "add-memory",
+            "Add reference notes",
+            enabled && self.draft.draft.components.len() < 8,
         ));
         for (i, c) in self.draft.suite.cases.iter().enumerate() {
+            n.push(text(
+                format!("check-label:{i}"),
+                format!(
+                    "Check: {}",
+                    match c.check {
+                        Check::Contains { .. } => "Contains text",
+                        Check::Exact { .. } => "Exact reply",
+                        Check::Json { .. } => "JSON value",
+                        Check::Review { .. } => "Human review",
+                    }
+                ),
+            ));
             n.push(field(
                 format!("case-title:{i}"),
                 format!("Test {} name", i + 1),
@@ -385,6 +424,30 @@ impl Workbench {
             "confirmation",
             "Use for final confirmation",
             enabled,
+        ));
+        n.push(text(
+            "comparison-choice",
+            self.draft
+                .compare
+                .as_ref()
+                .map(|p| {
+                    format!(
+                        "Comparing with {}",
+                        self.agents
+                            .iter()
+                            .find(|a| a.id == p.id)
+                            .map(|a| a.spec.name.as_str())
+                            .unwrap_or("a saved agent")
+                    )
+                })
+                .unwrap_or_else(|| "Testing this candidate only".into()),
+        ));
+        n.push(text(
+            "planned",
+            format!(
+                "{} runs planned · Up to 32 allowed",
+                self.draft.trial_count()
+            ),
         ));
         n.push(button("compare-none", "Test this candidate only", enabled));
         for a in &self.agents {
@@ -508,6 +571,12 @@ impl Workbench {
                 ));
             }
             for t in &r.trials {
+                if let Some(note) = &t.review_note {
+                    n.push(text(
+                        format!("reviewed:{}", t.index),
+                        format!("Review: {note}"),
+                    ));
+                }
                 n.push(text(
                     format!("result:{}", t.index),
                     format!(
@@ -561,18 +630,6 @@ impl Workbench {
             ),
         )
     }
-    fn component(&self, memory: bool) -> String {
-        self.draft
-            .draft
-            .components
-            .iter()
-            .find_map(|c| match c {
-                Component::Skill { text, .. } if !memory => Some(text.clone()),
-                Component::Memory { text, .. } if memory => Some(text.clone()),
-                _ => None,
-            })
-            .unwrap_or_default()
-    }
     pub fn field(&mut self, key: &str, value: String) -> Result<(), String> {
         match key {
             "title" => self.draft.title = value,
@@ -583,35 +640,21 @@ impl Workbench {
                 self.inputs.insert(key.into(), value.clone());
                 self.draft.max_seconds = value.parse().unwrap_or(0);
             }
-            "guidance" | "memory" => {
-                self.draft.draft.components.retain(|c| {
-                    !matches!(
-                        (key, c),
-                        ("guidance", Component::Skill { .. })
-                            | ("memory", Component::Memory { .. })
-                    )
-                });
-                if !value.is_empty() {
-                    let name = if key == "memory" {
-                        "Reference notes"
-                    } else {
-                        "Extra guidance"
+            _ if key.starts_with("component:") => {
+                let i: usize = key[10..].parse().map_err(|_| "Choose a reference.")?;
+                let c = self
+                    .draft
+                    .draft
+                    .components
+                    .get_mut(i)
+                    .ok_or("Choose a reference.")?;
+                match c {
+                    Component::Skill { name, text, sha256 }
+                    | Component::Memory { name, text, sha256 } => {
+                        *sha256 = lab_kit::digest(&json!({"name":name,"text":value}));
+                        *text = value;
                     }
-                    .to_string();
-                    let sha256 = lab_kit::digest(&json!({"name":name,"text":value}));
-                    self.draft.draft.components.push(if key == "memory" {
-                        Component::Memory {
-                            name,
-                            text: value,
-                            sha256,
-                        }
-                    } else {
-                        Component::Skill {
-                            name,
-                            text: value,
-                            sha256,
-                        }
-                    });
+                    _ => return Err("Choose an editable reference.".into()),
                 }
             }
             _ if key.starts_with("review-note:") => {
@@ -667,6 +710,25 @@ impl Workbench {
             "save" => command = Some(Command::Save),
             "start" => command = Some(Command::Start),
             "promote" => command = Some(Command::Promote),
+            "add-guidance" | "add-memory" => {
+                if self.draft.draft.components.len() >= 8 {
+                    return Err("Use up to eight references.".into());
+                }
+                let name = if key == "add-guidance" {
+                    "Extra guidance"
+                } else {
+                    "Reference notes"
+                }
+                .to_string();
+                let text = String::new();
+                let sha256 = lab_kit::digest(&json!({"name":name,"text":text}));
+                self.draft.draft.components.push(if key == "add-guidance" {
+                    Component::Skill { name, text, sha256 }
+                } else {
+                    Component::Memory { name, text, sha256 }
+                });
+                self.dirty = true;
+            }
             "access-read" => {
                 self.draft.draft.spec.access = agent_contract::Access::ReadOnly;
                 self.dirty = true
@@ -778,12 +840,21 @@ impl Workbench {
                             self.inputs.clear();
                         }
                     }
+                    "remove-reference" => {
+                        let i = id.parse::<usize>().map_err(|_| "Choose a reference.")?;
+                        if i >= self.draft.draft.components.len() {
+                            return Err("Choose a reference.".into());
+                        }
+                        self.draft.draft.components.remove(i);
+                        self.dirty = true;
+                    }
                     "remove" => {
                         let i = id.parse::<usize>().map_err(|_| "Choose a test.")?;
                         if i >= self.draft.suite.cases.len() || self.draft.suite.cases.len() == 1 {
                             return Err("Keep at least one test.".into());
                         }
                         self.draft.suite.cases.remove(i);
+                        self.inputs.retain(|key, _| !key.starts_with("expected:"));
                         self.dirty = true;
                     }
                     "check" => {
@@ -830,10 +901,19 @@ impl Workbench {
                             .flat_map(|h| &h.tools)
                             .find(|t| t.id == id && t.project == self.draft.project)
                             .ok_or("This reference is not available.")?;
-                        self.draft.draft.components.push(Component::ToolContext {
-                            binding: offer.id.clone(),
-                            sha256: offer.sha256.clone(),
-                        });
+                        if let Some(i) = self.draft.draft.components.iter().position(
+                            |c| matches!(c,Component::ToolContext{binding,..} if binding==id),
+                        ) {
+                            self.draft.draft.components.remove(i);
+                        } else {
+                            if self.draft.draft.components.len() >= 8 {
+                                return Err("Use up to eight references.".into());
+                            }
+                            self.draft.draft.components.push(Component::ToolContext {
+                                binding: offer.id.clone(),
+                                sha256: offer.sha256.clone(),
+                            });
+                        }
                         self.dirty = true;
                     }
                     _ => return Err("Choose an available action.".into()),

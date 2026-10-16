@@ -165,6 +165,9 @@ impl DocHost {
                         .agents(lease.session())
                         .map_err(EngineError::AgentService)?;
                     for t in &run.trials {
+                        if t.outcome == Outcome::Unknown {
+                            continue;
+                        }
                         if let Some(chat) = &t.chat {
                             if let Some(ws) = self.workspace() {
                                 let _ = ws.set_chat_archived(chat, true);
@@ -547,5 +550,99 @@ mod tests {
         let dst = tempfile::tempdir().unwrap();
         std::fs::write(src.path().join(".no-training"), "").unwrap();
         assert!(copy_project(src.path(), dst.path()).is_err());
+    }
+    #[tokio::test]
+    async fn installed_lab_references_are_pinned_scoped_and_bounded() {
+        use axum::{Json, Router, extract::Path as RoutePath, routing::post};
+        use openagents::labs::components::{ReadTool, ToolBinding};
+        use serde_json::json;
+        async fn read(
+            RoutePath(tool): RoutePath<String>,
+            Json(args): Json<serde_json::Value>,
+        ) -> Json<serde_json::Value> {
+            assert!(matches!(
+                tool.as_str(),
+                "lab_open" | "cad_check" | "robot_inspect"
+            ));
+            if args.get("document").and_then(|v| v.as_str()) == Some("huge") {
+                return Json(json!({"text":"x".repeat(12001)}));
+            }
+            Json(match tool.as_str() {
+                "lab_open" => {
+                    assert_eq!(args["render"], false);
+                    json!({"card":{"version":args["version"]}})
+                }
+                "cad_check" => json!({"passed":true}),
+                _ => json!({"step":{"limit_violations":[]}}),
+            })
+        }
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let origin = format!("http://{}/", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move {
+            axum::serve(
+                listener,
+                Router::new().route("/api/tool/{tool}", post(read)),
+            )
+            .await
+            .unwrap()
+        });
+        let root = tempfile::tempdir().unwrap();
+        let mut e = starter();
+        e.project = "project".into();
+        let mut installed = vec![];
+        for (i, tool, args) in [
+            (
+                0,
+                ReadTool::Video,
+                json!({"document":"film","version":3,"render":false}),
+            ),
+            (1, ReadTool::Cad, json!({"doc":"part","version":1})),
+            (
+                2,
+                ReadTool::Robot,
+                json!({"document":"arm","version":"a".repeat(64),"frame":0}),
+            ),
+        ] {
+            let b = ToolBinding {
+                id: format!("reference-{i}"),
+                name: format!("Reference {i}"),
+                account: "alice".into(),
+                project: "project".into(),
+                origin: origin.clone(),
+                tool,
+                arguments: args,
+                training_allowed: true,
+                private_local: false,
+            };
+            e.draft.components.push(Component::ToolContext {
+                binding: b.id.clone(),
+                sha256: b.digest(),
+            });
+            installed.push(b);
+        }
+        std::fs::write(
+            root.path().join("tools.json"),
+            serde_json::to_vec(&installed).unwrap(),
+        )
+        .unwrap();
+        let text = context(root.path(), &e, "alice").await.unwrap();
+        assert!(text.contains("limit_violations"));
+        assert!(text.contains("passed"));
+        assert!(text.contains("version"));
+        assert!(context(root.path(), &e, "bob").await.is_err());
+        installed[0].arguments["document"] = json!("huge");
+        e.draft.components = vec![Component::ToolContext {
+            binding: installed[0].id.clone(),
+            sha256: installed[0].digest(),
+        }];
+        std::fs::write(
+            root.path().join("tools.json"),
+            serde_json::to_vec(&installed).unwrap(),
+        )
+        .unwrap();
+        assert!(context(root.path(), &e, "alice").await.is_err());
+        assert!(!loopback("http://example.com/"));
+        assert!(!loopback("http://127.0.0.1:8792/private"));
+        server.abort();
     }
 }

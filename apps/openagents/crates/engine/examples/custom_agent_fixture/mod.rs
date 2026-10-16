@@ -533,9 +533,9 @@ async fn cleanup_lab(f: &mut Fixture) -> Result<()> {
     }
     f.checks.insert(
         "phone_lab_promoted".into(),
-        definitions
-            .iter()
-            .any(|d| d.spec.name.contains("phone fixture")),
+        definitions.iter().any(|d| {
+            d.spec.name.contains("phone fixture") && d.spec.instructions.contains("Reply briefly.")
+        }),
     );
     for d in definitions {
         agents
