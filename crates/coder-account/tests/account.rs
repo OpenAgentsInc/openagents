@@ -191,6 +191,10 @@ async fn cancellation_and_denial_do_not_leave_an_authenticated_view() {
     let (c, s, store, _, _) = setup().await;
     let task = tokio::spawn(c.sign_in("Fixture Mac".into()));
     phase(&c, |p| matches!(p, Phase::Waiting { .. })).await;
+    let generation = c.snapshot().generation;
+    c.clone().revalidate().await;
+    assert_eq!(c.snapshot().generation, generation);
+    assert!(matches!(c.snapshot().phase, Phase::Waiting { .. }));
     c.cancel().await;
     s.approved.store(true, Ordering::SeqCst);
     task.await.unwrap();
@@ -373,4 +377,24 @@ async fn live_leases_stop_authorizing_when_the_app_session_expires() {
     assert!(c.lease().is_none());
     c.restore().await;
     assert!(matches!(c.snapshot().phase, Phase::SignedOut { .. }));
+}
+
+#[tokio::test]
+async fn revalidation_preserves_outages_but_clears_revocation() {
+    let (controller, server, store, _root, _client) = setup().await;
+    server.approved.store(true, Ordering::SeqCst);
+    controller.sign_in("Fixture device".into()).await;
+    assert!(controller.lease().is_some());
+    server.account_down.store(true, Ordering::SeqCst);
+    controller.clone().revalidate().await;
+    assert!(controller.lease().is_some());
+    assert!(store.record.lock().unwrap().is_some());
+    server.account_down.store(false, Ordering::SeqCst);
+    server.active.lock().unwrap().clear();
+    controller.clone().revalidate().await;
+    assert!(matches!(
+        controller.snapshot().phase,
+        Phase::SignedOut { .. }
+    ));
+    assert!(store.record.lock().unwrap().is_none());
 }

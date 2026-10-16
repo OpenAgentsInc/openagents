@@ -1,3 +1,5 @@
+#![cfg(feature = "upstream-workos")]
+
 //! Auth service tests: dev mode, and the WorkOS flows (headless paste-code exchange,
 //! loopback callback, refresh rotation + revocation, org onboarding) against a stub
 //! edge HTTP server on a plain tokio TcpListener.

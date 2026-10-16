@@ -139,7 +139,7 @@ Known places a user can still see "Zeron" or "zeron":
 - Linux and Windows packaging file names (`zeron.desktop`, `zeron.exe`,
   `zeron-update.json`), and Linux's install layout (`~/.zeron/app`,
   `~/.local/bin/zeron`).
-- The iOS app under `apps/ios` is unchanged and out of scope.
+- iOS keeps the upstream project and target names; identity and account seams are listed below.
 
 ## Platform matrix
 
@@ -149,7 +149,7 @@ Known places a user can still see "Zeron" or "zeron":
 | macOS (Intel) | Not in the release matrix | Not checked. |
 | Windows x86_64 | Inno Setup installer + portable `.exe` (`scripts/package-windows.ps1`, `windows-2022`) | Identity edited (installer AppId, names, scheme, icon, data directory); not built or run. |
 | Linux x86_64 / aarch64 | Tarball with `install.sh` (`scripts/package-linux.sh`, Ubuntu 24.04) | Data directory and icon changed; install layout still Zeron's (collides with a Zeron install). Not built or run. |
-| iOS | TestFlight (`testflight.yml`) | Out of scope. |
+| iOS | TestFlight (`testflight.yml`) | OpenAgents Coder identity and shared account flow; simulator verified. Store upload is an owner step. |
 
 ## iOS identity (#11841)
 
@@ -181,3 +181,39 @@ scan the built app with `python3 scripts/ios/verify-identity.py PATH_TO_APP`.
 
 Verification scope: upstream has existing workspace formatting differences;
 format only the Rust files changed here rather than rewriting the workspace.
+
+## Shared OpenAgents sign-in (#11848)
+
+- `coder-account` and `zeron-ui` reuse the public SDK device-code flow delivered
+  in #11824. The SDK pin includes the explicit first-party transport bearer
+  accessor. A shared controller rechecks active credentials every 15 seconds;
+  an outage preserves the login, while revocation clears it.
+- `coder-account::PlatformStore` uses the Security framework on both macOS and
+  iOS. Entries are scoped to app, profile, API, and website. A signed-out marker
+  prevents silent restore when the OS refuses credential deletion.
+- `zeron-mobile::client_ffi::account` exposes account state and actions to Swift.
+  Tokens stay in Rust and Keychain. Sync caches include account, sync server,
+  and account-service identities. Logout closes issued clients and removes only
+  that account's cache, preserving the restore fence.
+- `AppModel.swift` and `SignInViewController.swift` mount this shared flow and
+  the existing SDK-approved website. Legacy stored WorkOS credentials are never
+  restored. Demo data has a separate directory. Debug-only fixture arguments
+  use dedicated loopback accounts and suppress browser opening.
+- `zeron-client` accepts OpenAgents sessions and redacts every credential in
+  debug output. `zeron-client` and `zeron-engine` disable inherited WorkOS
+  configuration and entry points by default. The explicit `upstream-workos`
+  compatibility feature is reserved for upstream comparisons; OpenAgents
+  builds must never enable it.
+- `OpenAgentsAccountTests` exercises sign-in, synced sessions, and sign-out
+  against `scripts/coder-sync/test.sh --ios-auth-fixture CONFIG_PATH` in the
+  monorepo. Pass its addresses as `TEST_RUNNER_CODER_ACCOUNT_API`,
+  `TEST_RUNNER_CODER_ACCOUNT_WEBSITE`, and `TEST_RUNNER_CODER_ACCOUNT_SYNC`.
+  Build with `CODE_SIGNING_ALLOWED=NO`; run Keychain UI tests with local
+  simulator signing (`CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=-`). Xcode
+  supplies simulator entitlements without a developer-account login. The app
+  writes only booleans to `Documents/account-fixture-result.json` after logout;
+  require `signed_in`, `saw_session`, and `keychain_empty` to be true.
+
+After upstream merges, retain the disabled WorkOS defaults and account/cache
+boundaries, regenerate UniFFI bindings, and rerun these account tests before
+advancing the server conformance pin.

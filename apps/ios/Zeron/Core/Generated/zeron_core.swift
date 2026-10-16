@@ -671,6 +671,204 @@ fileprivate struct FfiConverterData: FfiConverterRustBuffer {
 
 
 
+public protocol AccountListener: AnyObject, Sendable {
+    
+    func onAccountChanged(snapshot: AccountSnapshot) 
+    
+}
+open class AccountListenerImpl: AccountListener, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_zeron_mobile_fn_clone_accountlistener(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_zeron_mobile_fn_free_accountlistener(handle, $0) }
+    }
+
+    
+
+    
+open func onAccountChanged(snapshot: AccountSnapshot)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_zeron_mobile_fn_method_accountlistener_on_account_changed(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeAccountSnapshot_lower(snapshot),uniffiCallStatus
+    )
+}
+}
+    
+
+    
+}
+
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceAccountListener {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    //
+    // Store the vtable directly.
+    static let vtable: UniffiVTableCallbackInterfaceAccountListener = UniffiVTableCallbackInterfaceAccountListener(
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
+            do {
+                try FfiConverterTypeAccountListener.handleMap.remove(handle: uniffiHandle)
+            } catch {
+                print("Uniffi callback interface AccountListener: handle missing in uniffiFree")
+            }
+        },
+        uniffiClone: { (uniffiHandle: UInt64) -> UInt64 in
+            do {
+                return try FfiConverterTypeAccountListener.handleMap.clone(handle: uniffiHandle)
+            } catch {
+                fatalError("Uniffi callback interface AccountListener: handle missing in uniffiClone")
+            }
+        },
+        onAccountChanged: { (
+            uniffiHandle: UInt64,
+            snapshot: RustBuffer,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterTypeAccountListener.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.onAccountChanged(
+                     snapshot: try FfiConverterTypeAccountSnapshot_lift(snapshot)
+                )
+            }
+
+            
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        }
+    )
+
+    // Rust stores this pointer for future callback invocations, so it must live
+    // for the process lifetime (not just for the init function call).
+    //
+    // `nonisolated(unsafe)` is needed under Swift 6 strict concurrency.
+    // This is safe because the pointee is initialized once during static init
+    // and never mutated by either side of the FFI.  Its fields are C function pointers.
+    nonisolated(unsafe) static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceAccountListener> = {
+        let ptr = UnsafeMutablePointer<UniffiVTableCallbackInterfaceAccountListener>.allocate(capacity: 1)
+        ptr.initialize(to: vtable)
+        return UnsafePointer(ptr)
+    }()
+}
+
+private func uniffiCallbackInitAccountListener() {
+    uniffi_zeron_mobile_fn_init_callback_vtable_accountlistener(UniffiCallbackInterfaceAccountListener.vtablePtr)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAccountListener: FfiConverter {
+    fileprivate static let handleMap = UniffiHandleMap<AccountListener>()
+
+    typealias FfiType = UInt64
+    typealias SwiftType = AccountListener
+
+    public static func lift(_ handle: UInt64) throws -> AccountListener {
+        if ((handle & 1) == 0) {
+            // Rust-generated handle, construct a new class that uses the handle to implement the
+            // interface
+            return AccountListenerImpl(unsafeFromHandle: handle)
+        } else {
+            // Swift-generated handle, get the object from the handle map
+            return try handleMap.remove(handle: handle)
+        }
+    }
+
+    public static func lower(_ value: AccountListener) -> UInt64 {
+         if let rustImpl = value as? AccountListenerImpl {
+             // Rust-implemented object.  Clone the handle and return it
+            return rustImpl.uniffiCloneHandle()
+         } else {
+            // Swift object, generate a new vtable handle and return that.
+            return handleMap.insert(obj: value)
+         }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AccountListener {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: AccountListener, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAccountListener_lift(_ handle: UInt64) throws -> AccountListener {
+    return try FfiConverterTypeAccountListener.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAccountListener_lower(_ value: AccountListener) -> UInt64 {
+    return FfiConverterTypeAccountListener.lower(value)
+}
+
+
+
+
+
+
 /**
  * One call's caption. Advance it whenever the caption changes and on every
  * display frame while the last frame was `animating`.
@@ -1007,6 +1205,244 @@ public func FfiConverterTypeClientListener_lift(_ handle: UInt64) throws -> Clie
 #endif
 public func FfiConverterTypeClientListener_lower(_ value: ClientListener) -> UInt64 {
     return FfiConverterTypeClientListener.lower(value)
+}
+
+
+
+
+
+
+public protocol CoreAccountProtocol: AnyObject, Sendable {
+    
+    func cancel() 
+    
+    /**
+     * Delete only the last connected account cache after an explicit sign-out.
+     */
+    func clearLocalData() throws 
+    
+    /**
+     * Open only the current account's registry and document cache.
+     */
+    func connect(config: CoreConfig, listener: ClientListener) throws  -> CoreClient
+    
+    func restore() 
+    
+    /**
+     * Resume account checks without cancelling a device-code approval in progress.
+     */
+    func revalidate() 
+    
+    func signIn(deviceName: String) 
+    
+    func signOut() 
+    
+    func snapshot()  -> AccountSnapshot
+    
+    /**
+     * A native diagnostic checks only this app/profile/deployment's own entry.
+     */
+    func storedLoginPresent() throws  -> Bool
+    
+}
+open class CoreAccount: CoreAccountProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_zeron_mobile_fn_clone_coreaccount(self.handle, $0) }
+    }
+public convenience init(dataDir: String, apiUrl: String, websiteUrl: String, listener: AccountListener)throws  {
+    let handle =
+        try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_zeron_mobile_fn_constructor_coreaccount_new(
+        FfiConverterString.lower(dataDir),
+        FfiConverterString.lower(apiUrl),
+        FfiConverterString.lower(websiteUrl),
+        FfiConverterTypeAccountListener_lower(listener),uniffiCallStatus
+    )
+}
+    self.init(unsafeFromHandle: handle)
+}
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_zeron_mobile_fn_free_coreaccount(handle, $0) }
+    }
+
+    
+
+    
+open func cancel()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_zeron_mobile_fn_method_coreaccount_cancel(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Delete only the last connected account cache after an explicit sign-out.
+     */
+open func clearLocalData()throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_zeron_mobile_fn_method_coreaccount_clear_local_data(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Open only the current account's registry and document cache.
+     */
+open func connect(config: CoreConfig, listener: ClientListener)throws  -> CoreClient  {
+    return try  FfiConverterTypeCoreClient_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_zeron_mobile_fn_method_coreaccount_connect(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeCoreConfig_lower(config),
+        FfiConverterTypeClientListener_lower(listener),uniffiCallStatus
+    )
+})
+}
+    
+open func restore()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_zeron_mobile_fn_method_coreaccount_restore(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Resume account checks without cancelling a device-code approval in progress.
+     */
+open func revalidate()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_zeron_mobile_fn_method_coreaccount_revalidate(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+open func signIn(deviceName: String)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_zeron_mobile_fn_method_coreaccount_sign_in(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(deviceName),uniffiCallStatus
+    )
+}
+}
+    
+open func signOut()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_zeron_mobile_fn_method_coreaccount_sign_out(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+open func snapshot() -> AccountSnapshot  {
+    return try!  FfiConverterTypeAccountSnapshot_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_zeron_mobile_fn_method_coreaccount_snapshot(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * A native diagnostic checks only this app/profile/deployment's own entry.
+     */
+open func storedLoginPresent()throws  -> Bool  {
+    return try  FfiConverterBool.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_zeron_mobile_fn_method_coreaccount_stored_login_present(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCoreAccount: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = CoreAccount
+
+    public static func lift(_ handle: UInt64) throws -> CoreAccount {
+        return CoreAccount(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: CoreAccount) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CoreAccount {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: CoreAccount, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCoreAccount_lift(_ handle: UInt64) throws -> CoreAccount {
+    return try FfiConverterTypeCoreAccount.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCoreAccount_lower(_ value: CoreAccount) -> UInt64 {
+    return FfiConverterTypeCoreAccount.lower(value)
 }
 
 
@@ -5175,6 +5611,60 @@ public func FfiConverterTypeVoiceSessionListener_lower(_ value: VoiceSessionList
 }
 
 
+
+
+public struct AccountSnapshot: Equatable, Hashable {
+    public var generation: UInt64
+    public var state: AccountState
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(generation: UInt64, state: AccountState) {
+        self.generation = generation
+        self.state = state
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension AccountSnapshot: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAccountSnapshot: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AccountSnapshot {
+        return
+            try AccountSnapshot(
+                generation: FfiConverterUInt64.read(from: &buf), 
+                state: FfiConverterTypeAccountState.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AccountSnapshot, into buf: inout [UInt8]) {
+        FfiConverterUInt64.write(value.generation, into: &buf)
+        FfiConverterTypeAccountState.write(value.state, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAccountSnapshot_lift(_ buf: RustBuffer) throws -> AccountSnapshot {
+    return try FfiConverterTypeAccountSnapshot.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAccountSnapshot_lower(_ value: AccountSnapshot) -> RustBuffer {
+    return FfiConverterTypeAccountSnapshot.lower(value)
+}
 
 
 public struct AppshotLabel: Equatable, Hashable {
@@ -10694,6 +11184,115 @@ public func FfiConverterTypeWorktreeSpec_lift(_ buf: RustBuffer) throws -> Workt
 public func FfiConverterTypeWorktreeSpec_lower(_ value: WorktreeSpec) -> RustBuffer {
     return FfiConverterTypeWorktreeSpec.lower(value)
 }
+
+
+
+public enum AccountState: Equatable, Hashable {
+    
+    case signedOut(notice: String?
+    )
+    case restoring
+    case starting
+    case waiting(code: String, url: String
+    )
+    case signedIn(accountId: String, name: String
+    )
+    case failed(message: String, canRestore: Bool
+    )
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension AccountState: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAccountState: FfiConverterRustBuffer {
+    typealias SwiftType = AccountState
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AccountState {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .signedOut(notice: try FfiConverterOptionString.read(from: &buf)
+        )
+        
+        case 2: return .restoring
+        
+        case 3: return .starting
+        
+        case 4: return .waiting(code: try FfiConverterString.read(from: &buf), url: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 5: return .signedIn(accountId: try FfiConverterString.read(from: &buf), name: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 6: return .failed(message: try FfiConverterString.read(from: &buf), canRestore: try FfiConverterBool.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: AccountState, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case let .signedOut(notice):
+            writeInt(&buf, Int32(1))
+            FfiConverterOptionString.write(notice, into: &buf)
+            
+        
+        case .restoring:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .starting:
+            writeInt(&buf, Int32(3))
+        
+        
+        case let .waiting(code,url):
+            writeInt(&buf, Int32(4))
+            FfiConverterString.write(code, into: &buf)
+            FfiConverterString.write(url, into: &buf)
+            
+        
+        case let .signedIn(accountId,name):
+            writeInt(&buf, Int32(5))
+            FfiConverterString.write(accountId, into: &buf)
+            FfiConverterString.write(name, into: &buf)
+            
+        
+        case let .failed(message,canRestore):
+            writeInt(&buf, Int32(6))
+            FfiConverterString.write(message, into: &buf)
+            FfiConverterBool.write(canRestore, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAccountState_lift(_ buf: RustBuffer) throws -> AccountState {
+    return try FfiConverterTypeAccountState.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAccountState_lower(_ value: AccountState) -> RustBuffer {
+    return FfiConverterTypeAccountState.lower(value)
+}
+
 
 
 
@@ -17160,6 +17759,36 @@ private let initializationResult: InitializationResult = {
     if (uniffi_zeron_mobile_checksum_method_uploadprogress_on_progress() != 40458) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_zeron_mobile_checksum_method_accountlistener_on_account_changed() != 55279) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_zeron_mobile_checksum_method_coreaccount_cancel() != 18106) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_zeron_mobile_checksum_method_coreaccount_clear_local_data() != 9037) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_zeron_mobile_checksum_method_coreaccount_connect() != 28466) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_zeron_mobile_checksum_method_coreaccount_restore() != 63699) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_zeron_mobile_checksum_method_coreaccount_revalidate() != 30946) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_zeron_mobile_checksum_method_coreaccount_sign_in() != 12969) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_zeron_mobile_checksum_method_coreaccount_sign_out() != 41574) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_zeron_mobile_checksum_method_coreaccount_snapshot() != 23049) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_zeron_mobile_checksum_method_coreaccount_stored_login_present() != 30984) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_zeron_mobile_checksum_method_sessionhandle_begin_queued_edit() != 9014) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -17361,6 +17990,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_zeron_mobile_checksum_constructor_coreclient_new() != 27504) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_zeron_mobile_checksum_constructor_coreaccount_new() != 41588) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_zeron_mobile_checksum_constructor_textsystem_new() != 55727) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -17371,6 +18003,7 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
 
+    uniffiCallbackInitAccountListener()
     uniffiCallbackInitClientListener()
     uniffiCallbackInitLayoutListener()
     uniffiCallbackInitPlatformMeasurer()

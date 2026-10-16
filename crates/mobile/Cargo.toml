@@ -21,6 +21,8 @@ required-features = ["bindgen"]
 bindgen = ["uniffi/cli"]
 
 [dependencies]
+coder-account.workspace = true
+sha2.workspace = true
 zeron-voice-session.workspace = true
 zeron-orb.workspace = true
 zeron-veil.workspace = true
@@ -40,3 +42,6 @@ serde_json.workspace = true
 similar.workspace = true
 zeron-syntax.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

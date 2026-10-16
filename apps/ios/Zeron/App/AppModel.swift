@@ -54,6 +54,16 @@ final class AppModel {
     private var refreshScheduled = false
     private var clock: Timer?
     private let path = NWPathMonitor()
+    private var account: CoreAccount?
+    private lazy var accountBridge = AccountBridge(app: self)
+    private(set) var accountSnapshot: AccountSnapshot?
+    private var accountGeneration: UInt64 = 0
+    private var openedAccountGeneration: UInt64?
+    #if DEBUG
+    private var fixtureSignedIn = false
+    private var fixtureSignOut = false
+    private var fixtureSawSession = false
+    #endif
 
     var onSignedIn: (() -> Void)?
     var onSignOut: (() -> Void)?
@@ -103,21 +113,105 @@ final class AppModel {
         #if DEBUG
         // Test hooks (never in release builds): wipe the Keychain, or run
         // against a local dev stack.
-        if args.contains("-signedout") {
-            Credentials.clearStored()
-        }
         if let i = args.firstIndex(of: "-dev"), i + 2 < args.count {
             start(.dev(userId: args[i + 1], orgId: args[i + 2]))
             return
         }
         #endif
-        if args.contains("-demo") || args.contains("-route") && Credentials.stored() == nil {
+        if args.contains("-demo") || args.contains("-route") {
             start(.demo(options: Self.demoOptions()))
+            return
+        }
+        do {
+            account = try CoreAccount(dataDir: Self.coreDir.path, apiUrl: Self.accountAPI, websiteUrl: Self.accountWebsite, listener: accountBridge)
+            #if DEBUG
+            if args.contains("-signedout") { account?.signOut(); return }
+            #endif
+            account?.restore()
+        } catch {
+            accountSnapshot = AccountSnapshot(generation: 0, state: .failed(message: "Couldn't start sign-in. Try again.", canRestore: false))
         }
     }
 
     func openDemo() {
+        account?.cancel()
         if start(.demo(options: Self.demoOptions())) { onSignedIn?() }
+    }
+
+    private static var accountAPI: String {
+        #if DEBUG
+        let args = ProcessInfo.processInfo.arguments
+        if let i = args.firstIndex(of: "-account-api"), i + 1 < args.count { return args[i + 1] }
+        #endif
+        return "https://api.openagents.com/v1"
+    }
+    private static var accountWebsite: String {
+        #if DEBUG
+        let args = ProcessInfo.processInfo.arguments
+        if let i = args.firstIndex(of: "-account-site"), i + 1 < args.count { return args[i + 1] }
+        #endif
+        return "https://openagents.com"
+    }
+    func beginAccountSignIn() { account?.signIn(deviceName: UIDevice.current.name) }
+    func restoreAccount() { account?.restore() }
+    func cancelAccountSignIn() { account?.cancel() }
+    func openAccountWebsite() {
+        guard case let .waiting(_, url)? = accountSnapshot?.state, let url = URL(string: url) else { return }
+        UIApplication.shared.open(url)
+    }
+    fileprivate func handleAccount(_ snapshot: AccountSnapshot) {
+        guard snapshot.generation >= accountGeneration else { return }
+        accountGeneration = snapshot.generation
+        accountSnapshot = snapshot
+        if isDemo { return }
+        switch snapshot.state {
+        case let .signedIn(_, name):
+            if client == nil, let account {
+                do {
+                    let config = CoreConfig(edgeUrl: Self.edgeURL, dataDir: Self.coreDir.path, deviceId: Self.deviceId, deviceName: UIDevice.current.name, platform: "ios", appVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0")
+                    install(try account.connect(config: config, listener: bridge))
+                    AccountProfile(name: name, email: nil, orgName: nil).save()
+                    #if DEBUG
+                    fixtureSignedIn = true
+                    #endif
+                    onSignedIn?()
+                } catch {
+                    accountSnapshot = AccountSnapshot(generation: snapshot.generation, state: .failed(message: "Couldn't open your chats. Try again.", canRestore: true))
+                }
+            }
+        case .signedOut:
+            if client != nil { onSignOut?() }
+            reportAccountFixture()
+        case .restoring, .starting, .waiting, .failed:
+            if client != nil { onSignOut?() }
+            if case .waiting = snapshot.state, openedAccountGeneration != snapshot.generation {
+                openedAccountGeneration = snapshot.generation
+                #if DEBUG
+                if !ProcessInfo.processInfo.arguments.contains("-no-auth-browser") { openAccountWebsite() }
+                #else
+                openAccountWebsite()
+                #endif
+            }
+        }
+        observers.values.forEach { $0() }
+    }
+    private func reportAccountFixture() {
+        #if DEBUG
+        guard ProcessInfo.processInfo.arguments.contains("-account-fixture"), fixtureSignedIn, fixtureSignOut else { return }
+        let sawSession = fixtureSawSession
+        Task { @MainActor [weak self] in
+            for _ in 0..<100 {
+                guard let self else { return }
+                if (try? self.account?.storedLoginPresent()) == false {
+                    let report: [String: Any] = ["signed_in": true, "saw_session": sawSession, "keychain_empty": true]
+                    let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("account-fixture-result.json")
+                    if let bytes = try? JSONSerialization.data(withJSONObject: report) { try? bytes.write(to: url, options: .atomic) }
+                    return
+                }
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+        }
+        #endif
     }
 
     static func demoOptions() -> DemoOptions {
@@ -168,22 +262,21 @@ final class AppModel {
             appVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0"
         )
         do {
-            client = try CoreClient(config: config, credentials: credentials, listener: bridge)
-            // Only real accounts persist; dev bearers come from launch args
-            // (and would be rejected by the production edge next launch).
-            if case .workOs = credentials { Credentials.store(credentials) }
-            refreshWorkspace()
-            client?.preloadSessions()
-            backfillProfile()
-            clock?.invalidate()
-            // Relative times ("4m") and 45s staleness age without events.
-            clock = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in self?.refreshWorkspace() }
+            install(try CoreClient(config: config, credentials: credentials, listener: bridge))
             return true
         } catch {
             NSLog("core start failed: \(error)")
             client = nil
             return false
         }
+    }
+
+    private func install(_ next: CoreClient) {
+        client = next
+        refreshWorkspace()
+        next.preloadSessions()
+        clock?.invalidate()
+        clock = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in self?.refreshWorkspace() }
     }
 
     /// `-edge <url>` points at a local `wrangler dev` edge; otherwise production.
@@ -206,6 +299,10 @@ final class AppModel {
     @MainActor func signOut() {
         voice.stop()
         forgetOnSignOut = true
+        #if DEBUG
+        fixtureSignOut = true
+        #endif
+        if !isDemo { account?.signOut() }
         onSignOut?()
     }
 
@@ -215,15 +312,21 @@ final class AppModel {
     private var forgetOnSignOut = false
 
     @MainActor func signOutLocally() {
+        let wasDemo = isDemo
         voice.stop()
         endDeliveryBackgroundTask()
         lastDeliveryActivity = .distantPast
         client?.shutdown()
         client = nil
-        Credentials.clearStored()
         AccountProfile.clear()
         clock?.invalidate()
-        if forgetOnSignOut { try? FileManager.default.removeItem(at: Self.coreDir) }
+        if forgetOnSignOut {
+            if wasDemo {
+                let demo = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("demo", isDirectory: true)
+                try? FileManager.default.removeItem(at: demo)
+            } else if let account { try? account.clearLocalData() }
+            else { try? FileManager.default.removeItem(at: Self.coreDir) }
+        }
         forgetOnSignOut = false
         // Nothing of the account stays in memory.
         frontPage = FrontPage()
@@ -270,6 +373,7 @@ final class AppModel {
         client?.onBackground()
     }
     func willEnterForeground() {
+        if !isDemo { account?.revalidate() }
         endDeliveryBackgroundTask()
         client?.onForeground()
         refreshWorkspace()
@@ -333,10 +437,10 @@ final class AppModel {
         case let .connectivityChanged(c):
             connectivity = c
             observers.values.forEach { $0() }
-        case let .authRefreshed(tokens):
-            Credentials.updateTokens(tokens)
+        case .authRefreshed:
+            break
         case .authExpired:
-            onSignOut?()
+            if let account { account.restore() } else { onSignOut?() }
         }
     }
 
@@ -351,6 +455,9 @@ final class AppModel {
     }
 
     private func refreshWorkspace() {
+        #if DEBUG
+        defer { if fixtureSignedIn && (!frontPage.sessions.isEmpty || !frontPage.projectGroups.isEmpty) { fixtureSawSession = true } }
+        #endif
         guard let client else { return }
         let ws = client.workspace()
         workspaceRevision = ws.revision
@@ -533,22 +640,6 @@ final class AppModel {
         return [p.name != nil ? p.email : nil, p.orgName].compactMap { $0 }.joined(separator: " · ").nonEmpty ?? "OpenAgents account"
     }
 
-    /// Logins from before profiles were saved: recover the org name (the
-    /// user's name comes back at the next sign-in).
-    private func backfillProfile() {
-        guard case let .workOs(_, orgId, tokens)? = Credentials.stored(), AccountProfile.load().orgName == nil else { return }
-        let edge = Self.edgeURL
-        Task { @MainActor [weak self] in
-            guard let orgs = try? await authListOrgs(edgeUrl: edge, accessToken: tokens.accessToken),
-                  let org = orgs.first(where: { $0.organizationId == orgId })
-            else { return }
-            var p = AccountProfile.load()
-            p.orgName = org.name
-            p.save()
-            self?.observers.values.forEach { $0() }
-        }
-    }
-
     var projectOptions: [ProjectOption] {
         rawProjects.map { ProjectOption(id: $0.id, name: $0.name, path: $0.path, device: $0.deviceId, deviceName: $0.deviceName ?? deviceName($0.deviceId), online: $0.deviceOnline, git: $0.gitDetected, groupKey: $0.groupKey, groupName: $0.groupName, colorIndex: Int($0.colorIndex)) }
     }
@@ -644,7 +735,15 @@ private final class ListenerBridge: ClientListener, @unchecked Sendable {
     }
 }
 
-// MARK: - Credential persistence (Keychain)
+private final class AccountBridge: AccountListener, @unchecked Sendable {
+    weak var app: AppModel?
+    init(app: AppModel) { self.app = app }
+    func onAccountChanged(snapshot: AccountSnapshot) {
+        DispatchQueue.main.async { [weak self] in self?.app?.handleAccount(snapshot) }
+    }
+}
+
+// MARK: - Display profile (Keychain)
 
 extension Credentials {
     var isDemo: Bool {
@@ -652,48 +751,6 @@ extension Credentials {
         return false
     }
 
-    private static let service = "com.openagents.coder"
-    private static let account = "credentials"
-
-    static func stored() -> Credentials? {
-        guard let data = Keychain.load(service: service, account: account),
-              let dict = try? JSONSerialization.jsonObject(with: data) as? [String: String]
-        else { return nil }
-        switch dict["kind"] {
-        case "workos":
-            guard let u = dict["userId"], let o = dict["orgId"], let a = dict["access"], let r = dict["refresh"] else { return nil }
-            return .workOs(userId: u, orgId: o, tokens: AuthTokens(accessToken: a, refreshToken: r))
-        case "dev":
-            guard let u = dict["userId"], let o = dict["orgId"] else { return nil }
-            return .dev(userId: u, orgId: o)
-        default:
-            return nil
-        }
-    }
-
-    static func store(_ c: Credentials) {
-        var dict: [String: String] = [:]
-        switch c {
-        case let .workOs(userId, orgId, tokens):
-            dict = ["kind": "workos", "userId": userId, "orgId": orgId, "access": tokens.accessToken, "refresh": tokens.refreshToken]
-        case let .dev(userId, orgId):
-            dict = ["kind": "dev", "userId": userId, "orgId": orgId]
-        case .demo:
-            return
-        }
-        if let data = try? JSONSerialization.data(withJSONObject: dict) {
-            Keychain.save(data, service: service, account: account)
-        }
-    }
-
-    static func updateTokens(_ tokens: AuthTokens) {
-        guard case let .workOs(userId, orgId, _) = stored() else { return }
-        store(.workOs(userId: userId, orgId: orgId, tokens: tokens))
-    }
-
-    static func clearStored() {
-        Keychain.delete(service: service, account: account)
-    }
 }
 
 enum Keychain {

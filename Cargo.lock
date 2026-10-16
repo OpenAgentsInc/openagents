@@ -7109,7 +7109,7 @@ dependencies = [
 [[package]]
 name = "openagents-login"
 version = "1.0.0"
-source = "git+https://github.com/OpenAgentsInc/openagents.git?rev=4b5b70d72b1f1d142170417c283937876dc5734d#4b5b70d72b1f1d142170417c283937876dc5734d"
+source = "git+https://github.com/OpenAgentsInc/openagents.git?rev=5a3d1c14f58888c08d0e7a0ede0322fe7585b20b#5a3d1c14f58888c08d0e7a0ede0322fe7585b20b"
 dependencies = [
  "reqwest",
  "serde",
@@ -7120,7 +7120,7 @@ dependencies = [
 [[package]]
 name = "openagents-sdk"
 version = "1.0.0"
-source = "git+https://github.com/OpenAgentsInc/openagents.git?rev=4b5b70d72b1f1d142170417c283937876dc5734d#4b5b70d72b1f1d142170417c283937876dc5734d"
+source = "git+https://github.com/OpenAgentsInc/openagents.git?rev=5a3d1c14f58888c08d0e7a0ede0322fe7585b20b#5a3d1c14f58888c08d0e7a0ede0322fe7585b20b"
 dependencies = [
  "httpdate",
  "openagents-login",
@@ -13853,9 +13853,12 @@ name = "zeron-mobile"
 version = "0.2.113"
 dependencies = [
  "async-trait",
+ "coder-account",
  "serde",
  "serde_json",
+ "sha2",
  "similar",
+ "tempfile",
  "thiserror 2.0.20",
  "tokio",
  "tokio-util",

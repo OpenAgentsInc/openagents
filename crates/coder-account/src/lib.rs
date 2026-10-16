@@ -43,6 +43,7 @@ struct Ticket {
 /// Serialize credential operations so a late login cannot overwrite a newer login or logout.
 pub struct Controller {
     client: Client,
+    app_name: String,
     store: Arc<dyn CredentialStore + Send + Sync>,
     marker: PathBuf,
     state: Mutex<State>,
@@ -76,6 +77,14 @@ impl Controller {
         store: Arc<dyn CredentialStore + Send + Sync>,
         marker: PathBuf,
     ) -> Arc<Self> {
+        Self::new_named(client, store, marker, "Coder Desktop".into())
+    }
+    pub fn new_named(
+        client: Client,
+        store: Arc<dyn CredentialStore + Send + Sync>,
+        marker: PathBuf,
+        app_name: String,
+    ) -> Arc<Self> {
         // A sign-out on one site must never unseal another site's saved login.
         let marker = marker.with_extension(format!(
             "{:x}",
@@ -94,6 +103,7 @@ impl Controller {
         });
         Arc::new(Self {
             client,
+            app_name,
             store,
             marker,
             state: Mutex::new(State {
@@ -249,6 +259,20 @@ impl Controller {
             }
         }
     }
+    /// Check a current login without treating an outage as a sign-out.
+    pub async fn revalidate(self: Arc<Self>) {
+        let Some(lease) = self.lease() else {
+            if matches!(self.snapshot().phase, Phase::SignedIn { .. }) {
+                self.restore().await;
+            }
+            return;
+        };
+        if let Err(error) = self.client.account(lease.session()).await {
+            if invalid_login(&error) && self.accepts(&lease) {
+                self.restore().await;
+            }
+        }
+    }
     pub fn sign_in(
         self: &Arc<Self>,
         computer: String,
@@ -270,7 +294,7 @@ impl Controller {
             self.publish(
                 &t,
                 Phase::Failed {
-                    message: "Couldn't remove the saved login. Unlock this Mac and try again."
+                    message: "Couldn't remove the saved login. Unlock your device and try again."
                         .into(),
                     can_restore: false,
                 },
@@ -280,7 +304,7 @@ impl Controller {
         }
         let mut login = match cancelled(
             &t.cancel,
-            self.client.start_login("Coder Desktop", &computer),
+            self.client.start_login(&self.app_name, &computer),
         )
         .await
         {
@@ -459,7 +483,7 @@ impl Controller {
                 None => Ok(()),
             };
             let notice = if local.is_err() {
-                Some("Couldn't remove the saved login. Unlock this Mac and try again.".into())
+                Some("Couldn't remove the saved login. Unlock your device and try again.".into())
             } else if remote.is_err() {
                 Some("You're signed out here. Remove this app's login on the website to sign it out there too.".into())
             } else {
@@ -509,7 +533,7 @@ fn invalid_login(error: &Error) -> bool {
 }
 fn storage_message(error: StorageError) -> &'static str {
     match error {
-        StorageError::Denied => "Unlock this Mac to save or restore your login.",
+        StorageError::Denied => "Unlock your device to save or restore your login.",
         StorageError::Unavailable => "Couldn't save or restore your login. Try again.",
     }
 }

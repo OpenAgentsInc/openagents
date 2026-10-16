@@ -52,8 +52,14 @@ pub struct AuthTokens {
 }
 
 /// How this client authenticates against the edge.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum Credentials {
+    /// An already verified OpenAgents app session, supplied by the shared account core.
+    OpenAgents {
+        account_id: String,
+        bearer: String,
+        expires_at: Option<u64>,
+    },
     /// WorkOS session scoped to `org_id` (the token carries the `org_id`
     /// claim the registry room requires).
     WorkOs {
@@ -75,6 +81,7 @@ impl Credentials {
     pub fn org_id(&self) -> &str {
         match self {
             Credentials::WorkOs { org_id, .. } | Credentials::Dev { org_id, .. } => org_id,
+            Credentials::OpenAgents { account_id, .. } => account_id,
             Credentials::Demo(_) => "demo",
         }
     }
@@ -82,6 +89,7 @@ impl Credentials {
     pub fn user_id(&self) -> &str {
         match self {
             Credentials::WorkOs { user_id, .. } | Credentials::Dev { user_id, .. } => user_id,
+            Credentials::OpenAgents { account_id, .. } => account_id,
             Credentials::Demo(_) => "demo",
         }
     }
@@ -148,4 +156,35 @@ pub enum StreamSpeed {
     Realistic,
     /// A word every ~4ms: stresses the per-update path (benchmarks).
     Fast,
+}
+
+impl std::fmt::Debug for Credentials {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::OpenAgents {
+                account_id,
+                expires_at,
+                ..
+            } => f
+                .debug_struct("OpenAgents")
+                .field("account_id", account_id)
+                .field("expires_at", expires_at)
+                .field("bearer", &"[redacted]")
+                .finish(),
+            Self::WorkOs {
+                user_id, org_id, ..
+            } => f
+                .debug_struct("WorkOs")
+                .field("user_id", user_id)
+                .field("org_id", org_id)
+                .field("tokens", &"[redacted]")
+                .finish(),
+            Self::Dev { user_id, org_id } => f
+                .debug_struct("Dev")
+                .field("user_id", user_id)
+                .field("org_id", org_id)
+                .finish(),
+            Self::Demo(options) => f.debug_tuple("Demo").field(options).finish(),
+        }
+    }
 }

@@ -11,6 +11,8 @@
 //! through [`CoreClient::session_handle`] → [`zeron_client::SessionHandle`]
 //! (`snapshot()` / `subscribe()`), never over FFI.
 
+mod account;
+pub use account::*;
 mod session;
 mod voice;
 pub use voice::*;

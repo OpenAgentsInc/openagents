@@ -103,12 +103,20 @@ impl AppAccount {
                             let controller = this.controller.as_ref().unwrap().clone();
                             let generation = snapshot.generation;
                             this.expiry = Some(cx.spawn(async move |this, cx| {
+                                let mut checked = std::time::Instant::now();
                                 loop {
                                     cx.background_executor()
                                         .timer(std::time::Duration::from_secs(1))
                                         .await;
                                     if controller.snapshot().generation != generation {
                                         break;
+                                    }
+                                    if checked.elapsed() >= std::time::Duration::from_secs(15) {
+                                        checked = std::time::Instant::now();
+                                        let check = controller.clone();
+                                        let _ = this.update(cx, |this, cx| {
+                                            this.run(check.revalidate(), cx)
+                                        });
                                     }
                                     if controller.lease().is_none() {
                                         let _ = this.update(cx, |this, cx| this.restore(cx));

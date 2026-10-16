@@ -280,7 +280,10 @@ pub struct Auth {
 
 impl Auth {
     /// Build from config: dev mode unless a WorkOS client id is configured.
-    pub fn new(config: AuthConfig) -> Self {
+    pub fn new(mut config: AuthConfig) -> Self {
+        if !cfg!(feature = "upstream-workos") {
+            config.workos_client_id = None;
+        }
         let workos = config
             .workos_client_id
             .clone()
@@ -340,6 +343,9 @@ impl Auth {
     /// dev auth mode forces dev mode even when a client id is configured (matching the
     /// edge's "bearer = user id" verification).
     pub async fn detect(mut config: AuthConfig) -> Self {
+        if !cfg!(feature = "upstream-workos") {
+            config.workos_client_id = None;
+        }
         if config.workos_client_id.is_some() {
             #[derive(Deserialize)]
             struct Health {
@@ -1298,7 +1304,7 @@ fn write_private(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "upstream-workos"))]
 mod tests {
     use super::*;
 
@@ -1443,5 +1449,20 @@ mod tests {
 impl zeron_preview::signaling::TokenSource for Auth {
     async fn token(&self) -> anyhow::Result<String> {
         Ok(self.access_token().await?)
+    }
+}
+
+#[cfg(all(test, not(feature = "upstream-workos")))]
+mod openagents_only_tests {
+    use super::*;
+    #[tokio::test]
+    async fn inherited_client_id_cannot_enable_workos() {
+        let folder = tempfile::tempdir().unwrap();
+        let mut config = AuthConfig::new("http://127.0.0.1:1", folder.path());
+        config.workos_client_id = Some("inherited-fixture".into());
+        let auth = Auth::new(config);
+        assert!(!auth.workos_enabled());
+        assert!(!auth.loaded_workos_session());
+        assert!(auth.start_sign_in().await.unwrap().is_empty());
     }
 }

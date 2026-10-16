@@ -11,6 +11,10 @@ publish.workspace = true
 # in crates/mobile (`client_ffi`), so this crate stays usable from any
 # frontend (iOS, Android, tests, CLIs).
 
+[features]
+# Upstream compatibility only; never enabled by our application builds.
+upstream-workos = []
+
 [dependencies]
 coder-brand.workspace = true
 zeron-voice-session.workspace = true

@@ -24,7 +24,7 @@ impl PlatformStore {
         )
     }
 }
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "ios"))]
 fn mapped(e: security_framework::base::Error) -> StorageError {
     match e.code() {
         -25293 | -25308 | -128 => StorageError::Denied,
@@ -33,7 +33,7 @@ fn mapped(e: security_framework::base::Error) -> StorageError {
 }
 impl CredentialStore for PlatformStore {
     fn load(&self, deployment: &Deployment) -> Result<Option<CredentialRecord>, StorageError> {
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", target_os = "ios"))]
         {
             let mut bytes = match security_framework::passwords::get_generic_password(
                 &self.service,
@@ -51,14 +51,14 @@ impl CredentialStore for PlatformStore {
             bytes.fill(0);
             record.map(Some)
         }
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(not(any(target_os = "macos", target_os = "ios")))]
         {
             let _ = deployment;
             Err(StorageError::Unavailable)
         }
     }
     fn save(&self, record: &CredentialRecord) -> Result<(), StorageError> {
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", target_os = "ios"))]
         {
             let mut bytes = serde_json::to_vec(record).map_err(|_| StorageError::Unavailable)?;
             let result = security_framework::passwords::set_generic_password(
@@ -70,14 +70,14 @@ impl CredentialStore for PlatformStore {
             bytes.fill(0);
             result
         }
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(not(any(target_os = "macos", target_os = "ios")))]
         {
             let _ = record;
             Err(StorageError::Unavailable)
         }
     }
     fn clear(&self, deployment: &Deployment) -> Result<(), StorageError> {
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", target_os = "ios"))]
         {
             match security_framework::passwords::delete_generic_password(
                 &self.service,
@@ -88,7 +88,7 @@ impl CredentialStore for PlatformStore {
                 Err(e) => Err(mapped(e)),
             }
         }
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(not(any(target_os = "macos", target_os = "ios")))]
         {
             let _ = deployment;
             Err(StorageError::Unavailable)

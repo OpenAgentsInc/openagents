@@ -74,6 +74,9 @@ fn percent_decode(value: &str) -> String {
 /// WorkOS AuthKit authorization-code URL (the ASWebAuthenticationSession
 /// start URL). `state` is the caller's CSRF nonce.
 pub fn workos_authorize_url(state: &str) -> String {
+    if !cfg!(feature = "upstream-workos") {
+        return String::new();
+    }
     format!(
         "{WORKOS_API_BASE}/user_management/authorize?response_type=code&client_id={}&redirect_uri={}&provider=authkit&state={}",
         percent_encode(WORKOS_CLIENT_ID),
@@ -182,6 +185,9 @@ fn net(err: reqwest::Error) -> ClientError {
 
 /// WorkOS paste-code exchange.
 pub async fn exchange_code(edge_url: &str, code: &str) -> Result<AuthExchange> {
+    if !cfg!(feature = "upstream-workos") {
+        return Err(ClientError::Auth("Log in with OpenAgents.".into()));
+    }
     #[derive(Deserialize)]
     #[serde(rename_all = "camelCase")]
     struct Reply {
@@ -212,6 +218,9 @@ pub async fn exchange_code(edge_url: &str, code: &str) -> Result<AuthExchange> {
 
 /// Organizations the (unscoped) access token's user belongs to.
 pub async fn list_orgs(edge_url: &str, access_token: &str) -> Result<Vec<AuthOrg>> {
+    if !cfg!(feature = "upstream-workos") {
+        return Err(ClientError::Auth("Log in with OpenAgents.".into()));
+    }
     #[derive(Deserialize)]
     struct Reply {
         orgs: Vec<AuthOrg>,
@@ -238,6 +247,9 @@ pub async fn refresh(
     refresh_token: &str,
     organization_id: Option<&str>,
 ) -> Result<AuthTokens> {
+    if !cfg!(feature = "upstream-workos") {
+        return Err(ClientError::Auth("Log in with OpenAgents.".into()));
+    }
     let url = endpoint(edge_url, "auth/refresh");
     let mut body = serde_json::json!({ "refreshToken": refresh_token });
     if let Some(org) = organization_id {
@@ -295,6 +307,11 @@ fn base64url_decode(input: &str) -> Option<Vec<u8>> {
 }
 
 enum Mode {
+    Disabled,
+    OpenAgents {
+        bearer: String,
+        expires_at: Option<u64>,
+    },
     Demo,
     Dev {
         bearer: String,
@@ -323,6 +340,13 @@ impl TokenProvider {
     ) -> Self {
         use crate::config::Credentials;
         let mode = match credentials {
+            Credentials::OpenAgents {
+                bearer, expires_at, ..
+            } => Mode::OpenAgents {
+                bearer: bearer.clone(),
+                expires_at: *expires_at,
+            },
+            Credentials::WorkOs { .. } if !cfg!(feature = "upstream-workos") => Mode::Disabled,
             Credentials::Demo(_) => Mode::Demo,
             Credentials::Dev { user_id, org_id } => Mode::Dev {
                 bearer: if org_id.is_empty() {
@@ -358,6 +382,21 @@ impl TokenProvider {
     /// rejects and the caller's backoff retries through here.
     pub(crate) async fn bearer(&self) -> Result<String> {
         match &self.mode {
+            Mode::Disabled => Err(ClientError::Auth("Log in with OpenAgents.".into())),
+            Mode::OpenAgents { bearer, expires_at } => {
+                if expires_at
+                    .is_some_and(|expiry| expiry <= chrono::Utc::now().timestamp().max(0) as u64)
+                {
+                    if !self.expired.swap(true, Ordering::AcqRel) {
+                        self.events.ordered(ClientEvent::AuthExpired {
+                            reason: "Log in again to continue.".into(),
+                        });
+                    }
+                    Err(ClientError::Auth("Log in again to continue.".into()))
+                } else {
+                    Ok(bearer.clone())
+                }
+            }
             Mode::Demo => Err(ClientError::Auth(
                 "demo mode has no edge credentials".into(),
             )),
@@ -452,11 +491,15 @@ mod tests {
     #[test]
     fn authorize_url_and_callback_round_trip() {
         let url = workos_authorize_url("s t&1");
-        assert!(
-            url.starts_with("https://api.workos.com/user_management/authorize?response_type=code")
-        );
-        assert!(url.contains("redirect_uri=coder-desktop%3A%2F%2Fcallback"));
-        assert!(url.contains("state=s%20t%261"));
+        if cfg!(feature = "upstream-workos") {
+            assert!(url.starts_with(
+                "https://api.workos.com/user_management/authorize?response_type=code"
+            ));
+            assert!(url.contains("redirect_uri=coder-desktop%3A%2F%2Fcallback"));
+            assert!(url.contains("state=s%20t%261"));
+        } else {
+            assert!(url.is_empty());
+        }
         assert_eq!(
             parse_auth_callback("coder-desktop://callback?code=abc&state=s%20t%261"),
             Some(AuthCallback::Code {
@@ -533,6 +576,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[cfg(feature = "upstream-workos")]
     async fn refresh_is_single_flight_and_reported() {
         let (edge, hits) =
             serve_http(200, r#"{"accessToken":"fresh-access","refreshToken":"r2"}"#).await;
@@ -555,6 +599,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[cfg(feature = "upstream-workos")]
     async fn rejected_refresh_expires_the_session_once() {
         let (edge, _hits) = serve_http(401, r#"{"error":"invalid_grant"}"#).await;
         let (tokens, events) = provider(&edge);
@@ -593,5 +638,63 @@ mod tests {
         assert!(jwt_expired(jwt, 1000 - EARLY_REFRESH_SECS + 1));
         assert!(!jwt_expired(jwt, 900));
         assert!(!jwt_expired("not-a-jwt", i64::MAX));
+    }
+}
+
+#[cfg(all(test, not(feature = "upstream-workos")))]
+mod openagents_tests {
+    use super::*;
+    #[tokio::test]
+    async fn openagents_bearer_is_not_refreshed_or_printed_and_obeys_expiry() {
+        let events = EventPump::new(Arc::new(crate::events::NullListener));
+        let credentials = crate::Credentials::OpenAgents {
+            account_id: "acct_fixture".into(),
+            bearer: "private-fixture-token".into(),
+            expires_at: Some(u64::MAX),
+        };
+        assert!(!format!("{credentials:?}").contains("private-fixture-token"));
+        let provider = TokenProvider::new(&credentials, "http://127.0.0.1:1", events.clone());
+        assert_eq!(provider.bearer().await.unwrap(), "private-fixture-token");
+        let credentials = crate::Credentials::OpenAgents {
+            account_id: "acct_fixture".into(),
+            bearer: "expired-fixture-token".into(),
+            expires_at: Some(1),
+        };
+        assert!(matches!(
+            TokenProvider::new(&credentials, "http://127.0.0.1:1", events)
+                .bearer()
+                .await,
+            Err(ClientError::Auth(_))
+        ));
+    }
+    #[tokio::test]
+    async fn inherited_auth_entry_points_are_disabled() {
+        assert!(workos_authorize_url("fixture").is_empty());
+        assert!(
+            exchange_code("http://127.0.0.1:1", "fixture")
+                .await
+                .is_err()
+        );
+        assert!(list_orgs("http://127.0.0.1:1", "fixture").await.is_err());
+        assert!(
+            refresh("http://127.0.0.1:1", "fixture", None)
+                .await
+                .is_err()
+        );
+        let events = EventPump::new(Arc::new(crate::events::NullListener));
+        let credentials = crate::Credentials::WorkOs {
+            user_id: "u".into(),
+            org_id: "o".into(),
+            tokens: AuthTokens {
+                access_token: "fixture".into(),
+                refresh_token: "fixture".into(),
+            },
+        };
+        assert!(
+            TokenProvider::new(&credentials, "http://127.0.0.1:1", events)
+                .bearer()
+                .await
+                .is_err()
+        );
     }
 }

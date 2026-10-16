@@ -6,12 +6,12 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
-openagents = { package = "openagents-sdk", git = "https://github.com/OpenAgentsInc/openagents.git", rev = "4b5b70d72b1f1d142170417c283937876dc5734d" }
+openagents = { package = "openagents-sdk", git = "https://github.com/OpenAgentsInc/openagents.git", rev = "5a3d1c14f58888c08d0e7a0ede0322fe7585b20b" }
 tokio.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 
-[target.'cfg(target_os = "macos")'.dependencies]
+[target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
 security-framework = "3"
 
 [dev-dependencies]

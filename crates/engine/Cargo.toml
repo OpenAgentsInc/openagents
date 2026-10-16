@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
+[features]
+# Upstream compatibility only; never enabled by our application builds.
+upstream-workos = []
+
 [dependencies]
 coder-brand.workspace = true
 zeron-preview.workspace = true
