@@ -4,8 +4,8 @@
 use serde_json::Value;
 
 use nostr::x402::{
-    PaymentError, PaymentRequirements, SupportedProfiles, ValidatedPaymentProof,
-    validate_paid_proof,
+    NetworkPolicy, PaymentError, PaymentRequirements, SupportedProfiles, ValidatedPaymentProof,
+    validate_paid_proof_with_network_policy,
 };
 
 use crate::replay::{ReplayEntry, ReplayError, ReplayStore};
@@ -118,17 +118,37 @@ pub fn verify(
     skew: u64,
     profiles: SupportedProfiles,
 ) -> Result<ValidatedPaymentProof, &'static str> {
+    verify_with_network_policy(
+        requirements,
+        payload,
+        now,
+        skew,
+        profiles,
+        NetworkPolicy::Standard,
+    )
+}
+
+/// Verify with explicit network admission; default callers remain standard-only.
+pub fn verify_with_network_policy(
+    requirements: &PaymentRequirements,
+    payload: &PaymentPayload,
+    now: u64,
+    skew: u64,
+    profiles: SupportedProfiles,
+    networks: NetworkPolicy,
+) -> Result<ValidatedPaymentProof, &'static str> {
     if let Some(reason) = field_mismatch(requirements, &payload.accepted) {
         return Err(reason);
     }
     let preimage = preimage_reason(payload.preimage())?;
-    validate_paid_proof(
+    validate_paid_proof_with_network_policy(
         requirements,
         &payload.accepted,
         preimage,
         now,
         skew,
         profiles,
+        networks,
     )
     .map_err(error_reason)
 }
@@ -152,7 +172,30 @@ pub fn settle<S: ReplayStore + ?Sized>(
     skew: u64,
     profiles: SupportedProfiles,
 ) -> Result<Admission, SettlementResponse> {
-    let proof = verify(requirements, payload, now, skew, profiles)
+    settle_with_network_policy(
+        store,
+        requirements,
+        payload,
+        purchase,
+        now,
+        skew,
+        profiles,
+        NetworkPolicy::Standard,
+    )
+}
+
+/// Consume through the same replay store under an explicit network policy.
+pub fn settle_with_network_policy<S: ReplayStore + ?Sized>(
+    store: &S,
+    requirements: &PaymentRequirements,
+    payload: &PaymentPayload,
+    purchase: &str,
+    now: u64,
+    skew: u64,
+    profiles: SupportedProfiles,
+    networks: NetworkPolicy,
+) -> Result<Admission, SettlementResponse> {
+    let proof = verify_with_network_policy(requirements, payload, now, skew, profiles, networks)
         .map_err(|reason| SettlementResponse::failed(&requirements.network, reason))?;
     let entry = ReplayEntry {
         key: proof.consumption_key.clone(),
@@ -209,6 +252,7 @@ pub struct Facilitator<S: ReplayStore> {
     skew: u64,
     profiles: SupportedProfiles,
     recover_until: Option<u64>,
+    networks: NetworkPolicy,
 }
 
 impl<S: ReplayStore> Facilitator<S> {
@@ -223,6 +267,7 @@ impl<S: ReplayStore> Facilitator<S> {
             skew,
             profiles,
             recover_until: None,
+            networks: NetworkPolicy::Standard,
         }
     }
 
@@ -233,7 +278,18 @@ impl<S: ReplayStore> Facilitator<S> {
             skew,
             profiles: HTTP_ONLY,
             recover_until: Some(recover_until),
+            networks: NetworkPolicy::Standard,
         }
+    }
+
+    /// Select network admission explicitly for this facilitator instance.
+    pub fn with_network_policy(mut self, networks: NetworkPolicy) -> Self {
+        self.networks = networks;
+        self
+    }
+
+    pub fn network_policy(&self) -> NetworkPolicy {
+        self.networks
     }
 
     pub(crate) fn release_unexecuted(&self, key: &str) -> Result<(), ReplayError> {
@@ -258,8 +314,15 @@ impl<S: ReplayStore> Facilitator<S> {
         now: u64,
     ) -> Result<Admission, SettlementResponse> {
         if let Some(until) = self.recover_until {
-            let proof = verify(requirements, payload, now, self.skew, self.profiles)
-                .map_err(|reason| SettlementResponse::failed(&requirements.network, reason))?;
+            let proof = verify_with_network_policy(
+                requirements,
+                payload,
+                now,
+                self.skew,
+                self.profiles,
+                self.networks,
+            )
+            .map_err(|reason| SettlementResponse::failed(&requirements.network, reason))?;
             let entry = ReplayEntry {
                 key: proof.consumption_key.clone(),
                 network: proof.network.clone(),
@@ -308,7 +371,7 @@ impl<S: ReplayStore> Facilitator<S> {
             };
             return Ok(Admission { proof, response });
         }
-        settle(
+        settle_with_network_policy(
             &self.store,
             requirements,
             payload,
@@ -316,6 +379,7 @@ impl<S: ReplayStore> Facilitator<S> {
             now,
             self.skew,
             self.profiles,
+            self.networks,
         )
     }
 }

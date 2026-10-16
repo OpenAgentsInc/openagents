@@ -232,12 +232,32 @@ fn opaque_for(http_method: &str, url: &str) -> String {
 impl Challenge {
     /// Issue a challenge for `terms`, bound with `key`.
     pub fn issue(key: &[u8], terms: &Terms<'_>) -> Self {
+        Self::issue_for_network(key, terms, network_name(terms.network))
+    }
+
+    /// Issue under explicit network admission, including signet-only research.
+    pub fn issue_with_network_policy(
+        key: &[u8],
+        terms: &Terms<'_>,
+        networks: nostr::x402::NetworkPolicy,
+    ) -> Result<Self, &'static str> {
+        use nostr::x402::{MAINNET, NetworkPolicy, SIGNET, TESTNET};
+        let network = match (networks, terms.network) {
+            (NetworkPolicy::Standard, MAINNET) => "mainnet",
+            (NetworkPolicy::Standard, TESTNET) => "testnet",
+            (NetworkPolicy::SignetResearch, SIGNET) => "signet",
+            _ => return Err("unsupported_network"),
+        };
+        Ok(Self::issue_for_network(key, terms, network))
+    }
+
+    fn issue_for_network(key: &[u8], terms: &Terms<'_>, network: &str) -> Self {
         let request = json!({
             "amount": terms.amount_sats.to_string(),
             "currency": "sat",
             "methodDetails": {
                 "invoice": terms.invoice,
-                "network": network_name(terms.network),
+                "network": network,
                 "paymentHash": terms.payment_hash,
             },
         });

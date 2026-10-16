@@ -14,7 +14,7 @@ use secp256k1::{
 };
 use sha2::{Digest, Sha256};
 
-use super::PaymentError;
+use super::{NetworkPolicy, PaymentError};
 
 const CHARSET: &[u8; 32] = b"qpzry9x8gf2tvdw0s3jn54khce6mua7l";
 const GENERATOR: [u32; 5] = [0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3];
@@ -64,7 +64,15 @@ impl Invoice {
 /// and supported mandatory invoice features. It accepts unknown odd features
 /// and unknown optional tagged fields as BOLT11 requires. It performs no payment.
 pub fn decode_invoice(text: &str) -> Result<Invoice, PaymentError> {
-    let (invoice, _) = decode(text, true)?;
+    decode_invoice_with_network_policy(text, NetworkPolicy::Standard)
+}
+
+/// Decode with an explicit network policy; this alone does not validate payment terms.
+pub fn decode_invoice_with_network_policy(
+    text: &str,
+    networks: NetworkPolicy,
+) -> Result<Invoice, PaymentError> {
+    let (invoice, _) = decode(text, true, networks)?;
     Ok(invoice)
 }
 
@@ -96,7 +104,7 @@ impl PaymentRequest {
 /// networks, allowing an inline description (at most 639 bytes of UTF-8) in
 /// place of a description hash. It performs no payment.
 pub fn decode_payment_request(text: &str) -> Result<PaymentRequest, PaymentError> {
-    let (invoice, description) = decode(text, false)?;
+    let (invoice, description) = decode(text, false, NetworkPolicy::Standard)?;
     Ok(PaymentRequest {
         currency: invoice.currency,
         amount_msat: invoice.amount_msat,
@@ -108,9 +116,13 @@ pub fn decode_payment_request(text: &str) -> Result<PaymentRequest, PaymentError
     })
 }
 
-fn decode(text: &str, x402: bool) -> Result<(Invoice, Option<String>), PaymentError> {
+fn decode(
+    text: &str,
+    x402: bool,
+    networks: NetworkPolicy,
+) -> Result<(Invoice, Option<String>), PaymentError> {
     let (hrp, words) = decode_bech32(text)?;
-    let (currency, amount_msat) = amount(&hrp)?;
+    let (currency, amount_msat) = amount(&hrp, networks)?;
     if words.len() < 7 + 104 {
         return Err(PaymentError::InvoiceDecode);
     }
@@ -271,13 +283,13 @@ fn integer(words: &[u8], minimal: bool) -> Result<u64, PaymentError> {
     }
     Ok(value)
 }
-fn amount(hrp: &str) -> Result<(String, u64), PaymentError> {
+fn amount(hrp: &str, networks: NetworkPolicy) -> Result<(String, u64), PaymentError> {
     let value = hrp.strip_prefix("ln").ok_or(PaymentError::InvoiceDecode)?;
     let first_digit = value
         .find(|ch: char| ch.is_ascii_digit())
         .ok_or(PaymentError::InvoiceAmount)?;
     let currency = &value[..first_digit];
-    if !matches!(currency, "bc" | "tb") {
+    if !networks.accepts_currency(currency) {
         return Err(PaymentError::InvoiceCurrency);
     }
     let value = &value[first_digit..];

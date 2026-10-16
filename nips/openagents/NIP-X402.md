@@ -106,6 +106,27 @@ not the enclosed x402 role, through NIP-11.
 
 ## Lightning wire rules
 
+### Signet research extension
+
+The separately selected `openagents:signet:1` research extension uses network
+`lnbtc:00000008819873e925422c1ff0f99f7c` and BOLT11 currency `tbs` (`lntbs`).
+It is not part of the pinned upstream Lightning method or this document's
+standard v1 network set. Both the payer and facilitator MUST explicitly
+select a signet-only network policy and require
+`extra.researchProfile: "openagents:signet:1"`. That policy MUST refuse
+mainnet, testnet, regtest, absent or changed markers, and invoices on another
+network. Standard policy MUST continue to refuse signet and this marker.
+Enabling a build feature MUST NOT change the default network policy.
+
+All other wire, invoice, request-binding, spending, proof, replay, and
+execution rules remain mandatory. The server reconstructs the marker from
+its own selected policy. It is bound like every other non-invoice extra
+field. This extension grants no mainnet authority or commercial offer.
+Signet research services MUST NOT advertise standard upstream network
+interoperability. See #11861 for live qualification.
+
+### Standard network and shared payment rules
+
 The upstream Lightning validation is mandatory for all three roles:
 
 - Use x402 version `2`, scheme `exact`, asset `BTC`, method `bolt11`, and

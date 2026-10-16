@@ -66,6 +66,12 @@ impl<S: ReplayStore> PaidTools<S> {
             json!({"server": self.server, "metadata": BOUND_METADATA}),
         );
         extra.insert("invoice".into(), json!(invoice));
+        if self.facilitator.network_policy() == nostr::x402::NetworkPolicy::SignetResearch {
+            extra.insert(
+                "researchProfile".into(),
+                json!(nostr::x402::SIGNET_RESEARCH_PROFILE),
+            );
+        }
         PaymentRequirements {
             scheme: "exact".into(),
             network: self.network.into(),

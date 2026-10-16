@@ -388,18 +388,18 @@ fn native_profile_requires_explicit_support_and_empty_parameters() {
         .insert("requestBindingProfile".into(), json!("nostr:openagents:1"));
     req.extra.insert("requestBindingParams".into(), json!({}));
     assert_eq!(
-        validate_requirements(&req, SupportedProfiles::default()),
+        validate_requirements(&req, SupportedProfiles::default(), NetworkPolicy::Standard),
         Err(PaymentError::Profile)
     );
     let profiles = SupportedProfiles {
         native: true,
         ..SupportedProfiles::default()
     };
-    validate_requirements(&req, profiles).unwrap();
+    validate_requirements(&req, profiles, NetworkPolicy::Standard).unwrap();
     req.extra
         .insert("requestBindingParams".into(), json!({"headers":[]}));
     assert_eq!(
-        validate_requirements(&req, profiles),
+        validate_requirements(&req, profiles, NetworkPolicy::Standard),
         Err(PaymentError::Profile)
     );
 }
@@ -460,4 +460,115 @@ fn raw_wire_helpers_reject_duplicate_fields_before_maps_lose_them() {
         mcp_binding_from_bytes("urn:example:tool", br#"{"name":"x"}"#, &[]).unwrap(),
         mcp_binding("urn:example:tool", &json!({"name":"x"}), &[]).unwrap()
     );
+}
+
+#[test]
+fn signet_research_requires_explicit_matching_policy_and_marker() {
+    let mut req = requirements();
+    req.network = SIGNET.into();
+    req.pay_to = hex(&test_invoice::payee());
+    req.extra
+        .insert("researchProfile".into(), json!(SIGNET_RESEARCH_PROFILE));
+    req.extra.insert(
+        "invoice".into(),
+        test_invoice::signed(
+            "lntbs250n",
+            test_invoice::fields(hex_bytes::<32>(HASH).unwrap()),
+            false,
+            false,
+        )
+        .into(),
+    );
+    let policy = NetworkPolicy::SignetResearch;
+    let profiles = SupportedProfiles::default();
+    let now = 1_700_000_000;
+    let check = |req: &PaymentRequirements| {
+        validate_challenge_with_network_policy(req, HASH, now, 60, profiles, policy)
+    };
+    assert_eq!(check(&req).unwrap().currency(), "tbs");
+    assert!(matches!(
+        validate_challenge(&req, HASH, now, 60, profiles),
+        Err(PaymentError::Network)
+    ));
+    assert!(matches!(
+        decode_invoice(req.extra["invoice"].as_str().unwrap()),
+        Err(PaymentError::InvoiceCurrency)
+    ));
+    let proof = validate_paid_proof_with_network_policy(
+        &req,
+        &req,
+        &hex(&[7; 32]),
+        now,
+        60,
+        profiles,
+        policy,
+    )
+    .unwrap();
+    assert!(proof.consumption_key.starts_with(&format!("{SIGNET}:")));
+    assert_eq!(
+        validate_paid_proof(&req, &req, &hex(&[7; 32]), now, 60, profiles),
+        Err(PaymentError::Network)
+    );
+    for network in [MAINNET, TESTNET, "lnbtc:regtest"] {
+        let mut other = req.clone();
+        other.network = network.into();
+        assert!(matches!(check(&other), Err(PaymentError::Network)));
+    }
+    for marker in [None, Some(json!("changed")), Some(json!(true))] {
+        let mut other = req.clone();
+        other.extra.remove("researchProfile");
+        if let Some(marker) = marker {
+            other.extra.insert("researchProfile".into(), marker);
+        }
+        assert!(matches!(check(&other), Err(PaymentError::Profile)));
+        assert!(
+            validate_paid_proof_with_network_policy(
+                &other,
+                &req,
+                &hex(&[7; 32]),
+                now,
+                60,
+                profiles,
+                policy
+            )
+            .is_err()
+        );
+    }
+    for hrp in ["lnbc250n", "lntb250n", "lnbcrt250n"] {
+        let mut other = req.clone();
+        other.extra.insert(
+            "invoice".into(),
+            test_invoice::signed(
+                hrp,
+                test_invoice::fields(hex_bytes::<32>(HASH).unwrap()),
+                false,
+                false,
+            )
+            .into(),
+        );
+        assert!(matches!(check(&other), Err(PaymentError::InvoiceCurrency)));
+    }
+    let mut standard = requirements();
+    standard
+        .extra
+        .insert("researchProfile".into(), json!(SIGNET_RESEARCH_PROFILE));
+    assert!(matches!(
+        validate_challenge(&standard, HASH, now, 60, profiles),
+        Err(PaymentError::Profile)
+    ));
+    let mut changed = req.clone();
+    changed.amount = "25001".into();
+    assert!(matches!(check(&changed), Err(PaymentError::InvoiceAmount)));
+    assert!(matches!(
+        validate_paid_proof_with_network_policy(
+            &req,
+            &req,
+            &hex(&[8; 32]),
+            now,
+            60,
+            profiles,
+            policy
+        ),
+        Err(PaymentError::PreimageHash)
+    ));
 }

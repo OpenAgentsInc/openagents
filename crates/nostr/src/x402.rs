@@ -9,7 +9,10 @@
 mod invoice;
 #[cfg(any(test, feature = "test-invoice"))]
 pub use invoice::test_invoice;
-pub use invoice::{Invoice, PaymentRequest, decode_invoice, decode_payment_request};
+pub use invoice::{
+    Invoice, PaymentRequest, decode_invoice, decode_invoice_with_network_policy,
+    decode_payment_request,
+};
 
 use secp256k1::PublicKey;
 use serde::{Deserialize, Serialize};
@@ -21,6 +24,34 @@ use crate::read_state_snapshot::hex_bytes;
 pub const MAINNET: &str = "lnbtc:000000000019d6689c085ae165831e93";
 pub const TESTNET: &str = "lnbtc:000000000933ea01ad0ee984209779ba";
 pub const DEFAULT_CLOCK_SKEW: u64 = 60;
+/// Research-only identifier; excluded from the pinned upstream method.
+pub const SIGNET: &str = "lnbtc:00000008819873e925422c1ff0f99f7c";
+pub const SIGNET_RESEARCH_PROFILE: &str = "openagents:signet:1";
+
+/// Network admission is a caller choice, independent of transport profiles.
+/// The research policy admits only signet; it never broadens standard policy.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum NetworkPolicy {
+    #[default]
+    Standard,
+    SignetResearch,
+}
+impl NetworkPolicy {
+    pub(super) fn accepts_currency(self, currency: &str) -> bool {
+        match self {
+            Self::Standard => matches!(currency, "bc" | "tb"),
+            Self::SignetResearch => currency == "tbs",
+        }
+    }
+    fn currency(self, network: &str) -> Result<&'static str, PaymentError> {
+        match (self, network) {
+            (Self::Standard, MAINNET) => Ok("bc"),
+            (Self::Standard, TESTNET) => Ok("tb"),
+            (Self::SignetResearch, SIGNET) => Ok("tbs"),
+            _ => Err(PaymentError::Network),
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PaymentError {
@@ -114,6 +145,27 @@ pub fn validate_paid_proof(
     skew: u64,
     profiles: SupportedProfiles,
 ) -> Result<ValidatedPaymentProof, PaymentError> {
+    validate_paid_proof_with_network_policy(
+        requirements,
+        accepted,
+        preimage,
+        settlement_time,
+        skew,
+        profiles,
+        NetworkPolicy::Standard,
+    )
+}
+
+/// Verify a proof under an explicitly selected network policy.
+pub fn validate_paid_proof_with_network_policy(
+    requirements: &PaymentRequirements,
+    accepted: &PaymentRequirements,
+    preimage: &str,
+    settlement_time: u64,
+    skew: u64,
+    profiles: SupportedProfiles,
+    networks: NetworkPolicy,
+) -> Result<ValidatedPaymentProof, PaymentError> {
     if requirements.scheme != accepted.scheme
         || requirements.network != accepted.network
         || requirements.amount != accepted.amount
@@ -123,8 +175,8 @@ pub fn validate_paid_proof(
     {
         return Err(PaymentError::Terms);
     }
-    validate_requirements(requirements, profiles)?;
-    validate_requirements(accepted, profiles)?;
+    validate_requirements(requirements, profiles, networks)?;
+    validate_requirements(accepted, profiles, networks)?;
     for (key, value) in &requirements.extra {
         if matches!(key.as_str(), "invoice" | "assetTransferMethod") {
             continue;
@@ -134,8 +186,8 @@ pub fn validate_paid_proof(
             return Err(PaymentError::Terms);
         }
     }
-    let invoice = decode_invoice(extra_string(accepted, "invoice")?)?;
-    validate_invoice_terms(&invoice, requirements, settlement_time, skew)?;
+    let invoice = decode_invoice_with_network_policy(extra_string(accepted, "invoice")?, networks)?;
+    validate_invoice_terms(&invoice, requirements, settlement_time, skew, networks)?;
     let preimage = hex_bytes::<32>(preimage).map_err(|_| PaymentError::Preimage)?;
     if <[u8; 32]>::from(Sha256::digest(preimage)) != invoice.payment_hash {
         return Err(PaymentError::PreimageHash);
@@ -169,13 +221,33 @@ pub fn validate_challenge(
     skew: u64,
     profiles: SupportedProfiles,
 ) -> Result<Invoice, PaymentError> {
-    validate_requirements(requirements, profiles)?;
+    validate_challenge_with_network_policy(
+        requirements,
+        expected_request_hash,
+        now,
+        skew,
+        profiles,
+        NetworkPolicy::Standard,
+    )
+}
+
+/// Validate before paying under an explicitly selected network policy.
+pub fn validate_challenge_with_network_policy(
+    requirements: &PaymentRequirements,
+    expected_request_hash: &str,
+    now: u64,
+    skew: u64,
+    profiles: SupportedProfiles,
+    networks: NetworkPolicy,
+) -> Result<Invoice, PaymentError> {
+    validate_requirements(requirements, profiles, networks)?;
     hex_bytes::<32>(expected_request_hash).map_err(|_| PaymentError::Binding)?;
     if extra_string(requirements, "requestHash")? != expected_request_hash {
         return Err(PaymentError::Binding);
     }
-    let invoice = decode_invoice(extra_string(requirements, "invoice")?)?;
-    validate_invoice_terms(&invoice, requirements, now, skew)?;
+    let invoice =
+        decode_invoice_with_network_policy(extra_string(requirements, "invoice")?, networks)?;
+    validate_invoice_terms(&invoice, requirements, now, skew, networks)?;
     if now
         >= invoice
             .created_at
@@ -190,11 +262,24 @@ pub fn validate_challenge(
 fn validate_requirements(
     value: &PaymentRequirements,
     profiles: SupportedProfiles,
+    networks: NetworkPolicy,
 ) -> Result<(), PaymentError> {
     if value.scheme != "exact" || value.asset != "BTC" || value.max_timeout_seconds == 0 {
         return Err(PaymentError::Terms);
     }
-    currency(&value.network)?;
+    networks.currency(&value.network)?;
+    match networks {
+        NetworkPolicy::Standard if value.extra.contains_key("researchProfile") => {
+            return Err(PaymentError::Profile);
+        }
+        NetworkPolicy::SignetResearch
+            if value.extra.get("researchProfile").and_then(Value::as_str)
+                != Some(SIGNET_RESEARCH_PROFILE) =>
+        {
+            return Err(PaymentError::Profile);
+        }
+        _ => {}
+    }
     decimal(&value.amount)?;
     let payee = hex_bytes::<33>(&value.pay_to).map_err(|_| PaymentError::Payee)?;
     if !matches!(payee[0], 2 | 3) || PublicKey::from_slice(&payee).is_err() {
@@ -229,6 +314,7 @@ fn validate_invoice_terms(
     requirements: &PaymentRequirements,
     now: u64,
     skew: u64,
+    networks: NetworkPolicy,
 ) -> Result<(), PaymentError> {
     if invoice.description_hash
         != hex_bytes::<32>(extra_string(requirements, "requestHash")?)
@@ -241,7 +327,7 @@ fn validate_invoice_terms(
     {
         return Err(PaymentError::InvoicePayee);
     }
-    if invoice.currency != currency(&requirements.network)? {
+    if invoice.currency != networks.currency(&requirements.network)? {
         return Err(PaymentError::InvoiceCurrency);
     }
     if invoice.amount_msat != decimal(&requirements.amount)? {
@@ -269,13 +355,6 @@ fn extra_string<'a>(
         } else {
             PaymentError::Terms
         })
-}
-fn currency(network: &str) -> Result<&'static str, PaymentError> {
-    match network {
-        MAINNET => Ok("bc"),
-        TESTNET => Ok("tb"),
-        _ => Err(PaymentError::Network),
-    }
 }
 fn decimal(value: &str) -> Result<u64, PaymentError> {
     if value.is_empty() || value.len() > 20 || !value.bytes().all(|byte| byte.is_ascii_digit()) {
