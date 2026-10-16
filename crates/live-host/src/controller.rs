@@ -21,6 +21,8 @@ use std::{
     path::PathBuf,
 };
 use workspace_host::artifact::{Artifacts, token};
+#[cfg(unix)]
+mod frames;
 mod input;
 mod readers;
 mod retention;
@@ -117,6 +119,8 @@ struct State {
     known: BTreeMap<String, BTreeSet<String>>,
     #[serde(default)]
     media_retention: BTreeMap<String, (Value, u64)>,
+    #[serde(default)]
+    media_heads: BTreeMap<String, u64>,
 }
 
 /// A signed request, its exact artifacts, and further signed declarations
@@ -145,6 +149,7 @@ pub struct Controller {
     adapters: RefCell<Adapters>,
     delivery: RefCell<BTreeMap<(String, String), String>>,
     reader: RefCell<Option<readers::ReadScope>>,
+    sink: RefCell<Option<Box<dyn crate::delivery::Sink>>>,
     pub(crate) capture_clocks: RefCell<BTreeMap<String, std::time::Instant>>,
 }
 
@@ -227,6 +232,7 @@ impl Controller {
             adapters: RefCell::new(adapters),
             delivery: RefCell::new(BTreeMap::new()),
             reader: RefCell::new(None),
+            sink: RefCell::new(None),
             capture_clocks: RefCell::new(BTreeMap::new()),
         };
         controller.state()?;

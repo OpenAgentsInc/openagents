@@ -2590,3 +2590,16 @@ and child reservations. Multiple independent coordinators and direct child
 COORD-host integration remain outside this profile and need their own
 cross-contract qualification (#11749). The frozen host is unchanged. See
 [the lifecycle guide](crates/sov-lifecycle/README.md).
+
+
+## Qualify native LIVE text profiles before production use (#11738)
+
+The standalone `live-host` has isolated signed-resident, real Git-document,
+text mailbox, crash/retry, consent, and expiry tests. Select an explicit Git
+root/branch/document and owner, a private mailbox recipient, finite plans,
+participant consent, and exact input approval grants. Qualify the intended
+host and consumer's interruption, disclosure, and expiry behavior before using
+real private data. No host was deployed by these changes. The tests establish
+native text support; audio/video, public activity discovery, and physical
+capture or control are unsupported by these profiles. Do not enable them from
+text-fixture evidence. See [the runtime guide](crates/live-host/README.md).

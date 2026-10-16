@@ -3,6 +3,7 @@
 //! capture transport alone never bypasses admission.
 pub mod cli;
 pub mod controller;
+pub mod delivery;
 pub mod document;
 pub mod media;
 #[cfg(unix)]

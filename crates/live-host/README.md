@@ -131,8 +131,8 @@ and deadline. Its native anchor comes from the same read as its bytes. The
 legacy unchecked capture method is never a fallback.
 
 Tests use throwaway keys, isolated Git repositories, local state, and synthetic
-media; no money moves. Production audio/video transports, platform capture
-permission, and physical device bindings are separate supported-profile work.
+media; no money moves. Audio/video transports, platform capture permission, public activity discovery,
+and physical device bindings are outside the native text profiles.
 
 ## Resident host and private client
 
@@ -168,3 +168,60 @@ A repeated policy request returns its original rules without changing their
 generation. Changed bytes under the same identity refuse. Credential plaintext
 never enters artifacts, state, retry receipts, or logs. The one-shot operator
 APIs remain useful for inspection; ordinary client calls go to the resident.
+
+## Native text frame delivery
+
+Add `--mailbox DIR` to the resident command to register a private text mailbox.
+A separate consumer can read the delivered UTF-8 files in that directory. This
+is actual bounded text delivery, not speech recognition or audio playback.
+`openagents.livehost-media.v1` inspection returns the installed binding,
+recipient, and CAP operation and their exact bytes to an authorized owner. A
+capture track must name that recipient and processing operation. A playback
+track must name that recipient. Both use `media: "text"`, current bounded
+retention, and source recording consent. Registration alone grants no floor or
+session rights.
+
+`Operation::Frame { event }` carries a signed private event with this body:
+
+```json
+{
+  "v": "openagents.livehost-frame.v1",
+  "requires": [],
+  "session": "SESSION_ID",
+  "plan": {"digest": "EXACT_PLAN_DIGEST", "size": 0, "media_type": "application/json"},
+  "track": "TRACK_ID",
+  "epoch": 0,
+  "nonce": "FLOOR_NONCE",
+  "sequence": 0,
+  "token": "PARTICIPANT_CREDENTIAL",
+  "bytes": [104, 105],
+  "direction": "input"
+}
+```
+
+Use the actual plan ArtifactRef. `direction` is `input` or `playback`; the
+original event signer must hold its own current credential and corresponding
+publish or playback right. The host checks the session, plan, participant,
+track, recipient, processing, floor, epoch, retention, and consent on every
+frame. Frames are at most 8,192 bytes. Sequence starts at zero for each floor
+and direction; gaps refuse explicitly. A changed frame under the same sequence
+refuses. Exact duplicates return the earlier receipt while current rights hold.
+
+The controller saves dispatch and the sequence advance before delivery. A lost
+acknowledgment or interrupted write stays unknown. Successful receipts include
+`output: {"delivered":true}`; unknown or refused delivery has no successful
+output. RUN records contain frame identities and outcomes. Tokens and frame
+plaintext never enter controller artifacts, state, or logs. The mailbox's
+explicitly admitted copy is bounded to 1 MiB and 4,096 files and expires even
+when a write was interrupted: expiry is part of its filename. One writer holds
+the mailbox, and the native write checks its absolute floor/retention deadline.
+Withdrawing or replacing a recipient clears its retained copies before releasing
+it; failed cleanup refuses the replacement.
+
+To observe a prior attempt after restart or revocation, inspect
+`openagents.livehost-frame-status.v1` with `session` and `frame` (the original
+frame ArtifactRef). Only its original participant or the session's current
+owner can read the receipt. This observes the attempt without replaying it or
+requiring the old transport credential. The resident clears expired mailbox
+copies while idle. The older `forward` and `play` library methods remain
+admission checks; actual native delivery uses `frame`.

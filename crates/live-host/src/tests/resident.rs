@@ -5,7 +5,7 @@ use std::{
     os::unix::{fs::PermissionsExt, net::UnixStream},
     time::{Duration, Instant},
 };
-fn roundtrip(
+pub(super) fn roundtrip(
     server: &mut Server<'_>,
     socket: &std::path::Path,
     request: Request,

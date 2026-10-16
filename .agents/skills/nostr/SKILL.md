@@ -140,7 +140,8 @@ sealed-receipt checks (`att-release`); VAULT adds `vault-sealed` and
 `vault-operator`. The role-by-role matrix with exact tests is
 `docs/research/dhruv/conformance-matrix.md`, checked by
 `cargo test -p dhruv-conformance`. Other COORD/WORK effectful adapters, wider ENV/AUTO/SESS
-roles, production LIVE media transports (the `live-host` controller exists), and
+roles, broader LIVE audio/video and physical device profiles (native text
+mailbox transport and Git-document capture/input run in `live-host`), and
 POL/EXT lifecycle
 additions remain unfinished. The index, glossary, and older
 introductions are not substitutes for current runtime evidence. The remaining

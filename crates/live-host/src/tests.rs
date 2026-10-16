@@ -1338,3 +1338,7 @@ fn media_expiry_removes_bytes_after_restart_and_keeps_observation_evidence() {
     c.expire_media(fx.now + 4000).unwrap();
     assert!(c.store().get(&content).is_err());
 }
+
+#[cfg(unix)]
+#[path = "tests/frames.rs"]
+mod frames;

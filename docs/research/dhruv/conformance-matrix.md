@@ -74,6 +74,12 @@ These compose several owners in one process. Each is a separate test in
 | Media controller | `live-host` | `crates/live-host/src/tests.rs::participants_need_controller_admission_and_their_own_consent` | | Fixture |
 | Media stop | `live-host` | `crates/live-host/src/tests.rs::stop_with_an_unconfirmed_revocation_stays_unknown` | R, D | Fixture |
 | Replacement controller | `live-host` | `crates/live-host/src/tests.rs::replacement_plans_advance_the_epoch_and_fence_old_admissions` | C | Fixture |
+| Real text capture and approved source input | `live-host` | `crates/live-host/src/tests/document.rs::real_document_capture_and_approved_input_use_the_same_source_version` | C | Fixture |
+| Resident session and scoped private clients | `live-host` | `crates/live-host/src/tests/resident.rs::resident_owns_one_broker_and_serves_only_signed_scoped_reads` | R | Fixture |
+| Native text frame delivery | `live-host` | `crates/live-host/src/tests/frames.rs::real_text_delivery_enforces_signer_floor_sequence_epoch_and_private_retention` | R, D | Fixture |
+| Interrupted delivery | `live-host` | `crates/live-host/src/tests/frames.rs::crash_after_mailbox_delivery_retains_unknown_without_duplicate_writes` | I | Fixture |
+| Native write deadline | `live-host` | `crates/live-host/src/tests/frames.rs::native_mailbox_checks_expiry_at_the_actual_write_boundary` | D | Fixture |
+| Expired media | `live-host` | `crates/live-host/src/tests.rs::media_expiry_removes_bytes_after_restart_and_keeps_observation_evidence` | R | Fixture |
 
 ## Sovereign agents — SOV
 

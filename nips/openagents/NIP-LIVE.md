@@ -411,3 +411,13 @@ requests. Its private client and inspection bodies are documented in the
 They add no relay event kinds or media authority. The client verifies the exact
 request and attached bytes. Credential delivery is encrypted directly and
 single-use, and only the host key can replace input approval grants.
+
+The native text transport carries signed private frame envelopes through the
+resident and delivers them to an explicitly registered private mailbox. Each
+frame rechecks the original signer, credential, exact recipient/processing,
+plan, track, current floor and epoch, source consent, and byte/sequence limits.
+Dispatch and sequence advance are saved before delivery. Frame content and
+credentials are not retained by the controller; the admitted mailbox copy has
+bounded retention. An unknown attempt is observed through a read-only receipt,
+without redelivery. See the [text delivery profile](../../crates/live-host/README.md#native-text-frame-delivery).
+This profile implements neither audio/video transport nor physical playback.

@@ -2,7 +2,7 @@
 use super::*;
 use crate::resident::Reply;
 impl Controller {
-    fn reply(
+    pub(super) fn reply(
         &self,
         recipient: &str,
         body: Value,
@@ -28,6 +28,8 @@ impl Controller {
         let method = body["v"].as_str().unwrap_or_default();
         let fields: &[&str] = match method {
             "openagents.livehost-read.v1" => &["v", "requires", "artifacts"],
+            "openagents.livehost-media.v1" => &["v", "requires"],
+            "openagents.livehost-frame-status.v1" => &["v", "requires", "session", "frame"],
             "openagents.livehost-operation.v1" => &["v", "requires"],
             "openagents.livehost-credential.v1" => &["v", "requires", "session"],
             "openagents.livehost-input-policy.v1" => &["v", "requires", "request", "grants"],
@@ -69,6 +71,53 @@ impl Controller {
                     Ok(())
                 })?;
                 json!({"v":"openagents.livehost-read-result.v1","artifacts":refs})
+            }
+            "openagents.livehost-frame-status.v1" => {
+                let id = body["session"].as_str().ok_or("malformed: frame session")?;
+                let session = state
+                    .sessions
+                    .get(id)
+                    .ok_or("not_admitted: frame session")?;
+                let digest = digest_of(&body["frame"]);
+                let prefix = format!("frame:{id}:");
+                let owner_reader = session.owner == signer && owner;
+                let visible: Vec<_> = state
+                    .priors
+                    .iter()
+                    .filter(|(key, p)| {
+                        key.starts_with(&prefix)
+                            && (owner_reader || p.result["participant"] == signer)
+                    })
+                    .map(|(_, p)| p)
+                    .collect();
+                if !owner_reader && visible.is_empty() {
+                    return Err("not_admitted: frame receipt reader".into());
+                }
+                let prior = visible
+                    .into_iter()
+                    .find(|p| p.fingerprint == digest)
+                    .ok_or("content_unavailable: frame receipt")?;
+                json!({"v":"openagents.livehost-frame-status-result.v1","frame":body["frame"],"outcome":prior.result})
+            }
+            "openagents.livehost-media.v1" if owner => {
+                let installed = self.media_operation()?;
+                let definition = contracts::parse_strict_bounded(
+                    &self.store.get(&installed["operation"]["artifact"])?,
+                    1_048_576,
+                )
+                .map_err(contract)?;
+                let refs = vec![
+                    installed["operation"]["artifact"].clone(),
+                    installed["binding"].clone(),
+                    installed["destination"].clone(),
+                    definition["input"].clone(),
+                    definition["output"].clone(),
+                ];
+                for reference in &refs {
+                    self.remember(&mut state, &signer, reference)?;
+                    artifacts.insert(digest_of(reference).into(), self.store.get(reference)?);
+                }
+                json!({"v":"openagents.livehost-media-result.v1","media":installed,"artifacts":refs})
             }
             "openagents.livehost-operation.v1" if owner => {
                 let operation = self.device_operation()?;

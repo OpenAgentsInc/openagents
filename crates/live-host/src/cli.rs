@@ -14,7 +14,7 @@ pub const USAGE: &str = "usage: live-host ACTION --state DIR --key-file KEY [opt
   status   --session ID
   device-operation   describe the installed input operation
   input-policy --input GRANTS.json   replace exact input approval grants
-  serve --socket PATH (--document REGISTRATION.json | --synthetic)
+  serve --socket PATH (--document REGISTRATION.json | --synthetic) [--mailbox DIR]
   request --socket PATH --input REQUEST.json   send with the caller's signed event";
 
 fn read_secret(path: &Path) -> Result<secp256k1::SecretKey> {
@@ -101,6 +101,12 @@ pub fn run(args: Vec<String>) -> Result<Value> {
         adapters.device = Box::new(document);
     }
     let controller = Controller::open(root, secret, adapters)?;
+    #[cfg(unix)]
+    if args.iter().any(|a| a == "--mailbox") {
+        controller.install_sink(Box::new(crate::delivery::Mailbox::open(PathBuf::from(
+            need("--mailbox")?,
+        ))?))?;
+    }
     match args[0].as_str() {
         #[cfg(unix)]
         "serve" => {

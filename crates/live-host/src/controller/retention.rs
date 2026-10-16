@@ -96,6 +96,10 @@ impl Controller {
     /// Observation and transcript references remain; expired content is absent.
     pub fn expire_media(&self, now: u64) -> Result<()> {
         let _guard = self.store.lock()?;
-        self.expire_media_in(&mut self.state()?, now)
+        self.expire_media_in(&mut self.state()?, now)?;
+        if let Some(sink) = self.sink.borrow_mut().as_mut() {
+            sink.expire(now)?;
+        }
+        Ok(())
     }
 }

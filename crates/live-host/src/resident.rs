@@ -50,6 +50,7 @@ pub struct Reply {
 pub enum Operation {
     Submit { bundle: Bundle },
     Inspect { event: Event },
+    Frame { event: Event },
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -91,6 +92,7 @@ impl Request {
             match self.operation {
                 Operation::Submit { bundle } => host.serve(&bundle, now),
                 Operation::Inspect { event } => host.inspect(&event, now),
+                Operation::Frame { event } => host.frame(&event, now),
             }
         };
         Response {
@@ -358,6 +360,9 @@ pub fn read_reply(
     )
     .map_err(|e| e.to_string())?;
     let expected = match query["v"].as_str() {
+        Some("openagents.livehost-frame.v1") => "openagents.livehost-frame-result.v1",
+        Some("openagents.livehost-media.v1") => "openagents.livehost-media-result.v1",
+        Some("openagents.livehost-frame-status.v1") => "openagents.livehost-frame-status-result.v1",
         Some("openagents.livehost-read.v1") => "openagents.livehost-read-result.v1",
         Some("openagents.livehost-operation.v1") => "openagents.livehost-operation-result.v1",
         Some("openagents.livehost-credential.v1") => "openagents.livehost-credential-result.v1",
