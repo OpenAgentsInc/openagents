@@ -20,3 +20,11 @@ exact retained review, deliverable, execution, or RUN bytes under the original
 rights, with the authorizing review present. Changed source bytes, another
 recipient, cancellation, late repairs, and substituted context refuse. This
 validates context only; it neither grants execution nor restarts an attempt.
+
+Each participant holds one writer lock and binds its journal to the exact terms.
+Replay compares received records with the original signed plaintext and requires
+that foreign records retain their original event. A failed write stops further
+publication until the host reopens; a duplicate cannot publish an unsaved
+record. A missing initialized journal refuses to start a new history. Journals
+are bounded to 4,096 records and 16 MiB and are saved with private permissions,
+a synced file, an atomic rename, and a directory sync.

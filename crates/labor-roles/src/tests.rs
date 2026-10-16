@@ -424,6 +424,7 @@ fn rework_then_acceptance_records_an_obligation_that_only_funding_settles() {
             amount_msat: PRICE
         }
     );
+    drop(net.hosts.remove(&PROVIDER));
     let reopened =
         Host::open(&net.path(PROVIDER), secret(PROVIDER), t.clone(), NOW + 1600).unwrap();
     assert_eq!(
@@ -433,6 +434,7 @@ fn rework_then_acceptance_records_an_obligation_that_only_funding_settles() {
             amount_msat: PRICE
         }
     );
+    net.hosts.insert(PROVIDER, reopened);
     // Funding from the central receive adapter reaches the ledger once.
     let ledger_dir = tempfile::tempdir().unwrap();
     let mut l = ledger(ledger_dir.path());
@@ -455,11 +457,13 @@ fn rework_then_acceptance_records_an_obligation_that_only_funding_settles() {
         "a second payment for one obligation conflicts"
     );
     assert!(matches!(host.book.collection(), Collection::Funded { .. }));
+    drop(net.hosts.remove(&PROVIDER));
     let reopened = Host::open(&net.path(PROVIDER), secret(PROVIDER), t, NOW + 1800).unwrap();
     assert!(matches!(
         reopened.book.collection(),
         Collection::Funded { .. }
     ));
+    net.hosts.insert(PROVIDER, reopened);
     // No submission can follow acceptance.
     assert!(
         net.send(WORKER, submission(2, Some(&s1), Some(&r0), 100), NOW + 1900)
@@ -1224,4 +1228,77 @@ fn repair_context_keeps_original_entries_and_only_adds_exact_authorized_evidence
         )
         .is_err()
     );
+}
+
+#[test]
+fn journal_replay_requires_original_bytes_terms_and_one_writer() {
+    use serde_json::{Value, json};
+    let t = terms(1);
+    let mut net = Net::new(&t);
+    let record = submission(0, None, None, 10);
+    net.send(WORKER, record, NOW + 1).unwrap();
+    let path = net.path(BUYER);
+    assert!(
+        Host::open(&path, secret(BUYER), t.clone(), NOW + 2)
+            .unwrap_err()
+            .contains("writer")
+    );
+    drop(net.hosts.remove(&BUYER));
+    let journal = path.join("journal.json");
+    let original = std::fs::read(&journal).unwrap();
+    let mut changed: Value = serde_json::from_slice(&original).unwrap();
+    changed["lines"][0]["record"]["limitations"] = json!(format!("sha256:{}", "ff".repeat(32)));
+    std::fs::write(&journal, serde_json::to_vec(&changed).unwrap()).unwrap();
+    assert!(
+        Host::open(&path, secret(BUYER), t.clone(), NOW + 2)
+            .unwrap_err()
+            .contains("signed bytes")
+    );
+    changed = serde_json::from_slice(&original).unwrap();
+    changed["lines"][0]["event"] = Value::Null;
+    std::fs::write(&journal, serde_json::to_vec(&changed).unwrap()).unwrap();
+    assert!(
+        Host::open(&path, secret(BUYER), t.clone(), NOW + 2)
+            .unwrap_err()
+            .contains("no original")
+    );
+    std::fs::write(&journal, &original).unwrap();
+    let mut other = t.clone();
+    other.price_msat += 1;
+    assert!(
+        Host::open(&path, secret(BUYER), other, NOW + 2)
+            .unwrap_err()
+            .contains("terms")
+    );
+    let host = Host::open(&path, secret(BUYER), t.clone(), NOW + 2).unwrap();
+    assert_eq!(host.book.entries().len(), 1);
+    drop(host);
+    std::fs::remove_file(&journal).unwrap();
+    assert!(
+        Host::open(&path, secret(BUYER), t, NOW + 2)
+            .unwrap_err()
+            .contains("history cannot restart")
+    );
+}
+
+#[test]
+fn an_uncertain_journal_write_cannot_publish_a_nondurable_duplicate() {
+    let t = terms(0);
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("worker");
+    let mut host = Host::open(&path, secret(WORKER), t.clone(), NOW).unwrap();
+    std::fs::create_dir(path.join("journal.json.tmp")).unwrap();
+    let record = submission(0, None, None, 10);
+    assert!(host.issue(&record, NOW + 1, [4; 32]).is_err());
+    std::fs::remove_dir(path.join("journal.json.tmp")).unwrap();
+    assert!(
+        host.issue(&record, NOW + 1, [4; 32])
+            .unwrap_err()
+            .contains("reopening")
+    );
+    drop(host);
+    let mut host = Host::open(&path, secret(WORKER), t, NOW + 2).unwrap();
+    assert!(host.book.entries().is_empty());
+    assert!(!host.issue(&record, NOW + 2, [5; 32]).unwrap().is_empty());
+    assert_eq!(host.book.entries().len(), 1);
 }

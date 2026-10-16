@@ -239,6 +239,7 @@ fn an_interrupted_rework_order_is_accepted_funded_once_and_costed_honestly() {
         .issue(&s0_record, NOW + 100, [3; 32])
         .unwrap();
     drop(lost);
+    drop(net.hosts.remove(&WORKER));
     let reopened = Host::open(
         &net.dir.path().join(WORKER.to_string()),
         secret(WORKER),
