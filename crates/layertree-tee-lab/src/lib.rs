@@ -12,9 +12,12 @@
 //! * `unroll`: the pre-signed, delayed exit that needs no enclave.
 //! * `attest`: a fake report and the light client's check.
 //! * `light`: a member following the tree from chain data and records.
+//! * `events` (feature `events`): the `layertree.events.v1` run log.
 
 pub mod attest;
 pub mod enclave;
+#[cfg(feature = "events")]
+pub mod events;
 pub mod light;
 pub mod output;
 pub mod rules;

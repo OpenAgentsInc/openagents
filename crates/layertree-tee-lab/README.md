@@ -37,3 +37,42 @@ theorems (`ExitK_no_inflation`, `Steps_sum`, `Reachable_ledger`, `payable`,
 
 No `bitcoind` was available when this was written. The regtest harness is
 the next step of P0 (see the spec, section 11).
+
+## Run log: `layertree.events.v1`
+
+One JSON Lines file per run, written by the lab and the regtest/signet
+harnesses, read back by light clients, and replayed by the Verse scenes
+(`events` module, behind the `events` feature so the predicate stays
+dependency-light). Every line starts with `seq` (contiguous from 0),
+`height` (a block height, or null off chain), `network` (`lab`, `regtest`
+or `signet`, the same on every line) and `kind`. Hashes and keys are
+lowercase hex; outpoints are `txid:vout`.
+
+`events::read` replays a log and refuses an unknown `kind` or field, a
+`seq` gap, a second network, a transition whose old leaves, paths or roots
+differ from the replayed tree, a transition that creates or destroys value
+for its kind (only `join` adds, only `exit`/`evict` remove one leaf), and a
+payout no exit or unroll owes. At the end, value in the tree plus value
+owed plus value paid must equal everything that entered the tree.
+`events::Writer` builds logs from lab types. Fixtures under
+`fixtures/events/` (`happy.jsonl`, `theft-caught.jsonl`, `unroll.jsonl`)
+hold test keys only; `LAYERTREE_WRITE_EVENTS=1` regenerates them.
+
+One example per kind (keys and hashes shortened):
+
+```text
+{"seq":0,"height":100,"network":"regtest","kind":"tree_open","tree_id":"e236…8c82","depth":8,"dust_min":330,"unroll_delay":144,"enclave_key":"3733…3bd6","outpoint":"1bd1…f741:0","leaves":[{"pos":0,"leaf":{"amount":10000,"exit_key":"9799…e660","owner_key":"5624…7c0e","evictor_key":"ab07…6c18","evict_after":1000,"nonce":0,"seq":0}}],"root":{"hash":"0c1d…77aa","sum":10000}}
+{"seq":1,"height":null,"network":"regtest","kind":"attestation","platform":"sev-snp","measurement":"0707…0707","log_entry":{"measurement":"0707…0707","source_commit":"abc123"},"result":"attested"}
+{"seq":2,"height":101,"network":"regtest","kind":"transition","op":"exit","prev":"1bd1…f741:0","changes":[{"pos":1,"old":{"amount":20000,"exit_key":"95dc…9e19","owner_key":"f40c…9bba","evictor_key":"ab07…6c18","evict_after":1000,"nonce":1,"seq":0},"new":null,"path":[{"right":true,"sibling":{"hash":"ed3a…","sum":10000}}]}],"old_root":{"hash":"0c1d…","sum":210000},"new_root":{"hash":"fae8…7315","sum":190000},"txid":"5a1e…","record_hash":"9b2c…","next_unroll_key":"77f0…"}
+{"seq":3,"height":101,"network":"regtest","kind":"payout","exit_key":"95dc…9e19","amount":20000}
+{"seq":4,"height":null,"network":"regtest","kind":"rejected","op":"evict","reject":"Tree(PositionEmpty)"}
+{"seq":5,"height":101,"network":"regtest","kind":"light_client","member":4,"result":"ok"}
+{"seq":6,"height":102,"network":"regtest","kind":"block","spent":["1bd1…f741:0"]}
+{"seq":7,"height":103,"network":"regtest","kind":"enclave_down"}
+{"seq":8,"height":247,"network":"regtest","kind":"unroll_broadcast","level":0,"txid":"c0de…","cpfp_fee":1000}
+{"seq":9,"height":248,"network":"regtest","kind":"unroll_confirmed","level":0,"txid":"c0de…"}
+```
+
+`light_client.result` is `ok` or a `LightError` (`OutputMismatch`,
+`RecordNotAnchored`, …); `attestation.result` is `attested` or an
+`AttestError`; `rejected.reject` names the `Reject` variant.

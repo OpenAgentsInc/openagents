@@ -183,7 +183,9 @@ version = "0.0.0"
 dependencies = [
  "bitcoin",
  "hex",
+ "layertree-tee-lab",
  "proptest",
+ "serde",
  "serde_json",
 ]
 
