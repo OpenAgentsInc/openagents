@@ -16,6 +16,7 @@ pub mod export;
 #[cfg(feature = "layers")]
 pub mod layers;
 pub mod take;
-pub mod timeline;
+/// Video Lab's magnetic timeline, now part of the `video-lab` kind.
+pub use video_lab::timeline;
 
 pub use take::{Error, Film, Frame, Kind, Record, Take, Upload, VERSION, View, read};

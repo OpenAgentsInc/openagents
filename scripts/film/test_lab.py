@@ -13,7 +13,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-TMP = Path(tempfile.mkdtemp(prefix="video-lab-test-"))
+TMP = Path(tempfile.mkdtemp(prefix="video-lab-test-")).resolve()
 os.environ["VIDEO_LAB_ROOT"] = str(TMP / "lab")
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import lab  # noqa: E402
@@ -314,8 +314,10 @@ class LabTest(unittest.TestCase):
         self.assertGreater(len(caps), 2, "a long sentence splits at a comma")
         for a, b in zip(caps, caps[1:]):
             self.assertGreater(b["at"], a["at"] + a["dur"] - 1e-6, "in order, never overlapping")
-        self.assertGreater(lab.spoken_words("$4.00"), lab.spoken_words("four"), "numbers take longer to say")
-        self.assertAlmostEqual(caps[0]["dur"], lab.spoken_words("Coder 1.0 is out today.") * 60 / 150, places=2)
+        # Pacing itself is tested in crates/video-lab (edit::spoken_words): numbers take longer to say.
+        dur = lambda text: lab.vo_captions(text, 0.0, 30)[0]["dur"]
+        self.assertGreater(dur("It cost $4.00 today"), dur("It cost four today"), "numbers take longer to say")
+        self.assertAlmostEqual(caps[0]["dur"], (1 + 2.2 + 1 + 1 + 1) * 60 / 150, places=2)  # "1.0" reads as two digits
         lab.create("vo", "cut.v1", "VO film", {**self.cut, "captions": []}, "First", "test")
         out = lab.call("lab_lines", {"document": "vo", "lines": "Some things always wait for you.",
                                      "at": "end", "render": False})

@@ -64,8 +64,11 @@ in Verse) are named Labs but are not chat Labs. They stay out of scope.
   `POST {base}/api/tool/{name}` with no credential.
 - **History API:** it saves no cards. `artifacts` has `maxItems: 0`
   (`crates/openagents-web/src/history_openapi.rs`).
-- **Fork apps:** they read saved chats through `openagents-sdk` (pinned in
-  `crates/coder-account`). They have no Lab card and no video player.
+- **Desktop and phone apps** (`apps/openagents/`, imported from the Zeron
+  fork on 2026-10-16): they read saved chats through `openagents-sdk` (by path
+  from `apps/openagents/crates/coder-account`). Since 2026-10-16 the desktop
+  has the Video Lab tools and a native Video Lab card (inline playback, live
+  render state). The phone has neither yet.
   `crates/visual-gpu` has wgpu, and Swift paints the mobile layout.
 
 **CAD Lab on openagents.com is the hosted precedent.** Signed-in people use
@@ -132,7 +135,7 @@ pub trait LabKind {
   list notes, compare. Kinds keep their own prefixes (`lab_`, `cad_`, …),
   so prompts and the 1.0 clients stay valid.
 
-The trait compiles for wasm32 and for the fork's iOS and macOS targets. A
+The trait compiles for wasm32 and for the apps' iOS and macOS targets. A
 client can therefore check an edit, or preview a timeline drag, before
 calling the server. The server still re-checks every change.
 
@@ -246,13 +249,13 @@ with observe and operate permissions) stay their own protocol.
 | --- | --- | --- |
 | openagents.com chat | The SDK, from the server-side Labs door | Standard views in the card; `/labs/{kind}/{doc}` pages (CAD's `/cad/{doc}` stays and redirects later) |
 | Saved history (all clients) | An additive `cards` field (`lab.card.v1`) on `/v1/history` messages, typed in the SDK | The same card, read-only, with fresh signed media |
-| Coder Desktop (fork) | `openagents::labs` from `coder-account`, with a newer pin | One Lab row type in the saved and live transcripts, the standard views, notes, compare. Kind editors come later (Video timeline first) |
-| iPhone (fork) | A small UniFFI facade over `openagents::labs` in `crates/mobile` | The same row type and views; notes by voice; chat edits |
+| Desktop (`apps/openagents`) | `openagents::labs` from `coder-account`, by path | One Lab row type in the saved and live transcripts, the standard views, notes, compare. Kind editors come later (Video timeline first) |
+| Phone (`apps/openagents`) | A small UniFFI facade over `openagents::labs` in `crates/mobile` | The same row type and views; notes by voice; chat edits |
 | Coder 1.0.0 terminal (frozen) | A local `labs bridge`: one loopback listener with a path per kind, speaking the 1.0 routes and forwarding with the person's saved `openagents` login (`VIDEO_LAB_URL=http://127.0.0.1:8799/video`, `CAD_LAB_URL=…/cad`, `GAME_LAB_URL=…/game`, `ROBOT_LAB_URL=…/robot`) | Words and the page link, as today |
 | Next Coder release | `openagents::labs` directly, tools from `/labs/kinds` | Inline posters and strips where the terminal supports graphics |
 
 Live updates come from document events while a card is on screen. In saved
-chats they come from the fork's existing two-second following. Readers never
+chats they come from the apps' existing two-second following. Readers never
 start jobs. A job starts only from a tool call or a button the person
 presses.
 
@@ -279,14 +282,14 @@ and Coder 1.0.0 keep working throughout.
 
 | Step | Issue | Delivers | Depends on |
 | --- | --- | --- | --- |
-| L1 | #11872 | `lab-kit`: common types, `LabKind`, locators, refusals, `lab.card.v1`, standard views, fixtures; builds for wasm32 and iOS | None |
+| L1 | #11872 (done) | `lab-kit`: common types, `LabKind`, locators, refusals, `lab.card.v1`, standard views, fixtures; builds for wasm32 and iOS | None |
 | L2 | #11873 | `lab-store`: storage trait; filesystem, Postgres plus Cloud Storage, and CAD-layout adapter backends | L1 |
 | L3 | #11874 | `/v1/labs` API, OpenAPI, access, limits, events, signed artifacts | L2 |
 | L4 | #11875 | CAD as the first kind on the platform; `cad_web` moves onto it unchanged for users | L3 |
 | L5 | #11876 | `openagents::labs` in the SDK, plus an external example and evidence | L3 (L4 for the CAD example) |
 | L6 | #11877 | Lab cards in saved history (`cards` on `/v1/history`) and the Labs door on the registry | L4, L5 |
 | L7 | #11878 | Jobs and placement: server, cloud worker, enrolled host, `no_training`, usage | L3 |
-| V1 | #11879 | `video-lab` kind crate: rules out of `cut.py`, `lab.py` and `verse-film` | L1 |
+| V1 | #11879 | `video-lab` kind crate: rules out of `cut.py`, `lab.py` and `verse-film` (done) | L1 |
 | V2 | #11880 | Video Lab on the platform: runners, enrolled-host renders, web pages, a loopback mode compatible with 1.0 | V1, L6, L7 |
 | G1 | #11881 | Game Lab and Ship Lab as kinds | L4 |
 | R1 | #11882 | Robot Lab documents on the platform (paired-host controls unchanged) | L4, L7 |

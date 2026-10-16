@@ -105,6 +105,10 @@ def slug(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
 
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import video_lab_bridge as rules  # noqa: E402  (crates/video-lab: the rules)
+
+
 class Refused(Exception):
     """A request the Lab won't do, with the reason in plain words."""
 
@@ -132,65 +136,8 @@ def schema(kind: str) -> dict:
     return json.loads((SCHEMAS / f"{kind}.json").read_text())
 
 
-TYPES = {"object": dict, "array": list, "string": str, "boolean": bool}
 
 
-def where(path: str) -> str:
-    return path or "the document"
-
-
-def validate(value, sch: dict, root: dict, path: str = "") -> list[str]:
-    """A small JSON Schema subset, with plain reasons."""
-    if "$ref" in sch:
-        sch = root["$defs"][sch["$ref"].split("/")[-1]]
-    out = []
-    t = sch.get("type")
-    if t == "number":
-        if isinstance(value, bool) or not isinstance(value, (int, float)):
-            return [f"{where(path)} must be a number"]
-    elif t == "integer":
-        if isinstance(value, bool) or not isinstance(value, int):
-            return [f"{where(path)} must be a whole number"]
-    elif t and not isinstance(value, TYPES[t]):
-        return [f"{where(path)} must be {'an' if t[0] in 'aeiou' else 'a'} {t}"]
-    if "enum" in sch and value not in sch["enum"]:
-        out.append(f"{where(path)} must be one of {', '.join(map(str, sch['enum']))}")
-    if isinstance(value, (int, float)) and not isinstance(value, bool):
-        if "minimum" in sch and value < sch["minimum"]:
-            out.append(f"{where(path)} must be at least {sch['minimum']}")
-        if "exclusiveMinimum" in sch and value <= sch["exclusiveMinimum"]:
-            out.append(f"{where(path)} must be more than {sch['exclusiveMinimum']}")
-        if "maximum" in sch and value > sch["maximum"]:
-            out.append(f"{where(path)} must be at most {sch['maximum']}")
-    if isinstance(value, str) and len(value) < sch.get("minLength", 0):
-        out.append(f"{where(path)} can't be empty")
-    if isinstance(value, list):
-        if len(value) < sch.get("minItems", 0):
-            out.append(f"{where(path)} needs at least {sch['minItems']} item(s)")
-        if "maxItems" in sch and len(value) > sch["maxItems"]:
-            out.append(f"{where(path)} takes at most {sch['maxItems']} items")
-        if "items" in sch:
-            for i, item in enumerate(value):
-                label = item.get("name") if isinstance(item, dict) and isinstance(item.get("name"), str) else None
-                out += validate(item, sch["items"], root, f"{path}[{i}]" + (f" ({label})" if label else ""))
-    if isinstance(value, dict):
-        for key in sch.get("required", []):
-            if key not in value:
-                out.append(f"{where(path)} needs '{key}'")
-        props = sch.get("properties", {})
-        for key, v in value.items():
-            if key in props:
-                out += validate(v, props[key], root, f"{path}.{key}" if path else key)
-            elif sch.get("additionalProperties") is False:
-                near = [k for k in props if k.startswith(key[:2]) or key.startswith(k)]
-                hint = f" (did you mean {near[0]}?)" if near else ""
-                out.append(f"{where(path)} has '{key}', which it doesn't take{hint}")
-            elif isinstance(sch.get("additionalProperties"), dict):
-                out += validate(v, sch["additionalProperties"], root, f"{path}.{key}")
-        if "anyOf" in sch and not any(all(k in value for k in alt.get("required", [])) for alt in sch["anyOf"]):
-            keys = " or ".join("'" + "', '".join(alt["required"]) + "'" for alt in sch["anyOf"])
-            out.append(f"{where(path)} needs {keys}")
-    return out
 
 
 # ---- private assets ---------------------------------------------------------------
@@ -382,219 +329,67 @@ def score_args(data: dict) -> dict | None:
     return {"seconds": round(total, 3), "cuts": [round(c, 3) for c in cuts], "end": round(end, 3)}
 
 
+def rule(action: str, **request) -> dict:
+    """Ask crates/video-lab, turning its refusals into the Lab's."""
+    try:
+        return rules.call(action, **request)
+    except rules.Refused as e:
+        raise Refused(str(e))
+
+
+def measured(kind: str, data: dict) -> dict:
+    """The facts about a document's files that its checks need."""
+    if kind == "cut.v1":
+        test = copy.deepcopy(data)
+        if data.get("score"):
+            test.pop("music", None)  # Lab remakes the score to the cut's length when it renders
+        return cutmod().measure(test, *test["size"])
+    if kind == "shot.v1":
+        files = {}
+        if isinstance(data.get("script"), str):
+            files[data["script"]] = (REPO / data["script"]).exists()
+        for p in (data.get("inputs") or {}).values():
+            if isinstance(p, str):
+                files[p] = expand(p).exists()
+        return {"files": files}
+    return {}
+
+
 def check(kind: str, data: dict) -> tuple[list[str], list[str]]:
-    """Problems (which refuse an edit) and notes (which don't)."""
-    problems = validate(data, schema(kind), schema(kind))
+    """Problems (which refuse an edit) and notes (which don't), from crates/video-lab."""
+    problems = rule("validate", kind=kind, document=data)["problems"]
     if problems:
         return problems, []
-    notes = []
-    if kind == "cut.v1":
-        names = [s["name"] for s in data["shots"]]
-        for n in sorted({n for n in names if names.count(n) > 1}):
-            problems.append(f"two shots are called {n}; shot names must be different")
-        score = data.get("score")
-        if score:
-            for n in score["cuts_at"] + ([score["end_at"]] if score.get("end_at") else []):
-                if n not in names:
-                    problems.append(f"the score marks a shot called {n}, which the cut doesn't have")
-        for i, s in enumerate(data["shots"]):
-            if s.get("xfade", 0) > s["dur"]:
-                problems.append(f"{s['name']}: its crossfade ({s['xfade']}s) is longer than the shot ({s['dur']}s)")
-        test = copy.deepcopy(data)
-        if score:
-            test.pop("music", None)  # Lab remakes the score to the cut's length when it renders
-        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
-            json.dump(test, f)
-        try:
-            r = subprocess.run([sys.executable, str(FILM / "cut.py"), "check", f.name, "--json"],
-                               capture_output=True, text=True)
-        finally:
-            os.unlink(f.name)
-        try:
-            res = json.loads(r.stdout.strip().splitlines()[-1])
-        except (ValueError, IndexError):
-            return problems + [f"the cut couldn't be checked: {(r.stderr or r.stdout)[-400:].strip()}"], notes
-        problems += res["problems"]
-        notes += [n for n in res["notes"] if "upscaled" not in n]
-    elif kind == "shot.v1":
-        r = data["renderer"]
-        if r == "studio" and "spec" not in data:
-            problems.append("a studio shot needs its spec")
-        if r == "film-script":
-            if "script" not in data or "args" not in data:
-                problems.append("a film-script shot needs 'script' and 'args'")
-            elif not (REPO / data["script"]).exists():
-                problems.append(f"{data['script']} isn't in the repository")
-            elif "{out}" not in data["args"]:
-                problems.append("the script's args need {out}, where the render goes")
-        for name, p in data.get("inputs", {}).items():
-            if not expand(p).exists():
-                problems.append(f"input {name} is missing: {p}")
-    elif kind == "scene.v1":
-        keys = data["shot"]["rig"]["keys"]
-        ts = [k["t"] for k in keys]
-        if ts != sorted(ts):
-            problems.append("the camera keys must be in time order")
-        if ts and ts[-1] > data["shot"]["duration"] + 1e-6:
-            problems.append(f"a camera key at {ts[-1]}s is past the scene's end ({data['shot']['duration']}s)")
-    return problems, notes
+    try:
+        facts = measured(kind, data)
+    except (Exception, SystemExit) as e:
+        return [f"the cut couldn't be checked: {str(e)[-400:].strip()}"], []
+    out = rule("check", kind=kind, document=data, measured=facts)
+    return out["problems"], out["notes"]
 
 
 # ---- JSON Patch ------------------------------------------------------------------
 
-def pointer(doc_data, path: str):
-    if path == "":
-        return []
-    if not path.startswith("/"):
-        raise Refused(f"'{path}' isn't a JSON Pointer; it starts with /, like /shots/@s4-delegation/dur")
-    parts = [p.replace("~1", "/").replace("~0", "~") for p in path[1:].split("/")]
-    # `@name` picks the array item with that name.
-    out, cur = [], doc_data
-    for p in parts:
-        if isinstance(cur, list) and p.startswith("@"):
-            idx = next((i for i, x in enumerate(cur) if isinstance(x, dict) and x.get("name") == p[1:]), None)
-            if idx is None:
-                names = [x.get("name") for x in cur if isinstance(x, dict)]
-                raise Refused(f"there's no shot called {p[1:]}; the shots are {', '.join(map(str, names))}")
-            p = str(idx)
-        out.append(p)
-        if isinstance(cur, list):
-            cur = cur[int(p)] if p.isdigit() and int(p) < len(cur) else None
-        elif isinstance(cur, dict):
-            cur = cur.get(p)
-        else:
-            cur = None
-    return out
 
-
-def walk(data, parts):
-    cur = data
-    for p in parts[:-1]:
-        if isinstance(cur, list):
-            if not p.isdigit() or int(p) >= len(cur):
-                raise Refused(f"there's no item {p} at /{'/'.join(parts)}")
-            cur = cur[int(p)]
-        elif isinstance(cur, dict):
-            if p not in cur:
-                raise Refused(f"/{'/'.join(parts)}: '{p}' isn't there")
-            cur = cur[p]
-        else:
-            raise Refused(f"/{'/'.join(parts)} goes inside a value that has no fields")
-    return cur
-
-
-def get(data, parts):
-    if not parts:
-        return data
-    parent = walk(data, parts)
-    last = parts[-1]
-    if isinstance(parent, list):
-        if not last.isdigit() or int(last) >= len(parent):
-            raise Refused(f"there's no item {last} at /{'/'.join(parts)}")
-        return parent[int(last)]
-    if last not in parent:
-        raise Refused(f"/{'/'.join(parts)} isn't set")
-    return parent[last]
 
 
 def apply_patch(data: dict, ops) -> dict:
-    if isinstance(ops, str):
-        try:
-            ops = json.loads(ops)
-        except ValueError as e:
-            raise Refused(f"the patch isn't JSON ({e})")
-    if isinstance(ops, dict):
-        ops = [ops]
-    if not isinstance(ops, list) or not ops:
-        raise Refused("the patch is a list of operations, like "
-                      '[{"op": "replace", "path": "/shots/@s4-delegation/dur", "value": 12.5}]')
-    out = copy.deepcopy(data)
-    for op in ops:
-        if not isinstance(op, dict) or op.get("op") not in ("add", "remove", "replace", "move", "copy", "test"):
-            raise Refused(f"{json.dumps(op)[:120]} isn't a patch operation (add, remove, replace, move, copy or test)")
-        parts = pointer(out, op.get("path", ""))
-        if op["op"] in ("add", "replace", "test") and "value" not in op:
-            raise Refused(f"{op['op']} {op.get('path')} needs a value")
-        if op["op"] == "test":
-            if get(out, parts) != op["value"]:
-                raise Refused(f"{op['path']} is {json.dumps(get(out, parts))}, not {json.dumps(op['value'])}")
-            continue
-        if op["op"] in ("move", "copy"):
-            value = copy.deepcopy(get(out, pointer(out, op.get("from", ""))))
-            if op["op"] == "move":
-                src = pointer(out, op["from"])
-                parent = walk(out, src)
-                del parent[int(src[-1]) if isinstance(parent, list) else src[-1]]
-                parts = pointer(out, op["path"])
-            op = {"op": "add", "path": op["path"], "value": value}
-        if not parts:
-            raise Refused("a patch can't replace the whole document")
-        parent = walk(out, parts)
-        last = parts[-1]
-        if isinstance(parent, list):
-            if op["op"] == "add":
-                idx = len(parent) if last == "-" else int(last) if last.isdigit() else None
-                if idx is None or idx > len(parent):
-                    raise Refused(f"can't add at {op['path']}")
-                parent.insert(idx, op["value"])
-            else:
-                if not last.isdigit() or int(last) >= len(parent):
-                    raise Refused(f"there's no item {last} at {op['path']}")
-                if op["op"] == "remove":
-                    del parent[int(last)]
-                else:
-                    parent[int(last)] = op["value"]
-        elif isinstance(parent, dict):
-            if op["op"] == "add":
-                parent[last] = op["value"]
-            elif last not in parent:
-                raise Refused(f"{op['path']} isn't set, so it can't be {'removed' if op['op'] == 'remove' else 'replaced'}"
-                              + ("; use add" if op["op"] == "replace" else ""))
-            elif op["op"] == "remove":
-                del parent[last]
-            else:
-                parent[last] = op["value"]
-        else:
-            raise Refused(f"{op['path']} goes inside a value that has no fields")
-    return out
+    return rule("patch", document=data, patch=ops)["document"]
 
 
 def ripple(old: dict, new: dict) -> int:
     """Captions move with the shot they're under when shots change length."""
-    before = {s["name"]: s for s in timeline(old)}
-    after = {s["name"]: s for s in timeline(new)}
-    moved = 0
-    for c in new.get("captions", []):
-        under = next((s for s in before.values() if s["start"] - 1e-6 <= c["at"] < s["end"] - 1e-6), None)
-        if under and under["name"] in after:
-            shift = after[under["name"]]["start"] - under["start"]
-            if abs(shift) > 1e-6:
-                c["at"] = round(c["at"] + shift, 3)
-                moved += 1
-    return moved
+    out = rule("ripple", document=old, new=new)
+    new.clear()
+    new.update(out["document"])
+    return out["moved"]
 
 
 # ---- times -----------------------------------------------------------------------
 
 def seconds(at, data: dict | None = None) -> float:
     """A time from what the chat passed: seconds, m:ss, h:mm:ss, or a shot's name (its start)."""
-    if isinstance(at, (int, float)) and not isinstance(at, bool):
-        return float(at)
-    if not isinstance(at, str) or not at.strip():
-        raise Refused("say a time, like 1:26 or 86")
-    s = at.strip().rstrip("s")
-    m = re.fullmatch(r"(?:(\d+):)?(\d+):(\d+(?:\.\d+)?)", s)
-    if m:
-        return int(m[1] or 0) * 3600 + int(m[2]) * 60 + float(m[3])
-    try:
-        return float(s)
-    except ValueError:
-        pass
-    if data and data.get("shots"):
-        for sh in timeline(data):
-            if sh["name"] == at.strip():
-                return sh["start"]
-    raise Refused(f"'{at}' isn't a time; say 1:26, 86, or a shot's name")
+    return rule("seconds", at=at, document=data)["seconds"]
 
 
 def length(kind: str, data: dict) -> float:
@@ -1515,45 +1310,10 @@ def tool_captions(args) -> dict:
                   [f"{len(made)} captions over {name}: " + " / ".join(c["text"] for c in made)])
 
 
-def spoken_words(text: str) -> float:
-    """About how many words a line takes to say: numbers and symbols take
-    longer to say than to write ("$4.00" is "four dollars", "284" is "two
-    hundred eighty-four")."""
-    n = 0.0
-    for tok in text.split():
-        digits = re.sub(r"\D", "", tok)
-        if digits:
-            n += 1 + min(len(digits.lstrip("0") or "0"), 4) * 0.6
-        else:
-            n += 1 + 0.5 * tok.count("/")
-    return n
-
-
-def vo_chunks(text: str, max_chars: int = 92) -> list[tuple[str, bool]]:
-    """A voiceover passage as caption-sized pieces: sentences, a long one split
-    at its last comma, semicolon or colon that fits. Each piece says whether
-    a sentence ends there (a slightly longer breath after it)."""
-    out = []
-    for sent in re.split(r"(?<=[.?!])\s+", " ".join(text.split())):
-        rest = sent
-        while len(rest) > max_chars:
-            cut = max((m.end() for m in re.finditer(r"[,;:]\s", rest[:max_chars + 1])), default=0)
-            if not cut:
-                cut = rest.rfind(" ", 0, max_chars) + 1 or max_chars
-            out.append((rest[:cut].strip(), False))
-            rest = rest[cut:].strip()
-        if rest:
-            out.append((rest, True))
-    return out
 
 
 def vo_captions(text: str, start: float, wpm: float) -> list[dict]:
-    caps, t = [], start
-    for piece, ends in vo_chunks(text):
-        dur = max(1.2, spoken_words(piece) * 60.0 / wpm)
-        caps.append({"text": piece, "at": round(t, 3), "dur": round(dur, 3), "vo": True})
-        t += dur + (0.3 if ends else 0.12)
-    return caps
+    return rule("vo_captions", text=text, start=start, wpm=wpm)["captions"]
 
 
 AUDIO_EXT = {".mp3", ".wav", ".m4a", ".aac", ".flac"}
@@ -2001,85 +1761,32 @@ def tool_frame(args) -> dict:
 
 def tool_edit(args) -> dict:
     doc = resolve(args.get("document"))
-    summary = (args.get("summary") or "").strip()
-    if not summary:
-        raise Refused("an edit needs a one-line summary of what it changes, in plain words")
     parent = version(doc, args.get("version"))
     old = body(doc, parent["n"])
-    ops = args.get("patch")
-    if isinstance(ops, str):
-        try:
-            ops = json.loads(ops)
-        except ValueError as e:
-            raise Refused(f"the patch isn't JSON ({e})")
-    ops = [ops] if isinstance(ops, dict) else ops
-    new = apply_patch(old, ops)
-    if new == old:
-        raise Refused("the patch changes nothing")
-    moved, said = 0, []
-    touched_caps = any(isinstance(op, dict) and str(op.get("path", "")).startswith("/captions") for op in ops)
-    if parent["kind"] == "cut.v1":
-        said += drop_removed(old, new, touched_caps)
-    if parent["kind"] == "cut.v1" and args.get("ripple_captions", True) and not touched_caps:
-        if old.get("timeline", {}).get("links") is not None:
-            new = editor_call("follow", old, new)
-        else:
-            moved = ripple(old, new)
-    if moved:
-        said.append(f"{moved} captions moved with their shots.")
-    return commit(doc, parent, old, new, summary, args.get("author") or "chat", args.get("render", True), said)
+    out = rule("prepare", kind=parent["kind"], document=old, patch=args.get("patch"),
+               summary=args.get("summary") or "", ripple_captions=args.get("ripple_captions", True))
+    summary = (args.get("summary") or "").strip()
+    return commit(doc, parent, old, out["document"], summary, args.get("author") or "chat", args.get("render", True),
+                  out["said"])
 
-
-def drop_removed(old: dict, new: dict, touched_caps: bool) -> list[str]:
-    """When shots are removed, the captions over them go too (unless the patch
-    handles captions itself) and the score stops marking them."""
-    gone = [s for s in timeline(old) if s["name"] not in {x.get("name") for x in new.get("shots", [])}]
-    if not gone:
-        return []
-    said = []
-    if not touched_caps and new.get("captions"):
-        keep = [c for c in new["captions"]
-                if not any(g["start"] - 1e-6 <= c["at"] < g["end"] - 1e-6 for g in gone)]
-        if len(keep) != len(new["captions"]):
-            said.append(f"{len(new['captions']) - len(keep)} captions over the removed shots went with them.")
-            new["captions"] = keep
-    score = new.get("score")
-    if score:
-        names = {g["name"] for g in gone}
-        cuts = [n for n in score.get("cuts_at", []) if n not in names]
-        if cuts != score.get("cuts_at"):
-            score["cuts_at"] = cuts
-            said.append("The music no longer marks the removed shots.")
-        if score.get("end_at") in names:
-            score.pop("end_at")
-    return said
 
 
 def commit(doc: str, parent: dict, old: dict, new: dict, summary: str, author: str, render=True,
            said=None) -> dict:
-    """Check a changed document against its parent and save it as a new
-    version, or refuse it with the reason when it adds a problem."""
-    before, _ = check(parent["kind"], old)
-    after, notes = check(parent["kind"], new)
-    added = [p for p in after if p not in before]
-    shape = lambda p: re.sub(r"[\d.]+", "#", p)  # the same problem with other numbers
-    if added:
-        fixed = [p for p in before if shape(p) not in {shape(q) for q in after}]
-        why = "Not saved. " + " ".join(f"{p}." if not p.endswith(".") else p for p in plain(added))
-        if fixed:
-            why += " (It would have fixed: " + "; ".join(fixed) + ".)"
-        return {"text": why, "refused": True, "problems": added}
-    v = save_version(doc, parent["kind"], new, summary, author, parent=parent["n"])
-    fixed = [p for p in before if shape(p) not in {shape(q) for q in after}]
-    lines = [f"Saved v{v['n']}: {summary}"] + list(said or [])
-    if fixed:
-        lines.append("Fixed: " + "; ".join(fixed))
-    if after:
-        lines.append("Still open from before: " + "; ".join(after))
-    if new.get("shots") and old.get("shots"):
-        lines.append(f"Length {clock(length('cut.v1', old))} -> {clock(length('cut.v1', new))}.")
-    if new.get("score") and length(parent["kind"], new) != length(parent["kind"], old):
-        lines.append("The music is remade to the new length; its hits stay on their shots.")
+    """Check a changed document against its parent (crates/video-lab) and save
+    it as a new version, or refuse it with the reason when it adds a problem."""
+    kind = parent["kind"]
+    try:
+        facts_old, facts_new = measured(kind, old), measured(kind, new)
+    except (Exception, SystemExit):
+        facts_old = facts_new = {}
+    try:
+        out = rules.call("commit", kind=kind, document=old, new=new, said=list(said or []),
+                         measured_old=facts_old, measured_new=facts_new)
+    except rules.Refused as e:
+        return {"text": str(e), "refused": True}
+    v = save_version(doc, kind, new, summary, author, parent=parent["n"])
+    lines = [f"Saved v{v['n']}: {summary}"] + out["said"]
     job = renders().submit(doc, v["n"], "preview", edit=True) if render else None
     if job:
         lines.append("A preview is rendering.")
@@ -2087,20 +1794,7 @@ def commit(doc: str, parent: dict, old: dict, new: dict, summary: str, author: s
 
 
 def plain(problems: list[str]) -> list[str]:
-    """Problems as a person reads them: a run of shots knocked off the beat
-    grid by one change is one sentence."""
-    off = re.compile(r"^(?P<name>[^:]+): starts at (?P<at>[\d.]+)s, off the (?P<bpm>[\d.]+) BPM beat grid$")
-    grid = [m for m in map(off.match, problems) if m]
-    rest = [p for p in problems if not off.match(p)]
-    if len(grid) > 1:
-        first, n, bpm = grid[0], len(grid) - 1, grid[0]["bpm"]
-        after = "the shot after it" if n == 1 else f"the {n} shots after it"
-        beat = 60.0 / float(bpm)
-        rest.insert(0, f"{first['name']} and {after} would start off the {bpm} BPM beat grid ({first['name']} at "
-                       f"{first['at']}s); keep shot lengths to whole beats (multiples of {beat:g} s)")
-    else:
-        rest = [m.string for m in grid] + rest
-    return rest
+    return rule("plain", problems=problems)["problems"]
 
 
 def tool_render(args) -> dict:

@@ -1,0 +1,514 @@
+[
+ {
+  "name": "lab_list",
+  "description": "List the Video Lab documents (cuts, shots, scenes) on this Mac.",
+  "parameters": {
+   "type": "object",
+   "properties": {},
+   "required": []
+  }
+ },
+ {
+  "name": "lab_open",
+  "description": "Open a document: its latest version (or the one asked for), its shots, any problems, the versions, and a preview in the chat (rendered if there isn't one).",
+  "parameters": {
+   "type": "object",
+   "properties": {
+    "document": {
+     "type": "string",
+     "description": "the document's id or title, e.g. episode-290"
+    },
+    "version": {
+     "type": "string",
+     "description": "a version number like 3 (default: the latest)"
+    }
+   },
+   "required": [
+    "document"
+   ]
+  }
+ },
+ {
+  "name": "lab_show",
+  "description": "Show a time range of a document in the chat: which shots and captions are there, a strip of frames, and the preview video starting there. Times are m:ss or seconds.",
+  "parameters": {
+   "type": "object",
+   "properties": {
+    "document": {
+     "type": "string",
+     "description": "the document's id or title, e.g. episode-290"
+    },
+    "from": {
+     "type": "string",
+     "description": "start time, m:ss or seconds"
+    },
+    "to": {
+     "type": "string",
+     "description": "end time, m:ss or seconds"
+    },
+    "at": {
+     "type": "string",
+     "description": "a time, m:ss or seconds (lab_splice: the shot boundary nearest it; lab_lines: a time or a shot's name)"
+    },
+    "version": {
+     "type": "string",
+     "description": "a version number like 3 (default: the latest)"
+    }
+   },
+   "required": [
+    "document"
+   ]
+  }
+ },
+ {
+  "name": "lab_frame",
+  "description": "One still at a time (or several times as a strip), for looking closely.",
+  "parameters": {
+   "type": "object",
+   "properties": {
+    "document": {
+     "type": "string",
+     "description": "the document's id or title, e.g. episode-290"
+    },
+    "at": {
+     "type": "string",
+     "description": "a time, m:ss or seconds (lab_splice: the shot boundary nearest it; lab_lines: a time or a shot's name)"
+    },
+    "version": {
+     "type": "string",
+     "description": "a version number like 3 (default: the latest)"
+    }
+   },
+   "required": [
+    "document",
+    "at"
+   ]
+  }
+ },
+ {
+  "name": "lab_edit",
+  "description": "Change a document by a JSON Patch (RFC 6902) on its JSON, making a new version. Address a shot by name: /shots/@s4-delegation/dur, and a caption by its index from lab_open: /captions/7 (remove several from the highest index down). Removing a shot removes the captions over it and its music hit too. In a cut, captions move with their shots when shot lengths change. The edit is checked first (schema, the beat grid, sources long enough, no shot ending inside an animation, no shot pausing on a still picture for more than 0.4 s, music length) and refused with the reason if it adds a problem; then fix the patch. A preview renders.",
+  "parameters": {
+   "type": "object",
+   "properties": {
+    "document": {
+     "type": "string",
+     "description": "the document's id or title, e.g. episode-290"
+    },
+    "patch": {
+     "type": "string",
+     "description": "a JSON Patch as a JSON string, e.g. [{\"op\":\"replace\",\"path\":\"/shots/@s4-delegation/dur\",\"value\":12.5}]"
+    },
+    "summary": {
+     "type": "string",
+     "description": "one line in plain words saying what the edit changes"
+    },
+    "version": {
+     "type": "string",
+     "description": "a version number like 3 (default: the latest)"
+    }
+   },
+   "required": [
+    "document",
+    "patch",
+    "summary"
+   ]
+  }
+ },
+ {
+  "name": "lab_render",
+  "description": "Render a version: preview (quick, 960x540), review (1080p) or master (full size).",
+  "parameters": {
+   "type": "object",
+   "properties": {
+    "document": {
+     "type": "string",
+     "description": "the document's id or title, e.g. episode-290"
+    },
+    "quality": {
+     "type": "string",
+     "description": "preview, review or master"
+    },
+    "version": {
+     "type": "string",
+     "description": "a version number like 3 (default: the latest)"
+    }
+   },
+   "required": [
+    "document"
+   ]
+  }
+ },
+ {
+  "name": "lab_compare",
+  "description": "Two versions side by side at a time (default: the latest and the one before it).",
+  "parameters": {
+   "type": "object",
+   "properties": {
+    "document": {
+     "type": "string",
+     "description": "the document's id or title, e.g. episode-290"
+    },
+    "at": {
+     "type": "string",
+     "description": "a time, m:ss or seconds (lab_splice: the shot boundary nearest it; lab_lines: a time or a shot's name)"
+    },
+    "a": {
+     "type": "string",
+     "description": "the first version to compare (default: the one before b)"
+    },
+    "b": {
+     "type": "string",
+     "description": "the second version (default: the latest)"
+    }
+   },
+   "required": [
+    "document"
+   ]
+  }
+ },
+ {
+  "name": "lab_notes",
+  "description": "Read the owner's review notes on a document's videos.",
+  "parameters": {
+   "type": "object",
+   "properties": {
+    "document": {
+     "type": "string",
+     "description": "the document's id or title, e.g. episode-290"
+    },
+    "version": {
+     "type": "string",
+     "description": "a version number like 3 (default: the latest)"
+    }
+   },
+   "required": [
+    "document"
+   ]
+  }
+ },
+ {
+  "name": "lab_versions",
+  "description": "List a document's versions: who made each and what it changed.",
+  "parameters": {
+   "type": "object",
+   "properties": {
+    "document": {
+     "type": "string",
+     "description": "the document's id or title, e.g. episode-290"
+    }
+   },
+   "required": [
+    "document"
+   ]
+  }
+ },
+ {
+  "name": "lab_import",
+  "description": "Bring a video clip into the Lab as a source, by its path or file name (e.g. IMG_4135): its size as it plays, length, a strip of frames, what's said with times, and the pauses where a cut can go. Pass the document being edited to show the strip in its card.",
+  "parameters": {
+   "type": "object",
+   "properties": {
+    "clip": {
+     "type": "string",
+     "description": "a file's path, or its name like IMG_4135 or 290-bella-s3 (found in Downloads, Movies, Desktop or ~/work/film-out)"
+    },
+    "name": {
+     "type": "string",
+     "description": "a short name for the new source or shot, e.g. wb-hook"
+    },
+    "document": {
+     "type": "string",
+     "description": "the document's id or title, e.g. episode-290"
+    }
+   },
+   "required": [
+    "clip"
+   ]
+  }
+ },
+ {
+  "name": "lab_sources",
+  "description": "List the sources, or read one: what's said in a time range with each word's time, and its pauses. Use it to pick where a splice starts and ends.",
+  "parameters": {
+   "type": "object",
+   "properties": {
+    "source": {
+     "type": "string",
+     "description": "a source's id or its clip's file name (lab_sources lists them)"
+    },
+    "from": {
+     "type": "string",
+     "description": "start time, m:ss or seconds"
+    },
+    "to": {
+     "type": "string",
+     "description": "end time, m:ss or seconds"
+    }
+   },
+   "required": []
+  }
+ },
+ {
+  "name": "lab_splice",
+  "description": "Put a time range of a source into a cut as a new shot, after or before a named shot or at a shot boundary. The source keeps its own sound (a person speaking) with the music ducked under it, unless sound is no. The in and out move to the nearest pauses a whole number of beats apart, so no word is cut. Captions of what's said are made in the film's caption style, later shots and their captions move along, and the music is remade to the new length. Checked like lab_edit; a preview renders.",
+  "parameters": {
+   "type": "object",
+   "properties": {
+    "document": {
+     "type": "string",
+     "description": "the document's id or title, e.g. episode-290"
+    },
+    "source": {
+     "type": "string",
+     "description": "a source's id or its clip's file name (lab_sources lists them)"
+    },
+    "from": {
+     "type": "string",
+     "description": "start time, m:ss or seconds"
+    },
+    "to": {
+     "type": "string",
+     "description": "end time, m:ss or seconds"
+    },
+    "after": {
+     "type": "string",
+     "description": "the name of the shot the new one goes after"
+    },
+    "before": {
+     "type": "string",
+     "description": "the name of the shot the new one goes before"
+    },
+    "at": {
+     "type": "string",
+     "description": "a time, m:ss or seconds (lab_splice: the shot boundary nearest it; lab_lines: a time or a shot's name)"
+    },
+    "name": {
+     "type": "string",
+     "description": "a short name for the new source or shot, e.g. wb-hook"
+    },
+    "fit": {
+     "type": "string",
+     "description": "for a clip of another shape: blur (whole, over a blurred copy) or crop (cropped to fill)"
+    },
+    "sound": {
+     "type": "string",
+     "description": "yes (default) keeps the clip's own sound with the music ducked; no plays the music over it"
+    },
+    "captions": {
+     "type": "string",
+     "description": "yes (default) makes captions of what's said; no makes none"
+    },
+    "xfade": {
+     "type": "string",
+     "description": "a crossfade into the new shot, in seconds (default none)"
+    },
+    "summary": {
+     "type": "string",
+     "description": "one line in plain words saying what the edit changes"
+    },
+    "version": {
+     "type": "string",
+     "description": "a version number like 3 (default: the latest)"
+    }
+   },
+   "required": [
+    "document",
+    "source",
+    "from",
+    "to"
+   ]
+  }
+ },
+ {
+  "name": "lab_captions",
+  "description": "Remake the captions over a shot that keeps its own sound from what's said in it (after its in or length changed).",
+  "parameters": {
+   "type": "object",
+   "properties": {
+    "document": {
+     "type": "string",
+     "description": "the document's id or title, e.g. episode-290"
+    },
+    "shot": {
+     "type": "string",
+     "description": "a shot's name"
+    },
+    "summary": {
+     "type": "string",
+     "description": "one line in plain words saying what the edit changes"
+    },
+    "version": {
+     "type": "string",
+     "description": "a version number like 3 (default: the latest)"
+    }
+   },
+   "required": [
+    "document",
+    "shot"
+   ]
+  }
+ },
+ {
+  "name": "lab_keep_captions",
+  "description": "Keep only the captions over some shots of a cut and remove every other caption, in one edit: over the shots where someone speaks (over: speech, the shots that keep their own sound) or over the shots named. Titles and text inside the shots' pictures aren't captions and stay. Checked like lab_edit; a preview renders.",
+  "parameters": {
+   "type": "object",
+   "properties": {
+    "document": {
+     "type": "string",
+     "description": "the document's id or title, e.g. episode-290"
+    },
+    "over": {
+     "type": "string",
+     "description": "speech (the shots where someone speaks, keeping their own sound) or shot names separated by commas"
+    },
+    "summary": {
+     "type": "string",
+     "description": "one line in plain words saying what the edit changes"
+    },
+    "version": {
+     "type": "string",
+     "description": "a version number like 3 (default: the latest)"
+    }
+   },
+   "required": [
+    "document",
+    "over"
+   ]
+  }
+ },
+ {
+  "name": "lab_new",
+  "description": "Start a new document as a copy of a version of another (default its latest), for a new cut or a new take; the old document and its versions are left as they are.",
+  "parameters": {
+   "type": "object",
+   "properties": {
+    "name": {
+     "type": "string",
+     "description": "a short name for the new source or shot, e.g. wb-hook"
+    },
+    "copy": {
+     "type": "string",
+     "description": "the document to copy, its id or title"
+    },
+    "title": {
+     "type": "string",
+     "description": "the new document's title"
+    },
+    "version": {
+     "type": "string",
+     "description": "a version number like 3 (default: the latest)"
+    },
+    "summary": {
+     "type": "string",
+     "description": "one line in plain words saying what the edit changes"
+    }
+   },
+   "required": [
+    "name",
+    "copy"
+   ]
+  }
+ },
+ {
+  "name": "lab_lines",
+  "description": "Put voiceover lines that aren't recorded yet on a cut as captions, timed at a speaking pace from a time or a shot's start, so the film reads as it will sound. Sentences become captions (long ones split at a comma); numbers count as the words they take to say. Refused if they'd run into a shot where someone speaks, over another caption, or past the end. Checked like lab_edit; a preview renders.",
+  "parameters": {
+   "type": "object",
+   "properties": {
+    "document": {
+     "type": "string",
+     "description": "the document's id or title, e.g. episode-290"
+    },
+    "lines": {
+     "type": "string",
+     "description": "the voiceover text, sentences in order (several sentences are fine)"
+    },
+    "at": {
+     "type": "string",
+     "description": "a time, m:ss or seconds (lab_splice: the shot boundary nearest it; lab_lines: a time or a shot's name)"
+    },
+    "wpm": {
+     "type": "string",
+     "description": "speaking pace in words a minute (default 150)"
+    },
+    "summary": {
+     "type": "string",
+     "description": "one line in plain words saying what the edit changes"
+    },
+    "version": {
+     "type": "string",
+     "description": "a version number like 3 (default: the latest)"
+    }
+   },
+   "required": [
+    "document",
+    "lines",
+    "at"
+   ]
+  }
+ },
+ {
+  "name": "lab_voice",
+  "description": "Put a recorded voiceover clip (an audio file, by path or name like 290-bella-s3) on a cut from a time or just after a shot's start, at its own length, with the music ducked under it. The voiceover captions of the lines it says (lab_lines) are re-timed to when each is said. Refused if it would run into a shot where someone speaks (it says how much more picture the lines need), over another voice or caption, or past the end. Checked like lab_edit; a preview renders.",
+  "parameters": {
+   "type": "object",
+   "properties": {
+    "document": {
+     "type": "string",
+     "description": "the document's id or title, e.g. episode-290"
+    },
+    "clip": {
+     "type": "string",
+     "description": "a file's path, or its name like IMG_4135 or 290-bella-s3 (found in Downloads, Movies, Desktop or ~/work/film-out)"
+    },
+    "at": {
+     "type": "string",
+     "description": "a time, m:ss or seconds (lab_splice: the shot boundary nearest it; lab_lines: a time or a shot's name)"
+    },
+    "gain": {
+     "type": "string",
+     "description": "the voice's level, 1 is as recorded"
+    },
+    "summary": {
+     "type": "string",
+     "description": "one line in plain words saying what the edit changes"
+    },
+    "version": {
+     "type": "string",
+     "description": "a version number like 3 (default: the latest)"
+    }
+   },
+   "required": [
+    "document",
+    "clip",
+    "at"
+   ]
+  }
+ },
+ {
+  "name": "lab_framing",
+  "description": "Two stills of a source side by side: whole over a blurred, dimmed copy of itself (fit blur) and cropped to fill (fit crop), for choosing how a clip of another shape sits in the film. Set the choice on the shot with lab_edit (/shots/@NAME/fit).",
+  "parameters": {
+   "type": "object",
+   "properties": {
+    "source": {
+     "type": "string",
+     "description": "a source's id or its clip's file name (lab_sources lists them)"
+    },
+    "at": {
+     "type": "string",
+     "description": "a time, m:ss or seconds (lab_splice: the shot boundary nearest it; lab_lines: a time or a shot's name)"
+    },
+    "document": {
+     "type": "string",
+     "description": "the document's id or title, e.g. episode-290"
+    }
+   },
+   "required": [
+    "source"
+   ]
+  }
+ }
+]

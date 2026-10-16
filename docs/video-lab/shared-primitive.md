@@ -1,6 +1,6 @@
 # Video Lab on every surface
 
-Status: proposed, 2026-10-16. Video Lab becomes one kind on the
+Status: proposed, 2026-10-16; the `video` kind crate is done. Video Lab becomes one kind on the
 [Labs platform](../labs/README.md). That document owns the API, storage,
 jobs, cards, SDK and surfaces for every Lab. This page covers only what is
 particular to video. Issues: #11879 (kind crate), #11880 (platform), #11886
@@ -34,47 +34,33 @@ openagents.com in production, Coder Desktop and the iPhone app have none of
 it. Cards are not saved in the history API, so #11869's four-surface
 recording shows words everywhere, and the film was cut in the Mac's player.
 
-## The `video` kind (#11879)
+## The `video` kind (#11879, done)
 
-`crates/video-lab` implements `LabKind`:
+`crates/video-lab` implements `LabKind` and owns every rule:
 
-- **Schemas:** `cut.v1`, `shot.v1`, `scene.v1` (moved from
-  `docs/video-lab/schemas/`).
-- **`check`:** every rule of `cut.py check` and `lab.py check()`:
-  - the 120 BPM beat grid;
-  - animation beats from `<clip>.beats.json`;
-  - held frames and still stretches over 0.4 s, unless `still_ok`;
-  - shots that keep their speech start and end in pauses, and their
-    captions match the words;
-  - the title safe area;
-  - sources exist and are long enough;
-  - music covers the cut;
-  - unknown fields are refused.
+- **Schemas:** the `cut.v1`, `shot.v1` and `scene.v1` schemas, read from
+  `docs/video-lab/schemas/`.
+- **`check`:** every rule of `cut.py check` and `lab.py check`.
+- **The patch:** `@name` picking shots.
+- **The edit pipeline:** captions follow their shots, and removed shots take
+  their captions and music hits. An edit that adds a problem is refused, with
+  beat-grid runs merged into one sentence.
+- **Times and voiceover pacing:** the times the chat passes, and caption
+  pacing for voiceover.
+- **The timeline:** moved from `verse-film`, which re-exports it.
 
-  Motion, pause and word timings are **measurements**. A job computes them
-  once per source digest, so `check` stays pure.
-- **`apply`:** JSON Patch with `/shots/@name` addressing; captions move with
-  their shots. Timeline intents come from `verse-film/src/timeline.rs`:
-  move, link and unlink, speed, text, snap to frame. Each tool's own change
-  is an intent too: `splice`, `lines` (150 wpm pacing), `voice` (re-time
-  captions to word times), `keep_captions`, `captions`, `framing`.
-- **Job types:**
-  - `render` at `preview`, `review` or `master` quality;
-  - `frames` and `strip`;
-  - `measure` (motion, pauses);
-  - `transcribe` (whisper.cpp with `lab_words.json` fixes);
-  - `score` (music remade to length);
-  - `import` (probe, rotation, poster).
-- **Card:** `view: Video` with the poster, the render, the frame strip, and
-  `Compare` for version pairs at a time. The `detail` lists shots and
-  captions for a time range.
-- **Tools:** the 18 current `lab_*` tools, unchanged in name and arguments,
-  each mapped onto platform operations.
+Facts that need the files (probes, animation beats, still stretches, speech,
+title and caption layout in our fonts, audio lengths) are `Measured`. Today
+`cut.py measure` computes them; job runners will later.
 
-Refusal wording is kept word for word ("s4-tray and the 15 shots after it
-would start off the 120 BPM beat grid…"). `test_lab.py`'s 27 cases are
-ported as Rust tests. `lab.py` calls the crate through a bridge binary, as
-`timeline_bridge.py` does today, until #11880 replaces it.
+`lab.py` and `cut.py` call the rules through the `video-lab` program
+(`scripts/film/video_lab_bridge.py`). Their Python copies of the rules are
+deleted. The tools stay where they were.
+
+Parity: before the switch, every saved version on the owner's Mac was checked
+both ways with identical problems and notes. That was 66 documents: 56 cuts,
+9 scenes and 1 shot. All 27 `test_lab.py` tests pass, with the
+temporary-path test fixed, and the crate has its own tests.
 
 ## Video on the platform (#11880)
 

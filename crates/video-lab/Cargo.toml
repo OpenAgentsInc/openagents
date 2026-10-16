@@ -1,0 +1,17 @@
+[package]
+name = "video-lab"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Video Lab's kind for the Labs platform: cut, shot and scene documents, their checks, edits and timeline"
+
+# Pure: no IO. Facts that need media (probes, still stretches, speech,
+# text layout) arrive as Measurements, made by whoever has the files.
+[dependencies]
+lab-kit = { path = "../lab-kit" }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["float_roundtrip", "preserve_order"] }
+
+[lints]
+workspace = true

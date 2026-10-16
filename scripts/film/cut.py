@@ -427,52 +427,10 @@ def speech_for(src):
     return None
 
 
-def in_pause(t, speech, slack=0.02):
-    """Whether time t of the clip falls in a pause (or before or after all speech)."""
-    if t >= speech.get("duration", 1e9) - slack:
-        return True
-    return any(q["from"] - slack <= t <= q["to"] + slack for q in speech.get("quiet", []))
-
-
-def word_at(t, speech):
-    for w in speech.get("words", []):
-        if w["from"] < t < w["to"]:
-            return w["w"]
-    near = min(speech.get("words", []), key=lambda w: min(abs(w["from"] - t), abs(w["to"] - t)), default=None)
-    return near["w"] if near else None
-
-
 def near_pauses(t, speech, n=2):
     """The pauses nearest t, as clip seconds a cut could go at (their middles)."""
     qs = sorted(speech.get("quiet", []), key=lambda q: abs((q["from"] + q["to"]) / 2 - t))[:n]
     return sorted(round((q["from"] + q["to"]) / 2, 2) for q in qs)
-
-
-WORD = re.compile(r"[a-z0-9']+")
-
-
-def said(text):
-    return [w.strip("'") for w in WORD.findall(text.lower().replace("-", " "))]
-
-
-def heard(speech, a, b):
-    """The words spoken between clip seconds a and b."""
-    return [w["w"] for w in speech.get("words", []) if w["to"] > a and w["from"] < b]
-
-
-def caption_matches(text, speech, a, b, glossary=None):
-    """Whether a caption over clip seconds [a, b] says what's said there: most of
-    its words are heard in that stretch (a second either side), after the
-    transcript's known mishearings are corrected (glossary)."""
-    words = said(text)
-    if not words:
-        return True, ""
-    spoken = " ".join(heard(speech, a - 1.0, b + 1.0))
-    for wrong, right in (glossary or {}).items():
-        spoken = re.sub(rf"\b{re.escape(wrong.lower())}\b", right.lower(), spoken.lower())
-    pool = set(said(spoken))
-    found = sum(1 for w in words if w in pool)
-    return found >= 0.6 * len(words), spoken
 
 
 def beats_for(src):
@@ -550,172 +508,69 @@ def stills_for(src, cache_dir):
     return found
 
 
-def still_problems(shot, src, start_in, end_in, played, cache_dir, problems):
-    """A shot that pauses: it holds its last frame longer than it may, or the
-    part of its clip it plays has a still stretch in it."""
-    name, ok = shot["name"], shot.get("still_ok", STILL_OK)
-    if shot.get("sound"):
-        return  # a person talking; the speech checks cover where it's cut
-    held = shot["dur"] - played
-    if shot.get("play") is not None and held > ok + 1e-6:
-        problems.append(f"{name}: holds a still frame for {held:g}s (only {played:g}s of {src.name} plays in a "
-                        f"{shot['dur']:g}s slot), so the animation pauses; end the shot when the clip's move does, "
-                        f"on the beat grid, or play more of the clip")
-    for s in stills_for(src, cache_dir):
-        a, b = max(s["from"], start_in), min(s["to"], end_in)
-        if b - a > ok + 1e-6:
-            problems.append(f"{name}: the picture is still from {a:.2f}s to {b:.2f}s of {src.name} ({b - a:.1f}s "
-                            f"on screen); end the shot before {a:.2f}s or start it after {b:.2f}s")
-
-
-def speech_problems(shot, src, p, problems, notes):
-    """A shot that keeps its own sound: it starts and ends in a pause in the
-    speech (never mid-word), plays at its own speed, and doesn't hold a frame."""
-    name = shot["name"]
-    if not p.get("audio"):
-        problems.append(f"{name}: keeps its sound, but {src.name} has no sound")
-        return
-    if shot.get("speed", 1.0) != 1.0:
-        problems.append(f"{name}: keeps its sound, so it plays at its own speed (remove speed)")
-    if shot.get("play") is not None and shot["play"] < shot["dur"] - 1e-6:
-        problems.append(f"{name}: keeps its sound, so it can't hold a frame (remove play)")
-    sp = speech_for(src)
-    if not sp:
-        notes.append(f"{name}: keeps its sound, but {src.name} has no transcript yet, so its cuts can't be checked "
-                     f"against the speech (lab_import makes one)")
-        return
-    a = shot.get("in", 0.0)
-    for label, t in (("starts", a), ("ends", a + shot["dur"])):
-        if not in_pause(t, sp):
-            w = word_at(t, sp)
-            problems.append(f"{name}: {label} mid-speech at {t:.2f}s of {src.name}"
-                            + (f", in '{w}'" if w else "") + "; cut in a pause, e.g. at "
-                            + " or ".join(f"{x:.2f}s" for x in near_pauses(t, sp)))
+def measure(cut, w, h, allow_missing=False):
+    """The facts about a cut's files that its checks need (crates/video-lab
+    `Measured`): each clip's probe, animation beats, still stretches and
+    speech; title and caption layouts in our fonts; voiceover and music
+    lengths. A title whose `under` clip is missing loses it here, as before."""
+    m = {"size": [w, h], "allow_missing": bool(allow_missing), "sources": {}, "titles": {}, "captions": {},
+         "audio": {}, "files": {}}
+    for shot in cut["shots"]:
+        if "title" in shot:
+            t = {}
+            under = shot["title"].get("under")
+            if under and not expand(under["src"]).exists():
+                t["under_missing"] = under["src"]
+                shot["title"].pop("under")
+            t["lines"] = [{"text": l["text"], "px": l["px"], "box": [float(x) for x in l["box"]]}
+                          for l in title_layout(shot["title"], w, h)]
+            m["titles"][shot["name"]] = t
+            continue
+        if shot.get("over"):
+            m["files"][shot["over"]["src"]] = expand(shot["over"]["src"]).exists()
+        key = shot.get("src")
+        if key is None:
+            continue
+        src = expand(key)
+        e = m["sources"].get(key) or {"exists": src.exists(), "path": str(src), "name": src.name}
+        if e["exists"] and "dur" not in e:
+            p = probe(src)
+            e.update(w=p["w"], h=p["h"], fps=p["fps"], dur=p["dur"], audio=p["audio"], beats=beats_for(src))
+        if e["exists"] and shot.get("sound") and "speech" not in e:
+            e["speech"] = speech_for(src)
+        if e["exists"] and not shot.get("sound") and "stills" not in e:
+            e["stills"] = stills_for(src, SOURCES.parent / "motion")
+        m["sources"][key] = e
+    caps = cut.get("captions", [])
+    if caps:
+        st = caption_style(cut, h)
+        m["caption_px"] = st["px"]
+        for c in caps:
+            lines, (x, y, bw, bh), *_ = caption_layout(c, st, w, h)
+            m["captions"][c["text"]] = {"lines": len(lines), "box": [float(x), float(y), float(bw), float(bh)]}
+    for v in ([cut["voice"]] if cut.get("voice") else []) + list(cut.get("voices", [])):
+        src = expand(v["src"])
+        m["audio"][v["src"]] = audio_length(src) if src.exists() else None
+    music = cut.get("music")
+    if music:
+        m["music"] = audio_length(expand(music)) if expand(music).exists() else None
+    return m
 
 
 def check(cut, w, h, allow_missing):
-    """The checks that need no rendering: sources, lengths, the beat grid,
-    animation beats, titles, captions and music. Fast enough to run on every edit."""
-    problems, notes = [], []
-    beat = 60.0 / cut.get("bpm", 120)
-    for shot in cut["shots"]:
-        name = shot["name"]
-        if "timeline" not in cut and abs(shot["start"] / beat - round(shot["start"] / beat)) > 1e-6:
-            problems.append(f"{name}: starts at {shot['start']:.2f}s, off the {cut.get('bpm', 120)} BPM beat grid")
-        if "title" in shot:
-            under = shot["title"].get("under")
-            if under and not expand(under["src"]).exists():
-                (notes if allow_missing else problems).append(f"{name}: missing {under['src']}")
-                shot["title"].pop("under")
-            safe = (w * 0.1, h * 0.1, w * 0.9, h * 0.9)
-            lines = title_layout(shot["title"], w, h)
-            for l in lines:
-                x0, y0, x1, y1 = l["box"]
-                if x0 < safe[0] or x1 > safe[2] or y0 < safe[1] or y1 > safe[3]:
-                    problems.append(f"{name}: '{l['text']}' leaves the title-safe area")
-                if l["px"] < h * 0.025:
-                    problems.append(f"{name}: '{l['text']}' is {l['px']}px, too small to read at {h}p")
-            for a, b in zip(lines, lines[1:]):
-                if a["box"][3] > b["box"][1]:
-                    problems.append(f"{name}: '{a['text']}' overlaps '{b['text']}'")
-            continue
-        src = expand(shot["src"])
-        if not src.exists():
-            (notes if allow_missing else problems).append(f"{name}: missing {src}")
-            continue
-        if shot.get("over") and not expand(shot["over"]["src"]).exists():
-            problems.append(f"{name}: missing overlay {shot['over']['src']}")
-        p = probe(src)
-        played = shot["play"] if shot.get("play") is not None else shot["dur"] + shot["tail"]
-        need = shot.get("in", 0.0) + played * shot.get("speed", 1.0)
-        if p["dur"] + 1e-3 < need:
-            problems.append(f"{name}: {src.name} is {p['dur']:.2f}s, the cut needs {need:.2f}s")
-        fit = shot.get("fit", "pad")
-        if fit not in FITS:
-            problems.append(f"{name}: fit is pad, blur or crop, not {fit}")
-        if abs(p["w"] / p["h"] - w / h) > 0.01 and fit == "pad":
-            problems.append(f"{name}: {src.name} is {p['w']}x{p['h']}, not {w}:{h}; it would be letterboxed "
-                            f"(set its fit to blur or crop)")
-        if shot.get("sound"):
-            speech_problems(shot, src, p, problems, notes)
-        if p["h"] < h:
-            notes.append(f"{name}: {src.name} is {p['h']}p, upscaled to {h}p")
-        # The last source second on screen, and whether it lands inside an animation.
-        start_in = shot.get("in", 0.0)
-        end_in = start_in + played * shot.get("speed", 1.0)
-        if p["dur"] + 1e-3 >= need:
-            still_problems(shot, src, start_in, end_in, played, SOURCES.parent / "motion", problems)
-        for b in beats_for(src):
-            if b["from"] + 1e-3 < end_in < b["to"] - 1e-3:
-                need = (b["to"] - start_in) / shot.get("speed", 1.0)
-                on_grid = math.ceil(need / beat - 1e-6) * beat - shot["tail"]
-                problems.append(
-                    f"{name}: cuts {b['what']} off at {end_in:.2f}s of {src.name}; it runs {b['from']:.2f}s to "
-                    f"{b['to']:.2f}s, so the shot needs at least {need:.2f}s of the clip (now {played:.2f}s; "
-                    f"{max(on_grid, need):g}s on the beat grid), or should end before {b['from']:.2f}s")
-            if start_in - 1e-3 > b["from"] and start_in + 1e-3 < b["to"] and not b.get("enter_ok"):
-                notes.append(f"{name}: starts partway into {b['what']} ({b['from']:.2f}s to {b['to']:.2f}s)")
+    """The checks that need no rendering, run by crates/video-lab over this
+    cut and the facts `measure` finds about its files."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import video_lab_bridge
+    out = video_lab_bridge.call("check_cut", document=strip_layout(cut), measured=measure(cut, w, h, allow_missing))
+    return out["problems"], out["notes"]
 
-    caps = sorted(cut.get("captions", []), key=lambda c: c["at"])
-    if caps:
-        st = caption_style(cut, h)
-        if st["px"] < h * 0.022:
-            problems.append(f"captions are {st['px']}px, too small to read at {h}p")
-        for a, b in zip(caps, caps[1:]):
-            if a["at"] + a["dur"] > b["at"] + 1e-3:
-                problems.append(f"caption '{a['text'][:30]}' overlaps '{b['text'][:30]}'")
-        for c in caps:
-            lines, (x, y, bw, bh), *_ = caption_layout(c, st, w, h)
-            if len(lines) > 2:
-                problems.append(f"caption '{c['text'][:40]}' wraps to {len(lines)} lines")
-            if x < w * 0.05 or y + bh > h * 0.95:
-                problems.append(f"caption '{c['text'][:40]}' leaves the action-safe area")
-            if c["at"] < 0 or c["at"] + c["dur"] > cut["total"] + 1e-3:
-                problems.append(f"caption '{c['text'][:40]}' runs off the timeline")
-            # A caption over a shot that keeps its speech says what's said there.
-            for shot in cut["shots"]:
-                if not shot.get("sound") or "src" not in shot:
-                    continue
-                if not (shot["start"] - 1e-3 <= c["at"] < shot["start"] + shot["dur"] - 1e-3):
-                    continue
-                sp = expand(shot["src"]).exists() and speech_for(expand(shot["src"]))
-                if not sp:
-                    continue
-                a = shot.get("in", 0.0) + c["at"] - shot["start"]
-                ok, spoken = caption_matches(c["text"], sp, a, a + c["dur"])
-                if not ok:
-                    problems.append(f"caption '{c['text'][:40]}' over {shot['name']} doesn't match what's said "
-                                    f"there ('{spoken[:60]}')")
 
-    vs = []
-    for v in ([cut["voice"]] if cut.get("voice") else []) + list(cut.get("voices", [])):
-        src = expand(v["src"])
-        if not src.exists():
-            problems.append(f"voiceover missing: {v['src']}")
-            continue
-        a = v.get("at", 0.0)
-        b = a + audio_length(src)
-        vs.append((a, b, src.name))
-        if b > cut["total"] + 1e-3:
-            problems.append(f"voiceover {src.name} runs to {b:.2f}s, past the end at {cut['total']:.2f}s")
-        for shot in cut["shots"]:
-            if shot.get("sound") and shot["start"] < b - 1e-3 and a < shot["start"] + shot["dur"] - 1e-3:
-                problems.append(f"voiceover {src.name} ({a:.2f}s to {b:.2f}s) plays over {shot['name']}, "
-                                f"where someone is speaking")
-    vs.sort()
-    for x, y in zip(vs, vs[1:]):
-        if y[0] < x[1] - 1e-3:
-            problems.append(f"voiceover {y[2]} starts at {y[0]:.2f}s, before {x[2]} ends at {x[1]:.2f}s")
-
-    music = cut.get("music")
-    if music and expand(music).exists():
-        mdur = float(run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0",
-                          str(expand(music))]).stdout)
-        if mdur + 1e-3 < cut["total"]:
-            problems.append(f"music is {mdur:.2f}s, the cut is {cut['total']:.2f}s")
-    elif music:
-        problems.append(f"music missing: {music}")
-    return problems, notes
+def strip_layout(cut):
+    """The cut as written: without the start, tail and total that `load` adds."""
+    out = {k: v for k, v in cut.items() if k != "total"}
+    out["shots"] = [{k: v for k, v in s.items() if k not in ("start", "tail")} for s in cut["shots"]]
+    return out
 
 
 def inspect(cut, cut_path, work, w, h, allow_missing):
