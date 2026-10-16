@@ -105,5 +105,11 @@ requests are made. The signet funding helper exists only with the SDK's
 `supervisor` feature and rejects every other network. The controller waits
 for confirmed reserves, the original private channel, and graph readiness
 before running the RFQ checks. It stops with `cleanup_pending` after those
-checks; closing the channel, preserving the final asset proofs, and returning
-BTC remain explicit steps in this research issue.
+checks. `scripts/lnd-signet-assets-cleanup.py` then waits for that original
+controller to release its lock before closing the original channel. It verifies
+and privately retains final proofs, waits for confirmed closure, and returns
+BTC using explicit ordinary-wallet inputs that exclude every asset carrier.
+Its return address comes from the existing isolated scratch wallet through
+`cleanup-return-address.json`. The original 72-hour deadline and saved mutation
+markers bound the run. Retained asset postage is reported separately; both
+containers stop after confirmed returns. `--preflight` performs reads only.
