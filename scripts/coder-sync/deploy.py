@@ -95,6 +95,16 @@ def revision():
 
 def build():
     commit = revision()
+    image = f"us-central1-docker.pkg.dev/{PROJECT}/openagents/coder-sync"
+    published = g("artifacts", "docker", "images", "describe", f"{image}:{commit}", "--format=value(image_summary.digest)", optional=True)
+    if published:
+        print(f"Already published: {image}@{published}")
+        return
+    versions = json.loads(g("artifacts", "docker", "images", "list", image, "--include-tags", "--format=json"))
+    builders = [v for v in versions if any(t == "builder" or t.startswith("builder-") for t in v.get("tags", []))]
+    cache = f"{image}:builder"
+    if builders:
+        cache = f"{image}@{max(builders, key=lambda v: v['createTime'])['version']}"
     scratch = os.environ.get("OPENAGENTS_SCRATCH") or subprocess.check_output(["openagents", "scratch"], text=True).strip()
     context = Path(tempfile.mkdtemp(prefix="coder-sync-build-", dir=scratch))
     try:
@@ -104,7 +114,7 @@ def build():
         if archive.wait():
             raise RuntimeError("Could not export the committed build.")
         print(g("builds", "submit", str(context), "--config", str(context / "deploy/coder-sync/cloudbuild.yaml"),
-                f"--service-account={BUILD_ACCOUNT}", f"--substitutions=_TAG={commit}", "--async", "--format=value(id)"))
+                f"--service-account={BUILD_ACCOUNT}", f"--substitutions=_TAG={commit},_CACHE_IMAGE={cache}", "--async", "--format=value(id)"))
     finally:
         shutil.rmtree(context)
 
