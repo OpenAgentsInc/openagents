@@ -1,0 +1,20 @@
+{
+  "recordedAt": "2026-10-16T13:57:34.612790+00:00",
+  "appId": "6807250813",
+  "bundleId": "com.openagents.coder",
+  "version": "1.0.0",
+  "build": "1000",
+  "source": "f8788f1594632237a3702677bb5b68d00d26341e",
+  "buildId": "a5432e8a-033f-40ef-90d5-302ba3b02b26",
+  "uploadedDate": "2026-10-16T06:48:55-07:00",
+  "processingState": "VALID",
+  "internalBuildState": "MISSING_EXPORT_COMPLIANCE",
+  "usesNonExemptEncryption": null,
+  "testNotesSaved": false,
+  "testNotesStatus": "Apple metadata PATCH returned HTTP 500; follow-up read timed out. Notes remain committed in the fork.",
+  "remaining": [
+    "Owner export-compliance declaration",
+    "Google sync.openagents.com certificate pending",
+    "Dedicated physical iPhone check"
+  ]
+}
