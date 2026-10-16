@@ -180,6 +180,10 @@ class LabTest(unittest.TestCase):
         self.assertEqual(names, set(lab.TOOLS))
         for s in lab.tool_specs():
             self.assertEqual(s["parameters"]["type"], "object")
+        # The video kind's manifest (crates/video-lab) declares the same tools.
+        kind = json.loads((Path(__file__).resolve().parents[2] / "crates/video-lab/tools.json").read_text())
+        self.assertEqual(kind, lab.tool_specs(),
+                         "regenerate crates/video-lab/tools.json from lab.tool_specs() after changing a tool")
 
     def test_a_shot_that_pauses_is_refused_and_ending_the_pause_is_saved(self):
         lab.create("still", "cut.v1", "Still film", self.cut, "First", "test")
