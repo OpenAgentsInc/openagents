@@ -1060,6 +1060,12 @@ impl SessionHost {
             .get(&adapter.engine)
             .map(|e| e.profile())
             .ok_or("engine")?;
+        let installed = self.store.json(&adapter.reference)?;
+        if self.store.get(&installed["engine"])? != profile.engine
+            || self.store.get(&installed["protocol"])? != profile.protocol
+        {
+            return Err("identity_mismatch: admitted engine or protocol differs from the installed implementation".into());
+        }
         let schema = serde_json::to_vec(&profile.settings_schema).map_err(|e| e.to_string())?;
         if digest_of(&config["settings_schema"]) != digest_bytes(&schema) {
             return Err(refuse(
@@ -2476,6 +2482,7 @@ impl SessionHost {
                             .into(),
                     );
                 }
+                self.prepare_turn_input(adapter, session, &intent)?;
                 self.unused_intent(
                     state,
                     session,
@@ -2892,6 +2899,41 @@ impl SessionHost {
         Ok(intent)
     }
 
+    fn prepare_turn_input(
+        &self,
+        adapter: &Adapter,
+        session: &Session,
+        intent: &Value,
+    ) -> Result<crate::engine::TurnInput> {
+        let mut input: Value =
+            contracts::parse_strict_bounded(&self.bytes(&intent["input"])?, 1_048_576)
+                .map_err(contract)?;
+        if !session.pending_steers.is_empty() {
+            if !input.is_object() {
+                return Err("malformed: carried corrections require object input".into());
+            }
+            input["corrections"] = Value::Array(
+                session
+                    .pending_steers
+                    .iter()
+                    .map(|(_, c)| c.clone())
+                    .collect(),
+            );
+        }
+        let delivery = crate::engine::TurnInput {
+            input: serde_json::to_vec(&input).map_err(|e| e.to_string())?,
+            context: self.bytes(&intent["context"])?,
+            task_frame: self.bytes(&intent["task_frame"])?,
+        };
+        delivery.check_size()?;
+        self.engines
+            .borrow()
+            .get(&adapter.engine)
+            .ok_or("engine")?
+            .check_turn_input(&delivery)?;
+        Ok(delivery)
+    }
+
     fn unused_intent(
         &self,
         state: &State,
@@ -3009,13 +3051,8 @@ impl SessionHost {
         }
         let intent_id = intent["intent"].as_str().ok_or("intent")?;
         self.unused_intent(state, session, intent_ref, intent_id)?;
-        let mut input: Value =
-            contracts::parse_strict_bounded(&self.bytes(&intent["input"])?, 1_048_576)
-                .map_err(contract)?;
+        let delivery = self.prepare_turn_input(&adapter, session, &intent)?;
         let carried: Vec<(Value, Value)> = std::mem::take(&mut session.pending_steers);
-        if !carried.is_empty() {
-            input["corrections"] = Value::Array(carried.iter().map(|(_, c)| c.clone()).collect());
-        }
         let turn = token();
         let mut run = Vec::new();
         let mut records = vec![
@@ -3132,11 +3169,7 @@ impl SessionHost {
                 .borrow_mut()
                 .get_mut(&adapter.engine)
                 .ok_or("engine")?
-                .start(
-                    &native,
-                    &turn,
-                    &serde_json::to_vec(&input).map_err(|e| e.to_string())?,
-                )
+                .start_admitted(&native, &turn, &delivery)
         })?;
         let evidence = self.capture(state, session, now)?;
         for (correction, _) in carried {

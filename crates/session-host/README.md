@@ -55,6 +55,16 @@ record, blocks new input and configuration changes, and cannot repeat on retry
 or restart. New intents must name the current requested or effective
 configuration; the opening's old settings cannot authorize a later turn.
 
+Native turn delivery passes the actual admitted context and task-frame bytes
+beside the delivered input. Pure validation precedes intent consumption, and
+an adapter without that boundary refuses instead of dropping context. Each
+field is bounded to 1 MiB, including input derived from carried steering.
+Loop engines consume opaque frame/context bytes by computing their digests;
+native captures and output retain those digests without sharing the original
+private context. Their engine identities now name version 3. Opening and
+configuration compare the admitted engine and protocol bytes with the actual
+installed implementation, so old pins cannot silently select updated behavior.
+
 The native `replace_runtime` command uses the full adapter CAP and a fresh
 charged ENV binding. It requires an idle session, known quiescence, no queued
 or pending input, and quiescent managed children. The old native session must

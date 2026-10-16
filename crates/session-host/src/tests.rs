@@ -438,6 +438,39 @@ fn correction(fx: &mut Fx, mode: &str, text: &str) -> Value {
 }
 
 #[test]
+fn malformed_native_input_refuses_before_delivery_or_intent_consumption() {
+    let mut fx = Fx::new();
+    let host = fx.host();
+    let (session, _) = fx.open(&host, "loop-mid-turn");
+    let intent = fx.intent(&host, &session, json!({"prompt":null}), fx.now + 600);
+    let command = fx.command(&host, &session, "submit", json!({"intent":intent}));
+    let binding = fx.binding();
+    assert_eq!(
+        fx.send(&host, OWNER, &command, Some(&binding))["reason"],
+        "malformed"
+    );
+    assert_eq!(host.started("loop-mid-turn"), 0);
+    let mut body: Value =
+        serde_json::from_slice(&fx.artifacts[intent["digest"].as_str().unwrap()]).unwrap();
+    body["input"] = put_json(&mut fx.artifacts, &json!({"prompt":"corrected"}));
+    let intent = put_json(&mut fx.artifacts, &body);
+    let command = fx.command(&host, &session, "submit", json!({"intent":intent}));
+    assert_eq!(
+        fx.send(&host, OWNER, &command, Some(&binding))["status"],
+        "accepted"
+    );
+    let result = fx.finish(&host, &session);
+    let output: Value =
+        serde_json::from_slice(&host.store().get(&result["outputs"][0]).unwrap()).unwrap();
+    assert_eq!(output["admitted"]["context"], body["context"]["digest"]);
+    assert_eq!(
+        output["admitted"]["task_frame"],
+        body["task_frame"]["digest"]
+    );
+    assert_eq!(host.started("loop-mid-turn"), 1);
+}
+
+#[test]
 #[cfg(unix)]
 fn signed_session_reads_check_current_owner_scope_and_explicit_byte_access() {
     let mut fx = Fx::new();
@@ -1882,6 +1915,7 @@ struct OpeningEngine {
     calls: Rc<std::cell::Cell<usize>>,
     crash: bool,
     configuration_delay: std::time::Duration,
+    identity: Option<Vec<u8>>,
 }
 impl OpeningEngine {
     fn check_pending(&self) {
@@ -1912,7 +1946,11 @@ impl OpeningEngine {
 }
 impl Engine for OpeningEngine {
     fn profile(&self) -> crate::engine::Profile {
-        self.engine.profile()
+        let mut profile = self.engine.profile();
+        if let Some(identity) = &self.identity {
+            profile.engine = identity.clone();
+        }
+        profile
     }
     fn check_configuration(&self, c: &crate::engine::Configuration) -> crate::Result<()> {
         std::thread::sleep(self.configuration_delay);
@@ -1936,6 +1974,17 @@ impl Engine for OpeningEngine {
     }
     fn start(&mut self, native: &str, turn: &str, input: &[u8]) -> crate::Result<()> {
         self.engine.start(native, turn, input)
+    }
+    fn check_turn_input(&self, input: &crate::engine::TurnInput) -> crate::Result<()> {
+        self.engine.check_turn_input(input)
+    }
+    fn start_admitted(
+        &mut self,
+        native: &str,
+        turn: &str,
+        input: &crate::engine::TurnInput,
+    ) -> crate::Result<()> {
+        self.engine.start_admitted(native, turn, input)
     }
     fn step(&mut self, native: &str) -> crate::engine::Observation {
         self.engine.step(native)
@@ -1976,6 +2025,7 @@ fn opening_intent_survives_lost_acknowledgment_and_process_death() {
                 calls: calls.clone(),
                 crash,
                 configuration_delay: std::time::Duration::ZERO,
+                identity: None,
             })],
             Box::new(fx.bindings.clone()),
         )

@@ -972,3 +972,16 @@ Production child links additionally need a separately mounted current child
 authority check; an opaque authorization reference alone refuses. Local loop
 fixtures select their explicit test authority. Child dispatch still requires
 its own charged execution and cannot use this metadata check as a grant.
+
+Native turn delivery carries the exact admitted frame and context bytes beside
+the delivered input. An adapter that cannot handle this input boundary refuses
+rather than silently dropping either selection. The pure loop adapters consume
+opaque frame/context bytes by computing and retaining their SHA-256 digests;
+their native captures and outputs include those digests, not the private
+context bytes. Hashes in output do not share the corresponding cached artifacts.
+Each delivered input, frame, and context is at most 1 MiB, including input
+derived from explicitly carried steering corrections. Authorization remains a
+host-side check and is not passed to an engine as permission-bearing text.
+Opening and configuration compare the retained adapter's engine and protocol
+bytes with the actual installed implementation. Reusing an old admission after
+an engine update refuses; it cannot silently select newer native behavior.

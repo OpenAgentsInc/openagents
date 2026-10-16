@@ -95,6 +95,31 @@ pub struct Configuration {
     pub policy: Vec<u8>,
 }
 
+/// Actual admitted delivery. Context and frame bytes stay distinct from the
+/// input, and their presence does not grant tool or spending authority.
+#[derive(Clone, Debug)]
+pub struct TurnInput {
+    pub input: Vec<u8>,
+    pub context: Vec<u8>,
+    pub task_frame: Vec<u8>,
+}
+impl TurnInput {
+    pub fn check_size(&self) -> Result<()> {
+        if [&self.input, &self.context, &self.task_frame]
+            .iter()
+            .any(|bytes| bytes.len() > 1_048_576)
+        {
+            return Err("limit_exceeded: native turn input, context, or frame".into());
+        }
+        Ok(())
+    }
+    fn digests(&self) -> Value {
+        json!({"input":nostr::contracts::digest_bytes(&self.input),
+            "context":nostr::contracts::digest_bytes(&self.context),
+            "task_frame":nostr::contracts::digest_bytes(&self.task_frame)})
+    }
+}
+
 pub trait Engine {
     fn profile(&self) -> Profile;
     /// Validate without starting a process, sending input, or changing state.
@@ -126,6 +151,13 @@ pub trait Engine {
         Err("unsupported_feature: native close is not implemented".into())
     }
     fn start(&mut self, native: &str, turn: &str, input: &[u8]) -> Result<()>;
+    /// Validate admitted delivery without native effects.
+    fn check_turn_input(&self, _input: &TurnInput) -> Result<()> {
+        Err("unsupported_feature: admitted frame and context delivery is not implemented".into())
+    }
+    fn start_admitted(&mut self, _native: &str, _turn: &str, _input: &TurnInput) -> Result<()> {
+        Err("unsupported_feature: admitted frame and context delivery is not implemented".into())
+    }
     fn step(&mut self, native: &str) -> Observation;
     /// Deliver a mid-turn steer. Returns whether the engine replayed it.
     fn steer(&mut self, native: &str, turn: &str, correction: &[u8]) -> Result<bool>;
@@ -148,6 +180,7 @@ struct Run {
     corrections: Vec<Value>,
     interrupted: bool,
     effort: String,
+    admitted: Option<Value>,
 }
 
 #[derive(Default)]
@@ -228,7 +261,7 @@ impl LoopEngine {
         use Support::*;
         Self::new(Profile {
             name: "loop-mid-turn",
-            engine: b"loop-engine 2 mid-turn configured".to_vec(),
+            engine: b"loop-engine 3 mid-turn admitted context".to_vec(),
             protocol: br#"{"type":"object"}"#.to_vec(),
             effects: json!({"reads":["artifact"],
                 "writes":[],"network":[],
@@ -260,7 +293,7 @@ impl LoopEngine {
         use Support::*;
         Self::new(Profile {
             name: "loop-boundary",
-            engine: b"loop-engine 2 boundary configured".to_vec(),
+            engine: b"loop-engine 3 boundary admitted context".to_vec(),
             protocol: br#"{"type":"object"}"#.to_vec(),
             effects: json!({"reads":["artifact"],
                 "writes":[],"network":[],
@@ -461,6 +494,30 @@ impl Engine for LoopEngine {
         }
         Ok(())
     }
+    fn check_turn_input(&self, input: &TurnInput) -> Result<()> {
+        input.check_size()?;
+        let body: Value = nostr::contracts::parse_strict_bounded(&input.input, 1_048_576)
+            .map_err(|e| e.to_string())?;
+        if !body.is_object() || !body["prompt"].is_string() {
+            return Err("malformed: loop input requires a prompt".into());
+        }
+        Ok(())
+    }
+    fn start_admitted(&mut self, native: &str, turn: &str, input: &TurnInput) -> Result<()> {
+        self.check_turn_input(input)?;
+        let digests = input.digests();
+        let result = self.start(native, turn, &input.input);
+        if let Some(run) = self
+            .sessions
+            .get_mut(native)
+            .and_then(|s| s.run.as_mut())
+            .filter(|r| r.turn == turn)
+        {
+            run.admitted = Some(digests.clone());
+            self.capture("to_engine", "turn/context", Some(turn.into()), &digests);
+        }
+        result
+    }
     fn step(&mut self, native: &str) -> Observation {
         let Some(session) = self.sessions.get_mut(native) else {
             return Observation::Lost;
@@ -469,7 +526,7 @@ impl Engine for LoopEngine {
             return Observation::Lost;
         };
         if run.interrupted {
-            let output = json!({"prompt":run.prompt,"interrupted":true,"corrections":run.corrections,"effort":run.effort});
+            let output = json!({"prompt":run.prompt,"interrupted":true,"corrections":run.corrections,"effort":run.effort,"admitted":run.admitted});
             let turn = run.turn.clone();
             session.run = None;
             self.capture("from_engine", "turn/completed", Some(turn), &output);
@@ -510,7 +567,7 @@ impl Engine for LoopEngine {
             return Observation::Running;
         }
         let output = json!({"prompt":run.prompt,"corrections":run.corrections,"answer":run.answer,"effort":run.effort,
-            "turn_number":session.turns});
+            "turn_number":session.turns,"admitted":run.admitted});
         let turn = run.turn.clone();
         session.run = None;
         self.capture("from_engine", "turn/completed", Some(turn), &output);

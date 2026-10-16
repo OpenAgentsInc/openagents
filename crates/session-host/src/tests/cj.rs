@@ -586,6 +586,16 @@ fn real_cj_open_and_turn_share_actual_environment_and_call_fences() {
     );
     let terminal = host.poll(&event, r.fx.now).unwrap();
     assert_eq!(terminal.0.kind, execution::RESULT_KIND);
+    let delivered = terminal
+        .1
+        .values()
+        .filter_map(|b| serde_json::from_slice::<Value>(b).ok())
+        .find(|b| b["admitted"].is_object())
+        .unwrap();
+    assert_eq!(
+        delivered["admitted"],
+        json!({"input":input["digest"],"context":context["digest"],"task_frame":r.frame["digest"]})
+    );
     assert_eq!(host.poll(&event, r.fx.now).unwrap(), terminal);
     assert_eq!(host.started("loop-mid-turn"), 1);
     let result = r
@@ -1231,6 +1241,39 @@ fn a_new_cj_attempt_can_return_a_native_duplicate_without_another_opening() {
 }
 
 #[test]
+fn an_older_adapter_pin_cannot_open_a_different_installed_engine() {
+    let mut r = Real::new();
+    let calls = Rc::new(std::cell::Cell::new(0));
+    let host = SessionHost::open(
+        r.fx.root.clone(),
+        secret(HOST),
+        vec![Box::new(OpeningEngine {
+            engine: LoopEngine::mid_turn(),
+            root: r.fx.root.clone(),
+            calls: calls.clone(),
+            crash: false,
+            configuration_delay: std::time::Duration::ZERO,
+            identity: Some(b"a different native implementation".to_vec()),
+        })],
+        Box::new(r.allocator()),
+    )
+    .unwrap();
+    let opening = r.opening(&host);
+    let (event, binding) = r.job(&opening);
+    assert!(
+        host.serve(&event, &r.fx.artifacts, &binding, r.fx.now)
+            .unwrap_err()
+            .contains("identity_mismatch")
+    );
+    assert_eq!(calls.get(), 0);
+    assert!(
+        host.serve(&event, &r.fx.artifacts, &binding, r.fx.now)
+            .is_err()
+    );
+    assert_eq!(r.coordinator.scope(&r.scope).unwrap()["calls"], 0);
+}
+
+#[test]
 fn a_real_allocator_refuses_unmounted_child_delegation_despite_known_admissions() {
     let mut r = Real::new();
     let host = r.host(LoopEngine::mid_turn());
@@ -1429,6 +1472,7 @@ fn one_wall_time_allowance_covers_intake_and_native_configuration() {
             calls: calls.clone(),
             crash: false,
             configuration_delay: std::time::Duration::from_millis(650),
+            identity: None,
         })],
         Box::new(Delayed(r.allocator())),
     )
@@ -1630,6 +1674,17 @@ fn charged_promotion_runs_only_the_selected_signed_head_once() {
     );
     assert_eq!(host.started("loop-mid-turn"), 1);
     assert_eq!(r.coordinator.scope(&r.scope).unwrap()["calls"], 2);
+    let delivered = terminal
+        .1
+        .values()
+        .filter_map(|b| serde_json::from_slice::<Value>(b).ok())
+        .find(|b| b["admitted"].is_object())
+        .unwrap();
+    assert_eq!(delivered["admitted"]["context"], body["context"]["digest"]);
+    assert_eq!(
+        delivered["admitted"]["task_frame"],
+        body["task_frame"]["digest"]
+    );
     let signer =
         nostr::domain::RelaySigner::from_secret_hex(&secret(HOST).display_secret().to_string())
             .unwrap();
@@ -1664,7 +1719,13 @@ fn charged_promotion_runs_only_the_selected_signed_head_once() {
 
 #[test]
 fn charged_promotion_disposes_stale_heads_without_skipping_or_executing_them() {
-    for mode in ["expired", "revoked", "wrong-frame", "wrong-head"] {
+    for mode in [
+        "expired",
+        "revoked",
+        "wrong-frame",
+        "wrong-head",
+        "bad-input",
+    ] {
         let mut r = Real::new();
         let host = r.host(LoopEngine::mid_turn());
         let opening = r.opened(&host);
@@ -1679,6 +1740,9 @@ fn charged_promotion_disposes_stale_heads_without_skipping_or_executing_them() {
         }
         if mode == "wrong-frame" {
             first["task_frame"] = put_json(&mut r.fx.artifacts, &json!({"frame":"another"}));
+        }
+        if mode == "bad-input" {
+            first["input"] = put_json(&mut r.fx.artifacts, &json!({"prompt":null}));
         }
         let first_ref = put_json(&mut r.fx.artifacts, &first);
         enqueue["payload"]["intent"] = first_ref.clone();
