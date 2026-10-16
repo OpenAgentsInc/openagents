@@ -552,6 +552,90 @@ async fn public_lifecycle_uses_current_account_authority_and_keeps_service_crede
         .await
         .unwrap();
     assert_eq!(caps["files"]["max_bytes"], computer_files::MAX_BYTES);
+    let file_calls_before = state
+        .calls
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|(_, method, path)| method == "PUT" && path.ends_with("/files"))
+        .count();
+    let oversized = vec![b'x'; computer_files::MAX_BYTES + 1];
+    let r = http
+        .put(&file_url)
+        .bearer_auth(token("alice"))
+        .header("content-type", "application/octet-stream")
+        .header("x-content-sha256", computer_files::digest(&oversized))
+        .body(oversized)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 413);
+    assert_eq!(
+        r.json::<Value>().await.unwrap()["error"]["code"],
+        "file_too_large"
+    );
+    assert_eq!(
+        state
+            .calls
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(_, method, path)| method == "PUT" && path.ends_with("/files"))
+            .count(),
+        file_calls_before
+    );
+    assert!(state.file.lock().unwrap().is_empty());
+    // Headers alone get an immediate413, while the unread body holds its slot.
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let address = base.strip_prefix("http://").unwrap();
+    let mut stalled = Vec::new();
+    for _ in 0..2 {
+        let mut stream = tokio::net::TcpStream::connect(address).await.unwrap();
+        let headers = format!(
+            "PUT /v1/computers/{ID}/files?path=input.bin HTTP/1.1\r\nHost: {address}\r\nAuthorization: Bearer {}\r\nContent-Type: application/octet-stream\r\nContent-Length: {}\r\nX-Content-SHA256: {}\r\n\r\n",
+            token("alice"),
+            computer_files::MAX_BYTES + 1,
+            "a".repeat(64)
+        );
+        stream.write_all(headers.as_bytes()).await.unwrap();
+        let mut response = [0; 2048];
+        let read = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            stream.read(&mut response),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert!(String::from_utf8_lossy(&response[..read]).starts_with("HTTP/1.1 413"));
+        stalled.push(stream);
+    }
+    assert_eq!(
+        http.get(&file_url)
+            .bearer_auth(token("alice"))
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        429
+    );
+    drop(stalled);
+    for attempt in 0..50 {
+        let r = http
+            .get(&file_url)
+            .bearer_auth(token("alice"))
+            .send()
+            .await
+            .unwrap();
+        if r.status() == 200 {
+            assert!(r.bytes().await.unwrap().is_empty());
+            break;
+        }
+        assert!(
+            attempt < 49,
+            "Disconnected rejected uploads kept their slots"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
     let before = state.calls.lock().unwrap().len();
     let too_large = http
         .post(format!("{base}/v1/computers"))

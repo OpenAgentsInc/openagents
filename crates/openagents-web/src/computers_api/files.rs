@@ -5,6 +5,7 @@ use axum::{
     extract::{Query, Request},
 };
 use computer_files::{FileError, FileInfo, MAX_BYTES, MAX_TRANSFERS, TIMEOUT_SECONDS};
+use futures_util::StreamExt;
 use std::{
     sync::{Arc, OnceLock},
     time::Duration,
@@ -61,6 +62,39 @@ fn uncertain() -> Response {
         "write_uncertain",
         FileError::WriteUncertain.message(),
     )
+}
+// Send 413 immediately, then keep the response open while discarding the
+// rejected HTTP/1 upload. Closing it while Cloud Run is still sending the
+// body can reset the connection and hide 413. The existing slot, byte bound,
+// and deadline also bound clients that continue sending or stall.
+fn reject_large_upload(req: Request, permit: tokio::sync::OwnedSemaphorePermit) -> Response {
+    let response = refused(
+        StatusCode::PAYLOAD_TOO_LARGE,
+        "file_too_large",
+        FileError::TooLarge.message(),
+    );
+    let (mut parts, error) = response.into_parts();
+    parts.headers.remove(header::CONTENT_LENGTH);
+    let first = futures_util::stream::once(async move {
+        Ok::<_, std::convert::Infallible>(axum::body::to_bytes(error, 4096).await.unwrap())
+    });
+    let finish = futures_util::stream::once(async move {
+        let _permit = permit;
+        let mut body = req.into_body().into_data_stream();
+        let discard = async {
+            let mut bytes = 0_usize;
+            while let Some(Ok(chunk)) = body.next().await {
+                bytes = bytes.saturating_add(chunk.len());
+                // Cloud Run's HTTP/1 request limit is 32 MiB.
+                if bytes >= 32 * 1024 * 1024 {
+                    break;
+                }
+            }
+        };
+        let _ = tokio::time::timeout(Duration::from_secs(TIMEOUT_SECONDS), discard).await;
+        Ok::<_, std::convert::Infallible>(axum::body::Bytes::new())
+    });
+    Response::from_parts(parts, Body::from_stream(first.chain(finish)))
 }
 fn limited() -> Response {
     let mut r = refused(
@@ -153,11 +187,7 @@ pub(crate) async fn transfer(
         {
             Some(n) if n <= MAX_BYTES => n,
             Some(_) => {
-                return refused(
-                    StatusCode::PAYLOAD_TOO_LARGE,
-                    "file_too_large",
-                    FileError::TooLarge.message(),
-                );
+                return reject_large_upload(req, _permit);
             }
             None => {
                 return refused(

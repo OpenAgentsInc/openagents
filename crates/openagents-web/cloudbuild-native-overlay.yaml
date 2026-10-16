@@ -7,6 +7,8 @@ steps:
       - crates/openagents-web/Dockerfile.native-overlay
       - --build-arg
       - LIVE_WEB_IMAGE=${_LIVE_WEB_IMAGE}
+      - --build-arg
+      - OPENAGENTS_COMMIT=${_COMMIT}
       - -t
       - us-central1-docker.pkg.dev/openagentsgemini/openagents/openagents-web:${_TAG}
       - .
@@ -15,6 +17,7 @@ images:
 substitutions:
   _TAG: native-overlay
   _LIVE_WEB_IMAGE: ''
+  _COMMIT: unknown
 options:
   machineType: E2_HIGHCPU_32
   logging: CLOUD_LOGGING_ONLY
