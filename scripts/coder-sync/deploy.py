@@ -113,11 +113,11 @@ def deploy(staging):
     suffix = "-staging" if staging else ""
     service = f"coder-sync{suffix}"
     args = ["run", "deploy", service, f"--region={REGION}", f"--image=us-central1-docker.pkg.dev/{PROJECT}/openagents/coder-sync:{commit}",
-            f"--service-account={ACCOUNT}", "--max-instances=1", "--min-instances=0", "--timeout=3600", "--concurrency=80", "--cpu=1", "--memory=512Mi", "--allow-unauthenticated",
+            f"--service-account={ACCOUNT}", "--max=1", "--min=0", "--max-instances=1", "--min-instances=0", "--timeout=3600", "--concurrency=80", "--cpu=1", "--memory=512Mi", "--allow-unauthenticated",
             f"--add-cloudsql-instances={PROJECT}:{REGION}:{INSTANCE}",
             f"--set-secrets=CODER_SYNC_DATABASE_URL=coder-sync{suffix}-database-url:latest",
             f"--set-env-vars=CODER_SYNC_ENV={'staging' if staging else 'production'},CODER_SYNC_AUTH={'dev' if staging else 'disabled'},CODER_SYNC_BUCKET={PROJECT}-coder-sync{suffix},CODER_SYNC_REVISION={commit}",
-            "--args=--allow-dev-auth" if staging else "--clear-args"]
+            "--args=--allow-dev-auth" if staging else "--args="]
     g(*args)
     print(g("run", "services", "describe", service, f"--region={REGION}", "--format=value(status.url)"))
 
