@@ -4,6 +4,50 @@ Since the 2026-10-16 rename the app is **OpenAgents** on bundle
 `com.openagents.app` (the OpenAgents App Store Connect record; its next build must
 be above both 59 there and 1002 here). The history below describes 1.0.0 (1002) on
 the retired `com.openagents.coder` record.
+
+## Ship a build to TestFlight (com.openagents.app)
+
+How 1.0.0 (60) was shipped on 2026-10-16, from `apps/openagents` on a clean
+`main`. The App Store Connect key comes from `~/work/.secrets/appstoreconnect.env`
+(`ASC_API_KEY_ID`, `ASC_API_ISSUER_ID`, `ASC_API_PRIVATE_KEY_PATH`), and it is
+never printed.
+
+1. Set `CURRENT_PROJECT_VERSION` in `Zeron.xcodeproj` (all eight entries) and
+   `version.json` above the record's highest build
+   (`scripts/release/asc.py builds --version 1.0.0` from the repository root),
+   update `test-notes.md`, then commit and push.
+2. Archive (Release core, then Xcode):
+   ```sh
+   CONFIGURATION=Release ZERON_ACCOUNT_FIXTURE=0 scripts/ios/build-core.sh iphoneos
+   ZERON_SKIP_CORE=1 xcodebuild -project apps/ios/Zeron.xcodeproj -scheme Zeron \
+     -configuration Release -destination generic/platform=iOS \
+     -archivePath OUT.xcarchive SWIFT_ACTIVE_COMPILATION_CONDITIONS= \
+     DEVELOPMENT_TEAM=HQWSG26L43 CODE_SIGN_STYLE=Automatic -allowProvisioningUpdates \
+     -authenticationKeyPath "$ASC_API_PRIVATE_KEY_PATH" \
+     -authenticationKeyID "$ASC_API_KEY_ID" -authenticationKeyIssuerID "$ASC_API_ISSUER_ID" archive
+   ```
+3. Export and upload with **manual** distribution signing. The API key can't
+   use cloud-managed certificates, so automatic export fails with "Cloud
+   signing permission error". The ExportOptions:
+   - `method` `app-store-connect`, `destination` `upload`, `signingStyle` `manual`;
+   - `teamID` `HQWSG26L43`;
+   - `signingCertificate`: the local Apple Distribution identity whose
+     certificate is App Store Connect's `GCN7Q59Y27` (valid to 2027-09-01);
+   - `provisioningProfiles`:
+     - `com.openagents.app` → `OpenAgents App Store`;
+     - `com.openagents.app.LiveActivity` → `com.openagents.app.LiveActivity AppStore`.
+
+     The second profile and that bundle ID were created through the API for
+     build 60.
+
+   Run:
+   ```sh
+   xcodebuild -exportArchive -archivePath OUT.xcarchive -exportOptionsPlist ExportOptions.plist \
+     -exportPath OUT-upload -authenticationKeyPath ... -authenticationKeyID ... -authenticationKeyIssuerID ...
+   ```
+4. `scripts/release/asc.py wait-valid --build N --version 1.0.0` (repository
+   root) waits for processing and internal testing.
+
 Before signing, the owner checks that this version and build are available.
 If they are already used, change every app/extension version in
 `Zeron.xcodeproj/project.pbxproj` and `version.json` together, commit, and push.
