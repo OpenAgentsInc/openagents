@@ -46,7 +46,7 @@ key have interchangeable authority.
 | `/v1/messages` | Existing compatibility/older upstream path; not a new inference schema operation | Owning service auth remains in force | Keep the 1.0 Anthropic-compatible address working; this inventory does not claim a qualified combined schema. |
 | `/v1/decisions`, `/systemone` | Gateway/decision door through front | Account service key, subscribed workspace and door authorization; request admission and settlement apply | Both are included with distinct request shapes. System One uses a [generated public slice](openapi.systemone.json) from the [owning decision contract](../decision-models/api/openapi.yaml); classification and jobs remain standalone-gateway operations. |
 | `/v1/device/{code,token,sign-out}`, `/account` | Web device handlers and account discovery | No credential to request a code; single-use device code to poll; website GitHub session approves; issued app session or supported account credential for account reads | Qualified app schema and [auth evidence](auth-client-evidence.json). Browser approval stays outside the app API. |
-| `/v1/keys` | Web sign-in-key management over account service | Account session/sign-in key; only its own account's keys | Implemented, not the workspace `oak_` key route. Public request/response coverage remains incomplete. |
+| `/v1/keys` | Web sign-in-key management over account service | Live account session/sign-in key; cookies and `oak_` credentials cannot manage keys | Qualified list/create/revoke schemas for sign-in and owner-workspace API keys. See [key management](#account-key-management); workspace key administration is separate. |
 | `/v1/account/access`, `/workspaces*`, `/invitations*` | Gateway public allowlist | Account service plus workspace role, scoped key and invitation checks | Gateway audience schemas include these operations. Some are summary schemas; field-level qualification remains incremental. |
 | `/v1/agents/{challenge,register,me,claim,claimed,credit}`, `/agents/{account}/revoke` | Gateway public agent registration | Challenge/proof, agent credential, or account owner as declared by handler | Gateway schema. These are not the web activity list at `/v1/agents`. |
 | `/v1/history*` | Web account-owned saved history | Account-bound app credential; owner or current shared-project membership for each read | Qualified [complete history](chat-history.md), including file/capture reads, unknown saved content and source-bound pagination. |
@@ -100,11 +100,51 @@ and the Coder 1.0 aliases. Computers commands/files keep their independent issue
 sequence; unrelated coverage is not a prerequisite for the first SDK client.
 
 Incremental follow-ups are [#11857](https://github.com/OpenAgentsInc/openagents/issues/11857)
-for project/thread/file/sign-in-key contracts and
+for project/thread/file/sign-in-key contracts, split by authority into
+[#11864](https://github.com/OpenAgentsInc/openagents/issues/11864) (keys),
+[#11865](https://github.com/OpenAgentsInc/openagents/issues/11865) (projects and membership),
+[#11866](https://github.com/OpenAgentsInc/openagents/issues/11866) (project files and uploads),
+[#11867](https://github.com/OpenAgentsInc/openagents/issues/11867) (threads), and
+[#11868](https://github.com/OpenAgentsInc/openagents/issues/11868) (connected sources), and
 [#11858](https://github.com/OpenAgentsInc/openagents/issues/11858) for the
 public System One slice and discovery links, now implemented. Separately served voice,
 payments, legacy services, and configured work surfaces retain the coverage gaps
 listed above; they need their owners' contracts before client generation.
+
+## Account key management
+
+`GET /v1/keys`, `POST /v1/keys`, and `DELETE /v1/keys/{id}` use a live
+account-service app session or sign-in key in `Authorization: Bearer …`.
+Cookies alone and `oak_` API keys are refused. A sign-in key can create
+another sign-in key and revoke itself. Each request resolves the account;
+another account's key ID returns `404 unknown_key`.
+
+The default kind is `signin`; `sign-in` is an accepted input alias. Lists
+contain metadata, never tokens. Sign-in dates are Unix seconds; nullable
+expiry means until revoked. Creation takes `name` and optional
+`expires_in_days` (1–365 or null), trims the name, and rejects an empty name,
+control characters, or more than 80 characters. An account can have 50 working
+sign-in keys. Name, expiry, and capacity refusals from this service become
+`400 invalid_key` at the web front. Lists have no pagination.
+
+`kind=api` lists or revokes keys in the first workspace where the account is
+an owner (normally its personal workspace).
+Creation uses `{"name":"example","kind":"api"}` and returns the token once.
+These API keys have only `responses`, `models:read`, and `usage:read` scopes;
+this route does not accept a workspace or scopes from the caller. API names are
+trimmed and truncated to 80 characters. A non-null expiry returns
+`400 invalid_expiry`; no owned workspace returns `409 no_workspace`.
+API list dates and names can be null; dates are strings rather than the
+sign-in list's Unix seconds.
+
+All results use `Cache-Control: no-store, private`. Missing or invalid
+credentials return `401 signed_out`; unavailable account storage returns
+`503 unavailable`. Invalid JSON or unknown creation fields return
+`400 invalid_request`. Key creation does not honor an idempotency header:
+retrying an uncertain creation can make another key, and the first token
+cannot be recovered from a list. Inspect the list before deciding what to
+revoke or create. Revoking an already revoked sign-in key returns
+`404 unknown_key`. These operations neither run a model nor make a payment.
 
 ## Composition and manual checks
 

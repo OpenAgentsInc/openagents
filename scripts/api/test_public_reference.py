@@ -58,6 +58,20 @@ class PublicReference(unittest.TestCase):
         with self.assertRaisesRegex(AssertionError, 'drift'):
             reference.check(document)
 
+    def test_key_management_authority_and_shapes_cannot_drift(self):
+        self.assertEqual(self.document['paths']['/v1/keys']['post']['security'],
+                         [{'appKeyManagementBearer': []}])
+        self.assertEqual(self.document['components']['schemas']['AppManagedKeyApiListed']
+                         ['properties']['created']['type'], ['string', 'null'])
+        document = copy.deepcopy(self.document)
+        document['paths']['/v1/keys']['post']['security'] = [{'appBearer': []}]
+        with self.assertRaisesRegex(AssertionError, 'drift'):
+            reference.check(document)
+        document = copy.deepcopy(self.document)
+        document['components']['schemas']['AppManagedKeyApiListed']['properties']['created'] = {'type': 'integer'}
+        with self.assertRaisesRegex(AssertionError, 'component drift'):
+            reference.check(document)
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -61,6 +61,7 @@ mod github_refs;
 mod github_tools;
 mod history_api;
 mod history_openapi;
+mod key_openapi;
 mod lab;
 mod labs;
 mod layout;

@@ -40,6 +40,15 @@ async fn world_with(
     service_invite: Option<oa_auth::InviteOnly>,
     web_invite: Option<oa_auth::InviteOnly>,
 ) -> World {
+    world_with_extra_routes(with_github, service_invite, web_invite, None).await
+}
+
+async fn world_with_extra_routes(
+    with_github: bool,
+    service_invite: Option<oa_auth::InviteOnly>,
+    web_invite: Option<oa_auth::InviteOnly>,
+    extra: Option<Router>,
+) -> World {
     let fake = Fake::new(CLIENT, SECRET, REDIRECT, vec![fake::octo(), fake::quiet()]);
     let github_origin = fake.spawn().await.unwrap();
     let credentials = fake::credentials(&github_origin, CLIENT, SECRET, REDIRECT).unwrap();
@@ -57,7 +66,17 @@ async fn world_with(
         Some(invite) => service.with_invite_only(invite),
         None => service,
     };
-    let account_service = service.spawn().await.unwrap();
+    let account_service = if let Some(extra) = extra {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let router = service.router().merge(extra);
+        tokio::spawn(async move {
+            axum::serve(listener, router).await.unwrap();
+        });
+        origin
+    } else {
+        service.spawn().await.unwrap()
+    };
     let private = root.path().canonicalize().unwrap().join("private");
     std::fs::create_dir(&private).unwrap();
     std::fs::set_permissions(&private, std::fs::Permissions::from_mode(0o700)).unwrap();
@@ -109,6 +128,95 @@ async fn world_with(
             .build()
             .unwrap(),
     }
+}
+
+#[tokio::test]
+async fn public_api_key_contract_selects_owned_workspace_and_fixed_scopes() {
+    use axum::{Json, extract::Path, routing::get};
+    use std::sync::Mutex;
+    let calls = Arc::new(Mutex::new(vec![]));
+    let created = calls.clone();
+    let deleted = calls.clone();
+    let routes = Router::new().route("/v1/workspaces/{workspace}/keys", get(
+        |Path(workspace): Path<String>| async move {
+            Json(json!({"keys":[
+                {"id":"active-key","name":null,"created":null},
+                {"id":"paused-key","name":"paused","created":"2026-10-01T00:00:00Z","status":"paused"},
+                {"id":"gone-key","status":"revoked"}
+            ],"workspace":workspace}))
+        }
+    ).post(move |Path(workspace): Path<String>, Json(body): Json<serde_json::Value>| {
+        let calls = created.clone();
+        async move {
+            calls.lock().unwrap().push((workspace, body));
+            Json(json!({"key":{"id":"created-key","tenant":"synthetic"},"key_token":"redacted-fixture-token"}))
+        }
+    })).route("/v1/workspaces/{workspace}/keys/{key}", axum::routing::delete(
+        move |Path((workspace,key)): Path<(String,String)>| {
+            let calls = deleted.clone();
+            async move {
+                calls.lock().unwrap().push((workspace, json!({"revoke":key})));
+                Json(json!({"revoked":true}))
+            }
+        }
+    ));
+    let world = world_with_extra_routes(true, None, None, Some(routes)).await;
+    let mut browser = Browser::default();
+    browser
+        .through_github(&world, "%2Fsettings", "login=octo-local")
+        .await;
+    let token = &browser.0["oa_cloud_session"];
+    let (status, listed) = agent_call(&world, "GET", "/v1/keys?kind=api", None, token).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(listed["kind"], "api");
+    assert_eq!(
+        listed["keys"],
+        json!([
+            {"id":"active-key","name":null,"created":null,"status":"active"},
+            {"id":"paused-key","name":"paused","created":"2026-10-01T00:00:00Z","status":"paused"}
+        ])
+    );
+    let (status, made) = agent_call(
+        &world,
+        "POST",
+        "/v1/keys",
+        Some(json!({"kind":"api","name":"z".repeat(90)})),
+        token,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        made["key"],
+        json!({"id":"created-key","name":"z".repeat(80),"status":"active"})
+    );
+    assert_eq!(made["token"], "redacted-fixture-token");
+    assert_eq!(
+        agent_call(&world, "DELETE", "/v1/keys/gone-key?kind=api", None, token)
+            .await
+            .0,
+        StatusCode::NOT_FOUND
+    );
+    let (status, revoked) = agent_call(
+        &world,
+        "DELETE",
+        "/v1/keys/active-key?kind=api",
+        None,
+        token,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        revoked,
+        json!({"kind":"api","key":{"id":"active-key","state":"revoked"}})
+    );
+    let calls = calls.lock().unwrap();
+    assert_eq!(calls.len(), 2);
+    assert_eq!(
+        calls[0].1,
+        json!({"name":"z".repeat(80),"scopes":["responses","models:read","usage:read"]})
+    );
+    assert_eq!(calls[0].0, calls[1].0);
+    assert_eq!(calls[1].1, json!({"revoke":"active-key"}));
 }
 
 #[derive(Default)]
@@ -1195,11 +1303,138 @@ async fn agent_call(
         .await
         .unwrap();
     let status = response.status();
+    if path.starts_with("/v1/keys") {
+        assert_eq!(
+            response.headers()[header::CACHE_CONTROL],
+            "no-store, private"
+        );
+    }
     let bytes = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
     (
         status,
         serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null),
     )
+}
+
+#[tokio::test]
+async fn public_key_contract_preserves_account_authority_and_uncertain_creation() {
+    let world = world(true).await;
+    let mut alice = Browser::default();
+    alice
+        .through_github(&world, "%2Fsettings", "login=octo-local")
+        .await;
+    let mut bob = Browser::default();
+    bob.through_github(&world, "%2Fsettings", "login=quiet-local")
+        .await;
+    let token = alice.0["oa_cloud_session"].clone();
+    let other = bob.0["oa_cloud_session"].clone();
+
+    // A browser cookie alone and a model API key cannot manage account keys.
+    let response = alice.get(&world, "/v1/keys").await;
+    assert_eq!(response.status, StatusCode::UNAUTHORIZED);
+    for unsupported in ["", "opaque-api-credential"] {
+        let (status, body) = agent_call(&world, "GET", "/v1/keys", None, unsupported).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        assert_eq!(body["error"]["code"], "signed_out");
+    }
+    for (body, code) in [
+        (json!({"name":"agent","unknown":true}), "invalid_request"),
+        (json!({"name":"agent","kind":"workspace"}), "invalid_kind"),
+        (json!({"name":"agent","expires_in_days":0}), "invalid_key"),
+        (json!({"name":"agent","expires_in_days":366}), "invalid_key"),
+        (json!({"name":"\n"}), "invalid_key"),
+        (
+            json!({"name":"agent","kind":"api","expires_in_days":30}),
+            "invalid_expiry",
+        ),
+        (json!({"name":" ","kind":"api"}), "invalid_name"),
+    ] {
+        let (status, body) = agent_call(&world, "POST", "/v1/keys", Some(body), &token).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(body["error"]["code"], code);
+    }
+
+    let mut made = vec![];
+    for _ in 0..2 {
+        let response = world
+            .site
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/keys")
+                    .header(header::HOST, HOST)
+                    .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .header("Idempotency-Key", "same-logical-request")
+                    .body(Body::from(
+                        json!({"name":" agent ","kind":"sign-in","expires_in_days":null})
+                            .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body: serde_json::Value =
+            serde_json::from_slice(&to_bytes(response.into_body(), 65536).await.unwrap()).unwrap();
+        assert_eq!(body["kind"], "signin");
+        assert_eq!(body["key"]["name"], "agent");
+        assert!(body["key"]["expires_at"].is_null());
+        assert!(body["key"]["created_at"].is_u64());
+        assert!(
+            body["token"]
+                .as_str()
+                .is_some_and(crate::cloud::session::session_token)
+        );
+        made.push(body);
+    }
+    assert_ne!(made[0]["key"]["id"], made[1]["key"]["id"]);
+    let id = made[0]["key"]["id"].as_str().unwrap();
+    let secret = made[0]["token"].as_str().unwrap();
+    let (status, own) = agent_call(&world, "GET", "/v1/keys", None, secret).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(own["keys"].as_array().unwrap().len(), 2);
+    assert!(
+        own["keys"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|key| key["id"] == id && key["current"] == true)
+    );
+    assert!(!own.to_string().contains(secret));
+    let (status, theirs) = agent_call(&world, "GET", "/v1/keys", None, &other).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(theirs["keys"], json!([]));
+    let path = format!("/v1/keys/{id}");
+    let (status, denied) = agent_call(&world, "DELETE", &path, None, &other).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(denied["error"]["code"], "unknown_key");
+    let (status, revoked) = agent_call(&world, "DELETE", &path, None, secret).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        revoked,
+        json!({"kind":"signin","key":{"id":id,"state":"revoked"}})
+    );
+    assert_eq!(
+        agent_call(&world, "GET", "/v1/keys", None, secret).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        agent_call(&world, "DELETE", &path, None, &token).await.0,
+        StatusCode::NOT_FOUND
+    );
+    for key in made.iter().skip(1) {
+        let path = format!("/v1/keys/{}", key["key"]["id"].as_str().unwrap());
+        assert_eq!(
+            agent_call(&world, "DELETE", &path, None, &token).await.0,
+            StatusCode::OK
+        );
+    }
+    assert_eq!(
+        agent_call(&world, "GET", "/v1/keys", None, &token).await.1["keys"],
+        json!([])
+    );
 }
 
 /// The routes an agent signed in with `token` reads as the account: chat

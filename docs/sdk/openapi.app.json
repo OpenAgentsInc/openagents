@@ -847,6 +847,283 @@
         }
       }
     },
+    "/v1/keys": {
+      "get": {
+        "operationId": "listAccountKeys",
+        "tags": [
+          "Account keys"
+        ],
+        "security": [
+          {
+            "appKeyManagementBearer": []
+          }
+        ],
+        "description": "List this account's working keys without secrets. Sign-in keys are newest first; expired/revoked keys are omitted. There is no pagination; API key ordering is unspecified.",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "signin",
+                "sign-in",
+                "api"
+              ],
+              "default": "signin"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The account's result. Cache-Control: no-store, private; creation tokens appear only in this response.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store, private"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppManagedKeyList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_kind, invalid_request, invalid_key, invalid_expiry, invalid_name",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "signed_out: missing, unsupported, invalid, expired or revoked credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "no_workspace: kind=api needs the account's first workspace where the account is an owner (normally its personal workspace)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "unavailable: accounts are disabled or the account service failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createAccountKey",
+        "tags": [
+          "Account keys"
+        ],
+        "security": [
+          {
+            "appKeyManagementBearer": []
+          }
+        ],
+        "description": "Create a key and return its secret once. Creation is not idempotent: an Idempotency-Key header does not deduplicate it. Do not automatically retry an uncertain result. The sign-in limit is 50 working keys per account. API keys belong to the first workspace where the account is an owner (normally its personal workspace), do not expire, and receive only responses, models:read, usage:read scopes; this is not arbitrary workspace key administration.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The account's result. Cache-Control: no-store, private; creation tokens appear only in this response.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store, private"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppManagedKeyCreated"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_kind, invalid_request, invalid_key, invalid_expiry, invalid_name",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "signed_out: missing, unsupported, invalid, expired or revoked credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "no_workspace: kind=api needs the account's first workspace where the account is an owner (normally its personal workspace)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "unavailable: accounts are disabled or the account service failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppManagedKeyCreate"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/keys/{id}": {
+      "delete": {
+        "operationId": "revokeAccountKey",
+        "tags": [
+          "Account keys"
+        ],
+        "security": [
+          {
+            "appKeyManagementBearer": []
+          }
+        ],
+        "description": "Revoke a working key of this account. A missing, foreign, expired or already revoked sign-in key returns 404 unknown_key. For kind=api, only a non-revoked key in the first workspace where the account is an owner (normally its personal workspace) is eligible. A repeated successful revoke returns 404, not another success. Revoking the caller's own key ends its access.",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "signin",
+                "sign-in",
+                "api"
+              ],
+              "default": "signin"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The key ID, not its secret. Sign-in IDs are 64 hexadecimal characters; API IDs are opaque.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The account's result. Cache-Control: no-store, private; creation tokens appear only in this response.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store, private"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppManagedKeyRevoked"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_kind, invalid_request, invalid_key, invalid_expiry, invalid_name",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "signed_out: missing, unsupported, invalid, expired or revoked credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "no_workspace: kind=api needs the account's first workspace where the account is an owner (normally its personal workspace)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "unavailable: accounts are disabled or the account service failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "unknown_key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/computers": {
       "get": {
         "operationId": "listComputers",
@@ -2912,6 +3189,11 @@
         "type": "http",
         "scheme": "bearer",
         "description": "A live app sess_ session or oa_sk_ sign-in key. Account-bound oak_ keys are accepted only where the operation declares them and their scopes permit it. API cookies are ignored."
+      },
+      "appKeyManagementBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "An account-service-issued live app session (sess_) or sign-in key (oa_sk_). The account service validates it on every request. Cookies and oak_ API keys cannot manage these keys. A sign-in key can create and revoke other sign-in keys for the same account, including itself."
       }
     },
     "schemas": {
@@ -3465,6 +3747,277 @@
               "string",
               "null"
             ]
+          }
+        }
+      },
+      "AppManagedKeySignin": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "created_at",
+          "last_used_at",
+          "expires_at",
+          "current"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "name": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "last_used_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "expires_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "current": {
+            "type": "boolean"
+          }
+        }
+      },
+      "AppManagedKeyApiListed": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "created",
+          "status"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string"
+          }
+        }
+      },
+      "AppManagedKeyApiCreated": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "status"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "const": "active"
+          }
+        }
+      },
+      "AppManagedKeyList": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "kind",
+              "account",
+              "keys"
+            ],
+            "properties": {
+              "kind": {
+                "const": "signin"
+              },
+              "account": {
+                "type": "object",
+                "required": [
+                  "id",
+                  "label"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "label": {
+                    "type": "string"
+                  }
+                }
+              },
+              "keys": {
+                "type": "array",
+                "maxItems": 50,
+                "items": {
+                  "$ref": "#/components/schemas/AppManagedKeySignin"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "kind",
+              "account",
+              "keys"
+            ],
+            "properties": {
+              "kind": {
+                "const": "api"
+              },
+              "account": {
+                "type": "object",
+                "required": [
+                  "id",
+                  "label"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "label": {
+                    "type": "string"
+                  }
+                }
+              },
+              "keys": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AppManagedKeyApiListed"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "AppManagedKeyCreate": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Sign-in names are trimmed, 1–80 characters, with no control characters. API names are trimmed and truncated to 80 characters; an empty name is refused."
+          },
+          "kind": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "signin",
+              "sign-in",
+              "api",
+              null
+            ],
+            "default": "signin"
+          },
+          "expires_in_days": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "maximum": 365,
+            "description": "Sign-in keys only. Omitted or null means until revoked. Any non-null expiry with kind=api is refused."
+          }
+        }
+      },
+      "AppManagedKeyCreated": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "kind",
+              "key",
+              "token"
+            ],
+            "properties": {
+              "kind": {
+                "const": "signin"
+              },
+              "key": {
+                "$ref": "#/components/schemas/AppManagedKeySignin"
+              },
+              "token": {
+                "type": "string",
+                "x-sensitive": true
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "kind",
+              "key",
+              "token"
+            ],
+            "properties": {
+              "kind": {
+                "const": "api"
+              },
+              "key": {
+                "$ref": "#/components/schemas/AppManagedKeyApiCreated"
+              },
+              "token": {
+                "type": "string",
+                "x-sensitive": true
+              }
+            }
+          }
+        ]
+      },
+      "AppManagedKeyRevoked": {
+        "type": "object",
+        "required": [
+          "kind",
+          "key"
+        ],
+        "properties": {
+          "kind": {
+            "enum": [
+              "signin",
+              "api"
+            ]
+          },
+          "key": {
+            "type": "object",
+            "required": [
+              "id",
+              "state"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "state": {
+                "const": "revoked"
+              }
+            }
           }
         }
       },
