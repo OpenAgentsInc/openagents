@@ -15,7 +15,7 @@ use coder_working_computer::provider::fake::{FakeProvider, FakeRun, Inject};
 use coder_working_computer::{Health, Phase as ComputerPhase, Principal, Purpose, ServiceDecl};
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 const INSTALL: &str = "./install.sh";
 const LOCK: &str = "version = 3\n";
@@ -120,6 +120,7 @@ fn recipe(plan: &CheckPlan) -> Recipe {
 /// Knobs a test turns to make the candidate misbehave.
 #[derive(Default)]
 struct Faults {
+    source_delay_ms: AtomicU64,
     failing_check: AtomicBool,
     empty_check: AtomicBool,
     mutating_install: AtomicBool,
@@ -236,6 +237,9 @@ async fn harness_with(plan: CheckPlan) -> Harness {
         let id = spec.id.as_str();
         let offline = env.get("CARGO_NET_OFFLINE").map(String::as_str) == Some("true");
         if id.ends_with("-source") {
+            std::thread::sleep(std::time::Duration::from_millis(
+                f.source_delay_ms.load(Ordering::SeqCst),
+            ));
             // The image already holds the checkout.
             if !files.contains_key("src/main.rs") {
                 return FakeRun::exit(3, "oa-source error=no-checkout\n", "");
@@ -331,6 +335,24 @@ fn failure(job: &VerifyJob) -> String {
         Some(Verdict::Failed { reason }) => reason.clone(),
         other => panic!("expected a failure, got {other:?}"),
     }
+}
+
+#[tokio::test]
+async fn a_slow_source_check_does_not_shorten_the_next_check_timeout() {
+    let h = harness().await;
+    h.faults.source_delay_ms.store(50, Ordering::SeqCst);
+    let job = h
+        .verifier
+        .start(&request(&h, "slow-source"), 10_000)
+        .await
+        .unwrap();
+    assert_eq!(job.verdict, Some(Verdict::Passed));
+    let check = job
+        .steps
+        .iter()
+        .find(|s| matches!(&s.action, Action::Check { name } if name == "unit"))
+        .unwrap();
+    assert!(check.deadline_ms >= 610_040, "{:?}", check);
 }
 
 #[tokio::test]
@@ -499,6 +521,7 @@ async fn a_failed_check_fails_on_the_baseline_and_never_forks() {
     // The fork never ran, and its machine was never allocated.
     let fork = h.verifier.computers.store.read(&job.fork.computer).unwrap();
     assert!(fork.creates.is_empty());
+    assert_eq!(fork.phase, ComputerPhase::Deleted);
     assert!(
         job.steps
             .iter()
