@@ -167,10 +167,11 @@ Computers file API. It keeps the older `/files` methods unchanged. The image
 includes a static Rust `computer-files` helper at
 `/usr/local/bin/oa-computer-files` (`OA_BOAT_FILE_HELPER` overrides the local
 path). Each transfer sends that executable and its body over one SSH channel.
-A root-owned temporary directory protects the executable; it runs as the guest
+A root-owned temporary directory under `/var/lib` protects the executable
+(`/run` is mounted `noexec` on the supported guest image); it runs as the guest
 user with only `HOME` supplied, and the installer removes it afterward.
 
-The helper requires Linux `openat2`, Landlock ABI 3, and local filesystem file
+The helper requires Linux `openat2`, Landlock ABI 2, and local filesystem file
 leases. It refuses unsupported protection instead of falling back to legacy file
 calls. Read the [public file contract](../sdk/computers.md#workspace-file-transfers)
 for paths, checksums, bounds, overwrite behavior, and uncertainty. A driver

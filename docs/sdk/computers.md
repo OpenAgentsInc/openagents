@@ -213,8 +213,9 @@ existing behavior.
 For an upload, send `Content-Type: application/octet-stream`, `Content-Length`,
 and `X-Content-SHA256` with the SHA-256 of the complete body. An empty file is a
 valid upload. The service checks the length and hash before writing; a partial
-or mismatched body returns `422` and leaves the previous file intact. A successful
-upload creates mode `0600`, including when replacing a file with other permissions.
+or mismatched body returns `422` and leaves the previous file intact. New and replaced
+files use mode `0600`. An identical create-only retry keeps the existing file
+and its permissions.
 Parents must already exist; create directories through a command. The first
 upload can create the fixed workspace directory itself.
 
@@ -248,7 +249,10 @@ command moves that directory outside the workspace. The helper opens a file for
 I/O only after confirming that its pinned inode is regular. It takes a Linux
 file read lease and checks metadata before and after copying. Files already open
 for writing, a broken lease, or changed metadata return `409 file_changed`.
-Kernels without Landlock ABI 3, filesystems without the required lease support,
+The helper never truncates an existing inode; uploads always create a new inode
+and replace a directory entry. This permits the same path restrictions on
+Landlock ABI 2; ABI 3 also restricts truncation in the kernel. Kernels without
+Landlock ABI 2, filesystems without the required lease support,
 and files for which the guest user cannot obtain a lease return `501` rather
 than using an unrestricted fallback. Reads use the guest user's permissions.
 

@@ -35,6 +35,11 @@ struct OpenHow {
     resolve: u64,
 }
 fn open_beneath(root: RawFd, path: &str, flags: i32) -> Result<OwnedFd, FileError> {
+    // Existing files are never truncated, including on Landlock ABI2 where
+    // truncation is not a separate handled right. Writes publish a new inode.
+    if flags & libc::O_TRUNC != 0 {
+        return Err(FileError::Invalid);
+    }
     let path = cstr(path)?;
     let how = OpenHow {
         flags: (flags | libc::O_CLOEXEC) as u64,
@@ -89,15 +94,22 @@ struct PathBeneathAttr {
 }
 
 /// Restrict all later file opens and mutations, including renamed directories.
-/// Fail closed unless the kernel supports Landlock ABI3 and openat2.
+/// Fail closed unless the kernel supports Landlock ABI2 and openat2.
 pub fn restrict(root: RawFd) -> Result<(), FileError> {
     // SAFETY: The version query takes no pointers.
     let abi = unsafe { libc::syscall(libc::SYS_landlock_create_ruleset, 0, 0, 1) };
-    if abi < 3 {
+    restrict_for_abi(root, abi)
+}
+
+pub(crate) fn restrict_for_abi(root: RawFd, abi: libc::c_long) -> Result<(), FileError> {
+    if abi < 2 {
         return Err(FileError::Unsupported);
     }
+    // ABI2 supplies REFER for directory-move confinement. The helper never
+    // truncates an existing inode; ABI3 additionally handles that kernel right.
+    let handled = (1 << if abi >= 3 { 15 } else { 14 }) - 1;
     let rules = RulesetAttr {
-        handled_access_fs: (1 << 15) - 1,
+        handled_access_fs: handled,
     };
     // SAFETY: The structure has the kernel ABI layout and remains live.
     let fd = owned(unsafe {
@@ -112,13 +124,14 @@ pub fn restrict(root: RawFd) -> Result<(), FileError> {
     // Read/write regular files and directories; create, replace, and remove files.
     // The REFER rule prevents a moved directory from granting access elsewhere.
     let path = PathBeneathAttr {
-        allowed_access: (1 << 1)
+        allowed_access: ((1 << 1)
             | (1 << 2)
             | (1 << 3)
             | (1 << 5)
             | (1 << 8)
             | (1 << 13)
-            | (1 << 14),
+            | (1 << 14))
+            & handled,
         parent_fd: root,
     };
     // SAFETY: The kernel reads the fixed-layout path rule; fd is owned here.
@@ -297,4 +310,20 @@ pub fn write(root: RawFd, path: &str, bytes: &[u8], overwrite: bool) -> Result<(
     // SAFETY: This removes only our random temporary entry, if it still exists.
     unsafe { libc::unlinkat(dir.as_raw_fd(), temp.as_ptr(), 0) };
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn read_only_truncation_is_refused_before_opening_a_file() {
+        let t = tempfile::tempdir().unwrap();
+        std::fs::write(t.path().join("file"), b"original").unwrap();
+        let parent = File::open(t.path()).unwrap();
+        assert_eq!(
+            open_beneath(parent.as_raw_fd(), "file", libc::O_RDONLY | libc::O_TRUNC).unwrap_err(),
+            FileError::Invalid
+        );
+        assert_eq!(std::fs::read(t.path().join("file")).unwrap(), b"original");
+    }
 }

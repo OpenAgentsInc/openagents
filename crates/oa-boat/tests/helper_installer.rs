@@ -28,7 +28,7 @@ impl Remote for Guest {
         let script = script
             .replace("/usr/bin/sudo", self.root.join("sudo").to_str().unwrap())
             .replace(
-                "/run/oa-computer-files.",
+                "/var/lib/oa-computer-files.",
                 self.root.join("helper.").to_str().unwrap(),
             );
         if self.truncate.swap(false, Ordering::SeqCst) {

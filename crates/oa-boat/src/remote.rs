@@ -75,7 +75,7 @@ pub trait Remote: Send + Sync + 'static {
             let inner = format!(
                 r##"set -eu
 umask 077
-d=$(mktemp -d /run/oa-computer-files.XXXXXXXXXX)
+d=$(mktemp -d /var/lib/oa-computer-files.XXXXXXXXXX)
 trap 'rm -rf -- "$d"' EXIT HUP INT TERM
 head -c {length} > "$d/helper"
 printf '%s  %s\n' '{checksum}' "$d/helper" | sha256sum -c - >/dev/null
