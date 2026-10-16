@@ -60,7 +60,7 @@ def node(name, *command):
 
 
 def core(method, *params):
-    assert method in {'getblockchaininfo', 'getrawtransaction', 'getblockheader'}
+    assert method in {'getblockchaininfo', 'getrawtransaction', 'getblockheader', 'gettxout'}
     cookie = (Path.home() / 'wavelength-spike/bitcoin-signet/signet/.cookie').read_text().strip()
     request = urllib.request.Request('http://127.0.0.1:38332/', data=json.dumps({
         'jsonrpc': '2.0', 'id': 'lnd-recovery', 'method': method, 'params': params,
@@ -148,6 +148,14 @@ while state['phase'] not in {'done', 'needs_review', 'time_limit'}:
             if int(balance['unconfirmed_balance']) or sweeps.get('pending_sweeps'):
                 ready = False
         state['observations'] = observations
+        # A hard signing failure removes an anchor from PendingSweeps without
+        # spending it. Check this original output before declaring cleanup done.
+        closing = next((c['closing_tx_hash'] for c in observations.get('watch', {}).get('closed', [])), None)
+        if closing:
+            anchor = core('gettxout', closing, 1, True)
+            state['watcher_anchor_unspent'] = anchor is not None
+            if anchor is not None:
+                ready = False
         if ready:
             for name in ('watch', 'peer'):
                 if name in state['returns']:

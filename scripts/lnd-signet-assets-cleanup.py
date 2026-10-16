@@ -243,7 +243,7 @@ while state['phase'] not in {'done', 'needs_review', 'time_limit'}:
                 tx = core('getrawtransaction', matches[0]['closing_tx_hash'], True)
                 if tx.get('confirmations', 0) < 3:
                     break
-                assert not cli(node, 'lncli', 'pendingsweeps').get('pending_sweeps')
+                assert not cli(node, 'lncli', 'wallet', 'pendingsweeps').get('pending_sweeps')
                 closed.append(matches[0])
             if len(closed) == 2:
                 assert closed[0]['closing_tx_hash'] == closed[1]['closing_tx_hash']

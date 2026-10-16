@@ -87,6 +87,32 @@ and returns. No channel database was copied or restarted from an older
 state. Implementation `2c2f1004b1` is on main; final recovery and cleanup
 remain tracked in [#11862](https://github.com/OpenAgentsInc/openagents/issues/11862).
 
+The resumed check reached height **326651** at 19:45 UTC. The original closure
+confirmed at 326610 with a 312-sat fee. The watcher's commitment sweep
+`056cdf27af5388792f89a0cae567551041d65faf6bdfe3984b82e55d4aca21a9`
+confirmed at 326613, recovering 12,403 sats after a 124-sat fee. The peer's
+6,501-sat output still waits for CSV maturity at **326754**, 103 blocks later.
+
+The watcher's 330-sat anchor was stalled. A bounded fee update exposed a
+missing public-address entry for the restored first multisig key; a guarded
+Rust repair indexed that same public key. All 259 accounts remain watch-only.
+LND removed the failed sweep from its pending list, so the controller now
+also checks the original output through Core. After Core verified its exact
+script and 16-block delay, cleanup combined that anchor with the original
+14,386-sat change input. The restored remote signer finalized the wallet
+input. Transaction
+`144197322393b36ef03fd05668032e8d3734fb4fa9d075522f8c13328a013595`
+confirmed at **326651**, returning **14,316 sats** for a fixed **400-sat fee**.
+Its marked publication followed a successful Core mempool preflight.
+
+The [resume evidence](evidence/lnd-signet-resume-2026-10-16.tar.gz) contains
+13 JSON records and a checked SHA-256 manifest. Archive SHA-256:
+`3810743fc848be8e331adc57b08845bd71f8f377420742e1b0f803630e2d2631`.
+The 24 SDK unit tests, research binary build/check, formatting, and Python
+syntax checks passed. The original writers remain stopped. The recovery
+controller keeps its original October 19, 2026, 12:02 UTC deadline; the peer
+sweep, remaining returns, and final node shutdown still need actual blocks.
+
 ## Synthetic Taproot Assets (#11863)
 
 The separate two-node signet experiment minted 1,000,000 units of
@@ -120,3 +146,10 @@ After the RFQ checks, cleanup closes the original channel cooperatively,
 verifies final asset proofs, returns ordinary BTC without spending asset
 carriers, and stops both research nodes. Those steps remain actual-run
 requirements; the mint and on-chain transfer do not complete the issue.
+
+At height 326651 the original asset observer still waits for recycled
+liquidity, with no additional funding attempt. Its cleanup command now uses
+the pinned CLI's `wallet pendingsweeps`; the live read passed. The corrected
+cleanup controller keeps the original state, action markers, and October 19,
+2026, 12:14 UTC deadline. Channel funding, RFQ payments, closure, returns, and
+shutdown remain pending.

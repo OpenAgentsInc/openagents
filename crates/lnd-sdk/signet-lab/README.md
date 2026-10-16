@@ -58,6 +58,14 @@ original public accounts. After both replacements finish starting,
 requires inspection of its saved marker and the original node, rather than
 an automatic retry. Never restart the old watcher after this step.
 
+The fresh watcher may lack the stored address for the first channel's multisig
+key (family 0, index 0). `restore-first-channel-key` accepts a private
+`anchor-key-repair-request.json` containing that original `channel_point`,
+`public_key`, `key_family: 0`, and `key_index: 0`. It checks the original node,
+all watch-only accounts, and the unused account index, then compares the
+derived public key before indexing it. Its mutation marker prevents a second
+index allocation after an uncertain result. No private key is imported.
+
 `scripts/lnd-signet-recovery-observe.py` watches this exact channel for up to
 72 hours. It waits for peer-assisted closure, actual CSV maturity, all sweeps,
 and confirmed outputs before returning coins from the watcher and peer to
@@ -65,7 +73,9 @@ the recorded scratch wallet. The signer holds the same wallet keys as the
 watcher, so it never sends a second return. The controller records each
 attempt before sending, waits for the original return transaction, checks
 all three balances are zero, and stops only these test containers. A missing
-result after a recorded send stops for inspection.
+result after a recorded send stops for inspection. It also checks the original
+watcher anchor on Core: a terminal signing failure can remove an unspent
+anchor from LND's pending-sweep list.
 
 ## Synthetic signet assets
 

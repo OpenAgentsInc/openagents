@@ -550,13 +550,67 @@ async fn restore_backup(root: &Path) -> Result<Value> {
     save(root.join("scb-restore-result.json"), &result)?;
     Ok(result)
 }
+async fn restore_first_channel_key(root: &Path) -> Result<Value> {
+    let request: Value = read(root.join("anchor-key-repair-request.json"))?;
+    let exercise: Value = read(root.join("exercise-result.json"))?;
+    if request["channel_point"] != exercise["channel_point"]
+        || request["key_family"] != 0
+        || request["key_index"] != 0
+        || read::<Value>(root.join("scb-restore-result.json"))?["scb_restore_submitted"] != true
+    {
+        return Err("The public key repair does not match the original recovered channel.".into());
+    }
+    let watch = client(root, "watch").await?;
+    let signer = client(root, "signer").await?;
+    if watch.node_id() != signer.node_id()
+        || exercise["signer_identity"] != watch.node_id()
+        || !cli("watch", &["listchannels"])?["channels"]
+            .as_array()
+            .ok_or("Missing research channels.")?
+            .is_empty()
+    {
+        return Err("The public key repair requires the original restored watcher.".into());
+    }
+    let accounts = cli("watch", &["wallet", "accounts", "list"])?;
+    let accounts = accounts["accounts"]
+        .as_array()
+        .ok_or("Missing public accounts.")?;
+    if accounts.len() < 259 || !accounts.iter().all(|a| a["watch_only"] == true) {
+        return Err("The restored watcher must still contain only public accounts.".into());
+    }
+    let account = accounts
+        .iter()
+        .find(|a| a["derivation_path"] == "m/1017'/1'/0'")
+        .ok_or("Missing the original multisig account.")?;
+    if account["external_key_count"] != 0 {
+        return Err("Inspect the previously indexed public keys before another repair.".into());
+    }
+    let expected = request["public_key"]
+        .as_str()
+        .ok_or("Missing the original public key.")?;
+    // DeriveKey does not store an address. The restored first channel's zero
+    // locator requires that address for RPCKeyRing's public-key lookup.
+    save(root.join("anchor-key-repair-started.json"), &request)?;
+    watch
+        .index_signet_research_first_channel_key(
+            hex::decode(expected)?
+                .try_into()
+                .map_err(|_| "Invalid original public key.")?,
+        )
+        .await?;
+    let result = json!({"channel_point":request["channel_point"], "public_key":expected,
+        "key_family":0, "key_index":0, "public_address_indexed":true,
+        "private_keys_imported":false});
+    save(root.join("anchor-key-repair-result.json"), &result)?;
+    Ok(result)
+}
 #[tokio::main]
 async fn main() {
     let result = async {
         let args: Vec<_> = std::env::args().skip(1).collect();
         if args.len() != 2 {
             return Err(
-                "Use ROOT init-signer|init-peer|init-watch|restore-signer|restore-watch|restore-backup|inspect|addresses|exercise."
+                "Use ROOT init-signer|init-peer|init-watch|restore-signer|restore-watch|restore-backup|restore-first-channel-key|inspect|addresses|exercise."
                     .into(),
             );
         }
@@ -574,6 +628,7 @@ async fn main() {
             "addresses" => addresses(&root).await?,
             "exercise" => exercise(&root).await?,
             "restore-backup" => restore_backup(&root).await?,
+            "restore-first-channel-key" => restore_first_channel_key(&root).await?,
             _ => return Err("Unknown research command.".into()),
         };
         println!("{value}");
