@@ -4,12 +4,27 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Action(pub String);
+
+fn display(value: String, limit: usize) -> String {
+    let mut out = String::new();
+    for c in value
+        .chars()
+        .filter(|c| !c.is_control() || matches!(c, '\n' | '\t'))
+    {
+        if out.len() + c.len_utf8() > limit.saturating_sub(3) {
+            out.push('…');
+            break;
+        }
+        out.push(c);
+    }
+    out
+}
 pub fn text(key: impl Into<String>, value: impl Into<String>, heading: bool) -> Node<Action> {
     Node {
         key: key.into(),
         style: Default::default(),
         element: Element::Text {
-            value: value.into(),
+            value: display(value.into(), 2048),
             role: if heading {
                 TextRole::Heading
             } else {
@@ -27,7 +42,7 @@ pub fn button(
         key: key.into(),
         style: Default::default(),
         element: Element::Button {
-            label: label.into(),
+            label: display(label.into(), 512),
             enabled: true,
             icon: None,
             shortcut: None,
@@ -90,4 +105,32 @@ pub fn card(key: impl Into<String>, children: Vec<Node<Action>>) -> Node<Action>
 }
 pub fn document(instance: String, revision: u64, children: Vec<Node<Action>>) -> View<Action> {
     View::new_v3(instance, revision, stack("home-root", children, false))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn long_and_malformed_source_titles_keep_the_dashboard_readable() {
+        let mut cards = vec![];
+        for widget in 0..32 {
+            let mut rows = vec![text(
+                format!("title-{widget}"),
+                "A title\0with a bad character",
+                true,
+            )];
+            for row in 0..12 {
+                rows.push(button(
+                    format!("row-{widget}-{row}"),
+                    "🦀".repeat(10_000),
+                    "open",
+                ));
+            }
+            cards.push(card(format!("widget-{widget}"), rows));
+        }
+        let frame = document("test".into(), 1, cards).validate().unwrap();
+        let json = serde_json::to_string(frame.view()).unwrap();
+        assert!(!json.contains("\\u0000"));
+        assert!(json.contains('…'));
+    }
 }
