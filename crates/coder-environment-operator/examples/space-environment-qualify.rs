@@ -293,6 +293,7 @@ async fn main() -> Result<()> {
     if action == "revise" {
         let install = install_script();
         let mut recipe = environment.draft().recipe.clone();
+        recipe.limits.total_machine_allocations = 8;
         recipe.install.digest = env::digest(install.as_bytes());
         let check = owners.seal_artifact(check_script().as_bytes())?;
         recipe.qualification.plan_digest =
@@ -423,6 +424,102 @@ async fn main() -> Result<()> {
                 serde_json::to_vec_pretty(version)?,
             )?;
             println!("{}", serde_json::to_string(version)?);
+        }
+        "teardown" => {
+            use coder_working_computer::provider::{Images, Outcome};
+            let job = owners.builder.jobs.read(&job_id)?;
+            if !job.phase.terminal() {
+                return Err(
+                    "Finish or cancel this qualification before deleting its image.".into(),
+                );
+            }
+            owners
+                .setup
+                .environments
+                .apply(ENVIRONMENT, &env::Command::Retire, now_ms())?;
+            let until = now_ms() + 180_000;
+            loop {
+                owners.recover(now_ms()).await;
+                let mut gone = true;
+                for entry in fs::read_dir(owners.layout.computers())? {
+                    let path = entry?.path();
+                    if path
+                        .extension()
+                        .is_some_and(|extension| extension == "json")
+                    {
+                        let computer: coder_working_computer::Computer =
+                            serde_json::from_slice(&fs::read(path)?)?;
+                        if computer.owner != owner() {
+                            return Err("This directory contains another owner's computer.".into());
+                        }
+                        gone &= matches!(computer.phase, coder_working_computer::Phase::Deleted);
+                    }
+                }
+                if gone {
+                    break;
+                }
+                if now_ms() >= until {
+                    return Err("The qualification computers are not all deleted.".into());
+                }
+                tokio::time::sleep(Duration::from_secs(1)).await;
+            }
+            if let Some(image) = &job.image {
+                let expected = job
+                    .capture
+                    .as_ref()
+                    .and_then(|capture| capture.record.as_ref())
+                    .ok_or("The owned image record is missing.")?;
+                match owners
+                    .builder
+                    .computers
+                    .provider
+                    .read_image(&image.image_id)
+                    .await
+                {
+                    Outcome::Done { value: None } => {}
+                    Outcome::Done {
+                        value: Some(actual),
+                    } if actual.name == expected.name
+                        && actual.source == expected.source
+                        && actual.snapshot == expected.snapshot =>
+                    {
+                        match owners
+                            .builder
+                            .computers
+                            .provider
+                            .delete_image(&image.image_id)
+                            .await
+                        {
+                            Outcome::Done { .. } => {}
+                            Outcome::Failed { reason } | Outcome::Unknown { reason } => {
+                                return Err(reason.into());
+                            }
+                        }
+                    }
+                    _ => {
+                        return Err(
+                            "The image's ownership could not be checked before deletion.".into(),
+                        );
+                    }
+                }
+                if !matches!(
+                    owners
+                        .builder
+                        .computers
+                        .provider
+                        .read_image(&image.image_id)
+                        .await,
+                    Outcome::Done { value: None }
+                ) {
+                    return Err("The image deletion is not confirmed.".into());
+                }
+            }
+            let receipt = json!({"environment":ENVIRONMENT,"retired":true,"working_computers_deleted":true,"image":job.image,"image_deleted":true});
+            fs::write(
+                state.join("qualification-teardown.json"),
+                serde_json::to_vec_pretty(&receipt)?,
+            )?;
+            println!("{receipt}");
         }
         _ => {
             return Err(

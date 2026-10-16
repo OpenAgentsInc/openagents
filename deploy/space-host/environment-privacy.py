@@ -35,6 +35,30 @@ report = {'schema': 'openagents.space.environment_privacy_check.v1',
           'canary_matches': 0, 'disk_only_publication': True,
           'base_created_from_published_disk': True}
 
+# Admission public keys belong to the pinned provider seed. Customer SSH
+# directories are removed; only these exact public keys may be restored.
+seed = HOME / '.space-devbox/kind/seed/build'
+seed_manifest = json.loads((seed / 'manifest.json').read_text())
+assert seed_manifest['content_hash'] == work['base']['provider_identity']
+before = subprocess.check_output(['sha256sum', str(seed / 'rootfs.ext4')], text=True).split()[0]
+assert 'sha256:' + before == seed_manifest['content_hash']
+mount = state / 'seed-admission-mount'
+mount.mkdir(mode=0o700)
+subprocess.run(['sudo', 'mount', '-o', 'loop,ro,noload',
+                str(seed / 'rootfs.ext4'), str(mount)], check=True)
+try:
+    admission = {'base_rootfs_digest': seed_manifest['content_hash'].removeprefix('sha256:')}
+    for name, path in [('root', 'root/.ssh/authorized_keys'),
+                       ('user', 'home/user/.ssh/authorized_keys')]:
+        output = subprocess.check_output(['sudo', 'sha256sum', str(mount / path)], text=True)
+        admission[name + '_authorized_keys_sha256'] = output.split()[0]
+    report['admission'] = admission
+finally:
+    subprocess.run(['sudo', 'umount', str(mount)], check=True)
+    mount.rmdir()
+after = subprocess.check_output(['sha256sum', str(seed / 'rootfs.ext4')], text=True).split()[0]
+assert before == after
+
 
 def run(*args):
     return subprocess.check_output(list(args), text=True, timeout=180)

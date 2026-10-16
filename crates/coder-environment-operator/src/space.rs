@@ -50,6 +50,28 @@ pub fn template_name(job: &BuildJob) -> String {
     format!("{}-space", job.inputs.image_name)
 }
 
+/// Run the source helper in its own shell. It handles expected nonzero waits
+/// itself, including stopping its watchdog, so it must not inherit `set -e`.
+pub fn source_command(
+    pin: &coder_environment::SourcePin,
+    mode: coder_environment_setup::source::Mode,
+) -> Result<String, &'static str> {
+    let script = coder_environment_setup::source::script(pin, mode)?;
+    Ok(format!("sh -c '{}'", script.replace('\'', "'\"'\"'")))
+}
+
+fn ready_builder(node: &Value) -> bool {
+    node["role"] == "builder"
+        && node["managed_by"] == "space"
+        && (node["state"].is_null() || node["state"] == "registered")
+        && node["node_api_endpoint"]
+            .as_str()
+            .is_some_and(|endpoint| !endpoint.is_empty())
+        && node["status"]["reachable"] == true
+        && node["status"]["stale"] == false
+        && node["status"]["scheduling"]["status"] == "ready"
+}
+
 /// Translate frozen build inputs into the selected upstream recipe API. This
 /// is an operator request, not a second environment manifest or an SDK type.
 pub fn recipe(job: &BuildJob, base: &Artifact, script: &[u8]) -> Result<Value, &'static str> {
@@ -63,7 +85,7 @@ pub fn recipe(job: &BuildJob, base: &Artifact, script: &[u8]) -> Result<Value, &
     {
         return Err("This clean build is not ready to publish a SPACE image.");
     }
-    let source = coder_environment_setup::source::script(
+    let source = source_command(
         &job.inputs.source,
         coder_environment_setup::source::Mode::Materialize,
     )?;
@@ -95,12 +117,12 @@ echo 'Free filesystem blocks cleared.'
         "origin":{"from_template":{"base":base.reference}},
         "steps":[
             {"run":{"user":"root","command":"apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends git ca-certificates curl"}},
-            {"run":{"user":"root","command":"mkdir -p /opt/oa-environment"}},
+            {"run":{"user":"root","command":"set -eu\nmkdir -p /opt/oa-environment\ncp /root/.ssh/authorized_keys /opt/oa-environment/base-authorized-keys\nchmod 600 /opt/oa-environment/base-authorized-keys"}},
             {"copy":{"inline_bytes_base64":base64::engine::general_purpose::STANDARD.encode(script),
                 "dest":"/opt/oa-environment/install.sh"}},
             {"run":{"user":"root","command":format!("set -eu\nmkdir -p /workspace\ncd /workspace\n{source}")}},
             {"run":{"user":"root","command":format!("set -eu\ncd {cwd}\nbash /opt/oa-environment/install.sh")}},
-            {"run":{"user":"root","command":format!("set -eu\ncd /workspace\n(\n{sanitize}\n)\ncd /\nrm -rf /workspace /opt/oa-environment\nsync\n")}},
+            {"run":{"user":"root","command":format!("set -eu\ncd /workspace\n(\n{sanitize}\n)\nmkdir -p /root/.ssh\nchmod 700 /root/.ssh\ncp /opt/oa-environment/base-authorized-keys /root/.ssh/authorized_keys\nchmod 600 /root/.ssh/authorized_keys\ncd /\nrm -rf /workspace /opt/oa-environment\nsync\n")}},
             {"run":{"user":"root","command":wipe}}
         ]
     }))
@@ -241,13 +263,41 @@ impl TemplateClient {
     /// Direct builder discovery requires a recent successful status read. This
     /// updates health observations only and cannot start a build.
     pub async fn refresh_builders(&self) -> Outcome<Value> {
-        self.request(
-            Method::POST,
-            &format!("{ADMIN}/nodes:refresh-status"),
-            Some(json!({"role":"builder","force":true})),
-            None,
-        )
-        .await
+        let mut refreshed = match self
+            .request(
+                Method::POST,
+                &format!("{ADMIN}/nodes:refresh-status"),
+                Some(json!({"role":"builder","force":true})),
+                None,
+            )
+            .await
+        {
+            Outcome::Done { value } => value,
+            Outcome::Failed { reason } => return Outcome::failed(reason),
+            Outcome::Unknown { reason } => return Outcome::unknown(reason),
+        };
+        if !refreshed.is_object() {
+            return Outcome::unknown("The builder health reply is incomplete.");
+        }
+        match self
+            .request(
+                Method::GET,
+                &format!("{ADMIN}/nodes?role=builder&include_occupancy=false"),
+                None,
+                None,
+            )
+            .await
+        {
+            Outcome::Done { value } => {
+                let Some(nodes) = value.as_array() else {
+                    return Outcome::unknown("The builder status reply is incomplete.");
+                };
+                refreshed["ready"] = Value::Bool(nodes.iter().any(ready_builder));
+                Outcome::done(refreshed)
+            }
+            Outcome::Failed { reason } => Outcome::failed(reason),
+            Outcome::Unknown { reason } => Outcome::unknown(reason),
+        }
     }
 
     pub async fn status(&self, accepted: &BuildAccepted) -> Outcome<BuildStatus> {
@@ -509,5 +559,96 @@ mod tests {
         );
         assert!(mock.requests.lock().unwrap().is_empty());
         task.abort();
+    }
+
+    #[test]
+    fn source_fetch_survives_watchdog_cleanup_under_an_errexit_caller() {
+        use std::process::Command;
+        let scratch = tempfile::tempdir().unwrap();
+        let home = scratch.path().join("home");
+        let origin = scratch.path().join("origin");
+        let work = scratch.path().join("work");
+        for path in [&home, &origin, &work] {
+            std::fs::create_dir(path).unwrap();
+        }
+        let run = |program: &str, args: &[&str], cwd: &std::path::Path| {
+            Command::new(program)
+                .args(args)
+                .current_dir(cwd)
+                .env_clear()
+                .env("PATH", std::env::var("PATH").unwrap_or_default())
+                .env("HOME", &home)
+                .env("GIT_CONFIG_NOSYSTEM", "1")
+                .output()
+                .unwrap()
+        };
+        assert!(run("git", &["init", "-q", "."], &origin).status.success());
+        std::fs::write(origin.join("fixture.txt"), "exact source\n").unwrap();
+        assert!(
+            run("git", &["add", "fixture.txt"], &origin)
+                .status
+                .success()
+        );
+        assert!(
+            run(
+                "git",
+                &[
+                    "-c",
+                    "user.name=fixture",
+                    "-c",
+                    "user.email=fixture@example.invalid",
+                    "commit",
+                    "-qm",
+                    "fixture"
+                ],
+                &origin
+            )
+            .status
+            .success()
+        );
+        let revision = String::from_utf8(run("git", &["rev-parse", "HEAD"], &origin).stdout)
+            .unwrap()
+            .trim()
+            .to_owned();
+        let pin = coder_environment::SourcePin {
+            repository: Some(format!("file://{}", origin.display())),
+            revision,
+            digest: "a".repeat(64),
+        };
+        let command =
+            source_command(&pin, coder_environment_setup::source::Mode::Materialize).unwrap();
+        let output = run("sh", &["-c", &format!("set -e\n{command}")], &work);
+        assert!(output.status.success(), "{output:?}");
+        assert!(
+            coder_environment_setup::source::Report::parse(
+                &String::from_utf8(output.stdout).unwrap()
+            )
+            .unwrap()
+            .verified(&pin)
+        );
+        assert_eq!(
+            std::fs::read_to_string(work.join("fixture.txt")).unwrap(),
+            "exact source\n"
+        );
+    }
+
+    #[test]
+    fn refreshed_but_expired_or_unavailable_builder_status_cannot_admit_a_submission() {
+        let ready = json!({"role":"builder","managed_by":"space","state":"registered","node_api_endpoint":"127.0.0.1:9800",
+            "status":{"reachable":true,"stale":false,"scheduling":{"status":"ready"}}});
+        assert!(ready_builder(&ready));
+        for (pointer, value) in [
+            ("/status/stale", json!(true)),
+            ("/status/reachable", json!(false)),
+            ("/status/scheduling/status", json!("draining")),
+            ("/managed_by", json!("k8s")),
+            ("/role", json!("worker")),
+            ("/node_api_endpoint", Value::Null),
+        ] {
+            let mut denied = ready.clone();
+            *denied.pointer_mut(pointer).unwrap() = value;
+            assert!(!ready_builder(&denied), "{pointer}");
+        }
+        assert!(!ready_builder(&json!({})));
     }
 }

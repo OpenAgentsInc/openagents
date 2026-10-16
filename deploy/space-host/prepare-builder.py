@@ -43,6 +43,8 @@ controller = json.loads(kube('get', 'deployment/space-cluster-controller', '-o',
 kube('scale', 'deployment/space-cluster-controller', '--replicas=0')
 for resource, container in [('daemonset/space-builder-node-api', 'node-api'), ('daemonset/space-builder-node-ctl', 'node-ctl')]:
     patch = {'spec': {'template': {'spec': {'nodeSelector': {'kubernetes.io/hostname': name}, 'containers': [{'name': container, 'env': [{'name': 'SPACE_NODE_ID', 'value': nodeid, 'valueFrom': None}]}]}}}}
+    if container == 'node-ctl':
+        patch['spec']['template']['spec']['containers'][0]['args'] = ['--poll-interval-secs=5']
     kube('patch', resource, '--type=strategic', '-p', json.dumps(patch))
     kube('rollout', 'status', resource, '--timeout=300s')
 sql = f"DELETE FROM nodes n WHERE id='{nodeid}' AND managed_by='k8s' AND role='builder' AND NOT EXISTS (SELECT 1 FROM sandboxes s WHERE s.active_node_id=n.id OR s.target_node_id=n.id) AND NOT EXISTS (SELECT 1 FROM template_build_jobs b WHERE b.builder_node_id=n.id) RETURNING id;"

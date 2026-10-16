@@ -165,11 +165,16 @@ pub(super) async fn run(state: &Path, args: &[String]) -> Result<()> {
         if work.build_issued {
             return Err("The build reply is unknown. Do not submit it again; clean the owned template first.".into());
         }
-        let status = done(client.refresh_builders().await)?;
-        if status["refreshed"] != true || status["nodes_updated"].as_u64().unwrap_or(0) == 0 {
-            return Err(
-                "No builder has a recent health check. The build was not submitted.".into(),
-            );
+        let until = (now_ms() + 90_000).min(job.deadline_ms);
+        loop {
+            let status = done(client.refresh_builders().await)?;
+            if status["refreshed"] == true && status["ready"] == true {
+                break;
+            }
+            if now_ms() >= until {
+                return Err("No builder is ready. The build was not submitted.".into());
+            }
+            tokio::time::sleep(Duration::from_secs(1)).await;
         }
         work.build_issued = true;
         save(&path, &work)?;

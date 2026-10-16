@@ -18,7 +18,11 @@ ISSUE = os.environ.get('SPACE_SPIKE_ISSUE', '11810')
 assert ISSUE in ('11810', '11811')
 assert socket.gethostname().split('.')[0] == 'oa-space-spike-' + ISSUE
 assert HOME == Path('/var/lib/space-spike/home')
-profile = json.loads((HOME / f'evidence/direct-profile-{ISSUE}.json').read_text())
+builder = os.environ.get('SPACE_PREPARE_BUILDER', '0')
+assert builder in ('0', '1') and (builder == '0' or ISSUE == '11811')
+profile_name = (f'direct-builder-preparation-{ISSUE}.json' if builder == '1'
+                else f'direct-profile-{ISSUE}.json')
+profile = json.loads((HOME / 'evidence' / profile_name).read_text())
 assert profile['prepared']
 node = profile['worker']
 assert node.startswith('space-local-worker')
@@ -31,7 +35,8 @@ else:
     assert manifest['content_hash'].startswith('sha256:') and len(manifest['content_hash']) == 71
 report = {'schema': 'openagents.space.direct_worker_preparation.v1', 'worker': node,
           'template': 'seed@' + manifest['content_hash'], 'execution': manifest['execution']}
-path = HOME / f'evidence/direct-worker-preparation-{ISSUE}.json'
+path = HOME / 'evidence' / (f'direct-builder-runtime-preparation-{ISSUE}.json'
+    if builder == '1' else f'direct-worker-preparation-{ISSUE}.json')
 assert not path.exists(), 'Inspect the existing preparation before repeating it'
 
 

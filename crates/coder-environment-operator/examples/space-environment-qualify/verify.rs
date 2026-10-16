@@ -243,6 +243,23 @@ pub(super) async fn run(state: &Path, args: &[String]) -> Result<()> {
         );
     }
 
+    let admission = &raw_privacy["admission"];
+    let base_digest = work["base"]["provider_identity"]
+        .as_str()
+        .and_then(|value| value.strip_prefix("sha256:"))
+        .ok_or("The SPACE base pin is missing.")?;
+    let root_key = admission["root_authorized_keys_sha256"]
+        .as_str()
+        .filter(|value| env::valid_digest(value))
+        .ok_or("The provider's root public key was not checked.")?;
+    let user_key = admission["user_authorized_keys_sha256"]
+        .as_str()
+        .filter(|value| env::valid_digest(value))
+        .ok_or("The provider's user public key was not checked.")?;
+    if admission["base_rootfs_digest"] != base_digest {
+        return Err("The public keys belong to a different provider base.".into());
+    }
+
     let driver = computer_driver::space::SpaceDriver::new(
         &std::env::var("SPACE_API_URL")?,
         &std::env::var("SPACE_DATA_URL")?,
@@ -274,18 +291,23 @@ pub(super) async fn run(state: &Path, args: &[String]) -> Result<()> {
     // Deletion runs after every check result, including a failed assertion.
     let checked = async {
         let mut privacy = recorder(state, &job, "space-privacy")?;
-        check(&driver, &mut privacy, &job, rootfs, &computer, "privacy", "environment.space.privacy", r#"set -eu
+        check(&driver, &mut privacy, &job, rootfs, &computer, "privacy", "environment.space.privacy", format!(r#"set -eu
 test ! -e /workspace
 test ! -e /opt/oa-environment
 for home in /root /home/*; do
   for file in .config/gh/hosts.yml .claude/.credentials.json .codex/auth.json .bash_history .zsh_history .npmrc .cargo/credentials .cargo/credentials.toml; do
     test ! -e "$home/$file"
   done
+  if [ -d "$home/.ssh" ]; then
+    test -z "$(find "$home/.ssh" -mindepth 1 ! -name authorized_keys -print)"
+    test ! -L "$home/.ssh/authorized_keys"
+  fi
 done
+printf '%s\n' '{root_key}  /root/.ssh/authorized_keys' '{user_key}  /home/user/.ssh/authorized_keys' | sha256sum --check
 test -x /usr/local/bin/spaced-svc
 test -s /etc/spaced/version
 echo 'Fresh image has no checkout or account files; guest services are present.'
-"#.into()).await?;
+"#)).await?;
         start(&mut privacy,&job,rootfs,"qualification-host-11811","raw-privacy","environment.space.raw-privacy",json!({"observation":"Read the host's published disk and clean base memory inspection receipt."}))?;
         result(&mut privacy,"raw-privacy",&ExecOutput {code:0,stdout:serde_json::to_string(&raw_privacy)?,stderr:String::new()})?;
         let privacy_digest = privacy.finish(now_ms())?.digest;
@@ -306,11 +328,22 @@ command -v git
 command -v cc
 command -v pkg-config
 test -s /etc/ssl/certs/ca-certificates.crt
+for file in /usr/local/bin/rustc /usr/local/bin/cargo /usr/bin/git /usr/bin/cc /etc/ssl/certs/ca-certificates.crt; do
+  printf 'oa-tool '
+  sha256sum "$file"
+done
 "#, daemon=compatibility.guest_daemon.digest);
-        check(&driver, &mut verification, &job, rootfs, &computer, "runtime", "environment.space.runtime", runtime).await?;
+        let runtime = check(&driver, &mut verification, &job, rootfs, &computer, "runtime", "environment.space.runtime", runtime).await?;
+        let mut inventory = vec![];
+        for line in runtime.stdout.lines().filter_map(|line| line.strip_prefix("oa-tool ")) {
+            let (digest,path) = line.split_once("  ").ok_or("The tool hash output is invalid.")?;
+            if !env::valid_digest(digest) || !path.starts_with('/') { return Err("The tool hash output is invalid.".into()); }
+            inventory.push(env::NamedArtifact {name:path.into(),digest:digest.into()});
+        }
+        if inventory.len() != 5 { return Err("The fresh tool inventory is incomplete.".into()); }
         check(&driver, &mut verification, &job, rootfs, &computer, "shape", "environment.space.shape", "set -eu\ntest \"$(getconf _NPROCESSORS_ONLN)\" = 2\nawk '/^MemTotal:/ {print; if ($2 < 900000 || $2 > 1048576) exit 1}' /proc/meminfo\n".into()).await?;
-        let materialize = coder_environment_setup::source::script(&job.inputs.source, coder_environment_setup::source::Mode::Materialize)?;
-        let verify = coder_environment_setup::source::script(&job.inputs.source, coder_environment_setup::source::Mode::Verify)?;
+        let materialize = coder_environment_operator::space::source_command(&job.inputs.source, coder_environment_setup::source::Mode::Materialize)?;
+        let verify = coder_environment_operator::space::source_command(&job.inputs.source, coder_environment_setup::source::Mode::Verify)?;
         let source = check(&driver, &mut verification, &job, rootfs, &computer, "source", "environment.space.source", format!("set -eu\nmkdir -p /workspace\ncd /workspace\n(\n{materialize}\n)\n{verify}")).await?;
         if !coder_environment_setup::source::Report::parse(&source.stdout).is_some_and(|report| report.verified(&job.inputs.source)) { return Err("The fresh checkout did not match its source pin.".into()); }
         let check = check(&driver, &mut verification, &job, rootfs, &computer, "build-test", "environment.space.build-test", format!("set -eu\ncd /workspace\n{}", check_script())).await?;
@@ -318,7 +351,7 @@ test -s /etc/ssl/certs/ca-certificates.crt
         let assertions = Assertions::CargoTest { min_passed:3 };
         tally.feed(assertions, check.stdout.as_bytes()); tally.finish(assertions); tally.verdict(assertions)?;
         let digest = verification.finish(now_ms())?.digest;
-        Ok::<_,Box<dyn Error>>((privacy_digest,digest,tally.passed))
+        Ok::<_,Box<dyn Error>>((privacy_digest,digest,tally.passed,inventory))
     }.await;
     let mut cleanup = recorder(state, &job, "space-cleanup")?;
     start(
@@ -351,7 +384,29 @@ test -s /etc/ssl/certs/ca-certificates.crt
         },
     )?;
     let cleanup_digest = cleanup.finish(now_ms())?.digest;
-    let (privacy_digest, verification_digest, passed_tests) = checked?;
+    let (privacy_digest, verification_digest, passed_tests, mut inventory) = checked?;
+    inventory.extend([
+        env::NamedArtifact {
+            name: "space-base".into(),
+            digest: base_digest.into(),
+        },
+        env::NamedArtifact {
+            name: "provider-root-authorized-keys".into(),
+            digest: root_key.into(),
+        },
+        env::NamedArtifact {
+            name: "provider-user-authorized-keys".into(),
+            digest: user_key.into(),
+        },
+        env::NamedArtifact {
+            name: "rust-1.97.1-x86_64-unknown-linux-gnu".into(),
+            digest: "88f28fa9af20594179f85d6df67078dfd6fa93e2f6da5e1e9b0ac4997988ca4f".into(),
+        },
+        env::NamedArtifact {
+            name: "coder-1.0.0".into(),
+            digest: "6bedc8cc2ea7626838b51ec3c12979383237528bc7ba0862e184679c38f0861d".into(),
+        },
+    ]);
     let shape = Shape {
         vcpus: 2,
         memory_mib: 1024,
@@ -365,19 +420,10 @@ test -s /etc/ssl/certs/ca-certificates.crt
         runtime: job.inputs.runtime.clone(),
         coder_version: "1.0.0".into(),
         harness: env::ArtifactPin {
-            revision: RELEASE.into(),
-            digest: RUNTIME.into(),
+            revision: "space-environment-qualify-v1".into(),
+            digest: env::digest(&fs::read(std::env::current_exe()?)?),
         },
-        inventory: vec![
-            env::NamedArtifact {
-                name: "rust-1.97.1-x86_64-unknown-linux-gnu".into(),
-                digest: "88f28fa9af20594179f85d6df67078dfd6fa93e2f6da5e1e9b0ac4997988ca4f".into(),
-            },
-            env::NamedArtifact {
-                name: "coder-1.0.0".into(),
-                digest: "6bedc8cc2ea7626838b51ec3c12979383237528bc7ba0862e184679c38f0861d".into(),
-            },
-        ],
+        inventory,
         compatibility: compatibility.clone(),
         snapshots: [(
             "small".into(),
