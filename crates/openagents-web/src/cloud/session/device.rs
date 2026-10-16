@@ -92,6 +92,38 @@ impl Answer {
 }
 
 impl CloudSession {
+    /// Fresh account authority for computer operations. The account service
+    /// validates sessions, sign-in keys, and account-scoped API keys; prefixes
+    /// alone never grant access, and a decision-only API key is refused there.
+    pub(crate) async fn computer_account(&self, token: &str) -> Result<(String, bool)> {
+        if !(session_token(token) || token.starts_with("oak_"))
+            || token.len() > 512
+            || token
+                .bytes()
+                .any(|b| b.is_ascii_whitespace() || b.is_ascii_control())
+        {
+            return Err(SessionError::Unauthenticated);
+        }
+        let answer = self
+            .device_call(reqwest::Method::GET, "/v1/account", Some(token), None)
+            .await?;
+        match answer.status {
+            200 => {
+                let id = answer.body["account"]["id"]
+                    .as_str()
+                    .filter(|id| super::identifier(id))
+                    .ok_or(SessionError::Unavailable)?;
+                Ok((
+                    id.to_owned(),
+                    answer.body["account"]["admin"].as_bool() == Some(true),
+                ))
+            }
+            401 => Err(SessionError::Unauthenticated),
+            403 | 404 => Err(SessionError::Forbidden),
+            _ => Err(SessionError::Unavailable),
+        }
+    }
+
     async fn device_call(
         &self,
         method: reqwest::Method,

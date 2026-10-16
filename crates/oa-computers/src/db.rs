@@ -9,6 +9,7 @@ use tokio_postgres::{Client, Config, NoTls};
 const MIGRATIONS: &[(i32, &str)] = &[
     (1, include_str!("../migrations/0001_computers.sql")),
     (2, include_str!("../migrations/0002_turns.sql")),
+    (3, include_str!("../migrations/0003_create_requests.sql")),
 ];
 
 #[derive(Debug)]
@@ -76,6 +77,11 @@ impl Db {
             *c = Arc::new(open(&self.config).await?);
         }
         Ok(c.clone())
+    }
+
+    /// A separate connection for an admission transaction and its locks.
+    pub(crate) async fn independent(&self) -> Result<Client, DbError> {
+        open(&self.config).await
     }
 
     async fn migrate(&self) -> Result<(), DbError> {

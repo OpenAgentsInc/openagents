@@ -46,15 +46,40 @@ static CLIENT: OnceLock<Client> = OnceLock::new();
 
 /// Turn chats-on-computers on (`--computers-url`, `--computers-token`).
 pub fn configure(base: &str, token: Token) {
-    let http = reqwest::Client::builder()
-        .timeout(Duration::from_secs(20))
-        .build()
-        .unwrap_or_default();
-    let _ = CLIENT.set(Client {
-        base: base.trim_end_matches('/').to_owned(),
-        token,
-        http,
-    });
+    match Client::new(base, token) {
+        Ok(client) => {
+            let _ = CLIENT.set(client);
+        }
+        Err(_) => eprintln!("openagents-web: cloud computer configuration is invalid"),
+    }
+}
+
+impl Client {
+    pub(crate) fn new(base: &str, token: Token) -> Result<Self, String> {
+        let origin = reqwest::Url::parse(base).map_err(|_| "Invalid computer service address.")?;
+        if !origin.username().is_empty()
+            || origin.password().is_some()
+            || origin.query().is_some()
+            || origin.fragment().is_some()
+            || (origin.scheme() != "https"
+                && !(origin.scheme() == "http"
+                    && matches!(origin.host_str(), Some("127.0.0.1" | "localhost" | "[::1]"))))
+        {
+            return Err("Invalid computer service address.".into());
+        }
+        let http = reqwest::Client::builder()
+            .no_proxy()
+            .redirect(reqwest::redirect::Policy::none())
+            .connect_timeout(Duration::from_secs(5))
+            .timeout(Duration::from_secs(20))
+            .build()
+            .map_err(|_| "Cloud computers aren't available.".to_owned())?;
+        Ok(Self {
+            base: base.trim_end_matches('/').to_owned(),
+            token,
+            http,
+        })
+    }
 }
 
 pub(crate) fn client() -> Option<&'static Client> {
@@ -103,7 +128,7 @@ impl Client {
         .ok_or_else(|| "Cloud computers aren't set up on this server.".to_owned())
     }
 
-    async fn call(
+    pub(crate) async fn call(
         &self,
         method: reqwest::Method,
         path: &str,
@@ -118,12 +143,23 @@ impl Client {
         if let Some(body) = body {
             request = request.json(&body);
         }
-        let response = request
+        let mut response = request
             .send()
             .await
             .map_err(|_| "Cloud computers can't be reached right now. Try again.".to_owned())?;
         let status = response.status().as_u16();
-        let value = response.json().await.unwrap_or(Value::Null);
+        let mut bytes = Vec::new();
+        while let Some(chunk) = response
+            .chunk()
+            .await
+            .map_err(|_| "Cloud computers can't be reached right now.".to_owned())?
+        {
+            if bytes.len() + chunk.len() > 1024 * 1024 {
+                return Err("Cloud computers answered oddly.".into());
+            }
+            bytes.extend_from_slice(&chunk);
+        }
+        let value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
         Ok((status, value))
     }
 }

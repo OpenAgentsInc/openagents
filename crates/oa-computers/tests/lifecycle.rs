@@ -137,16 +137,17 @@ async fn the_api_records_intent_at_once_and_refuses_before_writing() {
     assert_eq!(made["desired"], "running");
     assert_eq!(made["size"], "small");
 
-    // The same chat's computer is the same one.
+    // Legacy unkeyed chat ensures keep the original computer and image.
     let (status, again) = call(
         reqwest::Method::POST,
         format!("{base}/v1/computers"),
         "acct-a",
-        Some(json!({"chat": "chat-1"})),
+        Some(json!({"chat": "chat-1", "image": "another-template"})),
     )
     .await;
     assert_eq!(status, 200);
     assert_eq!(again["id"], id.as_str());
+    assert_eq!(store.get("acct-a", &id).await.unwrap().unwrap().image, None);
 
     // Another account neither sees nor reaches it.
     let (status, _) = call(
@@ -677,4 +678,205 @@ async fn a_computer_left_stopped_is_deleted_after_the_keep_period() {
             assert!(fake.live().is_empty());
         })
         .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn create_retries_preserve_settings_keys_and_atomic_account_limits() {
+    let Some(admin) = admin() else {
+        eprintln!("skipping: OA_COMPUTERS_TEST_DATABASE_URL is unset");
+        return;
+    };
+    let (db, _) = Db::scratch(&admin).await.unwrap();
+    let store = Store::new(db.clone());
+    let dir = tempfile::tempdir().unwrap();
+    let caps = FakeDriver::new(dir.path()).capabilities();
+    let base = api(store.clone(), caps.clone()).await;
+    let create_url = format!("{base}/v1/computers");
+    let request = json!({"chat":"retry-chat", "size":"small", "idempotency_key":"key-one"});
+    let (status, first) = call(
+        reqwest::Method::POST,
+        create_url.clone(),
+        "alice",
+        Some(request.clone()),
+    )
+    .await;
+    assert_eq!(status, 202, "{first}");
+    let id = first["id"].as_str().unwrap();
+    let mut conflict = request.clone();
+    conflict["image"] = json!("different-template");
+    let (status, failure) = call(
+        reqwest::Method::POST,
+        create_url.clone(),
+        "alice",
+        Some(conflict),
+    )
+    .await;
+    assert_eq!(status, 409, "{failure}");
+    assert_eq!(failure["error"], "idempotency_conflict");
+    assert_eq!(store.get("alice", id).await.unwrap().unwrap().size, "small");
+
+    let mismatched = http()
+        .post(&create_url)
+        .bearer_auth(TOKEN)
+        .header("X-OpenAgents-Account", "alice")
+        .header("Idempotency-Key", "key-two")
+        .json(&request)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(mismatched.status(), 400);
+    let restarted = api(store.clone(), caps).await;
+    let (status, retried) = call(
+        reqwest::Method::POST,
+        format!("{restarted}/v1/computers"),
+        "alice",
+        Some(request.clone()),
+    )
+    .await;
+    assert_eq!(status, 200);
+    assert_eq!(retried["id"], first["id"]);
+
+    // A fresh key for an existing chat must remain bound even after deletion.
+    let mut alias = request;
+    alias["idempotency_key"] = json!("key-alias");
+    let (status, aliased) = call(
+        reqwest::Method::POST,
+        create_url.clone(),
+        "alice",
+        Some(alias.clone()),
+    )
+    .await;
+    assert_eq!(status, 200);
+    assert_eq!(aliased["id"], first["id"]);
+    store
+        .set_desired("alice", id, oa_computers::store::Desired::Stopped)
+        .await
+        .unwrap();
+    let (status, stopped_retry) = call(
+        reqwest::Method::POST,
+        create_url.clone(),
+        "alice",
+        Some(alias.clone()),
+    )
+    .await;
+    assert_eq!(status, 200);
+    assert_eq!(stopped_retry["desired"], "stopped");
+    assert_eq!(
+        store.get("alice", id).await.unwrap().unwrap().desired,
+        oa_computers::store::Desired::Stopped
+    );
+    store
+        .set_desired("alice", id, oa_computers::store::Desired::Deleted)
+        .await
+        .unwrap();
+    let (status, deleted_retry) = call(
+        reqwest::Method::POST,
+        create_url.clone(),
+        "alice",
+        Some(alias.clone()),
+    )
+    .await;
+    assert_eq!(status, 200);
+    assert_eq!(deleted_retry["id"], first["id"]);
+    assert_eq!(deleted_retry["desired"], "deleted");
+    let (status, replacement) = call(
+        reqwest::Method::POST,
+        create_url.clone(),
+        "alice",
+        Some(json!({"chat":"retry-chat","idempotency_key":"new-chat-request"})),
+    )
+    .await;
+    assert_eq!(status, 202);
+    assert_ne!(replacement["id"], first["id"]);
+    let (status, old_retry) = call(
+        reqwest::Method::POST,
+        create_url.clone(),
+        "alice",
+        Some(alias),
+    )
+    .await;
+    assert_eq!(status, 200);
+    assert_eq!(
+        old_retry["id"], first["id"],
+        "an old key stays bound after the chat gets a new computer"
+    );
+
+    let mut creates = tokio::task::JoinSet::new();
+    for n in 0..25 {
+        let url = create_url.clone();
+        creates.spawn(async move {
+            let key = format!("quota-{n}");
+            (
+                key.clone(),
+                call(
+                    reqwest::Method::POST,
+                    url,
+                    "quota-account",
+                    Some(json!({"idempotency_key": key})),
+                )
+                .await,
+            )
+        });
+    }
+    let mut admitted = Vec::new();
+    let mut refused = 0;
+    while let Some(result) = creates.join_next().await {
+        let (key, (status, body)) = result.unwrap();
+        match status {
+            202 => admitted.push((key, body)),
+            429 => {
+                assert_eq!(body["error"], "quota_exhausted");
+                refused += 1;
+            }
+            _ => panic!("unexpected {status}: {body}"),
+        }
+    }
+    assert_eq!(admitted.len(), 20);
+    assert_eq!(refused, 5);
+    let (key, old) = &admitted[0];
+    let (status, retry) = call(
+        reqwest::Method::POST,
+        create_url.clone(),
+        "quota-account",
+        Some(json!({"idempotency_key":key})),
+    )
+    .await;
+    assert_eq!(status, 200);
+    assert_eq!(retry["id"], old["id"]);
+    let (status, independent) = call(
+        reqwest::Method::POST,
+        create_url.clone(),
+        "bob",
+        Some(json!({"idempotency_key":key})),
+    )
+    .await;
+    assert_eq!(status, 202);
+    assert_ne!(independent["id"], old["id"]);
+
+    let mut cursor = None;
+    let mut seen = std::collections::BTreeSet::new();
+    loop {
+        let url = match cursor {
+            Some(ref id) => format!("{create_url}?limit=3&after={id}"),
+            None => format!("{create_url}?limit=3"),
+        };
+        let (status, page) = call(reqwest::Method::GET, url, "quota-account", None).await;
+        assert_eq!(status, 200, "{page}");
+        for item in page["computers"].as_array().unwrap() {
+            assert!(seen.insert(item["id"].as_str().unwrap().to_owned()));
+        }
+        cursor = page["next_cursor"].as_str().map(str::to_owned);
+        if cursor.is_none() {
+            break;
+        }
+    }
+    assert_eq!(seen.len(), 20);
+    let (status, _) = call(
+        reqwest::Method::GET,
+        format!("{create_url}?after={id}"),
+        "bob",
+        None,
+    )
+    .await;
+    assert_eq!(status, 400);
 }

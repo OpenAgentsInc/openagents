@@ -68,7 +68,7 @@ pub fn document() -> Value {
         "servers": [{"url": "https://api.openagents.com"}],
         "paths": paths,
         "components": {
-            "securitySchemes": {"appBearer": {"type": "http", "scheme": "bearer", "description": "An app sess_ session or supported oa_sk_ sign-in key. API cookies are ignored."}},
+            "securitySchemes": {"appBearer": {"type": "http", "scheme": "bearer", "description": "A live app sess_ session or oa_sk_ sign-in key. Account-bound oak_ keys are accepted only where the operation declares them and their scopes permit it. API cookies are ignored."}},
             "schemas": {
                 "AppDeviceRequest": {"type": "object", "required": ["computer"], "properties": {
                     "app": {"type": "string", "maxLength": 64, "default": "Coder"},
@@ -115,6 +115,7 @@ pub fn document() -> Value {
         }
     });
     crate::history_openapi::extend(&mut document);
+    crate::computers_api::extend_openapi(&mut document);
     document
 }
 

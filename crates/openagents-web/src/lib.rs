@@ -43,6 +43,7 @@ mod components;
 mod composer;
 mod composer_row;
 pub mod computers;
+mod computers_api;
 pub mod connections;
 mod demo;
 mod device;

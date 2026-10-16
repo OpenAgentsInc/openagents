@@ -103,23 +103,128 @@ pub struct NewComputer<'a> {
     pub record: &'a Computer,
 }
 
+/// Admission failures are distinct from temporary database failures.
+#[derive(Debug)]
+pub enum CreateError {
+    Database(DbError),
+    Conflict,
+    Limit,
+    Busy,
+}
+
+impl From<DbError> for CreateError {
+    fn from(value: DbError) -> Self {
+        Self::Database(value)
+    }
+}
+
+impl From<tokio_postgres::Error> for CreateError {
+    fn from(value: tokio_postgres::Error) -> Self {
+        Self::Database(value.into())
+    }
+}
+
+impl std::fmt::Display for CreateError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Database(error) => error.fmt(f),
+            Self::Conflict => f.write_str("That request already names a different computer."),
+            Self::Limit => f.write_str("Delete an unused computer before creating another."),
+            Self::Busy => f.write_str("Computers are busy. Try again shortly."),
+        }
+    }
+}
+
+impl std::error::Error for CreateError {}
+
+/// Includes resources still awaiting deletion, so queued cleanup cannot bypass admission.
+pub const MAX_ACCOUNT_COMPUTERS: i64 = 20;
+
 #[derive(Clone)]
 pub struct Store {
     pub db: Db,
+    admission: std::sync::Arc<tokio::sync::Semaphore>,
 }
 
 impl Store {
     pub fn new(db: Db) -> Self {
-        Self { db }
+        Self {
+            db,
+            admission: std::sync::Arc::new(tokio::sync::Semaphore::new(32)),
+        }
     }
 
     /// Record intent. Returns the row and whether it was made now: a live
     /// computer for the same chat, or the same idempotency key, is
     /// returned as it is instead of a second one.
-    pub async fn create(&self, n: &NewComputer<'_>) -> Result<(Entry, bool), DbError> {
-        let c = self.db.client().await?;
+    pub async fn create(&self, n: &NewComputer<'_>) -> Result<(Entry, bool), CreateError> {
+        let _permit = self
+            .admission
+            .try_acquire()
+            .map_err(|_| CreateError::Busy)?;
+        let mut c = self.db.independent().await?;
+        let tx = c.transaction().await?;
+        tx.batch_execute(
+            "SET LOCAL lock_timeout = '5s';
+             SET LOCAL statement_timeout = '10s';
+             SET LOCAL idle_in_transaction_session_timeout = '15s'",
+        )
+        .await?;
+        // All creates for an account share this transaction lock. It covers
+        // retry lookup and quota admission, including simultaneous API requests.
+        tx.query_one(
+            "SELECT pg_advisory_xact_lock(hashtextextended($1, 11801))",
+            &[&n.owner],
+        )
+        .await?;
+        let existing = tx
+            .query(
+                &format!(
+                    "SELECT {COLUMNS} FROM computers.computers
+                     WHERE owner = $1 AND (
+                       ($2::text IS NOT NULL AND chat = $2 AND desired <> 'deleted'
+                        AND NOT EXISTS (SELECT 1 FROM computers.create_requests
+                                        WHERE owner = $1 AND request_key = $3))
+                       OR id IN (SELECT computer FROM computers.create_requests
+                                  WHERE owner = $1 AND request_key = $3))
+                     ORDER BY created_at DESC LIMIT 2"
+                ),
+                &[&n.owner, &n.chat, &n.idempotency_key],
+            )
+            .await?;
+        if existing.len() > 1 {
+            return Err(CreateError::Conflict);
+        }
+        if let Some(row) = existing.first() {
+            let e = entry(row)?;
+            // Unkeyed chat ensures keep the existing computer, even if a
+            // later turn offers another image. Public creates always use a
+            // key and must match the original immutable settings.
+            if n.idempotency_key.is_some()
+                && (e.chat.as_deref() != n.chat
+                    || e.driver != n.driver
+                    || e.image.as_deref() != n.image
+                    || e.size != n.record.size
+                    || e.record.base != n.record.base)
+            {
+                return Err(CreateError::Conflict);
+            }
+            remember_request(&tx, n, &e.id).await?;
+            tx.commit().await?;
+            return Ok((e, false));
+        }
+        let count: i64 = tx
+            .query_one(
+                "SELECT count(*) FROM computers.computers WHERE owner = $1 AND NOT done",
+                &[&n.owner],
+            )
+            .await?
+            .get(0);
+        if count >= MAX_ACCOUNT_COMPUTERS {
+            return Err(CreateError::Limit);
+        }
         let record = serde_json::to_value(n.record).map_err(|e| DbError(e.to_string()))?;
-        let inserted = c
+        let inserted = tx
             .query_opt(
                 &format!(
                     "INSERT INTO computers.computers
@@ -143,24 +248,12 @@ impl Store {
             )
             .await?;
         if let Some(row) = inserted {
-            return Ok((entry(&row)?, true));
+            let e = entry(&row)?;
+            remember_request(&tx, n, &e.id).await?;
+            tx.commit().await?;
+            return Ok((e, true));
         }
-        let existing = c
-            .query_opt(
-                &format!(
-                    "SELECT {COLUMNS} FROM computers.computers
-                     WHERE owner = $1 AND (
-                       ($2::text IS NOT NULL AND chat = $2 AND desired <> 'deleted')
-                       OR ($3::text IS NOT NULL AND idempotency_key = $3))
-                     ORDER BY created_at DESC LIMIT 1"
-                ),
-                &[&n.owner, &n.chat, &n.idempotency_key],
-            )
-            .await?;
-        match existing {
-            Some(row) => Ok((entry(&row)?, false)),
-            None => Err(DbError("the computer could not be recorded".into())),
-        }
+        Err(CreateError::Conflict)
     }
 
     pub async fn get(&self, owner: &str, id: &str) -> Result<Option<Entry>, DbError> {
@@ -177,14 +270,26 @@ impl Store {
     /// The owner's computers, newest first; deleted ones only while they
     /// are still being torn down.
     pub async fn list(&self, owner: &str) -> Result<Vec<Entry>, DbError> {
+        self.list_page(owner, None, 200).await
+    }
+
+    /// Stable keyset pagination. The cursor is resolved under the same owner.
+    pub async fn list_page(
+        &self,
+        owner: &str,
+        after: Option<&str>,
+        limit: i64,
+    ) -> Result<Vec<Entry>, DbError> {
         let c = self.db.client().await?;
         c.query(
             &format!(
                 "SELECT {COLUMNS} FROM computers.computers
                  WHERE owner = $1 AND NOT done
-                 ORDER BY created_at DESC LIMIT 200"
+                   AND ($2::text IS NULL OR (created_at, id) < (
+                     SELECT created_at, id FROM computers.computers WHERE owner = $1 AND id = $2))
+                 ORDER BY created_at DESC, id DESC LIMIT $3"
             ),
-            &[&owner],
+            &[&owner, &after, &limit.clamp(1, 201)],
         )
         .await?
         .iter()
@@ -302,6 +407,40 @@ impl Store {
         .await?;
         Ok(())
     }
+}
+
+async fn remember_request(
+    tx: &tokio_postgres::Transaction<'_>,
+    n: &NewComputer<'_>,
+    id: &str,
+) -> Result<(), CreateError> {
+    if let Some(key) = n.idempotency_key {
+        let known = tx
+            .query_opt(
+                "SELECT 1 FROM computers.create_requests WHERE owner = $1 AND request_key = $2",
+                &[&n.owner, &key],
+            )
+            .await?
+            .is_some();
+        if !known {
+            let aliases: i64 = tx
+                .query_one(
+                    "SELECT count(*) FROM computers.create_requests WHERE computer = $1",
+                    &[&id],
+                )
+                .await?
+                .get(0);
+            if aliases >= 128 {
+                return Err(CreateError::Limit);
+            }
+            tx.execute(
+                "INSERT INTO computers.create_requests (owner, request_key, computer) VALUES ($1, $2, $3)",
+                &[&n.owner, &key, &id],
+            )
+            .await?;
+        }
+    }
+    Ok(())
 }
 
 /// A held computer: reads and fenced writes of its observed record.

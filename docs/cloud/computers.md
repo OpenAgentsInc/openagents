@@ -40,7 +40,7 @@ Design: [`docs/research/factory/README.md`](../research/factory/README.md),
   `crates/oa-computers/migrations`, applied at start under an advisory
   lock.
 
-### API
+### Internal service API
 
 All calls carry `Authorization: Bearer $OA_COMPUTERS_TOKEN` (the web
 server's service token) and `X-OpenAgents-Account: <account>`; an account
@@ -54,6 +54,30 @@ sees only its own computers.
 | `GET /v1/capabilities` | the driver's declaration |
 | `POST /v1/computers/{id}/turns` `{command, cwd?, timeout_seconds?, env?}` | queue a turn (`202` with its id); `env`'s values stay in memory only |
 | `GET /v1/computers/{id}/turns/{turn}`, `POST …/turns/{turn}/stop` | read a turn (`state` queued/running/done/failed, `exit_code`, `stdout`, `stderr`, `error`); stop it |
+
+### Public account API
+
+[#11801](https://github.com/OpenAgentsInc/openagents/issues/11801) adds public
+account-authenticated create/list/detail/stop/wake/delete and capability reads
+through the website/API front. See the
+[implemented public lifecycle](../sdk/computers.md#implemented-public-lifecycle)
+for routes, key scopes, paging, and errors. The server derives the opaque owner
+from current account authority and constructs the internal service request;
+callers never need `OA_COMPUTERS_TOKEN` or `X-OpenAgents-Account`.
+
+A create key is retained in `computers.create_requests`, including additional
+keys attached to the same chat and keys whose computer was deleted. Conflicting
+immutable settings refuse. Keyed retries do not wake a subsequently stopped
+computer; legacy unkeyed chat ensure still does. Transactional admission locks
+serialize per account, limit unsettled computers to 20, and bound concurrent
+create transactions. Paging is by `(created_at, id)` under the same owner.
+
+Staging uses its own `oa-computers-staging` service, staging account database,
+and `oa-computers-staging-token`. Deploy the appropriate lifecycle service from
+current pushed main with `deploy/oa-computers/deploy.sh staging|production COMMIT`;
+the helper verifies the running commit and refuses to replace a newer build.
+The web staging renderer points to that isolated service. Public gating and
+account isolation stay the same in staging and production.
 
 ### Turns
 

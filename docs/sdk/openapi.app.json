@@ -295,7 +295,7 @@
             }
           },
           "400": {
-            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "description": "Invalid page, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
             "content": {
               "application/json": {
                 "schema": {
@@ -305,7 +305,7 @@
             }
           },
           "401": {
-            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "description": "Invalid page, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
             "content": {
               "application/json": {
                 "schema": {
@@ -315,7 +315,7 @@
             }
           },
           "403": {
-            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "description": "Invalid page, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
             "content": {
               "application/json": {
                 "schema": {
@@ -325,7 +325,7 @@
             }
           },
           "404": {
-            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "description": "Invalid page, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
             "content": {
               "application/json": {
                 "schema": {
@@ -335,7 +335,7 @@
             }
           },
           "409": {
-            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "description": "Invalid page, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
             "content": {
               "application/json": {
                 "schema": {
@@ -345,7 +345,7 @@
             }
           },
           "429": {
-            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "description": "Invalid page, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
             "content": {
               "application/json": {
                 "schema": {
@@ -355,7 +355,7 @@
             }
           },
           "503": {
-            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "description": "Invalid page, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
             "content": {
               "application/json": {
                 "schema": {
@@ -410,7 +410,7 @@
             }
           },
           "400": {
-            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "description": "Invalid page, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
             "content": {
               "application/json": {
                 "schema": {
@@ -420,7 +420,7 @@
             }
           },
           "401": {
-            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "description": "Invalid page, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
             "content": {
               "application/json": {
                 "schema": {
@@ -430,7 +430,7 @@
             }
           },
           "403": {
-            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "description": "Invalid page, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
             "content": {
               "application/json": {
                 "schema": {
@@ -440,7 +440,7 @@
             }
           },
           "404": {
-            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "description": "Invalid page, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
             "content": {
               "application/json": {
                 "schema": {
@@ -450,7 +450,7 @@
             }
           },
           "409": {
-            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "description": "Invalid page, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
             "content": {
               "application/json": {
                 "schema": {
@@ -460,7 +460,7 @@
             }
           },
           "429": {
-            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "description": "Invalid page, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
             "content": {
               "application/json": {
                 "schema": {
@@ -470,7 +470,7 @@
             }
           },
           "503": {
-            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "description": "Invalid page, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
             "content": {
               "application/json": {
                 "schema": {
@@ -543,7 +543,7 @@
             }
           },
           "400": {
-            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "description": "Invalid page, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
             "content": {
               "application/json": {
                 "schema": {
@@ -553,7 +553,7 @@
             }
           },
           "401": {
-            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "description": "Invalid page, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
             "content": {
               "application/json": {
                 "schema": {
@@ -563,7 +563,7 @@
             }
           },
           "403": {
-            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "description": "Invalid page, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
             "content": {
               "application/json": {
                 "schema": {
@@ -573,7 +573,7 @@
             }
           },
           "404": {
-            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "description": "Invalid page, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
             "content": {
               "application/json": {
                 "schema": {
@@ -583,7 +583,7 @@
             }
           },
           "409": {
-            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "description": "Invalid page, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
             "content": {
               "application/json": {
                 "schema": {
@@ -593,7 +593,7 @@
             }
           },
           "429": {
-            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "description": "Invalid page, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
             "content": {
               "application/json": {
                 "schema": {
@@ -603,7 +603,7 @@
             }
           },
           "503": {
-            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "description": "Invalid page, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
             "content": {
               "application/json": {
                 "schema": {
@@ -659,7 +659,7 @@
             }
           },
           "400": {
-            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "description": "Invalid page, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
             "content": {
               "application/json": {
                 "schema": {
@@ -669,7 +669,7 @@
             }
           },
           "401": {
-            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "description": "Invalid page, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
             "content": {
               "application/json": {
                 "schema": {
@@ -679,7 +679,7 @@
             }
           },
           "403": {
-            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "description": "Invalid page, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
             "content": {
               "application/json": {
                 "schema": {
@@ -689,7 +689,7 @@
             }
           },
           "404": {
-            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "description": "Invalid page, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
             "content": {
               "application/json": {
                 "schema": {
@@ -699,7 +699,7 @@
             }
           },
           "409": {
-            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "description": "Invalid page, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
             "content": {
               "application/json": {
                 "schema": {
@@ -709,7 +709,7 @@
             }
           },
           "429": {
-            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "description": "Invalid page, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
             "content": {
               "application/json": {
                 "schema": {
@@ -719,7 +719,7 @@
             }
           },
           "503": {
-            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "description": "Invalid page, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
             "content": {
               "application/json": {
                 "schema": {
@@ -775,7 +775,7 @@
             }
           },
           "400": {
-            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "description": "Invalid page, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
             "content": {
               "application/json": {
                 "schema": {
@@ -785,7 +785,7 @@
             }
           },
           "401": {
-            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "description": "Invalid page, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
             "content": {
               "application/json": {
                 "schema": {
@@ -795,7 +795,7 @@
             }
           },
           "403": {
-            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "description": "Invalid page, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
             "content": {
               "application/json": {
                 "schema": {
@@ -805,7 +805,7 @@
             }
           },
           "404": {
-            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "description": "Invalid page, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
             "content": {
               "application/json": {
                 "schema": {
@@ -815,7 +815,7 @@
             }
           },
           "409": {
-            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "description": "Invalid page, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
             "content": {
               "application/json": {
                 "schema": {
@@ -825,7 +825,7 @@
             }
           },
           "429": {
-            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "description": "Invalid page, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
             "content": {
               "application/json": {
                 "schema": {
@@ -835,7 +835,962 @@
             }
           },
           "503": {
-            "description": "Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "description": "Invalid page, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/computers": {
+      "get": {
+        "operationId": "listComputers",
+        "tags": [
+          "Computers"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "description": "Account-owned cloud computers. Accepts live app sessions/sign-in keys or account-bound API keys with accounts scope. Cloud operations remain restricted to accounts with cloud access. Acceptance is not readiness or completion; poll the computer. Internal owner headers and service tokens are not public credentials.",
+        "responses": {
+          "200": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppComputerList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "cloud"
+              ]
+            },
+            "description": "Select only cloud computers. Without this, keep the existing list of your own computers and add your cloud computers when available."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 200
+            },
+            "description": "Cloud page size."
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "The previous next_cursor; scoped to the same account."
+          }
+        ]
+      },
+      "post": {
+        "operationId": "createComputer",
+        "tags": [
+          "Computers"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "description": "Account-owned cloud computers. Accepts live app sessions/sign-in keys or account-bound API keys with accounts scope. Cloud operations remain restricted to accounts with cloud access. Acceptance is not readiness or completion; poll the computer. Internal owner headers and service tokens are not public credentials.",
+        "responses": {
+          "200": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppComputer"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppComputer"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppCreateComputer"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "description": "One logical request key; required in the header or body and reused across retries. Conflicting settings return 409.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/computers/{id}": {
+      "get": {
+        "operationId": "getComputer",
+        "tags": [
+          "Computers"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "description": "Account-owned cloud computers. Accepts live app sessions/sign-in keys or account-bound API keys with accounts scope. Cloud operations remain restricted to accounts with cloud access. Acceptance is not readiness or completion; poll the computer. Internal owner headers and service tokens are not public credentials.",
+        "responses": {
+          "200": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppComputer"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "deleteComputer",
+        "tags": [
+          "Computers"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "description": "Cloud IDs request deletion (202); names of your own computers are removed from your list (204). Read a cloud computer to check when deletion is finished.",
+        "responses": {
+          "200": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppComputer"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppComputer"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "The computer name was removed from your list. Its files and synced chats stay."
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "cloud"
+              ]
+            },
+            "description": "Select cloud deletion explicitly, including when one of your own computers has the same name. Without this, an existing computer name is removed from your list."
+          }
+        ]
+      }
+    },
+    "/v1/computers/{id}/stop": {
+      "post": {
+        "operationId": "stopComputer",
+        "tags": [
+          "Computers"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "description": "Account-owned cloud computers. Accepts live app sessions/sign-in keys or account-bound API keys with accounts scope. Cloud operations remain restricted to accounts with cloud access. Acceptance is not readiness or completion; poll the computer. Internal owner headers and service tokens are not public credentials.",
+        "responses": {
+          "200": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppComputer"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppComputer"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/computers/{id}/wake": {
+      "post": {
+        "operationId": "wakeComputer",
+        "tags": [
+          "Computers"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "description": "Account-owned cloud computers. Accepts live app sessions/sign-in keys or account-bound API keys with accounts scope. Cloud operations remain restricted to accounts with cloud access. Acceptance is not readiness or completion; poll the computer. Internal owner headers and service tokens are not public credentials.",
+        "responses": {
+          "200": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppComputer"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppComputer"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/computers/capabilities": {
+      "get": {
+        "operationId": "getComputerCapabilities",
+        "tags": [
+          "Computers"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "description": "Account-owned cloud computers. Accepts live app sessions/sign-in keys or account-bound API keys with accounts scope. Cloud operations remain restricted to accounts with cloud access. Acceptance is not readiness or completion; poll the computer. Internal owner headers and service tokens are not public credentials.",
+        "responses": {
+          "200": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppComputerCapabilities"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The requested computer result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The requested computer result.",
             "content": {
               "application/json": {
                 "schema": {
@@ -853,7 +1808,7 @@
       "appBearer": {
         "type": "http",
         "scheme": "bearer",
-        "description": "An app sess_ session or supported oa_sk_ sign-in key. API cookies are ignored."
+        "description": "A live app sess_ session or oa_sk_ sign-in key. Account-bound oak_ keys are accepted only where the operation declares them and their scopes permit it. API cookies are ignored."
       }
     },
     "schemas": {
@@ -1407,6 +2362,208 @@
               "string",
               "null"
             ]
+          }
+        }
+      },
+      "AppComputer": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "state",
+          "desired",
+          "size",
+          "online"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^cmp_[0-9a-fA-F]{20}$"
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "const": "cloud"
+          },
+          "chat": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "size": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "desired": {
+            "type": "string",
+            "enum": [
+              "running",
+              "stopped",
+              "deleted"
+            ]
+          },
+          "online": {
+            "type": "boolean"
+          },
+          "turns": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "created_unix": {
+            "type": "integer"
+          },
+          "updated_unix": {
+            "type": "integer"
+          },
+          "seen_unix": {
+            "type": "null"
+          },
+          "sync": {
+            "type": "null"
+          },
+          "last_error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "AppEnrolledComputer": {
+        "type": "object",
+        "required": [
+          "name",
+          "online"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "online": {
+            "type": "boolean"
+          },
+          "seen_unix": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "sync": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "AppComputerList": {
+        "type": "object",
+        "required": [
+          "computers",
+          "next_cursor"
+        ],
+        "properties": {
+          "computers": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/AppComputer"
+                },
+                {
+                  "$ref": "#/components/schemas/AppEnrolledComputer"
+                }
+              ]
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "AppCreateComputer": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "chat": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "An existing chat owned by this account."
+          },
+          "size": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": "small"
+          },
+          "environment": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "version": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The saved version number, paired with environment."
+          },
+          "idempotency_key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Required here or as Idempotency-Key; when both are supplied they must match."
+          }
+        }
+      },
+      "AppComputerCapabilities": {
+        "type": "object",
+        "required": [
+          "schema",
+          "profiles",
+          "sizes",
+          "limits"
+        ],
+        "properties": {
+          "schema": {
+            "const": "openagents.computers.capabilities.v1"
+          },
+          "profiles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "sizes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "limits": {
+            "type": "object",
+            "required": [
+              "max_computers"
+            ],
+            "properties": {
+              "max_computers": {
+                "type": "integer",
+                "const": 20
+              }
+            }
           }
         }
       }

@@ -60,7 +60,7 @@ pub(crate) fn extend(doc: &mut Value) {
         };
         let mut responses = json!({"200":success});
         for status in ["400", "401", "403", "404", "409", "429", "503"] {
-            responses[status] = json!({"description":"Invalid cursor, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.","content":{"application/json":{"schema":{"$ref":"#/components/schemas/AppAccountError"}}}});
+            responses[status] = json!({"description":"Invalid page, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.","content":{"application/json":{"schema":{"$ref":"#/components/schemas/AppAccountError"}}}});
         }
         doc["paths"][path] = json!({"get":{"operationId":id,"tags":["Saved history"],"security":[{"appBearer":[]}],"parameters":parameters,"responses":responses}});
     }

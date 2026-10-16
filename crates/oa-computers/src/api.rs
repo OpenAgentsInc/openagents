@@ -15,8 +15,8 @@
 //! - `GET /v1/capabilities`, `GET /healthz`.
 
 use crate::reconcile::now_ms;
-use crate::store::{Desired, Entry, NewComputer, Store};
-use axum::extract::{Path, Request, State};
+use crate::store::{CreateError, Desired, Entry, NewComputer, Store};
+use axum::extract::{Path, Query, Request, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
@@ -258,7 +258,7 @@ async fn create(
         Ok(o) => o,
         Err(r) => return r,
     };
-    let body: CreateBody = if body.is_empty() {
+    let mut body: CreateBody = if body.is_empty() {
         CreateBody::default()
     } else {
         match serde_json::from_slice(&body) {
@@ -266,6 +266,29 @@ async fn create(
             Err(e) => return err(StatusCode::BAD_REQUEST, "invalid_body", &e.to_string()),
         }
     };
+    if let Some(key) = headers.get("idempotency-key") {
+        let Ok(key) = key.to_str() else {
+            return err(
+                StatusCode::BAD_REQUEST,
+                "invalid",
+                "The request key is invalid.",
+            );
+        };
+        if headers.get_all("idempotency-key").iter().count() != 1
+            || !valid_id(key)
+            || body
+                .idempotency_key
+                .as_deref()
+                .is_some_and(|body| body != key)
+        {
+            return err(
+                StatusCode::BAD_REQUEST,
+                "invalid",
+                "Send one matching request key.",
+            );
+        }
+        body.idempotency_key = Some(key.to_owned());
+    }
     let record = match admit_create(&api.caps, &owner, &body) {
         Ok(r) => r,
         Err((status, code, message)) => return err(status, code, &message),
@@ -284,13 +307,29 @@ async fn create(
     match made {
         Ok((e, true)) => (StatusCode::ACCEPTED, Json(view(&e))).into_response(),
         Ok((e, false)) => {
-            // The chat's computer already exists: make sure it is wanted up.
-            if e.desired == Desired::Stopped {
+            // Legacy chat ensures wake on each turn. Replaying a keyed create
+            // must not undo a stop that happened after the original request.
+            if e.desired == Desired::Stopped && body.idempotency_key.is_none() {
                 let _ = api.store.set_desired(&owner, &e.id, Desired::Running).await;
             }
             (StatusCode::OK, Json(view(&e))).into_response()
         }
-        Err(e) => {
+        Err(CreateError::Conflict) => err(
+            StatusCode::CONFLICT,
+            "idempotency_conflict",
+            "That request already names a different computer.",
+        ),
+        Err(CreateError::Limit) => err(
+            StatusCode::TOO_MANY_REQUESTS,
+            "quota_exhausted",
+            "Delete an unused computer before creating another.",
+        ),
+        Err(CreateError::Busy) => err(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "unavailable",
+            "Computers are busy. Try again shortly.",
+        ),
+        Err(CreateError::Database(e)) => {
             eprintln!("oa-computers: create: {e}");
             err(
                 StatusCode::SERVICE_UNAVAILABLE,
@@ -301,14 +340,55 @@ async fn create(
     }
 }
 
-async fn list(State(api): State<Arc<Api>>, headers: HeaderMap) -> Response {
+#[derive(Deserialize, Default)]
+struct ListQuery {
+    limit: Option<i64>,
+    after: Option<String>,
+}
+
+async fn list(
+    State(api): State<Arc<Api>>,
+    headers: HeaderMap,
+    Query(query): Query<ListQuery>,
+) -> Response {
     let owner = match account(&headers) {
         Ok(o) => o,
         Err(r) => return r,
     };
-    match api.store.list(&owner).await {
-        Ok(all) => {
-            Json(json!({"computers": all.iter().map(view).collect::<Vec<_>>()})).into_response()
+    let limit = query.limit.unwrap_or(200);
+    if !(1..=200).contains(&limit) || query.after.as_deref().is_some_and(|v| !valid_id(v)) {
+        return err(
+            StatusCode::BAD_REQUEST,
+            "invalid",
+            "Use a limit from 1 to 200 and a computer cursor.",
+        );
+    }
+    if let Some(after) = query.after.as_deref() {
+        match api.store.get(&owner, after).await {
+            Ok(Some(_)) => {}
+            Ok(None) => {
+                return err(
+                    StatusCode::BAD_REQUEST,
+                    "invalid_cursor",
+                    "That page is unavailable.",
+                );
+            }
+            Err(_) => return err(StatusCode::SERVICE_UNAVAILABLE, "unavailable", "Try again."),
+        }
+    }
+    match api
+        .store
+        .list_page(&owner, query.after.as_deref(), limit + 1)
+        .await
+    {
+        Ok(mut all) => {
+            let more = all.len() > limit as usize;
+            all.truncate(limit as usize);
+            let next = more.then(|| all.last().map(|e| e.id.clone())).flatten();
+            Json(
+                json!({"computers": all.iter().map(view).collect::<Vec<_>>(), "next_cursor": next}),
+            )
+            .into_response()
         }
         Err(e) => {
             eprintln!("oa-computers: list: {e}");

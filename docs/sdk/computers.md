@@ -1,9 +1,10 @@
 # Computers: one public API over supported places work can run
 
-2026-10-15. Status: delivery contract and tracked proposals, building on the
-existing internal lifecycle service. Public endpoints and fields below require
-implementation and qualification; a diagram or example does not advertise an
-unimplemented capability.
+2026-10-15. Status: public lifecycle implemented in
+[#11801](https://github.com/OpenAgentsInc/openagents/issues/11801), with commands,
+files, placement, and other capabilities tracked separately. The implemented
+slice below is distinct from the proposed resource and later operations.
+Deployment and live qualification evidence belongs to the implementation issue.
 
 Part of the [OpenAgents SDK](README.md). See the
 [delivery plan](delivery-plan.md), [current lifecycle service](../cloud/computers.md),
@@ -27,6 +28,53 @@ source pin, and cleanup evidence.
 A person's own computer is not an isolated allocated sandbox. Its availability
 is not guaranteed instant, and a zero OpenAgents compute charge does not mean
 hardware, electricity, or any other service cost is zero.
+
+## Implemented public lifecycle
+
+The account-authenticated lifecycle uses `api.openagents.com/v1`. It accepts
+live `sess_` sessions, `oa_sk_` sign-in keys, and account-bound `oak_` keys whose
+native permissions admit account actions (`accounts`, including the public
+`workspace` scope). Decision-only or unbound keys cannot use this surface.
+The server checks native authority on every request; cookies and caller-supplied
+internal owner headers do not establish identity. Cloud operations remain gated
+to site admins and named agent accounts.
+
+| Call | Implemented result |
+| --- | --- |
+| `POST /computers` | `202` new computer, `200` existing request; send `Idempotency-Key` or body `idempotency_key` |
+| `GET /computers?kind=cloud&limit=20&after=...` | Cloud-only page and `next_cursor`; limit 1–200 |
+| `GET /computers` | Existing enrolled-machine rows plus admitted cloud computers, preserving old callers |
+| `GET /computers/{id}` | Account-owned cloud computer and desired/observed state |
+| `POST /computers/{id}/stop`, `/wake` | `202` intent; poll for the observed result |
+| `DELETE /computers/{id}?kind=cloud` | `202` cloud deletion intent, even if an enrolled machine has the same name |
+| `DELETE /computers/{name}` | Existing enrolled names detach with `204`; otherwise a cloud ID records deletion intent |
+| `GET /computers/capabilities` | Declared profiles, sizes, and the current account computer limit |
+
+Create accepts optional `chat`, `size`, `environment`, and `version`. A chat
+must belong to the account. Environment and version must be supplied together;
+the server resolves the saved version's image only after checking ownership.
+A public caller cannot supply a raw provider image or owner. Without an
+environment, the service uses its configured default runtime. Organization
+workspace selection, placement requirements, commands, and files remain later
+contract work rather than implicit rights from account authentication.
+
+Use a key of 1–128 ASCII letters, digits, `_`, `-`, or `.`, not starting with
+`.`. When header and body keys are both sent, they must match. A changed
+immutable create request returns `409 idempotency_conflict`. Keys remain bound
+after deletion, including when the chat gets a replacement computer. A keyed
+create retry does not undo a later stop; use wake explicitly. The internal
+legacy chat ensure without a key keeps its previous wake behavior.
+
+Admission serializes per account in PostgreSQL and counts computers still
+awaiting deletion. The initial limit is 20 unsettled computers per account;
+exhaustion returns `429 quota_exhausted`. Creates also have a bounded concurrent
+admission limit and a 16 KiB public request limit. These controls do not replace
+the later durable usage/billing work. Cloud-only reads report service outages;
+the mixed legacy list keeps its previous best-effort cloud append behavior.
+
+The app OpenAPI example generates the implemented slice in
+[openapi.app.json](openapi.app.json), also composed into `/v1/openapi.json`.
+`#11804` extends this baseline after commands and files are implemented.
 
 ## Public contract and provider contract
 

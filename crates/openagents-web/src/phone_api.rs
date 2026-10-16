@@ -100,10 +100,27 @@ pub(crate) fn routes() -> Router<App> {
             "/v1/threads/{id}/files/{file}",
             get(read_file).delete(remove_file),
         )
-        .route("/v1/computers", get(computers_route))
+        .route(
+            "/v1/computers",
+            get(computers_route)
+                .post(crate::computers_api::create)
+                .layer(axum::extract::DefaultBodyLimit::max(16 * 1024)),
+        )
+        .route(
+            "/v1/computers/capabilities",
+            get(crate::computers_api::capabilities),
+        )
         .route(
             "/v1/computers/{name}",
-            axum::routing::delete(remove_computer),
+            get(crate::computers_api::get).delete(remove_computer),
+        )
+        .route(
+            "/v1/computers/{name}/stop",
+            post(crate::computers_api::stop),
+        )
+        .route(
+            "/v1/computers/{name}/wake",
+            post(crate::computers_api::wake),
         )
         .route("/v1/computers/{name}/sync", get(sync_get).put(sync_put))
         .route("/v1/computers/{name}/activity", post(activity))
@@ -767,37 +784,90 @@ async fn remove_computer(
     State(app): State<App>,
     headers: HeaderMap,
     Path(name): Path<String>,
+    Query(query): Query<RemoveComputer>,
 ) -> Response {
-    let owner = match coder_sync::owner(&app, &headers).await {
-        Ok(owner) => owner,
+    if let Some(kind) = query.kind.as_deref() {
+        if kind != "cloud" {
+            return refused(
+                StatusCode::BAD_REQUEST,
+                "invalid",
+                "Use kind=cloud for a cloud computer.",
+            );
+        }
+        return crate::computers_api::delete(State(app), headers, Path(name)).await;
+    }
+    let identity = match crate::computers_api::identity(&app, &headers).await {
+        Ok(identity) => identity,
         Err(response) => return response,
     };
-    match remove_computer_named(&app.config.chat_store, &owner, &name).await {
+    match remove_computer_named(&app.config.chat_store, &identity.owner, &name).await {
         Ok(true) => StatusCode::NO_CONTENT.into_response(),
+        // Preserve account detach for any existing enrolled-machine name,
+        // including a name that happens to have the cloud ID format.
+        Ok(false) if crate::computers_api::cloud_id(&name) => {
+            crate::computers_api::delete(State(app), headers, Path(name)).await
+        }
         Ok(false) => refused(StatusCode::NOT_FOUND, "not_found", "No such computer."),
         Err(error) => stored(&error),
     }
 }
 
-async fn computers_route(State(app): State<App>, headers: HeaderMap) -> Response {
-    let owner = match coder_sync::owner(&app, &headers).await {
-        Ok(owner) => owner,
+#[derive(Deserialize)]
+struct RemoveComputer {
+    kind: Option<String>,
+}
+
+async fn computers_route(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Query(query): Query<crate::computers_api::ListQuery>,
+) -> Response {
+    if let Err(response) = crate::computers_api::validate_page(&query) {
+        return response;
+    }
+    let identity = match crate::computers_api::identity(&app, &headers).await {
+        Ok(identity) => identity,
         Err(response) => return response,
     };
-    let computers = match app.config.chat_store.computers(&owner).await {
+    if query.kind.as_deref() == Some("cloud") {
+        if !identity.permitted {
+            return refused(
+                StatusCode::FORBIDDEN,
+                "invite_only",
+                "Cloud computers aren't available for this account yet.",
+            );
+        }
+        let Some(client) = crate::computers::client() else {
+            return refused(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "unavailable",
+                "Cloud computers aren't available right now.",
+            );
+        };
+        return match crate::computers_api::list_cloud(client, &identity, &query).await {
+            Ok(value) => answer(StatusCode::OK, value),
+            Err(response) => response,
+        };
+    }
+    let computers = match app.config.chat_store.computers(&identity.owner).await {
         Ok(computers) => computers,
         Err(error) => return stored(&error),
     };
     let mut rows = computer_rows(&computers);
     // The account's cloud computers, one list with its own (#11624), for
     // the accounts cloud computers are open to.
-    if let Some(client) = crate::computers::client()
-        && crate::computers::app_allowed(&app, &headers).await
-        && let Ok(cloud) = crate::computers::list(client, &owner).await
+    let mut next_cursor = Value::Null;
+    if identity.permitted
+        && let Some(client) = crate::computers::client()
+        && let Ok(cloud) = crate::computers_api::list_cloud(client, &identity, &query).await
     {
-        rows.extend(crate::computers::rows(&cloud));
+        rows.extend(cloud["computers"].as_array().into_iter().flatten().cloned());
+        next_cursor = cloud["next_cursor"].clone();
     }
-    answer(StatusCode::OK, json!({"computers": rows}))
+    answer(
+        StatusCode::OK,
+        json!({"computers": rows, "next_cursor": next_cursor}),
+    )
 }
 
 async fn sync_get(
