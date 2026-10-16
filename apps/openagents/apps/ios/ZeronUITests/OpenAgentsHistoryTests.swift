@@ -2,6 +2,11 @@ import XCTest
 
 /// Native list, paging, full text and file controls against an isolated account.
 final class OpenAgentsHistoryTests: XCTestCase {
+    private func expandSavedChats(_ app: XCUIApplication) {
+        let header = app.cells["section-oa-saved-history"]
+        XCTAssertTrue(header.waitForExistence(timeout: 20))
+        if header.value as? String == "Collapsed" { header.tap() }
+    }
     func testSavedAccountHistory() throws {
         let env = ProcessInfo.processInfo.environment
         guard let base = env["CODER_HISTORY_FIXTURE"] else { throw XCTSkip("Run scripts/ios/check-history.py") }
@@ -9,6 +14,7 @@ final class OpenAgentsHistoryTests: XCTestCase {
         app.launchArguments = ["-account-fixture", "-account-api", base + "/v1", "-account-site", base,
                                "-account-test-credential-url", base + "/fixture-key", "-edge", base]
         app.launch()
+        expandSavedChats(app)
         func cell(_ id: String) -> XCUIElement { app.descendants(matching: .any).matching(identifier: id).firstMatch }
         func tap(_ id: String) {
             let element = cell(id)
@@ -22,23 +28,26 @@ final class OpenAgentsHistoryTests: XCTestCase {
         XCTAssertTrue(pinned.waitForExistence(timeout: 20))
         app.swipeDown()
         pinned.tap()
-        XCTAssertTrue(cell("saved-message-count").waitForExistence(timeout: 15))
-        XCTAssertTrue(app.staticTexts["200 messages loaded"].exists)
+        let transcript = app.scrollViews["transcript"]
+        XCTAssertTrue(transcript.waitForExistence(timeout: 15))
+        XCTAssertTrue(transcript.waitForValue("200 messages loaded", timeout: 15))
         tap("saved-messages-more")
-        XCTAssertTrue(app.staticTexts["400 messages loaded"].waitForExistence(timeout: 15))
+        XCTAssertTrue(transcript.waitForValue("400 messages loaded", timeout: 15))
         tap("saved-messages-more")
-        XCTAssertTrue(app.staticTexts["405 messages loaded"].waitForExistence(timeout: 15))
-        tap("saved-message-msg_0")
-        let body = app.textViews["saved-message-body"]
-        XCTAssertTrue(body.waitForExistence(timeout: 10))
-        XCTAssertTrue((body.value as? String)?.contains("Saved question") == true)
-        tap("saved-file-file:msg_0:0123456789abcdef0123456789abcdef")
+        XCTAssertTrue(transcript.waitForValue("405 messages loaded", timeout: 15))
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.04)).tap()
+        let question = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Saved question")).firstMatch
+        for _ in 0..<40 where !question.exists { transcript.swipeDown(velocity: .fast) }
+        XCTAssertTrue(question.waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["new-session"].exists)
+        let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "normal-account-transcript"; shot.lifetime = .keepAlways; add(shot)
+        app.navigationBars.buttons["saved-chat-files"].tap()
+        app.buttons["fixture.txt"].tap()
         let contents = app.textViews["saved-message-body"]
         XCTAssertTrue(contents.waitForExistence(timeout: 15))
         XCTAssertTrue((contents.value as? String)?.contains("fixture file contents") == true)
-        let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "saved-file"; shot.lifetime = .keepAlways; add(shot)
         // Close the saved view, show archives and shared projects, then sign out.
-        for _ in 0..<3 { app.navigationBars.buttons.element(boundBy: 0).tap() }
+        for _ in 0..<2 { app.navigationBars.buttons.element(boundBy: 0).tap() }
         tap("saved-archived")
         XCTAssertTrue(pinned.waitForNonExistence(timeout: 10))
         tap("saved-projects")
@@ -51,6 +60,23 @@ final class OpenAgentsHistoryTests: XCTestCase {
         XCTAssertTrue(app.buttons["account-sign-in"].waitForExistence(timeout: 15))
         XCTAssertFalse(pinned.exists)
     }
+    func testRichAccountHistory() throws {
+        guard let base = ProcessInfo.processInfo.environment["CODER_HISTORY_FIXTURE"] else { throw XCTSkip("Local fixture only") }
+        let app = XCUIApplication()
+        app.launchArguments = ["-account-fixture", "-account-api", base + "/v1", "-account-site", base,
+                               "-account-test-credential-url", base + "/fixture-key", "-edge", base]
+        app.launch()
+        expandSavedChats(app)
+        let row = app.cells["saved-chat-000000c6-1234-4234-8234-123456789abc"]
+        XCTAssertTrue(row.waitForExistence(timeout: 20))
+        row.tap()
+        let transcript = app.scrollViews["transcript"]
+        XCTAssertTrue(transcript.waitForValue("5 messages loaded", timeout: 15))
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Saved question")).firstMatch.waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["new-session"].exists)
+        let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "rich-account-transcript"; shot.lifetime = .keepAlways; add(shot)
+    }
+
     func testPublicSavedAccountHistory() throws {
         let env = ProcessInfo.processInfo.environment
         guard let raw = env["CODER_PUBLIC_HISTORY_CONFIG"], let bytes = raw.data(using: .utf8),
@@ -59,11 +85,12 @@ final class OpenAgentsHistoryTests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-account-fixture", "-account-test-credential-url", keyURL, "-edge", "https://coder-sync-157437760789.us-central1.run.app"]
         app.launch()
+        expandSavedChats(app)
         let row = app.descendants(matching: .any).matching(identifier: "saved-chat-" + chat).firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 30)); row.tap()
-        XCTAssertTrue(app.staticTexts["200 messages loaded"].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.scrollViews["transcript"].waitForValue("200 messages loaded", timeout: 20))
         app.descendants(matching: .any).matching(identifier: "saved-messages-more").firstMatch.tap()
-        XCTAssertTrue(app.staticTexts["205 messages loaded"].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.scrollViews["transcript"].waitForValue("205 messages loaded", timeout: 20))
         let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "public-account-history"; shot.lifetime = .keepAlways; add(shot)
         app.navigationBars.buttons.element(boundBy: 0).tap()
         app.tabBars.buttons["Settings"].tap()
@@ -84,21 +111,22 @@ final class OpenAgentsHistoryTests: XCTestCase {
         app.launchArguments = ["-account-fixture", "-account-api", base + "/v1", "-account-site", base,
                                "-account-test-credential-url", base + "/fixture-key", "-edge", base]
         app.launch()
+        expandSavedChats(app)
         let row = app.descendants(matching: .any).matching(identifier: "saved-chat-000000c7-1234-4234-8234-123456789abc").firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 20)); row.tap()
-        XCTAssertTrue(app.staticTexts["2 messages loaded"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.scrollViews["transcript"].waitForValue("2 messages loaded", timeout: 10))
         change("/advance")
-        XCTAssertTrue(app.staticTexts["4 messages loaded"].waitForExistence(timeout: 12))
+        XCTAssertTrue(app.scrollViews["transcript"].waitForValue("4 messages loaded", timeout: 12))
         change("/offline")
         let offline = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Couldn't update this chat")).firstMatch
         XCTAssertTrue(offline.waitForExistence(timeout: 12))
-        XCTAssertTrue(app.staticTexts["4 messages loaded"].exists)
+        XCTAssertTrue(app.scrollViews["transcript"].value as? String == "4 messages loaded")
         change("/online")
         XCTAssertTrue(offline.waitForNonExistence(timeout: 12))
         XCUIDevice.shared.press(.home)
         change("/advance")
         app.activate()
-        XCTAssertTrue(app.staticTexts["6 messages loaded"].waitForExistence(timeout: 12))
+        XCTAssertTrue(app.scrollViews["transcript"].waitForValue("6 messages loaded", timeout: 12))
         let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "live-account-history"; shot.lifetime = .keepAlways; add(shot)
         app.navigationBars.buttons.element(boundBy: 0).tap()
         app.tabBars.buttons["Settings"].tap()
@@ -128,6 +156,7 @@ final class OpenAgentsHistoryTests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-account-fixture", "-account-test-credential-url", keyURL, "-edge", "https://coder-sync-157437760789.us-central1.run.app", "-appearance", "2"]
         app.launch()
+        expandSavedChats(app)
         let row = app.descendants(matching: .any).matching(identifier: "saved-chat-" + chat).firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 30)); row.tap()
         XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "saved-message-count").firstMatch.waitForExistence(timeout: 15))
@@ -148,4 +177,11 @@ final class OpenAgentsHistoryTests: XCTestCase {
         XCTAssertTrue(app.buttons["account-sign-in"].waitForExistence(timeout: 15))
     }
 
+}
+
+private extension XCUIElement {
+    func waitForValue(_ expected: String, timeout: TimeInterval) -> Bool {
+        let predicate = NSPredicate(format: "value == %@", expected)
+        return XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: predicate, object: self)], timeout: timeout) == .completed
+    }
 }

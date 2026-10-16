@@ -1700,6 +1700,8 @@ dependencies = [
  "sha2",
  "tempfile",
  "tokio",
+ "zeron-doc",
+ "zeron-proto",
 ]
 
 [[package]]

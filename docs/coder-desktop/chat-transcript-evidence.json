@@ -1,0 +1,78 @@
+{
+  "issue": 11892,
+  "date": "2026-10-16",
+  "base_commit": "15ab2b8c179de6a0a44d056534b339afa2284c8f",
+  "checks": [
+    {
+      "command": "cargo test -p coder-account (app workspace)",
+      "passed": 36
+    },
+    {
+      "command": "cargo test -p openagents-sdk (root workspace)",
+      "passed": 35
+    },
+    {
+      "command": "cargo test -p zeron-ui --lib transcript",
+      "passed": 122
+    },
+    {
+      "command": "cargo test -p zeron-mobile --lib",
+      "passed": 49,
+      "ignored": 1
+    },
+    {
+      "command": "openagents browser run -- python3 scripts/check-account-fixture.py --reader BINARY SCRATCH",
+      "result": "passed"
+    },
+    {
+      "command": "python3 scripts/ios/check-history.py --target-dir TARGET --scratch SCRATCH",
+      "result": "passed: 405-message paging, file read, archives, shared projects, sign-out"
+    },
+    {
+      "command": "python3 scripts/ios/check-history.py --rich --target-dir TARGET --scratch SCRATCH",
+      "result": "passed: normal transcript, image, file chip, thinking, tool, formatted Markdown and code; no global new-session bar"
+    },
+    {
+      "command": "scripts/ios/build-core.sh; xcodebuild build ARCHS=arm64 CODE_SIGN_IDENTITY=-",
+      "result": "passed with production bindings"
+    },
+    {
+      "command": "rustfmt --check (changed Rust modules); git diff --check (excluding unchanged generator whitespace style)",
+      "result": "passed"
+    }
+  ],
+  "coverage": [
+    "Open newest 200 messages and prepend older pages without duplicates",
+    "Keep live following while older pages remain available",
+    "Reload changed revisions without mixing messages",
+    "Recover unknown revisions and shortened chats",
+    "Bound large reads and support one-message fallback",
+    "Cancel late selection and logout results",
+    "Refuse arbitrary attachment paths; clear revoked access on image reads; keep a chat when one file is missing",
+    "Reuse the session transcript renderers and attachment controls; opening history starts no engine"
+  ],
+  "captures": {
+    "archive": "docs/coder-desktop/evidence/chat-transcript-2026-10-16.tar.gz",
+    "sha256": "851c49acc2f4cf18b3160c749bac44e8d718436bcaf236b139917c1a8a0100f3",
+    "files": [
+      {
+        "path": "desktop-chat.png",
+        "sha256": "7cc760968116e1a32fff740b1364f3c584b61e0bda65372e97cea9f19edf2ecb"
+      },
+      {
+        "path": "desktop-answer.png",
+        "sha256": "68d9fcc2f2b5052a282e91d94ef0f68ed55013b6ac71169d95d0c0ba1bc97bb3"
+      },
+      {
+        "path": "ios-chat.png",
+        "sha256": "b4dc575e0c017d34e10cd15cd86f6c45a0210c9cc45983a3deb03e9535370bb4"
+      }
+    ],
+    "reviewed": true
+  },
+  "limits": [
+    "Acceptance uses synthetic accounts and loopback APIs, not owner data or a production engine.",
+    "Sending replies is delivered by #11893 and #11894.",
+    "The initial broader zeron-ui --lib run failed in composer::tests::unsupported_host_preserves_reference_drafts_and_queue_edits and aborted; the scoped transcript run passed all 122 tests."
+  ]
+}

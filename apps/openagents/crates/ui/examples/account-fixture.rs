@@ -74,6 +74,13 @@ async fn history_list(
     Json(json!({"data":rows,"next":(end<205).then(||chat_id(end-1))})).into_response()
 }
 const FILE: &str = "0123456789abcdef0123456789abcdef";
+const IMAGE: &str = "11111111111111111111111111111111";
+fn fixture_image() -> Vec<u8> {
+    let image = image::RgbaImage::from_pixel(128, 64, image::Rgba([40, 160, 190, 255]));
+    let mut bytes = std::io::Cursor::new(Vec::new());
+    image.write_to(&mut bytes, image::ImageFormat::Png).unwrap();
+    bytes.into_inner()
+}
 async fn saved_messages(
     State(s): State<Arc<Server>>,
     Path(chat): Path<String>,
@@ -99,16 +106,16 @@ async fn saved_messages(
     let limit = q["limit"].parse::<usize>().unwrap();
     assert!(limit <= 200);
     let end = (start + limit).min(405);
-    let data:Vec<_>=(start..end).map(|n|json!({"id":format!("msg_{n}"),"role":match n{0=>"user",1=>"thinking",2=>"tool",3=>"future-role",_=>"assistant"},"text":match n{0=>"# A saved question\n\n**Markdown**, `inline code`, and a code block:\n\n```rust\nlet answer = 42;\n```".to_owned(),1=>"Considering the earlier question before answering.".into(),2=>"".into(),_=>format!("Saved message {n}")},"files":if n==0{vec![json!({"id":FILE,"name":"fixture.txt","kind":"text","size":8})]}else{vec![]},"tool":if n==2{Some(json!({"name":"read","summary":"Read a saved file","status":"done","input":"fixture.txt","output":"Full saved output\nNothing was executed by this reader."}))}else{None},"generated_files":if n==3{json!("unsupported saved block")}else{json!([])},"artifacts":[]})).collect();
+    let data:Vec<_>=(start..end).map(|n|json!({"id":format!("msg_{n}"),"role":match n{0=>"user",1=>"thinking",2=>"tool",3=>"future-role",_=>"assistant"},"text":match n{0=>"# A saved question\n\n**Markdown**, `inline code`, and a code block:\n\n```rust\nlet answer = 42;\n```".to_owned(),1=>"Considering the earlier question before answering.".into(),2=>"".into(),4=>"# Saved answer\n\n**Markdown**, `inline code`, and a code block:\n\n```rust\nlet answer = 42;\n```".into(),_=>format!("Saved message {n}")},"files":if n==0{vec![json!({"id":FILE,"name":"fixture.txt","kind":"text","size":8})]}else if n==4{vec![json!({"id":IMAGE,"name":"fixture.png","kind":"png","size":fixture_image().len()})]}else{vec![]},"tool":if n==2{Some(json!({"name":"read","summary":"Read a saved file","status":"done","input":"fixture.txt","output":"Full saved output\nNothing was executed by this reader."}))}else{None},"generated_files":if n==3{json!("unsupported saved block")}else{json!([])},"artifacts":[]})).collect();
     let n = usize::from_str_radix(&chat[..8], 16).unwrap();
     Json(json!({"thread":{"id":chat,"title":if n==204{"Pinned saved chat"}else if n==5{"Archived saved chat"}else{"Previous chat"},"revision":revision,"updated_unix":1792100000+n,"pinned_unix":if n==204{Some(1792100000)}else{None},"archived_unix":if n==5{Some(1792100000)}else{None},"project":"prj_0000000000000001","source":match n%3{0=>"web",1=>"terminal",_=>"phone"},"messages":405},"revision":revision,"data":data,"next":(end<405).then(||format!("msg_{}",end-1)),"captures":[{"id":chat_id(555),"name":"Saved capture","state":"saved","size":3,"media":"text/plain"},{"id":chat_id(556),"name":"Second capture","state":"not_saved","size":null,"media":null}]})).into_response()
 }
-async fn saved_file(State(s): State<Arc<Server>>) -> Response {
+async fn saved_file(State(s): State<Arc<Server>>, Path((_, file)): Path<(String, String)>) -> Response {
     if !s.active.load(Ordering::SeqCst) {
         return StatusCode::UNAUTHORIZED.into_response();
     }
     s.downloads.fetch_add(1, Ordering::SeqCst);
-    b"fixture!".to_vec().into_response()
+    if file == IMAGE { fixture_image() } else { b"fixture!".to_vec() }.into_response()
 }
 async fn saved_capture(State(s): State<Arc<Server>>) -> Response {
     if !s.active.load(Ordering::SeqCst) {
@@ -392,6 +399,8 @@ fn main() -> anyhow::Result<()> {
                                         "Saved fixture output"
                                     );
                                     assert_eq!(snapshot.messages[2].role.as_str(), "thinking");
+                                    viewer.update(cx, |viewer, cx| viewer.reveal_message(0, cx));
+                                    cx.background_executor().timer(Duration::from_millis(300)).await;
                                     capture_window(
                                         window,
                                         cx,
@@ -434,7 +443,7 @@ fn main() -> anyhow::Result<()> {
                                         summary: coder_account::openagents::ChatSummary {
                                             chat,
                                             title: "Saved chat".into(),
-                                            revision: 0,
+                                            revision: 1,
                                             updated_unix: 0,
                                             pinned_unix: None,
                                             archived_unix: None,
@@ -442,7 +451,7 @@ fn main() -> anyhow::Result<()> {
                                             source: coder_account::openagents::ChatSource::Other(
                                                 "unknown".into(),
                                             ),
-                                            messages: 0,
+                                            messages: 405,
                                         },
                                     };
                                     shell_window
@@ -525,6 +534,13 @@ fn main() -> anyhow::Result<()> {
                                         b"cap"
                                     );
                                     assert_eq!(server.downloads.load(Ordering::SeqCst), 2);
+                                    reader.close_download();
+                                    viewer.update(cx, |viewer, cx| viewer.reveal_message(0, cx));
+                                    cx.background_executor().timer(Duration::from_millis(800)).await;
+                                    capture_window(window, cx, &output, "normal-transcript");
+                                    viewer.update(cx, |viewer, cx| viewer.reveal_message(5, cx));
+                                    cx.background_executor().timer(Duration::from_millis(250)).await;
+                                    capture_window(window, cx, &output, "normal-transcript-answer");
                                     reader.refresh().unwrap();
                                     runtime.spawn(reader.more()).await.unwrap();
                                     server.revision.store(2, Ordering::SeqCst);

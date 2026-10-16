@@ -471,6 +471,12 @@ impl TranscriptView {
         self.send(Msg::Input(debug_input(entries, working)));
     }
 
+    /// Detach the source and remove its displayed content.
+    pub fn clear(&self) {
+        self.watch.lock().unwrap().take();
+        self.set_input(Default::default());
+    }
+
     pub fn close(&self) {
         self.watch.lock().unwrap().take();
         self.visuals.shutdown();

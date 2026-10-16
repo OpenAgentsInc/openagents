@@ -6,6 +6,8 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+zeron-doc.workspace = true
+zeron-proto.workspace = true
 coder-brand.workspace = true
 openagents = { package = "openagents-sdk", path = "../../../../crates/openagents-sdk" }
 tokio.workspace = true

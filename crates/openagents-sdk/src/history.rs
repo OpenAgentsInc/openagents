@@ -479,6 +479,17 @@ impl TranscriptReader {
         self.limit = size(limit)?;
         Ok(self)
     }
+    /// Start at an indexed message in a known revision, for loading recent history first.
+    pub fn starting_at(mut self, index: usize, revision: u64) -> Result<Self, Error> {
+        if revision == 0 {
+            return Err(Error::InvalidCursor);
+        }
+        self.at = index;
+        self.revision = Some(revision);
+        self.done = false;
+        self.failed = None;
+        Ok(self)
+    }
     pub fn chat(&self) -> &ChatRef {
         &self.chat
     }

@@ -60,6 +60,8 @@ struct State {
     file_epoch: u64,
     bytes: usize,
     replace: bool,
+    latest_first: bool,
+    page_start: usize,
     following: Option<CancellationToken>,
     polling: bool,
     snapshot: Snapshot,
@@ -86,6 +88,8 @@ impl Reader {
                 file_epoch: 0,
                 bytes: 0,
                 replace: false,
+                latest_first: false,
+                page_start: 0,
                 following: None,
                 polling: false,
                 snapshot: Snapshot::default(),
@@ -140,6 +144,8 @@ impl Reader {
         s.reader = None;
         s.bytes = 0;
         s.replace = false;
+        s.latest_first = false;
+        s.page_start = 0;
         s.snapshot = Snapshot {
             epoch: s.epoch,
             ..Snapshot::default()
@@ -171,6 +177,41 @@ impl Reader {
         self.publish(&s);
         Ok(())
     }
+    /// Open the newest page, loading older pages when the person scrolls upward.
+    pub fn open_latest(&self, target: ExistingChat) -> Result<(), Error> {
+        self.open(target.clone())?;
+        let mut s = self.state.lock().unwrap();
+        if !s
+            .target
+            .as_ref()
+            .is_some_and(|t| t.chat == target.chat && t.is_current())
+        {
+            return Err(Error::Cancelled);
+        }
+        if target.summary.revision == 0 || target.summary.messages == 0 {
+            s.latest_first = true;
+            s.replace = true;
+            self.publish(&s);
+            return Ok(());
+        }
+        let start = target
+            .summary
+            .messages
+            .saturating_sub(200.min(self.limits.messages));
+        s.reader = Some(
+            s.reader
+                .take()
+                .ok_or(Error::Cancelled)?
+                .starting_at(start, target.summary.revision)?,
+        );
+        s.latest_first = true;
+        s.page_start = start;
+        s.snapshot.first = start;
+        s.snapshot.received = start;
+        self.publish(&s);
+        Ok(())
+    }
+
     pub fn refresh(&self) -> Result<(), Error> {
         let mut s = self.state.lock().unwrap();
         let target = s
@@ -183,6 +224,7 @@ impl Reader {
             .client()
             .transcript(target.lease.session(), &target.chat)?
             .with_page_size(200.min(self.limits.messages))?;
+        s.page_start = 0;
         let following = s.following.is_some();
         s.cancel.cancel();
         s.file_cancel.cancel();
@@ -212,7 +254,11 @@ impl Reader {
         if !s.snapshot.continue_required {
             return;
         }
-        s.snapshot.first = s.snapshot.received;
+        if s.latest_first {
+            s.snapshot.received = s.snapshot.first;
+        } else {
+            s.snapshot.first = s.snapshot.received;
+        }
         s.snapshot.messages = Arc::new(Vec::new());
         s.bytes = 0;
         s.snapshot.continue_required = false;
@@ -224,7 +270,28 @@ impl Reader {
         if !s.snapshot.smaller_page {
             return;
         }
-        s.reader = s.reader.take().and_then(|r| r.with_page_size(1).ok());
+        if s.latest_first {
+            let end = if s.snapshot.messages.is_empty() {
+                s.snapshot
+                    .summary
+                    .as_ref()
+                    .map_or(0, |summary| summary.messages)
+            } else {
+                s.snapshot.first
+            };
+            s.page_start = end.saturating_sub(1);
+            if let (Some(target), Some(summary)) = (&s.target, &s.snapshot.summary) {
+                s.reader = target
+                    .lease
+                    .client()
+                    .transcript(target.lease.session(), &target.chat)
+                    .and_then(|r| r.with_page_size(1))
+                    .and_then(|r| r.starting_at(s.page_start, summary.revision))
+                    .ok();
+            }
+        } else {
+            s.reader = s.reader.take().and_then(|r| r.with_page_size(1).ok());
+        }
         s.snapshot.smaller_page = false;
         s.snapshot.single_message = true;
         s.snapshot.state = LoadState::Idle;
@@ -254,22 +321,67 @@ impl Reader {
             ) {
                 s.snapshot.state = LoadState::Loading;
                 self.publish(&s);
-                Some((s.epoch, target, reader, s.cancel.clone()))
+                Some((
+                    s.epoch,
+                    target,
+                    reader,
+                    s.cancel.clone(),
+                    s.latest_first,
+                    s.replace,
+                    s.page_start,
+                    if s.snapshot.single_message {
+                        1
+                    } else {
+                        200.min(this.limits.messages)
+                    },
+                ))
             } else {
                 None
             }
         };
         async move {
-            let Some((epoch, target, mut reader, cancel)) = request else {
+            let Some((
+                epoch,
+                target,
+                mut reader,
+                cancel,
+                latest_first,
+                replace,
+                mut page_start,
+                page_size,
+            )) = request
+            else {
                 return;
             };
-            let result = reader
-                .next_page(target.lease.client(), target.lease.session(), &cancel)
-                .await;
+            let result = async {
+                let mut page = reader
+                    .next_page(target.lease.client(), target.lease.session(), &cancel)
+                    .await?;
+                if latest_first
+                    && replace
+                    && let Some(probe) = &page
+                {
+                    page_start = probe.thread.messages.saturating_sub(page_size);
+                    if page_start > 0 {
+                        reader = target
+                            .lease
+                            .client()
+                            .transcript(target.lease.session(), &target.chat)?
+                            .with_page_size(page_size)?
+                            .starting_at(page_start, probe.revision)?;
+                        page = reader
+                            .next_page(target.lease.client(), target.lease.session(), &cancel)
+                            .await?;
+                    }
+                }
+                Ok::<_, Error>(page)
+            }
+            .await;
             let mut s = this.state.lock().unwrap();
             if s.epoch != epoch || !target.is_current() || cancel.is_cancelled() {
                 return;
             }
+            s.page_start = page_start;
             match result {
                 Ok(Some(page)) => {
                     let bytes = page
@@ -300,19 +412,49 @@ impl Reader {
                     } else {
                         if s.replace {
                             s.snapshot.messages = Arc::new(Vec::new());
-                            s.snapshot.first = 0;
-                            s.snapshot.received = 0;
+                            s.snapshot.first = s.page_start;
+                            s.snapshot.received = s.page_start;
                             s.bytes = 0;
                             s.replace = false;
                         }
                         s.bytes = s.bytes.saturating_add(bytes);
-                        s.snapshot.received += page.data.len();
-                        Arc::make_mut(&mut s.snapshot.messages).extend(page.data);
+                        if s.latest_first {
+                            let mut messages = page.data;
+                            s.snapshot.received =
+                                s.snapshot.received.max(s.page_start + messages.len());
+                            messages.extend(s.snapshot.messages.iter().cloned());
+                            s.snapshot.first = s.page_start;
+                            s.snapshot.messages = Arc::new(messages);
+                        } else {
+                            s.snapshot.received += page.data.len();
+                            Arc::make_mut(&mut s.snapshot.messages).extend(page.data);
+                        }
                         s.snapshot.summary = Some(page.thread);
                         s.snapshot.captures = page.captures;
-                        s.snapshot.has_more = page.has_more;
+                        s.snapshot.has_more = if s.latest_first {
+                            s.page_start > 0
+                        } else {
+                            page.has_more
+                        };
                         s.snapshot.state = LoadState::Ready;
-                        s.reader = Some(reader);
+                        if s.latest_first && s.page_start > 0 {
+                            let end = s.page_start;
+                            let start = end.saturating_sub(if s.snapshot.single_message {
+                                1
+                            } else {
+                                200.min(this.limits.messages)
+                            });
+                            s.page_start = start;
+                            s.reader = target
+                                .lease
+                                .client()
+                                .transcript(target.lease.session(), &target.chat)
+                                .and_then(|r| r.with_page_size(end - start))
+                                .and_then(|r| r.starting_at(start, page.revision))
+                                .ok();
+                        } else {
+                            s.reader = Some(reader);
+                        }
                     }
                 }
                 Ok(None) => {
@@ -364,8 +506,7 @@ impl Reader {
         let request = {
             let mut s = self.state.lock().unwrap();
             if s.polling
-                || s.snapshot.has_more
-                || s.snapshot.first != 0
+                || (!s.latest_first && (s.snapshot.has_more || s.snapshot.first != 0))
                 || s.snapshot.continue_required
                 || s.snapshot.smaller_page
                 || s.snapshot.login_required
@@ -386,13 +527,16 @@ impl Reader {
                     cancel,
                     revision,
                     s.snapshot.messages.clone(),
+                    s.latest_first,
+                    s.snapshot.first,
                 ))
             } else {
                 None
             }
         };
         async move {
-            let Some((epoch, target, cancel, revision, previous)) = request else {
+            let Some((epoch, target, cancel, revision, previous, latest_first, first)) = request
+            else {
                 return;
             };
             let result = async {
@@ -401,6 +545,7 @@ impl Reader {
                     .client()
                     .transcript(target.lease.session(), &target.chat)?
                     .with_page_size(200.min(this.limits.messages))?;
+                let mut loaded_first = first;
                 let mut messages = Vec::new();
                 let mut bytes = 0usize;
                 let mut summary = None;
@@ -416,6 +561,21 @@ impl Reader {
                     };
                     if summary.is_none() && page.revision == revision {
                         return Ok(None);
+                    }
+                    if latest_first && summary.is_none() && first > 0 {
+                        loaded_first = first.min(
+                            page.thread
+                                .messages
+                                .saturating_sub(200.min(this.limits.messages)),
+                        );
+                        reader = target
+                            .lease
+                            .client()
+                            .transcript(target.lease.session(), &target.chat)?
+                            .with_page_size(200.min(this.limits.messages))?
+                            .starting_at(loaded_first, page.revision)?;
+                        summary = Some(page.thread);
+                        continue;
                     }
                     let page_bytes = page
                         .data
@@ -444,7 +604,15 @@ impl Reader {
                         break;
                     }
                 }
-                Ok::<_, Error>(Some((reader, messages, bytes, summary, captures, has_more)))
+                Ok::<_, Error>(Some((
+                    reader,
+                    messages,
+                    bytes,
+                    summary,
+                    captures,
+                    has_more,
+                    loaded_first,
+                )))
             }
             .await;
             let mut s = this.state.lock().unwrap();
@@ -466,18 +634,41 @@ impl Reader {
                     }
                     s.snapshot.state = LoadState::Ready;
                 }
-                Ok(Some((reader, messages, bytes, summary, captures, has_more))) => {
+                Ok(Some((reader, messages, bytes, summary, captures, has_more, loaded_first))) => {
+                    let first = loaded_first;
+                    s.snapshot.first = if latest_first { first } else { 0 };
                     s.file_cancel.cancel();
                     s.file_cancel = s.cancel.child_token();
                     s.snapshot.download = None;
-                    s.snapshot.received = messages.len();
+                    s.snapshot.received = if latest_first {
+                        first + messages.len()
+                    } else {
+                        messages.len()
+                    };
                     s.snapshot.messages = Arc::new(messages);
                     s.snapshot.summary = summary;
                     s.snapshot.captures = captures;
-                    s.snapshot.has_more = has_more;
+                    s.snapshot.has_more = if latest_first { first > 0 } else { has_more };
                     s.snapshot.state = LoadState::Ready;
                     s.bytes = bytes;
-                    s.reader = Some(reader);
+                    if latest_first && first > 0 {
+                        let start = first.saturating_sub(200.min(this.limits.messages));
+                        s.page_start = start;
+                        s.reader = target
+                            .lease
+                            .client()
+                            .transcript(target.lease.session(), &target.chat)
+                            .and_then(|r| r.with_page_size(first - start))
+                            .and_then(|r| {
+                                r.starting_at(
+                                    start,
+                                    s.snapshot.summary.as_ref().map_or(0, |x| x.revision),
+                                )
+                            })
+                            .ok();
+                    } else {
+                        s.reader = Some(reader);
+                    }
                 }
                 Err(Error::Cancelled | Error::Changed | Error::InvalidCursor) => return,
                 Err(error) => {
@@ -501,6 +692,65 @@ impl Reader {
             }
             this.publish(&s);
         }
+    }
+
+    /// Fetch a displayed attachment by its opaque transcript reference.
+    pub async fn attachment(&self, path: &str) -> Result<Vec<u8>, Error> {
+        let (epoch, target, cancel, reference) = {
+            let s = self.state.lock().unwrap();
+            let target = s
+                .target
+                .clone()
+                .filter(ExistingChat::is_current)
+                .ok_or(Error::Cancelled)?;
+            let reference = s
+                .snapshot
+                .messages
+                .iter()
+                .find_map(|message| {
+                    message.files.iter().find_map(|file| {
+                        (crate::chat_entries::file_path(s.epoch, &message.id, file) == path)
+                            .then(|| file.download_ref().cloned())
+                            .flatten()
+                    })
+                })
+                .ok_or(Error::NotFound)?;
+            (s.epoch, target, s.cancel.clone(), reference)
+        };
+        let result = target
+            .lease
+            .client()
+            .download(target.lease.session(), &reference, &cancel)
+            .await;
+        let mut s = self.state.lock().unwrap();
+        if s.epoch != epoch || !target.is_current() || cancel.is_cancelled() {
+            return Err(Error::Cancelled);
+        }
+        if let Err(error) = &result
+            && matches!(
+                error,
+                Error::Forbidden | Error::Unauthorized | Error::ExpiredSession
+            )
+        {
+            s.snapshot.login_required = login_required(error);
+            s.snapshot.access_lost = true;
+            s.snapshot.messages = Arc::new(Vec::new());
+            s.snapshot.captures.clear();
+            s.snapshot.summary = None;
+            s.snapshot.download = None;
+            s.snapshot.first = 0;
+            s.snapshot.received = 0;
+            s.snapshot.has_more = false;
+            s.snapshot.state = LoadState::Failed {
+                message: error.to_string(),
+                stale: false,
+            };
+            s.bytes = 0;
+            s.cancel.cancel();
+            s.file_cancel.cancel();
+            self.publish(&s);
+        }
+        result
     }
 
     /// Only one saved attachment is kept in memory. Selecting another cancels and releases it.

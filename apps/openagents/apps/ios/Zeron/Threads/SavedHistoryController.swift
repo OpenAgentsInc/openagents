@@ -2,7 +2,7 @@ import UIKit
 
 /// Native lists and text controls over the shared Rust history reader.
 class SavedHistoryController: UITableViewController {
-    enum Page { case projects, transcript, message(String), download }
+    enum Page { case projects, download }
     enum Row {
         case note(String, String)
         case body(String)
@@ -13,7 +13,6 @@ class SavedHistoryController: UITableViewController {
     private var token: AnyObject?
     private var rows: [Row] = []
     private var part: UInt64 = 0
-    private var messageCount: UInt64 = 0
 
     init(app: AppModel, page: Page) {
         self.app = app
@@ -29,16 +28,6 @@ class SavedHistoryController: UITableViewController {
         tableView.estimatedRowHeight = 76
         token = app.observe { [weak self] in self?.reload() }
         reload()
-    }
-
-    override func viewDidAppear(_ animated: Bool) {
-        super.viewDidAppear(animated)
-        if case .transcript = page { app.savedHistory?.follow(visible: true) }
-    }
-
-    override func viewWillDisappear(_ animated: Bool) {
-        super.viewWillDisappear(animated)
-        if case .transcript = page { app.savedHistory?.follow(visible: false) }
     }
 
     private func perform(_ action: SavedHistoryAction) {
@@ -81,8 +70,6 @@ class SavedHistoryController: UITableViewController {
     }
 
     private func reload() {
-        let nearBottom = tableView.contentSize.height - tableView.contentOffset.y - tableView.bounds.height < 120
-        var followNewMessages = false
         rows = []
         guard let state = app.savedSnapshot, state.signedIn else {
             title = "OpenAgents chats"
@@ -105,40 +92,6 @@ class SavedHistoryController: UITableViewController {
             if case .failed = state.projectsState { rows.append(action("Retry projects", "saved-project-retry", .refreshProjects)) }
             else if state.moreProjects { rows.append(action("More projects", "saved-project-more", .moreProjects)) }
             if state.projects.isEmpty, case .ready = state.projectsState { rows.append(.note("No shared projects yet.", "saved-project-empty")) }
-        case .transcript:
-            let transcript = state.transcript
-            followNewMessages = !transcript.hasMore && transcript.received > messageCount && (nearBottom || messageCount == 0)
-            messageCount = transcript.received
-            tableView.accessibilityValue = "\(transcript.received) messages loaded"
-            title = transcript.title ?? "Saved chat"
-            navigationItem.prompt = "Saved chat"
-            navigationItem.rightBarButtonItem = UIBarButtonItem(title: "Refresh", primaryAction: UIAction { [weak self] _ in self?.perform(.refreshMessages) })
-            rows.append(.note("\(transcript.received) messages loaded", "saved-message-count"))
-            if transcript.loginRequired { rows.append(.button("Sign in again", "saved-login", { [weak self] in self?.app.restoreAccount() })) }
-            else if transcript.reloadRequired || transcript.accessLost { rows.append(action("Reload chat", "saved-reload", .refreshMessages)) }
-            else if transcript.continueRequired { rows.append(action("Continue reading", "saved-continue", .continueReading)) }
-            else if transcript.smallerPage { rows.append(action("Load smaller page", "saved-smaller", .smallerPage)) }
-            else if transcript.hasMore, case .loading = transcript.state { /* The current page is still loading. */ }
-            else if transcript.hasMore { rows.append(action("Load more messages", "saved-messages-more", .moreMessages)) }
-            for message in transcript.messages {
-                rows.append(.button(message.role + "\n" + message.preview, "saved-message-" + message.id, { [weak self] in
-                    guard let self else { return }
-                    self.navigationController?.pushViewController(SavedHistoryController(app: self.app, page: .message(message.id)), animated: true)
-                }))
-            }
-            rows += attachments(transcript.captures)
-            rows += stateRows(transcript.state)
-
-        case let .message(id):
-            navigationItem.prompt = "Saved chat"
-            do {
-                guard let value = try app.savedHistory?.message(id: id, part: part) else { break }
-                title = value.role
-                part = value.part
-                rows.append(.body(value.text))
-                rows += parts(value.part, value.parts)
-                rows += attachments(value.files)
-            } catch { rows.append(.note("This message is no longer available. Return to the chat and refresh.", "saved-message-unavailable")) }
         case .download:
             title = state.transcript.downloadName ?? "Saved file"
             rows += stateRows(state.transcript.downloadState)
@@ -156,10 +109,7 @@ class SavedHistoryController: UITableViewController {
             }
         }
         tableView.reloadData()
-        if followNewMessages, !rows.isEmpty {
-            tableView.layoutIfNeeded()
-            tableView.scrollToRow(at: IndexPath(row: rows.count - 1, section: 0), at: .bottom, animated: false)
-        }
+
     }
 
     override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { rows.count }
@@ -218,7 +168,148 @@ final class SavedProjectsController: SavedHistoryController {
     required init?(coder: NSCoder) { fatalError() }
 }
 
-final class SavedTranscriptController: SavedHistoryController {
-    init(app: AppModel) { super.init(app: app, page: .transcript) }
+/// Native presentation over the shared Rust transcript and account history state.
+final class SavedTranscriptController: UIViewController {
+    private let app: AppModel
+    private lazy var relay = FrameRelay { [weak self] in self?.applyFrame() }
+    private lazy var engine = TranscriptView(text: TextEngine.shared, listener: relay)
+    private lazy var list = TranscriptListView(engine: engine)
+    private let notice = UILabel()
+    private let status = UIButton(type: .system)
+    private let images = NSCache<NSString, UIImage>()
+    private var token: AnyObject?
+
+    init(app: AppModel) {
+        self.app = app
+        super.init(nibName: nil, bundle: nil)
+        hidesBottomBarWhenPushed = true
+    }
     required init?(coder: NSCoder) { fatalError() }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = Palette.background
+        list.accessibilityIdentifier = "transcript"
+        list.onDistanceFromBottom = { [weak self] _ in
+            guard let self, self.list.isDragging || self.list.isDecelerating,
+                  self.list.contentOffset.y < 160,
+                  let transcript = self.app.savedSnapshot?.transcript,
+                  transcript.hasMore, case .ready = transcript.state else { return }
+            try? self.app.savedHistory?.action(action: .moreMessages)
+        }
+        images.countLimit = 16
+        images.totalCostLimit = 64 * 1024 * 1024
+        list.imageLoader = { [weak self] path, imageView in
+            imageView.layer.setValue(path, forKey: "savedPath")
+            if let image = self?.images.object(forKey: path as NSString) { imageView.image = image; return }
+            Task { [weak self, weak imageView] in
+                guard let bytes = try? await self?.app.savedHistory?.attachmentBytes(path: path),
+                      let image = UIImage(data: bytes),
+                      imageView?.layer.value(forKey: "savedPath") as? String == path else { return }
+                self?.images.setObject(image, forKey: path as NSString, cost: Int(image.size.width * image.size.height * image.scale * image.scale * 4))
+                imageView?.image = image
+            }
+        }
+        list.imageFetcher = { [weak self] path in
+            guard let bytes = try? await self?.app.savedHistory?.attachmentBytes(path: path) else { return nil }
+            return UIImage(data: bytes)
+        }
+        list.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(list)
+        setContentScrollView(list, for: .top)
+        list.topEdgeEffect.style = .soft
+        list.bottomEdgeEffect.isHidden = true
+        notice.text = "Replying here is coming next. Continue this chat where you started it."
+        notice.font = .preferredFont(forTextStyle: .footnote)
+        notice.textColor = Palette.secondary
+        notice.numberOfLines = 0
+        notice.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(notice)
+        status.translatesAutoresizingMaskIntoConstraints = false
+        status.addAction(UIAction { [weak self] _ in self?.retry() }, for: .touchUpInside)
+        view.addSubview(status)
+        NSLayoutConstraint.activate([
+            list.topAnchor.constraint(equalTo: view.topAnchor),
+            list.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            list.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            list.bottomAnchor.constraint(equalTo: status.topAnchor),
+            status.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 24),
+            status.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -24),
+            status.bottomAnchor.constraint(equalTo: notice.topAnchor, constant: -8),
+            notice.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 24),
+            notice.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -24),
+            notice.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -16),
+        ])
+        token = app.observe { [weak self] in self?.reload() }
+        reload()
+    }
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        (tabBarController as? MainTabController)?.setAccessoryVisible(false, animated: animated)
+    }
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        (tabBarController as? MainTabController)?.syncAccessory()
+        app.savedHistory?.follow(visible: true)
+    }
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        app.savedHistory?.follow(visible: false)
+        if isMovingFromParent, let tabs = tabBarController as? MainTabController {
+            tabs.setAccessoryVisible(true, animated: animated)
+            transitionCoordinator?.animate(alongsideTransition: nil) { _ in tabs.syncAccessory() }
+        }
+    }
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        if isMovingFromParent || navigationController == nil { engine.close() }
+    }
+    private func applyFrame() { list.apply(engine.frame()) }
+    private func reload() {
+        guard let snapshot = app.savedSnapshot, snapshot.signedIn else {
+            engine.clear()
+            images.removeAllObjects()
+            title = "Chat"
+            notice.text = "Sign in to open this chat."
+            status.isHidden = true
+            return
+        }
+        let transcript = snapshot.transcript
+        title = transcript.title ?? "Chat"
+        list.accessibilityValue = "\(transcript.messages.count) messages loaded"
+        let files = app.savedHistory?.attachments() ?? []
+        navigationItem.rightBarButtonItem = files.isEmpty ? nil : UIBarButtonItem(
+            image: UIImage(systemName: "paperclip"),
+            menu: UIMenu(children: files.map { file in
+                UIAction(title: file.name, attributes: file.available ? [] : [.disabled]) { [weak self] _ in
+                    guard let self else { return }
+                    try? self.app.savedHistory?.action(action: .download(key: file.key))
+                    self.navigationController?.pushViewController(SavedHistoryController(app: self.app, page: .download), animated: true)
+                }
+            })
+        )
+        navigationItem.rightBarButtonItem?.accessibilityIdentifier = "saved-chat-files"
+        try? app.savedHistory?.renderTranscript(view: engine)
+        let label: String?
+        if transcript.loginRequired { label = "Sign in again" }
+        else if transcript.accessLost || transcript.reloadRequired { label = "Reload chat" }
+        else if transcript.smallerPage { label = "Load one message" }
+        else if transcript.continueRequired { label = "Continue reading" }
+        else if case let .failed(message, _) = transcript.state { label = message + " · Retry" }
+        else if transcript.hasMore { label = "Load earlier messages" }
+        else { label = nil }
+        status.accessibilityIdentifier = "saved-messages-more"
+        status.setTitle(label, for: .normal)
+        status.isHidden = label == nil
+    }
+    private func retry() {
+        guard let transcript = app.savedSnapshot?.transcript else { return }
+        if transcript.loginRequired { app.restoreAccount(); return }
+        let action: SavedHistoryAction
+        if transcript.reloadRequired || transcript.accessLost { action = .refreshMessages }
+        else if transcript.smallerPage { action = .smallerPage }
+        else if transcript.continueRequired { action = .continueReading }
+        else { action = .moreMessages }
+        try? app.savedHistory?.action(action: action)
+    }
 }

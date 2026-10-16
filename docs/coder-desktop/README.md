@@ -111,14 +111,14 @@ existing-chat target without creating a conversation or starting work. The
 [sidebar qualification record](history-sidebar-evidence.json) covers 205 chats,
 source labels, pins, projects, retry, and sign-out.
 
-The saved-chat reader (#11831) renders Markdown/code, thinking, tools, files, and
-capture references independently of the engine. Load longer histories in explicit
-200-message pages and fetch saved file bytes on demand. It handles changed or
-unavailable content, cancels old selections, and clears private views on sign-out.
-The [reader qualification record](history-reader-evidence.json) covers 405 messages,
-direct existing-ID navigation, saved bytes, and the native read-only view.
-Messages beyond the view's budget continue in another explicit window; very long
-text uses numbered parts. The [standalone SDK example](../../examples/sdk-history/README.md)
+Saved chats open in the normal desktop and phone transcript (#11892), with
+Markdown, code, thinking, tools, images, and files. The latest 200 messages load
+first; scroll up for earlier messages. Account access checks, changed-content
+handling, and sign-out cleanup still apply. See the
+[transcript checks and captures](chat-transcript-evidence.json). Replying from the
+apps follows in #11893 and #11894. The
+[earlier reader checks](history-reader-evidence.json) cover the original #11831
+viewer. The [standalone SDK example](../../examples/sdk-history/README.md)
 and [delivery evidence](delivery-evidence.json) complete #11832, including native
 reads against the public API. The real GitHub/Keychain check and authenticated
 staging rerun remain in `NEEDS_OWNER.md`; package publication stays deferred.

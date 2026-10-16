@@ -25,6 +25,8 @@
 //! Wheel/touch releases that anchor immediately, including when background
 //! streaming has advanced beyond the last measured frame.
 
+mod account_history;
+
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::ops::Range;
@@ -3116,6 +3118,7 @@ pub struct Transcript {
     /// attachment protection (that set is shared with the primary transcript
     /// and overwritten wholesale).
     doc_override: Option<String>,
+    account_history: Option<account_history::AccountHistory>,
     /// Whether an override instance watches a LIVE doc (`for_doc(follow)`):
     /// only then may the working trailer render — a frozen snapshot must
     /// never spin, whatever its entries claim.
@@ -3551,6 +3554,7 @@ impl Transcript {
             land_end_pending: doc_override.is_some() && !follow,
             doc_live: doc_override.is_some() && follow,
             doc_override,
+            account_history: None,
             saved_viewports: SavedViewportCache::default(),
             pending_viewport: None,
             viewport_generation: 0,
@@ -3871,6 +3875,7 @@ impl Transcript {
         let this = cx.weak_entity();
         cx.defer(move |cx| {
             this.update(cx, |this: &mut Transcript, cx| {
+                this.load_older_account_messages(cx);
                 this.discard_pending_viewport();
                 // Input owns the viewport immediately, including wheel-down
                 // after background streaming. A held turn can be stale while
@@ -5625,6 +5630,9 @@ impl Transcript {
         use crate::attachments::{
             AttachmentKey, AttachmentSnapshot, attachment_snapshot_for, begin_load_for,
         };
+        if self.account_history.is_some() {
+            return self.account_attachment(path, cx);
+        }
         for dev in device_ids {
             if let AttachmentSnapshot::Loaded(image) =
                 attachment_snapshot_for(&AttachmentKey::new(dev, path, expected_raster_mime))

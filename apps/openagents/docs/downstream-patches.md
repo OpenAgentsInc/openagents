@@ -29,3 +29,12 @@ Keep fork-specific changes here so upstream updates can review each integration.
     `crates/ui/src/transcript.rs`.
   - This card is an interim GPUI view. It moves to a Rust Native Lab card once
     the GPUI adapter exists (AGENTS.md: cards are Rust Native).
+
+- [OpenAgents #11892](https://github.com/OpenAgentsInc/openagents/issues/11892):
+  saved chats use the session transcript on desktop and phone. The shared
+  `coder-account::chat_entries` adapter supplies message parts; the existing
+  account reader loads the latest page and older messages on upward scroll.
+  Desktop attachment and paging hooks live in `transcript/account_history.rs`.
+  `SavedTranscriptController` mounts the phone's Rust layout and normal cells;
+  `MainTabController` treats it as a chat when hiding the global new-session bar.
+  Opening a saved chat starts no harness; replies are added by #11893–#11894.

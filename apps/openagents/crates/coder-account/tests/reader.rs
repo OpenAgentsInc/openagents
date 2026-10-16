@@ -413,3 +413,132 @@ async fn a_growing_live_chat_stops_at_the_existing_paging_limit() {
     r.more().await;
     assert!(r.snapshot().continue_required);
 }
+
+#[tokio::test]
+async fn latest_page_prepends_history_and_follows_new_turns_without_duplicates() {
+    let (c, r, server, _root) = setup().await;
+    let mut chat = target(&c, 1);
+    chat.summary.messages = 405;
+    r.open_latest(chat).unwrap();
+    r.more().await;
+    assert_eq!(r.snapshot().first, 205);
+    assert_eq!(r.snapshot().received, 405);
+    assert_eq!(r.snapshot().messages.len(), 200);
+    assert_eq!(r.snapshot().messages[0].id, "msg_205");
+    r.set_following(true);
+    server.count.store(406, Ordering::SeqCst);
+    server.revision.store(2, Ordering::SeqCst);
+    r.poll().await;
+    assert_eq!(r.snapshot().first, 205);
+    assert_eq!(r.snapshot().received, 406);
+    assert_eq!(r.snapshot().messages.last().unwrap().id, "msg_405");
+    r.more().await;
+    assert_eq!(r.snapshot().first, 5);
+    assert_eq!(r.snapshot().received, 406);
+    r.more().await;
+    let snapshot = r.snapshot();
+    assert_eq!(snapshot.first, 0);
+    assert_eq!(snapshot.received, 406);
+    assert_eq!(snapshot.messages.len(), 406);
+    assert!(!snapshot.has_more);
+    for (n, message) in snapshot.messages.iter().enumerate() {
+        assert_eq!(message.id, format!("msg_{n}"));
+    }
+    server.revision.store(3, Ordering::SeqCst);
+    r.refresh().unwrap();
+    r.more().await;
+    assert_eq!(r.snapshot().first, 206);
+    assert_eq!(r.snapshot().messages.len(), 200);
+    server.status.store(403, Ordering::SeqCst);
+    r.poll().await;
+    assert!(r.snapshot().access_lost);
+    assert!(r.snapshot().messages.is_empty());
+}
+
+#[tokio::test]
+async fn newest_page_can_open_an_unknown_revision_and_follow_a_shortened_chat() {
+    let (c, r, server, _root) = setup().await;
+    let mut chat = target(&c, 1);
+    chat.summary.revision = 0;
+    r.open_latest(chat).unwrap();
+    r.more().await;
+    assert_eq!(r.snapshot().first, 205);
+    assert_eq!(r.snapshot().messages.len(), 200);
+    r.set_following(true);
+    server.count.store(10, Ordering::SeqCst);
+    server.revision.store(2, Ordering::SeqCst);
+    r.poll().await;
+    assert_eq!(r.snapshot().first, 0);
+    assert_eq!(r.snapshot().received, 10);
+    assert_eq!(r.snapshot().messages.len(), 10);
+    assert!(!r.snapshot().has_more);
+}
+
+#[tokio::test]
+async fn displayed_attachment_references_do_not_survive_selection_or_logout() {
+    let (c, r, server, _root) = setup().await;
+    r.open(target(&c, 1)).unwrap();
+    r.more().await;
+    let path = coder_account::chat_entries::attachment_path(
+        r.snapshot().epoch,
+        "msg_0",
+        FILE,
+        "fixture.txt",
+    );
+    assert_eq!(r.attachment(&path).await.unwrap(), b"fixture!");
+    assert!(r.attachment("/etc/passwd").await.is_err());
+    server.file_delayed.store(true, Ordering::SeqCst);
+    let pending = {
+        let r = r.clone();
+        let path = path.clone();
+        tokio::spawn(async move { r.attachment(&path).await })
+    };
+    server.started.notified().await;
+    r.open(target(&c, 2)).unwrap();
+    server.release.notify_one();
+    assert!(pending.await.unwrap().is_err());
+    assert!(r.attachment(&path).await.is_err());
+    c.sign_out().await;
+    assert!(r.attachment(&path).await.is_err());
+}
+
+#[tokio::test]
+async fn latest_large_pages_can_fall_back_to_one_message_without_skipping_history() {
+    let (c, _r, _server, _root) = setup().await;
+    let r = Reader::with_limits(Limits {
+        bytes: 2048,
+        messages: 2000,
+    });
+    r.open_latest(target(&c, 1)).unwrap();
+    r.more().await;
+    assert!(r.snapshot().smaller_page);
+    r.smaller_page();
+    r.more().await;
+    assert_eq!(r.snapshot().first, 404);
+    assert_eq!(r.snapshot().messages.len(), 1);
+    assert_eq!(r.snapshot().messages[0].id, "msg_404");
+    r.more().await;
+    assert_eq!(r.snapshot().first, 403);
+    assert_eq!(r.snapshot().messages.len(), 2);
+    assert_eq!(r.snapshot().messages[0].id, "msg_403");
+}
+
+#[tokio::test]
+async fn automatic_image_reads_clear_revoked_access_but_preserve_missing_files() {
+    let (c, r, server, _root) = setup().await;
+    r.open(target(&c, 1)).unwrap();
+    r.more().await;
+    let path = coder_account::chat_entries::file_path(
+        r.snapshot().epoch,
+        "msg_0",
+        &r.snapshot().messages[0].files[0],
+    );
+    server.file_status.store(404, Ordering::SeqCst);
+    assert!(r.attachment(&path).await.is_err());
+    assert_eq!(r.snapshot().messages.len(), 200);
+    assert!(!r.snapshot().access_lost);
+    server.file_status.store(403, Ordering::SeqCst);
+    assert!(r.attachment(&path).await.is_err());
+    assert!(r.snapshot().access_lost);
+    assert!(r.snapshot().messages.is_empty());
+}

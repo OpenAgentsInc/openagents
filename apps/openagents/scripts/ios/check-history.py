@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Run the phone's account-history controls against disposable local records."""
 import argparse
+import struct
+import zlib
 import json
 import os
 from pathlib import Path
@@ -14,9 +16,18 @@ ROOT = Path(__file__).resolve().parents[2]
 def chat(n):
     return f"{n:08x}-1234-4234-8234-123456789abc"
 
+def fixture_png():
+    def chunk(kind, data):
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xffffffff)
+    pixels = b"".join(b"\0" + bytes([40, 160, 190, 255]) * 128 for _ in range(64))
+    return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 128, 64, 8, 6, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(pixels)) + chunk(b"IEND", b"")
+
+PNG = fixture_png()
+
 class Handler(BaseHTTPRequestHandler):
     credential = "oa_sk_" + "1" * 64
     live = False
+    rich = False
     revision = 1
     offline = False
     def log_message(self, *_):
@@ -43,23 +54,34 @@ class Handler(BaseHTTPRequestHandler):
         elif path.path == "/v1/history":
             start = int(query["after"][0][:8], 16) + 1 if "after" in query else 0
             end = min(start + int(query.get("limit", [200])[0]), 205)
-            rows = [{"id": chat(n), "title": f"Saved chat {n}", "revision": 1, "updated_unix": n+1,
+            rows = [{"id": chat(n), "title": f"Saved chat {n}", "revision": Handler.revision, "updated_unix": n+1,
                      "pinned_unix": 1 if n == 204 else None, "archived_unix": 1 if n == 5 else None,
-                     "project": None, "source": ["web", "terminal", "phone"][n % 3], "messages": 405} for n in range(start, end)]
+                     "project": None, "source": ["web", "terminal", "phone"][n % 3], "messages": 5 if Handler.rich else 2 * Handler.revision if Handler.live else 405} for n in range(start, end)]
             result = {"data": rows, "next": chat(end-1) if end < 205 else None}
         elif path.path.endswith("/messages"):
             if Handler.offline:
                 self.send_error(503); return
             start = int(query["after"][0][4:]) + 1 if "after" in query else 0
-            count = 2 * Handler.revision if Handler.live else 405
+            count = 5 if Handler.rich else 2 * Handler.revision if Handler.live else 405
             end = min(start + int(query.get("limit", [200])[0]), count)
-            rows = [{"id": f"msg_{n}", "role": "user" if n == 0 else "assistant", "text": "Saved question — full text" if n == 0 else f"Saved reply {n}",
-                     "files": [{"id": "0123456789abcdef0123456789abcdef", "name": "fixture.txt", "kind": "text", "size": 21}] if n == 0 else []} for n in range(start, end)]
+            rows = []
+            for n in range(start, end):
+                row = {"id": f"msg_{n}", "role": "user" if n == 0 else "thinking" if n == 1 else "tool" if n == 2 else "assistant",
+                       "text": "# Saved question\n\n**Markdown** and `code`.\n\n```rust\nlet answer = 42;\n```" if n == 0 else "Considering the earlier question." if n == 1 else "# Saved answer\n\n**Markdown** and `inline code`.\n\n```rust\nlet answer = 42;\n```" if n == 3 else f"Saved reply {n}", "files": []}
+                if n == 0:
+                    row["files"] = [{"id": "0123456789abcdef0123456789abcdef", "name": "fixture.txt", "kind": "text", "size": 21},
+                                    {"id": "11111111111111111111111111111111", "name": "fixture.png", "kind": "png", "size": len(PNG)}]
+                if n == 2:
+                    row["tool"] = {"name": "read", "summary": "Read a file", "status": "done", "input": "fixture.txt", "output": "Fixture file contents"}
+                rows.append(row)
             result = {"thread": {"id": path.path.split("/")[3], "title": "Saved chat", "revision": Handler.revision, "updated_unix": 1, "pinned_unix": 1,
                                  "archived_unix": None, "project": None, "source": "web", "messages": count},
                       "revision": Handler.revision, "data": rows, "next": f"msg_{end-1}" if end < count else None, "captures": []}
         elif "/files/" in path.path:
-            result = b"fixture file contents"; media = "text/plain"
+            if path.path.endswith("11111111111111111111111111111111"):
+                result = PNG; media = "image/png"
+            else:
+                result = b"fixture file contents"; media = "text/plain"
         else:
             self.send_error(404); return
         data = result if isinstance(result, bytes) else json.dumps(result).encode()
@@ -75,8 +97,10 @@ def main():
     parser.add_argument("--simulator", default="8010197D-517D-43DA-9559-46742EFABC65")
     parser.add_argument("--public-history", action="store_true", help="Use only the dedicated-account fixtures from sdk-history.py")
     parser.add_argument("--live", action="store_true")
+    parser.add_argument("--rich", action="store_true")
     args = parser.parse_args()
     Handler.live = args.live
+    Handler.rich = args.rich
     if args.public_history:
         Handler.credential = os.environ["OPENAGENTS_TOKEN"]
         assert Handler.credential.startswith("oa_sk_")
@@ -88,12 +112,12 @@ def main():
                TEST_RUNNER_CODER_HISTORY_FIXTURE=f"http://127.0.0.1:{server.server_port}")
     if args.public_history:
         env["TEST_RUNNER_CODER_PUBLIC_HISTORY_CONFIG"] = json.dumps({"key_url": f"http://127.0.0.1:{server.server_port}/fixture-key", "chat": chat_ids[0]})
-    test = "testPublicSavedAccountHistory" if args.public_history else "testLiveAccountHistory" if args.live else "testSavedAccountHistory"
+    test = "testPublicSavedAccountHistory" if args.public_history else "testRichAccountHistory" if args.rich else "testLiveAccountHistory" if args.live else "testSavedAccountHistory"
     try:
         with (args.scratch / "history-uitest.log").open("w") as log:
             subprocess.run(["xcodebuild", "test", "-project", "apps/ios/Zeron.xcodeproj", "-scheme", "Zeron", "-configuration", "Debug",
                             "-destination", "id=" + args.simulator, "-derivedDataPath", str(args.target_dir / "ios-derived"),
-                            "CODE_SIGNING_ALLOWED=YES", "CODE_SIGN_IDENTITY=-", "SWIFT_ACTIVE_COMPILATION_CONDITIONS=DEBUG CODER_ACCOUNT_FIXTURE",
+                            "CODE_SIGNING_ALLOWED=YES", "CODE_SIGN_IDENTITY=-", "ARCHS=arm64", "SWIFT_ACTIVE_COMPILATION_CONDITIONS=DEBUG CODER_ACCOUNT_FIXTURE",
                             "-only-testing:ZeronUITests/OpenAgentsHistoryTests/" + test], cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT, check=True)
         print("Public phone history: complete 205-message read and sign-out passed." if args.public_history else
               "Phone account history: paging, full text, file, archives, projects, and sign-out passed.")

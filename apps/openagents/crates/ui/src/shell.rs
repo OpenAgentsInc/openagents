@@ -2516,7 +2516,7 @@ impl Shell {
         let saved_history = saved_account.clone()
             .map(|account| cx.new(|cx| crate::openagents_history::HistoryPanel::new(account, cx)));
         let saved_reader = saved_account.map(|account| {
-            cx.new(|cx| crate::openagents_reader::SavedReader::new(account, cx))
+            cx.new(|cx| crate::openagents_reader::SavedReader::new(account, state.clone(), cx))
         });
         let saved_reader_events = saved_reader.as_ref()
             .map(|reader| cx.subscribe(reader, Self::on_saved_reader_event));

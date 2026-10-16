@@ -2584,6 +2584,13 @@ public protocol CoreSavedHistoryProtocol: AnyObject, Sendable {
     
     func action(action: SavedHistoryAction) throws 
     
+    /**
+     * Download only references in the currently authorized transcript.
+     */
+    func attachmentBytes(path: String) async throws  -> Data
+    
+    func attachments()  -> [SavedAttachment]
+    
     func downloadedFile() throws  -> SavedFileBytes
     
     func downloadedFilePart(part: UInt64) throws  -> SavedFilePart
@@ -2594,6 +2601,11 @@ public protocol CoreSavedHistoryProtocol: AnyObject, Sendable {
     func follow(visible: Bool) 
     
     func message(id: String, part: UInt64) throws  -> SavedMessagePart
+    
+    /**
+     * Render account history through the same Rust layout engine as computer sessions.
+     */
+    func renderTranscript(view: TranscriptView) throws 
     
     func setForeground(active: Bool) 
     
@@ -2664,6 +2676,34 @@ open func action(action: SavedHistoryAction)throws   {try rustCallWithError(FfiC
 }
 }
     
+    /**
+     * Download only references in the currently authorized transcript.
+     */
+open func attachmentBytes(path: String)async throws  -> Data  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_zeron_mobile_fn_method_coresavedhistory_attachment_bytes(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(path)
+                )
+            },
+            pollFunc: ffi_zeron_mobile_rust_future_poll_rust_buffer,
+            completeFunc: ffi_zeron_mobile_rust_future_complete_rust_buffer,
+            freeFunc: ffi_zeron_mobile_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterData.lift,
+            errorHandler: FfiConverterTypeCoreError_lift
+        )
+}
+    
+open func attachments() -> [SavedAttachment]  {
+    return try!  FfiConverterSequenceTypeSavedAttachment.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_zeron_mobile_fn_method_coresavedhistory_attachments(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
 open func downloadedFile()throws  -> SavedFileBytes  {
     return try  FfiConverterTypeSavedFileBytes_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
         uniffiCallStatus in
@@ -2704,6 +2744,18 @@ open func message(id: String, part: UInt64)throws  -> SavedMessagePart  {
         FfiConverterUInt64.lower(part),uniffiCallStatus
     )
 })
+}
+    
+    /**
+     * Render account history through the same Rust layout engine as computer sessions.
+     */
+open func renderTranscript(view: TranscriptView)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_zeron_mobile_fn_method_coresavedhistory_render_transcript(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeTranscriptView_lower(view),uniffiCallStatus
+    )
+}
 }
     
 open func setForeground(active: Bool)  {try! rustCall() {
@@ -4531,6 +4583,11 @@ public protocol TranscriptViewProtocol: AnyObject, Sendable {
      */
     func attach(client: CoreClient, chatId: String)  -> Bool
     
+    /**
+     * Detach the source and remove its displayed content.
+     */
+    func clear() 
+    
     func close() 
     
     /**
@@ -4646,6 +4703,17 @@ open func attach(client: CoreClient, chatId: String) -> Bool  {
         FfiConverterString.lower(chatId),uniffiCallStatus
     )
 })
+}
+    
+    /**
+     * Detach the source and remove its displayed content.
+     */
+open func clear()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_zeron_mobile_fn_method_transcriptview_clear(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
 }
     
 open func close()  {try! rustCall() {
@@ -19175,6 +19243,12 @@ private let initializationResult: InitializationResult = {
     if (uniffi_zeron_mobile_checksum_method_coresavedhistory_action() != 49118) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_zeron_mobile_checksum_method_coresavedhistory_attachment_bytes() != 39928) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_zeron_mobile_checksum_method_coresavedhistory_attachments() != 64386) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_zeron_mobile_checksum_method_coresavedhistory_downloaded_file() != 5968) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -19185,6 +19259,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_zeron_mobile_checksum_method_coresavedhistory_message() != 12292) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_zeron_mobile_checksum_method_coresavedhistory_render_transcript() != 34758) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_zeron_mobile_checksum_method_coresavedhistory_set_foreground() != 53922) {
@@ -19332,6 +19409,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_zeron_mobile_checksum_method_transcriptview_attach() != 3138) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_zeron_mobile_checksum_method_transcriptview_clear() != 63299) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_zeron_mobile_checksum_method_transcriptview_close() != 21021) {

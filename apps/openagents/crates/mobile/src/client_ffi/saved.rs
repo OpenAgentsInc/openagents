@@ -258,6 +258,50 @@ impl CoreSavedHistory {
 }
 #[uniffi::export]
 impl CoreSavedHistory {
+    /// Render account history through the same Rust layout engine as computer sessions.
+    pub fn render_transcript(&self, view: Arc<crate::layout::TranscriptView>) -> CoreResult<()> {
+        if !self.lease.is_current() {
+            view.set_input(Default::default());
+            return Err(unavailable());
+        }
+        let snapshot = self.reader.snapshot();
+        view.set_input(crate::layout::TranscriptInput {
+            entries: coder_account::chat_entries::entries(&snapshot.messages, snapshot.epoch)
+                .into_iter()
+                .map(Arc::new)
+                .collect(),
+            ..Default::default()
+        });
+        Ok(())
+    }
+
+    /// Download only references in the currently authorized transcript.
+    pub async fn attachment_bytes(&self, path: String) -> CoreResult<Vec<u8>> {
+        if !self.current() {
+            return Err(unavailable());
+        }
+        let reader = self.reader.clone();
+        zeron_client::runtime::shared()
+            .spawn(async move { reader.attachment(&path).await })
+            .await
+            .map_err(failed)?
+            .map_err(failed)
+    }
+
+    pub fn attachments(&self) -> Vec<SavedAttachment> {
+        if !self.current() {
+            return vec![];
+        }
+        let snapshot = self.reader.snapshot();
+        let mut files: Vec<_> = snapshot.messages.iter().flat_map(message_files).collect();
+        files.extend(snapshot.captures.iter().map(|capture| SavedAttachment {
+            key: format!("capture:{}", capture.id),
+            name: capture.name.clone(),
+            available: capture.download_ref().is_some(),
+        }));
+        files
+    }
+
     pub fn snapshot(&self) -> SavedHistorySnapshot {
         let active = self.current();
         let h = if active {
@@ -407,7 +451,7 @@ impl CoreSavedHistory {
             }
             SavedHistoryAction::Open { id } => {
                 self.reader
-                    .open(self.history.existing(&id).ok_or_else(unavailable)?)
+                    .open_latest(self.history.existing(&id).ok_or_else(unavailable)?)
                     .map_err(failed)?;
                 runtime.spawn(self.reader.more());
             }
