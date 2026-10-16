@@ -11,6 +11,7 @@
 //!   deleting the old epoch, shreds the file.
 //! - [`recovery`]: the 24-word recovery code.
 //! - [`sealed`]: the `sealed` tier's HPKE wrap, session request, and reply.
+//! - [`operator`]: the `operator` tier's KMS wrap (readable by the operator).
 //!
 //! Formats are normative in `nips/openagents/NIP-VAULT.md`; vectors are in
 //! `fixtures/nips/vault/`. Nothing here talks to a network, and no type
@@ -22,6 +23,7 @@ pub mod index;
 pub mod jcs;
 pub mod keys;
 pub mod object;
+pub mod operator;
 pub mod recovery;
 pub mod sealed;
 pub mod slot;

@@ -4,7 +4,9 @@
 `crates/oa-vault`, the browser vault at openagents.com, and `openagents vault`.
 **Tier `sealed` is implemented in Rust** (#11743): the HPKE wrap, session
 request and reply in `oa-vault`, and the client and attested-workload roles in
-`crates/vault-sealed`. Tier `operator` is designed, not built.
+`crates/vault-sealed`. **Tier `operator` is implemented in Rust** (#11744) as an
+explicitly labeled custody profile: the wrap in `oa-vault` and the audited
+custody service in `crates/vault-operator`.
 The [shared contracts](contracts.md) are normative. The design, the threat
 model and the honest limits are in the
 [sensitive data vault](../../docs/security/sensitive-data-vault.md).
@@ -506,7 +508,21 @@ Tier `sealed` is implemented in Rust (#11743):
 
 A deployed `vault` workload on attested hardware is not running yet. The
 browser and `openagents vault` sealed-tier controls wait for that deployment
-and a client release. Tier `operator` is designed here and not built.
+and a client release.
+
+Tier `operator` is implemented in Rust (#11744):
+
+- `crates/oa-vault` `operator`: the KMS wrap with `core_digest` as associated
+  data, the `OperatorKms` boundary, and a local key service for fixtures.
+  Vectors are under `operator` (wrong key material, moved wrap, destroyed key
+  version).
+- `crates/vault-operator`: operator-signed grants (exact objects, one
+  recipient, a purpose, at most a day, a use count), recipient-signed use
+  requests, a durable hash-chained audit entry before every key use (no use
+  when it cannot be written), request-ID retries that re-deliver or reconcile
+  an unknown outcome with another audited use, revocation, expiry, and a
+  command line. The operator can read these objects. This profile adds control
+  and evidence, not the `user` or `sealed` guarantee.
 
 ## Conformance
 

@@ -1,0 +1,23 @@
+[package]
+name = "vault-operator"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "NIP-VAULT operator tier: an explicitly labeled custody service with authenticated, exact, audited key use."
+
+[dependencies]
+oa-vault = { path = "../oa-vault" }
+vault-sealed = { path = "../vault-sealed" }
+nostr = { path = "../nostr" }
+secp256k1 = { version = "0.31.1", features = ["rand"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+zeroize = "1.8"
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true
