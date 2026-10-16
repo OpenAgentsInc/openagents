@@ -220,6 +220,7 @@ async fn server(minor: u32) -> (transport::Config, Arc<Mock>, tokio::task::JoinH
 #[tokio::test]
 async fn pinned_tls_credentials_version_and_single_send_recovery() {
     let (mut config, mock, task) = server(21).await;
+    crate::transport::wallet_unlocker(&config).await.unwrap();
     let client = Client::connect(&config, credential()).await.unwrap();
     assert_eq!(
         client
@@ -243,6 +244,11 @@ async fn pinned_tls_credentials_version_and_single_send_recovery() {
     );
     assert_eq!(mock.sends.load(Ordering::SeqCst), 1);
     config.certificate_sha256 = [0; 32];
+    assert!(matches!(
+        crate::transport::wallet_unlocker(&config).await,
+        Err(Error::CertificatePin)
+    ));
+
     assert!(matches!(
         Client::connect(&config, credential()).await,
         Err(Error::CertificatePin)

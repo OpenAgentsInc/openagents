@@ -19,3 +19,10 @@ hex = "0.4"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 rustls-pemfile = "2"
 base64 = "0.22"
+
+tonic = { version = "=0.12.3", features = ["tls"] }
+zeroize = "1"
+
+[[bin]]
+name = "lnd-signet-recovery"
+path = "src/bin/recovery.rs"

@@ -85,6 +85,24 @@ impl ServerCertVerifier for Pin {
     }
 }
 pub(crate) async fn connect(config: &Config, macaroon: Macaroon) -> Result<AuthChannel> {
+    Ok(InterceptedService::new(channel(config).await?, macaroon))
+}
+
+/// Connect to wallet setup with the same certificate pin as an initialized node.
+/// This provides no macaroon and performs no RPC. Callers must bound each setup
+/// mutation and preserve an uncertain result before trying again. Version and
+/// Bitcoin-network checks become available after wallet initialization.
+pub async fn wallet_unlocker(
+    config: &Config,
+) -> Result<crate::proto::lnrpc::wallet_unlocker_client::WalletUnlockerClient<Channel>> {
+    Ok(
+        crate::proto::lnrpc::wallet_unlocker_client::WalletUnlockerClient::new(
+            channel(config).await?,
+        ),
+    )
+}
+
+async fn channel(config: &Config) -> Result<Channel> {
     // Tonic's URI uses HTTP internally because the connector below owns TLS.
     // Refuse plaintext at the public configuration boundary.
     let authority = config
@@ -139,7 +157,7 @@ pub(crate) async fn connect(config: &Config, macaroon: Macaroon) -> Result<AuthC
                 Error::Unavailable
             }
         })?;
-    Ok(InterceptedService::new(channel, macaroon))
+    Ok(channel)
 }
 pub(crate) async fn read<T, F, Fut>(mut call: F) -> Result<T>
 where

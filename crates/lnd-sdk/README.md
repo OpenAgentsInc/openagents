@@ -67,3 +67,13 @@ Provider endpoints and identities come from [ZEUS](https://docs.zeusln.app/lsp/s
 and [Megalith](https://docs.megalithic.me/lightning-services/lsp1-get-inbound-liquidity-for-mobile-clients/).
 Requests follow [LSPS1](https://github.com/lightning/blips/blob/master/blip-0051.md).
 Always fetch current limits; the provider examples can lag its live service.
+
+
+## Wallet setup
+
+`transport::wallet_unlocker` connects the generated WalletUnlocker client
+with the same TLS certificate pin as the initialized client. It sends no
+macaroon and performs no RPC. Wallet initialization callers must set a
+deadline, save private recovery material before initialization, and inspect
+an uncertain result before retrying. After initialization, use `Client::connect`, then compare the network and
+node ID with the intended wallet before funding it.
