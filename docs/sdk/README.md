@@ -1,7 +1,9 @@
 # The OpenAgents SDK
 
 2026-10-15. Status: delivery direction with tracked implementation work.
-The public Computers API and lightweight Rust client ship first. Host
+The first desktop SDK delivery is authentication and reading existing account
+chats: sign in, list previous chats, and open their saved history. The public
+Computers API remains a separate delivery track. Host
 publication, external providers, additional language packages, and automatic
 payments have separate activation conditions. This document does not claim
 those surfaces are already implemented or published.
@@ -21,7 +23,7 @@ OpenAgents SDK names a family of small components:
 
 | Part | Purpose | First delivery |
 | --- | --- | --- |
-| Client | Call account-authorized models, decisions, computers, projects, and payment resources | Computers and the authentication it requires |
+| Client | Call account-authorized models, decisions, chats, computers, projects, and payment resources | App authentication and existing chat history; Computers follows on its own track |
 | Host | Run and control agent sessions with hooks; today's `coder-sdk` | Audit the public boundary and actual consumers; publication stays deferred |
 | Provider | Supply a computer or other service through a qualified contract | Existing driver/conformance documentation; external admission stays separate |
 
@@ -39,7 +41,7 @@ clients; a new SDK does not need to duplicate them before computers are useful.
 
 | Area | Existing pieces | Remaining work |
 | --- | --- | --- |
-| Clients | Decisions client in `jev`, generated Boat client, account login, CLI and product-specific HTTP callers | One lightweight public Computers client and a maintained public specification |
+| Clients | Decisions client in `jev`, generated Boat client, account login, CLI and product-specific HTTP callers | Exported app authentication and complete history reads, then public Computers; maintained public schemas |
 | Host | `coder-sdk`, Claude/Codex/ACP transports, hooks, policy and session ownership | Explicit third-party boundary, supported capabilities, and publication evidence |
 | Providers | `computer-driver`, Core/Suspend/Snapshot/Fork declarations, `computer-conformance`, Boat wire schema | Per-computer backend registry and separate external-provider qualification |
 | Computers | `oa-computers` PostgreSQL intent/reconciliation and web chat integration | Public auth/lifecycle/commands/files, shared client consumption, and supported SPACE operation |
@@ -53,7 +55,38 @@ on 2 vCPU/1 GiB. Native node snapshot-to-ready p50 was 319.0 ms on
 2 vCPU/2 GiB. The pinned Kind HTTP path still cold-boots, and the two
 measurements have different boundaries. Production remains on Boat.
 
-## First delivery: public Computers API and Rust client
+## First desktop delivery: sign in and read existing chats
+
+Owner priority, 2026-10-15: authenticate through the SDK, show previous chats
+in Coder Desktop's sidebar, and open any saved chat. Track this milestone in
+[#11824](https://github.com/OpenAgentsInc/openagents/issues/11824), including
+work implemented in the separate desktop fork. It precedes the desktop's
+computer workflow; it does not replace the independent Boat/web milestone.
+
+Reuse [OpenAgents authentication](../auth/README.md): website GitHub sign-in
+approves an app's device grant, which issues a revocable session on the same
+account. The SDK uses `https://api.openagents.com/v1` for app API calls and
+`https://openagents.com/device` for browser approval. Keep deployment pairs
+explicit for staging/local use. No desktop GitHub secret, Zeron WorkOS account,
+new auth provider, or proposed `/auth/app` flow is needed.
+
+Existing public reads are `/v1/account`, `/v1/threads`,
+`/v1/threads/{id}`, and `/v1/threads/{id}/messages`. Export their actual
+schemas and auth behavior through a lightweight Rust client. The detail
+response's newest 200 messages are a preview; the paginated message endpoint
+is needed for complete history. Its saved files and tool details need further
+coverage. The [delivery plan](delivery-plan.md#first-desktop-delivery-authentication-and-history)
+records the exact gaps and issues.
+
+Include web chats and terminal/phone chats already synced to the account,
+archived-chat access, and authorized shared-project history. Sign-in does not
+upload unsynced local chats. Opening saved history does not start execution.
+Verify account isolation, paging beyond 200 chats/messages, restart, expiry,
+revocation, account switching, and unavailable services. SDK publication,
+Computers, SPACE, host execution, and new message sending do not block this
+milestone. Use a pinned external build and dedicated test accounts.
+
+## Public Computers API and Rust client
 
 Deliver one complete account-scoped workflow on Boat:
 
@@ -91,7 +124,8 @@ contracts and consumers are ready. A possible eventual family is:
 ```text
 OpenAgents SDK
   client
-    computers, auth
+    auth, chats
+    computers: independent Boat delivery
     later: decisions, projects, opt-in pay helpers
   host
     sessions, harness adapters, hooks, placement
@@ -171,16 +205,18 @@ It does not establish a published stable host SDK. The separate host proposal
 The [issue directory](delivery-plan.md#issue-directory) records every scope,
 prerequisite, and activation condition. The ordering is:
 
-1. Public Boat lifecycle, commands/files, Computers specification, Rust client,
+1. App authentication, existing chat lists and complete saved history in the
+   external desktop client (#11824); first desktop priority.
+2. Public Boat lifecycle, commands/files, Computers specification, Rust client,
    and web proof.
-2. In parallel where independent, backend registry, supported SPACE snapshot
+3. In parallel where independent, backend registry, supported SPACE snapshot
    path, compatible environment artifacts, lifecycle, credentials/egress,
    deployment, and usage; then repeat the real SDK/chat flow on SPACE.
-3. Migrate Solver and Environments separately after the first client/web proof.
-4. Add enrolled own machines with safe attach/detach semantics and explicit
+4. Migrate Solver and Environments separately after the first client/web proof.
+5. Add enrolled own machines with safe attach/detach semantics and explicit
    capabilities, without making them a cloud-delivery blocker.
-5. Expand API coverage and documentation with actual consumers.
-6. Activate deferred publication/provider/language/payment/CLI tracks only when
+6. Expand API coverage and documentation with actual consumers.
+7. Activate deferred publication/provider/language/payment/CLI tracks only when
    their stated conditions are met.
 
 Use affected-crate tests and formatting for implementation changes and link/path

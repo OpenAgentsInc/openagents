@@ -36,6 +36,17 @@ the [OpenAgents SDK](../sdk/README.md) from outside this repository.
 - **Other languages are allowed in the fork.** It's a separate repository;
   this monorepo stays Rust-only.
 
+## First SDK milestone
+
+Sign in to an existing OpenAgents account, show previous chats in the sidebar,
+and open any saved chat. This comes before computer provisioning and agent
+execution. Reuse website sign-in and app sessions through the Rust SDK;
+Zeron's WorkOS/edge login is not the OpenAgents account system. Include
+complete message paging, saved files/tool details, archived-chat access,
+and authorized shared-project chats. Local chats not synced to the account
+stay local. See [#11824](https://github.com/OpenAgentsInc/openagents/issues/11824)
+and the [SDK delivery plan](../sdk/delivery-plan.md#first-desktop-delivery-authentication-and-history).
+
 ## Local setup
 
 The clone sits next to this repository:
@@ -80,8 +91,10 @@ places so upstream merges stay easy:
 - **Shared SDK and Computers work:** this repository, under
   [#11800](https://github.com/OpenAgentsInc/openagents/issues/11800) (the
   [delivery plan](../sdk/delivery-plan.md)).
-- **Desktop app work:** issues in
-  [OpenAgentsInc/coder-desktop](https://github.com/OpenAgentsInc/coder-desktop).
+- **Desktop app work:** tracked in this repository, beginning with
+  [#11824](https://github.com/OpenAgentsInc/openagents/issues/11824).
+  Implementation stays in `OpenAgentsInc/coder-desktop`; all issues stay
+  in `OpenAgentsInc/openagents` (owner, 2026-10-15).
 - **The Coder 1.0 freeze** ([1.0-freeze](../coder/1.0-freeze.md)) covers the
   `coder`, `openagents`, `microcoder` and `coder-boundary` programs. Coder
   Desktop is a separate app and isn't frozen.

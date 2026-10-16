@@ -152,13 +152,15 @@ Mapping a prompt and text stream alone does not satisfy the ownership table.
 
 ## Public contracts the desktop will exercise
 
-The first useful target is an account-authorized computer workflow through the
-public Rust client. Broader agent, editor, and remote workspace parity follows
-as the corresponding SDK contracts become available.
+The first useful target is SDK authentication, existing account chats in the
+sidebar, and complete saved-history loading (#11824). The account-authorized
+computer workflow follows. Broader agent, editor, and remote workspace parity
+follows as the corresponding SDK contracts become available.
 
 | Desktop workflow | Existing work or dependency | Remaining desktop/SDK requirement |
 | --- | --- | --- |
-| Sign in and select a workspace | Public authentication; account boundary in [#11801](https://github.com/OpenAgentsInc/openagents/issues/11801) | Supported credential flow, secure OS storage, expiry/revocation, account switch, and typed refusals. Key prefixes alone never grant compute access. |
+| Sign in and discover the account/workspaces | Existing website/device auth; #11825, #11826, #11829 | Export the public Rust SDK, isolated OS credential storage, restart validation, expiry/revocation, account switch, and typed refusals. Key prefixes alone never grant compute access. |
+| List and open previous chats | Existing `/v1/threads` and message reads; #11827, #11828, #11830, #11831 | Complete paging, saved files/tool/thinking content, archive/shared-project access, and read-only GPUI presentation without creating execution state. |
 | Create/list/stop/wake/delete a computer | [#11801](https://github.com/OpenAgentsInc/openagents/issues/11801), Rust client [#11805](https://github.com/OpenAgentsInc/openagents/issues/11805) | Retained request identities, bounded waits, readiness/error UI, and deletion confirmation. |
 | Execute and follow a command | [#11802](https://github.com/OpenAgentsInc/openagents/issues/11802) | Identified command creation, attachment/replay, bounded output, explicit cancellation, and recovery from uncertain dispatch. |
 | Read and write computer files | [#11803](https://github.com/OpenAgentsInc/openagents/issues/11803) | Owner-routed transfer and editor-safe concurrency. Generic upload/download does not by itself supply listings, indexed search, watches, atomic save, or conflict handling. |
@@ -223,14 +225,17 @@ contract milestones; a desktop fork does not migrate them by implication.
 
 ## Delivery sequence and exit criteria
 
-These are proposed desktop implementation slices. This documentation change
-does not create or claim them. Reuse the existing SDK issues for shared work;
-desktop implementation issues belong in the new repository once it exists.
+These are desktop implementation slices. Track shared and desktop issues in
+`OpenAgentsInc/openagents` (owner, 2026-10-15); implement application changes
+in the fork. #11824 and its children track the first authentication/history
+milestone. The later D2–D6 slices retain their existing delivery criteria.
 
 | Stage | Work | Exit criterion |
 | --- | --- | --- |
 | D0: establish the fork | Pin upstream, preserve notices, establish Coder Desktop identity, separate local state and update settings, and document the inherited platform matrix. | A development build opens a synthetic local workspace on the first supported OS without touching Zeron/OpenAgents user state or relying on Zeron's production services. Record which upstream features actually work. |
-| D1: consume the Rust SDK externally | Use the documented client from #11805 in the separate checkout, backed by the verified Computers specification from #11804. Test public auth and read operations with fixtures. | A clean checkout builds without sibling paths, server internals, provider credentials, or private patches. The application uses actual exported SDK types and typed errors. |
+| D1: consume the Rust SDK externally | Start with auth/history exports in #11826/#11828, independently of Computers #11804/#11805. Use a pinned dependency in the separate checkout and test public reads with fixtures. | A clean checkout builds without sibling paths, server internals, provider credentials, or private patches. The application uses actual exported SDK types and typed errors. |
+| D1a: sign in through the SDK | #11825, #11826, #11829: browser-approved device login, isolated account/session storage, restart validation, and sign-out. | The existing account is visible in an independent macOS development build, with expiry/revocation and account switching handled. |
+| D1b: browse existing chats | #11827, #11828, #11830–#11832: sidebar and complete saved transcript reads. | Existing account chats, including long histories, saved files/tool details, archive and authorized shared-project access, load through the SDK; no execution starts. |
 | D2: prove one computer workflow | Create a Boat computer, upload a fixture, create/attach a command, inspect its output and file, stop/wake, and delete through the SDK. | One independent client completes the public workflow. Response loss, reconnect, conflicting retry, account isolation, and cleanup are checked. The existing web proof remains independently required for SDK M1. |
 | D3: integrate one agent session | Choose one exercised host/backend, settle the ownership table, and map configuration, streaming, questions/approvals, continuation, stop, children, and resources into the inherited UI. | One task runs end to end with the intended checkout and session identity. Stale approvals, lost acknowledgments, stop cleanup, resume failure, and late old-account events are handled without duplicate execution or lost drafts. |
 | D4: connect the coding workspace | Route editor, search, Git/review, terminal, PR, and preview operations through the supported owner services one workflow at a time. Retain inherited local functionality during migration. | Each claimed SDK-backed surface has a documented contract and negative-case evidence. Saves retain edits through conflicts; publication checks the reviewed revision; hidden surfaces release work. |
@@ -246,9 +251,19 @@ access retain their existing activation conditions.
 
 ## First reference scenario
 
-The first externally reproducible SDK example is the D2 computer workflow,
-followed by the D3 agent workflow. Keep the example independent of GPUI so a
-developer can understand SDK use without reading the whole desktop.
+The first externally reproducible SDK example is authentication and history
+(#11832): approve device sign-in in the website's system-browser flow,
+discover the existing account, list every available chat page, open a saved
+chat and page its messages/files, then sign out. Reopen the app to verify
+session restoration before sign-out, and use another synthetic account to
+check isolation. This example is independent of GPUI, Computers, host execution,
+and package publication. The SDK delivery plan records current route limits
+and the eight implementation issues. App/session expiry has no refresh-token
+promise; transient outages are distinct from invalid credentials.
+
+The next example is the D2 computer workflow, followed by D3 agent execution.
+Keep each example independent of GPUI so developers can understand SDK use
+without reading the desktop application.
 
 1. Select an authorized account/workspace and an immutable environment.
 2. Request a supported computer with one retained logical create identity.
@@ -318,11 +333,13 @@ work; use contributor or other non-GitHub infrastructure.
 
 ## Immediate next work
 
-Prepare a separate-repository D0/D1 prototype and a feature-to-SDK contract map.
-Use #11801–#11805 for the shared public Computers prerequisites and #11819 for
-host-boundary preparation. Identify the smallest complete D2 path before
-expanding remote editor or provider coverage. Record any new public API needs
-in the shared backlog and keep desktop-specific patches in the fork.
+Deliver #11824 first: D0 isolation, D1 external SDK packaging, D1a sign-in,
+and D1b previous chats in the sidebar with complete saved-history loading.
+Start #11825/#11827 for public auth/history contracts, then the SDK and fork
+adapters. Reuse `openagents-login`, the account service, and the existing chat
+store; preserve the same account/chat IDs. Keep all tracking issues here and
+application patches in the fork. After that milestone, use #11801–#11805 for
+the D2 Computers prerequisites and #11819 for host-boundary preparation.
 
 The prototype should answer whether the exported SDK can power a useful
 desktop workflow with a small adapter while preserving Zeron's workspace.

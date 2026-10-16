@@ -1,6 +1,6 @@
 # SDK and Computers delivery plan
 
-2026-10-15. Status: tracked implementation backlog. Umbrella:
+2026-10-15. Status: tracked implementation backlog. Computers umbrella:
 [#11800](https://github.com/OpenAgentsInc/openagents/issues/11800).
 The owner authorized this documentation and issue breakdown; creating the
 backlog does not report implementation, authorize publication or a new Coder
@@ -8,14 +8,71 @@ release, or open production access.
 
 The owner subsequently selected [Coder Desktop](../coder-desktop/README.md), a separate
 Zeron fork, as the first external SDK reference client. Its application work
-can begin against #11805 independently of web adoption. Keep the existing M1
+starts with auth/history exports in #11826/#11828 independently of Computers
+and web adoption. Keep the existing M1
 web proof and M2 backend qualification; the desktop does not add a platform
 release prerequisite to either milestone. Its plan records the cross-repository
 dependency, host-consumer requirements, and Rust/TypeScript boundary.
 
+## First desktop delivery: authentication and history
+
+Owner priority, 2026-10-15: the first SDK-backed desktop journey is sign in,
+see previous account chats in the sidebar, and open any saved chat.
+[#11824](https://github.com/OpenAgentsInc/openagents/issues/11824) tracks it.
+All issues, including fork implementation, stay in `OpenAgentsInc/openagents`.
+Computers M1/M2 remain independent; their implementations do not gate this
+read-only milestone. Coordinate client naming with #11805 and schema coverage
+with #11818, without waiting for the Computers specification or package publication.
+
+| Issue | Deliverable | Completion prerequisites |
+| --- | --- | --- |
+| [#11825](https://github.com/OpenAgentsInc/openagents/issues/11825) | Verify public device sign-in, account discovery, errors, and OpenAPI | None |
+| [#11826](https://github.com/OpenAgentsInc/openagents/issues/11826) | Export lightweight Rust SDK auth and caller-controlled credential storage | #11825 |
+| [#11827](https://github.com/OpenAgentsInc/openagents/issues/11827) | Qualify complete chat lists, message pages, saved files/tool details, archive and shared-project reads | None |
+| [#11828](https://github.com/OpenAgentsInc/openagents/issues/11828) | Export typed SDK history reads and bounded pagination | #11826, #11827 |
+| [#11829](https://github.com/OpenAgentsInc/openagents/issues/11829) | Isolated desktop identity, SDK sign-in, Keychain, restart, and sign-out | #11826 |
+| [#11830](https://github.com/OpenAgentsInc/openagents/issues/11830) | Existing account chats in the GPUI sidebar | #11828, #11829 |
+| [#11831](https://github.com/OpenAgentsInc/openagents/issues/11831) | Existing-chat transcript view with full available history | #11828, #11829 |
+| [#11832](https://github.com/OpenAgentsInc/openagents/issues/11832) | External SDK example and complete desktop journey against deployed public handlers | #11830, #11831 |
+
+The built device flow is `POST /v1/device/code`, `POST /v1/device/token`,
+and `POST /v1/device/sign-out`; approval stays on the website. Reuse
+`openagents-login` and the account service, not Zeron WorkOS/edge auth.
+Sessions last 30 days with no refresh token; validate the restored account,
+handle expiry/revocation, and clear private views on sign-out. Current app
+reads cache successful auth checks for up to 30 seconds; qualification must
+state and test the actual revocation bound. Default API credentials are
+bearer app sessions; supported sign-in keys and `oak_` keys have different
+route authority. Prefix matching never proves access.
+
+The existing history routes have distinct contracts:
+
+- `GET /v1/threads`: offset/limit, at most 200 rows per page, with
+  `threads`, `total`, `more`, and `next_offset`; excludes archived chats.
+- `GET /v1/threads/{id}`: latest 200 nonempty messages with an `earlier`
+  count. Do not treat it as the full transcript.
+- `GET /v1/threads/{id}/messages`: oldest first, `after`/`limit`,
+  `data`/`next`, at most 200 per page, with `msg_<index>` identities.
+  Saved attachment fields currently return null; stored tool details need
+  a public read mapping.
+- Project-filtered chat lists use another cursor envelope/order. The
+  account store also has a 10,000-record listing ceiling. #11827 must
+  provide continuation or explicit limits, handle changes between pages,
+  and supply archived/shared-project discovery without weakening access.
+
+Acceptance includes existing web and synced terminal/phone chats, long
+histories, saved attachments/tool/thinking content, archived chats, and
+current shared-project access. Unsynced local history stays local. Reads
+must not send, resume, allocate, wake, or change a chat. Test two synthetic
+accounts, late results after account switch, restart, denied/expired device
+codes, revoked sessions/shares, missing/deleted chats, and unavailable
+services. Use fake GitHub first, then dedicated staging accounts; never
+inspect the owner's chat contents as acceptance evidence. #11832 records
+public server/spec/SDK/app revisions and cleanup. No new GitHub automation.
+
 ## Delivery outcome
 
-Ship a public, account-scoped Computers API and lightweight Rust client that the
+For the independent Computers track, ship a public, account-scoped Computers API and lightweight Rust client that the
 web itself consumes. Prove a complete useful workflow on Boat first, then repeat
 it on a supported SPACE deployment. Keep additional backends and publishing
 choices separate from that first useful delivery.
@@ -30,12 +87,14 @@ implementation issues; proposed fields/endpoints remain proposals until shipped.
 
 | Milestone | Outcome | Completion issues |
 | --- | --- | --- |
+| First desktop: authentication and history | External sign-in, existing sidebar chats, complete saved history | [#11824](https://github.com/OpenAgentsInc/openagents/issues/11824)–[#11832](https://github.com/OpenAgentsInc/openagents/issues/11832) |
 | M1: public Boat flow | Public lifecycle, command sessions/files, specification/client, and real web adoption | [#11801](https://github.com/OpenAgentsInc/openagents/issues/11801), [#11802](https://github.com/OpenAgentsInc/openagents/issues/11802), [#11803](https://github.com/OpenAgentsInc/openagents/issues/11803), [#11804](https://github.com/OpenAgentsInc/openagents/issues/11804), [#11805](https://github.com/OpenAgentsInc/openagents/issues/11805), [#11806](https://github.com/OpenAgentsInc/openagents/issues/11806) |
 | M2: supported SPACE flow | Stable backend dispatch, actual snapshot boots, verified environment, lifecycle/security/operations/usage, and product qualification | [#11809](https://github.com/OpenAgentsInc/openagents/issues/11809)–[#11816](https://github.com/OpenAgentsInc/openagents/issues/11816) |
 | Independent adoption | Solver and Environment migrations, own-machine backend, broader API reference | [#11807](https://github.com/OpenAgentsInc/openagents/issues/11807), [#11808](https://github.com/OpenAgentsInc/openagents/issues/11808), [#11817](https://github.com/OpenAgentsInc/openagents/issues/11817), [#11818](https://github.com/OpenAgentsInc/openagents/issues/11818) |
 | Conditional follow-ups | Host publication, external providers, additional language clients, optional payment, and next-release CLI | [#11819](https://github.com/OpenAgentsInc/openagents/issues/11819)–[#11823](https://github.com/OpenAgentsInc/openagents/issues/11823) |
 
-Start [#11801](https://github.com/OpenAgentsInc/openagents/issues/11801) for the public account boundary, with [#11809](https://github.com/OpenAgentsInc/openagents/issues/11809) and
+For the first desktop milestone, start #11825 and #11827. For the Computers
+track, start [#11801](https://github.com/OpenAgentsInc/openagents/issues/11801) for the public account boundary, with [#11809](https://github.com/OpenAgentsInc/openagents/issues/11809) and
 [#11810](https://github.com/OpenAgentsInc/openagents/issues/11810) independently eligible for preparation. The broader route
 inventory [#11818](https://github.com/OpenAgentsInc/openagents/issues/11818) can also proceed independently. Command/file design
 and the specification can be drafted alongside lifecycle development; their

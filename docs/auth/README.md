@@ -1,7 +1,20 @@
 # OpenAgents authentication
 
-Status: specification, 2026-10-08. Phase 1 (GitHub sign-in) is being built
-now; later phases are design.
+Status: implementation and specification, updated 2026-10-15. GitHub website
+sign-in, device/app sessions, app OAuth, and sign-in keys are built; later
+provider/linking/renewal phases remain design where marked. GitHub sign-in is
+open as described in [GitHub sign-in](github.md#invite-only-sign-in).
+
+Coder Desktop's first SDK milestone is sign-in followed by existing chat lists
+and complete saved-history reads, tracked in
+[#11824](https://github.com/OpenAgentsInc/openagents/issues/11824) and the
+[SDK delivery plan](../sdk/delivery-plan.md#first-desktop-delivery-authentication-and-history).
+Reuse the built device flow through the public Rust SDK; the proposed
+`/auth/app` loopback flow below is not a prerequisite. App API calls use
+`https://api.openagents.com/v1`; browser approval stays on `openagents.com`.
+The SDK must keep those deployment addresses explicit and must not expose the
+account service's internal session/approval endpoints. Desktop credentials
+belong to that app's own OS storage, not the CLI's saved account file.
 
 OpenAgents owns its sign-in. There is no third-party auth service in the path:
 the account service (the `tenancy` stores behind the gateway's account
