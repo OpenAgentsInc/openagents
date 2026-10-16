@@ -184,7 +184,10 @@ impl Store {
                      WHERE owner = $1 AND (
                        ($2::text IS NOT NULL AND chat = $2 AND desired <> 'deleted'
                         AND NOT EXISTS (SELECT 1 FROM computers.create_requests
-                                        WHERE owner = $1 AND request_key = $3))
+                                        WHERE owner = $1 AND request_key = $3)
+                        AND NOT EXISTS (SELECT 1 FROM computers.computers
+                                        WHERE owner = $1 AND idempotency_key = $3))
+                       OR ($3::text IS NOT NULL AND idempotency_key = $3)
                        OR id IN (SELECT computer FROM computers.create_requests
                                   WHERE owner = $1 AND request_key = $3))
                      ORDER BY created_at DESC LIMIT 2"

@@ -2558,6 +2558,7 @@ approved limits, required controls, and review triggers in #11761; keep legal
 advice and customer details private. Complete this before enabling LND
 third-party payouts or any mainnet asset trial. No legal outcome or spending
 approval was recorded during implementation.
+
 ## Qualify production Computers access with the dedicated test account (#11801)
 
 Restore the dedicated production test credential at

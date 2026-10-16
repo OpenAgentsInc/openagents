@@ -736,6 +736,38 @@ async fn create_retries_preserve_settings_keys_and_atomic_account_limits() {
     assert_eq!(status, 200);
     assert_eq!(retried["id"], first["id"]);
 
+    // An older service can still write the original key column during a
+    // rolling deployment, after the new alias table has been backfilled.
+    let legacy_request = json!({"idempotency_key":"old-writer-key"});
+    let (status, legacy) = call(
+        reqwest::Method::POST,
+        create_url.clone(),
+        "legacy-account",
+        Some(legacy_request.clone()),
+    )
+    .await;
+    assert_eq!(status, 202);
+    store
+        .db
+        .client()
+        .await
+        .unwrap()
+        .execute(
+            "DELETE FROM computers.create_requests WHERE owner = $1",
+            &[&"legacy-account"],
+        )
+        .await
+        .unwrap();
+    let (status, legacy_retry) = call(
+        reqwest::Method::POST,
+        create_url.clone(),
+        "legacy-account",
+        Some(legacy_request),
+    )
+    .await;
+    assert_eq!(status, 200);
+    assert_eq!(legacy_retry["id"], legacy["id"]);
+
     // A fresh key for an existing chat must remain bound even after deletion.
     let mut alias = request;
     alias["idempotency_key"] = json!("key-alias");

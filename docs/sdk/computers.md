@@ -50,6 +50,10 @@ to site admins and named agent accounts.
 | `DELETE /computers/{name}` | Existing enrolled names detach with `204`; otherwise a cloud ID records deletion intent |
 | `GET /computers/capabilities` | Declared profiles, sizes, and the current account computer limit |
 
+For an empty `POST` request, send `Content-Length: 0`. Cloud Run refuses a
+lengthless `POST` before it reaches the API. The server's internal transport
+sets this header for stop and wake; public SDK transports must do the same.
+
 Create accepts optional `chat`, `size`, `environment`, and `version`. A chat
 must belong to the account. Environment and version must be supplied together;
 the server resolves the saved version's image only after checking ownership.
