@@ -1,7 +1,7 @@
 {
   "issue": 11770,
   "network": "default signet",
-  "observed_at": "2026-10-16T03:47:39.870670+00:00",
+  "observed_at": "2026-10-16T04:00:47.611402+00:00",
   "release": "v0.1.2",
   "release_commit": "903aec7f1bb38475b563a1a7b49e0711e2df20a5",
   "snapshot_commit": "85cfb97905a27c420338c2a5bd688a4a7d2147b1",

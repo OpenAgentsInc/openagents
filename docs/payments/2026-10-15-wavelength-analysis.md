@@ -303,12 +303,14 @@ are excluded.
 | Released credit send | A 500-sat Lightning payment is observed complete after 44.55 seconds of polling (43 seconds in the server record). Its quote allows 2 sats of fees; the server debits 501 sats. Wallet activity reports zero fee and no preimage. Rust verifies the preimage and 1-sat fee through `swapclientrpc.GetSwap`. That lookup reports zero principal, so an adapter must retain the original invoice amount. |
 | Restart during credit receive | A wallet-issued 500-sat invoice is paid while `waved` is stopped. After CLI unlock, Rust finds one completed activity entry; the server book has one operation and one 500-sat credit. This does not establish VTXO receive recovery. |
 | Newer source snapshot | `85cfb97905a27c420338c2a5bd688a4a7d2147b1` builds with both required tags and Go 1.26.9. Its wallet services fail against the public operator with `ARK_VERSION_MISMATCH`: selected version 0, runtime version 1. A fresh credit send remains uncertain with 502 sats reserved; it is not retried. |
+| Resume helper | A controlled stop and CLI unlock restart exercise the saved-state resume helper with leave, refresh, and refund work pending. The three completed test payments still have one activity entry each afterward. This does not measure an elapsed exit or expiry window. |
 | Upgrade and rollback | The snapshot advances the database from version 19 to 26. v0.1.2 refuses the newer database. The pre-upgrade copy restores the released daemon; the upgraded copy and uncertain payment record are kept separately. |
 | Boarding | The 200,000-sat deposit confirms at height 326546; its automatically created round confirms at 326549. The resulting VTXO holds 199,745 sats, and the wallet records a 255-sat boarding charge. |
 | Routed VTXO receive and restart | LDK pays a 100,000-sat wallet invoice while `waved` is stopped for ten seconds. After CLI unlock, Rust observes one completed entry, and the payer returns a valid preimage. Total elapsed time is 22.52 seconds; the post-unlock poll takes 5.17 seconds. The LDK payer pays 11,100 msat in routing fees. |
 | Online VTXO receive | A separate 20,000-sat receive completes in 12.05 seconds, including a 9.80-second Rust poll. The LDK payer pays 3,020 msat in routing fees and returns a valid preimage. |
 | Description-hash payment | Wavelength pays an LDK invoice for exactly 21,001 msat with `h = 08` repeated 32 bytes. LDK records that exact amount, and Rust verifies the lower-level swap preimage. Settlement takes 4.92 seconds. The credit principal rounds up to 22 sats; the total debit is 23 sats, including the reported 1-sat fee. This tests the invoice shape, not a full HTTP x402 exchange. |
 | Larger swap send | A separate 21,000-sat description-hash payment enters refunding and does not complete within 120 seconds. The server reports `in_swap_claim_expiry_refresh_margin` because the funded vHTLC expires too soon; its 974-sat credit reservation is released. No preimage or successful payment is claimed, and the attempt is not retried. |
+| LDK channel cleanup | Cooperative close negotiation fails: the peer asks for 1,792 sats, above LDK's 1,182-sat maximum. The node closes with an exception and broadcasts a 285-sat-fee commitment transaction; there are no unresolved HTLCs. This is not a successful cooperative close, and return of those funds is still pending. |
 | LDK comparison setup | Lightning Labs' Esplora rejects the LDK broadcast requests with HTTP 404. The test then uses a scratch Rust loopback proxy to the public default signet API; a 200,000-sat boarding transfer is verified in the mempool. The installed client uses `/tx`, so the error's trailing slash does not establish a client path bug. Two hub peers reject a 500,000-sat channel. A third accepts it and requires three confirmations. |
 
 Invoice creation takes 306 ms for the 20,000-sat receive and 186 ms for the
@@ -321,23 +323,41 @@ connection setup and the client's preceding network check.
 Both directed Lightning paths and the description-hash invoice shape have
 measured results above. The larger swap remains under observation for refund
 completion. The remaining 79,970-sat change and 20,000-sat receive VTXOs enter an
-automatic refresh round from a batch with expiry height 326840; that refresh is not yet a
-stopped-daemon expiry test.
+automatic refresh round from a batch with expiry height 326840. That refresh
+is not yet a stopped-daemon expiry test.
 
 The Rust client queues a cooperative leave of the 199,745-sat boarded VTXO.
 A unilateral-exit preview requires one confirmed 10,000-sat backing-wallet fee
-input; the LDK test wallet broadcasts that funding transfer. Both exit paths
-still need measured completion, cost, and wait. No completed exit or
+input; the LDK test wallet broadcasts that funding transfer. The cooperative
+transaction is broadcast but unconfirmed; it pays 199,202 sats back to the wallet, a 543-sat difference from its VTXO, and carries a
+212-sat whole-transaction miner fee. The unilateral exit has not started.
+Both paths still need measured completion, cost, and wait. No completed exit or
 expiry-window soak result is claimed. The operator advertises a 144-block VTXO
 exit delay and a 504-block free refresh window; these are terms, not measured
 waiting times.
 
-The verified boarding transfer, LDK channel funding, and exit-fee funding each
-pay 156 sats in miner fees. The confirmed Ark boarding batch pays 277 sats in
+The confirmed boarding transfer and LDK channel funding each pay 156 sats
+in miner fees. The unconfirmed exit-fee funding transaction carries a
+156-sat miner fee. The confirmed Ark boarding batch pays 277 sats in
 total; the wallet separately records its 255-sat boarding charge. The test does
 not count the two earlier unbroadcast transfer IDs as payments. The public
 funding faucet grants 1,000,000 signet sats; a subsequent request receives HTTP
 429 and is not retried.
+
+The study pauses at height 326549, on October 16 at 04:00 UTC. The leave,
+refresh, and fee-funding transactions are all still unconfirmed. The scratch
+processes and GCP builder are stopped; their private state and build cache stay
+on the builder's disk. #11770 stays open and blocked on chain progress. This
+pause is not the start or completion of an expiry-window measurement.
+
+To continue, start `oa-lnd-builder` in `openagentsgemini`, zone
+`us-central1-a`, and run `python3 ~/wavelength-spike/resume-study.py` through
+IAP SSH. Inspect the original transaction IDs in
+`confirmation-wait-start.json`, then use the confirmed refreshed VTXOs for
+one unilateral exit and a separate offline refresh observation. Preserve both
+uncertain send records and check their original hashes; do not create
+replacement payments. The source archive includes the resume, exit, and pause
+helpers. No unattended continuation or new payment is scheduled.
 
 ### Verdict
 
