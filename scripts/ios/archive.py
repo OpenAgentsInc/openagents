@@ -60,8 +60,12 @@ def main():
     parser.add_argument("--target-dir", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--team", help="Owner only: use an existing local signing setup for this team")
+    parser.add_argument("--distribution-certificate", help="Installed distribution certificate SHA-1; uses local App Store profiles named for each bundle ID")
     parser.add_argument("--check-only", action="store_true", help="Check source metadata without building")
     args = parser.parse_args()
+    if args.distribution_certificate and (not args.team or len(args.distribution_certificate) != 40
+            or any(c not in "0123456789abcdefABCDEF" for c in args.distribution_certificate)):
+        parser.error("Distribution signing requires a team and a certificate SHA-1.")
     target, output = args.target_dir.expanduser().resolve(), args.output.expanduser().resolve()
     if target.is_relative_to(ROOT) or target.name in ("coder-desktop-target-agent0", "coder-desktop-target-agent3"):
         parser.error("Choose your own external Cargo target directory.")
@@ -100,6 +104,9 @@ def main():
         "SWIFT_ACTIVE_COMPILATION_CONDITIONS=", "archive"]
     if args.team:
         command += ["CODE_SIGNING_ALLOWED=YES", "DEVELOPMENT_TEAM=" + args.team]
+        if args.distribution_certificate:
+            command += ["CODE_SIGN_STYLE=Manual", "CODE_SIGN_IDENTITY=" + args.distribution_certificate,
+                        "PROVISIONING_PROFILE_SPECIFIER=$(PRODUCT_BUNDLE_IDENTIFIER)"]
     else:
         command += ["CODE_SIGNING_ALLOWED=NO"]
     run(command, env)
@@ -110,6 +117,8 @@ def main():
         run(["codesign", "--verify", "--deep", "--strict", str(app)], env)
         signed = plistlib.loads(subprocess.check_output(["codesign", "-d", "--entitlements", ":-", str(app)], stderr=subprocess.DEVNULL))
         assert "aps-environment" not in signed
+        if args.distribution_certificate:
+            assert not signed.get("get-task-allow", False)
     proof = {**version, "commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
         "signed": bool(args.team), "uploaded": False, "identity_privacy_and_fixture_checks": True}
     output.with_suffix(".json").write_text(json.dumps(proof, indent=2) + "\n")

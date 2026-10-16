@@ -263,7 +263,7 @@ advancing the server conformance pin.
 
 ## iOS release preparation (#11850)
 
-- The app and Live Activity extension share version 1.1, build 1000, recorded in
+- The app and Live Activity extension share version 1.0.0, build 1000, recorded in
   `apps/ios/release/version.json`. The candidate must be checked against the
   existing App Store Connect record before upload.
 - Removed the upstream signing team. `scripts/ios/archive.py` prepares a local
@@ -279,3 +279,14 @@ advancing the server conformance pin.
   public chats/cloud computers. Release fields and exact owner buttons are in
   `apps/ios/release/README.md`. The app-specific privacy notice is published in
   `apps/ios/release/privacy.md` and supplements the general OpenAgents policy.
+
+## Authorized TestFlight upload (#11850)
+
+- The owner selected marketing version 1.0.0 for both app and extension. Build
+  1000 was checked against the existing App Store Connect record before upload.
+- `archive.py --distribution-certificate` selects an installed distribution
+  certificate and per-target App Store profiles named for their bundle IDs.
+  The team remains an explicit argument, never a committed project setting.
+- Upload is a separate, explicitly authorized operation; archive preparation
+  continues to stop before export or upload. Active worktrees, the owner’s
+  desktop app, and its data are outside the release workflow.

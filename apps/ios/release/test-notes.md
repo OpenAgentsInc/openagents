@@ -1,4 +1,4 @@
-OpenAgents Coder 1.1 (1000)
+OpenAgents Coder 1.0.0 (1000)
 
 Follow coding sessions from your computer on your iPhone.
 

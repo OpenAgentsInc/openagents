@@ -1,6 +1,6 @@
 # Prepare Coder for TestFlight
 
-The candidate is **OpenAgents Coder 1.1 (1000)**, bundle
+The candidate is **OpenAgents Coder 1.0.0 (1000)**, bundle
 `com.openagents.coder`. This uses the existing App Store Connect record.
 Before signing, the owner checks that this version and build are available.
 If they are already used, change every app/extension version in
@@ -14,7 +14,7 @@ From a clean fork checkout on current `origin/main`:
 scratch=$(openagents scratch)
 python3 scripts/ios/archive.py \
   --target-dir "$HOME/work/coder-desktop-target-agent1" \
-  --output "$scratch/Coder-1.1-1000.xcarchive"
+  --output "$scratch/Coder-1.0.0-1000.xcarchive"
 ```
 
 The default is unsigned. The script builds the normal iPhone Rust core in
@@ -28,7 +28,13 @@ Use `--check-only` to check source metadata without building.
 The signing team is deliberately empty in source. For an owner with existing
 local signing profiles, `--team YOUR_TEAM_ID` creates a locally signed archive
 and verifies its signature. It does not log in, fetch profiles, or open a browser.
-Xcode Organizer performs the final distribution signing and validation.
+For a distribution-signed archive, also pass
+`--distribution-certificate CERTIFICATE_SHA1`. Install App Store provisioning
+profiles whose names exactly match `com.openagents.coder` and
+`com.openagents.coder.LiveActivity`. The script selects each target’s matching
+profile and rejects a development entitlement in the resulting app.
+Xcode Organizer or an authorized `xcodebuild -exportArchive` run performs final
+distribution validation and upload.
 
 ## App Store Connect fields
 
@@ -36,7 +42,7 @@ Xcode Organizer performs the final distribution signing and validation.
 | --- | --- |
 | Name | OpenAgents Coder |
 | Bundle ID | com.openagents.coder |
-| Version/build candidate | 1.1 / 1000 |
+| Version/build candidate | 1.0.0 / 1000 |
 | Subtitle | Your coding sessions, anywhere |
 | Category | Developer Tools |
 | Privacy policy | https://github.com/OpenAgentsInc/coder-desktop/blob/main/apps/ios/release/privacy.md |

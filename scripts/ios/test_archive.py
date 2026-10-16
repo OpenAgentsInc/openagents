@@ -16,9 +16,9 @@ class ArchiveChecks(unittest.TestCase):
         self.addCleanup(self.scratch.cleanup)
         self.app = Path(self.scratch.name) / "Zeron.app"
         self.app.mkdir()
-        self.version = {"version": "1.1", "build": "1000"}
+        self.version = {"version": "1.0.0", "build": "1000"}
         self.info = {"CFBundleIdentifier": "com.openagents.coder",
-                     "CFBundleShortVersionString": "1.1", "CFBundleVersion": "1000",
+                     "CFBundleShortVersionString": "1.0.0", "CFBundleVersion": "1000",
                      "CFBundleExecutable": "Zeron"}
         self.write_info()
         (self.app / "Zeron").write_text("clean binary strings")
