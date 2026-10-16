@@ -494,7 +494,11 @@ impl<P: Commands + Images> Verifier<P> {
     }
 
     async fn advance_locked(&self, lease: &Lease, now_ms: u64) -> Result<VerifyJob> {
+        let started = std::time::Instant::now();
         for _ in 0..MAX_STEPS {
+            // Provider calls consume time before the next step starts.
+            let now_ms = now_ms
+                .saturating_add(u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX));
             let job = lease.read()?;
             self.sync_environment(&job, now_ms)?;
             if job.phase == Phase::Done {
@@ -1408,17 +1412,17 @@ impl<P: Commands + Images> Verifier<P> {
                 continue;
             }
             let computer = self.computers.store.read(&m.computer)?;
-            if computer.creates.is_empty() {
-                lease.update(now_ms, |j| {
-                    j.machine_mut(role).cleanup = Cleanup::Complete {
-                        evidence: "never allocated".into(),
-                    }
-                })?;
-                continue;
-            }
             lease.update(now_ms, |j| j.machine_mut(role).cleanup = Cleanup::Requested)?;
             let settled = self.computers.delete(&m.computer, now_ms).await?;
             let (usage, uncertain, cleanup) = facts(settled.computer());
+            let cleanup =
+                if computer.creates.is_empty() && matches!(cleanup, Cleanup::Complete { .. }) {
+                    Cleanup::Complete {
+                        evidence: "never allocated".into(),
+                    }
+                } else {
+                    cleanup
+                };
             lease.update(now_ms, |j| {
                 let m = j.machine_mut(role);
                 m.usage = usage;

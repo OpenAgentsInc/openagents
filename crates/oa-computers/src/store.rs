@@ -63,10 +63,10 @@ pub struct Entry {
     pub binding: Option<crate::registry::Binding>,
 }
 
-const COLUMNS: &str = "id, owner, chat, driver, image, size, desired, phase, record, attempts, \
+pub(crate) const COLUMNS: &str = "id, owner, chat, driver, image, size, desired, phase, record, attempts, \
      last_error, extract(epoch from created_at)::bigint, extract(epoch from updated_at)::bigint, binding, intent_generation";
 
-fn entry(row: &Row) -> Result<Entry, DbError> {
+pub(crate) fn entry(row: &Row) -> Result<Entry, DbError> {
     let record: serde_json::Value = row.get(8);
     let record: Computer = serde_json::from_value(record)
         .map_err(|e| DbError(format!("a computer record does not decode: {e}")))?;
@@ -421,8 +421,8 @@ impl Store {
             .query_opt(
                 &format!(
                     "INSERT INTO computers.computers
-                       (id, owner, chat, idempotency_key, driver, image, size, desired, phase, revision, record, binding)
-                     VALUES ($1, $2, $3, $4, $5, $6, $7, 'running', $8, $9, $10, $11)
+                       (id, owner, chat, idempotency_key, driver, image, size, desired, phase, revision, record, binding,usage_revision,usage_intent_generation)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, 'running', $8, $9, $10, $11, $9,0)
                      ON CONFLICT DO NOTHING
                      RETURNING {COLUMNS}"
                 ),
@@ -443,6 +443,25 @@ impl Store {
             .await?;
         if let Some(row) = inserted {
             let e = entry(&row)?;
+            crate::usage::lock(&tx).await?;
+            crate::usage::reserve(&tx, &e, &e.record)
+                .await
+                .map_err(|error| {
+                    if error.0 == crate::usage::QUOTA_ERROR {
+                        CreateError::Limit
+                    } else {
+                        CreateError::Database(error)
+                    }
+                })?;
+            crate::usage::record(
+                &tx,
+                &e,
+                "accepted",
+                "create",
+                e.record.created_ms as i64,
+                crate::usage::lifecycle_evidence(),
+            )
+            .await?;
             remember_request(&tx, owner, key, &e.id).await?;
             tx.commit().await?;
             return Ok((e, true));
@@ -502,10 +521,12 @@ impl Store {
     /// Change intent and ask the reconciler to look now. A deleted
     /// computer's intent never changes back.
     pub async fn set_desired(&self, owner: &str, id: &str, d: Desired) -> Result<bool, DbError> {
-        let c = self.db.client().await?;
-        let row = c.query_one(
+        let mut c = self.db.independent().await?;
+        let tx = c.transaction().await?;
+        crate::usage::lock(&tx).await?;
+        let row = tx.query_one(
             "WITH changed AS (
-                UPDATE computers.computers SET desired=$3,intent_generation=intent_generation+1,next_attempt_at=now(),attempts=0,updated_at=now()
+                UPDATE computers.computers SET desired=$3,intent_generation=intent_generation+1,usage_intent_generation=intent_generation+1,next_attempt_at=now(),attempts=0,updated_at=now()
                 WHERE id=$1 AND owner=$2 AND (desired<>'deleted' OR $3='deleted') RETURNING id
              ), cancelled AS (
                 UPDATE computers.commands SET cancel_requested=true,
@@ -518,7 +539,30 @@ impl Store {
                 WHERE id IN (SELECT turn FROM cancelled WHERE status='cancelled') RETURNING id
              ) SELECT count(*)::bigint FROM changed",
             &[&id,&owner,&d.as_str()]).await?;
-        Ok(row.get::<_, i64>(0) == 1)
+        let changed = row.get::<_, i64>(0) == 1;
+        if changed {
+            let e = entry(
+                &tx.query_one(
+                    &format!("SELECT {COLUMNS} FROM computers.computers WHERE id=$1 AND owner=$2"),
+                    &[&id, &owner],
+                )
+                .await?,
+            )?;
+            if d == Desired::Running {
+                crate::usage::reserve(&tx, &e, &e.record).await?;
+            }
+            crate::usage::record(
+                &tx,
+                &e,
+                "accepted",
+                &format!("intent:{}", e.intent_generation),
+                crate::reconcile::now_ms() as i64,
+                crate::usage::lifecycle_evidence(),
+            )
+            .await?;
+        }
+        tx.commit().await?;
+        Ok(changed)
     }
 
     /// Change an automatic intent only if no newer request has arrived.
@@ -529,16 +573,23 @@ impl Store {
         from: Desired,
         to: Desired,
     ) -> Result<bool, DbError> {
-        let c = self.db.client().await?;
-        let changed = c
-            .execute(
-                "UPDATE computers.computers SET desired = $3,
-                 intent_generation = intent_generation + 1, updated_at = now()
-             WHERE id = $1 AND desired = $2 AND intent_generation = $4",
+        let mut c = self.db.independent().await?;
+        let tx = c.transaction().await?;
+        crate::usage::lock(&tx).await?;
+        let row = tx
+            .query_opt(
+                "UPDATE computers.computers SET desired=$3, intent_generation=intent_generation+1,
+                usage_intent_generation=intent_generation+1,updated_at=now()
+             WHERE id=$1 AND desired=$2 AND intent_generation=$4 RETURNING owner",
                 &[&id, &from.as_str(), &to.as_str(), &intent_generation],
             )
             .await?;
-        Ok(changed == 1)
+        let changed = row.is_some();
+        if let Some(row) = row {
+            crate::usage::record_intent(&tx, row.get(0), id).await?;
+        }
+        tx.commit().await?;
+        Ok(changed)
     }
 
     /// Claim the next due computer for `holder` for `lease`.
@@ -697,19 +748,43 @@ impl PgLease {
     /// Retain `next` if the stored record is still at `expected` and this
     /// holder still holds the lease.
     pub async fn commit(&self, current: &Computer, next: &Computer) -> StoreResult<()> {
+        self.commit_evidence(current, next, None).await
+    }
+
+    // Keep the transaction future out of every branch of the lifecycle driver.
+    fn commit_evidence<'a>(
+        &'a self,
+        current: &'a Computer,
+        next: &'a Computer,
+        meter: Option<serde_json::Value>,
+    ) -> impl std::future::Future<Output = StoreResult<()>> + 'a {
+        Box::pin(self.commit_evidence_inner(current, next, meter))
+    }
+
+    async fn commit_evidence_inner(
+        &self,
+        current: &Computer,
+        next: &Computer,
+        meter: Option<serde_json::Value>,
+    ) -> StoreResult<()> {
         next.validate().map_err(StoreError::Corrupt)?;
         if !current.preserves_history_of(next) {
             return Err(StoreError::Immutable);
         }
         let record = serde_json::to_value(next)
             .map_err(|_| StoreError::Io("Cannot encode the computer."))?;
-        let c = self.store.db.client().await.map_err(io)?;
-        let n = c
-            .execute(
-                "UPDATE computers.computers
-                 SET record = $3, revision = $4, phase = $5, updated_at = now(),
+        let mut c = self.store.db.independent().await.map_err(io)?;
+        let tx = c.transaction().await.map_err(|e| io(e.into()))?;
+        crate::usage::lock(&tx).await.map_err(io)?;
+        let row = tx
+            .query_opt(
+                &format!(
+                    "UPDATE computers.computers
+                 SET record = $3, revision = $4, usage_revision = $4, phase = $5, updated_at = now(),
                      lease_until = now() + make_interval(secs => $7)
-                 WHERE id = $1 AND revision = $2 AND lease_holder = $6 AND lease_until > now()",
+                 WHERE id = $1 AND revision = $2 AND lease_holder = $6 AND lease_until > now()
+                 RETURNING {COLUMNS}"
+                ),
                 &[
                     &self.id,
                     &(current.revision as i64),
@@ -722,9 +797,26 @@ impl PgLease {
             )
             .await
             .map_err(|e| io(e.into()))?;
-        if n == 1 {
+        if let Some(row) = row {
+            let e = entry(&row).map_err(io)?;
+            if matches!(next.phase, Phase::Creating | Phase::Booting) {
+                crate::usage::reserve(&tx, &e, next).await.map_err(io)?;
+            }
+            let kind = if meter.is_some() { "meter" } else { "observed" };
+            crate::usage::record(
+                &tx,
+                &e,
+                kind,
+                &format!("revision:{}", next.revision),
+                crate::reconcile::now_ms() as i64,
+                meter.unwrap_or_else(crate::usage::lifecycle_evidence),
+            )
+            .await
+            .map_err(io)?;
+            tx.commit().await.map_err(|e| io(e.into()))?;
             Ok(())
         } else {
+            tx.rollback().await.map_err(|e| io(e.into()))?;
             Err(StoreError::Fence {
                 expected: current.revision,
                 current: self.current().await.map(|c| c.revision).unwrap_or(0),
@@ -741,7 +833,13 @@ impl Held for PgLease {
         let current = self.current().await?;
         match apply(&current, command, now_ms)? {
             Applied::Changed(next) => {
-                self.commit(&current, &next).await?;
+                let meter = match command {
+                    Command::ObserveMeter { outcome, .. } => {
+                        Some(crate::usage::meter_evidence(outcome))
+                    }
+                    _ => None,
+                };
+                self.commit_evidence(&current, &next, meter).await?;
                 Ok(*next)
             }
             Applied::Unchanged => Ok(current),

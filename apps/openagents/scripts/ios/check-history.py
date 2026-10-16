@@ -28,6 +28,8 @@ class Handler(BaseHTTPRequestHandler):
     credential = "oa_sk_" + "1" * 64
     live = False
     rich = False
+    projects = False
+    joined = False
     revision = 1
     offline = False
     def log_message(self, *_):
@@ -38,7 +40,10 @@ class Handler(BaseHTTPRequestHandler):
         query = parse_qs(path.query)
         result = {}
         media = "application/json"
-        if path.path == "/advance":
+        if path.path == "/join-project":
+            Handler.joined = True
+            result = {"ok": True}
+        elif path.path == "/advance":
             Handler.revision += 1
             result = {"ok": True}
         elif path.path == "/offline":
@@ -50,14 +55,22 @@ class Handler(BaseHTTPRequestHandler):
         elif path.path == "/v1/account":
             result = {"account": {"id": "acct_fixture", "label": "History fixture"}, "workspaces": []}
         elif path.path == "/v1/history/projects":
-            result = {"data": [{"id": "prj_0000000000000001", "name": "Shared project", "shared": True}], "next": None}
+            rows = [{"id": "prj_0000000000000001", "name": "Shared project", "shared": True}]
+            if Handler.projects:
+                rows.append({"id": "prj_0000000000000002", "name": "Empty project", "shared": True})
+            if Handler.projects and Handler.joined:
+                rows.append({"id": "prj_0000000000000003", "name": "New shared project", "shared": True})
+            result = {"data": rows, "next": None}
         elif path.path == "/v1/history":
             start = int(query["after"][0][:8], 16) + 1 if "after" in query else 0
-            end = min(start + int(query.get("limit", [200])[0]), 205)
+            count = 205
+            if Handler.projects:
+                count = 2 if query.get("project") == ["prj_0000000000000001"] else 0
+            end = min(start + int(query.get("limit", [200])[0]), count)
             rows = [{"id": chat(n), "title": f"Saved chat {n}", "revision": Handler.revision, "updated_unix": n+1,
                      "pinned_unix": 1 if n == 204 else None, "archived_unix": 1 if n == 5 else None,
                      "project": None, "source": ["web", "terminal", "phone"][n % 3], "messages": 5 if Handler.rich else 2 * Handler.revision if Handler.live else 405} for n in range(start, end)]
-            result = {"data": rows, "next": chat(end-1) if end < 205 else None}
+            result = {"data": rows, "next": chat(end-1) if end < count else None}
         elif path.path.endswith("/messages"):
             if Handler.offline:
                 self.send_error(503); return
@@ -98,9 +111,11 @@ def main():
     parser.add_argument("--public-history", action="store_true", help="Use only the dedicated-account fixtures from sdk-history.py")
     parser.add_argument("--live", action="store_true")
     parser.add_argument("--rich", action="store_true")
+    parser.add_argument("--projects", action="store_true")
     args = parser.parse_args()
     Handler.live = args.live
     Handler.rich = args.rich
+    Handler.projects = args.projects
     if args.public_history:
         Handler.credential = os.environ["OPENAGENTS_TOKEN"]
         assert Handler.credential.startswith("oa_sk_")
@@ -112,14 +127,15 @@ def main():
                TEST_RUNNER_CODER_HISTORY_FIXTURE=f"http://127.0.0.1:{server.server_port}")
     if args.public_history:
         env["TEST_RUNNER_CODER_PUBLIC_HISTORY_CONFIG"] = json.dumps({"key_url": f"http://127.0.0.1:{server.server_port}/fixture-key", "chat": chat_ids[0]})
-    test = "testPublicSavedAccountHistory" if args.public_history else "testRichAccountHistory" if args.rich else "testLiveAccountHistory" if args.live else "testSavedAccountHistory"
+    test = "testSharedProjectsWithoutComputer" if args.projects else "testPublicSavedAccountHistory" if args.public_history else "testRichAccountHistory" if args.rich else "testLiveAccountHistory" if args.live else "testSavedAccountHistory"
     try:
         with (args.scratch / "history-uitest.log").open("w") as log:
             subprocess.run(["xcodebuild", "test", "-project", "apps/ios/Zeron.xcodeproj", "-scheme", "Zeron", "-configuration", "Debug",
                             "-destination", "id=" + args.simulator, "-derivedDataPath", str(args.target_dir / "ios-derived"),
                             "CODE_SIGNING_ALLOWED=YES", "CODE_SIGN_IDENTITY=-", "ARCHS=arm64", "SWIFT_ACTIVE_COMPILATION_CONDITIONS=DEBUG CODER_ACCOUNT_FIXTURE",
                             "-only-testing:ZeronUITests/OpenAgentsHistoryTests/" + test], cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT, check=True)
-        print("Public phone history: complete 205-message read and sign-out passed." if args.public_history else
+        print("Phone shared projects: Home rows, empty project, and shared chat without a computer passed." if args.projects else
+              "Public phone history: complete 205-message read and sign-out passed." if args.public_history else
               "Phone account history: paging, full text, file, archives, projects, and sign-out passed.")
     finally:
         server.shutdown()

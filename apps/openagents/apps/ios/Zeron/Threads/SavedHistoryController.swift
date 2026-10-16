@@ -80,6 +80,10 @@ class SavedHistoryController: UITableViewController {
         switch page {
         case .projects:
             title = "Shared projects"
+            rows.append(.button("Project invitations", "saved-project-invitations", { [weak self] in
+                self?.app.openProjectInvitations()
+            }))
+            rows.append(action("Refresh projects", "saved-project-refresh", .refreshProjects))
             rows.append(.button("My chats", "saved-project-owned", { [weak self] in
                 self?.perform(.selectProject(id: nil)); self?.navigationController?.popViewController(animated: true)
             }))

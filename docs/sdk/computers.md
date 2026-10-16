@@ -58,6 +58,21 @@ to site admins and named agent accounts.
 | `DELETE /computers/{id}?kind=cloud` | `202` cloud deletion intent, even if an enrolled machine has the same name |
 | `DELETE /computers/{name}` | Existing enrolled names detach with `204`; otherwise a cloud ID records deletion intent |
 | `GET /computers/capabilities` | Declared profiles, sizes, and the current account computer limit |
+| `GET /computer-usage?after=0&limit=100` | Account usage events and operator allocation allowances; limit 1–200 |
+
+The usage read checks the same live account permissions and cloud access as
+computer reads. It rejects job credentials and owner or payer query fields.
+Caller-supplied account headers do not select an account. Use the returned
+integer `after` value for the next page. When `events` is empty, keep that value
+for later reads. The separate path preserves access to an enrolled computer
+named `usage`.
+
+Usage distinguishes accepted requests from observed results. Missing provider
+seconds and unknown storage sizes stay `null`; timestamps do not establish a
+charge. `allocation_allowance` reports operator CPU-millisecond limits,
+including unresolved allowances. `customer_charge` is `null` and `pricing` is
+`not_enabled`. The app OpenAPI documents this read; it is separate from the
+generated Computers SDK subset below.
 
 For an empty `POST` request, send `Content-Length: 0`. Cloud Run refuses a
 lengthless `POST` before it reaches the API. The server's internal transport
@@ -84,7 +99,8 @@ Admission serializes per account in PostgreSQL and counts computers still
 awaiting deletion. The initial limit is 20 unsettled computers per account;
 exhaustion returns `429 quota_exhausted`. Creates also have a bounded concurrent
 admission limit and a 16 KiB public request limit. These controls do not replace
-the later durable usage/billing work. Cloud-only reads report service outages;
+retail entitlements or pricing. Operator usage allowances remain separate from
+customer charges. Cloud-only reads report service outages;
 the mixed legacy list keeps its previous best-effort cloud append behavior.
 
 The maintained contract and its regeneration checks are described below.

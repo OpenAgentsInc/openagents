@@ -1,3 +1,13 @@
+## Check shared projects on iPhone (#11910)
+
+Install OpenAgents TestFlight build 62. With the invited account, accept the
+House David and Kiki Studios invitations on [Projects](https://openagents.com/projects),
+then return to the app. Confirm both projects appear on Home without a
+connected computer, Kiki Studios opens its existing chats, and House David
+shows an empty chat list. Project sharing does not grant computer access;
+project-only computer permissions are tracked in
+[#11911](https://github.com/OpenAgentsInc/openagents/issues/11911).
+
 ## Provide a GitHub-connected test account for Solver (#11807)
 
 Provide an approved dedicated GitHub test session or sign-in key, with access

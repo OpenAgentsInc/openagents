@@ -161,19 +161,25 @@ impl Store {
         timeout: i32,
         env_names: &[String],
     ) -> Result<(), crate::db::DbError> {
-        let c = self.db.client().await?;
-        c.execute(
+        let mut c = self.db.independent().await?;
+        let tx = c.transaction().await?;
+        crate::usage::lock(&tx).await?;
+        if tx.query_opt("SELECT id FROM computers.computers WHERE id=$1 AND owner=$2 AND desired<>'deleted' FOR UPDATE", &[&computer,&owner]).await?.is_none() {
+            return Err(crate::db::DbError("No such computer.".into()));
+        }
+        crate::usage::check_turn(&tx, owner, timeout).await?;
+        tx.execute(
             "INSERT INTO computers.turns (id, computer, owner, state, command, cwd, timeout_seconds, env_names)
              VALUES ($1, $2, $3, 'queued', $4, $5, $6, $7)",
             &[&id, &computer, &owner, &command, &cwd, &timeout, &env_names],
-        )
-        .await?;
-        c.execute(
-            "UPDATE computers.computers SET desired = 'running', intent_generation = intent_generation + 1, next_attempt_at = now(), attempts = 0
-             WHERE id = $1 AND desired <> 'deleted'",
-            &[&computer],
-        )
-        .await?;
+        ).await?;
+        tx.execute(
+            "UPDATE computers.computers SET desired = 'running', intent_generation = intent_generation + 1, usage_intent_generation = intent_generation + 1, next_attempt_at = now(), attempts = 0
+             WHERE id = $1 AND owner=$2 AND desired <> 'deleted'",
+            &[&computer,&owner],
+        ).await?;
+        crate::usage::record_intent(&tx, owner, computer).await?;
+        tx.commit().await?;
         Ok(())
     }
 
@@ -389,6 +395,13 @@ async fn add(
         .await
     {
         api.turns.take(&turn);
+        if e.0 == crate::usage::QUOTA_ERROR {
+            return err(
+                StatusCode::TOO_MANY_REQUESTS,
+                "quota_exhausted",
+                crate::usage::QUOTA_ERROR,
+            );
+        }
         eprintln!("oa-computers: turn: {e}");
         return err(StatusCode::SERVICE_UNAVAILABLE, "unavailable", "Try again.");
     }

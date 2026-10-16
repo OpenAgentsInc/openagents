@@ -39,6 +39,13 @@ Keep fork-specific changes here so upstream updates can review each integration.
   `MainTabController` treats it as a chat when hiding the global new-session bar.
   Opening a saved chat starts no harness; replies are added by #11893–#11894.
 
+- [OpenAgents #11910](https://github.com/OpenAgentsInc/openagents/issues/11910):
+  the iPhone Home list shows shared account projects without a connected
+  computer. `SessionListController` mounts the Rust account reader's project
+  rows; `SavedHistoryController` and `AppModel` open the existing website's
+  invitations. The Rust mobile reader refreshes chats and projects together
+  on pull-to-refresh and when returning to the app.
+
 ## Custom agents (#11903–#11908)
 
 The SDK owns private definitions and assignments. `doc_host::custom_agents`

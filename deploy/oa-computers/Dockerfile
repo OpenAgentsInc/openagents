@@ -8,7 +8,7 @@ WORKDIR /build
 # The whole checkout: the lifecycle crates pull in build scripts that read
 # repository data (knowledge/, …).
 COPY . .
-RUN cargo build --release -p oa-computers \
+RUN cargo build --release -p oa-computers --bin oa-computers \
     && strip target/release/oa-computers
 
 FROM debian:13-slim

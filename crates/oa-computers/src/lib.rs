@@ -16,6 +16,7 @@ pub mod reconcile;
 pub mod registry;
 pub mod store;
 pub mod turns;
+pub mod usage;
 
 pub use db::Db;
 pub use store::Store;

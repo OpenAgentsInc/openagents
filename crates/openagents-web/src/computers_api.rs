@@ -4,6 +4,7 @@
 pub(crate) mod commands;
 mod contract;
 pub(crate) mod files;
+pub(crate) mod usage;
 
 use axum::body::Bytes;
 use axum::extract::{Path, State};
@@ -643,5 +644,6 @@ pub(crate) fn extend_openapi(document: &mut Value) {
     });
     commands::extend_openapi(document);
     files::extend_openapi(document);
+    usage::extend_openapi(document);
     contract::qualify(document);
 }

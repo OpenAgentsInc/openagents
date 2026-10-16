@@ -6,6 +6,8 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 
+mod usage;
+
 const ID: &str = "cmp_0123456789abcdef0123";
 const COMMAND: &str = "trn_0123456789abcdef0123";
 const CANARY: &str = "private-provider-token-and-address";
@@ -27,6 +29,7 @@ struct Native {
     revoked: AtomicBool,
     file: Mutex<Vec<u8>>,
     calls: Mutex<Vec<(String, String, String)>>,
+    usage_queries: Mutex<Vec<String>>,
 }
 
 async fn account(State(state): State<Arc<Native>>, headers: HeaderMap) -> Response {
@@ -95,6 +98,9 @@ async fn provider(State(state): State<Arc<Native>>, request: Request) -> Respons
         .lock()
         .unwrap()
         .push((owner.clone(), method.clone(), path.clone()));
+    if path == "/v1/usage" {
+        return usage::provider(&state, &owner, &request);
+    }
     if path == "/v1/capabilities" {
         return Json(
             json!({"driver":CANARY,"profiles":["core","suspend","snapshot","fork","command"],"sizes":["small","medium"],"workspace_file_bytes":computer_files::MAX_BYTES,
@@ -345,23 +351,21 @@ async fn public_lifecycle_uses_current_account_authority_and_keeps_service_crede
             .iter()
             .any(|v| v["id"] == ID)
     );
-    crate::coder_sync::check_in(
-        &store,
-        &crate::chat_store::account_owner("alice"),
-        "capabilities",
-    )
-    .await
-    .unwrap()
-    .unwrap();
-    assert_eq!(
-        http.delete(format!("{base}/v1/computers/capabilities"))
-            .bearer_auth(token("alice"))
-            .send()
+    for name in ["capabilities", "usage"] {
+        crate::coder_sync::check_in(&store, &crate::chat_store::account_owner("alice"), name)
             .await
             .unwrap()
-            .status(),
-        204
-    );
+            .unwrap();
+        assert_eq!(
+            http.delete(format!("{base}/v1/computers/{name}"))
+                .bearer_auth(token("alice"))
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            204
+        );
+    }
     for suffix in ["/stop", "/wake"] {
         assert_eq!(
             http.post(format!("{base}/v1/computers/{ID}{suffix}"))
@@ -659,6 +663,7 @@ async fn public_lifecycle_uses_current_account_authority_and_keeps_service_crede
         );
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
     }
+    usage::check(&http, &base, &state).await;
     let before = state.calls.lock().unwrap().len();
     let too_large = http
         .post(format!("{base}/v1/computers"))
@@ -777,6 +782,15 @@ async fn public_lifecycle_uses_current_account_authority_and_keeps_service_crede
         403
     );
     state.revoked.store(true, Ordering::SeqCst);
+    assert_eq!(
+        http.get(format!("{base}/v1/computer-usage"))
+            .bearer_auth(token("alice"))
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        401
+    );
     assert_eq!(
         http.get(&file_url)
             .bearer_auth(token("alice"))

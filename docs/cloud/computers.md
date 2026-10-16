@@ -52,6 +52,7 @@ sees only its own computers.
 | `GET /v1/computers`, `GET /v1/computers/{id}` | the account's computers: `id`, `chat`, `driver`, `image`, `size`, `desired`, `state` (lifecycle phase), `resource`, `turns`, `attempts`, `last_error`, times |
 | `DELETE /v1/computers/{id}`, `POST …/stop`, `POST …/wake` | change intent, `202` |
 | `GET /v1/capabilities` | the default driver's declaration plus account-filtered placement offers and shapes |
+| `GET /v1/usage?after=SEQUENCE&limit=100` | the account's usage evidence, up to 200 events per page, and allocation allowances |
 | `POST /v1/computers/{id}/turns` `{command, cwd?, timeout_seconds?, env?}` | queue a turn (`202` with its id); `env`'s values stay in memory only |
 | `GET /v1/computers/{id}/turns/{turn}`, `POST …/turns/{turn}/stop` | read a turn (`state` queued/running/done/failed, `exit_code`, `stdout`, `stderr`, `error`); stop it |
 
@@ -105,6 +106,53 @@ The [lifecycle verification record](../sdk/computers-lifecycle-evidence.json)
 pins the 2026-10-16 deployment, account-isolation checks, dedicated-account Boat
 workflows, and observed timings. Create acceptance and observed readiness are
 measured separately.
+
+### Usage and allocation limits
+
+The first accounting increment for
+[#11815](https://github.com/OpenAgentsInc/openagents/issues/11815) records
+accepted requests, observed lifecycle revisions, meter counters, evidence hashes,
+and operator decisions in append-only PostgreSQL events. Each event names the
+account, computer, deployment, immutable shape, create operation, boot, turn
+generation, and observation time. The core's logical timestamp is separate.
+Reads omit command text, output, and credentials. Missing provider seconds,
+including SPACE's absent counter, stay `null`; timestamps never fill them in.
+Stopped disk storage and shared service costs also stay unknown until measured.
+
+Account and service policies can limit computer count, running vCPUs and
+memory, turn duration, stopped retention, and total boot allowance. A boot
+reserves its declared CPU allowance before create or resume. Provider overruns
+remain possible. Retries reuse the same reservation.
+Unknown outcomes survive restart. Stop and delete requests release no capacity;
+observed stop releases running capacity, and observed deletion releases the
+computer slot. An unresolved boot allowance stays held until an explicit
+operator decision. These allowances are distinct from provider usage and the
+purchased compute balance. Customer prices and charges remain disabled. The
+allowance is not a verified ceiling on runtime or provider cost.
+
+Use `oa-computers-usage` with `OA_COMPUTERS_DATABASE_URL` for operator reads,
+limit changes, and retry-safe allowance decisions:
+
+```sh
+oa-computers-usage read ACCOUNT [AFTER_SEQUENCE]
+oa-computers-usage account-limits ACCOUNT limits.json
+oa-computers-usage service-limits limits.json
+oa-computers-usage resolve ACCOUNT COMPUTER BOOT MAXIMUM_CPU_MS USED_CPU_MS 'Decision reference'
+```
+
+Limit files accept `computer_count`, `running_vcpus`, `running_memory_mib`,
+`boot_cpu_ms`, `turn_seconds`, and `stopped_retention_seconds`. The account and
+service retention limits can shorten the configured stopped-storage period.
+A zero retention limit starts cleanup after an observed stop. An uncertain stop
+keeps its allocation until the provider confirms cleanup. Unknown shapes refuse
+bounded shape or boot allowances. A policy change cannot lower a limit below committed allocations.
+Migration preserves existing allocations as unknown. Older service writers
+cannot change lifecycle records, allocation intent, or command queues after this
+migration; use a compatible service build when rolling back. The public client contract
+does not change. Account usage reads are available through
+[`GET /v1/computer-usage`](../sdk/computers.md). Storage byte quotas,
+account-deletion cleanup, service cost measurements, and priced settlement remain
+follow-up work on #11815.
 
 ### Turns
 

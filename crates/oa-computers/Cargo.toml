@@ -5,6 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
 description = "The lifecycle layer for every computer: an API that records intent and returns at once, desired and observed state in Postgres, and a restart-safe reconcile loop over computer-driver drivers."
+default-run = "oa-computers"
 
 [[bin]]
 name = "oa-computers"
@@ -30,6 +31,7 @@ tokio-postgres = { version = "0.7.18", features = ["with-serde_json-1"] }
 url = "2"
 
 [dev-dependencies]
+stateright = "0.31"
 proptest = "1"
 oa-boat = { path = "../oa-boat" }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }

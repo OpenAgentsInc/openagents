@@ -107,6 +107,14 @@ impl Driver for Simulated {
         }
         self.fake.create(&request).await
     }
+    async fn meter(&self, computer: &str) -> Outcome<Meter> {
+        self.fake.meter(computer).await.map(|mut meter| {
+            if self.caps.driver == "fake-space" {
+                meter.seconds = None;
+            }
+            meter
+        })
+    }
     async fn read_workspace_file(
         &self,
         computer: &str,
@@ -148,7 +156,6 @@ impl Driver for Simulated {
         stop_command(computer:&str,id:&str)->Outcome<String>;
         put_file(computer:&str,path:&str,bytes:&[u8])->Outcome<()>;
         get_file(computer:&str,path:&str)->Outcome<Vec<u8>>;
-        meter(computer:&str)->Outcome<Meter>;
         delete(computer:&str)->Outcome<()>;
         suspend(computer:&str)->Outcome<String>;
         resume(computer:&str)->Outcome<String>;
@@ -158,6 +165,9 @@ impl Driver for Simulated {
         fork(computer:&str,operation:&str)->Outcome<String>;
     }
 }
+
+#[path = "registry/usage.rs"]
+mod usage;
 
 fn configured(default: &str, a: &Simulated, b: &Simulated) -> Registry<Simulated> {
     Registry::new(

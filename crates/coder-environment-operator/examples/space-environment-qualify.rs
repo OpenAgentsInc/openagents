@@ -368,7 +368,12 @@ async fn main() -> Result<()> {
             let mut job = owners
                 .verify(
                     &coder_environment_verify::service::VerifyRequest {
-                        request_id: "qualification-verify-11811".into(),
+                        request_id: format!(
+                            "qualification-verify-11811{}",
+                            args.get(3)
+                                .map(|attempt| format!("-{attempt}"))
+                                .unwrap_or_default()
+                        ),
                         environment: ENVIRONMENT.into(),
                         build_id: build.inputs.build_id,
                         owner: owner(),
@@ -442,7 +447,6 @@ async fn main() -> Result<()> {
                 .apply(ENVIRONMENT, &env::Command::Retire, now_ms())?;
             let until = now_ms() + 180_000;
             loop {
-                owners.recover(now_ms()).await;
                 let mut gone = true;
                 for entry in fs::read_dir(owners.layout.computers())? {
                     let path = entry?.path();
@@ -455,7 +459,17 @@ async fn main() -> Result<()> {
                         if computer.owner != owner() {
                             return Err("This directory contains another owner's computer.".into());
                         }
-                        gone &= matches!(computer.phase, coder_working_computer::Phase::Deleted);
+                        if !matches!(computer.phase, coder_working_computer::Phase::Deleted) {
+                            let settled = owners
+                                .builder
+                                .computers
+                                .delete(&computer.id, now_ms())
+                                .await?;
+                            gone &= matches!(
+                                settled.computer().phase,
+                                coder_working_computer::Phase::Deleted
+                            );
+                        }
                     }
                 }
                 if gone {
