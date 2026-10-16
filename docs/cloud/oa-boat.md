@@ -45,6 +45,14 @@ run unchanged. Hosted Boat is now opt-in only (`BOAT_HOSTED=1`).
 A connection failure during a command is `502 boat_direct_failed`, as on
 Boat: the command may still be running. Commands are never retried.
 
+The latest snapshot reports `sizeBytes: null`: keeping a stopped disk does not
+measure snapshot delta bytes. Named snapshots omit `sizeBytes` because restored
+content size is unknown. Their `providerArchiveSize` extension reports nullable
+`bytes` with source `gce.images.archiveSizeBytes`. This is the provider's size of
+one image archive, as defined in the [Google Cloud Image reference](https://docs.cloud.google.com/compute/docs/reference/rest/v1/images).
+Missing or invalid sizes stay `null`; an observed zero stays zero. Archive size
+does not establish total account storage or billed storage.
+
 ## Sandboxes
 
 - **Sizes** (`crates/oa-boat/src/sizes.rs`), list prices in us-central1:

@@ -6,7 +6,7 @@ use boat::{ApiKey, Client, Nullable, WaitOptions};
 use oa_boat::api::{Token, router};
 use oa_boat::remote::Local;
 use oa_boat::{Config, Service};
-use serde_json::json;
+use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Duration;
@@ -57,6 +57,20 @@ fn fast() -> WaitOptions {
         interval: Duration::from_millis(50),
         ..Default::default()
     }
+}
+
+async fn raw_json(client: &Client, path: &str) -> Value {
+    reqwest::Client::new()
+        .get(format!("{}{path}", client.origin()))
+        .bearer_auth(TOKEN)
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .json()
+        .await
+        .unwrap()
 }
 
 async fn create(c: &Client, body: CreateSandboxRequest, key: Option<&str>) -> String {
@@ -216,6 +230,13 @@ async fn a_sandbox_lives_its_whole_life_through_the_sdk() {
         .snapshot
         .unwrap();
     assert_eq!(latest.status, "completed");
+    assert_eq!(latest.size_bytes, None);
+    let wire = raw_json(c, &format!("/sandboxes/{id}/snapshots/latest")).await;
+    assert!(
+        wire["snapshot"]
+            .get("sizeBytes")
+            .is_some_and(Value::is_null)
+    );
     let refused = c
         .command(&CommandParams {
             sandbox_id: id.clone(),
@@ -315,6 +336,76 @@ async fn a_sandbox_lives_its_whole_life_through_the_sdk() {
         .await
         .unwrap_err();
     assert!(err.to_string().contains("404"), "{err}");
+}
+
+#[tokio::test]
+async fn image_archive_bytes_stay_distinct_from_restored_content_and_disk_capacity() {
+    let r = rig(|_| {}).await;
+    let cases = [
+        ("archive-reported", Some(1234), Some(1234_u64)),
+        ("archive-unknown", None, None),
+        ("archive-zero", Some(0), Some(0)),
+        ("archive-negative", Some(-1), None),
+    ];
+    {
+        let mut world = r.fake.0.lock().unwrap();
+        for (name, archive_bytes, _) in cases {
+            world.images.insert(
+                name.into(),
+                oa_boat::gce::Image {
+                    name: name.into(),
+                    id: format!("{name}-id"),
+                    status: "READY".into(),
+                    labels: BTreeMap::from([
+                        (
+                            oa_boat::service::MANAGED.into(),
+                            oa_boat::service::MANAGED_TEMPLATE.into(),
+                        ),
+                        ("oa-boat-src".into(), "archive-fixture".into()),
+                    ]),
+                    disk_gb: 200,
+                    archive_bytes,
+                    ..Default::default()
+                },
+            );
+        }
+    }
+    for (name, _, observed) in cases {
+        let got = r
+            .client
+            .get_named_snapshot(&GetNamedSnapshotParams {
+                name: name.into(),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        assert_eq!(got.snapshot.size_bytes, None);
+        let wire = raw_json(&r.client, &format!("/named-snapshots/{name}")).await;
+        let wire = &wire["snapshot"];
+        assert!(wire.get("sizeBytes").is_none());
+        assert_eq!(
+            wire["providerArchiveSize"],
+            json!({
+                "bytes": observed, "source":"gce.images.archiveSizeBytes"
+            })
+        );
+        assert_eq!(wire["diskGb"], 200);
+    }
+    let listed = r.client.list_named_snapshots().await.unwrap();
+    assert_eq!(listed.snapshots.len(), cases.len());
+    for snapshot in listed.snapshots {
+        let (_, _, observed) = cases
+            .iter()
+            .find(|(name, _, _)| *name == snapshot.name)
+            .unwrap();
+        assert_eq!(snapshot.size_bytes, None);
+        assert_eq!(
+            snapshot.extra["providerArchiveSize"],
+            json!({
+                "bytes": observed, "source":"gce.images.archiveSizeBytes"
+            })
+        );
+    }
 }
 
 #[tokio::test]
