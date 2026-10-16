@@ -27,3 +27,4 @@ mod tests;
 mod automation_cleanup;
 
 mod environment;
+mod external;

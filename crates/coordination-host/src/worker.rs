@@ -260,6 +260,22 @@ impl Worker {
                     .into(),
             );
         }
+        if !execute
+            .target
+            .id
+            .starts_with(&format!("{}:coord/", authority.authority()))
+        {
+            return Err(
+                "unsupported_feature: the fixed worker cannot execute a foreign target".into(),
+            );
+        }
+        let operation = authority.operation(&execute.payload["target"])?;
+        if !matches!(
+            operation["binding_contract"]["operation"].as_str(),
+            Some("coord-data" | "coord-git-change" | "coord-automation-data")
+        ) {
+            return Err("unsupported_feature: the fixed worker cannot execute this target".into());
+        }
         let intake = json!({"v":"openagents.coordination-native-intake.v1","requires":[],"request":event.id,"fingerprint":execute.fingerprint});
         let intake =
             workspace_host::host::request(&self.secret, authority.authority(), intake, now)?;

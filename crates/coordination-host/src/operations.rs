@@ -96,6 +96,10 @@ impl Coordinator {
             return Err("unsupported native operation definition".into());
         }
         nostr::cap::parse_definition(&body).map_err(|e| e.to_string())?;
+        if !def.id.starts_with(&format!("{}:coord/", self.authority())) {
+            self.external_operation(definition)?;
+            return Ok(body);
+        }
         match body["binding_contract"]["operation"].as_str() {
             Some(
                 "coord-data"

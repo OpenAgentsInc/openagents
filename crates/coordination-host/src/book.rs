@@ -128,6 +128,8 @@ pub(crate) struct State {
     pub service: nostr::execution::Service,
     pub replies: BTreeMap<String, Event>,
     pub reply_artifacts: BTreeMap<String, Vec<Value>>,
+    #[serde(default)]
+    pub executors: BTreeMap<String, crate::external::ExternalOperation>,
 }
 pub struct Coordinator {
     pub(crate) store: Artifacts,
@@ -159,6 +161,7 @@ impl Coordinator {
             service: nostr::execution::Service::new(host.authority(), 16, 9_007_199_254_740_991),
             replies: BTreeMap::new(),
             reply_artifacts: BTreeMap::new(),
+            executors: BTreeMap::new(),
         })?;
         drop(_guard);
         Ok(host)

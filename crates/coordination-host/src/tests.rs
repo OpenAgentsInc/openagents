@@ -1136,3 +1136,155 @@ fn worker_terminal_receipts_link_to_real_intent_and_keep_metadata_looking_output
     wrong["outcome"] = json!("failed");
     assert!(nostr::run::terminal_from_result(&wrong, &files, &key(2)).is_err());
 }
+
+fn external_target(h: &Coordinator, operation: &str) -> (Value, BTreeMap<String, Vec<u8>>) {
+    let native = h.data_operation().unwrap();
+    let mut body =
+        nostr::contracts::parse_strict(&h.store.get(&native["artifact"]).unwrap()).unwrap();
+    let id = format!("{}:session/external", key(2));
+    body["id"] = json!(id);
+    body["binding_contract"]["operation"] = json!(operation);
+    body["binding_contract"]["interface"] = json!("openagents.fixture-external.v1");
+    let bytes = nostr::contracts::jcs(&body).unwrap();
+    let artifact =
+        workspace_host::artifact::reference(&bytes, "application/json", Some("openagents.cap.v1"));
+    (
+        json!({"id":id,"artifact":artifact}),
+        BTreeMap::from([(nostr::contracts::digest_bytes(&bytes), bytes)]),
+    )
+}
+fn external_scope(h: &Coordinator, target: &Value, frame: &Value) -> Value {
+    let policy = h
+        .state()
+        .unwrap()
+        .scopes
+        .values()
+        .next()
+        .unwrap()
+        .policy
+        .clone();
+    let scope = h
+        .create_scope(policy, vec![], vec![target.clone()], 100)
+        .unwrap();
+    for n in [2, 3] {
+        let control = json!({"v":"openagents.coordination-native-control.v1","requires":[],
+            "coordinator":scope,"command":workspace_host::artifact::token(),
+            "expected_revision":revision(h,&scope),"actor":key(n),
+            "roles":["read","propose","claim","control","finding"],"resources":[],"targets":[],
+            "all":true,"until":5000,"revoke":false,"scope_revoke":false});
+        h.control_grants(&event(1, control, 100), 100).unwrap();
+    }
+    let control = json!({"v":"openagents.coordination-native-frame.v1","requires":[],
+        "coordinator":scope,"command":workspace_host::artifact::token(),
+        "expected_revision":revision(h,&scope),"frame":frame});
+    h.frame(&event(1, control, 100), &h.store.get(frame).unwrap(), 100)
+        .unwrap();
+    scope
+}
+
+#[test]
+fn external_executor_pins_are_operator_owned_exact_and_revocable() {
+    let (temp, h, _, _, frame) = setup(8);
+    let (target, files) = external_target(&h, "session-submit");
+    assert!(h.operation(&target).is_err());
+    assert!(h.register_executor(&target, &key(3), &files).is_err());
+    assert_eq!(
+        h.register_executor(&target, &key(2), &files).unwrap(),
+        target
+    );
+    assert_eq!(
+        h.register_executor(&target, &key(2), &BTreeMap::new())
+            .unwrap(),
+        target
+    );
+    assert_eq!(
+        h.operation(&target).unwrap()["binding_contract"]["operation"],
+        "session-submit"
+    );
+    let mut changed = target.clone();
+    changed["id"] = json!(format!("{}:session/changed", key(2)));
+    assert!(h.register_executor(&changed, &key(2), &files).is_err());
+    let scope = external_scope(&h, &target, &frame);
+    let p = proposal(&h, &scope, &target, &frame, 2, None);
+    let pr = propose(&h, &p);
+    let bad = json!({"v":"openagents.claim-request.v1","requires":[],"proposal":pr,
+        "worker":key(3),"resources":[],"expected_revision":revision(&h,&scope),
+        "requested_until":190,"reservation":h.scope(&scope).unwrap()["allowance"]});
+    assert!(
+        h.claim(&event(3, bad, 101), 101)
+            .unwrap_err()
+            .contains("another executor")
+    );
+    let c = claim(
+        &h,
+        &scope,
+        &pr,
+        h.scope(&scope).unwrap()["allowance"].clone(),
+    );
+    let prepare = event(
+        2,
+        json!({"v":"openagents.coordination-native-dispatch.v1",
+        "requires":[],"coordinator":scope,"claim":c}),
+        102,
+    );
+    let request = h.prepare_environment(&prepare, 102).unwrap();
+    assert_eq!(h.scope(&scope).unwrap()["calls"], 0);
+    h.revoke_executor(&target).unwrap();
+    assert!(h.operation(&target).is_err());
+    assert!(h.register_executor(&target, &key(2), &files).is_err());
+    let restarted = Coordinator::open(temp.path().join("coord"), secret(1)).unwrap();
+    assert!(restarted.operation(&target).is_err());
+    let current = restarted.state().unwrap();
+    let actual = current
+        .scopes
+        .values()
+        .find(|s| s.reference == scope)
+        .unwrap();
+    let lease = actual.claims.values().find(|l| l.reference == c).unwrap();
+    assert!(restarted.current_lease(actual, lease, 103).is_err());
+    assert_eq!(lease.execution.as_ref().unwrap(), &request);
+    assert!(!lease.dispatched);
+    assert_eq!(actual.calls, 0);
+}
+
+#[test]
+fn a_foreign_binding_cannot_impersonate_the_fixed_worker_before_input_or_charge() {
+    for operation in ["session-submit", "coord-data"] {
+        let (temp, h, _, _, frame) = setup(8);
+        let (target, files) = external_target(&h, operation);
+        h.register_executor(&target, &key(2), &files).unwrap();
+        let scope = external_scope(&h, &target, &frame);
+        let p = proposal(&h, &scope, &target, &frame, 2, None);
+        let pr = propose(&h, &p);
+        let c = claim(
+            &h,
+            &scope,
+            &pr,
+            h.scope(&scope).unwrap()["allowance"].clone(),
+        );
+        let prepare = event(
+            2,
+            json!({"v":"openagents.coordination-native-dispatch.v1",
+            "requires":[],"coordinator":scope,"claim":c}),
+            102,
+        );
+        let request = h.prepare(&prepare, 102).unwrap();
+        let worker = worker::Worker::open(temp.path().join("worker"), secret(2), 102).unwrap();
+        assert!(
+            worker
+                .run(&h, &request, 102)
+                .unwrap_err()
+                .starts_with("unsupported_feature:")
+        );
+        assert_eq!(h.scope(&scope).unwrap()["calls"], 0);
+        let state = h.state().unwrap();
+        let actual = state
+            .scopes
+            .values()
+            .find(|s| s.reference == scope)
+            .unwrap();
+        let lease = actual.claims.values().find(|l| l.reference == c).unwrap();
+        assert!(!lease.dispatched);
+        assert!(!lease.unknown);
+    }
+}

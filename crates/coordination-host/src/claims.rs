@@ -80,6 +80,7 @@ impl Coordinator {
         let container = self.operation(&proposal.body["target"])?["binding_contract"]["operation"]
             == "coord-container";
         let worker = body["worker"].as_str().ok_or("worker key")?;
+        self.check_executor(&proposal.body["target"], worker)?;
         let grant = self.check(&scope, &actor, "claim", now)?;
         let worker_grant = self.check(&scope, worker, "claim", now)?;
         if actor != worker && actor != scope.owner {
@@ -304,6 +305,7 @@ impl Coordinator {
             .values()
             .find(|p| p.reference == lease.body["proposal"])
             .ok_or("proposal")?;
+        self.check_executor(&proposal.body["target"], &lease.actor)?;
         if proposal.claim.as_ref() != Some(&lease.reference) {
             return Err("stale: claim token was replaced".into());
         }

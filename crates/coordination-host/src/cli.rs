@@ -9,7 +9,7 @@ use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
 };
-pub const USAGE: &str = "usage: coordination-host ACTION --state DIR --key-file FILE [--input FILE] [--sources FILE]\nActions: init, scope, inspect, put, operation, capture, sign, invoke, serve, recover, grant, frame, propose, claim, control, prepare, prepare-environment, run, check, finding, integrate, background, poll.\nSource mounts use an owner-selected JSON map of names to existing workspace store directories.";
+pub const USAGE: &str = "usage: coordination-host ACTION --state DIR --key-file FILE [--input FILE] [--sources FILE]\nActions: init, scope, inspect, put, operation, register-executor, revoke-executor, capture, sign, invoke, serve, recover, grant, frame, propose, claim, control, prepare, prepare-environment, run, check, finding, integrate, background, poll.\nSource mounts use an owner-selected JSON map of names to existing workspace store directories.";
 pub fn display(value: &Value) -> String {
     if let Some(help) = value["help"].as_str() {
         return help.into();
@@ -106,6 +106,30 @@ pub fn run(args: Vec<String>) -> Result<Value> {
                     .clone(),
                 now,
             )
+        }
+        "register-executor" => {
+            crate::admin::closed(
+                &value,
+                &["v", "requires", "definition", "worker", "artifacts"],
+            )?;
+            if value["v"] != "openagents.coordination-native-executor.v1" {
+                return Err("unsupported executor registration version".into());
+            }
+            let files = serde_json::from_value(value["artifacts"].clone())
+                .map_err(|_| "executor artifacts")?;
+            host.register_executor(
+                &value["definition"],
+                value["worker"].as_str().ok_or("worker")?,
+                &files,
+            )
+        }
+        "revoke-executor" => {
+            crate::admin::closed(&value, &["v", "requires", "definition"])?;
+            if value["v"] != "openagents.coordination-native-executor-revoke.v1" {
+                return Err("unsupported executor revocation version".into());
+            }
+            host.revoke_executor(&value["definition"])?;
+            Ok(json!({"revoked":true}))
         }
         "inspect" => host.scope(&value),
         "put" => {

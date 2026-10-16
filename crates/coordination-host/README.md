@@ -113,3 +113,18 @@ worker refuses this binding. `env-host run` requires a current admitted ENV
 attachment and checks the actual claim again while holding the attachment fence
 through intake. It supports the native data worker; combined AUTO/ENV targets
 refuse. See [the environment runtime](../env-host/README.md).
+
+The operator can pin a separate runtime's native CAP definition with
+`register-executor`. Its input document has
+`v: "openagents.coordination-native-executor.v1"`, empty `requires`, the exact
+`definition`, its publisher's `worker` key, and an `artifacts` map of digest to
+bytes. Input and output schemas must be supported, and spending is unsupported.
+Registration uses the coordinator's host key; participant grants cannot add
+executors. Claims must name that exact worker. `revoke-executor` takes
+`v: "openagents.coordination-native-executor-revoke.v1"`, empty `requires`, and
+the exact definition. Revocation prevents new claims and intake, including after
+restart, and does not assert that earlier work stopped. A revoked immutable
+binding cannot be registered again. The fixed data worker refuses foreign
+targets before input disclosure or call accounting, even if they reuse its
+operation name. Registration and preparation do not implement runtime dispatch;
+the owning runtime still needs its separately fenced intake.

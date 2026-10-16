@@ -94,4 +94,39 @@ fn standalone_host_creates_admitted_scope_and_accepts_original_signed_control() 
     );
     let file = input(root, &scope);
     assert_eq!(run(root, &["inspect", "--input", &file])["revision"], 1);
+    let host = coordination_host::book::Coordinator::open(
+        root.join("state"),
+        SecretKey::from_byte_array([1; 32]).unwrap(),
+    )
+    .unwrap();
+    let target = host.data_operation().unwrap();
+    let mut card =
+        nostr::contracts::parse_strict(&host.get_local_bytes(&target["artifact"]).unwrap())
+            .unwrap();
+    let id = format!("{}:session/cli-runtime", key(2));
+    card["id"] = json!(id);
+    card["binding_contract"]["operation"] = json!("session-control");
+    let bytes = nostr::contracts::jcs(&card).unwrap();
+    let artifact =
+        workspace_host::artifact::reference(&bytes, "application/json", Some("openagents.cap.v1"));
+    let definition = json!({"id":id,"artifact":artifact});
+    let file = input(
+        root,
+        &json!({"v":"openagents.coordination-native-executor.v1",
+        "requires":[],"definition":definition,"worker":key(2),
+        "artifacts":{nostr::contracts::digest_bytes(&bytes):bytes}}),
+    );
+    assert_eq!(
+        run(root, &["register-executor", "--input", &file]),
+        definition
+    );
+    let file = input(
+        root,
+        &json!({"v":"openagents.coordination-native-executor-revoke.v1",
+        "requires":[],"definition":definition}),
+    );
+    assert_eq!(
+        run(root, &["revoke-executor", "--input", &file])["revoked"],
+        true
+    );
 }
