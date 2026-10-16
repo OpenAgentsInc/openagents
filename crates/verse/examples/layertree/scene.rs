@@ -96,6 +96,42 @@ fn pack() -> Result<Pack, String> {
             flat::model(&format!("{name}-link"), vec![wire], 1.0),
         );
     }
+    for (name, tint) in [
+        ("signer", WHITE),
+        ("signer-bad", [1.0, 77.0 / 255.0, 66.0 / 255.0]),
+        ("signer-dim", [0.18; 3]),
+    ] {
+        let mut cube = flat::surface(0, tint, Topology::Triangles);
+        let points = [
+            [-1., -1., -1.],
+            [1., -1., -1.],
+            [1., 1., -1.],
+            [-1., 1., -1.],
+            [-1., -1., 1.],
+            [1., -1., 1.],
+            [1., 1., 1.],
+            [-1., 1., 1.],
+        ]
+        .map(Vec3::from_array);
+        for [a, b, c] in [
+            [0, 2, 1],
+            [0, 3, 2],
+            [4, 5, 6],
+            [4, 6, 7],
+            [0, 1, 5],
+            [0, 5, 4],
+            [3, 7, 6],
+            [3, 6, 2],
+            [0, 4, 7],
+            [0, 7, 3],
+            [1, 2, 6],
+            [1, 6, 5],
+        ] {
+            triangle(&mut cube, points[a], points[b], points[c]);
+        }
+        pack.models
+            .insert(name.into(), flat::model(name, vec![cube], 2.0));
+    }
     let mut canvas = flat::surface(0, canvas_tint(), Topology::Triangles);
     let ring = [Vec3::X, Vec3::Z, -Vec3::X, -Vec3::Z];
     for i in 0..4 {
@@ -203,14 +239,15 @@ pub fn frame(set: &Set) -> Vec<Instance> {
         out.push(link("signature-link", root.position, coin));
     }
     transition_frame(set, &mut out);
+    watch_frame(set, &mut out);
     out
 }
 
 #[allow(dead_code)] // The viewer uses this camera; film shots use their rig.
 pub fn camera(set: &Set, aspect: f32, yaw: f32, zoom: f32) -> View {
-    let distance = (set.layout.width * 0.85).max(28.0) * zoom;
-    let target = Vec3::new(1.0, 2.0 + set.state.depth as f32 * 0.75, 0.0);
-    let eye = target + Vec3::new(yaw.sin() * distance, distance * 0.34, yaw.cos() * distance);
+    let distance = (set.layout.width * 0.95).max(36.0) * zoom;
+    let target = Vec3::new(0.0, 2.0 + set.state.depth as f32 * 0.6, 2.0);
+    let eye = target + Vec3::new(yaw.sin() * distance, distance * 0.4, yaw.cos() * distance);
     View {
         eye,
         view_proj: Mat4::perspective_rh(46f32.to_radians(), aspect, 0.1, 2000.0)
@@ -341,6 +378,7 @@ pub fn overlay(
         ui.text(atlas, x - 50.0, y + 58.0, &format!("{short}.."), dim);
     }
     transition_labels(set, view, size, atlas, &mut ui);
+    watch_labels(set, view, size, atlas, &mut ui);
     let source = Path::new(&set.run.source)
         .file_name()
         .and_then(|name| name.to_str())
@@ -558,7 +596,11 @@ fn transition_labels(set: &Set, view: View, size: [f32; 2], atlas: &Atlas, ui: &
         atlas,
         26.0,
         105.0,
-        &format!("{text}{}", if simulated { "  /  simulated" } else { "" }),
+        &if simulated && text.is_empty() {
+            "simulated".into()
+        } else {
+            format!("{text}{}", if simulated { "  /  simulated" } else { "" })
+        },
         color,
     );
     if matches!(op, "exit" | "evict" | "detach") {
@@ -594,5 +636,195 @@ fn transition_labels(set: &Set, view: View, size: [f32; 2], atlas: &Atlas, ui: &
                 }
             }
         }
+    }
+}
+
+fn signer_at(set: &Set) -> Vec3 {
+    Vec3::new(-set.layout.width * 0.5 - 3.0, 3.5, 0.0)
+}
+fn client_rows(set: &Set) -> Vec<(u64, Vec3)> {
+    use std::collections::BTreeSet;
+    let mut ids: BTreeSet<u64> = set
+        .state
+        .watch
+        .observers
+        .as_ref()
+        .map(|ids| ids.iter().copied().collect())
+        .unwrap_or_else(|| set.state.leaves.keys().copied().collect());
+    ids.extend(set.state.watch.clients.keys().copied());
+    ids.into_iter()
+        .take(8)
+        .enumerate()
+        .map(|(i, id)| {
+            (
+                id,
+                Vec3::new(-set.layout.width * 0.5 + i as f32 * 2.3, 0.65, 5.5),
+            )
+        })
+        .collect()
+}
+fn watch_frame(set: &Set, out: &mut Vec<Instance>) {
+    let watch = &set.state.watch;
+    let status = watch.attestation.result.as_str();
+    let signer = signer_at(set);
+    let bad = !status.is_empty() && status != "attested" || watch.alarm.is_some();
+    out.push(node(
+        if bad {
+            "signer-bad"
+        } else if status.is_empty() {
+            "signer-dim"
+        } else {
+            "signer"
+        },
+        signer,
+        0.48,
+    ));
+    if status == "attested" {
+        out.push(node("value", signer + Vec3::Y * 0.8, 0.12));
+    }
+    let event = set.event();
+    if event.kind == "transition" {
+        out.push(link("signature-link", signer, set.layout.coin()));
+        out.push(node(
+            "signature",
+            signer.lerp(set.layout.coin(), set.phase),
+            0.13,
+        ));
+    }
+    if watch.new_key.is_some() {
+        out.push(node("signer", signer + Vec3::new(2.0, 0.0, 0.0), 0.4));
+    }
+    for (id, at) in client_rows(set) {
+        let result = watch.clients.get(&id).map(|v| v.0.as_str()).unwrap_or("");
+        out.push(node(
+            if result.is_empty() {
+                "faint"
+            } else if result == "ok" {
+                "value"
+            } else {
+                "danger"
+            },
+            at,
+            0.18,
+        ));
+        if !result.is_empty() && result != "ok" {
+            out.push(link("danger-link", at, signer));
+        }
+    }
+    for (i, block) in watch.blocks.iter().rev().take(8).rev().enumerate() {
+        let at = Vec3::new(-set.layout.width * 0.5 + i as f32 * 2.3, 0.3, 8.5);
+        let color = if !block.result.is_empty() && block.result != "ok" {
+            "danger"
+        } else if block.hit {
+            "value"
+        } else {
+            "faint"
+        };
+        out.push(node(color, at, 0.14));
+        out.push(link("signature-link", at - Vec3::X, at + Vec3::X));
+    }
+}
+fn watch_labels(set: &Set, view: View, size: [f32; 2], atlas: &Atlas, ui: &mut UiBatch) {
+    let watch = &set.state.watch;
+    let white = [WHITE[0], WHITE[1], WHITE[2], 1.0];
+    let dim = [0.5, 0.52, 0.56, 1.0];
+    let danger = [1.0, 77.0 / 255.0, 66.0 / 255.0, 1.0];
+    let a = &watch.attestation;
+    if let Some([x, y]) = project(view, signer_at(set), size) {
+        let status = if a.result.is_empty() {
+            "not checked"
+        } else {
+            &a.result
+        };
+        for (i, line) in [
+            format!("Enclave {}", a.platform),
+            status.into(),
+            format!(
+                "image {}",
+                a.measurement.chars().take(12).collect::<String>()
+            ),
+            format!("release {}", a.release.chars().take(12).collect::<String>()),
+        ]
+        .iter()
+        .enumerate()
+        {
+            ui.text(
+                atlas,
+                x - 160.0,
+                y + 24.0 + i as f32 * 18.0,
+                line,
+                if !a.result.is_empty() && a.result != "attested" {
+                    danger
+                } else {
+                    white
+                },
+            );
+        }
+        if let Some(new) = &watch.new_key {
+            ui.text(
+                atlas,
+                x - 60.0,
+                y - 55.0,
+                &format!(
+                    "key {}.. -> {}..",
+                    watch
+                        .old_key
+                        .as_deref()
+                        .unwrap_or("unknown")
+                        .chars()
+                        .take(6)
+                        .collect::<String>(),
+                    new.chars().take(6).collect::<String>()
+                ),
+                white,
+            );
+            if let Some(until) = watch.notice_until {
+                ui.text(
+                    atlas,
+                    x - 60.0,
+                    y - 35.0,
+                    &format!("notice until block {until}"),
+                    white,
+                );
+            }
+        }
+    }
+    for (id, at) in client_rows(set) {
+        if let Some([x, y]) = project(view, at, size) {
+            ui.text(atlas, x - 25.0, y + 16.0, &format!("{id}"), dim);
+        }
+    }
+    if !watch.clients.is_empty() {
+        ui.text(atlas, size[0] - 330.0, 24.0, "Member checks", white);
+        for (i, (id, (result, height))) in watch.clients.iter().take(8).enumerate() {
+            ui.text(
+                atlas,
+                size[0] - 330.0,
+                49.0 + i as f32 * 20.0,
+                &format!(
+                    "{id}: {result} / block {}",
+                    height.map_or("?".into(), |h| h.to_string())
+                ),
+                if result == "ok" { white } else { danger },
+            );
+        }
+    }
+    for (i, block) in watch.blocks.iter().rev().take(8).rev().enumerate() {
+        let at = Vec3::new(-set.layout.width * 0.5 + i as f32 * 2.3, 0.3, 8.5);
+        if let Some([x, y]) = project(view, at, size) {
+            ui.text(
+                atlas,
+                x - 20.0,
+                y + 15.0,
+                &format!("#{}", block.height),
+                dim,
+            );
+            if block.hit {
+                ui.text(atlas, x - 20.0, y + 32.0, "hit", white);
+            }
+        }
+    }
+    if let Some(alarm) = &watch.alarm {
+        ui.text(atlas, 26.0, 132.0, &format!("Alarm: {alarm}"), danger);
     }
 }

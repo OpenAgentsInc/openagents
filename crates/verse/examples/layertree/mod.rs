@@ -2,6 +2,7 @@
 
 pub mod model;
 pub mod scene;
+pub mod watch;
 
 use model::{Layout, Run, Snapshot};
 use std::{collections::VecDeque, path::Path};

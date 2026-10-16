@@ -74,3 +74,34 @@ cargo run -p verse --no-default-features --features imported-desktop \
   --events crates/layertree-tee-lab/fixtures/events/regtest.jsonl \
   --play --from 0 --to 17 --rate 0.6 --visual
 ```
+
+## Attestation and member checks
+
+The box beside the tree is its enclave signer. It shows the platform,
+image digest, release entry, and the logged attestation result. A passed
+check adds a gold light; a failed check turns the box red and keeps the
+error name. White pulses connect signed transitions to the Bitcoin output.
+Migration events can include `old_enclave_key`, `new_enclave_key`, and
+`notice_until` to show both signers and the notice deadline.
+
+Member nodes show gray before a check, gold after `ok`, and red after an
+alarm. The list at the top right gives each logged result and its block.
+A block ribbon marks spends of tracked outputs and the associated record
+check. An alarm connects the reporting member to the signer. Only logged
+member results change status; a single report does not invent results for
+other clients. The viewer reads results; it does not verify attestations,
+filters, or records itself.
+
+`layertree-alarm.json` renders a 20-second film of the lab's broken-enclave
+fixture with three simulated observer results. Its source is explicitly
+labelled simulated. The lab's `theft-caught.jsonl` can also be viewed
+directly; it contains one observer. Regtest attestation uses a test vendor
+key. Neither fixture demonstrates hardware attestation or a mined theft
+on signet. P1 logs can replace the input when those runs finish.
+
+For failed attestation views, select events 2, 3, or 4 of
+`docs/verse/fixtures/layertree-attestation-errors.jsonl`. They illustrate
+`UnknownMeasurement`, `ReportDataMismatch`, and `VendorSignature` with
+public test data. A `tree_open` event can include an `observers` array to
+name the clients in a multi-observer recording; otherwise the scene uses
+the tree's members and any clients that report a result.

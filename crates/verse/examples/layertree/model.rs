@@ -143,6 +143,7 @@ impl Run {
 
 #[derive(Clone, Debug, Default)]
 pub struct Snapshot {
+    pub watch: super::watch::Watch,
     pub seq: u64,
     pub height: Option<u32>,
     pub network: String,
@@ -270,6 +271,7 @@ impl Snapshot {
             }
             _ => {}
         }
+        self.watch.apply(event)?;
         Ok(())
     }
 

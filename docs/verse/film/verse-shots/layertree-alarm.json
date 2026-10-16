@@ -1,0 +1,49 @@
+{
+  "name": "layertree-alarm",
+  "notes": "Lab broken-enclave predicate fixture with simulated three-client observations. No hardware attestation or mined theft is claimed.",
+  "scene": {
+    "kind": "layer_tree",
+    "events": "docs/verse/fixtures/layertree-alarm.jsonl",
+    "play": true,
+    "rate": 0.7
+  },
+  "duration": 20,
+  "fps": 24.0,
+  "width": 1920,
+  "height": 1080,
+  "subframes": 1,
+  "prewarm": 0,
+  "rig": {
+    "keys": [
+      {
+        "t": 0.0,
+        "eye": [
+          6.0,
+          18,
+          38
+        ],
+        "target": [
+          0,
+          7,
+          1
+        ],
+        "focal_mm": 38.0,
+        "ease": "in_out"
+      },
+      {
+        "t": 20,
+        "eye": [
+          -6.0,
+          18,
+          38
+        ],
+        "target": [
+          0,
+          7,
+          1
+        ],
+        "focal_mm": 38.0
+      }
+    ]
+  }
+}
