@@ -106,10 +106,21 @@ Create, inspect, or delete the primary VM with
 The `halt` slot has a separate VM and a 24-hour lifetime; it does not restart
 the funded primary service.
 
-The primary observer began its week at **2026-10-16 11:01:32 UTC**, height
-326599, after all five publications passed. The earliest full week ends
-**2026-10-23 11:01:32 UTC**. Its target confirmation gap is six blocks;
-actual gaps and late heartbeats are recorded. A one-time Cloud Task will
+The first measurement began at **2026-10-16 11:01:32 UTC**, height 326599,
+after all five publications passed. The second heartbeat confirmed at 326612,
+seven blocks after the previous one. That misses the six-block target while
+remaining inside the twelve-block exit delay. The first window stays in the
+history as interrupted; it does not qualify as a clean week.
+
+The revised observer submits a refresh after three blocks, polls every fifteen
+seconds, and reserves the earlier part of each interval for publication retries.
+It began a new full week at **2026-10-16 13:34:53 UTC**; the earliest completion
+is **2026-10-23 13:34:53 UTC**. It retains every late heartbeat, restarts an
+interrupted measurement, and preserves a completed clean week through later
+misses. Three isolated window-state tests pass. The enclave VM, Q, native
+research binary, 500-sat refresh fee, and kill deadline are unchanged. See the
+[measurement record](evidence/signet-heartbeat-window-2026-10-16.json).
+A one-time Cloud Task will
 delete the primary VM at **2026-10-24 09:28:00 UTC**, with a nine-day native
 VM deadline as fallback. #11793 still requires the elapsed week, deletion
 audit evidence, CSV maturity, exact payouts, and the separate HALT run.

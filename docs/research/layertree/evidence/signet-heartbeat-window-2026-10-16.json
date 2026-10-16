@@ -1,0 +1,27 @@
+{
+  "schema": "openagents.layertree.heartbeat-window.v1",
+  "late_heartbeat": {
+    "txid": "819b5feb7bd7328d48b789fa5d67976760df145aaddefc75cda6d1ae033fa0a1",
+    "previous_confirmation_height": 326605,
+    "confirmation_height": 326612,
+    "gap_blocks": 7,
+    "target_maximum_gap_blocks": 6,
+    "unroll_delay_blocks": 12
+  },
+  "measurement_began_at_unix": 1792157693.552368,
+  "measurement_ends_at_unix": 1792762493.552368,
+  "earliest_week_end_utc": "2026-10-23 13:34:53 UTC",
+  "original_window_began_at_unix": 1792148492.4901931,
+  "original_window_retained_as_interrupted": true,
+  "submit_after_blocks": 3,
+  "poll_interval_seconds": 15,
+  "fee_per_refresh_sat": 500,
+  "kill_at_unix": 1792834080,
+  "vm_restarted": false,
+  "native_binary_changed": false,
+  "elapsed_week_qualified": false,
+  "controller_source_commits": [
+    "cdf804fed9",
+    "f6f57b1b09"
+  ]
+}
