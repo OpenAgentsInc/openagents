@@ -78,6 +78,18 @@ IPC port (49777). A real Zeron install can stay open beside it. Set
 Until stage D0 renames the app (its own bundle ID, data root, URL scheme and
 update channel), the dev bundle is still named "Zeron Dev".
 
+## Appearance
+
+The fork includes **Coder Light** and **Coder Noir** as its default light and
+dark themes ([#11836](https://github.com/OpenAgentsInc/openagents/issues/11836)).
+They use a pinned snapshot of the public `oa-tokens` palette, with opaque
+surfaces and neutral primary controls. Terminal panels use Coder Noir in both
+appearances. Saved theme choices and accent/glass preferences still apply.
+
+The fork's [theme documentation](https://github.com/OpenAgentsInc/coder-desktop/blob/main/docs/theme-system.md)
+records the palette revision. Its [patch log](https://github.com/OpenAgentsInc/coder-desktop/blob/main/docs/downstream-patches.md)
+tracks the changes to review when updating from Zeron.
+
 ## Keeping up with upstream
 
 ```sh
