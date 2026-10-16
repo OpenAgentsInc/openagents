@@ -271,3 +271,48 @@ pub(super) async fn cleanup_phone(f: &mut Fixture) -> Result<()> {
     }
     Ok(())
 }
+
+/// Manual real-engine qualification accepts credentials only from a sibling scratch seed.
+pub(super) fn install_provider_credentials(f: &Fixture, home: &std::path::Path) -> Result<()> {
+    use std::io::Write;
+    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+    let Some(seed) = std::env::var_os("OA_CUSTOM_AGENT_FIXTURE_PROVIDER_HOME") else {
+        return Ok(());
+    };
+    ensure!(
+        std::env::var_os("OA_CUSTOM_AGENT_FIXTURE_RUNNER").is_some(),
+        "Use the dedicated agent fixture"
+    );
+    let seed = PathBuf::from(seed).canonicalize()?;
+    ensure!(
+        seed.starts_with(
+            f.root
+                .parent()
+                .context("Missing scratch parent")?
+                .canonicalize()?
+        ),
+        "Use a sibling scratch credential seed"
+    );
+    for relative in [
+        ".codex/auth.json",
+        ".claude/.credentials.json",
+        ".claude.json",
+    ] {
+        let source = seed.join(relative);
+        if !source.is_file() {
+            continue;
+        }
+        let destination = home.join(relative);
+        let folder = destination.parent().unwrap();
+        std::fs::create_dir_all(folder)?;
+        std::fs::set_permissions(folder, std::fs::Permissions::from_mode(0o700))?;
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(destination)?;
+        file.write_all(&std::fs::read(source)?)?;
+    }
+    Ok(())
+}

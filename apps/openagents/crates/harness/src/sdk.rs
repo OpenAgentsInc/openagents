@@ -194,6 +194,17 @@ impl Harness for SdkHarness {
         tokio::spawn(async move {
             let _lease = controls.execution_lease;
             let run = async {
+                let started = AgentEvent::SessionStarted {
+                    harness: HarnessId::Sdk,
+                    model: request.model.clone().unwrap_or_default(),
+                    tools: vec![],
+                    cwd: request.cwd.clone(),
+                    session_id: turn.conversation.clone(),
+                    assistant_message_id: uuid::Uuid::new_v4().to_string(),
+                };
+                tx.send(Ok(started))
+                    .await
+                    .map_err(|_| HarnessError::Protocol("The conversation was closed.".into()))?;
                 input.write_all(&bytes).await?;
                 input.shutdown().await?;
                 drop(input);
@@ -347,13 +358,13 @@ mod tests {
         let cancel = control.interrupt.clone();
         let mut stream = harness.run(request(), control).await.unwrap();
         cancel.cancel();
-        let event = tokio::time::timeout(std::time::Duration::from_secs(3), stream.next())
-            .await
-            .unwrap()
-            .unwrap()
-            .unwrap();
+        let events: Vec<_> = tokio::time::timeout(std::time::Duration::from_secs(3), async {
+            stream.collect::<Vec<_>>().await
+        })
+        .await
+        .unwrap();
         assert!(matches!(
-            event,
+            events.last().unwrap().as_ref().unwrap(),
             AgentEvent::Done {
                 status: DoneStatus::Interrupted,
                 ..

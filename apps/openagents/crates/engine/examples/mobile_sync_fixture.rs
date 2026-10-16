@@ -53,6 +53,7 @@ impl Fixture {
         ensure!(self.child.is_none(), "Fixture engine is already running");
         let home = self.root.join("home");
         std::fs::create_dir_all(&home)?;
+        custom_agent_fixture::install_provider_credentials(self, &home)?;
         let log = std::fs::OpenOptions::new()
             .create(true)
             .append(true)
@@ -246,6 +247,11 @@ impl Fixture {
             .await?;
         }
         self.stop().await?;
+        if std::env::var_os("OA_CUSTOM_AGENT_FIXTURE_PROVIDER_HOME").is_some() {
+            for path in [".codex/auth.json", ".claude/.credentials.json"] {
+                let _ = std::fs::remove_file(self.root.join("home").join(path));
+            }
+        }
         let ms = chrono::Utc::now().timestamp_millis() + 10000;
         let ops = [("devices",&self.device),("spaces",&self.space),("chats",&self.chat),("sessions",&self.chat)].map(|(kind,id)|json!({"kind":kind,"id":id,"op":"delete","hlc":format!("{ms:013}-000000-mobile-fixture")}));
         let response = reqwest::Client::new()

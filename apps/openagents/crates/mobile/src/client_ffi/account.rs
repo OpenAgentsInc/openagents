@@ -303,17 +303,6 @@ impl Drop for CoreAccount {
 #[cfg(feature = "account-fixture")]
 #[uniffi::export]
 impl CoreAccount {
-    pub fn custom_agents(
-        &self,
-        listener: Arc<dyn super::CustomAgentsListener>,
-    ) -> Arc<super::CoreAgents> {
-        super::CoreAgents::new(
-            self.controller.clone(),
-            self.data_dir.join("agent-requests"),
-            listener,
-        )
-    }
-
     /// Test-only loopback delivery keeps the credential out of Swift and Xcode logs.
     pub fn sign_in_from_fixture(&self, url: String) {
         let controller = self.controller.clone();
