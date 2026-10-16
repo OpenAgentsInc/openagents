@@ -203,6 +203,14 @@ enum SceneSpec {
         events: PathBuf,
         #[serde(default)]
         at: Option<u64>,
+        #[serde(default)]
+        play: bool,
+        #[serde(default)]
+        from: u64,
+        #[serde(default)]
+        to: Option<u64>,
+        #[serde(default = "layertree_rate")]
+        rate: f32,
     },
     /// The Lagrange 1 station.
     Lagrange,
@@ -541,8 +549,18 @@ impl Stage {
                 eprintln!("the druid stands at {}", runtime.player.pos);
                 Self::world(runtime, w, h, true, shot.hide_guides)
             }
-            SceneSpec::LayerTree { events, at } => {
-                let set = Box::new(layertree::Set::load(events, *at)?);
+            SceneSpec::LayerTree {
+                events,
+                at,
+                play,
+                from,
+                to,
+                rate,
+            } => {
+                let mut set = Box::new(layertree::Set::load(events, *at)?);
+                if *play {
+                    set.play(*from, *to, *rate)?;
+                }
                 let atlas = verse::ui::Atlas::new(18.0);
                 let renderer = layertree::scene::renderer([w, h], &atlas)?;
                 Ok(Self::LayerTree {
@@ -1107,4 +1125,8 @@ fn main() -> Result<(), String> {
         started.elapsed().as_secs_f32()
     );
     Ok(())
+}
+
+fn layertree_rate() -> f32 {
+    0.6
 }

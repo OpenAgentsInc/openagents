@@ -100,6 +100,7 @@ impl Run {
                 event.kind.as_str(),
                 "tree_open"
                     | "transition"
+                    | "simulation"
                     | "rejected"
                     | "attestation"
                     | "enclave_down"
@@ -204,7 +205,11 @@ impl Snapshot {
                 let root: Root = event.field("root")?;
                 self.accept_root(root)?;
             }
-            "transition" => {
+            "transition" | "simulation" => {
+                let simulated = event.kind == "simulation";
+                if simulated && event.data.get("synthetic") != Some(&Value::Bool(true)) {
+                    return Err("Simulated operations must be marked synthetic.".into());
+                }
                 if self.depth == 0 {
                     return Err("A transition appears before the tree opens.".into());
                 }
@@ -220,10 +225,12 @@ impl Snapshot {
                     ));
                 }
                 let op: String = event.field("op")?;
-                if !matches!(
+                if !(matches!(
                     op.as_str(),
                     "exit" | "evict" | "join" | "update" | "claim" | "refresh" | "migrate"
-                ) {
+                ) || simulated
+                    && matches!(op.as_str(), "split" | "merge" | "rewrite" | "detach"))
+                {
                     return Err(format!("Unsupported transition: {op}."));
                 }
                 let changes: Vec<Change> = event.field("changes")?;
@@ -246,7 +253,7 @@ impl Snapshot {
                 let root: Root = event.field("new_root")?;
                 let conserved = match op.as_str() {
                     "join" => root.sum >= old.sum,
-                    "exit" | "evict" => root.sum < old.sum,
+                    "exit" | "evict" | "detach" => root.sum < old.sum,
                     "update" => true,
                     _ => root.sum == old.sum,
                 };

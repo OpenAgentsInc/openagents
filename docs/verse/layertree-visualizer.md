@@ -43,3 +43,34 @@ dependency on the excluded lab crate.
 
 The example and film scene share the same replay, layout, geometry, and
 palette. They are development examples and do not ship in a Coder binary.
+
+## Playback
+
+Add `--play --from 0 --to 17 --rate 0.6` to step through a run. The rate
+is events per second, including block and client events. A single PNG with
+`--play` shows the final selected event; add `--capture-every 1` to write
+numbered frames to the directory passed to `--capture`.
+
+The transition animation drops joining leaves into place, resizes updated
+leaves with two signature pulses, sends exits to their exit keys, shows a
+lease-expiry pause before eviction, and draws voucher arcs with their new
+sequence number. Heartbeats move the output along the rail. Refused
+operations flash red and leave the balances unchanged. Displayed balances
+always belong to the checked destination event; only geometry interpolates.
+
+`docs/verse/film/verse-shots/layertree-transitions.json` renders a 24-second
+demonstration of every move. Its source,
+`docs/verse/fixtures/layertree-transitions.jsonl`, is simulated throughout.
+The viewer's `simulation` event extends the public log for illustration:
+it requires `synthetic: true`, uses the same old/new leaves and balances
+as a transition, and also accepts `split`, `merge`, `rewrite`, and `detach`.
+The lab does not accept this illustration format as a signed record. The
+scene labels it **simulated**; its hashes and transactions are illustrative.
+For confirmed transactions, select the regtest log instead:
+
+```sh
+cargo run -p verse --no-default-features --features imported-desktop \
+  --example layertree -- \
+  --events crates/layertree-tee-lab/fixtures/events/regtest.jsonl \
+  --play --from 0 --to 17 --rate 0.6 --visual
+```

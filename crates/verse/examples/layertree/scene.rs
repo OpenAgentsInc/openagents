@@ -75,7 +75,12 @@ fn pack() -> Result<Pack, String> {
         }
     }
     pack.source_revision = "layertree-events-v1".into();
-    for (name, tint) in [("value", GOLD), ("signature", WHITE), ("faint", [0.18; 3])] {
+    for (name, tint) in [
+        ("value", GOLD),
+        ("signature", WHITE),
+        ("faint", [0.18; 3]),
+        ("danger", [1.0, 77.0 / 255.0, 66.0 / 255.0]),
+    ] {
         let mut sphere = flat::surface(0, tint, Topology::Triangles);
         let ring = [Vec3::X, Vec3::Z, -Vec3::X, -Vec3::Z];
         for i in 0..4 {
@@ -150,7 +155,8 @@ pub fn frame(set: &Set) -> Vec<Instance> {
     let layout = &set.layout;
     let mut out = Vec::new();
     for item in layout.visible() {
-        out.push(node("value", item.position, item.radius));
+        let (position, radius) = animated_node(set, item);
+        out.push(node("value", position, radius));
         if item.height < layout.depth {
             let parent = &layout.nodes[&(item.height + 1, item.index / 2)];
             out.push(link("value-link", item.position, parent.position));
@@ -179,7 +185,15 @@ pub fn frame(set: &Set) -> Vec<Instance> {
         }
     }
     let coin = layout.coin();
-    out.push(node("signature", coin, 0.65));
+    let heartbeat = set.event().data.get("op").and_then(|v| v.as_str()) == Some("refresh");
+    let coin_at = coin
+        - Vec3::X
+            * if heartbeat {
+                (1.0 - set.phase) * 1.2
+            } else {
+                0.0
+            };
+    out.push(node("signature", coin_at, 0.65));
     out.push(link(
         "signature-link",
         coin + Vec3::new(-2.0, -0.6, 0.0),
@@ -188,6 +202,7 @@ pub fn frame(set: &Set) -> Vec<Instance> {
     if let Some(root) = layout.nodes.get(&(layout.depth, 0)) {
         out.push(link("signature-link", root.position, coin));
     }
+    transition_frame(set, &mut out);
     out
 }
 
@@ -271,8 +286,9 @@ pub fn overlay(
         ),
         gold,
     );
+    let mut occupied: Vec<(f32, f32, f32)> = Vec::new();
     for item in set.layout.visible() {
-        let Some([x, y]) = project(view, item.position, size) else {
+        let Some([x, y]) = project(view, animated_node(set, item).0, size) else {
             continue;
         };
         let hovered = cursor.is_some_and(|p| (p[0] - x).hypot(p[1] - y) < 24.0);
@@ -282,12 +298,23 @@ pub fn overlay(
             || hovered
         {
             let text = label(item);
-            let label_y = if item.height == 0 {
+            let mut label_y = if item.height == 0 {
                 y + 18.0 + (item.index % 2) as f32 * 21.0
             } else {
                 y - 22.0
             };
-            ui.text(atlas, x - atlas.measure(&text) * 0.5, label_y, &text, gold);
+            let width = atlas.measure(&text);
+            let left = x - width * 0.5;
+            for _ in 0..12 {
+                if !occupied.iter().any(|&(a, b, y)| {
+                    left < b + 5.0 && left + width > a - 5.0 && (label_y - y).abs() < 17.0
+                }) {
+                    break;
+                }
+                label_y -= 18.0;
+            }
+            occupied.push((left, left + width, label_y));
+            ui.text(atlas, left, label_y, &text, gold);
         }
         if hovered && item.height == 0 {
             if let Some(leaf) = set.state.leaves.get(&item.index) {
@@ -313,6 +340,7 @@ pub fn overlay(
         let short = set.state.outpoint.chars().take(14).collect::<String>();
         ui.text(atlas, x - 50.0, y + 58.0, &format!("{short}.."), dim);
     }
+    transition_labels(set, view, size, atlas, &mut ui);
     let source = Path::new(&set.run.source)
         .file_name()
         .and_then(|name| name.to_str())
@@ -356,4 +384,215 @@ pub fn write_png(path: &Path, size: [u32; 2], pixels: &[u8]) -> Result<(), Strin
         .map_err(|e| e.to_string())?
         .write_image_data(pixels)
         .map_err(|e| e.to_string())
+}
+
+// Balances always name the checked destination state. Geometry moves between
+// those states without inventing fractional satoshi balances.
+fn animated_node(set: &Set, item: &Node) -> (Vec3, f32) {
+    let Some((_, previous)) = &set.previous else {
+        return (item.position, item.radius);
+    };
+    let t = set.phase * set.phase * (3.0 - 2.0 * set.phase);
+    if let Some(old) = previous.nodes.get(&(item.height, item.index)) {
+        (
+            old.position.lerp(item.position, t),
+            old.radius + (item.radius - old.radius) * t,
+        )
+    } else {
+        (
+            item.position + Vec3::Y * (1.0 - t) * 3.0,
+            item.radius * (0.2 + 0.8 * t),
+        )
+    }
+}
+
+fn transition_frame(set: &Set, out: &mut Vec<Instance>) {
+    let event = set.event();
+    let op = event.data.get("op").and_then(|v| v.as_str()).unwrap_or("");
+    let t = set.phase;
+    let coin = set.layout.coin();
+    if matches!(op, "refresh" | "migrate") {
+        out.push(node(
+            "signature",
+            coin + Vec3::X * t * 1.2,
+            0.7 + (t * std::f32::consts::PI).sin() * 0.25,
+        ));
+    }
+    if event.kind == "rejected" {
+        let pos = event.data.get("pos").and_then(|v| v.as_u64()).unwrap_or(0);
+        let at = set
+            .layout
+            .nodes
+            .get(&(0, pos))
+            .map_or(Vec3::new(0.0, 2.0, 0.0), |n| n.position);
+        out.push(node(
+            "danger",
+            at,
+            0.4 + (set.time * 8.0).sin().abs() * 0.18,
+        ));
+        return;
+    }
+    let Some((_, previous)) = &set.previous else {
+        return;
+    };
+    let changes: Vec<super::model::Change> = event.field("changes").unwrap_or_default();
+    for change in &changes {
+        let old = previous.nodes.get(&(0, change.pos));
+        let new = set.layout.nodes.get(&(0, change.pos));
+        if matches!(op, "exit" | "evict" | "detach") && new.is_none() {
+            if let Some(old) = old {
+                let progress = if op == "evict" {
+                    ((t - 0.4) / 0.6).max(0.0)
+                } else {
+                    t
+                };
+                let end = coin + Vec3::new(0.0, 0.0, 2.0 + change.pos as f32 * 0.15);
+                let at = old.position.lerp(end, progress)
+                    + Vec3::Y * (progress * std::f32::consts::PI).sin() * 3.0;
+                out.push(node("value", at, old.radius));
+                out.push(node("signature", end, 0.16));
+                out.push(link("value-link", old.position, end));
+            }
+        }
+        if op == "update" {
+            if let Some(new) = new {
+                for side in [-1.0, 1.0] {
+                    let start = new.position + Vec3::new(side * 2.0, 2.0, 0.0);
+                    out.push(link("signature-link", start, new.position));
+                    out.push(node("signature", start.lerp(new.position, t), 0.11));
+                }
+            }
+        }
+    }
+    if matches!(op, "split" | "merge" | "rewrite") {
+        let affected: Vec<_> = changes
+            .iter()
+            .filter_map(|c| {
+                previous
+                    .nodes
+                    .get(&(0, c.pos))
+                    .or_else(|| set.layout.nodes.get(&(0, c.pos)))
+            })
+            .collect();
+        for pair in affected.windows(2) {
+            out.push(link("value-link", pair[0].position, pair[1].position));
+            out.push(node(
+                "value",
+                pair[0].position.lerp(pair[1].position, t)
+                    + Vec3::Y * (t * std::f32::consts::PI).sin(),
+                0.15,
+            ));
+        }
+        for item in affected {
+            out.push(node(
+                "signature",
+                item.position + Vec3::Y * (1.0 - t) * 2.0,
+                0.12,
+            ));
+        }
+    }
+    if op == "claim" {
+        let source = changes.iter().find(|c| {
+            c.old
+                .as_ref()
+                .is_some_and(|old| c.new.as_ref().map_or(0, |n| n.amount) < old.amount)
+        });
+        let target = changes.iter().find(|c| {
+            c.new
+                .as_ref()
+                .is_some_and(|new| c.old.as_ref().map_or(0, |o| o.amount) < new.amount)
+        });
+        if let (Some(a), Some(b)) = (
+            source.and_then(|c| previous.nodes.get(&(0, c.pos))),
+            target.and_then(|c| set.layout.nodes.get(&(0, c.pos))),
+        ) {
+            let arc = |p: f32| {
+                a.position.lerp(b.position, p) + Vec3::Y * (p * std::f32::consts::PI).sin() * 3.0
+            };
+            for i in 0..24 {
+                out.push(link(
+                    "value-link",
+                    arc(i as f32 / 24.0),
+                    arc((i + 1) as f32 / 24.0),
+                ));
+            }
+            out.push(node("value", arc(t), 0.18));
+        }
+    }
+}
+
+fn transition_labels(set: &Set, view: View, size: [f32; 2], atlas: &Atlas, ui: &mut UiBatch) {
+    let event = set.event();
+    let simulated = event
+        .data
+        .get("synthetic")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+        || set.run.events[0]
+            .data
+            .get("synthetic")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+    let op = event.data.get("op").and_then(|v| v.as_str()).unwrap_or("");
+    let text = if event.kind == "rejected" {
+        format!(
+            "{} refused: {}",
+            op,
+            event
+                .data
+                .get("reject")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown reason")
+        )
+    } else if op == "evict" && set.phase < 0.4 {
+        "evict / lease expires".into()
+    } else {
+        op.to_string()
+    };
+    let color = if event.kind == "rejected" {
+        [1.0, 77.0 / 255.0, 66.0 / 255.0, 1.0]
+    } else {
+        [WHITE[0], WHITE[1], WHITE[2], 1.0]
+    };
+    ui.text(
+        atlas,
+        26.0,
+        105.0,
+        &format!("{text}{}", if simulated { "  /  simulated" } else { "" }),
+        color,
+    );
+    if matches!(op, "exit" | "evict" | "detach") {
+        let changes: Vec<super::model::Change> = event.field("changes").unwrap_or_default();
+        for (i, change) in changes.iter().enumerate() {
+            if let Some(leaf) = &change.old {
+                if change.new.is_none() {
+                    if let Some([x, y]) =
+                        project(view, set.layout.coin() + Vec3::new(0.0, 1.0, 2.0), size)
+                    {
+                        ui.text(
+                            atlas,
+                            x,
+                            y - 20.0 - i as f32 * 20.0,
+                            &format!("{} sat to {}..", amount(leaf.amount), &leaf.exit_key[..8]),
+                            [GOLD[0], GOLD[1], GOLD[2], 1.0],
+                        );
+                    }
+                }
+            }
+        }
+    }
+    if op == "claim" {
+        let changes: Vec<super::model::Change> = event.field("changes").unwrap_or_default();
+        for change in changes {
+            if let Some(leaf) = change.new {
+                if change.old.is_some_and(|old| old.seq != leaf.seq) {
+                    if let Some(node) = set.layout.nodes.get(&(0, change.pos)) {
+                        if let Some([x, y]) = project(view, node.position + Vec3::Y * 1.0, size) {
+                            ui.text(atlas, x, y, &format!("voucher seq {}", leaf.seq), color);
+                        }
+                    }
+                }
+            }
+        }
+    }
 }

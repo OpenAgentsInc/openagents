@@ -19,6 +19,11 @@ use winit::{
 struct Options {
     events: PathBuf,
     at: Option<u64>,
+    play: bool,
+    from: u64,
+    to: Option<u64>,
+    rate: f32,
+    capture_every: Option<f32>,
     capture: Option<PathBuf>,
     size: [u32; 2],
     scale: f32,
@@ -28,6 +33,11 @@ fn options() -> Result<Options, String> {
     let mut out = Options {
         events: PathBuf::new(),
         at: None,
+        play: false,
+        from: 0,
+        to: None,
+        rate: 0.6,
+        capture_every: None,
         capture: None,
         size: [1920, 1080],
         scale: 1.5,
@@ -52,10 +62,21 @@ fn options() -> Result<Options, String> {
                     h.parse().map_err(|_| "Choose a pixel height.")?,
                 ];
             }
+            "--play" => out.play = true,
+            "--from" => out.from = value()?.parse().map_err(|_| "Choose a start event.")?,
+            "--to" => out.to = Some(value()?.parse().map_err(|_| "Choose an end event.")?),
+            "--rate" => out.rate = value()?.parse().map_err(|_| "Choose events per second.")?,
+            "--capture-every" => {
+                out.capture_every = Some(
+                    value()?
+                        .parse()
+                        .map_err(|_| "Choose seconds between frames.")?,
+                )
+            }
             "--visual" => {}
             "--help" | "-h" => {
                 println!(
-                    "layertree --events FILE [--at EVENT] [--visual] [--capture FILE.png] [--size WIDTHxHEIGHT] [--scale 1..4]"
+                    "layertree --events FILE [--at EVENT] [--play --from N --to N --rate EVENTS_PER_SECOND] [--visual] [--capture FILE.png] [--capture-every SECONDS] [--size WIDTHxHEIGHT] [--scale 1..4]"
                 );
                 std::process::exit(0);
             }
@@ -70,6 +91,15 @@ fn options() -> Result<Options, String> {
     }
     if out.size.iter().any(|n| !(64..=8192).contains(n)) {
         return Err("Choose image dimensions from 64 to 8192 pixels.".into());
+    }
+    if out
+        .capture_every
+        .is_some_and(|n| !n.is_finite() || n < 0.05)
+    {
+        return Err("Choose at least 0.05 seconds between frames.".into());
+    }
+    if out.capture_every.is_some() && (!out.play || out.capture.is_none()) {
+        return Err("Frame capture needs --play and --capture DIRECTORY.".into());
     }
     Ok(out)
 }
@@ -237,21 +267,43 @@ impl ApplicationHandler for App {
 
 fn run() -> Result<(), String> {
     let options = options()?;
-    let set = Set::load(&options.events, options.at)?;
+    let mut set = Set::load(&options.events, options.at)?;
+    if options.play {
+        set.play(options.from, options.to, options.rate)?;
+    }
     if let Some(path) = &options.capture {
         let fonts = Fonts::new(options.scale);
         let mut renderer = scene::renderer(options.size, &fonts.raster)?;
-        let view = scene::camera(
-            &set,
-            options.size[0] as f32 / options.size[1] as f32,
-            0.18,
-            1.0,
-        );
-        let size = options.size.map(|v| v as f32 / fonts.scale);
-        renderer.set_overlay_size(size[0], size[1]);
-        let ui = scene::overlay(&set, view, size, &fonts.layout, None, false);
-        let pixels = renderer.draw(view, &scene::frame(&set), &ui, &scene::lighting())?;
-        scene::write_png(path, options.size, &pixels)?;
+        let duration = set.duration();
+        let step = options.capture_every.unwrap_or(duration.max(1.0));
+        let frames = if options.capture_every.is_some() {
+            (duration / step).ceil() as usize + 1
+        } else {
+            1
+        };
+        for frame in 0..frames {
+            if frame > 0 {
+                set.advance(step);
+            } else if options.play && options.capture_every.is_none() {
+                set.advance(duration);
+            }
+            let view = scene::camera(
+                &set,
+                options.size[0] as f32 / options.size[1] as f32,
+                0.18,
+                1.0,
+            );
+            let size = options.size.map(|v| v as f32 / fonts.scale);
+            renderer.set_overlay_size(size[0], size[1]);
+            let ui = scene::overlay(&set, view, size, &fonts.layout, None, false);
+            let pixels = renderer.draw(view, &scene::frame(&set), &ui, &scene::lighting())?;
+            let output = if options.capture_every.is_some() {
+                path.join(format!("{frame:05}.png"))
+            } else {
+                path.clone()
+            };
+            scene::write_png(&output, options.size, &pixels)?;
+        }
         println!("Wrote {}", path.display());
         return Ok(());
     }
