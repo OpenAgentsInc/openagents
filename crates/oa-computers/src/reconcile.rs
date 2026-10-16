@@ -19,6 +19,7 @@ use crate::store::{Desired, Entry, PgLease, Store};
 use coder_working_computer::driver::{self, Settled};
 use coder_working_computer::on_driver::OnDriver;
 use coder_working_computer::{Phase, StopReason, Trigger};
+use computer_driver::Driver;
 use std::cell::Cell;
 use std::rc::Rc;
 use std::time::Duration;
@@ -285,6 +286,33 @@ impl<D: Drivers + 'static> Reconciler<D> {
             }
             other => other,
         };
+        // Storage is queried separately from the CPU meter. A bounded read can
+        // remain unknown without changing lifecycle or claiming cleanup finished.
+        if let Ok(settled) = &result {
+            let current = settled.computer();
+            if let Some(resource) = current.resource() {
+                let outcome =
+                    tokio::time::timeout(Duration::from_secs(10), p.driver.storage(resource))
+                        .await
+                        .unwrap_or_else(|_| {
+                            computer_driver::Outcome::unknown("Storage observation timed out.")
+                        });
+                if let Err(error) = lease
+                    .observe_storage(
+                        current,
+                        e.binding
+                            .as_ref()
+                            .map(|binding| binding.fingerprint.as_str()),
+                        resource,
+                        &outcome,
+                        now_ms(),
+                    )
+                    .await
+                {
+                    eprintln!("oa-computers: storage {}: {error}", e.id);
+                }
+            }
+        }
         renewer.abort();
         let (attempts, error, again, done) = match &result {
             Ok(s) => {

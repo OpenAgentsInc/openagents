@@ -18,6 +18,23 @@ use tokio_tungstenite::tungstenite::{Message, protocol::WebSocketConfig};
 const MAX_FILE: usize = 16 * 1024 * 1024;
 const MAX_RESPONSE: usize = 24 * 1024 * 1024;
 const MAX_OUTPUT: usize = 16 * 1024 * 1024;
+const STORAGE_PAGE_BYTES: usize = 1024 * 1024;
+const STORAGE_PAGE_LIMIT: usize = 100;
+const STORAGE_MAX_PAGES: usize = 10;
+
+#[derive(Deserialize)]
+struct StoragePage {
+    data: Vec<SnapshotStorage>,
+    next_cursor: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct SnapshotStorage {
+    id: String,
+    sandbox_id: String,
+    state: String,
+    size_bytes: Option<u64>,
+}
 
 #[derive(Clone)]
 pub struct SpaceDriver {
@@ -196,6 +213,99 @@ impl SpaceDriver {
         let response = self.response(method, path, body, key).await?;
         serde_json::from_slice(&Self::bytes(response, MAX_RESPONSE).await?)
             .map_err(|_| Error::unknown("the response was not valid JSON"))
+    }
+
+    async fn storage_pages(&self, computer: &str) -> Outcome<StorageObservation> {
+        let mut observation = StorageObservation {
+            computer: computer.into(),
+            objects: Vec::new(),
+            inventories: vec![StorageInventory {
+                kind: StorageKind::Snapshot,
+                coverage: StorageCoverage::Partial,
+                source: StorageSource::SpaceSnapshot,
+            }],
+            cleanup: StorageCleanup::Unknown,
+        };
+        let mut cursor: Option<String> = None;
+        let mut cursors = BTreeSet::new();
+        for _ in 0..STORAGE_MAX_PAGES {
+            let mut url = match self
+                .api
+                .join(&format!("/v1/sandboxes/{computer}/snapshots"))
+            {
+                Ok(url) => url,
+                Err(_) => return Outcome::unknown("Couldn't read storage information."),
+            };
+            url.query_pairs_mut()
+                .append_pair("limit", &STORAGE_PAGE_LIMIT.to_string());
+            if let Some(cursor) = &cursor {
+                url.query_pairs_mut().append_pair("cursor", cursor);
+            }
+            let response = self.response(Method::GET, url.as_str(), None, None).await;
+            let page = match response {
+                Ok(response) => match Self::bytes(response, STORAGE_PAGE_BYTES).await {
+                    Ok(bytes) => serde_json::from_slice::<StoragePage>(&bytes),
+                    Err(_) => {
+                        return Outcome::unknown("Couldn't read storage information.");
+                    }
+                },
+                // The public API hides some artifacts, including ones being
+                // deleted. Even a missing sandbox cannot prove their absence.
+                Err(error) if error.status == Some(404) => break,
+                Err(_) if !observation.objects.is_empty() => break,
+                Err(_) => return Outcome::unknown("Couldn't read storage information."),
+            };
+            let page = match page {
+                Ok(page) if page.data.len() <= STORAGE_PAGE_LIMIT => page,
+                _ => return Outcome::unknown("The storage response was invalid."),
+            };
+            for snapshot in page.data {
+                if snapshot.sandbox_id != computer || !valid_id(&snapshot.id, "snap_") {
+                    return Outcome::unknown(
+                        "The storage response contained an invalid object ID.",
+                    );
+                }
+                observation.objects.push(StorageObject {
+                    id: snapshot.id,
+                    kind: StorageKind::Snapshot,
+                    state: match snapshot.state.as_str() {
+                        "ready" | "creating" => StorageObjectState::Present,
+                        "deleting" => StorageObjectState::Deleting,
+                        _ => StorageObjectState::Unknown,
+                    },
+                    bytes: snapshot
+                        .size_bytes
+                        .filter(|bytes| *bytes <= i64::MAX as u64),
+                    // SPACE does not specify one physical-storage meaning for
+                    // this field across all snapshot writers.
+                    byte_kind: StorageByteKind::ProviderReported,
+                    source: StorageSource::SpaceSnapshot,
+                });
+            }
+            if observation.validate().is_err() {
+                return Outcome::unknown("The storage response was invalid.");
+            }
+            cursor = match page.next_cursor {
+                None => break,
+                Some(cursor)
+                    if !cursor.is_empty()
+                        && cursor.len() <= 2048
+                        && cursor.chars().all(|c| c.is_ascii() && !c.is_control())
+                        && cursors.insert(cursor.clone()) =>
+                {
+                    Some(cursor)
+                }
+                _ => break,
+            };
+        }
+        if observation
+            .objects
+            .iter()
+            .any(|object| object.state == StorageObjectState::Deleting)
+        {
+            observation.cleanup = StorageCleanup::Pending;
+        }
+        Outcome::done(observation)
     }
 
     async fn running(&self, computer: &str) -> Result<()> {
@@ -650,6 +760,16 @@ impl Driver for SpaceDriver {
         })
     }
 
+    async fn storage(&self, computer: &str) -> Outcome<StorageObservation> {
+        if !valid_id(computer, "sbx_") {
+            return Outcome::failed("Invalid SPACE computer ID.");
+        }
+        match tokio::time::timeout(Duration::from_secs(30), self.storage_pages(computer)).await {
+            Ok(observation) => observation,
+            Err(_) => Outcome::unknown("The storage check exceeded its deadline."),
+        }
+    }
+
     async fn delete(&self, computer: &str) -> Outcome<()> {
         if !valid_id(computer, "sbx_") {
             return Outcome::failed("Invalid SPACE computer ID.");
@@ -703,6 +823,7 @@ mod tests {
                         Err(error) => panic!("accept failed: {error}"),
                     }
                 };
+                stream.set_nonblocking(false).unwrap();
                 stream
                     .set_read_timeout(Some(Duration::from_secs(5)))
                     .unwrap();
@@ -753,6 +874,102 @@ mod tests {
             image: None,
             ttl_seconds: None,
             labels: Default::default(),
+        }
+    }
+
+    fn snapshot(id: &str, size: Value) -> Value {
+        json!({"id":id,"sandbox_id":"sbx_test","state":"ready","size_bytes":size})
+    }
+
+    #[tokio::test]
+    async fn storage_paginates_without_claiming_complete_physical_inventory() {
+        let (driver, server) = create_server(vec![
+            (
+                "/v1/sandboxes/sbx_test/snapshots?limit=100",
+                200,
+                json!({"data":[snapshot("snap_one", Value::Null)],"next_cursor":"next"}),
+            ),
+            (
+                "/v1/sandboxes/sbx_test/snapshots?limit=100&cursor=next",
+                200,
+                json!({"data":[snapshot("snap_two", json!(0))],"next_cursor":null}),
+            ),
+        ]);
+        let observation = driver.storage("sbx_test").await.value().unwrap();
+        server.join().unwrap();
+        assert_eq!(observation.objects.len(), 2);
+        assert_eq!(observation.objects[0].bytes, None);
+        assert_eq!(observation.objects[1].bytes, Some(0));
+        assert_eq!(
+            observation.objects[0].byte_kind,
+            StorageByteKind::ProviderReported
+        );
+        assert_eq!(
+            observation.inventories[0].coverage,
+            StorageCoverage::Partial
+        );
+        assert_eq!(observation.cleanup, StorageCleanup::Unknown);
+    }
+
+    #[tokio::test]
+    async fn missing_sandbox_or_repeated_cursor_keeps_cleanup_unknown() {
+        let (driver, server) = create_server(vec![(
+            "/v1/sandboxes/sbx_test/snapshots?limit=100",
+            404,
+            json!({"error":"missing"}),
+        )]);
+        let observation = driver.storage("sbx_test").await.value().unwrap();
+        server.join().unwrap();
+        assert!(observation.objects.is_empty());
+        assert_eq!(observation.cleanup, StorageCleanup::Unknown);
+        assert_eq!(
+            observation.inventories[0].coverage,
+            StorageCoverage::Partial
+        );
+        let (driver, server) = create_server(vec![
+            (
+                "/v1/sandboxes/sbx_test/snapshots?limit=100",
+                200,
+                json!({"data":[snapshot("snap_one", json!(10))],"next_cursor":"next"}),
+            ),
+            (
+                "/v1/sandboxes/sbx_test/snapshots?limit=100&cursor=next",
+                200,
+                json!({"data":[snapshot("snap_two", json!(20))],"next_cursor":"next"}),
+            ),
+        ]);
+        let observation = driver.storage("sbx_test").await.value().unwrap();
+        server.join().unwrap();
+        assert_eq!(observation.objects.len(), 2);
+        assert_eq!(
+            observation.inventories[0].coverage,
+            StorageCoverage::Partial
+        );
+        assert_eq!(observation.cleanup, StorageCleanup::Unknown);
+    }
+
+    #[tokio::test]
+    async fn invalid_storage_identity_duplicates_and_negative_sizes_fail_closed() {
+        let mut foreign = snapshot("snap_one", json!(10));
+        foreign["sandbox_id"] = json!("sbx_other");
+        for data in [
+            json!([foreign]),
+            json!([snapshot("snap_one", json!(-1))]),
+            json!([
+                snapshot("snap_one", json!(10)),
+                snapshot("snap_one", json!(10))
+            ]),
+        ] {
+            let (driver, server) = create_server(vec![(
+                "/v1/sandboxes/sbx_test/snapshots?limit=100",
+                200,
+                json!({"data":data,"next_cursor":null}),
+            )]);
+            assert!(matches!(
+                driver.storage("sbx_test").await,
+                Outcome::Unknown { .. }
+            ));
+            server.join().unwrap();
         }
     }
 

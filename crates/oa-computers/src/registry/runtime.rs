@@ -3,7 +3,7 @@
 use super::{Catalog, Placement, Refused, Registry, Target};
 use computer_driver::{
     Artifact, ArtifactKind, Capabilities, CommandCursor, CommandRead, CommandSpec, CreateRequest,
-    Driver, Exec, ExecOutput, ImageRecord, Meter, Observation, Outcome, Shape,
+    Driver, Exec, ExecOutput, ImageRecord, Meter, Observation, Outcome, Shape, StorageObservation,
 };
 use serde::Deserialize;
 use std::{
@@ -56,6 +56,7 @@ impl Driver for RuntimeDriver {
         put_file(computer:&str,path:&str,bytes:&[u8])->Outcome<()>;
         get_file(computer:&str,path:&str)->Outcome<Vec<u8>>;
         meter(computer:&str)->Outcome<Meter>;
+        storage(computer:&str)->Outcome<StorageObservation>;
         delete(computer:&str)->Outcome<()>;
         suspend(computer:&str)->Outcome<String>;
         resume(computer:&str)->Outcome<String>;

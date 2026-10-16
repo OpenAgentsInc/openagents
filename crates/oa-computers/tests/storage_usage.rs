@@ -1,0 +1,426 @@
+//! Storage facts stay with their account and the worker that observed them.
+
+use coder_working_computer::{
+    Computer, Phase, Trigger,
+    driver::{self, Held},
+    on_driver::OnDriver,
+    store::StoreError,
+};
+use computer_driver::{
+    Artifact, ArtifactKind, Driver, Outcome, Shape, StorageByteKind, StorageCleanup,
+    StorageCoverage, StorageInventory, StorageKind, StorageObject, StorageObjectState,
+    StorageObservation, StorageSource, fake::FakeDriver,
+};
+use oa_computers::{
+    Db, Store,
+    reconcile::{Reconciler, Settings, now_ms},
+    registry::{Catalog, CreateIntent, Drivers, Placement, Registry, Target},
+    store::{Entry, PgLease},
+    turns::Secrets,
+};
+use serde_json::Value;
+use std::{rc::Rc, time::Duration};
+
+const HOLDER: &str = "storage-worker";
+const LEASE: Duration = Duration::from_secs(60);
+
+struct Rig {
+    db: Db,
+    dsn: String,
+    store: Store,
+    registry: Registry<FakeDriver>,
+    _root: tempfile::TempDir,
+}
+
+impl Rig {
+    async fn new() -> Option<Self> {
+        let admin = std::env::var("OA_COMPUTERS_TEST_DATABASE_URL").ok()?;
+        if admin.is_empty() {
+            return None;
+        }
+        let (db, dsn) = Db::scratch(&admin).await.unwrap();
+        let store = Store::new(db.clone());
+        let root = tempfile::tempdir().unwrap();
+        let fake = FakeDriver::new(root.path()).boot_observations(0);
+        let mut caps = fake.capabilities();
+        caps.shapes.insert(
+            "small".into(),
+            Shape {
+                vcpus: 2,
+                memory_mib: 2048,
+                min_disk_gib: None,
+            },
+        );
+        caps.default_artifact = Some(Artifact {
+            kind: ArtifactKind::Test,
+            reference: "test:empty".into(),
+            provider_identity: None,
+            disk_gib: None,
+        });
+        let target = Target::new(
+            "storage-fixture",
+            "https://storage-fixture.invalid",
+            caps,
+            ArtifactKind::Test,
+            Placement::OurCloud,
+        )
+        .unwrap();
+        let registry = Registry::new(
+            Catalog::new("storage-fixture", "storage-test-policy", [target]).unwrap(),
+            [("storage-fixture".into(), fake)].into(),
+        )
+        .unwrap();
+        Some(Self {
+            db,
+            dsn,
+            store,
+            registry,
+            _root: root,
+        })
+    }
+
+    async fn claim(&self, id: &str, holder: &str) -> Entry {
+        self.db
+            .client()
+            .await
+            .unwrap()
+            .execute(
+                "UPDATE computers.computers SET next_attempt_at=now()+interval '1 hour'
+             WHERE id<>$1 AND NOT done",
+                &[&id],
+            )
+            .await
+            .unwrap();
+        self.store.poke(id).await.unwrap();
+        let entry = self.store.claim(holder, LEASE).await.unwrap().unwrap();
+        assert_eq!(entry.id, id);
+        entry
+    }
+
+    async fn boot(&self, owner: &str) -> (PgLease, Entry) {
+        let (entry, created) = self
+            .store
+            .create_placed(
+                owner,
+                &CreateIntent {
+                    idempotency_key: Some("storage-computer".into()),
+                    ..Default::default()
+                },
+                self.registry.catalog(),
+            )
+            .await
+            .unwrap();
+        assert!(created);
+        self.claim(&entry.id, HOLDER).await;
+        let lease = PgLease {
+            store: self.store.clone(),
+            id: entry.id.clone(),
+            holder: HOLDER.into(),
+            lease: LEASE,
+        };
+        let mut provider = OnDriver::new(self.registry.resolve(&entry).unwrap(), None);
+        provider.poll = Duration::from_millis(1);
+        provider.deadline = Duration::from_secs(5);
+        let settled = driver::settle(&provider, &lease, Trigger::Wake, now_ms())
+            .await
+            .unwrap();
+        assert_eq!(settled.computer().phase, Phase::Awake);
+        let entry = self.store.get(owner, &entry.id).await.unwrap().unwrap();
+        assert!(entry.binding.is_some());
+        (lease, entry)
+    }
+
+    async fn events(&self, owner: &str) -> Vec<Value> {
+        storage_events(&self.store, owner).await
+    }
+}
+
+async fn storage_events(store: &Store, owner: &str) -> Vec<Value> {
+    store.usage(owner, 0, 200).await.unwrap()["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|event| event["evidence"]["source"] == "provider_storage")
+        .cloned()
+        .collect()
+}
+
+fn observation(computer: &Computer, suffix: &str) -> Outcome<StorageObservation> {
+    Outcome::done(StorageObservation {
+        computer: computer.resource().unwrap().into(),
+        objects: vec![
+            StorageObject {
+                id: format!("snapshot-{suffix}-unknown"),
+                kind: StorageKind::Snapshot,
+                state: StorageObjectState::Deleting,
+                bytes: None,
+                byte_kind: StorageByteKind::ProviderArchive,
+                source: StorageSource::GceImage,
+            },
+            StorageObject {
+                id: format!("snapshot-{suffix}-zero"),
+                kind: StorageKind::Snapshot,
+                state: StorageObjectState::Present,
+                bytes: Some(0),
+                byte_kind: StorageByteKind::ProviderArchive,
+                source: StorageSource::GceImage,
+            },
+        ],
+        inventories: vec![StorageInventory {
+            kind: StorageKind::Snapshot,
+            coverage: StorageCoverage::Partial,
+            source: StorageSource::GceImage,
+        }],
+        cleanup: StorageCleanup::Pending,
+    })
+}
+
+async fn record(lease: &PgLease, entry: &Entry, outcome: &Outcome<StorageObservation>) {
+    lease
+        .observe_storage(
+            &entry.record,
+            entry
+                .binding
+                .as_ref()
+                .map(|binding| binding.fingerprint.as_str()),
+            entry.record.resource().unwrap(),
+            outcome,
+            now_ms(),
+        )
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn storage_observations_survive_reconnect_and_remain_account_scoped() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let Some(rig) = Rig::new().await else { return };
+            let (alice_lease, alice) = rig.boot("alice-storage").await;
+            let (bob_lease, bob) = rig.boot("bob-storage").await;
+            let alice_outcome = observation(&alice.record, "alice");
+            record(&alice_lease, &alice, &alice_outcome).await;
+            // A different receive time does not duplicate an identical fact
+            // observed at the same lifecycle revision.
+            alice_lease
+                .observe_storage(
+                    &alice.record,
+                    alice
+                        .binding
+                        .as_ref()
+                        .map(|binding| binding.fingerprint.as_str()),
+                    alice.record.resource().unwrap(),
+                    &alice_outcome,
+                    now_ms() + 1000,
+                )
+                .await
+                .unwrap();
+            record(&bob_lease, &bob, &observation(&bob.record, "bob")).await;
+
+            let reopened = Store::new(Db::connect(&rig.dsn).await.unwrap());
+            let alice_events = storage_events(&reopened, "alice-storage").await;
+            let bob_events = storage_events(&reopened, "bob-storage").await;
+            assert_eq!(alice_events.len(), 1);
+            assert_eq!(bob_events.len(), 1);
+            assert_eq!(alice_events[0]["computer"], alice.id);
+            assert_eq!(alice_events[0]["owner"], "alice-storage");
+            assert_eq!(alice_events[0]["deployment"], "storage-fixture");
+            assert_eq!(alice_events[0]["revision"], alice.record.revision);
+            assert_eq!(
+                alice_events[0]["evidence"]["deployment_fingerprint"],
+                alice.binding.as_ref().unwrap().fingerprint
+            );
+            let saved = &alice_events[0]["evidence"]["storage_observation"];
+            assert_eq!(saved["computer"], alice.record.resource().unwrap());
+            assert!(saved["objects"][0]["bytes"].is_null());
+            assert_eq!(saved["objects"][0]["state"], "deleting");
+            assert_eq!(saved["objects"][1]["bytes"], 0);
+            assert_eq!(saved["objects"][1]["byte_kind"], "provider_archive");
+            assert_eq!(saved["inventories"][0]["coverage"], "partial");
+            assert_eq!(saved["cleanup"], "pending");
+            assert!(alice_events[0]["evidence"]["customer_charge"].is_null());
+            assert!(
+                !serde_json::to_string(&alice_events)
+                    .unwrap()
+                    .contains("snapshot-bob")
+            );
+            assert!(
+                !serde_json::to_string(&bob_events)
+                    .unwrap()
+                    .contains("snapshot-alice")
+            );
+            assert!(
+                storage_events(&reopened, "unrelated-storage")
+                    .await
+                    .is_empty()
+            );
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn invalid_storage_and_uncertain_outcomes_never_retain_foreign_ids_or_errors() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let Some(rig) = Rig::new().await else { return };
+            let (lease, entry) = rig.boot("private-storage").await;
+            let mut invalid = observation(&entry.record, "private-object")
+                .value()
+                .unwrap();
+            invalid.objects[0].id = "https://private.invalid/path?token=synthetic-secret".into();
+            record(&lease, &entry, &Outcome::done(invalid)).await;
+            let mut foreign = observation(&entry.record, "foreign-private-object")
+                .value()
+                .unwrap();
+            foreign.computer = "foreign-resource".into();
+            record(&lease, &entry, &Outcome::done(foreign)).await;
+            for outcome in [
+                Outcome::unknown("synthetic-secret /private/path foreign-private-object"),
+                Outcome::failed("synthetic-secret /private/path foreign-private-object"),
+            ] {
+                record(&lease, &entry, &outcome).await;
+            }
+            assert!(matches!(
+                lease
+                    .observe_storage(
+                        &entry.record,
+                        entry
+                            .binding
+                            .as_ref()
+                            .map(|binding| binding.fingerprint.as_str()),
+                        "foreign-resource",
+                        &observation(&entry.record, "foreign-private-object"),
+                        now_ms(),
+                    )
+                    .await,
+                Err(StoreError::Corrupt(_))
+            ));
+            let events = rig.events("private-storage").await;
+            // Invalid bodies and uncertain error reasons each share one
+            // redacted event key at this revision.
+            assert_eq!(events.len(), 2);
+            assert!(
+                events
+                    .iter()
+                    .all(|event| event["evidence"]["storage_observation"].is_null())
+            );
+            assert!(
+                events
+                    .iter()
+                    .any(|event| event["evidence"]["status"] == "invalid")
+            );
+            assert!(
+                events
+                    .iter()
+                    .any(|event| event["evidence"]["status"] == "unknown")
+            );
+            let retained = rig
+                .store
+                .usage("private-storage", 0, 200)
+                .await
+                .unwrap()
+                .to_string();
+            for private in [
+                "synthetic-secret",
+                "/private/path",
+                "private-object",
+                "foreign-resource",
+                "private.invalid",
+            ] {
+                assert!(!retained.contains(private), "retained {private}");
+            }
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn expired_lost_stale_or_wrong_deployment_observations_are_fenced() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let Some(rig) = Rig::new().await else { return };
+            let (lease, entry) = rig.boot("fenced-storage").await;
+            let outcome = observation(&entry.record, "before-fence");
+            let fingerprint = entry.binding.as_ref().unwrap().fingerprint.as_str();
+            let wrong = "f".repeat(64);
+            assert_ne!(fingerprint, wrong);
+            assert!(matches!(
+                lease.observe_storage(&entry.record, Some(&wrong), entry.record.resource().unwrap(), &outcome, now_ms()).await,
+                Err(StoreError::Busy)
+            ));
+            let mut changed = entry.record.clone();
+            changed.updated_ms += 1;
+            assert!(matches!(
+                lease.observe_storage(&changed, Some(fingerprint), changed.resource().unwrap(), &outcome, now_ms()).await,
+                Err(StoreError::Busy)
+            ));
+            rig.db.client().await.unwrap().execute(
+                "UPDATE computers.computers SET lease_until=now()-interval '1 second' WHERE id=$1", &[&entry.id],
+            ).await.unwrap();
+            assert!(matches!(
+                lease.observe_storage(&entry.record, Some(fingerprint), entry.record.resource().unwrap(), &outcome, now_ms()).await,
+                Err(StoreError::Busy)
+            ));
+            rig.store.renew(&entry.id, HOLDER, LEASE).await.unwrap();
+            let provider = OnDriver::new(rig.registry.resolve(&entry).unwrap(), None);
+            let next = driver::settle(&provider, &lease, Trigger::Prompt, now_ms()).await.unwrap();
+            assert!(next.computer().revision > entry.record.revision);
+            assert!(matches!(
+                lease.observe_storage(&entry.record, Some(fingerprint), entry.record.resource().unwrap(), &outcome, now_ms()).await,
+                Err(StoreError::Busy)
+            ));
+            let current = lease.read().await.unwrap();
+            rig.store.release(&entry.id, HOLDER, Duration::ZERO, 0, None, false).await.unwrap();
+            let replacement = rig.claim(&entry.id, "replacement-worker").await;
+            assert_eq!(replacement.record, current);
+            assert!(matches!(
+                lease.observe_storage(&current, Some(fingerprint), current.resource().unwrap(), &observation(&current, "lost-lease"), now_ms()).await,
+                Err(StoreError::Busy)
+            ));
+            assert!(rig.events("fenced-storage").await.is_empty());
+            let replacement_lease = PgLease {
+                store: rig.store.clone(), id: entry.id.clone(), holder: "replacement-worker".into(), lease: LEASE,
+            };
+            record(&replacement_lease, &replacement, &observation(&current, "replacement")).await;
+            assert_eq!(rig.events("fenced-storage").await.len(), 1);
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn reconciler_records_unknown_storage_without_inventing_zero_or_cleanup() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let Some(rig) = Rig::new().await else { return };
+            let (_, entry) = rig.boot("reconciled-storage").await;
+            rig.store
+                .release(&entry.id, HOLDER, Duration::ZERO, 0, None, false)
+                .await
+                .unwrap();
+            let entry = rig.claim(&entry.id, "reconciler-storage-worker").await;
+            let mut settings = Settings::new("reconciler-storage-worker");
+            settings.lease = LEASE;
+            settings.revisit = Duration::ZERO;
+            settings.backoff = Duration::ZERO;
+            settings.driver_poll = Duration::from_millis(1);
+            settings.driver_deadline = Duration::from_secs(5);
+            tokio::time::timeout(
+                Duration::from_secs(10),
+                Rc::new(Reconciler {
+                    store: rig.store.clone(),
+                    driver: rig.registry.clone(),
+                    settings,
+                    turns: Secrets::default(),
+                })
+                .visit(entry),
+            )
+            .await
+            .unwrap();
+            let events = rig.events("reconciled-storage").await;
+            assert_eq!(events.len(), 1);
+            assert_eq!(events[0]["evidence"]["status"], "unknown");
+            assert!(events[0]["evidence"]["storage_observation"].is_null());
+            assert!(events[0]["evidence"]["customer_charge"].is_null());
+            assert!(!events[0]["resource"].is_null());
+        })
+        .await;
+}

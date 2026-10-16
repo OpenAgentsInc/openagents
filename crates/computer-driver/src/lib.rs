@@ -34,6 +34,8 @@
 //! snapshot. The value is zeroed when the request is dropped.
 
 pub mod identified;
+mod storage;
+pub use storage::*;
 
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -624,6 +626,10 @@ pub trait Driver {
     async fn put_file(&self, computer: &str, path: &str, bytes: &[u8]) -> Outcome<()>;
     async fn get_file(&self, computer: &str, path: &str) -> Outcome<Vec<u8>>;
     async fn meter(&self, computer: &str) -> Outcome<Meter>;
+    /// Observe private storage without inferring bytes or cleanup from VM state.
+    async fn storage(&self, _computer: &str) -> Outcome<StorageObservation> {
+        Outcome::unknown("Storage information isn't available.")
+    }
     /// Delete; deleting a deleted computer is `Done`.
     async fn delete(&self, computer: &str) -> Outcome<()>;
 
@@ -721,6 +727,9 @@ impl<D: Driver> Driver for std::sync::Arc<D> {
     }
     async fn meter(&self, c: &str) -> Outcome<Meter> {
         (**self).meter(c).await
+    }
+    async fn storage(&self, c: &str) -> Outcome<StorageObservation> {
+        (**self).storage(c).await
     }
     async fn delete(&self, c: &str) -> Outcome<()> {
         (**self).delete(c).await

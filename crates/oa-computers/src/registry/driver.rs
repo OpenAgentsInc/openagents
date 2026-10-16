@@ -2,7 +2,7 @@ use super::{Binding, Catalog, Refused};
 use crate::store::Entry;
 use computer_driver::{
     Capabilities, CommandCursor, CommandRead, CommandSpec, CreateRequest, Driver, Exec, ExecOutput,
-    ImageRecord, Meter, Observation, Outcome, Profile,
+    ImageRecord, Meter, Observation, Outcome, Profile, StorageObservation,
 };
 use std::collections::BTreeMap;
 
@@ -247,6 +247,7 @@ impl<D: Driver> Driver for BoundDriver<D> {
         put_file(computer:&str,path:&str,bytes:&[u8])->Outcome<()>;
         get_file(computer:&str,path:&str)->Outcome<Vec<u8>>;
         meter(computer:&str)->Outcome<Meter>;
+        storage(computer:&str)->Outcome<StorageObservation>;
         delete(computer:&str)->Outcome<()>;
     }
 }

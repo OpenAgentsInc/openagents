@@ -94,9 +94,9 @@ fn state_of(s: &str) -> State {
     match s {
         "ready" => State::Running,
         "provisioned" | "creating" | "starting" | "provisioning" | "resuming" => State::Starting,
-        "stopping" => State::Stopping,
+        "stopping" | "deleting" => State::Stopping,
         "stopped" => State::Stopped,
-        "deleted" | "deleting" => State::Gone,
+        "deleted" => State::Gone,
         "failed" | "error" => State::Failed,
         _ => State::Starting,
     }
@@ -468,6 +468,85 @@ impl Driver for BoatDriver {
         }
     }
 
+    async fn storage(&self, computer: &str) -> Outcome<StorageObservation> {
+        if !valid_storage_id(computer) {
+            return Outcome::failed("Invalid computer ID.");
+        }
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            self.client.list_named_snapshots(),
+        )
+        .await;
+        let reply = match result {
+            Ok(Ok(reply)) => reply,
+            _ => return Outcome::unknown("Couldn't read storage information."),
+        };
+        let mut observation = StorageObservation {
+            computer: computer.into(),
+            objects: Vec::new(),
+            inventories: vec![StorageInventory {
+                kind: StorageKind::Snapshot,
+                coverage: StorageCoverage::Partial,
+                source: StorageSource::GceImage,
+            }],
+            cleanup: StorageCleanup::Unknown,
+        };
+        for image in reply.snapshots {
+            if image.source_sandbox_id != computer {
+                continue;
+            }
+            // Names can be reused. Only the typed GCE extension establishes
+            // an immutable image ID, including while capture is pending.
+            let Some(metadata) = image.extra.get("providerImage") else {
+                continue;
+            };
+            if metadata.get("source").and_then(serde_json::Value::as_str) != Some("gce.images.id") {
+                continue;
+            }
+            let Some(id) = metadata.get("id").and_then(serde_json::Value::as_str) else {
+                continue;
+            };
+            if !id
+                .parse::<u64>()
+                .is_ok_and(|n| n != 0 && n.to_string() == id)
+            {
+                return Outcome::unknown("The storage response contained an invalid object ID.");
+            }
+            if observation.objects.len() == MAX_STORAGE_OBJECTS {
+                break;
+            }
+            let bytes = image.extra.get("providerArchiveSize").and_then(|size| {
+                (size.get("source").and_then(serde_json::Value::as_str)
+                    == Some("gce.images.archiveSizeBytes"))
+                .then(|| size.get("bytes").and_then(serde_json::Value::as_u64))
+                .flatten()
+                .filter(|bytes| *bytes <= i64::MAX as u64)
+            });
+            let state = match image.status.as_str() {
+                "ready" | "saving" => StorageObjectState::Present,
+                "deleting" => StorageObjectState::Deleting,
+                _ => StorageObjectState::Unknown,
+            };
+            if state == StorageObjectState::Deleting {
+                observation.cleanup = StorageCleanup::Pending;
+            }
+            observation.objects.push(StorageObject {
+                id: id.into(),
+                kind: StorageKind::Snapshot,
+                state,
+                bytes,
+                byte_kind: StorageByteKind::ProviderArchive,
+                source: StorageSource::GceImage,
+            });
+        }
+        // The list does not prove boot-disk deletion or cover every private
+        // artifact. An empty list therefore cannot release storage holds.
+        match observation.validate() {
+            Ok(()) => Outcome::done(observation),
+            Err(_) => Outcome::unknown("The storage response was invalid."),
+        }
+    }
+
     async fn delete(&self, computer: &str) -> Outcome<()> {
         match self
             .client
@@ -621,6 +700,122 @@ fn file_error(error: &Error, write: bool) -> computer_files::FileError {
         501 => F::Unsupported,
         _ if write => F::WriteUncertain,
         _ => F::Unavailable,
+    }
+}
+
+#[cfg(test)]
+mod storage_tests {
+    use super::*;
+    use serde_json::{Value, json};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    async fn observe(images: Value) -> Outcome<StorageObservation> {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut request = Vec::new();
+            while !request.windows(4).any(|bytes| bytes == b"\r\n\r\n") {
+                let mut bytes = [0; 1024];
+                let count = stream.read(&mut bytes).await.unwrap();
+                assert!(count > 0 && request.len() + count < 16384);
+                request.extend_from_slice(&bytes[..count]);
+            }
+            assert!(request.starts_with(b"GET /named-snapshots HTTP/1.1\r\n"));
+            let body = json!({"ok":true,"type":"namedSnapshots","snapshots":images}).to_string();
+            stream
+                .write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).as_bytes())
+                .await
+                .unwrap();
+        });
+        let client = Client::builder(::boat::ApiKey::new("synthetic-test-key").unwrap())
+            .base_url(base)
+            .build()
+            .unwrap();
+        let driver = BoatDriver::with_capabilities(
+            client,
+            Capabilities::new("oa-boat", Profile::ALL, &["small"]),
+        );
+        let result = std::sync::Arc::new(driver).storage("bx_test").await;
+        server.await.unwrap();
+        result
+    }
+
+    fn image(id: &str, status: &str, bytes: Value) -> Value {
+        json!({
+            "name":format!("image-{id}"), "status":status,
+            "sourceSandboxId":"bx_test", "createdAt":"2026-10-16T00:00:00Z",
+            "sizeBytes":9000, "diskGb":20,
+            "providerImage":{"id":id,"source":"gce.images.id"},
+            "providerArchiveSize":{"bytes":bytes,"source":"gce.images.archiveSizeBytes"}
+        })
+    }
+
+    #[test]
+    fn deleting_is_pending_until_the_resource_is_gone() {
+        assert_eq!(state_of("deleting"), State::Stopping);
+        assert_eq!(state_of("deleted"), State::Gone);
+    }
+
+    #[tokio::test]
+    async fn archive_bytes_keep_their_meaning_and_unknown_is_not_zero() {
+        let mut foreign = image("99", "ready", json!(50));
+        foreign["sourceSandboxId"] = json!("bx_other");
+        let mut shared_base = image("100", "ready", json!(90));
+        shared_base["sourceSandboxId"] = json!("");
+        let observation = observe(json!([
+            image("1", "ready", json!(0)),
+            image("2", "saving", Value::Null),
+            image("3", "failed", json!(-1)),
+            image("18446744073709551615", "deleting", json!(12)),
+            foreign,
+            shared_base
+        ]))
+        .await
+        .value()
+        .unwrap();
+        assert_eq!(observation.objects.len(), 4);
+        assert_eq!(observation.objects[0].bytes, Some(0));
+        assert_eq!(observation.objects[1].bytes, None);
+        assert_eq!(observation.objects[2].bytes, None);
+        assert_eq!(observation.objects[2].state, StorageObjectState::Unknown);
+        assert_eq!(observation.objects[3].state, StorageObjectState::Deleting);
+        assert!(observation.objects.iter().all(|object| {
+            object.source == StorageSource::GceImage
+                && object.byte_kind == StorageByteKind::ProviderArchive
+        }));
+        assert_eq!(observation.cleanup, StorageCleanup::Pending);
+        assert_eq!(
+            observation.inventories[0].coverage,
+            StorageCoverage::Partial
+        );
+    }
+
+    #[tokio::test]
+    async fn reused_names_missing_ids_and_empty_lists_never_prove_cleanup() {
+        let mut missing = image("1", "saving", json!(10));
+        missing["providerImage"]["id"] = Value::Null;
+        let mut unqualified = image("2", "ready", json!(10));
+        unqualified["providerArchiveSize"]["source"] = json!("disk capacity");
+        let observation = observe(json!([missing, unqualified]))
+            .await
+            .value()
+            .unwrap();
+        assert_eq!(observation.objects.len(), 1);
+        assert_eq!(observation.objects[0].bytes, None);
+        assert_eq!(observation.cleanup, StorageCleanup::Unknown);
+        let empty = observe(json!([])).await.value().unwrap();
+        assert!(empty.objects.is_empty());
+        assert_eq!(empty.cleanup, StorageCleanup::Unknown);
+        assert_eq!(empty.inventories[0].coverage, StorageCoverage::Partial);
+        assert!(matches!(
+            observe(json!([
+                image("1", "ready", json!(10)),
+                image("1", "ready", json!(10))
+            ]))
+            .await,
+            Outcome::Unknown { .. }
+        ));
     }
 }
 

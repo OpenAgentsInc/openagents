@@ -14,6 +14,7 @@ pub mod db;
 pub mod files;
 pub mod reconcile;
 pub mod registry;
+pub mod storage;
 pub mod store;
 pub mod turns;
 pub mod usage;
