@@ -584,14 +584,24 @@ fn process_folder(name: &str) -> Option<String> {
     if !cfg!(windows) && known != name {
         return None;
     }
-    std::env::var(known).ok().or_else(|| {
-        cfg!(windows).then_some(())?;
-        match known {
-            "HOME" => user_home::home_os().map(|home| PathBuf::from(home).display().to_string()),
-            "TMPDIR" => Some(std::env::temp_dir().display().to_string()),
-            _ => None,
+    match std::env::var(known) {
+        Ok(value) => return Some(value),
+        Err(std::env::VarError::NotUnicode(_)) => return None,
+        // POSIX expands an unset HOME or TMPDIR to an empty string. It
+        // does not substitute this process's default temporary directory.
+        Err(std::env::VarError::NotPresent)
+            if !cfg!(windows) && matches!(known, "HOME" | "TMPDIR") =>
+        {
+            return Some(String::new());
         }
-    })
+        Err(std::env::VarError::NotPresent) => {}
+    }
+    cfg!(windows).then_some(())?;
+    match known {
+        "HOME" => user_home::home_os().map(|home| PathBuf::from(home).display().to_string()),
+        "TMPDIR" => Some(std::env::temp_dir().display().to_string()),
+        _ => None,
+    }
 }
 
 /// The value an assignment's text starts with, unquoted, and how many
@@ -1033,6 +1043,7 @@ mod tests {
             "for f in *.rs; do sed -i 's/a/b/' \"$f\"; done",
             "F=/repo/x; python3 -c \"open('$F','w').write('x')\"",
             "tee \"$OUT\" < x",
+            "TMPDIR=/repo; cargo test > \"$TMPDIR/out.txt\"",
         ] {
             assert!(b.run_refusal(command, wt).is_some(), "{command}");
         }
@@ -1043,8 +1054,20 @@ mod tests {
             "cd /repo && git status 2>&1",
             "echo \"$HOME\" && cat \"$F\"",
             "cargo test > \"$TMPDIR/out.txt\"",
+            "TMPDIR=/scratch; cargo test > \"$TMPDIR/out.txt\"",
+            "TMPDIR=; cargo test > \"$TMPDIR/out.txt\"",
         ] {
             assert!(b.run_refusal(command, wt).is_none(), "{command}");
+        }
+        let task = Boundary {
+            shared: PathBuf::from("/"),
+            ..b.clone()
+        };
+        for command in [
+            "cargo test > \"$TMPDIR/out.txt\"",
+            "TMPDIR=; cargo test > \"$TMPDIR/out.txt\"",
+        ] {
+            assert!(task.run_refusal(command, wt).is_some(), "{command}");
         }
         // Through a shell wrapper and a harness's Bash too.
         assert!(
