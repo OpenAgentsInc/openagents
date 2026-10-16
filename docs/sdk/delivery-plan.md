@@ -6,6 +6,13 @@ The owner authorized this documentation and issue breakdown; creating the
 backlog does not report implementation, authorize publication or a new Coder
 release, or open production access.
 
+The owner subsequently selected [Coder Desktop](coder-desktop.md), a separate
+Zeron fork, as the first external SDK reference client. Its application work
+can begin against #11805 independently of web adoption. Keep the existing M1
+web proof and M2 backend qualification; the desktop does not add a platform
+release prerequisite to either milestone. Its plan records the cross-repository
+dependency, host-consumer requirements, and Rust/TypeScript boundary.
+
 ## Delivery outcome
 
 Ship a public, account-scoped Computers API and lightweight Rust client that the

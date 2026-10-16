@@ -10,6 +10,11 @@ Start with the [delivery plan](delivery-plan.md),
 [Computers contract](computers.md), and umbrella
 [#11800](https://github.com/OpenAgentsInc/openagents/issues/11800).
 
+[Coder Desktop](coder-desktop.md) is the planned first external reference
+client: a separately maintained Zeron fork using the Rust SDK first, with
+TypeScript where needed in its own repository. Its plan defines the application
+integration; the shared API/client delivery and web validation remain here.
+
 ## One family, three boundaries
 
 OpenAgents SDK names a family of small components:
@@ -115,10 +120,11 @@ internal; they must not become developer credentials or bypass account checks.
 
 | Consumer | Migration |
 | --- | --- |
-| Web chat | Use the public Rust client first; preserve chat/task identities and per-turn authority |
+| Coder Desktop | First external reference client, in a separate Zeron fork; consume the exported Rust SDK without monorepo-only access; [desktop plan](coder-desktop.md) |
+| Web chat | Use the same public Rust client in #11806; preserve chat/task identities and per-turn authority |
 | Solver | Move new allocation/lifecycle onto the client in [#11807](https://github.com/OpenAgentsInc/openagents/issues/11807); preserve legacy cleanup |
 | Environments | Move builders/verifiers onto shared ownership in [#11808](https://github.com/OpenAgentsInc/openagents/issues/11808); preserve clean build and fresh verification |
-| Desktop/mobile | Adopt supported public operations incrementally without pulling server/provider internals into clients |
+| Existing OpenAgents desktop/mobile | Adopt supported public operations incrementally without pulling server/provider internals into clients |
 | Frozen Coder/CLI | Keep compatible server behavior; compiled changes wait for [#11823](https://github.com/OpenAgentsInc/openagents/issues/11823) |
 | External developers/agents | Use HTTP/OpenAPI and the Rust client with their own authorized account credentials |
 

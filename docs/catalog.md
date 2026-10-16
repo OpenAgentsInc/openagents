@@ -568,6 +568,17 @@ files are included below.
 | [sales/revenue-roadmap.md](sales/revenue-roadmap.md) | Delivery plan | Unified revenue roadmap: offers, gaps, milestones, and pilot operations |
 | [sales/agent-sales-floor.md](sales/agent-sales-floor.md) | Design / proposal | An agent sales organization led by Paul, run from the Agora in Everglade |
 
+## SDK
+
+The following plans were added after the September 29 inventory.
+
+| Document | Role | Topic |
+| --- | --- | --- |
+| [sdk/README.md](sdk/README.md) | Design / delivery direction | OpenAgents SDK client, host, and provider boundaries |
+| [sdk/computers.md](sdk/computers.md) | Design / contract | Public Computers API and supported backend requirements |
+| [sdk/delivery-plan.md](sdk/delivery-plan.md) | Delivery plan | SDK and Computers milestones, issues, and activation conditions |
+| [sdk/coder-desktop.md](sdk/coder-desktop.md) | Product / integration plan | Coder Desktop Zeron fork and first external SDK reference client |
+
 ## terminal
 
 The following guides and plans were added after the September 29 inventory.

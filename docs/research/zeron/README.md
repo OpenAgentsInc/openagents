@@ -2,6 +2,11 @@
 
 Assessment date: 2026-10-15.
 
+The subsequent [Coder Desktop plan](../../sdk/coder-desktop.md) selects a
+separate Zeron fork as the first OpenAgents SDK reference client. This report
+preserves the original comparison and remains the workflow checklist; its
+porting sequence is not the default implementation route for the new app.
+
 OpenAgents has a working chat desktop with local Coder, saved conversations,
 streaming, questions, approvals, queues, image input, change review, a terminal,
 settings, and desktop packaging. It does not yet provide Zeron's integrated
@@ -34,6 +39,7 @@ the parity work.
 | [Delivery plan](delivery-plan.md) | Dependency order, implementation work packages, acceptance scenarios, and completion rules |
 | [Coverage map](coverage-map.md) | Current Zeron surface inventory, cross-references, stale documentation, and remaining investigation |
 | [Coder SDK integration](coder-sdk-integration.md) | Existing SDK contracts, desktop intersections, proposed extensions, ownership boundaries, and first implementation slices |
+| [Coder Desktop plan](../../sdk/coder-desktop.md) | Separate Zeron fork, OpenAgents SDK consumption, ownership, delivery stages, and external-client acceptance |
 
 The register contains **174 assessed items**: 68 missing desktop workflows,
 80 partial workflows, 24 verification gaps, and 2 product differences requiring
