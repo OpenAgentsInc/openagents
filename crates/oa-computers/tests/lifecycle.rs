@@ -1112,9 +1112,9 @@ async fn public_commands_retain_output_resume_cancel_and_refuse_foreign_or_inval
         let leaked:i64=db.client().await.unwrap().query_one("SELECT count(*) FROM computers.commands WHERE options::text LIKE '%secret-canary%'",&[]).await.unwrap().get(0);
         assert_eq!(leaked,0,"rejected credentials must not enter command metadata");
         // Lost cancellation reply: the worker must observe exit, not trust its ack.
-        let (_,accepted)=call(reqwest::Method::POST,path.clone(),"acct-a",Some(json!({"command":"echo $$ > parent; trap '' TERM; sleep 100 & echo $! > child; wait","idempotency_key":"cancel"}))).await;
+        let (_,accepted)=call(reqwest::Method::POST,path.clone(),"acct-a",Some(json!({"command":"echo $$ > parent; trap '' TERM; sleep 100 & echo $! > child; printf started; wait","idempotency_key":"cancel"}))).await;
         let cancel_id=accepted["id"].as_str().unwrap();
-        wait_command(&base,id,cancel_id,|v|v["state"]=="running").await;
+        wait_command(&base,id,cancel_id,|v|v["state"]=="running" && v["stdout_bytes"].as_u64().unwrap_or(0)>0).await;
         let until=Instant::now()+Duration::from_secs(5);
         while !dir.path().join(resource).join("child").exists(){assert!(Instant::now()<until);tokio::time::sleep(Duration::from_millis(20)).await;}
         fake.inject("stop_command",computer_driver::fake::Inject::LoseReply);

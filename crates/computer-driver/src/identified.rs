@@ -116,7 +116,7 @@ pub fn stop_script(root: &str, id: &str) -> String {
 pub const OUTPUT_LIMIT: u64 = 256 * 1024;
 
 /// Public command wrapper. Requires Linux coreutils (`setsid`, `timeout`, and
-/// `realpath`). Each command gets a session so cancellation includes children.
+/// `realpath`, and `stdbuf`). Each command gets a session so cancellation includes children.
 pub fn bounded_command_script(root: &str, workdir: &str, spec: &CommandSpec) -> String {
     let d = shell_quote(&format!("{root}/{}", spec.id));
     let env = spec
@@ -143,9 +143,9 @@ cwd=$(realpath -e {cwd}) || {{ finish 126; exit 126; }}
 case "$cwd/" in "$base/"*) ;; *) finish 126; exit 126;; esac
 cd "$cwd" || {{ finish 126; exit 126; }}
 mkfifo "$d/out.pipe" "$d/err.pipe" || {{ finish 125; exit 125; }}
-(failed=0; head -c {limit} > "$d/stdout" || failed=1; cat >/dev/null || failed=1; exit "$failed") < "$d/out.pipe" &
+(failed=0; stdbuf -o0 head -c {limit} > "$d/stdout" || failed=1; cat >/dev/null || failed=1; exit "$failed") < "$d/out.pipe" &
 o=$!
-(failed=0; head -c {limit} > "$d/stderr" || failed=1; cat >/dev/null || failed=1; exit "$failed") < "$d/err.pipe" &
+(failed=0; stdbuf -o0 head -c {limit} > "$d/stderr" || failed=1; cat >/dev/null || failed=1; exit "$failed") < "$d/err.pipe" &
 e=$!
 setsid timeout --signal=TERM --kill-after=2 {seconds} env {env} sh -c {command} </dev/null > "$d/out.pipe" 2> "$d/err.pipe" &
 p=$!
@@ -283,6 +283,38 @@ mod tests {
             Some(ALREADY_CLAIMED)
         );
     }
+    #[tokio::test]
+    async fn short_output_is_readable_while_the_command_is_still_running() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("commands");
+        let work = dir.path().join("workspace");
+        let root = root.to_str().unwrap();
+        let work = work.to_str().unwrap();
+        let s = spec("printf early; printf error >&2; sleep 30");
+        let wrapper = Command::new("sh")
+            .arg("-c")
+            .arg(bounded_command_script(root, work, &s))
+            .spawn()
+            .unwrap();
+        let live = tokio::time::timeout(Duration::from_secs(3), async {
+            loop {
+                let r = read(root, &s.id, CommandCursor::default()).await;
+                if r.stdout == b"early" && r.stderr == b"error" {
+                    assert_eq!(r.progress, CommandProgress::Running);
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        })
+        .await;
+        let _ = shell(bounded_stop_script(root, &s.id)).await;
+        tokio::time::timeout(Duration::from_secs(8), wrapper.wait_with_output())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(live.is_ok(), "short output was buffered until command exit");
+    }
+
     #[tokio::test]
     async fn flooding_stays_bounded_without_any_reader() {
         let dir = tempfile::tempdir().unwrap();
