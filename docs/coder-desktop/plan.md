@@ -1,18 +1,20 @@
 # Coder Desktop: a Zeron fork and the first OpenAgents SDK reference client
 
-2026-10-15. Status: owner-directed product and integration plan; implementation
-is pending. Coder Desktop is a separate-repository fork of Zeron, built as the
-first external reference application for the OpenAgents SDK. This document
-records the direction and delivery criteria. It does not report a created fork,
-published SDK package, working integration, or released application.
+2026-10-15. Status: owner-directed product and integration plan. The fork
+exists at [OpenAgentsInc/coder-desktop](https://github.com/OpenAgentsInc/coder-desktop),
+with Zeron as its `upstream` remote; SDK integration is pending. Coder
+Desktop is the first external reference application for the OpenAgents SDK.
+This document records the direction and delivery criteria. It does not report
+a published SDK package, working integration, or released application. The
+owner's decisions and local setup are in the [folder index](README.md).
 
 The owner selected the product name **Coder Desktop**, a separate repository,
 and permission to use languages other than Rust there. The OpenAgents SDK is
 Rust first, with TypeScript when a real consumer needs it. The existing
 OpenAgents repository keeps its Rust-only product contract.
 
-Read this with the [SDK overview](README.md), [Computers contract](computers.md),
-and [SDK delivery plan](delivery-plan.md). Those documents own the shared SDK
+Read this with the [SDK overview](../sdk/README.md), [Computers contract](../sdk/computers.md),
+and [SDK delivery plan](../sdk/delivery-plan.md). Those documents own the shared SDK
 and service work, tracked under
 [#11800](https://github.com/OpenAgentsInc/openagents/issues/11800). This document
 owns the desktop's use of those contracts and its migration from Zeron.
@@ -66,7 +68,7 @@ feature coverage, live-provider compatibility, or a delivery-time estimate.
 
 | Area | Home and responsibility |
 | --- | --- |
-| Coder Desktop | A new repository; `OpenAgentsInc/coder-desktop` is the proposed slug, not a created repository. Owns the Zeron fork, GPUI application, product branding, packaging, native integration, and SDK adapters. |
+| Coder Desktop | [`OpenAgentsInc/coder-desktop`](https://github.com/OpenAgentsInc/coder-desktop), forked 2026-10-15. Owns the Zeron fork, GPUI application, product branding, packaging, native integration, and SDK adapters. |
 | OpenAgents SDK and public services | This repository initially owns the Rust API/client work, public schema, service implementations, and existing host/provider components. Keep reusable behavior here and application behavior in the fork. |
 | Rust SDK dependency | Consume a documented exported boundary at an immutable revision or version. Before package publication, a pinned Git dependency or versioned source release is acceptable if a clean outside checkout can build it. |
 | TypeScript SDK | Generate the HTTP bindings from the same OpenAPI when a concrete desktop helper, service, example, or other client needs them. Repository/package location and publication remain the decisions in [#11821](https://github.com/OpenAgentsInc/openagents/issues/11821). |

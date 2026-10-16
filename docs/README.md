@@ -54,7 +54,7 @@ the [document catalog](catalog.md) to find a specific reference.
 | Keep sensitive data (financial statements) unreadable, even by us; private inference on sealed hardware | [Security](security/README.md): [vault](security/sensitive-data-vault.md), [private inference](security/private-inference.md) |
 | Check money and authority paths beyond tests (model checking, proofs, fuzzing) | [Verification](verification/README.md): [tools](verification/tools.md), [targets](verification/targets.md) |
 | Build on OpenAgents from your own code: the SDK family (client, host, provider) and one Computers API | [SDK](sdk/README.md): [computers](sdk/computers.md) |
-| Build Coder Desktop as a separate Zeron fork and the first OpenAgents SDK reference client | [Coder Desktop plan](sdk/coder-desktop.md) |
+| Build Coder Desktop as a separate Zeron fork and the first OpenAgents SDK reference client | [Coder Desktop plan](coder-desktop/README.md) |
 | Sign people in: accounts, GitHub sign-in, sessions, and what comes next | [Authentication](auth/README.md), [GitHub sign-in](auth/github.md) |
 | Build Coder Cloud and the openagents.com work, Verse, billing, and sales interfaces | [Coder Cloud web specification](cloud/coder-cloud.md) |
 | Build general agents and optimization | [Agent architecture](agents/README.md), [optimization](optimization/README.md) |

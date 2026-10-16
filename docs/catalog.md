@@ -577,7 +577,7 @@ The following plans were added after the September 29 inventory.
 | [sdk/README.md](sdk/README.md) | Design / delivery direction | OpenAgents SDK client, host, and provider boundaries |
 | [sdk/computers.md](sdk/computers.md) | Design / contract | Public Computers API and supported backend requirements |
 | [sdk/delivery-plan.md](sdk/delivery-plan.md) | Delivery plan | SDK and Computers milestones, issues, and activation conditions |
-| [sdk/coder-desktop.md](sdk/coder-desktop.md) | Product / integration plan | Coder Desktop Zeron fork and first external SDK reference client |
+| [coder-desktop/plan.md](coder-desktop/plan.md) | Product / integration plan | Coder Desktop Zeron fork and first external SDK reference client |
 
 ## terminal
 
