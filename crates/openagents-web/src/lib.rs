@@ -26,6 +26,7 @@ mod answer_ui;
 mod api_alias;
 mod api_host;
 mod api_keys;
+pub mod app_openapi;
 pub mod ask;
 pub mod attribution;
 mod auth;
@@ -1099,6 +1100,9 @@ async fn api_proxy(
     }
     *request.uri_mut() = path;
     request.headers_mut().remove(header::COOKIE);
+    if request.uri().path() == "/v1/openapi.json" {
+        return agent_ready::openapi(axum::extract::State(app), request).await;
+    }
     upstream.forward(request).await
 }
 

@@ -56,7 +56,7 @@ const SKILL_PATH: &str = "/skill.md";
 
 /// The Markdown twins and agent documents this module answers. The
 /// upstream guard treats them as the site's own ([`owns`]).
-const PATHS: [&str; 24] = [
+const PATHS: [&str; 25] = [
     "/robots.txt",
     "/sitemap.xml",
     "/llms.txt",
@@ -73,6 +73,7 @@ const PATHS: [&str; 24] = [
     "/promises.md",
     "/roadmap.md",
     "/openapi.json",
+    "/v1/openapi.json",
     "/.well-known/api-catalog",
     "/.well-known/ai-catalog.json",
     "/.well-known/mcp/server-card.json",
@@ -104,6 +105,7 @@ pub(crate) fn routes() -> Router<App> {
         .route("/download.md", get(download_md))
         .route("/pricing.md", get(pricing_md))
         .route("/openapi.json", get(openapi))
+        .route("/v1/openapi.json", get(openapi))
         .route("/.well-known/api-catalog", get(api_catalog))
         .route("/.well-known/ai-catalog.json", get(ai_catalog))
         .route("/.well-known/mcp/server-card.json", get(mcp_card))
@@ -1097,7 +1099,7 @@ async fn api_skill() -> Response {
 
 /// `/openapi.json`: the inference gateway's OpenAPI document. Without a
 /// gateway (or before it serves one) this answers `404`.
-async fn openapi(State(app): State<App>, request: Request) -> Response {
+pub(crate) async fn openapi(State(app): State<App>, request: Request) -> Response {
     let Some(upstream) = &app.config.inference else {
         return StatusCode::NOT_FOUND.into_response();
     };
@@ -1110,7 +1112,24 @@ async fn openapi(State(app): State<App>, request: Request) -> Response {
         header::ACCESS_CONTROL_ALLOW_ORIGIN,
         HeaderValue::from_static("*"),
     );
-    response
+    if !response.status().is_success() {
+        return response;
+    }
+    let Ok(bytes) = axum::body::to_bytes(response.into_body(), 8 * 1024 * 1024).await else {
+        return StatusCode::BAD_GATEWAY.into_response();
+    };
+    let Ok(mut document) = serde_json::from_slice::<Value>(&bytes) else {
+        return StatusCode::BAD_GATEWAY.into_response();
+    };
+    if !document.is_object() {
+        return StatusCode::BAD_GATEWAY.into_response();
+    }
+    crate::app_openapi::extend(&mut document);
+    (
+        [(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")],
+        axum::Json(document),
+    )
+        .into_response()
 }
 
 async fn webmcp() -> Response {

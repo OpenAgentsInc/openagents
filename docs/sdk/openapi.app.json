@@ -1,0 +1,496 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "OpenAgents app API",
+    "version": "1"
+  },
+  "servers": [
+    {
+      "url": "https://api.openagents.com"
+    }
+  ],
+  "paths": {
+    "/v1/device/code": {
+      "post": {
+        "operationId": "startAppLogin",
+        "tags": [
+          "App authentication"
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "The app's result. Tokens and codes are returned only here; do not cache.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppDeviceGrant"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request, pending, slow_down, denied, expired, or already redeemed grant.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppOAuthError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Sign-in is temporarily unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppOAuthError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppDeviceRequest"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/AppDeviceRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/device/token": {
+      "post": {
+        "operationId": "pollAppLogin",
+        "tags": [
+          "App authentication"
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "The app's result. Tokens and codes are returned only here; do not cache.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppSession"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request, pending, slow_down, denied, expired, or already redeemed grant.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppOAuthError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Sign-in is temporarily unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppOAuthError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppDevicePoll"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/AppDevicePoll"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/device/sign-out": {
+      "post": {
+        "operationId": "signOutApp",
+        "tags": [
+          "App authentication"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The app's result. Tokens and codes are returned only here; do not cache.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppSignedOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request, pending, slow_down, denied, expired, or already redeemed grant.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppOAuthError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Sign-in is temporarily unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppOAuthError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid app credential.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppOAuthError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Revoke this app session. Already expired/revoked sessions are signed out. A sign-in key is a session too; revoking it here is not a local forget operation."
+      }
+    },
+    "/v1/account": {
+      "get": {
+        "operationId": "getAccount",
+        "tags": [
+          "Account"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "description": "Existing account and current workspace memberships. Accepts app sess_ sessions, oa_sk_ sign-in keys, and account-bound oak_ API keys. Credential prefixes alone do not prove authorization.",
+        "responses": {
+          "200": {
+            "description": "The authenticated account.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired, invalid, or revoked credential.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Credential cannot act for an account.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The account no longer exists.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Account storage is unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "appBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "An app sess_ session or supported oa_sk_ sign-in key. API cookies are ignored."
+      }
+    },
+    "schemas": {
+      "AppDeviceRequest": {
+        "type": "object",
+        "required": [
+          "computer"
+        ],
+        "properties": {
+          "app": {
+            "type": "string",
+            "maxLength": 64,
+            "default": "Coder"
+          },
+          "computer": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          }
+        }
+      },
+      "AppDeviceGrant": {
+        "type": "object",
+        "required": [
+          "device_code",
+          "user_code",
+          "verification_uri",
+          "verification_uri_complete",
+          "expires_in",
+          "interval"
+        ],
+        "properties": {
+          "device_code": {
+            "type": "string",
+            "x-sensitive": true
+          },
+          "user_code": {
+            "type": "string"
+          },
+          "verification_uri": {
+            "type": "string",
+            "format": "uri"
+          },
+          "verification_uri_complete": {
+            "type": "string",
+            "format": "uri"
+          },
+          "expires_in": {
+            "type": "integer",
+            "const": 600
+          },
+          "interval": {
+            "type": "integer",
+            "const": 5
+          }
+        }
+      },
+      "AppDevicePoll": {
+        "type": "object",
+        "required": [
+          "device_code"
+        ],
+        "properties": {
+          "device_code": {
+            "type": "string",
+            "x-sensitive": true
+          },
+          "grant_type": {
+            "type": "string",
+            "const": "urn:ietf:params:oauth:grant-type:device_code"
+          }
+        }
+      },
+      "AppSession": {
+        "type": "object",
+        "required": [
+          "access_token",
+          "token_type",
+          "expires_in",
+          "account"
+        ],
+        "properties": {
+          "access_token": {
+            "type": "string",
+            "x-sensitive": true
+          },
+          "token_type": {
+            "const": "Bearer"
+          },
+          "expires_in": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2592000
+          },
+          "account": {
+            "$ref": "#/components/schemas/AppAccount"
+          }
+        }
+      },
+      "AppSignedOut": {
+        "type": "object",
+        "required": [
+          "signed_out"
+        ],
+        "properties": {
+          "signed_out": {
+            "const": true
+          }
+        }
+      },
+      "AppAccount": {
+        "type": "object",
+        "required": [
+          "id",
+          "label"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "avatar_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "admin": {
+            "type": "boolean"
+          }
+        }
+      },
+      "AppAccountView": {
+        "type": "object",
+        "required": [
+          "account",
+          "workspaces"
+        ],
+        "properties": {
+          "v": {
+            "const": "openagents.accounts.v1"
+          },
+          "account": {
+            "$ref": "#/components/schemas/AppAccount"
+          },
+          "workspaces": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AppWorkspace"
+            }
+          }
+        }
+      },
+      "AppWorkspace": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "role",
+          "tenant"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "tenant": {
+            "type": "string"
+          },
+          "seats": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "members": {
+            "type": "integer"
+          }
+        }
+      },
+      "AppOAuthError": {
+        "type": "object",
+        "required": [
+          "error",
+          "error_description"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "error_description": {
+            "type": "string"
+          },
+          "interval": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 60
+          }
+        }
+      },
+      "AppAccountError": {
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": [
+              "code",
+              "message"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -83,6 +83,11 @@ async fn world_with(
     config.cloud = Some(Arc::new(
         crate::cloud::session::CloudSession::load(&path).unwrap(),
     ));
+    config.api_host = Some("api.openagents.com".into());
+    config.public_hosts.push("api.openagents.com".into());
+    config.inference = Some(Arc::new(
+        crate::upstream::Upstream::new(&account_service).unwrap(),
+    ));
     if with_github {
         config.github = Some(Arc::new(app));
     }
@@ -775,6 +780,185 @@ async fn app_call(
     let status = response.status();
     let bytes = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
     (status, serde_json::from_slice(&bytes).unwrap())
+}
+
+/// Call the public API host with a bearer, never a website cookie.
+async fn public_call(
+    world: &World,
+    method: &str,
+    path: &str,
+    body: serde_json::Value,
+    token: Option<&str>,
+) -> (StatusCode, serde_json::Value) {
+    let mut request = Request::builder()
+        .method(method)
+        .uri(path)
+        .header(header::HOST, "api.openagents.com")
+        .header(header::CONTENT_TYPE, "application/json")
+        .header(header::COOKIE, "oa_cloud_session=not-api-authority");
+    if let Some(token) = token {
+        request = request.header(header::AUTHORIZATION, format!("Bearer {token}"));
+    }
+    let response = world
+        .site
+        .clone()
+        .oneshot(request.body(Body::from(body.to_string())).unwrap())
+        .await
+        .unwrap();
+    assert!(response.headers().get(header::SET_COOKIE).is_none());
+    let status = response.status();
+    let bytes = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
+    (status, serde_json::from_slice(&bytes).unwrap_or_default())
+}
+
+#[tokio::test]
+async fn public_app_login_keeps_the_existing_account_and_revokes_its_own_session() {
+    let world = world(true).await;
+    let mut browser = Browser::default();
+    browser
+        .through_github(&world, "%2F", "login=octo-local")
+        .await;
+    let stores = tenancy::Accounts::open(&world.root.path().join("accounts"))
+        .unwrap()
+        .store()
+        .unwrap();
+    let account = stores.accounts.values().next().unwrap().id.clone();
+    let (status, started) = public_call(
+        &world,
+        "POST",
+        "/v1/device/code",
+        json!({"app":"Coder Desktop", "computer":"test-mac"}),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{started}");
+    assert_eq!(started["verification_uri"], format!("{ORIGIN}/device"));
+    let poll = json!({"device_code":started["device_code"]});
+    let (_, pending) = public_call(&world, "POST", "/v1/device/token", poll.clone(), None).await;
+    assert_eq!(pending["error"], "authorization_pending");
+    let (_, slow) = public_call(&world, "POST", "/v1/device/token", poll.clone(), None).await;
+    assert_eq!(slow["error"], "slow_down");
+    assert_eq!(slow["interval"], 10);
+    device_decide(
+        &world,
+        &mut browser,
+        started["user_code"].as_str().unwrap(),
+        "approve",
+    )
+    .await;
+    let (status, signed) =
+        public_call(&world, "POST", "/v1/device/token", poll.clone(), None).await;
+    assert_eq!(status, StatusCode::OK, "{signed}");
+    assert_eq!(signed["account"]["id"], account);
+    let token = signed["access_token"].as_str().unwrap();
+    let (status, view) = public_call(&world, "GET", "/v1/account", json!(null), Some(token)).await;
+    assert_eq!(status, StatusCode::OK, "{view}");
+    assert_eq!(view["account"]["id"], account);
+    assert_eq!(view["workspaces"].as_array().unwrap().len(), 1);
+    let (_, again) = public_call(&world, "POST", "/v1/device/token", poll, None).await;
+    assert_eq!(again["error"], "invalid_grant");
+    let (status, _) = public_call(&world, "GET", "/v1/account", json!(null), None).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let (status, out) = public_call(
+        &world,
+        "POST",
+        "/v1/device/sign-out",
+        json!({}),
+        Some(token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{out}");
+    assert_eq!(
+        session_state(&world, token),
+        tenancy::sessions::SessionState::Revoked
+    );
+    let (status, _) = public_call(&world, "GET", "/v1/account", json!(null), Some(token)).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let stores = tenancy::Accounts::open(&world.root.path().join("accounts"))
+        .unwrap()
+        .store()
+        .unwrap();
+    assert_eq!(stores.accounts.len(), 1);
+
+    let (_, denied) = public_call(
+        &world,
+        "POST",
+        "/v1/device/code",
+        json!({"app":"Coder Desktop", "computer":"denied"}),
+        None,
+    )
+    .await;
+    device_decide(
+        &world,
+        &mut browser,
+        denied["user_code"].as_str().unwrap(),
+        "deny",
+    )
+    .await;
+    let (_, error) = public_call(
+        &world,
+        "POST",
+        "/v1/device/token",
+        json!({"device_code":denied["device_code"]}),
+        None,
+    )
+    .await;
+    assert_eq!(error["error"], "access_denied");
+    let (_, expired) = public_call(
+        &world,
+        "POST",
+        "/v1/device/code",
+        json!({"app":"Coder Desktop", "computer":"expired"}),
+        None,
+    )
+    .await;
+    tenancy::sessions::Sessions::open(&world.root.path().join("accounts"))
+        .unwrap()
+        .mutate(|book, _, _| {
+            for grant in book.devices.values_mut() {
+                grant.expires_at = 0;
+            }
+            Ok(())
+        })
+        .unwrap();
+    let (_, error) = public_call(
+        &world,
+        "POST",
+        "/v1/device/token",
+        json!({"device_code":expired["device_code"]}),
+        None,
+    )
+    .await;
+    assert_eq!(error["error"], "expired_token");
+}
+
+#[tokio::test]
+async fn public_account_refuses_an_expired_app_session() {
+    let world = world(true).await;
+    let mut browser = Browser::default();
+    browser
+        .through_github(&world, "%2F", "login=octo-local")
+        .await;
+    let started = device_start(&world, "expiring-mac").await;
+    device_decide(
+        &world,
+        &mut browser,
+        started["user_code"].as_str().unwrap(),
+        "approve",
+    )
+    .await;
+    let (_, signed) = device_poll(&world, &started).await;
+    let token = signed["access_token"].as_str().unwrap();
+    tenancy::sessions::Sessions::open(&world.root.path().join("accounts"))
+        .unwrap()
+        .mutate(|book, _, _| {
+            let id = book.session_of_token(token).unwrap().id.clone();
+            book.sessions.get_mut(&id).unwrap().expires_at = 1;
+            Ok(())
+        })
+        .unwrap();
+    let (status, _) = public_call(&world, "GET", "/v1/account", json!(null), Some(token)).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
 }
 
 /// Start a device sign-in as Coder on `computer`.

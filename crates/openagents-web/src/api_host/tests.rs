@@ -155,6 +155,9 @@ async fn the_api_host_answers_the_sites_own_v1_routes_the_same() {
     let site = site(root.path(), true).await;
     for (method, uri) in [
         ("GET", "/v1/projects"),
+        ("POST", "/v1/device/code"),
+        ("POST", "/v1/device/token"),
+        ("POST", "/v1/device/sign-out"),
         ("POST", "/v1/projects"),
         ("GET", "/v1/files"),
         ("GET", "/v1/threads"),
@@ -177,6 +180,11 @@ async fn the_api_host_answers_the_sites_own_v1_routes_the_same() {
         assert_eq!(status, old_status, "{method} {uri}");
         assert!(!status.is_success(), "{method} {uri}: {status}");
         assert_eq!(body, old_body, "{method} {uri}");
+        if uri.starts_with("/v1/device/") {
+            assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+            let error: Value = serde_json::from_str(&body).unwrap();
+            assert_eq!(error["error"], "temporarily_unavailable");
+        }
     }
 }
 
@@ -258,4 +266,50 @@ async fn without_an_api_host_nothing_is_marked() {
     assert!(headers.get(header::LINK).is_none());
     let (status, _, _) = call(&site, "GET", API, "/v1/models", &[]).await;
     assert_eq!(status, StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn public_openapi_includes_app_auth_and_keeps_gateway_operations() {
+    let root = tempfile::tempdir().unwrap();
+    let upstream = Router::new().route(
+        "/openapi.json",
+        axum::routing::get(|| async {
+            axum::Json(json!({"openapi":"3.1.0", "paths":{"/v1/models":{"get":{}}}}))
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move { axum::serve(listener, upstream).await.unwrap() });
+    let mut config = Config::development(root.path().join("tasks"));
+    config.public_hosts.push("openagents.com".into());
+    config.api_host = Some(API.into());
+    config.inference = Some(Arc::new(
+        upstream::Upstream::new(&format!("http://{addr}")).unwrap(),
+    ));
+    let site = router(config);
+    for (host, path) in [
+        (API, "/v1/openapi.json"),
+        ("openagents.com", "/openapi.json"),
+        ("openagents.com", "/api/v1/openapi.json"),
+    ] {
+        let (status, _, body) = call(&site, "GET", host, path, &[]).await;
+        assert_eq!(status, StatusCode::OK, "{host}{path}: {body}");
+        let doc: Value = serde_json::from_str(&body).unwrap();
+        assert!(doc["paths"]["/v1/models"]["get"].is_object());
+        for path in [
+            "/v1/device/code",
+            "/v1/device/token",
+            "/v1/device/sign-out",
+            "/v1/account",
+        ] {
+            assert!(doc["paths"][path].is_object(), "{path}");
+        }
+        for path in [
+            "/v1/session",
+            "/v1/sessions/github",
+            "/v1/sessions/device/decide",
+        ] {
+            assert!(doc["paths"].get(path).is_none());
+        }
+    }
 }

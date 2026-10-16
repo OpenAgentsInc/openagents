@@ -422,3 +422,36 @@ browser signs in by pasting an `oak_` key. With P1:
   account merge.
 - **P4 Enterprise SSO**: SAML and broader OIDC on top of the existing REV-50
   provider book, domain verification, SCIM later.
+
+## Public app authentication contract
+
+The app subset of the served OpenAPI is also checked in at
+[`docs/sdk/openapi.app.json`](../sdk/openapi.app.json). Regenerate it with
+`cargo run -p openagents-web --example app_openapi > docs/sdk/openapi.app.json`.
+Both `/openapi.json` and `/v1/openapi.json` merge this subset with the gateway
+schema. Account-service session and approval routes remain private.
+
+Use `POST https://api.openagents.com/v1/device/code` with
+`{"app":"Coder Desktop","computer":"My Mac"}`. Open the returned
+`verification_uri_complete` in the system browser; it belongs to the website,
+not the API host. Poll `/v1/device/token` with the device code at `interval`
+seconds, increasing the interval on `slow_down`. Codes expire after 600 seconds.
+A successful poll returns the existing account, `access_token`, and
+`expires_in`; the app session lasts 30 days and has no refresh token.
+Redemption succeeds once. If its response is lost, restart login.
+
+Device errors use `{"error":"code","error_description":"text"}`; account
+errors use `{"error":{"code":"code","message":"text"}}`. Keep them distinct.
+Use the app bearer on `GET /v1/account` to revalidate the account and discover
+its workspaces after restart. This route also accepts supported sign-in keys
+and account-bound API keys; those keys do not automatically grant every API
+operation. API-host cookies do not authenticate a caller.
+
+`POST /v1/device/sign-out` revokes the presented app session. An expired or
+revoked session is already signed out. Website Settings can remove an app
+session too. Authenticated chat reads may reuse a successful session check for
+up to 30 seconds; account discovery checks current authority directly. A
+transient service failure is not a successful check or proof of logout.
+
+For staging/local use the matching explicit API and website origins. Keep the
+app credential in its own OS storage; never adopt CLI or Zeron credentials.
