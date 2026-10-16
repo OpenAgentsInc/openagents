@@ -55,6 +55,9 @@ key have interchangeable authority.
 | `/v1/connections*`, project Drive sources | Web connected-service handlers and gateway account integration | Account credential plus connected-service grant; Google availability gate | Gated, not universally available. Preserve unavailable/permission outcomes. Schema coverage remains incomplete. |
 | `/v1/computers*` | Web computer lifecycle over Computers service; existing device/sync handlers share the family | App account; lifecycle owner and idempotency checks; device activity has separate rights | Lifecycle and capabilities are in app schema. Commands/files and full capability coverage are #11802–#11805; existing device sync remains a separate contract. |
 | `/v1/mac-jobs*`, `/own-runs*`, `/work*`, `/work-hosts*` | Web job/run handlers | Account ownership plus host/job authorization and deployment gates | Implemented app-used surfaces; no guessed client operations. Contracts and schema coverage need owning-consumer qualification. |
+| `/v1/schedules*` | Web account schedule and sync handlers | App account and account-owned schedule store | Implemented app-used routes; payload, bounded sync/tombstones, and execution authority need separate schema qualification. |
+| `/v1/w/*`, `/v1/actors/*` | Web actor runtime mounts | Runtime/workspace authorization; deployment-specific host grants | App/runtime surface, not an inferred general public SDK contract. Dynamic mounts need owning-runtime tests and a qualified audience before composition. |
+| `/v1/sales`, backend `/v1/capabilities` | Separate loopback sales adapter and internal Computers-service call, respectively | Per-binding service bearer or trusted account-service call; not general app credential equivalence | These source names do not identify mounted public-front routes. Keep them out of generated public operations. |
 | `/v1/traces*` | Web trace store | App/account authority and explicit share state; public trace reads differ from private ones | Implemented first-party routes; complete public payload/paging/file contracts remain a gap. |
 | Workspace usage, balances, budgets, audit and team/SSO policy | Gateway with per-operation front rules | Workspace membership, role and key scope; SSO has its own proof requirements | Some gateway audience entries are qualified only as summary operations. Front exposure is narrower than gateway mounting. |
 | Plans, checkout, billing portal, charges, earnings, referrals, reports, older skills/submissions | Gateway billing/account modules | Account/workspace roles or provider signature; internal and first-party audience declarations apply | Mounted where configured; a public gateway audience label alone does not expose the route through this front. Do not generate operations for blocked routes. |
@@ -129,3 +132,7 @@ Use `--api https://staging.openagents.com` for staging. These schema checks need
 no credentials or account data. The [independent SDK example](../../examples/sdk-history/README.md)
 and existing auth/history smokes exercise qualified handlers with synthetic
 fixtures and clean them up. No GitHub workflow or package publication is needed.
+
+The [deployment evidence](public-reference-evidence.json) records the qualified
+source/image, staging and production revisions, 74 checked operations, legacy
+aliases, unchanged model catalogs/browser assets, checks, and cleanup.

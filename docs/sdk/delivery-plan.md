@@ -313,3 +313,8 @@ cost assumptions, and cleanup inventories, never secret values or private conten
   evidence without duplicating or reopening its implementation scope.
 - #11766: per-turn credential transport work; it does not prove secret-free RAM
   or snapshots. #11771 remains in the existing frozen-binary next-release list.
+
+The initial #11818 inventory/composition milestone is implemented and deployed;
+[route coverage](public-routes.md) and [evidence](public-reference-evidence.json)
+record its scope. Incremental app-contract and System One schema work is tracked
+in #11857 and #11858. Uncovered domains do not block the Computers slice.

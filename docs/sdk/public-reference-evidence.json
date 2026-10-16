@@ -1,0 +1,116 @@
+{
+  "source_commit": "d960712d597d0b2aa88fe34c227aefffe391f15b",
+  "checks": {
+    "app_openapi_rust": 4,
+    "discovery_rust": 18,
+    "api_host_rust": 7,
+    "api_alias_rust": 5,
+    "schema_checker_python": 4,
+    "rustfmt_changed_files": "passed",
+    "source_inventory": "passed",
+    "doc_paths": "passed",
+    "offline_live_gateway_composition_operations": 74
+  },
+  "source_index": {
+    "web_literal_mounts": 64,
+    "web_constant_mounts": 13,
+    "gateway_audience_declarations": 148,
+    "front_forwarding_rules": 40
+  },
+  "followup_issues": [
+    11857,
+    11858
+  ],
+  "issue": 11818,
+  "qualified_at_utc": "2026-10-16T07:30:11.409731+00:00",
+  "scope": "Initial route inventory and public schema composition milestone; unqualified domains remain explicit and tracked independently.",
+  "build": {
+    "id": "e73c66b3-eaad-4f1d-9c0e-4fef40e60ed9",
+    "status": "SUCCESS",
+    "source_commit": "d960712d597d0b2aa88fe34c227aefffe391f15b",
+    "image": "us-central1-docker.pkg.dev/openagentsgemini/openagents/openagents-web@sha256:0408d897ae22fe38a83f0442acf57bfc777dff2789a5897b3da6f5318d180b02",
+    "browser_asset_base": "sha256:55d58e1ee5a4c9ac7e8ce32d4c40dd6033fa53220cac9cc77944690329721bdc",
+    "method": "Native server rebuilt from main; deployed browser assets preserved. The current main additions at deployment did not change the web front, gateway, deployment configuration, or lockfile."
+  },
+  "deployment": {
+    "staging_revision": "openagents-web-1-staging-ref-d960712d59",
+    "production_revision": "coder-web-0408d897ae-20261016072810",
+    "production_previous": "coder-web-55d58e1ee5-20261016063247",
+    "same_image_on_staging_and_production": true,
+    "startup": "Brief 502 responses immediately after production traffic shift while the gateway started; the next check and all final probes passed."
+  },
+  "public_reference": {
+    "aliases": {
+      "https://api.openagents.com/v1/openapi.json": {
+        "status": 200,
+        "sha256": "b0484384e905f05938ff160a0b47bed7cb9c4a3190c08a23c378f9143f5ec4cb",
+        "deprecation": null,
+        "link": null
+      },
+      "https://openagents.com/v1/openapi.json": {
+        "status": 200,
+        "sha256": "11a7328ba035f1f545e2470b27c0c5695c3b9a60d8fabba5acc6814f83021c69",
+        "deprecation": "true",
+        "link": "<https://api.openagents.com/v1/openapi.json>; rel=\"successor-version\""
+      },
+      "https://openagents.com/api/v1/openapi.json": {
+        "status": 200,
+        "sha256": "11a7328ba035f1f545e2470b27c0c5695c3b9a60d8fabba5acc6814f83021c69",
+        "deprecation": "true",
+        "link": "<https://api.openagents.com/v1/openapi.json>; rel=\"successor-version\""
+      },
+      "https://openagents.com/openapi.json": {
+        "status": 200,
+        "sha256": "11a7328ba035f1f545e2470b27c0c5695c3b9a60d8fabba5acc6814f83021c69",
+        "deprecation": null,
+        "link": null
+      }
+    },
+    "models": {
+      "https://api.openagents.com/v1": {
+        "status": 200,
+        "models": 11,
+        "unchanged": true
+      },
+      "https://openagents.com/v1": {
+        "status": 200,
+        "models": 11,
+        "unchanged": true
+      },
+      "https://openagents.com/api/v1": {
+        "status": 200,
+        "models": 11,
+        "unchanged": true
+      }
+    },
+    "browser_asset_hashes": "unchanged",
+    "schema_operations": 74,
+    "paths": 62
+  },
+  "stage_checks": [
+    "74 operations pass canonical-base, unique-ID, local-reference, public-front and app-slice checks",
+    "Anonymous auth schema, signed-out refusal, pending, slowdown and invalid credentials pass",
+    "Saved-history schemas and signed-out refusal pass",
+    "Browser asset hashes match the prior deployed image"
+  ],
+  "production_checks": [
+    "Same public reference checks pass: 74 operations",
+    "All four schema addresses return identical operation paths and one HTTPS server; deprecated API addresses retain headers",
+    "All three model-catalog addresses retain the same 11 model IDs",
+    "Anonymous auth/history probes pass; API cookies stay isolated",
+    "Current revision serves the exact qualified image; browser asset hashes unchanged"
+  ],
+  "compatibility": "Only the composed reference and API documentation change. Gateway-local schema, existing handlers, aliases, model IDs, error contracts, and frozen Coder binaries remain unchanged. No released-command endpoint needs a new client.",
+  "limitations": [
+    "Inventory indexes literal/constant web mounts and gateway audience declarations; owning Rust tests cover dynamic mounts. It does not infer a complete public payload contract from a path.",
+    "The combined reference remains partial. Existing summary-only gateway schemas and uncovered/gated/separately served families are described in public-routes.md. #11857 and #11858 track the first incremental expansions; Computers schemas remain #11804.",
+    "No new typed SDK methods, account-funded inference, host execution, payment, package publication, or frozen binary release was needed."
+  ],
+  "cleanup": {
+    "accounts_sessions_chats_computers_tasks_created": 0,
+    "owner_data_or_credentials_used": false,
+    "anonymous_device_grants": "Two unapproved grants from the auth probes; expire after 600 seconds. No app session was issued.",
+    "cloud_builds": "One successful image build; two superseded builds cancelled. No running build worker or test infrastructure remains.",
+    "scratch_source_export": "Removed after successful build; build recipe, immutable source commit, scrubbed probes and logs retained in agent scratch."
+  }
+}
