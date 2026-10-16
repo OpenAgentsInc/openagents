@@ -32,3 +32,37 @@ payment. An interrupted execution with no saved result requires inspection
 of its original proof claim; restarting does not dispatch it again.
 Private files use mode 0600. `public-result.json` contains only hashes,
 amounts, fees, and check results; never publish the whole data directory.
+
+## Remote signer and recovery
+
+The separate `lnd-signet-recovery` binary qualifies #11862 with fresh research
+nodes `signer`, `watch`, and `peer`, RPC ports 10059, 10069, and 10079, and an
+explicit `$HOME/lnd-signet-recovery-11862` root. The watcher mounts only its
+own data, its password, and the signer's TLS certificate and scoped macaroon.
+It imports all 259 public accounts, with no seed or signer database access.
+
+`init-signer`, `init-peer`, and `init-watch` initialize the test wallets.
+`inspect` checks signet, supported LND versions, original node identities,
+and watch-only account flags. Once the private 20,000-sat anchor channel is
+confirmed and active, `exercise` saves and verifies its encrypted backup,
+pays exact amounts in both directions, and pauses the signer for one payment.
+An independent eight-second guard resumes the signer. The test requires an
+unresolved payment and an unpaid receiver during the pause, then tracks the
+original hash to completion. It never sends a replacement payment.
+
+Recovery infrastructure first stops both original writers and retains their
+directories. Fresh replacements copy configuration and TLS files only.
+`restore-signer` imports the saved test seed; `restore-watch` imports the
+original public accounts. After both replacements finish starting,
+`restore-backup` applies the verified original SCB. An interrupted mutation
+requires inspection of its saved marker and the original node, rather than
+an automatic retry. Never restart the old watcher after this step.
+
+`scripts/lnd-signet-recovery-observe.py` watches this exact channel for up to
+72 hours. It waits for peer-assisted closure, actual CSV maturity, all sweeps,
+and confirmed outputs before returning coins from the watcher and peer to
+the recorded scratch wallet. The signer holds the same wallet keys as the
+watcher, so it never sends a second return. The controller records each
+attempt before sending, waits for the original return transaction, checks
+all three balances are zero, and stops only these test containers. A missing
+result after a recorded send stops for inspection.

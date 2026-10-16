@@ -52,7 +52,8 @@ fn save(path: impl AsRef<Path>, value: &impl Serialize) -> Result<()> {
     Ok(())
 }
 fn cli(node: &str, args: &[&str]) -> Result<Value> {
-    let output = Command::new("docker")
+    let output = Command::new("timeout")
+        .args(["45s", "docker"])
         .args([
             "exec",
             &format!("oa-lnd-signet-11862-{node}"),
@@ -211,17 +212,6 @@ async fn initialize_watch(root: &Path, restore: bool) -> Result<Value> {
         .ok_or("Missing original wallet birthday.")?
         .saturating_sub(7200);
     let password = Zeroizing::new(fs::read(root.join("private/watch-password"))?);
-    let backups = if restore {
-        Some(lnrpc::ChanBackupSnapshot {
-            multi_chan_backup: Some(lnrpc::MultiChanBackup {
-                multi_chan_backup: fs::read(root.join("private/channel.backup"))?,
-                chan_points: vec![],
-            }),
-            ..Default::default()
-        })
-    } else {
-        None
-    };
     let marker = if restore {
         "watch-restore-started.json"
     } else {
@@ -234,11 +224,11 @@ async fn initialize_watch(root: &Path, restore: bool) -> Result<Value> {
     let mut rpc = bootstrap(root, "watch").await?;
     let mut response=once(rpc.init_wallet(lnrpc::InitWalletRequest{wallet_password:password.to_vec(),
         watch_only:Some(lnrpc::WatchOnly{master_key_birthday_timestamp:birthday,accounts,..Default::default()}),
-        recovery_window:if restore{100}else{0},channel_backups:backups,..Default::default()}),
+        recovery_window:if restore{100}else{0},..Default::default()}),
         "Watch-only initialization is uncertain; inspect the original research node before retrying.").await?;
     response.admin_macaroon.zeroize();
     Ok(
-        json!({"node":"watch","restored_scb":restore,"public_accounts":count,"private_keys_imported":false}),
+        json!({"node":"watch","watch_restored":restore,"restored_scb":false,"public_accounts":count,"private_keys_imported":false}),
     )
 }
 async fn inspect(root: &Path) -> Result<Value> {
@@ -303,13 +293,270 @@ async fn addresses(root: &Path) -> Result<Value> {
     save(output, &value)?;
     Ok(value)
 }
+fn docker(action: &str, node: &str) -> Result<()> {
+    port(node)?;
+    if !matches!(action, "pause" | "unpause") {
+        return Err("Unsupported research process operation.".into());
+    }
+    let status = Command::new("docker")
+        .args([action, &format!("oa-lnd-signet-11862-{node}")])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()?;
+    if !status.success() {
+        return Err("Could not change the research signer state.".into());
+    }
+    Ok(())
+}
+async fn payment_case(
+    root: &Path,
+    label: &str,
+    payer: &Client,
+    receiver: &Client,
+    amount: u64,
+    pause: bool,
+) -> Result<Value> {
+    use openagents_wallet::Proof;
+    let directory = root.join("private").join(label);
+    fs::create_dir_all(&directory)?;
+    let invoice_path = directory.join("invoice.json");
+    let invoice: openagents_wallet::IssuedInvoice = if invoice_path.exists() {
+        read(&invoice_path)?
+    } else {
+        let hints = receiver.private_route_hints().await?;
+        if hints.is_empty() {
+            return Err("The research private channel is not ready.".into());
+        }
+        let description: [u8; 32] = Sha256::digest(format!("signet recovery 11862 {label}")).into();
+        let invoice = receiver
+            .create_invoice_with_hints(amount, description, 3600, hints)
+            .await?;
+        save(&invoice_path, &invoice)?;
+        invoice
+    };
+    let hash: [u8; 32] = hex::decode(&invoice.payment_hash)?
+        .try_into()
+        .map_err(|_| "Invalid original payment hash.")?;
+    let proof_path = directory.join("proof.json");
+    let marker = directory.join("send-started.json");
+    let started = std::time::Instant::now();
+    let proof: Proof = if proof_path.exists() {
+        read(&proof_path)?
+    } else {
+        let immediate = if marker.exists() {
+            None
+        } else {
+            save(
+                &marker,
+                &json!({"payment_hash":invoice.payment_hash,"amount_msat":amount,"fee_cap_msat":5000,"pause_signer":pause,"at_unix":now()}),
+            )?;
+            if pause {
+                // A separate, bounded guard resumes this exact test container
+                // even if the caller exits while its payment response is lost.
+                Command::new("sh")
+                    .args([
+                        "-c",
+                        "sleep 8; docker unpause oa-lnd-signet-11862-signer >/dev/null 2>&1",
+                    ])
+                    .stdin(std::process::Stdio::null())
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .spawn()?;
+                docker("pause", "signer")?;
+                let result = payer
+                    .send_payment(&invoice.bolt11, 5000, Duration::from_secs(3))
+                    .await;
+                let observed = receiver.received_msat(hash).await;
+                let resumed = docker("unpause", "signer");
+                resumed?;
+                if !matches!(
+                    result,
+                    Err(lnd_sdk::Error::Timeout | lnd_sdk::Error::InFlight)
+                ) || observed? != None
+                {
+                    return Err(
+                        "The signer-pause result did not establish an unresolved unpaid request."
+                            .into(),
+                    );
+                }
+                save(
+                    directory.join("pause-observation.json"),
+                    &json!({"result":"unresolved","received_while_paused":false,"same_hash_tracked_after_resume":true}),
+                )?;
+                None
+            } else {
+                Some(
+                    payer
+                        .send_payment(&invoice.bolt11, 5000, Duration::from_secs(30))
+                        .await?,
+                )
+            }
+        };
+        let proof = if let Some(proof) = immediate {
+            proof
+        } else {
+            let deadline = std::time::Instant::now() + Duration::from_secs(120);
+            loop {
+                let p = payer.track(hash).await?;
+                match lnrpc::payment::PaymentStatus::try_from(p.status) {
+                    Ok(lnrpc::payment::PaymentStatus::Succeeded) => {
+                        break Proof {
+                            payment_hash: p.payment_hash,
+                            preimage: p.payment_preimage,
+                            amount_msat: u64::try_from(p.value_msat)?,
+                            fee_msat: u64::try_from(p.fee_msat)?,
+                            bolt11: invoice.bolt11.clone(),
+                        };
+                    }
+                    Ok(lnrpc::payment::PaymentStatus::Failed) => {
+                        return Err(
+                            "The original research payment failed; no replacement was sent.".into(),
+                        );
+                    }
+                    _ => {}
+                }
+                if std::time::Instant::now() >= deadline {
+                    return Err(
+                        "The original research payment is still unresolved; track its saved hash."
+                            .into(),
+                    );
+                }
+                tokio::time::sleep(Duration::from_secs(1)).await;
+            }
+        };
+        save(&proof_path, &proof)?;
+        proof
+    };
+    let preimage = Zeroizing::new(hex::decode(&proof.preimage)?);
+    if proof.payment_hash != invoice.payment_hash
+        || proof.bolt11 != invoice.bolt11
+        || proof.amount_msat != amount
+        || proof.fee_msat > 5000
+        || preimage.len() != 32
+        || Sha256::digest(&*preimage).as_slice() != hash
+    {
+        return Err("The original payment proof does not match its invoice.".into());
+    }
+    if pause && !directory.join("pause-observation.json").exists() {
+        return Err(
+            "The original payment was recovered, but its signer-pause observation is missing."
+                .into(),
+        );
+    }
+    if receiver.received_msat(hash).await? != Some(amount) {
+        return Err("The receiver did not settle the exact original amount.".into());
+    }
+    let result = json!({"case":label,"payment_hash":invoice.payment_hash,"amount_msat":amount,"fee_msat":proof.fee_msat,"sender":payer.node_id(),"receiver":receiver.node_id(),
+        "signer_pause":pause,"original_hash_only":true,"elapsed_ms":started.elapsed().as_millis()});
+    let result_path = directory.join("public-result.json");
+    if !result_path.exists() {
+        save(&result_path, &result)?;
+    }
+    read(result_path)
+}
+async fn exercise(root: &Path) -> Result<Value> {
+    inspect(root).await?;
+    let watch = client(root, "watch").await?;
+    let peer = client(root, "peer").await?;
+    let channels = cli("watch", &["listchannels"])?;
+    let list = channels["channels"]
+        .as_array()
+        .ok_or("Missing research channel.")?;
+    if list.len() != 1
+        || list[0]["active"] != true
+        || list[0]["private"] != true
+        || list[0]["commitment_type"] != "ANCHORS"
+        || list[0]["capacity"] != "20000"
+    {
+        return Err("The confirmed private research channel is not ready.".into());
+    }
+    let backup = watch.channel_backup().await?;
+    if backup.channels != 1 {
+        return Err("Unexpected research backup channel count.".into());
+    }
+    let backup_path = root.join("private/channel.backup");
+    if !backup_path.exists() {
+        use std::os::unix::fs::OpenOptionsExt;
+        let mut file = fs::OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .mode(0o600)
+            .open(&backup_path)?;
+        file.write_all(backup.encrypted_bytes())?;
+        file.sync_all()?;
+    }
+    fs::copy(&backup_path, root.join("watch/research-channel.backup"))?;
+    cli(
+        "watch",
+        &[
+            "verifychanbackup",
+            "--multi_file",
+            "/data/research-channel.backup",
+        ],
+    )?;
+    let outbound = payment_case(root, "outbound", &watch, &peer, 1_001_001, false).await?;
+    let inbound = payment_case(root, "inbound", &peer, &watch, 500_001, false).await?;
+    let outage = payment_case(root, "signer-pause", &watch, &peer, 1_000_000, true).await?;
+    let result = json!({"network":"signet","channel_point":list[0]["channel_point"],"capacity_sat":20000,"private":true,
+        "payments":[outbound,inbound,outage],"backup":{"channels":backup.channels,"sha256":hex::encode(Sha256::digest(fs::read(&backup_path)?)),"encrypted":true,"verified_by_lnd":true},
+        "watch_only_accounts":259,"signer_identity":watch.node_id()});
+    let output = root.join("exercise-result.json");
+    if !output.exists() {
+        save(&output, &result)?;
+    }
+    Ok(result)
+}
+
+async fn restore_backup(root: &Path) -> Result<Value> {
+    inspect(root).await?;
+    if cli("watch", &["state"])?["state"] != "SERVER_ACTIVE"
+        || cli("watch", &["getinfo"])?["synced_to_chain"] != true
+    {
+        return Err(
+            "Wait for the restored watcher to finish starting before applying its backup.".into(),
+        );
+    }
+    let result: Value = read(root.join("exercise-result.json"))?;
+    let bytes = fs::read(root.join("private/channel.backup"))?;
+    let digest = hex::encode(Sha256::digest(&bytes));
+    if result["backup"]["sha256"] != digest || result["backup"]["channels"] != 1 {
+        return Err("The original research backup changed.".into());
+    }
+    fs::copy(
+        root.join("private/channel.backup"),
+        root.join("watch/research-channel.backup"),
+    )?;
+    cli(
+        "watch",
+        &[
+            "verifychanbackup",
+            "--multi_file",
+            "/data/research-channel.backup",
+        ],
+    )?;
+    save(
+        root.join("scb-restore-started.json"),
+        &json!({"at_unix":now(),"backup_sha256":digest,"channel_point":result["channel_point"]}),
+    )?;
+    cli(
+        "watch",
+        &[
+            "restorechanbackup",
+            "--multi_file",
+            "/data/research-channel.backup",
+        ],
+    )?;
+    let result = json!({"scb_restore_submitted":true,"backup_sha256":digest,"private_keys_imported_into_watch":false});
+    save(root.join("scb-restore-result.json"), &result)?;
+    Ok(result)
+}
 #[tokio::main]
 async fn main() {
     let result = async {
         let args: Vec<_> = std::env::args().skip(1).collect();
         if args.len() != 2 {
             return Err(
-                "Use ROOT init-signer|init-peer|init-watch|restore-signer|restore-watch|inspect."
+                "Use ROOT init-signer|init-peer|init-watch|restore-signer|restore-watch|restore-backup|inspect|addresses|exercise."
                     .into(),
             );
         }
@@ -325,6 +572,8 @@ async fn main() {
             "restore-watch" => initialize_watch(&root, true).await?,
             "inspect" => inspect(&root).await?,
             "addresses" => addresses(&root).await?,
+            "exercise" => exercise(&root).await?,
+            "restore-backup" => restore_backup(&root).await?,
             _ => return Err("Unknown research command.".into()),
         };
         println!("{value}");
