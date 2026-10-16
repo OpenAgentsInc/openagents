@@ -141,8 +141,8 @@ pub enum OwnCredential {
 pub const BEDROCK: &str = "OA_CLAUDE_BEDROCK";
 pub const VERTEX: &str = "OA_CLAUDE_VERTEX";
 pub const FOUNDRY: &str = "OA_CLAUDE_FOUNDRY";
-/// Launch-time only: the Vertex service account, written to a private file
-/// outside the workspace for `GOOGLE_APPLICATION_CREDENTIALS`, then unset.
+/// Launch-time only: the Vertex service account, moved into an anonymous
+/// inherited descriptor for `GOOGLE_APPLICATION_CREDENTIALS`, then unset.
 pub const VERTEX_SERVICE_ACCOUNT: &str = "OA_CLAUDE_VERTEX_SERVICE_ACCOUNT";
 
 /// Shown wherever a user adds, sees, or relies on their own credential.

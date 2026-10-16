@@ -135,9 +135,16 @@ October 8, 2026. Recheck both before each availability decision.
   `OA_CLAUDE_FOUNDRY`). Each is validated to a canonical shape, refuses
   claude.ai logins, and expands at launch into the variables the unmodified
   binary reads (`CLAUDE_CODE_USE_BEDROCK`, `AWS_*`, `CLAUDE_CODE_USE_VERTEX`
-  with a private per-job service-account file removed after the run,
+  with an anonymous inherited service-account descriptor in the source fix
+  for #11771,
   `CLAUDE_CODE_USE_FOUNDRY`, `ANTHROPIC_FOUNDRY_*`). Values are redacted from
   traces and refused in artifacts like every selected credential.
+  The fixed Linux launch script removes the credential document from the
+  environment before starting the delegate. `GOOGLE_APPLICATION_CREDENTIALS`
+  names its sealed memfd through `/dev/fd/N`; repeated reads and descendant
+  execs work without a temporary credential file. Coder 1.0.0 still contains
+  the old launch script. The owner decides whether this security fix ships
+  during the binary freeze; see [the release step](../../NEEDS_OWNER.md#decide-whether-to-ship-the-vertex-credential-security-fix-11771).
 - `coder_cloud::claude::admit_turns` is the concurrency rule: a plan login
   admits one automated turn at a time and refuses a fan-out with a pointer to
   adding a key; an own credential is not limited. The Coder operator applies

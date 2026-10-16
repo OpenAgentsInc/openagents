@@ -71,6 +71,17 @@ The released Coder 1.0.0 remains unchanged. Under the binary freeze, the owner
 must decide whether this security fix warrants a release; no release or channel
 change was made for this work.
 
+## Decide whether to ship the Vertex credential security fix (#11771)
+
+The source fix hands the Vertex service-account document through a sealed
+anonymous Linux memfd and removes its environment value before the delegate
+starts. A stand-in reads it repeatedly across exec without a temporary
+credential file; the full `coder-cloud` tests pass. Coder 1.0.0 still builds
+the old file-writing script locally. Decide whether this security fix ships
+during the freeze, then qualify one turn with a dedicated private Vertex
+credential on an isolated computer. No frozen binary, release channel, real
+Vertex credential, or production account was changed for this fix.
+
 ## Qualify production sealed vault storage (#11743)
 
 A bounded TDX research run verified a real Google-attested HPKE endpoint

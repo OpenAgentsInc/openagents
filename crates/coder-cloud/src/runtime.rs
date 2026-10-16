@@ -275,26 +275,16 @@ if [ -n "${{OPENROUTER_API_KEY:-}}" ]; then "$p" coder --state "/tmp/oa-coder-{j
 }
 
 pub fn launch_script(record: &Record, dir: &str) -> String {
-    format!(
-        r#"#!/bin/sh
-set -u
-umask 077
+    let body = format!(
+        r#"set -u
 d={dir}
-# A filesystem lock prevents a second dispatcher from starting this job.
-exec 9>"$d/owner.lock"
-flock -n 9 || exit 75
-[ ! -f "$d/started" ] || exit 0
-printf '%s' "$$" > "$d/pid"
-awk '{{print $22}}' "/proc/$$/stat" > "$d/pid-start"
-touch "$d/started"
 p=$(cat "$d/binary")
 export PATH="$HOME/.local/bin:$HOME/.cargo/bin:/usr/local/bin:$PATH"
 export CODEX_HOME="/tmp/oa-coder-{job}/codex"
-# The turn's credentials are this process's environment, inherited from the
-# dispatch command that received them in memory (#11766). No file holds them.
+# The dispatch command supplies credentials in memory (#11766).
+# Vertex uses an inherited anonymous descriptor (#11771).
 rm -f "/tmp/oa-coder-{job}.env"
 unset OA_CODEX_AUTH
-if [ -n "${{{vertex}:-}}" ]; then printf '%s' "${vertex}" > "/tmp/oa-coder-{job}/vertex.json"; chmod 600 "/tmp/oa-coder-{job}/vertex.json"; export GOOGLE_APPLICATION_CREDENTIALS="/tmp/oa-coder-{job}/vertex.json"; fi
 unset {vertex}
 unset OPENAGENTS_CODER_EVENT_CHANNEL OPENAGENTS_CODER_MODEL_INPUT
 # Claude Code's own usage-limit and login notices, kept as typed records
@@ -304,7 +294,6 @@ export OA_ENGINE_NOTICE_DIR="$HOME/.openagents/engine"
 export OA_CODER_CLOUD_CREDENTIAL_NAMES={credential_names}
 "$p" --json coder --in {workdir} --state "/tmp/oa-coder-{job}/state" delegate {agent} --task "$(cat "$d/task")" --session {session} > "$d/out" 2> "$d/err"
 rc=$?
-rm -f "/tmp/oa-coder-{job}/vertex.json"
 printf '%s' "$rc" > "$d/exit.writing"
 mv "$d/exit.writing" "$d/exit"
 exit "$rc"
@@ -328,6 +317,43 @@ exit "$rc"
         credential_names = boat::shell_quote(&record.spec.credential_names.join(",")),
         agent = boat::shell_quote(&record.spec.agent),
         session = boat::shell_quote(&record.id)
+    );
+    // Keep the existing wrapper identity and owner lock through exec. The
+    // credential enters only through the environment and is removed before
+    // the delegate starts. Its anonymous descriptor survives descendant execs.
+    let shim = r#"import fcntl,os,sys
+value=memoryview(os.environ.pop(sys.argv[1]).encode())
+fd=os.memfd_create("oa-vertex",os.MFD_ALLOW_SEALING)
+while value:
+ count=os.write(fd,value)
+ if count<=0:raise OSError("Credential handoff failed")
+ value=value[count:]
+os.lseek(fd,0,os.SEEK_SET)
+fcntl.fcntl(fd,fcntl.F_ADD_SEALS,fcntl.F_SEAL_WRITE|fcntl.F_SEAL_GROW|fcntl.F_SEAL_SHRINK|fcntl.F_SEAL_SEAL)
+os.set_inheritable(fd,True)
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"]="/dev/fd/%d"%fd
+os.execvp(sys.argv[2],sys.argv[2:])"#;
+    format!(
+        r#"#!/bin/sh
+set -u
+umask 077
+d={dir}
+# A filesystem lock prevents a second dispatcher from starting this job.
+exec 9>"$d/owner.lock"
+flock -n 9 || exit 75
+[ ! -f "$d/started" ] || exit 0
+printf '%s' "$$" > "$d/pid"
+awk '{{print $22}}' "/proc/$$/stat" > "$d/pid-start"
+touch "$d/started"
+export PATH="$HOME/.local/bin:$HOME/.cargo/bin:/usr/local/bin:$PATH"
+if [ -n "${{{vertex}:-}}" ]; then
+ exec python3 -c {shim} {vertex} /bin/sh -c {quoted_body}
+fi
+{body}"#,
+        dir = boat::shell_quote(dir),
+        vertex = crate::claude::VERTEX_SERVICE_ACCOUNT,
+        shim = boat::shell_quote(shim),
+        quoted_body = boat::shell_quote(&body),
     )
 }
 
@@ -629,16 +655,52 @@ mod tests {
         );
         // Revocation: the name resolves to nothing at the next boot or turn.
         assert!(Credentials::from_names(&[crate::claude::API_KEY.into()], |_| None).is_err());
-        let r = crate::Record::new(
-            "job1",
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn vertex_credentials_stay_anonymous_and_survive_repeated_reads_and_exec() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = tempfile::tempdir().unwrap();
+        let job = root.path().join("job");
+        let turn = root.path().join("turn");
+        std::fs::create_dir(&job).unwrap();
+        std::fs::create_dir(&turn).unwrap();
+        let binary = root.path().join("delegate");
+        std::fs::write(
+            &binary,
+            r#"#!/usr/bin/python3
+import json,os,sys
+path=os.environ['GOOGLE_APPLICATION_CREDENTIALS']
+assert path.startswith('/dev/fd/')
+assert os.readlink(path).startswith('/memfd:')
+assert 'OA_CLAUDE_VERTEX_SERVICE_ACCOUNT' not in os.environ
+for _ in range(2):
+ with open(path) as file:
+  value=json.load(file)
+ assert value['project_id']=='synthetic-project'
+ assert value['private_key']=='fixture-only'
+if sys.argv[1:]!=['child']:
+ with open(os.environ['FIXTURE_COUNT_FILE'],'a') as file:file.write('started\n')
+ os.execv(sys.executable,[sys.executable,__file__,'child'])
+print('credential-readable')
+raise SystemExit(17)
+"#,
+        )
+        .unwrap();
+        std::fs::set_permissions(&binary, std::fs::Permissions::from_mode(0o700)).unwrap();
+        std::fs::write(job.join("binary"), binary.to_str().unwrap()).unwrap();
+        std::fs::write(job.join("task"), "synthetic turn").unwrap();
+        let record = crate::Record::new(
+            "vertex11771",
             crate::Spec {
                 placement: crate::Placement::Boat,
                 mode: crate::Mode::Coder,
                 agent: "claude".into(),
-                task: "t".into(),
+                task: "synthetic turn".into(),
                 model: None,
                 reasoning: None,
-                cwd: "/w".into(),
+                cwd: root.path().into(),
                 timeout_seconds: 60,
                 size: "s".into(),
                 template: None,
@@ -646,12 +708,40 @@ mod tests {
             },
         )
         .unwrap();
-        let script = launch_script(&r, "/home/user/.oa-coder/jobs/job1");
-        assert!(
-            script.contains("GOOGLE_APPLICATION_CREDENTIALS=\"/tmp/oa-coder-job1/vertex.json\"")
+        let document = r#"{"type":"service_account","project_id":"synthetic-project","private_key":"fixture-only"}"#;
+        let script = launch_script(&record, job.to_str().unwrap())
+            .replace("/tmp/oa-coder-vertex11771", turn.to_str().unwrap());
+        assert!(!script.contains(document));
+        let count = root.path().join("count");
+        let run = || {
+            std::process::Command::new("sh")
+                .args(["-c", &script])
+                .env_clear()
+                .env("PATH", std::env::var_os("PATH").unwrap_or_default())
+                .env("HOME", root.path())
+                .env("TMPDIR", &turn)
+                .env(crate::claude::VERTEX_SERVICE_ACCOUNT, document)
+                .env("FIXTURE_COUNT_FILE", &count)
+                .output()
+                .unwrap()
+        };
+        let result = run();
+        assert_eq!(
+            result.status.code(),
+            Some(17),
+            "{}\n{}",
+            String::from_utf8_lossy(&result.stderr),
+            std::fs::read_to_string(job.join("err")).unwrap_or_default(),
         );
-        assert!(script.contains("unset OA_CLAUDE_VERTEX_SERVICE_ACCOUNT"));
-        assert!(script.contains("rm -f \"/tmp/oa-coder-job1/vertex.json\""));
+        assert_eq!(
+            std::fs::read_to_string(job.join("out")).unwrap(),
+            "credential-readable\n"
+        );
+        assert!(std::fs::read(job.join("err")).unwrap().is_empty());
+        assert_eq!(std::fs::read_to_string(job.join("exit")).unwrap(), "17");
+        assert!(std::fs::read_dir(&turn).unwrap().next().is_none());
+        assert!(run().status.success());
+        assert_eq!(std::fs::read_to_string(count).unwrap(), "started\n");
     }
 }
 
