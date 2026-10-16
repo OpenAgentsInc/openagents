@@ -35,6 +35,23 @@ build's entry at the top of `CHANGELOG` in
 script refuses a dirty checkout or a build number App Store Connect already
 has. Report the build number and the script's last line.
 
+## Coder binary freeze at 1.0.0 (owner, 2026-10-15, binding)
+
+The Coder programs (`coder`, `openagents`, `microcoder`, `coder-boundary`)
+are frozen at 1.0.0 (tag `coder-v1.0.0`). Read
+[`docs/coder/1.0-freeze.md`](docs/coder/1.0-freeze.md) before changing
+anything Coder or its server routes touch.
+
+- Don't make a Coder release, or land work whose value needs a new binary.
+  Add it to [`docs/coder/next-release.md`](docs/coder/next-release.md)
+  instead, and leave its issue open saying so.
+- Server, website, docs, mobile and desktop work is wanted, but must stay
+  compatible with the released 1.0.0: additive API changes only; old
+  addresses, model ids and error codes keep working.
+- Improve 1.0 through what it gets from our servers: the model list, Auto
+  routing, decisions, plugins, cloud computers, projects. The policy doc
+  lists the opportunities.
+
 ## Never test on the owner's account (owner, 2026-10-14, binding)
 
 No test, smoke, gate, or agent check may leave chats, computers, projects,
