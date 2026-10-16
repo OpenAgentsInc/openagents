@@ -326,7 +326,7 @@ dependencies = [
 [[package]]
 name = "coder-brand"
 version = "0.2.113"
-source = "git+https://github.com/OpenAgentsInc/coder-desktop?rev=c2943aef2a3082370642e79d06bb5759dc4da2d9#c2943aef2a3082370642e79d06bb5759dc4da2d9"
+source = "git+https://github.com/OpenAgentsInc/coder-desktop?rev=88deb192a37ecd1e023813a6fabe95ba8649b072#88deb192a37ecd1e023813a6fabe95ba8649b072"
 
 [[package]]
 name = "coder-sync-conformance"
@@ -3627,7 +3627,7 @@ checksum = "e13084392c5e4bc371903e2935a5eaeed24905a7511356b883835e18a78f6879"
 [[package]]
 name = "zeron-client"
 version = "0.2.113"
-source = "git+https://github.com/OpenAgentsInc/coder-desktop?rev=c2943aef2a3082370642e79d06bb5759dc4da2d9#c2943aef2a3082370642e79d06bb5759dc4da2d9"
+source = "git+https://github.com/OpenAgentsInc/coder-desktop?rev=88deb192a37ecd1e023813a6fabe95ba8649b072#88deb192a37ecd1e023813a6fabe95ba8649b072"
 dependencies = [
  "async-trait",
  "chrono",
@@ -3652,7 +3652,7 @@ dependencies = [
 [[package]]
 name = "zeron-doc"
 version = "0.2.113"
-source = "git+https://github.com/OpenAgentsInc/coder-desktop?rev=c2943aef2a3082370642e79d06bb5759dc4da2d9#c2943aef2a3082370642e79d06bb5759dc4da2d9"
+source = "git+https://github.com/OpenAgentsInc/coder-desktop?rev=88deb192a37ecd1e023813a6fabe95ba8649b072#88deb192a37ecd1e023813a6fabe95ba8649b072"
 dependencies = [
  "chrono",
  "loro",
@@ -3667,12 +3667,12 @@ dependencies = [
 [[package]]
 name = "zeron-orb"
 version = "0.2.113"
-source = "git+https://github.com/OpenAgentsInc/coder-desktop?rev=c2943aef2a3082370642e79d06bb5759dc4da2d9#c2943aef2a3082370642e79d06bb5759dc4da2d9"
+source = "git+https://github.com/OpenAgentsInc/coder-desktop?rev=88deb192a37ecd1e023813a6fabe95ba8649b072#88deb192a37ecd1e023813a6fabe95ba8649b072"
 
 [[package]]
 name = "zeron-proto"
 version = "0.2.113"
-source = "git+https://github.com/OpenAgentsInc/coder-desktop?rev=c2943aef2a3082370642e79d06bb5759dc4da2d9#c2943aef2a3082370642e79d06bb5759dc4da2d9"
+source = "git+https://github.com/OpenAgentsInc/coder-desktop?rev=88deb192a37ecd1e023813a6fabe95ba8649b072#88deb192a37ecd1e023813a6fabe95ba8649b072"
 dependencies = [
  "chrono",
  "coder-brand",
@@ -3685,7 +3685,7 @@ dependencies = [
 [[package]]
 name = "zeron-rpc"
 version = "0.2.113"
-source = "git+https://github.com/OpenAgentsInc/coder-desktop?rev=c2943aef2a3082370642e79d06bb5759dc4da2d9#c2943aef2a3082370642e79d06bb5759dc4da2d9"
+source = "git+https://github.com/OpenAgentsInc/coder-desktop?rev=88deb192a37ecd1e023813a6fabe95ba8649b072#88deb192a37ecd1e023813a6fabe95ba8649b072"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3704,7 +3704,7 @@ dependencies = [
 [[package]]
 name = "zeron-sync"
 version = "0.2.113"
-source = "git+https://github.com/OpenAgentsInc/coder-desktop?rev=c2943aef2a3082370642e79d06bb5759dc4da2d9#c2943aef2a3082370642e79d06bb5759dc4da2d9"
+source = "git+https://github.com/OpenAgentsInc/coder-desktop?rev=88deb192a37ecd1e023813a6fabe95ba8649b072#88deb192a37ecd1e023813a6fabe95ba8649b072"
 dependencies = [
  "block2",
  "futures",
@@ -3724,7 +3724,7 @@ dependencies = [
 [[package]]
 name = "zeron-voice-session"
 version = "0.2.113"
-source = "git+https://github.com/OpenAgentsInc/coder-desktop?rev=c2943aef2a3082370642e79d06bb5759dc4da2d9#c2943aef2a3082370642e79d06bb5759dc4da2d9"
+source = "git+https://github.com/OpenAgentsInc/coder-desktop?rev=88deb192a37ecd1e023813a6fabe95ba8649b072#88deb192a37ecd1e023813a6fabe95ba8649b072"
 dependencies = [
  "async-trait",
  "futures",

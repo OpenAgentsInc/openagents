@@ -5,15 +5,15 @@ members = ["conformance"]
 default-members = ["."]
 
 [workspace.metadata.conformance]
-fork-revision = "c2943aef2a3082370642e79d06bb5759dc4da2d9"
+fork-revision = "88deb192a37ecd1e023813a6fabe95ba8649b072"
 
 [workspace.dependencies]
 openagents = { package = "openagents-sdk", git = "https://github.com/OpenAgentsInc/openagents.git", rev = "5a3d1c14f58888c08d0e7a0ede0322fe7585b20b" }
-zeron-sync = { git = "https://github.com/OpenAgentsInc/coder-desktop", rev = "c2943aef2a3082370642e79d06bb5759dc4da2d9" }
-zeron-client = { git = "https://github.com/OpenAgentsInc/coder-desktop", rev = "c2943aef2a3082370642e79d06bb5759dc4da2d9" }
-zeron-proto = { git = "https://github.com/OpenAgentsInc/coder-desktop", rev = "c2943aef2a3082370642e79d06bb5759dc4da2d9" }
-zeron-doc = { git = "https://github.com/OpenAgentsInc/coder-desktop", rev = "c2943aef2a3082370642e79d06bb5759dc4da2d9" }
-zeron-rpc = { git = "https://github.com/OpenAgentsInc/coder-desktop", rev = "c2943aef2a3082370642e79d06bb5759dc4da2d9" }
+zeron-sync = { git = "https://github.com/OpenAgentsInc/coder-desktop", rev = "88deb192a37ecd1e023813a6fabe95ba8649b072" }
+zeron-client = { git = "https://github.com/OpenAgentsInc/coder-desktop", rev = "88deb192a37ecd1e023813a6fabe95ba8649b072" }
+zeron-proto = { git = "https://github.com/OpenAgentsInc/coder-desktop", rev = "88deb192a37ecd1e023813a6fabe95ba8649b072" }
+zeron-doc = { git = "https://github.com/OpenAgentsInc/coder-desktop", rev = "88deb192a37ecd1e023813a6fabe95ba8649b072" }
+zeron-rpc = { git = "https://github.com/OpenAgentsInc/coder-desktop", rev = "88deb192a37ecd1e023813a6fabe95ba8649b072" }
 
 [package]
 name = "coder-sync-service"

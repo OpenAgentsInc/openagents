@@ -57,8 +57,8 @@ dependencies. No application code is copied into that package.
 
 Dev bearers use `user` or `user@workspace`, matching the reference clients.
 Do not use personal accounts. Production refuses dev auth even when the
-command-line flag is set. Until #11848, production health works but no account
-can open a room. There is no WorkOS server or Cloudflare deployment.
+command-line flag is set. Room access requires a current OpenAgents account
+session. There is no WorkOS server or Cloudflare deployment.
 
 Startup applies each migration once under a Postgres advisory lock and checks bucket
 read/write access with a short-lived test object. `/health` checks Postgres
