@@ -12,7 +12,11 @@
     },
     "isolated_handler": "passed: synthetic accounts, paging, cross-account denial, repeat upload, duplicate reply, destructive take, sharing revocation, deletion tombstone",
     "public_reference": "passed: 81 app operations after rebase; existing qualified operations unchanged",
-    "format": "passed: changed Rust modules; whitespace check"
+    "format": "passed: changed Rust modules; whitespace check",
+    "rebased_contract": "passed: five app-schema tests and isolated thread handler test",
+    "live_staging": "16 passed: docs, aliases, isolated released Coder 1.0.0 install/version",
+    "live_candidate": "15 passed, one models check waiting for traffic as expected",
+    "live_production": "Public reference validates all 139 combined operations; aliases, models and released Coder 1.0.0 install/version pass. Docs sweep returned one intermittent 503 per run (queue-messages, then verse); both pages return 200 individually."
   },
   "unrelated_failures": [
     {
@@ -29,5 +33,13 @@
     }
   ],
   "resources": "Temporary local stores and loopback services removed/stopped; no real accounts, inference, computers or payments used.",
-  "deployment": "Pending publication of the generated schema on the public front."
+  "deployment": {
+    "commit": "64de7cf55c",
+    "image": "sha256:8c304a3c22ccb2221dad2ccb769f2b8d164edf47b7bc257bcee1f665b6dc5dfe",
+    "revision": "coder-web-8c304a3c22-20261016210444",
+    "traffic_percent": 100,
+    "staging_build": "2be16ea3-50ca-4d28-8500-97a6fb4490b0",
+    "inference": "none; focused smoke groups only",
+    "tls": "Local Python trust fixed with SSL_CERT_FILE=/etc/ssl/cert.pem; verification stayed enabled."
+  }
 }

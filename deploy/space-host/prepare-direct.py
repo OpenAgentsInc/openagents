@@ -106,6 +106,8 @@ for resource, container in [('daemonset/space-node-api', 'node-api'), ('daemonse
         'nodeSelector': {'kubernetes.io/hostname': name},
         'containers': [{'name': container, 'env': [
             {'name': 'SPACE_NODE_ID', 'value': node_id, 'valueFrom': None}]}]}}}}
+    if container == 'node-ctl':
+        patch['spec']['template']['spec']['containers'][0]['args'] = ['--poll-interval-secs=5']
     kube('patch', resource, '--type=strategic', '-p', json.dumps(patch))
     kube('rollout', 'status', resource, '--timeout=300s')
     step(resource + ' reports existing UUID on one worker')
