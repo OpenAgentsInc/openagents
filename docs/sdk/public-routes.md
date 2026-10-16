@@ -145,3 +145,16 @@ references reachable from the owning `/v1/systemone` operation and prefixes
 component names with `SystemOne`. The web front adds it separately from the
 app fixture; the auth/history SDK fixture keeps its existing scope. Drift checks
 compare operation bodies and component definitions, not only path names.
+
+For a deployed System One check without account data or model work, run:
+
+```sh
+python3 scripts/api/check_systemone_public.py --malformed-call
+```
+
+For staging, set both `--api https://staging.openagents.com` and
+`--website https://staging.openagents.com`. The check reads the reference,
+cards, guide, and docs MCP. The optional POST body is deliberately invalid JSON;
+it contains no credential, model, state, or questions. Use `--output FILE` to
+save scrubbed results and `--browser-baseline FILE` to compare a previously
+saved public `vault/release.json` file list.
