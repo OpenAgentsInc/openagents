@@ -128,6 +128,60 @@ impl Coordinator {
         )?;
         effect()
     }
+    /// Admit one registered external operation under the ENV fence. Persist
+    /// the actual call charge and unknown hold before disclosing inputs, and
+    /// keep the authority lock through the runtime's dispatch callback.
+    /// A callback return is not a terminal worker result or release of holds.
+    pub fn with_environment_intake(
+        &self,
+        claim: &Value,
+        controller: &str,
+        worker: &str,
+        declaration: &Value,
+        plaintext: &Value,
+        reservation: &Value,
+        frame: &Value,
+        intake: &nostr::domain::Event,
+        now: u64,
+        effect: &mut dyn FnMut(&crate::worker::Intake, u64) -> Result<Value>,
+    ) -> Result<Value> {
+        let started = std::time::Instant::now();
+        let (actor, body) = self.authenticate(
+            intake,
+            now,
+            Some("openagents.coordination-native-intake.v1"),
+        )?;
+        crate::admin::closed(&body, &["v", "requires", "request", "fingerprint"])?;
+        let _guard = self.store.lock()?;
+        let mut state = self.state()?;
+        let current = now.saturating_add(started.elapsed().as_secs());
+        self.environment_claim_locked(
+            &state,
+            claim,
+            controller,
+            worker,
+            declaration,
+            plaintext,
+            reservation,
+            frame,
+            current,
+        )?;
+        if actor != worker
+            || self.external_operation(&plaintext["target"])?.worker != worker
+            || body["request"] != declaration["event"]["id"]
+            || body["fingerprint"]
+                != contracts::digest_value(plaintext).map_err(|e| e.to_string())?
+        {
+            return Err("identity_mismatch: external runtime intake differs from its exact environment execution".into());
+        }
+        let admitted = self.intake_locked(&mut state, intake, &actor, &body, now, &started)?;
+        let current = now.saturating_add(started.elapsed().as_secs());
+        if admitted.0 != *plaintext || plaintext["deadline"].as_u64().is_none_or(|v| v <= current) {
+            return Err("stale: execution expired before runtime disclosure".into());
+        }
+        effect(&admitted, current)
+    }
+
     /// Charge one owner-admitted bootstrap against the actual container shared
     /// with this environment's named worker. This grants no bootstrap effects.
     pub fn environment_bootstrap(

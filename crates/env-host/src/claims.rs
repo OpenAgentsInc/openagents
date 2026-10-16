@@ -27,6 +27,21 @@ pub trait ClaimAuthority {
     ) -> Result<()> {
         Err("cannot_enforce: fenced runtime admission is not configured".into())
     }
+    fn with_intake(
+        &self,
+        _claim: &Value,
+        _controller: &str,
+        _worker: &str,
+        _declaration: &Value,
+        _plaintext: &Value,
+        _reservation: &Value,
+        _frame: &Value,
+        _intake: &nostr::domain::Event,
+        _now: u64,
+        _effect: &mut dyn FnMut(&coordination_host::worker::Intake, u64) -> Result<Value>,
+    ) -> Result<Value> {
+        Err("cannot_enforce: fenced runtime intake is not configured".into())
+    }
     fn bootstrap_receipt(&self, _: &nostr::domain::Event, _: &str, _: u64) -> Result<Value> {
         Err("unavailable: bootstrap accounting cannot be observed".into())
     }
@@ -89,6 +104,32 @@ impl ClaimAuthority for coordination_host::book::Coordinator {
             plaintext,
             reservation,
             frame,
+            now,
+            effect,
+        )
+    }
+    fn with_intake(
+        &self,
+        claim: &Value,
+        controller: &str,
+        worker: &str,
+        declaration: &Value,
+        plaintext: &Value,
+        reservation: &Value,
+        frame: &Value,
+        intake: &nostr::domain::Event,
+        now: u64,
+        effect: &mut dyn FnMut(&coordination_host::worker::Intake, u64) -> Result<Value>,
+    ) -> Result<Value> {
+        self.with_environment_intake(
+            claim,
+            controller,
+            worker,
+            declaration,
+            plaintext,
+            reservation,
+            frame,
+            intake,
             now,
             effect,
         )

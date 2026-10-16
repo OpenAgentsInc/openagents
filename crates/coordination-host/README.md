@@ -128,3 +128,10 @@ binding cannot be registered again. The fixed data worker refuses foreign
 targets before input disclosure or call accounting, even if they reuse its
 operation name. Registration and preparation do not implement runtime dispatch;
 the owning runtime still needs its separately fenced intake.
+
+`with_environment_intake` provides that library boundary for registered native
+executors. It rechecks the original prepared request and current claim, commits
+the actual call charge and unknown hold, then keeps the coordinator lock through
+the allocator's runtime callback. The callback receives only those exact admitted
+inputs. A callback acknowledgment does not complete the worker's CJ execution or
+release its holds; a lost acknowledgment cannot trigger another intake.

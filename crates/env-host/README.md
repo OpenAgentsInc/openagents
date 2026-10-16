@@ -6,6 +6,15 @@ attachment grants, cleanup receipts, accounting, and operation results. A lease
 is not a wallet authorization, a commercial order, or a grant of workspace or
 credential access.
 
+For a registered external native operation, `with_runtime_execution` holds ENV
+and COORD admission through the runtime callback. COORD saves the call charge
+and unknown execution hold before exposing the exact inputs. The callback gets
+a borrowed `RuntimeFence`, whose session-side checks compare the actual grant,
+controller, worker, lease, materialization, engine, and deadline without releasing
+either authority lock. A returned start acknowledgment does not settle the job.
+A lost callback acknowledgment stays unknown across restart and cannot dispatch
+again. The runtime still owns its exact capability and operation implementation.
+
 ```sh
 env-host init --state DIR --key-file KEY --policy POLICY.json
 env-host submit --state DIR --key-file KEY --provider-root RESOURCES --input BUNDLE
@@ -38,7 +47,8 @@ The `openagents env` alias waits for the next Coder release; use this binary.
   changed executor runtime or configuration, an opaque model under requirements
   that need model evidence, a required bound without a mechanism, or a plan
   that widens the request refuses readiness. Each readiness gets a fresh
-  generation. Bootstrap operations are not supported and refuse.
+  generation. Bootstrap supports the separately admitted fixed manifest
+  initialization profile; other bootstrap operations refuse.
 - **One slot, bound before dispatch.** An attachment needs the current revision
   and materialization, the primary executor as worker, a controller with a
   current generation, a caller-signed execute declaration whose plaintext

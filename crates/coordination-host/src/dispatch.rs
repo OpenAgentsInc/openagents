@@ -219,6 +219,17 @@ impl Coordinator {
         crate::admin::closed(&body, &["v", "requires", "request", "fingerprint"])?;
         let _guard = self.store.lock()?;
         let mut state = self.state()?;
+        self.intake_locked(&mut state, event, &actor, &body, now, &started)
+    }
+    pub(crate) fn intake_locked(
+        &self,
+        state: &mut crate::book::State,
+        event: &Event,
+        actor: &str,
+        body: &Value,
+        now: u64,
+        started: &std::time::Instant,
+    ) -> Result<crate::worker::Intake> {
         let id = state
             .scopes
             .iter()
@@ -290,10 +301,10 @@ impl Coordinator {
         scope.calls += 1;
         scope.revision += 1;
         scope.claims.insert(lease_key, lease);
-        let input = self.retain(&mut state, event, &body)?;
+        let input = self.retain(state, event, body)?;
         self.journal(&mut scope,"dispatched",Some(payload["request"].as_str().ok_or("request ID")?),json!({"binding":payload["target"],"attempt":1,"input":payload["input"],"context":payload["context"],"effect":"native-input-disclosure","generation":0}),now)?;
         let _ = input;
-        self.save_scope(&mut state, id, scope)?;
+        self.save_scope(state, id, scope)?;
         Ok((payload, pins))
     }
     pub fn record_result(

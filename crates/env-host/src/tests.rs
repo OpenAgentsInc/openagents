@@ -186,6 +186,32 @@ impl crate::claims::ClaimAuthority for RevokingClaims {
         }
         Ok(())
     }
+    fn with_intake(
+        &self,
+        claim: &Value,
+        controller: &str,
+        worker: &str,
+        declaration: &Value,
+        plaintext: &Value,
+        reservation: &Value,
+        frame: &Value,
+        intake: &Event,
+        now: u64,
+        effect: &mut dyn FnMut(&coordination_host::worker::Intake, u64) -> crate::Result<Value>,
+    ) -> crate::Result<Value> {
+        self.coordinator.with_environment_intake(
+            claim,
+            controller,
+            worker,
+            declaration,
+            plaintext,
+            reservation,
+            frame,
+            intake,
+            now,
+            effect,
+        )
+    }
     fn with_current(
         &self,
         claim: &Value,
@@ -1342,12 +1368,13 @@ fn native_environment_job(
     Event,
     Value,
 ) {
-    let (h, scope, claim, event, payload, _) = native_environment_job_with_parent(fx, false);
+    let (h, scope, claim, event, payload, _) = native_environment_job_with_parent(fx, false, false);
     (h, scope, claim, event, payload)
 }
 fn native_environment_job_with_parent(
     fx: &mut Fixture,
     with_parent: bool,
+    external: bool,
 ) -> (
     coordination_host::book::Coordinator,
     Value,
@@ -1362,6 +1389,32 @@ fn native_environment_job_with_parent(
     )
     .unwrap();
     let target = h.data_operation().unwrap();
+    let target = if external {
+        let mut card =
+            nostr::contracts::parse_strict(&h.get_local_bytes(&target["artifact"]).unwrap())
+                .unwrap();
+        let id = format!("{}:session/runtime", pk(WORKER));
+        card["id"] = json!(id);
+        card["binding_contract"]["operation"] = json!("session-submit");
+        card["binding_contract"]["interface"] = json!("openagents.fixture-runtime.v1");
+        let bytes = nostr::contracts::jcs(&card).unwrap();
+        let artifact = workspace_host::artifact::reference(
+            &bytes,
+            "application/json",
+            Some("openagents.cap.v1"),
+        );
+        let target = json!({"id":id,"artifact":artifact});
+        h.register_executor(
+            &target,
+            &pk(WORKER),
+            &BTreeMap::from([(digest_bytes(&bytes), bytes)]),
+        )
+        .unwrap();
+        target
+    } else {
+        target
+    };
+
     let effects = json!({"reads":["artifact"],"writes":[],"network":[],"process":false,"delegates":false,"spend":false});
     let mut ceiling = effects.clone();
     ceiling["delegates"] = json!(true);
@@ -1483,16 +1536,25 @@ fn actual_coordinator_claim_and_environment_attachment_gate_the_native_worker() 
         "different-frame",
         "resource-replaced",
         "runtime-race",
+        "external-runtime",
+        "external-runtime-lost",
+        "external-revoked",
+        "external-runtime-race",
     ] {
         let mut fx = Fixture::new();
-        let (coordinator, scope, claim, event, payload) = native_environment_job(&mut fx);
+        let (coordinator, scope, claim, event, payload) = if mode.starts_with("external-") {
+            let (h, s, c, e, p, _) = native_environment_job_with_parent(&mut fx, false, true);
+            (h, s, c, e, p)
+        } else {
+            native_environment_job(&mut fx)
+        };
         let mounted = coordination_host::book::Coordinator::open(
             fx._temp.path().join("coord"),
             secret(OWNER),
         )
         .unwrap();
         let armed = Rc::new(std::cell::Cell::new(false));
-        let allocator = if mode == "runtime-race" {
+        let allocator = if matches!(mode, "runtime-race" | "external-runtime-race") {
             fx.allocator().with_claims(Box::new(RevokingClaims {
                 coordinator: mounted,
                 scope: scope.clone(),
@@ -1544,6 +1606,213 @@ fn actual_coordinator_claim_and_environment_attachment_gate_the_native_worker() 
             attachment_control(&fx, &allocator, &grant, "activate", 92, OWNER)["status"],
             "accepted"
         );
+        if mode.starts_with("external-") {
+            let body = allocator.store().json(&grant).unwrap();
+            let mat = allocator.store().json(&body["materialization"]).unwrap();
+            let owner = pk(OWNER);
+            let worker = pk(WORKER);
+            let wrong = pk(7);
+            let fingerprint = digest_value(&job.payload).unwrap();
+            let intake = workspace_host::host::request(
+                &secret(WORKER),
+                &owner,
+                json!({"v":"openagents.coordination-native-intake.v1","requires":[],
+                    "request":job.event.id,"fingerprint":fingerprint}),
+                fx.now,
+            )
+            .unwrap();
+            let dispatch = crate::runtime::RuntimeDispatch {
+                attachment: body["attachment"].as_str().unwrap(),
+                fingerprint: &fingerprint,
+                grant: &grant,
+                controller: &owner,
+                executor: &worker,
+                engine: &mat["runtime"]["artifact"],
+                target: &job.payload["target"],
+                intake: &intake,
+            };
+            let mut calls = 0;
+            for bad in [
+                crate::runtime::RuntimeDispatch {
+                    controller: &wrong,
+                    ..dispatch
+                },
+                crate::runtime::RuntimeDispatch {
+                    executor: &wrong,
+                    ..dispatch
+                },
+                crate::runtime::RuntimeDispatch {
+                    grant: &Value::Null,
+                    ..dispatch
+                },
+                crate::runtime::RuntimeDispatch {
+                    engine: &Value::Null,
+                    ..dispatch
+                },
+                crate::runtime::RuntimeDispatch {
+                    target: &Value::Null,
+                    ..dispatch
+                },
+            ] {
+                assert!(
+                    allocator
+                        .with_runtime_execution(&bad, fx.now, &mut |_, _, _| {
+                            calls += 1;
+                            Ok(Value::Null)
+                        })
+                        .is_err()
+                );
+            }
+            assert_eq!(calls, 0);
+            assert_eq!(coordinator.scope(&scope).unwrap()["calls"], 0);
+            if mode == "external-revoked" {
+                coordinator.revoke_executor(&job.payload["target"]).unwrap();
+            }
+            if mode == "external-runtime-race" {
+                armed.set(true);
+            }
+
+            let drain = fx.bundle(
+                OWNER,
+                &json!({"v":"openagents.environment-attachment-control.v1",
+                "requires":[],"attachment":grant,"command":workspace_host::artifact::token(),
+                "expected_revision":allocator.status(&lease_id).unwrap()["revision"],
+                "action":"drain","evidence":[]}),
+            );
+            let result = allocator.with_runtime_execution(
+                &dispatch,
+                fx.now,
+                &mut |fence, admitted, current| {
+                    // Read the actual signed book while the mutation lock remains
+                    // held: the debit and unknown hold must already survive a crash.
+                    let store =
+                        workspace_host::artifact::Artifacts::new(fx._temp.path().join("coord"))
+                            .unwrap();
+                    let signer = nostr::domain::RelaySigner::from_secret_hex(
+                        &secret(OWNER).display_secret().to_string(),
+                    )
+                    .unwrap();
+                    let saved: Value = store.load(&signer).unwrap();
+                    let saved_scope = saved["scopes"]
+                        .as_object()
+                        .unwrap()
+                        .values()
+                        .find(|s| s["reference"] == scope)
+                        .unwrap();
+                    assert_eq!(saved_scope["calls"], 1);
+                    assert!(
+                        saved_scope["claims"]
+                            .as_object()
+                            .unwrap()
+                            .values()
+                            .any(|c| c["unknown"] == true && c["dispatched"] == true)
+                    );
+                    let revoke = workspace_host::host::request(
+                        &secret(OWNER),
+                        &owner,
+                        json!({"v":"openagents.coordination-native-control.v1","requires":[],
+                        "coordinator":scope,"command":workspace_host::artifact::token(),
+                        "expected_revision":saved_scope["revision"],"actor":worker,
+                        "roles":[],"resources":[],"targets":[],"all":true,"until":fx.now+7200,
+                        "revoke":true,"scope_revoke":false}),
+                        current,
+                    )
+                    .unwrap();
+                    assert!(coordinator.control_grants(&revoke, current).is_err());
+                    assert!(allocator.submit(&drain, current).is_err());
+                    assert_eq!(admitted.0, job.payload);
+                    let use_ = crate::runtime::RuntimeUse {
+                        attachment: dispatch.attachment,
+                        fingerprint: &fingerprint,
+                        grant: &grant,
+                        controller: &owner,
+                        executor: &worker,
+                        lease: fence.lease(),
+                        materialization: fence.materialization(),
+                        engine: dispatch.engine,
+                    };
+                    for bad in [
+                        crate::runtime::RuntimeUse {
+                            lease: &Value::Null,
+                            ..use_
+                        },
+                        crate::runtime::RuntimeUse {
+                            materialization: &Value::Null,
+                            ..use_
+                        },
+                        crate::runtime::RuntimeUse {
+                            controller: &wrong,
+                            ..use_
+                        },
+                        crate::runtime::RuntimeUse {
+                            engine: &Value::Null,
+                            ..use_
+                        },
+                    ] {
+                        assert!(
+                            fence
+                                .with_current(&bad, current, &mut || {
+                                    calls += 1;
+                                    Ok(())
+                                })
+                                .is_err()
+                        );
+                    }
+                    assert!(
+                        fence
+                            .with_current(&use_, fx.now + 7200, &mut || {
+                                calls += 1;
+                                Ok(())
+                            })
+                            .is_err()
+                    );
+                    fence
+                        .with_current(&use_, current, &mut || {
+                            let input = nostr::contracts::parse_strict(
+                                &admitted.1
+                                    [job.payload["input"]["artifact"]["digest"].as_str().unwrap()],
+                            )
+                            .unwrap();
+                            assert_eq!(input["text"], "native environment data");
+                            calls += 1;
+                            Ok(())
+                        })
+                        .unwrap();
+                    if mode == "external-runtime-lost" {
+                        Err("unknown: native acknowledgment lost".into())
+                    } else {
+                        Ok(json!({"accepted":true}))
+                    }
+                },
+            );
+            if matches!(mode, "external-revoked" | "external-runtime-race") {
+                assert!(result.is_err());
+                assert_eq!(calls, 0);
+                assert_eq!(coordinator.scope(&scope).unwrap()["calls"], 0);
+                continue;
+            }
+            assert_eq!(result.is_ok(), mode == "external-runtime");
+            assert_eq!(calls, 1);
+            assert_eq!(coordinator.scope(&scope).unwrap()["calls"], 1);
+            let restarted = fx.allocator().with_claims(Box::new(
+                coordination_host::book::Coordinator::open(
+                    fx._temp.path().join("coord"),
+                    secret(OWNER),
+                )
+                .unwrap(),
+            ));
+            assert!(
+                restarted
+                    .with_runtime_execution(&dispatch, fx.now, &mut |_, _, _| {
+                        calls += 1;
+                        Ok(Value::Null)
+                    })
+                    .is_err()
+            );
+            assert_eq!(calls, 1);
+            assert_eq!(coordinator.scope(&scope).unwrap()["calls"], 1);
+            continue;
+        }
         if mode == "run" || mode == "runtime-race" {
             let body = allocator.store().json(&grant).unwrap();
             let materialization = allocator.store().json(&body["materialization"]).unwrap();
@@ -1758,7 +2027,7 @@ fn bootstrap_fixture(
     MaterializeSpec,
 ) {
     let (coordinator, scope, claim, _event, _payload, budget) =
-        native_environment_job_with_parent(fx, true);
+        native_environment_job_with_parent(fx, true, false);
     let mounted =
         coordination_host::book::Coordinator::open(fx._temp.path().join("coord"), secret(OWNER))
             .unwrap();
