@@ -7,6 +7,7 @@ Use the [master roadmap](../roadmap.md) for current work.
 
 | Document | Recorded topic |
 | --- | --- |
+| [2026-10-16-coder-desktop-monorepo-merge.md](2026-10-16-coder-desktop-monorepo-merge.md) | Merging the Coder Desktop (Zeron) fork into the monorepo as the OpenAgents desktop and mobile apps: size, conflicts, identity, plan |
 | [2026-10-14-computers-for-chats-audit.md](2026-10-14-computers-for-chats-audit.md) | Computers for chats: your own computers, cloud computers, environments, GPU, Claude setup tokens and Code Graph, against "type in the web app, a computer starts, the work shows on the web" |
 | [2026-10-12-claude-usage-burn/README.md](2026-10-12-claude-usage-burn/README.md) | After-action report: an unattended `claude bg` issue blitz drained the owner's subscription, spawned orphaned processes and cloud VMs, and how to gate, cap, and kill-switch future runs |
 | [2026-10-10-self-improving-codebases-audit/README.md](2026-10-10-self-improving-codebases-audit/README.md) | Self-improving codebases as a product: execution, learning, experiments, operations, customer data, economics, all open issues, 32 proposed actions, and pinned evidence from the sales and prior audits |
