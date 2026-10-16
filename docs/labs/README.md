@@ -210,7 +210,11 @@ Limits come from CAD's: arguments, document size, documents per space,
 versions per document, runs per hour. Each kind declares them in its
 manifest.
 
-**Storage** (`lab-store`):
+**Storage** (`lab-store`): the filesystem and SQLx PostgreSQL/Cloud Storage
+backends, shared conformance checks, and reviewed CAD export copy command are
+implemented in [`crates/lab-store`](../../crates/lab-store/README.md) (#11873).
+API and CAD integration remain the next roadmap steps.
+
 
 - **Postgres** for the index (documents, versions, jobs, notes,
   artifacts).

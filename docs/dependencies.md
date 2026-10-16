@@ -11,6 +11,12 @@ Install the reviewed checker with `cargo +1.97.1 install cargo-deny
 --version 0.20.2 --locked` if it is absent. Required checks run locally or
 on non-GitHub infrastructure; this policy adds no GitHub automation.
 
+## Lab storage dependencies
+
+`lab-store` uses SQLx core and PostgreSQL 0.8.6 (MIT OR Apache-2.0), without
+SQLx's optional SQLite driver. The existing SQLite versions stay unchanged.
+The storage tests use the existing Stateright dependency.
+
 ## Generated inventory
 
 [dependency-inventory.md](dependency-inventory.md) lists every external

@@ -5,7 +5,7 @@ edit by hand. `scripts/dependency-inventory.py --check` fails when this
 file is stale. License policy and review notes live in
 [dependencies.md](dependencies.md).
 
-1472 external packages.
+1484 external packages.
 
 | Package | Version | License | Source |
 | --- | --- | --- | --- |
@@ -126,6 +126,7 @@ file is stale. License policy and review notes live in
 | async-task | 4.7.1 | Apache-2.0 OR MIT | crates.io |
 | async-trait | 0.1.92 | MIT OR Apache-2.0 | crates.io |
 | async_io_stream | 0.3.3 | Unlicense | crates.io |
+| atoi | 2.0.0 | MIT | crates.io |
 | atomic | 0.6.1 | Apache-2.0/MIT | crates.io |
 | atomic-polyfill | 1.0.3 | MIT OR Apache-2.0 | crates.io |
 | atomic-waker | 1.1.2 | Apache-2.0 OR MIT | crates.io |
@@ -293,10 +294,12 @@ file is stale. License policy and review notes live in
 | cranelift-srcgen | 0.135.5 | Apache-2.0 WITH LLVM-exception | crates.io |
 | crc | 3.4.0 | MIT OR Apache-2.0 | crates.io |
 | crc-catalog | 2.5.0 | MIT OR Apache-2.0 | crates.io |
+| crc32c | 0.6.8 | Apache-2.0/MIT | crates.io |
 | crc32fast | 1.5.2 | MIT OR Apache-2.0 | crates.io |
 | critical-section | 1.2.0 | MIT OR Apache-2.0 | crates.io |
 | crossbeam-deque | 0.8.8 | MIT OR Apache-2.0 | crates.io |
 | crossbeam-epoch | 0.9.21 | MIT OR Apache-2.0 | crates.io |
+| crossbeam-queue | 0.3.14 | MIT OR Apache-2.0 | crates.io |
 | crossbeam-utils | 0.8.23 | MIT OR Apache-2.0 | crates.io |
 | crossterm | 0.29.0 | MIT | crates.io |
 | crossterm_winapi | 0.9.1 | MIT | crates.io |
@@ -361,6 +364,7 @@ file is stale. License policy and review notes live in
 | dlopen2 | 0.8.2 | MIT | crates.io |
 | dnssec-prover | 0.6.10 | MIT OR Apache-2.0 | crates.io |
 | document-features | 0.2.12 | MIT OR Apache-2.0 | crates.io |
+| dotenvy | 0.15.7 | MIT | crates.io |
 | downcast-rs | 1.2.1 | MIT/Apache-2.0 | crates.io |
 | dpi | 0.1.2 | Apache-2.0 AND MIT | crates.io |
 | drm | 0.14.1 | MIT | crates.io |
@@ -402,6 +406,7 @@ file is stale. License policy and review notes live in
 | error-code | 3.4.0 | BSL-1.0 | crates.io |
 | esaxx-rs | 0.1.10 | Apache-2.0 | crates.io |
 | esplora-client | 0.12.3 | MIT | crates.io |
+| etcetera | 0.8.0 | MIT OR Apache-2.0 | crates.io |
 | euclid | 0.22.14 | MIT OR Apache-2.0 | crates.io |
 | event-listener | 5.4.2 | Apache-2.0 OR MIT | crates.io |
 | event-listener-strategy | 0.5.4 | Apache-2.0 OR MIT | crates.io |
@@ -457,6 +462,7 @@ file is stale. License policy and review notes live in
 | futures-concurrency | 7.7.1 | MIT OR Apache-2.0 | crates.io |
 | futures-core | 0.3.34 | MIT OR Apache-2.0 | crates.io |
 | futures-executor | 0.3.34 | MIT OR Apache-2.0 | crates.io |
+| futures-intrusive | 0.5.0 | MIT OR Apache-2.0 | crates.io |
 | futures-io | 0.3.34 | MIT OR Apache-2.0 | crates.io |
 | futures-lite | 2.6.1 | Apache-2.0 OR MIT | crates.io |
 | futures-macro | 0.3.34 | MIT OR Apache-2.0 | crates.io |
@@ -513,6 +519,7 @@ file is stale. License policy and review notes live in
 | hashbrown | 0.15.5 | MIT OR Apache-2.0 | crates.io |
 | hashbrown | 0.16.1 | MIT OR Apache-2.0 | crates.io |
 | hashbrown | 0.17.1 | MIT OR Apache-2.0 | crates.io |
+| hashlink | 0.10.0 | MIT OR Apache-2.0 | crates.io |
 | hashlink | 0.9.1 | MIT OR Apache-2.0 | crates.io |
 | heapless | 0.7.17 | MIT OR Apache-2.0 | crates.io |
 | heck | 0.4.1 | MIT OR Apache-2.0 | crates.io |
@@ -696,6 +703,7 @@ file is stale. License policy and review notes live in
 | matrixmultiply | 0.3.11 | MIT/Apache-2.0 | crates.io |
 | maud | 0.27.0 | MIT OR Apache-2.0 | crates.io |
 | maud_macros | 0.27.0 | MIT OR Apache-2.0 | crates.io |
+| md-5 | 0.10.6 | MIT OR Apache-2.0 | crates.io |
 | md-5 | 0.11.0 | MIT OR Apache-2.0 | crates.io |
 | memchr | 2.8.3 | Unlicense OR MIT | crates.io |
 | memfd | 0.6.6 | MIT OR Apache-2.0 | crates.io |
@@ -1115,6 +1123,8 @@ file is stale. License policy and review notes live in
 | spki | 0.7.3 | Apache-2.0 OR MIT | crates.io |
 | spki | 0.8.0 | Apache-2.0 OR MIT | crates.io |
 | spm_precompiled | 0.1.4 | Apache-2.0 | crates.io |
+| sqlx-core | 0.8.6 | MIT OR Apache-2.0 | crates.io |
+| sqlx-postgres | 0.8.6 | MIT OR Apache-2.0 | crates.io |
 | stable_deref_trait | 1.2.1 | MIT OR Apache-2.0 | crates.io |
 | stateright | 0.31.0 | MIT | crates.io |
 | static_assertions | 1.1.0 | MIT OR Apache-2.0 | crates.io |
@@ -1294,6 +1304,7 @@ file is stale. License policy and review notes live in
 | wasi | 0.11.1+wasi-snapshot-preview1 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | crates.io |
 | wasi | 0.14.7+wasi-0.2.4 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | crates.io |
 | wasip2 | 1.0.4+wasi-0.2.12 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | crates.io |
+| wasite | 0.1.0 | Apache-2.0 OR BSL-1.0 OR MIT | crates.io |
 | wasite | 1.0.2 | Apache-2.0 OR BSL-1.0 OR MIT | crates.io |
 | wasm-bindgen | 0.2.128 | MIT OR Apache-2.0 | crates.io |
 | wasm-bindgen-futures | 0.4.78 | MIT OR Apache-2.0 | crates.io |
@@ -1360,6 +1371,7 @@ file is stale. License policy and review notes live in
 | wgpu-types | 30.0.1 | MIT OR Apache-2.0 | crates.io |
 | which | 4.4.2 | MIT | crates.io |
 | which | 8.0.6 | MIT | crates.io |
+| whoami | 1.6.1 | Apache-2.0 OR BSL-1.0 OR MIT | crates.io |
 | whoami | 2.1.3 | Apache-2.0 OR BSL-1.0 OR MIT | crates.io |
 | widestring | 1.2.1 | MIT OR Apache-2.0 | crates.io |
 | winapi | 0.3.9 | MIT/Apache-2.0 | crates.io |
