@@ -6,8 +6,11 @@ pub mod cli;
 mod controls;
 mod execution;
 mod plans;
+mod polls;
 mod records;
 mod schedule;
+pub mod source;
+mod source_plans;
 #[cfg(test)]
 mod tests;
 pub mod transport;

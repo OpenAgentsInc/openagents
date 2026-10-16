@@ -16,6 +16,8 @@ pub struct Policy {
     pub coordinator: Value,
     pub worker: String,
     pub checker: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<Value>,
     pub max_plans: u64,
     pub until: u64,
 }
@@ -61,6 +63,7 @@ pub struct Automation {
     pub(crate) secret: SecretKey,
     pub(crate) signer: RelaySigner,
     pub(crate) coordinator: coordination_host::book::Coordinator,
+    pub(crate) source: Option<crate::source::Source>,
 }
 impl Automation {
     pub fn initialize(
@@ -129,6 +132,7 @@ impl Automation {
             secret,
             signer,
             coordinator,
+            source: None,
         })
     }
     pub fn authority(&self) -> &str {

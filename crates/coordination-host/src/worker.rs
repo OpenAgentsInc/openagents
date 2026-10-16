@@ -183,7 +183,13 @@ impl Worker {
         let intake = json!({"v":"openagents.coordination-native-intake.v1","requires":[],"request":event.id,"fingerprint":execute.fingerprint});
         let intake =
             workspace_host::host::request(&self.secret, authority.authority(), intake, now)?;
-        let mut dispatch = || authority.intake(&intake, now);
+        let intake_started = std::time::Instant::now();
+        let mut dispatch = || {
+            authority.intake(
+                &intake,
+                now.saturating_add(intake_started.elapsed().as_secs()),
+            )
+        };
         let (payload, pins) = if execute.payload["target"] == authority.automation_operation()? {
             gate.ok_or("not_admitted: this operation requires its current AUTO controller")?
                 .intake(&authority.verify_intake(&intake, now)?, now, &mut dispatch)?

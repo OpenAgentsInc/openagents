@@ -9,7 +9,7 @@ use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
 };
-pub const USAGE: &str = "usage: automation-host ACTION --state DIR --key-file FILE --coordinator-state DIR --coordinator-key-file FILE [--input FILE] [--json]\nActions: init, policy, put, inspect, admit, tick, advance, run, result, check, control, sign, transport, invoke, serve, recover.\nWorker actions need --worker-state and --worker-key-file. Checking needs --checker-key-file.";
+pub const USAGE: &str = "usage: automation-host ACTION --state DIR --key-file FILE --coordinator-state DIR --coordinator-key-file FILE [--input FILE] [--json]\nActions: init, policy, put, inspect, admit, tick, advance, run, result, check, control, sign, transport, invoke, serve, recover, source-init, source-binding.\nWorker actions need --worker-state and --worker-key-file. Checking needs --checker-key-file. Source watches also need --sources, --source-state, and --source-key-file. Source-init and source-binding need only their own state/key and input policy.";
 fn key(path: &Path) -> Result<secp256k1::SecretKey> {
     let meta = std::fs::metadata(path).map_err(|e| e.to_string())?;
     if !meta.is_file() || meta.len() > 256 {
@@ -63,11 +63,41 @@ pub fn run(args: Vec<String>) -> Result<Value> {
             .ok_or_else(|| format!("missing value for {name}"))
     };
     let secret = key(Path::new(&option("--key-file")?))?;
-    let coordinator = coordination_host::book::Coordinator::open(
-        PathBuf::from(option("--coordinator-state")?),
-        key(Path::new(&option("--coordinator-key-file")?))?,
-    )?;
     let root = PathBuf::from(option("--state")?);
+    if args[0] == "source-init" {
+        let policy = serde_json::from_value(read(Path::new(&option("--input")?))?)
+            .map_err(|_| "source policy")?;
+        let source = crate::source::Source::initialize(root, secret, policy)?;
+        return Ok(json!({"created":true,"binding":source.binding()?}));
+    }
+    if args[0] == "source-binding" {
+        let source = crate::source::Source::open(root, secret)?;
+        let artifacts = source
+            .binding_files()?
+            .into_iter()
+            .map(|(d, b)| Ok((d, contracts::parse_strict(&b).map_err(|e| e.to_string())?)))
+            .collect::<Result<BTreeMap<_, _>>>()?;
+        return Ok(json!({"binding":source.binding()?,"artifacts":artifacts}));
+    }
+    let coordinator_key = key(Path::new(&option("--coordinator-key-file")?))?;
+    let mut coordinator = coordination_host::book::Coordinator::open(
+        PathBuf::from(option("--coordinator-state")?),
+        coordinator_key,
+    )?;
+    if args.iter().any(|a| a == "--sources") {
+        let mounts: BTreeMap<String, PathBuf> =
+            serde_json::from_value(read(Path::new(&option("--sources")?))?)
+                .map_err(|_| "workspace mount map")?;
+        if mounts.len() > 64 {
+            return Err("workspace mount count".into());
+        }
+        for (name, path) in mounts {
+            coordinator = coordinator.mount_source(
+                name,
+                workspace_host::host::Host::open(path, coordinator_key)?,
+            )?;
+        }
+    }
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_err(|e| e.to_string())?
@@ -94,7 +124,13 @@ pub fn run(args: Vec<String>) -> Result<Value> {
         )?)
         .map_err(|e| e.to_string());
     }
-    let host = Automation::open(root, secret, coordinator)?;
+    let mut host = Automation::open(root, secret, coordinator)?;
+    if args.iter().any(|a| a == "--source-state") {
+        host = host.mount_source(crate::source::Source::open(
+            PathBuf::from(option("--source-state")?),
+            key(Path::new(&option("--source-key-file")?))?,
+        )?)?;
+    }
     let reference = &input["plan"];
     match args[0].as_str() {
         "put" => host.put_local_json(&input),

@@ -116,7 +116,7 @@ impl Automation {
                         json!({"v":"openagents.task-proposal.v1","requires":[],"task":occurrence["body"]["task"],"coordinator":record.body["coordinator"],"frame":record.body["frame"],"parent":record.body["task"],"target":record.body["target"],"lock":record.body["lock"],"input":occurrence["input"],"context":record.body["context"],"dependencies":[],"effects":record.body["effects"],"bounds":bounds,"acceptance":record.body["acceptance"],"reuse":"never"})
                     }
                     "claim" => {
-                        json!({"v":"openagents.claim-request.v1","requires":[],"proposal":occurrence["proposal"],"worker":state.policy.worker,"resources":[],"expected_revision":self.coordinator.scope(&record.body["coordinator"])?["revision"],"requested_until":occurrence["body"]["deadline"],"reservation":record.body["reservation"]})
+                        json!({"v":"openagents.claim-request.v1","requires":[],"proposal":occurrence["proposal"],"worker":state.policy.worker,"resources":if record.body["trigger"]["kind"]=="source"{let observation=self.store.json(&occurrence["body"]["observation"])?;json!([{"id":record.body["trigger"]["resource"],"mode":"read","snapshot":observation["evidence"]}])}else{json!([])},"expected_revision":self.coordinator.scope(&record.body["coordinator"])?["revision"],"requested_until":occurrence["body"]["deadline"],"reservation":record.body["reservation"]})
                     }
                     "dispatch" => {
                         json!({"v":"openagents.coordination-native-dispatch.v1","requires":[],"coordinator":record.body["coordinator"],"claim":occurrence["claim"],"request":occurrence["body"]["request"],"run":occurrence["body"]["run"]})
@@ -347,21 +347,25 @@ impl coordination_host::worker::DispatchGate for Automation {
         now: u64,
         dispatch: &mut dyn FnMut() -> Result<coordination_host::worker::Intake>,
     ) -> Result<coordination_host::worker::Intake> {
+        let origin_now = now;
+        let started = std::time::Instant::now();
         let _guard = self.store.lock()?;
-        let state = self.state()?;
+        let mut state = self.state()?;
+        let now = now.saturating_add(started.elapsed().as_secs());
         if proof.authority() != self.coordinator.authority() || proof.actor() != state.policy.worker
         {
             return Err("not_admitted: AUTO worker/coordinator differs".into());
         }
-        let record = state
+        let (id, mut record) = state
             .plans
-            .values()
-            .find(|r| {
+            .iter()
+            .find(|(_, r)| {
                 r.active
                     .as_ref()
                     .and_then(|id| r.occurrences.get(id))
                     .is_some_and(|o| o["execute"]["id"] == proof.request())
             })
+            .map(|(id, r)| (id.clone(), r.clone()))
             .ok_or("not_admitted: exact active AUTO occurrence required")?;
         let item = &record.occurrences[record.active.as_ref().ok_or("active")?];
         if record.state["status"] != "active"
@@ -375,12 +379,17 @@ impl coordination_host::worker::DispatchGate for Automation {
         {
             return Err("not_admitted: current AUTO occurrence fence differs".into());
         }
+        if record.body["trigger"]["kind"] == "source" {
+            self.revalidate_source(&mut state, &mut record, now)?;
+            state.plans.insert(id, record.clone());
+            self.save(&state)?;
+        }
         self.coordinator.automation_parent(
             &record.body,
             &state.policy.worker,
             &state.policy.checker,
             &BTreeMap::new(),
-            now,
+            origin_now.saturating_add(started.elapsed().as_secs()),
         )?;
         dispatch()
     }

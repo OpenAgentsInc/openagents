@@ -123,6 +123,8 @@ pub fn run(args: Vec<String>) -> Result<Value> {
         "operation" => match value["binding"].as_str() {
             Some("data") => host.data_operation(),
             Some("automation-data") => host.automation_operation(),
+            Some("automation-source") => host
+                .automation_source_operation(value["resource"].as_str().ok_or("source resource")?),
             Some("container") => host.container_operation(value["effects"].clone()),
             Some("git-change") => host.git_operation(value["resource"].as_str().ok_or("resource")?),
             _ => Err("unsupported native operation".into()),

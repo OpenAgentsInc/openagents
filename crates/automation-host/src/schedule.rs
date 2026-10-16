@@ -7,7 +7,7 @@ use crate::{
 use nostr::{automation, contracts};
 use serde_json::{Value, json};
 impl Automation {
-    fn due(record: &Record, slot: u64) -> Result<u64> {
+    pub(crate) fn due(record: &Record, slot: u64) -> Result<u64> {
         let t = &record.body["trigger"];
         if t["kind"] == "once" {
             if slot != 0 {
@@ -70,6 +70,10 @@ impl Automation {
         let mut state = self.state()?;
         let id = Self::plan_key(&state, reference)?;
         let mut record = state.plans[&id].clone();
+        if record.body["trigger"]["kind"] == "source" {
+            drop(_guard);
+            return self.tick_source(reference, now);
+        }
         let status = record.state["status"]
             .as_str()
             .ok_or("plan status")?

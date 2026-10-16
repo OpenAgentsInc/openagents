@@ -100,6 +100,7 @@ fn setup(trigger: Value) -> (tempfile::TempDir, Automation, Value) {
             coordinator: scope.clone(),
             worker: key(2),
             checker: key(3),
+            source: None,
             max_plans: 4,
             until: 1000,
         },
@@ -488,4 +489,462 @@ fn cj_byte_bound_and_foreign_owner_refuse_before_creating_service_history() {
     assert!(auto.serve(&foreign, &BTreeMap::new(), 100).is_err());
     assert!(auto.state().unwrap().service.claims.is_empty());
     assert!(auto.state().unwrap().plans.is_empty());
+}
+fn git(repo: &std::path::Path, args: &[&str], input: Option<&[u8]>) -> String {
+    use std::{
+        io::Write,
+        process::{Command, Stdio},
+    };
+    let mut child = Command::new("git")
+        .arg("-C")
+        .arg(repo)
+        .args(args)
+        .env("GIT_AUTHOR_NAME", "AUTO fixture")
+        .env("GIT_AUTHOR_EMAIL", "auto@example.test")
+        .env("GIT_COMMITTER_NAME", "AUTO fixture")
+        .env("GIT_COMMITTER_EMAIL", "auto@example.test")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    if let Some(bytes) = input {
+        child.stdin.take().unwrap().write_all(bytes).unwrap();
+    } else {
+        drop(child.stdin.take());
+    }
+    let out = child.wait_with_output().unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    String::from_utf8(out.stdout).unwrap().trim().into()
+}
+fn source_fixture() -> (
+    tempfile::TempDir,
+    coordination_host::book::Coordinator,
+    source::Source,
+    Value,
+    Value,
+    std::path::PathBuf,
+    Value,
+) {
+    let (t, auto, base) = setup(json!({"kind":"once","at":110}));
+    let repo = t.path().join("repo");
+    std::fs::create_dir(&repo).unwrap();
+    git(&repo, &["init", "--bare"], None);
+    git(&repo, &["config", "core.logAllRefUpdates", "always"], None);
+    let blob = git(
+        &repo,
+        &["hash-object", "-w", "--stdin"],
+        Some(b"source content\n"),
+    );
+    let tree = git(
+        &repo,
+        &["mktree"],
+        Some(format!("100644 blob {blob}\tdoc.txt\n").as_bytes()),
+    );
+    let commit = git(&repo, &["commit-tree", &tree], Some(b"initial\n"));
+    git(&repo, &["update-ref", "refs/heads/docs", &commit], None);
+    let ws = workspace_host::host::Host::create(t.path().join("ws"), secret(1), 100).unwrap();
+    let doc = ws
+        .register_git(
+            workspace_host::git::GitDocument::admit(&repo, "refs/heads/docs", "doc.txt").unwrap(),
+            "Source".into(),
+            100,
+        )
+        .unwrap();
+    let coor = auto.coordinator.mount_source("docs".into(), ws).unwrap();
+    let resource = coor
+        .resource("doc".into(), "docs".into(), json!(doc), 100)
+        .unwrap();
+    let reader = coor.automation_source_operation("doc").unwrap();
+    let mut ceiling = effects();
+    ceiling["reads"] = json!(["artifact", "doc"]);
+    ceiling["delegates"] = json!(true);
+    let container = coor.container_operation(ceiling.clone()).unwrap();
+    let scope = coor
+        .create_scope(
+            coordination_host::book::Policy {
+                recipients: BTreeSet::from([key(1), key(2), key(3), key(4), key(5)]),
+                checkers: BTreeSet::from([key(3)]),
+                calls: 24,
+                concurrency: 8,
+                max_claim_seconds: 100,
+                max_container_seconds: Some(1000),
+                max_depth: 8,
+                until: 2000,
+                effects: ceiling.clone(),
+                parent: None,
+            },
+            vec![resource],
+            vec![reader.clone(), container.clone(), base["target"].clone()],
+            100,
+        )
+        .unwrap();
+    for n in [2, 3, 4, 5] {
+        coor.control_grants(&event(1,1,json!({"v":"openagents.coordination-native-control.v1","requires":[],"coordinator":scope,"command":workspace_host::artifact::token(),"expected_revision":coor.scope(&scope).unwrap()["revision"],"actor":key(n),"roles":if n==4{json!(["read"])}else{json!(["read","propose","claim","control","finding"])},"resources":[],"targets":[],"all":true,"until":2000,"revoke":false,"scope_revoke":false}),100),100).unwrap();
+    }
+    coor.frame(&event(1,1,json!({"v":"openagents.coordination-native-frame.v1","requires":[],"coordinator":scope,"command":workspace_host::artifact::token(),"expected_revision":coor.scope(&scope).unwrap()["revision"],"frame":base["frame"]}),100),&coor.get_local_bytes(&base["frame"]).unwrap(),100).unwrap();
+    let lock=coor.put_local_json(&json!({"v":"openagents.lock.v1","requires":[],"root":container,"entries":[{"id":container["id"],"definition":container,"dependencies":[]}]})).unwrap();
+    let descriptor: Value = serde_json::from_slice(&coor.get_local_bytes(&scope).unwrap()).unwrap();
+    let frame: Value =
+        serde_json::from_slice(&coor.get_local_bytes(&base["frame"]).unwrap()).unwrap();
+    let context=coor.put_local_json(&json!({"v":"openagents.context.v1","requires":[],"task":frame["task"],"recipient":key(5),"policy":descriptor["policy"],"entries":[],"omissions":[],"coverage":"complete"})).unwrap();
+    let task = workspace_host::artifact::token();
+    let parent = json!({"v":"openagents.task-proposal.v1","requires":[],"task":task,"coordinator":scope,"frame":base["frame"],"parent":null,"target":container,"lock":lock,"input":base["payload"],"context":context,"dependencies":[],"effects":ceiling,"bounds":bounds(24,100000,1048576),"acceptance":base["acceptance"],"reuse":"never"});
+    let pr = coor
+        .propose(&event(1, 1, parent, 100), &BTreeMap::new(), 100)
+        .unwrap()["value"]
+        .clone();
+    let claim=coor.claim(&event(1,1,json!({"v":"openagents.claim-request.v1","requires":[],"proposal":pr,"worker":key(5),"resources":[],"expected_revision":coor.scope(&scope).unwrap()["revision"],"requested_until":1000,"reservation":coor.scope(&scope).unwrap()["allowance"]}),100),100).unwrap()["value"].clone();
+    let source = source::Source::initialize(
+        t.path().join("source4"),
+        secret(4),
+        source::Policy {
+            controller: key(5),
+            coordinator: key(1),
+            scope: scope.clone(),
+            resource: "doc".into(),
+            until: 1000,
+        },
+    )
+    .unwrap();
+    (t, coor, source, scope, claim, repo, base)
+}
+struct NativeSourceGate;
+impl source::SourceGate for NativeSourceGate {
+    fn with_fence(
+        &self,
+        p: &source::SourceIntake,
+        _now: u64,
+        call: &mut dyn FnMut() -> Result<source::Reply>,
+    ) -> Result<source::Reply> {
+        assert_eq!(p.authority(), key(4));
+        assert_eq!(p.principal(), key(5));
+        assert_eq!(p.admission()["resource"], "doc");
+        call()
+    }
+}
+#[test]
+fn source_cj_preserves_original_signers_and_reads_actual_workspace_versions() {
+    let (_t, coor, source, scope, claim, _repo, _base) = source_fixture();
+    let bundle = source.binding().unwrap();
+    let marker = coor
+        .put_local_json(&json!({"fixture":"poll identity"}))
+        .unwrap();
+    let request = workspace_host::artifact::token();
+    let admission = event(
+        5,
+        1,
+        json!({"v":"openagents.automation-native-source-input.v1","requires":[],"coordinator":scope,"claim":claim,"source":coor.automation_source_operation("doc").unwrap(),"resource":"doc","request":request,"phase":"observe","poll":marker,"plan":marker,"executor":key(4)}),
+        110,
+    );
+    let input = json!({"v":"openagents.automation-native-source-call.v1","requires":[],"config":bundle["config"],"admission":admission});
+    let execute = coordination_host::transport::invoke(
+        &secret(5),
+        source.authority(),
+        &bundle,
+        input,
+        request.clone(),
+        110,
+    )
+    .unwrap();
+    let (response, files) = source.run(&coor, &execute, 110, &NativeSourceGate).unwrap();
+    let result = nostr::execution::bind_worker_event(
+        &response,
+        &nostr::execution::Pending {
+            worker: &key(4),
+            customer: &key(5),
+            request: &request,
+            attempt: 1,
+            execute_event: &execute.id,
+        },
+        &secret(5),
+    )
+    .unwrap();
+    assert_eq!(result["outcome"], "completed");
+    let output =
+        nostr::automation::parse(&files[result["output"]["digest"].as_str().unwrap()]).unwrap();
+    assert_eq!(output["source"], bundle["target"]);
+    assert_eq!(output["available"], true);
+    assert_eq!(output["observed_at"], 110);
+    let mut signers = BTreeSet::new();
+    for bytes in files.values() {
+        if let Ok(e) = serde_json::from_slice::<Event>(bytes) {
+            if let Ok(opened) = nostr::private_artifact::open(&e, &secret(5)) {
+                signers.insert(opened.signer().to_string());
+            }
+        }
+    }
+    assert_eq!(signers, BTreeSet::from([key(1), key(4)]));
+    assert_eq!(coor.scope(&scope).unwrap()["calls"], 1);
+    assert_eq!(
+        source
+            .run(&coor, &execute, 150, &NativeSourceGate)
+            .unwrap()
+            .0,
+        response
+    );
+}
+fn watched() -> (
+    tempfile::TempDir,
+    Automation,
+    Value,
+    Value,
+    std::path::PathBuf,
+) {
+    watched_with(16)
+}
+fn watched_with(
+    max_observations: u64,
+) -> (
+    tempfile::TempDir,
+    Automation,
+    Value,
+    Value,
+    std::path::PathBuf,
+) {
+    let (t, coor, source, scope, claim, repo, mut plan) = source_fixture();
+    let bundle = source.binding().unwrap();
+    let scope_state = coor.scope(&scope).unwrap();
+    let claim_body: Value = serde_json::from_slice(&coor.get_local_bytes(&claim).unwrap()).unwrap();
+    let parent = scope_state["proposals"]
+        .as_object()
+        .unwrap()
+        .values()
+        .find(|p| p["reference"] == claim_body["proposal"])
+        .unwrap();
+    let frame: Value =
+        serde_json::from_slice(&coor.get_local_bytes(&plan["frame"]).unwrap()).unwrap();
+    let descriptor: Value = serde_json::from_slice(&coor.get_local_bytes(&scope).unwrap()).unwrap();
+    plan["context"]=coor.put_local_json(&json!({"v":"openagents.context.v1","requires":[],"task":frame["task"],"recipient":key(2),"policy":descriptor["policy"],"entries":[],"omissions":[],"coverage":"complete"})).unwrap();
+    plan["coordinator"] = scope.clone();
+    plan["reservation"] = claim_body["reservation"].clone();
+    plan["task"] = parent["body"]["task"].clone();
+    plan["per_occurrence"] = bounds(4, 100000, 1048576);
+    plan["aggregate"] = bounds(24, 2400000, 25165824);
+    plan["effects"]["reads"] = json!(["artifact", "doc"]);
+    plan["trigger"] = json!({"kind":"source","first_at":110,"every_seconds":60,"source":bundle["target"],"resource":"doc","lock":bundle["lock"],"input":bundle["config"],"context":bundle["context"],"requirements":bundle["requirements"],"bounds":bounds(1,30000,1048576),"max_age_seconds":60});
+    let auto = Automation::initialize(
+        t.path().join("watched"),
+        secret(5),
+        Policy {
+            owners: BTreeSet::from([key(1)]),
+            coordinator: scope,
+            worker: key(2),
+            checker: key(3),
+            source: Some(bundle),
+            max_plans: 4,
+            until: 1000,
+        },
+        coor,
+    )
+    .unwrap()
+    .mount_source(source)
+    .unwrap();
+    plan["policy"] = auto.policy().unwrap();
+    plan["max_observations"] = json!(max_observations);
+    let reference = admitted(&auto, &plan);
+    (t, auto, plan, reference, repo)
+}
+#[test]
+fn watched_plan_observes_revalidates_and_coalesces_the_exact_native_revision() {
+    let (t, auto, plan, reference, repo) = watched();
+    auto.tick(&reference, 110).unwrap();
+    let first = auto.inspect(&reference).unwrap();
+    assert_eq!(first["state"]["occurrences"], 1);
+    assert_eq!(first["state"]["observations"], 1);
+    let request = auto.advance(&reference, 110).unwrap().unwrap();
+    let worker =
+        coordination_host::worker::Worker::open(t.path().join("watched-worker"), secret(2), 110)
+            .unwrap();
+    let (result, files) = worker
+        .run_gated(&auto.coordinator, &request, 110, &auto)
+        .unwrap();
+    auto.record_result(&reference, &result, &files, 111)
+        .unwrap();
+    auto.check(
+        &reference,
+        &coordination_host::checks::Checker::new(secret(3)),
+        112,
+    )
+    .unwrap();
+    let checked = auto.inspect(&reference).unwrap();
+    assert_eq!(checked["state"]["observations"], 2);
+    assert_eq!(checked["accounting"]["spent"]["calls"], 5);
+    assert_eq!(
+        auto.coordinator.scope(&plan["coordinator"]).unwrap()["calls"],
+        5
+    );
+    auto.tick(&reference, 170).unwrap();
+    auto.tick(&reference, 170).unwrap();
+    let unchanged = auto.inspect(&reference).unwrap();
+    assert_eq!(unchanged["state"]["occurrences"], 1);
+    assert_eq!(unchanged["state"]["observations"], 3);
+    assert_eq!(
+        auto.coordinator.scope(&plan["coordinator"]).unwrap()["calls"],
+        6
+    );
+    let old = git(&repo, &["rev-parse", "refs/heads/docs"], None);
+    let tree = git(&repo, &["rev-parse", "refs/heads/docs^{tree}"], None);
+    let next = git(
+        &repo,
+        &["commit-tree", &tree, "-p", &old],
+        Some(b"changed source\n"),
+    );
+    git(&repo, &["update-ref", "refs/heads/docs", &next], None);
+    auto.tick(&reference, 230).unwrap();
+    auto.tick(&reference, 230).unwrap();
+    let changed = auto.inspect(&reference).unwrap();
+    assert_eq!(changed["state"]["occurrences"], 2);
+    assert_eq!(changed["state"]["observations"], 4);
+}
+#[test]
+fn a_changed_source_refuses_worker_intake_and_retains_the_original_occurrence_hold() {
+    let (t, auto, plan, reference, repo) = watched();
+    auto.tick(&reference, 110).unwrap();
+    let request = auto.advance(&reference, 110).unwrap().unwrap();
+    let old = git(&repo, &["rev-parse", "refs/heads/docs"], None);
+    let tree = git(&repo, &["rev-parse", "refs/heads/docs^{tree}"], None);
+    let next = git(
+        &repo,
+        &["commit-tree", &tree, "-p", &old],
+        Some(b"new source revision\n"),
+    );
+    git(&repo, &["update-ref", "refs/heads/docs", &next], None);
+    let worker =
+        coordination_host::worker::Worker::open(t.path().join("stale-worker"), secret(2), 111)
+            .unwrap();
+    assert!(
+        worker
+            .run_gated(&auto.coordinator, &request, 111, &auto)
+            .unwrap_err()
+            .contains("stale")
+    );
+    let inspected = auto.inspect(&reference).unwrap();
+    assert_eq!(inspected["state"]["status"], "blocked");
+    assert_eq!(inspected["state"]["occurrences"], 1);
+    assert_eq!(inspected["state"]["observations"], 2);
+    assert_eq!(inspected["accounting"]["spent"]["calls"], 1);
+    assert_eq!(
+        auto.coordinator.scope(&plan["coordinator"]).unwrap()["calls"],
+        3
+    );
+}
+#[test]
+fn unavailable_source_is_counted_without_a_revision_or_an_occurrence() {
+    let (_t, auto, plan, reference, repo) = watched_with(2);
+    git(&repo, &["update-ref", "-d", "refs/heads/docs"], None);
+    auto.tick(&reference, 110).unwrap();
+    auto.tick(&reference, 110).unwrap();
+    let first = auto.inspect(&reference).unwrap();
+    assert_eq!(first["state"]["observations"], 1);
+    assert_eq!(first["state"]["occurrences"], 0);
+    assert_eq!(first["accounting"]["spent"]["calls"], 1);
+    assert!(first["skips"].as_array().unwrap().is_empty());
+    let poll = first["polls"].as_object().unwrap().values().next().unwrap();
+    let observation = auto.store.json(&poll["observation"]).unwrap();
+    assert_eq!(observation["available"], false);
+    assert!(observation["revision"].is_null());
+    assert!(observation["evidence"].is_null());
+    auto.tick(&reference, 170).unwrap();
+    auto.tick(&reference, 230).unwrap();
+    let exhausted = auto.inspect(&reference).unwrap();
+    assert_eq!(exhausted["state"]["observations"], 2);
+    assert_eq!(exhausted["state"]["status"], "exhausted");
+    assert_eq!(
+        auto.coordinator.scope(&plan["coordinator"]).unwrap()["calls"],
+        2
+    );
+}
+#[test]
+fn pause_and_cancel_fence_source_intake_before_the_native_reader_is_charged() {
+    let (_t, auto, plan, reference, _repo) = watched();
+    let request = {
+        let _guard = auto.store.lock().unwrap();
+        let mut state = auto.state().unwrap();
+        let id = plan["automation"].as_str().unwrap().to_string();
+        let mut record = state.plans[&id].clone();
+        let request = auto
+            .prepare_poll(&mut state, &mut record, "observe", Some(0), None, 110)
+            .unwrap();
+        record.next_slot = 1;
+        auto.transition(&mut state, &mut record, "active", vec![], 110)
+            .unwrap();
+        state.plans.insert(id, record);
+        auto.save(&state).unwrap();
+        request
+    };
+    let pause = control(&auto, &reference, "pause", 111);
+    auto.control(&event(1, 5, pause, 111), 111).unwrap();
+    assert!(
+        auto.source
+            .as_ref()
+            .unwrap()
+            .run(&auto.coordinator, &request, 111, &auto)
+            .is_err()
+    );
+    let cancel = control(&auto, &reference, "cancel", 112);
+    auto.control(&event(1, 5, cancel, 112), 112).unwrap();
+    assert!(
+        auto.source
+            .as_ref()
+            .unwrap()
+            .run(&auto.coordinator, &request, 112, &auto)
+            .is_err()
+    );
+    assert_eq!(
+        auto.coordinator.scope(&plan["coordinator"]).unwrap()["calls"],
+        0
+    );
+    let inspected = auto.inspect(&reference).unwrap();
+    assert_eq!(inspected["state"]["status"], "cancelled");
+    assert_eq!(inspected["state"]["observations"], 1);
+    assert_eq!(inspected["accounting"]["spent"], json!({}));
+    assert!(inspected["pending"].is_object());
+}
+#[test]
+fn source_revalidation_uses_the_same_observation_cap_and_expiry_stops_new_reads() {
+    let (t, auto, plan, reference, _repo) = watched_with(2);
+    auto.tick(&reference, 110).unwrap();
+    let request = auto.advance(&reference, 110).unwrap().unwrap();
+    let worker =
+        coordination_host::worker::Worker::open(t.path().join("capped-worker"), secret(2), 110)
+            .unwrap();
+    let (result, files) = worker
+        .run_gated(&auto.coordinator, &request, 110, &auto)
+        .unwrap();
+    auto.record_result(&reference, &result, &files, 111)
+        .unwrap();
+    auto.check(
+        &reference,
+        &coordination_host::checks::Checker::new(secret(3)),
+        112,
+    )
+    .unwrap();
+    auto.tick(&reference, 170).unwrap();
+    assert_eq!(
+        auto.inspect(&reference).unwrap()["state"]["status"],
+        "exhausted"
+    );
+    assert_eq!(
+        auto.coordinator.scope(&plan["coordinator"]).unwrap()["calls"],
+        5
+    );
+    let (_t, auto, plan, reference, _repo) = watched();
+    auto.tick(&reference, 900).unwrap();
+    assert_eq!(
+        auto.inspect(&reference).unwrap()["state"]["status"],
+        "expired"
+    );
+    assert_eq!(
+        auto.inspect(&reference).unwrap()["state"]["observations"],
+        0
+    );
+    assert_eq!(
+        auto.coordinator.scope(&plan["coordinator"]).unwrap()["calls"],
+        0
+    );
 }

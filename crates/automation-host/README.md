@@ -1,6 +1,6 @@
 # Finite automation
 
-`automation-host` implements the initial once/UTC interval runtime for
+`automation-host` implements the initial once/UTC interval and native source-watch runtime for
 [NIP-AUTO](../../nips/openagents/NIP-AUTO.md). `standing-jobs` supplies shared
 scheduling and budget primitives; `coordination-host` owns actual task admission,
 worker intake, original worker results, independent checks, and ancestor budgets.
@@ -46,6 +46,24 @@ the original response. `recover` returns an interrupted call's saved result or
 fences a proven absence; it never dispatches the operation again. A remote hash
 lookup or a relay claim cannot replace these admitted pins.
 
-Source triggers, continuation, broader occurrence cleanup recovery, and
+For a source watch, register the coordinator's `automation-source` reader for
+one native resource. Admit the source key as a read-only scope participant and
+include it in the immutable recipient set. `source-init` creates its separate
+store and key binding (`controller`, `coordinator`, `scope`, `resource`, `until`);
+`source-binding` exports the exact CAP and pin bundle. Use that bundle as the
+AUTO policy's optional `source`. Mount the same workspace map with `--sources`
+and the independent source store/key with `--source-state` and
+`--source-key-file`. Keep one CJ identity book per source key.
+
+The source trigger uses the bundle's target, lock, context, requirements, and
+config reference. Its bounds declare one call, at most 30 seconds, and exactly
+1 MiB each for input/output. Source occurrences need at least four calls and
+1 MiB byte ceilings; the aggregate allowance also covers every initial poll,
+including unavailable or unchanged results. The reader delivers at most
+512 KiB of content. Current scoped read grants, original source declarations,
+opaque provider revisions, and actual intake revalidation govern dispatch.
+Queued pause/cancel blocks source intake before its read is charged.
+
+Continuation, broader occurrence cleanup recovery, and
 session/environment/effect adapters remain in #11735. Unsupported bindings refuse
 before activation. The released Coder commands remain unchanged.

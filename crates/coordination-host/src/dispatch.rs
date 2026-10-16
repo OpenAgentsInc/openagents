@@ -59,6 +59,9 @@ impl Coordinator {
             .find(|p| p.reference == lease.body["proposal"])
             .ok_or("proposal")?;
         let operation = self.operation(&proposal.body["target"])?;
+        if operation["binding_contract"]["operation"] == "coord-automation-source" {
+            return Err("not_admitted: source observations require their owning reader".into());
+        }
         if operation["binding_contract"]["operation"] == "coord-container" {
             return Err("container claims reserve children; they do not dispatch code".into());
         }

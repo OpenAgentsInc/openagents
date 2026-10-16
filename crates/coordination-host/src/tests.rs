@@ -1025,3 +1025,76 @@ fn delegated_control_requires_an_owned_current_ancestor_and_cannot_take_another_
     h.prepare(&event(3,json!({"v":"openagents.coordination-native-dispatch.v1","requires":[],"coordinator":s,"claim":child2_claim}),103),103).unwrap();
     h.control(&event(3,json!({"v":"openagents.coordination-control.v1","requires":[],"coordinator":s,"proposal":child2_ref,"claim":child2_claim,"action":"cancel","expected_revision":revision(&h,&s),"requested_until":null,"evidence":[]}),103),103).unwrap();
 }
+#[test]
+fn automation_source_uses_real_git_versions_and_never_recaptures_an_exact_poll() {
+    let (_t, h, _old, _target, _other, frame, a, _b, repo) = source_setup();
+    let source = h.automation_source_operation("a").unwrap();
+    let mut ceiling = effects();
+    ceiling["reads"] = json!(["artifact", "a"]);
+    ceiling["delegates"] = json!(true);
+    let container = h.container_operation(ceiling.clone()).unwrap();
+    let scope = h
+        .create_scope(
+            Policy {
+                recipients: BTreeSet::from([key(1), key(2), key(3)]),
+                checkers: BTreeSet::from([key(3)]),
+                calls: 6,
+                concurrency: 8,
+                max_claim_seconds: 100,
+                max_container_seconds: None,
+                max_depth: 8,
+                until: 5000,
+                effects: ceiling.clone(),
+                parent: None,
+            },
+            vec![a],
+            vec![source.clone(), container.clone()],
+            100,
+        )
+        .unwrap();
+    h.control_grants(&event(1,json!({"v":"openagents.coordination-native-control.v1","requires":[],"coordinator":scope,"command":workspace_host::artifact::token(),"expected_revision":revision(&h,&scope),"actor":key(2),"roles":["read","claim","control"],"resources":[],"targets":[],"all":true,"until":5000,"revoke":false,"scope_revoke":false}),100),100).unwrap();
+    h.frame(&event(1,json!({"v":"openagents.coordination-native-frame.v1","requires":[],"coordinator":scope,"command":workspace_host::artifact::token(),"expected_revision":revision(&h,&scope),"frame":frame}),100),&h.store.get(&frame).unwrap(),100).unwrap();
+    let mut parent = proposal(&h, &scope, &container, &frame, 6, None);
+    parent["effects"] = ceiling;
+    let parent_ref = propose(&h, &parent);
+    let parent_claim = claim(
+        &h,
+        &scope,
+        &parent_ref,
+        h.scope(&scope).unwrap()["allowance"].clone(),
+    );
+    let marker = h
+        .put_local_json(&json!({"fixture":"source request"}))
+        .unwrap();
+    let input = json!({"v":"openagents.automation-native-source-input.v1","requires":[],"coordinator":scope,"claim":parent_claim,"source":source,"resource":"a","request":workspace_host::artifact::token(),"phase":"observe","poll":marker,"plan":marker,"executor":key(2)});
+    let request = event(2, input.clone(), 102);
+    let (response, files) = h.automation_observe(&request, 102).unwrap();
+    let opened = nostr::private_artifact::open(&response, &secret(2)).unwrap();
+    let first = nostr::automation::parse(opened.inline_bytes().unwrap()).unwrap();
+    assert_eq!(first["available"], true);
+    assert_eq!(first["observed_at"], 102);
+    assert!(first["revision"].as_str().is_some());
+    let snapshot: Value =
+        serde_json::from_slice(&files[first["evidence"]["digest"].as_str().unwrap()]).unwrap();
+    let observation: Value =
+        serde_json::from_slice(&files[snapshot["observation"]["digest"].as_str().unwrap()])
+            .unwrap();
+    assert_eq!(first["revision"], observation["provider_revision"]);
+    let old = git(&repo, &["rev-parse", "refs/heads/docs"], None);
+    let tree = git(&repo, &["rev-parse", "refs/heads/docs^{tree}"], None);
+    let next = git(
+        &repo,
+        &["commit-tree", &tree, "-p", &old],
+        Some(b"second source version\n"),
+    );
+    git(&repo, &["update-ref", "refs/heads/docs", &next], None);
+    assert_eq!(h.automation_observe(&request, 103).unwrap().0, response);
+    assert_eq!(h.scope(&scope).unwrap()["calls"], 1);
+    let mut changed = input;
+    changed["phase"] = json!("revalidate");
+    assert!(
+        h.automation_observe(&event(2, changed, 103), 103)
+            .unwrap_err()
+            .contains("idempotency_conflict")
+    );
+}

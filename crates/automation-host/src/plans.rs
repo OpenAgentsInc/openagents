@@ -105,13 +105,13 @@ impl Automation {
         {
             return Err("conflict: scheduler identity or parent reservation already bound".into());
         }
-        if !matches!(body["trigger"]["kind"].as_str(), Some("once" | "interval"))
-            || !body["completion"].is_null()
-        {
-            return Err(
-                "cannot_enforce: source and continuation adapters must be explicitly mounted"
-                    .into(),
-            );
+        let source_files = match body["trigger"]["kind"].as_str() {
+            Some("once" | "interval") => BTreeMap::new(),
+            Some("source") => self.validate_source_plan(&state, &body, files)?,
+            _ => return Err("cannot_enforce: continuation checker is not mounted".into()),
+        };
+        if !body["completion"].is_null() {
+            return Err("cannot_enforce: continuation checker is not mounted".into());
         }
         let (parent, closure) = self.coordinator.automation_parent(
             &body,
@@ -122,7 +122,12 @@ impl Automation {
         )?;
         let aggregate = units(&body["aggregate"])?;
         let per = units(&body["per_occurrence"])?;
-        if per["calls"] < 3
+        if per["calls"]
+            < if body["trigger"]["kind"] == "source" {
+                4
+            } else {
+                3
+            }
             || aggregate["calls"] > parent["calls"].as_u64().ok_or("parent calls")?
             || per
                 .iter()
@@ -136,7 +141,7 @@ impl Automation {
         let coor_policy: coordination_host::book::Policy =
             serde_json::from_value(parent["policy"].clone()).map_err(|_| "coordinator policy")?;
         coordination_host::NativeLimits::parse(&body["per_occurrence"], &coor_policy)?;
-        for (digest, bytes) in closure {
+        for (digest, bytes) in closure.into_iter().chain(source_files) {
             if contracts::digest_bytes(&bytes) != digest {
                 return Err("closure digest differs".into());
             }

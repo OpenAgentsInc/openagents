@@ -98,7 +98,11 @@ impl Coordinator {
         nostr::cap::parse_definition(&body).map_err(|e| e.to_string())?;
         match body["binding_contract"]["operation"].as_str() {
             Some(
-                "coord-data" | "coord-container" | "coord-git-change" | "coord-automation-data",
+                "coord-data"
+                | "coord-container"
+                | "coord-git-change"
+                | "coord-automation-data"
+                | "coord-automation-source",
             ) => {}
             _ => return Err("unsupported native operation binding".into()),
         }
@@ -114,6 +118,11 @@ impl Coordinator {
         let expected = match body["binding_contract"]["operation"].as_str() {
             Some("coord-data") => self.data_operation()?,
             Some("coord-automation-data") => self.automation_operation()?,
+            Some("coord-automation-source") => self.automation_source_operation(
+                body["effects"]["reads"][1]
+                    .as_str()
+                    .ok_or("source resource")?,
+            )?,
             Some("coord-container") => self.container_operation(body["effects"].clone())?,
             Some("coord-git-change") => self.git_operation(
                 body["effects"]["writes"][0]

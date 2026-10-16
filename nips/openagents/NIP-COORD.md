@@ -287,3 +287,11 @@ controller's and child's target/resource grants apply. A control role alone
 cannot spend another participant's reservation. Native dispatch may pin both
 `request` and `run`; retries must preserve them, and retained execution identities
 cannot be reused by another claim.
+
+A native AUTO reader registration selects one workspace resource and its
+existing conditional version adapter. Original controller requests identify the
+exact executor, poll, and parent claim. Both controller and executor read grants
+and the scope audience must permit disclosure. The reader records and charges
+one call before capture; exact retries retain the original signed observation,
+and interrupted captures remain unknown. A source registration cannot dispatch
+through the generic task worker.

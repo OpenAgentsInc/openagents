@@ -54,6 +54,9 @@ impl Automation {
                 if now >= record.body["expires_at"].as_u64().ok_or("expiry")? {
                     return Err("not_admitted: automation expired".into());
                 }
+                if record.body["trigger"]["kind"] == "source" {
+                    self.validate_source_plan(&state, &record.body, &Default::default())?;
+                }
                 self.coordinator.automation_parent(
                     &record.body,
                     &state.policy.worker,

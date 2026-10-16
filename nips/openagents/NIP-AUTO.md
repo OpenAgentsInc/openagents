@@ -337,8 +337,9 @@ fencing, operation adapters, and crash fixtures remain implementation work.
 
 ## Rust native controller profile
 
-The initial `automation-host` profile admits owner-signed once and fixed UTC
-interval plans against a separately admitted COORD container. It shares the
+The initial `automation-host` profile admits owner-signed once, fixed UTC
+interval, and native source-watch plans against a separately admitted COORD
+container. It shares the
 standing-job calendar and allowance primitives with Coder. Original plan and
 control declarations, skipped slot ranges, typed occurrences, RUN history, and
 aggregate holds survive restart. The standalone CLI leaves released Coder
@@ -360,7 +361,23 @@ context, and requirements. It stores one request identity book across plans.
 Interrupted calls recover their exact saved result or a fenced proof that the
 operation never changed plan state; recovery does not call the operation again.
 
-Source observation, checked continuation, broader occurrence cleanup recovery,
+Native source watches use a separately keyed source receiver with its own
+durable CJ identity book. The operator selects one mounted Git document per
+source binding. Both the controller and source executor need current scoped
+read grants; the immutable scope audience includes the source executor. A poll
+reserves allowance before its CJ request. The reader charges the real parent
+call before capturing through the existing WS adapter. Original reader and
+source declarations keep their signers. Unavailable observations carry no
+revision or evidence; interrupted calls do not recapture on retry.
+
+The profile caps source content at 512 KiB and each source response at 1 MiB.
+Observation and revalidation share `max_observations`. Actual provider revisions
+remain opaque and deduplicate occurrences within a plan. Worker intake performs
+one separately counted revalidation under the cancellation fence and checks the
+original source snapshot again at the actual COORD intake boundary. A changed,
+unavailable, or stale source blocks intake and retains the occurrence hold.
+
+Checked continuation, broader occurrence cleanup recovery,
 and effectful session/environment adapters remain unfinished in
 #11735. Their records have closed validators, but unsupported triggers and
 bindings refuse at admission. A queue acknowledgment or model self-claim cannot

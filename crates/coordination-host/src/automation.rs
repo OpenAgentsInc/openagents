@@ -88,10 +88,38 @@ impl Coordinator {
             return Err("not_admitted: plan exceeds its exact current parent".into());
         }
         self.effects_subset(&plan["effects"], &proposal.body["effects"])?;
-        if plan["effects"] != self.operation(&plan["target"])?["effects"] {
-            return Err("cannot_enforce: AUTO data adapter requires its exact effects".into());
+        let native_effects = if plan["trigger"]["kind"] == "source" {
+            let resource = plan["trigger"]["resource"]
+                .as_str()
+                .ok_or("source resource")?;
+            let reader = self.automation_source_operation(resource)?;
+            if scope.targets.get(reader["id"].as_str().ok_or("reader ID")?) != Some(&reader) {
+                return Err("not_admitted: source reader must be explicitly registered".into());
+            }
+            let source = contracts::parse_definition(&plan["trigger"]["source"])
+                .map_err(|e| e.to_string())?;
+            let executor = source.id.split(':').next().ok_or("source principal")?;
+            for actor in [controller, executor] {
+                let grant = self.check(scope, actor, "read", now)?;
+                if !scope.policy.recipients.contains(actor)
+                    || !grant.all
+                        && (!grant.resources.contains(resource)
+                            || !grant
+                                .targets
+                                .contains(reader["id"].as_str().ok_or("reader ID")?))
+                {
+                    return Err(
+                        "not_admitted: source controller/executor read scope differs".into(),
+                    );
+                }
+            }
+            self.operation(&reader)?["effects"].clone()
+        } else {
+            self.operation(&plan["target"])?["effects"].clone()
+        };
+        if plan["effects"] != native_effects {
+            return Err("cannot_enforce: exact native automation effects required".into());
         }
-
         self.effects_subset(
             &self.operation(&plan["target"])?["effects"],
             &plan["effects"],
