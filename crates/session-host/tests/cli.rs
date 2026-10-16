@@ -81,3 +81,90 @@ fn cli_admits_an_adapter_and_refuses_opening_without_an_environment() {
     ]);
     assert!(!ok);
 }
+
+#[test]
+#[cfg(unix)]
+fn cli_resident_owns_engines_and_accepts_clients_without_the_host_key() {
+    use session_host::{
+        host::{Bundle, Policy, SessionHost},
+        resident::{Operation, Request},
+    };
+    struct Child(std::process::Child);
+    impl Drop for Child {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("state");
+    let keyfile = temp.path().join("key");
+    write_key(&keyfile, 32);
+    let secret = secp256k1::SecretKey::from_byte_array([32; 32]).unwrap();
+    SessionHost::initialize(root.clone(), secret, Policy::default()).unwrap();
+    let socket = root.join("host.sock");
+    let mut child = Child(
+        Command::new(env!("CARGO_BIN_EXE_session-host"))
+            .args([
+                "serve",
+                "--state",
+                root.to_str().unwrap(),
+                "--key-file",
+                keyfile.to_str().unwrap(),
+                "--socket",
+                socket.to_str().unwrap(),
+            ])
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .spawn()
+            .unwrap(),
+    );
+    let started = std::time::Instant::now();
+    while !socket.exists() {
+        assert!(child.0.try_wait().unwrap().is_none());
+        assert!(started.elapsed() < std::time::Duration::from_secs(5));
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    assert!(
+        !run(&[
+            "admit",
+            "--state",
+            root.to_str().unwrap(),
+            "--key-file",
+            keyfile.to_str().unwrap(),
+            "--engine",
+            "loop-mid-turn"
+        ])
+        .0
+    );
+    let host = secret
+        .x_only_public_key(&secp256k1::Secp256k1::new())
+        .0
+        .to_string();
+    let event = workspace_host::host::request(
+        &secret,
+        &host,
+        json!({"v":"unsupported"}),
+        session_host::now(),
+    )
+    .unwrap();
+    let mut request = Request::new(Operation::Submit {
+        bundle: Bundle {
+            event,
+            artifacts: Default::default(),
+        },
+    });
+    request.id = "invalid".into();
+    let input = temp.path().join("request.json");
+    std::fs::write(&input, serde_json::to_vec(&request).unwrap()).unwrap();
+    let (ok, response) = run(&[
+        "request",
+        "--socket",
+        socket.to_str().unwrap(),
+        "--input",
+        input.to_str().unwrap(),
+    ]);
+    assert!(!ok);
+    assert_eq!(response["outcome"]["code"], "malformed");
+    assert!(child.0.try_wait().unwrap().is_none());
+}

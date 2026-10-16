@@ -1,6 +1,6 @@
-//! Local session-host commands. Engines here are in-process: a new process
-//! has no running engine, so earlier active turns observe as lost (unknown),
-//! never as rerun.
+//! Local session-host commands and a resident socket client. Offline commands
+//! refuse while a resident owns the engines; a new process cannot adopt an
+//! earlier instance's native sessions.
 use crate::{
     Result,
     engine::LoopEngine,
@@ -19,7 +19,9 @@ pub const USAGE: &str = "usage: session-host ACTION --state DIR --key-file KEY [
              --coordinator-state DIR --coordinator-key-file KEY]
   observe    --session ID
   status     --session ID
-  export     --session ID";
+  export     --session ID
+  serve      --socket PATH [the same ENV and COORD options as submit]
+  request    --socket PATH --input REQUEST.json (no host key required)";
 
 struct NoBindings;
 impl Bindings for NoBindings {
@@ -61,6 +63,22 @@ pub fn run(args: Vec<String>) -> Result<Value> {
         args.get(index + 1).cloned()
     };
     let need = |name: &str| option(name).ok_or_else(|| format!("malformed: missing {name}"));
+    #[cfg(unix)]
+    if args[0] == "request" {
+        let bytes = workspace_host::artifact::read(
+            Path::new(&need("--input")?),
+            crate::resident::MAX_FRAME,
+        )?;
+        let value = nostr::contracts::parse_strict_bounded(&bytes, crate::resident::MAX_FRAME)
+            .map_err(|e| e.to_string())?;
+        let request: crate::resident::Request =
+            serde_json::from_value(value).map_err(|_| "malformed: transport request")?;
+        return serde_json::to_value(crate::resident::request(
+            Path::new(&need("--socket")?),
+            &request,
+        )?)
+        .map_err(|e| e.to_string());
+    }
     let root = PathBuf::from(need("--state")?);
     let secret = read_secret(Path::new(&need("--key-file")?))?;
     let now = crate::now();
@@ -86,6 +104,12 @@ pub fn run(args: Vec<String>) -> Result<Value> {
         }
         None => Box::new(NoBindings),
     };
+    #[cfg(unix)]
+    let _owner = if args[0] != "serve" {
+        Some(crate::resident::claim(&root)?)
+    } else {
+        None
+    };
     let host = SessionHost::open(
         root,
         secret,
@@ -96,6 +120,13 @@ pub fn run(args: Vec<String>) -> Result<Value> {
         bindings,
     )?;
     match args[0].as_str() {
+        #[cfg(unix)]
+        "serve" => {
+            let mut server =
+                crate::resident::Server::bind(&host, PathBuf::from(need("--socket")?))?;
+            server.run(&std::sync::atomic::AtomicBool::new(false))?;
+            Ok(json!({"stopped":true}))
+        }
         "policy" => {
             let policy = serde_json::from_value(json_file(&need("--policy")?)?)
                 .map_err(|_| "malformed: policy")?;

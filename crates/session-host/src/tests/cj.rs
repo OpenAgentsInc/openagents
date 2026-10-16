@@ -1231,6 +1231,138 @@ fn a_new_cj_attempt_can_return_a_native_duplicate_without_another_opening() {
 }
 
 #[test]
+#[cfg(unix)]
+fn resident_clients_read_and_answer_one_original_charged_turn() {
+    use crate::resident::{self, Body, Operation, Outcome, Request, Server};
+    fn exchange(
+        server: &mut Server<'_>,
+        path: &std::path::Path,
+        request: Request,
+        now: u64,
+    ) -> Body {
+        let path = path.to_path_buf();
+        let client = std::thread::spawn(move || resident::request(&path, &request));
+        let started = std::time::Instant::now();
+        while !client.is_finished() {
+            assert!(started.elapsed() < std::time::Duration::from_secs(10));
+            server.step(now).unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+        match client.join().unwrap().unwrap().outcome {
+            Outcome::Ok { reply } => reply,
+            other => panic!("{other:?}"),
+        }
+    }
+    let mut r = Real::new();
+    let host = r.host(LoopEngine::mid_turn());
+    let opening = r.opened(&host);
+    let session = opening["session"].as_str().unwrap();
+    let path = host.store().root().join("resident.sock");
+    let mut server = Server::bind(&host, path.clone()).unwrap();
+    let mut command = r.submit_command(&host, &opening, 2);
+    r.input(
+        &mut command,
+        json!({"prompt":"work","steps":2,"ask":"which branch?"}),
+    );
+    let (event, binding) = r.job(&command);
+    let reply = exchange(
+        &mut server,
+        &path,
+        Request::new(Operation::Execute {
+            event: event.clone(),
+            artifacts: r.fx.artifacts.clone(),
+            binding: binding.clone(),
+        }),
+        r.fx.now,
+    );
+    assert!(matches!(reply,Body::Event {event,..} if event.kind==execution::FEEDBACK_KIND));
+    let mut query = json!({"v":"openagents.session-read.v1","requires":[],"scope":{"authority":pk(HOST),"session":session,"generation":0},
+        "query":workspace_host::artifact::token(),"issued_at":r.fx.now,"expires_at":r.fx.now+300,"artifacts":[]});
+    let mut interaction = Value::Null;
+    for _ in 0..4 {
+        query["query"] = json!(workspace_host::artifact::token());
+        let read = envelope(&secret(OWNER), &pk(HOST), &query, r.fx.now).unwrap();
+        let Body::Event {
+            event: reply,
+            artifacts,
+        } = exchange(
+            &mut server,
+            &path,
+            Request::new(Operation::Read { event: read }),
+            r.fx.now,
+        )
+        else {
+            panic!()
+        };
+        let state = resident::read_reply(
+            &(reply, artifacts.clone()),
+            &pk(HOST),
+            &secret(OWNER),
+            &query,
+        )
+        .unwrap();
+        assert_eq!(state["phase"], "blocked");
+        if interaction.is_null() {
+            interaction = state["interactions"][0].clone();
+            query["artifacts"] = json!([interaction]);
+        } else {
+            let body: Value = serde_json::from_slice(
+                &artifacts[query["artifacts"][0]["digest"].as_str().unwrap()],
+            )
+            .unwrap();
+            if body["v"] == "openagents.session-interaction.v1" {
+                query["artifacts"] = json!([body["body"]]);
+            } else if body["v"] == "openagents.session-question.v1" {
+                query["artifacts"] = json!([body["prompt"], body["answer_schema"]]);
+            } else {
+                assert_eq!(body["question"], "which branch?");
+            }
+        }
+    }
+    let answer = r.question(&host, session);
+    assert_eq!(answer["interaction"], interaction);
+    let Body::Control { result } = exchange(
+        &mut server,
+        &path,
+        Request::new(Operation::Continue {
+            event: event.clone(),
+            bundle: r.fx.bundle(OWNER, &answer),
+        }),
+        r.fx.now,
+    ) else {
+        panic!()
+    };
+    assert_eq!(result["status"], "accepted");
+    let Body::Event {
+        event: result,
+        artifacts,
+    } = exchange(
+        &mut server,
+        &path,
+        Request::new(Operation::Poll {
+            event: event.clone(),
+        }),
+        r.fx.now,
+    )
+    else {
+        panic!()
+    };
+    assert_eq!(
+        r.coordinator
+            .record_result(&result, &artifacts, r.fx.now)
+            .unwrap()["outcome"],
+        "completed"
+    );
+    assert_eq!(host.started("loop-mid-turn"), 1);
+    assert_eq!(r.coordinator.scope(&r.scope).unwrap()["calls"], 2);
+    assert_eq!(
+        host.serve(&event, &r.fx.artifacts, &binding, r.fx.now)
+            .unwrap(),
+        (result, artifacts)
+    );
+}
+
+#[test]
 fn one_wall_time_allowance_covers_intake_and_native_configuration() {
     struct Delayed(Allocator);
     impl Bindings for Delayed {

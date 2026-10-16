@@ -99,6 +99,7 @@ impl Bindings for env_host::allocator::Allocator {
 
 /// The attachment the transport delivered this execution under.
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Binding {
     pub attachment: String,
     pub fingerprint: String,
@@ -3733,6 +3734,56 @@ impl SessionHost {
             "admission":session.admission,"effective":session.effective,"requested":session.requested,"protocol_fault":session.protocol_fault,
             "runtime":session.runtime_binding,"replacement_pending":session.replacing}),
         )
+    }
+
+    /// Read the owner's current signed state and explicitly shared artifacts.
+    /// This never observes an engine or follows nested input references.
+    pub fn read(&self, event: &Event, now: u64) -> Result<crate::transport::Reply> {
+        let _guard = self.store.lock()?;
+        let mut state = self.state()?;
+        let (actor, query, input) = self.authenticate(&mut state, event, now)?;
+        sess::validate(&query).map_err(contract)?;
+        if query["v"] != "openagents.session-read.v1"
+            || query["issued_at"]
+                .as_u64()
+                .is_none_or(|v| v > now.saturating_add(300))
+            || query["expires_at"].as_u64().is_none_or(|v| v <= now)
+        {
+            return Err("stale: session read query is not current".into());
+        }
+        let session = state
+            .sessions
+            .get(query["scope"]["session"].as_str().ok_or("session")?)
+            .ok_or("not_admitted: unknown session")?;
+        if session.owner != actor || !state.policy.owners.contains(&actor) {
+            return Err("not_admitted: only the current session owner may read".into());
+        }
+        if query["scope"] != session.scope(self.pubkey()) {
+            return Err("stale: session read generation differs".into());
+        }
+        let current = session.state.clone().ok_or("unavailable: session state")?;
+        let mut requested = query["artifacts"].as_array().ok_or("artifacts")?.clone();
+        requested.push(current.clone());
+        let refs = self.cj_files(&state, &actor, requested)?;
+        let mut files = BTreeMap::new();
+        let mut size = 0usize;
+        for reference in &refs {
+            let bytes = self.store.get(reference)?;
+            size = size
+                .checked_add(bytes.len())
+                .ok_or("limit_exceeded: read bytes")?;
+            if size > 4 * 1_048_576 {
+                return Err("limit_exceeded: read bytes".into());
+            }
+            files.insert(digest_of(reference).into(), bytes);
+        }
+        let reply = json!({"v":"openagents.session-read-result.v1","requires":[],
+            "scope":query["scope"],"query":input,"state":current,"artifacts":refs});
+        sess::validate(&reply).map_err(contract)?;
+        Ok((
+            workspace_host::host::request(&self.secret, &actor, reply, now)?,
+            files,
+        ))
     }
 }
 

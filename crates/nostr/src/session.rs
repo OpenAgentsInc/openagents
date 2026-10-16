@@ -220,6 +220,19 @@ fn semantic(name: &str, body: &Value) -> Result<()> {
             }
         }
         "session-question" => schema_ref(&body["answer_schema"])?,
+        "session-read-result" => {
+            if body["query"]["schema"] != "openagents.session-read.v1"
+                || body["state"]["schema"] != "openagents.session-state.v1"
+                || !body["artifacts"]
+                    .as_array()
+                    .is_some_and(|refs| refs.contains(&body["state"]))
+            {
+                return Err(error(RefusalCode::Malformed, "read result pins"));
+            }
+        }
+        "session-read" if body["expires_at"].as_u64() <= body["issued_at"].as_u64() => {
+            return Err(error(RefusalCode::Malformed, "read query expiry"));
+        }
         "session-import-source" => schema_ref(&body["format"])?,
         "session-steer-receipt"
             if body["consumed"] == true
@@ -266,6 +279,7 @@ fn nested(value: &Value) -> Result<()> {
                         | "recipient"
                         | "responder"
                         | "requester"
+                        | "query"
                         | "connection"
                 ) && let Some(text) = value.as_str()
                 {
@@ -390,6 +404,21 @@ mod tests {
             "media_type":"application/json","schema":"openagents.session-steer-correction.v1"},
             "mode":"native","acknowledgment":"input_written","consumed":true,"evidence":[]});
         assert!(validate(&receipt).is_err());
+    }
+    #[test]
+    fn private_reads_have_closed_queries_and_current_expiry() {
+        let mut query = json!({"v":"openagents.session-read.v1","requires":[],
+            "scope":{"authority":"11".repeat(32),"session":"22".repeat(32),"generation":0},
+            "query":"33".repeat(32),"issued_at":10,"expires_at":20,"artifacts":[]});
+        validate(&query).unwrap();
+        query["query"] = json!("z".repeat(64));
+        assert!(validate(&query).is_err());
+        query["query"] = json!("33".repeat(32));
+        query["expires_at"] = json!(10);
+        assert!(validate(&query).is_err());
+        query["expires_at"] = json!(20);
+        query["recursive"] = json!(true);
+        assert!(validate(&query).is_err());
     }
     #[test]
     fn promotion_selectors_require_the_exact_closed_head_identity() {

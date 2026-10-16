@@ -2,10 +2,12 @@ fn main() {
     match session_host::cli::run(std::env::args().skip(1).collect()) {
         Ok(value) => {
             println!("{value}");
-            if matches!(
-                value["status"].as_str(),
-                Some("conflict" | "refused" | "unknown")
-            ) {
+            let status = value["status"]
+                .as_str()
+                .or_else(|| value["outcome"]["reply"]["result"]["status"].as_str());
+            if value["outcome"]["status"] == "error"
+                || matches!(status, Some("conflict" | "refused" | "unknown"))
+            {
                 std::process::exit(1);
             }
         }

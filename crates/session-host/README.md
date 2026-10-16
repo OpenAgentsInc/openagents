@@ -11,6 +11,10 @@ order keep separate identities.
 session-host init --state DIR --key-file KEY --policy POLICY.json
 session-host admit --state DIR --key-file KEY --engine loop-mid-turn
 session-host observe|status|export --state DIR --key-file KEY --session ID
+session-host serve --state DIR --key-file KEY --socket DIR/session.sock \
+  --env-state ENV --env-key ENV_KEY --env-root RESOURCES \
+  --coordinator-state COORD --coordinator-key-file COORD_KEY
+session-host request --socket DIR/session.sock --input REQUEST.json
 ```
 
 POLICY names the independently authorized `owners` and `controllers`. BUNDLE
@@ -147,8 +151,27 @@ An uncertain steering command blocks further input for that turn. Exact cached
 controls still require the current owner and generation; reading a saved reply
 does not deliver anything. Replies also check their own expiry before delivery.
 
-Resident CLI transport and real engine processes remain unfinished. This
-receiver does not advertise those roles.
+The standalone Unix socket server keeps its loop engines alive across clients
+and drives the watchdog between requests. Its socket directory must be private;
+the socket is mode `0600`, and one resident owns each state directory. Offline
+CLI commands refuse while that resident runs. Each connection carries one
+versioned request with method `execute`, `poll`, `continue`, `submit`, or `read`;
+it grants no rights beyond the signed operation inside it. The Rust
+`resident::request` client and standalone `request` command need no host key.
+Frames are bounded to 40 MiB, at most eight connections remain open, and an
+unfinished connection expires after five seconds. Partial clients cannot block
+other connections or watchdog checks. A stale socket can be replaced after the
+previous resident exits; an active socket or existing regular file refuses.
+
+Signed `session-read` queries require the current session owner, host membership,
+and exact scope generation. They return the current signed state plus explicitly
+requested, already shared artifacts, up to 256 requests and 4 MiB of bytes.
+Reading does not advance an engine or follow nested private references. A client
+can read a pending interaction, its question, and its prompt in successive
+queries. `resident::read_reply` verifies the host, caller, exact query, scope,
+artifact bytes, and signed state before use. CJ event replies still use the
+existing execution verifier. Real engine processes and relay/direct transport
+remain unfinished; this socket profile does not advertise those roles.
 
 The production binding reads the allocator's actual saved attachment. It
 checks the requesting controller, executor key, lease, materialization, and

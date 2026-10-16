@@ -70,6 +70,12 @@
     },
     {
       "$ref": "#/$defs/session-runtime-binding"
+    },
+    {
+      "$ref": "#/$defs/session-read"
+    },
+    {
+      "$ref": "#/$defs/session-read-result"
     }
   ],
   "$defs": {
@@ -2890,6 +2896,90 @@
           "type": "string",
           "minLength": 64,
           "maxLength": 64
+        }
+      }
+    },
+    "session-read": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "scope",
+        "query",
+        "issued_at",
+        "expires_at",
+        "artifacts"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.session-read.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "scope": {
+          "$ref": "#/$defs/scope"
+        },
+        "query": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "issued_at": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "expires_at": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "artifacts": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/artifact"
+          }
+        }
+      }
+    },
+    "session-read-result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "scope",
+        "query",
+        "state",
+        "artifacts"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.session-read-result.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "scope": {
+          "$ref": "#/$defs/scope"
+        },
+        "query": {
+          "$ref": "#/$defs/artifact"
+        },
+        "state": {
+          "$ref": "#/$defs/artifact"
+        },
+        "artifacts": {
+          "type": "array",
+          "maxItems": 257,
+          "items": {
+            "$ref": "#/$defs/artifact"
+          }
         }
       }
     }

@@ -820,8 +820,8 @@ without repeating intake or charging again. Polling after expiry requests
 stopping that original turn before advancing it; only terminal native evidence
 proves quiescence. Oversized known output becomes a bounded failure; uncertain
 work stays unknown with its accounting hold. Native RUN identities cannot
-alias an existing CJ RUN. This profile does not yet provide resident CLI
-transport or real engine processes.
+alias an existing CJ RUN. Real engine processes remain unfinished. The bounded
+resident socket profile is described below.
 
 Private active-turn continuations name their original CJ execution. New
 question replies and steering require that execution's exact current native
@@ -931,3 +931,28 @@ another signal, while subsequent observations may establish quiescence. A
 restart cannot replay an opening or input and cannot adopt another engine
 instance's native names. The whole initial admission and disclosure share one
 monotonic wall-time allowance; individual phases cannot restart that allowance.
+
+The standalone native host can carry signed operations over an owner-only Unix
+socket using one bounded JSON line per connection. The outer transport version
+is `openagents.session-host-transport.v1`; `id` correlates a request and reply,
+and `operation.method` selects `execute`, `poll`, `continue`, `submit`, or `read`.
+Execute carries the original CJ event, explicit artifacts, and ENV binding;
+poll names that original event; continue also carries a separately signed
+private control bundle. Submit carries a private bundle and cannot grant new
+engine execution. Socket access supplies no protocol authority. Clients retain
+their own keys and verify signed CJ replies against the original request.
+The host keeps its engines alive across connections and drives its watchdog
+between requests. Frames are at most 40 MiB, there are at most eight open
+connections, and an unfinished connection expires after five seconds.
+
+Read carries a signed private `openagents.session-read.v1` artifact with exact
+`scope`, `query`, `issued_at`, `expires_at`, and an explicit `artifacts` list.
+Only the session's current owner may read through this profile; current host
+membership and scope generation are checked on every read. It does not advance
+the engine. The encrypted `openagents.session-read-result.v1` reply pins that
+query and the current signed session state, and includes only the explicitly
+requested, already shared bytes plus that state. At most 256 requested
+artifacts plus the state, totaling 4 MiB of bytes, may be returned. Knowing a hash, following a nested reference,
+or controlling a different session does not grant cache access. Clients can
+request pending interaction records and their prompts in subsequent reads.
+Socket transport does not add relay discovery or a remote deployment service.

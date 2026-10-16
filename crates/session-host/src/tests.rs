@@ -438,6 +438,79 @@ fn correction(fx: &mut Fx, mode: &str, text: &str) -> Value {
 }
 
 #[test]
+#[cfg(unix)]
+fn signed_session_reads_check_current_owner_scope_and_explicit_byte_access() {
+    let mut fx = Fx::new();
+    let host = fx.host();
+    let (session, _) = fx.open(&host, "loop-mid-turn");
+    let mut query = json!({"v":"openagents.session-read.v1","requires":[],"scope":{"authority":pk(HOST),"session":session,"generation":0},
+        "query":hex(80),"issued_at":fx.now,"expires_at":fx.now+300,"artifacts":[]});
+    let now = fx.now;
+    let read = |q: &Value, n: u8| envelope(&secret(n), &pk(HOST), q, now).unwrap();
+    let reply = host.read(&read(&query, OWNER), fx.now).unwrap();
+    assert_eq!(
+        crate::resident::read_reply(&reply, &pk(HOST), &secret(OWNER), &query).unwrap()["phase"],
+        "ready"
+    );
+    assert!(crate::resident::read_reply(&reply, &pk(STRANGER), &secret(OWNER), &query).is_err());
+    let mut changed = query.clone();
+    changed["query"] = json!(hex(81));
+    assert!(crate::resident::read_reply(&reply, &pk(HOST), &secret(OWNER), &changed).is_err());
+    let mut changed = reply.clone();
+    changed.1.values_mut().next().unwrap().push(0);
+    assert!(crate::resident::read_reply(&changed, &pk(HOST), &secret(OWNER), &query).is_err());
+    for actor in [CONTROLLER, STRANGER] {
+        assert!(host.read(&read(&query, actor), fx.now).is_err());
+    }
+    query["scope"]["generation"] = json!(1);
+    assert!(
+        host.read(&read(&query, OWNER), fx.now)
+            .unwrap_err()
+            .contains("stale")
+    );
+    query["scope"]["generation"] = json!(0);
+    let private = host
+        .store()
+        .put(b"other owner's bytes", "text/plain", None)
+        .unwrap();
+    query["artifacts"] = json!([private]);
+    assert!(
+        host.read(&read(&query, OWNER), fx.now)
+            .unwrap_err()
+            .contains("not_admitted")
+    );
+    query["artifacts"] = json!([]);
+    let mut large = Vec::new();
+    for byte in 0..5 {
+        large.push(put(
+            &mut fx.artifacts,
+            &vec![byte; 1_048_576],
+            "application/octet-stream",
+            None,
+        ));
+    }
+    let archive = fx.command(&host, &session, "archive", json!({"archived":true}));
+    assert_eq!(fx.send(&host, OWNER, &archive, None)["status"], "accepted");
+    query["artifacts"] = json!(large);
+    assert!(
+        host.read(&read(&query, OWNER), now)
+            .unwrap_err()
+            .contains("limit_exceeded")
+    );
+    query["artifacts"] = json!([]);
+    query["expires_at"] = json!(fx.now + 1);
+    assert!(host.read(&read(&query, OWNER), fx.now + 1).is_err());
+    query["expires_at"] = json!(fx.now + 300);
+    host.set_policy(Policy::default()).unwrap();
+    assert!(
+        host.read(&read(&query, OWNER), fx.now)
+            .unwrap_err()
+            .contains("not_admitted")
+    );
+    assert_eq!(host.started("loop-mid-turn"), 0);
+}
+
+#[test]
 fn consumed_intents_cannot_repeat_with_new_commands_bindings_or_runtime_generations() {
     let mut fx = Fx::new();
     let host = fx.host();
