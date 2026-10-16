@@ -1,0 +1,17 @@
+[package]
+name = "layertree-attest"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+# Research client only; it never joins the default workspace or the signer image.
+[workspace]
+
+[dependencies]
+layertree-tee-lab = { path = "..", features = ["events"] }
+oa-att = { path = "../../oa-att" }
+att-release = { path = "../../att-release" }
+nostr = { path = "../../nostr" }
+bitcoin = { version = "=0.32.102", default-features = false, features = ["std"] }
+serde_json = "=1.0.151"
+time = { version = "=0.3.55", default-features = false, features = ["parsing"] }

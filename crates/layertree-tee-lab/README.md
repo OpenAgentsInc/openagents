@@ -81,12 +81,14 @@ job is scoped to these proofs and the mutation check in
 Everything the enclave and light clients read from outside has a decoder
 that returns a typed `codec::DecodeError` and never panics, and each is the
 exact inverse of its encoder. `fuzz/` (its own workspace, nightly
-`cargo-fuzz`) has six targets: `leaf_roundtrip`, `enc64_roundtrip`,
+`cargo-fuzz`) has seven targets: `leaf_roundtrip`, `enc64_roundtrip`,
 `record_decode`, `unroll_package_decode` (roundtrips assert
 `encode(decode(x)) == x`, so the encodings are injective), and
 `snp_report_parse` and `tdx_quote_parse`, which fuzz the SEV-SNP report and
 TDX quote v4 parse layers in `crates/att-platforms` (#11745) rather than a
-second copy. Seeds in `fuzz/corpus/*/seed-*` come from lab data and the
+second copy. `gcp_token_verify` fuzzes the bounded Google token verifier
+and both recorded and live-binding policies in the [research client](client/README.md).
+Seeds in `fuzz/corpus/*/seed-*` come from lab data and the
 synthetic att-platforms vectors (test keys only; regenerate with
 `LAYERTREE_WRITE_SEEDS=1` and `ATT_FUZZ_SEEDS=<corpus dir>`).
 
@@ -96,7 +98,7 @@ cd crates/layertree-tee-lab
 cargo +nightly fuzz build
 cargo +nightly fuzz run record_decode -- -max_total_time=1800
 # likewise leaf_roundtrip, enc64_roundtrip, unroll_package_decode,
-# snp_report_parse, tdx_quote_parse
+# snp_report_parse, tdx_quote_parse, gcp_token_verify
 ```
 
 A crash becomes a regression test in `tests/codec.rs` (or att-platforms'

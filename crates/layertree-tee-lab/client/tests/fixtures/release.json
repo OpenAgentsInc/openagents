@@ -1,0 +1,22 @@
+{
+  "id": "4963b7fcc2180c2a1afa4fe28fd5a0ced13b6527a7ad75c8ea0eb72b98274552",
+  "pubkey": "fc4d6cd08891e19627bca90ae667097d261b8290e54ada0bb7e959f06a390f8d",
+  "created_at": 1792138562,
+  "kind": 3202,
+  "tags": [
+    [
+      "t",
+      "oa:att-release:v1"
+    ],
+    [
+      "x",
+      "53f226139dd4d42a81771da18eb0b787975844dfdd9d7c5e322cc88d3cb60d99"
+    ],
+    [
+      "w",
+      "layertree-signet-key-probe"
+    ]
+  ],
+  "content": "{\"changes\":\"We test key recovery and synthetic transaction signing inside TDX. This image accepts no signing requests.\",\"components\":[],\"gpu\":null,\"image\":{\"digest\":\"sha256:79bf22d374f8c33a58f4c126ce36da9f729501d881ac80b48707d007653bf100\",\"reference\":\"us-central1-docker.pkg.dev/openagentsgemini/layertree-research/attestation-probe\"},\"measurements\":[],\"models\":[],\"platforms\":[{\"hwmodel\":\"GCP_INTEL_TDX\",\"kind\":\"gcp-confidential-space\",\"support\":\"STABLE\"}],\"published_at\":1792138561,\"publisher\":\"fc4d6cd08891e19627bca90ae667097d261b8290e54ada0bb7e959f06a390f8d\",\"rebuilds\":[{\"builder\":\"ad8c8c7c0acdea0dc0c3635aa9860f16d3bd32c08e7fe89326e0284637812793\",\"digest\":\"sha256:79bf22d374f8c33a58f4c126ce36da9f729501d881ac80b48707d007653bf100\"},{\"builder\":\"4436af1610434a52d7daad6fc61a4ea1be117d9c02f36c75ae88571073069e82\",\"digest\":\"sha256:79bf22d374f8c33a58f4c126ce36da9f729501d881ac80b48707d007653bf100\"}],\"requires\":[],\"source\":{\"commit\":\"a4fb41ec1f4e2f3ba8a281ad1cb9881c872d7632\",\"recipe\":\"deploy/layertree/reproducible-probe.Dockerfile\",\"recipe_digest\":\"sha256:d89e9241d977aa71700e989482b5e6f5b7d81381d4cc85c4a58178f4f43f844f\",\"repo\":\"https://github.com/OpenAgentsInc/openagents\"},\"transparency\":[{\"index\":3276247676,\"log\":\"rekor\",\"url\":\"https://rekor.sigstore.dev\"}],\"v\":\"openagents.att-release.v1\",\"workload\":\"layertree-signet-key-probe\"}",
+  "sig": "b0aa54221a3d5059f6163b08964d5a2754835c30fb9eb76356cb88b4180fd35f74cf31ef96c1ffcf831f6f7d4613f53ecc08e806c8cb974a8249664e392d23fe"
+}

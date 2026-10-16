@@ -13,6 +13,8 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
+layertree-attest = { path = "../client" }
+bitcoin = { version = "=0.32.102", default-features = false, features = ["std"] }
 layertree-tee-lab = { path = ".." }
 # The SEV-SNP and TDX parse layers live in att-platforms (#11745); fuzz
 # those rather than a second copy.
@@ -56,6 +58,13 @@ bench = false
 [[bin]]
 name = "tdx_quote_parse"
 path = "fuzz_targets/tdx_quote_parse.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "gcp_token_verify"
+path = "fuzz_targets/gcp_token_verify.rs"
 test = false
 doc = false
 bench = false
