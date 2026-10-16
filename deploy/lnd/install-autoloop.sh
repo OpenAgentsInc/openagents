@@ -17,7 +17,7 @@ if [[ ! -e /etc/openagents-lnd/autoloop.json ]]; then
   python3 - "$source_dir/autoloop.example.json" <<'PY'
 import json,sys,hashlib,subprocess,os,grp
 s=json.load(open(sys.argv[1]))
-s['lnd']['certificate_sha256']=hashlib.sha256(subprocess.check_output(['openssl','x509','-in','/var/lib/openagents-lnd/tls.cert','-outform','DER'])).hexdigest()
+s['lnd']['certificate_sha256']=hashlib.sha256(subprocess.check_output(['openssl','x509','-in','/var/lib/openagents-lnd/lnd/tls.cert','-outform','DER'])).hexdigest()
 p='/etc/openagents-lnd/autoloop.json'
 with open(p,'x') as f:json.dump(s,f,indent=2);f.write('\n')
 os.chown(p,0,grp.getgrnam('oa-lnd-health').gr_gid);os.chmod(p,0o640)
