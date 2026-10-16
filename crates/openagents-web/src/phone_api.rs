@@ -100,6 +100,7 @@ pub(crate) fn routes() -> Router<App> {
             "/v1/threads/{id}/files/{file}",
             get(read_file).delete(remove_file),
         )
+        .route("/v1/computer-usage", get(crate::computers_api::usage::read))
         .route(
             "/v1/computers",
             get(computers_route)
@@ -146,6 +147,9 @@ pub(crate) fn routes() -> Router<App> {
 
 /// Whether `path` is one of these routes (`crate::upstream::owned`).
 pub(crate) fn owns(path: &str) -> bool {
+    if path == "/v1/computer-usage" {
+        return true;
+    }
     // The gateway's agent sign-up routes (#11630) share the prefix.
     if path.starts_with("/v1/agents/") && path != "/v1/agents/actions" {
         return false;

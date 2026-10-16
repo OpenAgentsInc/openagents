@@ -7757,6 +7757,99 @@
         "x-openagents-max-request-bytes": 4194304
       }
     },
+    "/v1/computer-usage": {
+      "get": {
+        "operationId": "getComputerUsage",
+        "tags": [
+          "Computers"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "description": "Read usage for the authenticated account with cloud access. Uses the same account permissions as computer reads. Account owner and payer headers are ignored; job credentials are refused. Accepted requests and observed results are separate events. Missing provider seconds remain unknown. Allocation allowances are operator limits, not customer charges; retail pricing is not enabled.",
+        "parameters": [
+          {
+            "name": "after",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9223372036854775807,
+              "default": 0
+            },
+            "description": "The previous response's after value. Events remain scoped to this account."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Account computer usage result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppComputerUsage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Account computer usage result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Account computer usage result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Account computer usage result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Account computer usage result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        },
+        "x-openagents-retry": "read",
+        "x-openagents-no-implicit-retry": true,
+        "x-openagents-max-response-bytes": 1048576,
+        "x-openagents-max-request-bytes": 0
+      }
+    },
     "/v1/projects": {
       "get": {
         "operationId": "listProjects",
@@ -15332,6 +15425,213 @@
             "sha256": "26e5d2e798113f713318a98981b2df55f52894eddc33fbbaf64deabeeb6706ec"
           }
         ]
+      },
+      "AppComputerUsageEvent": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "sequence",
+          "computer",
+          "kind",
+          "size",
+          "shape",
+          "boot",
+          "phase",
+          "desired",
+          "observed_ms",
+          "provider_seconds",
+          "measurement",
+          "running",
+          "storage"
+        ],
+        "properties": {
+          "sequence": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "computer": {
+            "type": "string",
+            "pattern": "^cmp_[0-9a-fA-F]{20}$"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "observed",
+              "meter",
+              "resolution"
+            ]
+          },
+          "size": {
+            "type": "string"
+          },
+          "shape": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": false,
+            "required": [
+              "vcpus",
+              "memory_mib",
+              "min_disk_gib"
+            ],
+            "properties": {
+              "vcpus": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "memory_mib": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "min_disk_gib": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 0
+              }
+            }
+          },
+          "boot": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "phase": {
+            "type": "string"
+          },
+          "desired": {
+            "type": "string",
+            "enum": [
+              "running",
+              "stopped",
+              "deleted"
+            ]
+          },
+          "observed_ms": {
+            "type": "integer"
+          },
+          "provider_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "measurement": {
+            "type": "string",
+            "enum": [
+              "unknown",
+              "reported"
+            ]
+          },
+          "running": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "storage": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "resource_deleted",
+              "bytes",
+              "checkpoint_records"
+            ],
+            "properties": {
+              "resource_deleted": {
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              },
+              "bytes": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 0
+              },
+              "checkpoint_records": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 0
+              }
+            }
+          }
+        }
+      },
+      "AppComputerUsage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "schema",
+          "events",
+          "after",
+          "allocation_allowance",
+          "customer_charge",
+          "pricing"
+        ],
+        "properties": {
+          "schema": {
+            "const": "openagents.computers.usage.v1"
+          },
+          "events": {
+            "type": "array",
+            "maxItems": 200,
+            "items": {
+              "$ref": "#/components/schemas/AppComputerUsageEvent"
+            }
+          },
+          "after": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "allocation_allowance": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "held_cpu_ms",
+              "settled_cpu_ms",
+              "unknown_allowances",
+              "unresolved_allowances"
+            ],
+            "properties": {
+              "held_cpu_ms": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 0
+              },
+              "settled_cpu_ms": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "unknown_allowances": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "unresolved_allowances": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          },
+          "customer_charge": {
+            "type": "null"
+          },
+          "pricing": {
+            "const": "not_enabled"
+          }
+        }
       },
       "AppProjectRole": {
         "type": "string",
