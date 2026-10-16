@@ -109,13 +109,14 @@ implementation issues; proposed fields/endpoints remain proposals until shipped.
 | Independent adoption | Solver and Environment migrations, own-machine backend, broader API reference | [#11807](https://github.com/OpenAgentsInc/openagents/issues/11807), [#11808](https://github.com/OpenAgentsInc/openagents/issues/11808), [#11817](https://github.com/OpenAgentsInc/openagents/issues/11817), [#11818](https://github.com/OpenAgentsInc/openagents/issues/11818) |
 | Conditional follow-ups | Host publication, external providers, additional language clients, optional payment, and next-release CLI | [#11819](https://github.com/OpenAgentsInc/openagents/issues/11819)–[#11823](https://github.com/OpenAgentsInc/openagents/issues/11823) |
 
-For the first desktop milestone, start #11825 and #11827. For the Computers
-track, start [#11801](https://github.com/OpenAgentsInc/openagents/issues/11801) for the public account boundary, with [#11809](https://github.com/OpenAgentsInc/openagents/issues/11809) and
-[#11810](https://github.com/OpenAgentsInc/openagents/issues/11810) independently eligible for preparation. The broader route
-inventory [#11818](https://github.com/OpenAgentsInc/openagents/issues/11818) can also proceed independently. Command/file design
-and the specification can be drafted alongside lifecycle development; their
-native prerequisites describe completion/integration dependencies, not a ban
-on useful independent preparation.
+For the first desktop milestone, start #11825 and #11827. The Computers
+account boundary in [#11801](https://github.com/OpenAgentsInc/openagents/issues/11801)
+is deployed; its [verification record](computers-lifecycle-evidence.json) pins
+both images and the completed staging workflows. Continue with command sessions
+[#11802](https://github.com/OpenAgentsInc/openagents/issues/11802), then files
+[#11803](https://github.com/OpenAgentsInc/openagents/issues/11803), in the owner's
+requested sequence. Keep using the same worktree and push and close each issue
+before starting the next one.
 
 M1 does not wait for SPACE, all-route OpenAPI coverage, own machines, payments,
 or publication. M2 does not wait for external providers, a new Coder release,

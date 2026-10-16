@@ -81,6 +81,11 @@ replace a newer build.
 The web staging renderer points to that isolated service. Public gating and
 account isolation stay the same in staging and production.
 
+The [lifecycle verification record](../sdk/computers-lifecycle-evidence.json)
+pins the 2026-10-16 deployment, account-isolation checks, dedicated-account Boat
+workflows, and observed timings. Create acceptance and observed readiness are
+measured separately.
+
 ### Turns
 
 A turn is one command on a computer for a chat. The API records it

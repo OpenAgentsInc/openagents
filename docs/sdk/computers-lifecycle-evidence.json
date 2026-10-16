@@ -1,0 +1,381 @@
+{
+  "schema": "openagents.computers.lifecycle-evidence.v1",
+  "date": "2026-10-16",
+  "issue": "https://github.com/OpenAgentsInc/openagents/issues/11801",
+  "status": "deployed_gated",
+  "scope": "Gated account-owned Boat lifecycle; commands, files, and other backends are separate issues.",
+  "lifecycle_image": {
+    "source": "868fe4b4d8c73c7f9520cbb3b2edd996fd4e7f72",
+    "digest": "sha256:553305d916ebd3c98eca101284095e5aa5585e9e07359496ba7cbfc4f32db839",
+    "staging_revision": "oa-computers-staging-00003-pxt",
+    "production_revision": "oa-computers-00003-r5n",
+    "health_path": "/health",
+    "production_health_status": 200
+  },
+  "frontend_candidate_source": "e642b9a823c4e4ee216eb849a19163725ee4b2f5",
+  "checks": {
+    "postgres_lifecycle": {
+      "passed": 6,
+      "database": "disposable loopback PostgreSQL",
+      "covers": [
+        "account quota under concurrent creates",
+        "conflicting immutable settings",
+        "request aliases after deletion",
+        "original key column after alias backfill",
+        "keyed retry preserves stop",
+        "legacy unkeyed chat ensures",
+        "account-owned pagination",
+        "real service process killed and restarted during provisioning",
+        "turn credentials kept in memory"
+      ]
+    },
+    "focused_web": {
+      "passed": 29,
+      "groups": {
+        "computers_api": 2,
+        "copy_guard": 3,
+        "app_openapi": 1,
+        "phone_api": 18,
+        "api_alias": 5
+      },
+      "covers": [
+        "fresh native account authority",
+        "account-bound keys versus decision-only keys",
+        "revocation and gating",
+        "hostile owner headers",
+        "cross-account refusal",
+        "body size and response sanitization",
+        "legacy physical names including cloud-ID-shaped names and capabilities",
+        "empty POST length"
+      ]
+    },
+    "format": "passed",
+    "openapi_local_references": 153,
+    "broader_web_snapshot": {
+      "passed": 770,
+      "failed": 1,
+      "ignored": 15,
+      "unrelated_failure": "cloud::tests::cad_gate::pro_and_admins_pass_and_a_test_run_can_ask_to_be_free: missing expected CAD delete form"
+    }
+  },
+  "staging_runs": [
+    {
+      "frontend_source": "bfc9360aef4ea6198cb9102892f623b739841abd",
+      "frontend_digest": "sha256:fcfa9661f3fb5b042fb16675ff8f1689954d1a88843b491d56ce648ddac49bcf",
+      "site_smoke": {
+        "passed": 99,
+        "failed": 0,
+        "skipped": 2
+      },
+      "lifecycle": {
+        "passed": true,
+        "account": "acct_dc7a799879686fc5",
+        "computer": "cmp_59495d6a3f2516803fb4",
+        "request_and_observation_count": 133,
+        "seconds": {
+          "create_response": 0.411,
+          "observe_initial_awake": 129.357,
+          "stop_response": 0.202,
+          "observe_stopped": 49.284,
+          "wake_response": 0.18,
+          "observe_awake_after_wake": 42.348,
+          "delete_response": 0.207,
+          "observe_deleted": 28.988
+        },
+        "timing_note": "Client-observed durations include network/authentication and two-second polling intervals. Create acceptance is distinct from readiness.",
+        "mutation_results": [
+          {
+            "method": "POST",
+            "path": "/v1/computers",
+            "status": 202,
+            "seconds": 0.411,
+            "elapsed_seconds": 2.137,
+            "state": "new",
+            "desired": "running",
+            "error": null
+          },
+          {
+            "method": "POST",
+            "path": "/v1/computers",
+            "status": 200,
+            "seconds": 0.313,
+            "elapsed_seconds": 2.45,
+            "state": "creating",
+            "desired": "running",
+            "error": null
+          },
+          {
+            "method": "POST",
+            "path": "/v1/computers",
+            "status": 409,
+            "seconds": 0.296,
+            "elapsed_seconds": 2.746,
+            "state": null,
+            "desired": null,
+            "error": "idempotency_conflict"
+          },
+          {
+            "method": "POST",
+            "path": "/v1/computers/cmp_59495d6a3f2516803fb4/stop",
+            "status": 202,
+            "seconds": 0.202,
+            "elapsed_seconds": 131.285,
+            "state": "awake",
+            "desired": "stopped",
+            "error": null
+          },
+          {
+            "method": "POST",
+            "path": "/v1/computers",
+            "status": 200,
+            "seconds": 0.25,
+            "elapsed_seconds": 180.617,
+            "state": "stopped",
+            "desired": "stopped",
+            "error": null
+          },
+          {
+            "method": "POST",
+            "path": "/v1/computers/cmp_59495d6a3f2516803fb4/wake",
+            "status": 202,
+            "seconds": 0.18,
+            "elapsed_seconds": 180.797,
+            "state": "stopped",
+            "desired": "running",
+            "error": null
+          },
+          {
+            "method": "POST",
+            "path": "/v1/computers",
+            "status": 400,
+            "seconds": 0.172,
+            "elapsed_seconds": 223.328,
+            "state": null,
+            "desired": null,
+            "error": "invalid"
+          },
+          {
+            "method": "DELETE",
+            "path": "/v1/computers/cmp_59495d6a3f2516803fb4?kind=cloud",
+            "status": 202,
+            "seconds": 0.207,
+            "elapsed_seconds": 223.535,
+            "state": "awake",
+            "desired": "deleted",
+            "error": null
+          }
+        ],
+        "deleted_and_absent_from_list": true,
+        "own_session_revoked": true,
+        "revoked_session_capabilities_status": 401
+      }
+    },
+    {
+      "frontend_source": "e642b9a823c4e4ee216eb849a19163725ee4b2f5",
+      "frontend_digest": "sha256:55d58e1ee5a4c9ac7e8ce32d4c40dd6033fa53220cac9cc77944690329721bdc",
+      "frontend_revision": "openagents-web-1-staging-e642b9a823-062505",
+      "site_smoke": {
+        "passed": 99,
+        "failed": 0,
+        "skipped": 2
+      },
+      "lifecycle": {
+        "passed": true,
+        "account": "acct_dc7a799879686fc5",
+        "computer": "cmp_61d79e118ca362ae6a02",
+        "request_and_observation_count": 98,
+        "seconds": {
+          "create_response": 0.369,
+          "observe_initial_awake": 52.684,
+          "stop_response": 0.304,
+          "observe_stopped": 29.976,
+          "wake_response": 0.183,
+          "observe_awake_after_wake": 46.676,
+          "delete_response": 0.184,
+          "observe_deleted": 46.695
+        },
+        "timing_note": "Client-observed times include network/authentication and two-second polling intervals.",
+        "mutation_results": [
+          {
+            "method": "POST",
+            "path": "/v1/computers",
+            "status": 202,
+            "seconds": 0.369,
+            "elapsed_seconds": 2.309,
+            "state": "new",
+            "desired": "running",
+            "error": null
+          },
+          {
+            "method": "POST",
+            "path": "/v1/computers",
+            "status": 200,
+            "seconds": 0.418,
+            "elapsed_seconds": 2.727,
+            "state": "creating",
+            "desired": "running",
+            "error": null
+          },
+          {
+            "method": "POST",
+            "path": "/v1/computers",
+            "status": 409,
+            "seconds": 0.386,
+            "elapsed_seconds": 3.114,
+            "state": null,
+            "desired": null,
+            "error": "idempotency_conflict"
+          },
+          {
+            "method": "POST",
+            "path": "/v1/computers/cmp_61d79e118ca362ae6a02/stop",
+            "status": 202,
+            "seconds": 0.304,
+            "elapsed_seconds": 54.928,
+            "state": "awake",
+            "desired": "stopped",
+            "error": null
+          },
+          {
+            "method": "POST",
+            "path": "/v1/computers",
+            "status": 200,
+            "seconds": 0.321,
+            "elapsed_seconds": 84.92,
+            "state": "stopped",
+            "desired": "stopped",
+            "error": null
+          },
+          {
+            "method": "POST",
+            "path": "/v1/computers/cmp_61d79e118ca362ae6a02/wake",
+            "status": 202,
+            "seconds": 0.183,
+            "elapsed_seconds": 85.103,
+            "state": "stopped",
+            "desired": "running",
+            "error": null
+          },
+          {
+            "method": "POST",
+            "path": "/v1/computers",
+            "status": 400,
+            "seconds": 0.192,
+            "elapsed_seconds": 131.972,
+            "state": null,
+            "desired": null,
+            "error": "invalid"
+          },
+          {
+            "method": "DELETE",
+            "path": "/v1/computers/cmp_61d79e118ca362ae6a02?kind=cloud",
+            "status": 202,
+            "seconds": 0.184,
+            "elapsed_seconds": 132.156,
+            "state": "awake",
+            "desired": "deleted",
+            "error": null
+          }
+        ],
+        "deleted_and_absent_from_list": true,
+        "own_session_revoked": true,
+        "revoked_session_capabilities_status": 401
+      }
+    }
+  ],
+  "released_client": {
+    "version": "1.0.0",
+    "source": "3230ded51181aa438656825da8245cea6c8e717c",
+    "installer": "passed in isolated scratch HOME",
+    "affected_command": "openagents --json computers remove <absent-test-name>",
+    "result": "expected not_found",
+    "limitation": "The published coder binary rejects coder doctor; this was recorded rather than treated as a passing diagnostic."
+  },
+  "wire_regression": {
+    "cloud_run_missing_content_length_status": 411,
+    "explicit_zero_length_on_deleted_owned_record_status": 404,
+    "negative_control_public_stop_status": 503,
+    "fixed_public_stop_status": 202
+  },
+  "production_account_qualification": {
+    "status": "owner_action",
+    "reason": "The documented dedicated production test credential is missing. No owner account or computers were used.",
+    "instructions": "NEEDS_OWNER.md, issue #11801"
+  },
+  "cleanup": {
+    "successful_staging_run": true,
+    "earlier_failed_stop_probe": true,
+    "first_probe_computer": "cmp_0b1f65e3e71316baf67e",
+    "notes": "All three smoke-created computers were observed deleted and absent from the list. Smoke-created app sessions were revoked. No chat, project, or draft was created.",
+    "final_staging_run": true,
+    "final_computer": "cmp_61d79e118ca362ae6a02"
+  },
+  "production_frontend": {
+    "source": "e642b9a823c4e4ee216eb849a19163725ee4b2f5",
+    "digest": "sha256:55d58e1ee5a4c9ac7e8ce32d4c40dd6033fa53220cac9cc77944690329721bdc",
+    "revision": "coder-web-55d58e1ee5-20261016063247",
+    "traffic_percent": 100,
+    "candidate_smoke": {
+      "passed": 58,
+      "failed": 0,
+      "skipped": 2,
+      "expected_waiting_before_traffic": 8
+    },
+    "production_smoke": {
+      "passed": 66,
+      "failed": 0,
+      "skipped": 2
+    }
+  },
+  "production_public_api": {
+    "checks": [
+      {
+        "base": "https://api.openagents.com",
+        "path": "/v1/computers",
+        "method": "GET",
+        "status": 401,
+        "error": "signed_out"
+      },
+      {
+        "base": "https://api.openagents.com",
+        "path": "/v1/computers/capabilities",
+        "method": "GET",
+        "status": 401,
+        "error": "signed_out"
+      },
+      {
+        "base": "https://api.openagents.com",
+        "path": "/v1/computers",
+        "method": "POST",
+        "status": 401,
+        "error": "signed_out"
+      },
+      {
+        "base": "https://openagents.com",
+        "path": "/v1/computers",
+        "method": "GET",
+        "status": 401,
+        "error": "signed_out"
+      }
+    ],
+    "openapi_sha256": "3d67ca0710d2d8ebf2da4e8267cfb9a7131c7afff41d93e3036d63a1b6c681b2",
+    "computers_paths": [
+      "/v1/computers",
+      "/v1/computers/{id}",
+      "/v1/computers/{id}/stop",
+      "/v1/computers/{id}/wake",
+      "/v1/computers/capabilities"
+    ],
+    "private_computer_fields_absent": true
+  },
+  "manual_cloud_builds": {
+    "lifecycle": {
+      "id": "0c313066-4eaa-43b8-83e7-a0e9e70e1a9e",
+      "region": "us-central1"
+    },
+    "frontend": {
+      "id": "9f1f5705-6a33-44d7-baab-45e76d8e422c",
+      "region": "global"
+    }
+  }
+}

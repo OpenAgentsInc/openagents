@@ -31,6 +31,11 @@ hardware, electricity, or any other service cost is zero.
 
 ## Implemented public lifecycle
 
+Deployed on 2026-10-16 for accounts with cloud access. The
+[verification record](computers-lifecycle-evidence.json) pins both running
+images, test results, and the dedicated-account staging workflows. Commands,
+files, and other backends remain separate work.
+
 The account-authenticated lifecycle uses `api.openagents.com/v1`. It accepts
 live `sess_` sessions, `oa_sk_` sign-in keys, and account-bound `oak_` keys whose
 native permissions admit account actions (`accounts`, including the public

@@ -2565,7 +2565,7 @@ Restore the dedicated production test credential at
 `~/work/.secrets/openagents-test-account.env`, or provide its approved Secret
 Manager location. That credential is missing on this machine. If needed, add
 only that account to the existing cloud access list. Keep general access gated.
-After the qualified image is promoted, check create, observe, stop, wake, and
-delete through `https://api.openagents.com/v1/computers`, then confirm the test
+The qualified images are deployed. Check create, observe, stop, wake, and delete
+through `https://api.openagents.com/v1/computers`, then confirm the test
 computer is gone. Never substitute the owner's account or computers. The issue
 records staging qualification and the exact deployed images.
