@@ -12,6 +12,8 @@ own.
 live-host init --state DIR --key-file KEY --policy POLICY.json
 live-host submit --state DIR --key-file KEY --input BUNDLE
 live-host status --state DIR --key-file KEY --session ID
+live-host device-operation --state DIR --key-file KEY
+live-host input-policy --state DIR --key-file KEY --input GRANTS.json
 ```
 
 The controller key signs every result. POLICY names authorized owners and the
@@ -65,14 +67,28 @@ broker, capture source, and device behind the same roles.
   track's retention allows it. Transcripts need an admitted transform, the
   observation's clock domain, and segments inside its interval. Corrections
   are new revisions that point to their predecessor.
-- **Device input.** A proposal is inert. The admission must pin the proposal
-  through its POL action and carry approvals. The observation must still match
+- **Device input.** An owner submits an inert `live-input` proposal. The host
+  checks the installed CAP, input and observation schemas, binding, supported
+  preconditions, and owner-controlled task
+  frame, then freezes a standard POL action and approval request. Preparation
+  advances the session revision and sends no input. An explicit operator grant
+  appoints the owner for that exact current plan and operation, with an expiry;
+  ownership alone grants no approval role. Each `InputGrant` names `plan`,
+  `owner`, `approver`, `operation`, and `expires_at`. The first profile requires
+  owner and approver to match. Replacing grants invalidates earlier actions,
+  including a regrant. The caller carries the original signed POL decision in
+  `Bundle::declarations`; unsigned or quoted approval bytes cannot authorize
+  input. A denial consumes the proposal without sending anything.
+  A separate admission names the prepared action and original decision. The
+  observation must still match
   the device's generation and focus version within its age limit. Dispatch is
   journaled before the input is applied. A lost reply stays `unknown` and is
   never re-applied. A changed admission for the same proposal is refused until
   the original is reconciled.
   The actual input call receives the frozen observation, binding, all input
-  preconditions, and an absolute deadline. `Device::apply_checked` refuses by
+  preconditions, and an absolute deadline bounded by capture age and approval
+  expiry. Native output must match the published schema; invalid bytes remain
+  unknown and are retained as raw evidence. `Device::apply_checked` refuses by
   default; it never falls back to unchecked input. Adapters check generation,
   focus, and every supported condition at the write boundary. A known refusal
   records that no input was sent. Capture clocks start before capture and cannot

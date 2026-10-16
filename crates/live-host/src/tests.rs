@@ -53,6 +53,8 @@ struct Fx {
     counter: u8,
     session: String,
     plan: Value,
+    approvals: BTreeMap<String, Value>,
+    input_declarations: Vec<Event>,
     asr: Value,
     destination: Value,
 }
@@ -81,6 +83,8 @@ impl Fx {
             counter: 0x40,
             session: "5e".repeat(32),
             plan: Value::Null,
+            approvals: BTreeMap::new(),
+            input_declarations: Vec::new(),
             asr,
             destination,
         }
@@ -135,8 +139,29 @@ impl Fx {
              "recipients":[],"retention":{"mode":"bounded","until":self.now+3600},"processing":[]},
             {"id":"speaker","source":{"scope":"device","id":"out-1"},"media":"audio","direction":"playback",
              "recipients":[],"retention":{"mode":"none","until":null},"processing":[]}]);
+        let snapshot = put_json(
+            &mut a,
+            &json!({"v":"openagents.snapshot.v1","requires":[],
+            "scope":format!("live/{TASK}"),"captured_at":self.now,"sources":[],"coverage":"complete"}),
+        );
+        let precedence = put_json(&mut a, &json!({"order":[]}));
+        let instructions = put_json(
+            &mut a,
+            &json!({"v":"openagents.instructions.v1","requires":[],
+            "task":TASK,"revision":0,"resolver":{"id":format!("{}:live/empty",pk(OWNER)),"artifact":precedence},
+            "precedence":precedence,"snapshot":snapshot,"entries":[]}),
+        );
+        let objective = put_json(&mut a, &json!({"task":"bounded live interaction"}));
+        let acceptance = put_json(&mut a, &json!({"criterion":"exact input and observation"}));
+        let frame = put_json(
+            &mut a,
+            &json!({"v":"openagents.task-frame.v1","requires":[],"task":TASK,
+            "owner":pk(OWNER),"controller":pk(OWNER),"revision":0,"previous":null,"objective":objective,
+            "origin":"user","constraints":[],"acceptance":[acceptance],"snapshot":snapshot,"instructions":instructions,
+            "variables":[],"attempts":[],"unresolved":[],"corrections":[]}),
+        );
         let body = json!({"v":"openagents.live-plan.v1","requires":[],"session":self.session,"task":TASK,
-            "previous":previous,"expected_revision":revision,"frame":put(&mut a,b"frame",None),"conversation":conversation,
+            "previous":previous,"expected_revision":revision,"frame":frame,"conversation":conversation,
             "owner":pk(OWNER),"controller":pk(HOST),"generation":0,"media_epoch":epoch,
             "transport":{"id":format!("{}:live/transport",pk(HOST)),"artifact":put(&mut a,b"transport profile",None)},
             "bindings":[put(&mut a,b"capture binding",None)],"tracks":tracks,"disclosure":put(&mut a,b"disclosure",None),
@@ -150,7 +175,10 @@ impl Fx {
         Bundle {
             event: envelope(&secret(signer), &pk(HOST), body, self.now).unwrap(),
             artifacts: self.artifacts.clone(),
-            declarations,
+            declarations: declarations
+                .into_iter()
+                .chain(self.input_declarations.clone())
+                .collect(),
         }
     }
     fn send(&self, c: &Controller, signer: u8, body: &Value) -> Value {
@@ -574,31 +602,57 @@ fn captures_and_transcripts_keep_scope_clock_and_corrections() {
     assert_eq!(second["previous"], first);
 }
 
-fn proposal(fx: &mut Fx, c: &Controller, observation: &Value, input: &[u8]) -> (Value, Value) {
+fn appoint_input(fx: &Fx, c: &Controller) {
+    c.set_input_grants(
+        vec![crate::controller::InputGrant {
+            plan: fx.plan.clone(),
+            owner: pk(OWNER),
+            approver: pk(OWNER),
+            operation: c.device_operation().unwrap(),
+            expires_at: fx.now + 1800,
+        }],
+        fx.now,
+    )
+    .unwrap();
+}
+fn input_proposal(fx: &mut Fx, c: &Controller, observation: &Value, input: &[u8]) -> Value {
     let mut a = std::mem::take(&mut fx.artifacts);
+    let plan = c.store().json(&fx.plan).unwrap();
     let body = json!({"v":"openagents.live-input.v1","requires":[],"request":fx.next(),"plan":fx.plan,
-        "frame":put(&mut a,b"frame",None),"observation":observation,
-        "operation":{"id":format!("{}:live/click",pk(HOST)),"artifact":put(&mut a,b"click op",None)},
+        "frame":plan["frame"],"observation":observation,"operation":c.device_operation().unwrap(),
         "binding":put(&mut a,b"pointer binding",None),"input":put(&mut a,input,None),"preconditions":[]});
     let reference = put_json(&mut a, &body);
-    let action = put(
-        &mut a,
-        &serde_json::to_vec(&json!({"proposal":reference})).unwrap(),
-        None,
-    );
     fx.artifacts = a;
-    let _ = c;
+    reference
+}
+fn proposal(fx: &mut Fx, c: &Controller, observation: &Value, input: &[u8]) -> (Value, Value) {
+    let reference = input_proposal(fx, c, observation, input);
+    let body: Value =
+        serde_json::from_slice(&fx.artifacts[reference["digest"].as_str().unwrap()]).unwrap();
+    let prepared = fx.send(c, OWNER, &body);
+    assert_eq!(prepared["status"], "accepted", "{prepared}");
+    let request = prepared["value"].clone();
+    let action = c.store().json(&request).unwrap()["action"].clone();
+    fx.approvals
+        .insert(action["digest"].as_str().unwrap().into(), request);
     (reference, action)
 }
-
 fn admission(
     fx: &mut Fx,
     c: &Controller,
     proposal: &Value,
     action: &Value,
-    approval: &[u8],
+    reason: &[u8],
 ) -> Value {
-    let approval = put(&mut fx.artifacts, approval, None);
+    let request = fx.approvals[action["digest"].as_str().unwrap()].clone();
+    let request_body = c.store().json(&request).unwrap();
+    let decision = json!({"v":nostr::policy::DECISION_SCHEMA,"requires":[],"request":request,"action":action,
+        "approver":pk(OWNER),"decision":"approve","expires_at":request_body["expires_at"],
+        "reason":String::from_utf8(reason.to_vec()).unwrap()});
+    let approval = put_json(&mut fx.artifacts, &decision);
+    fx.input_declarations.push(
+        workspace_host::host::request(&secret(OWNER), &pk(HOST), decision.clone(), fx.now).unwrap(),
+    );
     json!({"v":"openagents.live-input-admission.v1","requires":[],"request":fx.next(),"plan":fx.plan,
         "expected_revision":fx.revision(c),"proposal":proposal,"action":action,"approvals":[approval]})
 }
@@ -612,12 +666,16 @@ fn device_input_needs_a_fresh_observation_and_never_retries_a_lost_reply() {
     };
     let c = fx.controller_with(LocalBroker::default(), device);
     fx.active(&c);
+    appoint_input(&fx, &c);
     let observation = fx.capture(&c, "screen", "observation")["value"].clone();
     let (p, action) = proposal(&mut fx, &c, &observation, br#"{"click":[10,20]}"#);
-    // An action that pins another proposal is refused.
-    let other = put(&mut fx.artifacts, br#"{"proposal":"other"}"#, None);
-    let wrong = admission(&mut fx, &c, &p, &other, b"approval");
-    assert_eq!(fx.send(&c, OWNER, &wrong)["reason"], "identity_mismatch");
+    // A changed action cannot borrow the original signed decision.
+    let mut changed_action = c.store().json(&action).unwrap();
+    changed_action["input"] = put(&mut fx.artifacts, b"another proposal", None);
+    let other = put_json(&mut fx.artifacts, &changed_action);
+    let mut wrong = admission(&mut fx, &c, &p, &action, b"approval");
+    wrong["action"] = other;
+    assert_eq!(fx.send(&c, OWNER, &wrong)["reason"], "not_admitted");
     let body = admission(&mut fx, &c, &p, &action, b"approval");
     let applied = fx.send(&c, OWNER, &body);
     assert_eq!(applied["status"], "accepted", "{applied}");
@@ -639,8 +697,9 @@ fn device_input_needs_a_fresh_observation_and_never_retries_a_lost_reply() {
             ..SyntheticDevice::default()
         })
     });
-    let (p2, action2) = proposal(&mut fx, &c, &observation, br#"{"click":[1,1]}"#);
-    let stale = admission(&mut fx, &c, &p2, &action2, b"approval");
+    let p2 = input_proposal(&mut fx, &c, &observation, br#"{"click":[1,1]}"#);
+    let stale: Value =
+        serde_json::from_slice(&fx.artifacts[p2["digest"].as_str().unwrap()]).unwrap();
     assert_eq!(fx.send(&c, OWNER, &stale)["reason"], "stale");
     let fresh = fx.capture(&c, "screen", "observation")["value"].clone();
     let (p3, action3) = proposal(&mut fx, &c, &fresh, br#"{"type":"text"}"#);
@@ -708,6 +767,9 @@ fn input_checks_at_the_native_boundary_and_never_falls_back_to_unchecked_input()
     use std::{cell::RefCell, rc::Rc};
     struct Racing(Rc<RefCell<SyntheticDevice>>);
     impl Device for Racing {
+        fn input_operation(&self) -> Option<crate::media::InputOperation> {
+            self.0.borrow().input_operation()
+        }
         fn state(&self) -> (u64, u64) {
             self.0.borrow().state()
         }
@@ -722,6 +784,9 @@ fn input_checks_at_the_native_boundary_and_never_falls_back_to_unchecked_input()
     }
     struct Unchecked;
     impl Device for Unchecked {
+        fn input_operation(&self) -> Option<crate::media::InputOperation> {
+            SyntheticDevice::default().input_operation()
+        }
         fn state(&self) -> (u64, u64) {
             (0, 0)
         }
@@ -733,6 +798,7 @@ fn input_checks_at_the_native_boundary_and_never_falls_back_to_unchecked_input()
         let mut fx = Fx::new();
         let c = fx.controller();
         fx.active(&c);
+        appoint_input(&fx, &c);
         let observation = fx.capture(&c, "screen", "observation")["value"].clone();
         let device = Rc::new(RefCell::new(SyntheticDevice::default()));
         c.with_adapters(|a| {
@@ -769,6 +835,7 @@ fn device_input_cannot_refresh_a_capture_clock_by_restart_or_wall_time() {
         let mut fx = Fx::new();
         let c = fx.controller();
         fx.active(&c);
+        appoint_input(&fx, &c);
         let observation = fx.capture(&c, "screen", "observation")["value"].clone();
         let (proposal, action) = proposal(&mut fx, &c, &observation, br#"{"click":[10,20]}"#);
         let c = if restart {
@@ -787,5 +854,283 @@ fn device_input_cannot_refresh_a_capture_clock_by_restart_or_wall_time() {
             result["reason"],
             if restart { "cannot_enforce" } else { "stale" }
         );
+    }
+}
+
+fn tracked_input(c: &Controller) -> std::rc::Rc<std::cell::RefCell<SyntheticDevice>> {
+    use crate::media::{Applied, Device, InputGuard, InputOperation};
+    struct Tracked(std::rc::Rc<std::cell::RefCell<SyntheticDevice>>);
+    impl Device for Tracked {
+        fn input_operation(&self) -> Option<InputOperation> {
+            self.0.borrow().input_operation()
+        }
+        fn state(&self) -> (u64, u64) {
+            self.0.borrow().state()
+        }
+        fn apply(&mut self, _operation: &str, _input: &[u8]) -> Applied {
+            panic!("unchecked input")
+        }
+        fn apply_checked(&mut self, operation: &str, input: &[u8], guard: &InputGuard) -> Applied {
+            self.0.borrow_mut().apply_checked(operation, input, guard)
+        }
+    }
+    let device = std::rc::Rc::new(std::cell::RefCell::new(SyntheticDevice::default()));
+    c.with_adapters(|a| a.device = Box::new(Tracked(device.clone())));
+    device
+}
+
+#[test]
+fn device_input_approvals_need_current_appointment_and_original_exact_signed_decisions() {
+    for mode in [
+        "unsigned",
+        "forged",
+        "wrong-action",
+        "expired",
+        "long-expiry",
+        "revoked",
+        "regranted",
+        "revision",
+        "epoch",
+    ] {
+        let mut fx = Fx::new();
+        let c = fx.controller();
+        fx.active(&c);
+        let device = tracked_input(&c);
+        appoint_input(&fx, &c);
+        let observation = fx.capture(&c, "screen", "observation")["value"].clone();
+        let (proposal, action) = proposal(&mut fx, &c, &observation, br#"{"click":[10,20]}"#);
+        let mut body = admission(&mut fx, &c, &proposal, &action, b"approval");
+        let mut decision: Value =
+            serde_json::from_slice(&fx.artifacts[body["approvals"][0]["digest"].as_str().unwrap()])
+                .unwrap();
+        fx.input_declarations.clear();
+        let mut signer = OWNER;
+        match mode {
+            "forged" => signer = STRANGER,
+            "wrong-action" => {
+                decision["action"]["digest"] = json!(format!("sha256:{}", "de".repeat(32)))
+            }
+            "expired" => decision["expires_at"] = json!(fx.now),
+            "long-expiry" => {
+                decision["expires_at"] = json!(decision["expires_at"].as_u64().unwrap() + 1)
+            }
+            "revoked" => {
+                c.set_input_grants(Vec::new(), fx.now).unwrap();
+            }
+            "regranted" => appoint_input(&fx, &c),
+            "revision" => {
+                fx.capture(&c, "screen", "observation");
+            }
+            "epoch" => {
+                c.reconnect(&fx.session, fx.now).unwrap();
+            }
+            _ => {}
+        }
+        body["approvals"] = json!([put_json(&mut fx.artifacts, &decision)]);
+        body["expected_revision"] = fx.revision(&c);
+        if mode != "unsigned" {
+            fx.input_declarations.push(
+                workspace_host::host::request(&secret(signer), &pk(HOST), decision, fx.now)
+                    .unwrap(),
+            );
+        }
+        let result = fx.send(&c, OWNER, &body);
+        assert_eq!(result["status"], "refused", "{mode}: {result}");
+        assert!(device.borrow().applied.is_empty(), "{mode}");
+    }
+}
+
+#[test]
+fn ownership_and_opaque_approval_bytes_cannot_prepare_or_admit_input() {
+    let mut fx = Fx::new();
+    let c = fx.controller();
+    fx.active(&c);
+    let device = tracked_input(&c);
+    let observation = fx.capture(&c, "screen", "observation")["value"].clone();
+    let reference = input_proposal(&mut fx, &c, &observation, br#"{"click":[10,20]}"#);
+    let proposal_body: Value =
+        serde_json::from_slice(&fx.artifacts[reference["digest"].as_str().unwrap()]).unwrap();
+    assert_eq!(fx.send(&c, OWNER, &proposal_body)["reason"], "not_admitted");
+    appoint_input(&fx, &c);
+    let (reference, action) = proposal(&mut fx, &c, &observation, br#"{"click":[10,20]}"#);
+    let approval = put(&mut fx.artifacts, b"approval", None);
+    let body = json!({"v":"openagents.live-input-admission.v1","requires":[],"request":fx.next(),"plan":fx.plan,
+        "expected_revision":fx.revision(&c),"proposal":reference,"action":action,"approvals":[approval]});
+    assert_eq!(fx.send(&c, OWNER, &body)["status"], "refused");
+    assert!(device.borrow().applied.is_empty());
+}
+
+#[test]
+fn input_denial_is_single_use_and_cannot_be_replaced_with_an_approval() {
+    let mut fx = Fx::new();
+    let c = fx.controller();
+    fx.active(&c);
+    let device = tracked_input(&c);
+    appoint_input(&fx, &c);
+    let observation = fx.capture(&c, "screen", "observation")["value"].clone();
+    let (proposal_ref, action) = proposal(&mut fx, &c, &observation, br#"{"click":[10,20]}"#);
+    let mut body = admission(&mut fx, &c, &proposal_ref, &action, b"deny");
+    let mut decision: Value =
+        serde_json::from_slice(&fx.artifacts[body["approvals"][0]["digest"].as_str().unwrap()])
+            .unwrap();
+    decision["decision"] = json!("deny");
+    body["approvals"] = json!([put_json(&mut fx.artifacts, &decision)]);
+    fx.input_declarations =
+        vec![workspace_host::host::request(&secret(OWNER), &pk(HOST), decision, fx.now).unwrap()];
+    let denied = fx.send(&c, OWNER, &body);
+    assert_eq!(denied["status"], "refused", "{denied}");
+    let outcome = c.store().json(&denied["value"]).unwrap();
+    assert_eq!(outcome["dispatched"], false);
+    assert_eq!(outcome["outcome"], "refused");
+    let approve = admission(&mut fx, &c, &proposal_ref, &action, b"approve later");
+    assert_eq!(
+        fx.send(&c, OWNER, &approve)["reason"],
+        "idempotency_conflict"
+    );
+    assert!(device.borrow().applied.is_empty());
+    let (fresh, action) = proposal(&mut fx, &c, &observation, br#"{"click":[10,20]}"#);
+    let approve = admission(&mut fx, &c, &fresh, &action, b"a new explicit action");
+    assert_eq!(fx.send(&c, OWNER, &approve)["status"], "accepted");
+    assert_eq!(device.borrow().applied.len(), 1);
+}
+
+#[test]
+fn invalid_native_output_remains_unknown_without_repeating_the_input() {
+    use crate::media::{Applied, Device, InputGuard, InputOperation};
+    use std::{cell::RefCell, rc::Rc};
+    struct Damaged(Rc<RefCell<SyntheticDevice>>);
+    impl Device for Damaged {
+        fn input_operation(&self) -> Option<InputOperation> {
+            self.0.borrow().input_operation()
+        }
+        fn state(&self) -> (u64, u64) {
+            self.0.borrow().state()
+        }
+        fn apply(&mut self, _operation: &str, _input: &[u8]) -> Applied {
+            panic!("unchecked input")
+        }
+        fn apply_checked(&mut self, operation: &str, input: &[u8], guard: &InputGuard) -> Applied {
+            match self.0.borrow_mut().apply_checked(operation, input, guard) {
+                Applied::Applied(_) => Applied::Applied(b"not-json".to_vec()),
+                other => other,
+            }
+        }
+    }
+    let mut fx = Fx::new();
+    let c = fx.controller();
+    fx.active(&c);
+    let device = Rc::new(RefCell::new(SyntheticDevice::default()));
+    c.with_adapters(|a| a.device = Box::new(Damaged(device.clone())));
+    appoint_input(&fx, &c);
+    let observation = fx.capture(&c, "screen", "observation")["value"].clone();
+    let (proposal, action) = proposal(&mut fx, &c, &observation, br#"{"click":[10,20]}"#);
+    let body = admission(&mut fx, &c, &proposal, &action, b"approve");
+    let result = fx.send(&c, OWNER, &body);
+    assert_eq!(result["status"], "unknown");
+    let outcome = c.store().json(&result["value"]).unwrap();
+    assert_eq!(outcome["outcome"], "unknown");
+    assert_eq!(outcome["reason"], "malformed");
+    assert_eq!(c.store().get(&outcome["observed"]).unwrap(), b"not-json");
+    assert_eq!(fx.send(&c, OWNER, &body)["status"], "unknown");
+    let changed = admission(&mut fx, &c, &proposal, &action, b"again");
+    assert_eq!(
+        fx.send(&c, OWNER, &changed)["reason"],
+        "idempotency_conflict"
+    );
+    assert_eq!(device.borrow().applied.len(), 1);
+}
+
+#[test]
+fn input_authority_expiry_still_applies_inside_a_delayed_native_callback() {
+    use crate::media::{Applied, Device, InputGuard, InputOperation};
+    use std::{cell::RefCell, rc::Rc};
+    struct Delayed(Rc<RefCell<SyntheticDevice>>);
+    impl Device for Delayed {
+        fn input_operation(&self) -> Option<InputOperation> {
+            self.0.borrow().input_operation()
+        }
+        fn state(&self) -> (u64, u64) {
+            self.0.borrow().state()
+        }
+        fn apply(&mut self, _operation: &str, _input: &[u8]) -> Applied {
+            panic!("unchecked input")
+        }
+        fn apply_checked(&mut self, operation: &str, input: &[u8], guard: &InputGuard) -> Applied {
+            std::thread::sleep(std::time::Duration::from_millis(1100));
+            self.0.borrow_mut().apply_checked(operation, input, guard)
+        }
+    }
+    let mut fx = Fx::new();
+    let c = fx.controller();
+    fx.active(&c);
+    let device = Rc::new(RefCell::new(SyntheticDevice::default()));
+    c.with_adapters(|a| a.device = Box::new(Delayed(device.clone())));
+    c.set_input_grants(
+        vec![crate::controller::InputGrant {
+            plan: fx.plan.clone(),
+            owner: pk(OWNER),
+            approver: pk(OWNER),
+            operation: c.device_operation().unwrap(),
+            expires_at: fx.now + 1,
+        }],
+        fx.now,
+    )
+    .unwrap();
+    let observation = fx.capture(&c, "screen", "observation")["value"].clone();
+    let (proposal, action) = proposal(&mut fx, &c, &observation, br#"{"click":[10,20]}"#);
+    let body = admission(&mut fx, &c, &proposal, &action, b"approve");
+    let result = fx.send(&c, OWNER, &body);
+    assert_eq!(result["status"], "refused", "{result}");
+    let outcome = c.store().json(&result["value"]).unwrap();
+    assert_eq!(outcome["reason"], "stale");
+    assert_eq!(outcome["dispatched"], false);
+    assert!(device.borrow().applied.is_empty());
+}
+
+#[test]
+fn device_input_contracts_refuse_changed_frames_bindings_and_script_inputs() {
+    for mode in [
+        "frame",
+        "binding",
+        "input",
+        "operation",
+        "conditions",
+        "bounds",
+    ] {
+        let mut fx = Fx::new();
+        let c = fx.controller();
+        fx.active(&c);
+        let device = tracked_input(&c);
+        appoint_input(&fx, &c);
+        let observation = fx.capture(&c, "screen", "observation")["value"].clone();
+        let reference = input_proposal(&mut fx, &c, &observation, br#"{"click":[10,20]}"#);
+        let mut body: Value =
+            serde_json::from_slice(&fx.artifacts[reference["digest"].as_str().unwrap()]).unwrap();
+        match mode {
+            "frame" => body["frame"] = put(&mut fx.artifacts, b"another frame", None),
+            "binding" => body["binding"] = put(&mut fx.artifacts, b"another device", None),
+            "input" => {
+                body["input"] = put(
+                    &mut fx.artifacts,
+                    br#"{"shell":"must never execute"}"#,
+                    None,
+                )
+            }
+            "conditions" => {
+                body["preconditions"] = json!([put_json(
+                    &mut fx.artifacts,
+                    &json!({"unsupported":"condition"})
+                )])
+            }
+            "bounds" => body["input"] = put(&mut fx.artifacts, br#"{"click":[1280,800]}"#, None),
+            "operation" => {
+                body["operation"]["artifact"]["digest"] =
+                    json!(format!("sha256:{}", "de".repeat(32)))
+            }
+            _ => unreachable!(),
+        }
+        let result = fx.send(&c, OWNER, &body);
+        assert_eq!(result["status"], "refused", "{mode}: {result}");
+        assert!(device.borrow().applied.is_empty());
     }
 }

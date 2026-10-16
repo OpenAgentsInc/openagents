@@ -367,8 +367,31 @@ signs every result. The profile pins these supporting records:
 | `openagents.live-playback-interruption.v1` | `floor`, `confirmed_ms`, `uncertain_until_ms`, and `reason`. |
 | `openagents.live-input-outcome.v1` | `admission`, `dispatched`, `outcome` (`applied`, `refused`, or `unknown`), `observed`, and `reason`. |
 
-A POL action for device input pins its proposal through a `proposal`
-ArtifactRef. Plans need finite `wall_ms`, `storage_bytes`, and `concurrency`
+A POL action for device input uses the standard POL `input` field to pin its
+proposal. It has no additional top-level `proposal` field. The native host
+prepares a host-signed action and approval request when the owner submits the
+inert proposal. Preparation advances the session revision and sends no input.
+It requires an explicit operator appointment for that exact current plan,
+owner, approver, installed operation, and finite expiry. The first native
+profile requires the owner and approver to match; ownership alone appoints
+nobody. Plans use an owner-controlled task frame from this host's known-task
+catalog; the media controller does not become an external RUN controller. Replacing grants advances their generation, including a regrant.
+
+The action pins the native binding, actual installed CAP and effects, input
+schema, frame, conversation, original observation, current revision and media
+epoch, and exact approval rule. Its CTX snapshot reports partial coverage;
+this profile adds no CTX source readers. The original observation and native
+conditions are separate pins. Only one original signed POL decision from the
+appointed owner counts. Its action, request, approver, and expiry must match.
+A valid denial consumes that proposal without sending input. A new approval
+cannot revive the same denied or previously dispatched proposal.
+
+`openagents.live-input-rule.v1` carries `controller`, `generation`, `plan`,
+`owner`, `approver`, `operation`, `starts_at`, and `expires_at`.
+`openagents.live-input-preconditions.v1` carries `controller`, `session`,
+`plan`, `revision`, `media_epoch`, `rule`, `observation`, `binding`, and
+`conditions` (the proposal's exact input precondition references).
+Plans need finite `wall_ms`, `storage_bytes`, and `concurrency`
 bounds. A transport reconnection advances the session's media epoch past the
 plan's value and invalidates every floor. Production media transports, NIP-53
 discovery, and physical device bindings remain separate adapters.

@@ -58,6 +58,12 @@
     },
     {
       "$ref": "#/$defs/live-input-outcome"
+    },
+    {
+      "$ref": "#/$defs/live-input-rule"
+    },
+    {
+      "$ref": "#/$defs/live-input-preconditions"
     }
   ],
   "$defs": {
@@ -2101,6 +2107,160 @@
         },
         "meta": {
           "type": "object"
+        }
+      }
+    },
+    "live-input-rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "controller",
+        "generation",
+        "plan",
+        "owner",
+        "approver",
+        "operation",
+        "starts_at",
+        "expires_at"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.live-input-rule.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "controller": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "generation": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "plan": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.live-plan.v1"
+                }
+              }
+            }
+          ]
+        },
+        "owner": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "approver": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "operation": {
+          "$ref": "#/$defs/definition"
+        },
+        "starts_at": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "expires_at": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      }
+    },
+    "live-input-preconditions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "controller",
+        "session",
+        "plan",
+        "revision",
+        "media_epoch",
+        "rule",
+        "observation",
+        "binding",
+        "conditions"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.live-input-preconditions.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "controller": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "session": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "plan": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.live-plan.v1"
+                }
+              }
+            }
+          ]
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "media_epoch": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "rule": {
+          "$ref": "#/$defs/artifact"
+        },
+        "observation": {
+          "$ref": "#/$defs/artifact"
+        },
+        "binding": {
+          "$ref": "#/$defs/artifact"
+        },
+        "conditions": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/artifact"
+          }
         }
       }
     }

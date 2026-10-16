@@ -21,6 +21,8 @@ use std::{
     path::PathBuf,
 };
 use workspace_host::artifact::{Artifacts, token};
+mod input;
+pub use input::InputGrant;
 
 pub const MAX_PARTICIPANTS: usize = 64;
 pub const MAX_SESSIONS: usize = 64;
@@ -105,6 +107,8 @@ struct State {
     priors: BTreeMap<String, Prior>,
     signers: BTreeMap<String, BTreeSet<String>>,
     declarations: BTreeMap<String, Value>,
+    #[serde(default)]
+    input_rules: input::Book,
 }
 
 /// A signed request, its exact artifacts, and further signed declarations
@@ -376,6 +380,7 @@ impl Controller {
 
     /// Admit one signed operation.
     pub fn submit(&self, bundle: &Bundle, now: u64) -> Result<Value> {
+        let received = std::time::Instant::now();
         let _lock = self.store.lock()?;
         let mut state = self.state()?;
         for (digest, bytes) in &bundle.artifacts {
@@ -438,6 +443,7 @@ impl Controller {
                 &body,
                 &input,
                 now,
+                received,
             ),
         };
         let result = match outcome {
@@ -492,6 +498,7 @@ impl Controller {
         body: &Value,
         input: &Value,
         now: u64,
+        received: std::time::Instant,
     ) -> Result<(Value, bool)> {
         if body["v"] == "openagents.live-plan.v1" {
             return self
@@ -509,7 +516,10 @@ impl Controller {
             }
             let status_read =
                 body["v"] == "openagents.live-control.v1" && body["action"] == "status";
-            if !status_read && body["expected_revision"] != session.revision {
+            if !status_read
+                && body["v"] != "openagents.live-input.v1"
+                && body["expected_revision"] != session.revision
+            {
                 return Err(refuse("conflict", "stale session revision"));
             }
             let (value, receipts, status) = match body["v"].as_str() {
@@ -528,8 +538,11 @@ impl Controller {
                 Some("openagents.live-capture.v1") => {
                     self.capture(state, &mut session, signer, body, now)?
                 }
+                Some("openagents.live-input.v1") => {
+                    self.prepare_input(state, &mut session, signer, body, input, now)?
+                }
                 Some("openagents.live-input-admission.v1") => {
-                    self.device_input(state, &mut session, signer, body, input, now)?
+                    self.device_input(state, &mut session, signer, body, input, now, received)?
                 }
                 _ => return Err(refuse("unsupported_feature", "operation")),
             };
@@ -608,7 +621,15 @@ impl Controller {
             self.bytes(reference)?;
         }
         self.bytes(&body["disclosure"])?;
-        self.bytes(&body["frame"])?;
+        let frame = nostr::work::parse(&self.bytes(&body["frame"])?).map_err(contract)?;
+        if frame["v"] != "openagents.task-frame.v1"
+            || body["frame"]["schema"] != "openagents.task-frame.v1"
+            || frame["task"] != body["task"]
+            || frame["owner"] != signer
+            || frame["controller"] != signer
+        {
+            return Err("not_admitted: exact owner-controlled task frame required".into());
+        }
         self.bytes(&body["transport"]["artifact"])?;
         for track in body["tracks"].as_array().into_iter().flatten() {
             for recipient in track["recipients"].as_array().into_iter().flatten() {
@@ -1306,7 +1327,7 @@ impl Controller {
         let observation = json!({"v":"openagents.live-observation.v1","requires":[],"plan":session.plan,"track":track_id,
             "capture":capture,"source":track["source"],"captured_at":now,"host_generation":generation,"content":content,
             "evidence":null,"format":self.store.put_json(&json!({"media":track["media"]}))?,"geometry":geometry,
-            "interval":interval,"freshness":freshness});
+            "interval":interval,"freshness":freshness,"meta":{"media_epoch":session.epoch}});
         let observation = self.sign(state, &observation, &session.owner.clone(), now)?;
         self.capture_clocks
             .borrow_mut()
@@ -1319,173 +1340,6 @@ impl Controller {
             now,
         )?;
         Ok((Some(observation), Vec::new(), "accepted"))
-    }
-
-    #[allow(clippy::type_complexity)]
-    fn device_input(
-        &self,
-        state: &mut State,
-        session: &mut Session,
-        signer: &str,
-        body: &Value,
-        input: &Value,
-        now: u64,
-    ) -> Result<(Option<Value>, Vec<Value>, &'static str)> {
-        if signer != session.owner {
-            return Err(refuse("not_admitted", "device input admission"));
-        }
-        if session.state != "active" {
-            return Err(refuse("unavailable", "session is not active"));
-        }
-        let proposal = self.body(&body["proposal"], "openagents.live-input.v1")?;
-        if !same(&proposal["plan"], &session.plan) {
-            return Err(refuse("stale", "proposal names another plan"));
-        }
-        let key = format!("input:{}", proposal["request"].as_str().unwrap_or_default());
-        if state.priors.contains_key(&format!("{}:{key}", session.id)) {
-            // A changed approval or action under the same proposal is not an
-            // automatic retry; the original attempt is reconciled first.
-            return Err(refuse(
-                "idempotency_conflict",
-                "reconcile the original input first",
-            ));
-        }
-        let observation_ref = &proposal["observation"];
-        if !session
-            .observations
-            .values()
-            .any(|o| same(o, observation_ref))
-        {
-            return Err(refuse(
-                "not_admitted",
-                "observation is not from this session",
-            ));
-        }
-        let observation = self.body(observation_ref, "openagents.live-observation.v1")?;
-        let freshness = self.body(&observation["freshness"], "openagents.live-freshness.v1")?;
-        let (generation, focus) = self.adapters.borrow().device.state();
-        let captured_at = live::number(&observation, "captured_at").map_err(contract)?;
-        let age_ms = now.saturating_sub(captured_at).saturating_mul(1000);
-        let max_age = freshness["max_age_ms"]
-            .as_u64()
-            .ok_or("malformed: observation age")?;
-        let focus_version = freshness["focus_version"]
-            .as_u64()
-            .ok_or("cannot_enforce: focus version required")?;
-        let original = *self
-            .capture_clocks
-            .borrow()
-            .get(digest_of(observation_ref))
-            .ok_or("cannot_enforce: capture clock is unavailable; obtain a new observation")?;
-        let started = std::time::Instant::now();
-        if original.elapsed().as_millis() >= u128::from(max_age)
-            || captured_at > now
-            || age_ms >= max_age
-            || observation["host_generation"] != generation
-            || focus_version != focus
-        {
-            return Err(refuse(
-                "stale",
-                "the observation no longer matches the device",
-            ));
-        }
-        let action = contracts::parse_strict_bounded(&self.bytes(&body["action"])?, 65_536)
-            .map_err(contract)?;
-        if !same(&action["proposal"], &body["proposal"]) {
-            return Err(refuse(
-                "identity_mismatch",
-                "the action does not pin this proposal",
-            ));
-        }
-        if body["approvals"].as_array().is_none_or(Vec::is_empty) {
-            return Err(refuse("not_admitted", "device input needs an approval"));
-        }
-        for approval in body["approvals"].as_array().into_iter().flatten() {
-            self.bytes(approval)?;
-        }
-        let input_bytes = self.bytes(&proposal["input"])?;
-        let guard = InputGuard {
-            generation,
-            focus,
-            deadline: original
-                .checked_add(std::time::Duration::from_millis(max_age))
-                .ok_or("limit_exceeded: device input deadline")?
-                .min(
-                    started
-                        .checked_add(std::time::Duration::from_millis(max_age - age_ms))
-                        .ok_or("limit_exceeded: device input deadline")?,
-                ),
-            observation: observation.clone(),
-            binding: self.bytes(&proposal["binding"])?,
-            preconditions: proposal["preconditions"]
-                .as_array()
-                .ok_or("malformed: input preconditions")?
-                .iter()
-                .map(|reference| self.bytes(reference))
-                .collect::<Result<Vec<_>>>()?,
-        };
-
-        // Journal dispatch durably before applying the input.
-        self.record(
-            session,
-            "dispatched",
-            json!({"request":digest_of(input),"effect":"device-input"}),
-            now,
-        )?;
-        state.priors.insert(
-            format!("{}:{key}", session.id),
-            Prior {
-                fingerprint: digest_of(input).into(),
-                result: json!({"value":null}),
-            },
-        );
-        let mut snapshot = self.state()?;
-        snapshot
-            .sessions
-            .insert(session.id.clone(), session.clone());
-        snapshot.priors.insert(
-            format!("{}:{key}", session.id),
-            Prior {
-                fingerprint: digest_of(input).into(),
-                result: json!({"value":null}),
-            },
-        );
-        snapshot.signers.extend(state.signers.clone());
-        snapshot.declarations.extend(state.declarations.clone());
-        self.save(&snapshot)?;
-        let applied = self.adapters.borrow_mut().device.apply_checked(
-            proposal["operation"]["id"].as_str().unwrap_or_default(),
-            &input_bytes,
-            &guard,
-        );
-        let (outcome, observed, status, dispatched, reason) = match applied {
-            Applied::Applied(bytes) => (
-                "applied",
-                Some(self.store.put(&bytes, "application/json", None)?),
-                "accepted",
-                true,
-                None,
-            ),
-            Applied::Refused(code) => ("refused", None, "refused", false, Some(code)),
-            Applied::Unknown => ("unknown", None, "unknown", true, None),
-        };
-        let record = json!({"v":"openagents.live-input-outcome.v1","requires":[],"admission":input,"dispatched":dispatched,
-            "outcome":outcome,"observed":observed,"reason":reason});
-        let record = self.sign(state, &record, &session.owner.clone(), now)?;
-        let kind = if status == "unknown" {
-            "unknown"
-        } else {
-            "observed"
-        };
-        self.record(session, kind, json!({"input":digest_of(&record)}), now)?;
-        state.priors.insert(
-            format!("{}:{key}", session.id),
-            Prior {
-                fingerprint: digest_of(input).into(),
-                result: json!({"value":record}),
-            },
-        );
-        Ok((Some(record), Vec::new(), status))
     }
 
     /// The transport input gate: forward bytes only under the current lease,
@@ -1759,6 +1613,10 @@ impl Controller {
 
 /// Build a signed private request envelope for a controller.
 pub fn envelope(secret: &SecretKey, controller: &str, body: &Value, now: u64) -> Result<Event> {
-    live::validate(body).map_err(contract)?;
+    if body["v"] == nostr::policy::DECISION_SCHEMA {
+        nostr::policy::validate(body).map_err(contract)?;
+    } else {
+        live::validate(body).map_err(contract)?;
+    }
     workspace_host::host::request(secret, controller, body.clone(), now)
 }

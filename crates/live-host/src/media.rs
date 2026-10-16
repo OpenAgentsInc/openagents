@@ -172,7 +172,22 @@ pub struct InputGuard {
     pub preconditions: Vec<Vec<u8>>,
 }
 
+/// The installed device implementation's exact input contract and binding.
+pub struct InputOperation {
+    pub implementation: Vec<u8>,
+    pub binding: Vec<u8>,
+    pub input_schema: serde_json::Value,
+    pub observation_schema: serde_json::Value,
+    pub preconditions_schema: serde_json::Value,
+    pub output_schema: serde_json::Value,
+    pub effects: serde_json::Value,
+}
+
 pub trait Device {
+    /// Describe an installed operation without sending input or opening a device.
+    fn input_operation(&self) -> Option<InputOperation> {
+        None
+    }
     /// Current device generation and focus/navigation version.
     fn state(&self) -> (u64, u64);
     fn apply(&mut self, operation: &str, input: &[u8]) -> Applied;
@@ -194,6 +209,30 @@ pub struct SyntheticDevice {
 }
 
 impl Device for SyntheticDevice {
+    fn input_operation(&self) -> Option<InputOperation> {
+        Some(InputOperation {
+            implementation: b"synthetic-device guarded input v1".to_vec(),
+            binding: b"pointer binding".to_vec(),
+            input_schema: json!({"oneOf":[
+                {"type":"object","additionalProperties":false,"required":["click"],
+                    "properties":{"click":{"type":"array","minItems":2,"maxItems":2,
+                        "prefixItems":[{"type":"integer","minimum":0,"maximum":1279},
+                            {"type":"integer","minimum":0,"maximum":799}],"items":false}}},
+                {"type":"object","additionalProperties":false,"required":["type"],
+                    "properties":{"type":{"type":"string","maxLength":16384}}}]}),
+            observation_schema: json!({"type":"object","required":["source","geometry"],"properties":{
+                "source":{"const":{"scope":"display","id":"window-7"}},
+                "geometry":{"type":"object","required":["width_px","height_px","coordinate_space"],
+                    "properties":{"width_px":{"const":1280},"height_px":{"const":800},
+                        "coordinate_space":{"const":"display:window-7"}}}}}),
+            preconditions_schema: json!({"type":"array","maxItems":0}),
+            output_schema: json!({"type":"object","additionalProperties":false,
+                "required":["operation","applied"],"properties":{"operation":{"type":"string"},
+                    "applied":{"type":"integer","minimum":1}}}),
+            effects: json!({"reads":["artifact"],"writes":["synthetic-device"],"network":[],
+                "process":false,"delegates":false,"spend":false}),
+        })
+    }
     fn state(&self) -> (u64, u64) {
         (self.generation, self.focus)
     }

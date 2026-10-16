@@ -11,7 +11,9 @@ use std::path::{Path, PathBuf};
 pub const USAGE: &str = "usage: live-host ACTION --state DIR --key-file KEY [options]
   init     --policy POLICY.json
   submit   --input BUNDLE
-  status   --session ID";
+  status   --session ID
+  device-operation   describe the installed input operation
+  input-policy --input GRANTS.json   replace exact input approval grants";
 
 fn read_secret(path: &Path) -> Result<secp256k1::SecretKey> {
     let metadata = std::fs::metadata(path).map_err(|e| e.to_string())?;
@@ -74,6 +76,12 @@ pub fn run(args: Vec<String>) -> Result<Value> {
             controller.submit(&bundle, crate::now())
         }
         "status" => controller.status(&need("--session")?),
+        "device-operation" => controller.device_operation(),
+        "input-policy" => {
+            let grants = serde_json::from_value(json_file(&need("--input")?)?)
+                .map_err(|_| "malformed: input grants")?;
+            Ok(json!({"rules":controller.set_input_grants(grants,crate::now())?}))
+        }
         _ => Err(format!("malformed: {USAGE}")),
     }
 }

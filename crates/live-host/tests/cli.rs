@@ -69,6 +69,27 @@ fn cli_initializes_and_refuses_unknown_sessions() {
         ])
         .0
     );
+    let (ok, operation) = run(&["device-operation", "--state", s, "--key-file", k]);
+    assert!(ok);
+    assert!(
+        operation["id"]
+            .as_str()
+            .unwrap()
+            .ends_with(":live/device-input")
+    );
+    let grants = temp.path().join("grants.json");
+    std::fs::write(&grants, b"[]").unwrap();
+    let (ok, rules) = run(&[
+        "input-policy",
+        "--state",
+        s,
+        "--key-file",
+        k,
+        "--input",
+        grants.to_str().unwrap(),
+    ]);
+    assert!(ok);
+    assert_eq!(rules["rules"], json!([]));
     assert_eq!(
         run(&["--help"]).1["help"]
             .as_str()

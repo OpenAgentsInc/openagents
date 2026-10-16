@@ -143,6 +143,9 @@ fn semantic(name: &str, body: &Value) -> Result<()> {
                 return Err(error(RefusalCode::Malformed, "result reason"));
             }
         }
+        "live-input-rule" if number(body, "starts_at")? >= number(body, "expires_at")? => {
+            return Err(error(RefusalCode::Malformed, "input rule expiry"));
+        }
         "live-input-outcome" if body["dispatched"] == false && body["outcome"] != "refused" => {
             return Err(error(RefusalCode::Malformed, "undispatched input outcome"));
         }
@@ -283,5 +286,26 @@ mod tests {
         transcript["segments"] = json!([{"id":"s1","interval":{"clock":"c","start_ms":5,"end_ms":1},
             "text":artifact(b"t",None),"speaker":null,"final":true}]);
         assert!(validate(&transcript).is_err());
+    }
+    #[test]
+    fn input_rules_and_conditions_are_closed_and_expire_in_order() {
+        let plan = artifact(b"plan", Some("openagents.live-plan.v1"));
+        let plain = artifact(b"bytes", None);
+        let mut rule = json!({"v":"openagents.live-input-rule.v1","requires":[],"controller":"11".repeat(32),
+            "generation":1,"plan":plan,"owner":"22".repeat(32),"approver":"22".repeat(32),
+            "operation":{"id":format!("{}:live/device-input","11".repeat(32)),"artifact":plain},
+            "starts_at":10,"expires_at":20});
+        validate(&rule).unwrap();
+        rule["expires_at"] = json!(10);
+        assert!(validate(&rule).is_err());
+        rule["expires_at"] = json!(20);
+        rule["grants_input"] = json!(true);
+        assert!(validate(&rule).is_err());
+        let mut conditions = json!({"v":"openagents.live-input-preconditions.v1","requires":[],
+            "controller":"11".repeat(32),"session":"33".repeat(32),"plan":plan,"revision":2,"media_epoch":0,
+            "rule":plain,"observation":plain,"binding":plain,"conditions":[]});
+        validate(&conditions).unwrap();
+        conditions["conditions"] = json!(["unresolved condition"]);
+        assert!(validate(&conditions).is_err());
     }
 }
