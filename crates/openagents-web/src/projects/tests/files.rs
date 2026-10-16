@@ -81,6 +81,193 @@ impl Api {
 }
 
 #[tokio::test]
+async fn file_contract_rechecks_roles_without_a_project_query() {
+    let world = world().await;
+    let mut first = Browser::default();
+    first.sign_in(&world, "octo-local").await;
+    let original = Api::of(&first);
+    let mut second = Browser::default();
+    second.sign_in(&world, "quiet-local").await;
+    let next = Api::of(&second);
+    let (_, project) = original
+        .json(
+            &world,
+            "POST",
+            "/v1/projects",
+            json!({"name":"Shared file rights"}),
+        )
+        .await;
+    let project = project["id"].as_str().unwrap();
+    let (status, file) = original
+        .upload(&world, "example.txt", b"example file")
+        .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let file = file["id"].as_str().unwrap();
+    assert_eq!(
+        original
+            .json(
+                &world,
+                "POST",
+                &format!("/v1/projects/{project}/attachments"),
+                json!({"file":file})
+            )
+            .await
+            .0,
+        StatusCode::CREATED
+    );
+    let (_, invite) = original
+        .json(
+            &world,
+            "POST",
+            &format!("/v1/projects/{project}/invitations"),
+            json!({}),
+        )
+        .await;
+    assert_eq!(
+        next.json(
+            &world,
+            "POST",
+            "/v1/projects/invitations/accept",
+            json!({"code":invite["code"]})
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    let original_id = world.account_of("octo-local");
+    let next_id = world.account_of("quiet-local");
+    assert_eq!(
+        original
+            .json(
+                &world,
+                "PATCH",
+                &format!("/v1/projects/{project}/members/{next_id}"),
+                json!({"role":"owner"})
+            )
+            .await
+            .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        next.json(
+            &world,
+            "PATCH",
+            &format!("/v1/projects/{project}/members/{original_id}"),
+            json!({"role":"viewer"})
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    let direct = format!("/v1/files/{file}");
+    assert_eq!(
+        original.json(&world, "GET", &direct, Value::Null).await.0,
+        StatusCode::OK
+    );
+    let (status, denied) = original.json(&world, "DELETE", &direct, Value::Null).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_eq!(denied["error"]["code"], "project_role");
+    assert_eq!(
+        next.json(
+            &world,
+            "DELETE",
+            &format!("/v1/projects/{project}/members/{original_id}"),
+            Value::Null
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    for path in [direct.clone(), format!("{direct}/content")] {
+        assert_eq!(
+            original.call(&world, "GET", &path, Body::empty()).await.0,
+            StatusCode::NOT_FOUND
+        );
+    }
+    assert_eq!(
+        original
+            .json(&world, "DELETE", &direct, Value::Null)
+            .await
+            .0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        next.call(
+            &world,
+            "GET",
+            &format!("{direct}/content?project={project}"),
+            Body::empty()
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        next.json(
+            &world,
+            "DELETE",
+            &format!("{direct}?project={project}"),
+            Value::Null
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        next.json(
+            &world,
+            "DELETE",
+            &format!("/v1/projects/{project}"),
+            Value::Null
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+}
+
+#[tokio::test]
+async fn file_contract_rechecks_sessions_after_external_revocation() {
+    let world = world().await;
+    let mut browser = Browser::default();
+    browser.sign_in(&world, "octo-local").await;
+    let api = Api::of(&browser);
+    let (status, file) = api.upload(&world, "example.txt", b"example file").await;
+    assert_eq!(status, StatusCode::CREATED);
+    let path = format!("/v1/files/{}", file["id"].as_str().unwrap());
+    assert_eq!(
+        api.json(&world, "GET", &path, Value::Null).await.0,
+        StatusCode::OK
+    );
+    tenancy::sessions::Sessions::open(&world.root().join("accounts"))
+        .unwrap()
+        .mutate(|book, _, now| {
+            let id = book
+                .session_of_token(api.token.as_ref().unwrap())
+                .unwrap()
+                .id
+                .clone();
+            book.logout(&id, now)
+        })
+        .unwrap();
+    for path in [path.clone(), format!("{path}/content")] {
+        assert_eq!(
+            api.call(&world, "GET", &path, Body::empty()).await.0,
+            StatusCode::UNAUTHORIZED
+        );
+    }
+    let mut fresh = Browser::default();
+    fresh.sign_in(&world, "octo-local").await;
+    assert_eq!(
+        Api::of(&fresh)
+            .json(&world, "DELETE", &path, Value::Null)
+            .await
+            .0,
+        StatusCode::OK
+    );
+}
+
+#[tokio::test]
 async fn a_project_keeps_files_documents_and_vault_files_for_its_owner_only() {
     let world = world().await;
     assert!(crate::upstream::owned("/v1/files"));

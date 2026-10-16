@@ -51,6 +51,7 @@ use crate::App;
 use crate::chat_files::Kind;
 use crate::chat_store::{Error, Store, account_owner, now_unix};
 use crate::cloud::protect;
+use crate::cloud::session::SessionError;
 use crate::coder_sync::{answer, refused, stored};
 
 /// The largest file.
@@ -444,6 +445,26 @@ struct UploadQuery {
     name: Option<String>,
 }
 
+/// File requests need a live session, including revocations made on another server.
+async fn file_account(app: &App, headers: &HeaderMap) -> Result<String, Response> {
+    let (service, token, _) = super::api::caller(app, headers).await?;
+    service
+        .app_account(&token)
+        .await
+        .map_err(|error| match error {
+            SessionError::Unauthenticated | SessionError::InvalidRequest => refused(
+                StatusCode::UNAUTHORIZED,
+                "signed_out",
+                "Log in again with coder login.",
+            ),
+            _ => refused(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "unavailable",
+                "Try again later.",
+            ),
+        })
+}
+
 /// `POST /v1/files?purpose=project&filename=NAME`, the bytes as the body.
 async fn upload(
     State(app): State<App>,
@@ -451,7 +472,7 @@ async fn upload(
     Query(query): Query<UploadQuery>,
     body: Bytes,
 ) -> Response {
-    let account = match crate::coder_sync::account(&app, &headers).await {
+    let account = match file_account(&app, &headers).await {
         Ok(account) => account,
         Err(response) => return response,
     };
@@ -558,10 +579,7 @@ async fn own_file(
     };
     let (owner, within) = match owner {
         Some((owner, project)) => (owner, Some(project)),
-        None => (
-            account_owner(&crate::coder_sync::account(app, headers).await?),
-            None,
-        ),
+        None => (account_owner(&file_account(app, headers).await?), None),
     };
     if !valid_prefixed(id, "file_") {
         return Err(no_file());
@@ -574,6 +592,18 @@ async fn own_file(
                     .as_ref()
                     .is_none_or(|p| info.project.as_ref() == Some(p)) =>
         {
+            // A file's storage account does not override its current project role.
+            if within.is_none()
+                && let Some(project) = info.project.as_deref()
+            {
+                let found = access(app, headers, project).await?;
+                if found.home_owner() != owner {
+                    return Err(no_file());
+                }
+                if edit {
+                    found.edits()?;
+                }
+            }
             Ok((owner, info, generation))
         }
         Ok(_) => Err(no_file()),
