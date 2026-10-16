@@ -11,6 +11,132 @@ struct Api {
     token: Option<String>,
 }
 
+#[tokio::test]
+async fn project_contract_preserves_partial_changes_and_cursor_errors() {
+    let world = world().await;
+    let mut browser = Browser::default();
+    browser.sign_in(&world, "octo-local").await;
+    let api = Api::of(&browser);
+    let (status, failed) = api
+        .json(
+            &world,
+            "POST",
+            "/v1/projects",
+            json!({
+                "name":"Created before protection failed", "protection":"sealed"
+            }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(failed["error"]["code"], "not_available");
+    let (_, list) = api.json(&world, "GET", "/v1/projects", Value::Null).await;
+    let id = list["data"][0]["id"].as_str().unwrap();
+    assert_eq!(list["data"][0]["name"], "Created before protection failed");
+    let (status, _) = api
+        .json(
+            &world,
+            "PATCH",
+            &format!("/v1/projects/{id}"),
+            json!({
+                "protection":"only_me", "name":"\n"
+            }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let (_, after) = api
+        .json(&world, "GET", &format!("/v1/projects/{id}"), Value::Null)
+        .await;
+    assert_eq!(after["protection"], "only_me");
+    assert_eq!(after["name"], "Created before protection failed");
+    assert_eq!(
+        api.json(&world, "DELETE", &format!("/v1/projects/{id}"), Value::Null)
+            .await
+            .0,
+        StatusCode::OK
+    );
+
+    let mut ids = vec![];
+    for _ in 0..2 {
+        let response = world
+            .site
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/projects")
+                    .header(header::HOST, world.host.as_str())
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .header(
+                        header::AUTHORIZATION,
+                        format!("Bearer {}", api.token.as_ref().unwrap()),
+                    )
+                    .header("Idempotency-Key", "same-request")
+                    .body(Body::from(json!({"name":"Duplicate name"}).to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::CREATED);
+        let body: Value =
+            serde_json::from_slice(&to_bytes(response.into_body(), 65536).await.unwrap()).unwrap();
+        ids.push(body["id"].as_str().unwrap().to_owned());
+    }
+    assert_ne!(ids[0], ids[1]);
+    let (status, ambiguous) = api
+        .json(
+            &world,
+            "GET",
+            "/v1/projects/name:Duplicate%20name",
+            Value::Null,
+        )
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(ambiguous["error"]["code"], "ambiguous_name");
+    let (_, page) = api
+        .json(&world, "GET", "/v1/projects?limit=0", Value::Null)
+        .await;
+    assert_eq!(page["data"].as_array().unwrap().len(), 1);
+    assert!(page["next"].is_string());
+    let (status, cursor) = api
+        .json(&world, "GET", "/v1/projects?after=unknown", Value::Null)
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(cursor["error"]["code"], "invalid_cursor");
+    let mut stranger = Browser::default();
+    stranger.sign_in(&world, "quiet-local").await;
+    let other = Api::of(&stranger);
+    let response = world
+        .site
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/v1/projects/{}", ids[0]))
+                .header(header::HOST, world.host.as_str())
+                .header(
+                    header::AUTHORIZATION,
+                    format!("Bearer {}", other.token.as_ref().unwrap()),
+                )
+                .header("X-Workspace-Id", world.account_of("octo-local"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    for id in ids {
+        assert_eq!(
+            api.json(&world, "DELETE", &format!("/v1/projects/{id}"), Value::Null)
+                .await
+                .0,
+            StatusCode::OK
+        );
+    }
+    assert_eq!(
+        api.json(&world, "GET", "/v1/projects", Value::Null).await.1["data"],
+        json!([])
+    );
+}
+
 impl Api {
     fn of(browser: &Browser) -> Self {
         Self {
@@ -121,6 +247,22 @@ async fn the_sign_in_token_reads_and_changes_its_own_projects_only() {
     assert!(body["created_at"].as_str().unwrap().ends_with('Z'));
     assert_eq!(body["repository"], "octo-local/hello-world");
     assert_eq!(body["repositories"][0]["primary"], true);
+
+    let (status, access) = me
+        .json(
+            &world,
+            "GET",
+            &format!("/v1/projects/{id}/access"),
+            Value::Null,
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        access["data"],
+        json!([{
+            "repository":"octo-local/hello-world", "access":true, "message":null
+        }])
+    );
 
     // Chats: two in the project, one outside it, one of someone else's.
     let owner = account_owner_of(&world, "octo-local");

@@ -79,6 +79,7 @@ mod payments;
 mod phone_api;
 pub mod pilot;
 pub mod plan;
+mod project_openapi;
 mod projects;
 mod promises;
 mod purchases;

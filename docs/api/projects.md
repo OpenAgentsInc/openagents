@@ -5,9 +5,9 @@ writable by you through the API, the `openagents` command, and Coder. The
 resource shapes follow Anthropic's content API for chats, files, and projects
 (`/v1/compliance/apps/...`), without the compliance layer: there is no
 organization-wide reviewer key and no eDiscovery scope. Every route answers
-for **your own** data, or for a workspace you are a member of with the right
-role, on the [API's shared contract](calling.md): `oak_` keys with scopes,
-`sess_` sessions, cursor lists, one error object.
+for **your own** data, or for a project you are a member of with the right
+role. The current web API uses account sessions or sign-in keys, cursor
+lists, and one error object; scoped `oak_` access below remains proposed.
 
 Tracking: [#11471](https://github.com/OpenAgentsInc/openagents/issues/11471).
 The owner's ask: "our CLI needs to interact with that via api first class".
@@ -43,7 +43,7 @@ The owner's ask: "our CLI needs to interact with that via api first class".
 | Threads over HTTP for the apps | `GET /v1/threads`, `GET /v1/threads/{id}`, `POST /v1/threads/{id}/messages` (`phone_api.rs`) | Built (staging), app token |
 | Account export | `crates/openagents-web/src/account_export.rs` (projects and chats) | Live |
 
-What is missing:
+At the proposal date (2026-10-12), the gaps were:
 
 - **Credentials.** Coder's sign-in token (`~/.openagents/coder/account.json`) gets
   `404` on `https://openagents.com/v1/account/github` and
@@ -129,12 +129,14 @@ Today they take the sign-in (`sess_`) or a sign-in key
 | Caller | Credential | How to get it |
 | --- | --- | --- |
 | The `openagents` command and Coder | The sign-in token `openagents login` saves (Coder's `account.json`) | `openagents login` (approve the code at openagents.com/device), or `openagents login --key` with a sign-in key from Settings |
-| Scripts, agents, partner apps | `Authorization: Bearer oak_<id>.<secret>` with the scopes below | Settings, API keys (organization administration) |
+| Scripts, agents, partner apps | `Authorization: Bearer` with a live `sess_` session or `oa_sk_` sign-in key | Device sign-in or Settings, Login keys |
 | The website and apps | `sess_` session or app token | Signing in |
 
-A personal account has one personal workspace, which the call uses when you
-send no `X-Workspace-Id`. A team workspace's projects need the header and a
-member role ([workspace rules](calling.md#workspace)).
+These web handlers resolve projects from the signed-in account and its
+current project memberships. `X-Workspace-Id` does not select another
+project owner or grant access. The [public reference](https://api.openagents.com/v1/openapi.json)
+describes the implemented project and membership operations; files, threads,
+and connected sources have separate qualification work in [the inventory](../sdk/public-routes.md).
 
 ## Objects
 
@@ -528,7 +530,8 @@ Check `object` before treating a delete as done.
 
 ## Scopes and privacy
 
-New public scopes for `oak_` keys ([design 2.7](design.md#27-scopes-for-oak_-keys)):
+Proposed scopes for `oak_` keys ([design 2.7](design.md#27-scopes-for-oak_-keys));
+the current web project handlers do not accept these credentials:
 
 | Scope | Allows |
 | --- | --- |
@@ -537,10 +540,11 @@ New public scopes for `oak_` keys ([design 2.7](design.md#27-scopes-for-oak_-key
 | `threads:read` / `threads` | (existing names) Read threads and messages / change and delete them |
 | `files:read` / `files` | Download / upload and delete files |
 
-Sessions and the CLI's sign-in carry all of these for the person's own
-account. Every route checks that the caller owns the object, or is a member
-of its workspace with a role that allows the action. Another account's id
-answers `404`, never `403`, so ids don't leak. Data class: Account
+Current handlers check the account session and project membership on every
+request. A foreign project or removed membership returns `404`; a current
+member with insufficient rights gets `403 project_role`. Owners rename,
+delete, invite, and manage members; editors change instructions and
+repositories; viewers read. Data class: Account
 ([design 2.11](design.md#211-privacy-classes)).
 
 ## The `openagents projects` command
@@ -648,11 +652,11 @@ lands ([#11451](https://github.com/OpenAgentsInc/openagents/issues/11451), phase
 | `GET projects/documents/{id}` | `GET /v1/projects/{id}/documents/{doc}` | Scoped under its project |
 | Deletes, `delete:compliance_user_data` | Deletes, `threads` / `files` / `projects` scopes | Your own data, ordinary scopes |
 | Cursors `first_id`/`last_id`/`has_more`; projects `next_page` | One shape everywhere: `{data, next}` with `?after` | [design 2.5](design.md#25-requests-and-responses) |
-| Compliance Access Key | `oak_` key, session, or the CLI sign-in | Available to everyone |
+| Compliance Access Key | Current account session or sign-in key; scoped `oak_` access is proposed | Project roles apply |
 
 ## Build and deploy
 
-1. **Read routes and credentials** (#11471): `GET /v1/projects`, `GET /v1/projects/{id}`, `GET /v1/threads?project=…`, reachable with an `oak_` key and the CLI sign-in; the gateway's OpenAPI regenerated (`OPENAGENTS_WRITE_OPENAPI=1 cargo test -p gateway audience`).
+1. **Read routes and credentials** (#11471): `GET /v1/projects`, `GET /v1/projects/{id}`, and `GET /v1/threads?project=…` accept the CLI sign-in or a sign-in key; scoped `oak_` access remains proposed.
 2. **CLI** `openagents projects list | show | threads` and the `board` rename.
 3. **Coder** tool descriptions.
 4. **Files and documents**: `/v1/files`, attachments, documents, private per-account storage, and `type: vault` attachments backed by NIP-VAULT, with the project `protection` setting and `projects files add` following it.

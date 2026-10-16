@@ -3618,6 +3618,1921 @@
         "x-openagents-max-response-bytes": 1048576,
         "x-openagents-max-request-bytes": 4194304
       }
+    },
+    "/v1/projects": {
+      "get": {
+        "operationId": "listProjects",
+        "tags": [
+          "Projects"
+        ],
+        "security": [
+          {
+            "projectManagementBearer": []
+          }
+        ],
+        "description": "List owned and currently shared projects, oldest first. This is not a snapshot. Limit defaults to 100 and clamps to 1–200. An after cursor must name an entry still present in this account's list; otherwise restart after 400 invalid_cursor.",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 100
+            },
+            "description": "Clamped to 1–200."
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Last project ID from this same list. Empty means the first page."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The result, with Cache-Control: no-store, private.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppProjectList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request, invalid_cursor or not_available (sealed protection). Invalid typed query parameters can instead return framework text/plain errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "signed_out: missing, unsupported, expired or revoked credential.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "project_role or github_refused: the current role or GitHub grant does not allow the action.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found or invitation_not_found: unavailable to this account, removed membership, or an unusable invitation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ambiguous_name, project_has_threads, full, github_not_connected, github_reconnect, owner_stays, project_full, shared_project or only_me_project.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "rate_limited: GitHub throttled the request. No Retry-After or automatic mutation retry guarantee.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "github_unavailable: the upstream GitHub/account call failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "unavailable: account or chat/file storage could not be reached.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createProject",
+        "tags": [
+          "Projects"
+        ],
+        "security": [
+          {
+            "projectManagementBearer": []
+          }
+        ],
+        "description": "Create a new project each time; no idempotency deduplication. Maximum 200 owned and shared projects per account. GitHub repositories require the caller's connected GitHub access. Project creation precedes applying protection and reading file metadata: a later error can leave the project created. Inspect the list before retrying an uncertain result.",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "The result, with Cache-Control: no-store, private.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppProjectObject"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request, invalid_cursor or not_available (sealed protection). Invalid typed query parameters can instead return framework text/plain errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "signed_out: missing, unsupported, expired or revoked credential.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "project_role or github_refused: the current role or GitHub grant does not allow the action.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found or invitation_not_found: unavailable to this account, removed membership, or an unusable invitation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ambiguous_name, project_has_threads, full, github_not_connected, github_reconnect, owner_stays, project_full, shared_project or only_me_project.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "rate_limited: GitHub throttled the request. No Retry-After or automatic mutation retry guarantee.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "github_unavailable: the upstream GitHub/account call failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "unavailable: account or chat/file storage could not be reached.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppProjectCreate"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/projects/{id}": {
+      "get": {
+        "operationId": "getProject",
+        "tags": [
+          "Projects"
+        ],
+        "security": [
+          {
+            "projectManagementBearer": []
+          }
+        ],
+        "description": "Read a currently accessible project. IDs and name:NAME are accepted; duplicate exact names return 409 ambiguous_name. A foreign project or removed membership returns 404 not_found.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Project ID or name:NAME; exact duplicate names are ambiguous.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The result, with Cache-Control: no-store, private.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppProjectObject"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request, invalid_cursor or not_available (sealed protection). Invalid typed query parameters can instead return framework text/plain errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "signed_out: missing, unsupported, expired or revoked credential.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "project_role or github_refused: the current role or GitHub grant does not allow the action.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found or invitation_not_found: unavailable to this account, removed membership, or an unusable invitation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ambiguous_name, project_has_threads, full, github_not_connected, github_reconnect, owner_stays, project_full, shared_project or only_me_project.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "rate_limited: GitHub throttled the request. No Retry-After or automatic mutation retry guarantee.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "github_unavailable: the upstream GitHub/account call failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "unavailable: account or chat/file storage could not be reached.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "operationId": "updateProject",
+        "tags": [
+          "Projects"
+        ],
+        "security": [
+          {
+            "projectManagementBearer": []
+          }
+        ],
+        "description": "Owners rename or change protection; editors can change instructions and repository selection. Viewers cannot edit. Protection is applied before other edits, so a later error can leave an earlier change saved. No transaction or idempotency deduplication is promised.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Project ID or name:NAME; exact duplicate names are ambiguous.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The result, with Cache-Control: no-store, private.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppProjectObject"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request, invalid_cursor or not_available (sealed protection). Invalid typed query parameters can instead return framework text/plain errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "signed_out: missing, unsupported, expired or revoked credential.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "project_role or github_refused: the current role or GitHub grant does not allow the action.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found or invitation_not_found: unavailable to this account, removed membership, or an unusable invitation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ambiguous_name, project_has_threads, full, github_not_connected, github_reconnect, owner_stays, project_full, shared_project or only_me_project.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "rate_limited: GitHub throttled the request. No Retry-After or automatic mutation retry guarantee.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "github_unavailable: the upstream GitHub/account call failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "unavailable: account or chat/file storage could not be reached.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppProjectEdit"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteProject",
+        "tags": [
+          "Projects"
+        ],
+        "security": [
+          {
+            "projectManagementBearer": []
+          }
+        ],
+        "description": "Owner only. Returns 409 project_has_threads unless detach_threads=true when this caller has attached chats. Deletion removes project files/documents and keeps detached chats. Cleanup follows account-service deletion; a failure can leave partial cleanup. Inspect state after uncertain results. A repeated deletion returns 404.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Project ID or name:NAME; exact duplicate names are ambiguous.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "detach_threads",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The result, with Cache-Control: no-store, private.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppProjectDeleted"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request, invalid_cursor or not_available (sealed protection). Invalid typed query parameters can instead return framework text/plain errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "signed_out: missing, unsupported, expired or revoked credential.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "project_role or github_refused: the current role or GitHub grant does not allow the action.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found or invitation_not_found: unavailable to this account, removed membership, or an unusable invitation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ambiguous_name, project_has_threads, full, github_not_connected, github_reconnect, owner_stays, project_full, shared_project or only_me_project.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "rate_limited: GitHub throttled the request. No Retry-After or automatic mutation retry guarantee.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "github_unavailable: the upstream GitHub/account call failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "unavailable: account or chat/file storage could not be reached.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/projects/{id}/repositories": {
+      "post": {
+        "operationId": "addProjectRepository",
+        "tags": [
+          "Projects"
+        ],
+        "security": [
+          {
+            "projectManagementBearer": []
+          }
+        ],
+        "description": "Owner or editor, with their own connected GitHub access. At most 20 repositories. The first is primary; primary=true selects the added repository. Adding an already attached repository does not add a duplicate.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Project ID or name:NAME; exact duplicate names are ambiguous.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The result, with Cache-Control: no-store, private.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppProjectObject"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request, invalid_cursor or not_available (sealed protection). Invalid typed query parameters can instead return framework text/plain errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "signed_out: missing, unsupported, expired or revoked credential.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "project_role or github_refused: the current role or GitHub grant does not allow the action.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found or invitation_not_found: unavailable to this account, removed membership, or an unusable invitation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ambiguous_name, project_has_threads, full, github_not_connected, github_reconnect, owner_stays, project_full, shared_project or only_me_project.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "rate_limited: GitHub throttled the request. No Retry-After or automatic mutation retry guarantee.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "github_unavailable: the upstream GitHub/account call failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "unavailable: account or chat/file storage could not be reached.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppProjectAddRepository"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/projects/{id}/repositories/{owner}/{name}": {
+      "delete": {
+        "operationId": "removeProjectRepository",
+        "tags": [
+          "Projects"
+        ],
+        "security": [
+          {
+            "projectManagementBearer": []
+          }
+        ],
+        "description": "Owner or editor. Remove the named repository; removing the primary selects the first remaining repository. This does not delete a GitHub repository or its files.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Project ID or name:NAME; exact duplicate names are ambiguous.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "description": "A GitHub repository path segment.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "description": "A GitHub repository path segment.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The result, with Cache-Control: no-store, private.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppProjectObject"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request, invalid_cursor or not_available (sealed protection). Invalid typed query parameters can instead return framework text/plain errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "signed_out: missing, unsupported, expired or revoked credential.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "project_role or github_refused: the current role or GitHub grant does not allow the action.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found or invitation_not_found: unavailable to this account, removed membership, or an unusable invitation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ambiguous_name, project_has_threads, full, github_not_connected, github_reconnect, owner_stays, project_full, shared_project or only_me_project.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "rate_limited: GitHub throttled the request. No Retry-After or automatic mutation retry guarantee.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "github_unavailable: the upstream GitHub/account call failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "unavailable: account or chat/file storage could not be reached.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/projects/{id}/members": {
+      "get": {
+        "operationId": "listProjectMembers",
+        "tags": [
+          "Projects"
+        ],
+        "security": [
+          {
+            "projectManagementBearer": []
+          }
+        ],
+        "description": "Any current member can list members and their own role. This list is not paginated (next is null); only the owner sees open invitation metadata. Invitation codes are never listed.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Project ID or name:NAME; exact duplicate names are ambiguous.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The result, with Cache-Control: no-store, private.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppProjectMembers"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request, invalid_cursor or not_available (sealed protection). Invalid typed query parameters can instead return framework text/plain errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "signed_out: missing, unsupported, expired or revoked credential.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "project_role or github_refused: the current role or GitHub grant does not allow the action.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found or invitation_not_found: unavailable to this account, removed membership, or an unusable invitation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ambiguous_name, project_has_threads, full, github_not_connected, github_reconnect, owner_stays, project_full, shared_project or only_me_project.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "rate_limited: GitHub throttled the request. No Retry-After or automatic mutation retry guarantee.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "github_unavailable: the upstream GitHub/account call failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "unavailable: account or chat/file storage could not be reached.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/projects/{id}/members/{member}": {
+      "patch": {
+        "operationId": "setProjectMemberRole",
+        "tags": [
+          "Projects"
+        ],
+        "security": [
+          {
+            "projectManagementBearer": []
+          }
+        ],
+        "description": "Owner only. Set an existing member's editor/viewer role or transfer ownership with owner. Exactly one owner remains. Recheck roles after an uncertain transfer; do not assume the caller still owns the project.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Project ID or name:NAME; exact duplicate names are ambiguous.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "member",
+            "in": "path",
+            "required": true,
+            "description": "An account ID of a current member.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The result, with Cache-Control: no-store, private.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppProjectObject"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request, invalid_cursor or not_available (sealed protection). Invalid typed query parameters can instead return framework text/plain errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "signed_out: missing, unsupported, expired or revoked credential.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "project_role or github_refused: the current role or GitHub grant does not allow the action.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found or invitation_not_found: unavailable to this account, removed membership, or an unusable invitation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ambiguous_name, project_has_threads, full, github_not_connected, github_reconnect, owner_stays, project_full, shared_project or only_me_project.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "rate_limited: GitHub throttled the request. No Retry-After or automatic mutation retry guarantee.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "github_unavailable: the upstream GitHub/account call failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "unavailable: account or chat/file storage could not be reached.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppProjectSetRole"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "removeProjectMember",
+        "tags": [
+          "Projects"
+        ],
+        "security": [
+          {
+            "projectManagementBearer": []
+          }
+        ],
+        "description": "Owner can remove another member. Removing yourself uses leave semantics and returns project.left; an owner must transfer ownership before leaving. Removed members lose access on the next request.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Project ID or name:NAME; exact duplicate names are ambiguous.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "member",
+            "in": "path",
+            "required": true,
+            "description": "An account ID of a current member.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The result, with Cache-Control: no-store, private.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppProjectMemberRemoved"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request, invalid_cursor or not_available (sealed protection). Invalid typed query parameters can instead return framework text/plain errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "signed_out: missing, unsupported, expired or revoked credential.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "project_role or github_refused: the current role or GitHub grant does not allow the action.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found or invitation_not_found: unavailable to this account, removed membership, or an unusable invitation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ambiguous_name, project_has_threads, full, github_not_connected, github_reconnect, owner_stays, project_full, shared_project or only_me_project.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "rate_limited: GitHub throttled the request. No Retry-After or automatic mutation retry guarantee.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "github_unavailable: the upstream GitHub/account call failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "unavailable: account or chat/file storage could not be reached.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/projects/{id}/leave": {
+      "post": {
+        "operationId": "leaveProject",
+        "tags": [
+          "Projects"
+        ],
+        "security": [
+          {
+            "projectManagementBearer": []
+          }
+        ],
+        "description": "Leave a shared project. Its owner must transfer ownership first (409 owner_stays). No chat execution or repository deletion occurs. After leaving, another request for this project returns 404.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Project ID or name:NAME; exact duplicate names are ambiguous.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The result, with Cache-Control: no-store, private.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppProjectLeft"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request, invalid_cursor or not_available (sealed protection). Invalid typed query parameters can instead return framework text/plain errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "signed_out: missing, unsupported, expired or revoked credential.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "project_role or github_refused: the current role or GitHub grant does not allow the action.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found or invitation_not_found: unavailable to this account, removed membership, or an unusable invitation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ambiguous_name, project_has_threads, full, github_not_connected, github_reconnect, owner_stays, project_full, shared_project or only_me_project.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "rate_limited: GitHub throttled the request. No Retry-After or automatic mutation retry guarantee.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "github_unavailable: the upstream GitHub/account call failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "unavailable: account or chat/file storage could not be reached.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/projects/{id}/access": {
+      "get": {
+        "operationId": "getProjectRepositoryAccess",
+        "tags": [
+          "Projects"
+        ],
+        "security": [
+          {
+            "projectManagementBearer": []
+          }
+        ],
+        "description": "Check this caller's own GitHub access to each project repository. Project membership does not grant repository credentials. A false access result is not permission to run code or read a repository through another member's token.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Project ID or name:NAME; exact duplicate names are ambiguous.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The result, with Cache-Control: no-store, private.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppProjectRepositoryAccess"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request, invalid_cursor or not_available (sealed protection). Invalid typed query parameters can instead return framework text/plain errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "signed_out: missing, unsupported, expired or revoked credential.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "project_role or github_refused: the current role or GitHub grant does not allow the action.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found or invitation_not_found: unavailable to this account, removed membership, or an unusable invitation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ambiguous_name, project_has_threads, full, github_not_connected, github_reconnect, owner_stays, project_full, shared_project or only_me_project.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "rate_limited: GitHub throttled the request. No Retry-After or automatic mutation retry guarantee.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "github_unavailable: the upstream GitHub/account call failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "unavailable: account or chat/file storage could not be reached.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/projects/{id}/invitations": {
+      "post": {
+        "operationId": "createProjectInvitation",
+        "tags": [
+          "Projects"
+        ],
+        "security": [
+          {
+            "projectManagementBearer": []
+          }
+        ],
+        "description": "Owner only; only_me projects cannot be shared. Each request makes a new invitation code, returned here only. At most 50 open invitations are kept; a new one replaces the oldest beyond that limit. No idempotency deduplication. A GitHub-targeted notification is best effort; the invitation can exist even if recording that notice fails.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Project ID or name:NAME; exact duplicate names are ambiguous.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "The result, with Cache-Control: no-store, private.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppProjectInvitation"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request, invalid_cursor or not_available (sealed protection). Invalid typed query parameters can instead return framework text/plain errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "signed_out: missing, unsupported, expired or revoked credential.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "project_role or github_refused: the current role or GitHub grant does not allow the action.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found or invitation_not_found: unavailable to this account, removed membership, or an unusable invitation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ambiguous_name, project_has_threads, full, github_not_connected, github_reconnect, owner_stays, project_full, shared_project or only_me_project.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "rate_limited: GitHub throttled the request. No Retry-After or automatic mutation retry guarantee.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "github_unavailable: the upstream GitHub/account call failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "unavailable: account or chat/file storage could not be reached.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppProjectInvite"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/projects/invitations/preview": {
+      "post": {
+        "operationId": "previewProjectInvitation",
+        "tags": [
+          "Projects"
+        ],
+        "security": [
+          {
+            "projectManagementBearer": []
+          }
+        ],
+        "description": "Authenticated preview of a working invitation without consuming it. The code grants this preview; normal project reads still need membership. Expired, invalid or consumed codes return 404 invitation_not_found.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The result, with Cache-Control: no-store, private.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppProjectInvitationPreview"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request, invalid_cursor or not_available (sealed protection). Invalid typed query parameters can instead return framework text/plain errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "signed_out: missing, unsupported, expired or revoked credential.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "project_role or github_refused: the current role or GitHub grant does not allow the action.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found or invitation_not_found: unavailable to this account, removed membership, or an unusable invitation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ambiguous_name, project_has_threads, full, github_not_connected, github_reconnect, owner_stays, project_full, shared_project or only_me_project.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "rate_limited: GitHub throttled the request. No Retry-After or automatic mutation retry guarantee.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "github_unavailable: the upstream GitHub/account call failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "unavailable: account or chat/file storage could not be reached.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppProjectInvitationCode"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/projects/invitations/accept": {
+      "post": {
+        "operationId": "acceptProjectInvitation",
+        "tags": [
+          "Projects"
+        ],
+        "security": [
+          {
+            "projectManagementBearer": []
+          }
+        ],
+        "description": "Join with a valid single-use invitation. Existing members keep their current role without consuming the invitation. Maximum 100 members per project and 200 projects per account. Membership is committed before shared-chat bookkeeping; inspect membership after an uncertain response instead of assuming failure means nothing changed.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The result, with Cache-Control: no-store, private.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppProjectObject"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request, invalid_cursor or not_available (sealed protection). Invalid typed query parameters can instead return framework text/plain errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "signed_out: missing, unsupported, expired or revoked credential.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "project_role or github_refused: the current role or GitHub grant does not allow the action.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found or invitation_not_found: unavailable to this account, removed membership, or an unusable invitation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ambiguous_name, project_has_threads, full, github_not_connected, github_reconnect, owner_stays, project_full, shared_project or only_me_project.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "rate_limited: GitHub throttled the request. No Retry-After or automatic mutation retry guarantee.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "github_unavailable: the upstream GitHub/account call failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "unavailable: account or chat/file storage could not be reached.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppProjectInvitationCode"
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3631,6 +5546,11 @@
         "type": "http",
         "scheme": "bearer",
         "description": "An account-service-issued live app session (sess_) or sign-in key (oa_sk_). The account service validates it on every request. Cookies and oak_ API keys cannot manage these keys. A sign-in key can create and revoke other sign-in keys for the same account, including itself."
+      },
+      "projectManagementBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "A live account-service app session (sess_) or sign-in key (oa_sk_). These web handlers reject cookies alone and oak_ API keys. Every request resolves the account and current project role; knowing an ID does not grant access."
       }
     },
     "schemas": {
@@ -5066,6 +6986,708 @@
             "sha256": "26e5d2e798113f713318a98981b2df55f52894eddc33fbbaf64deabeeb6706ec"
           }
         ]
+      },
+      "AppProjectRole": {
+        "type": "string",
+        "enum": [
+          "owner",
+          "editor",
+          "viewer"
+        ]
+      },
+      "AppProjectRepository": {
+        "type": "object",
+        "required": [
+          "repository",
+          "primary",
+          "default_branch",
+          "private"
+        ],
+        "properties": {
+          "repository": {
+            "type": "string"
+          },
+          "primary": {
+            "type": "boolean"
+          },
+          "default_branch": {
+            "type": "string"
+          },
+          "private": {
+            "type": "boolean"
+          }
+        }
+      },
+      "AppProjectObject": {
+        "type": "object",
+        "required": [
+          "id",
+          "object",
+          "name",
+          "instructions",
+          "repositories",
+          "repository",
+          "default_branch",
+          "private",
+          "created_at",
+          "updated_at",
+          "protection",
+          "counts",
+          "role",
+          "members",
+          "shared"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "object": {
+            "const": "project"
+          },
+          "name": {
+            "type": "string"
+          },
+          "instructions": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "repositories": {
+            "type": "array",
+            "maxItems": 20,
+            "items": {
+              "$ref": "#/components/schemas/AppProjectRepository"
+            }
+          },
+          "repository": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "deprecated": true
+          },
+          "default_branch": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "deprecated": true
+          },
+          "private": {
+            "type": "boolean",
+            "deprecated": true
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "protection": {
+            "enum": [
+              "standard",
+              "only_me"
+            ]
+          },
+          "counts": {
+            "type": "object",
+            "required": [
+              "threads",
+              "files",
+              "documents",
+              "sources"
+            ],
+            "properties": {
+              "threads": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "files": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "documents": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "sources": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          },
+          "role": {
+            "$ref": "#/components/schemas/AppProjectRole"
+          },
+          "members": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "shared": {
+            "type": "boolean"
+          }
+        }
+      },
+      "AppProjectList": {
+        "type": "object",
+        "required": [
+          "data",
+          "next"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "maxItems": 200,
+            "items": {
+              "$ref": "#/components/schemas/AppProjectObject"
+            }
+          },
+          "next": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "AppProjectCreate": {
+        "type": "object",
+        "anyOf": [
+          {
+            "required": [
+              "name"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "pattern": "\\S"
+              }
+            }
+          },
+          {
+            "required": [
+              "repository"
+            ],
+            "properties": {
+              "repository": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          {
+            "required": [
+              "repositories"
+            ],
+            "properties": {
+              "repositories": {
+                "minItems": 1
+              }
+            }
+          }
+        ],
+        "examples": [
+          {
+            "name": "Example project"
+          }
+        ],
+        "properties": {
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Trimmed, nonempty, at most 100 characters. Omit to use the first repository's name."
+          },
+          "instructions": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "At most 8,000 characters after cleaning; blank instructions become null."
+          },
+          "repository": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Older single-repository input; combined with repositories."
+          },
+          "repositories": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Connected GitHub owner/name values; at most 20 distinct repositories."
+          },
+          "protection": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "standard",
+              "only_me",
+              null
+            ]
+          }
+        },
+        "description": "Supply a nonblank name or at least one repository. Unknown fields are ignored. A repository is optional; duplicate project names and reuse of a repository across projects are allowed."
+      },
+      "AppProjectEdit": {
+        "type": "object",
+        "anyOf": [
+          {
+            "required": [
+              "name"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "required": [
+              "instructions"
+            ]
+          },
+          {
+            "required": [
+              "primary_repository"
+            ],
+            "properties": {
+              "primary_repository": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "required": [
+              "protection"
+            ],
+            "properties": {
+              "protection": {
+                "type": "string"
+              }
+            }
+          }
+        ],
+        "examples": [
+          {
+            "instructions": null
+          }
+        ],
+        "properties": {
+          "repository": {
+            "type": "null",
+            "deprecated": true,
+            "description": "Only null is ignored; any other repository field is refused."
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "An owner can rename the project. Trimmed and limited to 100 characters."
+          },
+          "instructions": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Omission leaves instructions unchanged; null clears them. Limited to 8,000 characters after cleaning."
+          },
+          "primary_repository": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Choose a repository already attached to this project. Null leaves the primary unchanged."
+          },
+          "protection": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "standard",
+              "only_me",
+              null
+            ],
+            "description": "Owner only; a shared project cannot become only_me."
+          }
+        },
+        "description": "Supply at least one change. Unknown fields are ignored, but a non-null older repository field is refused; use the repository routes."
+      },
+      "AppProjectAddRepository": {
+        "type": "object",
+        "required": [
+          "repository"
+        ],
+        "properties": {
+          "repository": {
+            "type": "string"
+          },
+          "primary": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      },
+      "AppProjectDeleted": {
+        "type": "object",
+        "required": [
+          "id",
+          "object"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "object": {
+            "const": "project.deleted"
+          }
+        }
+      },
+      "AppProjectMember": {
+        "type": "object",
+        "required": [
+          "account",
+          "object",
+          "name",
+          "login",
+          "role",
+          "joined_at",
+          "you"
+        ],
+        "properties": {
+          "account": {
+            "type": "string"
+          },
+          "object": {
+            "const": "project.member"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "login": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "role": {
+            "$ref": "#/components/schemas/AppProjectRole"
+          },
+          "joined_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "you": {
+            "type": "boolean"
+          }
+        }
+      },
+      "AppProjectMembers": {
+        "type": "object",
+        "required": [
+          "data",
+          "next",
+          "role"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "$ref": "#/components/schemas/AppProjectMember"
+            }
+          },
+          "next": {
+            "type": "null"
+          },
+          "role": {
+            "$ref": "#/components/schemas/AppProjectRole"
+          },
+          "invitations": {
+            "type": "array",
+            "maxItems": 50,
+            "description": "Present only for the owner; does not expose invitation codes.",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "role",
+                "expires_at"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "role": {
+                  "enum": [
+                    "editor",
+                    "viewer"
+                  ]
+                },
+                "expires_at": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              }
+            }
+          }
+        }
+      },
+      "AppProjectSetRole": {
+        "type": "object",
+        "required": [
+          "role"
+        ],
+        "properties": {
+          "role": {
+            "$ref": "#/components/schemas/AppProjectRole"
+          }
+        }
+      },
+      "AppProjectLeft": {
+        "type": "object",
+        "required": [
+          "id",
+          "object"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "object": {
+            "const": "project.left"
+          }
+        }
+      },
+      "AppProjectMemberRemoved": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/AppProjectLeft"
+          },
+          {
+            "type": "object",
+            "required": [
+              "account",
+              "object",
+              "project"
+            ],
+            "properties": {
+              "account": {
+                "type": "string"
+              },
+              "object": {
+                "const": "project.member.removed"
+              },
+              "project": {
+                "type": "string"
+              }
+            }
+          }
+        ]
+      },
+      "AppProjectInvite": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "editor",
+              "viewer",
+              null
+            ],
+            "default": "editor"
+          },
+          "expires_in": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "default": 604800,
+            "description": "Seconds. Missing, null or zero uses seven days; other values clamp to 600–2,592,000 seconds."
+          },
+          "github": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional GitHub login to receive an invitation on their Projects page. This lookup needs the configured GitHub service."
+          }
+        },
+        "description": "An absent, non-object or malformed JSON body currently uses the default editor invitation; clients should send an explicit JSON object."
+      },
+      "AppProjectInvitation": {
+        "type": "object",
+        "required": [
+          "object",
+          "invitee",
+          "id",
+          "project",
+          "role",
+          "code",
+          "url",
+          "expires_at"
+        ],
+        "properties": {
+          "object": {
+            "const": "project.invitation"
+          },
+          "invitee": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "github": {
+                "type": "string"
+              }
+            }
+          },
+          "id": {
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "editor",
+              "viewer"
+            ]
+          },
+          "code": {
+            "type": "string",
+            "x-sensitive": true
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "x-sensitive": true
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "AppProjectInvitationCode": {
+        "type": "object",
+        "required": [
+          "code"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "x-sensitive": true,
+            "description": "The invitation code or its full link. Query and fragment suffixes are ignored."
+          }
+        }
+      },
+      "AppProjectInvitationPreview": {
+        "type": "object",
+        "required": [
+          "object",
+          "project",
+          "role",
+          "invited_by",
+          "expires_at",
+          "member"
+        ],
+        "properties": {
+          "object": {
+            "const": "project.invitation"
+          },
+          "project": {
+            "type": "object",
+            "required": [
+              "id",
+              "name"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            }
+          },
+          "role": {
+            "enum": [
+              "editor",
+              "viewer"
+            ]
+          },
+          "invited_by": {
+            "type": "string"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "member": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "owner",
+              "editor",
+              "viewer",
+              null
+            ]
+          }
+        }
+      },
+      "AppProjectRepositoryAccess": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "repository",
+                "access",
+                "message"
+              ],
+              "properties": {
+                "repository": {
+                  "type": "string"
+                },
+                "access": {
+                  "type": "boolean"
+                },
+                "message": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              }
+            }
+          }
+        }
       }
     }
   }

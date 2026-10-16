@@ -858,6 +858,11 @@
         "description": "An account-service-issued live app session (sess_) or sign-in key (oa_sk_). The account service validates it on every request. Cookies and oak_ API keys cannot manage these keys. A sign-in key can create and revoke other sign-in keys for the same account, including itself.",
         "scheme": "bearer",
         "type": "http"
+      },
+      "projectManagementBearer": {
+        "description": "A live account-service app session (sess_) or sign-in key (oa_sk_). These web handlers reject cookies alone and oak_ API keys. Every request resolves the account and current project role; knowing an ID does not grant access.",
+        "scheme": "bearer",
+        "type": "http"
       }
     }
   },

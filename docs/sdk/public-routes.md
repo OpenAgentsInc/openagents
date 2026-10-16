@@ -51,7 +51,7 @@ key have interchangeable authority.
 | `/v1/agents/{challenge,register,me,claim,claimed,credit}`, `/agents/{account}/revoke` | Gateway public agent registration | Challenge/proof, agent credential, or account owner as declared by handler | Gateway schema. These are not the web activity list at `/v1/agents`. |
 | `/v1/history*` | Web account-owned saved history | Account-bound app credential; owner or current shared-project membership for each read | Qualified [complete history](chat-history.md), including file/capture reads, unknown saved content and source-bound pagination. |
 | `/v1/threads*`, `/agents`, `/agents/actions` | Web chat/phone APIs, sync routes, and sharing | App account, chat ownership/shared access; mutating or execution operations need their own authority | Implemented app-used routes; older first-party schema is a navigation aid, not full current public coverage. Reply, sync, activity, and shared-chat contracts need qualification. |
-| `/v1/projects*`, `/files*` | Web projects, membership, files, sources, and uploads | App account plus project membership and file protection | Implemented; [projects](../api/projects.md) and owning tests describe current fields, cursors, file limits, and conflicts. Public schema coverage remains a gap. |
+| `/v1/projects*`, `/files*` | Web projects, membership, files, sources, and uploads | App session/sign-in key plus current project role and file protection; these web handlers reject `oak_` credentials | Project lifecycle, repositories, membership and invitations have source-backed schemas. Files, documents, uploads and connected sources remain separate gaps under #11866 and #11868. |
 | `/v1/connections*`, project Drive sources | Web connected-service handlers and gateway account integration | Account credential plus connected-service grant; Google availability gate | Gated, not universally available. Preserve unavailable/permission outcomes. Schema coverage remains incomplete. |
 | `/v1/computers*` | Web computer lifecycle over Computers service; existing device/sync handlers share the family | App account; lifecycle owner and idempotency checks; device activity has separate rights | Lifecycle, capabilities, Boat command sessions, and bounded binary workspace files are in the app schema. Commands use authenticated byte-offset polling. The [Computers subset](openapi.computers.json) and [generated operation index](computers-operations.json) cover the contract; the ergonomic client remains #11805; existing device sync remains a separate contract. |
 | `/v1/mac-jobs*`, `/own-runs*`, `/work*`, `/work-hosts*` | Web job/run handlers | Account ownership plus host/job authorization and deployment gates | Implemented app-used surfaces; no guessed client operations. Contracts and schema coverage need owning-consumer qualification. |
@@ -154,6 +154,33 @@ response-schema tests, deployed image, staging and production probes, and
 cleanup. Recheck a deployment without credentials or key changes with
 `python3 scripts/api/check_keys_public.py`; set both `--api` and `--website`
 to `https://staging.openagents.com` for staging.
+
+## Project and membership contracts
+
+The reference describes 15 implemented project operations: lifecycle,
+repositories, members, invitations, leaving, and repository access checks.
+These web handlers accept live `sess_` sessions or `oa_sk_` sign-in keys,
+not `oak_` API keys or cookies alone. A project ID or `name:NAME` selects
+from current memberships; duplicate names return `409 ambiguous_name`.
+Project roles are separate from workspace roles. Removed members lose access
+on their next request; `X-Workspace-Id` cannot restore it.
+
+Lists are oldest first, with a default limit of 100 clamped to 1–200.
+`after` must still be present in the same account's current list; a missing
+cursor returns `400 invalid_cursor`. Lists are not snapshots. Member lists
+contain at most 100 people with `next: null`; only owners see open invitation
+metadata. Invitation codes appear only on creation. Their default lifetime
+is seven days; explicit nonzero values clamp to ten minutes through thirty
+days. At most 50 open invitations are kept, replacing the oldest when needed.
+
+Creation always makes a new project; names and repositories can repeat
+across projects. No idempotency header deduplicates project or invitation
+creation. A project can be created before protection setup fails, and
+protection can change before a later edit fails. Deletion can commit before
+file cleanup completes. Inspect current state before retrying an uncertain
+mutation. Reads do not start a chat, execute a command, or make a payment.
+Files/uploads (#11866), thread execution/sync (#11867), and connected sources
+(#11868) keep separate contracts.
 
 ## Composition and manual checks
 

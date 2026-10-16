@@ -185,7 +185,9 @@ async fn world_at(port: u16, options: Options) -> World {
     }
     World {
         _root: root,
-        site: crate::router(config),
+        site: crate::router(config).layer(axum::middleware::from_fn(
+            crate::project_openapi::tests::check_response,
+        )),
         fake,
         store,
         github: reqwest::Client::builder()
