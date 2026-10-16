@@ -2271,45 +2271,8 @@ fn format_kb(bytes: u64) -> String {
 }
 
 // ---------------------------------------------------------------------------
-// Working indicator flavour (pure; rendered by the shell strip)
+// Working indicator helpers
 // ---------------------------------------------------------------------------
-
-/// Rotating flavour vocabulary (21 words / 7s, seeded per chat).
-pub const FLAVOUR_WORDS: [&str; 21] = [
-    "Zeroning",
-    "Thinking",
-    "Pondering",
-    "Scheming",
-    "Brewing",
-    "Weaving",
-    "Tinkering",
-    "Musing",
-    "Composing",
-    "Sifting",
-    "Untangling",
-    "Distilling",
-    "Sketching",
-    "Plotting",
-    "Riffing",
-    "Combobulating",
-    "Percolating",
-    "Marinating",
-    "Noodling",
-    "Puzzling",
-    "Conjuring",
-];
-pub const FLAVOUR_ROTATE_SECS: i64 = 7;
-
-/// The flavour word for a seed at an elapsed time.
-pub fn flavour_word(seed: u64, elapsed_secs: i64) -> &'static str {
-    let step = (elapsed_secs.max(0) / FLAVOUR_ROTATE_SECS) as u64;
-    FLAVOUR_WORDS[((seed.wrapping_add(step)) % FLAVOUR_WORDS.len() as u64) as usize]
-}
-
-/// A stable per-chat seed.
-pub fn flavour_seed(chat_id: &str) -> u64 {
-    fnv1a(chat_id.as_bytes())
-}
 
 /// The working trailer's "Sending…" bridge: true while an in-flight send is
 /// fresher than the session row's turn start — the row still carries the
@@ -7088,10 +7051,9 @@ impl Transcript {
 
     fn render_working_trailer(&mut self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let now = chrono::Utc::now();
-        // `turn` (the turn's start, ms) keys the rolling word and timer, so a
-        // new turn's labels appear fresh instead of rolling from the last
-        // turn's final values.
-        let (sending, queued, elapsed_secs, seed, turn) = if let Some(doc_id) = &self.doc_override {
+        // `turn` (the turn's start, ms) keys the label and timer animations
+        // so each turn starts fresh.
+        let (sending, queued, elapsed_secs, turn) = if let Some(doc_id) = &self.doc_override {
             // A subagent doc has no Session row — `indicator_for` would read
             // the PARENT chat's live state into this tab. Liveness rides the
             // doc itself instead: the sink's assistant entry streams until
@@ -7109,7 +7071,7 @@ impl Transcript {
                 return None;
             }
             let elapsed = ((now.timestamp_millis() - last.created_at).max(0) / 1000) as i64;
-            (false, false, elapsed, flavour_seed(doc_id), last.created_at)
+            (false, false, elapsed, last.created_at)
         } else {
             let chat_id = self.chat_id.clone()?;
             // Failed-send state first: past the grace window the trailer IS
@@ -7161,7 +7123,7 @@ impl Transcript {
                     .map_or(0, |t| t.timestamp_millis());
                 (sending, queued, elapsed, turn)
             };
-            (sending, queued, elapsed, flavour_seed(&chat_id), turn)
+            (sending, queued, elapsed, turn)
         };
         if self.compact_mode && !sending && !queued && elapsed_secs > 0 {
             let entry_id = if let Some(doc_id) = &self.doc_override {
@@ -7188,7 +7150,7 @@ impl Transcript {
         } else if sending {
             "Sending"
         } else {
-            flavour_word(seed, elapsed_secs)
+            "Working"
         };
         let theme = Theme::of(cx).clone();
         Some(
@@ -7207,7 +7169,7 @@ impl Transcript {
                     cx,
                 ))
                 .child(
-                    // The flavour word rotates every 7s; roll it as it turns.
+                    // Animate transitions between delivery and working states.
                     div()
                         .text_size(crate::typography::ui_rems(12.0))
                         .text_color(if queued {
@@ -16067,15 +16029,6 @@ mod tests {
             tool_title_shimmer_phase(start, start + TOOL_GROUP_SHIMMER_DURATION),
             0.0
         );
-    }
-
-    #[test]
-    fn flavour_words_rotate_every_seven_seconds() {
-        let seed = flavour_seed("chat-1");
-        assert_eq!(flavour_word(seed, 0), flavour_word(seed, 6));
-        assert_ne!(flavour_word(seed, 0), flavour_word(seed, 7));
-        // Deterministic per chat; different chats usually differ in phase.
-        assert_eq!(flavour_word(seed, 3), flavour_word(seed, 3));
     }
 
     #[test]

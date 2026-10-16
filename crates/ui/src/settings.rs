@@ -848,9 +848,6 @@ pub struct UiSettings {
     pub sidebar_show_project_filter: bool,
     /// The Archived accordion below the active session list.
     pub sidebar_show_archived: bool,
-    /// The sidebar's "Star on GitHub" banner was dismissed (its close button
-    /// or following the link). Device-local; never shown again once set.
-    pub github_star_banner_dismissed: bool,
     /// The last selected space — restored on boot when the row still exists;
     /// also the new-tab default when the sidebar filter is "All".
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1037,7 +1034,6 @@ impl Default for UiSettings {
             sidebar_show_pull_request: true,
             sidebar_show_project_filter: true,
             sidebar_show_archived: true,
-            github_star_banner_dismissed: false,
             last_space_id: None,
             last_project_action_by_space_id: std::collections::HashMap::new(),
             open_tabs: None,
@@ -1690,7 +1686,6 @@ impl UiSettings {
             sidebar_show_pull_request,
             sidebar_show_project_filter,
             sidebar_show_archived,
-            github_star_banner_dismissed,
             last_space_id,
             last_project_action_by_space_id,
             open_tabs,
@@ -2724,7 +2719,6 @@ mod tests {
             sidebar_show_pull_request: false,
             sidebar_show_project_filter: false,
             sidebar_show_archived: false,
-            github_star_banner_dismissed: true,
             last_space_id: Some("space-1".into()),
             last_project_action_by_space_id: std::collections::HashMap::from([(
                 "space-1".into(),
