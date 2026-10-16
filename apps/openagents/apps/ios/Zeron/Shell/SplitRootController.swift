@@ -4,6 +4,7 @@ import UIKit
 /// shell is on screen (iPhone tabs or the iPad split).
 protocol AppRouter: AnyObject {
     func showHome()
+    func showSessions()
     func openSession(_ chatId: String)
     func presentNewSession(prompt: String?)
     func showSettings()
@@ -70,6 +71,12 @@ final class SplitRootController: UISplitViewController, UISplitViewControllerDel
     }
 
     // MARK: AppRouter
+
+    func showSessions() {
+        guard !isCollapsed else { return tabs.showSessions() }
+        sidebar.showSessions()
+        show(.primary)
+    }
 
     func showHome() {
         guard !isCollapsed else { return tabs.showHome() }

@@ -21,6 +21,13 @@ not a hard-coded repository or a special dashboard available only to its owner.
 
 ## Home and navigation
 
+The phone uses Coder Noir in dark appearance and Coder Light in light appearance.
+Sessions stays visible in the tab bar while scrolling, and Home includes a
+Sessions shortcut. Home shows up to five current tasks; the full overview and
+Sessions keep the rest accessible. Editing sits in the navigation bar. Import,
+sharing, saved dashboards, and account sync belong in Manage dashboards.
+
+
 - Add **Home** as a primary destination. After sign-in, a normal cold launch
   opens the dashboard chosen as the default. An explicit chat, issue, or approval
   link opens its target; returning from the background preserves the current view.
@@ -65,7 +72,7 @@ Numbers and states have text labels and never rely on color alone.
 
 ## Customization
 
-**Edit Home** enables adding, removing, reordering, resizing, and configuring
+**Edit widgets** enables adding, removing, reordering, resizing, and configuring
 widgets. The picker groups widgets by purpose and offers a sample preview,
 supported sizes, required connection, and settings before adding one.
 

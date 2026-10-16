@@ -1,0 +1,12 @@
+[Unit]
+Description=Keep the private SPACE image reader current
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=20min
+RandomizedDelaySec=1min
+AccuracySec=30s
+Unit=space-image-reader-refresh.service
+
+[Install]
+WantedBy=timers.target

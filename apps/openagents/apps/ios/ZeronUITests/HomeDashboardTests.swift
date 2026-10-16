@@ -9,12 +9,38 @@ final class HomeDashboardTests: XCTestCase {
         XCTAssertTrue(element.isHittable)
     }
 
+    func testSessionsStayVisibleAndOpenTheOriginalList() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-demo", "-fast"]
+        app.launch()
+        XCTAssertTrue(app.buttons["edit"].waitForExistence(timeout: 15))
+        XCTAssertFalse(app.buttons["import"].exists)
+        XCTAssertFalse(app.buttons["new-dashboard"].exists)
+        for _ in 0..<3 { app.swipeUp() }
+        XCTAssertTrue(app.tabBars.buttons["Sessions"].isHittable)
+        app.tabBars.buttons["Sessions"].tap()
+        XCTAssertTrue(app.cells["section-pinned"].waitForExistence(timeout: 5))
+        app.tabBars.buttons["Home"].tap()
+        app.buttons["home-sessions"].tap()
+        XCTAssertTrue(app.cells["section-pinned"].waitForExistence(timeout: 5))
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = "original-sessions-restored"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        let session = app.cells.matching(NSPredicate(format: "identifier BEGINSWITH 'session-'")).firstMatch
+        XCTAssertTrue(session.waitForExistence(timeout: 5))
+        reveal(session, in: app)
+        session.tap()
+        XCTAssertTrue(app.textViews["composer-input"].waitForExistence(timeout: 10))
+    }
+
     func testHomeEditingDefaultAndRestart() {
         let app = XCUIApplication()
         app.launchArguments = ["-demo"]
         app.launch()
         XCTAssertTrue(app.tabBars.buttons["Home"].waitForExistence(timeout: 15))
         XCTAssertTrue(app.buttons["edit"].waitForExistence(timeout: 10))
+        app.buttons["manage"].tap()
         let create = app.buttons["new-dashboard"]
         reveal(create, in: app)
         create.tap()
@@ -29,6 +55,7 @@ final class HomeDashboardTests: XCTestCase {
         name.typeText(title)
         app.buttons["done"].tap()
         XCTAssertTrue(app.staticTexts[title].waitForExistence(timeout: 5))
+        app.buttons["manage"].tap()
         let makeDefault = app.buttons["default"]
         reveal(makeDefault, in: app)
         makeDefault.tap()

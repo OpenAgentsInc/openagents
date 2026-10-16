@@ -203,9 +203,14 @@ impl HomePage {
         let key = node.key.clone();
         match node.element {
             Element::Text { value, role } => div()
-                .text_color(theme.text)
+                .text_color(if role == rust_native::TextRole::Heading {
+                    theme.text
+                } else {
+                    theme.text_muted
+                })
+                .when_some(node.style.text_size, |d, size| d.text_size(px(size as f32)))
                 .when(role == rust_native::TextRole::Heading, |d| {
-                    d.text_lg().font_weight(gpui::FontWeight::SEMIBOLD)
+                    d.font_weight(gpui::FontWeight::SEMIBOLD)
                 })
                 .child(value)
                 .into_any_element(),
@@ -215,13 +220,27 @@ impl HomePage {
                     revision: view.revision,
                     node: key.clone(),
                 };
+                let (title, detail) = label.split_once('\n').unwrap_or((&label, ""));
+                let content = div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(4.))
+                    .child(div().child(title.to_owned()))
+                    .when(!detail.is_empty(), |d| {
+                        d.child(
+                            div()
+                                .text_sm()
+                                .text_color(theme.text_muted)
+                                .child(detail.to_owned()),
+                        )
+                    });
                 div()
                     .id(SharedString::from(key))
                     .min_h(px(44.))
                     .p(px(8.))
                     .rounded_md()
-                    .bg(theme.surface)
                     .text_color(theme.text)
+                    .hover(|d| d.bg(theme.surface))
                     .tab_index(0)
                     .role(gpui::Role::Button)
                     .when(enabled, |d| {
@@ -241,7 +260,7 @@ impl HomePage {
                                 },
                             ))
                     })
-                    .child(label)
+                    .child(content)
                     .into_any_element()
             }
             Element::Field { label, value, .. } => {
@@ -268,7 +287,8 @@ impl HomePage {
                 let mut out = div().flex().flex_col().gap(px(12.)).w_full();
                 if matches!(node.style.radius, Some(_)) {
                     out = out
-                        .p(px(16.))
+                        .p(px(20.))
+                        .bg(theme.surface)
                         .rounded_lg()
                         .border_1()
                         .border_color(theme.border);

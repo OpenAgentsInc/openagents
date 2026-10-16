@@ -1,7 +1,7 @@
 import UIKit
 
 /// Root: native tab bar (Liquid Glass comes from the system, so tab switches,
-/// minimize-on-scroll and the search morph are render-server animations), with
+/// and the search morph are render-server animations), with
 /// the "Ask anything" composer as the tab bar's bottom accessory.
 final class MainTabController: UITabBarController, UITabBarControllerDelegate, AppRouter {
     private let app: AppModel
@@ -19,7 +19,7 @@ final class MainTabController: UITabBarController, UITabBarControllerDelegate, A
         // The selected tab reads through the glass pill + label weight; the
         // violet accent made it shout.
         tabBar.tintColor = Palette.text
-        tabBarMinimizeBehavior = .onScrollDown
+        tabBarMinimizeBehavior = .never
 
         let sessions = UITab(title: "Sessions", image: UIImage(named: "tab-chat"), identifier: "sessions") { [app] _ in
             Self.nav(SessionsViewController(app: app))
@@ -152,6 +152,12 @@ final class MainTabController: UITabBarController, UITabBarControllerDelegate, A
 
     func showSettings() {
         selectedTab = tabs.first { $0.identifier == "more" }
+    }
+
+    func showSessions() {
+        selectedTab = tabs.first { $0.identifier == "sessions" }
+        popToFrontPage()
+        syncAccessory()
     }
 
     func showHome() { selectedTab = tabs.first { $0.identifier == "home" } }

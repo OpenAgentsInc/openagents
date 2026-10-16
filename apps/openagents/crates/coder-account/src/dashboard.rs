@@ -51,6 +51,7 @@ enum Pending {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Screen {
     Home,
+    Manage,
     Edit,
     Configure,
     Directory,
@@ -357,39 +358,34 @@ impl Home {
                 nodes.push(ui::stack(
                     "home-actions",
                     vec![
-                        ui::button("edit", "Edit Home", "edit"),
-                        ui::button("refresh", "Refresh", "refresh"),
-                        ui::button("layouts", "Layouts", "directory"),
-                        ui::button("import", "Import layout", "import"),
+                        ui::button("edit", "Edit widgets", "edit"),
+                        ui::button("manage", "Manage dashboards", "manage"),
                     ],
                     true,
                 ));
-                let choices = s
-                    .library
-                    .dashboards
-                    .iter()
-                    .map(|d| {
-                        ui::button(
-                            format!("switch-{}", d.id),
-                            &d.name,
-                            format!("switch:{}", d.id),
-                        )
+                let scope = d
+                    .scope
+                    .project
+                    .as_ref()
+                    .and_then(|id| {
+                        s.projects
+                            .iter()
+                            .chain(&s.local_projects)
+                            .find(|p| &p.id == id)
                     })
-                    .collect();
-                if s.library.dashboards.len() > 1 {
-                    nodes.push(ui::stack("dashboards", choices, true));
-                }
-                nodes.push(ui::button("scope", "Change project", "scope"));
-                if s.library.default.as_ref() != Some(&d.id) {
-                    nodes.push(ui::button("default", "Make default", "default"));
-                }
-                if d.source.is_some() {
-                    nodes.push(ui::button(
-                        "check-template-update",
-                        "Check for layout updates",
-                        "check-update",
-                    ));
-                }
+                    .map(|p| p.name.clone())
+                    .or_else(|| {
+                        (!d.scope.repositories.is_empty()).then(|| d.scope.repositories.join(", "))
+                    })
+                    .or_else(|| d.scope.project.as_ref().map(|_| "Selected project".into()))
+                    .or_else(|| {
+                        d.scope
+                            .board
+                            .as_ref()
+                            .map(|b| format!("{} · Board {}", b.owner, b.number))
+                    })
+                    .unwrap_or_else(|| "All projects".into());
+                nodes.push(ui::button("scope", scope, "scope"));
                 let mut compact: Option<Node<Action>> = None;
                 for w in &d.widgets {
                     let card = self.widget(s, d, w);
@@ -413,6 +409,38 @@ impl Home {
                 }
                 if let Some(first) = compact {
                     nodes.push(first);
+                }
+            }
+            Screen::Manage => {
+                let d = Self::selected(s);
+                nodes.push(ui::text("manage-title", "Dashboards", true));
+                nodes.push(ui::button("back-home", "Back to Home", "cancel"));
+                for dashboard in &s.library.dashboards {
+                    nodes.push(ui::button(
+                        format!("switch-{}", dashboard.id),
+                        format!(
+                            "{}{}",
+                            dashboard.name,
+                            if dashboard.id == s.selected {
+                                " · Current"
+                            } else {
+                                ""
+                            }
+                        ),
+                        format!("switch:{}", dashboard.id),
+                    ));
+                }
+                nodes.push(ui::button("layouts", "Browse layouts", "directory"));
+                nodes.push(ui::button("import", "Import layout", "import"));
+                if s.library.default.as_ref() != Some(&d.id) {
+                    nodes.push(ui::button("default", "Make default", "default"));
+                }
+                if d.source.is_some() {
+                    nodes.push(ui::button(
+                        "check-template-update",
+                        "Check for layout updates",
+                        "check-update",
+                    ));
                 }
                 nodes.push(ui::button("new-dashboard", "New dashboard", "new"));
                 if self.path.with_extension("remote.json").exists() {
@@ -818,7 +846,11 @@ impl Home {
     }
     fn widget(&self, s: &State, d: &Dashboard, w: &Widget) -> Node<Action> {
         let key = &w.id;
-        let mut children = vec![ui::text(format!("heading-{key}"), label(&w.kind), true)];
+        let mut heading = ui::text(format!("heading-{key}"), label(&w.kind), true);
+        if matches!(w.kind.as_str(), "issues" | "my_issues") {
+            heading.style.text_size = Some(13);
+        }
+        let mut children = vec![heading];
         if !w.supported() {
             children.push(ui::text(
                 format!("unknown-{key}"),
@@ -827,37 +859,26 @@ impl Home {
             ));
             return ui::card(format!("card-{key}"), children);
         }
-        if let Some(scope) = &w.scope {
-            children.push(ui::text(
-                format!("override-{key}"),
-                if *scope == Scope::default() {
-                    "All projects"
-                } else {
-                    "Uses its own project settings"
-                },
-                false,
-            ));
-        }
         match w.kind.as_str() {
             "issues" | "my_issues" => {
                 let scope = w.scope.as_ref().unwrap_or(&d.scope);
                 if scope.project.is_none() && scope.repositories.is_empty() {
+                    children.push(ui::metric(format!("count-{key}"), "—"));
                     children.push(ui::button(
                         format!("choose-{key}"),
-                        "Choose a project",
+                        "Set up",
                         format!("configure:{key}"),
                     ));
                 } else {
                     match s.issues.get(&Self::issue_key(d, w)) {
                         Some(Ok(summary)) => {
-                            children.push(ui::text(
+                            children.push(ui::metric(
                                 format!("count-{key}"),
                                 if summary.complete {
                                     summary.total.to_string()
                                 } else {
-                                    format!("At least {}", summary.total)
+                                    format!("{}+", summary.total)
                                 },
-                                true,
                             ));
                             children.push(ui::text(
                                 format!("age-{key}"),
@@ -915,11 +936,18 @@ impl Home {
                                 .is_none_or(|h| r.host.eq_ignore_ascii_case(h))
                     })
                     .filter(|row| match w.kind.as_str() {
-                        "attention" => row.priority() == 0,
+                        "attention" => row.available(s.clock) && row.priority() == 0,
                         "recent" => {
                             matches!(row.state_label(), "Finished" | "Failed" | "Stopped")
                                 && s.clock.saturating_sub(row.observed_at)
                                     <= u64::from(w.window_hours.unwrap_or(24)) * 3600
+                        }
+                        "agents" if s.screen == Screen::Home => {
+                            row.available(s.clock)
+                                && matches!(
+                                    row.state_label(),
+                                    "Working" | "Needs you" | "Queued" | "Waiting" | "Failed"
+                                )
                         }
                         _ => true,
                     })
@@ -932,7 +960,6 @@ impl Home {
                     .iter()
                     .filter(|r| r.available(s.clock) && r.state_label() == "Needs you")
                     .count();
-                let offline = rows.iter().filter(|r| !r.available(s.clock)).count();
                 children.push(ui::text(
                     format!("summary-{key}"),
                     if rows.is_empty() {
@@ -941,14 +968,18 @@ impl Home {
                         } else if !s.initialized && self.lease.is_some() {
                             "Loading work…".into()
                         } else {
-                            "No active work".into()
+                            "Nothing running right now.".into()
                         }
                     } else {
-                        format!("{working} working · {attention} needs you · {offline} unavailable")
+                        if w.kind == "recent" {
+                            format!("{} recent tasks", rows.len())
+                        } else {
+                            format!("{working} working · {attention} needs you")
+                        }
                     },
                     false,
                 ));
-                let limit = if s.screen == Screen::Overview { 50 } else { 12 };
+                let limit = if s.screen == Screen::Overview { 50 } else { 5 };
                 let offset = if s.screen == Screen::Overview {
                     s.work_offset
                 } else {
@@ -964,7 +995,7 @@ impl Home {
                             s.clock.saturating_sub(row.observed_at) / 60
                         )
                     };
-                    let title = format!("{} · {}\n{} · {}", row.agent, row.title, status, row.host);
+                    let title = format!("{}\n{} · {} · {}", row.title, row.agent, status, row.host);
                     if let Some(target) = row
                         .destination
                         .as_ref()
@@ -1015,7 +1046,7 @@ impl Home {
                         "more-account-work",
                     ));
                 }
-                if s.remote_next.is_some() {
+                if s.screen == Screen::Overview && s.remote_next.is_some() {
                     children.push(ui::text(
                         format!("work-coverage-{key}"),
                         "More account work is available.",
@@ -1512,6 +1543,7 @@ impl Home {
                 s.update_target = None;
                 s.screen = Screen::Edit;
             }
+            "manage" => s.screen = Screen::Manage,
             "edit" => {
                 s.draft = Some(Self::selected(&s).clone());
                 s.screen = Screen::Edit;
@@ -1700,6 +1732,7 @@ impl Home {
                 } else if let Some(id) = action.strip_prefix("switch:") {
                     if s.library.dashboards.iter().any(|d| d.id == id) {
                         s.selected = id.into();
+                        s.screen = Screen::Home;
                         s.issues.clear();
                         s.last_issues = None;
                     }
@@ -2380,6 +2413,52 @@ mod tests {
     fn dashboard_copy_is_plain() {
         let violations = oa_copy::source_violations(include_str!("dashboard.rs"), &[]);
         assert!(violations.is_empty(), "{violations:?}");
+    }
+    #[tokio::test]
+    async fn home_is_a_compact_overview_and_management_is_separate() {
+        let dir = tempfile::tempdir().unwrap();
+        let h = Home::new(None, dir.path().join("home.json"));
+        let clock = now();
+        let mut work = vec![];
+        for i in 0..8 {
+            work.push(Work {
+                id: format!("active-{i}"),
+                session: Some(format!("active-{i}")),
+                destination: None,
+                parent: None,
+                agent: "Codex".into(),
+                title: format!("Current task {i}"),
+                project: None,
+                host: "Test computer".into(),
+                state: "working".into(),
+                online: true,
+                observed_at: clock,
+            });
+        }
+        let mut done = work[0].clone();
+        done.id = "old-task".into();
+        done.session = Some("old-task".into());
+        done.state = "completed".into();
+        done.title = "Old completed session".into();
+        work.push(done);
+        h.set_live(work, vec![]);
+        let view = serde_json::to_string(&h.view().validate().unwrap().view()).unwrap();
+        assert_eq!(view.matches("Current task").count(), 5);
+        assert!(!view.contains("Old completed session"));
+        assert!(!view.contains("Import layout"));
+        assert!(!view.contains("New dashboard"));
+        assert!(view.contains("See all"));
+        h.action("all-work:agents").await.unwrap();
+        let all = serde_json::to_string(&h.view().validate().unwrap().view()).unwrap();
+        assert!(all.contains("Old completed session"));
+        h.action("cancel").await.unwrap();
+        h.action("manage").await.unwrap();
+        let manage = serde_json::to_string(&h.view().validate().unwrap().view()).unwrap();
+        assert!(manage.contains("Import layout"));
+        assert!(manage.contains("New dashboard"));
+        let selected = h.state.lock().unwrap().selected.clone();
+        h.action(&format!("switch:{selected}")).await.unwrap();
+        assert_eq!(h.state.lock().unwrap().screen, Screen::Home);
     }
     #[test]
     fn shutdown_clears_private_layouts_fields_and_work() {

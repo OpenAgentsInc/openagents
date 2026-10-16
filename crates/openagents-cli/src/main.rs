@@ -41,6 +41,7 @@ mod connections;
 mod customer;
 mod deploy;
 mod discover;
+mod dm;
 mod efficiency;
 mod eval;
 mod eval_engine;
@@ -316,6 +317,8 @@ Your account:
 
 Keys, relays, and money:
   key          Show or create Nostr identities.
+  dm           Private messages between Nostr keys (NIP-17): send, and read
+               your inbox.
   wallet       Your OpenAgents wallet: your balance and an address to get paid at.
   x402         Sell a command over HTTP for an exact bitcoin amount, or buy one (http:1),
                through this computer's Lightning node (`x402 node`).
@@ -612,6 +615,7 @@ fn main() -> ExitCode {
         #[cfg(unix)]
         "labor" => labor::run(&output, &rest),
         "key" => key::run(&output, &rest),
+        "dm" => dm::run(&output, &rest),
         "keys" => keys::run(&output, &rest),
         "login" => keys::login(&output, &rest),
         "inference" => inference::run(&output, &rest),

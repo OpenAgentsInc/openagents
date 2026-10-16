@@ -33,6 +33,12 @@ pub fn text(key: impl Into<String>, value: impl Into<String>, heading: bool) -> 
         },
     }
 }
+pub fn metric(key: impl Into<String>, value: impl Into<String>) -> Node<Action> {
+    let mut node = text(key, value, true);
+    node.style.text_size = Some(40);
+    node.style.weight = Some(rust_native::style::TextWeight::Medium);
+    node
+}
 pub fn button(
     key: impl Into<String>,
     label: impl Into<String>,
@@ -40,7 +46,12 @@ pub fn button(
 ) -> Node<Action> {
     Node {
         key: key.into(),
-        style: Default::default(),
+        style: rust_native::style::Style {
+            text_size: Some(15),
+            min_height: Some(44),
+            button_padding: Some([0, 8]),
+            ..Default::default()
+        },
         element: Element::Button {
             label: display(label.into(), 512),
             enabled: true,
@@ -98,8 +109,8 @@ pub fn stack(
 }
 pub fn card(key: impl Into<String>, children: Vec<Node<Action>>) -> Node<Action> {
     let mut out = stack(key, children, false);
-    out.style.radius = Some(16);
-    out.style.padding_points = Some([16; 4]);
+    out.style.radius = Some(20);
+    out.style.padding_points = Some([20; 4]);
     out.style.gap_points = Some(10);
     out
 }
