@@ -313,6 +313,8 @@ for e in envs:
         sys.stderr.write("  web env BOAT_API_KEY -> oa-boat-api-key (our own service)\n")
 env = {e["name"] for e in envs}
 for e in ({"name": "STACK_STATE", "value": "/stack"},
+          # The dedicated Computers test account uses the existing access list.
+          {"name": "OPENAGENTS_WEB_AGENT_ACCOUNTS", "value": "acct_83d16a35955ef908"},
           {"name": "ENVIRONMENTS_MODEL", "value": "google/gemini-3.8-flash"},
           {"name": "BOAT_API_KEY",
            "valueFrom": {"secretKeyRef": {"name": "oa-boat-api-key", "key": "latest"}}},
