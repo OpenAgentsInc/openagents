@@ -274,7 +274,7 @@ async fn public_openapi_includes_app_auth_and_keeps_gateway_operations() {
     let upstream = Router::new().route(
         "/openapi.json",
         axum::routing::get(|| async {
-            axum::Json(json!({"openapi":"3.1.0", "paths":{"/v1/models":{"get":{}}}}))
+            axum::Json(json!({"openapi":"3.1.0", "paths":{"/v1/models":{"get":{"operationId":"listModels"}}}}))
         }),
     );
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();

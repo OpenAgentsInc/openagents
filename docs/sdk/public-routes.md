@@ -96,6 +96,13 @@ concurrency limits, long-operation cancellation, retry identity, money effects,
 and the Coder 1.0 aliases. Computers commands/files keep their independent issue
 sequence; unrelated coverage is not a prerequisite for the first SDK client.
 
+Incremental follow-ups are [#11857](https://github.com/OpenAgentsInc/openagents/issues/11857)
+for project/thread/file/sign-in-key contracts and
+[#11858](https://github.com/OpenAgentsInc/openagents/issues/11858) for the
+verified public System One slice and discovery links. Separately served voice,
+payments, legacy services, and configured work surfaces retain the coverage gaps
+listed above; they need their owners' contracts before client generation.
+
 ## Composition and manual checks
 
 The gateway keeps its existing schema generator. The web front normalizes its
