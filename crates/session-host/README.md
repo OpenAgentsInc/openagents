@@ -74,6 +74,13 @@ unknown, including an idle session. Pending interactions become unknown when
 observation is lost, and cancelled on known terminal completion; their current
 signed records reflect those changes.
 
+Known admission refusals after charged intake return bounded, saved CJ failures.
+Each request keeps its own signed control reply, including native duplicates.
+A refusal does not claim another session's command ID or disclose its state;
+its cache still requires the caller's current host membership. Uncertain
+effects keep their original holds. Recovery can use a native pending reply only
+when its full input fingerprint matches the original request.
+
 Adapter and feature operations pin complete CAP definitions, including input
 and output schemas, the engine and protocol identities, and the binding's
 actual effects. Each adapter has distinct operation IDs. Opening schemas pin

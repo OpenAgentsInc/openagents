@@ -2,7 +2,7 @@
 use nostr::{domain::Event, execution};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -14,6 +14,10 @@ pub(crate) struct Transport {
     pub(crate) inputs: BTreeMap<String, Value>,
     #[serde(default)]
     pub(crate) until: BTreeMap<String, u64>,
+    #[serde(default)]
+    pub(crate) outcomes: BTreeMap<String, Value>,
+    #[serde(default)]
+    pub(crate) denied: BTreeSet<String>,
 }
 
 pub(crate) struct Target {
@@ -124,7 +128,7 @@ impl crate::host::SessionHost {
                     if observe && !expired {
                         self.cj_observe(state, event, execute, key, &input, now)?
                     } else {
-                        self.cj_progress(state, &input, &opened.principal, false, now)?
+                        self.cj_progress(state, &input, &opened.principal, key, false, now)?
                     }
                 }
                 None => return Err(
@@ -339,22 +343,15 @@ impl crate::host::SessionHost {
             files: BTreeMap::new(),
             inputs: BTreeMap::new(),
             until: BTreeMap::new(),
+            outcomes: BTreeMap::new(),
+            denied: BTreeSet::new(),
         });
         let key = state.transport.as_ref().ok_or("transport")?.service.key(
             &opened.principal,
             &execute.request,
             execute.attempt,
         );
-        self.cj_reader(
-            &state,
-            &opened.principal,
-            state
-                .transport
-                .as_ref()
-                .ok_or("transport")?
-                .inputs
-                .get(&key),
-        )?;
+        self.cj_reply_reader(&state, &opened.principal, &key)?;
         if let Some(claim) = state
             .transport
             .as_ref()
@@ -478,7 +475,7 @@ impl crate::host::SessionHost {
         {
             return Err("idempotency_conflict: runtime observation differs or expired".into());
         }
-        self.cj_reader(&state, &opened.principal, book.inputs.get(&key))?;
+        self.cj_reply_reader(&state, &opened.principal, &key)?;
         if let Some(reply) = book.replies.get(&key) {
             return self.cj_cached(&state, &key, reply);
         }

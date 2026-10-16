@@ -544,8 +544,14 @@ impl SessionHost {
                         if progress.is_some() {
                             return Err("unknown: observation callback cannot repeat".into());
                         }
-                        progress =
-                            Some(self.cj_progress(state, input, &event.pubkey, true, current)?);
+                        progress = Some(self.cj_progress(
+                            state,
+                            input,
+                            &event.pubkey,
+                            key,
+                            true,
+                            current,
+                        )?);
                         Ok(Value::Null)
                     })
             }
@@ -553,7 +559,7 @@ impl SessionHost {
         };
         if result.is_err() {
             self.cj_stop(state, input, now, "policy")?;
-            return self.cj_progress(state, input, &event.pubkey, false, now);
+            return self.cj_progress(state, input, &event.pubkey, key, false, now);
         }
         progress.ok_or("unknown: observation was not acknowledged".into())
     }
@@ -3676,6 +3682,40 @@ impl SessionHost {
         Ok(())
     }
 
+    pub(crate) fn cj_reply_reader(&self, state: &State, actor: &str, key: &str) -> Result<()> {
+        let book = state.transport.as_ref().ok_or("transport")?;
+        self.cj_reader(
+            state,
+            actor,
+            if book.denied.contains(key) {
+                None
+            } else {
+                book.inputs.get(key)
+            },
+        )
+    }
+
+    fn cj_outcome(
+        &self,
+        state: &mut State,
+        key: &str,
+        actor: &str,
+        value: Value,
+        now: u64,
+    ) -> Result<Value> {
+        // A duplicate domain reply also gets its own signed, shared body;
+        // it cannot borrow another invocation's output by command ID alone.
+        self.sign(state, &value, actor, now)?;
+        state
+            .transport
+            .as_mut()
+            .ok_or("transport")?
+            .outcomes
+            .insert(key.into(), value.clone());
+        self.save(state)?;
+        Ok(value)
+    }
+
     pub(crate) fn dispatch_cj(
         &self,
         state: State,
@@ -3719,31 +3759,6 @@ impl SessionHost {
                 let reference = execute.payload["input"]["artifact"].clone();
                 let bytes = &admitted.1[digest_of(&reference)];
                 let body = contracts::parse_strict_bounded(bytes, 1_048_576).map_err(contract)?;
-                validate_against(&self.store.get(&target.input)?, &body)?;
-                match body["v"].as_str() {
-                    Some("openagents.session-open.v1") if body["adapter"] == target.adapter => {}
-                    Some("openagents.session-command.v1") => {
-                        let session = state
-                            .sessions
-                            .get(body["scope"]["session"].as_str().ok_or("session")?)
-                            .ok_or("not_admitted: unknown session")?;
-                        let adapter = if body["action"] == "replace_runtime" {
-                            &body["payload"]["adapter"]
-                        } else {
-                            &state.adapters[&session.adapter].reference
-                        };
-                        if *adapter != target.adapter
-                            || matches!(body["action"].as_str(), Some("steer" | "interrupt"))
-                        {
-                            return Err("not_admitted: session operation or adapter differs".into());
-                        }
-                    }
-                    _ => {
-                        return Err(
-                            "unsupported_feature: session operation needs another endpoint".into(),
-                        );
-                    }
-                }
                 self.store
                     .put(bytes, "application/json", reference["schema"].as_str())?;
                 self.remember(&mut state, &opened.principal, &reference)?;
@@ -3774,9 +3789,64 @@ impl SessionHost {
                     .ok_or("transport")?
                     .inputs
                     .insert(key.into(), reference.clone());
-                self.cj_reader(&state, &opened.principal, Some(&reference))?;
+                let preflight = (|| -> Result<()> {
+                    validate_against(&self.store.get(&target.input)?, &body)?;
+                    match body["v"].as_str() {
+                        Some("openagents.session-open.v1") if body["adapter"] == target.adapter => {
+                        }
+                        Some("openagents.session-command.v1") => {
+                            let session = state
+                                .sessions
+                                .get(body["scope"]["session"].as_str().ok_or("session")?)
+                                .ok_or("not_admitted: unknown session")?;
+                            let adapter = if body["action"] == "replace_runtime" {
+                                &body["payload"]["adapter"]
+                            } else {
+                                &state.adapters[&session.adapter].reference
+                            };
+                            if *adapter != target.adapter
+                                || matches!(body["action"].as_str(), Some("steer" | "interrupt"))
+                            {
+                                return Err(
+                                    "not_admitted: session operation or adapter differs".into()
+                                );
+                            }
+                        }
+                        _ => {
+                            return Err(
+                                "unsupported_feature: session operation needs another endpoint"
+                                    .into(),
+                            );
+                        }
+                    }
+                    self.cj_reader(&state, &opened.principal, Some(&reference))
+                })();
+                if let Err(error) = preflight {
+                    let reason = code(&error);
+                    let status = if reason == "conflict" {
+                        "conflict"
+                    } else {
+                        "refused"
+                    };
+                    let value = self.control_result(
+                        &mut state,
+                        &opened.principal,
+                        &reference,
+                        status,
+                        None,
+                        Some(reason),
+                        current,
+                    )?;
+                    state
+                        .transport
+                        .as_mut()
+                        .ok_or("transport")?
+                        .denied
+                        .insert(key.into());
+                    return self.cj_outcome(&mut state, key, &opened.principal, value, current);
+                }
                 self.save(&state)?;
-                self.submit_authenticated(
+                let value = self.submit_authenticated(
                     state,
                     opened.principal.clone(),
                     body,
@@ -3785,7 +3855,9 @@ impl SessionHost {
                     current,
                     Some(fence),
                     None,
-                )
+                )?;
+                let mut state = self.state()?;
+                self.cj_outcome(&mut state, key, &opened.principal, value, current)
             })
     }
 }
@@ -3796,10 +3868,20 @@ impl SessionHost {
         state: &mut State,
         input: &Value,
         actor: &str,
+        key: &str,
         observe: bool,
         now: u64,
     ) -> Result<crate::transport::JobProgress> {
-        self.cj_reader(state, actor, Some(input))?;
+        self.cj_reply_reader(state, actor, key)?;
+        let book = state.transport.as_ref().ok_or("transport")?;
+        if book.denied.contains(key) {
+            return self.cj_control_progress(
+                book.outcomes
+                    .get(key)
+                    .cloned()
+                    .ok_or("unknown: refusal was not acknowledged")?,
+            );
+        }
         let body = self.store.json(input)?;
         let command_key = if body["v"] == "openagents.session-open.v1" {
             format!(
@@ -3873,11 +3955,25 @@ impl SessionHost {
             }
             return Ok(crate::transport::JobProgress::Pending);
         }
-        let prior = state
-            .priors
-            .get(&command_key)
+        let value = state
+            .transport
+            .as_ref()
+            .ok_or("transport")?
+            .outcomes
+            .get(key)
+            .cloned()
+            .or_else(|| {
+                state
+                    .priors
+                    .get(&command_key)
+                    .filter(|p| p.fingerprint == digest_of(input))
+                    .map(|p| p.result.clone())
+            })
             .ok_or("unknown: domain admission was not acknowledged")?;
-        let value = prior.result.clone();
+        self.cj_control_progress(value)
+    }
+
+    fn cj_control_progress(&self, value: Value) -> Result<crate::transport::JobProgress> {
         let outcome = match value["status"].as_str() {
             Some("accepted" | "duplicate") => "completed",
             Some("refused" | "conflict") => "failed",

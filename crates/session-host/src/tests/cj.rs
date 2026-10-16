@@ -1148,3 +1148,108 @@ fn cj_replacement_uses_a_fresh_claim_and_later_turns_use_the_new_generation() {
         .count();
     assert_eq!(opens, 2);
 }
+
+#[test]
+fn known_cj_admission_refusals_are_terminal_and_stable_after_restart() {
+    for scope_denied in [false, true] {
+        let mut r = Real::new();
+        let host = r.host(LoopEngine::mid_turn());
+        let opening = r.opened(&host);
+        let mut command = r.submit_command(&host, &opening, 1);
+        if scope_denied {
+            command["scope"]["generation"] = json!(7);
+        } else {
+            // Its JSON shape passes the CAP's alternatives, but the native
+            // semantic check refuses an archive carrying a submit payload.
+            command["action"] = json!("archive");
+        }
+        let (event, binding) = r.job(&command);
+        let result = host
+            .serve(&event, &r.fx.artifacts, &binding, r.fx.now)
+            .unwrap();
+        assert_eq!(result.0.kind, execution::RESULT_KIND);
+        let recorded = r
+            .coordinator
+            .record_result(&result.0, &result.1, r.fx.now)
+            .unwrap();
+        assert_eq!(recorded["outcome"], "failed");
+        assert_eq!(host.started("loop-mid-turn"), 0);
+        assert_eq!(r.coordinator.scope(&r.scope).unwrap()["calls"], 2);
+        assert_eq!(
+            host.serve(&event, &r.fx.artifacts, &binding, r.fx.now)
+                .unwrap(),
+            result
+        );
+        drop(host);
+        let host = r.host(LoopEngine::mid_turn());
+        assert_eq!(host.poll(&event, r.fx.now).unwrap(), result);
+        assert_eq!(host.started("loop-mid-turn"), 0);
+    }
+}
+
+#[test]
+fn a_new_cj_attempt_can_return_a_native_duplicate_without_another_opening() {
+    let mut r = Real::new();
+    let host = r.host(LoopEngine::mid_turn());
+    let opening = r.opened(&host);
+    let (event, binding) = r.job(&opening);
+    let result = host
+        .serve(&event, &r.fx.artifacts, &binding, r.fx.now)
+        .unwrap();
+    let recorded = r
+        .coordinator
+        .record_result(&result.0, &result.1, r.fx.now)
+        .unwrap();
+    assert_eq!(recorded["outcome"], "completed");
+    let control = result
+        .1
+        .values()
+        .filter_map(|bytes| serde_json::from_slice::<Value>(bytes).ok())
+        .find(|b| b["v"] == "openagents.session-control-result.v1")
+        .unwrap();
+    assert_eq!(control["status"], "duplicate");
+    assert_eq!(
+        host.serve(&event, &r.fx.artifacts, &binding, r.fx.now)
+            .unwrap(),
+        result
+    );
+    let history = host
+        .store()
+        .json(&host.status(opening["session"].as_str().unwrap()).unwrap()["history"])
+        .unwrap();
+    let opens = history["native"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|r| host.store().json(r).unwrap()["method"] == "session/open")
+        .count();
+    assert_eq!(opens, 1);
+    assert_eq!(r.coordinator.scope(&r.scope).unwrap()["calls"], 2);
+}
+
+#[test]
+fn a_denied_cj_open_has_a_private_bounded_refusal_without_native_creation() {
+    let mut r = Real::new();
+    let host = r.host(LoopEngine::mid_turn());
+    let mut opening = r.opening(&host);
+    opening["owner"] = json!(pk(STRANGER));
+    let (event, binding) = r.job(&opening);
+    let result = host
+        .serve(&event, &r.fx.artifacts, &binding, r.fx.now)
+        .unwrap();
+    assert_eq!(result.0.kind, execution::RESULT_KIND);
+    let recorded = r
+        .coordinator
+        .record_result(&result.0, &result.1, r.fx.now)
+        .unwrap();
+    assert_eq!(recorded["outcome"], "failed");
+    assert!(host.status(opening["session"].as_str().unwrap()).is_err());
+    assert_eq!(r.coordinator.scope(&r.scope).unwrap()["calls"], 1);
+    assert_eq!(host.poll(&event, r.fx.now).unwrap(), result);
+    host.set_policy(Policy::default()).unwrap();
+    assert!(
+        host.poll(&event, r.fx.now)
+            .unwrap_err()
+            .contains("not_admitted")
+    );
+}

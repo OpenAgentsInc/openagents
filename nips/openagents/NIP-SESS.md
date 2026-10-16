@@ -887,3 +887,12 @@ observation and cancelled on known terminal completion; their current signed
 records carry that state. An explicit acknowledged replacement may clear the
 current generation's protocol fault while retaining earlier fault evidence in
 native history and turn results.
+
+After charged intake, a known admission refusal produces a bounded retained CJ
+failure for that exact request. The host keeps each control outcome, including
+native duplicates, under its own invocation identity and signs the returned
+body. A denied request neither reserves another session's command identity nor
+discloses its state. Its cached refusal still checks current host membership.
+Recovery may use a native prior reply only when its full input fingerprint
+matches; command ID equality alone cannot substitute a different result.
+Uncertain native effects remain unknown and keep their accounting holds.
