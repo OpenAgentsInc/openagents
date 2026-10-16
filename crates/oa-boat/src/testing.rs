@@ -250,8 +250,11 @@ impl Compute for Fake {
         );
         Ok(())
     }
-    async fn delete_image(&self, name: &str) -> Result<()> {
-        self.0.lock().unwrap().images.remove(name);
+    async fn delete_image(&self, name: &str, id: &str) -> Result<()> {
+        let mut world = self.0.lock().unwrap();
+        if world.images.get(name).is_some_and(|image| image.id == id) {
+            world.images.remove(name);
+        }
         Ok(())
     }
     async fn snapshot_disk(&self, _zone: &str, disk: &str, snapshot: &str) -> Result<()> {

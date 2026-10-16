@@ -7,7 +7,7 @@
 //! until five minutes before they expire and never logged.
 
 use serde_json::{Value, json};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::future::Future;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -212,7 +212,8 @@ pub trait Compute: Send + Sync + 'static {
     ) -> impl Future<Output = Result<Vec<Image>>> + Send;
     /// Start an image insert; returns once GCE accepted it.
     fn insert_image(&self, body: Value) -> impl Future<Output = Result<()>> + Send;
-    fn delete_image(&self, name: &str) -> impl Future<Output = Result<()>> + Send;
+    /// Delete only this image ID, and confirm that it is gone.
+    fn delete_image(&self, name: &str, id: &str) -> impl Future<Output = Result<()>> + Send;
     /// Snapshot a disk and wait until the snapshot is ready.
     fn snapshot_disk(
         &self,
@@ -234,12 +235,15 @@ pub enum TokenSource {
 #[derive(Clone)]
 pub struct Rest {
     http: reqwest::Client,
+    api: String,
     project: String,
     source: TokenSource,
     token: Arc<Mutex<Option<(String, Instant)>>>,
 }
 
 const API: &str = "https://compute.googleapis.com/compute/v1";
+const IMAGE_PAGES: usize = 100;
+const IMAGE_ITEMS: usize = 50_000;
 
 impl Rest {
     pub fn new(project: impl Into<String>, source: TokenSource) -> Self {
@@ -250,6 +254,7 @@ impl Rest {
                 .timeout(Duration::from_secs(200))
                 .build()
                 .expect("http client"),
+            api: API.into(),
             project: project.into(),
             source,
             token: Arc::new(Mutex::new(None)),
@@ -362,11 +367,174 @@ impl Rest {
     }
 
     fn zone_url(&self, zone: &str, rest: &str) -> String {
-        format!("{API}/projects/{}/zones/{zone}/{rest}", self.project)
+        format!("{}/projects/{}/zones/{zone}/{rest}", self.api, self.project)
     }
     fn global_url(&self, rest: &str) -> String {
-        format!("{API}/projects/{}/global/{rest}", self.project)
+        format!("{}/projects/{}/global/{rest}", self.api, self.project)
     }
+
+    async fn image_pages(
+        &self,
+        label: &str,
+        value: &str,
+        pages: usize,
+        items: usize,
+    ) -> Result<Vec<Image>> {
+        let invalid = || GceError::new(502, "image_inventory", "image listing is incomplete");
+        let mut out = Vec::new();
+        let mut page = String::new();
+        let mut tokens = HashSet::new();
+        let mut ids = HashSet::new();
+        let mut names = HashSet::new();
+        for _ in 0..pages {
+            let mut url = reqwest::Url::parse(&self.global_url("images")).expect("url");
+            url.query_pairs_mut()
+                .append_pair("filter", &filter(label, value))
+                .append_pair("maxResults", "500");
+            if !page.is_empty() {
+                url.query_pairs_mut().append_pair("pageToken", &page);
+            }
+            let v = self.call(reqwest::Method::GET, url.as_str(), None).await?;
+            let object = v.as_object().ok_or_else(invalid)?;
+            let entries = match object.get("items") {
+                None => &[][..],
+                Some(v) => v.as_array().ok_or_else(invalid)?.as_slice(),
+            };
+            if let Some(warning) = object.get("warning")
+                && (warning.get("code").and_then(Value::as_str) != Some("NO_RESULTS_ON_PAGE")
+                    || !entries.is_empty())
+            {
+                return Err(invalid());
+            }
+            for entry in entries {
+                let image = Image::from_json(entry);
+                if out.len() >= items
+                    || !image_name(&image.name)
+                    || !image_id(&image.id)
+                    || image.labels.get(label).map(String::as_str) != Some(value)
+                    || !ids.insert(image.id.clone())
+                    || !names.insert(image.name.clone())
+                {
+                    return Err(invalid());
+                }
+                out.push(image);
+            }
+            page = match object.get("nextPageToken") {
+                None => String::new(),
+                Some(v) => v.as_str().ok_or_else(invalid)?.to_owned(),
+            };
+            if page.is_empty() {
+                return Ok(out);
+            }
+            if page.len() > 4096 || !tokens.insert(page.clone()) {
+                return Err(invalid());
+            }
+        }
+        Err(invalid())
+    }
+
+    async fn image_present(&self, name: &str, id: &str) -> Result<bool> {
+        let v = match self
+            .call(
+                reqwest::Method::GET,
+                &self.global_url(&format!("images/{name}")),
+                None,
+            )
+            .await
+        {
+            Ok(v) => v,
+            Err(e) if e.status == 404 => return Ok(false),
+            Err(e) => return Err(e),
+        };
+        let image = Image::from_json(&v);
+        if image.name != name || !image_id(&image.id) {
+            return Err(GceError::new(
+                502,
+                "image_identity",
+                "the image response has no valid identity",
+            ));
+        }
+        Ok(image.id == id)
+    }
+
+    async fn delete_image_wait(
+        &self,
+        name: &str,
+        id: &str,
+        limit: Duration,
+        poll: Duration,
+    ) -> Result<()> {
+        if !image_name(name) || !image_id(id) {
+            return Err(GceError::new(
+                409,
+                "image_identity",
+                "a valid image name and ID are required",
+            ));
+        }
+        let unknown = || {
+            GceError::new(
+                504,
+                "image_delete_unknown",
+                "image deletion could not be confirmed",
+            )
+        };
+        tokio::time::timeout(limit, async {
+            if !self.image_present(name, id).await? {
+                return Ok(());
+            }
+            let url = self.global_url(&format!("images/{id}"));
+            match self.call(reqwest::Method::GET, &url, None).await {
+                Ok(v)
+                    if v.get("id").and_then(Value::as_str) == Some(id)
+                        && v.get("name").and_then(Value::as_str) == Some(name) => {}
+                Err(e) if e.status == 404 => {
+                    return if self.image_present(name, id).await? {
+                        Err(unknown())
+                    } else {
+                        Ok(())
+                    };
+                }
+                Err(e) => return Err(e),
+                Ok(_) => return Err(unknown()),
+            }
+            // Numeric IDs cannot be image names. Never fall back to deleting
+            // by name: another image might now have that name.
+            match self.call(reqwest::Method::DELETE, &url, None).await {
+                Ok(_) => {}
+                Err(e) if e.status == 404 => {
+                    return if self.image_present(name, id).await? {
+                        Err(unknown())
+                    } else {
+                        Ok(())
+                    };
+                }
+                Err(e) => return Err(e),
+            }
+            loop {
+                if !self.image_present(name, id).await? {
+                    return Ok(());
+                }
+                tokio::time::sleep(poll).await;
+            }
+        })
+        .await
+        .map_err(|_| unknown())?
+    }
+}
+
+fn image_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= 63
+        && name.as_bytes()[0].is_ascii_lowercase()
+        && name.as_bytes()[name.len() - 1].is_ascii_alphanumeric()
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+}
+
+pub(crate) fn image_id(id: &str) -> bool {
+    id.parse::<u64>()
+        .is_ok_and(|n| n != 0 && n.to_string() == id)
 }
 
 fn filter(label: &str, value: &str) -> String {
@@ -536,17 +704,8 @@ impl Compute for Rest {
     }
 
     async fn list_images(&self, label: &str, value: &str) -> Result<Vec<Image>> {
-        let mut url = reqwest::Url::parse(&self.global_url("images")).expect("url");
-        url.query_pairs_mut()
-            .append_pair("filter", &filter(label, value))
-            .append_pair("maxResults", "500");
-        let v = self.call(reqwest::Method::GET, url.as_str(), None).await?;
-        Ok(v.get("items")
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
-            .map(Image::from_json)
-            .collect())
+        self.image_pages(label, value, IMAGE_PAGES, IMAGE_ITEMS)
+            .await
     }
 
     async fn insert_image(&self, body: Value) -> Result<()> {
@@ -560,14 +719,9 @@ impl Compute for Rest {
         .map(|_| ())
     }
 
-    async fn delete_image(&self, name: &str) -> Result<()> {
-        self.call(
-            reqwest::Method::DELETE,
-            &self.global_url(&format!("images/{name}")),
-            None,
-        )
-        .await
-        .map(|_| ())
+    async fn delete_image(&self, name: &str, id: &str) -> Result<()> {
+        self.delete_image_wait(name, id, Duration::from_secs(180), Duration::from_secs(1))
+            .await
     }
 
     async fn snapshot_disk(&self, zone: &str, disk: &str, snapshot: &str) -> Result<()> {
@@ -597,3 +751,6 @@ impl Compute for Rest {
 
 mod environment;
 pub use environment::EnvironmentCompute;
+
+#[cfg(test)]
+mod tests;

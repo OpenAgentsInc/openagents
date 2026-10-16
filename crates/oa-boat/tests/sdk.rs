@@ -263,6 +263,10 @@ async fn a_sandbox_lives_its_whole_life_through_the_sdk() {
         .await
         .unwrap();
     assert_eq!(saved.snapshot.source_sandbox_id, id);
+    assert_eq!(
+        saved.snapshot.extra["providerImage"],
+        json!({"id":null,"source":"gce.images.id"})
+    );
     let got = c
         .get_named_snapshot(&GetNamedSnapshotParams {
             name: "oa-coder-main-20261010".into(),
@@ -405,6 +409,63 @@ async fn image_archive_bytes_stay_distinct_from_restored_content_and_disk_capaci
                 "bytes": observed, "source":"gce.images.archiveSizeBytes"
             })
         );
+    }
+}
+
+#[tokio::test]
+async fn named_snapshot_provider_ids_cover_all_image_states() {
+    let r = rig(|_| {}).await;
+    let cases = [
+        ("ready-id", "READY", "1", Some("1")),
+        (
+            "pending-id",
+            "PENDING",
+            "18446744073709551615",
+            Some("18446744073709551615"),
+        ),
+        ("failed-id", "FAILED", "3", Some("3")),
+        ("deleting-id", "DELETING", "4", Some("4")),
+        ("missing-id", "PENDING", "", None),
+        ("invalid-id", "FAILED", "01", None),
+        ("overflow-id", "FAILED", "18446744073709551616", None),
+    ];
+    {
+        let mut world = r.fake.0.lock().unwrap();
+        for (name, status, id, _) in cases {
+            world.images.insert(
+                name.into(),
+                oa_boat::gce::Image {
+                    name: name.into(),
+                    id: id.into(),
+                    status: status.into(),
+                    labels: BTreeMap::from([(
+                        oa_boat::service::MANAGED.into(),
+                        oa_boat::service::MANAGED_TEMPLATE.into(),
+                    )]),
+                    ..Default::default()
+                },
+            );
+        }
+    }
+    let listed = r.client.list_named_snapshots().await.unwrap();
+    assert_eq!(listed.snapshots.len(), cases.len());
+    for (name, state, id, expected) in cases {
+        let got = r
+            .client
+            .get_named_snapshot(&GetNamedSnapshotParams {
+                name: name.into(),
+                ..Default::default()
+            })
+            .await
+            .unwrap()
+            .snapshot;
+        let listed = listed.snapshots.iter().find(|i| i.name == name).unwrap();
+        assert_eq!(
+            got.extra["providerImage"],
+            json!({"id": expected, "source":"gce.images.id"})
+        );
+        assert_eq!(listed.extra["providerImage"], got.extra["providerImage"]);
+        assert_eq!(got.snapshot_id.as_deref(), (state == "READY").then_some(id));
     }
 }
 

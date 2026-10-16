@@ -183,6 +183,18 @@ enum ArchiveSizeSource {
     GceImage,
 }
 
+#[derive(Serialize)]
+struct ProviderImage {
+    id: Option<String>,
+    source: ImageIdSource,
+}
+
+#[derive(Serialize)]
+enum ImageIdSource {
+    #[serde(rename = "gce.images.id")]
+    GceImage,
+}
+
 fn suffix_of(id: &str) -> Res<String> {
     let s = id
         .strip_prefix("bx_")
@@ -2187,6 +2199,13 @@ wc -c < "$d/err" 2>/dev/null || echo 0
         extra.insert("image".into(), json!(image.self_link));
         extra.insert("diskGb".into(), json!(image.disk_gb));
         extra.insert(
+            "providerImage".into(),
+            json!(ProviderImage {
+                id: crate::gce::image_id(&image.id).then(|| image.id.clone()),
+                source: ImageIdSource::GceImage,
+            }),
+        );
+        extra.insert(
             "providerArchiveSize".into(),
             json!(ProviderArchiveSize {
                 bytes: image.archive_bytes.and_then(|n| u64::try_from(n).ok()),
@@ -2311,6 +2330,13 @@ wc -c < "$d/err" 2>/dev/null || echo 0
                 source_sandbox_id: format!("bx_{suffix}"),
                 type_: Some(size.name.into()),
                 created_at: time::format(time::now()),
+                extra: BTreeMap::from([(
+                    "providerImage".into(),
+                    json!(ProviderImage {
+                        id: None,
+                        source: ImageIdSource::GceImage,
+                    }),
+                )]),
                 ..Default::default()
             },
             ..Default::default()
@@ -2318,8 +2344,17 @@ wc -c < "$d/err" 2>/dev/null || echo 0
     }
 
     pub async fn delete_named(&self, name: &str) -> Res<NamedSnapshotDeletedResponse> {
-        self.get_named(name).await?;
-        self.compute.delete_image(name).await.map_err(ApiErr::gce)?;
+        let image = self
+            .compute
+            .get_image(name)
+            .await
+            .map_err(ApiErr::gce)?
+            .filter(Self::ours)
+            .ok_or_else(|| ApiErr::not_found("The named snapshot"))?;
+        self.compute
+            .delete_image(name, &image.id)
+            .await
+            .map_err(ApiErr::gce)?;
         eprintln!("oa-boat: delete template {name}");
         Ok(NamedSnapshotDeletedResponse {
             ok: true,

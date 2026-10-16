@@ -53,6 +53,19 @@ one image archive, as defined in the [Google Cloud Image reference](https://docs
 Missing or invalid sizes stay `null`; an observed zero stays zero. Archive size
 does not establish total account storage or billed storage.
 
+Named snapshot listing follows every image page, up to 100 pages and 50,000
+images. A provider error, repeated page token, duplicate image ID or name, or
+malformed response fails the listing instead of returning part of it. The list
+does not provide an atomic storage total while images change.
+Every named snapshot state also includes `providerImage`, with nullable `id`
+and source `gce.images.id`. Known IDs are decimal strings, including values
+larger than signed 64-bit integers. Missing or invalid IDs stay `null`.
+
+Named snapshot deletion targets the image's numeric ID and waits up to 180
+seconds to observe that ID disappear from its name. An accepted delete request
+alone is not success. A timeout or failed lookup returns an error; an image
+created later with the same name is left alone.
+
 ## Sandboxes
 
 - **Sizes** (`crates/oa-boat/src/sizes.rs`), list prices in us-central1:
