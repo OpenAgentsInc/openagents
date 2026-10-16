@@ -396,7 +396,8 @@ ordinary chat can go to any Pylon.
 ### What changes in existing code
 
 - **`crates/nostr`**: NIP-ATT types and validators, a verifier for
-  Confidential Space PKI tokens, and later TDX, SEV-SNP and NVIDIA evidence.
+  Confidential Space PKI tokens, and later TDX, SEV-SNP and NVIDIA evidence
+  (client verification now in `crates/att-platforms`).
   The `openagents.attested.v1` feature for CJ and DEC, with the receipt
   fields.
 - **`crates/pylon`**: a `--attested` serve mode that only runs inside the
@@ -497,7 +498,7 @@ node is the first step, not a fleet.
 | P1 | Reproducible inference image (Psionic plus one open model), Rekor entry, `3202`/`30202` publishing, and two independent builders matching. | A second builder reproduces the digest. |
 | P2 | One spot `a3-highgpu-1g` Confidential Space node publishing `30203` and serving `openagents.attested.v1` decisions and chat. | **Canary test**: a sealed prompt's canary never appears in the gateway, relay or Cloud Logging. A debug-image node is refused by the client. |
 | P3 | Gateway pass-through, level-based routing, ciphertext-digest receipts, and web and app verification. | A vault Private turn end to end on production, with the receipt naming the measurement. |
-| P4 | Third-party `tee` Pylons (raw TDX, SEV-SNP and NVIDIA evidence), and a `hardened` level for Macs. | Level computed only from evidence. Each provider class shows the right label. |
+| P4 | Third-party `tee` Pylons (raw TDX, SEV-SNP and NVIDIA evidence), and a `hardened` level for Macs. | Level computed only from evidence. Each provider class shows the right label. Client verification of the three evidence types is in `crates/att-platforms` (#11745), tested on synthetic chains; the provider image that emits them and a live hardware run remain. |
 
 ## Sources
 

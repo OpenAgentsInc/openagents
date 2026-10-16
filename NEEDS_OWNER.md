@@ -1,3 +1,14 @@
+## Qualify raw TDX, SEV-SNP and NVIDIA attestation on real machines (#11745)
+
+Our verifier now checks raw Intel TDX quotes, AMD SEV-SNP reports and NVIDIA
+GPU results from NVIDIA's attestation service, but so far only against test
+certificates we made ourselves. To count them as real, rent one Intel TDX
+machine, one AMD SEV-SNP machine (Milan or Genoa) and one H100 in
+confidential-computing mode, take one report from each with our endpoint
+code as the nonce, and confirm the verifier accepts all three with the real
+vendor certificates and current revocation lists, and refuses a debug
+machine. See [the verifier guide](crates/att-platforms/README.md).
+
 ## Decide whether to ship the standing-job budget security fix (#11735)
 
 The source fix counts unmetered occurrences at their full reserved cost before
