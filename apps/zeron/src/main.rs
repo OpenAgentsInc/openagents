@@ -155,10 +155,13 @@ fn spawn_malloc_trimmer() {
 fn pin_coder_environment() {
     let data_dir = paths::data_dir();
     let ipc_port = ipc_port_from_env();
+    coder_account::desktop::set_startup_credential(std::env::var("CODER_DESKTOP_CREDENTIAL").ok());
     // SAFETY: called at the top of `main`, before any other thread exists.
     unsafe {
         std::env::set_var("ZERON_DATA_DIR", &data_dir);
         std::env::set_var("ZERON_IPC_PORT", ipc_port.to_string());
+        // Agent children must never inherit the app-account credential.
+        std::env::remove_var("CODER_DESKTOP_CREDENTIAL");
     }
 }
 
@@ -254,7 +257,9 @@ fn main() -> anyhow::Result<()> {
         Some(Command::Headless) => {
             let runtime = tokio::runtime::Runtime::new()?;
             runtime.block_on(async {
-                let engine = zeron_engine::Engine::new(engine_config_from_env());
+                let config = engine_config_from_env();
+                let _account = auth_cli::openagents_account(&config).await?;
+                let engine = zeron_engine::Engine::new(config);
                 engine.run().await
             })
         }

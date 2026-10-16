@@ -219,3 +219,44 @@ format only the Rust files changed here rather than rewriting the workspace.
 After upstream merges, retain the disabled WorkOS defaults and account/cache
 boundaries, regenerate UniFFI bindings, and rerun these account tests before
 advancing the server conformance pin.
+
+## Desktop-to-phone sync (#11849)
+
+- `coder-brand::HOSTED_EDGE_URL` defaults to `https://sync.openagents.com`.
+  WorkOS and the upstream updater stay disabled. A local engine joins no rooms
+  until the shared SDK controller supplies a verified account lease.
+- `coder-account::desktop` shares one controller with the embedded engine per
+  data directory. Normal desktop logins keep the same Keychain service as
+  #11824. An explicit `CODER_DESKTOP_CREDENTIAL` is authenticated by the SDK and
+  held in memory; the launcher removes it from the environment before threads
+  and agent processes start. Its logout marker is separate from saved logins.
+- `Auth` forwards SDK account changes and bearer authority to the existing sync
+  transports. A synced runtime captures its account ID and refuses a replacement
+  account's token. Slow verification does not block account-change events;
+  local startup waits at most 250 ms for an in-progress restore.
+- `EngineProfile::openagents` separates chats and uploads by account, account
+  deployment, and sync URL. It never claims upstream's global uploads. Existing
+  local-to-synced switching and the optional local-chat import remain in place.
+- `AppAccount` and `zeron login/logout/status/headless` use that controller.
+  Headless callers can supply a temporary credential through the environment;
+  no second plaintext session file is written. The old CLI test that treated a
+  WorkOS `session.json` as a login is replaced by SDK engine integration tests
+  for sign-out, revocation, and account replacement.
+- Mobile and desktop reuse the same cache-scope helper. The mobile credential
+  import uses the existing SDK storage/cancellation/logout lifecycle.
+- `account-fixture` in `zeron-mobile` adds a one-use loopback credential delivery
+  helper for simulator checks. It keeps account tokens out of Swift and Xcode
+  logs. Rust refuses this feature outside the simulator; the build script also
+  refuses release builds and detects a mismatched staged core. Normal committed
+  bindings exclude it. Swift enables its call only with
+  `CODER_ACCOUNT_FIXTURE`. The debug app's `-account-fixture` uses separate
+  account/cache, display-profile, device-ID, and draft preferences.
+- The mock harness accepts the typed boolean `modelOptions.mockQuestions` for
+  one run. The live fixture seeds only its first turn with questions; later
+  turns stream until stopped, avoiding a race between a second question and
+  queue controls.
+- `mobile_sync_fixture` owns a fresh headless process, scratch home/data, and
+  random IPC port. It checks listener ownership before IPC, refuses port 49777,
+  and removes only its own registry entries. `OpenAgentsLiveSyncTests` exercises
+  both deployed Rust services. The repeatable check and cleanup are in the
+  monorepo's `docs/mobile/coder-desktop-phone-e2e.md`.

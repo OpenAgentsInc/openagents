@@ -1,12 +1,7 @@
-//! `zeron login` / `zeron logout` / `zeron status` — the standalone auth surface.
-//!
-//! Sign-in used to live only inside `zeron headless`, coupling authentication to
-//! the long-running daemon. These commands work on the persisted session
-//! (`{data_dir}/session.json`) and exit, so a service-managed `zeron headless`
-//! only ever *loads* credentials. While an engine is running it owns the session
-//! (WorkOS refresh tokens are single-use and rotate on every refresh), so login
-//! and logout take the same data-dir lock the engine holds and refuse politely
-//! when it is busy.
+//! Standalone OpenAgents sign-in, sign-out, and account status.
+//! Commands share the desktop account controller and take the engine data lock
+//! before changing its credentials. Normal logins use the platform store;
+//! explicit launch credentials stay in memory.
 
 use std::io::IsTerminal;
 
@@ -76,89 +71,96 @@ fn account_status(scope: WorkspaceScope, auth: &AuthState) -> AccountStatus {
     }
 }
 
-/// `zeron login`: authenticate via the paste-code flow (and workspace
-/// onboarding), persist `session.json`, and exit.
+/// Authenticate through the shared OpenAgents device flow and platform store.
 pub async fn login(config: EngineConfig) -> anyhow::Result<()> {
     std::fs::create_dir_all(&config.data_dir)?;
     let _lock = engine_lock(&config, "sign in")?;
-    let auth = Engine::build_auth(&config).await;
-    if !auth.workos_enabled() {
-        println!("Auth is in dev mode (no WorkOS client id) — there is nothing to sign in to.");
-        return Ok(());
-    }
-    if let AuthState::SignedIn { user, org_id } = auth.state() {
-        println!(
-            "Already signed in as {}{}.",
-            user.email,
-            org_id
-                .map(|org| format!(" (workspace {org})"))
-                .unwrap_or_default()
-        );
-        println!("Run `zeron logout` first to switch accounts.");
-        println!("The next engine start will use the synced workspace.");
-        return Ok(());
-    }
-    if !std::io::stdin().is_terminal() {
-        anyhow::bail!("zeron login needs an interactive terminal");
-    }
-    zeron_engine::terminal_sign_in(&auth).await?;
-    match auth.state() {
-        AuthState::SignedIn { user, org_id } => {
-            println!(
-                "\nSigned in as {}{}.",
-                user.email,
-                org_id
-                    .map(|org| format!(" (workspace {org})"))
-                    .unwrap_or_default()
-            );
-            println!(
-                "Sync is ready. Start or restart Zeron to open the synced workspace; existing local sessions will stay local."
-            );
+    let (controller, credential) = coder_account::desktop::configured(&config.data_dir)?;
+    let temporary = credential.is_some();
+    if let Some(credential) = credential {
+        controller.import_credential(credential).await;
+    } else {
+        controller.restore().await;
+        if controller.lease().is_none() {
+            if !std::io::stdin().is_terminal() {
+                anyhow::bail!(
+                    "Run login in a terminal, or provide an OpenAgents credential through CODER_DESKTOP_CREDENTIAL."
+                );
+            }
+            let mut updates = controller.watch();
+            let operation = controller.sign_in("Coder Desktop".into());
+            tokio::pin!(operation);
+            loop {
+                tokio::select! {
+                    _ = &mut operation => break,
+                    changed = updates.changed() => {
+                        if changed.is_err() { break; }
+                        if let coder_account::Phase::Waiting { code, url } = &updates.borrow_and_update().phase {
+                            println!("Open {url} and approve code {code} for Coder Desktop.");
+                        }
+                    }
+                }
+            }
         }
-        // terminal_sign_in only returns Ok once signed in; keep an honest fallback.
-        _ => println!("Sign-in did not complete."),
+    }
+    match controller.snapshot().phase {
+        coder_account::Phase::SignedIn { account } => {
+            println!("Signed in as {}.", account.label);
+            if temporary {
+                println!(
+                    "Keep CODER_DESKTOP_CREDENTIAL set when starting Coder; this credential was not saved."
+                );
+            } else {
+                println!("Start Coder to sync new sessions; local sessions stay local.");
+            }
+        }
+        coder_account::Phase::Failed { message, .. } => anyhow::bail!("{message}"),
+        _ => anyhow::bail!("Sign-in did not complete."),
     }
     Ok(())
 }
 
-/// `zeron logout`: remove the persisted session.
+/// Restore a shared app account for a headless runtime. Explicit dev runs stay separate.
+pub async fn openagents_account(
+    config: &EngineConfig,
+) -> anyhow::Result<Option<std::sync::Arc<coder_account::Controller>>> {
+    if config.edge_token.is_some()
+        || config.org_id.is_some()
+        || std::env::var("ZERON_WORKSPACE_SCOPE").is_ok_and(|scope| scope == "development")
+    {
+        return Ok(None);
+    }
+    let (controller, credential) = coder_account::desktop::configured(&config.data_dir)?;
+    let explicit = credential.is_some();
+    if let Some(credential) = credential {
+        controller.import_credential(credential).await;
+    } else {
+        controller.restore().await;
+    }
+    if explicit && controller.lease().is_none() {
+        let message = match controller.snapshot().phase {
+            coder_account::Phase::Failed { message, .. } => message,
+            _ => "Couldn't sign in. Check the OpenAgents credential.".into(),
+        };
+        anyhow::bail!("{message}");
+    }
+    Ok(Some(controller))
+}
+
+/// Sign out of the shared OpenAgents account and clear its platform credential.
 pub async fn logout(config: EngineConfig) -> anyhow::Result<()> {
     std::fs::create_dir_all(&config.data_dir)?;
     let _lock = engine_lock(&config, "sign out")?;
-    let auth = Engine::build_auth(&config).await;
-    if !auth.workos_enabled() {
-        // Dev mode has no live session, but clear any stale session.json from a
-        // previous WorkOS-mode run so the next real run starts signed out.
-        auth.sign_out();
-        println!("Auth is in dev mode — cleared any stale saved session.");
-        println!("The next engine start will remain in development mode.");
-        return Ok(());
-    }
-    match auth.state() {
-        AuthState::SignedOut => {
-            // Also remove malformed or stale files that could not be loaded.
-            auth.sign_out();
-            println!("No valid saved session; cleared any stale session file.");
-        }
-        state => {
-            let email = state
-                .user()
-                .map(|u| u.email.clone())
-                .unwrap_or_else(|| "<unknown>".into());
-            auth.sign_out();
-            println!(
-                "Signed out {email} — removed {}.",
-                config.data_dir.join("session.json").display()
-            );
-        }
-    }
-    println!("The next engine start will use the local-only workspace.");
+    let (controller, _) = coder_account::desktop::configured(&config.data_dir)?;
+    controller.sign_out().await;
+    println!("Signed out. The next engine start opens your local workspace.");
     Ok(())
 }
 
 /// `zeron status`: report the fixed scope a new engine would select, optional
 /// auth, and engine liveness. Local-only is a healthy signed-out state.
 pub async fn status(config: EngineConfig) -> anyhow::Result<()> {
+    let _account = openagents_account(&config).await?;
     let auth = Engine::build_auth(&config).await;
     let next_scope = Engine::initial_workspace_scope(&auth);
     let scope = live_engine_scope(config.ipc_port)
@@ -282,31 +284,5 @@ mod tests {
             assert!(error.contains("while an engine is running"));
             assert!(error.contains("stop it first"));
         }
-    }
-
-    #[tokio::test]
-    async fn logout_makes_the_next_engine_start_local() {
-        let dir = tempfile::tempdir().unwrap();
-        let config = config(dir.path());
-        let session = dir.path().join("session.json");
-        std::fs::write(
-            &session,
-            r#"{"refreshToken":"refresh-1","user":{"id":"user-1","email":"user@example.com"},"orgId":"org-1"}"#,
-        )
-        .unwrap();
-        let before = Engine::build_auth(&config).await;
-        assert_eq!(
-            Engine::initial_workspace_scope(&before),
-            WorkspaceScope::Synced
-        );
-
-        logout(config.clone()).await.unwrap();
-
-        assert!(!session.exists());
-        let after = Engine::build_auth(&config).await;
-        assert_eq!(
-            Engine::initial_workspace_scope(&after),
-            WorkspaceScope::Local
-        );
     }
 }

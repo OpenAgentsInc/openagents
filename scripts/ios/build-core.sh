@@ -26,8 +26,23 @@ CARGO_OUT="${CARGO_TARGET_DIR:-$ROOT/target}"
 OUT="$ROOT/target/ios-core/$PLATFORM"
 mkdir -p "$OUT/include"
 
+CORE_FEATURES=()
+if [[ "${ZERON_ACCOUNT_FIXTURE:-}" == "1" ]]; then
+  if [[ "${CONFIGURATION:-Debug}" == "Release" || "$PLATFORM" != "iphonesimulator" ]]; then
+    echo "error: account fixture is only available in a debug simulator build" >&2
+    exit 1
+  fi
+  CORE_FEATURES=(--features account-fixture)
+fi
+
 # Iterating on Swift while the core is mid-edit: reuse the last good build.
 if [[ "${ZERON_SKIP_CORE:-}" == "1" && -f "$OUT/libzeron_mobile.a" ]]; then
+  expected=${ZERON_ACCOUNT_FIXTURE:-0}
+  staged=$(cat "$OUT/account-fixture" 2>/dev/null || echo 0)
+  if [[ "$expected" != "$staged" ]]; then
+    echo "error: rebuild the Rust core after changing the account fixture setting" >&2
+    exit 1
+  fi
   echo "note: ZERON_SKIP_CORE=1 — reusing $OUT/libzeron_mobile.a"
   exit 0
 fi
@@ -44,7 +59,7 @@ run_cargo() {
 }
 
 cd "$ROOT"
-run_cargo build --locked -p zeron-mobile --lib --profile "$PROFILE" --target "$TARGET"
+run_cargo build --locked -p zeron-mobile --lib --profile "$PROFILE" --target "$TARGET" ${CORE_FEATURES[@]+"${CORE_FEATURES[@]}"}
 run_cargo build --locked -p zeron-mobile --bin uniffi-bindgen --features bindgen --profile mobile
 
 LIB="$CARGO_OUT/$TARGET/$PROFILE/libzeron_mobile.a"
@@ -58,3 +73,5 @@ cp "$GEN/zeron_coreFFI.modulemap" "$OUT/include/module.modulemap"
 SWIFT_OUT="$ROOT/apps/ios/Zeron/Core/Generated/zeron_core.swift"
 mkdir -p "$(dirname "$SWIFT_OUT")"
 cmp -s "$GEN/zeron_core.swift" "$SWIFT_OUT" || cp "$GEN/zeron_core.swift" "$SWIFT_OUT"
+
+printf "%s\n" "${ZERON_ACCOUNT_FIXTURE:-0}" > "$OUT/account-fixture"

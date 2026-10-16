@@ -398,3 +398,28 @@ async fn revalidation_preserves_outages_but_clears_revocation() {
     ));
     assert!(store.record.lock().unwrap().is_none());
 }
+
+#[tokio::test]
+async fn explicit_credentials_use_the_same_storage_and_sign_out_lifecycle() {
+    let (controller, server, store, _root, _client) = setup().await;
+    let credential = format!("sess_{:064x}", 9001);
+    server.active.lock().unwrap().push(credential.clone());
+    controller.import_credential(credential).await;
+    assert!(controller.lease().is_some());
+    assert!(store.record.lock().unwrap().is_some());
+    controller.sign_out().await;
+    assert!(controller.lease().is_none());
+    assert!(store.record.lock().unwrap().is_none());
+    controller
+        .import_credential("not-a-credential".into())
+        .await;
+    assert!(controller.lease().is_none());
+    assert!(store.record.lock().unwrap().is_none());
+    assert!(matches!(
+        controller.snapshot().phase,
+        Phase::Failed {
+            can_restore: false,
+            ..
+        }
+    ));
+}

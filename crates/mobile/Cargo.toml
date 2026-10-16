@@ -18,11 +18,13 @@ path = "src/bin/uniffi-bindgen.rs"
 required-features = ["bindgen"]
 
 [features]
+# Dedicated loopback credential delivery for simulator acceptance tests only.
+account-fixture = ["dep:reqwest"]
 bindgen = ["uniffi/cli"]
 
 [dependencies]
 coder-account.workspace = true
-sha2.workspace = true
+reqwest = { workspace = true, optional = true }
 zeron-voice-session.workspace = true
 zeron-orb.workspace = true
 zeron-veil.workspace = true

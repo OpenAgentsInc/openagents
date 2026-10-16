@@ -1,29 +1,13 @@
-//! Auth — the engine owns the WorkOS session for its device (feature-inventory §3.7,
-//! ARCHITECTURE §5). Port of zeron's `apps/backend/src/auth.ts`.
-//!
-//! The engine is a public client: it builds the AuthKit authorize URL itself but
-//! delegates the secret-bearing **code exchange** and **refresh** to the edge Worker
-//! (`/auth/exchange`, `/auth/refresh` — the WorkOS API key lives only there).
-//!
-//! Two modes:
-//! - **Dev** (no WorkOS client id configured, or the edge reports `auth: "dev"`): always
-//!   signed in; the bearer IS the configured user id (current M2/M3 behavior).
-//! - **WorkOS**: authorization-code flow. Headed devices use a loopback callback server
-//!   on an ephemeral port; headless devices use the paste-code flow (the redirect is the
-//!   edge's hosted `/auth/cli/callback` page, which shows `state.code` to paste back via
-//!   stdin or the `CompleteSignIn` RPC). The refresh token is persisted 0600 in the data
-//!   dir; access tokens are cached with dual-clock expiry (monotonic AND wall, whichever
-//!   aged more — see [`AccessEntry`]) and refreshed on demand plus by a background loop,
-//!   so the device-room relay and room clients always dial with a live `?token=`, even
-//!   on the first redial after a laptop wakes from sleep. Org onboarding: an org-less session is `NeedsOrganization`; `SelectOrg`
-//!   runs an org-scoped refresh and the state follows the returned token's `org_id`.
+//! Engine authentication uses the app's shared OpenAgents account controller.
+//! Explicit developer credentials and upstream WorkOS compatibility remain below
+//! for protocol fixtures and upstream merges. WorkOS is disabled by default.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
 use std::time::{Duration, Instant};
 
-use futures::FutureExt;
+use futures::{FutureExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::watch;
@@ -276,6 +260,9 @@ struct SignInLifecycle {
 #[derive(Clone)]
 pub struct Auth {
     inner: Arc<AuthInner>,
+    account: Option<Arc<coder_account::Controller>>,
+    account_generation: Arc<Mutex<u64>>,
+    account_identity: Option<String>,
 }
 
 impl Auth {
@@ -320,6 +307,9 @@ impl Auth {
             .build()
             .unwrap_or_else(|_| reqwest::Client::new());
         Self {
+            account: None,
+            account_generation: Arc::default(),
+            account_identity: None,
             inner: Arc::new(AuthInner {
                 config,
                 workos,
@@ -336,6 +326,65 @@ impl Auth {
                 retry_tx,
                 loopback: tokio::sync::Mutex::new(None),
             }),
+        }
+    }
+
+    /// Adapt the shared SDK account without persisting a second session.
+    pub fn with_account(config: AuthConfig, account: Arc<coder_account::Controller>) -> Self {
+        let mut auth = Self::new(config);
+        auth.account_identity = account
+            .lease()
+            .map(|lease| lease.session().account().id.clone());
+        auth.account = Some(account);
+        auth.publish_account_state();
+        auth
+    }
+    pub fn account(&self) -> Option<&Arc<coder_account::Controller>> {
+        self.account.as_ref()
+    }
+    /// A synced runtime cannot adopt a different account's credential in place.
+    pub fn openagents_lease(&self) -> Option<coder_account::Lease> {
+        self.account.as_ref()?.lease().filter(|lease| {
+            self.account_identity
+                .as_ref()
+                .is_none_or(|id| id == &lease.session().account().id)
+        })
+    }
+    fn account_state(&self) -> AuthState {
+        self.openagents_lease()
+            .map(|lease| {
+                let account = lease.session().account();
+                AuthState::SignedIn {
+                    user: AuthUser {
+                        id: account.id.clone(),
+                        email: account.label.clone(),
+                        name: Some(account.label.clone()),
+                    },
+                    org_id: Some(account.id.clone()),
+                }
+            })
+            .unwrap_or(AuthState::SignedOut)
+    }
+    fn publish_account_state(&self) {
+        let Some(account) = &self.account else {
+            return;
+        };
+        let state = self.account_state();
+        let changed = self.inner.state_tx.send_if_modified(|previous| {
+            if *previous == state {
+                false
+            } else {
+                *previous = state;
+                true
+            }
+        });
+        let generation = account.snapshot().generation;
+        let mut previous = lock(&self.account_generation);
+        if changed || *previous != generation {
+            *previous = generation;
+            self.inner
+                .token_tx
+                .send_modify(|epoch| *epoch = epoch.wrapping_add(1));
         }
     }
 
@@ -395,6 +444,9 @@ impl Auth {
     }
 
     pub fn state(&self) -> AuthState {
+        if self.account.is_some() {
+            return self.account_state();
+        }
         self.inner.state_tx.borrow().clone()
     }
 
@@ -403,6 +455,9 @@ impl Auth {
     /// Dev mode mirrors the edge's dev-bearer parsing (`user@org` → `user`,
     /// a bare token IS the user id). `None` = signed out (WorkOS only).
     pub fn user_id(&self) -> Option<String> {
+        if self.account.is_some() {
+            return self.state().user().map(|user| user.id.clone());
+        }
         if self.inner.workos.is_none() {
             let dev = &self.inner.config.dev_user_id;
             return Some(dev.split('@').next().unwrap_or(dev).to_string());
@@ -415,6 +470,12 @@ impl Auth {
     /// Dev mode: the configured user id. WorkOS: cached access token, refreshed when
     /// it has under 30s left.
     pub async fn access_token(&self) -> Result<String, TokenError> {
+        if self.account.is_some() {
+            return self
+                .openagents_lease()
+                .map(|lease| lease.session().bearer_token().to_owned())
+                .ok_or(TokenError::SignedOut);
+        }
         if self.inner.workos.is_none() {
             return Ok(self.inner.config.dev_user_id.clone());
         }
@@ -458,6 +519,34 @@ impl Auth {
     pub fn spawn_refresh_loop(&self) -> tokio::task::JoinHandle<()> {
         let auth = self.clone();
         tokio::spawn(async move {
+            if let Some(account) = &auth.account {
+                let mut updates = account.watch();
+                let mut timer = tokio::time::interval(Duration::from_secs(1));
+                let mut checked = Instant::now();
+                let mut checks = futures::stream::FuturesUnordered::new();
+                loop {
+                    tokio::select! {
+                        changed = updates.changed() => {
+                            if changed.is_err() { return; }
+                            auth.publish_account_state();
+                        }
+                        _ = checks.next(), if !checks.is_empty() => {
+                            auth.publish_account_state();
+                        }
+                        _ = timer.tick() => {
+                            auth.publish_account_state();
+                            if matches!(account.snapshot().phase, coder_account::Phase::SignedIn { .. })
+                                && (account.lease().is_none() || checked.elapsed() >= Duration::from_secs(15))
+                                && checks.is_empty()
+                            {
+                                checked = Instant::now();
+                                // Keep sign-out/switch events responsive during a slow account request.
+                                checks.push(account.clone().revalidate().boxed());
+                            }
+                        }
+                    }
+                }
+            }
             if auth.inner.workos.is_none() {
                 return;
             }
@@ -565,6 +654,11 @@ impl Auth {
     }
 
     pub fn sign_out(&self) {
+        if let Some(account) = &self.account {
+            tokio::spawn(account.sign_out());
+            self.publish_account_state();
+            return;
+        }
         let mut sign_in = lock(&self.inner.sign_in);
         self.clear_session(&mut sign_in);
     }
@@ -1101,7 +1195,17 @@ async fn loopback_loop(listener: tokio::net::TcpListener, inner: Weak<AuthInner>
         };
         let Some(inner) = inner.upgrade() else { break };
         tokio::spawn(async move {
-            if let Err(err) = handle_loopback_conn(stream, Auth { inner }).await {
+            if let Err(err) = handle_loopback_conn(
+                stream,
+                Auth {
+                    inner,
+                    account: None,
+                    account_generation: Arc::default(),
+                    account_identity: None,
+                },
+            )
+            .await
+            {
                 tracing::debug!(error = %err, "auth: callback connection failed");
             }
         });

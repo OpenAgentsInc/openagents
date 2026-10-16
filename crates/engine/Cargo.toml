@@ -10,6 +10,7 @@ publish.workspace = true
 upstream-workos = []
 
 [dependencies]
+coder-account.workspace = true
 coder-brand.workspace = true
 zeron-preview.workspace = true
 zeron-proto.workspace = true
@@ -51,6 +52,7 @@ dunce = "1"
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_Console", "Win32_System_Pipes", "Win32_System_Threading"] }
 
 [dev-dependencies]
+axum = "0.8"
 tracing-subscriber.workspace = true
 zeron-mcp.workspace = true
 zeron-harness = { workspace = true, features = ["installer-fixture"] }

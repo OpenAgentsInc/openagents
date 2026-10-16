@@ -100,7 +100,7 @@ impl Harness for MockHarness {
 
     async fn run(
         &self,
-        _request: RunRequest,
+        request: RunRequest,
         controls: RunControls,
     ) -> Result<BoxStream<'static, Result<AgentEvent, HarnessError>>, HarnessError> {
         // Optional pacing knob for demos/manual testing: `ZERON_MOCK_DELAY_MS`
@@ -118,9 +118,14 @@ impl Harness for MockHarness {
         // engine mints the request id, emits `InputRequested`, and resolves it
         // from the `RespondInput` doc command) — the only data-side way to put
         // the QuestionPanel on screen.
-        let question_mode = std::env::var("ZERON_MOCK_QUESTION")
-            .ok()
-            .is_some_and(|v| !v.is_empty() && v != "0");
+        let question_mode = request
+            .model_options
+            .get("mockQuestions")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false)
+            || std::env::var("ZERON_MOCK_QUESTION")
+                .ok()
+                .is_some_and(|v| !v.is_empty() && v != "0");
         if question_mode {
             let request_input = controls.request_input;
             let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<AgentEvent>();
@@ -648,5 +653,86 @@ impl Harness for MockHarness {
                 event
             })
             .boxed())
+    }
+}
+
+#[cfg(test)]
+mod fixture_tests {
+    use super::*;
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+    fn request(questions: bool) -> RunRequest {
+        RunRequest {
+            prompt: "Fixture input".into(),
+            harness: Some(HarnessId::Mock),
+            model: None,
+            reasoning: None,
+            model_options: if questions {
+                serde_json::from_value(serde_json::json!({"mockQuestions":true})).unwrap()
+            } else {
+                Default::default()
+            },
+            cwd: ".".into(),
+            sandbox: zeron_proto::SandboxLevel::WorkspaceWrite,
+            auto_approve: false,
+            resume: None,
+            attachments: vec![],
+            worktree: None,
+            mcp: None,
+        }
+    }
+    fn controls(calls: Arc<AtomicUsize>) -> RunControls {
+        let (_, steering) = tokio::sync::mpsc::channel(1);
+        RunControls {
+            realtime: None,
+            execution_lease: None,
+            request_input: Box::new(move |questions| {
+                assert_eq!(questions.len(), 2);
+                calls.fetch_add(1, Ordering::SeqCst);
+                let (tx, rx) = tokio::sync::oneshot::channel();
+                let _ = tx.send(vec![]);
+                rx
+            }),
+            steering,
+            interrupt: tokio_util::sync::CancellationToken::new(),
+            turn: Default::default(),
+        }
+    }
+    #[tokio::test]
+    async fn a_question_fixture_does_not_change_the_following_normal_turn() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let harness = MockHarness {
+            script: vec![
+                AgentEvent::TextDelta {
+                    text: "Normal stream".into(),
+                },
+                AgentEvent::Done {
+                    status: DoneStatus::Completed,
+                    result: None,
+                    error: None,
+                    session_id: None,
+                },
+            ],
+        };
+        let first = harness
+            .run(request(true), controls(calls.clone()))
+            .await
+            .unwrap()
+            .collect::<Vec<_>>()
+            .await;
+        assert!(first.iter().any(
+            |event| matches!(event,Ok(AgentEvent::TextDelta{text}) if text.contains("Locked in:"))
+        ));
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        let second = harness
+            .run(request(false), controls(calls.clone()))
+            .await
+            .unwrap()
+            .collect::<Vec<_>>()
+            .await;
+        assert!(matches!(&second[0],Ok(AgentEvent::TextDelta{text}) if text=="Normal stream"));
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
     }
 }

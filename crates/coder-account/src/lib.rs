@@ -11,6 +11,7 @@ use std::{
     sync::{Arc, Mutex, Weak},
 };
 use tokio::sync::watch;
+pub mod desktop;
 pub mod history;
 mod platform;
 pub mod reader;
@@ -347,6 +348,49 @@ impl Controller {
                 return;
             }
         };
+        self.accept_session(t, session).await;
+    }
+    /// Import a caller-provided credential through the public SDK. No local token decoding.
+    pub fn import_credential(
+        self: &Arc<Self>,
+        credential: String,
+    ) -> impl Future<Output = ()> + Send + 'static {
+        let this = self.clone();
+        let ticket = self.begin(Phase::Starting);
+        async move {
+            if let Some(previous) = this.saved_for_sign_out(&ticket).await {
+                let _ = this.client.sign_out_record(&previous).await;
+            }
+            if this.forget(&ticket).await.is_err() {
+                this.publish(
+                    &ticket,
+                    Phase::Failed {
+                        message:
+                            "Couldn't remove the saved login. Unlock your device and try again."
+                                .into(),
+                        can_restore: false,
+                    },
+                    None,
+                );
+                return;
+            }
+            match cancelled(&ticket.cancel, this.client.authenticate(&credential)).await {
+                Ok(session) => this.accept_session(ticket, session).await,
+                Err(Error::Cancelled) => {}
+                Err(error) => {
+                    this.publish(
+                        &ticket,
+                        Phase::Failed {
+                            message: error.to_string(),
+                            can_restore: false,
+                        },
+                        None,
+                    );
+                }
+            }
+        }
+    }
+    async fn accept_session(&self, t: Ticket, session: Session) {
         // Keep the issued credential recoverable even if account discovery is offline.
         let saved = self.save(&t, session.record()).await;
         if !matches!(saved, Ok(true)) {

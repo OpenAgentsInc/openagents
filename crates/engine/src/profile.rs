@@ -27,6 +27,7 @@ pub struct EngineProfile {
     uploads_root: PathBuf,
     org_id: String,
     user_id: String,
+    legacy_import: bool,
 }
 
 impl EngineProfile {
@@ -35,6 +36,7 @@ impl EngineProfile {
         let profile_id = load_or_create_local_profile_id(data_dir)?;
         let store_root = data_dir.join("profiles").join("local");
         Ok(Self {
+            legacy_import: false,
             scope: WorkspaceScope::Local,
             device_root: data_dir.to_path_buf(),
             uploads_root: store_root.join("uploads"),
@@ -60,12 +62,27 @@ impl EngineProfile {
             .join(sanitize_path_id(org_id))
             .join(sanitize_path_id(user_id));
         Self {
+            legacy_import: true,
             scope,
             device_root: data_dir.to_path_buf(),
             uploads_root: store_root.join("uploads"),
             store_root,
             org_id: org_id.to_string(),
             user_id: user_id.to_string(),
+        }
+    }
+
+    /// SDK accounts never adopt the upstream cache or its device-global uploads.
+    pub fn openagents(data_dir: &Path, account: &str, key: &str) -> Self {
+        let store_root = data_dir.join("profiles").join(format!("openagents-{key}"));
+        Self {
+            scope: WorkspaceScope::Synced,
+            device_root: data_dir.into(),
+            uploads_root: store_root.join("uploads"),
+            store_root,
+            org_id: account.into(),
+            user_id: account.into(),
+            legacy_import: false,
         }
     }
 
@@ -101,7 +118,7 @@ impl EngineProfile {
     /// fallback. New writes always use [`Self::uploads_root`], and other accounts
     /// never receive the fallback root.
     pub(crate) fn claim_legacy_uploads_root(&self) -> Result<Option<PathBuf>, EngineError> {
-        if self.scope == WorkspaceScope::Local {
+        if !self.legacy_import {
             return Ok(None);
         }
 
@@ -418,5 +435,23 @@ mod tests {
             );
         }
         core.shutdown().await;
+    }
+}
+
+#[cfg(test)]
+mod openagents_tests {
+    use super::*;
+    #[test]
+    fn sdk_profiles_never_claim_device_global_uploads() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir(root.path().join("uploads")).unwrap();
+        std::fs::write(root.path().join("uploads/legacy.png"), b"fixture").unwrap();
+        let profile = EngineProfile::openagents(root.path(), "acct_fixture", "fixture-scope");
+        assert_eq!(profile.claim_legacy_uploads_root().unwrap(), None);
+        assert!(!root.path().join(LEGACY_UPLOADS_OWNER_FILE).exists());
+        assert_eq!(
+            std::fs::read(root.path().join("uploads/legacy.png")).unwrap(),
+            b"fixture"
+        );
     }
 }

@@ -64,10 +64,9 @@ pub const HOME_WORK_DIR: &str = ".coder-desktop";
 /// override `ZERON_RELEASES_URL` still works.
 pub const UPDATE_FEED: Option<&str> = None;
 
-/// Hosted sync and sign-in service. `None` turns off Zeron's hosted edge
-/// (WorkOS sign-in, sync, relays, preview signaling): the app runs local and
-/// account-free. OpenAgents sign-in is separate work (openagents#11824).
-pub const HOSTED_EDGE_URL: Option<&str> = None;
+/// OpenAgents sync service. Authentication uses the shared OpenAgents account
+/// client; upstream WorkOS support requires an explicit compatibility feature.
+pub const HOSTED_EDGE_URL: Option<&str> = Some("https://sync.openagents.com");
 
 /// Hosted WorkOS client id. `None` keeps sign-in off.
 pub const WORKOS_CLIENT_ID: Option<&str> = None;
@@ -107,9 +106,9 @@ mod tests {
     }
 
     #[test]
-    fn hosted_services_are_off() {
+    fn sync_uses_openagents_and_upstream_login_and_updates_are_off() {
         assert!(UPDATE_FEED.is_none());
-        assert!(HOSTED_EDGE_URL.is_none());
+        assert_eq!(default_edge_url(), "https://sync.openagents.com");
         assert!(WORKOS_CLIENT_ID.is_none());
         assert!(!default_edge_url().contains("zeron"));
     }

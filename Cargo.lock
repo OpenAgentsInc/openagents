@@ -1693,6 +1693,7 @@ name = "coder-account"
 version = "0.2.113"
 dependencies = [
  "axum",
+ "coder-brand",
  "openagents-sdk",
  "security-framework",
  "serde_json",
@@ -13675,6 +13676,7 @@ version = "0.2.113"
 dependencies = [
  "anyhow",
  "clap",
+ "coder-account",
  "coder-brand",
  "embed-resource",
  "libc",
@@ -13751,8 +13753,10 @@ version = "0.2.113"
 dependencies = [
  "anyhow",
  "async-trait",
+ "axum",
  "base64 0.22.1",
  "chrono",
+ "coder-account",
  "coder-brand",
  "dunce",
  "fff-search",
@@ -13854,9 +13858,9 @@ version = "0.2.113"
 dependencies = [
  "async-trait",
  "coder-account",
+ "reqwest",
  "serde",
  "serde_json",
- "sha2",
  "similar",
  "tempfile",
  "thiserror 2.0.20",

@@ -4,7 +4,6 @@ use coder_account::{
     Controller, Phase, PlatformStore,
     openagents::{Client, CredentialStore, Deployment},
 };
-use sha2::{Digest, Sha256};
 use std::{
     path::PathBuf,
     sync::{Arc, Mutex, Weak},
@@ -141,17 +140,8 @@ impl CoreAccount {
     }
     fn profile(&self, account: &str, edge: &str) -> PathBuf {
         self.data_dir.join(format!(
-            "account-{:x}",
-            Sha256::digest(
-                format!(
-                    "{}\n{}\n{}\n{}",
-                    self.deployment.api_base(),
-                    self.deployment.website(),
-                    edge.trim_end_matches('/'),
-                    account
-                )
-                .as_bytes()
-            )
+            "account-{}",
+            coder_account::desktop::sync_scope(&self.deployment, edge, account)
         ))
     }
 }
@@ -198,6 +188,12 @@ impl CoreAccount {
     }
     pub fn sign_in(&self, device_name: String) {
         let task = self.controller.sign_in(device_name);
+        close_clients(&self.clients, None);
+        zeron_client::runtime::shared().spawn(task);
+    }
+    /// Explicit credentials are checked by the same SDK and stored by the same controller.
+    pub fn sign_in_with_credential(&self, credential: String) {
+        let task = self.controller.import_credential(credential);
         close_clients(&self.clients, None);
         zeron_client::runtime::shared().spawn(task);
     }
@@ -277,6 +273,49 @@ impl Drop for CoreAccount {
         self.cancel.cancel();
         self.controller.invalidate();
         close_clients(&self.clients, None);
+    }
+}
+
+#[cfg(feature = "account-fixture")]
+#[uniffi::export]
+impl CoreAccount {
+    /// Test-only loopback delivery keeps the credential out of Swift and Xcode logs.
+    pub fn sign_in_from_fixture(&self, url: String) {
+        let controller = self.controller.clone();
+        close_clients(&self.clients, None);
+        zeron_client::runtime::shared().spawn(async move {
+            let Ok(url) = reqwest::Url::parse(&url) else {
+                return;
+            };
+            if url.scheme() != "http" || url.host_str() != Some("127.0.0.1") {
+                return;
+            }
+            let Ok(client) = reqwest::Client::builder()
+                .redirect(reqwest::redirect::Policy::none())
+                .timeout(Duration::from_secs(10))
+                .build()
+            else {
+                return;
+            };
+            let Ok(response) = client.get(url).send().await else {
+                return;
+            };
+            if !response.status().is_success()
+                || response.content_length().is_none_or(|len| len > 4096)
+            {
+                return;
+            }
+            let Ok(body) = response.json::<serde_json::Value>().await else {
+                return;
+            };
+            let Some(credential) = body["credential"]
+                .as_str()
+                .filter(|token| token.len() < 4096)
+            else {
+                return;
+            };
+            controller.import_credential(credential.to_owned()).await;
+        });
     }
 }
 

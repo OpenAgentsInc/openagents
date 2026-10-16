@@ -652,11 +652,36 @@ impl Engine {
         auth_config.development_requested = config.edge_token.is_some()
             || config.org_id.is_some()
             || std::env::var("ZERON_WORKSPACE_SCOPE").is_ok_and(|scope| scope == "development");
+        if !auth_config.development_requested {
+            if let Some(account) = coder_account::desktop::registered(&config.data_dir) {
+                let mut updates = account.watch();
+                // A saved login may restore quickly; local work never waits on the network.
+                let _ = tokio::time::timeout(std::time::Duration::from_millis(250), async {
+                    while matches!(
+                        account.snapshot().phase,
+                        coder_account::Phase::Restoring | coder_account::Phase::Starting
+                    ) {
+                        if updates.changed().await.is_err() {
+                            break;
+                        }
+                    }
+                })
+                .await;
+                return Auth::with_account(auth_config, account);
+            }
+        }
         Auth::new(auth_config)
     }
 
     /// Capture the workspace boundary once, before refresh or sign-in can mutate auth.
     pub fn initial_workspace_scope(auth: &Auth) -> WorkspaceScope {
+        if auth.account().is_some() {
+            return if auth.openagents_lease().is_some() {
+                WorkspaceScope::Synced
+            } else {
+                WorkspaceScope::Local
+            };
+        }
         // Coder Desktop: hosted sign-in is off by default, so "no WorkOS" is the
         // normal account-free run and must open the local profile
         // (`profiles/local`). Upstream treats it as development mode; keep that
@@ -702,6 +727,21 @@ impl Engine {
                 )))
             }
             WorkspaceScope::Synced => {
+                if auth.account().is_some() {
+                    let lease = auth
+                        .openagents_lease()
+                        .ok_or_else(|| EngineError::Other("Log in again to continue.".into()))?;
+                    let key = coder_account::desktop::sync_scope(
+                        lease.client().deployment(),
+                        &config.edge_url,
+                        &lease.session().account().id,
+                    );
+                    return Ok(Some(EngineProfile::openagents(
+                        &config.data_dir,
+                        &lease.session().account().id,
+                        &key,
+                    )));
+                }
                 let state = auth.state();
                 let Some(user) = state.user() else {
                     return Err(EngineError::Other(

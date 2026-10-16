@@ -1235,6 +1235,11 @@ public protocol CoreAccountProtocol: AnyObject, Sendable {
     
     func signIn(deviceName: String) 
     
+    /**
+     * Explicit credentials are checked by the same SDK and stored by the same controller.
+     */
+    func signInWithCredential(credential: String) 
+    
     func signOut() 
     
     func snapshot()  -> AccountSnapshot
@@ -1367,6 +1372,18 @@ open func signIn(deviceName: String)  {try! rustCall() {
     uniffi_zeron_mobile_fn_method_coreaccount_sign_in(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(deviceName),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Explicit credentials are checked by the same SDK and stored by the same controller.
+     */
+open func signInWithCredential(credential: String)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_zeron_mobile_fn_method_coreaccount_sign_in_with_credential(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(credential),uniffiCallStatus
     )
 }
 }
@@ -17778,6 +17795,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_zeron_mobile_checksum_method_coreaccount_sign_in() != 12969) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_zeron_mobile_checksum_method_coreaccount_sign_in_with_credential() != 16180) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_zeron_mobile_checksum_method_coreaccount_sign_out() != 41574) {

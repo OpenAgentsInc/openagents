@@ -1,16 +1,16 @@
 # Coder account
 
-OpenAgents account state for Coder Desktop. The crate uses the public Rust SDK;
+OpenAgents account state for Coder Desktop and iPhone. The crate uses the public Rust SDK;
 it does not authenticate local workspaces or model providers. `Controller`
 returns a read lease only after the service verifies the account. Replacing an
 operation cancels its predecessor before the next asynchronous result can run.
 
-The macOS store uses the app's own Keychain service and includes the profile and
+The macOS and iOS stores use the app's own Keychain service and includes the profile and
 API/website pair in its entry identity. Sign-out clears the stored login and
 revokes the app session, including a saved session whose account discovery
 failed. A deployment-specific marker prevents restore if Keychain deletion is
 refused. Network failures preserve a recoverable credential without granting a
-read lease. Other platforms currently report unavailable credential storage.
+read lease. Other platforms report unavailable persistent credential storage; explicit headless credentials can use the memory store.
 
 The GPUI control lives in `crates/ui/src/openagents_account.rs`. Production uses
 `https://api.openagents.com/v1` and `https://openagents.com`. Development can set
@@ -61,3 +61,16 @@ The `--reader` native fixture opens a target outside the loaded sidebar page,
 reads 405 messages, fetches a file and capture on demand, reloads after a content
 change, and checks sign-out cleanup. Save file uses the native destination
 picker; the fixture verifies downloaded bytes without opening that picker.
+
+`desktop::register` shares the account controller with an embedded engine for
+that data directory. The engine captures its account identity when it opens a
+synced profile and refuses another account's credential until the runtime is
+replaced. `desktop::sync_scope` separates caches by account, sync URL, API, and
+website. An account request in progress never blocks sign-out notifications.
+
+`Controller::import_credential` uses the SDK's supported credential flow and the
+same storage, cancellation, and logout path as device-code login. The launcher
+captures `CODER_DESKTOP_CREDENTIAL` before starting threads and removes it from
+the environment so agent children cannot inherit it. Explicit environment
+credentials use memory storage and a separate restore fence. They do not change
+the saved Keychain login.

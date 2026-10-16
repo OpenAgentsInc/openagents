@@ -138,3 +138,13 @@ gateway. Voice Live Activity remains a separate extension.
 Local archive and TestFlight preparation are tracked in
 OpenAgentsInc/openagents#11850. Do not use the upstream GitHub Actions release
 workflow or upload a build without the owner's release instruction.
+
+## Live desktop sync check
+
+The monorepo's `docs/mobile/coder-desktop-phone-e2e.md` documents the dedicated
+account check against staging and production. The simulator-only
+`ZERON_ACCOUNT_FIXTURE=1` core build and Swift's `CODER_ACCOUNT_FIXTURE` flag
+allow one-use loopback credential delivery. The account token stays in Rust and
+Keychain. `-account-fixture` separates test caches, account entries, display
+profiles, device IDs, and drafts from ordinary app use. Neither fixture flag is
+part of a distribution build.

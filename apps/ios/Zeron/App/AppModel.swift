@@ -24,10 +24,10 @@ final class AppModel {
     /// The Sessions page groups its unsectioned sessions by project
     /// (the desktop sidebar's "By project"). Local to this phone.
     var groupByProject: Bool {
-        get { UserDefaults.standard.bool(forKey: "groupByProject") }
+        get { AppModel.preferences.bool(forKey: "groupByProject") }
         set {
             guard newValue != groupByProject else { return }
-            UserDefaults.standard.set(newValue, forKey: "groupByProject")
+            AppModel.preferences.set(newValue, forKey: "groupByProject")
             observers.values.forEach { $0() }
         }
     }
@@ -70,7 +70,7 @@ final class AppModel {
     /// The new-session page's options (project, host, branch, model,
     /// effort), kept across launches.
     var lastDraft: NewSessionDraft = {
-        var d = !AppModel.persistsNewSession ? NewSessionDraft() : UserDefaults.standard.data(forKey: "newSessionDraft").flatMap { try? JSONDecoder().decode(NewSessionDraft.self, from: $0) } ?? NewSessionDraft()
+        var d = !AppModel.persistsNewSession ? NewSessionDraft() : AppModel.preferences.data(forKey: "newSessionDraft").flatMap { try? JSONDecoder().decode(NewSessionDraft.self, from: $0) } ?? NewSessionDraft()
         // `-harness mock`: live-stack tests must never start a real agent.
         let args = ProcessInfo.processInfo.arguments
         if let i = args.firstIndex(of: "-harness"), i + 1 < args.count { d.harness = args[i + 1] }
@@ -78,13 +78,13 @@ final class AppModel {
     }() {
         didSet {
             guard Self.persistsNewSession else { return }
-            UserDefaults.standard.set(try? JSONEncoder().encode(lastDraft), forKey: "newSessionDraft")
+            AppModel.preferences.set(try? JSONEncoder().encode(lastDraft), forKey: "newSessionDraft")
         }
     }
 
     /// The demo (and the UI tests on it) keep the new-session page in memory
     /// only: one run's leftovers must not seed the next.
-    private static let persistsNewSession = !ProcessInfo.processInfo.arguments.contains("-demo")
+    private static let persistsNewSession = !ProcessInfo.processInfo.arguments.contains("-demo") && !AppModel.isAccountFixture
     private var volatileNewSessionText = ""
 
     /// What was typed on the new-session page when it was closed unsent.
@@ -125,6 +125,12 @@ final class AppModel {
         do {
             account = try CoreAccount(dataDir: Self.coreDir.path, apiUrl: Self.accountAPI, websiteUrl: Self.accountWebsite, listener: accountBridge)
             #if DEBUG
+            #if CODER_ACCOUNT_FIXTURE
+            if let i = args.firstIndex(of: "-account-test-credential-url"), i + 1 < args.count {
+                account?.signInFromFixture(url: args[i + 1])
+                return
+            }
+            #endif
             if args.contains("-signedout") { account?.signOut(); return }
             #endif
             account?.restore()
@@ -227,8 +233,18 @@ final class AppModel {
 
     // MARK: Lifecycle
 
+    static var isAccountFixture: Bool {
+        #if DEBUG
+        return ProcessInfo.processInfo.arguments.contains("-account-fixture")
+        #else
+        return false
+        #endif
+    }
+    static var preferences: UserDefaults {
+        isAccountFixture ? UserDefaults(suiteName: "com.openagents.coder.account-fixture")! : .standard
+    }
     private static var coreDir: URL {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("core", isDirectory: true)
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent(isAccountFixture ? "account-fixture-core" : "core", isDirectory: true)
     }
 
     /// Local docs belong to one identity: another account/org starts from an
@@ -289,9 +305,9 @@ final class AppModel {
     }
 
     static var deviceId: String {
-        if let id = UserDefaults.standard.string(forKey: "deviceId") { return id }
+        if let id = AppModel.preferences.string(forKey: "deviceId") { return id }
         let id = "ios-" + UUID().uuidString.lowercased().prefix(8)
-        UserDefaults.standard.set(id, forKey: "deviceId")
+        AppModel.preferences.set(id, forKey: "deviceId")
         return id
     }
 
@@ -795,7 +811,7 @@ struct AccountProfile: Codable {
     var email: String?
     var orgName: String?
 
-    private static let service = "com.openagents.coder"
+    private static var service: String { AppModel.isAccountFixture ? "com.openagents.coder.account-fixture" : "com.openagents.coder" }
     private static let account = "profile"
 
     static func load() -> AccountProfile {

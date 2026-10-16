@@ -1,9 +1,6 @@
 //! The app account control. Local workspace and model-provider logins stay separate.
 use crate::theme::Theme;
-use coder_account::{
-    Controller, Phase, PlatformStore, Snapshot,
-    openagents::{Client, Deployment},
-};
+use coder_account::{Controller, Phase, Snapshot};
 use gpui::{
     App, AppContext, Context, Entity, Global, Render, SharedString, Task, Window, div, prelude::*,
     px,
@@ -21,36 +18,15 @@ pub struct AppAccount {
     opened_generation: Option<u64>,
     automatic_browser: bool,
 }
-fn deployment() -> Result<Deployment, coder_account::openagents::Error> {
-    match (
-        std::env::var("CODER_DESKTOP_API_URL").ok(),
-        std::env::var("CODER_DESKTOP_WEBSITE_URL").ok(),
-    ) {
-        (None, None) => Ok(Deployment::production()),
-        (Some(api), Some(site)) => Deployment::new(&api, &site),
-        _ => Err(coder_account::openagents::Error::InvalidDeployment),
-    }
-}
 impl AppAccount {
     pub fn init(data: PathBuf, cx: &mut App) {
-        let controller = deployment().and_then(Client::new).map(|client| {
-            // Both profile and deployment are part of the credential-store identity.
-            let service = if cfg!(debug_assertions) {
-                coder_brand::DEV_BUNDLE_ID
-            } else {
-                coder_brand::BUNDLE_ID
-            };
-            Controller::new(
-                client,
-                Arc::new(PlatformStore::new(
-                    format!("{service}.account"),
-                    data.to_string_lossy().into_owned(),
-                )),
-                data.join("openagents-account/signed-out"),
-            )
-        });
-        let entity = cx.new(|cx| match controller {
-            Ok(controller) => Self::new(controller, cx),
+        let configured = coder_account::desktop::configured(&data);
+        let mut credential = None;
+        let entity = cx.new(|cx| match configured {
+            Ok((controller, supplied)) => {
+                credential = supplied;
+                Self::new(controller, cx)
+            }
             Err(e) => Self {
                 controller: None,
                 snapshot: Snapshot {
@@ -67,7 +43,16 @@ impl AppAccount {
             },
         });
         cx.set_global(GlobalAccount(entity.clone()));
-        entity.update(cx, |this, cx| this.restore(cx));
+        entity.update(cx, |this, cx| {
+            if let Some(credential) = credential {
+                if let Some(controller) = &this.controller {
+                    let operation = controller.import_credential(credential);
+                    this.run(operation, cx);
+                }
+            } else {
+                this.restore(cx);
+            }
+        });
     }
     pub fn global(cx: &App) -> Option<Entity<Self>> {
         cx.try_global::<GlobalAccount>().map(|a| a.0.clone())
