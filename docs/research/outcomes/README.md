@@ -80,10 +80,12 @@ evidence work that runs with Coder 1.0.0 as released.
      ATIF first; #11729).
    - The post proposes a new `customer.accepted` JSON event. We should
      **extend what we have**, not add a third format.
-5. **The pilot kit is stale.** `docs/sales/README.md` (offer
-   `openagents.sales.coder-pilot.v1`, $250 after acceptance) still says
-   "the buyer's macOS arm64 computer". Coder 1.0.0 runs on macOS, Linux and
-   Windows. Small fix.
+5. **The pilot only covers one platform.** `docs/sales/README.md` (offer
+   `openagents.sales.coder-pilot.v1`, $250 after acceptance) is qualified
+   for the buyer's macOS arm64 computer only. That's deliberate: REV-02
+   qualifies an exact installed path. Coder 1.0.0 runs on macOS, Linux and
+   Windows, so widening the pilot is one REV-02 run per platform on the
+   released 1.0.0, not a code change.
 6. **Plugin payments.** The post assumes we pay plugin authors per call
    today. We don't; we removed that claim from the site today. The post's
    advice (explicit fees first, no attribution algorithm) stands for when we
@@ -113,7 +115,7 @@ evidence work that runs with Coder 1.0.0 as released.
 3. **Publish customer zero's numbers.** `/efficiency` shows our own cost per
    accepted change and coverage on the OpenAgents repo from the ledger,
    updated as we work. Every figure goes through `claims.md`.
-4. **Refresh the pilot kit** for 1.0.0 (every platform) and keep the $250
+4. **Qualify the pilot on 1.0.0** (REV-02 on Linux and Windows too) and keep the $250
    assisted pilot as is: the customer pays their own models, and we charge
    only on acceptance.
    - Activating the offer and finding the buyer are the owner's.
