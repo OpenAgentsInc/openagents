@@ -1,4 +1,7 @@
-OpenAgents 1.0.0 (60)
+OpenAgents 1.0.0 (61)
+
+Fixes the black screen and crash at launch on iPhones that had the earlier
+OpenAgents app installed (build 60).
 
 The first OpenAgents mobile app build on this record: the app that was
 OpenAgents Coder, now named OpenAgents. Follow and drive coding sessions

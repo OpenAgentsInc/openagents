@@ -1,7 +1,7 @@
 import UIKit
 import UserNotifications
 
-@main
+// Started from main.swift (SceneStateMigration runs first).
 final class AppDelegate: UIResponder, UIApplicationDelegate {
     func application(
         _ application: UIApplication,
@@ -9,6 +9,15 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
     ) -> Bool {
         // Before launch finishes, so a tap that launched the app is delivered.
         UNUserNotificationCenter.current().delegate = PushNotifications.shared
+        // Backstop: a session still bound to another app's delegate (kept by
+        // the system despite the migration) is destroyed, so the next scene
+        // comes from `windowConfiguration(for:)`.
+        for session in application.openSessions
+        where session.role == .windowApplication {
+            guard let delegate = session.configuration.delegateClass,
+                  ObjectIdentifier(delegate) != ObjectIdentifier(SceneDelegate.self) else { continue }
+            application.requestSceneSessionDestruction(session, options: nil)
+        }
         return true
     }
 
