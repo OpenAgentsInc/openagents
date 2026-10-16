@@ -9,6 +9,7 @@
 //! The scenes are the ritual chamber's cold open (`ritual`), the great
 //! crypt (`crypt`), the Meteor Showcase (`meteor`), the druid's Grove
 //! (`grove`), the Lagrange 1 station (`lagrange`), the Grid (`grid`),
+//! the LayerTree balance diagram (`layer_tree`),
 //! the OpenAgents app's bare world drawn from its pinned engine pack as the
 //! apps draw it, with its Everglade portal standing, and the Draconia
 //! peacock guardian (`peacock`, `docs/verse/draconia/shots.md`).
@@ -20,8 +21,8 @@
 //! When the rig sets an f-number, each sub-frame also looks through a
 //! different point on the lens with its focal plane held fixed
 //! ([`verse_engine::camera_rig::lens_view_projection`]), so the mean has
-//! true depth of field. The mean is taken in linear light. There is no HUD,
-//! no nameplates, and no overlay text: the frame is the world alone.
+//! true depth of field. The mean is taken in linear light. World shots
+//! omit HUDs and nameplates; data scenes keep their value labels.
 //!
 //! It writes H.264 (`libx264`, `yuv420p`, CRF `crf`, 12 by default) to
 //! `~/work/film-out/verse/NAME.mp4` unless `--out` says otherwise.
@@ -40,6 +41,9 @@ mod draconia;
 mod night;
 #[path = "film/peacock.rs"]
 mod peacock;
+
+#[path = "layertree/mod.rs"]
+mod layertree;
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -194,6 +198,12 @@ enum SceneSpec {
         #[serde(default)]
         casts: Vec<Cast>,
     },
+    /// A public LayerTree run, with its balances and Bitcoin output.
+    LayerTree {
+        events: PathBuf,
+        #[serde(default)]
+        at: Option<u64>,
+    },
     /// The Lagrange 1 station.
     Lagrange,
     /// The Grid, with the Everglade portal standing and nobody's avatar
@@ -342,6 +352,12 @@ enum Stage {
         renderer: Box<verse::render::Offscreen>,
         set: Box<courtyard::Set>,
         ui: verse::ui::UiBatch,
+    },
+    LayerTree {
+        renderer: Box<Renderer>,
+        set: Box<layertree::Set>,
+        ui: verse::ui::UiBatch,
+        atlas: verse::ui::Atlas,
     },
     /// The ritual chamber or the great crypt, drawn by the imported
     /// renderer.
@@ -525,6 +541,17 @@ impl Stage {
                 eprintln!("the druid stands at {}", runtime.player.pos);
                 Self::world(runtime, w, h, true, shot.hide_guides)
             }
+            SceneSpec::LayerTree { events, at } => {
+                let set = Box::new(layertree::Set::load(events, *at)?);
+                let atlas = verse::ui::Atlas::new(18.0);
+                let renderer = layertree::scene::renderer([w, h], &atlas)?;
+                Ok(Self::LayerTree {
+                    renderer: Box::new(renderer),
+                    set,
+                    ui: verse::ui::UiBatch::default(),
+                    atlas,
+                })
+            }
             SceneSpec::Grid { .. } => {
                 // A spectator's Grid: the robots and arches, no avatar.
                 let mut runtime = Box::new(WorldRuntime::unoccupied());
@@ -688,6 +715,7 @@ impl Stage {
                     runtime.tick_unoccupied(dt / steps as f32);
                 }
             }
+            Self::LayerTree { set, .. } => set.advance(dt),
             Self::Peacock { set, .. } => set.advance(dt, t),
             Self::Courtyard { set, .. } => set.advance(dt, t),
             Self::Night { set, .. } => set.advance(dt, t),
@@ -789,6 +817,31 @@ impl Stage {
                 let dynamic = verse::grid_frame::dynamic(runtime, &[], &[]);
                 let lighting = verse::grid_frame::lighting(&runtime.atmosphere());
                 renderer.draw(View { view_proj, eye }, &dynamic, ui, &lighting)
+            }
+            Self::LayerTree {
+                renderer,
+                set,
+                ui,
+                atlas,
+            } => {
+                let (view_proj, eye) =
+                    camera_rig::lens_view_projection(&camera, aspect, shot.near, shot.far, lens);
+                let view = View { view_proj, eye };
+                *ui = layertree::scene::overlay(
+                    set,
+                    view,
+                    [shot.width as f32, shot.height as f32],
+                    atlas,
+                    None,
+                    false,
+                );
+                renderer.set_overlay_size(shot.width as f32, shot.height as f32);
+                renderer.draw(
+                    view,
+                    &layertree::scene::frame(set),
+                    ui,
+                    &layertree::scene::lighting(),
+                )
             }
             Self::Peacock { renderer, set, ui } => {
                 let (view_proj, eye) =

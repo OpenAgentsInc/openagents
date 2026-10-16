@@ -400,3 +400,8 @@ required-features = ["remote-chamber"]
 [[example]]
 name = "coast_capture"
 required-features = ["capture"]
+
+[[example]]
+name = "layertree"
+path = "examples/layertree/main.rs"
+required-features = ["imported-desktop"]
