@@ -23,8 +23,11 @@ RUSTUP_TOOLCHAIN=1.98.1 CARGO_TARGET_DIR="$HOME/work/coder-desktop-target-agent1
   CODE_SIGNING_ALLOWED=NO build
 ```
 
-The signed-out screen offers **Try the demo**. OpenAgents sign-in is tracked
-in OpenAgentsInc/openagents#11848. The default sync server comes from
+The signed-out screen offers **Sign in with OpenAgents** and **Try the demo**.
+Sign-in uses the shared `coder-account` public SDK flow: approve the code on
+`openagents.com`, then return to the app. Rust stores the session in Keychain
+and opens only that account’s sync cache. **Settings > Sign Out** removes the
+credential and the account’s local chats. The default sync server comes from
 `zeron-client` (`https://sync.openagents.com`), through the mobile facade.
 See [`FORK.md`](../../FORK.md) for changed seams and verification.
 
@@ -93,8 +96,8 @@ ZeronShared/   Compiled into the app and the extension: the activity's
 | `-fast` / `-longreply` | Demo stream speed / reply length |
 | `-big` / `-huge` | Demo transcripts with 120 / 600 turns |
 | `-route chat:<id>` / `new` / `more` / `search` | Open a screen at launch |
-| `-signedout` | Clear stored credentials |
-| `-dev <userId> <orgId> [-edge <url>]` | Dev bearer against an `AUTH_MODE=dev` edge (e.g. `wrangler dev`); not persisted |
+| `-signedout` | Debug only: sign out and clear this app’s account credential |
+| `-dev <userId> <orgId> [-edge <url>]` | Debug only: dev bearer against local coder-sync with explicit dev auth; not persisted |
 | `-harness <id>` | Default harness for new sessions (`mock` for live-stack tests) |
 | `-bench` (with `-lab`) | Display-link fling benchmark; writes `Documents/bench.json` |
 | `-measureopen` | Session open latency; writes `Documents/open.json` |
