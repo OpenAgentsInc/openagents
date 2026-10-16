@@ -1,0 +1,143 @@
+{
+  "schema": "openagents.layertree.confirmed-transitions.v1",
+  "network": "signet",
+  "chain_reader": "Bitcoin Core 30.2, separate synced node",
+  "checked_at_unix": 1792148511.7299361,
+  "transactions": [
+    {
+      "action": "genesis",
+      "txid": "4b4a748ca63476360a02e3355c687a626d76fd61a08e7aa7b97ea483eb3aa8b6",
+      "height": 326595,
+      "observed_at_unix": 1792146920.3826563,
+      "gap_blocks": null,
+      "fee_sat": 500,
+      "vsize": 154,
+      "blockhash": "000000093ddefcc966004b298a3dd193c1af5f8564d1cdbac80e3f252f7cb306",
+      "outputs": [
+        {
+          "vout": 0,
+          "amount_sat": 5000,
+          "script": "5120589d38bcc6d3df6b08dfdd21ef35f1898decae2080a4375aa60e284c9eb228c0"
+        },
+        {
+          "vout": 1,
+          "amount_sat": 194500,
+          "script": "51208b760aff780f52d033ab087221f5e587828994c8255553dd655b93ff4c0f26ce"
+        }
+      ]
+    },
+    {
+      "action": "join",
+      "txid": "0d0742fb32a532e651c7d1703ef2fd7c8704af74631763c27c4ea9affa721358",
+      "height": 326596,
+      "observed_at_unix": 1792147043.0656435,
+      "gap_blocks": 1,
+      "fee_sat": 500,
+      "vsize": 255,
+      "blockhash": "00000000044c7d2b742a2cdd26b34964f413386e4ef5436377906711719aa834",
+      "outputs": [
+        {
+          "vout": 0,
+          "amount_sat": 6000,
+          "script": "51206840e626211215e4b48d87a19ccfe45dedea12c3508787eb814903e2ffab60af"
+        },
+        {
+          "vout": 1,
+          "amount_sat": 0,
+          "script": "6a20fd73c86c1fab8e9bf641baedd21b29308a27f1d65b683126f9ab0c84d986b891"
+        },
+        {
+          "vout": 2,
+          "amount_sat": 193000,
+          "script": "51208b760aff780f52d033ab087221f5e587828994c8255553dd655b93ff4c0f26ce"
+        }
+      ]
+    },
+    {
+      "action": "update",
+      "txid": "0537056d4e066216b13528849755e292b20226d5e993baa7554f45633c4bed9c",
+      "height": 326597,
+      "observed_at_unix": 1792147406.4042659,
+      "gap_blocks": 1,
+      "fee_sat": 500,
+      "vsize": 255,
+      "blockhash": "00000002f7072f539b4f1fd148eb90a55a0b1071798a86637b5044e19d18662d",
+      "outputs": [
+        {
+          "vout": 0,
+          "amount_sat": 6000,
+          "script": "51209c1a8d15998daa5ddd96529ad78689de9ccc412b16c765bdcbc71b8ad0fd1afe"
+        },
+        {
+          "vout": 1,
+          "amount_sat": 0,
+          "script": "6a20550189d3bae168fcf97fbec5bfc4213f6a6c7e41c61d74d57d063dd131e4893b"
+        },
+        {
+          "vout": 2,
+          "amount_sat": 192500,
+          "script": "51208b760aff780f52d033ab087221f5e587828994c8255553dd655b93ff4c0f26ce"
+        }
+      ]
+    },
+    {
+      "action": "exit",
+      "txid": "5cb3ae0ed3ae6d3bb28b30498bd87c1fc1b453edb31bd584c4254c5aa8ad2d22",
+      "height": 326598,
+      "observed_at_unix": 1792148009.5332937,
+      "gap_blocks": 1,
+      "fee_sat": 500,
+      "vsize": 298,
+      "blockhash": "0000000708f0fcaa7d53405deac1195e053c942e171bea5ce44405726b81f3fe",
+      "outputs": [
+        {
+          "vout": 0,
+          "amount_sat": 5000,
+          "script": "5120e0da3d6011b98954a03462a5d30dbabda92aabfd48f28ada5db8f69216955ac6"
+        },
+        {
+          "vout": 1,
+          "amount_sat": 1000,
+          "script": "5120c4900809b80a176046e6078baee91874bcf78c94f82ac7d9dd38776753844fe4"
+        },
+        {
+          "vout": 2,
+          "amount_sat": 0,
+          "script": "6a20879ac6e1a10fefe3994eb65e2864e6d1d6bbbf80e8ac5b8f2e1a60c9c0175ca2"
+        },
+        {
+          "vout": 3,
+          "amount_sat": 192000,
+          "script": "51208b760aff780f52d033ab087221f5e587828994c8255553dd655b93ff4c0f26ce"
+        }
+      ]
+    },
+    {
+      "action": "refresh",
+      "txid": "aa46acc116e881b1f1c0b80846a07d0d1469d85350fe9f712a21f254ca256aa5",
+      "height": 326599,
+      "observed_at_unix": 1792148432.3455048,
+      "gap_blocks": 1,
+      "fee_sat": 500,
+      "vsize": 255,
+      "blockhash": "00000013a7fc9b6e0d12386657e4e74ff6850faa85b2414604c11540afd5647e",
+      "outputs": [
+        {
+          "vout": 0,
+          "amount_sat": 5000,
+          "script": "5120b587aaf97d39b426fca3edede92f4d63fb0d76ab71c1cfd42a4bc88fce7e1e0f"
+        },
+        {
+          "vout": 1,
+          "amount_sat": 0,
+          "script": "6a2007179770c31125dfc177bca8d778d2387618b92949f754c9018e725a13d21b99"
+        },
+        {
+          "vout": 2,
+          "amount_sat": 191500,
+          "script": "51208b760aff780f52d033ab087221f5e587828994c8255553dd655b93ff4c0f26ce"
+        }
+      ]
+    }
+  ]
+}

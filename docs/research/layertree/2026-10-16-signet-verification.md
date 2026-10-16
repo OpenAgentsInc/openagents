@@ -64,3 +64,52 @@ does not change that parser.
 Join, update, exit, refresh, the week of heartbeats, deliberate enclave
 loss, and final public-package recovery remain #11789/#11793 measurements.
 This first confirmed output does not complete those measurements.
+
+## Confirmed normal transitions
+
+All #11789 transitions confirmed on the same real TDX-controlled signet
+tree. The independent Core reader measured these transactions:
+
+| Operation | Confirmed height | Transaction ID | Fee (sat) | Size (vB) |
+| --- | ---: | --- | ---: | ---: |
+| Creation | 326595 | `4b4a748ca63476360a02e3355c687a626d76fd61a08e7aa7b97ea483eb3aa8b6` | 500 | 154 |
+| Join | 326596 | `0d0742fb32a532e651c7d1703ef2fd7c8704af74631763c27c4ea9affa721358` | 500 | 255 |
+| Update | 326597 | `0537056d4e066216b13528849755e292b20226d5e993baa7554f45633c4bed9c` | 500 | 255 |
+| Exit | 326598 | `5cb3ae0ed3ae6d3bb28b30498bd87c1fc1b453edb31bd584c4254c5aa8ad2d22` | 500 | 298 |
+| Refresh | 326599 | `aa46acc116e881b1f1c0b80846a07d0d1469d85350fe9f712a21f254ca256aa5` | 500 | 255 |
+
+The join added a sixth 1,000-sat member. Update rotated member 0's exit
+key; exit paid member 1, leaving five members and 5,000 sats in the tree.
+The client checked the confirmed output with a fresh three-nonce token and
+pinned TLS after each operation. The enclave stored the public record and
+pre-signed escape transaction with at least two of three receipt-signing
+mirrors before completing each transition. The three mirror VMs run in
+zones a/b/c under the same operator.
+
+All five records were also published to `wss://relay.openagents.com` and
+read back on new connections. The client checked the exact event IDs,
+signatures, publisher, tree ID, file hash, and record hash. This uses the
+closed, unmerged inline-file proposal described in the client README;
+it is not advertised as official NIP-95 support.
+
+The [public capture archive](evidence/signet-transitions-2026-10-16.tar.gz)
+contains 110 selected evidence files plus a SHA-256 manifest. Archive
+SHA-256: `5d1154c212946d3159dc12b5c110fe85224d7070394bc4ec51025189ef70534e`.
+The separate [confirmation and fee measurements](evidence/signet-transitions-2026-10-16.json)
+include actual Core block hashes, outputs, and input-minus-output fees.
+Server event heights record the authorization tip; use these independent
+confirmation measurements for mined heights.
+
+Create, inspect, or delete the primary VM with
+`scripts/layertree/signet-service.sh create|status|delete`. Creation requires
+`LAYERTREE_SERVICE_IMAGE` to name the approved digest-pinned research image.
+The `halt` slot has a separate VM and a 24-hour lifetime; it does not restart
+the funded primary service.
+
+The primary observer began its week at **2026-10-16 11:01:32 UTC**, height
+326599, after all five publications passed. The earliest full week ends
+**2026-10-23 11:01:32 UTC**. Its target confirmation gap is six blocks;
+actual gaps and late heartbeats are recorded. A one-time Cloud Task will
+delete the primary VM at **2026-10-24 09:28:00 UTC**, with a nine-day native
+VM deadline as fallback. #11793 still requires the elapsed week, deletion
+audit evidence, CSV maturity, exact payouts, and the separate HALT run.

@@ -13,6 +13,15 @@ drive LND from Rust or keep to LDK.
 | [2026-10-15-mainnet-tee-spec.md](2026-10-15-mainnet-tee-spec.md) | **LayerTree on mainnet today, with a TEE enforcing the rules.** The exact missing opcodes; an enclave co-signer in a GCP Confidential VM; a pre-signed, timelocked unroll that needs no enclave; light clients; key lifecycle; threat model; verification mapped to upstream's Lean theorems; migration to real covenants as one rotation; OpenAgents uses; phases, costs and owner decisions |
 | [integration-plan.md](integration-plan.md) | Where our Lightning code lives, four fits (many small balances, batched author and affiliate payouts, agent wallets that exit without us, Lightning receive via vouchers), what to do now, triggers for deeper work, experiments E0 to E4 with acceptance checks, and LDK in Rust against a Rust `lnd-sdk` driving LND, with the crate's surface |
 
+## Public signet run
+
+The [TDX verification report](2026-10-16-signet-verification.md) records real
+signet creation, join, update, exit, and refresh transactions confirmed at
+heights 326595–326599, with Google-backed image/key/channel checks and
+public mirror readbacks. Its linked archive contains the public captures
+and actual confirmation and fee measurements. The week-long run and
+kill/HALT recovery measurements remain in progress under #11793.
+
 ## Regtest views
 
 ![LayerTree balances from the regtest run](captures/tree.jpg)
