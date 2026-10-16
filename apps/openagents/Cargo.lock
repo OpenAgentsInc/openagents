@@ -7110,7 +7110,6 @@ dependencies = [
 [[package]]
 name = "openagents-login"
 version = "1.0.0"
-source = "git+https://github.com/OpenAgentsInc/openagents.git?rev=5a3d1c14f58888c08d0e7a0ede0322fe7585b20b#5a3d1c14f58888c08d0e7a0ede0322fe7585b20b"
 dependencies = [
  "reqwest",
  "serde",
@@ -7121,13 +7120,15 @@ dependencies = [
 [[package]]
 name = "openagents-sdk"
 version = "1.0.0"
-source = "git+https://github.com/OpenAgentsInc/openagents.git?rev=5a3d1c14f58888c08d0e7a0ede0322fe7585b20b#5a3d1c14f58888c08d0e7a0ede0322fe7585b20b"
 dependencies = [
+ "base64 0.22.1",
+ "getrandom 0.4.3",
  "httpdate",
  "openagents-login",
  "reqwest",
  "serde",
  "serde_json",
+ "sha2",
  "tokio",
  "tokio-util",
  "url",

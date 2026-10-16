@@ -313,6 +313,22 @@ Domain crates must build in both. They already avoid SQLite (as
 
 ## Proposed plan
 
+**Progress (2026-10-16):** step 1 is done. The fork (`cb5774df`, which
+includes its Video Lab tools) is in `apps/openagents/` with its history, as
+its own workspace on Rust 1.98.1, using the SDK by path. `edge/` (apart from
+`edge/src/install.sh`), the sites and the workflows were removed. Checks run:
+- `cargo build -p zeron` passes;
+- `cargo test -p coder-account -p coder-brand -p zeron-update -p zeron-mcp`
+  passes (83 tests);
+- `scripts/ios/build-core.sh` builds the phone core with unchanged Swift
+  bindings;
+- an arm64 iOS simulator build installs and opens to its sign-in screen;
+- the root workspace's 250 packages don't include the import.
+
+Next is step 2: repoint `scripts/coder-sync/conformance.py` (it still pins
+the fork's client crates by Git URL), move the fork's issues and links, and
+archive the fork repository.
+
 Estimates are wall-clock time at this repository's measured pace (next
 section), with two to four agents working at once where the steps allow it.
 

@@ -98,9 +98,15 @@ OpenAgents mobile app. Plan, sizes and steps:
   example `cargo build -p zeron`. Domain crates linked into it must build in
   both workspaces, with SQLite behind a feature as `crates/spark-wallet`
   does.
-- **Not imported:** Zeron's TypeScript `edge/` (replaced by `coder-sync`),
-  its landing sites, and its GitHub workflows. Release steps become local
-  scripts.
+- **Not imported:** Zeron's TypeScript `edge/` (replaced by `coder-sync`;
+  only `edge/src/install.sh`, a shell installer the desktop binary embeds,
+  is kept), its landing sites, and its GitHub workflows. Release steps become
+  local scripts. The harness's two JavaScript shims
+  (`crates/harness/src/cursor/shim.mjs`, `crates/harness/src/pi/mcp.mjs`) run
+  inside the third-party Cursor SDK and Pi runtimes. They are adapter
+  glue, not product code; don't add more.
+- **Guide:** [`apps/openagents/OPENAGENTS.md`](apps/openagents/OPENAGENTS.md)
+  covers building, testing and pulling upstream.
 
 ## Never test on the owner's account (owner, 2026-10-14, binding)
 

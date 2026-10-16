@@ -7,7 +7,7 @@ publish.workspace = true
 
 [dependencies]
 coder-brand.workspace = true
-openagents = { package = "openagents-sdk", git = "https://github.com/OpenAgentsInc/openagents.git", rev = "5a3d1c14f58888c08d0e7a0ede0322fe7585b20b" }
+openagents = { package = "openagents-sdk", path = "../../../../crates/openagents-sdk" }
 tokio.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
