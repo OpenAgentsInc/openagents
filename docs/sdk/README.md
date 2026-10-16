@@ -42,10 +42,10 @@ clients; a new SDK does not need to duplicate them before computers are useful.
 
 | Area | Existing pieces | Remaining work |
 | --- | --- | --- |
-| Clients | `openagents-sdk` authentication, account/workspace discovery, saved-history readers, and the qualified Rust Computers client ([evidence](computers-client-evidence.json), #11805); decisions in `jev` | Web qualification (#11806), broader schemas, and supported SPACE operation |
+| Clients | `openagents-sdk` authentication, account/workspace discovery, saved-history readers, and the qualified Rust Computers client ([evidence](computers-client-evidence.json), #11805), and web adoption ([evidence](computers-web-evidence.json), #11806); decisions in `jev` | Broader schemas and supported SPACE operation |
 | Host | `coder-sdk`, Claude/Codex/ACP transports, hooks, policy and session ownership | Explicit third-party boundary, supported capabilities, and publication evidence |
 | Providers | `computer-driver`, Core/Suspend/Snapshot/Fork declarations, `computer-conformance`, Boat wire schema | Per-computer backend registry and separate external-provider qualification |
-| Computers | `oa-computers` intent/reconciliation, web chat integration, deployed gated account-authenticated lifecycle ([evidence](computers-lifecycle-evidence.json), #11801), durable command sessions ([evidence](computers-commands-evidence.json), #11802), bounded workspace files ([evidence](computers-files-evidence.json), #11803), and a maintained Computers contract with generated Rust bindings ([evidence](computers-openapi-evidence.json), #11804) | Shared client consumption and supported SPACE operation |
+| Computers | `oa-computers` intent/reconciliation, web chat integration, deployed gated account-authenticated lifecycle ([evidence](computers-lifecycle-evidence.json), #11801), durable command sessions ([evidence](computers-commands-evidence.json), #11802), bounded workspace files ([evidence](computers-files-evidence.json), #11803), and a maintained Computers contract with generated Rust bindings ([evidence](computers-openapi-evidence.json), #11804) | Solver/Environment adoption and supported SPACE operation |
 | SPACE | Completed opt-in Rust adapter and GCE spike in #11728 | Actual HTTP snapshot boots, full environment artifacts, credentials, operations, usage, and qualification |
 | Discovery | API docs, `llms.txt`, docs MCP, agent cards | Incrementally complete verified OpenAPI and examples |
 
@@ -105,7 +105,8 @@ Deliver one complete account-scoped workflow on Boat:
 Public lifecycle/authentication is [#11801](https://github.com/OpenAgentsInc/openagents/issues/11801); command sessions are
 [#11802](https://github.com/OpenAgentsInc/openagents/issues/11802); files are [#11803](https://github.com/OpenAgentsInc/openagents/issues/11803); the first specification is
 [#11804](https://github.com/OpenAgentsInc/openagents/issues/11804); the Rust client is [#11805](https://github.com/OpenAgentsInc/openagents/issues/11805); web adoption and the
-milestone proof are [#11806](https://github.com/OpenAgentsInc/openagents/issues/11806).
+milestone proof are [#11806](https://github.com/OpenAgentsInc/openagents/issues/11806),
+qualified in the [web evidence record](computers-web-evidence.json).
 
 Keep the current named-agent/admin gate while billing and broader admission
 remain incomplete. SPACE, own-machine support, full all-route schema coverage,
@@ -165,7 +166,7 @@ internal; they must not become developer credentials or bypass account checks.
 | Consumer | Migration |
 | --- | --- |
 | Coder Desktop | First external reference client, in a separate Zeron fork; consume the exported Rust SDK without monorepo-only access; [desktop plan](../coder-desktop/README.md) |
-| Web chat | Use the same public Rust client in #11806; preserve chat/task identities and per-turn authority |
+| Web chat | Qualified public Rust client adoption in #11806, with saved requests/output readers, chat/task identities, per-turn authority, and confirmed cancellation |
 | Solver | Move new allocation/lifecycle onto the client in [#11807](https://github.com/OpenAgentsInc/openagents/issues/11807); preserve legacy cleanup |
 | Environments | Move builders/verifiers onto shared ownership in [#11808](https://github.com/OpenAgentsInc/openagents/issues/11808); preserve clean build and fresh verification |
 | Existing OpenAgents desktop/mobile | Adopt supported public operations incrementally without pulling server/provider internals into clients |

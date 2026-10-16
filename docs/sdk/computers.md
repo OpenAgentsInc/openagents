@@ -124,9 +124,36 @@ credentials and saves original request identities for recovery and cleanup.
 ### Web chat client
 
 The web integration in [#11806](https://github.com/OpenAgentsInc/openagents/issues/11806)
-uses this client with the browser's authenticated session. Its live qualification
-is in progress. Saved environments owned by that account can be selected without
+uses this client with the browser's authenticated session. The
+[web qualification record](computers-web-evidence.json) pins the source, builds,
+checks, dedicated-account workflows, and cleanup. Saved environments owned by
+that account can be selected without
 a project; project selections retain their repository checks.
+
+The Boat milestone is qualified: an external Git-pinned client completed the
+public workflow on staging in 209.680 seconds and production in 235.113 seconds.
+A real web task read an attachment and wrote Rust code; a follow-up changed the
+same checkout on the same computer. Independent checks verified the two local
+commits, their ancestry, and two and three passing tests. The fixture initially
+lacked Rust; the agents disclosed that limitation, and the compiler was added
+to the disposable computer before verification and a successful web rerun.
+The saved image was not changed. In this fixture, the checkout is at
+`/home/user/repo`; SDK file transfers use `~/workspace`.
+
+A web restart recovered the same command and its output position at byte 9,241.
+A second account could not access or change its resources. Web cancellation
+ended a real sleeping command; a separate command found neither the child nor
+its delayed result file. All 12 acceptance VMs and their disks are absent.
+Test chats, the environment, its images, credentials, and temporary access
+settings were removed; completed job audit records remain.
+
+The initial live checks found and corrected a delayed cleanup that could
+replace a newer wake and a mismatch between internal environment IDs and public
+version numbers. The record also identifies four unchanged web-suite failures
+and the separate documentation reliability follow-up
+[#11891](https://github.com/OpenAgentsInc/openagents/issues/11891). These checks
+do not qualify SPACE, expand retail access, publish a package, or release the
+frozen CLI.
 
 The web saves each create request, command request, and output reader before
 sending or advancing it. Recovery uses the same keys and computer. Existing

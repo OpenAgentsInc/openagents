@@ -219,6 +219,13 @@ of truth for completion blockers. All new issues belong to the OpenAgents board
 
 ### M1: Boat through the public SDK and web
 
+Qualified on 2026-10-16 in [#11806](https://github.com/OpenAgentsInc/openagents/issues/11806).
+The [evidence record](computers-web-evidence.json) identifies the deployed code,
+85 targeted checks, staging and production SDK workflows, real web development
+and follow-up, restart/output recovery, account isolation, cancellation, and
+cleanup. It also records the corrected live defects, the fixture's compiler
+setup, and unrelated verification failures. SPACE qualification remains M2.
+
 1. Authenticate as the dedicated test account using the documented public
    credential type. Never give the client an internal service bearer or trust
    an account header supplied by the caller.

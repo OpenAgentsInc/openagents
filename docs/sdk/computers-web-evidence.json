@@ -1,0 +1,237 @@
+{
+  "schema": "openagents.sdk.computers.web.evidence.v1",
+  "date": "2026-10-16",
+  "issue": 11806,
+  "implementation_commit": "f4a2f0701c164ec951ae27d5c11b33424f413100",
+  "qualified_fix_commit": "1b5524a595bbe6f22417c7c4d8555c2ecbf755dd",
+  "client_git_revision": "f4a2f0701c164ec951ae27d5c11b33424f413100",
+  "computers_schema_sha256": "19dcf5d6bca65a0874c4abd385b54e556619a079e84499fa925c3e031687b769",
+  "consumer": {
+    "outside_repository": true,
+    "git_pinned": true,
+    "binary_sha256": "730bbcd411c67f08992fd251f3a03b0455d0b4356cb64db55bb810e215f1b5ce",
+    "normal_packages": 101,
+    "host_provider_database_dependencies": []
+  },
+  "checks": {
+    "latest_targeted_tests": 85,
+    "oa_computers": 26,
+    "computer_driver": 11,
+    "sdk": 35,
+    "web": 13,
+    "earlier_focused_web_tests": 33,
+    "formatting": true,
+    "production_frozen_cli_version": "coder 1.0.0 (3230ded51181aa438656825da8245cea6c8e717c clean)",
+    "public_reference_operations": 112
+  },
+  "full_web_suite_initial": {
+    "passed": 794,
+    "failed": 5,
+    "ignored": 15,
+    "own_composer_assertion_corrected_and_focused_suite_passed": true,
+    "remaining_unchanged_baseline_failures": [
+      "cloud::tests::cad_gate::pro_and_admins_pass_and_a_test_run_can_ask_to_be_free",
+      "pilot::tests::private_configuration_rejects_public_modes_symlinks_and_oversized_files",
+      "tests::the_api_docs_list_every_guide_and_serve_markdown",
+      "copy_guard::site_sources_have_no_machine_talk"
+    ],
+    "copy_guard_followup": 11888
+  },
+  "live_sdk_staging": {
+    "api": "https://staging.openagents.com/v1",
+    "cleanup_passed": true,
+    "computer": "cmp_008bf9a6f63f66befced",
+    "contains_credentials": false,
+    "contains_file_or_command_output": false,
+    "dedicated_test_account": true,
+    "elapsed_ms": 209680,
+    "request_key": "bcac7647088bac24ddab0ff905189d3f",
+    "schema": "openagents.sdk.computers.workflow.v1",
+    "workflow_passed": true
+  },
+  "live_sdk_production": {
+    "api": "https://api.openagents.com/v1",
+    "cleanup_passed": true,
+    "computer": "cmp_f881ee57099a0cd6ce80",
+    "contains_credentials": false,
+    "contains_file_or_command_output": false,
+    "dedicated_test_account": true,
+    "elapsed_ms": 235113,
+    "request_key": "b9f131d48c13037da28133cbdb0c241c",
+    "schema": "openagents.sdk.computers.workflow.v1",
+    "workflow_passed": true
+  },
+  "web": {
+    "origin": "https://staging.openagents.com",
+    "account": "acct_c0f38de1bcd6132a",
+    "separate_account": "acct_693f1b47ebcb1b49",
+    "chat": "86c833a2-624f-416b-ac33-5bf841634042",
+    "computer": "cmp_019353019432e05b39df",
+    "environment": "env-7da7755b6b48",
+    "attachment_bytes": 78,
+    "independent_rust_verification": {
+      "command": "trn_68cdbf7d617ea2b135c4",
+      "first_commit": "af4f4977958a950c221dc2d4c04f10b3ba1870d6",
+      "followup_commit": "1dfbeaf5c0c053612eed09c28092161b84453f16",
+      "first_tests_passed": 2,
+      "followup_tests_passed": 3,
+      "followup_descends_from_first": true,
+      "verification_after_toolchain_install": true
+    },
+    "agent_reran_three_tests": true,
+    "same_computer_for_task_and_followups": true,
+    "restart_command": "cmp_019353019432e05b39df.trn_c159681c356d17f8ad84",
+    "restart_output_cursor": {
+      "stdout": 9241,
+      "stderr": 0
+    },
+    "restart_output_gap": false,
+    "restart_revision": "openagents-web-1-staging-sdk6-recovery-c3ed78",
+    "separate_account_list_get_command_output_file_read_file_write_stop_cancel_create_attach_refused": true,
+    "cancelled_state_observed": true,
+    "web_stop_response_status": 303,
+    "pending_notice_body_captured": false,
+    "cancelled_child_and_delayed_write_absent": true,
+    "cleanup_probe_command": "trn_334876a5ae4979e9326a"
+  },
+  "live_findings_and_corrections": [
+    {
+      "finding": "A delayed command completion replaced a newer accepted wake.",
+      "correction": "Persisted intent generations protect automatic transitions, including newly queued commands and restart. The regression test and repeated live SDK workflow pass.",
+      "initial_failed_workflow_computer": "cmp_d24cb53bdda34058a4db",
+      "initial_failed_workflow_cleanup_confirmed": true
+    },
+    {
+      "finding": "The web sent the internal environment version ID to a public field that expects its number.",
+      "correction": "Send the saved version number as a string. The public create, attachment, and real development turns pass.",
+      "initial_failed_chat_removed": "a8e4ea22-3b98-4d3a-8f33-9e219c1010eb"
+    },
+    {
+      "finding": "The Hello-World fixture had no Rust compiler. Both agents wrote code and honestly reported that tests could not run. A substring-only marker check initially misread a quoted refusal.",
+      "correction": "Install Rust on the disposable computer through the public Rust SDK; independently compile and test both pinned local commits, verify ancestry, then rerun the real web agent. Success requires the independent results, not a quoted marker.",
+      "fixture_compiler": "rustc 1.63.0",
+      "checkout": "/home/user/repo",
+      "file_transfer_root": "~/workspace"
+    }
+  ],
+  "deployment": {
+    "service_image": "sha256:5ba6b20e3b15d20fecc31a5e0d9e189f3a9c91a51ba8d627128facc7de6d4776",
+    "web_image": "sha256:0854cfc72411984c14d34ad794e1f9c8601011777d7a0ae326ba5f0f40246deb",
+    "service_build": "97e17496-233e-41d1-97e4-1acb402c393c",
+    "web_build": "36dc317b-de33-4e11-bad1-b74194c4e5b4",
+    "production_service_revision": "oa-computers-registry-1b5524a595-174022",
+    "production_web_revision": "coder-web-0854cfc724-20261016174110",
+    "staging_service_revision": "oa-computers-staging-registry-1b5524a595-165511",
+    "staging_web_qualified_revision": "openagents-web-1-staging-sdk6-1b5524a595",
+    "native_overlay_browser_inputs_unchanged": true
+  },
+  "deployment_checks": {
+    "staging": {
+      "passed": 34,
+      "failed": 0,
+      "installer_skipped": 1
+    },
+    "candidate": {
+      "passed": 58,
+      "failed": 0,
+      "optional_skipped": 2,
+      "gateway_checks_held": 8
+    },
+    "production_initial": {
+      "passed": 64,
+      "failed": 2,
+      "optional_skipped": 2,
+      "failed_checks": "One HTTP 500 on self-host caused page-load and breadcrumb failures."
+    },
+    "production_docs_retry": {
+      "passed": 2,
+      "failed": 2,
+      "failed_checks": "A later share-a-project HTTP 500 caused the same failures; subsequent direct requests to both pages returned 200."
+    },
+    "unrelated_documentation_followup": 11891,
+    "production_public_reference_passed": true
+  },
+  "cleanup": {
+    "environment": {
+      "environment": "env-7da7755b6b48",
+      "account": "acct_c0f38de1bcd6132a",
+      "retired_before_removal": true,
+      "versions": 1,
+      "source": {
+        "repository": "octocat/Hello-World",
+        "revision": "7fd1a60b01f91b314f59955a4e4d4e80d8edf11d",
+        "digest": "4de1ec67a5f38dbdee73ff5b2a519198e25b47e6b16fcd840527d8990849acdc"
+      },
+      "images": [
+        "oaenv-build-1-94b52a357aaff6c2ae98a523",
+        "oaenv-build-2-eaec642dda0a380b601dcf13"
+      ],
+      "deleted_computer_resources": [
+        "bx_et05xwqrii",
+        "bx_e7f0z5pq3k",
+        "bx_3t1py2n658",
+        "bx_7j8w7woyfe",
+        "bx_ynk0o8hi3o",
+        "bx_7wsr911jtu",
+        "bx_h3pltuwinz",
+        "bx_mspw7pdhdr"
+      ],
+      "completed_job_audit_records_preserved": true
+    },
+    "images": [
+      {
+        "image": "oaenv-build-1-94b52a357aaff6c2ae98a523",
+        "delete_status": 404,
+        "observed_status": 404
+      },
+      {
+        "image": "oaenv-build-2-eaec642dda0a380b601dcf13",
+        "delete_status": 200,
+        "observed_status": 404
+      }
+    ],
+    "provider": {
+      "resources": [
+        "bx_0a9j0hdubh",
+        "bx_3t1py2n658",
+        "bx_7j8w7woyfe",
+        "bx_7wsr911jtu",
+        "bx_e7f0z5pq3k",
+        "bx_et05xwqrii",
+        "bx_h3pltuwinz",
+        "bx_mspw7pdhdr",
+        "bx_nw6l7iwlwk",
+        "bx_ta6i8gnsgz",
+        "bx_tz0913in8c",
+        "bx_ynk0o8hi3o"
+      ],
+      "instances": [],
+      "disks": []
+    },
+    "test_chats_removed": [
+      "a8e4ea22-3b98-4d3a-8f33-9e219c1010eb",
+      "86c833a2-624f-416b-ac33-5bf841634042"
+    ],
+    "web_computer_deleted": true,
+    "claude_credential_removed": true,
+    "temporary_access_removed": true,
+    "staging_api_keys_revoked": 2,
+    "staging_sessions_revoked": 2,
+    "revoked_credentials_return_401": true,
+    "production_approved_test_credential_preserved": true
+  },
+  "boundaries": {
+    "owner_application_account_or_computers_tested": false,
+    "package_published": false,
+    "frozen_cli_released": false,
+    "retail_access_expanded": false,
+    "space_qualified": false,
+    "credentials_or_user_file_contents_in_evidence": false,
+    "sdk_timings": "One run per environment, from create through observed deletion; excludes authentication, builds, and setup. Not a latency distribution."
+  },
+  "public_archive": {
+    "path": "evidence/computers-web-2026-10-16.tar.gz",
+    "sha256": "3ab56712577269fd28933c2f6b06efc63e445f8afe54bb784516241dcaebc115",
+    "files": 10
+  }
+}
