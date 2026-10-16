@@ -628,9 +628,10 @@ pub struct Accounts {
     #[serde(default)]
     pub github_app: Option<GithubSignIn>,
     /// Invite-only sign-in (`oa_auth::invite`): the GitHub people who may
-    /// sign in or link GitHub, and which of them are site admins. Anyone
-    /// else's GitHub sign-in is refused `403 invite_only` before an
-    /// account or session is made. Absent lets anyone with GitHub in.
+    /// sign in or link GitHub, and which of them are site admins. Unless
+    /// the list is `"open": true`, anyone else's GitHub sign-in is refused
+    /// `403 invite_only` before an account or session is made. Open, or
+    /// absent, lets anyone with GitHub in; open still marks admins.
     #[serde(default)]
     pub invite_only: Option<oa_auth::InviteOnly>,
     /// Where the account stores live (#11154): `files` beside the

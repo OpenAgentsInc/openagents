@@ -27,10 +27,11 @@ EGRESS_SUBNET = "openagents-web-production"
 # leaves it out (the stores stay on the NFS share, the rollback).
 DATABASE = "openagentsgemini:us-central1:openagents-production-pg"
 DATABASE_SECRET = "openagents-production-pg-dsn"
-# Invite-only sign-in: only the owner (GitHub AtlantisPleb, id 14167547),
-# as a site admin (docs/auth/github.md).
+# GitHub sign-in is open to anyone with a GitHub account (since 2026-10-15);
+# the list only marks site admins: the owner (GitHub AtlantisPleb, id
+# 14167547) (oa_auth::invite, docs/auth/github.md).
 INVITE_ONLY = json.dumps(
-    {"github": [{"id": 14167547, "login": "AtlantisPleb", "admin": True}]},
+    {"open": True, "github": [{"id": 14167547, "login": "AtlantisPleb", "admin": True}]},
     separators=(",", ":"),
 )
 # The retired coder-serve sidecar's own database

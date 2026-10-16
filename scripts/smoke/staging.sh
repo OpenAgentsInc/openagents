@@ -10,7 +10,8 @@
 # gates, alias, accounts, signed-in, environments, gateway, traces, terminal.
 # --environment-run OWNER/REPO also sets up one environment end to end on
 # real Boat machines as the agent-work test account (#11162). --invite-only
-# also checks that /login says sign-in is invite-only. The terminal group runs the
+# checks that /login says sign-in is invite-only (a closed list); without
+# it, that /login doesn't (open sign-in, since 2026-10-15). The terminal group runs the
 # site's hosted installer into a scratch HOME and checks `coder --version`.
 # --restart (opt-in) also forces a new revision of the service and checks
 # that an account, its session, an API key, a saved provider key and a

@@ -24,7 +24,8 @@ one of them prints WAIT ("expected until traffic") and does not fail the
 run. `scripts/deploy/web.sh shift` runs them for real against
 openagents.com once the traffic has moved.
 
-`--invite-only` also checks that `/login` says sign-in is invite-only.
+`--invite-only` checks that `/login` says sign-in is invite-only (a closed
+list); without it, that `/login` doesn't (open sign-in, since 2026-10-15).
 
 The `environments` group (#11162) signs in as the fixed agent-work test
 account (its key in SMOKE_AGENT_KEY) and opens Environments; with
@@ -771,7 +772,10 @@ def run(base, only, install, production=False, restart=None, invite_only=False,
         record("sign-in: /login offers GitHub", login.status == 200 and "/auth/github" in login.text)
         if invite_only:
             record("sign-in: /login says sign-in is invite-only",
-                   "Sign-in is invite-only for now." in login.text)
+                   "invite-only for now" in login.text)
+        else:
+            record("sign-in: /login does not say sign-in is invite-only (open)",
+                   "invite-only" not in login.text.lower())
         go = site.get("/auth/github")
         loc = go.location()
         q = urllib.parse.parse_qs(urllib.parse.urlparse(loc).query)
@@ -947,7 +951,8 @@ def main():
                         help="a no-traffic production candidate: the gateway checks it cannot "
                         "pass before traffic print WAIT instead of failing (implies --production)")
     parser.add_argument("--invite-only", action="store_true",
-                        help="also check that /login says sign-in is invite-only")
+                        help="check that /login says sign-in is invite-only (a closed list); "
+                             "without it, check that it doesn't")
     parser.add_argument("--restart", action="store_true",
                         help="also check that an account, its session, an API key, a saved provider "
                         "key and a saved own-Claude key survive a forced new revision of "

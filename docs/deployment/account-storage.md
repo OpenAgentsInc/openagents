@@ -259,7 +259,8 @@ staging:
   ~/work/.secrets/github-oauth-production.json`), the existing
   `openagents-web-ask-salt`, and the production upstream keys
   `openagents-{vertex-sa-key,openrouter-api-key,vercel-gateway-api-key}`.
-- Invite-only: only the owner (GitHub id 14167547) may sign in, as admin
+- Sign-in is open to anyone with GitHub since 2026-10-15; the list marks
+  the owner (GitHub id 14167547) as admin
   ([GitHub sign-in](../auth/github.md#invite-only-sign-in)). There is no
   operator sign-up token on production.
 - Firewall: besides the NFS rules and the pay-host rule,

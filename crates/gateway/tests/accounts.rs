@@ -2062,6 +2062,16 @@ async fn stores_install_under_accounts_config_and_validate() {
     config.accounts.as_mut().unwrap().invite_only =
         Some(serde_json::from_value(json!({"github": [{"admin": true}]})).unwrap());
     assert!(config.check(&path).is_err());
+
+    // Open sign-in (2026-10-15): anyone in, the list still marks admins.
+    let open: oa_auth::InviteOnly = serde_json::from_value(
+        json!({"open": true, "github": [{"id": 14167547, "login": "AtlantisPleb", "admin": true}]}),
+    )
+    .unwrap();
+    assert!(open.allows(1, "stranger") && !open.admin(1, "stranger"));
+    assert!(open.admin(14167547, "AtlantisPleb"));
+    config.accounts.as_mut().unwrap().invite_only = Some(open);
+    assert!(config.check(&path).is_ok());
 }
 
 #[tokio::test]

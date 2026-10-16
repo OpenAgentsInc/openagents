@@ -465,6 +465,43 @@ async fn the_web_servers_own_invite_list_sets_no_cookie_and_ends_the_session() {
     assert!(owner.0["oa_cloud_session"].starts_with("sess_"));
 }
 
+/// An open list lets anyone with a GitHub account in, says nothing about
+/// invites on `/login`, and still marks its admins (2026-10-15).
+#[tokio::test]
+async fn an_open_list_lets_a_stranger_in_and_keeps_the_admin() {
+    let open: oa_auth::InviteOnly =
+        serde_json::from_value(json!({"open": true, "github": [{"id": 583231, "admin": true}]}))
+            .unwrap();
+    let world = world_with(true, Some(open.clone()), Some(open)).await;
+    let mut stranger = Browser::default();
+    let login = stranger.get(&world, "/login").await;
+    assert!(login.body.contains("Continue with GitHub"));
+    assert!(
+        !login.body.to_lowercase().contains("invite"),
+        "{}",
+        login.body
+    );
+    let done = stranger
+        .through_github(&world, "%2F", "login=quiet-local")
+        .await;
+    assert_eq!(done.status, StatusCode::OK, "{}", done.body);
+    assert!(stranger.0["oa_cloud_session"].starts_with("sess_"));
+    let dashboard = crate::analytics::DASHBOARD;
+    assert_eq!(
+        stranger.get(&world, dashboard).await.status,
+        StatusCode::NOT_FOUND,
+        "a stranger is not admin"
+    );
+
+    let mut owner = Browser::default();
+    let done = owner
+        .through_github(&world, "%2F", "login=octo-local")
+        .await;
+    assert_eq!(done.status, StatusCode::OK, "{}", done.body);
+    assert_eq!(owner.get(&world, dashboard).await.status, StatusCode::OK);
+    assert_eq!(accounts(&world).accounts.len(), 2);
+}
+
 /// The analytics dashboard opens for a signed-in admin, whose account menu
 /// links it; an invited person who isn't admin, and anyone signed out, get
 /// the plain 404 and no link (#11153).

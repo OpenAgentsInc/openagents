@@ -120,7 +120,7 @@ Apps that act for a person, such as MCP clients (Claude, ChatGPT, Cursor,
 VS Code), get a bearer token with OAuth 2.1: the app registers itself, you
 approve the login in your browser, and the app gets a token for your
 account. OpenAgents is its own authorization server (login with GitHub;
-login is invite-only for now).
+anyone with a GitHub account may log in).
 
 - Resource metadata: <https://openagents.com/.well-known/oauth-protected-resource/mcp>
   (and <https://openagents.com/.well-known/oauth-protected-resource> for the site).

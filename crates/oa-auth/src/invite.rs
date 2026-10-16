@@ -1,14 +1,18 @@
-//! Invite-only sign-in: the GitHub people a deployment lets in.
+//! The GitHub people list: who a deployment lets in, and who is a site admin.
 //!
 //! The account service (`accounts.invite_only` in the gateway config) and
 //! the web server (`invite_only` in its Cloud config) both read this list.
-//! With it set, a GitHub sign-in from anyone not on it is refused before
-//! any account is made or session issued (`403 invite_only`), and the web
-//! server shows "Sign-in is invite-only for now" without setting a cookie.
-//! Absent means anyone with a GitHub account may sign in.
+//! With it set and closed, a GitHub sign-in from anyone not on it is refused
+//! before any account is made or session issued (`403 invite_only`), and
+//! the web server shows "Login is invite-only for now" without setting a
+//! cookie. Absent means anyone with a GitHub account may sign in.
+//!
+//! With `"open": true` anyone with a GitHub account may sign in, and the
+//! list only marks site admins (`admin`). Since 2026-10-15 openagents.com
+//! runs open.
 //!
 //! ```json
-//! "invite_only": {"github": [{"id": 14167547, "login": "AtlantisPleb", "admin": true}]}
+//! "invite_only": {"open": true, "github": [{"id": 14167547, "login": "AtlantisPleb", "admin": true}]}
 //! ```
 //!
 //! An entry with an `id` matches that GitHub user id only (ids never
@@ -22,6 +26,10 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct InviteOnly {
+    /// Anyone with a GitHub account may sign in; the list only marks
+    /// site admins.
+    #[serde(default)]
+    pub open: bool,
     /// GitHub accounts that may sign in.
     #[serde(default)]
     pub github: Vec<Invited>,
@@ -69,10 +77,17 @@ impl InviteOnly {
         self.github.iter().find(|entry| entry.matches(id, login))
     }
 
-    /// Whether the GitHub user `id` / `login` may sign in.
+    /// Whether the GitHub user `id` / `login` may sign in: everyone when
+    /// the list is open.
     #[must_use]
     pub fn allows(&self, id: u64, login: &str) -> bool {
-        self.find(id, login).is_some()
+        self.open || self.find(id, login).is_some()
+    }
+
+    /// Whether sign-in is actually limited to the list (not open).
+    #[must_use]
+    pub fn closed(&self) -> bool {
+        !self.open
     }
 
     /// Whether the GitHub user `id` / `login` is a site admin.
@@ -124,6 +139,21 @@ mod tests {
     fn absent_lets_everyone_in_and_empty_lets_no_one_in() {
         assert!(allowed(None, 1, "anyone"));
         assert!(!allowed(Some(&InviteOnly::default()), 1, "anyone"));
+    }
+
+    #[test]
+    fn open_lets_a_stranger_in_and_an_admin_stays_admin() {
+        let open: InviteOnly = serde_json::from_value(serde_json::json!({"open": true, "github": [
+            {"id": 14167547, "login": "AtlantisPleb", "admin": true}
+        ]}))
+        .unwrap();
+        assert!(!open.closed());
+        assert!(open.allows(1, "stranger"));
+        assert!(allowed(Some(&open), 1, "stranger"));
+        assert!(!open.admin(1, "stranger"), "a stranger is not admin");
+        assert!(open.admin(14167547, "AtlantisPleb"));
+        assert!(open.find(14167547, "renamed").is_some());
+        assert!(list().closed(), "absent `open` is closed");
     }
 
     #[test]

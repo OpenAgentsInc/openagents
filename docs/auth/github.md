@@ -49,32 +49,40 @@ never committed or logged. The owner keeps them at
 
 ## Invite-only sign-in
 
-While accounts are opened by invitation (since 2026-10-09, only the owner,
-GitHub `AtlantisPleb`, id 14167547), both halves read one list
-(`oa_auth::invite`):
+Since 2026-10-15 sign-in is open: anyone with a GitHub account may log in,
+and the list only marks site admins (the owner, GitHub `AtlantisPleb`, id
+14167547). From 2026-10-09 to 2026-10-15 only the owner could sign in.
+Both halves read one list (`oa_auth::invite`):
 
 ```json
-"invite_only": {"github": [{"id": 14167547, "login": "AtlantisPleb", "admin": true}]}
+"invite_only": {"open": true, "github": [{"id": 14167547, "login": "AtlantisPleb", "admin": true}]}
 ```
 
+`"open": true` lets everyone in (`allows`) while `admin` and `find` keep
+working. Without it (or `"open": false`) the list is closed and only the
+people on it may sign in, as described below.
+
 - Account service: `accounts.invite_only` in the gateway config
-  (`INVITE_ONLY_JSON` in `deploy/staging/gateway.sh`). A GitHub sign-in or
-  link from anyone else is refused `403 invite_only` right after GitHub
+  (`INVITE_ONLY_JSON` in `deploy/staging/gateway.sh`). With a closed list,
+  a GitHub sign-in or link from anyone else is refused `403 invite_only` right after GitHub
   says who it is, before the stores are opened: no account, no session.
   `GET /v1/account` answers `"admin": true` for an entry marked `admin`;
   the sign-in answer carries `github: {id, login}` and `admin`.
 - Web server: `invite_only` in its Cloud config (`openagents.cloud.web-config.v1`).
-  `/login` says "Sign-in is invite-only for now." A sign-in the account
+  With a closed list, `/login` says "Login is invite-only for now." (with
+  an open list it says nothing about invites). A sign-in the account
   service refuses, or whose answer names a GitHub user not on the web's own
-  list (the session is then ended at once), lands on the plain page "Sign-in
-  is invite-only for now" with no cookie set.
+  closed list (the session is then ended at once), lands on the plain page
+  "Login is invite-only for now" with no cookie set.
 - An entry with an `id` matches only that id (a renamed login stays in, a
   login someone else takes later doesn't); an entry with only a `login`
   matches it case-insensitively. Absent means anyone with GitHub may sign
   in. Open sign-up (`POST /v1/accounts`) stays off either way.
 
-Tests: `cargo test -p oa-auth` (`invite::tests`, and
-`invite_only_lets_in_the_invited_admin_and_refuses_everyone_else_without_an_account`),
+Tests: `cargo test -p oa-auth` (`invite::tests`,
+`invite_only_lets_in_the_invited_admin_and_refuses_everyone_else_without_an_account`,
+and `an_open_list_lets_anyone_in_and_keeps_its_admin`),
+`openagents-web`'s `auth::tests::an_open_list_lets_a_stranger_in_and_keeps_the_admin`,
 `openagents-web`'s `auth::tests::invite_only_*` and
 `the_web_servers_own_invite_list_sets_no_cookie_and_ends_the_session`.
 

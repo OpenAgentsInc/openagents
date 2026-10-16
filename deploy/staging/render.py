@@ -39,11 +39,12 @@ EGRESS_SUBNET = "openagents-web-staging"
 # chat-store jobs). Flip a live service with `gcloud run services update
 # --container web --update-env-vars OPENAGENTS_WEB_MAC_JOBS_ACTORS=0|1`.
 MAC_JOBS_ACTORS = "1"
-# Invite-only sign-in (oa_auth::invite, docs/auth/github.md): only the
-# owner's GitHub account (AtlantisPleb, id 14167547) may sign in, as a site
-# admin. Both the gateway and the web server read it.
+# GitHub sign-in (oa_auth::invite, docs/auth/github.md): open to anyone with
+# a GitHub account since 2026-10-15; the list only marks site admins (the
+# owner, AtlantisPleb, id 14167547). Both the gateway and the web server
+# read it.
 INVITE_ONLY = json.dumps(
-    {"github": [{"id": 14167547, "login": "AtlantisPleb", "admin": True}]},
+    {"open": True, "github": [{"id": 14167547, "login": "AtlantisPleb", "admin": True}]},
     separators=(",", ":"),
 )
 # Agent work on a public host (#11162, docs/deployment/agent-work.md): site

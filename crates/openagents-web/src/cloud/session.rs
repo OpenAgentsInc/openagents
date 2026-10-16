@@ -57,9 +57,10 @@ struct Configuration {
     public_origin: String,
     account_service: String,
     csrf_secret: PathBuf,
-    /// Invite-only sign-in (`oa_auth::invite`): with it, a GitHub sign-in
-    /// from anyone not on the list sets no cookie, whatever the account
-    /// service answered.
+    /// Invite-only sign-in (`oa_auth::invite`): with it closed, a GitHub
+    /// sign-in from anyone not on the list sets no cookie, whatever the
+    /// account service answered. With `"open": true` anyone may sign in and
+    /// the list only marks admins.
     #[serde(default)]
     invite_only: Option<oa_auth::InviteOnly>,
 }
@@ -284,9 +285,12 @@ impl CloudSession {
     pub fn secure(&self) -> bool {
         self.secure
     }
-    /// Whether sign-in is invite-only here (`invite_only` in the config).
+    /// Whether sign-in is invite-only here: an `invite_only` list in the
+    /// config that is not `open`.
     pub fn invite_only(&self) -> bool {
-        self.invite_only.is_some()
+        self.invite_only
+            .as_ref()
+            .is_some_and(oa_auth::InviteOnly::closed)
     }
 
     /// Replacement, altered bytes, or loss of private modes fences this instance.
@@ -458,10 +462,9 @@ impl CloudSession {
         // answer that doesn't say who signed in) gets no cookie, and the
         // session the account service issued is ended at once.
         if let Some(invite) = &self.invite_only
-            && !wire
-                .github
-                .as_ref()
-                .is_some_and(|github| invite.allows(github.id, &github.login))
+            && !wire.github.as_ref().map_or(invite.open, |github| {
+                invite.allows(github.id, &github.login)
+            })
         {
             if let Ok(client) = self.client(&wire.token) {
                 client.account().sign_out().await.ok();

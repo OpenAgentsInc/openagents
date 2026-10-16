@@ -230,6 +230,23 @@ async fn invite_only_lets_in_the_invited_admin_and_refuses_everyone_else_without
 }
 
 #[tokio::test]
+async fn an_open_list_lets_anyone_in_and_keeps_its_admin() {
+    let invite: oa_auth::InviteOnly = serde_json::from_value(
+        json!({"open": true, "github": [{"id": 583231, "login": "octo-local", "admin": true}]}),
+    )
+    .unwrap();
+    let world = world_with(Some(invite)).await;
+    let stranger = sign_in(&world, "quiet-local").await;
+    assert_eq!(stranger["admin"], false);
+    let (_, account) = read(&world, stranger["token"].as_str().unwrap(), "/v1/account").await;
+    assert_eq!(account["account"]["admin"], false);
+    let owner = sign_in(&world, "octo-local").await;
+    assert_eq!(owner["admin"], true);
+    let (_, account) = read(&world, owner["token"].as_str().unwrap(), "/v1/account").await;
+    assert_eq!(account["account"]["admin"], true);
+}
+
+#[tokio::test]
 async fn without_an_invite_list_no_one_is_admin() {
     let world = world().await;
     let signed = sign_in(&world, "octo-local").await;
