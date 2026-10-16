@@ -238,6 +238,18 @@ impl TemplateClient {
         }
     }
 
+    /// Direct builder discovery requires a recent successful status read. This
+    /// updates health observations only and cannot start a build.
+    pub async fn refresh_builders(&self) -> Outcome<Value> {
+        self.request(
+            Method::POST,
+            &format!("{ADMIN}/nodes:refresh-status"),
+            Some(json!({"role":"builder","force":true})),
+            None,
+        )
+        .await
+    }
+
     pub async fn status(&self, accepted: &BuildAccepted) -> Outcome<BuildStatus> {
         if !valid_id(&accepted.job_id) || !valid_id(&accepted.template_name) {
             return Outcome::unknown("The SPACE build identity is invalid.");
