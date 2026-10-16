@@ -394,20 +394,24 @@ log, a report for other parameters, another enclave's key, and a forged
 vendor signature all fail. Real report parsing is #11745. `crates/oa-att`
 today verifies only Google Confidential Space tokens.
 
-**A GCP caveat to settle in P1.** On GCP, the SEV-SNP launch measurement
-covers Google's guest firmware, not our disk image, so the image has to
-get into a hardware-signed measurement some other way. There are two
-candidate routes:
+**GCP route decision (October 16, 2026, #11787).** Use Confidential
+Space on TDX for the first signet service. A real production-mode token
+verified in `oa-att` binds the test container digest and the exact hash
+of `Q` and the tree parameters. This route trusts Google's attestation
+service, launcher, and measurement policy, as well as Intel hardware.
+A client checks that Google-signed token instead of claiming a direct
+Intel-only quote verification. Independent image reproduction, release-log
+inclusion, key sealing, and the on-chain binding remain separate P1 work.
 
-- **TDX RTMRs.** The firmware extends them with the kernel, initrd and
-  command line, and the TDX quote signs them.
-- **Confidential Space.** Its Google-signed token names the container image
-  digest. This is simpler, and it is what `oa-att` verifies already, but it
-  adds Google's attestation service as a trusted party.
-
-P1 must establish which route proves "this exact image holds `Q`" on each
-platform. If neither route works for SEV-SNP on GCP, the SEV-SNP leg runs
-on another cloud in P3.
+No SNP route on GCP qualified: the raw SNP report measures firmware, the
+captured guest has no SVSM, and Google Cloud Attestation rejects the SNP
+Confidential Space launch as unsupported. A hypervisor vTPM would add trust
+in Google and still need an enforced measured-boot/dm-verity chain. The
+SNP service needs a separately qualified cloud/image route; it does not
+block the TDX signet service. Do not substitute plain SEV. Raw TDX RTMR
+extension worked, but an application-supplied marker does not prove the
+boot image. See the [captured reports, token, route comparison, and
+cleanup](2026-10-16-attestation-routes.md).
 
 ## 5. Keys, state and lifecycle
 
@@ -415,7 +419,7 @@ on another cloud in P3.
 
 | Phase | `Q` (key path) | What a theft needs |
 | --- | --- | --- |
-| P1 | one SEV-SNP enclave | that enclave broken |
+| P1 | one TDX Confidential Space enclave on GCP; SNP follows a separately qualified route | that enclave or its attestation trust broken |
 | P2 | MuSig2(SEV-SNP enclave, TDX enclave, owner guardian `G`) | both vendors broken **and** the guardian |
 | P3 | FROST 2-of-3 across SEV-SNP and TDX on two clouds, plus `G` as a MuSig2 co-signer | two of three enclaves on two vendors, **and** `G` |
 
