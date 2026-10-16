@@ -1,5 +1,10 @@
 //! The solver box runner (#11560, spec `docs/cloud/solver-on-gcp.md`).
 //!
+//! Account-owned jobs use [`computers`], which saves public SDK requests and
+//! output positions and observes deletion. The dispatcher selects the provider
+//! from each job's saved binding. The direct provider below serves original
+//! jobs and explicit local runs until those entry points are retired.
+//!
 //! One run takes one GitHub issue to a pull request on a Google Cloud box of
 //! its own: [`run`] asks our Box service (oa-boat, through the `boat` SDK)
 //! for a `large` box, writes the run's settings and credentials to it
@@ -25,6 +30,7 @@ use boat::models::{
 use boat::{CommandFrame, Nullable, WaitOptions, shell_quote};
 use serde_json::{Value, json};
 
+pub mod computers;
 pub mod dispatch;
 
 /// The solver container, built by `deploy/solver-box/cloudbuild.yaml` and
@@ -33,6 +39,9 @@ pub mod dispatch;
 pub const IMAGE: &str = "us-central1-docker.pkg.dev/openagentsgemini/openagents/oa-solver-box:253e883a15e7660d74856120cb66d29007defa63";
 /// Names the solver container instead of [`IMAGE`].
 pub const IMAGE_ENV: &str = "OA_SOLVER_IMAGE";
+/// This identity can predict with Vertex and download Solver images. It has
+/// no access to the dispatcher's operational secrets.
+pub const RUNTIME_ACCOUNT: &str = "oa-solver-runtime@openagentsgemini.iam.gserviceaccount.com";
 /// Every hand's model unless the run names another.
 pub const DEFAULT_MODEL: &str = "google/gemini-4-argon";
 /// The box sizes tried in turn (`crates/oa-boat/src/sizes.rs`): `large`
@@ -137,6 +146,7 @@ pub fn env_file(run: &Run, credentials: &Credentials) -> String {
     vars.insert("OA_ISSUE", run.issue.to_string());
     vars.insert("OA_SOLVER_MODEL", run.model.clone());
     vars.insert("GH_TOKEN", credentials.github_token.clone());
+    vars.insert("GH_REPO", run.repo.clone());
     vars.insert("CODER_VERTEX_TOKEN_FILE", format!("{RUN_DIR}/vertex-token"));
     vars.insert("CODER_VERTEX_PROJECT", "openagentsgemini".into());
     vars.insert("CODER_VERTEX_LOCATION", "global".into());
@@ -161,6 +171,8 @@ pub enum GoogleToken {
     Gcloud,
     /// The GCE / Cloud Run metadata server.
     Metadata,
+    #[cfg(test)]
+    Fixture,
 }
 
 impl GoogleToken {
@@ -169,7 +181,39 @@ impl GoogleToken {
     /// # Errors
     /// The token could not be had; the text never holds a token.
     pub async fn get(&self) -> Result<String, String> {
+        #[cfg(test)]
+        if matches!(self, Self::Fixture) {
+            return Ok("fixture-google-secret".into());
+        }
+        let base = self.dispatcher_token().await?;
+        let client = reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(5))
+            .timeout(Duration::from_secs(15))
+            .build()
+            .map_err(|_| "Google sign-in couldn't start.")?;
+        let response=client.post(format!("https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/{RUNTIME_ACCOUNT}:generateAccessToken"))
+            .bearer_auth(&base).json(&json!({"scope":["https://www.googleapis.com/auth/cloud-platform"],"lifetime":"3600s"})).send().await.map_err(|_|"Google sign-in didn't answer.")?;
+        if !response.status().is_success() {
+            return Err("Solver couldn't sign in to Google. Try again later.".into());
+        }
+        let value: Value = response
+            .json()
+            .await
+            .map_err(|_| "Google sign-in couldn't be read.")?;
+        value["accessToken"]
+            .as_str()
+            .filter(|token| {
+                !token.is_empty() && token.len() <= 8192 && !token.chars().any(char::is_control)
+            })
+            .map(str::to_owned)
+            .ok_or_else(|| "Google sign-in returned no token.".into())
+    }
+
+    /// This token stays on the dispatcher; it never enters a Solver computer.
+    async fn dispatcher_token(&self) -> Result<String, String> {
         match self {
+            #[cfg(test)]
+            Self::Fixture => Ok("fixture-google-secret".into()),
             Self::Gcloud => {
                 let out = tokio::process::Command::new("gcloud")
                     .args(["auth", "print-access-token"])
@@ -247,7 +291,7 @@ fn short(text: &str, max: usize) -> String {
 /// rewrites a transcript entry as it grows (`{"set": i, "entry": ...}`),
 /// so a thought is reported once its entry is followed by another, and a
 /// tool once, when it starts.
-#[derive(Default)]
+#[derive(Default, serde::Serialize, serde::Deserialize)]
 pub struct Reader {
     thought: Option<(u64, String)>,
     tools: std::collections::BTreeSet<u64>,

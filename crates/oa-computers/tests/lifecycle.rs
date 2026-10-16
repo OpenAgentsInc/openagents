@@ -820,6 +820,38 @@ async fn create_retries_preserve_settings_keys_and_atomic_account_limits() {
     .await;
     assert_eq!(status, 202, "{first}");
     let id = first["id"].as_str().unwrap();
+    let (status, recovered) = call(
+        reqwest::Method::GET,
+        format!("{base}/v1/computers/by-request/key-one"),
+        "alice",
+        None,
+    )
+    .await;
+    assert_eq!(status, 200);
+    assert_eq!(recovered["id"], id);
+    assert_eq!(
+        call(
+            reqwest::Method::GET,
+            format!("{base}/v1/computers/by-request/key-one"),
+            "bob",
+            None
+        )
+        .await
+        .0,
+        404
+    );
+    assert_eq!(
+        call(
+            reqwest::Method::GET,
+            format!("{base}/v1/computers/by-request/never-accepted"),
+            "alice",
+            None
+        )
+        .await
+        .0,
+        404
+    );
+    assert_eq!(store.list("alice").await.unwrap().len(), 1);
     let mut conflict = request.clone();
     conflict["image"] = json!("different-template");
     let (status, failure) = call(

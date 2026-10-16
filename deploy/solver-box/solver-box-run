@@ -60,10 +60,32 @@ if ! git clone -q --filter=blob:none "https://github.com/$OA_REPO.git" "$REPO_DI
   why=$(tail -n 3 "$WORK/clone.err" | tr '\n' ' ')
   give_up "Could not clone $OA_REPO: ${why:-no answer from GitHub}. Connect GitHub with access to $OA_REPO."
 fi
+if [ -n "${OA_SOURCE_REVISION:-}" ]; then
+  [[ "$OA_SOURCE_REVISION" =~ ^[0-9a-f]{40}$ ]] || give_up "The source commit is invalid."
+  git -C "$REPO_DIR" checkout -q --detach "$OA_SOURCE_REVISION" \
+    || give_up "The selected source commit couldn't be opened."
+  # Solver fetches origin/main when it prepares its worktree. Give that fetch
+  # an immutable local source; pushes still go to the requester's repository.
+  git -C "$REPO_DIR" branch -f main "$OA_SOURCE_REVISION" \
+    || give_up "The selected source commit couldn't be opened."
+  git clone -q --bare --shared "$REPO_DIR" "$WORK/source.git" \
+    || give_up "The selected source couldn't be prepared."
+  git --git-dir="$WORK/source.git" symbolic-ref HEAD refs/heads/main
+  git -C "$REPO_DIR" remote set-url origin "$WORK/source.git"
+  git -C "$REPO_DIR" remote set-url --push origin "https://github.com/$OA_REPO.git"
+  git -C "$REPO_DIR" fetch -q origin +refs/heads/main:refs/remotes/origin/main \
+    || give_up "The selected source couldn't be read."
+  git -C "$REPO_DIR" branch --set-upstream-to=origin/main main >/dev/null
+fi
 step clone done "Cloned $OA_REPO at $(git -C "$REPO_DIR" rev-parse --short HEAD)"
 if ! gh issue view "$OA_ISSUE" -R "$OA_REPO" --json number,stateReason >/dev/null 2>"$WORK/issue.err"; then
   why=$(tail -n 1 "$WORK/issue.err")
   give_up "Could not read issue #$OA_ISSUE in $OA_REPO: ${why:-no answer from GitHub}. Connect GitHub with access to $OA_REPO."
+fi
+if [ -n "${OA_SOURCE_REVISION:-}" ]; then
+  state=$(gh issue view "$OA_ISSUE" -R "$OA_REPO" --json state --jq .state) \
+    || give_up "The issue couldn't be read."
+  [ "$state" = OPEN ] || give_up "This Solver job needs an open issue."
 fi
 
 step solver start "Solver on issue #$OA_ISSUE with $MODEL"

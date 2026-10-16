@@ -535,6 +535,7 @@ fn a_finished_runs_result_reads_plainly() {
         cancel: false,
         finished_unix: Some(2),
         github: None,
+        computer: None,
     };
     let html = html! { div { (result_markup(&run)) } }.into_string();
     assert!(

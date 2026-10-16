@@ -1,5 +1,7 @@
 //! The box dispatcher (#11562, spec `docs/cloud/solver-on-gcp.md`): takes
-//! solver work runs from openagents.com and runs each on a box of its own.
+//! solver work runs from openagents.com and runs each on a computer of its own.
+//! A saved binding selects the shared Computers client; original jobs keep
+//! their direct provider and cleanup path.
 //!
 //! It asks the site for the next solver run
 //! (`POST /v1/work-hosts/{name}/claim {engines: ["solver"]}`), runs it with
@@ -53,6 +55,7 @@ pub struct Claimed {
     pub engine: String,
     /// The requester's GitHub token, when their account connected GitHub.
     pub github_token: Option<String>,
+    pub computer: Option<crate::computers::Job>,
 }
 
 impl std::fmt::Debug for Claimed {
@@ -63,6 +66,7 @@ impl std::fmt::Debug for Claimed {
             .field("issue", &self.issue)
             .field("engine", &self.engine)
             .field("github_token", &self.github_token.is_some())
+            .field("computer", &self.computer.is_some())
             .finish()
     }
 }
@@ -87,6 +91,11 @@ pub fn claimed(answer: &Value) -> Option<Claimed> {
         issue: run["issue"].as_u64()?,
         engine: run["engine"].as_str().unwrap_or("solver").to_owned(),
         github_token: token,
+        computer: if run.get("computer").is_some_and(|v| !v.is_null()) {
+            Some(serde_json::from_value(run["computer"].clone()).ok()?)
+        } else {
+            None
+        },
     })
 }
 
@@ -147,10 +156,54 @@ impl Site {
     /// # Errors
     /// The site did not answer or refused.
     pub async fn claim(&self) -> Result<Option<Claimed>, String> {
+        self.claim_available(&[]).await
+    }
+
+    pub async fn prepare_computer(&self, id: &str, body: &Value) -> Result<(), String> {
+        self.post(
+            &format!(
+                "/v1/work-hosts/{}/runs/{id}/computer-credentials",
+                self.name
+            ),
+            body,
+        )
+        .await
+        .map(|_| ())
+    }
+
+    pub async fn computer_cleaned(&self, id: &str) -> Result<(), String> {
+        self.post(
+            &format!("/v1/work-hosts/{}/runs/{id}/computer-cleaned", self.name),
+            &json!({}),
+        )
+        .await
+        .map(|_| ())
+    }
+
+    pub async fn refresh_computer_token(&self, id: &str, token: &str) -> Result<bool, String> {
+        let response = self
+            .http
+            .post(format!(
+                "{}/v1/work-hosts/{}/runs/{id}/computer-token",
+                self.base, self.name
+            ))
+            .bearer_auth(&self.token)
+            .json(&json!({"token":token}))
+            .send()
+            .await
+            .map_err(|_| "The token service didn't answer.")?;
+        match response.status().as_u16() {
+            200 => Ok(true),
+            403 => Ok(false),
+            _ => Err("The token service didn't answer.".into()),
+        }
+    }
+
+    async fn claim_available(&self, exclude: &[String]) -> Result<Option<Claimed>, String> {
         let answer = self
             .post(
                 &format!("/v1/work-hosts/{}/claim", self.name),
-                &json!({"engines": ENGINES}),
+                &json!({"engines": ENGINES,"computers":true,"recover":true,"exclude":exclude}),
             )
             .await?;
         Ok(claimed(&answer))
@@ -191,11 +244,15 @@ impl Dispatcher {
             let _ = site.report(&claimed.id, &json!({"failed": why})).await;
             return json!({"ok": false, "error": why});
         }
-        let Some(github_token) = claimed
-            .github_token
-            .clone()
-            .or_else(|| self.pool_github_token.clone())
-        else {
+        let Some(github_token) = claimed.github_token.clone().or_else(|| {
+            if claimed.computer.is_none() {
+                self.pool_github_token.clone()
+            } else if claimed.computer.as_ref().is_some_and(|job| job.cancelled) {
+                Some(String::new())
+            } else {
+                None
+            }
+        }) else {
             let why = format!("Connect GitHub with access to {}.", claimed.repo);
             let _ = site.report(&claimed.id, &json!({"failed": why})).await;
             return json!({"ok": false, "error": why});
@@ -207,11 +264,17 @@ impl Dispatcher {
         if let Some(image) = &self.image {
             run.image.clone_from(image);
         }
+        if let Some(job) = &claimed.computer {
+            run.image = job.binding["image"].as_str().unwrap_or_default().into();
+        }
         let credentials = Credentials {
             github_token,
             openagents_token: None,
         };
         let stop = Stop::default();
+        if claimed.computer.as_ref().is_some_and(|job| job.cancelled) {
+            stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
         let pending: Arc<Mutex<Vec<Value>>> = Arc::default();
         let reporter = {
             let (site, id, pending, stop) = (
@@ -248,25 +311,44 @@ impl Dispatcher {
                 }
             })
         };
-        let result = crate::run_until(
-            &self.boat,
-            &run,
-            &credentials,
-            &self.google,
-            &stop,
-            |progress| {
-                log(&format!("{} {}", progress.kind, progress.text));
-                pending
-                    .lock()
-                    .unwrap_or_else(PoisonError::into_inner)
-                    .push(site_line(progress, started.elapsed().as_secs_f64()));
-            },
-        )
-        .await;
+        let progress = |progress: Progress| {
+            log(&format!("{} {}", progress.kind, progress.text));
+            pending
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .push(site_line(&progress, started.elapsed().as_secs_f64()));
+        };
+        let result = if let Some(job) = &claimed.computer {
+            crate::computers::run_until(
+                site,
+                &claimed.id,
+                job,
+                &run,
+                &credentials,
+                &self.google,
+                &stop,
+                progress,
+            )
+            .await
+        } else {
+            crate::run_until(
+                &self.boat,
+                &run,
+                &credentials,
+                &self.google,
+                &stop,
+                |value| progress(value.clone()),
+            )
+            .await
+        };
         reporter.abort();
         let lines: Vec<Value> =
             std::mem::take(&mut *pending.lock().unwrap_or_else(PoisonError::into_inner));
-        let mut body = json!({"result": result});
+        let mut body = if result["computer_cleanup_pending"] == true {
+            json!({"lines":[{"secs":started.elapsed().as_secs_f64(),"phase":"notice","text":"I'm still deleting this computer. I'll check again."}]})
+        } else {
+            json!({"result": result})
+        };
         if !lines.is_empty() {
             body["lines"] = json!(lines);
         }
@@ -288,11 +370,20 @@ impl Dispatcher {
     pub async fn serve(&self, site: &Site, slots: usize, once: bool) {
         let slots = Arc::new(tokio::sync::Semaphore::new(slots.max(1)));
         let mut running = tokio::task::JoinSet::new();
+        let mut active = std::collections::BTreeSet::new();
         loop {
             let Ok(permit) = slots.clone().acquire_owned().await else {
                 break;
             };
-            match site.claim().await {
+            while let Some(result) = running.try_join_next() {
+                if let Ok(id) = result {
+                    active.remove(&id);
+                }
+            }
+            match site
+                .claim_available(&active.iter().cloned().collect::<Vec<_>>())
+                .await
+            {
                 Ok(Some(claimed)) => {
                     // Which GitHub token the run uses (never the token).
                     eprintln!(
@@ -308,6 +399,7 @@ impl Dispatcher {
                         }
                     );
                     let (this, site) = (self.clone(), site.clone());
+                    active.insert(claimed.id.clone());
                     running.spawn(async move {
                         let id = claimed.id.clone();
                         let result = this
@@ -326,6 +418,7 @@ impl Dispatcher {
                                 .unwrap_or_default()
                         );
                         drop(permit);
+                        id
                     });
                 }
                 Ok(None) => {
@@ -344,7 +437,11 @@ impl Dispatcher {
                     tokio::time::sleep(POLL).await;
                 }
             }
-            while running.try_join_next().is_some() {}
+            while let Some(result) = running.try_join_next() {
+                if let Ok(id) = result {
+                    active.remove(&id);
+                }
+            }
         }
         while running.join_next().await.is_some() {}
     }

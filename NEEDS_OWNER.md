@@ -1,3 +1,17 @@
+## Provide a GitHub-connected test account for Solver (#11807)
+
+Provide an approved dedicated GitHub test session or sign-in key, with access
+to a synthetic repository, so the agent can finish the staging Solver job check.
+The approved production test key from the Mac is valid, but that account has no
+connected GitHub grant or projects. The Mac's test credential files do not
+identify a separate GitHub test session. Do not use the owner's GitHub account.
+
+The remaining check must show the job's computer in the test account's normal
+list, verify the selected source and command, exercise restart and cancellation,
+and confirm deletion. Scoped permission/revocation fixtures, SDK fault tests,
+and the runtime identity's real IAM checks are automated; they do not establish
+this end-to-end GitHub result. See the [migration inventory](docs/sdk/solver-computers.md).
+
 ## Check Coder Desktop GitHub approval and Keychain (#11829, #11832)
 
 On your Mac, sign in to Coder Desktop, allow its own Keychain entry, restart,

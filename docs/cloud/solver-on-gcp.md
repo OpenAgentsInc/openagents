@@ -5,6 +5,11 @@ the container and box runner [#11560](https://github.com/OpenAgentsInc/openagent
 the web [#11561](https://github.com/OpenAgentsInc/openagents/issues/11561), the Coder door,
 dispatcher and entry points [#11562](https://github.com/OpenAgentsInc/openagents/issues/11562).
 
+The [shared Computers migration](../sdk/solver-computers.md) adds account-owned
+allocation, saved requests, and recovery for configured new jobs (#11807).
+That inventory records the rollout settings, runtime identity, and original
+provider calls retained for existing jobs and explicit local runs.
+
 A person asks a web chat (or the Coder SDK, or the CLI) to solve a GitHub
 issue. [Solver](../coder/solver.md) takes it to a pull request on a Google
 Cloud box of its own, inside our solver container, with every hand on the

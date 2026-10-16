@@ -442,6 +442,8 @@ pub struct Config {
     /// report runs (`OPENAGENTS_WORK_HOST_TOKEN`, [`work_runs`]); without
     /// it no host can take a run.
     pub work_host_token: Option<String>,
+    /// Encrypts short-lived, job-bound Solver tokens in the shared job store.
+    pub solver_keys: Option<Arc<oa_seal::Keyring>>,
     /// Staging's stand-in for a GitHub App, so Claude Code runs can push
     /// to named test repositories before the App exists (#11226,
     /// [`environments::push::StandIn`]); never set in production.
@@ -510,6 +512,7 @@ impl Config {
             attribution: Arc::new(attribution::Attribution::default()),
             agent_accounts: Vec::new(),
             work_host_token: None,
+            solver_keys: None,
             staging_push: None,
             shutdown: shutdown::Shutdown::default(),
             actors: None,
@@ -536,6 +539,7 @@ impl std::ops::Deref for App {
 /// The whole site.
 pub fn router(config: Config) -> Router {
     let app = App(Arc::new(Inner { config }));
+    work_runs::computers::spawn_cleanup(app.clone());
     let hosts = Hosts {
         port: app.config.port,
         public: app.config.public_hosts.clone(),
@@ -622,6 +626,10 @@ pub fn router(config: Config) -> Router {
         .merge(attribution::routes())
         .route_layer(middleware::from_fn(analytics::mark))
         .fallback(not_found)
+        .layer(middleware::from_fn_with_state(
+            app.clone(),
+            work_runs::computers::guard,
+        ))
         .layer(middleware::from_fn_with_state(
             app.clone(),
             agent_work::gate,

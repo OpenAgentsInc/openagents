@@ -48,6 +48,8 @@
 //! the waiting and running runs (`work-runs/queue.json`), and each
 //! account's list of its runs.
 
+pub(crate) mod computers;
+
 use std::collections::BTreeMap;
 use std::convert::Infallible;
 use std::time::Duration;
@@ -84,6 +86,7 @@ pub(crate) const HOSTS: &str = "/v1/work-hosts";
 pub(crate) const PAGE: &str = "/work";
 /// The runs waiting and running, for every account.
 const QUEUE_KEY: &str = "work-runs/queue.json";
+const PUBLIC_QUEUE_KEY: &str = "work-runs/public-computers/queue.json";
 /// Each account's runs, under its folder.
 const INDEX_KEY: &str = "work-runs/index.json";
 const RUN_SCHEMA: &str = "openagents.web.work-run.v1";
@@ -117,11 +120,25 @@ pub(crate) const BOARD: &str = "OpenAgents Cloud";
 pub(crate) fn routes() -> Router<App> {
     Router::new()
         .route(PREFIX, post(submit_route).get(list_route))
+        .route("/v1/work/computer-session", get(computers::session))
+        .route("/v1/work/computer-token", get(computers::read_token))
+        .route(
+            "/v1/work-hosts/{name}/runs/{id}/computer-token",
+            post(computers::refresh_token),
+        )
         .route("/v1/work/{id}", get(read_route))
         .route("/v1/work/{id}/events", get(events_route))
         .route("/v1/work/{id}/cancel", post(cancel_route))
         .route("/v1/work-hosts/{name}/claim", post(claim_route))
         .route("/v1/work-hosts/{name}/runs/{id}", post(report_route))
+        .route(
+            "/v1/work-hosts/{name}/runs/{id}/computer-credentials",
+            post(computers::credentials),
+        )
+        .route(
+            "/v1/work-hosts/{name}/runs/{id}/computer-cleaned",
+            post(computers::cleaned),
+        )
         .route(PAGE, get(list_page).post(submit_page))
         .route("/work/{id}", get(run_page))
         .route("/work/{id}/stop", post(stop_page))
@@ -456,6 +473,9 @@ pub(crate) struct WorkRun {
     /// takes the run ([`Ticket`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub github: Option<Ticket>,
+    /// Absent on jobs owned by the original dispatcher.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub computer: Option<computers::Binding>,
 }
 
 impl WorkRun {
@@ -471,6 +491,9 @@ impl WorkRun {
         self.why = why;
         self.finished_unix = Some(now_unix());
         self.github = None;
+        if let Some(binding) = self.computer.as_mut() {
+            binding.vertex = None;
+        }
     }
 
     /// Settle a run no host took, or whose host went quiet. Returns whether
@@ -506,6 +529,8 @@ struct Queued {
     /// The run's engine, so a host takes only the engines it runs.
     #[serde(default)]
     engine: Engine,
+    #[serde(default)]
+    public_computer: bool,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -521,6 +546,9 @@ struct Queue {
     /// the cloud), so they don't hold up the account's other runs.
     #[serde(default)]
     running_free: std::collections::BTreeSet<String>,
+    /// Shared computers that still need observed cleanup, including ended jobs.
+    #[serde(default)]
+    computer_jobs: std::collections::BTreeSet<String>,
     /// The next run's place in line.
     #[serde(default)]
     next: u64,
@@ -536,13 +564,25 @@ struct Index {
 }
 
 fn run_key(id: &str) -> String {
-    format!("work-runs/runs/{id}.json")
+    if id.starts_with("wrc") {
+        format!("work-runs/public-computers/runs/{id}.json")
+    } else {
+        format!("work-runs/runs/{id}.json")
+    }
+}
+
+fn queue_key(id: &str) -> &'static str {
+    if id.starts_with("wrc") {
+        PUBLIC_QUEUE_KEY
+    } else {
+        QUEUE_KEY
+    }
 }
 
 /// A run's id: `wrk` and 24 hex digits.
 pub(crate) fn valid_id(id: &str) -> bool {
     id.len() == 27
-        && id.starts_with("wrk")
+        && (id.starts_with("wrk") || id.starts_with("wrc"))
         && id[3..]
             .bytes()
             .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
@@ -657,6 +697,9 @@ async fn update_run<T>(
         };
         let mut run: WorkRun =
             serde_json::from_slice(&bytes).map_err(|_| Error::Corrupt("A work run is invalid."))?;
+        if run.id != id || (id.starts_with("wrc") != run.computer.is_some()) {
+            return Err(Error::Corrupt("A work run is invalid."));
+        }
         let (changed, result) = change(&mut run);
         if !changed {
             return Ok(Some(result));
@@ -678,9 +721,14 @@ async fn load_plain(store: &Store, id: &str) -> Result<Option<WorkRun>, Error> {
         return Ok(None);
     }
     match store.read_key(&run_key(id)).await? {
-        Some((bytes, _)) => serde_json::from_slice(&bytes)
-            .map(Some)
-            .map_err(|_| Error::Corrupt("A work run is invalid.")),
+        Some((bytes, _)) => {
+            let run: WorkRun = serde_json::from_slice(&bytes)
+                .map_err(|_| Error::Corrupt("A work run is invalid."))?;
+            if run.id != id || (id.starts_with("wrc") != run.computer.is_some()) {
+                return Err(Error::Corrupt("A work run is invalid."));
+            }
+            Ok(Some(run))
+        }
         None => Ok(None),
     }
 }
@@ -688,7 +736,7 @@ async fn load_plain(store: &Store, id: &str) -> Result<Option<WorkRun>, Error> {
 /// Take a finished run off the queue.
 async fn unqueue(store: &Store, id: &str) {
     let id = id.to_owned();
-    let _ = update(store, QUEUE_KEY, fresh_queue, move |queue| {
+    let _ = update(store, queue_key(&id), fresh_queue, move |queue| {
         let gone = queue.waiting.remove(&id).is_some()
             | queue.running.remove(&id).is_some()
             | queue.running_free.remove(&id);
@@ -742,6 +790,30 @@ pub(crate) async fn submit(
     requester: Requester,
     ask: Ask,
 ) -> Result<Result<WorkRun, Refused>, Error> {
+    submit_bound(store, owner, requester, ask, None).await
+}
+
+/// Application entry points select an allocation owner before queueing the job.
+pub(crate) async fn submit_for(
+    app: &App,
+    owner: &str,
+    requester: Requester,
+    ask: Ask,
+) -> Result<Result<WorkRun, Refused>, Error> {
+    let binding = match computers::prepare(app, &requester, &ask) {
+        Ok(binding) => binding,
+        Err(error) => return Ok(Err(error)),
+    };
+    submit_bound(&app.config.chat_store, owner, requester, ask, binding).await
+}
+
+async fn submit_bound(
+    store: &Store,
+    owner: &str,
+    requester: Requester,
+    ask: Ask,
+    mut computer: Option<computers::Binding>,
+) -> Result<Result<WorkRun, Refused>, Error> {
     if !valid_repo(&ask.repo) {
         return Ok(Err(Refused::Invalid(
             "Name the repository as owner/name, for example OpenAgentsInc/openagents.",
@@ -751,7 +823,14 @@ pub(crate) async fn submit(
         return Ok(Err(Refused::Invalid("Give the issue's number.")));
     }
     let now = now_unix();
-    let id = new_id();
+    let id = if computer.is_some() {
+        new_id().replacen("wrk", "wrc", 1)
+    } else {
+        new_id()
+    };
+    if let Some(binding) = computer.as_mut() {
+        binding.create["idempotency_key"] = json!(format!("solver-{id}"));
+    }
     let run = WorkRun {
         schema: RUN_SCHEMA.into(),
         id: id.clone(),
@@ -775,17 +854,22 @@ pub(crate) async fn submit(
         cancel: false,
         finished_unix: None,
         github: ask.github.filter(|_| ask.engine == Engine::Solver),
+        computer,
     };
     let bytes = serde_json::to_vec(&run).map_err(|_| Error::Invalid("A work run is invalid."))?;
     store.write_key(&run_key(&id), bytes, None).await?;
     let (run_id, who, engine) = (id.clone(), owner.to_owned(), ask.engine);
-    let queued = update(store, QUEUE_KEY, fresh_queue, move |queue| {
+    let public_computer = run.computer.is_some();
+    let queued = update(store, queue_key(&id), fresh_queue, move |queue| {
         queue.schema = QUEUE_SCHEMA.into();
         let theirs = queue.waiting.values().filter(|q| q.owner == who).count();
         if queue.waiting.len() >= MAX_WAITING || theirs >= MAX_WAITING_EACH {
             return (false, false);
         }
         queue.next += 1;
+        if public_computer {
+            queue.computer_jobs.insert(run_id.clone());
+        }
         queue.waiting.insert(
             run_id.clone(),
             Queued {
@@ -793,6 +877,7 @@ pub(crate) async fn submit(
                 created_unix: now,
                 seq: queue.next,
                 engine,
+                public_computer,
             },
         );
         (true, true)
@@ -826,6 +911,13 @@ pub(crate) async fn submit(
     })
     .await?;
     for old in gone {
+        if load_plain(store, &old).await?.is_some_and(|run| {
+            run.computer
+                .as_ref()
+                .is_some_and(|binding| !binding.cleanup_observed)
+        }) {
+            continue;
+        }
         if let Ok(Some((_, generation))) = store.read_key(&run_key(&old)).await {
             let _ = store.delete_key(&run_key(&old), &generation).await;
         }
@@ -939,6 +1031,33 @@ pub(crate) async fn claim_for(
     host: &str,
     engines: Option<&[Engine]>,
 ) -> Result<Option<Taken>, Error> {
+    claim_for_backend(store, credentials, host, engines, false).await
+}
+
+async fn claim_for_backend(
+    store: &Store,
+    credentials: Option<&dyn Credentials>,
+    host: &str,
+    engines: Option<&[Engine]>,
+    computers: bool,
+) -> Result<Option<Taken>, Error> {
+    if computers
+        && let Some(taken) =
+            claim_queue(store, credentials, host, engines, PUBLIC_QUEUE_KEY, true).await?
+    {
+        return Ok(Some(taken));
+    }
+    claim_queue(store, credentials, host, engines, QUEUE_KEY, false).await
+}
+
+async fn claim_queue(
+    store: &Store,
+    credentials: Option<&dyn Credentials>,
+    host: &str,
+    engines: Option<&[Engine]>,
+    queue_key: &str,
+    computers: bool,
+) -> Result<Option<Taken>, Error> {
     let wanted = |engine: Engine| {
         (credentials.is_some() || !engine.uses_claude())
             && match engines {
@@ -947,7 +1066,7 @@ pub(crate) async fn claim_for(
             }
     };
     loop {
-        let picked = update(store, QUEUE_KEY, fresh_queue, |queue| {
+        let picked = update(store, queue_key, fresh_queue, |queue| {
             let mut waiting: Vec<(&String, &Queued)> = queue.waiting.iter().collect();
             waiting.sort_by_key(|(_, q)| (q.created_unix, q.seq));
             let busy: Vec<&String> = queue
@@ -959,6 +1078,7 @@ pub(crate) async fn claim_for(
             let Some((id, queued)) = waiting
                 .into_iter()
                 .filter(|(_, q)| wanted(q.engine))
+                .filter(|(_, q)| !q.public_computer || computers)
                 .find(|(_, q)| !q.engine.uses_claude() || !busy.contains(&&q.owner))
                 .map(|(id, q)| (id.clone(), q.clone()))
             else {
@@ -984,7 +1104,9 @@ pub(crate) async fn claim_for(
             run.host = Some(host.clone());
             run.started_unix = Some(now_unix());
             let taken = run.clone();
-            run.github = None;
+            if run.computer.is_none() {
+                run.github = None;
+            }
             (true, Some(taken))
         })
         .await?
@@ -1233,6 +1355,15 @@ pub(crate) fn view(run: &WorkRun, after: usize) -> Value {
         "updated_unix": run.updated_unix,
         "finished_unix": run.finished_unix,
         "why": run.why,
+        "computer": run.computer.as_ref().map(|binding| json!({
+            "id":binding.computer,"project":binding.project,"branch":binding.branch,
+            "environment":binding.environment.environment,"version":binding.environment.number,
+            "source":binding.environment.source,"payer":binding.payer,
+            "model_payer":{"kind":"operator_vertex","project":"openagentsgemini"},
+            "limits":{"command_seconds":3600,"create_wait_seconds":600,"cleanup_wait_seconds":600},
+            "cleanup_observed":binding.cleanup_observed,
+            "usage":{"key":run.id,"account":run.requester.account,"usd":null,"status":"unknown"},
+        })),
         "result": run.outcome.as_ref().map(|o| json!({
             "engine": o.engine,
             "escalated": o.escalated,
@@ -1850,7 +1981,7 @@ async fn submit_route(State(app): State<App>, headers: HeaderMap, body: Bytes) -
         title: None,
         github,
     };
-    match submit(&app.config.chat_store, &owner, requester, ask).await {
+    match submit_for(&app, &owner, requester, ask).await {
         Ok(Ok(run)) => answer(StatusCode::CREATED, view(&run, 0)),
         Ok(Err(Refused::Busy)) => refused(
             StatusCode::TOO_MANY_REQUESTS,
@@ -2047,6 +2178,12 @@ fn host_name(name: &str) -> Option<String> {
 struct ClaimBody {
     #[serde(default)]
     engines: Option<Vec<String>>,
+    #[serde(default)]
+    computers: bool,
+    #[serde(default)]
+    recover: bool,
+    #[serde(default)]
+    exclude: Vec<String>,
 }
 
 async fn claim_route(
@@ -2088,16 +2225,30 @@ async fn claim_route(
             }
         },
     };
+    if asked.exclude.len() > 64 {
+        return refused(StatusCode::BAD_REQUEST, "invalid", "Too many active jobs.");
+    }
+    if asked.recover && asked.computers {
+        match computers::resume(&app, &host, &asked.exclude).await {
+            Ok(Some(run)) => return computers::claim_answer(&app, run).await,
+            Ok(None) => {}
+            Err(error) => return stored(&error),
+        }
+    }
     let saved = app.config.cloud_byo.as_deref().map(Saved);
     let credentials = saved.as_ref().map(|saved| saved as &dyn Credentials);
-    match claim_for(
+    match claim_for_backend(
         &app.config.chat_store,
         credentials,
         &host,
         engines.as_deref(),
+        asked.computers,
     )
     .await
     {
+        Ok(Some(taken)) if taken.run.computer.is_some() => {
+            computers::claim_answer(&app, taken.run).await
+        }
         Ok(Some(taken)) => {
             let mut run = json!({
                 "id": taken.run.id,
@@ -2109,6 +2260,9 @@ async fn claim_route(
             });
             // Solver in the cloud: the requester's GitHub access, for this
             // host only ([`Ticket`]).
+            if let Some(binding) = computers::claim(&app, &taken.run) {
+                run["computer"] = binding;
+            }
             if let Some(ticket) = &taken.run.github
                 && let Some(token) = redeem(&app, ticket, &taken.run.repo).await
             {
@@ -2651,7 +2805,7 @@ async fn submit_page(
         title: None,
         github,
     };
-    match submit(&app.config.chat_store, &owner, requester, ask).await {
+    match submit_for(&app, &owner, requester, ask).await {
         Ok(Ok(run)) => protect(Redirect::to(&format!("{PAGE}/{}", run.id)).into_response()),
         Ok(Err(Refused::Busy)) => problem(
             StatusCode::TOO_MANY_REQUESTS,

@@ -13,6 +13,9 @@ Type=simple
 DynamicUser=yes
 RuntimeDirectory=oa-solver-dispatch
 RuntimeDirectoryMode=0700
+StateDirectory=oa-solver-dispatch
+StateDirectoryMode=0700
+Environment=OA_SOLVER_STATE=/var/lib/oa-solver-dispatch/jobs
 Environment=HOME=/run/oa-solver-dispatch
 Environment=CLOUDSDK_CONFIG=/run/oa-solver-dispatch/gcloud
 Environment=BOAT_API_BASE=https://oa-boat-157437760789.us-central1.run.app/api/v1

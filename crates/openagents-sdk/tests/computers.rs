@@ -134,16 +134,14 @@ async fn mocked(steps: Vec<Step>, request_timeout: Duration) -> (Server, Session
     };
     let router = Router::new().fallback(serve).with_state(script.clone());
     let task = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
-    let client = Client::with_timeouts(
-        Deployment::new(&format!("{origin}/v1"), &origin).unwrap(),
-        request_timeout,
-        request_timeout,
-    )
-    .unwrap();
-    let session = client
+    let deployment = Deployment::new(&format!("{origin}/v1"), &origin).unwrap();
+    // The short timeout exercises the computer request, not fixture sign-in.
+    let session = Client::new(deployment.clone())
+        .unwrap()
         .authenticate(&format!("sess_{}", "a".repeat(64)))
         .await
         .unwrap();
+    let client = Client::with_timeouts(deployment, request_timeout, request_timeout).unwrap();
     (
         Server {
             client,

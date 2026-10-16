@@ -111,6 +111,10 @@ pub struct CommandRequest {
     body: CommandOptions,
 }
 impl CommandRequest {
+    /// The exact saved command settings, including credential references.
+    pub fn options(&self) -> &CommandOptions {
+        &self.body
+    }
     pub fn key(&self) -> &RequestKey {
         &self.key
     }

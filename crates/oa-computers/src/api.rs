@@ -512,6 +512,33 @@ async fn healthz() -> Response {
     Json(json!({"ok": true})).into_response()
 }
 
+async fn by_request(
+    State(api): State<Arc<Api>>,
+    headers: HeaderMap,
+    Path(key): Path<String>,
+) -> Response {
+    let owner = match account(&headers) {
+        Ok(owner) => owner,
+        Err(response) => return response,
+    };
+    if !valid_id(&key) {
+        return err(
+            StatusCode::BAD_REQUEST,
+            "invalid",
+            "The request key is invalid.",
+        );
+    }
+    match api.store.by_request(&owner, &key).await {
+        Ok(Some(entry)) => Json(view(&entry)).into_response(),
+        Ok(None) => err(StatusCode::NOT_FOUND, "not_found", "No such computer."),
+        Err(_) => err(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "unavailable",
+            "The computer couldn't be read.",
+        ),
+    }
+}
+
 pub fn router(api: Arc<Api>) -> Router {
     Router::new()
         // Google's front end keeps /healthz for itself on run.app hosts.
@@ -519,6 +546,7 @@ pub fn router(api: Arc<Api>) -> Router {
         .route("/healthz", get(healthz))
         .route("/v1/capabilities", get(capabilities))
         .route("/v1/computers", get(list).post(create))
+        .route("/v1/computers/by-request/{key}", get(by_request))
         .route("/v1/computers/{id}", get(get_one).delete(delete))
         .route("/v1/computers/{id}/stop", post(stop))
         .route("/v1/computers/{id}/wake", post(wake))

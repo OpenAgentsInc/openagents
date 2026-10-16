@@ -30,6 +30,40 @@ fn view() -> Value {
     json!({"account":{"id":"acct_fixture","label":"Existing account"},"workspaces":[{"id":"ws_fixture","name":"Personal","role":"owner","kind":"personal","tenant":"signup"}]})
 }
 
+#[tokio::test]
+async fn computer_job_import_checks_its_own_endpoint_and_keeps_general_restore_closed() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let origin = format!("http://{}", listener.local_addr().unwrap());
+    let router = Router::new().route(
+        "/v1/work/computer-session",
+        get(|headers: HeaderMap| async move {
+            assert_eq!(headers["authorization"], "Bearer scj_fixture");
+            Json(view())
+        }),
+    );
+    let task = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+    let client = Client::new(Deployment::new(&format!("{origin}/v1"), &origin).unwrap()).unwrap();
+    let session = client
+        .authenticate_computer_job("scj_fixture")
+        .await
+        .unwrap();
+    assert_eq!(session.account().id, "acct_fixture");
+    assert!(!format!("{session:?}").contains("scj_fixture"));
+    assert!(matches!(
+        client.authenticate("scj_fixture").await,
+        Err(Error::InvalidCredential)
+    ));
+    assert!(matches!(
+        client.restore(&session.record()).await,
+        Err(Error::InvalidCredential)
+    ));
+    assert!(matches!(
+        client.authenticate_computer_job(&token()).await,
+        Err(Error::InvalidCredential)
+    ));
+    task.abort();
+}
+
 #[derive(Clone, Copy)]
 enum Case {
     Signed,

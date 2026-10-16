@@ -3,7 +3,7 @@ name = "solver-box"
 version.workspace = true
 edition = "2024"
 rust-version.workspace = true
-description = "Runs Solver on one GitHub issue in the solver container on a Google Cloud box from oa-boat (#11560)."
+description = "Runs cloud Solver jobs on account-owned computers, with recovery and legacy Boat cleanup."
 publish = false
 
 [[bin]]
@@ -12,10 +12,17 @@ path = "src/main.rs"
 
 [dependencies]
 boat = { path = "../boat" }
+openagents-sdk = { path = "../openagents-sdk" }
+fs2 = "0.4"
 tokio = { version = "1", features = ["full"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+
+[dev-dependencies]
+axum = "0.8"
+base64 = "0.22"
+tempfile = "3"
 
 [lints]
 workspace = true

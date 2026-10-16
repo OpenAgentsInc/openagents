@@ -450,6 +450,14 @@ impl Store {
         Err(CreateError::Conflict)
     }
 
+    /// Find an accepted create without issuing a new allocation intent.
+    pub async fn by_request(&self, owner: &str, key: &str) -> Result<Option<Entry>, DbError> {
+        self.db.client().await?.query_opt(
+            &format!("SELECT {COLUMNS} FROM computers.computers WHERE owner = $1 AND idempotency_key = $2"),
+            &[&owner, &key],
+        ).await?.map(|row| entry(&row)).transpose()
+    }
+
     pub async fn get(&self, owner: &str, id: &str) -> Result<Option<Entry>, DbError> {
         let c = self.db.client().await?;
         c.query_opt(

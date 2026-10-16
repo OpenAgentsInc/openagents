@@ -178,6 +178,33 @@ struct TokenAnswer {
 }
 
 impl Client {
+    /// Import a job credential issued by the work service. This credential
+    /// authorizes only that job's computer operations, not account or chat access.
+    pub async fn authenticate_computer_job(&self, credential: &str) -> Result<Session, Error> {
+        if !credential.starts_with("scj_") || credential.len() > 160 {
+            return Err(Error::InvalidCredential);
+        }
+        let view: AccountView = self
+            .request(
+                Method::GET,
+                &["work", "computer-session"],
+                &[],
+                None,
+                Some(credential),
+            )
+            .await?;
+        if view.account.id.is_empty() {
+            return Err(Error::InvalidResponse);
+        }
+        Ok(Session {
+            record: CredentialRecord {
+                deployment: self.deployment.clone(),
+                account: view.account,
+                expires_at: None,
+                credential: credential.into(),
+            },
+        })
+    }
     /// Start an existing OpenAgents device grant. Does not launch a browser.
     pub async fn start_login(&self, app: &str, computer: &str) -> Result<Login, Error> {
         let started: Started = self

@@ -25,6 +25,13 @@ pub(crate) struct Identity {
 
 /// No cross-request auth cache: revocation is checked before every operation.
 pub(crate) async fn identity(app: &App, headers: &HeaderMap) -> Result<Identity, Response> {
+    if headers
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.starts_with("Bearer scj_"))
+    {
+        return crate::work_runs::computers::identity(app, headers).await;
+    }
     let Some(service) = app.config.cloud.as_deref() else {
         return Err(unavailable());
     };

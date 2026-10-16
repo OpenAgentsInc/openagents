@@ -712,6 +712,35 @@ impl Studio {
         })
     }
 
+    /// Read the account's selected, saved version for a computer job.
+    pub fn computer_pin(
+        &self,
+        account: &str,
+        id: &str,
+        number: u64,
+    ) -> Result<
+        (
+            coder_environment::ProjectLink,
+            coder_environment::VersionPin,
+        ),
+        String,
+    > {
+        if self.account(id).as_deref() != Some(account) {
+            return Err("No such environment version.".into());
+        }
+        let env = self.envs().read(id).map_err(|e| e.to_string())?;
+        if env.project.workspace != self.config.owner.workspace {
+            return Err("No such environment version.".into());
+        }
+        let pin = env
+            .pin()
+            .ok_or("Save the environment before starting a job.")?;
+        if pin.number != number {
+            return Err("Choose the environment's selected version.".into());
+        }
+        Ok((env.project.clone(), pin))
+    }
+
     /// Resolve what the person picked to an exact commit.
     pub async fn resolve(
         &self,
@@ -747,9 +776,14 @@ impl Studio {
     fn add(&self, resolved: &github::Resolved, account: Option<&str>) -> Result<String, String> {
         let now = now_ms();
         let full = resolved.repository.full();
+        let mut nonce = [0u8; 12];
+        getrandom::fill(&mut nonce).map_err(|_| "The environment couldn't be added. Try again.")?;
         let id = format!(
             "env-{}",
-            &digest(format!("{full}\0{}\0{now}", resolved.commit).as_bytes())[..12]
+            nonce
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect::<String>()
         );
         let project = project_id(&resolved.repository.name);
         let source = SourcePin {
@@ -769,7 +803,14 @@ impl Studio {
         )
         .map_err(|e| e.to_string())?;
         let dir = self.studio_dir(&id);
-        fs::create_dir_all(&dir).map_err(|e| format!("Cannot keep the environment: {e}"))?;
+        fs::create_dir_all(
+            dir.parent()
+                .ok_or("The environment folder couldn't be opened.")?,
+        )
+        .map_err(|e| format!("Cannot keep the environment: {e}"))?;
+        // Reserve the new directory before writing ownership metadata. A
+        // collision must never replace another environment's account.
+        fs::create_dir(&dir).map_err(|e| format!("Cannot keep the environment: {e}"))?;
         let meta = Meta {
             repository: full.clone(),
             branch: resolved.branch.clone(),

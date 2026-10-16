@@ -154,12 +154,15 @@ async fn an_environment_goes_from_a_repository_to_a_saved_version_and_back_to_wo
     assert!(studio.list().is_empty());
     assert!(!studio.claude_ready());
     let id = studio
-        .create(&github::Resolved {
-            repository: github::RepoName::parse("example/repo").unwrap(),
-            branch: "main".into(),
-            commit: COMMIT.into(),
-            private: false,
-        })
+        .create_for(
+            &github::Resolved {
+                repository: github::RepoName::parse("example/repo").unwrap(),
+                branch: "main".into(),
+                commit: COMMIT.into(),
+                private: false,
+            },
+            Some("acct_alice"),
+        )
         .unwrap();
     // A reply with no tool call is a question for the person.
     let v = until(&studio, &id, Status::NeedsInput).await;
@@ -208,6 +211,11 @@ async fn an_environment_goes_from_a_repository_to_a_saved_version_and_back_to_wo
     // Saving names the exact candidate the person saw.
     assert!(studio.save(&id, "stale").await.is_err());
     assert_eq!(studio.save(&id, &candidate.digest).await.unwrap(), 1);
+    let (_, pin) = studio.computer_pin("acct_alice", &id, 1).unwrap();
+    assert_eq!(pin.source.revision, COMMIT);
+    assert_eq!(pin.image.image_id, candidate.image);
+    assert!(studio.computer_pin("acct_bob", &id, 1).is_err());
+    assert!(studio.computer_pin("acct_alice", &id, 2).is_err());
     // The unsaved image goes; the saved version's and the other one stay.
     for _ in 0..400 {
         if !provider.state.lock().unwrap().images.contains_key(&stale) {
@@ -303,6 +311,7 @@ async fn an_environment_remembers_the_account_it_was_made_for() {
     };
     let mine = studio.create_for(&resolved, Some("acct_alice")).unwrap();
     let unowned = studio.create(&resolved).unwrap();
+    assert_ne!(mine, unowned);
     assert_eq!(studio.account(&mine).as_deref(), Some("acct_alice"));
     assert_eq!(studio.account(&unowned), None);
     let rows = studio.list();

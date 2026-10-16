@@ -117,6 +117,12 @@ async fn read_selected(
 }
 ```
 
+Solver imports its work service's limited credential with
+`Client::authenticate_computer_job`. The issuer checks that credential on every
+operation; it authorizes the saved job's computer and commands. Reacquire it
+from the work claim after restart. See the
+[Solver migration](../../docs/sdk/solver-computers.md) for its scope and cleanup.
+
 The experimental `computers` module executes the generated public Computers
 contract through this same client and account session. It allocates cloud
 computers through the public API; it does not link or run a host, provider,

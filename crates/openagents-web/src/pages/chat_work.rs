@@ -673,17 +673,14 @@ pub(super) async fn begin_work(
             title: None,
             github,
         };
-        let run =
-            match crate::work_runs::submit(&app.config.chat_store, owner, requester.clone(), ask)
-                .await
-            {
-                Ok(Ok(run)) => run,
-                Ok(Err(crate::work_runs::Refused::Busy)) => {
-                    return Err("Too many runs are waiting. Try again when some finish.".into());
-                }
-                Ok(Err(crate::work_runs::Refused::Invalid(message))) => return Err(message.into()),
-                Err(_) => return Err("The run couldn't be saved. Try again in a minute.".into()),
-            };
+        let run = match crate::work_runs::submit_for(app, owner, requester.clone(), ask).await {
+            Ok(Ok(run)) => run,
+            Ok(Err(crate::work_runs::Refused::Busy)) => {
+                return Err("Too many runs are waiting. Try again when some finish.".into());
+            }
+            Ok(Err(crate::work_runs::Refused::Invalid(message))) => return Err(message.into()),
+            Err(_) => return Err("The run couldn't be saved. Try again in a minute.".into()),
+        };
         tasks.push(ChatTask {
             id: run.id,
             kind: if solver {

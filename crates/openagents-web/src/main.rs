@@ -215,6 +215,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 },
             )
         };
+        config.solver_keys = Some(std::sync::Arc::new(keyring()?));
         config.cloud_byo = Some(std::sync::Arc::new(
             openagents_web::cloud::byo::Computers::open(&directory, keyring()?)?,
         ));
