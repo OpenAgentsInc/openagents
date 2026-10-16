@@ -106,13 +106,23 @@ Other platforms do not show this control yet.
 The [auth qualification record](auth-client-evidence.json) identifies the tested
 SDK and desktop commits. The native shell fixture uses a local approval page and
 injected credentials; it never starts an engine or accesses the owner's Keychain.
-The real Keychain prompt is an owner check in `NEEDS_OWNER.md`. The sidebar now reads saved web, terminal, and phone chats through the SDK
+The real Keychain prompt is an owner check in `NEEDS_OWNER.md`.
+
+The sidebar now reads saved web, terminal, and phone chats through the SDK
 (#11830). Load more in batches of 200, open archives, and choose authorized shared
 projects. Local workspace chats stay separate. A saved row opens an account-bound
 existing-chat target without creating a conversation or starting work. The
 [sidebar qualification record](history-sidebar-evidence.json) covers 205 chats,
-source labels, pins, projects, retry, and sign-out. Full transcript rendering
-follows in #11831.
+source labels, pins, projects, retry, and sign-out.
+
+The saved-chat reader (#11831) renders Markdown/code, thinking, tools, files, and
+capture references independently of the engine. Load longer histories in explicit
+200-message pages and fetch saved file bytes on demand. It handles changed or
+unavailable content, cancels old selections, and clears private views on sign-out.
+The [reader qualification record](history-reader-evidence.json) covers 405 messages,
+direct existing-ID navigation, saved bytes, and the native read-only view.
+Messages beyond the view's budget continue in another explicit window; very long
+text uses numbered parts. Publication and final external qualification are #11832.
 
 ## Appearance
 

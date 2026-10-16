@@ -38,10 +38,13 @@ with #11818, without waiting for the Computers specification or package publicat
 The public auth schema (#11825) is implemented and deployed. The development
 Rust auth facade is [`openagents-sdk`](../../crates/openagents-sdk/README.md)
 (#11826); it reuses portable device parsing from `openagents-login` with the
-CLI's `system` helpers disabled. History and application integration remain
-separate implementation issues. A clean outside checkout and the SDK's own
-checks qualify this boundary; [the auth client evidence](auth-client-evidence.json)
-records the immutable source pin and the outside consumer. Publication is still deferred.
+CLI's `system` helpers disabled. Typed history reads (#11828) and macOS account,
+sidebar, and transcript integration (#11829–#11831) are implemented. The desktop
+[auth](../coder-desktop/auth-client-evidence.json),
+[sidebar](../coder-desktop/history-sidebar-evidence.json), and
+[reader](../coder-desktop/history-reader-evidence.json) records identify their
+source pins and checks. The external example and final deployed qualification
+are #11832. Package publication stays deferred.
 
 The built device flow is `POST /v1/device/code`, `POST /v1/device/token`,
 and `POST /v1/device/sign-out`; approval stays on the website. Reuse

@@ -1,0 +1,92 @@
+{
+  "issue": 11831,
+  "desktop_repository": "https://github.com/OpenAgentsInc/coder-desktop",
+  "desktop_commit": "9505d18c8052c002c9b1229c4f12c4ffed7fec57",
+  "sdk_commit": "4b5b70d72b1f1d142170417c283937876dc5734d",
+  "platform": {
+    "os": "macOS 26.4",
+    "build": "25E246",
+    "architecture": "arm64",
+    "rust": "1.98.1"
+  },
+  "checks": [
+    {
+      "command": "cargo test -p coder-account",
+      "passed": 22
+    },
+    {
+      "command": "cargo test -p zeron-ui --lib openagents_reader",
+      "passed": 1
+    },
+    {
+      "command": "cargo test -p zeron-ui --lib navigation",
+      "passed": 36
+    },
+    {
+      "command": "cargo build -p zeron-ui --example account-fixture --features account-fixture",
+      "result": "passed"
+    },
+    {
+      "command": "openagents browser run -- python3 scripts/check-account-fixture.py --reader BINARY SCRATCH",
+      "result": "passed; native captures reviewed"
+    },
+    {
+      "command": "rustfmt --check (new Rust files and changed fixture/focus modules); git diff --check",
+      "result": "passed; unrelated shell formatting omitted"
+    }
+  ],
+  "native_journey": {
+    "direct_target": "Chat 204 is opened while only sidebar rows 0 through 199 are loaded; target uses the active account lease and SDK chat reference",
+    "initial_messages": 200,
+    "complete_messages": 405,
+    "last_message": "msg_404",
+    "downloads_before_request": 0,
+    "explicit_file_download": "fixture!",
+    "explicit_capture_download": "cap",
+    "captures": [
+      "reader-200.png",
+      "reader-405.png",
+      "reader-file.png",
+      "reader-changed.png",
+      "reader-reloaded.png",
+      "archived.png",
+      "shared-project.png",
+      "signed-out.png"
+    ],
+    "checked": [
+      "first page starts at the beginning",
+      "Markdown heading, bold, inline code, and code fence",
+      "thinking remains distinct from assistant replies",
+      "saved tool input, output, and status",
+      "file preview and save control after explicit download",
+      "not-saved capture has no download control",
+      "all 405 messages reached in order",
+      "content change clears old pages and reloads a new version",
+      "read-only route has no composer or engine controls",
+      "local selection/chat list/engine remain unchanged",
+      "logout clears messages, bytes, selection, and remote route"
+    ],
+    "cleanup": "Native process exited; isolated Chrome profile removed; all API state and credentials were synthetic and local"
+  },
+  "model_coverage": [
+    "direct target without a sidebar or host API",
+    "405 messages and future roles/extra content",
+    "changed revision and recovery",
+    "503 preserves explicitly stale pages",
+    "late A-to-B message result and logout during download",
+    "explicit bounded windows reach message 404",
+    "oversized page retries with smaller pages",
+    "malformed known content is an error",
+    "missing file preserves chat; revoked access clears content"
+  ],
+  "limits": [
+    "At most 200 messages per explicit request",
+    "32 MiB message-content budget and 2000 messages per view window; explicit continuation releases older messages",
+    "The content budget is not a total process RSS limit",
+    "Rows are virtualized; long text over 256 KiB is available in numbered 64 KiB parts",
+    "One on-demand attachment is retained, bounded by SDK limits: 10 MiB file or 15 MiB capture",
+    "Native Save file uses the platform destination picker; automated qualification checks bytes without opening the picker",
+    "No live engine, computer wake, resume, queue dispatch, local document conversion, or saved-chat mutation",
+    "Real account Keychain prompts remain the owner check recorded for #11829"
+  ]
+}
