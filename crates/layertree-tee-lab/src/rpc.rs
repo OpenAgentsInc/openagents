@@ -223,13 +223,30 @@ pub struct Authorized {
     pub payload: Value,
 }
 pub fn authorization(path: &str, timestamp: u64, nonce: &str, payload: &Value) -> [u8; 32] {
+    // Sort recursively even when a consumer enables serde_json/preserve_order.
+    // The signer image's default BTreeMap encoding uses this same order.
+    fn ordered(value: &Value) -> Value {
+        match value {
+            Value::Object(fields) => {
+                let mut keys = fields.keys().collect::<Vec<_>>();
+                keys.sort();
+                Value::Object(
+                    keys.into_iter()
+                        .map(|key| (key.clone(), ordered(&fields[key])))
+                        .collect(),
+                )
+            }
+            Value::Array(values) => Value::Array(values.iter().map(ordered).collect()),
+            value => value.clone(),
+        }
+    }
     tagged_hash(
         "LayerTreeTEE/rpc/v1",
         &[
             path.as_bytes(),
             &timestamp.to_le_bytes(),
             nonce.as_bytes(),
-            &serde_json::to_vec(payload).expect("JSON value"),
+            &serde_json::to_vec(&ordered(payload)).expect("JSON value"),
         ],
     )
 }
@@ -346,6 +363,21 @@ pub fn outpoint(s: &str) -> Result<OutPoint, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn payload_encoding_matches_the_signer_with_preserve_order_enabled() {
+        let payload = serde_json::json!({"z":{"b":2,"a":1},"a":[{"d":4,"c":3}]});
+        let nonce = hex(&[7; 32]);
+        let expected = tagged_hash(
+            "LayerTreeTEE/rpc/v1",
+            &[
+                b"/genesis",
+                &1000u64.to_le_bytes(),
+                nonce.as_bytes(),
+                br#"{"a":[{"c":3,"d":4}],"z":{"a":1,"b":2}}"#,
+            ],
+        );
+        assert_eq!(authorization("/genesis", 1000, &nonce, &payload), expected);
+    }
     #[test]
     fn authorization_binds_route_clock_nonce_and_payload() {
         use bitcoin::secp256k1::{Keypair, Message, Secp256k1, SecretKey};
