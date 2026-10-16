@@ -1,0 +1,81 @@
+{
+  "issue": 11849,
+  "date": "2026-10-16",
+  "fork_commit": "0d1d897412f880c56a4ba8c6ccca67a879366635",
+  "server_commit": "8b987142df94523c3a1e7ac1c7b17db2cc5c7b30",
+  "simulator": "8010197D-517D-43DA-9559-46742EFABC65",
+  "desktop": "isolated headless fork engine",
+  "harness": "mock; no paid inference",
+  "owner_account_used": false,
+  "owner_host_used": false,
+  "parent_test_credential_changed": false,
+  "checks": {
+    "staging": {
+      "host": {
+        "account": "acct_83d16a35955ef908",
+        "checks": {
+          "answers": true,
+          "foreground": true,
+          "phone": true,
+          "queue": true,
+          "reconnect": true,
+          "stop": true
+        },
+        "child_stopped": true,
+        "credential_written_to_config": false,
+        "host_restarts": 1,
+        "registry_fixtures_removed": true,
+        "sync": "https://coder-sync-staging-157437760789.us-central1.run.app"
+      },
+      "keychain": {
+        "saw_session": true,
+        "keychain_empty": true,
+        "signed_in": true
+      }
+    },
+    "production": {
+      "host": {
+        "account": "acct_83d16a35955ef908",
+        "checks": {
+          "answers": true,
+          "foreground": true,
+          "phone": true,
+          "queue": true,
+          "reconnect": true,
+          "stop": true
+        },
+        "child_stopped": true,
+        "credential_written_to_config": false,
+        "host_restarts": 1,
+        "registry_fixtures_removed": true,
+        "sync": "https://coder-sync-157437760789.us-central1.run.app"
+      },
+      "keychain": {
+        "saw_session": true,
+        "keychain_empty": true,
+        "signed_in": true
+      }
+    }
+  },
+  "cleanup": "Only fixture registry entries are tombstoned and the owned child is stopped. Private room rows follow the service storage policy.",
+  "normal_simulator_build": {
+    "code_signing_allowed": false,
+    "identity_scan_passed": true,
+    "credential_fixture_in_bindings": false
+  },
+  "rust_checks": {
+    "account_and_brand": 26,
+    "engine_sdk": 2,
+    "engine_guards": 2,
+    "mobile_passed": 48,
+    "mobile_preexisting_ignored": 1,
+    "cli": 11,
+    "mock_fixture": 1,
+    "formatting": "changed Rust files; rustfmt 1.98.1",
+    "non_test_builds": [
+      "zeron mobile profile",
+      "engine fixture example",
+      "iOS simulator Rust core and UIKit"
+    ]
+  }
+}

@@ -319,3 +319,7 @@ for the native sign-in test. The configuration file contains addresses and
 fixture IDs only. Stop that fixture with `POST /__fixture/stop` on its sync URL.
 The fixture does not contact GitHub, save a production credential, or open a
 browser.
+
+The [desktop-to-phone check](coder-desktop-phone-e2e.md) runs the simulator
+against staging and production with a dedicated public-SDK account and an
+isolated headless engine. It includes questions, queueing, stop, and reconnect.
