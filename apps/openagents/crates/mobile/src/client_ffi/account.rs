@@ -170,7 +170,8 @@ impl CoreAccount {
             Deployment::new(&api_url, &website_url).map_err(|e| CoreError::InvalidArgument {
                 message: e.to_string(),
             })?;
-        let client = Client::with_timeout(deployment, Duration::from_secs(10)).map_err(|e| {
+        // Saved-history pages of 200 can take the server over ten seconds.
+        let client = Client::with_timeout(deployment, Duration::from_secs(30)).map_err(|e| {
             CoreError::InvalidArgument {
                 message: e.to_string(),
             }

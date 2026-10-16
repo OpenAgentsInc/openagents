@@ -1082,6 +1082,26 @@ impl Client {
         {
             self.inner.nudge_host(chat_id);
         }
+        // A chat with nothing cached here, hosted by another device: its room
+        // may never have been filled (a session from before the host synced,
+        // or one the host hasn't opened since). Wake the host for it, as a
+        // send would, so it opens the chat and uploads its history; otherwise
+        // the transcript waits forever.
+        if !hydrated
+            && let Some(live) = self.inner.live()
+            && self
+                .inner
+                .workspace
+                .chat(chat_id)
+                .is_some_and(|row| !row.device_id.is_empty() && row.device_id != self.inner.config.device_id)
+            && live
+                .store
+                .sync_job_version(chat_id, crate::live::delivery::JOB)
+                .ok()
+                == Some(None)
+        {
+            self.inner.nudge_host(chat_id);
+        }
         if let Some(demo) = self.inner.demo() {
             demo.session_opened(&core);
         }
