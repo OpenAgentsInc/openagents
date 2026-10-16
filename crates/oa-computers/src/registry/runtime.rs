@@ -3,7 +3,7 @@
 use super::{Catalog, Placement, Refused, Registry, Target};
 use computer_driver::{
     Artifact, ArtifactKind, Capabilities, CommandCursor, CommandRead, CommandSpec, CreateRequest,
-    Driver, Exec, ExecOutput, Meter, Observation, Outcome, Shape,
+    Driver, Exec, ExecOutput, ImageRecord, Meter, Observation, Outcome, Shape,
 };
 use serde::Deserialize;
 use std::{
@@ -40,6 +40,11 @@ impl Driver for RuntimeDriver {
         }
     }
     forward! {
+        capture_environment_image(computer:&str,name:&str)->Outcome<ImageRecord>;
+        read_environment_image(name:&str)->Outcome<Option<ImageRecord>>;
+        delete_environment_image(name:&str)->Outcome<bool>;
+        environment_image_hydrated(computer:&str)->Outcome<bool>;
+
         create(request:&CreateRequest)->Outcome<String>;
         observe(computer:&str)->Outcome<Observation>;
         exec(computer:&str,exec:&Exec)->Outcome<ExecOutput>;

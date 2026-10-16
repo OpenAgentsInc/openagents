@@ -98,6 +98,36 @@
       "line": 188
     },
     {
+      "path": "/v1/environment-computers/session",
+      "source": "crates/openagents-web/src/environments/computers.rs",
+      "line": 805
+    },
+    {
+      "path": "/v1/environment-computers/{native}/image",
+      "source": "crates/openagents-web/src/environments/computers.rs",
+      "line": 806
+    },
+    {
+      "path": "/v1/environment-computers/{native}/command",
+      "source": "crates/openagents-web/src/environments/computers.rs",
+      "line": 807
+    },
+    {
+      "path": "/v1/environment-computers/{native}/computer",
+      "source": "crates/openagents-web/src/environments/computers.rs",
+      "line": 808
+    },
+    {
+      "path": "/v1/environment-computers/{native}/credentials",
+      "source": "crates/openagents-web/src/environments/computers.rs",
+      "line": 812
+    },
+    {
+      "path": "/v1/environment-computers/{native}/credentials-check",
+      "source": "crates/openagents-web/src/environments/computers.rs",
+      "line": 816
+    },
+    {
       "path": "/v1/history",
       "source": "crates/openagents-web/src/history_api.rs",
       "line": 21

@@ -64,6 +64,51 @@ async fn computer_job_import_checks_its_own_endpoint_and_keeps_general_restore_c
     task.abort();
 }
 
+#[tokio::test]
+async fn environment_jobs_import_only_their_scope_and_cannot_restore_as_account_credentials() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let origin = format!("http://{}", listener.local_addr().unwrap());
+    let calls = Arc::new(AtomicUsize::new(0));
+    let seen = calls.clone();
+    let router = Router::new().route(
+        "/v1/environment-computers/session",
+        get(move |headers: HeaderMap| {
+            let seen = seen.clone();
+            async move {
+                seen.fetch_add(1, Ordering::SeqCst);
+                assert_eq!(headers["authorization"], "Bearer ecj_fixture");
+                Json(view())
+            }
+        }),
+    );
+    let task = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+    let client = Client::new(Deployment::new(&format!("{origin}/v1"), &origin).unwrap()).unwrap();
+    let session = client
+        .authenticate_environment_job("ecj_fixture")
+        .await
+        .unwrap();
+    assert_eq!(session.account().id, "acct_fixture");
+    assert!(!format!("{session:?}").contains("ecj_fixture"));
+    assert!(matches!(
+        client.authenticate("ecj_fixture").await,
+        Err(Error::InvalidCredential)
+    ));
+    assert!(matches!(
+        client.restore(&session.record()).await,
+        Err(Error::InvalidCredential)
+    ));
+    assert!(matches!(
+        client.authenticate_environment_job("scj_fixture").await,
+        Err(Error::InvalidCredential)
+    ));
+    assert!(matches!(
+        client.authenticate_computer_job("ecj_fixture").await,
+        Err(Error::InvalidCredential)
+    ));
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    task.abort();
+}
+
 #[derive(Clone, Copy)]
 enum Case {
     Signed,

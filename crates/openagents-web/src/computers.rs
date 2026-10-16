@@ -140,12 +140,25 @@ impl Client {
         account: &str,
         body: Option<Value>,
     ) -> Result<(u16, Value), String> {
+        self.call_scoped(method, path, account, body, None).await
+    }
+    pub(crate) async fn call_scoped(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        account: &str,
+        body: Option<Value>,
+        attempt: Option<&str>,
+    ) -> Result<(u16, Value), String> {
         let empty_post = method == reqwest::Method::POST && body.is_none();
         let mut request = self
             .http
             .request(method, format!("{}{path}", self.base))
             .bearer_auth(self.token()?)
             .header("X-OpenAgents-Account", account);
+        if let Some(attempt) = attempt {
+            request = request.header("X-OpenAgents-Environment-Attempt", attempt);
+        }
         if let Some(body) = body {
             request = request.json(&body);
         } else if empty_post {
@@ -440,6 +453,7 @@ impl Client {
         owner: &str,
         upload: Option<Vec<u8>>,
         checksum: Option<&str>,
+        attempt: Option<&str>,
     ) -> Result<(u16, Vec<u8>, Option<String>), ()> {
         let mut req = self
             .http
@@ -447,6 +461,9 @@ impl Client {
             .timeout(Duration::from_secs(computer_files::TIMEOUT_SECONDS + 15))
             .bearer_auth(self.token().map_err(|_| ())?)
             .header("x-openagents-account", owner);
+        if let Some(attempt) = attempt {
+            req = req.header("x-openagents-environment-attempt", attempt);
+        }
         if let Some(bytes) = upload {
             // Google's front end requires a length for an empty PUT as well.
             if bytes.is_empty() {

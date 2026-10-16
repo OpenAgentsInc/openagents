@@ -1,5 +1,6 @@
 //! Public commands share the turn queue, lease, and checkpoint owner.
 //! Dispatch is recorded before transport. Recovery only observes that identity.
+mod redaction;
 use crate::{
     Store,
     api::Api,
@@ -149,6 +150,16 @@ impl Store {
         Ok(())
     }
 
+    pub async fn command_by_request(
+        &self,
+        owner: &str,
+        computer: &str,
+        key: &str,
+    ) -> Result<Option<String>, DbError> {
+        let client = self.db.client().await?;
+        Ok(client.query_opt("SELECT turn FROM computers.commands WHERE owner=$1 AND computer=$2 AND request_key=$3",&[&owner,&computer,&key]).await?.map(|row|row.get(0)))
+    }
+
     pub async fn command(
         &self,
         owner: &str,
@@ -241,6 +252,7 @@ impl Store {
             &[&id,&state,&code]).await?;
         Ok(())
     }
+    #[cfg(test)]
     async fn command_output(
         &self,
         id: &str,
@@ -249,6 +261,23 @@ impl Store {
         out_gap: bool,
         err_gap: bool,
     ) -> Result<(), DbError> {
+        self.command_output_scoped(id, stdout, stderr, out_gap, err_gap, None)
+            .await
+    }
+    async fn command_output_scoped(
+        &self,
+        id: &str,
+        stdout: &[u8],
+        stderr: &[u8],
+        out_gap: bool,
+        err_gap: bool,
+        source: Option<CommandCursor>,
+    ) -> Result<(), DbError> {
+        if let Some(source) = source {
+            let positions = json!({"source_stdout":source.stdout,"source_stderr":source.stderr});
+            self.db.client().await?.execute("UPDATE computers.commands SET stdout=$2,stderr=$3,stdout_truncated=stdout_truncated OR $4,stderr_truncated=stderr_truncated OR $5,options=options || $6::jsonb WHERE turn=$1 AND expires_at>now() AND finished_at IS NULL AND octet_length(stdout)<=octet_length($2::bytea) AND octet_length(stderr)<=octet_length($3::bytea) AND COALESCE((options->>'source_stdout')::bigint,0)<=$7 AND COALESCE((options->>'source_stderr')::bigint,0)<=$8",&[&id,&stdout,&stderr,&out_gap,&err_gap,&positions,&(source.stdout as i64),&(source.stderr as i64)]).await?;
+            return Ok(());
+        }
         self.db.client().await?.execute("UPDATE computers.commands SET stdout=$2,stderr=$3,stdout_truncated=stdout_truncated OR $4,stderr_truncated=stderr_truncated OR $5 WHERE turn=$1 AND expires_at>now() AND finished_at IS NULL AND octet_length(stdout)<=octet_length($2::bytea) AND octet_length(stderr)<=octet_length($3::bytea)", &[&id,&stdout,&stderr,&out_gap,&err_gap]).await?;
         Ok(())
     }
@@ -430,6 +459,19 @@ pub(crate) async fn cancel(
         _ => error("unavailable"),
     }
 }
+async fn by_request(
+    State(api): State<Arc<Api>>,
+    headers: HeaderMap,
+    Path((computer, key)): Path<(String, String)>,
+) -> Response {
+    let Some(owner) = owner(&headers) else {
+        return error("invalid");
+    };
+    match api.store.command_by_request(owner, &computer, &key).await {
+        Ok(id) => Json(json!({"id":id})).into_response(),
+        Err(_) => error("unavailable"),
+    }
+}
 pub fn routes() -> Router<Arc<Api>> {
     Router::new()
         .route(
@@ -437,6 +479,10 @@ pub fn routes() -> Router<Arc<Api>> {
             post(crate::command_credentials::prepare),
         )
         .route("/v1/computers/{id}/commands", post(create))
+        .route(
+            "/v1/computers/{id}/commands/by-request/{key}",
+            get(by_request),
+        )
         .route("/v1/computers/{id}/commands/{command}", get(read))
         .route("/v1/computers/{id}/commands/{command}/output", get(output))
         .route("/v1/computers/{id}/commands/{command}/cancel", post(cancel))
@@ -544,6 +590,12 @@ pub async fn run<D: Driver + Clone + 'static>(
                         timeout_seconds:t.timeout_seconds as u64, env,
                         credential_names, digest:r.digest.clone(),
                     };
+                    if e.binding.as_ref().is_some_and(|b|b.environment_attempt.is_some()) {
+                        let patterns=redaction::patterns(&t.id,spec.credential_names.iter().filter_map(|name|spec.env.get(name).map(String::as_str)));
+                        let metadata=json!({"redaction":patterns,"source_stdout":0,"source_stderr":0});
+                        c.execute("UPDATE computers.commands SET options=options || $2::jsonb WHERE turn=$1 AND status='dispatching'",&[&t.id,&metadata]).await.map_err(|x|io(x.into()))?;
+                        spec.env.insert("OA_ENVIRONMENT_VOLATILE_OUTPUT".into(),"1".into());
+                    }
                     // A lost reply leaves the dispatch marker in place.
                     let dispatched = p.driver.start_command(&resource, &spec).await;
                     for name in &spec.credential_names {
@@ -578,20 +630,28 @@ pub async fn run<D: Driver + Clone + 'static>(
                 let _ = p.driver.stop_command(&resource,&t.id).await;
             }
             let cursor = CommandCursor {
-                stdout:r.stdout.len() as u64 + u64::from(r.out_gap),
-                stderr:r.stderr.len() as u64 + u64::from(r.err_gap),
+                stdout:r.options["source_stdout"].as_u64().unwrap_or(r.stdout.len() as u64 + u64::from(r.out_gap)),
+                stderr:r.options["source_stderr"].as_u64().unwrap_or(r.stderr.len() as u64 + u64::from(r.err_gap)),
             };
             match p.driver.read_command(&resource,&t.id,cursor,65536).await {
                 Outcome::Done {value} if value.digest.as_deref() == Some(r.digest.as_str()) => {
                     misses = 0;
                     let full = value.stdout.len() == 65536 || value.stderr.len() == 65536;
-                    let mut out = r.stdout.clone();
-                    let mut err = r.stderr.clone();
-                    let out_gap = r.out_gap || out.len() + value.stdout.len() > LIMIT;
-                    let err_gap = r.err_gap || err.len() + value.stderr.len() > LIMIT;
-                    out.extend(value.stdout.iter().take(LIMIT-out.len()));
-                    err.extend(value.stderr.iter().take(LIMIT-err.len()));
-                    store.command_output(&t.id,&out,&err,out_gap,err_gap).await.map_err(io)?;
+                    let patterns:Vec<redaction::Pattern>=if e.binding.as_ref().is_some_and(|b|b.environment_attempt.is_some()) {
+                        match serde_json::from_value(r.options["redaction"].clone()) {
+                            Ok(patterns)=>patterns,
+                            Err(_)=>{store.command_end(&t.id,"unknown",None).await.map_err(io)?;return Ok(())}
+                        }
+                    }else{Vec::new()};
+                    let terminal=matches!(value.progress,CommandProgress::Exited{..}|CommandProgress::Lost|CommandProgress::Absent) && !full;
+                    let (clean_out,out_used)=redaction::scrub(&value.stdout,&t.id,&patterns,terminal);
+                    let (clean_err,err_used)=redaction::scrub(&value.stderr,&t.id,&patterns,terminal);
+                    let mut out=r.stdout.clone();let mut err=r.stderr.clone();
+                    let out_gap=r.out_gap || out.len()+clean_out.len()>LIMIT || cursor.stdout+value.stdout.len() as u64>LIMIT as u64;
+                    let err_gap=r.err_gap || err.len()+clean_err.len()>LIMIT || cursor.stderr+value.stderr.len() as u64>LIMIT as u64;
+                    out.extend(clean_out.iter().take(LIMIT-out.len()));err.extend(clean_err.iter().take(LIMIT-err.len()));
+                    let source=r.options.get("source_stdout").is_some().then_some(CommandCursor{stdout:cursor.stdout+out_used as u64,stderr:cursor.stderr+err_used as u64});
+                    store.command_output_scoped(&t.id,&out,&err,out_gap,err_gap,source).await.map_err(io)?;
                     match value.progress {
                         CommandProgress::Exited {code} if !full => {
                             let state = if stopping {"cancelled"}
@@ -737,6 +797,72 @@ mod tests {
         assert_eq!(read.stderr, b"error");
         assert!(read.out_gap);
         assert_eq!(read.status, "succeeded");
+        let request = Request {
+            idempotency_key: "raw-cursors".into(),
+            ..request
+        };
+        let (id, _) = store
+            .add_command("test-account", computer, &request)
+            .await
+            .unwrap();
+        store
+            .command_output_scoped(
+                &id,
+                b"clean",
+                b"",
+                false,
+                false,
+                Some(CommandCursor {
+                    stdout: 100,
+                    stderr: 0,
+                }),
+            )
+            .await
+            .unwrap();
+        // A stale worker can have longer sanitized output but an older guest cursor.
+        store
+            .command_output_scoped(
+                &id,
+                b"stale private output",
+                b"",
+                false,
+                false,
+                Some(CommandCursor {
+                    stdout: 99,
+                    stderr: 0,
+                }),
+            )
+            .await
+            .unwrap();
+        let read = store
+            .command("test-account", computer, &id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(read.stdout, b"clean");
+        assert_eq!(read.options["source_stdout"], 100);
+        store
+            .command_output_scoped(
+                &id,
+                b"clean next",
+                b"",
+                false,
+                false,
+                Some(CommandCursor {
+                    stdout: 120,
+                    stderr: 0,
+                }),
+            )
+            .await
+            .unwrap();
+        let read = store
+            .command("test-account", computer, &id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(read.stdout, b"clean next");
+        assert_eq!(read.options["source_stdout"], 120);
+
         task.abort();
     }
 }

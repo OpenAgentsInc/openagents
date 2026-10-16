@@ -50,12 +50,14 @@ impl BoatDriver {
         // Identified commands are implemented by this adapter over Core exec,
         // including services that predate the additive declaration field.
         caps.command_sessions = true;
+        caps.environment_artifacts = caps.supports(Profile::Snapshot);
         caps.validate()?;
         Ok(Self { client, caps })
     }
     /// Drive a Boat service that does not serve `/capabilities` (the
     /// hosted boat.dev), declaring its profiles by hand.
-    pub fn with_capabilities(client: Client, caps: Capabilities) -> Self {
+    pub fn with_capabilities(client: Client, mut caps: Capabilities) -> Self {
+        caps.environment_artifacts = caps.supports(Profile::Snapshot);
         Self { client, caps }
     }
     pub fn client(&self) -> &Client {
@@ -79,6 +81,88 @@ fn state_of(s: &str) -> State {
 }
 
 impl Driver for BoatDriver {
+    async fn capture_environment_image(&self, computer: &str, name: &str) -> Outcome<ImageRecord> {
+        if !self.caps.environment_artifacts {
+            return Outcome::failed("Environment images aren't supported on this computer.");
+        }
+        match self.read_environment_image(name).await {
+            Outcome::Done { value: Some(image) } if image.source == computer => {
+                return Outcome::done(image);
+            }
+            Outcome::Done { value: Some(_) } => {
+                return Outcome::failed("This image belongs to another builder.");
+            }
+            Outcome::Done { value: None } => {}
+            Outcome::Unknown { reason } | Outcome::Failed { reason } => {
+                return Outcome::unknown(reason);
+            }
+        }
+        match self
+            .client
+            .save_named_snapshot(&SaveNamedSnapshotParams {
+                body: NamedSnapshotSaveRequest {
+                    sandbox_id: computer.into(),
+                    name: name.into(),
+                    ..Default::default()
+                },
+                ..Default::default()
+            })
+            .await
+        {
+            Ok(reply) => Outcome::done(environment_image(&reply.snapshot)),
+            Err(error) => mutation(error),
+        }
+    }
+    async fn read_environment_image(&self, name: &str) -> Outcome<Option<ImageRecord>> {
+        match self
+            .client
+            .get_named_snapshot(&GetNamedSnapshotParams {
+                name: name.into(),
+                ..Default::default()
+            })
+            .await
+        {
+            Ok(reply) => Outcome::done(Some(environment_image(&reply.snapshot))),
+            Err(error) if status_of(&error) == Some(404) => Outcome::done(None),
+            Err(error) => Outcome::unknown(error.to_string()),
+        }
+    }
+    async fn delete_environment_image(&self, name: &str) -> Outcome<bool> {
+        match self
+            .client
+            .delete_named_snapshot(&DeleteNamedSnapshotParams {
+                name: name.into(),
+                ..Default::default()
+            })
+            .await
+        {
+            Ok(_) => Outcome::done(true),
+            Err(error) if status_of(&error) == Some(404) => Outcome::done(false),
+            Err(error) => mutation(error),
+        }
+    }
+    async fn environment_image_hydrated(&self, computer: &str) -> Outcome<bool> {
+        match self
+            .client
+            .get(&GetParams {
+                sandbox_id: computer.into(),
+                ..Default::default()
+            })
+            .await
+        {
+            Ok(reply)
+                if matches!(
+                    reply.sandbox.state.as_str(),
+                    "error" | "cancelled" | "archived"
+                ) =>
+            {
+                Outcome::failed("The verification computer is unavailable.")
+            }
+            Ok(reply) => Outcome::done(reply.sandbox.hydrated == Some(true)),
+            Err(error) => Outcome::unknown(error.to_string()),
+        }
+    }
+
     fn capabilities(&self) -> Capabilities {
         self.caps.clone()
     }
@@ -194,8 +278,24 @@ impl Driver for BoatDriver {
                 credentials.insert(name.clone(), serde_json::Value::String(value));
             }
         }
-        let script =
-            identified::bounded_command_script("/tmp/oa-public-commands", "workspace", &public);
+        let volatile = public
+            .env
+            .remove("OA_ENVIRONMENT_VOLATILE_OUTPUT")
+            .as_deref()
+            == Some("1");
+        let root = if volatile {
+            "/run/oa-environment-commands"
+        } else {
+            "/tmp/oa-public-commands"
+        };
+        let script = identified::bounded_command_script(root, "workspace", &public);
+        let script = if volatile {
+            format!(
+                "sudo -n install -d -m 700 -o \"$(id -u)\" -g \"$(id -g)\" /run/oa-environment-commands || exit 125\n{script}"
+            )
+        } else {
+            script
+        };
         let mut extra = BTreeMap::new();
         if !credentials.is_empty() {
             extra.insert("env".into(), serde_json::Value::Object(credentials));
@@ -225,12 +325,20 @@ impl Driver for BoatDriver {
         cursor: CommandCursor,
         max_bytes: u64,
     ) -> Outcome<CommandRead> {
-        let script = identified::read_script(
+        let public = identified::read_script(
             "/tmp/oa-public-commands",
             id,
             cursor,
             max_bytes.clamp(1, 65536),
         );
+        let volatile = identified::read_script(
+            "/run/oa-environment-commands",
+            id,
+            cursor,
+            max_bytes.clamp(1, 65536),
+        );
+        let path = ::boat::shell_quote(&format!("/run/oa-environment-commands/{id}"));
+        let script = format!("if [ -d {path} ]; then\n{volatile}\nelse\n{public}\nfi");
         match self.exec(computer, &Exec::new(script)).await {
             Outcome::Done { value } if value.code == 0 => {
                 match identified::parse_read(&value.stdout) {
@@ -243,11 +351,13 @@ impl Driver for BoatDriver {
     }
 
     async fn stop_command(&self, computer: &str, id: &str) -> Outcome<String> {
+        let public = identified::bounded_stop_script("/tmp/oa-public-commands", id);
+        let volatile = identified::bounded_stop_script("/run/oa-environment-commands", id);
+        let path = ::boat::shell_quote(&format!("/run/oa-environment-commands/{id}"));
         self.exec(
             computer,
-            &Exec::new(identified::bounded_stop_script(
-                "/tmp/oa-public-commands",
-                id,
+            &Exec::new(format!(
+                "if [ -d {path} ]; then\n{volatile}\nelse\n{public}\nfi"
             )),
         )
         .await
@@ -580,5 +690,22 @@ mod credential_tests {
             Outcome::Done { .. }
         ));
         server.await.unwrap();
+    }
+}
+
+fn environment_image(s: &NamedSnapshot) -> ImageRecord {
+    let state = match s.status.as_str() {
+        "completed" | "ready" | "saved" if s.snapshot_id.is_some() => ImageState::Ready,
+        "failed" | "error" => ImageState::Failed {
+            reason: "The image couldn't be saved.".into(),
+        },
+        _ => ImageState::Pending,
+    };
+    ImageRecord {
+        name: s.name.clone(),
+        source: s.source_sandbox_id.clone(),
+        state,
+        snapshot: s.snapshot_id.clone(),
+        size_bytes: s.size_bytes.and_then(|n| u64::try_from(n).ok()),
     }
 }

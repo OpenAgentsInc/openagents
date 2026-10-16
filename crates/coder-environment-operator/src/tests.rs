@@ -18,7 +18,7 @@ fn pin() -> SourcePin {
         digest: "b".repeat(64),
     }
 }
-fn recipe() -> Recipe {
+pub(crate) fn recipe() -> Recipe {
     Recipe {
         schema: coder_environment::RECIPE_SCHEMA.into(),
         base: ImagePin {

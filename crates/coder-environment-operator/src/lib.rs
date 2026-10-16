@@ -57,6 +57,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 pub mod activity;
 pub mod agent;
 pub mod boat;
+pub mod computers;
 pub mod gce;
 pub mod images;
 #[cfg(feature = "space")]

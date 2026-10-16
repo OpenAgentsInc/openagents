@@ -170,6 +170,9 @@ pub struct Capabilities {
     /// Start, observe, and cancel a command under one retained command ID.
     #[serde(default, skip_serializing_if = "is_false")]
     pub command_sessions: bool,
+    /// Clean builders can publish a reusable disk image and freshly verify it.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub environment_artifacts: bool,
     /// Resolved provider default, so a new allocation need not follow a mutable family.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default_artifact: Option<Artifact>,
@@ -183,6 +186,7 @@ impl Capabilities {
         Self {
             memory_suspend: false,
             command_sessions: false,
+            environment_artifacts: false,
             default_artifact: None,
             shapes: Default::default(),
             workspace_file_bytes: None,
@@ -559,6 +563,25 @@ pub struct ExecOutput {
 pub trait Driver {
     fn capabilities(&self) -> Capabilities;
 
+    /// Publish only a dedicated clean builder. Callers enforce the attempt's
+    /// capture stage; implementations refuse a name owned by another resource.
+    async fn capture_environment_image(
+        &self,
+        _computer: &str,
+        _name: &str,
+    ) -> Outcome<ImageRecord> {
+        Outcome::failed("Environment images aren't supported on this computer.")
+    }
+    async fn read_environment_image(&self, _name: &str) -> Outcome<Option<ImageRecord>> {
+        Outcome::failed("Environment images aren't supported on this computer.")
+    }
+    async fn delete_environment_image(&self, _name: &str) -> Outcome<bool> {
+        Outcome::failed("Environment images aren't supported on this computer.")
+    }
+    async fn environment_image_hydrated(&self, _computer: &str) -> Outcome<bool> {
+        Outcome::failed("Environment images aren't supported on this computer.")
+    }
+
     // Core.
     /// Create under `request.operation`; repeating the same operation must
     /// return the same computer, never a second one.
@@ -634,6 +657,19 @@ pub trait Driver {
 }
 
 impl<D: Driver> Driver for std::sync::Arc<D> {
+    async fn capture_environment_image(&self, c: &str, name: &str) -> Outcome<ImageRecord> {
+        (**self).capture_environment_image(c, name).await
+    }
+    async fn read_environment_image(&self, name: &str) -> Outcome<Option<ImageRecord>> {
+        (**self).read_environment_image(name).await
+    }
+    async fn delete_environment_image(&self, name: &str) -> Outcome<bool> {
+        (**self).delete_environment_image(name).await
+    }
+    async fn environment_image_hydrated(&self, c: &str) -> Outcome<bool> {
+        (**self).environment_image_hydrated(c).await
+    }
+
     fn capabilities(&self) -> Capabilities {
         (**self).capabilities()
     }
@@ -780,5 +816,52 @@ mod tests {
     fn a_secret_never_prints() {
         let e = Exec::new("true").secret("TOKEN", "sk-ant-oat01-abc");
         assert!(!format!("{e:?}").contains("abc"));
+    }
+}
+
+/// Immutable authority for one clean Environment computer attempt.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EnvironmentRole {
+    Setup,
+    Builder,
+    Verifier,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EnvironmentAttempt {
+    pub environment: String,
+    pub attempt: String,
+    pub role: EnvironmentRole,
+    pub source_digest: String,
+    pub recipe_digest: String,
+    pub inputs_digest: String,
+    pub deadline_ms: u64,
+    pub idle_ms: u64,
+    pub image_name: Option<String>,
+}
+impl EnvironmentAttempt {
+    pub fn validate(&self) -> Result<(), &'static str> {
+        let id = |s: &str| {
+            s.len() <= 128
+                && !s.is_empty()
+                && s.bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b"_-".contains(&b))
+        };
+        let digest = |s: &str| s.len() == 64 && s.bytes().all(|b| b.is_ascii_hexdigit());
+        if !id(&self.environment)
+            || !id(&self.attempt)
+            || !digest(&self.source_digest)
+            || !digest(&self.recipe_digest)
+            || !digest(&self.inputs_digest)
+            || self.deadline_ms == 0
+            || self.idle_ms == 0
+            || self.image_name.as_deref().is_some_and(|n| !id(n))
+            || self.role == EnvironmentRole::Builder && self.image_name.is_none()
+        {
+            return Err("The Environment attempt is invalid.");
+        }
+        Ok(())
     }
 }

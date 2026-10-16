@@ -192,13 +192,25 @@ impl Computers<'_> {
         })
     }
     pub fn output(&self, reference: &CommandRef) -> Result<OutputReader, Error> {
+        self.output_at(reference, 0, 0)
+    }
+    /// Read from previously delivered byte positions without replaying a command.
+    pub fn output_at(
+        &self,
+        reference: &CommandRef,
+        stdout: u64,
+        stderr: u64,
+    ) -> Result<OutputReader, Error> {
         self.check(&reference.computer)?;
         identity(&reference.id)?;
+        if stdout > 262144 || stderr > 262144 {
+            return Err(Error::InvalidInput);
+        }
         Ok(OutputReader {
             v: "openagents.computers.output-reader.v1".into(),
             command: reference.clone(),
-            stdout: 0,
-            stderr: 0,
+            stdout,
+            stderr,
             ended: false,
         })
     }

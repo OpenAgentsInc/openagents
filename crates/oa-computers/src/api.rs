@@ -101,6 +101,65 @@ async fn auth(State(api): State<Arc<Api>>, req: Request, next: Next) -> Response
             "A valid service token is required.",
         );
     }
+    // An account can stop or delete its managed attempt, but cannot add
+    // customer commands or files to a clean builder before it is captured.
+    let path = req.uri().path();
+    let mut parts = path.trim_start_matches('/').split('/');
+    if parts.next() == Some("v1") && parts.next() == Some("computers") {
+        if let Some(id) = parts.next().filter(|id| id.starts_with("cmp_")) {
+            let protected = req.method() == axum::http::Method::PUT
+                || req.method() == axum::http::Method::GET
+                    && (path.ends_with("/files") || path.contains("/commands"))
+                || req.method() == axum::http::Method::POST
+                    && !path.ends_with("/stop")
+                    && !path.ends_with("/cancel");
+            if protected {
+                let owner = match account(req.headers()) {
+                    Ok(owner) => owner,
+                    Err(response) => return response,
+                };
+                match api.store.get(&owner, id).await {
+                    Ok(Some(entry)) => {
+                        if let Some(attempt) = entry
+                            .binding
+                            .as_ref()
+                            .and_then(|b| b.environment_attempt.as_ref())
+                        {
+                            if now_ms() >= attempt.deadline_ms
+                                && !path.ends_with("/environment-image")
+                            {
+                                return err(
+                                    StatusCode::FORBIDDEN,
+                                    "environment_expired",
+                                    "This setup's time limit has ended.",
+                                );
+                            }
+                            if req
+                                .headers()
+                                .get("x-openagents-environment-attempt")
+                                .and_then(|v| v.to_str().ok())
+                                != Some(&attempt.attempt)
+                            {
+                                return err(
+                                    StatusCode::FORBIDDEN,
+                                    "environment_managed",
+                                    "Use the Environment page to change this computer.",
+                                );
+                            }
+                        }
+                    }
+                    Ok(None) => {}
+                    Err(_) => {
+                        return err(
+                            StatusCode::SERVICE_UNAVAILABLE,
+                            "unavailable",
+                            "The computer couldn't be read.",
+                        );
+                    }
+                }
+            }
+        }
+    }
     next.run(req).await
 }
 
@@ -237,6 +296,24 @@ pub fn admit_create(
     };
     let id = new_id();
     let principal = principal_of(owner);
+    let mut bounds = BOUNDS;
+    if let Some(attempt) = body.environment_attempt.as_ref() {
+        attempt.validate().map_err(|_| bad("Environment attempt"))?;
+        let remaining = attempt.deadline_ms.saturating_sub(now_ms());
+        if remaining == 0 || remaining > BOUNDS.absolute_ms || attempt.idle_ms > BOUNDS.absolute_ms
+        {
+            return Err((
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "unsupported",
+                "This setup's time limit isn't available here.".into(),
+            ));
+        }
+        bounds = Bounds {
+            idle_ms: attempt.idle_ms.min(remaining),
+            observed_extension_ms: attempt.idle_ms.min(remaining),
+            absolute_ms: remaining,
+        };
+    }
     let spec = Spec {
         chat: body.chat.clone().unwrap_or_else(|| id.clone()),
         id,
@@ -257,7 +334,7 @@ pub fn admit_create(
         size,
         credential_names: Default::default(),
         services: vec![],
-        bounds: BOUNDS,
+        bounds,
     };
     Computer::new(spec, now_ms()).map_err(|m| (StatusCode::BAD_REQUEST, "invalid", m.to_owned()))
 }
@@ -279,7 +356,9 @@ async fn create(
             Err(e) => return err(StatusCode::BAD_REQUEST, "invalid_body", &e.to_string()),
         }
     };
-    if api.catalog.is_none() && body.environment_image.is_some() {
+    if api.catalog.is_none()
+        && (body.environment_image.is_some() || body.environment_attempt.is_some())
+    {
         return admission_error(crate::registry::Refused::Artifact);
     }
     if let Some(key) = headers.get("idempotency-key") {
@@ -609,6 +688,7 @@ pub fn router(api: Arc<Api>) -> Router {
         .merge(crate::turns::routes())
         .merge(crate::commands::routes())
         .merge(crate::files::routes())
+        .merge(crate::artifacts::routes())
         .layer(middleware::from_fn_with_state(api.clone(), auth))
         .with_state(api)
 }

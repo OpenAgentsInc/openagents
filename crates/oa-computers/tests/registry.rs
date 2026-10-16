@@ -26,6 +26,7 @@ struct Simulated {
     fake: FakeDriver,
     caps: Capabilities,
     creates: Arc<Mutex<Vec<CreateRequest>>>,
+    images: Arc<Mutex<std::collections::BTreeMap<String, computer_driver::ImageRecord>>>,
 }
 impl Simulated {
     fn new(root: &std::path::Path, space: bool) -> Self {
@@ -66,6 +67,7 @@ impl Simulated {
             fake: FakeDriver::new(root),
             caps,
             creates: Default::default(),
+            images: Default::default(),
         }
     }
     fn target(&self, id: &str) -> Target {
@@ -114,6 +116,33 @@ impl Driver for Simulated {
             }
             meter
         })
+    }
+    async fn capture_environment_image(
+        &self,
+        computer: &str,
+        name: &str,
+    ) -> Outcome<computer_driver::ImageRecord> {
+        let image = computer_driver::ImageRecord {
+            name: name.into(),
+            source: computer.into(),
+            state: computer_driver::ImageState::Ready,
+            snapshot: Some("fixture-snapshot".into()),
+            size_bytes: Some(4096),
+        };
+        self.images
+            .lock()
+            .unwrap()
+            .insert(name.into(), image.clone());
+        Outcome::done(image)
+    }
+    async fn read_environment_image(
+        &self,
+        name: &str,
+    ) -> Outcome<Option<computer_driver::ImageRecord>> {
+        Outcome::done(self.images.lock().unwrap().get(name).cloned())
+    }
+    async fn delete_environment_image(&self, name: &str) -> Outcome<bool> {
+        Outcome::done(self.images.lock().unwrap().remove(name).is_some())
     }
     async fn read_workspace_file(
         &self,
@@ -924,4 +953,197 @@ async fn environment_artifact_refusals_leave_no_rows_or_provider_effects() {
     assert_eq!(count, 0);
     assert!(provider.fake.calls().is_empty());
     assert!(provider.creates.lock().unwrap().is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn managed_builders_require_artifact_support_and_reject_customer_writes_and_foreign_images() {
+    let Some(db) = database().await else { return };
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let store = Store::new(db.clone());
+            let root = tempfile::tempdir().unwrap();
+            let other = tempfile::tempdir().unwrap();
+            let mut a = Simulated::new(root.path(), false);
+            let b = Simulated::new(other.path(), true);
+            let attempt = computer_driver::EnvironmentAttempt {
+                environment: "envc-test".into(),
+                attempt: "builder-test".into(),
+                role: computer_driver::EnvironmentRole::Builder,
+                source_digest: "a".repeat(64),
+                recipe_digest: "b".repeat(64),
+                inputs_digest: "c".repeat(64),
+                deadline_ms: oa_computers::reconcile::now_ms() + 3_600_000,
+                idle_ms: 60000,
+                image_name: Some("fixture-output".into()),
+            };
+            let request = CreateIntent {
+                idempotency_key: Some("builder-once".into()),
+                environment_attempt: Some(attempt.clone()),
+                ..Default::default()
+            };
+            assert!(
+                store
+                    .create_placed("alice", &request, configured("a", &a, &b).catalog())
+                    .await
+                    .is_err()
+            );
+            assert!(a.creates.lock().unwrap().is_empty());
+            a.caps.environment_artifacts = true;
+            let original = configured("a", &a, &b);
+            let (entry, _) = store
+                .create_placed("alice", &request, original.catalog())
+                .await
+                .unwrap();
+            let id = entry.id;
+            phase(&db, &store, &original, &id, "awake").await;
+            let (base, server) = server(store.clone(), &configured("b", &a, &b)).await;
+            let client = reqwest::Client::new();
+            let request = |method: reqwest::Method, path: &str, owner: &str| {
+                client
+                    .request(method, format!("{base}/v1/computers/{id}{path}"))
+                    .bearer_auth(TOKEN)
+                    .header("X-OpenAgents-Account", owner)
+            };
+            assert_eq!(
+                request(reqwest::Method::POST, "/commands", "alice")
+                    .json(&json!({"command":"true","idempotency_key":"customer-write"}))
+                    .send()
+                    .await
+                    .unwrap()
+                    .status(),
+                403
+            );
+            assert_eq!(
+                upload(
+                    &format!("{base}/v1/computers/{id}/files"),
+                    b"customer-state"
+                )
+                .await,
+                403
+            );
+            assert_eq!(
+                download(&format!("{base}/v1/computers/{id}/files"), "alice")
+                    .await
+                    .0,
+                403
+            );
+            assert_eq!(
+                request(
+                    reqwest::Method::GET,
+                    "/commands/by-request/customer-write",
+                    "alice"
+                )
+                .send()
+                .await
+                .unwrap()
+                .status(),
+                403
+            );
+            let capture = || {
+                request(reqwest::Method::POST, "/environment-image", "alice")
+                    .header("X-OpenAgents-Environment-Attempt", &attempt.attempt)
+                    .json(&"capture")
+            };
+            let result: Value = capture().send().await.unwrap().json().await.unwrap();
+            assert_eq!(result["kind"], "failed", "{result}");
+            assert!(a.images.lock().unwrap().is_empty());
+            assert!(
+                request(reqwest::Method::POST, "/stop", "alice")
+                    .send()
+                    .await
+                    .unwrap()
+                    .status()
+                    .is_success()
+            );
+            phase(&db, &store, &original, &id, "stopped").await;
+            let result: Value = capture().send().await.unwrap().json().await.unwrap();
+            assert_eq!(result["kind"], "done", "{result}");
+            assert_eq!(result["value"]["source"], id);
+            let foreign: Value = request(reqwest::Method::POST, "/environment-image", "bob")
+                .header("X-OpenAgents-Environment-Attempt", &attempt.attempt)
+                .json(&"delete")
+                .send()
+                .await
+                .unwrap()
+                .json()
+                .await
+                .unwrap();
+            assert_eq!(foreign["kind"], "failed");
+            assert_eq!(a.images.lock().unwrap().len(), 1);
+            a.images
+                .lock()
+                .unwrap()
+                .get_mut("fixture-output")
+                .unwrap()
+                .source = "another-builder".into();
+            let foreign: Value = request(reqwest::Method::POST, "/environment-image", "alice")
+                .header("X-OpenAgents-Environment-Attempt", &attempt.attempt)
+                .json(&"delete")
+                .send()
+                .await
+                .unwrap()
+                .json()
+                .await
+                .unwrap();
+            assert_eq!(foreign["kind"], "failed");
+            assert_eq!(a.images.lock().unwrap().len(), 1);
+            a.images
+                .lock()
+                .unwrap()
+                .get_mut("fixture-output")
+                .unwrap()
+                .source = store
+                .get("alice", &id)
+                .await
+                .unwrap()
+                .unwrap()
+                .record
+                .resource()
+                .unwrap()
+                .into();
+            assert!(
+                request(reqwest::Method::DELETE, "", "alice")
+                    .send()
+                    .await
+                    .unwrap()
+                    .status()
+                    .is_success()
+            );
+            phase(&db, &store, &original, &id, "deleted").await;
+            assert!(
+                store
+                    .get("alice", &id)
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .record
+                    .resource()
+                    .is_none()
+            );
+            let owned: Value = request(reqwest::Method::POST, "/environment-image", "alice")
+                .header("X-OpenAgents-Environment-Attempt", &attempt.attempt)
+                .json(&"read")
+                .send()
+                .await
+                .unwrap()
+                .json()
+                .await
+                .unwrap();
+            assert_eq!(owned["kind"], "done", "{owned}");
+            assert_eq!(owned["value"]["source"], id);
+            let deleted: Value = request(reqwest::Method::POST, "/environment-image", "alice")
+                .header("X-OpenAgents-Environment-Attempt", &attempt.attempt)
+                .json(&"delete")
+                .send()
+                .await
+                .unwrap()
+                .json()
+                .await
+                .unwrap();
+            assert_eq!(deleted["kind"], "done", "{deleted}");
+            assert!(a.images.lock().unwrap().is_empty());
+            assert!(b.images.lock().unwrap().is_empty());
+            server.abort();
+        })
+        .await;
 }

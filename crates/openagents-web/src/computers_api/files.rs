@@ -253,7 +253,14 @@ pub(crate) async fn transfer(
     };
     let uploaded_size = upload.as_ref().map(Vec::len);
     match client
-        .file_call(method, &path, &i.owner, upload, checksum.as_deref())
+        .file_call(
+            method,
+            &path,
+            &i.owner,
+            upload,
+            checksum.as_deref(),
+            i.environment_attempt.as_deref(),
+        )
         .await
     {
         Ok((200, bytes, _)) if write => {

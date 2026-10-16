@@ -181,17 +181,26 @@ impl Client {
     /// Import a job credential issued by the work service. This credential
     /// authorizes only that job's computer operations, not account or chat access.
     pub async fn authenticate_computer_job(&self, credential: &str) -> Result<Session, Error> {
-        if !credential.starts_with("scj_") || credential.len() > 160 {
+        self.authenticate_job(credential, "scj_", &["work", "computer-session"])
+            .await
+    }
+    /// Import an Environment attempt's computer credential. The grant excludes
+    /// account reads and every other attempt's computers and artifacts.
+    pub async fn authenticate_environment_job(&self, credential: &str) -> Result<Session, Error> {
+        self.authenticate_job(credential, "ecj_", &["environment-computers", "session"])
+            .await
+    }
+    async fn authenticate_job(
+        &self,
+        credential: &str,
+        prefix: &str,
+        path: &[&str],
+    ) -> Result<Session, Error> {
+        if !credential.starts_with(prefix) || credential.len() > 256 {
             return Err(Error::InvalidCredential);
         }
         let view: AccountView = self
-            .request(
-                Method::GET,
-                &["work", "computer-session"],
-                &[],
-                None,
-                Some(credential),
-            )
+            .request(Method::GET, path, &[], None, Some(credential))
             .await?;
         if view.account.id.is_empty() {
             return Err(Error::InvalidResponse);

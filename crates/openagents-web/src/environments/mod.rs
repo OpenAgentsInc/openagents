@@ -27,6 +27,7 @@
 //! pushed first, from the account service's per-account cache.
 
 pub(crate) mod board;
+pub(crate) mod computers;
 pub(crate) mod push;
 pub(crate) mod view;
 
@@ -114,6 +115,7 @@ pub(crate) fn routes(app: &App) -> Router<App> {
         ))
         .layer(DefaultBodyLimit::max(64 * 1024))
         .merge(push::routes())
+        .merge(computers::routes())
 }
 
 /// Where one page of the person's repositories loads from.
@@ -492,16 +494,31 @@ async fn create(
         return missing(&headers);
     };
     match resolved {
-        Ok(resolved) => match studio.create_for(&resolved, scope.account.as_deref()) {
-            Ok(id) => protect(Redirect::to(&format!("/environments/{id}")).into_response()),
-            Err(e) => branch_page(
-                &headers,
-                &resolved.repository.full(),
-                &[],
-                &resolved.branch,
-                Some(e.as_str()),
-            ),
-        },
+        Ok(resolved) => {
+            let added = if let Some(account) = scope
+                .account
+                .as_deref()
+                .filter(|a| coder_environment_operator::computers::enrolled(a))
+            {
+                match computers::Authorization::prepare(&app, &headers, &resolved).await {
+                    Ok(authorization) => studio
+                        .create_for_bound(&resolved, account, |id| authorization.save(&app, id)),
+                    Err(error) => Err(error),
+                }
+            } else {
+                studio.create_for(&resolved, scope.account.as_deref())
+            };
+            match added {
+                Ok(id) => protect(Redirect::to(&format!("/environments/{id}")).into_response()),
+                Err(e) => branch_page(
+                    &headers,
+                    &resolved.repository.full(),
+                    &[],
+                    &resolved.branch,
+                    Some(e.as_str()),
+                ),
+            }
+        }
         Err(e) => branch_page(&headers, form.repo.trim(), &[], branch, Some(e.as_str())),
     }
 }
@@ -656,7 +673,22 @@ async fn message(
     if owner_of(&app, studio, &headers, &id).await.is_none() {
         return missing(&headers);
     }
-    let result = studio.steer(&id, &form.q);
+    let renew = studio.view(&id).is_some_and(|view| {
+        matches!(
+            view.phase,
+            coder_environment_operator::agent::Phase::Review { .. }
+                | coder_environment_operator::agent::Phase::Saved { .. }
+                | coder_environment_operator::agent::Phase::Failed { .. }
+        )
+    });
+    let result = if renew {
+        match computers::refresh(&app, &headers, &id).await {
+            Ok(()) => studio.steer(&id, &form.q),
+            Err(error) => Err(error),
+        }
+    } else {
+        studio.steer(&id, &form.q)
+    };
     if htmx(&headers) {
         let status = result.err();
         let purpose = studio
@@ -680,6 +712,9 @@ async fn retry(State(app): State<App>, headers: HeaderMap, Path(id): Path<String
     }
     if owner_of(&app, studio, &headers, &id).await.is_none() {
         return missing(&headers);
+    }
+    if let Err(error) = computers::refresh(&app, &headers, &id).await {
+        return page(&app, studio, &headers, &id, Some(&error)).await;
     }
     match studio.retry(&id) {
         Ok(()) => protect(Redirect::to(&format!("/environments/{id}")).into_response()),

@@ -22,10 +22,18 @@ pub(crate) struct Identity {
     pub account: String,
     pub owner: String,
     pub permitted: bool,
+    pub environment_attempt: Option<String>,
 }
 
 /// No cross-request auth cache: revocation is checked before every operation.
 pub(crate) async fn identity(app: &App, headers: &HeaderMap) -> Result<Identity, Response> {
+    if headers
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.starts_with("Bearer ecj_"))
+    {
+        return crate::environments::computers::identity(app, headers).await;
+    }
     if headers
         .get(header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
@@ -53,6 +61,7 @@ pub(crate) async fn identity(app: &App, headers: &HeaderMap) -> Result<Identity,
             owner: crate::chat_store::account_owner(&account),
             permitted: admin || app.config.agent_accounts.contains(&account),
             account,
+            environment_attempt: None,
         }),
         Err(SessionError::Unauthenticated | SessionError::InvalidRequest) => Err(refused(
             StatusCode::UNAUTHORIZED,
@@ -115,10 +124,24 @@ pub(crate) async fn forward(
     path: &str,
     body: Option<Value>,
 ) -> Response {
-    match client.call(method, path, &identity.owner, body).await {
+    match client
+        .call_scoped(
+            method,
+            path,
+            &identity.owner,
+            body,
+            identity.environment_attempt.as_deref(),
+        )
+        .await
+    {
         Ok((status @ (200 | 202), value)) if cloud_id(value["id"].as_str().unwrap_or_default()) => {
             answer(StatusCode::from_u16(status).unwrap(), view(&value))
         }
+        Ok((403, _)) => refused(
+            StatusCode::FORBIDDEN,
+            "environment_managed",
+            "Use the Environment page to change this computer.",
+        ),
         Ok((404, _)) => refused(StatusCode::NOT_FOUND, "not_found", "No such computer."),
         Ok((409, _)) => refused(
             StatusCode::CONFLICT,
@@ -275,43 +298,56 @@ pub(crate) async fn create(
         }
     }
     let mut body = serde_json::to_value(&sent).unwrap();
-    match (sent.environment.as_deref(), sent.version.as_deref()) {
-        (None, None) => {}
-        (Some(environment), Some(version)) => {
-            let Some(studio) = app.config.environments.studio() else {
-                return unavailable();
-            };
-            if studio.account(environment).as_deref() != Some(&identity.account) {
-                return refused(
-                    StatusCode::NOT_FOUND,
-                    "not_found",
-                    "No such environment version.",
-                );
-            }
-            let Some(image) = version
-                .parse::<u64>()
-                .ok()
-                .filter(|number| number.to_string() == version)
-                .and_then(|number| studio.version_image(environment, number))
-            else {
-                return refused(
-                    StatusCode::NOT_FOUND,
-                    "not_found",
-                    "No such environment version.",
-                );
-            };
-            if image.space.is_some() {
-                body["environment_image"] = json!(image);
-            } else {
-                body["image"] = json!(image.image_id);
-            }
+    if identity.environment_attempt.is_some() {
+        let binding = match crate::environments::computers::resolve(&app, &headers).await {
+            Ok(b) => b,
+            Err(r) => return r,
+        };
+        if let Some(image) = binding.environment_image {
+            body["environment_image"] = json!(image);
+        } else {
+            body["image"] = json!(binding.image);
         }
-        _ => {
-            return refused(
-                StatusCode::BAD_REQUEST,
-                "invalid",
-                "Choose both an environment and its version.",
-            );
+        body["environment_attempt"] = json!(binding.attempt);
+    } else {
+        match (sent.environment.as_deref(), sent.version.as_deref()) {
+            (None, None) => {}
+            (Some(environment), Some(version)) => {
+                let Some(studio) = app.config.environments.studio() else {
+                    return unavailable();
+                };
+                if studio.account(environment).as_deref() != Some(&identity.account) {
+                    return refused(
+                        StatusCode::NOT_FOUND,
+                        "not_found",
+                        "No such environment version.",
+                    );
+                }
+                let Some(image) = version
+                    .parse::<u64>()
+                    .ok()
+                    .filter(|number| number.to_string() == version)
+                    .and_then(|number| studio.version_image(environment, number))
+                else {
+                    return refused(
+                        StatusCode::NOT_FOUND,
+                        "not_found",
+                        "No such environment version.",
+                    );
+                };
+                if image.space.is_some() {
+                    body["environment_image"] = json!(image);
+                } else {
+                    body["image"] = json!(image.image_id);
+                }
+            }
+            _ => {
+                return refused(
+                    StatusCode::BAD_REQUEST,
+                    "invalid",
+                    "Choose both an environment and its version.",
+                );
+            }
         }
     }
     let Some(client) = crate::computers::client() else {

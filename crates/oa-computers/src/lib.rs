@@ -125,3 +125,6 @@ pub fn app_with_registry(
         turns,
     }))
 }
+
+/// Private, account-bound clean Environment image operations.
+pub mod artifacts;

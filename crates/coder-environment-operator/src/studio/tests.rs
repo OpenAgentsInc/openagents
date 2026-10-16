@@ -341,3 +341,115 @@ fn a_model_api_needs_an_http_url_and_an_absolute_key_file() {
         assert!(bad.validate().is_err(), "{url} {key_file}");
     }
 }
+
+#[tokio::test]
+async fn original_studios_cannot_discover_or_resume_the_public_owners_records() {
+    let dir = tempfile::tempdir().unwrap();
+    let open = |root: &Path| {
+        let provider = machines();
+        let transports: Transports<Script> = Arc::new(|_| Ok(Script::default()));
+        Studio::start(
+            config(root),
+            "oa-coder-runtime-20261008",
+            Providers {
+                setup: provider.clone(),
+                build: provider.clone(),
+                verify: provider,
+            },
+            Arc::new(|_| Ok(Redactor::new())),
+            transports,
+            Duration::from_millis(1),
+        )
+        .unwrap()
+    };
+    let parent = open(dir.path());
+    let child = open(&dir.path().join("public-computers"));
+    parent.attach_public(child.clone()).unwrap();
+    let resolved = github::Resolved {
+        repository: github::RepoName {
+            owner: "example".into(),
+            name: "repo".into(),
+        },
+        branch: "main".into(),
+        commit: COMMIT.into(),
+        private: false,
+    };
+    let mut authorized = false;
+    let id = parent
+        .create_for_bound(&resolved, "account-a", |id| {
+            assert!(id.starts_with("envc-"));
+            authorized = true;
+            Ok(())
+        })
+        .unwrap();
+    assert!(authorized);
+    assert!(parent.list().iter().any(|row| row.id == id));
+    assert_eq!(parent.account(&id).as_deref(), Some("account-a"));
+    assert!(parent.view(&id).is_some());
+    assert_eq!(parent.computer_state(), Some(child.config.state.as_path()));
+    // This instance models an older process: it opens only the original
+    // directory and has no knowledge of the attached public owners.
+    let older = open(dir.path());
+    assert!(older.list().is_empty());
+    assert!(older.account(&id).is_none());
+    assert!(older.view(&id).is_none());
+    assert!(
+        coder_environment::store::Store::under(parent.layout.environments())
+            .list()
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(
+        coder_environment::store::Store::under(child.layout.environments())
+            .list()
+            .unwrap()
+            .len(),
+        1
+    );
+}
+
+#[test]
+fn shared_private_setup_admits_a_broker_reference_without_operator_credentials() {
+    let dir = tempfile::tempdir().unwrap();
+    let configuration = config(dir.path());
+    assert!(configuration.machines.credential_names.is_empty());
+    let mut recipe = crate::tests::recipe();
+    recipe.credential_names.insert("GH_TOKEN".into());
+    let source = SourcePin {
+        repository: Some("example/repo".into()),
+        revision: COMMIT.into(),
+        digest: "b".repeat(64),
+    };
+    let env = Environment::new(
+        "envc-private",
+        ProjectLink {
+            workspace: configuration.owner.workspace.clone(),
+            project: "repo".into(),
+        },
+        source,
+        recipe,
+        now_ms(),
+    )
+    .unwrap();
+    let meta = Meta {
+        repository: "example/repo".into(),
+        branch: "main".into(),
+        created_ms: now_ms(),
+        account: Some("alice".into()),
+        private: true,
+        public_computers: true,
+    };
+    let b = brief(&configuration, &env, Some(&meta));
+    assert_eq!(b.git_credential.as_deref(), Some("GH_TOKEN"));
+    assert_eq!(b.credential_names, BTreeSet::from(["GH_TOKEN".into()]));
+    assert_eq!(
+        b.profile.credentials["GH_TOKEN"],
+        PathBuf::from("/credential-references/GH_TOKEN")
+    );
+    assert!((crate::computers::custody(true))(&b.credential_names).is_ok());
+    let mut public = meta;
+    public.private = false;
+    let b = brief(&configuration, &env, Some(&public));
+    assert!(b.git_credential.is_none());
+    assert!(!b.profile.credentials.contains_key("GH_TOKEN"));
+}

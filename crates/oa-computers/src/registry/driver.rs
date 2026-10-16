@@ -2,7 +2,7 @@ use super::{Binding, Catalog, Refused};
 use crate::store::Entry;
 use computer_driver::{
     Capabilities, CommandCursor, CommandRead, CommandSpec, CreateRequest, Driver, Exec, ExecOutput,
-    Meter, Observation, Outcome, Profile,
+    ImageRecord, Meter, Observation, Outcome, Profile,
 };
 use std::collections::BTreeMap;
 
@@ -50,6 +50,7 @@ impl<D: Driver + Clone> Registry<D> {
                 || !target.caps.profiles.is_subset(&actual.profiles)
                 || target.caps.memory_suspend && !actual.memory_suspend
                 || target.caps.command_sessions && !actual.command_sessions
+                || target.caps.environment_artifacts && !actual.environment_artifacts
                 || !actual.sizes.is_empty()
                     && target
                         .caps
@@ -232,6 +233,11 @@ impl<D: Driver> Driver for BoundDriver<D> {
         self.inner.delete_snapshot(name).await
     }
     forward! {
+        capture_environment_image(computer:&str,name:&str)->Outcome<ImageRecord>;
+        read_environment_image(name:&str)->Outcome<Option<ImageRecord>>;
+        delete_environment_image(name:&str)->Outcome<bool>;
+        environment_image_hydrated(computer:&str)->Outcome<bool>;
+
         observe(computer:&str)->Outcome<Observation>;
         exec(computer:&str,exec:&Exec)->Outcome<ExecOutput>;
         read_command(computer:&str,id:&str,cursor:CommandCursor,max_bytes:u64)->Outcome<CommandRead>;

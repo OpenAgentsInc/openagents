@@ -642,6 +642,10 @@ pub fn router(config: Config) -> Router {
         ))
         .layer(middleware::from_fn_with_state(
             app.clone(),
+            environments::computers::guard,
+        ))
+        .layer(middleware::from_fn_with_state(
+            app.clone(),
             agent_work::gate,
         ))
         .layer(middleware::from_fn(projects::scope))
@@ -774,7 +778,39 @@ async fn host_guard(hosts: Hosts, mut request: Request, next: Next) -> Response 
     let intake = path == "/pilot" || path.starts_with("/pilot/");
     // Cloud credentials and private work must stay on this Rust surface,
     // including when an unconfigured Host header would use the legacy proxy.
-    let cloud = path == "/cloud"
+    // Job credentials stay on this surface even when a route would normally
+    // go to the account gateway or an older server.
+    let scoped_job = request
+        .headers()
+        .get_all(header::AUTHORIZATION)
+        .iter()
+        .any(|value| {
+            value.to_str().is_ok_and(|value| {
+                value.split_once(' ').is_some_and(|(kind, token)| {
+                    kind.eq_ignore_ascii_case("bearer")
+                        && (token.trim_start().starts_with("ecj_")
+                            || token.trim_start().starts_with("scj_"))
+                })
+            })
+        });
+    if scoped_job
+        && (request
+            .headers()
+            .get_all(header::AUTHORIZATION)
+            .iter()
+            .count()
+            != 1
+            || !request
+                .headers()
+                .get(header::AUTHORIZATION)
+                .and_then(|v| v.to_str().ok())
+                .is_some_and(|v| v.starts_with("Bearer ecj_") || v.starts_with("Bearer scj_")))
+    {
+        return cloud::protect(
+            (StatusCode::FORBIDDEN, "This request isn't allowed.").into_response(),
+        );
+    }
+    let cloud = scoped_job || path == "/cloud"
         || path.starts_with("/cloud/")
         || path == "/login"
         || path == "/signup"
@@ -830,7 +866,9 @@ async fn host_guard(hosts: Hosts, mut request: Request, next: Next) -> Response 
         });
     let owned = upstream::owned(path) || (hosts.api && path.starts_with("/api/v1/"));
     // A wrongly routed Cloud credential cannot become a legacy credential.
-    if cloud_cookie && (!(local || public) || !owned) || native_session && !(local || public) {
+    if cloud_cookie && (!(local || public) || !owned)
+        || (native_session || scoped_job) && !(local || public)
+    {
         return cloud::protect(
             (StatusCode::FORBIDDEN, "Use the configured Cloud address").into_response(),
         );

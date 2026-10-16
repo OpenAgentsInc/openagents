@@ -18,8 +18,50 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc, oneshot};
 
 #[derive(Clone)]
 pub struct Client {
-    tx: mpsc::Sender<Transfer>,
+    tx: mpsc::Sender<Message>,
     slots: Arc<Semaphore>,
+}
+enum Message {
+    File(Transfer),
+    Artifact(ArtifactTransfer),
+}
+struct ArtifactTransfer {
+    owner: String,
+    computer: String,
+    operation: crate::artifacts::Operation,
+    reply: oneshot::Sender<computer_driver::Outcome<serde_json::Value>>,
+    _permit: OwnedSemaphorePermit,
+}
+impl Client {
+    pub(crate) async fn artifact(
+        &self,
+        owner: String,
+        computer: String,
+        operation: crate::artifacts::Operation,
+    ) -> computer_driver::Outcome<serde_json::Value> {
+        use computer_driver::Outcome;
+        let Ok(permit) = self.slots.clone().try_acquire_owned() else {
+            return Outcome::unknown("Computer operations are busy.");
+        };
+        let (reply, received) = oneshot::channel();
+        if self
+            .tx
+            .try_send(Message::Artifact(ArtifactTransfer {
+                owner,
+                computer,
+                operation,
+                reply,
+                _permit: permit,
+            }))
+            .is_err()
+        {
+            return Outcome::unknown("The image operation couldn't be queued.");
+        }
+        match tokio::time::timeout(Duration::from_secs(120), received).await {
+            Ok(Ok(outcome)) => outcome,
+            _ => Outcome::unknown("The image operation has not been confirmed."),
+        }
+    }
 }
 struct Transfer {
     owner: String,
@@ -44,7 +86,7 @@ impl From<FileError> for Error {
 
 /// Keep all driver futures on their own LocalSet, with two requests in flight.
 pub fn spawn<D: Drivers + Send + 'static>(store: Store, driver: D) -> Client {
-    let (tx, mut rx) = mpsc::channel::<Transfer>(MAX_TRANSFERS);
+    let (tx, mut rx) = mpsc::channel::<Message>(MAX_TRANSFERS);
     std::thread::Builder::new()
         .name("oa-computers-files".into())
         .spawn(move || {
@@ -53,7 +95,33 @@ pub fn spawn<D: Drivers + Send + 'static>(store: Store, driver: D) -> Client {
                 .build()
                 .expect("file worker runtime");
             tokio::task::LocalSet::new().block_on(&rt, async move {
-                while let Some(t) = rx.recv().await {
+                while let Some(message) = rx.recv().await {
+                    let t = match message {
+                        Message::File(t) => t,
+                        Message::Artifact(t) => {
+                            let (store, driver) = (store.clone(), driver.clone());
+                            tokio::task::spawn_local(async move {
+                                let result = tokio::time::timeout(
+                                    Duration::from_secs(120),
+                                    crate::artifacts::effect(
+                                        &store,
+                                        &driver,
+                                        &t.owner,
+                                        &t.computer,
+                                        t.operation,
+                                    ),
+                                )
+                                .await
+                                .unwrap_or_else(|_| {
+                                    computer_driver::Outcome::unknown(
+                                        "The image operation has not been confirmed.",
+                                    )
+                                });
+                                let _ = t.reply.send(result);
+                            });
+                            continue;
+                        }
+                    };
                     let store = store.clone();
                     let driver = driver.clone();
                     tokio::task::spawn_local(async move {
@@ -284,7 +352,7 @@ async fn transfer(
         reply,
         _permit: permit,
     };
-    if client.tx.try_send(t).is_err() {
+    if client.tx.try_send(Message::File(t)).is_err() {
         return error(Error::Busy);
     }
     match result.await {

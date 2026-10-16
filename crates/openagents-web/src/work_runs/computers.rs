@@ -477,6 +477,7 @@ pub(crate) async fn identity(
         account: run.requester.account.clone(),
         owner: run.owner,
         permitted: true,
+        environment_attempt: None,
     })
 }
 

@@ -254,9 +254,17 @@ struct Meta {
     /// before environments had owners, and on servers without sign-in).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     account: Option<String>,
+    #[serde(default = "private_repository")]
+    private: bool,
+    #[serde(default)]
+    public_computers: bool,
+}
+fn private_repository() -> bool {
+    true
 }
 
 enum Work {
+    Sweep,
     Run(String),
     Steer(String, String),
     Retry(String),
@@ -280,9 +288,18 @@ fn spawn_sweeper(studio: std::sync::Weak<Studio>) {
             loop {
                 let Some(live) = studio.upgrade() else { return };
                 runtime.block_on(async {
+                    if live.shared_root.load(std::sync::atomic::Ordering::Relaxed)
+                        && let Ok(Some(shared)) =
+                            crate::computers::Runtime::from_env(&live.config.state)
+                    {
+                        shared
+                            .sweep_expired(crate::now_ms(), &BTreeSet::new())
+                            .await;
+                    }
                     if let Ok(client) = boat::Client::from_env().await {
                         live.sweep_homes(&sign_in::Boat { client }).await;
                     }
+                    let _ = live.work.send(Work::Sweep);
                 });
                 drop(live);
                 std::thread::sleep(SWEEP_EVERY);
@@ -328,6 +345,8 @@ impl std::fmt::Debug for ChatTurn {
 }
 
 pub struct Studio {
+    shared: std::sync::OnceLock<Arc<Studio>>,
+    shared_root: std::sync::atomic::AtomicBool,
     config: Config,
     layout: crate::Layout,
     logs: Arc<Logs>,
@@ -349,16 +368,81 @@ impl std::fmt::Debug for Studio {
 }
 
 impl Studio {
+    /// Attach the separate public-computer owners. Older web processes never
+    /// scan this directory and cannot take these jobs through their Boat path.
+    pub fn attach_public(&self, child: Arc<Studio>) -> Result<(), String> {
+        if child.config.state != self.config.state.join("public-computers")
+            || child.shared.get().is_some()
+        {
+            return Err("The public Environment state directory is invalid.".into());
+        }
+        child
+            .shared_root
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+        self.shared
+            .set(child)
+            .map_err(|_| "Public Environments are already configured.".into())
+    }
+    fn child(&self, id: &str) -> Option<&Arc<Studio>> {
+        id.starts_with("envc-").then(|| self.shared.get()).flatten()
+    }
+    /// The shared owners' private records, separate from original jobs.
+    pub fn computer_state(&self) -> Option<&Path> {
+        if self.shared_root.load(std::sync::atomic::Ordering::Relaxed) {
+            Some(&self.config.state)
+        } else {
+            self.shared.get().map(|child| child.config.state.as_path())
+        }
+    }
+    pub fn watch_for(&self, id: &str) -> tokio::sync::watch::Receiver<u64> {
+        self.child(id)
+            .map_or_else(|| self.watch(), |child| child.watch_for(id))
+    }
+
     /// Open the studio on Boat with the Codex login, as `--environments`
     /// does. Reads `BOAT_API_KEY`/`BOAT_API_BASE` and the named
     /// credentials from this process's environment.
     pub async fn open(config: Config) -> Result<Arc<Self>, String> {
+        let child_state = config.state.join("public-computers");
+        let mut child_config = config.clone();
+        child_config.state = child_state.clone();
+        let parent = Self::open_one(config, false).await?;
+        if std::env::var(crate::computers::ORIGIN).is_ok() || child_state.exists() {
+            match Self::open_one(child_config.clone(), true).await {
+                Ok(child) => parent.attach_public(child)?,
+                Err(error) => {
+                    eprintln!("Shared Environment computers are unavailable: {error}");
+                    let weak = Arc::downgrade(&parent);
+                    tokio::spawn(async move {
+                        loop {
+                            tokio::time::sleep(Duration::from_secs(60)).await;
+                            let Some(parent) = weak.upgrade() else { break };
+                            if parent.shared.get().is_some() {
+                                break;
+                            }
+                            match Self::open_one(child_config.clone(), true).await {
+                                Ok(child) => {
+                                    let _ = parent.attach_public(child);
+                                    break;
+                                }
+                                Err(error) => eprintln!(
+                                    "Shared Environment computers are unavailable: {error}"
+                                ),
+                            }
+                        }
+                    });
+                }
+            }
+        }
+        Ok(parent)
+    }
+    async fn open_one(config: Config, shared: bool) -> Result<Arc<Self>, String> {
         config.validate()?;
         let mut machines = config.machines.clone();
         if machines.template.is_none() {
             machines.template = crate::boat::runtime_template().await?;
         }
-        let providers = crate::boat::providers(&machines).await?;
+        let providers = crate::computers::providers(&machines, &config.state, shared).await?;
         let template = machines
             .template
             .clone()
@@ -384,10 +468,17 @@ impl Studio {
                 config,
                 &template,
                 providers,
-                crate::environment_custody(),
+                crate::computers::custody(shared),
                 transports,
                 Duration::from_secs(1),
-            );
+            )
+            .map(|studio| {
+                studio
+                    .shared_root
+                    .store(shared, std::sync::atomic::Ordering::Relaxed);
+                spawn_sweeper(Arc::downgrade(&studio));
+                studio
+            });
         }
         let login = config
             .codex_home
@@ -411,10 +502,17 @@ impl Studio {
             config,
             &template,
             providers,
-            crate::environment_custody(),
+            crate::computers::custody(shared),
             transports,
             Duration::from_secs(1),
         )
+        .map(|studio| {
+            studio
+                .shared_root
+                .store(shared, std::sync::atomic::Ordering::Relaxed);
+            spawn_sweeper(Arc::downgrade(&studio));
+            studio
+        })
     }
 
     /// Start the studio over `providers` and `transports`. `template`
@@ -469,6 +567,8 @@ impl Studio {
             .map_err(|_| "The environments thread stopped.".to_owned())??;
         let token = Config::secret(&config.github_token);
         let studio = Arc::new(Self {
+            shared: std::sync::OnceLock::new(),
+            shared_root: std::sync::atomic::AtomicBool::new(false),
             base: ImagePin {
                 provider: Provider::Boat,
                 image_id: template.into(),
@@ -498,7 +598,6 @@ impl Studio {
         }
         // And every Claude Code run that was mid-turn (#11331).
         studio.runs.pick_up_after_restart();
-        spawn_sweeper(Arc::downgrade(&studio));
         Ok(studio)
     }
 
@@ -535,6 +634,9 @@ impl Studio {
             .flat_map(|(_, home)| std::iter::once(home.sandbox).chain(home.retired))
             .collect();
         for id in leftovers::finished(&self.config.state, crate::now_ms(), &keep) {
+            if id.starts_with("cmp_") {
+                continue;
+            }
             if let Ok(Some(state)) = machines.state(&id).await
                 && state == "stopped"
                 && machines.delete(&id).await.is_ok()
@@ -597,6 +699,9 @@ impl Studio {
 
     /// How many records an environment's conversation holds.
     pub fn revision(&self, id: &str) -> usize {
+        if let Some(child) = self.child(id) {
+            return child.revision(id);
+        }
         self.logs.read(id).len()
     }
 
@@ -610,6 +715,9 @@ impl Studio {
             .filter(|e| e.project.workspace == self.config.owner.workspace)
             .filter_map(|e| self.summary(e))
             .collect();
+        if let Some(child) = self.shared.get() {
+            rows.extend(child.list());
+        }
         rows.sort_by_key(|s| std::cmp::Reverse(s.updated_ms));
         rows
     }
@@ -648,6 +756,9 @@ impl Studio {
     /// One environment's page.
     /// Resolve a saved version for allocation without the page's history limit.
     pub fn version_image(&self, id: &str, number: u64) -> Option<coder_environment::ImageIdentity> {
+        if let Some(child) = self.child(id) {
+            return child.version_image(id, number);
+        }
         let env = self.envs().read(id).ok()?;
         if env.project.workspace != self.config.owner.workspace || env.retired_ms.is_some() {
             return None;
@@ -659,6 +770,9 @@ impl Studio {
     }
 
     pub fn view(&self, id: &str) -> Option<View> {
+        if let Some(child) = self.child(id) {
+            return child.view(id);
+        }
         let env = self.envs().read(id).ok()?;
         if env.project.workspace != self.config.owner.workspace {
             return None;
@@ -725,6 +839,9 @@ impl Studio {
         ),
         String,
     > {
+        if let Some(child) = self.child(id) {
+            return child.computer_pin(account, id, number);
+        }
         if self.account(id).as_deref() != Some(account) {
             return Err("No such environment version.".into());
         }
@@ -764,22 +881,51 @@ impl Studio {
         resolved: &github::Resolved,
         account: Option<&str>,
     ) -> Result<String, String> {
-        self.add(resolved, account)
+        self.add(resolved, account, false, |_| Ok(()))
+            .map_err(|e| plain(&e, "The environment couldn't be added. Try again."))
+    }
+
+    /// Save the account's authorization before the setup owner may allocate.
+    /// Existing environments retain the connection chosen when they were added.
+    pub fn create_for_bound(
+        &self,
+        resolved: &github::Resolved,
+        account: &str,
+        authorize: impl FnOnce(&str) -> Result<(), String>,
+    ) -> Result<String, String> {
+        if !self.shared_root.load(std::sync::atomic::Ordering::Relaxed) {
+            return self
+                .shared
+                .get()
+                .ok_or("Environment setup isn't available right now.")?
+                .create_for_bound(resolved, account, authorize);
+        }
+        self.add(resolved, Some(account), true, authorize)
             .map_err(|e| plain(&e, "The environment couldn't be added. Try again."))
     }
 
     /// The account an environment was made for, when it has one.
     pub fn account(&self, id: &str) -> Option<String> {
+        if let Some(child) = self.child(id) {
+            return child.account(id);
+        }
         self.meta(id)?.account
     }
 
-    fn add(&self, resolved: &github::Resolved, account: Option<&str>) -> Result<String, String> {
+    fn add(
+        &self,
+        resolved: &github::Resolved,
+        account: Option<&str>,
+        shared: bool,
+        authorize: impl FnOnce(&str) -> Result<(), String>,
+    ) -> Result<String, String> {
         let now = now_ms();
         let full = resolved.repository.full();
         let mut nonce = [0u8; 12];
         getrandom::fill(&mut nonce).map_err(|_| "The environment couldn't be added. Try again.")?;
         let id = format!(
-            "env-{}",
+            "{}{}",
+            if shared { "envc-" } else { "env-" },
             nonce
                 .iter()
                 .map(|byte| format!("{byte:02x}"))
@@ -791,6 +937,10 @@ impl Studio {
             revision: resolved.commit.clone(),
             digest: digest(format!("github:{full}@{}", resolved.commit).as_bytes()),
         };
+        let mut recipe = self.recipe();
+        if shared && resolved.private {
+            recipe.credential_names.insert("GH_TOKEN".into());
+        }
         let env = Environment::new(
             &id,
             ProjectLink {
@@ -798,7 +948,7 @@ impl Studio {
                 project,
             },
             source,
-            self.recipe(),
+            recipe,
             now,
         )
         .map_err(|e| e.to_string())?;
@@ -816,12 +966,21 @@ impl Studio {
             branch: resolved.branch.clone(),
             created_ms: now,
             account: account.map(str::to_owned),
+            private: resolved.private,
+            public_computers: shared,
         };
         fs::write(
             dir.join("meta.json"),
             serde_json::to_vec(&meta).map_err(|_| "Cannot encode the environment.")?,
         )
         .map_err(|e| format!("Cannot keep the environment: {e}"))?;
+        if let Err(error) = authorize(&id) {
+            let _ = fs::remove_file(
+                crate::computers::Store::under(&self.config.state).path("grants", &id)?,
+            );
+            let _ = fs::remove_dir_all(&dir);
+            return Err(error);
+        }
         self.envs().create(&env).map_err(|e| e.to_string())?;
         self.logs.push(
             &id,
@@ -877,6 +1036,9 @@ impl Studio {
     /// A message from the person: an answer, steering, or (after a stop or
     /// a result) a request to keep going.
     pub fn steer(&self, id: &str, text: &str) -> Result<(), String> {
+        if let Some(child) = self.child(id) {
+            return child.steer(id, text);
+        }
         let text = text.trim();
         if text.is_empty() || text.chars().count() > MAX_MESSAGE {
             return Err("Write a message of up to 4,000 characters.".into());
@@ -897,6 +1059,9 @@ impl Studio {
 
     /// Try again after a stop.
     pub fn retry(&self, id: &str) -> Result<(), String> {
+        if let Some(child) = self.child(id) {
+            return child.retry(id);
+        }
         if !matches!(self.state(id).map(|s| s.phase), Some(Phase::Failed { .. })) {
             return Err("There is nothing to retry.".into());
         }
@@ -907,6 +1072,9 @@ impl Studio {
     /// Save the candidate the person reviewed (`candidate` is the digest
     /// the page showed). Returns the new version number.
     pub async fn save(&self, id: &str, candidate: &str) -> Result<u64, String> {
+        if let Some(child) = self.child(id) {
+            return Box::pin(child.save(id, candidate)).await;
+        }
         let (reply, answer) = oneshot::channel();
         self.send(Work::Save(id.into(), candidate.into(), reply))?;
         answer
@@ -925,6 +1093,9 @@ impl Studio {
         prompt: &str,
         own: Option<claude::Key>,
     ) -> Result<String, String> {
+        if let Some(child) = self.child(id) {
+            return child.run_claude(id, prompt, own);
+        }
         self.run_claude_with_files(id, prompt, own, Vec::new())
     }
 
@@ -937,6 +1108,9 @@ impl Studio {
         own: Option<claude::Key>,
         files: Vec<claude::Attachment>,
     ) -> Result<String, String> {
+        if let Some(child) = self.child(id) {
+            return child.run_claude_with_files(id, prompt, own, files);
+        }
         self.run_claude_pushing(id, prompt, own, files, None)
     }
 
@@ -950,6 +1124,9 @@ impl Studio {
         files: Vec<claude::Attachment>,
         push: Option<push::Push>,
     ) -> Result<String, String> {
+        if let Some(child) = self.child(id) {
+            return child.run_claude_pushing(id, prompt, own, files, push);
+        }
         let env = self.envs().read(id).map_err(|e| e.to_string())?;
         if env.project.workspace != self.config.owner.workspace {
             return Err("That environment isn't yours.".into());
@@ -1020,6 +1197,9 @@ impl Studio {
         push: Option<push::Push>,
         session: &str,
     ) -> Result<ChatTurn, String> {
+        if let Some(child) = self.child(id) {
+            return child.chat_turn(id, prompt, own, push, session);
+        }
         let env = self.envs().read(id).map_err(|e| e.to_string())?;
         if env.project.workspace != self.config.owner.workspace {
             return Err("That environment isn't yours.".into());
@@ -1118,6 +1298,9 @@ export OA_ENGINE_NOTICE_DIR="$HOME/.openagents/engine"
     /// Whether Claude Code can run in environment `id` on the login the
     /// person made inside it.
     pub fn claude_signed_in(&self, id: &str) -> bool {
+        if let Some(child) = self.child(id) {
+            return child.claude_signed_in(id);
+        }
         self.envs()
             .read(id)
             .ok()
@@ -1131,6 +1314,9 @@ export OA_ENGINE_NOTICE_DIR="$HOME/.openagents/engine"
     /// web follows it with [`Self::sign_in_view`] and types into it with
     /// [`Self::sign_in_send`].
     pub fn start_sign_in(&self, id: &str) -> Result<(), String> {
+        if let Some(child) = self.child(id) {
+            return child.start_sign_in(id);
+        }
         let env = self.envs().read(id).map_err(|e| e.to_string())?;
         if env.project.workspace != self.config.owner.workspace {
             return Err("That environment isn't yours.".into());
@@ -1183,34 +1369,55 @@ export OA_ENGINE_NOTICE_DIR="$HOME/.openagents/engine"
 
     /// The environment's sign-in as it stands, if one was started.
     pub fn sign_in_view(&self, id: &str) -> Option<sign_in::View> {
+        if let Some(child) = self.child(id) {
+            return child.sign_in_view(id);
+        }
         self.sign_ins.view(id)
     }
 
     /// Type a line into the environment's open sign-in.
     pub fn sign_in_send(&self, id: &str, text: &str) -> Result<(), String> {
+        if let Some(child) = self.child(id) {
+            return child.sign_in_send(id, text);
+        }
         self.sign_ins.send(id, text)
     }
 
     /// The environment's Claude Code runs, newest first.
     pub fn claude_runs(&self, id: &str) -> Vec<claude::Run> {
+        if let Some(child) = self.child(id) {
+            return child.claude_runs(id);
+        }
         self.runs.list(id)
     }
 
     pub fn claude_run(&self, id: &str, run: &str) -> Option<claude::Run> {
+        if let Some(child) = self.child(id) {
+            return child.claude_run(id, run);
+        }
         self.runs.read(id, run)
     }
 
     pub fn stop_claude(&self, id: &str, run: &str) -> Result<(), String> {
+        if let Some(child) = self.child(id) {
+            return child.stop_claude(id, run);
+        }
         self.runs.stop(id, run)
     }
 
     /// Send a run a message for its next turn ([`claude::Runs::message`]).
     pub fn message_claude(&self, id: &str, run: &str, text: &str) -> Result<claude::Sent, String> {
+        if let Some(child) = self.child(id) {
+            return child.message_claude(id, run, text);
+        }
         self.runs.message(id, run, text)
     }
 
     /// The messages waiting for a run's next turn.
     pub fn claude_waiting(&self, id: &str, run: &str) -> Vec<String> {
+        if let Some(child) = self.child(id) {
+            return child.claude_waiting(id, run);
+        }
         self.runs.waiting(id, run)
     }
 
@@ -1222,6 +1429,9 @@ export OA_ENGINE_NOTICE_DIR="$HOME/.openagents/engine"
         run: &str,
         saved: Option<coder_cloud::claude::OwnCredential>,
     ) -> Vec<coder_cloud::claude_task::PauseChoice> {
+        if let Some(child) = self.child(id) {
+            return child.claude_choices(id, run, saved);
+        }
         self.runs.choices(id, run, saved)
     }
 
@@ -1234,6 +1444,9 @@ export OA_ENGINE_NOTICE_DIR="$HOME/.openagents/engine"
         choice: coder_cloud::claude_task::PauseChoice,
         own: Option<claude::Key>,
     ) -> Result<claude::Chosen, String> {
+        if let Some(child) = self.child(id) {
+            return child.choose_claude(id, run, choice, own);
+        }
         self.runs.choose(id, run, choice, own)
     }
 }
@@ -1302,7 +1515,22 @@ fn profile(config: &Config, env: &Environment) -> coder_cloud::operator::Profile
 }
 
 fn brief(config: &Config, env: &Environment, meta: Option<&Meta>) -> Brief {
-    let git = config.git_credential();
+    let git = match meta.filter(|m| m.public_computers) {
+        Some(meta) => meta.private.then(|| "GH_TOKEN".to_owned()),
+        None => config.git_credential(),
+    };
+    let mut admitted_profile = profile(config, env);
+    if meta.is_some_and(|m| m.public_computers) {
+        admitted_profile
+            .credentials
+            .retain(|name, _| name == "OA_CODEX_AUTH");
+        if let Some(name) = &git {
+            admitted_profile.credentials.insert(
+                name.clone(),
+                PathBuf::from(format!("/credential-references/{name}")),
+            );
+        }
+    }
     let repository = meta
         .map(|m| m.repository.clone())
         .or_else(|| env.source.repository.clone())
@@ -1312,7 +1540,7 @@ fn brief(config: &Config, env: &Environment, meta: Option<&Meta>) -> Brief {
         environment: env.id.clone(),
         owner: config.owner.clone(),
         profile_alias: PROFILE_ALIAS.into(),
-        profile: profile(config, env),
+        profile: admitted_profile,
         credential_names: git.iter().cloned().collect::<BTreeSet<_>>(),
         git_credential: git,
         deadline_seconds: config.deadline(),
@@ -1422,6 +1650,29 @@ async fn serve<P, T>(
     };
     while let Some(work) = inbox.recv().await {
         match work {
+            Work::Sweep => {
+                if let Ok(environments) = owners.setup.environments.list() {
+                    for env in environments {
+                        let meta = fs::read(root.join(&env.id).join("meta.json"))
+                            .ok()
+                            .and_then(|b| serde_json::from_slice::<Meta>(&b).ok());
+                        let state = records(&owners).load(&env.id);
+                        if meta.is_some_and(|m| m.public_computers)
+                            && !running.borrow().contains(&env.id)
+                            && state.is_some_and(|s| {
+                                matches!(s.phase, Phase::Failed { .. } | Phase::Saved { .. })
+                                    || env.retired_ms.is_some()
+                            })
+                        {
+                            let owners = owners.clone();
+                            let root = root.clone();
+                            tokio::task::spawn_local(async move {
+                                crate::images::sweep(&owners, &root, &env.id).await;
+                            });
+                        }
+                    }
+                }
+            }
             Work::Run(id) => launch(id),
             Work::Steer(id, text) => {
                 let store = records(&owners);

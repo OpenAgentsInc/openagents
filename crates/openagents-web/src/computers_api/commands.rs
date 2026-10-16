@@ -14,11 +14,42 @@ pub(crate) async fn prepare_web_credentials(
     command: &str,
     values: &[(String, String)],
 ) -> Result<(), String> {
+    prepare_scoped_credentials(owner, computer, reference, request, command, values, None).await
+}
+pub(crate) async fn prepare_environment_credentials(
+    owner: &str,
+    computer: &str,
+    reference: &str,
+    request: &str,
+    command: &str,
+    values: &[(String, String)],
+    attempt: &str,
+) -> Result<(), String> {
+    prepare_scoped_credentials(
+        owner,
+        computer,
+        reference,
+        request,
+        command,
+        values,
+        Some(attempt),
+    )
+    .await
+}
+async fn prepare_scoped_credentials(
+    owner: &str,
+    computer: &str,
+    reference: &str,
+    request: &str,
+    command: &str,
+    values: &[(String, String)],
+    attempt: Option<&str>,
+) -> Result<(), String> {
     use sha2::{Digest, Sha256};
     let client = crate::computers::client().ok_or("Cloud computers aren't available right now.")?;
     let values: BTreeMap<_, _> = values.iter().cloned().collect();
-    let (status, _) = client.call(reqwest::Method::POST, &format!("/v1/computers/{computer}/command-credentials"), owner,
-        Some(json!({"reference":reference,"request":request,"command_sha256":format!("{:x}", Sha256::digest(command.as_bytes())),"values":values}))).await?;
+    let (status, _) = client.call_scoped(reqwest::Method::POST, &format!("/v1/computers/{computer}/command-credentials"), owner,
+        Some(json!({"reference":reference,"request":request,"command_sha256":format!("{:x}", Sha256::digest(command.as_bytes())),"values":values})),attempt).await?;
     if status == 201 {
         Ok(())
     } else {
@@ -157,7 +188,16 @@ async fn send(
         "/v1/computers/{computer}/commands{}{suffix}",
         id.map(|id| format!("/{id}")).unwrap_or_default()
     );
-    match client.call(method, &path, &i.owner, body).await {
+    match client
+        .call_scoped(
+            method,
+            &path,
+            &i.owner,
+            body,
+            i.environment_attempt.as_deref(),
+        )
+        .await
+    {
         Ok((status @ (200 | 202), value)) => {
             let value = if output {
                 let Some(command) = view(&value["command"], computer, id) else {
@@ -195,6 +235,11 @@ async fn send(
             );
             response
         }
+        Ok((403, _)) => refused(
+            StatusCode::FORBIDDEN,
+            "environment_managed",
+            "Use the Environment page to change this computer.",
+        ),
         Ok((status @ (400 | 404 | 409 | 410 | 429), _)) => refused(
             StatusCode::from_u16(status).unwrap(),
             match status {

@@ -49,6 +49,9 @@ pub struct CreateIntent {
     /// Resolved by the authenticated front door, never accepted from public JSON.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub environment_image: Option<coder_environment::ImageIdentity>,
+    /// Trusted Environment attempt, resolved by the authenticated front door.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub environment_attempt: Option<crate::artifacts::Attempt>,
     #[serde(default)]
     pub size: Option<String>,
     #[serde(default)]
@@ -89,6 +92,10 @@ impl CreateIntent {
         });
         if let Some(image) = &self.environment_image {
             material["environment_image"] = serde_json::to_value(image).expect("image encodes");
+        }
+        if let Some(attempt) = &self.environment_attempt {
+            material["environment_attempt"] =
+                serde_json::to_value(attempt).expect("attempt encodes");
         }
         digest(&material)
     }
@@ -200,6 +207,9 @@ pub struct Binding {
     /// Keep runtime and clean-base references needed by this private computer.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub environment_image: Option<coder_environment::ImageIdentity>,
+    /// Trusted Environment attempt, resolved by the authenticated front door.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub environment_attempt: Option<crate::artifacts::Attempt>,
 }
 impl Binding {
     pub fn operation(&self, logical: &str) -> String {
@@ -337,6 +347,7 @@ impl Catalog {
             operation_namespace: None,
             migrated: true,
             environment_image: None,
+            environment_attempt: None,
         })
     }
 
@@ -352,6 +363,7 @@ impl Catalog {
                     "memory_suspend":caps.memory_suspend,"command_sessions":caps.command_sessions,
                     "workspace_file_bytes":caps.workspace_file_bytes,
                     "default_environment_available":caps.default_artifact.is_some(),
+                    "environment_artifacts":caps.environment_artifacts,
                 }));
         }
         serde_json::Value::Array(groups.into_iter().map(|(placement,offers)|serde_json::json!({"placement":placement,"offers":offers})).collect())
@@ -422,6 +434,13 @@ impl Catalog {
                 return Err(Refused::Artifact);
             }
         }
+        if intent
+            .environment_attempt
+            .as_ref()
+            .is_some_and(|attempt| attempt.validate().is_err())
+        {
+            return Err(Refused::Artifact);
+        }
         let placement = intent.placement.unwrap_or_default();
         if placement == Placement::Auto && !self.targets.contains_key(&self.default) {
             return Err(Refused::Unavailable);
@@ -459,7 +478,9 @@ impl Catalog {
             }
             refusal = Refused::Unsupported;
             let caps = &target.caps;
-            if !supports_needs(caps, &needs) {
+            if !supports_needs(caps, &needs)
+                || intent.environment_attempt.is_some() && !caps.environment_artifacts
+            {
                 continue;
             }
             let size = intent.size.clone().unwrap_or_else(|| {
@@ -541,6 +562,7 @@ impl Catalog {
                 operation_namespace: Some(target.fingerprint.clone()),
                 migrated: false,
                 environment_image: intent.environment_image.clone(),
+                environment_attempt: intent.environment_attempt.clone(),
             });
         }
         if choices.is_empty() {

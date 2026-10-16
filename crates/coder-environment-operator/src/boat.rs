@@ -47,7 +47,7 @@ pub async fn providers(config: &Config) -> Result<Providers<BoatProvider>, Strin
     })
 }
 
-/// The newest ready interactive runtime template (`oa-coder-runtime-*`),
+/// The newest ready interactive runtime template (`oa-coder-runtime-*` or `oa-coder-main-*`),
 /// which carries the headless Coder runtime and Claude Code; `None` when
 /// Boat holds none.
 pub async fn runtime_template() -> Result<Option<String>, String> {
@@ -69,8 +69,31 @@ pub async fn runtime_template() -> Result<Option<String>, String> {
 /// The newest ready name in the interactive runtime namespace.
 pub fn newest_runtime<'a>(snapshots: impl Iterator<Item = (&'a str, &'a str)>) -> Option<String> {
     snapshots
-        .filter(|(name, status)| *status == "ready" && name.starts_with("oa-coder-runtime-"))
+        .filter(|(name, status)| {
+            *status == "ready"
+                && (name.starts_with("oa-coder-runtime-") || name.starts_with("oa-coder-main-"))
+        })
         .map(|(name, _)| name)
-        .max()
+        .max_by_key(|name| (name.rsplit('-').next().unwrap_or(name), *name))
         .map(str::to_owned)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn current_main_images_and_original_runtime_images_share_date_ordering() {
+        assert_eq!(
+            super::newest_runtime(
+                [
+                    ("oa-coder-runtime-20261008", "ready"),
+                    ("oa-coder-main-20261015", "ready"),
+                    ("oa-coder-main-20261016", "saving"),
+                    ("someone-elses-20261017", "ready")
+                ]
+                .into_iter()
+            )
+            .as_deref(),
+            Some("oa-coder-main-20261015")
+        );
+    }
 }
