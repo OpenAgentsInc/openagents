@@ -5,6 +5,13 @@
   "required": ["fps", "size", "shots", "out"],
   "additionalProperties": false,
   "properties": {
+    "timeline": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "music_at": {"type": "number", "minimum": 0},
+        "links": {"type": "object", "additionalProperties": {"type": "string"}}
+      }
+    },
     "fps": {"type": "number", "exclusiveMinimum": 0},
     "size": {"type": "array", "items": {"type": "integer", "minimum": 16}, "minItems": 2, "maxItems": 2},
     "bpm": {"type": "number", "exclusiveMinimum": 0},

@@ -338,17 +338,18 @@ def body(doc: str, n) -> dict:
 
 
 def save_version(doc: str, kind: str, data: dict, summary: str, author: str, parent=None, extra=None) -> dict:
-    d = doc_dir(doc)
-    n = len(versions(doc)) + 1
-    vd = d / f"v{n}"
-    vd.mkdir(parents=True, exist_ok=False)
-    dg, files = digest(kind, data)
-    meta = {"doc": doc, "n": n, "kind": kind, "summary": summary.strip(), "author": author,
-            "created": now(), "parent": parent, "digest": dg, "assets": files,
-            "private": private(kind, data), **(extra or {})}
-    (vd / "doc.json").write_text(json.dumps(data, indent=2) + "\n")
-    (vd / "version.json").write_text(json.dumps(meta, indent=2) + "\n")
-    return meta
+    with EDITOR_LOCK:
+        d = doc_dir(doc)
+        n = len(versions(doc)) + 1
+        vd = d / f"v{n}"
+        vd.mkdir(parents=True, exist_ok=False)
+        dg, files = digest(kind, data)
+        meta = {"doc": doc, "n": n, "kind": kind, "summary": summary.strip(), "author": author,
+                "created": now(), "parent": parent, "digest": dg, "assets": files,
+                "private": private(kind, data), **(extra or {})}
+        (vd / "doc.json").write_text(json.dumps(data, indent=2) + "\n")
+        (vd / "version.json").write_text(json.dumps(meta, indent=2) + "\n")
+        return meta
 
 
 def create(doc: str, kind: str, title: str, data: dict, summary: str, author: str, **extra) -> dict:
@@ -2011,7 +2012,10 @@ def tool_edit(args) -> dict:
     if parent["kind"] == "cut.v1":
         said += drop_removed(old, new, touched_caps)
     if parent["kind"] == "cut.v1" and args.get("ripple_captions", True) and not touched_caps:
-        moved = ripple(old, new)
+        if old.get("timeline", {}).get("links") is not None:
+            new = editor_call("follow", old, new)
+        else:
+            moved = ripple(old, new)
     if moved:
         said.append(f"{moved} captions moved with their shots.")
     return commit(doc, parent, old, new, summary, args.get("author") or "chat", args.get("render", True), said)
@@ -2369,6 +2373,80 @@ def do_import(author: str = "import") -> list[str]:
 PLAYER = (HERE / "lab_player.html")
 
 
+# The existing Python service stores versions and runs renderers. Editing
+# rules and timeline values live in verse_film::timeline.
+EDITOR_LOCK = threading.RLock()
+EDITOR_IMAGES = threading.Semaphore(2)
+
+
+from functools import lru_cache
+
+
+@lru_cache(maxsize=128)
+def editor_audio_length(path, modified, size):
+    return cutmod().audio_length(Path(path))
+
+
+def editor_call(action, data, command=None):
+    import timeline_bridge
+    audio = ([data["voice"]] if data.get("voice") else []) + data.get("voices", [])
+    media_info = {}
+    for v in audio:
+        path = expand(v["src"])
+        if path.is_file():
+            stat = path.stat()
+            media_info[v["src"]] = {"duration": editor_audio_length(str(path), stat.st_mtime_ns, stat.st_size)}
+    try:
+        return timeline_bridge.call(REPO, action, data, command, media_info)
+    except ValueError as e:
+        raise Refused(str(e))
+
+
+def editor_view(doc, n=None):
+    v = version(doc, n)
+    if v["kind"] != "cut.v1":
+        raise Refused("Open a film to use the timeline.")
+    return {**editor_call("view", body(doc, v["n"])), "version": v["n"]}
+
+
+def editor_asset(doc, n, clip_id):
+    import hashlib
+    v = version(doc, n)
+    clip = next((c for c in editor_view(doc, v["n"])["clips"] if c["id"] == clip_id), None)
+    if not clip or not clip.get("source"):
+        raise Refused("This clip has no thumbnail.")
+    src = expand(clip["source"])
+    stat = src.stat()
+    key = hashlib.sha256(json.dumps([str(src), stat.st_mtime_ns, stat.st_size,
+                                    clip.get("source_at", 0), clip["dur"], clip["track"]]).encode()).hexdigest()
+    out = ROOT / "timeline-images" / (key + ".png")
+    with EDITOR_IMAGES:
+        if not out.exists():
+            out.parent.mkdir(parents=True, exist_ok=True)
+            cmd = ["ffmpeg", "-v", "error", "-y", "-ss", str(clip.get("source_at", 0))]
+            if clip["track"] == "audio":
+                cmd += ["-t", str(clip["dur"]), "-i", str(src), "-filter_complex",
+                        "aformat=channel_layouts=mono,showwavespic=s=640x64:colors=0x91cfb4", "-frames:v", "1"]
+            else:
+                cmd += ["-i", str(src), "-vf", "scale=160:90:force_original_aspect_ratio=decrease,pad=160:90:(ow-iw)/2:(oh-ih)/2", "-frames:v", "1"]
+            subprocess.run(cmd + [str(out)], check=True, capture_output=True, timeout=45)
+    if v.get("private"):
+        out.with_suffix(".no-training").write_text("Not for training.\n")
+    return out
+
+
+def editor_edit(args):
+    with EDITOR_LOCK:
+        doc = resolve(args.get("doc"))
+        parent = version(doc)
+        if args.get("version") != parent["n"]:
+            raise Refused("A newer version is available. Open the latest version before editing.")
+        old = body(doc, parent["n"])
+        updated = editor_call("edit", old, args.get("command"))
+        summary = args.get("summary") or "Timeline edit"
+        return commit(doc, parent, old, updated["document"], summary, "you", args.get("render", True))
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "VideoLab/1"
 
@@ -2424,6 +2502,12 @@ class Handler(BaseHTTPRequestHandler):
                                 "renders": rs, "job": renders().status(doc, v["n"], "preview")})
                 return self.send_json({"doc": doc_meta(doc), "versions": out,
                                        "notes": notes_for(doc)})
+            if u.path == "/api/timeline/asset":
+                doc = resolve(q.get("doc"))
+                path = editor_asset(doc, q.get("v"), q.get("id"))
+                return self.send_media(str(path.relative_to(ROOT)))
+            if u.path == "/api/timeline":
+                return self.send_json(editor_view(resolve(q.get("doc")), q.get("v")))
             if u.path == "/api/card":
                 doc = resolve(q.get("doc"))
                 v = version(doc, q.get("v"))
@@ -2466,6 +2550,8 @@ class Handler(BaseHTTPRequestHandler):
                 # One line per call in the service's log, so a chat that goes in circles can be read.
                 print(f"{name} {json.dumps(args)[:600]}\n  -> {(out.get('text') or '')[:400]!r}", flush=True)
                 return self.send_json(out)
+            if u.path == "/api/timeline":
+                return self.send_json(editor_edit(args))
             if u.path == "/api/note":
                 doc = resolve(args.get("doc"))
                 return self.send_json(add_note(doc, args.get("v"), args.get("q") or "preview",

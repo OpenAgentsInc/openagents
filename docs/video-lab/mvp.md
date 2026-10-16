@@ -47,6 +47,19 @@ starts reuse that build. Add `--no-build` to skip it.
 - **The gateway on 8790**, because the film review page holds 8791. Your
   review page and its notes are left alone.
 
+## Edit on the timeline
+
+Open the **Lab player** to see video, audio, and text tracks. Drag video
+clips to reorder them. Select an audio or text clip and choose **Link to
+video** to keep its offset when that video moves; choose **Unlinked** to
+move it independently. Clip controls also provide start time, video speed,
+text and text length, and a single dissolve style. Text uses Geist.
+
+Each edit saves a version. Select **Render preview** to watch the result.
+Video snaps into the continuous sequence; audio and text snap to frames.
+Original speech stays with its video. Speed changes apply to video without
+original speech or held frames. Older versions remain available for review.
+
 ## Talk to it
 
 Start a new chat and send, one at a time:

@@ -92,6 +92,27 @@ class LabTest(unittest.TestCase):
         self.assertEqual([c["at"] for c in data["captions"]], [1.5, 6.5])
         self.assertEqual(lab.body("film", 1), self.cut, "an edit never changes an older version")
 
+    def test_timeline_saves_links_moves_a_group_and_refuses_stale_saves(self):
+        lab.create("editor", "cut.v1", "Editor film", self.cut, "First", "test")
+        first = lab.editor_view("editor", 1)
+        self.assertEqual(first["version"], 1)
+        self.assertTrue(any(c["id"] == "video:card" for c in first["clips"]))
+        out = lab.editor_edit({"doc": "editor", "version": 1, "render": False,
+                              "command": {"op": "link", "id": "text:0", "shot": "card"}})
+        self.assertNotIn("refused", out, out)
+        with self.assertRaises(lab.Refused):
+            lab.editor_edit({"doc": "editor", "version": 1, "render": False,
+                             "command": {"op": "move", "id": "video:card", "at": 0}})
+        out = lab.editor_edit({"doc": "editor", "version": 2, "render": False,
+                              "command": {"op": "move", "id": "video:card", "at": 0}})
+        self.assertNotIn("refused", out, out)
+        saved = lab.body("editor", out["version"])
+        self.assertEqual(saved["shots"][0]["name"], "card")
+        self.assertEqual(saved["captions"][0]["at"], 0.5)
+        self.assertEqual(lab.body("editor", 1), self.cut)
+        image = lab.editor_asset("editor", out["version"], "video:card")
+        self.assertTrue(image.is_file())
+
     def test_times_and_versions_are_read_from_what_the_chat_says(self):
         self.assertEqual(lab.seconds("1:26"), 86.0)
         self.assertEqual(lab.seconds("0:01:02.5"), 62.5)
@@ -188,7 +209,7 @@ class LabTest(unittest.TestCase):
             lab.whisper_words = real
         self.assertNotIn("refused", out, out.get("text"))
         new = lab.body("voiced", out["version"])
-        self.assertEqual(new["voices"], [{"src": str(voice), "at": 0.5}])
+        self.assertEqual(new["voices"], [{"src": lab.tilde(voice), "at": 0.5}])
         caps = new["captions"]
         self.assertAlmostEqual(caps[0]["at"], 0.6, places=2, msg="the first line when it's said")
         self.assertAlmostEqual(caps[1]["at"], 1.7, places=2, msg="the second line when 'Four' is said")

@@ -16,5 +16,6 @@ pub mod export;
 #[cfg(feature = "layers")]
 pub mod layers;
 pub mod take;
+pub mod timeline;
 
 pub use take::{Error, Film, Frame, Kind, Record, Take, Upload, VERSION, View, read};

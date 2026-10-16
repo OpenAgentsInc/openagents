@@ -600,7 +600,7 @@ def check(cut, w, h, allow_missing):
     beat = 60.0 / cut.get("bpm", 120)
     for shot in cut["shots"]:
         name = shot["name"]
-        if abs(shot["start"] / beat - round(shot["start"] / beat)) > 1e-6:
+        if "timeline" not in cut and abs(shot["start"] / beat - round(shot["start"] / beat)) > 1e-6:
             problems.append(f"{name}: starts at {shot['start']:.2f}s, off the {cut.get('bpm', 120)} BPM beat grid")
         if "title" in shot:
             under = shot["title"].get("under")
@@ -880,7 +880,11 @@ def assemble(cut, segs, w, h, out, master):
     audio = []
     music = expand(cut["music"])
     inputs += ["-i", str(music)]
-    a = f"[{n}:a]atrim=end={total},asetpts=PTS-STARTPTS,volume={cut.get('music_gain', 1.0)}"
+    music_timing = ""
+    if "timeline" in cut:
+        import timeline_bridge
+        music_timing = timeline_bridge.call(Path(__file__).resolve().parents[2], "music", cut)["filter"] + ","
+    a = f"[{n}:a]{music_timing}atrim=end={total},asetpts=PTS-STARTPTS,volume={cut.get('music_gain', 1.0)}"
     nxt = n + 1
     spoken = sound_slots(cut)
     voices = voice_slots(cut)
