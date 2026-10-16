@@ -1,0 +1,110 @@
+name: UI tests
+
+on:
+  pull_request:
+    paths:
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - 'crates/**'
+      - '.github/actions/linux-ci/**'
+      - 'scripts/ci/**'
+      - 'scripts/*cursor-sdk*'
+      - '.github/workflows/cursor-*.yml'
+      - 'scripts/test-linux-browser.sh'
+      - 'scripts/test-browser-storage.py'
+      - '.github/workflows/ui-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - 'crates/**'
+      - '.github/actions/linux-ci/**'
+      - 'scripts/ci/**'
+      - 'scripts/*cursor-sdk*'
+      - '.github/workflows/cursor-*.yml'
+      - 'scripts/test-linux-browser.sh'
+      - 'scripts/test-browser-storage.py'
+      - '.github/workflows/ui-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ui-tests-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # Every Linux Rust test that is not UI: one build, one nextest run (see
+  # scripts/ci/test-core.sh). Replaces session-sync-regressions and the Rust
+  # steps of cursor-compatibility and preview-tests.
+  core-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/linux-ci
+        with:
+          rust-cache: core
+          save-rust-cache: 'true'
+      - name: Harness, engine, sync, update, doc and preview tests
+        run: scripts/ci/test-core.sh
+
+  ui-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/linux-ci
+        with:
+          rust-cache: ui
+          save-rust-cache: 'true'
+          apt-cache: gpui
+          apt-packages: >-
+            libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev
+            libx11-dev libxcb1-dev libx11-xcb-dev
+            libfontconfig1-dev libfreetype-dev libasound2-dev
+            libvulkan-dev pkg-config cmake libwebkit2gtk-4.1-dev libjson-glib-dev
+      - name: UI and headless layout regressions
+        run: cargo nextest run --config-file scripts/ci/nextest.toml --locked --no-fail-fast -p zeron-ui --lib --test voice_orb_geometry
+
+  linux-browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/linux-ci
+        with:
+          # Same dependency graph as ui-tests, which saves this cache on main.
+          rust-cache: ui
+          apt-cache: browser
+          apt-recommends: 'true'
+          apt-packages: >-
+            libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev
+            libx11-dev libxcb1-dev libx11-xcb-dev libfontconfig1-dev
+            libfreetype-dev libasound2-dev libvulkan-dev pkg-config cmake
+            libwebkit2gtk-4.1-dev libjson-glib-dev xvfb xauth xdotool openbox
+            weston ffmpeg imagemagick fonts-noto-cjk
+      - name: Build browser fixture
+        run: cargo build --locked -p zeron-ui --example browser-fixture --features browser-fixture
+      - name: Persistent browser profiles across app launches
+        timeout-minutes: 5
+        run: xvfb-run -a python3 scripts/test-browser-storage.py --fixture target/debug/examples/browser-fixture
+      - name: X11 and Wayland browser regressions
+        timeout-minutes: 5
+        env:
+          RUST_LOG: gpui_wgpu=info
+          BROWSER_FIXTURE_BINARY: target/debug/examples/browser-fixture
+        run: |
+          scripts/test-linux-browser.sh "$RUNNER_TEMP/linux-browser/default"
+          VK_DRIVER_FILES=/dev/null scripts/test-linux-browser.sh "$RUNNER_TEMP/linux-browser/opengl"
+      - name: Upload native browser evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: linux-browser
+          path: ${{ runner.temp }}/linux-browser
+          if-no-files-found: warn

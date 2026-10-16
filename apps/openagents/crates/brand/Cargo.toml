@@ -1,0 +1,9 @@
+[package]
+name = "coder-brand"
+description = "Coder Desktop product identity: names, IDs, paths, ports, and hosted-service switches."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]

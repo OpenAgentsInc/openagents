@@ -1,0 +1,203 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/coder-account",
+    "crates/voice",
+    "crates/voice-media",
+    "crates/voice-session",
+    "crates/orb",
+    "crates/veil",
+    "crates/theme",
+    "crates/audio",
+    "crates/proto",
+    "crates/preview",
+    "crates/doc",
+    "crates/sync",
+    "crates/harness",
+    "crates/engine",
+    "crates/rpc",
+    "crates/update",
+    "crates/ui",
+    "crates/syntax",
+    "crates/markdown",
+    "crates/mobile",
+    "crates/client",
+    "crates/mcp",
+    "crates/text",
+    "crates/visual",
+    "crates/visual-gpu",
+    "crates/brand",
+    "apps/zeron",
+]
+
+[workspace.package]
+version = "0.2.113"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[workspace.dependencies]
+coder-brand = { path = "crates/brand" }
+coder-account = { path = "crates/coder-account" }
+zeron-voice-session = { path = "crates/voice-session" }
+zeron-orb = { path = "crates/orb" }
+zeron-veil = { path = "crates/veil" }
+zeron-voice-media = { path = "crates/voice-media" }
+zeron-audio = { path = "crates/audio" }
+zeron-proto = { path = "crates/proto" }
+zeron-preview = { path = "crates/preview" }
+zeron-doc = { path = "crates/doc" }
+zeron-sync = { path = "crates/sync" }
+zeron-harness = { path = "crates/harness" }
+zeron-engine = { path = "crates/engine" }
+zeron-rpc = { path = "crates/rpc" }
+zeron-update = { path = "crates/update" }
+zeron-ui = { path = "crates/ui" }
+zeron-syntax = { path = "crates/syntax" }
+zeron-markdown = { path = "crates/markdown" }
+zeron-mobile = { path = "crates/mobile" }
+zeron-client = { path = "crates/client" }
+zeron-theme = { path = "crates/theme" }
+zeron-mcp = { path = "crates/mcp" }
+zeron-text = { path = "crates/text" }
+zeron-visual = { path = "crates/visual" }
+zeron-visual-gpu = { path = "crates/visual-gpu" }
+
+# CRDT
+loro = "1.13"
+# Wire protocol for the SessionRoom DO rooms — official Rust twin of the npm
+# `loro-protocol` package the TS edge speaks (same monorepo, byte-identical
+# frames, cross-checked by its js_snapshots tests).
+loro-protocol = "0.3"
+
+# gpui — zeronsh/zui, extracted from wingleeio/zed e2ddcc6 with identical
+# crate sources; adds bounded blur passes and shared Gaussian weights.
+# Removes GPL tracing crates and composites deferred GPUI content above native macOS views.
+# Preserved fork history: upstream f14fea9 + commits on
+# `comet/edge-fade-horizontal` (tip of `comet/line-wrap-closing-punctuation`
+# + 5d1f83d horizontal per-pixel EdgeFade for quads/images; rebase when bumping the
+# upstream rev): a6bf17c fixes BOTH wrap-rule copies (LineWrapper +
+# line_layout's shaped-text duplicate); 14baea0 adds the EdgeFade primitive
+# (Window::with_edge_fade — per-primitive scroll-edge fades for the glass
+# sidebar); a6c1ad5 adds BackdropBlur + horizontal EdgeFade + glass fixes;
+# 9b672fa bounds renderer GPU memory (region-sized backdrop blur scratch,
+# idle release of blur/path intermediates, instance pool shrink,
+# ZERON_GPU_STATS=1 diagnostics); b687328 adds ImageSource::evict (frees
+# sprite-atlas tiles — remove_asset alone leaked them, see
+# attachments::flush_evicted); ac135eb adds device memory to the stats line;
+# f596cde fixes destination alpha on transparent windows (Porter-Duff OVER,
+# not additive); 53518c0 merges the edge-fade line: per-edge fade bands +
+# per-pixel EdgeFade for quads/images (true fade-into-glass), and
+# object-fit Cover cropping via atlas-tile UVs so image corner radii hold;
+# 8a8954c switches the macOS blurred view to UnderWindowBackground (macOS 26
+# stopped vending CABackdropLayer for Selection — window blur went dead);
+# b68970e rasterizes BackdropBlur in the wgpu renderer (frosted floats on
+# Linux — the Metal path's snapshot/blur/composite, ported).
+# Paint-time rounded image masks (#9), bounded Windows backdrop blur and
+# translucent compositing, plus blur-aware scene batching (#10).
+# Per-pixel rounded clipping (`Window::with_rounded_clip`, 361ff20).
+gpui = { git = "https://github.com/zeronsh/zui", rev = "361ff20b919fdfb80199ee6d9aed725300cb7d54" }
+gpui_platform = { git = "https://github.com/zeronsh/zui", rev = "361ff20b919fdfb80199ee6d9aed725300cb7d54", features = [
+    "wayland",
+    "x11",
+    "font-kit",
+    "runtime_shaders",
+] }
+gpui_tokio = { git = "https://github.com/zeronsh/zui", rev = "361ff20b919fdfb80199ee6d9aed725300cb7d54" }
+gpui-base = { git = "https://github.com/zeronsh/gpui-component", rev = "701ca97af7983bf85343d2d1d404ab528b18ec96" }
+
+# diffs
+similar = "2"
+
+# async / net
+tokio = { version = "1", features = ["full"] }
+tokio-util = "0.7"
+libc = "0.2"
+gethostname = "1"
+tokio-tungstenite = { version = "0.24", features = ["rustls-tls-webpki-roots"] }
+futures = "0.3"
+async-trait = "0.1"
+
+# serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+json5 = "0.4"
+# antigravity writes `settings.json` but reads it back with `hjson.load`, so a
+# user's comments and unquoted keys have to survive our read of the same file.
+deser-hjson = "2.2"
+plist = "1"
+uuid = { version = "1", features = ["v4", "serde"] }
+
+# storage
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+# misc
+# Global allocator on macOS only: libmalloc retains the churn high-water mark
+# as permanent RSS - measured as the top residency cause in
+# docs/memory-plan.md. Pinned to mimalloc v2: the crate's default (v3.3.2)
+# has the same watermark pathology itself - transient streaming/render churn
+# became permanent RSS (~6x glibc growth, daemon at 908MB for 7.3MB of docs,
+# no idle recovery). Linux stays on glibc, which measured flat on the same
+# workloads.
+mimalloc = { version = "0.1", features = ["v2"] }
+anyhow = "1"
+tempfile = "3"
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+clap = { version = "4", features = ["derive"] }
+chrono = { version = "0.4", features = ["serde"] }
+sha2 = "0.10"
+zip = { version = "7.2", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+notify = "7"
+portable-pty = "0.8"
+alacritty_terminal = "0.26"
+pulldown-cmark = "0.12"
+unicode-segmentation = "1"
+unicode-width = "0.2"
+fontdb = "0.23"
+ttf-parser = "0.25.1"
+# Packaged GUI apps do not inherit shell proxy variables; honor the macOS and
+# Windows system proxy for provider usage probes and other HTTP clients.
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream", "system-proxy"] }
+ignore = "0.4"
+# Workspace file/content search index (@ mentions, file tree, cmd+K).
+# Pinned exactly: crates.io also carries `0.11.1-nightly.*` prereleases.
+fff-search = "=0.11.0"
+
+[profile.release]
+# Distribution profile (scripts/package-linux.sh): thin LTO buys most of fat
+# LTO's size/speed win at a fraction of the link time; strip debug symbols.
+lto = "thin"
+strip = "symbols"
+
+[profile.dev]
+# gpui is slow unoptimized; match zed's approach for deps
+opt-level = 0
+
+[profile.dev.package."*"]
+opt-level = 2
+
+# Scenes rasterize in software every frame the camera moves.
+[profile.dev.package.zeron-visual]
+opt-level = 3
+
+[profile.dev.package.zeron-visual-gpu]
+opt-level = 3
+
+# Mobile core (scripts/ios/build-core.sh). Always optimized — layout and sync
+# run on the phone's hot paths, so even Debug app builds link an -O core.
+[profile.mobile]
+inherits = "release"
+lto = false
+strip = false
+debug = "line-tables-only"
+incremental = true
+codegen-units = 16
+
+# TestFlight/App Store archives.
+[profile.mobile-dist]
+inherits = "release"
+lto = "thin"
+codegen-units = 1
+strip = "debuginfo"

@@ -1,0 +1,205 @@
+--- cursor-final-history40.log ---
+history_turn=1 previous_and_current_recalled=true
+history_turn=2 previous_and_current_recalled=true
+history_turn=3 previous_and_current_recalled=true
+history_turn=4 previous_and_current_recalled=true
+history_turn=5 previous_and_current_recalled=true
+history_turn=6 previous_and_current_recalled=true
+history_turn=7 previous_and_current_recalled=true
+history_turn=8 previous_and_current_recalled=true
+history_turn=9 previous_and_current_recalled=true
+history_turn=10 previous_and_current_recalled=true
+history_turn=11 previous_and_current_recalled=true
+history_turn=12 previous_and_current_recalled=true
+history_turn=13 previous_and_current_recalled=true
+history_turn=14 previous_and_current_recalled=true
+history_turn=15 previous_and_current_recalled=true
+history_turn=16 previous_and_current_recalled=true
+history_turn=17 previous_and_current_recalled=true
+history_turn=18 previous_and_current_recalled=true
+history_turn=19 previous_and_current_recalled=true
+history_turn=20 previous_and_current_recalled=true
+history_turn=21 previous_and_current_recalled=true
+history_turn=22 previous_and_current_recalled=true
+history_turn=23 previous_and_current_recalled=true
+history_turn=24 previous_and_current_recalled=true
+history_turn=25 previous_and_current_recalled=true
+history_turn=26 previous_and_current_recalled=true
+history_turn=27 previous_and_current_recalled=true
+history_turn=28 previous_and_current_recalled=true
+history_turn=29 previous_and_current_recalled=true
+history_turn=30 previous_and_current_recalled=true
+history_turn=31 previous_and_current_recalled=true
+history_turn=32 previous_and_current_recalled=true
+history_turn=33 previous_and_current_recalled=true
+history_turn=34 previous_and_current_recalled=true
+history_turn=35 previous_and_current_recalled=true
+history_turn=36 previous_and_current_recalled=true
+history_turn=37 previous_and_current_recalled=true
+history_turn=38 previous_and_current_recalled=true
+history_turn=39 previous_and_current_recalled=true
+history_turn=40 previous_and_current_recalled=true
+history_turn=41 previous_and_current_recalled=true
+{"allMessagesRecalledAfterResume":41,"completed":41,"failures":0,"queuedMessages":40}
+
+--- cursor-recovery12-recheck.log ---
+checkpoint_recall round=1 fault="" passed=true
+latest_interrupted_message_recalled fault=kill passed=true
+checkpoint_recall round=2 fault="kill" passed=true
+checkpoint_recall round=3 fault="" passed=true
+latest_interrupted_message_recalled fault=interrupt passed=true
+checkpoint_recall round=4 fault="interrupt" passed=true
+checkpoint_recall round=5 fault="" passed=true
+latest_interrupted_message_recalled fault=drop passed=true
+checkpoint_recall round=6 fault="drop" passed=true
+checkpoint_recall round=7 fault="" passed=true
+latest_interrupted_message_recalled fault=kill passed=true
+checkpoint_recall round=8 fault="kill" passed=true
+checkpoint_recall round=9 fault="" passed=true
+latest_interrupted_message_recalled fault=interrupt passed=true
+checkpoint_recall round=10 fault="interrupt" passed=true
+checkpoint_recall round=11 fault="" passed=true
+latest_interrupted_message_recalled fault=drop passed=true
+checkpoint_recall round=12 fault="drop" passed=true
+{"checkpointRecallFailures":0,"rounds":12,"sessionId":"agent-83a73f5c-716a-4784-8bfd-4b95cb77f640"}
+
+--- cursor-final-cancel40.log ---
+{"completed":0,"failures":0,"interrupted":1,"queued":40,"resumed":true,"steered":0}
+
+--- cursor-final-auth8.log ---
+parked_turn=1 checkpoint_recall=true
+parked_turn=2 checkpoint_recall=true
+auth_refresh_verified=true additional_exchanges=1
+parked_turn=3 checkpoint_recall=true
+parked_turn=4 checkpoint_recall=true
+parked_turn=5 checkpoint_recall=true
+parked_turn=6 checkpoint_recall=true
+parked_turn=7 checkpoint_recall=true
+parked_turn=8 checkpoint_recall=true
+{"failures":0,"parkedTurns":8,"resumedAfterClose":true}
+
+--- cursor-final-models.log ---
+{"elapsedMs":1227,"failures":0,"models":39,"requests":1001}
+
+--- cursor-all-engine-flows-final.log ---
+test remote_steer_batch_reaches_real_muse_with_every_message ... real_engine_remote_batch messages=9 all_previous_and_current_recalled=true
+test resumed_startup_interruption_keeps_the_newest_user_message ... real_engine_send_now interrupted_user_message_recalled=true
+test send_now_before_sdk_readiness_keeps_the_user_message ... real_engine_send_now interrupted_user_message_recalled=true
+test send_now_during_startup_keeps_the_interrupted_user_message ... real_engine_send_now interrupted_user_message_recalled=true
+startup_interrupt_round=1 passed=true
+test send_now_keeps_the_interrupted_user_message ... real_engine_send_now interrupted_user_message_recalled=true
+test startup_steering_burst_retains_all_interrupted_messages ... real_engine_startup_burst interrupted_messages=10 all_recalled_in_order=true tool_replays=0
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 179.15s
+
+--- cursor-engine-final-live.log ---
+test remote_steer_batch_reaches_real_muse_with_every_message ... real_engine_remote_batch messages=9 all_previous_and_current_recalled=true
+test send_now_during_startup_keeps_the_interrupted_user_message ... real_engine_send_now interrupted_user_message_recalled=true
+startup_interrupt_round=1 passed=true
+real_engine_send_now interrupted_user_message_recalled=true
+startup_interrupt_round=2 passed=true
+real_engine_send_now interrupted_user_message_recalled=true
+startup_interrupt_round=3 passed=true
+real_engine_send_now interrupted_user_message_recalled=true
+startup_interrupt_round=4 passed=true
+real_engine_send_now interrupted_user_message_recalled=true
+startup_interrupt_round=5 passed=true
+real_engine_send_now interrupted_user_message_recalled=true
+startup_interrupt_round=6 passed=true
+real_engine_send_now interrupted_user_message_recalled=true
+startup_interrupt_round=7 passed=true
+real_engine_send_now interrupted_user_message_recalled=true
+startup_interrupt_round=8 passed=true
+real_engine_send_now interrupted_user_message_recalled=true
+startup_interrupt_round=9 passed=true
+real_engine_send_now interrupted_user_message_recalled=true
+startup_interrupt_round=10 passed=true
+test send_now_keeps_the_interrupted_user_message ... real_engine_send_now interrupted_user_message_recalled=true
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 287.87s
+
+--- cursor-cli-history-audit.log ---
+{"nativeCliTurn": 1, "previousAndCurrentRecalled": true}
+{"nativeCliTurn": 2, "previousAndCurrentRecalled": true}
+{"nativeCliTurn": 3, "previousAndCurrentRecalled": true}
+{"nativeCliTurn": 4, "previousAndCurrentRecalled": true}
+{"nativeCliTurn": 5, "previousAndCurrentRecalled": true}
+{"nativeCliTurn": 6, "previousAndCurrentRecalled": true}
+{"nativeCliTurn": 7, "previousAndCurrentRecalled": true}
+{"nativeCliTurn": 8, "previousAndCurrentRecalled": true}
+{"nativeCliHistoryTokens": 8, "resumed": true, "failures": 0}
+
+--- cursor-harness-final.log ---
+test result: ok. 180 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.61s
+test result: ok. 39 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.77s
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.76s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.79s
+test result: ok. 10 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.20s
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+test result: ok. 21 passed; 0 failed; 4 ignored; 0 measured; 0 filtered out; finished in 0.25s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.79s
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 42.18s
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.83s
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.62s
+test result: ok. 0 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+--- cursor-engine-final-regressions.log ---
+test result: ok. 21 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.70s
+test result: ok. 25 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.35s
+test result: ok. 8 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 3.07s
+
+--- cursor-engine-context-unit.log ---
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 200 filtered out; finished in 0.00s
+
+--- cursor-sdk-auth-contract-final.log ---
+{"invalidCredentialsReported":true,"proactiveRefresh":true,"coalescedCallers":100,"streamInvalidation":true,"streamReplays":0,"exchangeFailureRecovery":true}
+
+--- cursor-shim-final.log ---
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 39.22s
+
+--- cursor-cancel-order-stress.log ---
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 22 filtered out; finished in 0.17s
+cancellation_order_round=1 passed=true
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 22 filtered out; finished in 0.16s
+cancellation_order_round=2 passed=true
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 22 filtered out; finished in 0.16s
+cancellation_order_round=3 passed=true
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 22 filtered out; finished in 0.16s
+cancellation_order_round=4 passed=true
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 22 filtered out; finished in 0.17s
+cancellation_order_round=5 passed=true
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 22 filtered out; finished in 0.17s
+cancellation_order_round=6 passed=true
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 22 filtered out; finished in 0.16s
+cancellation_order_round=7 passed=true
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 22 filtered out; finished in 0.16s
+cancellation_order_round=8 passed=true
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 22 filtered out; finished in 0.17s
+cancellation_order_round=9 passed=true
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 22 filtered out; finished in 0.18s
+cancellation_order_round=10 passed=true
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 22 filtered out; finished in 0.18s
+cancellation_order_round=11 passed=true
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 22 filtered out; finished in 0.17s
+cancellation_order_round=12 passed=true
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 22 filtered out; finished in 0.17s
+cancellation_order_round=13 passed=true
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 22 filtered out; finished in 0.17s
+cancellation_order_round=14 passed=true
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 22 filtered out; finished in 0.17s
+cancellation_order_round=15 passed=true
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 22 filtered out; finished in 0.17s
+cancellation_order_round=16 passed=true
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 22 filtered out; finished in 0.18s
+cancellation_order_round=17 passed=true
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 22 filtered out; finished in 0.17s
+cancellation_order_round=18 passed=true
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 22 filtered out; finished in 0.17s
+cancellation_order_round=19 passed=true
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 22 filtered out; finished in 0.17s
+cancellation_order_round=20 passed=true

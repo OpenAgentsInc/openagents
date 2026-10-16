@@ -1,0 +1,39 @@
+{
+  // TEMPORARY test deployment of the chat2-sync branch worker — dev auth,
+  // isolated R2 bucket, workers.dev only. Delete the worker + bucket after
+  // testing (scripts/chat2-e2e teardown). NOT the production config.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "comet-native-edge-chat2test2",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-01",
+  "account_id": "b57dde68ee5964dccc025437b5478a5b",
+  "workers_dev": true,
+  "rules": [{ "type": "Text", "globs": ["**/*.sh"], "fallthrough": true }],
+  "alias": {
+    "loro-crdt": "loro-crdt/base64"
+  },
+  "durable_objects": {
+    "bindings": [
+      { "name": "SESSION_ROOMS", "class_name": "SessionRoom" },
+      { "name": "DEVICE_ROOMS", "class_name": "DeviceRoom" },
+      { "name": "REGISTRY_ROOMS", "class_name": "RegistryRoom" },
+      { "name": "CHAT_ROOMS", "class_name": "ChatRoom" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["SessionRoom", "DeviceRoom"] },
+    { "tag": "v2", "new_sqlite_classes": ["RegistryRoom"] },
+    { "tag": "v3", "new_sqlite_classes": ["ChatRoom"] }
+  ],
+  "r2_buckets": [
+    { "binding": "BLOBS", "bucket_name": "comet-native-blobs-chat2test" },
+    { "binding": "RELEASES", "bucket_name": "comet-native-blobs-chat2test" }
+  ],
+  "vars": {
+    "WORKOS_CLIENT_ID": "client_01KWD0EAKZKD50YCQJNYSRE4BY",
+    "AUTH_MODE": "dev"
+  },
+  "observability": {
+    "enabled": true
+  }
+}

@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=Coder
+GenericName=Coding Agent Desktop
+Comment=Coder Desktop: a desktop for coding agents (based on Zeron)
+Exec=zeron %u
+TryExec=zeron
+Icon=zeron
+Terminal=false
+StartupNotify=true
+Categories=Development;Utility;
+Keywords=agent;claude;codex;ai;coding;
+StartupWMClass=zeron
+MimeType=x-scheme-handler/coder-desktop;

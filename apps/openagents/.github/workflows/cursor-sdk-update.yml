@@ -1,0 +1,50 @@
+name: Cursor SDK updates
+on:
+  schedule:
+    - cron: '17 9 * * *'
+  workflow_dispatch:
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+concurrency:
+  group: cursor-sdk-update
+  cancel-in-progress: false
+jobs:
+  update:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+      - name: Check stable SDK version
+        run: python3 scripts/update-cursor-sdk.py
+      - name: Open or refresh the dependency PR and run compatibility checks
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          if git diff --quiet; then exit 0; fi
+          branch=automation/cursor-sdk-update
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null; then
+            git fetch origin "$branch:refs/remotes/origin/$branch"
+          fi
+          git switch -c "$branch"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add crates/harness/src/cursor/mod.rs
+          git commit -m 'chore(cursor): update pinned SDK'
+          git push --force-with-lease -u origin "$branch"
+          if [ -z "$(gh pr list --head "$branch" --state open --json number --jq '.[].number')" ]; then
+            cat > "$RUNNER_TEMP/cursor-sdk-pr.md" <<'BODY'
+          Update the pinned Cursor SDK to the latest stable npm release.
+
+          The Cursor compatibility workflow checks the actual SDK's token refresh, stream authentication invalidation, and transient exchange recovery, plus harness steering and session recovery regressions. Review SDK API changes and the dispatched workflow result before merging. This PR is never automatically merged.
+          BODY
+            gh pr create --base main --head "$branch" --title 'chore(cursor): update pinned SDK' --body-file "$RUNNER_TEMP/cursor-sdk-pr.md"
+          fi
+          # GITHUB_TOKEN-created pushes/PRs do not trigger normal PR workflows.
+          # workflow_dispatch is explicitly allowed and validates this branch.
+          gh workflow run cursor-compatibility.yml --ref "$branch"

@@ -1,0 +1,31 @@
+name: Preview networking
+on:
+  pull_request:
+    paths: ['crates/preview/**', 'crates/proto/**', 'Cargo.toml', 'Cargo.lock', 'edge/**', '.github/workflows/preview-tests.yml']
+  push:
+    branches: [main]
+    paths: ['crates/preview/**', 'crates/proto/**', 'Cargo.toml', 'Cargo.lock', 'edge/**', '.github/workflows/preview-tests.yml']
+permissions:
+  contents: read
+concurrency:
+  group: preview-tests-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  # The Rust networking tests run in `core-tests` (ui-tests.yml, Linux) and
+  # `macos-native` (macos.yml); this workflow keeps the edge coordinator.
+  coordinator:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: edge
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: edge/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test

@@ -1,0 +1,137 @@
+{
+  "date": "2026-09-18",
+  "sdk": "1.0.31",
+  "model": "muse-spark-1.3",
+  "platform": "Linux",
+  "cli": "2026.09.15-d2fe57e",
+  "cliUpdate": "Already up to date",
+  "finalShimSha256": "d188c0fbefc9f85bcd58b835b5730a76fa314b180bf100211887b5a385cec73c",
+  "baselineFailures": [
+    {
+      "flow": "send now after SessionStarted before first checkpoint",
+      "result": "failed",
+      "observed": "No INTERRUPTED token was in your previous message."
+    },
+    {
+      "flow": "remote pending steer batch",
+      "result": "code-level loss confirmed",
+      "cause": "newer pending steer superseded distinct older prompts"
+    },
+    {
+      "flow": "intermediate receipt implementation",
+      "result": "failed ordinary follow-up tests",
+      "cause": "protobuf instance shape differs from serialized JSON",
+      "fixedBeforePublication": true
+    },
+    {
+      "flow": "parallel real recovery load",
+      "result": "failed at round 12",
+      "cause": "Cursor get_models endpoint: 30 requests/minute limit",
+      "change": "bounded pre-send discovery backoff; no auth/run replay"
+    }
+  ],
+  "finalValidation": {
+    "harnessSuite": {
+      "passed": 302,
+      "failed": 0,
+      "ignored": 10
+    },
+    "documentSuite": {
+      "passed": 112,
+      "failed": 0,
+      "ignored": 0
+    },
+    "focusedFinalShimSuite": {
+      "passed": 11,
+      "failed": 0,
+      "ignored": 0
+    },
+    "engineQueueRestartAndE2e": {
+      "passed": 54,
+      "failed": 0,
+      "ignored": 3
+    },
+    "engineNoSessionContextUnit": {
+      "passed": 1,
+      "failed": 0,
+      "ignored": 0
+    },
+    "realEngineFlows": {
+      "passed": 6,
+      "failed": 0,
+      "ignored": 0
+    },
+    "realEngineStartupInterruptStress": {
+      "rounds": 10,
+      "failed": 0,
+      "additionalFinalCodeRounds": 1
+    },
+    "realEngineStartupBurst": {
+      "interruptedMessagesInOneConversation": 10,
+      "allRecalledInOrder": true,
+      "toolReplays": 0
+    },
+    "adapterHistory": {
+      "allMessagesRecalledAfterResume": 41,
+      "completed": 41,
+      "failures": 0,
+      "queuedMessages": 40
+    },
+    "adapterRecovery": {
+      "checkpointRecallFailures": 0,
+      "rounds": 12,
+      "sessionId": "agent-83a73f5c-716a-4784-8bfd-4b95cb77f640"
+    },
+    "adapterCancelledQueue": {
+      "completed": 0,
+      "failures": 0,
+      "interrupted": 1,
+      "queued": 40,
+      "resumed": true,
+      "steered": 0
+    },
+    "parkedWithAcceleratedTokenExpiry": {
+      "failures": 0,
+      "parkedTurns": 8,
+      "resumedAfterClose": true
+    },
+    "modelCatalog": {
+      "elapsedMs": 1227,
+      "failures": 0,
+      "models": 39,
+      "requests": 1001
+    },
+    "actualSdkAuthContract": {
+      "invalidCredentialsReported": true,
+      "proactiveRefresh": true,
+      "coalescedCallers": 100,
+      "streamInvalidation": true,
+      "streamReplays": 0,
+      "exchangeFailureRecovery": true
+    },
+    "nativeCliComparison": {
+      "nativeCliHistoryTokens": 8,
+      "resumed": true,
+      "failures": 0
+    },
+    "actualSdkNativeSteeringComparison": {
+      "runs": 2,
+      "ack": "complete_delivered",
+      "persistedUserMessagesPerRun": 2,
+      "enabledInAdapter": false
+    },
+    "sharedCancellationOrderingStress": {
+      "rounds": 20,
+      "failed": 0
+    },
+    "workflowLint": "actionlint 1.7.12 passed"
+  },
+  "limits": [
+    "Finite scenarios, not all possible flows or provider failures",
+    "Real model runs use Linux and Muse Spark",
+    "Accelerated expiry is not a wall-clock one-hour soak",
+    "Native SDK in-turn steering is not enabled in the adapter",
+    "Previously lost text in legacy stores cannot be reconstructed by new receipts",
+    "Context is carried as interrupted history, not by rewriting private SDK checkpoints"
+  ]
+}

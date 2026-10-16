@@ -1,0 +1,362 @@
+/**
+ * DeviceRoom — one Durable Object per device (design §2, §8): a frame relay
+ * for interactive RPC + terminal streams + future HTTP tunnel. The host keeps
+ * one outbound wss; clients multiplex over `{streamId, kind, bytes}` frames —
+ * a generic byte pipe from day one, transport-agnostic by construction (§8.4:
+ * a WebRTC fast path could slot in under the same frames).
+ *
+ * Frame encoding (binary): uleb128 header-length ‖ UTF-8 JSON header ‖ payload.
+ * Header: { s: streamId, k: kind, to?: connId, from?: connId }.
+ * - client → DO: DO stamps `from = connId` and forwards to the host socket.
+ * - host → DO: must carry `to = connId`; DO strips routing keys and delivers.
+ *
+ * Also holds small "sidecar" JSON slots the host publishes (repos/branches
+ * snapshot for instant new-chat pickers §8.1; capability metadata) so pickers
+ * render last-known state while the live RPC happens at confirm time.
+ */
+import { ensureNudges, enqueueNudge, pendingNudges, acknowledgeNudge, NUDGE_PAGE } from "./device-nudges";
+import { BytesReader, BytesWriter } from "loro-protocol";
+import { createBlobStore, getJsonBlob, putJsonBlob, type BlobStore } from "./blobs";
+import { AUTH_USER_HEADER, type Env } from "./env";
+
+export interface DeviceFrameHeader {
+  /** Stream id, unique per (connId, logical stream). */
+  s: string;
+  /** Stream kind: "rpc" | "term" | ... — opaque to the relay. */
+  k: string;
+  /** Routing: host→client target. */
+  to?: string;
+  /** Routing: client→host origin (stamped by the relay). */
+  from?: string;
+}
+
+export const encodeDeviceFrame = (header: DeviceFrameHeader, payload: Uint8Array): Uint8Array => {
+  const writer = new BytesWriter();
+  writer.pushVarString(JSON.stringify(header));
+  writer.pushBytes(payload);
+  return writer.finalize();
+};
+
+export const decodeDeviceFrame = (
+  bytes: Uint8Array
+): { header: DeviceFrameHeader; payload: Uint8Array } => {
+  const reader = new BytesReader(bytes);
+  const header = JSON.parse(reader.readVarString()) as DeviceFrameHeader;
+  const payload = reader.readBytes(reader.remaining);
+  return { header, payload };
+};
+
+interface SocketState {
+  userId: string;
+  role: "host" | "client";
+  connId: string;
+  /** Accept time — the liveness floor until the socket's first auto-pong. */
+  joinedAt?: number;
+  nudgeAck?: boolean;
+  nudgeInflight?: string[];
+}
+
+const HOST_TAG = "host";
+const clientTag = (connId: string) => `client:${connId}`;
+
+/** How long a host socket may go without proving liveness before the relay
+ * stops routing to it.
+ *
+ * A host whose network dies silently (laptop lid, NAT/proxy reaping an idle
+ * flow) leaves a socket the runtime still reports as connected: no close
+ * event ever fires, so `getWebSockets(HOST_TAG)` keeps returning it and the
+ * supersede-on-join `close()` never completes either. Picking `[0]` from that
+ * list therefore pinned the room to the OLDEST such corpse — every client
+ * frame vanished into it while the live host sat later in the list, and
+ * clients hung to their own timeouts because a non-empty host list also
+ * suppressed the `host_offline` bounce.
+ *
+ * Hosts ping every 15s (crates/rpc/src/device_room.rs PING_INTERVAL) and the
+ * DO's auto-response stamps a timestamp without waking us, so liveness is free
+ * to read. The window is sized for the 30s of older builds still in the fleet
+ * — 2.5 of their intervals — so upgrading engines is never a prerequisite. */
+const HOST_LIVENESS_MS = 75_000;
+
+/** Control frames the relay itself emits (kind " relay"). */
+// MUST byte-match packages/rpc device-frames.ts RELAY_KIND — clients compare
+// with ===; a mismatch makes host_offline/host_closed invisible to them.
+const RELAY_KIND = " relay";
+
+/** Nudge frames (§7 cold-chat command delivery): payload `{chatId}` tells the
+ * host "this chat's doc has pending commands — open it and drain". Durable:
+ * queued in the DO while the host is offline, replayed on its next join, so a
+ * command sent to a chat the host hasn't warm-opened is never stranded. */
+export const NUDGE_KIND = "nudge";
+const NUDGE_ACK_KIND = "nudgeAck";
+const CHAT_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
+
+export class DeviceRoom implements DurableObject {
+  private readonly ctx: DurableObjectState;
+  private readonly blobs: BlobStore;
+
+  constructor(ctx: DurableObjectState, env: Env) {
+    this.ctx = ctx;
+    void env;
+    ctx.storage.sql.exec(
+      "CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+    );
+    ensureNudges(ctx.storage.sql);
+    this.blobs = createBlobStore(ctx.storage.sql);
+    ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
+  }
+
+  private getMeta(key: string): string | undefined {
+    const rows = [...this.ctx.storage.sql.exec("SELECT value FROM meta WHERE key = ?", key)];
+    return rows[0]?.value as string | undefined;
+  }
+
+  private setMeta(key: string, value: string): void {
+    this.ctx.storage.sql.exec(
+      "INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      key,
+      value
+    );
+  }
+
+  /** The host socket to route to: the freshest one that has proven itself
+   * alive within [`HOST_LIVENESS_MS`]. `undefined` = no live host, which is
+   * what makes clients see `host_offline` instead of hanging on a corpse.
+   *
+   * `exclude` drops the socket a close is being handled for — the runtime
+   * still lists it during `webSocketClose`, and counting it as live would
+   * suppress the very `host_closed` that close is supposed to announce. */
+  private liveHost(exclude?: WebSocket): WebSocket | undefined {
+    return pickLiveHost(
+      this.ctx.getWebSockets(HOST_TAG).map((ws) => ({
+        ws,
+        // Auto-pongs are stamped even while hibernating; `joinedAt` covers the
+        // window before a fresh socket's first ping. Sockets attached by an
+        // older deploy have neither and read as ancient — correct: they are.
+        lastSeenAt: Math.max(
+          this.ctx.getWebSocketAutoResponseTimestamp(ws)?.getTime() ?? 0,
+          (ws.deserializeAttachment() as SocketState | null)?.joinedAt ?? 0
+        )
+      })),
+      Date.now(),
+      exclude
+    );
+  }
+
+  async fetch(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+    const userId = request.headers.get(AUTH_USER_HEADER);
+    if (!userId) return new Response("unauthenticated", { status: 401 });
+    const owner = this.getMeta("owner");
+
+    if (url.pathname === "/ws") {
+      const role = url.searchParams.get("role") === "host" ? "host" : "client";
+      if (role === "host") {
+        // The device's own backend claims the room; the claim is the identity
+        // anchor every later client join is checked against.
+        if (!owner) this.setMeta("owner", userId);
+        else if (owner !== userId) return new Response("forbidden", { status: 403 });
+      } else {
+        if (!owner || owner !== userId) return new Response("forbidden", { status: 403 });
+      }
+      const connId = url.searchParams.get("connId") ?? crypto.randomUUID();
+      const pair = new WebSocketPair();
+      if (role === "host") {
+        // One live host socket: close any predecessor (backend restart).
+        for (const stale of this.ctx.getWebSockets(HOST_TAG)) {
+          try {
+            stale.close(4409, "superseded by new host connection");
+          } catch {
+            /* already gone */
+          }
+        }
+        this.ctx.acceptWebSocket(pair[1], [HOST_TAG]);
+
+      } else {
+        this.ctx.acceptWebSocket(pair[1], [clientTag(connId)]);
+      }
+      const state: SocketState = { userId, role, connId, joinedAt: Date.now(), nudgeAck: url.searchParams.get("nudgeAck") === "1", nudgeInflight: [] };
+      pair[1].serializeAttachment(state);
+      if (role === "host") this.replayNudges(pair[1]);
+      return new Response(null, { status: 101, webSocket: pair[0] });
+    }
+
+    // Sidecar slots (host-published JSON, e.g. repos snapshot §8.1).
+    const sidecar = url.pathname.match(/^\/sidecar\/([a-z0-9-]{1,64})$/);
+    if (sidecar) {
+      const name = sidecar[1]!;
+      if (!owner || owner !== userId) return json({ error: "forbidden" }, owner ? 403 : 404);
+      if (request.method === "GET") {
+        const value = getJsonBlob<unknown>(this.blobs, `sidecar:${name}`);
+        return value === undefined ? json({ error: "not_found" }, 404) : json(value);
+      }
+      if (request.method === "POST") {
+        putJsonBlob(this.blobs, `sidecar:${name}`, await request.json());
+        return json({ ok: true });
+      }
+    }
+
+    if (url.pathname === "/status" && request.method === "GET") {
+      if (!owner || owner !== userId) return json({ error: "forbidden" }, owner ? 403 : 404);
+      // `hostSockets` counts corpses too — the gap between it and
+      // `hostConnected` is the only externally visible signal that a device's
+      // room is accumulating silently-dead host sockets.
+      return json({
+        hostConnected: this.liveHost() !== undefined,
+        hostSockets: this.ctx.getWebSockets(HOST_TAG).length
+      });
+    }
+
+    // Durable command nudge (§7). Any authenticated device of the owner may
+    // nudge; the payload is only a chat id — the host validates against its
+    // own doc before executing anything.
+    if (url.pathname === "/nudge" && request.method === "POST") {
+      if (!owner || owner !== userId) return json({ error: "forbidden" }, owner ? 403 : 404);
+      const body = (await request.json().catch(() => null)) as { chatId?: string } | null;
+      const chatId = body?.chatId;
+      if (!chatId || !CHAT_ID_RE.test(chatId)) return json({ error: "bad_chat_id" }, 400);
+      const queued = enqueueNudge(this.ctx.storage.sql, chatId);
+      const host = this.liveHost();
+      if (host) this.replayNudges(host);
+      if (!queued) return json({ error: "nudge_queue_full", retryable: true }, 503);
+      return json({ delivered: !!host, queued: true });
+    }
+
+    return new Response("not found", { status: 404 });
+  }
+
+  private replayNudges(host: WebSocket): void {
+    const state = host.deserializeAttachment() as SocketState;
+    const inflight = new Set(state.nudgeInflight ?? []);
+    let sent = 0;
+    for (const row of pendingNudges(this.ctx.storage.sql)) {
+      if (state.nudgeAck && inflight.has(row.token)) continue;
+      if (state.nudgeAck ? inflight.size >= NUDGE_PAGE : sent >= NUDGE_PAGE) break;
+      if (row.chat_id === "*" && !state.nudgeAck) continue;
+      this.deliver(host, { s: row.chat_id, k: NUDGE_KIND },
+        new TextEncoder().encode(JSON.stringify({ chatId: row.chat_id, token: row.token })));
+      if (state.nudgeAck) inflight.add(row.token);
+      else acknowledgeNudge(this.ctx.storage.sql, row.chat_id, row.token);
+      sent++;
+    }
+    state.nudgeInflight = [...inflight];
+    host.serializeAttachment(state);
+    if (sent || inflight.size) this.ctx.waitUntil(this.ctx.storage.setAlarm(Date.now() + 5000));
+  }
+
+  async alarm(): Promise<void> {
+    const host = this.liveHost();
+    if (!host) return; // Next join replays durable receipts.
+    const state = host.deserializeAttachment() as SocketState;
+    state.nudgeInflight = [];
+    host.serializeAttachment(state);
+    this.replayNudges(host);
+  }
+
+  webSocketMessage(ws: WebSocket, message: ArrayBuffer | string): void {
+    if (typeof message === "string") return; // ping/pong auto-response
+    const state = ws.deserializeAttachment() as SocketState;
+    let frame: { header: DeviceFrameHeader; payload: Uint8Array };
+    try {
+      frame = decodeDeviceFrame(new Uint8Array(message));
+    } catch {
+      ws.close(1002, "Frame error");
+      return;
+    }
+    if (state.role === "client") {
+      const host = this.liveHost();
+      if (!host) {
+        // Host offline: bounce a relay-level error so the client can surface
+        // "device is asleep" instead of hanging.
+        this.deliver(ws, { s: frame.header.s, k: RELAY_KIND }, encodeRelayError("host_offline"));
+        return;
+      }
+      this.deliver(host, { s: frame.header.s, k: frame.header.k, from: state.connId }, frame.payload);
+      return;
+    }
+    if (frame.header.k === NUDGE_ACK_KIND && state.nudgeAck) {
+      try {
+        const ack = JSON.parse(new TextDecoder().decode(frame.payload)) as { chatId?: string; token?: string };
+        if (typeof ack.chatId === "string" && typeof ack.token === "string") {
+          acknowledgeNudge(this.ctx.storage.sql, ack.chatId, ack.token);
+          state.nudgeInflight = (state.nudgeInflight ?? []).filter((t) => t !== ack.token);
+          ws.serializeAttachment(state);
+          this.replayNudges(ws);
+        }
+      } catch { /* malformed ACK cannot retire work */ }
+      return;
+    }
+    // Host frame: route by `to`.
+    const to = frame.header.to;
+    if (!to) return;
+    const target = this.ctx.getWebSockets(clientTag(to))[0];
+    if (!target) {
+      this.deliver(ws, { s: frame.header.s, k: RELAY_KIND, to }, encodeRelayError("client_gone"));
+      return;
+    }
+    this.deliver(target, { s: frame.header.s, k: frame.header.k }, frame.payload);
+  }
+
+  webSocketClose(ws: WebSocket): void {
+    const state = ws.deserializeAttachment() as SocketState | null;
+    if (!state) return;
+    if (state.role === "client") {
+      // Tell the host so it can tear down any per-client streams (ptys etc.).
+      const host = this.liveHost();
+      if (host) {
+        this.deliver(host, { s: "", k: RELAY_KIND, from: state.connId }, encodeRelayError("client_closed"));
+      }
+      return;
+    }
+    // A host socket went away. Only tear the clients' links down when NO live
+    // host is left: a superseded predecessor closing (or a corpse the runtime
+    // finally reaps) must not knock clients off the successor that already
+    // replaced it.
+    if (this.liveHost(ws)) return;
+    // Host went away: notify every client.
+    for (const client of this.ctx.getWebSockets()) {
+      const cs = client.deserializeAttachment() as SocketState | null;
+      if (cs?.role !== "client") continue;
+      this.deliver(client, { s: "", k: RELAY_KIND }, encodeRelayError("host_closed"));
+    }
+  }
+
+  webSocketError(ws: WebSocket): void {
+    this.webSocketClose(ws);
+  }
+
+  private deliver(ws: WebSocket, header: DeviceFrameHeader, payload: Uint8Array): void {
+    try {
+      ws.send(encodeDeviceFrame(header, payload));
+    } catch {
+      /* stale socket */
+    }
+  }
+}
+
+/** Freshest host socket that has proven itself alive inside the liveness
+ * window, or `undefined` when every candidate is stale (or there are none).
+ * `exclude` skips a socket whose close is being handled — the runtime still
+ * lists it there, and counting it as live would suppress the `host_closed`
+ * that close exists to announce. Pure so the routing rule is testable without
+ * a DO. */
+export const pickLiveHost = <T>(
+  hosts: ReadonlyArray<{ ws: T; lastSeenAt: number }>,
+  now: number,
+  exclude?: T
+): T | undefined => {
+  let best: { ws: T; lastSeenAt: number } | undefined;
+  for (const host of hosts) {
+    if (host.ws === exclude) continue;
+    if (!best || host.lastSeenAt > best.lastSeenAt) best = host;
+  }
+  return best && now - best.lastSeenAt <= HOST_LIVENESS_MS ? best.ws : undefined;
+};
+
+const encodeRelayError = (code: string): Uint8Array =>
+  new TextEncoder().encode(JSON.stringify({ error: code }));
+
+const json = (value: unknown, status = 200): Response =>
+  new Response(JSON.stringify(value), {
+    status,
+    headers: { "content-type": "application/json" }
+  });

@@ -1,0 +1,100 @@
+{
+  "baseCommit": "10c9d3e2",
+  "sdk": "1.0.31",
+  "cli": "2026.09.15-d2fe57e",
+  "fullHarnessSuite": {
+    "passed": 298,
+    "failed": 0,
+    "ignored": 10
+  },
+  "productionShimRegression": {
+    "passed": true,
+    "scenarios": [
+      "reported auth run result",
+      "unhandled rejection",
+      "uncaught exception"
+    ],
+    "sameSessionResume": true,
+    "replays": 0,
+    "causeSecretOmitted": true
+  },
+  "liveModels": {
+    "elapsedMs": 3135,
+    "failures": 0,
+    "models": 39,
+    "requests": 1001
+  },
+  "liveComposerRecovery": {
+    "checkpointRecallFailures": 0,
+    "rounds": 6,
+    "verifiedAppends": 3,
+    "duplicateAppends": 0
+  },
+  "liveGrok": {
+    "failures": 0,
+    "parkedTurns": 6,
+    "resumedAfterClose": true
+  },
+  "liveFable": {
+    "passed": false,
+    "reason": "Provider Model Blocked: account requires admin enablement",
+    "requestIdCaptured": true
+  },
+  "originalAuthRootCause": "Old SDK lacks proactive token expiry refresh; strong match for local 64.8-minute session incident. Original customer mid-turn rejection not independently reproduced.",
+  "sourceSha256": {
+    "crates/harness/src/cursor/mod.rs": "29fb335fa89a52dbd26c60de532078428924b2aaa556ec5b371bfddfbce253b8",
+    "crates/harness/src/cursor/shim.mjs": "556a9f1a84882284895c503825a9bbbe84e147e675c9861d5551889f372ff352",
+    "crates/harness/tests/cursor_shim.rs": "53752557f4038cb0561abe375c6d92e9411a66c9f22da25870e1d4a177fbe98e",
+    "crates/harness/tests/fixtures/fake-cursor-sdk.mjs": "8d9f6cc4189e379b68ef64680cce3ea72ac6685a82be9b872753691447c7aff4",
+    "crates/harness/examples/cursor_stability_probe.rs": "4f206de4f9877586b8201d223ad06c6060fb58addac08dbd5033dbe98a3c8171",
+    "crates/harness/tests/fixtures/cursor-auth-clock.mjs": "c9179d7c06ee4be07d6dd6ff053624b59b6cde7159b86059e2d7c908b5fa55b0",
+    "scripts/test-cursor-sdk-auth.mjs": "889bfc43a87a9b09592f4fecdbca67162c6fab37993e34d30e53c9804435dbb4",
+    "scripts/update-cursor-sdk.py": "027ee4261711ba914c65f0242c0dbdbaad1b4cdce49baf6756e9f28defc32a56",
+    "scripts/test-update-cursor-sdk.py": "dffe8977c013420bf72e58de0e2f4dc235e52a1290a46dad589f7ac1b07ba38d"
+  },
+  "localIncident": {
+    "shimAgeMinutes": 64.8121,
+    "idleMinutes": 25.055,
+    "failedRunMs": 971,
+    "nextRunAfterFailureMs": 15591,
+    "sameAgentContinuationSucceeded": true
+  },
+  "liveAuthRefresh": {
+    "method": "real SDK and service; test clock advanced to 60 seconds before JWT expiry",
+    "oldSdk": "1.0.28",
+    "oldInitialExchanges": 7,
+    "oldAdditionalExchanges": 0,
+    "oldAssertionPassed": false,
+    "newSdk": "1.0.31",
+    "newInitialExchanges": 7,
+    "newAdditionalExchanges": 2,
+    "newAssertionPassed": true,
+    "sameSessionRecallAndResume": true,
+    "actualServerExpiryForced": false
+  },
+  "finalCursorRegressionTests": {
+    "passed": 17,
+    "failed": 0,
+    "command": "cargo test -p zeron-harness --test cursor --test cursor_shim"
+  },
+  "ongoingSafeguardsValidation": {
+    "docAndProtoTestsPassed": 136,
+    "docAndProtoTestsFailed": 0,
+    "uiEngineSyncTestsCompile": true,
+    "workflowActionlint": "1.7.12 passed",
+    "updaterTestsPassed": 3,
+    "freshSdkCredentialFreeAuthContract": {
+      "version": "1.0.31",
+      "passed": true,
+      "concurrentRefreshCallers": 100,
+      "streamInvalidation": true,
+      "streamReplays": 0,
+      "transientFailureRecovery": true,
+      "invalidCredentialsReported": true
+    },
+    "oldSdkContract": {
+      "version": "1.0.28",
+      "expectedFailure": "proactive refresh: one exchange instead of two"
+    }
+  }
+}
