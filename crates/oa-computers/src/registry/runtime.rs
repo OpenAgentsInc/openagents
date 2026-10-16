@@ -128,6 +128,10 @@ struct Deployment {
     legacy: bool,
     #[serde(default)]
     shapes: BTreeMap<String, Shape>,
+    #[serde(default)]
+    space_compatibility: Option<coder_environment::artifacts::Compatibility>,
+    #[serde(default)]
+    withdrawn_artifacts: BTreeSet<String>,
     /// A non-secret provider tenant/installation name, when URLs alone are ambiguous.
     #[serde(default)]
     scope: Option<String>,
@@ -218,6 +222,8 @@ impl Configuration {
                 rollout_accounts: None,
                 legacy,
                 shapes: BTreeMap::new(),
+                space_compatibility: None,
+                withdrawn_artifacts: BTreeSet::new(),
                 scope: None,
             }],
         })
@@ -389,6 +395,17 @@ pub async fn from_environment() -> Result<Registry<RuntimeDriver>, Refused> {
                 .placement
                 .unwrap_or_else(|| deployment.kind.placement()),
         )?;
+        if let Some(compatibility) = deployment.space_compatibility {
+            if !matches!(deployment.kind, Kind::Space) || compatibility.validate().is_err() {
+                return Err(settings());
+            }
+            target.fingerprint = super::digest(&serde_json::json!({
+                "connection_fingerprint": target.fingerprint,
+                "space_compatibility": compatibility,
+            }));
+            target.space_compatibility = Some(compatibility);
+        }
+        target.withdrawn_artifacts = deployment.withdrawn_artifacts;
         target.priority = deployment.priority;
         target.enabled = deployment.enabled;
         target.admit_new = deployment.admit_new;

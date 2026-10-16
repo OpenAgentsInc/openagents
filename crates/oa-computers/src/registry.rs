@@ -46,6 +46,9 @@ pub struct CreateIntent {
     pub chat: Option<String>,
     #[serde(default)]
     pub image: Option<String>,
+    /// Resolved by the authenticated front door, never accepted from public JSON.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub environment_image: Option<coder_environment::ImageIdentity>,
     #[serde(default)]
     pub size: Option<String>,
     #[serde(default)]
@@ -74,7 +77,7 @@ impl CreateIntent {
             .map(|profile| profile.name())
             .collect();
         profiles.sort_unstable();
-        digest(&serde_json::json!({
+        let mut material = serde_json::json!({
             "schema":"openagents.computers.create-intent.v1",
             "chat":self.chat,"image":self.image,
             "size":self.size.as_deref().unwrap_or(resolved_size),
@@ -83,7 +86,11 @@ impl CreateIntent {
             "needs":{"profiles":profiles,"memory_suspend":needs.memory_suspend,"files":needs.files,"command_sessions":needs.command_sessions,
                 "min_vcpus":needs.min_vcpus,"min_memory_mib":needs.min_memory_mib},
             "egress_profile":self.egress_profile,"enrolled_host":self.enrolled_host,
-        }))
+        });
+        if let Some(image) = &self.environment_image {
+            material["environment_image"] = serde_json::to_value(image).expect("image encodes");
+        }
+        digest(&material)
     }
     pub fn legacy_ensure(&self) -> bool {
         self.idempotency_key.is_none()
@@ -116,6 +123,10 @@ pub struct Target {
     /// This is never inferred from the current default.
     #[serde(default)]
     pub legacy_driver: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub space_compatibility: Option<coder_environment::artifacts::Compatibility>,
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub withdrawn_artifacts: BTreeSet<String>,
 }
 impl Target {
     pub fn new(
@@ -151,6 +162,8 @@ impl Target {
             capacity: None,
             rollout_accounts: None,
             legacy_driver: None,
+            space_compatibility: None,
+            withdrawn_artifacts: BTreeSet::new(),
         })
     }
     fn admits(&self, owner: &str) -> bool {
@@ -184,6 +197,9 @@ pub struct Binding {
     pub operation_namespace: Option<String>,
     #[serde(default)]
     pub migrated: bool,
+    /// Keep runtime and clean-base references needed by this private computer.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub environment_image: Option<coder_environment::ImageIdentity>,
 }
 impl Binding {
     pub fn operation(&self, logical: &str) -> String {
@@ -262,6 +278,15 @@ impl Catalog {
                     .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
                 || target.caps.validate().is_err()
                 || target.capacity == Some(0)
+                || target.space_compatibility.as_ref().is_some_and(|profile| {
+                    target.artifact_kind != ArtifactKind::SpaceTemplate
+                        || profile.validate().is_err()
+                })
+                || target.withdrawn_artifacts.len() > 512
+                || target
+                    .withdrawn_artifacts
+                    .iter()
+                    .any(|d| !coder_environment::valid_digest(d))
                 || target.legacy_driver.as_ref().is_some_and(|driver| {
                     driver != &target.caps.driver || !legacy.insert(driver.clone())
                 })
@@ -311,6 +336,7 @@ impl Catalog {
             shape: None,
             operation_namespace: None,
             migrated: true,
+            environment_image: None,
         })
     }
 
@@ -387,6 +413,15 @@ impl Catalog {
     /// Ordered operator policy, after deterministic admission. No model score
     /// can add an ineligible target to this list.
     pub fn candidates(&self, owner: &str, intent: &CreateIntent) -> Result<Vec<Binding>, Refused> {
+        if let Some(image) = &intent.environment_image {
+            if intent.environment.is_none()
+                || intent.version.is_none()
+                || intent.image.is_some()
+                || image.validate().is_err()
+            {
+                return Err(Refused::Artifact);
+            }
+        }
         let placement = intent.placement.unwrap_or_default();
         if placement == Placement::Auto && !self.targets.contains_key(&self.default) {
             return Err(Refused::Unavailable);
@@ -444,21 +479,44 @@ impl Catalog {
                 refusal = Refused::Size;
                 continue;
             }
-            let artifact = match intent.image.as_deref() {
-                None => caps.default_artifact.clone(),
-                Some(reference) if compatible(target.artifact_kind, reference) => Some(
-                    caps.default_artifact
-                        .as_ref()
-                        .filter(|artifact| artifact.reference == reference)
-                        .cloned()
-                        .unwrap_or(Artifact {
-                            kind: target.artifact_kind,
-                            reference: reference.into(),
-                            provider_identity: None,
+            let artifact = if let Some(image) = &intent.environment_image {
+                match target.artifact_kind {
+                    ArtifactKind::GceImage
+                        if !target.withdrawn_artifacts.contains(&image.manifest_digest) =>
+                    {
+                        Some(Artifact {
+                            kind: ArtifactKind::GceImage,
+                            reference: image.image_id.clone(),
+                            provider_identity: image.snapshot_id.clone(),
                             disk_gib: None,
-                        }),
-                ),
-                Some(_) => None,
+                        })
+                    }
+                    ArtifactKind::SpaceTemplate => image.space.as_ref().and_then(|space| {
+                        let compatibility = target.space_compatibility.as_ref()?;
+                        space
+                            .resolve(&size, shape, compatibility, &target.withdrawn_artifacts)
+                            .ok()
+                            .cloned()
+                    }),
+                    _ => None,
+                }
+            } else {
+                match intent.image.as_deref() {
+                    None => caps.default_artifact.clone(),
+                    Some(reference) if compatible(target.artifact_kind, reference) => Some(
+                        caps.default_artifact
+                            .as_ref()
+                            .filter(|artifact| artifact.reference == reference)
+                            .cloned()
+                            .unwrap_or(Artifact {
+                                kind: target.artifact_kind,
+                                reference: reference.into(),
+                                provider_identity: None,
+                                disk_gib: None,
+                            }),
+                    ),
+                    Some(_) => None,
+                }
             };
             let Some(artifact) = artifact.filter(|artifact| {
                 artifact.kind == target.artifact_kind && artifact.validate().is_ok()
@@ -482,6 +540,7 @@ impl Catalog {
                 shape: Some(shape.clone()),
                 operation_namespace: Some(target.fingerprint.clone()),
                 migrated: false,
+                environment_image: intent.environment_image.clone(),
             });
         }
         if choices.is_empty() {
@@ -835,5 +894,144 @@ mod placement_properties {
                 prop_assert!(catalog.bound(&binding,"foreign","fixture","small").is_err());
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod environment_artifact_tests {
+    use super::*;
+    use coder_environment::artifacts::{CleanBase, SnapshotReadiness, SpaceArtifact};
+    use coder_environment::{ImageIdentity, NamedArtifact, Provider};
+
+    fn artifact() -> SpaceArtifact {
+        let mut space: SpaceArtifact = serde_json::from_str(include_str!(
+            "../../coder-environment/fixtures/space-artifact.json"
+        ))
+        .unwrap();
+        space.snapshots.insert(
+            "small".into(),
+            SnapshotReadiness::Ready {
+                base: CleanBase {
+                    shape: Shape {
+                        vcpus: 2,
+                        memory_mib: 1024,
+                        min_disk_gib: None,
+                    },
+                    snapshot: NamedArtifact {
+                        name: "fixture-clean-base".into(),
+                        digest: "9".repeat(64),
+                    },
+                    compatibility_digest: space.compatibility.digest(),
+                    privacy_evidence_digest: "8".repeat(64),
+                },
+            },
+        );
+        space
+    }
+    fn target(space: &SpaceArtifact) -> Target {
+        let mut caps = Capabilities::new("space", [Profile::Core, Profile::Suspend], &["small"]);
+        caps.shapes.insert(
+            "small".into(),
+            Shape {
+                vcpus: 2,
+                memory_mib: 1024,
+                min_disk_gib: None,
+            },
+        );
+        caps.default_artifact = Some(space.template.clone());
+        let mut target = Target::new(
+            "space-fixture",
+            "https://space.fixture.invalid",
+            caps,
+            ArtifactKind::SpaceTemplate,
+            Placement::FastSandbox,
+        )
+        .unwrap();
+        target.space_compatibility = Some(space.compatibility.clone());
+        target
+    }
+    fn intent(space: Option<SpaceArtifact>) -> CreateIntent {
+        CreateIntent {
+            environment: Some("fixture-environment".into()),
+            version: Some("1".into()),
+            placement: Some(Placement::FastSandbox),
+            environment_image: Some(ImageIdentity {
+                provider: Provider::Gce,
+                image_id: "fixture-gce-image".into(),
+                snapshot_id: Some("12345".into()),
+                manifest_digest: "d".repeat(64),
+                space,
+            }),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn a_saved_environment_resolves_space_before_allocation_and_keeps_its_restore_pins() {
+        let space = artifact();
+        let target = target(&space);
+        let request = intent(Some(space.clone()));
+        let catalog = Catalog::new(&target.id, "fixture-policy", [target.clone()]).unwrap();
+        let binding = catalog
+            .choose("fixture-owner", &request, &BTreeMap::new())
+            .unwrap();
+        assert_eq!(binding.artifact.as_ref(), Some(&space.template));
+        assert_eq!(binding.environment_image, request.environment_image);
+        let mut withdrawn = target;
+        withdrawn.withdrawn_artifacts.insert(space.digest());
+        let catalog = Catalog::new(&withdrawn.id.clone(), "withdrawn", [withdrawn]).unwrap();
+        assert!(matches!(
+            catalog.choose("fixture-owner", &request, &BTreeMap::new()),
+            Err(Refused::Artifact)
+        ));
+        // Withdrawal affects new computers, not a computer that already has it.
+        assert!(
+            catalog
+                .bound(&binding, "fixture-owner", "space", "small")
+                .is_ok()
+        );
+        assert!(
+            binding
+                .environment_image
+                .unwrap()
+                .space
+                .unwrap()
+                .retained_references()
+                .contains(space.compatibility.kernel.digest.as_str())
+        );
+    }
+
+    #[test]
+    fn gce_only_stale_unready_and_incompatible_space_artifacts_refuse() {
+        let space = artifact();
+        let target = target(&space);
+        let catalog = Catalog::new(&target.id, "fixture-policy", [target.clone()]).unwrap();
+        assert!(matches!(
+            catalog.candidates("fixture-owner", &intent(None)),
+            Err(Refused::Artifact)
+        ));
+        let mut stale = space.clone();
+        stale.rootfs_digest = "b".repeat(64);
+        stale.template.reference = format!("fixture@sha256:{}", stale.rootfs_digest);
+        stale.template.provider_identity = Some(format!("sha256:{}", stale.rootfs_digest));
+        assert!(matches!(
+            catalog.candidates("fixture-owner", &intent(Some(stale))),
+            Err(Refused::Artifact)
+        ));
+        let mut pending = space.clone();
+        pending
+            .snapshots
+            .insert("small".into(), SnapshotReadiness::Pending);
+        assert!(matches!(
+            catalog.candidates("fixture-owner", &intent(Some(pending))),
+            Err(Refused::Artifact)
+        ));
+        let mut wrong = target;
+        wrong.space_compatibility.as_mut().unwrap().snapshot_format = "different-format".into();
+        let catalog = Catalog::new(&wrong.id.clone(), "fixture-policy", [wrong]).unwrap();
+        assert!(matches!(
+            catalog.candidates("fixture-owner", &intent(Some(space))),
+            Err(Refused::Artifact)
+        ));
     }
 }

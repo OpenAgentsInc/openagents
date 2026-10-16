@@ -247,6 +247,7 @@ async fn a_restarted_owner_recovers_a_build_mid_install() {
                 },
                 expected_draft_revision: 1,
                 size: "small".into(),
+                space: false,
             },
             1_000,
         )
@@ -318,4 +319,103 @@ fn liveness_and_breaker_messages_are_plain() {
     c.boot_failures = vec![0, 1_000, 2_000];
     let message = coder_working_computer::decide::breaker_message(&c, 3_000).unwrap();
     assert!(oa_copy::violations(&message, &[]).is_empty(), "{message}");
+}
+
+#[test]
+fn space_collection_keeps_private_computer_dependencies_and_never_touches_unowned_outputs() {
+    let env = Environment::new(
+        "env-1",
+        ProjectLink {
+            workspace: "ws-1".into(),
+            project: "proj-1".into(),
+        },
+        pin(),
+        recipe(),
+        0,
+    )
+    .unwrap();
+    let draft = env.draft();
+    let mut job = coder_environment_build::BuildJob {
+        schema: coder_environment_build::SCHEMA.into(),
+        id: "fixture-job".into(),
+        revision: 1,
+        created_ms: 1,
+        updated_ms: 1,
+        request_id: "fixture-request".into(),
+        fingerprint: "a".repeat(64),
+        computer: "fixture-builder".into(),
+        deadline_ms: 1000,
+        inputs: coder_environment_build::Inputs {
+            environment: env.id.clone(),
+            build_id: "fixture-build".into(),
+            recipe_revision: 1,
+            recipe_digest: draft.digest.clone(),
+            source: env.source.clone(),
+            base: draft.recipe.base.clone(),
+            runtime: draft.recipe.runtime.clone(),
+            platform: draft.recipe.platform.clone(),
+            install_digest: draft.recipe.install.digest.clone(),
+            install_cwd: ".".into(),
+            credential_names: BTreeSet::new(),
+            git_credential: None,
+            plan: coder_environment_build::sanitize::Plan::new(
+                &draft.recipe.capture,
+                "/tmp/fixture-sanitize",
+            ),
+            image_name: coder_environment_build::image_name(
+                &env.id,
+                "fixture-build",
+                &draft.digest,
+            ),
+            evidence_budget: 1 << 20,
+            space_requested: true,
+        },
+        phase: Phase::Cancelled,
+        unresolved: None,
+        generation: None,
+        source: None,
+        checkout: None,
+        install: None,
+        sanitize: None,
+        report: None,
+        capture: None,
+        image: None,
+        space: None,
+        reason: None,
+        usage: Default::default(),
+        cleanup: coder_environment_build::Cleanup::NotStarted,
+        segments: vec![],
+        history: vec![],
+    };
+    let mut space: coder_environment::artifacts::SpaceArtifact = serde_json::from_str(
+        include_str!("../../coder-environment/fixtures/space-artifact.json"),
+    )
+    .unwrap();
+    space.template.reference = format!(
+        "{}-space@sha256:{}",
+        job.inputs.image_name, space.rootfs_digest
+    );
+    space.inputs_digest = job.artifact_inputs_digest();
+    space.verification.inputs_digest = space.inputs_digest.clone();
+    space.runtime = job.inputs.runtime.clone();
+    job.space = Some(space.clone());
+    job.validate().unwrap();
+    assert_eq!(
+        images::unused_space(&env, &[job.clone(), job.clone()], &[]),
+        vec![space.clone()]
+    );
+    let retained = coder_environment::ImageIdentity {
+        provider: Provider::Gce,
+        image_id: "fixture-gce".into(),
+        snapshot_id: Some("123".into()),
+        manifest_digest: "a".repeat(64),
+        space: Some(space.clone()),
+    };
+    assert!(images::unused_space(&env, &[job.clone()], &[retained]).is_empty());
+    let mut active = job.clone();
+    active.phase = Phase::PublishingSpace;
+    assert!(images::unused_space(&env, &[active], &[]).is_empty());
+    job.space.as_mut().unwrap().template.reference =
+        format!("someone-elses-image@sha256:{}", space.rootfs_digest);
+    assert!(images::unused_space(&env, &[job], &[]).is_empty());
 }

@@ -974,6 +974,7 @@ impl<P: Commands + Images, T: Transport> Agent<P, T> {
                     owner: brief.owner.clone(),
                     expected_draft_revision: draft,
                     size: brief.size.clone(),
+                    space: false,
                 };
                 match owners.build(&request, now_ms()).await {
                     Ok(j) => {

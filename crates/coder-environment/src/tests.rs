@@ -67,6 +67,7 @@ fn image(c: char) -> ImageIdentity {
         image_id: format!("env-1-candidate-{c}"),
         snapshot_id: Some(format!("snap-{c}")),
         manifest_digest: d(c),
+        space: None,
     }
 }
 fn run(job: &str) -> RunLink {

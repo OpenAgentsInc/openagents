@@ -3673,6 +3673,7 @@ version = "1.0.0"
 dependencies = [
  "atif",
  "boat",
+ "computer-driver",
  "secret-screen",
  "serde",
  "serde_json",

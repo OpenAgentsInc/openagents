@@ -245,6 +245,7 @@ fn request(id: &str, expected: u64) -> BuildRequest {
         },
         expected_draft_revision: expected,
         size: "small".into(),
+        space: false,
     }
 }
 fn provider(h: &Harness) -> &FakeProvider {
@@ -343,6 +344,8 @@ async fn a_clean_build_captures_a_sanitized_immutable_image() {
         name: image.image_id.clone(),
         snapshot,
         builder: resource.clone(),
+        build_inputs_digest: None,
+        space: None,
     };
     assert_eq!(image.manifest_digest, manifest.digest());
     assert_eq!(job.manifest(), Some(manifest.clone()));
@@ -775,4 +778,180 @@ fn a_snapshot_exclusion_file_is_removed_so_installed_toolchains_are_captured() {
     assert!(stdout.contains("removed ~/.boxignore"), "{stdout}");
     assert!(!home.join(".boxignore").exists());
     assert!(home.join(".cargo/bin/cargo").exists());
+}
+
+fn space_artifact_for(job: &BuildJob) -> coder_environment::artifacts::SpaceArtifact {
+    let mut artifact: coder_environment::artifacts::SpaceArtifact = serde_json::from_str(
+        include_str!("../../coder-environment/fixtures/space-artifact.json"),
+    )
+    .unwrap();
+    artifact.template.reference = format!(
+        "{}-space@sha256:{}",
+        job.inputs.image_name, artifact.rootfs_digest
+    );
+    artifact.inputs_digest = job.artifact_inputs_digest();
+    artifact.verification.inputs_digest = artifact.inputs_digest.clone();
+    artifact.runtime = job.inputs.runtime.clone();
+    artifact.verification.plan_digest = d('e');
+    artifact
+}
+
+fn space_evidence(
+    h: &Harness,
+    job: &BuildJob,
+    artifact: &mut coder_environment::artifacts::SpaceArtifact,
+    success: bool,
+) {
+    use coder_environment::evidence::{CallIdentity, CallResult, Recorder, StreamName};
+    let run = env_build(h, &job.inputs.build_id).run.unwrap();
+    let checks: [(&str, &[&str], &str); 4] = [
+        (
+            "space-publication",
+            &["environment.space.build", "environment.space.publish"],
+            &artifact.builder,
+        ),
+        (
+            "space-verify",
+            &[
+                "environment.space.source",
+                "environment.space.build-test",
+                "environment.space.runtime",
+                "environment.space.shape",
+            ],
+            &artifact.verification.computer,
+        ),
+        (
+            "space-privacy",
+            &["environment.space.privacy"],
+            &artifact.builder,
+        ),
+        (
+            "space-cleanup",
+            &["environment.space.cleanup"],
+            &artifact.verification.computer,
+        ),
+    ];
+    let mut digests = Vec::new();
+    for (segment, tools, computer) in checks {
+        let mut recorder = Recorder::create(
+            h.builder.evidence_dir(&job.id, segment),
+            segment,
+            Some(run.clone()),
+            Redactor::new(),
+            1 << 20,
+        )
+        .unwrap();
+        for (n, tool) in tools.iter().enumerate() {
+            let id = format!("check-{n}");
+            recorder.start_call(CallIdentity { id: id.clone(), parent: None, run: run.clone(), tool: (*tool).into(), request: None, operation: Some(computer.into()) },
+                &serde_json::json!({"build_job":job.id,"inputs_digest":artifact.inputs_digest,"rootfs_digest":artifact.rootfs_digest}), 2_000).unwrap();
+            recorder
+                .output(&id, StreamName::Stdout, b"fixture check result\n")
+                .unwrap();
+            recorder.close_stream(&id, StreamName::Stdout).unwrap();
+            recorder.close_stream(&id, StreamName::Stderr).unwrap();
+            let passed = success || segment != "space-verify";
+            recorder
+                .result(
+                    &id,
+                    CallResult::Exited {
+                        code: Some(if passed { 0 } else { 1 }),
+                        success: passed,
+                    },
+                    2_001,
+                )
+                .unwrap();
+        }
+        let sealed = recorder.finish(2_002).unwrap();
+        assert!(sealed.status.complete());
+        digests.push(sealed.digest);
+    }
+    artifact.publication_evidence_digest = digests[0].clone();
+    artifact.verification.evidence_digest = digests[1].clone();
+    artifact.privacy_evidence_digest = digests[2].clone();
+    artifact.verification.cleanup_evidence_digest = digests[3].clone();
+}
+
+#[tokio::test]
+async fn space_publication_is_fenced_by_the_existing_clean_build_and_evidence() {
+    let h = harness();
+    let mut r = request("with-space", 1);
+    r.space = true;
+    let waiting = h.builder.start(&r, 1_000).await.unwrap();
+    assert_eq!(waiting.phase, Phase::PublishingSpace);
+    assert!(waiting.image.is_none());
+    assert_eq!(count(&h, "capture_image"), 0);
+    let mut artifact = space_artifact_for(&waiting);
+    assert!(
+        h.builder
+            .publish_space(&waiting.id, artifact.clone(), 2_000)
+            .await
+            .is_err()
+    );
+    assert_eq!(count(&h, "capture_image"), 0);
+    space_evidence(&h, &waiting, &mut artifact, true);
+    let job = h
+        .builder
+        .publish_space(&waiting.id, artifact.clone(), 3_000)
+        .await
+        .unwrap();
+    assert_eq!(job.phase, Phase::Ready);
+    assert_eq!(job.space.as_ref(), Some(&artifact));
+    let image = job.image.as_ref().unwrap();
+    assert_eq!(image.space.as_ref(), Some(&artifact));
+    let manifest = job.manifest().unwrap();
+    manifest.validate_space().unwrap();
+    assert_eq!(manifest.space.as_ref(), Some(&artifact));
+    assert_eq!(image.manifest_digest, manifest.digest());
+    let mut changed = manifest;
+    changed.space.as_mut().unwrap().runtime.digest = d('f');
+    assert!(changed.validate_space().is_err());
+    assert_ne!(changed.digest(), image.manifest_digest);
+    let again = h
+        .builder
+        .publish_space(&job.id, artifact.clone(), 4_000)
+        .await
+        .unwrap();
+    assert_eq!(again.image, job.image);
+    assert_eq!(count(&h, "capture_image"), 1);
+    artifact.privacy_evidence_digest = d('a');
+    assert!(
+        h.builder
+            .publish_space(&job.id, artifact, 5_000)
+            .await
+            .is_err()
+    );
+}
+
+#[tokio::test]
+async fn failed_or_stale_space_checks_cannot_publish_and_cancel_cleans_the_builder() {
+    let h = harness();
+    let mut r = request("failed-space", 1);
+    r.space = true;
+    let job = h.builder.start(&r, 1_000).await.unwrap();
+    let mut artifact = space_artifact_for(&job);
+    space_evidence(&h, &job, &mut artifact, false);
+    assert!(
+        h.builder
+            .publish_space(&job.id, artifact.clone(), 3_000)
+            .await
+            .is_err()
+    );
+    assert_eq!(count(&h, "capture_image"), 0);
+    artifact.inputs_digest = d('c');
+    artifact.verification.inputs_digest = artifact.inputs_digest.clone();
+    assert!(
+        h.builder
+            .publish_space(&job.id, artifact, 4_000)
+            .await
+            .is_err()
+    );
+    let job = h
+        .builder
+        .cancel(&job.id, "fixture publication failed", 5_000)
+        .await
+        .unwrap();
+    assert_eq!(job.phase, Phase::Cancelled);
+    assert!(matches!(job.cleanup, Cleanup::Complete { .. }));
+    assert_eq!(count(&h, "capture_image"), 0);
 }

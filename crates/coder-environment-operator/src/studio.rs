@@ -646,6 +646,18 @@ impl Studio {
     }
 
     /// One environment's page.
+    /// Resolve a saved version for allocation without the page's history limit.
+    pub fn version_image(&self, id: &str, number: u64) -> Option<coder_environment::ImageIdentity> {
+        let env = self.envs().read(id).ok()?;
+        if env.project.workspace != self.config.owner.workspace || env.retired_ms.is_some() {
+            return None;
+        }
+        env.versions
+            .iter()
+            .find(|v| v.number == number)
+            .map(|v| v.image.clone())
+    }
+
     pub fn view(&self, id: &str) -> Option<View> {
         let env = self.envs().read(id).ok()?;
         if env.project.workspace != self.config.owner.workspace {

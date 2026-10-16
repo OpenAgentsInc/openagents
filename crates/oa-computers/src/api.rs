@@ -279,6 +279,9 @@ async fn create(
             Err(e) => return err(StatusCode::BAD_REQUEST, "invalid_body", &e.to_string()),
         }
     };
+    if api.catalog.is_none() && body.environment_image.is_some() {
+        return admission_error(crate::registry::Refused::Artifact);
+    }
     if let Some(key) = headers.get("idempotency-key") {
         let Ok(key) = key.to_str() else {
             return err(

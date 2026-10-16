@@ -280,18 +280,23 @@ pub(crate) async fn create(
                     "No such environment version.",
                 );
             }
-            let Some(saved) = studio.view(environment).and_then(|v| {
-                v.versions
-                    .into_iter()
-                    .find(|v| v.number.to_string() == version)
-            }) else {
+            let Some(image) = version
+                .parse::<u64>()
+                .ok()
+                .filter(|number| number.to_string() == version)
+                .and_then(|number| studio.version_image(environment, number))
+            else {
                 return refused(
                     StatusCode::NOT_FOUND,
                     "not_found",
                     "No such environment version.",
                 );
             };
-            body["image"] = json!(saved.image);
+            if image.space.is_some() {
+                body["environment_image"] = json!(image);
+            } else {
+                body["image"] = json!(image.image_id);
+            }
         }
         _ => {
             return refused(

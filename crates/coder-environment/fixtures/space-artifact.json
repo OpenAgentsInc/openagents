@@ -1,0 +1,95 @@
+{
+  "template": {
+    "kind": "space-template",
+    "reference": "fixture@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "provider_identity": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "rootfs_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "inputs_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "builder": "fixture-clean-builder",
+  "runtime": {
+    "revision": "fixture-5",
+    "digest": "5555555555555555555555555555555555555555555555555555555555555555"
+  },
+  "coder_version": "1.0.0",
+  "harness": {
+    "revision": "fixture-6",
+    "digest": "6666666666666666666666666666666666666666666666666666666666666666"
+  },
+  "inventory": [
+    {
+      "name": "coder",
+      "digest": "5555555555555555555555555555555555555555555555555555555555555555"
+    },
+    {
+      "name": "rustc",
+      "digest": "7777777777777777777777777777777777777777777777777777777777777777"
+    },
+    {
+      "name": "cargo",
+      "digest": "8888888888888888888888888888888888888888888888888888888888888888"
+    },
+    {
+      "name": "git",
+      "digest": "9999999999999999999999999999999999999999999999999999999999999999"
+    },
+    {
+      "name": "ca-certificates",
+      "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  ],
+  "compatibility": {
+    "platform": {
+      "os": "linux",
+      "architecture": "x86_64"
+    },
+    "guest_daemon": {
+      "revision": "fixture-1",
+      "digest": "1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    "kernel": {
+      "revision": "fixture-2",
+      "digest": "2222222222222222222222222222222222222222222222222222222222222222"
+    },
+    "host_runtime": {
+      "revision": "fixture-3",
+      "digest": "3333333333333333333333333333333333333333333333333333333333333333"
+    },
+    "snapshot_format": "firecracker-snapshot-9.0.0",
+    "boot_profile_digest": "4444444444444444444444444444444444444444444444444444444444444444"
+  },
+  "snapshots": {
+    "small": {
+      "state": "ready",
+      "base": {
+        "shape": {
+          "vcpus": 2,
+          "memory_mib": 1024
+        },
+        "snapshot": {
+          "name": "fixture-clean-base",
+          "digest": "9999999999999999999999999999999999999999999999999999999999999999"
+        },
+        "compatibility_digest": "9ff3fdc2b3ba3847f720afe6ff8fb92fb4a899cf5bf8b0bd554c34451f32de47",
+        "privacy_evidence_digest": "0000000000000000000000000000000000000000000000000000000000000000"
+      }
+    }
+  },
+  "verification": {
+    "computer": "fixture-fresh-verifier",
+    "rootfs_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "inputs_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "plan_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "evidence_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "passed_tests": 2,
+    "cleanup_evidence_digest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "size": "small",
+    "actual_shape": {
+      "vcpus": 2,
+      "memory_mib": 1024
+    },
+    "compatibility_digest": "9ff3fdc2b3ba3847f720afe6ff8fb92fb4a899cf5bf8b0bd554c34451f32de47"
+  },
+  "publication_evidence_digest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  "privacy_evidence_digest": "0000000000000000000000000000000000000000000000000000000000000000"
+}

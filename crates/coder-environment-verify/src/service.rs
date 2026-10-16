@@ -296,7 +296,9 @@ impl<P: Commands + Images> Verifier<P> {
             .ok_or(VerifyError::Refused(
                 "The build's image manifest is missing.",
             ))?;
-        if manifest.digest() != image.manifest_digest
+        if manifest.validate_space().is_err()
+            || manifest.space != image.space
+            || manifest.digest() != image.manifest_digest
             || manifest.recipe_digest != build.recipe_digest
             || manifest.source != build.source
             || manifest.name != image.image_id

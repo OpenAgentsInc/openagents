@@ -824,3 +824,94 @@ async fn a_saved_memory_requirement_cannot_become_a_disk_only_stop_after_restart
         })
         .await;
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn environment_artifact_refusals_leave_no_rows_or_provider_effects() {
+    let Some(db) = database().await else {
+        return;
+    };
+    let store = Store::new(db.clone());
+    let root = tempfile::tempdir().unwrap();
+    let mut provider = Simulated::new(root.path(), true);
+    provider.caps.shapes.get_mut("small").unwrap().memory_mib = 1024;
+    let space: coder_environment::artifacts::SpaceArtifact = serde_json::from_str(include_str!(
+        "../../coder-environment/fixtures/space-artifact.json"
+    ))
+    .unwrap();
+    let mut target = provider.target("space");
+    target.space_compatibility = Some(space.compatibility.clone());
+    let image = coder_environment::ImageIdentity {
+        provider: coder_environment::Provider::Gce,
+        image_id: "fixture-gce".into(),
+        snapshot_id: Some("123".into()),
+        manifest_digest: "d".repeat(64),
+        space: Some(space.clone()),
+    };
+    for (name, mut image) in [
+        ("gce-only", image.clone()),
+        ("wrong-architecture", image.clone()),
+        ("wrong-kernel", image.clone()),
+        ("wrong-snapshot", image.clone()),
+        ("stale-verification", image.clone()),
+        ("withdrawn", image.clone()),
+    ] {
+        let mut target = target.clone();
+        match name {
+            "gce-only" => image.space = None,
+            "wrong-architecture" => {
+                image
+                    .space
+                    .as_mut()
+                    .unwrap()
+                    .compatibility
+                    .platform
+                    .architecture = "aarch64".into()
+            }
+            "wrong-kernel" => {
+                image.space.as_mut().unwrap().compatibility.kernel.digest = "c".repeat(64)
+            }
+            "wrong-snapshot" => {
+                target.space_compatibility.as_mut().unwrap().snapshot_format =
+                    "different-format".into()
+            }
+            "stale-verification" => {
+                image.space.as_mut().unwrap().verification.inputs_digest = "f".repeat(64)
+            }
+            "withdrawn" => {
+                target
+                    .withdrawn_artifacts
+                    .insert(space.rootfs_digest.clone());
+            }
+            _ => unreachable!(),
+        }
+        let catalog = Catalog::new("space", "fixture-policy", [target]).unwrap();
+        let request = CreateIntent {
+            environment: Some("fixture-env".into()),
+            version: Some("1".into()),
+            environment_image: Some(image),
+            placement: Some(Placement::FastSandbox),
+            idempotency_key: Some(name.into()),
+            ..Default::default()
+        };
+        assert!(
+            matches!(
+                store.create_placed("alice", &request, &catalog).await,
+                Err(oa_computers::store::CreateError::Admission(
+                    oa_computers::registry::Refused::Artifact
+                ))
+            ),
+            "{name}"
+        );
+    }
+    let count: i64 = db
+        .client()
+        .await
+        .unwrap()
+        .query_one("SELECT count(*) FROM computers.computers", &[])
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(count, 0);
+    assert!(provider.fake.calls().is_empty());
+    assert!(provider.creates.lock().unwrap().is_empty());
+}

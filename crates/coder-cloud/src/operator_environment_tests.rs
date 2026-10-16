@@ -111,6 +111,7 @@ fn promote(s: &EnvStore, n: u64) {
                 image_id: format!("oaenv-build-{n}"),
                 snapshot_id: Some(format!("snap-{n}")),
                 manifest_digest: d('c'),
+                space: None,
             },
         },
     ] {
@@ -397,6 +398,7 @@ fn reviewed_promote_select_and_rollback_recover_by_request_and_pin_new_jobs() {
                 image_id: "oaenv-build-2".into(),
                 snapshot_id: Some("snap-2".into()),
                 manifest_digest: d('c'),
+                space: None,
             },
         },
     ] {

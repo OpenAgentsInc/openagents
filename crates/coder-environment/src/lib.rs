@@ -18,6 +18,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 
+pub mod artifacts;
 pub mod capture;
 pub mod evidence;
 pub mod promotion;
@@ -136,6 +137,9 @@ pub struct ImageIdentity {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub snapshot_id: Option<String>,
     pub manifest_digest: String,
+    /// Additional clean output for SPACE; the primary Boat image stays unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub space: Option<artifacts::SpaceArtifact>,
 }
 impl ImageIdentity {
     pub fn validate(&self) -> Result<(), &'static str> {
@@ -147,6 +151,9 @@ impl ImageIdentity {
             || !valid_digest(&self.manifest_digest)
         {
             return Err("The output image identity is incomplete.");
+        }
+        if let Some(space) = &self.space {
+            space.validate()?;
         }
         Ok(())
     }

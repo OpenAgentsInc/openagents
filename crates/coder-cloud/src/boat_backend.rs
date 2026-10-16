@@ -880,6 +880,7 @@ mod image_tests {
                 image_id: "oaenv-build-1".into(),
                 snapshot_id: Some("snap-1".into()),
                 manifest_digest: d('e'),
+                space: None,
             },
             plan_digest: d('f'),
             evidence_digest: d('9'),

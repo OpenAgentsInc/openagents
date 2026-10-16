@@ -89,6 +89,8 @@ pub struct Inputs {
     pub plan: sanitize::Plan,
     pub image_name: String,
     pub evidence_budget: u64,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub space_requested: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -101,6 +103,7 @@ pub enum Phase {
     Sanitizing,
     /// Stopping the builder so the capture sees a quiet filesystem.
     Quiescing,
+    PublishingSpace,
     Capturing,
     Ready,
     Failed,
@@ -117,7 +120,7 @@ impl Phase {
             Self::Provisioning | Self::Materializing => B::Provisioning,
             Self::Installing => B::Installing,
             Self::Sanitizing | Self::Quiescing => B::PreparingImage,
-            Self::Capturing => B::SnapshotPending,
+            Self::PublishingSpace | Self::Capturing => B::SnapshotPending,
             Self::Ready => B::Ready,
             Self::Failed => B::Failed,
             Self::Cancelled => B::Cancelled,
@@ -185,8 +188,29 @@ pub struct ImageManifest {
     pub name: String,
     pub snapshot: String,
     pub builder: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub build_inputs_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub space: Option<coder_environment::artifacts::SpaceArtifact>,
 }
 impl ImageManifest {
+    pub fn validate_space(&self) -> Result<(), &'static str> {
+        match (&self.space, &self.build_inputs_digest) {
+            (None, None) => Ok(()),
+            (Some(space), Some(inputs)) => {
+                space.validate()?;
+                if &space.inputs_digest != inputs
+                    || space.runtime != self.runtime
+                    || space.compatibility.platform != self.platform
+                {
+                    return Err("The SPACE image does not match this environment build.");
+                }
+                Ok(())
+            }
+            _ => Err("The SPACE image is missing its build inputs."),
+        }
+    }
+
     pub fn digest(&self) -> String {
         coder_environment::digest(&serde_json::to_vec(self).expect("manifest encodes"))
     }
@@ -276,6 +300,8 @@ pub struct BuildJob {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub image: Option<ImageIdentity>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub space: Option<coder_environment::artifacts::SpaceArtifact>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
     pub usage: Usage,
     pub cleanup: Cleanup,
@@ -313,9 +339,23 @@ impl BuildJob {
         if self.phase == Phase::Ready && self.image.is_none() {
             return Err("A ready build needs its sealed image.");
         }
+        if let Some(space) = &self.space {
+            space.validate()?;
+            if !self.inputs.space_requested
+                || space.inputs_digest != self.artifact_inputs_digest()
+                || space.runtime != self.inputs.runtime
+                || space.compatibility.platform != self.inputs.platform
+            {
+                return Err("The SPACE image does not match this build's inputs.");
+            }
+        }
         if let Some(i) = &self.image {
             i.validate()?;
-            if i.image_id != self.inputs.image_name || i.snapshot_id.is_none() {
+            if i.image_id != self.inputs.image_name
+                || i.snapshot_id.is_none()
+                || i.space != self.space
+                || (self.inputs.space_requested && i.space.is_none())
+            {
                 return Err("The sealed image must be the owned name and an immutable snapshot.");
             }
         }
@@ -334,6 +374,7 @@ impl BuildJob {
             && next.revision > self.revision
             && (!self.phase.terminal() || next.phase == self.phase)
             && (self.image.is_none() || next.image == self.image)
+            && (self.space.is_none() || next.space == self.space)
             && next.history.starts_with(&self.history)
             && next.segments.len() >= self.segments.len()
             && (self.source.is_none() || next.source.is_some())
@@ -347,9 +388,12 @@ impl BuildJob {
             })
     }
 
-    /// The manifest of the sealed image, reconstructed from the retained
-    /// capture; its digest equals the `BuildAttempt` image's manifest
-    /// digest. A verifier uses it to agree on the exact image identity.
+    /// Bind a backend output to the exact inputs retained before allocation.
+    pub fn artifact_inputs_digest(&self) -> String {
+        coder_environment::digest(&serde_json::to_vec(&self.inputs).expect("build inputs encode"))
+    }
+
+    /// Reconstruct the sealed image manifest so a verifier can check its digest.
     pub fn manifest(&self) -> Option<ImageManifest> {
         let record = self.capture.as_ref()?.record.as_ref()?;
         self.image.as_ref()?;
@@ -369,6 +413,8 @@ impl BuildJob {
             name: record.name.clone(),
             snapshot: record.snapshot.clone()?,
             builder: record.source.clone(),
+            build_inputs_digest: self.space.as_ref().map(|_| self.artifact_inputs_digest()),
+            space: self.space.clone(),
         })
     }
 

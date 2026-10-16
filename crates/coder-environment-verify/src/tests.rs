@@ -216,6 +216,7 @@ async fn harness_with(plan: CheckPlan) -> Harness {
                 owner: owner(),
                 expected_draft_revision: 1,
                 size: "small".into(),
+                space: false,
             },
             1_000,
         )

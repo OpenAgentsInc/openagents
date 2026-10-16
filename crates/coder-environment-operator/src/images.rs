@@ -14,7 +14,7 @@
 //! again at the next sweep.
 
 use crate::Owners;
-use coder_environment::Environment;
+use coder_environment::{Environment, ImageIdentity, artifacts::SpaceArtifact};
 use coder_environment_build::BuildJob;
 use coder_working_computer::provider::{Images, Outcome};
 use serde::{Deserialize, Serialize};
@@ -58,6 +58,46 @@ pub fn unused(env: &Environment, jobs: &[BuildJob]) -> Vec<String> {
         }
     }
     names
+}
+
+/// SPACE outputs whose owned publication can be deleted. Callers pass the
+/// immutable images retained by private computers as well as saved versions.
+/// Withdrawal does not remove either reference. Shared host kernels and guest
+/// daemons are not publication-owned objects and are never deletion candidates.
+pub fn unused_space(
+    env: &Environment,
+    jobs: &[BuildJob],
+    private_images: &[ImageIdentity],
+) -> Vec<SpaceArtifact> {
+    let retained: BTreeSet<&str> = env
+        .versions
+        .iter()
+        .map(|v| &v.image)
+        .chain(private_images)
+        .filter_map(|image| image.space.as_ref())
+        .flat_map(SpaceArtifact::retained_references)
+        .collect();
+    let mut seen = BTreeSet::new();
+    jobs.iter()
+        .filter(|job| job.inputs.environment == env.id && job.phase.terminal())
+        .filter_map(|job| {
+            let space = job.space.as_ref()?;
+            let expected = format!(
+                "{}-space@sha256:{}",
+                coder_environment_build::image_name(
+                    &env.id,
+                    &job.inputs.build_id,
+                    &job.inputs.recipe_digest
+                ),
+                space.rootfs_digest
+            );
+            (space.template.reference == expected
+                && !retained.contains(space.template.reference.as_str())
+                && !retained.contains(space.rootfs_digest.as_str())
+                && seen.insert(space.digest()))
+            .then(|| space.clone())
+        })
+        .collect()
 }
 
 /// Delete `environment`'s unused images (see [`unused`]). Returns the

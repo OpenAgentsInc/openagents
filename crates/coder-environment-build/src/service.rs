@@ -102,6 +102,8 @@ pub struct BuildRequest {
     /// The draft revision the caller saw; a later edit refuses the build.
     pub expected_draft_revision: u64,
     pub size: String,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub space: bool,
 }
 
 /// A job with the facts a client needs beside it.
@@ -341,6 +343,7 @@ impl<P: Commands + Images> Builder<P> {
             plan: Plan::new(&recipe.capture, &format!("{COMMAND_DIR}/sanitize")),
             image_name: image_name(&env.id, &build_id, &build.recipe_digest),
             evidence_budget: recipe.limits.output_bytes,
+            space_requested: request.space,
         };
         let spec = Spec {
             id: computer_id.clone(),
@@ -394,6 +397,7 @@ impl<P: Commands + Images> Builder<P> {
             report: None,
             capture: None,
             image: None,
+            space: None,
             reason: None,
             usage: Usage::default(),
             cleanup: Cleanup::NotStarted,
@@ -443,6 +447,129 @@ impl<P: Commands + Images> Builder<P> {
         self.advance_locked(&lease, now_ms).await
     }
 
+    /// Seal a separately built and freshly verified SPACE output before the
+    /// primary image is captured. The same lease fences publication and capture.
+    pub async fn publish_space(
+        &self,
+        id: &str,
+        artifact: coder_environment::artifacts::SpaceArtifact,
+        now_ms: u64,
+    ) -> Result<BuildJob> {
+        artifact.validate().map_err(BuildError::Refused)?;
+        let lease = self.jobs.lease(id)?;
+        let job = lease.read()?;
+        if job.space.as_ref() == Some(&artifact) {
+            return self.advance_locked(&lease, now_ms).await;
+        }
+        if job.phase != Phase::PublishingSpace
+            || job.space.is_some()
+            || now_ms >= job.deadline_ms
+            || job
+                .report
+                .as_ref()
+                .is_none_or(|r| !r.clean_for(&job.inputs.plan))
+            || artifact.template.reference
+                != format!(
+                    "{}-space@sha256:{}",
+                    job.inputs.image_name, artifact.rootfs_digest
+                )
+            || artifact.inputs_digest != job.artifact_inputs_digest()
+            || artifact.runtime != job.inputs.runtime
+            || artifact.compatibility.platform != job.inputs.platform
+        {
+            return Err(BuildError::Refused(
+                "The SPACE image does not match the clean build.",
+            ));
+        }
+        let env = self.environments.read(&job.inputs.environment)?;
+        let recipe = env
+            .recipes
+            .iter()
+            .find(|r| r.revision == job.inputs.recipe_revision)
+            .ok_or(BuildError::Refused("The build recipe is missing."))?;
+        if env.retired_ms.is_some()
+            || env.draft_revision != job.inputs.recipe_revision
+            || recipe.recipe.qualification.plan_digest != artifact.verification.plan_digest
+        {
+            return Err(BuildError::Refused(
+                "The SPACE image needs the current environment checks.",
+            ));
+        }
+        self.check_space_evidence(&job, &artifact)?;
+        lease.update(now_ms, |j| {
+            j.space = Some(artifact);
+            j.phase = Phase::Capturing;
+            j.unresolved = None;
+        })?;
+        self.advance_locked(&lease, now_ms).await
+    }
+
+    fn check_space_evidence(
+        &self,
+        job: &BuildJob,
+        artifact: &coder_environment::artifacts::SpaceArtifact,
+    ) -> Result<()> {
+        use coder_environment::evidence::{CallOutcome, load_manifest};
+        let checks: [(&str, &str, &[&str], &str); 4] = [
+            (
+                "space-publication",
+                &artifact.publication_evidence_digest,
+                &["environment.space.build", "environment.space.publish"],
+                &artifact.builder,
+            ),
+            (
+                "space-verify",
+                &artifact.verification.evidence_digest,
+                &[
+                    "environment.space.source",
+                    "environment.space.build-test",
+                    "environment.space.runtime",
+                    "environment.space.shape",
+                ],
+                &artifact.verification.computer,
+            ),
+            (
+                "space-privacy",
+                &artifact.privacy_evidence_digest,
+                &["environment.space.privacy"],
+                &artifact.builder,
+            ),
+            (
+                "space-cleanup",
+                &artifact.verification.cleanup_evidence_digest,
+                &["environment.space.cleanup"],
+                &artifact.verification.computer,
+            ),
+        ];
+        for (segment, digest, tools, computer) in checks {
+            let manifest = load_manifest(&self.evidence_dir(&job.id, segment), digest)?;
+            if !manifest.status.complete()
+                || manifest
+                    .calls
+                    .iter()
+                    .any(|call| call.outcome != CallOutcome::Succeeded)
+                || tools.iter().any(|tool| {
+                    !manifest.calls.iter().any(|call| {
+                        call.identity.tool == *tool
+                            && call.identity.operation.as_deref() == Some(computer)
+                            && call.arguments.as_ref().is_some_and(|args| {
+                                args["inputs_digest"].as_str()
+                                    == Some(artifact.inputs_digest.as_str())
+                                    && args["rootfs_digest"].as_str()
+                                        == Some(artifact.rootfs_digest.as_str())
+                                    && args["build_job"].as_str() == Some(job.id.as_str())
+                            })
+                    })
+                })
+            {
+                return Err(BuildError::Refused(
+                    "The SPACE build checks are missing or incomplete.",
+                ));
+            }
+        }
+        Ok(())
+    }
+
     /// Retry the builder's cleanup (and its usage check) after the build
     /// ended.
     pub async fn cleanup(&self, id: &str, now_ms: u64) -> Result<BuildJob> {
@@ -475,6 +602,7 @@ impl<P: Commands + Images> Builder<P> {
                 Phase::Installing => self.step(lease, &job, Kind2::Install, now_ms).await?,
                 Phase::Sanitizing => self.step(lease, &job, Kind2::Sanitize, now_ms).await?,
                 Phase::Quiescing => self.quiesce(lease, &job, now_ms).await?,
+                Phase::PublishingSpace => false,
                 Phase::Capturing => self.capture(lease, &job, now_ms).await?,
                 Phase::Ready | Phase::Failed | Phase::Cancelled => true,
             };
@@ -916,7 +1044,11 @@ impl<P: Commands + Images> Builder<P> {
         lease.update(now_ms, |j| {
             if stopped {
                 j.unresolved = None;
-                j.phase = Phase::Capturing;
+                j.phase = if j.inputs.space_requested {
+                    Phase::PublishingSpace
+                } else {
+                    Phase::Capturing
+                };
             } else {
                 j.unresolved = Some(reason(format!(
                     "The builder has not stopped ({:?}).",
@@ -1024,12 +1156,15 @@ impl<P: Commands + Images> Builder<P> {
                     name: record.name.clone(),
                     snapshot: snapshot.clone(),
                     builder: resource.into(),
+                    build_inputs_digest: job.space.as_ref().map(|_| job.artifact_inputs_digest()),
+                    space: job.space.clone(),
                 };
                 Some(ImageIdentity {
                     provider: self.computers.provider.kind(),
                     image_id: record.name.clone(),
                     snapshot_id: Some(snapshot.clone()),
                     manifest_digest: manifest.digest(),
+                    space: job.space.clone(),
                 })
             }
             _ => None,
