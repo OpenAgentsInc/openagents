@@ -128,6 +128,11 @@ struct Session {
     owner: String,
     adapter: String,
     native: Option<String>,
+    /// An opening whose native acknowledgment has not been committed.
+    #[serde(default)]
+    opening: bool,
+    #[serde(default)]
+    opening_run: Vec<Value>,
     connection: String,
     ordinal: u64,
     generation: u64,
@@ -784,15 +789,32 @@ impl SessionHost {
                 fresh.signers.extend(state.signers);
                 fresh.declarations.extend(state.declarations);
                 state = fresh;
-                if body["v"] == "openagents.session-command.v1"
-                    && self.command_authority(&state, &signer, &body).is_ok()
-                {
-                    let key = format!(
-                        "{}:{}:{}",
-                        body["scope"]["authority"].as_str().unwrap_or_default(),
-                        body["scope"]["session"].as_str().unwrap_or_default(),
-                        body["command"].as_str().unwrap_or_default()
-                    );
+                let pending_key = match body["v"].as_str() {
+                    Some("openagents.session-command.v1")
+                        if self.command_authority(&state, &signer, &body).is_ok() =>
+                    {
+                        Some(format!(
+                            "{}:{}:{}",
+                            body["scope"]["authority"].as_str().unwrap_or_default(),
+                            body["scope"]["session"].as_str().unwrap_or_default(),
+                            body["command"].as_str().unwrap_or_default()
+                        ))
+                    }
+                    Some("openagents.session-open.v1")
+                        if body["owner"] == signer
+                            && body["authority"] == self.pubkey()
+                            && state.policy.owners.contains(&signer) =>
+                    {
+                        Some(format!(
+                            "{}:{}:{}",
+                            self.pubkey(),
+                            body["session"].as_str().unwrap_or_default(),
+                            body["command"].as_str().unwrap_or_default()
+                        ))
+                    }
+                    _ => None,
+                };
+                if let Some(key) = pending_key {
                     if let Some(prior) = state.priors.get(&key).filter(|p| {
                         p.fingerprint == digest_of(&input) && p.result["status"] == "unknown"
                     }) {
@@ -884,6 +906,7 @@ impl SessionHost {
         binding: Option<&Binding>,
         now: u64,
     ) -> Result<Value> {
+        let started = std::time::Instant::now();
         let key = format!(
             "{}:{}:{}",
             body["authority"].as_str().unwrap_or_default(),
@@ -984,34 +1007,6 @@ impl SessionHost {
             &engine,
         );
         let grant = self.check_binding(&runtime, now)?;
-        let native = if import.is_some() {
-            None
-        } else {
-            let mut opened = None;
-            self.bindings.with_current(&runtime, now, &mut || {
-                opened = Some(
-                    self.engines
-                        .borrow_mut()
-                        .get_mut(&adapter.engine)
-                        .ok_or("engine")?
-                        .open(resume.as_deref())?,
-                );
-                Ok(())
-            })?;
-            let opened = opened.ok_or("unknown: runtime did not acknowledge opening")?;
-            if let Some(other) = state.bound.get(&opened)
-                && state
-                    .sessions
-                    .get(other)
-                    .is_some_and(|s| s.phase != "closed")
-            {
-                return Err(refuse(
-                    "conflict",
-                    "the native session is bound to another session",
-                ));
-            }
-            Some(opened)
-        };
         let owner = signer.to_string();
         let mut run = Vec::new();
         let created = self.run_record(
@@ -1056,12 +1051,14 @@ impl SessionHost {
             lineage,
             owner: owner.clone(),
             adapter: digest_of(&adapter.reference).into(),
-            native: native.clone(),
+            native: None,
+            opening: import.is_none(),
+            opening_run: run,
             connection: token(),
             ordinal: 0,
             generation: 0,
             revision: 0,
-            phase: "ready".into(),
+            phase: if import.is_some() { "ready" } else { "unknown" }.into(),
             read_only: import.is_some(),
             archived: false,
             admission: admission_ref,
@@ -1075,14 +1072,88 @@ impl SessionHost {
             children: Vec::new(),
             natives: Vec::new(),
             results: Vec::new(),
-            quiescent: true,
+            quiescent: import.is_some(),
             pending_steers: Vec::new(),
             steers: Vec::new(),
             history: None,
             state: None,
             import,
         };
-        if let Some(native) = native {
+        if session.opening {
+            // Save the session ID, lineage, complete dispatch history, and exact
+            // pending reply before a native process or remote session can exist.
+            let pending_receipt = self.receipt(
+                state,
+                &session,
+                input,
+                0,
+                "open",
+                vec![created.clone(), dispatched.clone()],
+                now,
+            )?;
+            let pending = self.control_result(
+                state,
+                &owner,
+                input,
+                "unknown",
+                Some(pending_receipt),
+                Some("unavailable"),
+                now,
+            )?;
+            state.priors.insert(
+                key.clone(),
+                Prior {
+                    fingerprint: digest_of(input).into(),
+                    result: pending.clone(),
+                },
+            );
+            self.write_state(state, &mut session, now)?;
+            state.sessions.insert(id.clone(), session.clone());
+            self.save(state)?;
+            let current = now.saturating_add(started.elapsed().as_secs());
+            let mut native = None;
+            let opening = self.bindings.with_current(&runtime, current, &mut || {
+                let current = now.saturating_add(started.elapsed().as_secs());
+                if body["expires_at"]
+                    .as_u64()
+                    .is_none_or(|expiry| expiry <= current)
+                {
+                    return Err("stale: opening expired before native dispatch".into());
+                }
+                native = Some(
+                    self.engines
+                        .borrow_mut()
+                        .get_mut(&adapter.engine)
+                        .ok_or("engine")?
+                        .open(resume.as_deref())?,
+                );
+                Ok(())
+            });
+            // Never turn a lost acknowledgment into a retryable refusal.
+            if opening.is_err() || native.is_none() {
+                self.capture(state, &mut session, now)?;
+                self.write_state(state, &mut session, now)?;
+                state.sessions.insert(id.clone(), session);
+                return Ok(pending);
+            }
+            let native = native.ok_or("native acknowledgment")?;
+            if state.bound.get(&native).is_some_and(|other| {
+                state
+                    .sessions
+                    .get(other)
+                    .is_some_and(|s| s.phase != "closed")
+            }) {
+                // The adapter has returned a binding already in use. Preserve
+                // the unknown opening without changing the original binding.
+                self.capture(state, &mut session, now)?;
+                self.write_state(state, &mut session, now)?;
+                state.sessions.insert(id.clone(), session);
+                return Ok(pending);
+            }
+            session.native = Some(native.clone());
+            session.opening = false;
+            session.phase = "ready".into();
+            session.quiescent = true;
             state.bound.insert(native, id.clone());
         }
         self.capture(state, &mut session, now)?;
@@ -1176,6 +1247,9 @@ impl SessionHost {
         }
         let action = body["action"].as_str().unwrap_or_default().to_string();
         let payload = &body["payload"];
+        if session.opening && action != "archive" {
+            return Err(refuse("unavailable", "native opening is still unknown"));
+        }
         if session.phase == "closed" && action != "archive" {
             return Err(refuse("unavailable", "session is closed"));
         }

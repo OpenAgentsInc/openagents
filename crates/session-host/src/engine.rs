@@ -123,6 +123,8 @@ pub struct LoopEngine {
     pub fail_answer: bool,
     /// Fault: lose the start acknowledgment after the turn begins.
     pub fail_start: bool,
+    /// Fault: lose the opening acknowledgment after creating the native session.
+    pub fail_open: bool,
 }
 
 fn features(pairs: &[(&'static str, Support)]) -> BTreeMap<&'static str, Support> {
@@ -209,6 +211,7 @@ impl LoopEngine {
             started: 0,
             fail_answer: false,
             fail_start: false,
+            fail_open: false,
         }
     }
     fn capture(
@@ -257,6 +260,9 @@ impl Engine for LoopEngine {
             Some(id.clone()),
             &json!({"resume":resume.is_some()}),
         );
+        if self.fail_open {
+            return Err("unknown: native opening acknowledgment lost".into());
+        }
         Ok(id)
     }
     fn start(&mut self, native: &str, turn: &str, input: &[u8]) -> Result<()> {

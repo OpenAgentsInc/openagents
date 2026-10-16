@@ -1050,3 +1050,165 @@ fn a_read_only_attachment_probe_cannot_authorize_runtime_disclosure() {
     assert_eq!(result["reason"], "cannot_enforce");
     assert!(host.status(body["session"].as_str().unwrap()).is_err());
 }
+
+struct OpeningEngine {
+    engine: LoopEngine,
+    root: PathBuf,
+    calls: Rc<std::cell::Cell<usize>>,
+    crash: bool,
+}
+impl Engine for OpeningEngine {
+    fn profile(&self) -> crate::engine::Profile {
+        self.engine.profile()
+    }
+    fn open(&mut self, resume: Option<&[u8]>) -> crate::Result<String> {
+        let signer =
+            nostr::domain::RelaySigner::from_secret_hex(&secret(HOST).display_secret().to_string())
+                .unwrap();
+        let store = workspace_host::artifact::Artifacts::new(self.root.clone()).unwrap();
+        let saved: Value = store.load(&signer).unwrap();
+        let pending = saved["sessions"]
+            .as_object()
+            .unwrap()
+            .values()
+            .find(|s| s["opening"] == true)
+            .expect("opening saved before native effect");
+        assert_eq!(pending["phase"], "unknown");
+        assert!(pending["native"].is_null());
+        assert_eq!(pending["quiescent"], false);
+        assert_eq!(pending["opening_run"].as_array().unwrap().len(), 3);
+        assert!(
+            saved["priors"]
+                .as_object()
+                .unwrap()
+                .values()
+                .any(|p| p["result"]["status"] == "unknown")
+        );
+        self.calls.set(self.calls.get() + 1);
+        let opened = self.engine.open(resume);
+        assert!(!self.crash, "simulated process death after native opening");
+        opened
+    }
+    fn start(&mut self, native: &str, turn: &str, input: &[u8]) -> crate::Result<()> {
+        self.engine.start(native, turn, input)
+    }
+    fn step(&mut self, native: &str) -> crate::engine::Observation {
+        self.engine.step(native)
+    }
+    fn steer(&mut self, native: &str, turn: &str, correction: &[u8]) -> crate::Result<bool> {
+        self.engine.steer(native, turn, correction)
+    }
+    fn interrupt(&mut self, native: &str, turn: &str) -> crate::Result<()> {
+        self.engine.interrupt(native, turn)
+    }
+    fn answer(&mut self, native: &str, id: &str, response: &[u8]) -> crate::Result<()> {
+        self.engine.answer(native, id, response)
+    }
+    fn resume_state(&mut self, native: &str) -> Option<Vec<u8>> {
+        self.engine.resume_state(native)
+    }
+    fn captures(&mut self) -> Vec<crate::engine::Capture> {
+        self.engine.captures()
+    }
+    fn started(&self) -> usize {
+        self.engine.started()
+    }
+}
+
+#[test]
+fn opening_intent_survives_lost_acknowledgment_and_process_death() {
+    for crash in [false, true] {
+        let mut fx = Fx::new();
+        let calls = Rc::new(std::cell::Cell::new(0));
+        let mut engine = LoopEngine::mid_turn();
+        engine.fail_open = !crash;
+        let host = SessionHost::open(
+            fx.root.clone(),
+            secret(HOST),
+            vec![Box::new(OpeningEngine {
+                engine,
+                root: fx.root.clone(),
+                calls: calls.clone(),
+                crash,
+            })],
+            Box::new(fx.bindings.clone()),
+        )
+        .unwrap();
+        let adapter = host.admit_adapter("loop-mid-turn", fx.now).unwrap();
+        let body = fx.open_body(&host, &adapter, json!({"kind":"new","artifact":null}));
+        let session = body["session"].as_str().unwrap().to_string();
+        let binding = fx.binding();
+        let bundle = fx.bundle(OWNER, &body);
+        let initial = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            host.submit(&bundle, Some(&binding), fx.now).unwrap()
+        }));
+        if crash {
+            assert!(initial.is_err());
+        } else {
+            assert_eq!(initial.unwrap()["status"], "unknown");
+        }
+        assert_eq!(calls.get(), 1);
+        let retry = fx.send(&host, OWNER, &body, Some(&binding));
+        assert_eq!(retry["status"], "unknown");
+        assert_eq!(calls.get(), 1);
+        assert_eq!(host.status(&session).unwrap()["phase"], "unknown");
+        let restarted = fx.host();
+        assert_eq!(fx.send(&restarted, OWNER, &body, Some(&binding)), retry);
+        assert_eq!(restarted.started("loop-mid-turn"), 0);
+        assert_eq!(
+            restarted.observe(&session, fx.now).unwrap()["phase"],
+            "unknown"
+        );
+        let close = fx.command(&restarted, &session, "close", json!({"reason":"done"}));
+        assert_eq!(
+            fx.send(&restarted, OWNER, &close, None)["status"],
+            "refused"
+        );
+        let mut changed = body.clone();
+        changed["command"] = json!(fx.next());
+        assert_eq!(
+            fx.send(&restarted, OWNER, &changed, Some(&binding))["status"],
+            "conflict"
+        );
+        // Cached uncertainty is still private after owner revocation.
+        restarted.set_policy(Policy::default()).unwrap();
+        assert_eq!(
+            fx.send(&restarted, OWNER, &body, Some(&binding))["status"],
+            "refused"
+        );
+    }
+}
+
+#[test]
+fn an_unknown_resume_keeps_its_lineage_exclusive() {
+    let mut fx = Fx::new();
+    let host = fx.host();
+    let (session, adapter) = fx.open(&host, "loop-mid-turn");
+    let history = host.export(&session, fx.now).unwrap();
+    let bytes = host.store().get(&history).unwrap();
+    fx.artifacts.insert(digest_bytes(&bytes), bytes);
+    let close = fx.command(
+        &host,
+        &session,
+        "close",
+        json!({"reason":"resume elsewhere"}),
+    );
+    assert_eq!(fx.send(&host, OWNER, &close, None)["status"], "accepted");
+    let mut engine = LoopEngine::mid_turn();
+    engine.fail_open = true;
+    let host = fx.host_with(engine, LoopEngine::boundary());
+    let resume = fx.open_body(&host, &adapter, json!({"kind":"resume","artifact":history}));
+    let binding = fx.binding();
+    assert_eq!(
+        fx.send(&host, OWNER, &resume, Some(&binding))["status"],
+        "unknown"
+    );
+    let resumed = resume["session"].as_str().unwrap().to_string();
+    let close = fx.command(&host, &resumed, "close", json!({"reason":"try again"}));
+    assert_eq!(fx.send(&host, OWNER, &close, None)["status"], "refused");
+    let other = fx.open_body(&host, &adapter, json!({"kind":"resume","artifact":history}));
+    assert_eq!(
+        fx.send(&host, OWNER, &other, Some(&binding))["reason"],
+        "conflict"
+    );
+}

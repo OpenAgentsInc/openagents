@@ -107,6 +107,13 @@ engine. A lost start reply stays unknown, including on exact retry or restart.
 A successful later observation can finish that original turn, but cannot
 promote its consumed queue head again.
 
+Opening also saves the session ID, resume lineage, complete RUN intent, and
+pending reply before calling the engine. A lost acknowledgment or process
+restart keeps that opening unknown. Exact retries return its original reply;
+another command cannot reuse the session ID or resume lineage. An unknown
+opening cannot be closed to make that lineage available again. Archiving only
+hides it and does not assert that the native engine stopped.
+
 The store retains at most 64 sessions and 256 queued intents per session.
 Limits stop new admissions and never discard history. All fixtures use
 throwaway keys and local state; no money moves.

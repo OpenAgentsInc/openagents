@@ -765,3 +765,11 @@ or knowledge of an attachment fingerprint cannot substitute for those checks.
 The allocator holds its current attachment fence through the native operation;
 the mounted COORD authority checks the same current claim under its own fence.
 An adapter without this authority refuses runtime admission.
+
+The managed-session host persists the pending opening, session ID, resume
+lineage, complete RUN dispatch history, and original unknown reply before
+calling the native engine. A lost acknowledgment or process restart never
+repeats that opening. The unknown opening continues to reserve its session ID
+and resume lineage. Closing or archiving cannot assert native termination or
+release an uncertain resume binding; this profile refuses close while the
+opening is unknown. Exact retries still require the owner's current authority.
