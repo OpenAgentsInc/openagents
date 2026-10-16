@@ -11,6 +11,10 @@ final class SessionFlowTests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-demo"] + (fast ? ["-fast"] : []) + args
         app.launch()
+        if !args.contains("-route") {
+            let sessions = app.tabBars.buttons["Sessions"]
+            if sessions.waitForExistence(timeout: 10) { sessions.tap() }
+        }
         return app
     }
 

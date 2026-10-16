@@ -70,6 +70,10 @@ async fn github(
     }
     Ok(value)
 }
+fn normalize_repositories(repositories: &mut Vec<String>) {
+    repositories.sort_by_key(|r| r.to_ascii_lowercase());
+    repositories.dedup_by(|a, b| a.eq_ignore_ascii_case(b));
+}
 pub(super) fn query(filter: &IssueFilter, repositories: &[String], login: Option<&str>) -> String {
     let mut q = String::from("is:issue is:open");
     for r in repositories {
@@ -146,8 +150,7 @@ pub(super) async fn summary(
             );
         }
     }
-    filter.scope.repositories.sort();
-    filter.scope.repositories.dedup();
+    normalize_repositories(&mut filter.scope.repositories);
     if filter.scope.repositories.is_empty() {
         return invalid("Choose a project with repositories or add a repository.");
     }
@@ -366,6 +369,17 @@ async fn board_summary(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn repository_aliases_are_counted_once() {
+        let mut repositories = vec![
+            "OpenAgentsInc/openagents".into(),
+            "other/repo".into(),
+            "openagentsinc/OPENAGENTS".into(),
+            "OTHER/repo".into(),
+        ];
+        normalize_repositories(&mut repositories);
+        assert_eq!(repositories, vec!["OpenAgentsInc/openagents", "other/repo"]);
+    }
     #[tokio::test]
     async fn board_filters_deduplicate_and_qualify_incomplete_counts_and_rate_limits() {
         let issue = json!({"id":"issue-one","number":1,"title":"Fix the fixture","state":"OPEN","repository":{"nameWithOwner":"org/repo"},"assignees":{"totalCount":1,"nodes":[{"login":"octo"}]},"labels":{"totalCount":101,"nodes":[{"name":"bug"}]}});

@@ -1,0 +1,170 @@
+{
+  "schema": "openagents.computers.usage-evidence.v1",
+  "date": "2026-10-16",
+  "issue": "https://github.com/OpenAgentsInc/openagents/issues/11815",
+  "status": "accounting_increment_deployed_gated",
+  "issue_complete": false,
+  "lifecycle": {
+    "staging": {
+      "revision": "oa-computers-staging-registry-79cb6ecc41-220901",
+      "image": "us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/oa-computers@sha256:d988561e7dd930e473edb55857912db7ee74b4bc0460929e45636ed0cc80faca",
+      "traffic_percent": 100,
+      "source": "79cb6ecc41f90ab7909c07140b722aab0d19b846"
+    },
+    "production": {
+      "revision": "oa-computers-registry-79cb6ecc41-221341",
+      "image": "us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/oa-computers@sha256:d988561e7dd930e473edb55857912db7ee74b4bc0460929e45636ed0cc80faca",
+      "traffic_percent": 100,
+      "source": "79cb6ecc41f90ab7909c07140b722aab0d19b846"
+    },
+    "writer_protocol": "v2",
+    "migration": 9,
+    "build": "64380359-de34-4e92-8d79-06bd4b5dc3b7"
+  },
+  "website": {
+    "revision": "coder-web-2c90884f65-20261016220201",
+    "image": "us-central1-docker.pkg.dev/openagentsgemini/openagents/openagents-web@sha256:2c90884f65f01b0b8205a9fd394d29951759dc49c357d2ea6fed2f6b4c4f68e0",
+    "traffic_percent": 100,
+    "source": "974154268cefb4fc2c11a665f793266edbbd9b8f",
+    "usage_change_source": "611edd0e97c1729701040065ec2c1f91eebe97f4",
+    "newer_deployment_already_serving": true,
+    "prepared_older_candidate_shifted": false
+  },
+  "boat": {
+    "deployment": {
+      "revision": "oa-boat-storage-d114a654ea-220528",
+      "image": "us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/oa-boat@sha256:ad6e5feebeff4ca687af03f4b3e4f34f039a0be5e3fb34bb73a9071ad94aad9c",
+      "traffic_percent": 100,
+      "source": "d114a654ea77f34409f87f199fe84d24252295c4"
+    },
+    "build": "40ae164b-af67-41f2-a171-d6f6a51b4cee",
+    "read_only_archive_check": {
+      "template": "oa-coder-main-20261015",
+      "restored_size_omitted": true,
+      "provider_archive_size": {
+        "bytes": 34736979520,
+        "source": "gce.images.archiveSizeBytes"
+      },
+      "matches_provider": true,
+      "inventory_total_claimed": false,
+      "read_only": true
+    }
+  },
+  "checks": {
+    "linux_postgresql": {
+      "passed": 40,
+      "command": "cargo test --locked -p oa-computers -- --nocapture",
+      "database": "disposable PostgreSQL 16",
+      "toolchain": "1.97.1",
+      "model_states": 3442,
+      "covers": [
+        "concurrent account and service admission",
+        "restart and ambiguous provider outcomes",
+        "idempotent allowance decisions",
+        "unknown shape and meter values",
+        "observed stop and deletion",
+        "stopped retention limits",
+        "unmarked and v1 worker exclusion",
+        "terminal result recovery before a later command",
+        "lookup failure without provider work"
+      ]
+    },
+    "boat_native": {
+      "passed": 10,
+      "command": "cargo test -p oa-boat",
+      "prerequisite": "cargo build -p computer-files",
+      "covers": [
+        "latest snapshot size null",
+        "named restored size omitted",
+        "archive values: reported, missing, zero, negative",
+        "SDK get and list extensions"
+      ],
+      "limitation": "Linux-only helper and workspace tests are excluded on macOS."
+    },
+    "focused_web": {
+      "passed": 11,
+      "covers": [
+        "account authority and gating",
+        "owner and payer input refusal",
+        "public field allowlist",
+        "cursor validation",
+        "null versus zero",
+        "route ownership",
+        "OpenAPI composition"
+      ]
+    },
+    "format": "passed",
+    "generated_app_openapi_matches": true,
+    "generated_computers_sdk_unchanged": true,
+    "staging_site_smoke": {
+      "passed": 99,
+      "failed": 0,
+      "skipped": 2,
+      "website_source": "611edd0e97c1729701040065ec2c1f91eebe97f4",
+      "lifecycle_source": "611edd0e97c1729701040065ec2c1f91eebe97f4"
+    },
+    "production_site_smoke": {
+      "passed": 66,
+      "failed": 0,
+      "skipped": 2
+    },
+    "production_usage_read": {
+      "synthetic_account_read": true,
+      "empty": true,
+      "charge": null,
+      "pricing": "not_enabled",
+      "http_status": 200
+    }
+  },
+  "staging_cycle": {
+    "account": "acct_dc7a799879686fc5",
+    "started_unix": 1792188578,
+    "phases": [
+      "create accepted",
+      "create replay reused computer",
+      "awake",
+      "stopped",
+      "awake",
+      "command replay and detached output verified",
+      "stopped",
+      "deleted",
+      "released Coder 1.0 client deletion passed",
+      "durable usage and observed cleanup verified",
+      "authenticated public usage and private-field filtering passed"
+    ],
+    "cleaned_up": true,
+    "request_key": "usage-11815-1aea74c02cbf4be599d663100e4f9d29",
+    "computer": "cmp_56ffa60d52ccb62e1184",
+    "command": "trn_644662b9588cec6e15c2",
+    "released_client_cleanup_exit": 0,
+    "usage_event_count": 23,
+    "unresolved_allowances": 5,
+    "finished_unix": 1792188789,
+    "public_usage_event_count": 23,
+    "lifecycle_source": "79cb6ecc41f90ab7909c07140b722aab0d19b846",
+    "boat_source": "d114a654ea77f34409f87f199fe84d24252295c4"
+  },
+  "released_client": {
+    "version": "1.0.0",
+    "source": "3230ded51181aa438656825da8245cea6c8e717c",
+    "cleanup_exit": 0,
+    "new_client_published": false
+  },
+  "cleanup": {
+    "dedicated_staging_vm_absent": true,
+    "disposable_postgresql_stopped": true,
+    "isolated_colima_profile_stopped": true
+  },
+  "accounting_boundary": {
+    "customer_charge": null,
+    "pricing": "not_enabled",
+    "allocation_allowance": "Operator CPU allowance; not a verified provider runtime or cost ceiling.",
+    "missing_provider_measurements": "unknown"
+  },
+  "remaining_scope": [
+    "complete provider storage inventory and byte/count quotas",
+    "observed private object cleanup and account-deletion handoff",
+    "useful-task and shared idle service economics",
+    "customer unit, rate, rounding, total spend, and retry-safe priced ledger settlement"
+  ]
+}

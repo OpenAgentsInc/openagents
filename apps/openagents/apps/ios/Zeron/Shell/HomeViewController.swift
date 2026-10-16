@@ -24,6 +24,9 @@ final class HomeViewController: UIViewController, UIDocumentPickerDelegate, UIDr
         content.spacing = 16
         content.translatesAutoresizingMaskIntoConstraints = false
         scroll.translatesAutoresizingMaskIntoConstraints = false
+        let refresh = UIRefreshControl()
+        refresh.addTarget(self, action: #selector(pullToRefresh(_:)), for: .valueChanged)
+        scroll.refreshControl = refresh
         view.addSubview(scroll)
         scroll.addSubview(content)
         NSLayoutConstraint.activate([
@@ -52,6 +55,12 @@ final class HomeViewController: UIViewController, UIDocumentPickerDelegate, UIDr
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
         home?.setVisible(visible: false, foreground: UIApplication.shared.applicationState == .active)
+    }
+    @objc private func pullToRefresh(_ sender: UIRefreshControl) {
+        Task { @MainActor in
+            await home?.refresh()
+            sender.endRefreshing()
+        }
     }
     @objc private func becameActive() {
         guard viewIfLoaded?.window != nil else { return }
