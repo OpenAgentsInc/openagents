@@ -148,6 +148,12 @@ fn semantic(name: &str, body: &Value) -> Result<()> {
             if keys != wanted {
                 return Err(error(RefusalCode::Malformed, "command payload"));
             }
+            if action == "promote" {
+                hex(body["payload"]["input_digest"]
+                    .as_str()
+                    .and_then(|s| s.strip_prefix("sha256:"))
+                    .unwrap_or_default())?;
+            }
             if action == "replace_runtime"
                 && ((body["payload"]["source"]["kind"] == "new")
                     != body["payload"]["source"]["artifact"].is_null())
@@ -259,6 +265,7 @@ fn nested(value: &Value) -> Result<()> {
                         | "interaction"
                         | "recipient"
                         | "responder"
+                        | "requester"
                         | "connection"
                 ) && let Some(text) = value.as_str()
                 {
@@ -383,6 +390,26 @@ mod tests {
             "media_type":"application/json","schema":"openagents.session-steer-correction.v1"},
             "mode":"native","acknowledgment":"input_written","consumed":true,"evidence":[]});
         assert!(validate(&receipt).is_err());
+    }
+    #[test]
+    fn promotion_selectors_require_the_exact_closed_head_identity() {
+        let mut command = json!({"v":"openagents.session-command.v1","requires":[],"command":"44".repeat(32),
+            "scope":{"authority":"22".repeat(32),"session":"33".repeat(32),"generation":0},
+            "expected_revision":1,"authorization":artifact(b"a","application/json"),
+            "issued_at":10,"expires_at":20,"action":"promote",
+            "payload":{"intent":"55".repeat(32),"input_digest":contracts::digest_bytes(b"intent"),"requester":"66".repeat(32)}});
+        validate(&command).unwrap();
+        for field in ["intent", "input_digest", "requester"] {
+            let mut missing = command.clone();
+            missing["payload"].as_object_mut().unwrap().remove(field);
+            assert!(validate(&missing).is_err());
+            let mut malformed = command.clone();
+            malformed["payload"][field] =
+                json!("z".repeat(if field == "input_digest" { 71 } else { 64 }));
+            assert!(validate(&malformed).is_err());
+        }
+        command["payload"]["skip"] = json!(true);
+        assert!(validate(&command).is_err());
     }
     #[test]
     fn runtime_replacement_checks_sources_and_new_generation_evidence() {

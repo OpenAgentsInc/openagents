@@ -2523,6 +2523,7 @@ impl Allocator {
                     let fence = crate::runtime::ContinuationFence {
                         runtime: crate::runtime::RuntimeFence {
                             request: *request,
+                            frame: &lease.request["frame"],
                             deadline,
                             admitted_at: current,
                             started: std::time::Instant::now(),
@@ -2627,6 +2628,7 @@ impl Allocator {
                             materialization: materialization_ref,
                             engine: request.engine,
                         },
+                        frame: &lease.request["frame"],
                         deadline,
                         admitted_at: current,
                         started: std::time::Instant::now(),

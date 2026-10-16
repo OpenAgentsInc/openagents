@@ -437,6 +437,70 @@ fn correction(fx: &mut Fx, mode: &str, text: &str) -> Value {
     )
 }
 
+#[test]
+fn consumed_intents_cannot_repeat_with_new_commands_bindings_or_runtime_generations() {
+    let mut fx = Fx::new();
+    let host = fx.host();
+    let (session, _) = fx.open(&host, "loop-mid-turn");
+    let intent = fx.intent(
+        &host,
+        &session,
+        json!({"prompt":"once","steps":1}),
+        fx.now + 600,
+    );
+    let command = fx.command(&host, &session, "submit", json!({"intent":intent}));
+    let binding = fx.binding();
+    assert_eq!(
+        fx.send(&host, OWNER, &command, Some(&binding))["status"],
+        "accepted"
+    );
+    fx.finish(&host, &session);
+    assert_eq!(
+        fx.send(&host, OWNER, &command, Some(&binding))["status"],
+        "duplicate"
+    );
+    let retry = fx.command(&host, &session, "submit", json!({"intent":intent}));
+    let binding = fx.binding();
+    assert_eq!(
+        fx.send(&host, OWNER, &retry, Some(&binding))["reason"],
+        "conflict"
+    );
+    let mut changed: Value =
+        serde_json::from_slice(&fx.artifacts[intent["digest"].as_str().unwrap()]).unwrap();
+    changed["input"] = put_json(&mut fx.artifacts, &json!({"prompt":"edited","steps":1}));
+    let changed = put_json(&mut fx.artifacts, &changed);
+    let changed = fx.command(&host, &session, "submit", json!({"intent":changed}));
+    assert_eq!(
+        fx.send(&host, OWNER, &changed, Some(&binding))["reason"],
+        "idempotency_conflict"
+    );
+    let replace = replacement(&mut fx, &host, &session, "loop-mid-turn");
+    let binding = fx.binding();
+    assert_eq!(
+        fx.send(&host, OWNER, &replace, Some(&binding))["status"],
+        "accepted"
+    );
+    let retry = fx.command(&host, &session, "submit", json!({"intent":intent}));
+    let binding = fx.binding();
+    assert_eq!(
+        fx.send(&host, OWNER, &retry, Some(&binding))["reason"],
+        "conflict"
+    );
+    assert_eq!(host.started("loop-mid-turn"), 1);
+    let fresh = fx.intent(
+        &host,
+        &session,
+        json!({"prompt":"once","steps":1}),
+        fx.now + 600,
+    );
+    let command = fx.command(&host, &session, "submit", json!({"intent":fresh}));
+    assert_eq!(
+        fx.send(&host, OWNER, &command, Some(&binding))["status"],
+        "accepted"
+    );
+    assert_eq!(host.started("loop-mid-turn"), 2);
+}
+
 fn replacement(fx: &mut Fx, host: &SessionHost, session: &str, engine: &str) -> Value {
     let adapter = host.admit_adapter(engine, fx.now).unwrap();
     let requested = fx.configuration(host, &adapter, "low");

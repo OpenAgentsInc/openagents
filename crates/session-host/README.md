@@ -81,6 +81,17 @@ its cache still requires the caller's current host membership. Uncertain
 effects keep their original holds. Recovery can use a native pending reply only
 when its full input fingerprint matches the original request.
 
+Queue promotion uses a fresh charged CJ execution. Its native `promote`
+command selects the exact current head by intent ID, frozen input digest, and
+original requester, under the current revision and generation. It verifies the
+retained signed enqueue and current requester rights. The original requester's
+read scope supplies the input; the selector does not share private context with
+the caller. An expired or incompatible head gets a recorded disposition without
+skipping to another item. The turn's frame must match its ENV execution, and
+unsupported intent bounds refuse. Intent consumption is saved before native
+input and stays consumed across changed commands, bindings, generations, and
+resume sessions in the same lineage, including lost acknowledgments and restart.
+
 Adapter and feature operations pin complete CAP definitions, including input
 and output schemas, the engine and protocol identities, and the binding's
 actual effects. Each adapter has distinct operation IDs. Opening schemas pin

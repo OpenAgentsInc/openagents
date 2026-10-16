@@ -13,7 +13,7 @@ fn schema(
     let session: Value =
         serde_json::from_slice(nostr::session::SCHEMA_BYTES).map_err(|e| e.to_string())?;
     let reference = |name: &str| json!({"$ref":format!("#/$defs/{name}")});
-    let shape = if output && matches!(feature, None | Some("submit")) {
+    let shape = if output && matches!(feature, None | Some("submit" | "queue")) {
         json!({"oneOf":[reference("session-control-result"),reference("session-turn-result")]})
     } else if output {
         reference(if feature == Some("history") {
@@ -35,7 +35,7 @@ fn schema(
                 "required":["session"],"properties":{"session":{"type":"string","minLength":64,"maxLength":64}}}),
             Some(name) => {
                 let actions = if name == "queue" {
-                    vec!["enqueue", "cancel_queued"]
+                    vec!["enqueue", "cancel_queued", "promote"]
                 } else {
                     vec![name]
                 };

@@ -896,3 +896,28 @@ discloses its state. Its cached refusal still checks current host membership.
 Recovery may use a native prior reply only when its full input fingerprint
 matches; command ID equality alone cannot substitute a different result.
 Uncertain native effects remain unknown and keep their accounting holds.
+
+The native `promote` command uses payload `{intent, input_digest, requester}`:
+the exact queue-head intent ID, its frozen intent artifact's SHA-256 digest
+string, and original requester key. The expected session revision and
+generation also apply. It uses the adapter or queue CAP under a fresh charged
+ENV execution; enqueue remains a separate metadata operation. The host verifies
+the retained original signed enqueue, matching intent and scope, and the
+requester's current control rights. A digest selector cannot grant access to
+another requester's cache. Input is read under the original requester's
+supplied/shared-byte scope and forwarded only to the session and configuration
+that requester selected. The fresh caller supplies execution authority and its
+own current reservation; promotion does not reuse an earlier binding.
+
+Promotion considers only the current head. An expired or incompatible head
+gets an explicit `expired` or `refused` disposition and is never skipped. Such
+a completed control operation returns its disposition record without a turn;
+an actual start stays pending until that turn's native terminal evidence.
+Starting requires the intent's exact task frame to match the current ENV
+execution and refuses unsupported intent bounds. The host durably records
+intent consumption with the active turn, consumed queue head, and pending
+command reply before native delivery. Consumption is scoped to the lineage:
+changing command IDs, bindings, runtime generations, or resume sessions cannot
+run the same consumed intent again. A new execution needs a new intent ID;
+changed bytes under a consumed ID conflict. Exact original command retries
+retain their earlier outcome without another native start.

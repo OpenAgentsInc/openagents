@@ -243,6 +243,8 @@ pub(crate) struct State {
     pub(crate) transport: Option<crate::transport::Transport>,
     #[serde(default)]
     turn_commands: BTreeMap<String, Value>,
+    #[serde(default)]
+    used_intents: BTreeMap<String, Value>,
     adapters: BTreeMap<String, Adapter>,
     sessions: BTreeMap<String, Session>,
     priors: BTreeMap<String, Prior>,
@@ -1986,7 +1988,13 @@ impl SessionHost {
         if session.read_only
             && matches!(
                 action.as_str(),
-                "submit" | "enqueue" | "steer" | "interrupt" | "configure" | "replace_runtime"
+                "submit"
+                    | "enqueue"
+                    | "steer"
+                    | "interrupt"
+                    | "configure"
+                    | "replace_runtime"
+                    | "promote"
             )
         {
             return Err(refuse("not_admitted", "imported history is read-only"));
@@ -2038,6 +2046,10 @@ impl SessionHost {
                     turn: None,
                     receipt: input.clone(),
                 });
+            }
+            "promote" => {
+                records =
+                    self.promote_command(state, session, signer, body, input, binding, fence, now)?;
             }
             "cancel_queued" => {
                 self.require(state, session, "queue")?;
@@ -2323,6 +2335,98 @@ impl SessionHost {
             None,
             now,
         )
+    }
+
+    fn promote_command(
+        &self,
+        state: &mut State,
+        session: &mut Session,
+        actor: &str,
+        command: &Value,
+        input: &Value,
+        binding: Option<&Binding>,
+        fence: Option<&env_host::runtime::RuntimeFence<'_>>,
+        now: u64,
+    ) -> Result<Vec<Value>> {
+        self.require(state, session, "queue")?;
+        let adapter = &state.adapters[&session.adapter];
+        self.require_engine_execution(&adapter.engine, fence)?;
+        if session.phase != "ready" || session.active.is_some() || !session.quiescent {
+            return Err("conflict: promotion requires known quiescence".into());
+        }
+        let index = session
+            .queue
+            .iter()
+            .position(|q| q.state == "queued")
+            .ok_or("conflict: the queue is empty")?;
+        let head = session.queue[index].clone();
+        let payload = &command["payload"];
+        if payload["intent"] != head.id
+            || payload["input_digest"] != head.intent["digest"]
+            || payload["requester"] != head.requester
+        {
+            return Err("conflict: promotion must name the exact current queue head".into());
+        }
+        let admission = (|| -> Result<()> {
+            if !state.policy.owners.contains(&session.owner)
+                || head.requester.is_empty()
+                || head.requester != session.owner
+                    && !state.policy.controllers.contains(&head.requester)
+            {
+                return Err("not_admitted: queued requester is no longer authorized".into());
+            }
+            let origin = self.store.json(&head.receipt)?;
+            if !state
+                .signers
+                .get(digest_of(&head.receipt))
+                .is_some_and(|s| s.contains(&head.requester))
+                || origin["v"] != "openagents.session-command.v1"
+                || origin["action"] != "enqueue"
+                || origin["scope"] != session.scope(self.pubkey())
+                || origin["payload"]["intent"] != head.intent
+            {
+                return Err("not_admitted: queued input has no matching signed enqueue".into());
+            }
+            let scope = self.read_scope(state, &head.requester);
+            self.with_read_scope(scope, || {
+                let intent = self.intent(session, &head.intent, now)?;
+                if fence.is_some_and(|f| intent["task_frame"] != *f.frame()) {
+                    return Err(
+                        "identity_mismatch: queued frame differs from its admitted execution"
+                            .into(),
+                    );
+                }
+                self.unused_intent(
+                    state,
+                    session,
+                    &head.intent,
+                    intent["intent"].as_str().ok_or("intent")?,
+                )
+            })
+        })();
+        if let Err(error) = admission {
+            session.queue[index].state = if code(&error) == "stale" {
+                "expired"
+            } else {
+                "refused"
+            }
+            .into();
+            let row = json!({"v":"openagents.queued-intent.v1","requires":[],"intent":head.intent,
+                "state":session.queue[index].state,"turn":null,"receipt":head.receipt});
+            return Ok(vec![self.sign(state, &row, &session.owner, now)?]);
+        }
+        let scope = self.read_scope(state, &head.requester);
+        self.with_read_scope(scope, || {
+            self.start_turn(
+                state,
+                session,
+                &head.intent,
+                binding,
+                now,
+                Some((actor, input)),
+                fence,
+            )
+        })
     }
 
     fn replace_runtime(
@@ -2684,6 +2788,9 @@ impl SessionHost {
 
     fn intent(&self, session: &Session, reference: &Value, now: u64) -> Result<Value> {
         let intent = self.body(reference, "openagents.turn-intent.v1")?;
+        if intent["bounds"] != json!([]) {
+            return Err("cannot_enforce: turn intent bounds are unsupported".into());
+        }
         if sess::number(&intent, "expires_at").map_err(contract)? <= now {
             return Err(refuse("stale", "intent expired"));
         }
@@ -2703,6 +2810,57 @@ impl SessionHost {
             self.bytes(&intent[field])?;
         }
         Ok(intent)
+    }
+
+    fn unused_intent(
+        &self,
+        state: &State,
+        session: &Session,
+        reference: &Value,
+        id: &str,
+    ) -> Result<()> {
+        let key = format!("{}:{id}", session.lineage);
+        let mut original = state
+            .used_intents
+            .get(&key)
+            .map(|used| used["intent"].clone());
+        if original.is_none() {
+            // Earlier books retain the actual turn and input references even
+            // before they have an explicit consumption index.
+            for source in state
+                .sessions
+                .values()
+                .chain(std::iter::once(session))
+                .filter(|s| s.lineage == session.lineage)
+            {
+                let mut inputs = source
+                    .active
+                    .iter()
+                    .map(|t| t.intent.clone())
+                    .collect::<Vec<_>>();
+                for result in &source.results {
+                    inputs.push(self.store.json(result)?["intent"].clone());
+                }
+                for input in inputs {
+                    if self.store.json(&input)?["intent"] == id {
+                        original = Some(input);
+                        break;
+                    }
+                }
+                if original.is_some() {
+                    break;
+                }
+            }
+        }
+        if let Some(original) = original {
+            return Err(if original == *reference {
+                "conflict: this intent was already consumed"
+            } else {
+                "idempotency_conflict: consumed intent identity has different bytes"
+            }
+            .into());
+        }
+        Ok(())
     }
 
     fn active_turn(&self, session: &Session, payload: &Value) -> Result<String> {
@@ -2762,7 +2920,12 @@ impl SessionHost {
         );
         let grant = self.check_binding(&runtime, now, fence)?;
         self.require_engine_execution(&adapter.engine, fence)?;
-        let intent = self.store.json(intent_ref)?;
+        let intent = self.intent(session, intent_ref, now)?;
+        if fence.is_some_and(|f| intent["task_frame"] != *f.frame()) {
+            return Err("identity_mismatch: turn frame differs from its admitted execution".into());
+        }
+        let intent_id = intent["intent"].as_str().ok_or("intent")?;
+        self.unused_intent(state, session, intent_ref, intent_id)?;
         let mut input: Value =
             contracts::parse_strict_bounded(&self.bytes(&intent["input"])?, 1_048_576)
                 .map_err(contract)?;
@@ -2801,6 +2964,11 @@ impl SessionHost {
             .ok_or("adapter")?
             .clone();
         let native = self.native_session(session, &adapter.engine)?.to_string();
+        state.used_intents.insert(
+            format!("{}:{intent_id}", session.lineage),
+            json!({
+            "intent":intent_ref,"turn":turn,"session":session.id,"generation":session.generation}),
+        );
         session.active = Some(Turn {
             id: turn.clone(),
             intent: intent_ref.clone(),

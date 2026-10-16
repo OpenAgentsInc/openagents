@@ -68,6 +68,7 @@ impl ContinuationFence<'_> {
 /// callback. It cannot be constructed, cloned, or retained by the runtime.
 pub struct RuntimeFence<'a> {
     pub(crate) request: RuntimeUse<'a>,
+    pub(crate) frame: &'a Value,
     pub(crate) deadline: u64,
     pub(crate) admitted_at: u64,
     pub(crate) started: std::time::Instant,
@@ -106,6 +107,9 @@ impl RuntimeFence<'_> {
     }
     pub fn materialization(&self) -> &Value {
         self.request.materialization
+    }
+    pub fn frame(&self) -> &Value {
+        self.frame
     }
 }
 

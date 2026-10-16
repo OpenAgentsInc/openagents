@@ -1228,6 +1228,263 @@ fn a_new_cj_attempt_can_return_a_native_duplicate_without_another_opening() {
 }
 
 #[test]
+fn actual_runtime_refuses_wrong_turn_frames_and_unsupported_intent_bounds() {
+    for wrong_frame in [false, true] {
+        let mut r = Real::new();
+        let host = r.host(LoopEngine::mid_turn());
+        let opening = r.opened(&host);
+        let mut command = r.submit_command(&host, &opening, 1);
+        let reference = &command["payload"]["intent"];
+        let mut intent: Value =
+            serde_json::from_slice(&r.fx.artifacts[reference["digest"].as_str().unwrap()]).unwrap();
+        if wrong_frame {
+            intent["task_frame"] = put_json(&mut r.fx.artifacts, &json!({"frame":"another"}));
+        } else {
+            intent["bounds"] =
+                json!([{"bound":"calls","ceiling":1,"assurance":"host","mechanism":"unsupported"}]);
+        }
+        command["payload"]["intent"] = put_json(&mut r.fx.artifacts, &intent);
+        let (event, binding) = r.job(&command);
+        let result = host
+            .serve(&event, &r.fx.artifacts, &binding, r.fx.now)
+            .unwrap();
+        let result = r
+            .coordinator
+            .record_result(&result.0, &result.1, r.fx.now)
+            .unwrap();
+        assert_eq!(result["outcome"], "failed");
+        assert_eq!(host.started("loop-mid-turn"), 0);
+        assert_eq!(r.coordinator.scope(&r.scope).unwrap()["calls"], 2);
+    }
+}
+
+#[test]
+fn charged_promotion_runs_only_the_selected_signed_head_once() {
+    let mut r = Real::new();
+    let host = r.host(LoopEngine::mid_turn());
+    let opening = r.opened(&host);
+    let session = opening["session"].as_str().unwrap();
+    let mut enqueue = r.submit_command(&host, &opening, 1);
+    enqueue["action"] = json!("enqueue");
+    r.input(
+        &mut enqueue,
+        json!({"prompt":"controller private","steps":1}),
+    );
+    let reference = &enqueue["payload"]["intent"];
+    let mut body: Value =
+        serde_json::from_slice(&r.fx.artifacts[reference["digest"].as_str().unwrap()]).unwrap();
+    body["context"] = put_json(
+        &mut r.fx.artifacts,
+        &json!({"private":"controller context"}),
+    );
+    let intent = put_json(&mut r.fx.artifacts, &body);
+    enqueue["payload"]["intent"] = intent.clone();
+    assert_eq!(
+        host.submit(&r.fx.bundle(CONTROLLER, &enqueue), None, r.fx.now)
+            .unwrap()["status"],
+        "accepted"
+    );
+    let mut promote = r.submit_command(&host, &opening, 1);
+    promote["action"] = json!("promote");
+    promote["payload"] =
+        json!({"intent":body["intent"],"input_digest":intent["digest"],"requester":pk(CONTROLLER)});
+    // The sponsor supplies only the selector. The contributor's retained
+    // input and private context are not part of this CJ artifact bundle.
+    let mut private = Vec::new();
+    for reference in [&intent, &body["input"], &body["context"]] {
+        let digest = reference["digest"].as_str().unwrap().to_string();
+        private.push((digest.clone(), r.fx.artifacts.remove(&digest).unwrap()));
+    }
+    let (event, binding) = r.job(&promote);
+    let progress = host
+        .serve(&event, &r.fx.artifacts, &binding, r.fx.now)
+        .unwrap();
+    assert_eq!(progress.0.kind, execution::FEEDBACK_KIND);
+    assert_eq!(host.started("loop-mid-turn"), 1);
+    assert_eq!(
+        host.serve(&event, &r.fx.artifacts, &binding, r.fx.now)
+            .unwrap(),
+        progress
+    );
+    let terminal = host.poll(&event, r.fx.now).unwrap();
+    r.coordinator
+        .record_result(&terminal.0, &terminal.1, r.fx.now)
+        .unwrap();
+    assert_eq!(
+        host.status(session).unwrap()["queue"][0]["state"],
+        "promoted"
+    );
+    assert_eq!(host.started("loop-mid-turn"), 1);
+    assert_eq!(r.coordinator.scope(&r.scope).unwrap()["calls"], 2);
+    let signer =
+        nostr::domain::RelaySigner::from_secret_hex(&secret(HOST).display_secret().to_string())
+            .unwrap();
+    let saved: Value = host.store().load(&signer).unwrap();
+    for reference in [&intent, &body["context"]] {
+        assert!(
+            !saved["known"][pk(OWNER)]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|r| *r == reference["digest"])
+        );
+    }
+    r.release_attachment(&binding.grant);
+    // Even explicitly sharing those bytes cannot make the consumed intent
+    // executable again under a different command or execution binding.
+    r.fx.artifacts.extend(private);
+    let mut replay = r.submit_command(&host, &opening, 1);
+    replay["payload"] = json!({"intent":intent});
+    let (event, binding) = r.job(&replay);
+    let result = host
+        .serve(&event, &r.fx.artifacts, &binding, r.fx.now)
+        .unwrap();
+    assert_eq!(
+        r.coordinator
+            .record_result(&result.0, &result.1, r.fx.now)
+            .unwrap()["outcome"],
+        "failed"
+    );
+    assert_eq!(host.started("loop-mid-turn"), 1);
+}
+
+#[test]
+fn charged_promotion_disposes_stale_heads_without_skipping_or_executing_them() {
+    for mode in ["expired", "revoked", "wrong-frame", "wrong-head"] {
+        let mut r = Real::new();
+        let host = r.host(LoopEngine::mid_turn());
+        let opening = r.opened(&host);
+        let session = opening["session"].as_str().unwrap();
+        let mut enqueue = r.submit_command(&host, &opening, 1);
+        enqueue["action"] = json!("enqueue");
+        let reference = &enqueue["payload"]["intent"];
+        let mut first: Value =
+            serde_json::from_slice(&r.fx.artifacts[reference["digest"].as_str().unwrap()]).unwrap();
+        if mode == "expired" {
+            first["expires_at"] = json!(r.fx.now + 1);
+        }
+        if mode == "wrong-frame" {
+            first["task_frame"] = put_json(&mut r.fx.artifacts, &json!({"frame":"another"}));
+        }
+        let first_ref = put_json(&mut r.fx.artifacts, &first);
+        enqueue["payload"]["intent"] = first_ref.clone();
+        assert_eq!(
+            host.submit(&r.fx.bundle(CONTROLLER, &enqueue), None, r.fx.now)
+                .unwrap()["status"],
+            "accepted"
+        );
+        let mut enqueue = r.submit_command(&host, &opening, 1);
+        enqueue["action"] = json!("enqueue");
+        let second_ref = enqueue["payload"]["intent"].clone();
+        let second: Value =
+            serde_json::from_slice(&r.fx.artifacts[second_ref["digest"].as_str().unwrap()])
+                .unwrap();
+        assert_eq!(
+            host.submit(&r.fx.bundle(OWNER, &enqueue), None, r.fx.now)
+                .unwrap()["status"],
+            "accepted"
+        );
+        if mode == "expired" {
+            r.fx.now += 2;
+        }
+        if mode == "revoked" {
+            host.set_policy(Policy {
+                owners: BTreeSet::from([pk(OWNER)]),
+                controllers: BTreeSet::new(),
+            })
+            .unwrap();
+        }
+        let mut promote = r.submit_command(&host, &opening, 1);
+        promote["action"] = json!("promote");
+        promote["payload"] = if mode == "wrong-head" {
+            json!({"intent":second["intent"],"input_digest":second_ref["digest"],"requester":pk(OWNER)})
+        } else {
+            json!({"intent":first["intent"],"input_digest":first_ref["digest"],"requester":pk(CONTROLLER)})
+        };
+        let (event, binding) = r.job(&promote);
+        let reply = host
+            .serve(&event, &r.fx.artifacts, &binding, r.fx.now)
+            .unwrap();
+        assert_eq!(reply.0.kind, execution::RESULT_KIND);
+        let result = r
+            .coordinator
+            .record_result(&reply.0, &reply.1, r.fx.now)
+            .unwrap();
+        assert_eq!(
+            result["outcome"],
+            if mode == "wrong-head" {
+                "failed"
+            } else {
+                "completed"
+            }
+        );
+        let queue = host.status(session).unwrap()["queue"].clone();
+        assert_eq!(
+            queue[0]["state"],
+            match mode {
+                "expired" => "expired",
+                "wrong-head" => "queued",
+                _ => "refused",
+            }
+        );
+        assert_eq!(queue[1]["state"], "queued");
+        assert_eq!(host.started("loop-mid-turn"), 0);
+        assert_eq!(r.coordinator.scope(&r.scope).unwrap()["calls"], 2);
+    }
+}
+
+#[test]
+fn charged_promotion_lost_start_and_restart_never_restore_the_consumed_head() {
+    let mut r = Real::new();
+    let mut engine = LoopEngine::mid_turn();
+    engine.fail_start = true;
+    let host = r.host(engine);
+    let opening = r.opened(&host);
+    let session = opening["session"].as_str().unwrap();
+    let mut enqueue = r.submit_command(&host, &opening, 1);
+    enqueue["action"] = json!("enqueue");
+    let intent = enqueue["payload"]["intent"].clone();
+    let body: Value =
+        serde_json::from_slice(&r.fx.artifacts[intent["digest"].as_str().unwrap()]).unwrap();
+    host.submit(&r.fx.bundle(OWNER, &enqueue), None, r.fx.now)
+        .unwrap();
+    let mut promote = r.submit_command(&host, &opening, 1);
+    promote["action"] = json!("promote");
+    promote["payload"] =
+        json!({"intent":body["intent"],"input_digest":intent["digest"],"requester":pk(OWNER)});
+    let (event, binding) = r.job(&promote);
+    let started = host
+        .serve(&event, &r.fx.artifacts, &binding, r.fx.now)
+        .unwrap();
+    assert_eq!(started.0.kind, execution::FEEDBACK_KIND);
+    assert_eq!(host.started("loop-mid-turn"), 1);
+    assert_eq!(
+        host.status(session).unwrap()["queue"][0]["state"],
+        "promoted"
+    );
+    drop(host);
+    let host = r.host(LoopEngine::mid_turn());
+    let result = host.poll(&event, r.fx.now).unwrap();
+    assert_eq!(result.0.kind, execution::RESULT_KIND);
+    assert!(
+        r.coordinator
+            .record_result(&result.0, &result.1, r.fx.now)
+            .is_err()
+    );
+    assert_eq!(
+        host.serve(&event, &r.fx.artifacts, &binding, r.fx.now)
+            .unwrap(),
+        result
+    );
+    assert_eq!(
+        host.status(session).unwrap()["queue"][0]["state"],
+        "promoted"
+    );
+    assert_eq!(host.started("loop-mid-turn"), 0);
+    assert_eq!(r.coordinator.scope(&r.scope).unwrap()["calls"], 2);
+}
+
+#[test]
 fn a_denied_cj_open_has_a_private_bounded_refusal_without_native_creation() {
     let mut r = Real::new();
     let host = r.host(LoopEngine::mid_turn());

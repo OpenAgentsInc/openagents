@@ -1149,7 +1149,8 @@
             "configure",
             "archive",
             "close",
-            "replace_runtime"
+            "replace_runtime",
+            "promote"
           ]
         },
         "payload": {
@@ -1183,6 +1184,9 @@
             },
             {
               "$ref": "#/$defs/payload_replace_runtime"
+            },
+            {
+              "$ref": "#/$defs/payload_promote"
             }
           ]
         },
@@ -1397,7 +1401,8 @@
             "configure",
             "archive",
             "close",
-            "replace_runtime"
+            "replace_runtime",
+            "promote"
           ]
         },
         "admitted_at": {
@@ -2859,6 +2864,32 @@
           "type": "integer",
           "minimum": 0,
           "maximum": 9007199254740991
+        }
+      }
+    },
+    "payload_promote": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "intent",
+        "input_digest",
+        "requester"
+      ],
+      "properties": {
+        "intent": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "input_digest": {
+          "type": "string",
+          "minLength": 71,
+          "maxLength": 71
+        },
+        "requester": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
         }
       }
     }
