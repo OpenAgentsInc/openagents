@@ -171,8 +171,8 @@ impl LoopEngine {
             name: "loop-mid-turn",
             engine: b"loop-engine 1 mid-turn".to_vec(),
             protocol: br#"{"type":"object"}"#.to_vec(),
-            effects: json!({"reads":["session-input","native-history"],
-                "writes":["session-state","native-session"],"network":[],
+            effects: json!({"reads":["artifact"],
+                "writes":[],"network":[],
                 "process":false,"delegates":false,"spend":false}),
             features: features(&[
                 ("create", Native),
@@ -203,8 +203,8 @@ impl LoopEngine {
             name: "loop-boundary",
             engine: b"loop-engine 1 boundary".to_vec(),
             protocol: br#"{"type":"object"}"#.to_vec(),
-            effects: json!({"reads":["session-input","native-history"],
-                "writes":["session-state","native-session"],"network":[],
+            effects: json!({"reads":["artifact"],
+                "writes":[],"network":[],
                 "process":false,"delegates":false,"spend":false}),
             features: features(&[
                 ("create", Native),

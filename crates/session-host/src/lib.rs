@@ -7,6 +7,7 @@ pub mod cli;
 pub mod engine;
 pub mod host;
 mod interface;
+pub mod transport;
 
 pub type Result<T> = std::result::Result<T, String>;
 

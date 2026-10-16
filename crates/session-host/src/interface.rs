@@ -13,7 +13,9 @@ fn schema(
     let session: Value =
         serde_json::from_slice(nostr::session::SCHEMA_BYTES).map_err(|e| e.to_string())?;
     let reference = |name: &str| json!({"$ref":format!("#/$defs/{name}")});
-    let shape = if output {
+    let shape = if output && matches!(feature, None | Some("submit")) {
+        json!({"oneOf":[reference("session-control-result"),reference("session-turn-result")]})
+    } else if output {
         reference(if feature == Some("history") {
             "session-history"
         } else {

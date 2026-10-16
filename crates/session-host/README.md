@@ -10,10 +10,6 @@ order keep separate identities.
 ```sh
 session-host init --state DIR --key-file KEY --policy POLICY.json
 session-host admit --state DIR --key-file KEY --engine loop-mid-turn
-session-host submit --state DIR --key-file KEY --input BUNDLE \
-  --env-state ENV --env-key ENVKEY --env-root RESOURCES \
-  --attachment ID --fingerprint DIGEST --grant GRANT.json \
-  --coordinator-state COORD --coordinator-key-file COORDKEY
 session-host observe|status|export --state DIR --key-file KEY --session ID
 ```
 
@@ -43,8 +39,36 @@ Adapter and feature operations pin complete CAP definitions, including input
 and output schemas, the engine and protocol identities, and the binding's
 actual effects. Each adapter has distinct operation IDs. Opening schemas pin
 the source kind; command schemas restrict the action. Unsupported features pin
-nothing. These definitions do not advertise a CJ endpoint, enforce an omitted
-bound, or promise transport retries; those need their own runtime admission.
+nothing. Definitions alone do not authorize execution or enforce an omitted bound.
+
+The library's `SessionHost::serve` accepts exact ENV-bound CJ execution for
+admitted adapter operations. The operator registers the exact native CAP with
+COORD for this host's distinct worker key. The allocator checks the original
+prepared request and active attachment; COORD saves the call charge and unknown
+hold before the host reads private input or calls the engine. A claim for a
+different operation cannot authorize session input. The private `submit` path
+cannot start production engines; its uncharged engine path is limited to
+explicitly selected local test bindings.
+
+Opening and metadata commands return encrypted results. A turn start returns
+encrypted progress; `SessionHost::poll` observes that original turn until its
+terminal evidence produces a CJ result. Retries return the identical saved
+event and bounded artifact set. They do not repeat intake, charge, or native
+input. Session and native RUN identities remain separate from the CJ RUN.
+Cached replies still require current ownership and generation.
+
+This receiver currently drives the two synchronous loop adapters through the
+library. It requires one job, zero spend, 1–300 seconds of wall time, and
+64 KiB–1 MiB of output allowance. Polling after expiry requests a stop of the
+original turn before advancing it; only native terminal evidence proves the
+stop. Large known outputs produce a bounded failure while their full local
+history remains available to its owner. An unknown native outcome remains
+unknown and retains its COORD hold after restart. The loop profiles read
+artifacts and have no external resource writes; their internal bookkeeping is
+not a separately claimed workspace resource.
+
+Resident CLI transport, active-turn continuations, and real engine processes
+remain unfinished. This receiver does not advertise those roles.
 
 The production binding reads the allocator's actual saved attachment. It
 checks the requesting controller, executor key, lease, materialization, and
@@ -63,7 +87,7 @@ probe cannot implement this admission. Missing live authority refuses.
   refuses. Requested and effective configuration are both retained, and the
   effective one carries the enforcement record. Every opening and every turn
   start needs a current ENV attachment for that exact execution
-  (`Bindings::with_current`; `env_host::allocator::Allocator` implements it). A native
+  (`Bindings::with_execution`; `env_host::allocator::Allocator` implements it). A native
   session already bound to an open session refuses. Resume keeps the source
   lineage only while no open session holds it. Fork needs the adapter's fork
   support. Import admits foreign history read-only.

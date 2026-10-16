@@ -806,3 +806,19 @@ for each recipient. Native resume requires a host-signed managed history linked
 to that requester's own source admission. Knowing or supplying export bytes does
 not transfer native control. This profile accepts foreign content only as an
 archive with its actual supplied or shared bytes.
+
+The library's CJ receiver runs exact admitted adapter operations under the
+allocator's charged COORD intake. Its current profile requires the ENV binding
+feature, frozen artifact input, one job, zero spend, 1–300 seconds of wall time,
+and 64 KiB–1 MiB of output allowance. The synchronous loop adapters read
+artifacts and write no external resources. Internal host bookkeeping does not
+claim a workspace resource. Opening and metadata operations return control
+results; submit stays pending until the exact native turn produces a turn
+result. Both result shapes are in the adapter and submit output schemas.
+Original retries reuse the saved encrypted event and explicit artifact set,
+without repeating intake or charging again. Polling after expiry requests
+stopping that original turn before advancing it; only terminal native evidence
+proves quiescence. Oversized known output becomes a bounded failure; uncertain
+work stays unknown with its accounting hold. Native RUN identities cannot
+alias an existing CJ RUN. This profile does not yet provide resident CLI
+transport, active-turn continuation, or real engine processes.

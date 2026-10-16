@@ -2,6 +2,7 @@ use crate::{
     engine::{Engine, LoopEngine},
     host::{Binding, Bindings, Bundle, Policy, SessionHost, envelope},
 };
+mod cj;
 use nostr::contracts::{SCHEMA_MEDIA_TYPE, digest_bytes, jcs};
 use secp256k1::{Secp256k1, SecretKey};
 use serde_json::{Value, json};
@@ -26,6 +27,9 @@ const STRANGER: u8 = 4;
 #[derive(Clone, Default)]
 struct Admitted(Rc<RefCell<BTreeSet<(String, String)>>>);
 impl Bindings for Admitted {
+    fn local_fixture(&self) -> bool {
+        true
+    }
     fn with_current(
         &self,
         request: &env_host::runtime::RuntimeUse<'_>,

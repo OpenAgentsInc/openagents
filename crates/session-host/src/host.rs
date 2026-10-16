@@ -26,7 +26,25 @@ pub const MAX_QUEUE: usize = 256;
 
 /// The current ENV execution binding for one CJ execution.
 pub trait Bindings {
+    /// Only an in-process fixture may opt into local, unmetered operations.
+    /// Production allocators require the charged execution callback.
+    fn local_fixture(&self) -> bool {
+        false
+    }
     fn check(&self, attachment: &str, fingerprint: &str, now: u64) -> Result<()>;
+    fn with_execution(
+        &self,
+        _request: &env_host::runtime::RuntimeDispatch<'_>,
+        _now: u64,
+        _effect: &mut dyn FnMut(
+            &env_host::runtime::RuntimeFence<'_>,
+            &coordination_host::worker::Intake,
+            u64,
+        ) -> Result<Value>,
+    ) -> Result<Value> {
+        Err("cannot_enforce: charged runtime intake is not configured".into())
+    }
+
     fn with_current(
         &self,
         _request: &env_host::runtime::RuntimeUse<'_>,
@@ -40,6 +58,18 @@ pub trait Bindings {
 impl Bindings for env_host::allocator::Allocator {
     fn check(&self, attachment: &str, fingerprint: &str, now: u64) -> Result<()> {
         self.check_dispatch(attachment, fingerprint, now)
+    }
+    fn with_execution(
+        &self,
+        request: &env_host::runtime::RuntimeDispatch<'_>,
+        now: u64,
+        effect: &mut dyn FnMut(
+            &env_host::runtime::RuntimeFence<'_>,
+            &coordination_host::worker::Intake,
+            u64,
+        ) -> Result<Value>,
+    ) -> Result<Value> {
+        self.with_runtime_execution(request, now, effect)
     }
     fn with_current(
         &self,
@@ -102,6 +132,8 @@ struct Turn {
     attachment: Value,
     run: Vec<Value>,
     interrupted: bool,
+    #[serde(default)]
+    stop_cause: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -173,8 +205,12 @@ impl Session {
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct State {
-    policy: Policy,
+pub(crate) struct State {
+    pub(crate) policy: Policy,
+    #[serde(default)]
+    pub(crate) transport: Option<crate::transport::Transport>,
+    #[serde(default)]
+    turn_commands: BTreeMap<String, Value>,
     adapters: BTreeMap<String, Adapter>,
     sessions: BTreeMap<String, Session>,
     priors: BTreeMap<String, Prior>,
@@ -197,12 +233,13 @@ pub struct Bundle {
 }
 
 pub struct SessionHost {
-    store: Artifacts,
-    signer: RelaySigner,
-    secret: SecretKey,
+    pub(crate) store: Artifacts,
+    pub(crate) signer: RelaySigner,
+    pub(crate) secret: SecretKey,
     engines: RefCell<BTreeMap<String, Box<dyn Engine>>>,
     bindings: Box<dyn Bindings>,
     reader: RefCell<Option<ReadScope>>,
+    pub(crate) runtime_clocks: RefCell<BTreeMap<String, (std::time::Instant, u64)>>,
 }
 
 struct ReadScope {
@@ -290,6 +327,7 @@ impl SessionHost {
             engines: RefCell::new(engines),
             bindings,
             reader: RefCell::new(None),
+            runtime_clocks: RefCell::new(BTreeMap::new()),
         };
         host.state()?;
         Ok(host)
@@ -332,10 +370,10 @@ impl SessionHost {
     pub fn store(&self) -> &Artifacts {
         &self.store
     }
-    fn state(&self) -> Result<State> {
+    pub(crate) fn state(&self) -> Result<State> {
         self.store.load(&self.signer)
     }
-    fn save(&self, state: &State) -> Result<()> {
+    pub(crate) fn save(&self, state: &State) -> Result<()> {
         self.store.save(state, &self.signer)
     }
     /// How many turns an engine instance actually started.
@@ -868,7 +906,7 @@ impl SessionHost {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn control_result(
+    pub(crate) fn control_result(
         &self,
         state: &mut State,
         recipient: &str,
@@ -919,6 +957,19 @@ impl SessionHost {
             let reference = self.store.put(bytes, "application/octet-stream", None)?;
             self.remember(&mut state, &signer, &reference)?;
         }
+        self.submit_authenticated(state, signer, body, input, binding, now, None)
+    }
+
+    fn submit_authenticated(
+        &self,
+        mut state: State,
+        signer: String,
+        body: Value,
+        input: Value,
+        binding: Option<&Binding>,
+        now: u64,
+        fence: Option<&env_host::runtime::RuntimeFence<'_>>,
+    ) -> Result<Value> {
         let scope = self.read_scope(&state, &signer);
         self.with_read_scope(scope, || {
             if let Err(e) = sess::validate(&body) {
@@ -936,10 +987,10 @@ impl SessionHost {
             }
             let outcome = match body["v"].as_str() {
                 Some("openagents.session-open.v1") => {
-                    self.open_session(&mut state, &signer, &body, &input, binding, now)
+                    self.open_session(&mut state, &signer, &body, &input, binding, now, fence)
                 }
                 Some("openagents.session-command.v1") => {
-                    self.command(&mut state, &signer, &body, &input, binding, now)
+                    self.command(&mut state, &signer, &body, &input, binding, now, fence)
                 }
                 Some("openagents.session-interaction-response.v1") => {
                     self.respond(&mut state, &signer, &body, &input, now)
@@ -1059,9 +1110,49 @@ impl SessionHost {
         &self,
         request: &env_host::runtime::RuntimeUse<'_>,
         now: u64,
+        fence: Option<&env_host::runtime::RuntimeFence<'_>>,
     ) -> Result<Value> {
-        self.bindings.with_current(request, now, &mut || Ok(()))?;
+        if let Some(fence) = fence {
+            fence.with_current(request, now, &mut || Ok(()))?;
+        } else {
+            self.bindings.with_current(request, now, &mut || Ok(()))?;
+        }
         Ok(request.grant.clone())
+    }
+
+    fn require_engine_execution(
+        &self,
+        engine: &str,
+        fence: Option<&env_host::runtime::RuntimeFence<'_>>,
+    ) -> Result<()> {
+        let profile = self.engines.borrow().get(engine).ok_or("engine")?.profile();
+        if fence.is_none()
+            && (!self.bindings.local_fixture()
+                || profile.effects["process"] == true
+                || profile.effects["delegates"] == true
+                || profile.effects["spend"] == true
+                || profile.effects["network"]
+                    .as_array()
+                    .is_none_or(|v| !v.is_empty()))
+        {
+            return Err("not_admitted: this engine requires charged runtime execution".into());
+        }
+        Ok(())
+    }
+
+    fn runtime_effect(
+        &self,
+        request: &env_host::runtime::RuntimeUse<'_>,
+        now: u64,
+        fence: Option<&env_host::runtime::RuntimeFence<'_>>,
+        engine: &str,
+        effect: &mut dyn FnMut() -> Result<()>,
+    ) -> Result<()> {
+        if let Some(fence) = fence {
+            return fence.with_current(request, now, effect);
+        }
+        self.require_engine_execution(engine, fence)?;
+        self.bindings.with_current(request, now, effect)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1073,6 +1164,7 @@ impl SessionHost {
         input: &Value,
         binding: Option<&Binding>,
         now: u64,
+        fence: Option<&env_host::runtime::RuntimeFence<'_>>,
     ) -> Result<Value> {
         let started = std::time::Instant::now();
         let key = format!(
@@ -1190,26 +1282,28 @@ impl SessionHost {
             &body["materialization"],
             &engine,
         );
-        let grant = self.check_binding(&runtime, now)?;
+        let grant = self.check_binding(&runtime, now, fence)?;
+        self.require_engine_execution(&adapter.engine, fence)?;
         let owner = signer.to_string();
         let mut run = Vec::new();
+        let opening_run = token();
         let created = self.run_record(
             &mut run,
-            &id,
+            &opening_run,
             "created",
             json!({"request":digest_of(input)}),
             now,
         )?;
         self.run_record(
             &mut run,
-            &id,
+            &opening_run,
             "admitted",
             json!({"request":digest_of(input)}),
             now,
         )?;
         let dispatched = self.run_record(
             &mut run,
-            &id,
+            &opening_run,
             "dispatched",
             json!({"request":digest_of(input),"binding":digest_of(&grant)}),
             now,
@@ -1299,23 +1393,24 @@ impl SessionHost {
             self.save(state)?;
             let current = now.saturating_add(started.elapsed().as_secs());
             let mut native = None;
-            let opening = self.bindings.with_current(&runtime, current, &mut || {
-                let current = now.saturating_add(started.elapsed().as_secs());
-                if body["expires_at"]
-                    .as_u64()
-                    .is_none_or(|expiry| expiry <= current)
-                {
-                    return Err("stale: opening expired before native dispatch".into());
-                }
-                native = Some(
-                    self.engines
-                        .borrow_mut()
-                        .get_mut(&adapter.engine)
-                        .ok_or("engine")?
-                        .open(resume.as_deref())?,
-                );
-                Ok(())
-            });
+            let opening =
+                self.runtime_effect(&runtime, current, fence, &adapter.engine, &mut || {
+                    let current = now.saturating_add(started.elapsed().as_secs());
+                    if body["expires_at"]
+                        .as_u64()
+                        .is_none_or(|expiry| expiry <= current)
+                    {
+                        return Err("stale: opening expired before native dispatch".into());
+                    }
+                    native = Some(
+                        self.engines
+                            .borrow_mut()
+                            .get_mut(&adapter.engine)
+                            .ok_or("engine")?
+                            .open(resume.as_deref())?,
+                    );
+                    Ok(())
+                });
             // Never turn a lost acknowledgment into a retryable refusal.
             if opening.is_err() || native.is_none() {
                 self.capture(state, &mut session, now)?;
@@ -1376,6 +1471,7 @@ impl SessionHost {
         input: &Value,
         binding: Option<&Binding>,
         now: u64,
+        fence: Option<&env_host::runtime::RuntimeFence<'_>>,
     ) -> Result<Value> {
         let scope = &body["scope"];
         let key = format!(
@@ -1393,7 +1489,16 @@ impl SessionHost {
             .sessions
             .remove(&id)
             .ok_or_else(|| refuse("not_admitted", "unknown session"))?;
-        let outcome = self.command_session(state, &mut session, signer, body, input, binding, now);
+        let outcome = self.command_session(
+            state,
+            &mut session,
+            signer,
+            body,
+            input,
+            binding,
+            now,
+            fence,
+        );
         state.sessions.insert(id, session);
         let result = outcome?;
         state.priors.insert(
@@ -1416,6 +1521,7 @@ impl SessionHost {
         input: &Value,
         binding: Option<&Binding>,
         now: u64,
+        fence: Option<&env_host::runtime::RuntimeFence<'_>>,
     ) -> Result<Value> {
         if body["scope"]["authority"] != self.pubkey()
             || body["scope"]["generation"] != session.generation
@@ -1488,6 +1594,7 @@ impl SessionHost {
                     binding,
                     now,
                     Some((signer, input)),
+                    fence,
                 )?;
             }
             "enqueue" => {
@@ -1575,6 +1682,7 @@ impl SessionHost {
                     .get(&session.adapter)
                     .ok_or("adapter")?
                     .clone();
+                self.require_engine_execution(&adapter.engine, None)?;
                 let steering = self
                     .engines
                     .borrow()
@@ -1850,6 +1958,7 @@ impl SessionHost {
         binding: Option<&Binding>,
         now: u64,
         pending: Option<(&str, &Value)>,
+        fence: Option<&env_host::runtime::RuntimeFence<'_>>,
     ) -> Result<Vec<Value>> {
         let started = std::time::Instant::now();
         let binding = self.need_binding(binding)?;
@@ -1878,7 +1987,8 @@ impl SessionHost {
             &opening["materialization"],
             &engine,
         );
-        let grant = self.check_binding(&runtime, now)?;
+        let grant = self.check_binding(&runtime, now, fence)?;
+        self.require_engine_execution(&adapter.engine, fence)?;
         let intent = self.store.json(intent_ref)?;
         let mut input: Value =
             contracts::parse_strict_bounded(&self.bytes(&intent["input"])?, 1_048_576)
@@ -1924,6 +2034,7 @@ impl SessionHost {
             attachment: grant.clone(),
             run: run.clone(),
             interrupted: false,
+            stop_cause: None,
         });
         session.turn_revision = Some(0);
         session.phase = "running".into();
@@ -1961,34 +2072,21 @@ impl SessionHost {
                 },
             );
         }
-        let mut snapshot = self.state()?;
-        snapshot.priors.extend(state.priors.clone());
-        snapshot.signers.extend(state.signers.clone());
-        snapshot.declarations.extend(state.declarations.clone());
-        for (principal, known) in &state.known {
-            snapshot
-                .known
-                .entry(principal.clone())
-                .or_default()
-                .extend(known.iter().cloned());
+        if let Some((_, command)) = pending {
+            state.turn_commands.insert(
+                digest_of(command).into(),
+                json!({
+                    "session":session.id,"turn":turn,"generation":session.generation,
+                }),
+            );
         }
         self.write_state(state, session, now)?;
-        snapshot.declarations.extend(state.declarations.clone());
-        for (principal, known) in &state.known {
-            snapshot
-                .known
-                .entry(principal.clone())
-                .or_default()
-                .extend(known.iter().cloned());
-        }
-        snapshot
-            .sessions
-            .insert(session.id.clone(), session.clone());
-        self.save(&snapshot)?;
+        state.sessions.insert(session.id.clone(), session.clone());
+        self.save(state)?;
         // Recheck after the durable intent, holding both authorities through
         // actual native input disclosure. A read-only probe is insufficient.
         let current = now.saturating_add(started.elapsed().as_secs());
-        self.bindings.with_current(&runtime, current, &mut || {
+        self.runtime_effect(&runtime, current, fence, &adapter.engine, &mut || {
             let current = now.saturating_add(started.elapsed().as_secs());
             if intent["expires_at"]
                 .as_u64()
@@ -2038,6 +2136,7 @@ impl SessionHost {
             attachment: grant,
             run,
             interrupted: false,
+            stop_cause: None,
         });
         session.turn_revision = Some(0);
         session.phase = "running".into();
@@ -2167,6 +2266,11 @@ impl SessionHost {
                 cause,
                 output,
             } => {
+                let cause = if outcome == "cancelled" {
+                    turn.stop_cause.as_deref().unwrap_or(cause)
+                } else {
+                    cause
+                };
                 let output_ref = self.store.put(&output, "application/json", None)?;
                 let resolved = self.run_record(
                     &mut turn.run,
@@ -2297,7 +2401,7 @@ impl SessionHost {
                 }
             }
             self.require(&state, &session, "queue")?;
-            self.start_turn(&mut state, &mut session, &intent_ref, binding, now, None)?;
+            self.start_turn(&mut state, &mut session, &intent_ref, binding, now, None, None)?;
             let turn = session.active.as_ref().map(|t| t.id.clone());
             session.queue[index].state = "promoted".into();
             session.queue[index].turn = turn.clone();
@@ -2401,12 +2505,27 @@ impl SessionHost {
         let schema = serde_json::to_vec(&answer_schema()).map_err(|e| e.to_string())?;
         validate_against(&schema, &response)
             .map_err(|_| refuse("malformed", "answer does not match its schema"))?;
+        let adapter = state
+            .adapters
+            .get(&session.adapter)
+            .ok_or("adapter")?
+            .clone();
+        self.require_engine_execution(&adapter.engine, None)?;
         // Claim first and persist delivery intent before the engine reply.
         let mut claimed = session.clone();
         claimed.interactions[index].state = "unknown".into();
+        let pending = self.control_result(
+            state,
+            signer,
+            input,
+            "unknown",
+            None,
+            Some("unavailable"),
+            now,
+        )?;
         claimed.interactions[index].claim = Some(Prior {
             fingerprint: digest_of(input).into(),
-            result: Value::Null,
+            result: pending,
         });
         let mut snapshot = self.state()?;
         snapshot.sessions.insert(session.id.clone(), claimed);
@@ -2420,11 +2539,6 @@ impl SessionHost {
                 .extend(known.iter().cloned());
         }
         self.save(&snapshot)?;
-        let adapter = state
-            .adapters
-            .get(&session.adapter)
-            .ok_or("adapter")?
-            .clone();
         let native = session.native.clone().ok_or("native session")?;
         let delivered = self
             .engines
@@ -2583,6 +2697,389 @@ impl SessionHost {
             "results":session.results,"steers":session.steers,"children":session.children,"read_only":session.read_only,
             "admission":session.admission,"effective":session.effective,"protocol_fault":session.protocol_fault}),
         )
+    }
+}
+
+impl SessionHost {
+    pub(crate) fn cj_run_in_use(&self, state: &State, run: &str) -> Result<bool> {
+        for session in state.sessions.values() {
+            if session
+                .opening_run
+                .iter()
+                .chain(&session.close_run)
+                .chain(session.active.iter().flat_map(|t| t.run.iter()))
+                .any(|r| r["record"]["run"] == run)
+            {
+                return Ok(true);
+            }
+            for reference in &session.results {
+                let result = self.store.json(reference)?;
+                if self.store.json(&result["run"])?["record"]["run"] == run {
+                    return Ok(true);
+                }
+            }
+        }
+        Ok(false)
+    }
+
+    pub(crate) fn cj_stop(&self, state: &mut State, input: &Value, now: u64) -> Result<()> {
+        let Some(turn) = state.turn_commands.get(digest_of(input)).cloned() else {
+            return Ok(());
+        };
+        let id = turn["session"].as_str().ok_or("session")?.to_string();
+        let session = state.sessions.get_mut(&id).ok_or("session")?;
+        let Some(active) = session.active.as_mut().filter(|t| t.id == turn["turn"]) else {
+            return Ok(());
+        };
+        if active.interrupted {
+            return Ok(());
+        }
+        active.interrupted = true;
+        active.stop_cause = Some("deadline".into());
+        let turn_id = active.id.clone();
+        let native = session.native.clone().ok_or("native session")?;
+        let adapter = state
+            .adapters
+            .get(&session.adapter)
+            .ok_or("adapter")?
+            .clone();
+        self.save(state)?;
+        // This cleanup may stop only the original active turn. Its durable
+        // intent prevents a lost acknowledgment from repeating the command.
+        let _ = self
+            .engines
+            .borrow_mut()
+            .get_mut(&adapter.engine)
+            .ok_or("engine")?
+            .interrupt(&native, &turn_id);
+        let mut session = state.sessions.remove(&id).ok_or("session")?;
+        let observed = self.observe_session(state, &mut session, now);
+        state.sessions.insert(id, session);
+        observed?;
+        Ok(())
+    }
+
+    pub(crate) fn cj_target(
+        &self,
+        state: &State,
+        target: &Value,
+    ) -> Result<crate::transport::Target> {
+        for adapter in state.adapters.values() {
+            let description = self.store.json(&adapter.reference)?;
+            let matched = adapter.definition == *target
+                || description["features"]
+                    .as_array()
+                    .is_some_and(|entries| entries.iter().any(|f| f["operation"] == *target));
+            if !matched {
+                continue;
+            }
+            let card =
+                contracts::parse_strict(&self.store.get(&target["artifact"])?).map_err(contract)?;
+            let feature = card["meta"]["feature"].as_str();
+            if matches!(
+                feature,
+                Some("questions" | "approvals" | "steer" | "interrupt" | "history")
+            ) {
+                return Err("unsupported_feature: this operation requires its continuation or read endpoint".into());
+            }
+            let profile = self
+                .engines
+                .borrow()
+                .get(&adapter.engine)
+                .ok_or("engine")?
+                .profile();
+            let expected =
+                crate::interface::definition(&self.store, self.pubkey(), &profile, feature)?;
+            if expected != *target
+                || description["engine"]["digest"] != digest_bytes(&profile.engine)
+            {
+                return Err(
+                    "identity_mismatch: installed engine differs from its admitted capability"
+                        .into(),
+                );
+            }
+            return Ok(crate::transport::Target {
+                adapter: adapter.reference.clone(),
+                engine: description["engine"].clone(),
+                input: card["input"].clone(),
+            });
+        }
+        Err("not_admitted: session capability is not admitted".into())
+    }
+
+    pub(crate) fn cj_reader(
+        &self,
+        state: &State,
+        actor: &str,
+        input: Option<&Value>,
+    ) -> Result<()> {
+        if !state.policy.owners.contains(actor) {
+            return Err("not_admitted: runtime caller is not a current owner".into());
+        }
+        if let Some(input) = input {
+            let body = self.store.json(input)?;
+            if body["v"] == "openagents.session-command.v1" {
+                self.command_authority(state, actor, &body)?;
+                let session = state
+                    .sessions
+                    .get(body["scope"]["session"].as_str().ok_or("session")?)
+                    .ok_or("session")?;
+                if session.owner != actor {
+                    return Err(
+                        "not_admitted: this runtime endpoint requires the session owner".into(),
+                    );
+                }
+            } else if body["v"] == "openagents.session-open.v1" && body["owner"] != actor {
+                return Err(
+                    "not_admitted: this runtime endpoint requires the session owner".into(),
+                );
+            }
+        }
+        Ok(())
+    }
+
+    pub(crate) fn dispatch_cj(
+        &self,
+        state: State,
+        event: &Event,
+        opened: &nostr::execution::Opened,
+        execute: &nostr::execution::Execute,
+        artifacts: &BTreeMap<String, Vec<u8>>,
+        binding: &Binding,
+        target: &crate::transport::Target,
+        key: &str,
+        now: u64,
+    ) -> Result<Value> {
+        let intake = workspace_host::host::request(
+            &self.secret,
+            &opened.principal,
+            json!({"v":"openagents.coordination-native-intake.v1","requires":[],
+                "request":event.id,"fingerprint":execute.fingerprint}),
+            now,
+        )?;
+        let dispatch = env_host::runtime::RuntimeDispatch {
+            attachment: &binding.attachment,
+            fingerprint: &binding.fingerprint,
+            grant: &binding.grant,
+            controller: &opened.principal,
+            executor: self.pubkey(),
+            engine: &target.engine,
+            target: &execute.payload["target"],
+            intake: &intake,
+        };
+        let mut state = Some(state);
+        self.bindings
+            .with_execution(&dispatch, now, &mut |fence, admitted, current| {
+                if admitted.0 != execute.payload {
+                    return Err("identity_mismatch: admitted session execution differs".into());
+                }
+                nostr::execution::require_pins(execute, &admitted.1)
+                    .map_err(|e| format!("{e:?}"))?;
+                let mut state = state
+                    .take()
+                    .ok_or("unknown: runtime callback cannot repeat")?;
+                let reference = execute.payload["input"]["artifact"].clone();
+                let bytes = &admitted.1[digest_of(&reference)];
+                let body = contracts::parse_strict_bounded(bytes, 1_048_576).map_err(contract)?;
+                validate_against(&self.store.get(&target.input)?, &body)?;
+                match body["v"].as_str() {
+                    Some("openagents.session-open.v1") if body["adapter"] == target.adapter => {}
+                    Some("openagents.session-command.v1") => {
+                        let session = state
+                            .sessions
+                            .get(body["scope"]["session"].as_str().ok_or("session")?)
+                            .ok_or("not_admitted: unknown session")?;
+                        if state.adapters[&session.adapter].reference != target.adapter
+                            || matches!(body["action"].as_str(), Some("steer" | "interrupt"))
+                        {
+                            return Err("not_admitted: session operation or adapter differs".into());
+                        }
+                    }
+                    _ => {
+                        return Err(
+                            "unsupported_feature: session operation needs another endpoint".into(),
+                        );
+                    }
+                }
+                self.store
+                    .put(bytes, "application/json", reference["schema"].as_str())?;
+                self.remember(&mut state, &opened.principal, &reference)?;
+                for (digest, bytes) in artifacts.iter().chain(admitted.1.iter()) {
+                    if digest_bytes(bytes) != *digest {
+                        return Err("identity_mismatch: runtime artifact bytes".into());
+                    }
+                    let r = self.store.put(bytes, "application/octet-stream", None)?;
+                    self.remember(&mut state, &opened.principal, &r)?;
+                }
+                let event_ref = self.store.put(
+                    &serde_json::to_vec(event).map_err(|e| e.to_string())?,
+                    "application/json",
+                    None,
+                )?;
+                state.declarations.insert(
+                    format!("{}:cj:{}", digest_of(&reference), opened.principal),
+                    event_ref,
+                );
+                state
+                    .signers
+                    .entry(digest_of(&reference).into())
+                    .or_default()
+                    .insert(opened.principal.clone());
+                state
+                    .transport
+                    .as_mut()
+                    .ok_or("transport")?
+                    .inputs
+                    .insert(key.into(), reference.clone());
+                self.cj_reader(&state, &opened.principal, Some(&reference))?;
+                self.save(&state)?;
+                self.submit_authenticated(
+                    state,
+                    opened.principal.clone(),
+                    body,
+                    reference,
+                    Some(binding),
+                    current,
+                    Some(fence),
+                )
+            })
+    }
+}
+
+impl SessionHost {
+    pub(crate) fn cj_progress(
+        &self,
+        state: &mut State,
+        input: &Value,
+        actor: &str,
+        observe: bool,
+        now: u64,
+    ) -> Result<crate::transport::JobProgress> {
+        self.cj_reader(state, actor, Some(input))?;
+        let body = self.store.json(input)?;
+        let command_key = if body["v"] == "openagents.session-open.v1" {
+            format!(
+                "{}:{}:{}",
+                self.pubkey(),
+                body["session"].as_str().ok_or("session")?,
+                body["command"].as_str().ok_or("command")?
+            )
+        } else {
+            format!(
+                "{}:{}:{}",
+                self.pubkey(),
+                body["scope"]["session"].as_str().ok_or("session")?,
+                body["command"].as_str().ok_or("command")?
+            )
+        };
+        if let Some(turn) = state.turn_commands.get(digest_of(input)).cloned() {
+            let id = turn["session"].as_str().ok_or("session")?.to_string();
+            let mut session = state.sessions.remove(&id).ok_or("session")?;
+            if session.generation != turn["generation"].as_u64().ok_or("generation")? {
+                state.sessions.insert(id, session);
+                return Err("stale: runtime generation changed".into());
+            }
+            if observe
+                && session
+                    .active
+                    .as_ref()
+                    .is_some_and(|a| a.id == turn["turn"].as_str().unwrap_or_default())
+            {
+                let observed = self.observe_session(state, &mut session, now);
+                state.sessions.insert(id.clone(), session.clone());
+                observed?;
+            }
+            let result = session.results.iter().find_map(|r| {
+                let b = self.store.json(r).ok()?;
+                (b["turn"] == turn["turn"]).then_some((r.clone(), b))
+            });
+            state.sessions.insert(id, session);
+            if let Some((reference, result)) = result {
+                let outcome = match result["outcome"].as_str() {
+                    Some("completed") => "completed",
+                    Some("cancelled") => "cancelled",
+                    Some("failed") => "failed",
+                    _ => "unknown",
+                };
+                let mut files = vec![
+                    reference.clone(),
+                    result["run"].clone(),
+                    result["quiescence"].clone(),
+                ];
+                files.extend(
+                    result["outputs"]
+                        .as_array()
+                        .ok_or("turn outputs")?
+                        .iter()
+                        .cloned(),
+                );
+                if !result["quiescence"].is_null() {
+                    let q = self.store.json(&result["quiescence"])?;
+                    for evidence in q["evidence"].as_array().ok_or("quiescence evidence")? {
+                        files.push(evidence.clone());
+                        let native = self.store.json(evidence)?;
+                        files.push(native["payload"].clone());
+                    }
+                }
+                return Ok(crate::transport::JobProgress::Done {
+                    outcome,
+                    output: reference,
+                    files,
+                });
+            }
+            return Ok(crate::transport::JobProgress::Pending);
+        }
+        let prior = state
+            .priors
+            .get(&command_key)
+            .ok_or("unknown: domain admission was not acknowledged")?;
+        let value = prior.result.clone();
+        let outcome = match value["status"].as_str() {
+            Some("accepted" | "duplicate") => "completed",
+            Some("refused" | "conflict") => "failed",
+            _ => "unknown",
+        };
+        let output = self.store.put_json(&value)?;
+        let mut files = vec![output.clone()];
+        if !value["receipt"].is_null() {
+            files.push(value["receipt"].clone());
+            let receipt = self.store.json(&value["receipt"])?;
+            files.extend(
+                receipt["records"]
+                    .as_array()
+                    .ok_or("receipt records")?
+                    .iter()
+                    .cloned(),
+            );
+        }
+        Ok(crate::transport::JobProgress::Done {
+            outcome,
+            output,
+            files,
+        })
+    }
+
+    pub(crate) fn cj_files(
+        &self,
+        state: &State,
+        actor: &str,
+        references: Vec<Value>,
+    ) -> Result<Vec<Value>> {
+        let known = state.known.get(actor);
+        let mut seen = BTreeSet::new();
+        let mut out = Vec::new();
+        for reference in references {
+            let digest = digest_of(&reference);
+            if reference.is_null() || !seen.insert(digest.to_string()) {
+                continue;
+            }
+            if !known.is_some_and(|k| k.contains(digest)) {
+                return Err("not_admitted: runtime result contains an unshared artifact".into());
+            }
+            self.store.get(&reference)?;
+            out.push(reference);
+        }
+        Ok(out)
     }
 }
 
