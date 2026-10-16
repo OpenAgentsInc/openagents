@@ -1,23 +1,45 @@
 # OpenAgents
 
-We are building the best coding agent in the world by using network effects:
-an **agent collective**.
+OpenAgents is a **composable general agent**: one agent you reach from
+anywhere, made of many specialized members that it brings in for each
+request. Ask a question, plan some work, change some code, pay for a
+service, or build something it can't do yet. Each step goes to whichever
+member, model, or computer serves it best.
 
-- **Coder** is our first agent. It writes and runs code on your computers and
-  in our cloud, with the agents and logins you already have.
-- **Verse** is the world where people and agents meet, work, and trade. You
-  walk a world instead of reading a dashboard: your agents work at desks you
-  can visit, and where an agent stands tells you what it's doing. It runs on
-  desktop, iOS, Android, and the web, on our own Rust engine.
-- **The Gym** is where people help agents get better, by adding plugins and
-  running the tests that measure them.
+- **One agent, every surface.** [openagents.com](https://openagents.com),
+  the phone and desktop apps, the terminal, and any other app through
+  [our API](https://openagents.com/docs/agents). They're the same agent and
+  the same chats.
+- **A cheap decision layer in front.** A typed decision model, System 1,
+  decides what each step needs before any big model runs. It goes through
+  our [Decisions API](docs/api/decisions.md), Clef first.
+- **Members are admitted on evidence.** A member can be an answer, a
+  knowledge entry, a plugin someone wrote, another agent, or another
+  computer. It joins the defaults only after a with-and-without measurement
+  shows it helps. We call these
+  [test-time capabilities](docs/essays/2026-09-29-test-time-capabilities.md).
+- **Open all the way down.** Everything here is open source under the
+  [Apache 2.0 license](LICENSE). Every step is a signed record on Nostr
+  ([our NIPs](nips/openagents/README.md)), so other apps can build on the
+  same agent, self-host a part of it, or extend it. Payments are Bitcoin
+  over Lightning.
 
-OpenAgents is the composable agent and its ecosystem; Coder is the workflow
-that gives developers a concrete reason to adopt it. Everything here is open
-source under the [Apache 2.0 license](LICENSE).
+**Coder is the first member, not the whole picture.** It's our coding
+metaharness: one Coder in front of the coding agents you already use
+(Claude Code, Codex, OpenCode, Grok Build, Devin CLI, Cursor), deciding
+what each step needs. [Coder 1.0](https://openagents.com/blog/coder-1-0)
+shipped on 2026-10-15. We started with coding because it's the work with
+the clearest checks: a change passes its tests or it doesn't. The same
+front, members, and evidence carry over to other work.
+
+Why general agents can work now, when they stalled before, is in
+[The Return of the General Agent](docs/essays/2026-10-01-the-return-of-the-general-agent.md).
+The short version is in [Episode 289](docs/transcripts/289.md): "It's a
+composable general agent."
 
 ## Contents
 
+- [The bigger picture](#the-bigger-picture)
 - [Try it](#try-it)
 - [Coder](#coder)
 - [Alice and the crew](#alice-and-the-crew)
@@ -32,15 +54,43 @@ source under the [Apache 2.0 license](LICENSE).
 - [Contributing](#contributing)
 - [License](#license)
 
+## The bigger picture
+
+OpenAgents is several parts that make one agent. Each part is useful
+alone, and they compound together.
+
+| Part | What it is | Status |
+| --- | --- | --- |
+| **The front** | Typed decisions on every step: which member, which model, which computer, and whether to ask you first. The [Decisions API](docs/api/decisions.md) is Clef first, with Jev as the backup | In production |
+| **Members** | Answers and knowledge ([NIP-KB](nips/openagents/NIP-KB.md)), plugins ([plugins](docs/plugins/README.md)), agents such as Coder and the agents it fronts, and computers | Coder 1.0 shipped; plugins and knowledge are live |
+| **Evidence** | [The Gym](docs/gym/README.md) measures each member with and without it; adoption into the defaults is a recorded decision. XP credits accepted contributions | Live; contributors at scale aren't proven yet |
+| **Computers** | Where work runs: your own Mac or PC, our cloud, and later fast sandboxes, behind one lifecycle layer ([computers](docs/cloud/computers.md)) and one planned API ([Computers SDK](docs/sdk/computers.md)) | Your machines and our cloud work; the public API is planned |
+| **Surfaces** | The website, iOS and Android, the Mac app, the terminal, the [`openagents` command](docs/cli/README.md), and the [API at `api.openagents.com/v1`](https://openagents.com/docs/agents) for other apps and agents | The website is live and Coder is 1.0; mobile and desktop are in testing |
+| **Protocol** | Nostr and [our NIPs](nips/openagents/README.md) carry requests, runs, trajectories, evaluations, credit and payments as signed records, so no single app owns the agent | Specified; coverage is tracked in the [coverage report](docs/protocol/2026-09-26-nip-implementation-coverage.md) |
+| **Money** | Bitcoin only: Lightning, [x402](nips/openagents/NIP-X402.md) paid calls, and our own LND node ([LND plan](docs/payments/2026-10-15-lnd-sdk-plan.md)) | Paid calls work; our own node is waiting on funding |
+| **Verse** | The world where people and agents meet, work and trade, on our own Rust engine ([Verse](#verse-and-everglade)) | Playable on desktop, phone and web |
+| **Self-improving work** | Every accepted or rejected change makes the next one cheaper: the outcome loop in [self-improving codebases](docs/product/self-improving-codebases.md) and [outcomes](docs/research/outcomes/README.md) | We run it on this repository; selling it is next |
+
+What we haven't shown yet: independent contributors at scale, gains that
+compound across a network, and the composition working well outside
+software. [Part V of the essay](docs/essays/2026-10-01-the-return-of-the-general-agent.md#part-v-what-we-have-shown-and-what-we-havent)
+keeps that list.
+
+Where it goes next: [the roadmap](docs/roadmap.md), the
+[OpenAgents SDK](docs/sdk/README.md) for building on all of this from your
+own code, and [verification](docs/verification/README.md) for the parts
+that guard money and authority.
+
 ## Try it
 
 | Platform | Status |
 | --- | --- |
-| iOS | OpenAgents (`com.openagents.app`) 1.0.0 on TestFlight: chat, the Gym's plugin tests and XP, Verse with Everglade, and a Spark wallet. See [OpenAgents for iOS](bins/openagents-ios/README.md). |
+| Web | Chat at [openagents.com](https://openagents.com), and Everglade in the browser at [openagents.com/everglade](https://openagents.com/everglade) (WebGPU or WebGL2). See [Everglade on the web](crates/everglade-web/README.md). |
+| Terminal | **Coder 1.0.0** on macOS, Linux and Windows. Install with `curl -fsSL https://openagents.com/cli/install.sh \| bash` (macOS and Linux) or `irm https://openagents.com/cli/install.ps1 \| iex` (Windows PowerShell), then run `coder` in a project folder. See [the download page](https://openagents.com/download) and [the GitHub release](https://github.com/OpenAgentsInc/openagents/releases/tag/coder-v1.0.0). |
+| API | `https://api.openagents.com/v1`: models (OpenAI-compatible), decisions, projects, and agent self-signup. See [the docs for agents](https://openagents.com/docs/agents). |
+| iOS | OpenAgents (`com.openagents.app`) on TestFlight: chat, the Gym's plugin tests and XP, Verse with Everglade, and a Spark wallet. See [OpenAgents for iOS](bins/openagents-ios/README.md). |
 | Android | The same app and Rust library. Partial: verified on the emulator, distributed as a signed APK that testers install by hand. See [OpenAgents for Android](bins/openagents-android/README.md). |
-| Web | Everglade in the browser at [openagents.com/everglade](https://openagents.com/everglade), on WebGPU or WebGL2. See [Everglade on the web](crates/everglade-web/README.md). |
-| Mac | OpenAgents for desktop 1.0.0: chat, Coder on this computer, and phone pairing. A signed `.dmg` is on the [download page](https://openagents.com/download). See [OpenAgents desktop](crates/openagents-desktop/README.md). |
-| Terminal | `openagents`, or `openagents terminal`, opens OpenAgents Terminal: a full-screen chat where a coding reply runs Coder on this computer. Install it from a release or from source; see [the terminal guide](docs/terminal/README.md). |
+| Mac | OpenAgents for desktop: chat, Coder on this computer, and phone pairing. See [OpenAgents desktop](crates/openagents-desktop/README.md). |
 
 To join the playtest, read the [playtesting program](docs/game/playtesting.md).
 The program is open. Joining earns nothing by itself: XP and titles come only
@@ -48,6 +98,7 @@ from accepted contributions, and nothing pays testers.
 
 ## Coder
 
+Coder is the first member of OpenAgents, and the one with a 1.0 release.
 Coder runs as a terminal and headless program, as a resident host on your
 computers, and as the cloud chat worker. It routes work to the agents you
 already pay for and measures the result.
@@ -217,9 +268,10 @@ thin SwiftUI and Kotlin hosts render it. The app has four tabs: **Chat**,
 Chat needs no computer. Each message is an encrypted
 [NIP-CJ](nips/openagents/NIP-CJ.md) job to our
 [chat worker](docs/deployment/chat-worker.md). The
-[chat router](docs/coder/design/2026-09-28-chat-router.md) has Jev, TypeSafe's
-System One decision model ([`crates/jev`](crates/jev/README.md)), pick the
-route: a reviewed prepared answer, a Gym card, or real work that dispatches
+[chat router](docs/coder/design/2026-09-28-chat-router.md) asks our
+[Decisions API](docs/api/decisions.md) (Clef first, with Jev, TypeSafe's
+System One model, as the backup; [`crates/jev`](crates/jev/README.md)) to
+pick the route: a reviewed prepared answer, a Gym card, or real work that dispatches
 Coder to your connected computer. Code, not the model, decides what to show.
 See the [app wireframe specification](docs/product/2026-09-28-app-wireframe.md)
 for where the app is going.
@@ -230,13 +282,16 @@ Status: a plan with growing foundations. No customer offer is active yet, and
 nothing below pays out today. The [sales plan](docs/sales/README.md) and the
 [revenue roadmap](docs/sales/revenue-roadmap.md) own the details.
 
-Coder is free to use with your own subscriptions. OpenAgents earns on the paid
-resources and services it adds, priced by usage, with no seat bundles or
-multi-year contracts:
+Coder is free to use on your own computer with your own subscriptions. Pro
+($20 a month) is for running on our cloud and isn't on sale yet
+([pricing](https://openagents.com/docs/pricing)). Beyond that, OpenAgents
+earns on the paid resources and services it adds, priced by usage, with no
+seat bundles or multi-year contracts:
 
-- **Paid plugins.** The author receives the declared per-call fee, and
-  OpenAgents earns a separate endpoint charge
-  ([split contract](docs/payments/2026-10-02-central-receive-and-splits.md)).
+- **Paid plugins and paid calls** over [x402](nips/openagents/NIP-X402.md).
+  Paying plugin authors a declared per-call fee is designed
+  ([split contract](docs/payments/2026-10-02-central-receive-and-splits.md))
+  but not built; we don't pay plugin authors today.
 - **Cloud computers** for work your machine is too busy for, metered in sats
   ([retail cloud](docs/cloud/retail-contract.md)).
 - **Decision access** through the keyed [gateway](docs/decision-models/service/gateway.md).
@@ -250,14 +305,9 @@ repeat use, then grow through referrals, partners, and teams.
 
 ### How you can earn
 
-- **Referrals: refer once, earn forever.** The planned program pays people,
-  and their agents, a share of the settled usage their referrals buy, for as
-  long as those accounts stay active. Referral sources, consented capture, and
-  versioned commission terms are built
-  ([`tenancy::accounts`](crates/tenancy/src/accounts.rs),
-  [`openagents customer referral`](docs/cli/README.md#referral-sources));
-  commission accrual and payout wait for the published terms and settlement.
-- **Plugin authors** earn their declared fee on each paid call.
+- **Affiliates.** A share of the Pro revenue from the accounts you refer,
+  with named attribution, is built (#11698). It isn't open yet; its terms
+  are published when it opens.
 - **Partners** fulfill parts of a buyer's order, such as work we don't do
   ourselves, with referrals in both directions. The private sales pipeline
   records accepted partner assignments.
