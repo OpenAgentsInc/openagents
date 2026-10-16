@@ -9,6 +9,7 @@ pub mod dashboard;
 pub mod generated;
 pub mod history;
 mod payment;
+pub mod labs;
 mod transport;
 
 pub use auth::{

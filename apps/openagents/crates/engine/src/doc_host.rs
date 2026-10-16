@@ -16,6 +16,7 @@
 //! another device POSTs a durable nudge to that device's room (§7 cold-chat delivery);
 //! the host's relay receives it and warm-opens the doc, which drains the queue.
 
+mod agent_lab;
 mod custom_agents;
 
 use std::collections::{HashMap, HashSet};

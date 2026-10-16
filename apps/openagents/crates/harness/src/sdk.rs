@@ -86,6 +86,9 @@ fn done(status: DoneStatus, result: Option<String>, error: Option<String>) -> Ag
 }
 #[async_trait]
 impl Harness for SdkHarness {
+    fn binding_fingerprint(&self, model: Option<&str>) -> Option<String> {
+        self.runners.get(model?).map(|r| r.sha256.clone())
+    }
     fn id(&self) -> HarnessId {
         HarnessId::Sdk
     }

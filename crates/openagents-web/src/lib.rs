@@ -20,6 +20,9 @@ pub mod actors_host;
 mod agent_accounts;
 mod agent_assignments;
 mod agent_assignments_openapi;
+mod agent_lab;
+mod agent_lab_openapi;
+mod agent_lab_page;
 mod agent_ready;
 mod agent_work;
 mod agents_page;
@@ -606,6 +609,8 @@ pub fn router(config: Config) -> Router {
         .merge(labs_api::routes(&app))
         .merge(custom_agents::routes())
         .merge(agent_assignments::routes())
+        .merge(agent_lab::routes())
+        .merge(agent_lab_page::routes())
         .merge(dashboard::routes())
         .merge(own_runs::routes())
         .merge(mac_jobs::routes())

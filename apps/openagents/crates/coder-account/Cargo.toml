@@ -6,6 +6,7 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+agent-lab = { path = "../../../../crates/agent-lab", features = ["views"] }
 openagents-dashboard = { path = "../../../../crates/openagents-dashboard", features = ["views"] }
 rust-native = { path = "../../../../crates/rust-native", default-features = false }
 serde = { version = "1", features = ["derive"] }

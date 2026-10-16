@@ -12,6 +12,8 @@
 //! (`snapshot()` / `subscribe()`), never over FFI.
 
 mod account;
+mod agent_lab;
+pub use agent_lab::*;
 mod custom_agents;
 mod home;
 pub use account::*;

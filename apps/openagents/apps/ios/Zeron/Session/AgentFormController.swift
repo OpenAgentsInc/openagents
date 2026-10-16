@@ -3,7 +3,8 @@ import UIKit
 /// UIKit renders the Rust Native form; Rust resolves and validates every action.
 final class AgentFormController: UIViewController, UITextViewDelegate {
     private let app: AppModel
-    private let agents: CoreAgents
+    private let agents: CoreAgents?
+    private let lab: CoreAgentLab?
     private let stack = UIStackView()
     private var observation: AnyObject?
     private var instance = ""
@@ -14,13 +15,20 @@ final class AgentFormController: UIViewController, UITextViewDelegate {
     init(app: AppModel, agents: CoreAgents) {
         self.app = app
         self.agents = agents
+        self.lab = nil
+        super.init(nibName: nil, bundle: nil)
+    }
+    init(app: AppModel, lab: CoreAgentLab) {
+        self.app = app
+        self.agents = nil
+        self.lab = lab
         super.init(nibName: nil, bundle: nil)
     }
     required init?(coder: NSCoder) { fatalError() }
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = "Agent"
+        title = lab == nil ? "Agent" : "Agent Lab"
         view.backgroundColor = .systemBackground
         navigationItem.leftBarButtonItem = UIBarButtonItem(systemItem: .close, primaryAction: UIAction { [weak self] _ in self?.dismiss(animated: true) })
         let scroll = UIScrollView()
@@ -45,9 +53,18 @@ final class AgentFormController: UIViewController, UITextViewDelegate {
         observation = app.observe { [weak self] in self?.render() }
         render()
     }
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        lab?.setVisible(visible: true)
+    }
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        lab?.setVisible(visible: false)
+        if lab != nil { app.customAgents?.refresh() }
+    }
     private func render() {
-        let snapshot = agents.snapshot()
-        guard let json = snapshot.formJson else { dismiss(animated: true); return }
+        let snapshot = agents?.snapshot()
+        guard let json = lab.flatMap({ try? $0.snapshot() }) ?? snapshot?.formJson else { dismiss(animated: true); return }
         guard let data = json.data(using: .utf8), let form = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let root = form["root"] as? [String: Any] else { return }
         instance = form["instance"] as? String ?? ""
         revision = (form["revision"] as? NSNumber)?.uint64Value ?? 0
@@ -80,7 +97,7 @@ final class AgentFormController: UIViewController, UITextViewDelegate {
                 field.isEditable = enabled
                 field.isScrollEnabled = false
                 field.accessibilityLabel = label
-                field.accessibilityIdentifier = "agent-\(key)"
+                field.accessibilityIdentifier = "\(lab == nil ? "agent" : "lab")-\(key)"
                 if field.constraints.isEmpty { field.heightAnchor.constraint(greaterThanOrEqualToConstant: (props["multiline"] as? Bool == true) ? 140 : 44).isActive = true }
                 fieldKeys[ObjectIdentifier(field)] = key
                 control = field
@@ -92,7 +109,7 @@ final class AgentFormController: UIViewController, UITextViewDelegate {
                 if props["selected"] as? Bool == true { config.image = UIImage(systemName: "checkmark.circle.fill"); config.imagePadding = 8 }
                 button.configuration = config
                 button.isEnabled = enabled
-                button.accessibilityIdentifier = "agent-\(key)"
+                button.accessibilityIdentifier = "\(lab == nil ? "agent" : "lab")-\(key)"
                 if existing == nil { button.addAction(UIAction { [weak self] _ in self?.activate(key) }, for: .touchUpInside) }
                 control = button
             } else if kind == "text" {
@@ -108,7 +125,7 @@ final class AgentFormController: UIViewController, UITextViewDelegate {
         }
         append(root)
         controls = controls.filter { used.contains($0.key) }
-        if let notice = snapshot.notice {
+        if let notice = snapshot?.notice {
             let label = controls["notice"] as? UILabel ?? UILabel()
             controls["notice"] = label
             used.insert("notice")
@@ -135,16 +152,36 @@ final class AgentFormController: UIViewController, UITextViewDelegate {
     }
     func textViewDidChange(_ textView: UITextView) {
         guard let key = fieldKeys[ObjectIdentifier(textView)] else { return }
-        do { try agents.changeField(instance: instance, revision: revision, key: key, value: textView.text) }
+        do { if let lab { try lab.changeField(instance: instance, revision: revision, key: key, value: textView.text) }
+            else { try agents?.changeField(instance: instance, revision: revision, key: key, value: textView.text) } }
         catch { /* Restore the Rust-owned value after a rejected edit. */ }
         render()
     }
     private func activate(_ key: String) {
-        do { try agents.activate(instance: instance, revision: revision, key: key); render() }
-        catch {
-            let alert = UIAlertController(title: "Couldn't save the agent", message: error.localizedDescription, preferredStyle: .alert)
-            alert.addAction(UIAlertAction(title: "OK", style: .default))
-            present(alert, animated: true)
+        if let lab {
+            let currentInstance = instance
+            let currentRevision = revision
+            Task { @MainActor [weak self] in
+                do {
+                    let json = try await lab.activate(instance: currentInstance, revision: currentRevision, key: key)
+                    if let data = json.data(using: .utf8), let effect = try JSONSerialization.jsonObject(with: data) as? [String: Any], effect["kind"] as? String == "session", let id = effect["id"] as? String {
+                        let appRouter = self?.router
+                        self?.dismiss(animated: true) { appRouter?.openSession(id) }
+                    }
+                    if key == "promote" || key == "retry" { self?.app.customAgents?.refresh() }
+                    self?.render()
+                } catch { self?.showError(error) }
+            }
+            return
         }
+        do { try agents?.activate(instance: instance, revision: revision, key: key); render() }
+        catch {
+            showError(error)
+        }
+    }
+    private func showError(_ error: Error) {
+        let alert = UIAlertController(title: "Couldn't complete that action", message: error.localizedDescription, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        if presentedViewController == nil { present(alert, animated: true) }
     }
 }

@@ -252,6 +252,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "agent-lab"
+version = "1.0.0"
+dependencies = [
+ "agent-contract",
+ "lab-kit",
+ "rust-native",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "ahash"
 version = "0.8.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -12036,6 +12047,7 @@ name = "openagents-sdk"
 version = "1.0.0"
 dependencies = [
  "agent-contract",
+ "agent-lab",
  "axum 0.8.9",
  "base64 0.22.1",
  "futures-util",
@@ -12136,7 +12148,9 @@ name = "openagents-web"
 version = "1.0.0"
 dependencies = [
  "actors",
+ "agent-contract",
  "agent-fleet",
+ "agent-lab",
  "async-trait",
  "atif",
  "axum 0.8.9",

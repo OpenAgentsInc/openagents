@@ -13,6 +13,8 @@ lab-api = { path = "../lab-api" }
 lab-kit = { path = "../lab-kit" }
 lab-store = { path = "../lab-store" }
 sqlx-postgres = { version = "0.8.6", default-features = false, features = ["json"] }
+agent-contract = { path = "../agent-contract" }
+agent-lab = { path = "../agent-lab", features = ["views"] }
 openagents-sdk = { path = "../openagents-sdk", features = ["schema"] }
 schemars = "1"
 openagents-dashboard = { path = "../openagents-dashboard" }

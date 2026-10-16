@@ -165,6 +165,7 @@ pub struct EngineCore {
     updater_wake: std::sync::Mutex<Option<tokio::task::JoinHandle<()>>>,
     /// Exclusive data-dir lock — held for the engine's lifetime (single-instance).
     _instance_lock: InstanceLock,
+    agent_lab_root: PathBuf,
 }
 
 impl EngineCore {
@@ -353,6 +354,7 @@ impl EngineCore {
             updater: std::sync::Mutex::new(None),
             updater_wake: std::sync::Mutex::new(None),
             _instance_lock: lock,
+            agent_lab_root: profile.store_root().join("agent-lab"),
         })
     }
 
@@ -362,8 +364,11 @@ impl EngineCore {
 
     /// Attach the auth service (before building the RPC service / relays).
     pub fn set_auth(&self, auth: Auth) {
-        self.doc_host
-            .start_custom_agents(auth.clone(), self.registry.clone());
+        self.doc_host.start_custom_agents(
+            auth.clone(),
+            self.registry.clone(),
+            self.agent_lab_root.clone(),
+        );
         *self
             .auth
             .lock()

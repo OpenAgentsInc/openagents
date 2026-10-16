@@ -17,8 +17,8 @@ use serde_json::json;
 use std::collections::BTreeMap;
 const MAX_BYTES: usize = 4 * 1024 * 1024;
 #[derive(Default, Serialize, Deserialize)]
-struct Book {
-    assignments: BTreeMap<String, Assignment>,
+pub(super) struct Book {
+    pub(super) assignments: BTreeMap<String, Assignment>,
     receipts: BTreeMap<String, Receipt>,
 }
 #[derive(Serialize, Deserialize)]
@@ -28,7 +28,7 @@ struct Receipt {
 }
 #[derive(Clone, Serialize)]
 #[serde(tag = "operation", rename_all = "snake_case")]
-enum Change {
+pub(super) enum Change {
     Create {
         body: CreateAssignment,
         definition: AgentDefinition,
@@ -52,14 +52,14 @@ impl Change {
     }
 }
 #[derive(Debug, PartialEq, Eq)]
-enum Refusal {
+pub(super) enum Refusal {
     Invalid,
     Missing,
     Conflict,
     Full,
 }
 impl Refusal {
-    fn response(self) -> Response {
+    pub(super) fn response(self) -> Response {
         let (s, c, m) = match self {
             Self::Invalid => (
                 StatusCode::BAD_REQUEST,
@@ -226,7 +226,7 @@ impl Book {
         Ok(result)
     }
 }
-async fn load(store: &Store, owner: &str) -> Result<(Book, Option<String>), Error> {
+pub(super) async fn load(store: &Store, owner: &str) -> Result<(Book, Option<String>), Error> {
     let key = Store::owner_key(owner, "agent-assignments.json")?;
     match store.read_key(&key).await? {
         None => Ok((Book::default(), None)),
@@ -242,7 +242,7 @@ async fn load(store: &Store, owner: &str) -> Result<(Book, Option<String>), Erro
         }
     }
 }
-async fn mutate(
+pub(super) async fn mutate(
     store: &Store,
     owner: &str,
     c: Change,

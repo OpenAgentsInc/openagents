@@ -406,6 +406,12 @@ final class NewSessionViewController: UIViewController, UIGestureRecognizerDeleg
                 }
             })
             var actions: [UIMenuElement] = [UIAction(title: "Create agent…", image: UIImage(systemName: "plus")) { [weak self] _ in self?.openAgentForm(id: nil) }]
+            if let lab = app.agentLab {
+                actions.append(UIAction(title: "Agent Lab…", image: UIImage(systemName: "flask")) { [weak self] _ in
+                    guard let self else { return }
+                    self.present(UINavigationController(rootViewController: AgentFormController(app: self.app, lab: lab)), animated: true)
+                })
+            }
             if let selected = snapshot.selected {
                 actions.append(UIAction(title: "Edit agent…", image: UIImage(systemName: "pencil")) { [weak self] _ in self?.openAgentForm(id: selected.id) })
             }

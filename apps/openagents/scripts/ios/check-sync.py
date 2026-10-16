@@ -22,6 +22,7 @@ def main():
     parser.add_argument("--deployment", choices=["both", "staging", "production"], default="both")
     parser.add_argument("--skip-build", action="store_true", help="Reuse the fixture binaries just built from this checkout")
     parser.add_argument("--custom-agents", type=Path, help="Run the custom-agent UI check with this installed fixture runner")
+    parser.add_argument("--agent-lab", action="store_true", help="Run the Agent Lab workbench scenario with --custom-agents")
     parser.add_argument("--simulator", default=SIMULATOR, help="Isolated simulator for this check")
     parser.add_argument("--derived-data", type=Path, help="Isolated Xcode build directory")
     args = parser.parse_args()
@@ -38,6 +39,9 @@ def main():
     if args.custom_agents:
         env["OA_CUSTOM_AGENT_FIXTURE_RUNNER"] = str(args.custom_agents.expanduser().resolve())
         env["OA_CUSTOM_AGENT_UI"] = "1"
+    if args.agent_lab:
+        if not args.custom_agents: parser.error("Agent Lab needs the installed fixture runner.")
+        env["OA_AGENT_LAB_UI"] = "1"
     if not args.skip_build:
         for command in (["cargo", "build", "--locked", "-p", "zeron", "--profile", "mobile"],
                         ["cargo", "build", "--locked", "-p", "zeron-engine", "--example", "mobile_sync_fixture"],
@@ -67,7 +71,7 @@ def main():
                 "-derivedDataPath", str(args.derived_data or target / "ios-derived"), "CODE_SIGNING_ALLOWED=YES", "CODE_SIGN_IDENTITY=-",
                 "SWIFT_ACTIVE_COMPILATION_CONDITIONS=DEBUG CODER_ACCOUNT_FIXTURE",
                 "-resultBundlePath", str(scratch / (run.name + ".xcresult")),
-                "-only-testing:ZeronUITests/" + ("OpenAgentsCustomAgentTests" if args.custom_agents else "OpenAgentsLiveSyncTests"), "test"]
+                "-only-testing:ZeronUITests/" + ("OpenAgentsAgentLabTests" if args.agent_lab else "OpenAgentsCustomAgentTests" if args.custom_agents else "OpenAgentsLiveSyncTests"), "test"]
             with scratch.joinpath(run.name + "-uitest.log").open("w") as log:
                 result = subprocess.run(command, cwd=ROOT, env=test_env, stdout=log, stderr=subprocess.STDOUT)
             if result.returncode:

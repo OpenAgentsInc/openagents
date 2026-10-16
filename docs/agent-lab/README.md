@@ -251,3 +251,57 @@ assignments, and test computers; stop owned children. Record code/runtime
 versions, candidate and suite references, actual outcomes, and cleanup. Device
 checks remain explicit, and a clean demonstration is not a claim of general
 benchmark performance.
+
+## First implementation
+
+Track delivery in [#11914](https://github.com/OpenAgentsInc/openagents/issues/11914)
+and its children [#11915–#11921](https://github.com/OpenAgentsInc/openagents/issues/11915).
+The first provider implements Agent Lab on the common `/v1/labs` route family;
+the broader shared-platform migrations remain separate issues.
+
+Open **Agent Lab** from the mobile agent picker, or visit
+[/labs/agent](https://openagents.com/labs/agent) from a browser or the desktop
+account panel. Save an experiment, choose a connected computer and project,
+then select **Run tests**. Reopen saved versions and run reports from the same
+account on either surface. **Use agent** explicitly creates or updates a saved
+agent. It includes extra guidance and reference notes in the instructions;
+a live Lab reference must be removed before promotion because the current
+agent definition contract has no dynamic tool binding.
+
+`crates/agent-lab` owns documents, checks, finite plans, reports, and the Rust
+Native workbench. `Client::labs(session)` in `crates/openagents-sdk` exposes
+account-bound saved requests. See its `examples/agent_lab.rs` example. The web
+adapter signs its form state with the existing account CSRF contract. The
+native controller saves uncertain requests privately before sending and offers
+an explicit retry with the same request identity.
+
+A supporting desktop host copies regular project files into its own Lab trial
+directory before creating an ordinary agent assignment. Copies are limited to
+64 MiB, 5,000 files, and 32 directory levels. Links and `.no-training` inputs
+are refused; `.git`, `target`, `node_modules`, `.env*`, private key files, and
+credential directories are excluded. Tests still have the selected runtime's
+normal permissions; a disposable working directory is not an operating-system
+sandbox. Completed trial conversations are archived automatically. Explicitly
+archiving a run removes its known-finished trial copies and temporary agent;
+unknown execution keeps its copy for investigation.
+
+Hosts may install `agent-lab/tools.json` under their account data directory.
+Each `ToolBinding` pins its account, project, name, read-only tool, loopback
+origin, arguments, training permission, and `private_local: false`. Private local or
+training-restricted references are refused. Documents carry only its ID and
+content hash. Supported references are Video `lab_open` with `render: false`,
+CAD `cad_check`, and Robot `robot_inspect` at a pinned version and frame.
+The host makes bounded, nonredirecting reads; it does not accept a command or
+URL from an experiment. These references become task context and do not grant
+runtime tool execution or physical control. `components::LabTaskCheck` provides
+JSON checks for a Video version, a CAD check result, and Robot joint limits.
+
+Every scheduled trial remains in the report. Text, JSON, and explicit human
+checks are supported; answers of 4,096 bytes or more are marked unknown because
+the assignment service supplies a bounded summary. Cost remains **Unknown**
+when the runtime does not report it. Comparisons require matching project and
+reference hashes, complete checked outcomes, and consistent runtime hashes per
+candidate. These are reports from the signed-in account's host, not remote
+attestation or evidence of general benchmark performance. Development and
+confirmation suites are explicitly labeled; no automatic search or promotion
+runs in this release.

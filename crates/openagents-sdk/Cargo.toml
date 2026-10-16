@@ -10,6 +10,7 @@ description = "The lightweight public OpenAgents client: app authentication and 
 schema = ["dep:schemars", "openagents-dashboard/schema"]
 
 [dependencies]
+agent-lab = { path = "../agent-lab" }
 agent-contract = { path = "../agent-contract" }
 schemars = { version = "1", optional = true }
 openagents-dashboard = { path = "../openagents-dashboard" }
