@@ -18,6 +18,63 @@ use std::{
 };
 const ID: &str = "cmp_0123456789abcdef0123";
 const COMMAND: &str = "trn_0123456789abcdef0123";
+
+#[tokio::test]
+async fn a_native_build_uses_its_job_key_and_keeps_its_environment_build_id() {
+    use coder_working_computer::provider::fake::{FakeProvider, FakeRun};
+    let f = Fixture::new().await;
+    let provider = Arc::new(FakeProvider::new(BTreeMap::new(), true));
+    let source = f.c.source.clone();
+    provider.on_command(Box::new(move |spec, _, _| {
+        if spec.id == "source" {
+            let report = coder_environment_setup::source::Report::verified_for(&source, true);
+            FakeRun::exit(0, &report.render(), "")
+        } else {
+            let mut run = FakeRun::exit(0, "", "");
+            run.exit = None;
+            run
+        }
+    }));
+    let owners = crate::Owners::open(
+        f.dir.path(),
+        Providers {
+            setup: provider.clone(),
+            build: provider.clone(),
+            verify: provider,
+        },
+        Arc::new(|_| Ok(coder_environment::evidence::Redactor::new())),
+    )
+    .unwrap();
+    let script = b"./install.sh";
+    std::fs::write(owners.layout.setup_blobs().join(digest(script)), script).unwrap();
+    let job = owners
+        .build(
+            &coder_environment_build::service::BuildRequest {
+                request_id: "native-build".into(),
+                environment: "envc-fixture".into(),
+                owner: f.c.owner.clone(),
+                expected_draft_revision: 1,
+                size: "small".into(),
+                space: false,
+            },
+            crate::now_ms(),
+        )
+        .await
+        .unwrap();
+    assert_ne!(job.id, job.inputs.build_id);
+    let c = Store::under(f.dir.path()).computer(&job.computer).unwrap();
+    assert_eq!(c.chat, job.id);
+    let runtime = Runtime::new(f.dir.path(), &f.origin, [7; 32]).unwrap();
+    let mut wrong = c.clone();
+    wrong.chat = job.inputs.build_id.clone();
+    assert!(runtime.prepare(&wrong, "create").is_err());
+    let binding = runtime.prepare(&c, "create").unwrap();
+    assert_eq!(binding.attempt.role, EnvironmentRole::Builder);
+    assert_eq!(binding.inputs, serde_json::to_value(&job.inputs).unwrap());
+    assert!(!binding.validates(&wrong));
+    assert!(!capture_ready(&runtime.store, &binding));
+}
+
 #[derive(Default)]
 struct Fake {
     allocations: AtomicUsize,

@@ -85,7 +85,12 @@ async fn native(State(n): State<Native>, request: Request) -> Response {
         if account["account"]["id"] != n.account {
             return denied();
         }
-        return Json(json!({"session":n.session})).into_response();
+        // The public exchange returns issuance metadata without standing. A
+        // successful authenticated account read establishes that this same
+        // bearer is active; the private session route includes that field.
+        let mut session = n.session.clone();
+        session["state"] = json!("active");
+        return Json(json!({"session":session})).into_response();
     }
     (status, [(header::CONTENT_TYPE, "application/json")], bytes).into_response()
 }
@@ -347,7 +352,9 @@ async fn a_staging_repository_build_fresh_verifier_and_save_use_shared_computers
     let begin = Instant::now();
     let mut ready = false;
     let mut reason = String::new();
-    while begin.elapsed() < Duration::from_secs(2100) {
+    // Setup, clean build, and two fresh verification computers have separate
+    // native deadlines. Allow their bounded stop/wake cycles to finish.
+    while begin.elapsed() < Duration::from_secs(5400) {
         let view = root.view(&id).unwrap();
         if view.candidate.is_some() {
             ready = true;

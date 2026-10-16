@@ -123,6 +123,7 @@ pub fn fingerprint(c: &Computer) -> String {
         &serde_json::to_vec(&json!([
             c.id,
             c.owner,
+            c.chat,
             c.project,
             c.source,
             c.purpose,
@@ -506,11 +507,14 @@ impl Runtime {
                 None,
             ),
             Purpose::EnvironmentBuild { build, .. } => {
+                // The native computer links to the durable job through chat;
+                // its purpose names the environment's separate build ID.
                 let job = coder_environment_build::store::Store::under(layout.build_jobs())
-                    .read(build)
+                    .read(&c.chat)
                     .map_err(|_| "The build couldn't be read.")?;
                 if job.computer != c.id
                     || job.inputs.environment != id
+                    || job.inputs.build_id != *build
                     || job.inputs.source != c.source
                     || job.inputs.base.provider != ProviderKind::Boat
                     || job.inputs.space_requested
@@ -527,14 +531,19 @@ impl Runtime {
                 )
             }
             Purpose::EnvironmentVerify {
+                build,
                 verification,
                 image,
+                role,
                 ..
             } => {
                 let job = coder_environment_verify::store::Store::under(layout.verify_jobs())
-                    .read(verification)
+                    .read(&c.chat)
                     .map_err(|_| "The verification couldn't be read.")?;
                 if job.inputs.environment != id
+                    || job.inputs.build_id != *build
+                    || job.inputs.verification_id != *verification
+                    || job.machine(*role).computer != c.id
                     || job.inputs.image.image_id != *image
                     || job.inputs.image.provider != ProviderKind::Boat
                 {
@@ -630,15 +639,18 @@ pub fn capture_ready(store: &Store, binding: &Binding) -> bool {
     let Ok(computer) = store.computer(&binding.native) else {
         return false;
     };
-    let Purpose::EnvironmentBuild { build, .. } = &computer.purpose else {
+    let Purpose::EnvironmentBuild { environment, build } = &computer.purpose else {
         return false;
     };
     let layout = Layout::under(&store.state);
-    let Ok(job) = coder_environment_build::store::Store::under(layout.build_jobs()).read(build)
+    let Ok(job) =
+        coder_environment_build::store::Store::under(layout.build_jobs()).read(&computer.chat)
     else {
         return false;
     };
     job.phase == coder_environment_build::Phase::Capturing
+        && job.inputs.environment == *environment
+        && job.inputs.build_id == *build
         && job.report.is_some()
         && job.computer == binding.native
         && serde_json::to_value(&job.inputs).ok().as_ref() == Some(&binding.inputs)
