@@ -331,6 +331,29 @@ A child-session artifact is `openagents.session-child.v1` with `parent`
 `native_source` (native-envelope ArtifactRef or null), `relationship`
 (`managed` or `observed`), and `authorization` (ArtifactRef or null).
 Managed requires a child admission and current delegated authorization.
+The optional local-host link profile uses host-signed
+`openagents.session-child-authorization.v1`: `generation`, `owner`, parent
+`scope`, `turn`, `parent_admission`, `child_scope`, `child_admission`,
+`starts_at`, and `expires_at`. The operator explicitly grants each exact
+relationship while the parent turn and both native sessions are known.
+Replacing these grants or host policy changes their generation. A link requires
+the current grant, exact session generations, the same current owner, and both
+original native instances. This authorizes relationship metadata only. It
+neither dispatches child work nor delegates a COORD claim, budget, tools, or
+control. Child execution keeps its separately admitted ENV/COORD authority.
+An operator can replace the link grants through a signed private
+`openagents.session-child-policy.v1` request carrying a random `command`,
+`expected_generation`, and `grants` (at most 64 entries, each `parent`, `turn`,
+`child`, and `expires_at`). Only the host key can sign this administrative
+request. Exact retries return its saved result; changed bytes or an old policy
+generation refuse. The local resident accepts it through `child_policy`.
+The owner links a granted child through `link_child` on the original parent
+execution's continuation. Its closed payload names `turn`,
+`expected_turn_revision`, `child` (session ID), and `authorization` (the exact
+current link grant). It checks the original ENV/COORD fences and grants no new
+execution. The 14 adapter features remain unchanged by this metadata operation.
+Revocation prevents new links; existing links still require disposition of
+already admitted child work before parent quiescence.
 Observed requires native source evidence and grants no control, including
 when the child cannot be mapped to an admitted session. An unknown parent
 or orphaned native child is retained as explicit history loss, not flattened
@@ -938,7 +961,8 @@ monotonic wall-time allowance; individual phases cannot restart that allowance.
 The standalone native host can carry signed operations over an owner-only Unix
 socket using one bounded JSON line per connection. The outer transport version
 is `openagents.session-host-transport.v1`; `id` correlates a request and reply,
-and `operation.method` selects `execute`, `poll`, `continue`, `submit`, or `read`.
+and `operation.method` selects `execute`, `poll`, `continue`, `submit`, `read`,
+or host-key administration through `child_policy`.
 Execute carries the original CJ event, explicit artifacts, and ENV binding;
 poll names that original event; continue also carries a separately signed
 private control bundle. Submit carries a private bundle and cannot grant new
@@ -946,7 +970,10 @@ engine execution. Socket access supplies no protocol authority. Clients retain
 their own keys and verify signed CJ replies against the original request.
 The host keeps its engines alive across connections and drives its watchdog
 between requests. Frames are at most 40 MiB, there are at most eight open
-connections, and an unfinished connection expires after five seconds.
+connections, and unfinished request or response frames expire after five
+seconds. Dispatch retains its original execution budget separately. Clients
+wait at most 310 seconds for a response, and response framing gets its own
+five-second deadline after dispatch.
 
 Read carries a signed private `openagents.session-read.v1` artifact with exact
 `scope`, `query`, `issued_at`, `expires_at`, and an explicit `artifacts` list.
@@ -971,8 +998,9 @@ without quiescence. An observed child grants no control and does not block this
 managed-work check. This bounded profile links managed children only while the
 parent turn is active, within the same owner, and without cycles; it does not
 infer delegated execution authority from provider parent edges.
-Production child links additionally need a separately mounted current child
-authority check; an opaque authorization reference alone refuses. Local loop
+Production child links additionally need an exact current operator link grant
+or a separately mounted current child-authority check. An opaque authorization
+reference alone refuses. Local loop
 fixtures select their explicit test authority. Child dispatch still requires
 its own charged execution and cannot use this metadata check as a grant.
 

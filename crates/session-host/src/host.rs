@@ -22,6 +22,8 @@ use std::{
 use workspace_host::artifact::{Artifacts, token};
 mod approvals;
 pub use approvals::ApprovalGrant;
+mod children;
+pub use children::ChildGrant;
 
 pub const MAX_SESSIONS: usize = 64;
 pub const MAX_QUEUE: usize = 256;
@@ -274,6 +276,8 @@ pub(crate) struct State {
     pub(crate) policy: Policy,
     #[serde(default)]
     approvals: approvals::Book,
+    #[serde(default)]
+    children_authority: children::Book,
     #[serde(default)]
     pub(crate) transport: Option<crate::transport::Transport>,
     #[serde(default)]
@@ -536,7 +540,10 @@ impl SessionHost {
         match body["v"].as_str() {
             Some("openagents.session-interaction-response.v1") => {}
             Some("openagents.session-command.v1")
-                if matches!(body["action"].as_str(), Some("steer" | "interrupt")) => {}
+                if matches!(
+                    body["action"].as_str(),
+                    Some("steer" | "interrupt" | "link_child")
+                ) => {}
             _ => {
                 return Err(
                     "unsupported_feature: continuation cannot create or configure work".into(),
@@ -725,6 +732,7 @@ impl SessionHost {
         let mut state = self.state()?;
         state.policy = policy;
         state.approvals.invalidate()?;
+        state.children_authority.invalidate()?;
         self.save(&state)?;
         self.cancel_approval_turns(&mut state, crate::now())?;
         self.save(&state)
@@ -736,6 +744,9 @@ impl SessionHost {
             .ok_or("not_admitted: unknown session")?;
         if body["action"] == "replace_runtime" && signer != session.owner {
             return Err("not_admitted: only the session owner may replace its runtime".into());
+        }
+        if body["action"] == "link_child" && signer != session.owner {
+            return Err("not_admitted: only the session owner may link a child".into());
         }
         let own_replacement = body["action"] == "replace_runtime"
             && body["scope"]["generation"]
@@ -2478,6 +2489,27 @@ impl SessionHost {
                 session.requested = Some(payload["requested"].clone());
             }
             "archive" => session.archived = payload["archived"] == true,
+            "link_child" => {
+                self.check_continuation(state, session, continuation, now)?;
+                self.active_turn(session, payload)?;
+                let child_id = payload["child"].as_str().ok_or("child")?;
+                let child_admission = state
+                    .sessions
+                    .get(child_id)
+                    .ok_or("not_admitted: child session")?
+                    .admission
+                    .clone();
+                self.admit_child_link(
+                    state,
+                    session,
+                    payload["turn"].as_str().ok_or("turn")?,
+                    Some(child_id),
+                    Some(child_admission),
+                    None,
+                    Some(payload["authorization"].clone()),
+                    now,
+                )?;
+            }
             "replace_runtime" => {
                 records =
                     self.replace_runtime(state, session, signer, body, input, binding, fence, now)?;
@@ -3967,82 +3999,106 @@ impl SessionHost {
             .sessions
             .remove(session_id)
             .ok_or_else(|| refuse("not_admitted", "unknown session"))?;
-        let outcome = (|| -> Result<Value> {
-            if !session
-                .results
-                .iter()
-                .any(|r| self.store.json(r).is_ok_and(|b| b["turn"] == turn))
-                && session.active.as_ref().is_none_or(|t| t.id != turn)
+        let before = session.children.len();
+        let outcome = self.admit_child_link(
+            &mut state,
+            &mut session,
+            turn,
+            child,
+            child_admission,
+            native,
+            authorization,
+            now,
+        );
+        if outcome.is_ok() && session.children.len() != before {
+            session.revision += 1;
+            self.write_state(&mut state, &mut session, now)?;
+        }
+        state.sessions.insert(session_id.into(), session);
+        let reference = outcome?;
+        self.save(&state)?;
+        Ok(reference)
+    }
+
+    fn admit_child_link(
+        &self,
+        state: &mut State,
+        session: &mut Session,
+        turn: &str,
+        child: Option<&str>,
+        child_admission: Option<Value>,
+        native: Option<Value>,
+        authorization: Option<Value>,
+        now: u64,
+    ) -> Result<Value> {
+        if !session
+            .results
+            .iter()
+            .any(|r| self.store.json(r).is_ok_and(|b| b["turn"] == turn))
+            && session.active.as_ref().is_none_or(|t| t.id != turn)
+        {
+            return Err(refuse("not_admitted", "unknown parent turn"));
+        }
+        let relationship = if child_admission.is_some() && authorization.is_some() {
+            "managed"
+        } else {
+            "observed"
+        };
+        if relationship == "managed" {
+            if session
+                .active
+                .as_ref()
+                .is_none_or(|t| t.id != turn || t.terminal.is_some())
             {
-                return Err(refuse("not_admitted", "unknown parent turn"));
+                return Err(
+                    "conflict: managed children require a current native parent turn".into(),
+                );
             }
-            let relationship = if child_admission.is_some() && authorization.is_some() {
-                "managed"
-            } else {
-                "observed"
-            };
-            if relationship == "managed" {
-                if session
-                    .active
-                    .as_ref()
-                    .is_none_or(|t| t.id != turn || t.terminal.is_some())
-                {
-                    return Err(
-                        "conflict: managed children require a current native parent turn".into(),
-                    );
+            let child = state
+                .sessions
+                .get(child.ok_or("child")?)
+                .ok_or("not_admitted: child cannot be its parent")?;
+            if child.owner != session.owner {
+                return Err("not_admitted: cross-owner managed children are unsupported".into());
+            }
+            self.check_child_authority(
+                &state,
+                &session,
+                turn,
+                child,
+                authorization.as_ref().ok_or("child authorization")?,
+                now,
+            )?;
+            let mut pending = vec![child.admission.clone()];
+            let mut seen = BTreeSet::new();
+            while let Some(admission) = pending.pop() {
+                if admission == session.admission {
+                    return Err("conflict: managed child cycle".into());
                 }
-                let child = state
-                    .sessions
-                    .get(child.ok_or("child")?)
-                    .ok_or("not_admitted: child cannot be its parent")?;
-                if child.owner != session.owner {
-                    return Err("not_admitted: cross-owner managed children are unsupported".into());
+                if !seen.insert(digest_of(&admission).to_string()) {
+                    continue;
                 }
-                self.bindings.check_child(
-                    &session.owner,
-                    &session.admission,
-                    &child.admission,
-                    authorization.as_ref().ok_or("child authorization")?,
-                    now,
-                )?;
-                let mut pending = vec![child.admission.clone()];
-                let mut seen = BTreeSet::new();
-                while let Some(admission) = pending.pop() {
-                    if admission == session.admission {
-                        return Err("conflict: managed child cycle".into());
-                    }
-                    if !seen.insert(digest_of(&admission).to_string()) {
-                        continue;
-                    }
-                    if let Some(source) = state.sessions.values().find(|s| s.admission == admission)
-                    {
-                        for reference in &source.children {
-                            let link = self.store.json(reference)?;
-                            if link["relationship"] == "managed" {
-                                pending.push(link["child"].clone());
-                            }
+                if let Some(source) = state.sessions.values().find(|s| s.admission == admission) {
+                    for reference in &source.children {
+                        let link = self.store.json(reference)?;
+                        if link["relationship"] == "managed" {
+                            pending.push(link["child"].clone());
                         }
                     }
                 }
             }
-            let body = json!({"v":"openagents.session-child.v1","requires":[],"parent":session.scope(self.pubkey()),
-                "turn":turn,"child":child_admission,"native_source":native,"relationship":relationship,
-                "authorization":authorization});
-            let reference = self.sign(&mut state, &body, &session.owner.clone(), now)?;
-            if session.children.contains(&reference) {
-                return Ok(reference);
-            }
-            if session.children.len() >= MAX_QUEUE {
-                return Err("limit_exceeded: child links".into());
-            }
-            session.children.push(reference.clone());
-            session.revision += 1;
-            self.write_state(&mut state, &mut session, now)?;
-            Ok(reference)
-        })();
-        state.sessions.insert(session_id.into(), session);
-        let reference = outcome?;
-        self.save(&state)?;
+        }
+        let body = json!({"v":"openagents.session-child.v1","requires":[],"parent":session.scope(self.pubkey()),
+            "turn":turn,"child":child_admission,"native_source":native,"relationship":relationship,
+            "authorization":authorization});
+        let reference = self.sign(state, &body, &session.owner.clone(), now)?;
+        if session.children.contains(&reference) {
+            return Ok(reference);
+        }
+        if session.children.len() >= MAX_QUEUE {
+            return Err("limit_exceeded: child links".into());
+        }
+        session.children.push(reference.clone());
         Ok(reference)
     }
 

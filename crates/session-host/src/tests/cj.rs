@@ -587,6 +587,115 @@ impl Real {
 }
 
 #[test]
+fn explicit_child_authority_links_only_current_native_sessions_and_expires() {
+    for mode in [
+        "current",
+        "expired",
+        "revoked",
+        "regranted",
+        "other-turn",
+        "policy",
+        "restart",
+    ] {
+        let mut r = Real::new();
+        let host = r.host(LoopEngine::mid_turn());
+        let child = r.opened(&host);
+        let opening = r.opened(&host);
+        let session = opening["session"].as_str().unwrap();
+        let child_id = child["session"].as_str().unwrap();
+        let command = r.submit_command(&host, &opening, 1);
+        let (event, binding) = r.job(&command);
+        host.serve(&event, &r.fx.artifacts, &binding, r.fx.now)
+            .unwrap();
+        let turn = host.status(session).unwrap()["active_turn"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let grants = || {
+            vec![crate::host::ChildGrant {
+                parent: session.into(),
+                turn: turn.clone(),
+                child: child_id.into(),
+                expires_at: r.fx.now + 5,
+            }]
+        };
+        let reference = host.set_child_grants(grants(), r.fx.now).unwrap().remove(0);
+        let body = host.store().json(&reference).unwrap();
+        assert_eq!(
+            body["parent_admission"],
+            host.status(session).unwrap()["admission"]
+        );
+        assert_eq!(
+            body["child_admission"],
+            host.status(child_id).unwrap()["admission"]
+        );
+        if mode == "revoked" {
+            host.set_child_grants(vec![], r.fx.now).unwrap();
+        }
+        if mode == "regranted" {
+            host.set_child_grants(grants(), r.fx.now).unwrap();
+        }
+        if mode == "policy" {
+            host.set_policy(Policy {
+                owners: BTreeSet::from([pk(OWNER)]),
+                controllers: BTreeSet::new(),
+            })
+            .unwrap();
+        }
+        let host = if mode == "restart" {
+            drop(host);
+            r.host(LoopEngine::mid_turn())
+        } else {
+            host
+        };
+        if mode == "expired" {
+            r.fx.now += 6;
+        }
+        let other_turn = "ab".repeat(32);
+        let result = host.link_child(
+            session,
+            if mode == "other-turn" {
+                &other_turn
+            } else {
+                &turn
+            },
+            Some(child_id),
+            None,
+            Some(reference.clone()),
+            r.fx.now,
+        );
+        if mode != "current" {
+            assert!(result.is_err(), "{mode}: {result:?}");
+            assert!(
+                host.status(session).unwrap()["children"]
+                    .as_array()
+                    .unwrap()
+                    .is_empty()
+            );
+        } else {
+            let link = host.store().json(&result.unwrap()).unwrap();
+            assert_eq!(link["relationship"], "managed");
+            assert_eq!(link["authorization"], reference);
+            let result = host.poll(&event, r.fx.now).unwrap();
+            assert_eq!(result.0.kind, execution::RESULT_KIND);
+            assert!(
+                result
+                    .1
+                    .values()
+                    .filter_map(|b| serde_json::from_slice::<Value>(b).ok())
+                    .any(|b| b["v"] == "openagents.session-quiescence.v1"
+                        && b["children"].as_array().is_some_and(|a| a.len() == 1))
+            );
+        }
+        assert_eq!(r.coordinator.scope(&r.scope).unwrap()["calls"], 3);
+        assert_eq!(
+            host.started("loop-mid-turn"),
+            usize::from(mode != "restart")
+        );
+    }
+}
+
+#[test]
 fn session_ownership_does_not_appoint_a_native_approver() {
     let mut r = Real::for_engine(LoopEngine::approval());
     let host = r.host(LoopEngine::approval());
@@ -1734,6 +1843,7 @@ fn resident_clients_read_and_answer_one_original_charged_turn() {
     }
     let mut r = Real::new();
     let host = r.host(LoopEngine::mid_turn());
+    let child = r.opened(&host);
     let opening = r.opened(&host);
     let session = opening["session"].as_str().unwrap();
     let path = host.store().root().join("resident.sock");
@@ -1755,6 +1865,93 @@ fn resident_clients_read_and_answer_one_original_charged_turn() {
         r.fx.now,
     );
     assert!(matches!(reply,Body::Event {event,..} if event.kind==execution::FEEDBACK_KIND));
+    let status = host.status(session).unwrap();
+    let policy = json!({"v":"openagents.session-child-policy.v1","requires":[],
+        "command":workspace_host::artifact::token(),"expected_generation":0,
+        "grants":[{"parent":session,"turn":status["active_turn"],"child":child["session"],"expires_at":r.fx.now+300}]});
+    for signer in [OWNER, CONTROLLER, STRANGER] {
+        assert!(
+            host.child_policy(
+                &envelope(&secret(signer), &pk(HOST), &policy, r.fx.now).unwrap(),
+                r.fx.now
+            )
+            .is_err()
+        );
+    }
+    let signed_policy = envelope(&secret(HOST), &pk(HOST), &policy, r.fx.now).unwrap();
+    let Body::Control { result: granted } = exchange(
+        &mut server,
+        &path,
+        Request::new(Operation::ChildPolicy {
+            event: signed_policy.clone(),
+        }),
+        r.fx.now,
+    ) else {
+        panic!()
+    };
+    assert_eq!(granted["generation"], 1);
+    let duplicate = host.child_policy(&signed_policy, r.fx.now).unwrap();
+    assert_eq!(duplicate["status"], "duplicate");
+    assert_eq!(duplicate["generation"], 1);
+    assert_eq!(duplicate["authorizations"], granted["authorizations"]);
+    let mut changed = policy.clone();
+    changed["grants"] = json!([]);
+    assert!(
+        host.child_policy(
+            &envelope(&secret(HOST), &pk(HOST), &changed, r.fx.now).unwrap(),
+            r.fx.now
+        )
+        .is_err()
+    );
+    changed["command"] = json!(workspace_host::artifact::token());
+    assert!(
+        host.child_policy(
+            &envelope(&secret(HOST), &pk(HOST), &changed, r.fx.now).unwrap(),
+            r.fx.now
+        )
+        .is_err()
+    );
+    let mut link = r.fx.command(&host,session,"link_child",json!({"turn":status["active_turn"],
+        "expected_turn_revision":status["turn_revision"],"child":child["session"],"authorization":granted["authorizations"][0]}));
+    assert_eq!(
+        host.submit(&r.fx.bundle(OWNER, &link), None, r.fx.now)
+            .unwrap()["status"],
+        "refused"
+    );
+    assert!(
+        host.continue_turn(&event, &r.fx.bundle(CONTROLLER, &link), r.fx.now)
+            .is_err()
+    );
+    let Body::Control { result: linked } = exchange(
+        &mut server,
+        &path,
+        Request::new(Operation::Continue {
+            event: event.clone(),
+            bundle: r.fx.bundle(OWNER, &link),
+        }),
+        r.fx.now,
+    ) else {
+        panic!()
+    };
+    assert_eq!(linked["status"], "accepted", "{linked}");
+    assert_eq!(
+        host.continue_turn(&event, &r.fx.bundle(OWNER, &link), r.fx.now)
+            .unwrap()["status"],
+        "duplicate"
+    );
+    assert_eq!(
+        host.status(session).unwrap()["children"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    link["payload"]["child"] = json!(session);
+    assert_eq!(
+        host.continue_turn(&event, &r.fx.bundle(OWNER, &link), r.fx.now)
+            .unwrap()["status"],
+        "conflict"
+    );
     let mut query = json!({"v":"openagents.session-read.v1","requires":[],"scope":{"authority":pk(HOST),"session":session,"generation":0},
         "query":workspace_host::artifact::token(),"issued_at":r.fx.now,"expires_at":r.fx.now+300,"artifacts":[]});
     let mut interaction = Value::Null;
@@ -1833,7 +2030,7 @@ fn resident_clients_read_and_answer_one_original_charged_turn() {
         "completed"
     );
     assert_eq!(host.started("loop-mid-turn"), 1);
-    assert_eq!(r.coordinator.scope(&r.scope).unwrap()["calls"], 2);
+    assert_eq!(r.coordinator.scope(&r.scope).unwrap()["calls"], 3);
     assert_eq!(
         host.serve(&event, &r.fx.artifacts, &binding, r.fx.now)
             .unwrap(),

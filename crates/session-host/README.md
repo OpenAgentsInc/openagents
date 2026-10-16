@@ -195,11 +195,15 @@ The standalone Unix socket server keeps its loop engines alive across clients
 and drives the watchdog between requests. Its socket directory must be private;
 the socket is mode `0600`, and one resident owns each state directory. Offline
 CLI commands refuse while that resident runs. Each connection carries one
-versioned request with method `execute`, `poll`, `continue`, `submit`, or `read`;
+versioned request with method `execute`, `poll`, `continue`, `submit`, `read`,
+or host-key administration through `child_policy`;
 it grants no rights beyond the signed operation inside it. The Rust
 `resident::request` client and standalone `request` command need no host key.
 Frames are bounded to 40 MiB, at most eight connections remain open, and an
-unfinished connection expires after five seconds. Partial clients cannot block
+unfinished request or response frame expires after five seconds. Dispatch time
+has its original execution budget; the client waits up to 310 seconds for a
+response. A prepared response gets a fresh frame deadline and is written
+immediately when possible. Partial clients cannot block
 other connections or watchdog checks. A stale socket can be replaced after the
 previous resident exits; an active socket or existing regular file refuses.
 
@@ -265,16 +269,33 @@ probe cannot implement this admission. Missing live authority refuses.
   adapter supports resume, and a signed WS projection cut. A foreign import is
   archival: a new lineage, no native resume, recorded losses.
 - **Children.** A managed child needs the child's admission and a separately
-  mounted current delegated-authority check; production refuses an opaque
-  authorization reference alone. Local loop fixtures select explicit test
+  admitted current link grant or a mounted delegated-authority check; production
+  refuses an opaque authorization reference alone. Local loop fixtures select explicit test
   authority. Managed links require a current native parent turn, the same
   owner, and no cycle. A parent retains its native terminal output and evidence
   while children finish; unchanged polls do not step the ended engine or write
   another state. Quiescence includes signed child-state references separately
   from native captures. An uncertain child, or a stop with unfinished children,
   leaves the parent unknown without quiescence. An observed child needs native
-  evidence and grants no control. Actual delegated dispatch and POL child
-  authorization remain unfinished roles.
+  evidence and grants no control. Delegated child dispatch remains unfinished.
+
+The operator can grant an exact same-owner child relationship through
+`SessionHost::set_child_grants`, or send a host-key-signed
+`openagents.session-child-policy.v1` event to the resident's `child_policy`
+method. The request names a random `command`, `expected_generation`, and
+`grants`, each with parent session ID, parent turn ID, child session ID, and
+expiry. Its returned `authorizations` pin both admissions, session generations,
+owner, and grant generation. Admission also checks the original native instances. Exact administrative
+retries do not replace grants again; changed commands and old generations refuse.
+
+The owner submits a `link_child` command through the original parent's
+continuation, naming the parent turn and turn revision, child ID, and exact
+authorization. Current ENV/COORD fences apply, with no new call charge or
+native input. Controllers cannot link children. Replacing link grants or host
+policy invalidates earlier grants, and expiry or a lost native instance refuses
+new links. Existing links still wait for the child's disposition. This grant
+authorizes relationship metadata; child execution keeps its own ENV/COORD
+admission, and no child budget or control rights transfer through the link.
 
 `session-host policy --state DIR --key-file KEY --policy POLICY.json` replaces
 the operator's owner/controller sets. This administrative path needs the host

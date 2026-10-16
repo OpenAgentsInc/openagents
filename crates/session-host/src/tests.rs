@@ -1656,6 +1656,49 @@ fn resume_preserves_an_exclusive_lineage_and_import_is_read_only() {
 }
 
 #[test]
+fn revoked_host_child_grants_cannot_fall_back_to_another_authority() {
+    let mut fx = Fx::new();
+    let host = fx.host();
+    let (parent, _) = fx.open(&host, "loop-mid-turn");
+    let (child, _) = fx.open(&host, "loop-mid-turn");
+    let intent = fx.intent(&host, &parent, json!({"prompt":"delegate"}), fx.now + 600);
+    let submit = fx.command(&host, &parent, "submit", json!({"intent":intent}));
+    let binding = fx.binding();
+    fx.send(&host, OWNER, &submit, Some(&binding));
+    let turn = host.status(&parent).unwrap()["active_turn"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let reference = host
+        .set_child_grants(
+            vec![crate::host::ChildGrant {
+                parent: parent.clone(),
+                turn: turn.clone(),
+                child: child.clone(),
+                expires_at: fx.now + 300,
+            }],
+            fx.now,
+        )
+        .unwrap()
+        .remove(0);
+    host.set_child_grants(vec![], fx.now).unwrap();
+    assert!(
+        host.link_child(&parent, &turn, Some(&child), None, Some(reference), fx.now)
+            .unwrap_err()
+            .contains("revoked")
+    );
+    // The independent fixture authority remains available for its own records.
+    let fixture = host
+        .store()
+        .put(b"delegated", "application/json", None)
+        .unwrap();
+    assert!(
+        host.link_child(&parent, &turn, Some(&child), None, Some(fixture), fx.now)
+            .is_ok()
+    );
+}
+
+#[test]
 fn children_are_managed_only_with_admission_and_authorization() {
     let mut fx = Fx::new();
     let host = fx.host();

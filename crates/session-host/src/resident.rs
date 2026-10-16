@@ -23,6 +23,9 @@ use std::{
 pub const MAX_FRAME: usize = 40 * 1_048_576;
 const MAX_CLIENTS: usize = 8;
 const TIMEOUT: Duration = Duration::from_secs(5);
+// An admitted operation has up to 300 seconds; incomplete frames keep their
+// independent five-second I/O limit.
+const RESPONSE_TIMEOUT: Duration = Duration::from_secs(310);
 
 pub(crate) fn claim(root: &Path) -> Result<File> {
     let owner = OpenOptions::new()
@@ -72,6 +75,9 @@ pub enum Operation {
         bundle: Bundle,
     },
     Read {
+        event: Event,
+    },
+    ChildPolicy {
         event: Event,
     },
 }
@@ -138,6 +144,9 @@ impl Request {
                     .submit(&bundle, None, now)
                     .map(|result| Body::Control { result }),
                 Operation::Read { event } => host.read(&event, now).map(Body::from),
+                Operation::ChildPolicy { event } => host
+                    .child_policy(&event, now)
+                    .map(|result| Body::Control { result }),
             }
         };
         Response {
@@ -299,7 +308,8 @@ impl Client {
                             bytes.push(b'\n');
                             self.output = Some(bytes);
                             self.input.clear();
-                            return Ok(true);
+                            self.started = Instant::now();
+                            return self.advance(host, now);
                         }
                     }
                     Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => return Ok(true),
@@ -338,9 +348,10 @@ pub fn request(path: &Path, request: &Request) -> Result<Response> {
     }
     let mut response = Vec::new();
     let mut chunk = [0u8; 65_536];
+    let response_started = Instant::now();
     loop {
-        let remaining = TIMEOUT
-            .checked_sub(started.elapsed())
+        let remaining = RESPONSE_TIMEOUT
+            .checked_sub(response_started.elapsed())
             .filter(|d| !d.is_zero())
             .ok_or("unavailable: session host timed out")?;
         stream

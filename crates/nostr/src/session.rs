@@ -220,7 +220,7 @@ fn semantic(name: &str, body: &Value) -> Result<()> {
             }
         }
         "session-question" => schema_ref(&body["answer_schema"])?,
-        "session-approval-rule"
+        "session-approval-rule" | "session-child-authorization"
             if number(body, "generation")? == 0
                 || number(body, "starts_at")? >= number(body, "expires_at")? =>
         {
@@ -291,6 +291,8 @@ fn nested(value: &Value) -> Result<()> {
                         | "approver"
                         | "query"
                         | "connection"
+                        | "parent"
+                        | "child"
                 ) && let Some(text) = value.as_str()
                 {
                     hex(text)?;
