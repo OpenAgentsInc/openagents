@@ -229,3 +229,34 @@ This test launches only its own headless engine with a scratch home, data
 folder, mock harness, and free IPC port. The real pinned viewer lists a folder,
 creates a scratch chat, queues and observes a message, removes it, and stops
 that engine. It also verifies refusal of another account's viewer.
+
+## Blobs and image attachments
+
+`/blob/{chatId}/{partId}` supports PUT, GET, HEAD, ETags, conditional reads, and
+single byte ranges (closed, open, or suffix). Tool blobs have the reference
+1 MiB limit and default to `text/plain; charset=utf-8`. An account must own
+the chat; stored keys include an encoded account prefix and an immutable version.
+Replacements keep older objects for seven days so in-flight reads can finish.
+
+Uploads first enter `orphan/`, then copy to an immutable published key before
+the database references it. A committed upload intent covers a crash between
+copying and publication. An hourly worker deletes expired intents and retired
+versions, after checking that no live blob references them. Database deletion
+also schedules the old object for cleanup. Apply the bucket lifecycle rules:
+
+```sh
+python3 scripts/coder-sync/deploy.py lifecycle
+```
+
+The rules delete abandoned `orphan/` stages after seven days and `_health/`
+probes after one day; they never expire published blobs or checkpoints.
+See Google's [object lifecycle documentation](https://docs.cloud.google.com/storage/docs/lifecycle).
+Provisioning applies these same rules to both dedicated buckets.
+
+The pinned phone client uploads images to its host through chunked device RPC,
+with a 24 MiB client limit; other viewers read them through the same relay.
+The headless fixture uploads a PNG across multiple chunks, queues its path,
+and verifies that a second pinned client downloads and renders identical pixels.
+It writes `11846-rendered.png` under `openagents scratch`. The legacy
+`/attachments/{…}` PUT acknowledges and discards retired mirror uploads,
+matching the pinned edge; it does not create a second attachment store.

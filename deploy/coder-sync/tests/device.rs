@@ -574,6 +574,12 @@ async fn pinned_headless_engine_folder_listing_and_queue_roundtrip() {
         .subscribe(zeron_rpc::methods::WATCH_QUEUE, json!({"chatId":chat}))
         .await
         .unwrap();
+    // Wait for subscription setup before queuing; writes and subscriptions run concurrently.
+    let initial = tokio::time::timeout(Duration::from_secs(10), queue.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(initial["items"].as_array().unwrap().is_empty());
     let queued=client.call(zeron_rpc::methods::QUEUE_MESSAGE,json!({"chatId":chat,"text":"Relay fixture message","attachments":[],"holdForTurnEnd":true})).await.unwrap();
     tokio::time::timeout(Duration::from_secs(10), async {
         loop {
@@ -598,6 +604,114 @@ async fn pinned_headless_engine_folder_listing_and_queue_roundtrip() {
         .call(
             zeron_rpc::methods::REMOVE_QUEUED_MESSAGE,
             json!({"chatId":chat,"id":queued["id"]}),
+        )
+        .await
+        .unwrap();
+    // These are the same engine-free client and image bytes the phone uses.
+    let phone = zeron_client::Client::new(
+        zeron_client::ClientConfig::new(&s.base, scratch.path().join("phone")),
+        zeron_client::Credentials::Dev {
+            user_id: s.account.clone(),
+            org_id: s.account.clone(),
+        },
+        std::sync::Arc::new(zeron_client::events::NullListener),
+    )
+    .unwrap();
+    let mut second_config =
+        zeron_client::ClientConfig::new(&s.base, scratch.path().join("second-viewer"));
+    second_config.device_id = "second-viewer".into();
+    let second = zeron_client::Client::new(
+        second_config,
+        zeron_client::Credentials::Dev {
+            user_id: s.account.clone(),
+            org_id: s.account.clone(),
+        },
+        std::sync::Arc::new(zeron_client::events::NullListener),
+    )
+    .unwrap();
+    let mut random = 0x12345678u32;
+    let pixels = image::RgbaImage::from_fn(768, 512, |x, y| {
+        if y < 256 {
+            image::Rgba(match x / 192 {
+                0 => [240, 50, 60, 255],
+                1 => [40, 190, 100, 255],
+                2 => [30, 110, 240, 255],
+                _ => [250, 210, 30, 255],
+            })
+        } else {
+            random ^= random << 13;
+            random ^= random >> 17;
+            random ^= random << 5;
+            image::Rgba([random as u8, (random >> 8) as u8, (random >> 16) as u8, 255])
+        }
+    });
+    let mut png = std::io::Cursor::new(Vec::new());
+    image::DynamicImage::ImageRgba8(pixels.clone())
+        .write_to(&mut png, image::ImageFormat::Png)
+        .unwrap();
+    let png = png.into_inner();
+    assert!(png.len() > 510 * 1024, "Fixture must cross upload chunks");
+    let c = phone.clone();
+    let device_id = device.clone();
+    let uploaded = png.clone();
+    let path = zeron_client::runtime::run(async move {
+        c.upload_attachment(&device_id, "fixture image.png", uploaded, None)
+            .await
+    })
+    .await
+    .unwrap();
+    let queued_image=client.call(zeron_rpc::methods::QUEUE_MESSAGE,json!({"chatId":chat,"text":"Image fixture","attachments":[path],"holdForTurnEnd":true})).await.unwrap();
+    let attachment = tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            let state = queue.recv().await.unwrap();
+            if let Some(item) = state["items"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|item| item["id"] == queued_image["id"])
+            {
+                break item["attachments"][0].as_str().unwrap().to_owned();
+            }
+        }
+    })
+    .await
+    .unwrap();
+    let c = second.clone();
+    let device_id = device.clone();
+    let downloaded =
+        zeron_client::runtime::run(async move { c.read_attachment(&device_id, &attachment).await })
+            .await
+            .unwrap();
+    assert_eq!(&**downloaded, &png);
+    let rendered = image::load_from_memory(&downloaded).unwrap().to_rgba8();
+    assert_eq!(rendered, pixels);
+    rendered
+        .save(
+            std::path::Path::new(&std::env::var("OPENAGENTS_SCRATCH").unwrap())
+                .join("11846-rendered.png"),
+        )
+        .unwrap();
+    let c = phone.clone();
+    let device_id = device.clone();
+    assert!(
+        zeron_client::runtime::run(async move {
+            c.upload_attachment(
+                &device_id,
+                "too-large.png",
+                vec![0; 24 * 1024 * 1024 + 1],
+                None,
+            )
+            .await
+        })
+        .await
+        .is_err()
+    );
+    phone.shutdown();
+    second.shutdown();
+    client
+        .call(
+            zeron_rpc::methods::REMOVE_QUEUED_MESSAGE,
+            json!({"chatId":chat,"id":queued_image["id"]}),
         )
         .await
         .unwrap();

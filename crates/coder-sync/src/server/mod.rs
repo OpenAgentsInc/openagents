@@ -1,3 +1,4 @@
+pub mod blob;
 pub mod chat;
 pub mod config;
 pub mod db;
@@ -55,6 +56,11 @@ pub fn authenticate(mode: AuthMode, token: &str) -> Option<Identity> {
 pub fn router(state: StateData) -> Router {
     Router::new()
         .route("/health", get(health))
+        .route("/blob/{id}/{part}", get(blob::read).put(blob::put))
+        .route(
+            "/attachments/{*path}",
+            axum::routing::put(blob::retired_attachment),
+        )
         .route("/device/{id}/ws", get(device::websocket))
         .route("/device/{id}/status", get(device::status))
         .route(

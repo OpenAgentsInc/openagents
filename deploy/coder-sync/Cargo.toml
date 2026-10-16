@@ -21,6 +21,7 @@ path = "../../crates/coder-sync/src/main.rs"
 server = []
 
 [dependencies]
+sha2 = "0.10"
 zeron-rpc = { git = "https://github.com/OpenAgentsInc/coder-desktop", rev = "9c58d1af0eb2e8cc750b65b5bafc435392010f15" }
 zeron-doc = { git = "https://github.com/OpenAgentsInc/coder-desktop", rev = "9c58d1af0eb2e8cc750b65b5bafc435392010f15" }
 zeron-sync = { git = "https://github.com/OpenAgentsInc/coder-desktop", rev = "9c58d1af0eb2e8cc750b65b5bafc435392010f15" }
@@ -58,6 +59,8 @@ name = "registry"
 path = "tests/registry.rs"
 
 [dev-dependencies]
+zeron-client = { git = "https://github.com/OpenAgentsInc/coder-desktop", rev = "9c58d1af0eb2e8cc750b65b5bafc435392010f15" }
+image = { version = "0.25", default-features = false, features = ["png"] }
 tower = { version = "0.5", features = ["util"] }
 stateright = "0.31"
 futures = "0.3"

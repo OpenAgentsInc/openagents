@@ -39,6 +39,7 @@ async fn run() -> Result<(), &'static str> {
     let listener = tokio::net::TcpListener::bind(config.listen)
         .await
         .map_err(|_| "Could not listen for connections.")?;
+    coder_sync::server::blob::start_cleanup(state.clone());
     tracing::info!(listen=%config.listen, "Server ready");
     axum::serve(listener, coder_sync::server::router(state))
         .with_graceful_shutdown(async {

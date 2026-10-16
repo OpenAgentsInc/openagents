@@ -169,6 +169,36 @@ impl Bucket {
         }
     }
 
+    /// Copy an immutable staged object before publishing its database reference.
+    pub async fn copy(&self, source: &str, target: &str) -> Result<(), StorageError> {
+        match &self.0 {
+            Backend::Memory(objects) => {
+                let mut objects = objects.lock().await;
+                let object = objects.get(source).cloned().ok_or(StorageError)?;
+                objects.insert(target.into(), object);
+            }
+            Backend::Google { name, client, .. } => {
+                let mut url = Self::url(name, source, false)?;
+                url.path_segments_mut()
+                    .map_err(|_| StorageError)?
+                    .push("copyTo")
+                    .push("b")
+                    .push(name)
+                    .push("o")
+                    .push(target);
+                client
+                    .post(url)
+                    .bearer_auth(self.bearer().await?)
+                    .send()
+                    .await
+                    .map_err(|_| StorageError)?
+                    .error_for_status()
+                    .map_err(|_| StorageError)?;
+            }
+        }
+        Ok(())
+    }
+
     pub async fn delete(&self, key: &str) -> Result<(), StorageError> {
         match &self.0 {
             Backend::Memory(objects) => {
@@ -223,6 +253,11 @@ mod tests {
         assert_eq!(object.bytes, b"image"[..]);
         assert_eq!(object.content_type, "image/png");
         assert!(bucket.get("other/file").await.unwrap().is_none());
+        bucket.copy("account/file", "account/copied").await.unwrap();
+        let copied = bucket.get("account/copied").await.unwrap().unwrap();
+        assert_eq!(copied.bytes, object.bytes);
+        assert_eq!(copied.content_type, object.content_type);
+        assert!(bucket.copy("missing", "other").await.is_err());
         bucket.delete("account/file").await.unwrap();
         assert!(bucket.get("account/file").await.unwrap().is_none());
     }

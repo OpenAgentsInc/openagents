@@ -45,6 +45,13 @@ def sql_user(name, password):
     g("sql", "operations", "wait", operation, "--timeout=300")
 
 
+def lifecycle():
+    for suffix in ("-staging", ""):
+        g("storage", "buckets", "update", f"gs://{PROJECT}-coder-sync{suffix}",
+          f"--lifecycle-file={ROOT / 'deploy/coder-sync/lifecycle.json'}")
+        print(f"Lifecycle ready: coder-sync{suffix}")
+
+
 def provision():
     if g("iam", "service-accounts", "describe", ACCOUNT, "--format=value(email)", optional=True) is None:
         g("iam", "service-accounts", "create", "coder-sync", "--display-name=Coder sync")
@@ -82,6 +89,7 @@ def provision():
                            input=dsn, text=True, stdout=subprocess.DEVNULL, check=True)
         g("secrets", "add-iam-policy-binding", secret, f"--member=serviceAccount:{ACCOUNT}", "--role=roles/secretmanager.secretAccessor")
         print(f"Ready: {database}, gs://{bucket}, {secret}")
+    lifecycle()
 
 
 def revision():
@@ -135,10 +143,12 @@ def deploy(staging):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=["provision", "build", "deploy", "domain"])
+    parser.add_argument("command", choices=["provision", "build", "deploy", "domain", "lifecycle"])
     parser.add_argument("--staging", action="store_true")
     args = parser.parse_args()
-    if args.command == "provision": provision()
+    if args.command == "lifecycle":
+        lifecycle()
+    elif args.command == "provision": provision()
     elif args.command == "build": build()
     elif args.command == "deploy": deploy(args.staging)
     else:

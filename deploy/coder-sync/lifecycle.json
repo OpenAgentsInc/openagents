@@ -1,0 +1,6 @@
+{
+  "rule": [
+    {"action": {"type": "Delete"}, "condition": {"age": 7, "matchesPrefix": ["orphan/"]}},
+    {"action": {"type": "Delete"}, "condition": {"age": 1, "matchesPrefix": ["_health/"]}}
+  ]
+}
