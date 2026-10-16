@@ -132,6 +132,14 @@ impl Ledger {
         if !exists {
             return Err(Error::Invalid("no such compute account"));
         }
+        let asset: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM asset_quote WHERE payment_hash=?)",
+            [&top_up.payment_hash],
+            |r| r.get(0),
+        )?;
+        if asset {
+            return Err(Error::Conflict("invoice already used for asset funding"));
+        }
         let existing = match read_purchase(&tx, "id", &top_up.id)? {
             Some(found) => Some(found),
             None => read_purchase(&tx, "payment_hash", &top_up.payment_hash)?,

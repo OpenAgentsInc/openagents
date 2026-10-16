@@ -17,23 +17,28 @@ impl std::fmt::Debug for TestSeed {
 pub struct Regtest {
     root: PathBuf,
     project: String,
+    assets: bool,
 }
 impl Regtest {
     pub fn start(root: &Path) -> Result<Self> {
-        Self::start_mode(root, false, false).map(|r| r.0)
+        Self::start_mode(root, false, false, false).map(|r| r.0)
     }
     pub fn recoverable(root: &Path) -> Result<(Self, TestSeed)> {
-        let (nodes, seed) = Self::start_mode(root, true, false)?;
+        let (nodes, seed) = Self::start_mode(root, true, false, false)?;
         Ok((nodes, seed.ok_or(Error::Invalid("test seed"))?))
     }
     /// Fresh signer wallet; only public accounts and a scoped RPC credential reach Alice.
     pub fn remotely_signed(root: &Path) -> Result<Self> {
-        Self::start_mode(root, false, true).map(|r| r.0)
+        Self::start_mode(root, false, true, false).map(|r| r.0)
+    }
+    pub fn asset_network(root: &Path) -> Result<Self> {
+        Self::start_mode(root, false, false, true).map(|r| r.0)
     }
     fn start_mode(
         root: &Path,
         recoverable: bool,
         remote: bool,
+        assets: bool,
     ) -> Result<(Self, Option<TestSeed>)> {
         if !root.is_absolute() {
             return Err(Error::Invalid("absolute regtest directory"));
@@ -56,13 +61,21 @@ impl Regtest {
         let result = Self {
             root: root.into(),
             project,
+            assets,
         };
-        let mut compose = include_str!("../../../deploy/lnd-sdk/compose.yaml").to_owned();
-        compose = compose.replacen(
-            "\"--wtclient.active\"",
-            "\"--wtclient.active\", \"--rpcmiddleware.enable\"",
-            1,
-        );
+        let mut compose = if assets {
+            include_str!("../../../deploy/lnd-sdk/assets.compose.yaml")
+        } else {
+            include_str!("../../../deploy/lnd-sdk/compose.yaml")
+        }
+        .to_owned();
+        if !assets {
+            compose = compose.replacen(
+                "\"--wtclient.active\"",
+                "\"--wtclient.active\", \"--rpcmiddleware.enable\"",
+                1,
+            );
+        }
         if recoverable {
             compose = compose.replacen("\"--noseedbackup\", ", "", 1);
         }
@@ -98,6 +111,12 @@ impl Regtest {
             result.wait(|| result.lncli(node, &["getinfo"]).map(|_| ()))?;
         }
         result.wait(|| result.testnet(&["getinfo"]).map(|_| ()))?;
+        if assets {
+            for node in ["tapd", "tapd-bob"] {
+                result.wait(|| result.tapcli(node, &["getinfo"]).map(|_| ()))?;
+            }
+            return Ok((result, seed));
+        }
         result.command(&["up", "-d", "tapd"])?;
         result.wait(|| {
             result
@@ -401,6 +420,77 @@ impl Regtest {
             )?,
         ))
     }
+    pub fn start_asset_peer(&self) -> Result<()> {
+        if !self.assets {
+            return Err(Error::Invalid("integrated asset fixture required"));
+        }
+        self.wait(|| self.tapcli("tapd-bob", &["getinfo"]).map(|_| ()))
+    }
+    pub fn tapcli(&self, node: &str, args: &[&str]) -> Result<Value> {
+        if !["tapd", "tapd-bob"].contains(&node) {
+            return Err(Error::Invalid("regtest asset node"));
+        }
+        let service = if self.assets {
+            if node == "tapd" { "alice" } else { "bob" }
+        } else {
+            node
+        };
+        let mut command = vec![
+            "exec",
+            "-T",
+            service,
+            "tapcli",
+            "--tapddir=/tap",
+            "--network=regtest",
+        ];
+        if self.assets {
+            // tapcli overrides even an explicit TLS path when tapddir is set.
+            command.retain(|arg| *arg != "--tapddir=/tap");
+            command.extend_from_slice(&[
+                "--rpcserver=127.0.0.1:10009",
+                "--tlscertpath=/data/tls.cert",
+                "--macaroonpath=/tap/data/regtest/admin.macaroon",
+            ]);
+        }
+        command.extend_from_slice(args);
+        serde_json::from_slice(&self.command(&command)?)
+            .map_err(|_| Error::Invalid("regtest asset response"))
+    }
+    pub fn asset_config(
+        &self,
+        node: &str,
+    ) -> Result<(crate::transport::Config, crate::macaroon::Macaroon)> {
+        if !self.assets {
+            return Err(Error::Invalid("integrated asset fixture required"));
+        }
+        let service = match node {
+            "tapd" => "alice",
+            "tapd-bob" => "bob",
+            _ => return Err(Error::Invalid("regtest asset node")),
+        };
+        let config = self.tls_config(service)?;
+        let bytes = self.command(&[
+            "exec",
+            "-T",
+            service,
+            "od",
+            "-An",
+            "-v",
+            "-tx1",
+            "/tap/data/regtest/admin.macaroon",
+        ])?;
+        let bytes = hex::decode(
+            bytes
+                .into_iter()
+                .filter(|b| !b.is_ascii_whitespace())
+                .collect::<Vec<_>>(),
+        )
+        .map_err(|_| Error::Invalid("regtest asset credential"))?;
+        Ok((
+            config,
+            crate::macaroon::Macaroon::new(crate::macaroon::Role::Ops, 0, bytes)?,
+        ))
+    }
     pub fn start_accounts(&self) -> Result<(crate::transport::Config, crate::macaroon::Macaroon)> {
         use sha2::{Digest, Sha256};
         self.command(&["up", "-d", "litd"])?;
@@ -450,6 +540,12 @@ impl Regtest {
 }
 impl Drop for Regtest {
     fn drop(&mut self) {
+        if self.assets && std::thread::panicking() {
+            if let Ok(log) = self.command(&["logs", "--no-color", "--tail=120", "alice", "bob"]) {
+                let _ = std::fs::write(self.root.join("asset-node-errors.log"), log);
+            }
+        }
+
         let _ = self.command(&["down", "--volumes", "--remove-orphans"]);
     }
 }

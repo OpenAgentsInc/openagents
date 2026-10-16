@@ -1,0 +1,27 @@
+{
+  "lnd": {
+    "endpoint": "https://127.0.0.1:11009",
+    "certificate_sha256": "SET_FROM_LND_CERTIFICATE",
+    "macaroon": "/run/openagents-tapd/readonly.macaroon"
+  },
+  "tapd": {
+    "endpoint": "https://127.0.0.1:11009",
+    "certificate_sha256": "SET_FROM_INTEGRATED_LND_CERTIFICATE",
+    "macaroon": "/run/openagents-tapd/operator.macaroon"
+  },
+  "node": "OWNER_APPROVED_FRESH_ASSET_NODE_PUBLIC_KEY",
+  "network": "mainnet",
+  "asset_id": "OWNER_APPROVED_BITCOIN_ASSET_ID",
+  "edge": "OWNER_APPROVED_RFQ_EDGE_PUBLIC_KEY",
+  "approval": {
+    "mainnet_receive_approved": false,
+    "custody_review_approved": false,
+    "mainnet_payout_approved": false,
+    "asset_ids": [],
+    "maximum_units": 0,
+    "maximum_credit_msat": 0,
+    "maximum_fee_msat": 0
+  },
+  "journal": "/var/lib/openagents-tapd/actions.json",
+  "ledger": "/var/lib/openagents-tapd/trial-ledger.db"
+}

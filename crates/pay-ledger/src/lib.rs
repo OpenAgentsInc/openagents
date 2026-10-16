@@ -14,6 +14,7 @@ use std::{collections::BTreeMap, path::Path};
 
 pub mod adjustment;
 pub mod agent_order;
+pub mod assets;
 pub mod commission;
 pub mod commission_abuse;
 pub mod compute;
@@ -406,6 +407,7 @@ impl Ledger {
         connection.execute_batch(include_str!("schema.sql"))?;
         payout::create_table(&mut connection)?;
         connection.execute_batch(include_str!("compute.sql"))?;
+        connection.execute_batch(assets::TABLES)?;
         connection.execute_batch(earnings::TABLES)?;
         connection.execute_batch(adjustment::TABLES)?;
         connection.execute_batch(commission::TABLES)?;

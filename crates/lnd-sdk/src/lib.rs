@@ -23,3 +23,5 @@ pub mod payout;
 mod tests;
 
 pub mod automation;
+
+pub mod assets;

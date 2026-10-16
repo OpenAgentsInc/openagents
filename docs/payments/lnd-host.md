@@ -350,3 +350,64 @@ existing alert hook. After approval, test a small Loop Out and Loop In, restart
 between submission and observation, reconcile each swap and its fees, and then
 observe 30 days without manual rebalancing. No funded Loop swap or observation
 period was performed during implementation.
+
+## Taproot Assets trial (#11759)
+
+The Rust `assets` client uses the pinned tapd v0.8 RPCs and LND v0.21.1.
+**Asset channels require litd v0.17 integrated LND and tapd.** Standalone LND
+rejects the overlay-channel flag; running a separate tapd beside it does not
+provide the required funding hooks. The ordinary payout and recovery fixtures
+remain standalone LND. The asset fixture uses a separate, fresh integrated pair
+and a regtest-only mock oracle. No production seed is imported.
+
+The owner must approve decisions 6 and 7 before any mainnet asset receive:
+select the Bitcoin asset ID and issuer, RFQ edge, authenticated real oracle,
+proof courier, units, credit cap, fee budget, and custody treatment. Do not
+identify an asset by its display name. Payouts require a separate explicit
+approval. The templates under `deploy/lnd/assets/` leave every approval false
+and use a separate fresh asset node; they never mount the payout node's wallet.
+Do not enable the standalone payout node's overlay flag or move its database
+into this template. Any migration needs its own seed and channel review.
+
+After configuring and backing up the approved asset node, pin the integrated LND certificate
+and its authenticated node identity. Integrated tapd shares LND's gRPC endpoint.
+Give the operator an LND read-only credential and a separate tapd credential
+scoped to the required Taproot Assets RPC methods. The two services use
+different macaroon stores even though they share an endpoint. Keep both in tmpfs. Create the trial
+compute account in an isolated ledger through the existing ledger API, then run:
+
+```text
+lnd-assets SETTINGS receive UNIQUE_ID ACCOUNT UNITS
+lnd-assets SETTINGS settle PAYMENT_HASH
+lnd-assets SETTINGS report
+lnd-assets SETTINGS payout RECEIVER_QUOTE.json
+lnd-assets SETTINGS payout-status PAYMENT_HASH
+```
+
+Receive freezes the asset, edge, RFQ ID, exact decimal rate, invoice, expiry, and
+account before crediting. Settle reads the original node's settled invoice and
+checks each settled HTLC's asset and RFQ data. Direct asset payments can use
+the sender's sell RFQ rather than the invoice's buy RFQ. Keep both IDs; the
+original invoice, actual asset ID and units, and saved price determine credit. A Bitcoin-only receipt, different
+asset, expired acceptance, short amount, or duplicate HTLC credits nothing.
+An HTLC accepted within the quote can settle later. Asset units and supporting
+evidence remain in separate asset tables; the compute credit uses the frozen
+integer rate, rounds down, and posts once in the same transaction as the
+receipt. Repeated callbacks and ledger restarts do not reprice the credit.
+Asset invoices cannot also fund the Bitcoin top-up path.
+
+Payout obtains and saves a sell quote capped in asset units, saves its intent,
+and dispatches once using that RFQ ID. Save the sender's journal and the
+receiver's quote and receipt together. A lost response is looked up by its
+original payment hash; never repeat it on another node. `payout-status` remains
+read-only even when spending approval is withdrawn. Do not treat a paid
+Bitcoin invoice alone as proof of an asset transfer; compare the recorded HTLC
+asset data and both channel balances.
+
+Before a mainnet trial, replace the regtest mock with a reviewed real oracle.
+Run one small receive, verify asset units and quoted credit with `report`, then
+perform one asset payout only after counsel review and explicit approval.
+Retain both quotes, receipt indices, actual asset amounts, routing costs, and
+ledger records. Keep this isolated from production customer balances until the
+owner approves its custody and accounting treatment. No mainnet asset was
+received, held, or paid during implementation.

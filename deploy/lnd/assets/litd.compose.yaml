@@ -1,0 +1,14 @@
+# Stage only; seed ceremony, Core secrets, oracle, peers and budget need approval.
+services:
+  asset-node:
+    image: lightninglabs/lightning-terminal:v0.17.0-alpha@sha256:fd6d6040f78e0a342437312f3a3c154f4b63d79172c6b466e2dfd242b06b4a1c
+    network_mode: host
+    command: ["--configfile=/run/asset-node/lit.conf"]
+    user: "${ASSET_UID:?set the dedicated asset-node UID}:${ASSET_GID:?set the dedicated asset-node GID}"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: ["/tmp:rw,nosuid,nodev,noexec,size=64m"]
+    volumes:
+      - /run/openagents-tapd:/run/asset-node:ro
+      - /var/lib/openagents-tapd:/asset-node

@@ -2457,3 +2457,14 @@ credential, run and reconcile small Loop In/Out tests, and observe 30 days
 without manual rebalancing. Record actual fees, including recovery fees that
 can exceed Loop's initial miner-fee setting. Follow
 [the automation runbook](docs/payments/lnd-host.md#liquidity-automation-11758).
+
+## Approve the Taproot Assets mainnet trial (#11759)
+
+Choose decisions 6 and 7: asset ID and issuer, RFQ edge and real oracle, fresh
+integrated litd asset node, custody treatment, receive amount, credit cap, and
+fee budget. The payout node remains standalone LND; asset channels require
+integrated LND/tapd, so the staged templates use separate fresh data. Complete
+counsel review, then explicitly approve a small mainnet receive and one asset
+payout. Reconcile actual asset units and both frozen rates to the isolated trial
+ledger. No mainnet assets were moved. See
+[the trial runbook](docs/payments/lnd-host.md#taproot-assets-trial-11759).
