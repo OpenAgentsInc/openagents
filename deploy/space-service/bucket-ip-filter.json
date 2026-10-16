@@ -1,0 +1,11 @@
+{
+  "mode": "Enabled",
+  "vpcNetworkSources": [
+    {
+      "network": "projects/openagentsgemini/global/networks/oa-space-service",
+      "allowedIpCidrRanges": ["10.219.14.0/24"]
+    }
+  ],
+  "allowCrossOrgVpcs": false,
+  "allowAllServiceAgentAccess": false
+}

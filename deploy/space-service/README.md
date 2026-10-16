@@ -30,3 +30,21 @@ deletes itself after two hours. Run the Rust `space-key-broker` example `probe`
 there with the endpoint, mounted bearer file, namespace, and two distinct allowed
 organization IDs. It never prints plaintext keys or credentials. Delete the
 probe VM as soon as the check ends; its boot disk deletes with it.
+
+`control.py images`, `control.py database`, and `control.py nodes` create the
+dedicated image repository, private PostgreSQL instance, and two private nodes.
+The database starts at 20 GiB, grows to at most 40 GiB, and keeps seven daily
+backups plus seven days of point-in-time recovery. The control node has four
+vCPUs and an 80 GiB data disk; the nested-KVM worker has eight vCPUs, 32 GiB RAM,
+and a 300 GiB data disk. Data disks survive VM deletion. Neither node has a
+public address; the worker has no Google identity. Run `initialize.py control`
+and `initialize.py worker` from committed main to install the pinned k3s binary.
+
+`storage.py` provisions separate templates and snapshots buckets. Access is
+limited to the owned VPC, with public access prevention and bucket-scoped HMAC
+credentials in Secret Manager. Administration uses a private SSH TCP forward:
+Google authentication and TLS stay on the operator's machine. Deleted objects
+remain recoverable for seven days; active private data has no age-only expiry.
+`storage-probe.py` exercises the S3-compatible XML protocol with synthetic bytes
+and removes its active objects and unfinished uploads. Native checkpoint
+recovery still requires the worker-replacement qualification.
