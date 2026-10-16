@@ -1,6 +1,7 @@
 //! Browser events and the gallery, with editor state owned by Rust.
 use crate::{
-    Action, Drawing, Gallery, HEIGHT, MAX_ACTIONS, MAX_POINTS, Point, Tool, WIDTH, paint::Painter,
+    Action, Drawing, Gallery, HEIGHT, Light, MAX_ACTIONS, MAX_POINTS, Point, Tool, WIDTH,
+    paint::Painter,
 };
 use std::{cell::RefCell, rc::Rc};
 use wasm_bindgen::{JsCast, JsValue, closure::Closure};
@@ -11,6 +12,9 @@ use web_sys::{
 };
 type App = Rc<RefCell<Editor>>;
 const DRAFT: &str = "blue-rush-sand-v1";
+const TOOLS: &[&str] = &[
+    "rake", "finger", "smooth", "water", "select", "conch", "stone", "glass", "tooth", "anemone",
+];
 struct Editor {
     canvas: HtmlCanvasElement,
     painter: Painter,
@@ -22,8 +26,15 @@ struct Editor {
     normals: Vec<Option<(f64, f64)>>,
     pointer: Option<i32>,
     mandala: bool,
-    history: Vec<usize>,
-    redo: Vec<Vec<Action>>,
+    history: Vec<Drawing>,
+    redo: Vec<Drawing>,
+    color: String,
+    palette: Vec<(Tool, String)>,
+    selected: Option<usize>,
+    drag_offset: Point,
+    moving: bool,
+    visitors: crate::visitors::Visitors,
+    visitor_text: String,
     request: String,
     offset: usize,
     busy: bool,
@@ -65,6 +76,71 @@ fn node(tag: &str, class: &str, text: &str) -> Element {
     e.set_text_content(Some(text));
     e
 }
+fn checkpoint(s: &mut Editor) {
+    s.history.push(s.drawing.clone());
+    if s.history.len() > 60 {
+        s.history.remove(0);
+    }
+    s.redo.clear();
+    s.request.clear();
+}
+fn present(s: &Editor) {
+    s.painter.present(
+        if s.drawing.visitors {
+            &s.visitors.guests
+        } else {
+            &[]
+        },
+        s.selected.and_then(|i| s.drawing.actions.get(i)),
+    );
+}
+fn settings(s: &Editor) {
+    let input: HtmlInputElement = el("br-color").unchecked_into();
+    input.set_value(&s.color);
+    el("br-size")
+        .unchecked_into::<HtmlInputElement>()
+        .set_value(
+            &s.selected
+                .and_then(|i| s.drawing.actions.get(i))
+                .map_or(s.size, |a| a.size)
+                .to_string(),
+        );
+    input.set_disabled(!(s.tool.placeable() || s.tool == Tool::Water || s.selected.is_some()));
+    text(
+        "br-selected",
+        &s.selected
+            .and_then(|i| s.drawing.actions.get(i))
+            .map_or_else(
+                || "Color the next find or water".to_owned(),
+                |a| format!("{} selected · Drag to move", a.tool.label()),
+            ),
+    );
+    let _ = el("br-sun").set_attribute(
+        "aria-pressed",
+        if s.drawing.light == Light::Sun {
+            "true"
+        } else {
+            "false"
+        },
+    );
+    let _ = el("br-shade").set_attribute(
+        "aria-pressed",
+        if s.drawing.light == Light::Shade {
+            "true"
+        } else {
+            "false"
+        },
+    );
+    let _ = el("br-visitors").set_attribute(
+        "aria-pressed",
+        if s.drawing.visitors { "true" } else { "false" },
+    );
+    let water = (s.painter.water_ratio() * 100.).round() as usize;
+    text(
+        "br-habitat",
+        &format!("{}% sand · {}% water", 100 - water, water),
+    );
+}
 fn save(s: &Editor) {
     let saved = web_sys::window()
         .unwrap()
@@ -89,6 +165,8 @@ fn save(s: &Editor) {
     );
     let _ = el("br-undo").toggle_attribute_with_force("disabled", s.history.is_empty());
     let _ = el("br-redo").toggle_attribute_with_force("disabled", s.redo.is_empty());
+    settings(s);
+    present(s);
 }
 fn point(c: &HtmlCanvasElement, e: &PointerEvent) -> Point {
     let r = c.get_bounding_client_rect();
@@ -106,6 +184,34 @@ fn rotated(p: Point, k: usize, ways: usize) -> Point {
     )
 }
 fn begin(s: &mut Editor, p: Point) {
+    if s.tool == Tool::Select {
+        s.selected = s
+            .drawing
+            .actions
+            .iter()
+            .enumerate()
+            .rev()
+            .find(|(_, a)| {
+                a.tool.placeable()
+                    && a.points
+                        .first()
+                        .is_some_and(|q| (q.x - p.x).hypot(q.y - p.y) < 36. * a.size)
+            })
+            .map(|(i, _)| i);
+        s.moving = false;
+        if let Some(i) = s.selected {
+            let a = &s.drawing.actions[i];
+            s.drag_offset = Point {
+                x: p.x - a.points[0].x,
+                y: p.y - a.points[0].y,
+            };
+            s.color = a.color.clone().unwrap_or_else(|| a.tool.color().into());
+        }
+        settings(s);
+        present(s);
+        return;
+    }
+    s.selected = None;
     if s.drawing.actions.len() >= MAX_ACTIONS || s.drawing.points() >= MAX_POINTS {
         return;
     }
@@ -117,13 +223,15 @@ fn begin(s: &mut Editor, p: Point) {
     if s.drawing.actions.len() + ways > MAX_ACTIONS || s.drawing.points() + ways > MAX_POINTS {
         return;
     }
-    s.history.push(s.drawing.actions.len());
+    checkpoint(s);
     for k in 0..ways {
         let a = Action {
             tool: s.tool,
             size: s.size,
-            angle: s.angle + std::f64::consts::TAU * k as f64 / ways as f64,
+            angle: (s.angle + std::f64::consts::TAU * k as f64 / ways as f64)
+                % std::f64::consts::TAU,
             points: vec![rotated(p, k, ways)],
+            color: Some(s.color.clone()),
         };
         s.painter.action(&a);
         s.active.push(s.drawing.actions.len());
@@ -132,6 +240,23 @@ fn begin(s: &mut Editor, p: Point) {
     }
 }
 fn extend(s: &mut Editor, p: Point) {
+    if s.tool == Tool::Select {
+        if let Some(i) = s.selected {
+            let next = Point::new(p.x - s.drag_offset.x, p.y - s.drag_offset.y);
+            let old = s.drawing.actions[i].points[0];
+            if (next.x - old.x).hypot(next.y - old.y) < 1.5 {
+                return;
+            }
+            if !s.moving {
+                checkpoint(s);
+                s.moving = true;
+            }
+            s.drawing.actions[i].points[0] = next;
+            s.painter.update_objects(&s.drawing);
+            present(s);
+        }
+        return;
+    }
     if s.active.is_empty() || !s.tool.draws() || s.drawing.points() + s.active.len() > MAX_POINTS {
         return;
     }
@@ -148,6 +273,7 @@ fn extend(s: &mut Editor, p: Point) {
         s.normals[k] = Some(s.painter.extend(a, last, q, s.normals[k]));
         a.points.push(q);
     }
+    present(s);
 }
 fn end(s: &mut Editor) {
     s.active.clear();
@@ -301,10 +427,15 @@ pub fn start() -> Result<(), JsValue> {
         .flatten()
         .and_then(|s| s.get_item(DRAFT).ok().flatten())
         .and_then(|v| serde_json::from_str::<Drawing>(&v).ok())
-        .filter(Drawing::valid)
+        .filter(Drawing::within_limits)
         .unwrap_or_default();
     painter.redraw(&draft);
-    let history = (0..draft.actions.len()).collect();
+    let history = (0..draft.actions.len())
+        .map(|n| Drawing {
+            actions: draft.actions[..n].to_vec(),
+            ..draft.clone()
+        })
+        .collect();
     let app = Rc::new(RefCell::new(Editor {
         canvas: canvas.clone(),
         painter,
@@ -318,6 +449,13 @@ pub fn start() -> Result<(), JsValue> {
         mandala: false,
         history,
         redo: vec![],
+        color: Tool::Rake.color().into(),
+        palette: vec![],
+        selected: None,
+        drag_offset: Point::new(0., 0.),
+        moving: false,
+        visitors: crate::visitors::Visitors::new((js_sys::Math::random() * u32::MAX as f64) as u32),
+        visitor_text: String::new(),
         request: String::new(),
         offset: 0,
         busy: false,
@@ -325,9 +463,7 @@ pub fn start() -> Result<(), JsValue> {
     }));
     text("br-status", "Make yourself a little stretch of beach.");
     el("br-garden-tools").remove_attribute("hidden")?;
-    for tool in [
-        "rake", "finger", "smooth", "conch", "stone", "glass", "tooth",
-    ] {
+    for &tool in TOOLS {
         let app = app.clone();
         let tool = Tool::parse(tool).unwrap();
         let id = format!(
@@ -336,7 +472,7 @@ pub fn start() -> Result<(), JsValue> {
         );
         let b = el(&id);
         // The tool swatches use the same painter as the objects placed in sand.
-        if !tool.draws() {
+        if tool.placeable() {
             let (icon, ctx) = crate::paint::canvas()?;
             icon.set_class_name("br-tool-art");
             icon.set_attribute("aria-hidden", "true")?;
@@ -347,6 +483,7 @@ pub fn start() -> Result<(), JsValue> {
                 size: 1.8,
                 angle: -0.3,
                 points: vec![Point::new(WIDTH / 2., HEIGHT / 2.)],
+                color: None,
             });
             // Crop the full-size drawing to an icon without stretching its shape.
             let thumb: HtmlCanvasElement = doc().create_element("canvas")?.dyn_into()?;
@@ -373,20 +510,31 @@ pub fn start() -> Result<(), JsValue> {
             let mut s = app.borrow_mut();
             end(&mut s);
             s.tool = tool;
-            for t in [
-                "rake", "finger", "smooth", "conch", "stone", "glass", "tooth",
-            ] {
+            s.selected = None;
+            s.color = s
+                .palette
+                .iter()
+                .find(|(t, _)| *t == tool)
+                .map(|(_, c)| c.clone())
+                .unwrap_or_else(|| tool.color().into());
+            for &t in TOOLS {
                 let _ = el(&format!("br-tool-{t}")).set_attribute("aria-pressed", "false");
             }
             let _ = el(&id).set_attribute("aria-pressed", "true");
             text(
                 "br-status",
-                if tool.draws() {
+                if tool == Tool::Select {
+                    "Tap a find to recolor or move it."
+                } else if tool == Tool::Water {
+                    "Paint water for a tide pool. Smooth brushes it away."
+                } else if tool.draws() {
                     "Drag to shape the sand."
                 } else {
                     "Tap the sand to place it. Use Undo to take it back."
                 },
             );
+            settings(&s);
+            present(&s);
         })?;
     }
     {
@@ -475,6 +623,9 @@ pub fn start() -> Result<(), JsValue> {
             s.keyboard = Point::new(p.x, p.y);
             let p = s.keyboard;
             extend(&mut s, p);
+            if s.tool == Tool::Select {
+                save(&s);
+            }
             text(
                 "br-status",
                 &format!(
@@ -494,7 +645,14 @@ pub fn start() -> Result<(), JsValue> {
                 .value()
                 .parse::<f64>()
             {
-                a.borrow_mut().size = v;
+                let mut s = a.borrow_mut();
+                s.size = v;
+                if let Some(i) = s.selected {
+                    checkpoint(&mut s);
+                    s.drawing.actions[i].size = v;
+                    s.painter.update_objects(&s.drawing);
+                    save(&s);
+                }
             }
         })?;
     }
@@ -503,6 +661,15 @@ pub fn start() -> Result<(), JsValue> {
         button("br-rotate", move |_| {
             let mut s = a.borrow_mut();
             s.angle = (s.angle + std::f64::consts::PI / 6.) % std::f64::consts::TAU;
+            if let Some(i) = s.selected {
+                checkpoint(&mut s);
+                s.drawing.actions[i].angle = (s.drawing.actions[i].angle
+                    + std::f64::consts::PI / 6.)
+                    % std::f64::consts::TAU;
+                s.painter.update_objects(&s.drawing);
+                save(&s);
+                return;
+            }
             text(
                 "br-status",
                 &format!(
@@ -526,9 +693,10 @@ pub fn start() -> Result<(), JsValue> {
         button("br-undo", move |_| {
             let mut s = a.borrow_mut();
             end(&mut s);
-            if let Some(n) = s.history.pop() {
-                let actions = s.drawing.actions.split_off(n);
-                s.redo.push(actions);
+            if let Some(previous) = s.history.pop() {
+                let current = std::mem::replace(&mut s.drawing, previous);
+                s.redo.push(current);
+                s.selected = None;
                 s.request.clear();
                 s.painter.redraw(&s.drawing);
                 save(&s);
@@ -540,10 +708,10 @@ pub fn start() -> Result<(), JsValue> {
         button("br-redo", move |_| {
             let mut s = a.borrow_mut();
             end(&mut s);
-            if let Some(actions) = s.redo.pop() {
-                let n = s.drawing.actions.len();
-                s.history.push(n);
-                s.drawing.actions.extend(actions);
+            if let Some(next) = s.redo.pop() {
+                let current = std::mem::replace(&mut s.drawing, next);
+                s.history.push(current);
+                s.selected = None;
                 s.request.clear();
                 s.painter.redraw(&s.drawing);
                 save(&s);
@@ -558,6 +726,8 @@ pub fn start() -> Result<(), JsValue> {
             s.drawing = Drawing::default();
             s.history.clear();
             s.redo.clear();
+            s.selected = None;
+            s.visitors.clear();
             end(&mut s);
             s.request.clear();
             s.painter.redraw(&s.drawing);
@@ -657,7 +827,9 @@ pub fn start() -> Result<(), JsValue> {
             preview.set_height(HEIGHT as u32);
             let ctx: web_sys::CanvasRenderingContext2d =
                 preview.get_context("2d").unwrap().unwrap().unchecked_into();
-            let _ = ctx.draw_image_with_html_canvas_element(&a.borrow().canvas, 0., 0.);
+            if let Ok(p) = Painter::new(ctx) {
+                p.redraw(&a.borrow().drawing);
+            }
         })?;
     }
     {
@@ -711,12 +883,16 @@ pub fn start() -> Result<(), JsValue> {
     {
         let a = app.clone();
         button("br-download", move |_| {
-            if let Ok(url) = a.borrow().canvas.to_data_url_with_type("image/png") {
-                let link = node("a", "", "");
-                let _ = link.set_attribute("href", &url);
-                let _ = link.set_attribute("download", "my-blue-rush-beach.png");
-                let link: web_sys::HtmlElement = link.unchecked_into();
-                link.click();
+            if let Ok((canvas, ctx)) = crate::paint::canvas() {
+                if let Ok(p) = Painter::new(ctx) {
+                    p.redraw(&a.borrow().drawing);
+                    if let Ok(url) = canvas.to_data_url_with_type("image/png") {
+                        let link = node("a", "", "");
+                        let _ = link.set_attribute("href", &url);
+                        let _ = link.set_attribute("download", "my-blue-rush-beach.png");
+                        link.unchecked_into::<web_sys::HtmlElement>().click();
+                    }
+                }
             }
         })?;
     }
@@ -729,7 +905,133 @@ pub fn start() -> Result<(), JsValue> {
                 .click();
         }
     })?;
+    {
+        let a = app.clone();
+        listen(el("br-color").as_ref(), "input", move |_| {
+            let color = el("br-color").unchecked_into::<HtmlInputElement>().value();
+            if !crate::valid_color(&color) {
+                return;
+            }
+            let mut s = a.borrow_mut();
+            s.color = color.clone();
+            if let Some(i) = s.selected {
+                checkpoint(&mut s);
+                s.drawing.actions[i].color = Some(color.clone());
+                s.painter.update_objects(&s.drawing);
+                save(&s);
+            }
+            let tool = s.tool;
+            if let Some((_, c)) = s.palette.iter_mut().find(|(t, _)| *t == tool) {
+                *c = color;
+            } else {
+                s.palette.push((tool, color));
+            }
+        })?;
+    }
+    for (id, light) in [("br-sun", Light::Sun), ("br-shade", Light::Shade)] {
+        let a = app.clone();
+        button(id, move |_| {
+            let mut s = a.borrow_mut();
+            if s.drawing.light == light {
+                return;
+            }
+            checkpoint(&mut s);
+            s.drawing.light = light;
+            s.painter.update_objects(&s.drawing);
+            save(&s);
+        })?;
+    }
+    {
+        let a = app.clone();
+        button("br-visitors", move |_| {
+            let mut s = a.borrow_mut();
+            s.drawing.visitors = !s.drawing.visitors;
+            s.visitors.clear();
+            s.visitor_text.clear();
+            text(
+                "br-visitor-name",
+                if s.drawing.visitors {
+                    "A quiet moment at the shore"
+                } else {
+                    "Visitors are off"
+                },
+            );
+            save(&s);
+        })?;
+    }
+    animate(app.clone())?;
     save(&app.borrow());
     // The listeners hold the editor for the lifetime of the page.
+    Ok(())
+}
+
+fn animate(app: App) -> Result<(), JsValue> {
+    let callback: Rc<RefCell<Option<Closure<dyn FnMut(f64)>>>> = Rc::new(RefCell::new(None));
+    let next = callback.clone();
+    let mut last = 0.;
+    let motion = web_sys::window()
+        .unwrap()
+        .match_media("(prefers-reduced-motion: reduce)")?
+        .map(|q| !q.matches())
+        .unwrap_or(true);
+    *callback.borrow_mut() = Some(Closure::wrap(Box::new(move |now: f64| {
+        if now - last >= 40. && !doc().hidden() {
+            last = now;
+            let mut s = app.borrow_mut();
+            let r = s.canvas.get_bounding_client_rect();
+            let height = web_sys::window()
+                .unwrap()
+                .inner_height()
+                .ok()
+                .and_then(|v| v.as_f64())
+                .unwrap_or(1000.);
+            if r.bottom() > 0. && r.top() < height && s.drawing.visitors {
+                let h = crate::visitors::Habitat {
+                    water: s.painter.water_ratio(),
+                    anemones: s
+                        .drawing
+                        .actions
+                        .iter()
+                        .filter(|a| a.tool == Tool::Anemone && s.painter.is_water(a.points[0]))
+                        .count(),
+                    shells: s
+                        .drawing
+                        .actions
+                        .iter()
+                        .filter(|a| a.tool == Tool::Conch)
+                        .count(),
+                };
+                let Editor {
+                    painter, visitors, ..
+                } = &mut *s;
+                visitors.step(now / 1000., h, |p| painter.is_water(p), motion);
+                let names = s
+                    .visitors
+                    .guests
+                    .iter()
+                    .map(|g| g.kind.label())
+                    .collect::<Vec<_>>()
+                    .join(" · ");
+                if names != s.visitor_text {
+                    s.visitor_text = names.clone();
+                    text(
+                        "br-visitor-name",
+                        if names.is_empty() {
+                            "A quiet moment at the shore"
+                        } else {
+                            &names
+                        },
+                    );
+                }
+                present(&s);
+            }
+        }
+        let _ = web_sys::window()
+            .unwrap()
+            .request_animation_frame(next.borrow().as_ref().unwrap().as_ref().unchecked_ref());
+    }) as Box<dyn FnMut(f64)>));
+    web_sys::window()
+        .unwrap()
+        .request_animation_frame(callback.borrow().as_ref().unwrap().as_ref().unchecked_ref())?;
     Ok(())
 }

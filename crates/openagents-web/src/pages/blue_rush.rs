@@ -578,11 +578,19 @@ fn render(site: &Site) -> Markup {
                                     aria-label="Sand garden. Choose a tool below. Drag to draw or tap to place a beach find. With a keyboard, Space starts or stops a mark, and arrow keys move it." {}
                                 div class="br-garden-tools" id="br-garden-tools" hidden {
                                     div class="br-tool-tray" role="group" aria-label="Sand tools and beach finds" {
-                                        @for (tool, label, icon) in [("rake", "Rake", "≋"), ("finger", "Finger", "〰"), ("smooth", "Smooth", "◯"), ("conch", "Conch", ""), ("stone", "Stone", ""), ("glass", "Sea glass", ""), ("tooth", "Shark tooth", "")] {
+                                        @for (tool, label, icon) in [("rake", "Rake", "≋"), ("finger", "Finger", "〰"), ("smooth", "Smooth", "◯"), ("water", "Water", "≈"), ("select", "Select item", "↖"), ("conch", "Conch", ""), ("stone", "Stone", ""), ("glass", "Sea glass", ""), ("tooth", "Shark tooth", ""), ("anemone", "Anemone", "")] {
                                             button class="br-tool br-material" type="button" id=(format!("br-tool-{tool}")) aria-pressed=(if tool == "rake" { "true" } else { "false" }) {
                                                 @if !icon.is_empty() { span class="br-tool-symbol" aria-hidden="true" { (icon) } }
                                                 span { (label) }
                                             }
+                                        }
+                                    }
+                                    div class="br-color-row" {
+                                        label for="br-color" { "Color" input id="br-color" type="color" value="#e2cca9" aria-label="Item or water color"; }
+                                        span id="br-selected" { "Color the next find or water" }
+                                        div class="br-light-tools" role="group" aria-label="Beach lighting" {
+                                            button class="br-tool" type="button" id="br-sun" aria-pressed="true" { "Sunlight ☀" }
+                                            button class="br-tool" type="button" id="br-shade" aria-pressed="false" { "Shade" }
                                         }
                                     }
                                     div class="br-tool-options" {
@@ -592,6 +600,11 @@ fn render(site: &Site) -> Markup {
                                         button class="br-tool" type="button" id="br-undo" disabled { "Undo" }
                                         button class="br-tool" type="button" id="br-redo" disabled { "Redo" }
                                         button class="br-tool" type="button" id="br-clear" { "Clear" }
+                                    }
+                                    div class="br-habitat-row" {
+                                        button class="br-tool" type="button" id="br-visitors" aria-pressed="true" { "Visiting creatures" }
+                                        span id="br-habitat" { "100% sand · 0% water" }
+                                        span id="br-visitor-name" role="status" { "A quiet moment at the shore" }
                                     }
                                     div class="br-garden-bottom" {
                                         p id="br-status" role="status" { "Loading your beach…" }
@@ -635,7 +648,7 @@ fn render(site: &Site) -> Markup {
                                     button class="br-tool" type="button" id="br-clear-confirm" { "Clear the sand" }
                                 }
                             }
-                            p class="br-keys" { "Drag to shape · Tap to place · Space and arrows work, too" }
+                            p class="br-keys" { "Paint water for tide pools · Select a find to recolor or move it · Space and arrows work, too" }
                         }
                     }
                 }

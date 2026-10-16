@@ -1,11 +1,11 @@
 ## Review the Blue Rush sand garden before publishing (#11834)
 
-The editor and shared gallery are on `main` in `73130597ad`. Review them at
-`http://127.0.0.1:4390/studios/blue-rush#garden`; production stays unchanged
-at the owner's request. Production image build
-`1d411e0f-8e48-45eb-985d-74933cbdf0da` uses tag `sand-73130597ad`.
-After review, check that build and deploy its image with the normal website
-promotion process.
+Review the editor and gallery at
+`http://127.0.0.1:4390/studios/blue-rush#garden`. The update includes custom
+colors, movable finds, tide pools, anemones, lighting, and visiting creatures.
+Production stays unchanged at the owner's request. After review, publish
+through the normal website deployment process; the earlier image build hit
+[the vault browser-build failure](https://github.com/OpenAgentsInc/openagents/issues/11837).
 
 ## Qualify a paid labor order between separately run parties (#11748)
 

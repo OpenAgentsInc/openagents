@@ -73,12 +73,11 @@ fn protect(mut r: Response) -> Response {
     );
     r
 }
-fn identity(app: &App, visitor: &str) -> String {
+fn identity(_app: &App, visitor: &str) -> String {
     format!(
         "{:x}",
         Sha256::new()
             .chain_update(b"sand-garden-v1")
-            .chain_update(app.config.ask_salt)
             .chain_update(visitor)
             .finalize()
     )
@@ -438,7 +437,9 @@ mod tests {
         );
         let one = "11111111111111111111111111111111";
         let two = "22222222222222222222222222222222";
-        let body = design("Sea glass", one);
+        let mut body = design("Sea glass", one);
+        body["drawing"]["light"] = json!("shade");
+        body["drawing"]["actions"][0]["color"] = json!("#52d6ca");
         let (status, _, a) = call(site.clone(), "POST", PATH, Some(one), Some(body.clone())).await;
         assert_eq!(status, StatusCode::CREATED);
         let id = a["id"].as_str().unwrap();
@@ -455,6 +456,11 @@ mod tests {
         let other = b["id"].as_str().unwrap();
         let (_, _, list) = call(site.clone(), "GET", PATH, Some(one), None).await;
         assert_eq!(list["total"], 2);
+        assert_eq!(list["items"][0]["drawing"]["light"], "shade");
+        assert_eq!(
+            list["items"][0]["drawing"]["actions"][0]["color"],
+            "#52d6ca"
+        );
         assert_eq!(list["items"][0]["id"], id);
         assert_eq!(list["items"][1]["id"], other);
         for _ in 0..2 {
@@ -468,7 +474,9 @@ mod tests {
             .await;
             assert_eq!(status, StatusCode::OK);
         }
-        let (_, _, list) = call(crate::router(config), "GET", PATH, Some(one), None).await;
+        let mut restarted = config;
+        restarted.ask_salt = [3; 32];
+        let (_, _, list) = call(crate::router(restarted), "GET", PATH, Some(one), None).await;
         assert_eq!(list["items"][0]["id"], other);
         assert_eq!(list["items"][0]["votes"], 1);
         assert_eq!(list["items"][0]["voted"], true);

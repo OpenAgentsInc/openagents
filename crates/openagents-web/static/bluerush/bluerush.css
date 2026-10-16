@@ -687,3 +687,20 @@ a.br-card-go { text-decoration: none; }
 
 .br-garden { scroll-margin-top: 80px; }
 @media (max-width: 640px) { .br-garden { scroll-margin-top: 130px; } }
+
+.br-tool-tray { grid-template-columns: repeat(10, minmax(0, 1fr)); }
+.br-color-row, .br-habitat-row { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 8px 18px; border-top: 1px solid #cbb58e80; font-size: 12px; }
+.br-color-row label { display: flex; align-items: center; gap: 8px; }
+.br-color-row input { width: 38px; height: 32px; padding: 2px; border: 1px solid #ad9e82; border-radius: 5px; background: #fff8e9; cursor: pointer; }
+.br-color-row input:disabled { opacity: .4; cursor: default; }
+.br-light-tools { margin-left: auto; display: flex; gap: 4px; }
+#br-selected, #br-habitat, #br-visitor-name { color: #696a59; }
+#br-visitor-name { margin-left: auto; font-size: 11px; }
+#br-tool-water .br-tool-symbol { color: #549caa; }
+@media (max-width: 640px) {
+  .br-tool-tray { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .br-color-row, .br-habitat-row { gap: 7px; padding: 8px; font-size: 11px; }
+  #br-visitor-name { width: 100%; margin-left: 0; }
+  .br-light-tools { margin-left: 0; }
+  .br-garden .br-material { font-size: 10px; }
+}
