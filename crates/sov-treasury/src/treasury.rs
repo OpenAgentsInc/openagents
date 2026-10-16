@@ -266,6 +266,9 @@ impl Treasury {
                 Some("openagents.sovereign-purchase-request.v1") => {
                     self.purchase(&mut state, &signer, &body, &input, &declarations, now)
                 }
+                Some("openagents.sovereign-topup-recovery.v1") => {
+                    self.recover(&mut state, &signer, &body, now)
+                }
                 _ => Err(refuse("unsupported_feature", "operation")),
             },
         };
@@ -710,6 +713,18 @@ impl Treasury {
     pub fn reconcile(&self, agent: &str, purchase: &str, now: u64) -> Result<Value> {
         let _lock = self.store.lock()?;
         let mut state = self.state()?;
+        let value = self.reconcile_in(&mut state, agent, purchase, now)?;
+        self.save(&state)?;
+        Ok(value)
+    }
+
+    fn reconcile_in(
+        &self,
+        state: &mut State,
+        agent: &str,
+        purchase: &str,
+        now: u64,
+    ) -> Result<Value> {
         let mut account = state
             .agents
             .get(agent)
@@ -729,7 +744,11 @@ impl Treasury {
             .as_str()
             .unwrap_or_default()
             .to_string();
-        let credited = self.owners.borrow_mut().topup.credited(&account_id, &hash);
+        let credited = self
+            .owners
+            .borrow_mut()
+            .topup
+            .credited(&account_id, &hash, now);
         let request = self.json(&item.receipt)?["request"].clone();
         let (status, credit) = if let Some(receipt) = credited {
             (
@@ -752,7 +771,7 @@ impl Treasury {
         if status == "completed" && body["payment"].is_null() {
             return Ok(json!({"status":"unknown","receipt":item.receipt}));
         }
-        let receipt = self.sign(&mut state, &body, agent, now)?;
+        let receipt = self.sign(state, &body, agent, now)?;
         if let Some(hold) = &item.buyer_hold {
             let reservation = Reservation {
                 id: hold.clone(),
@@ -788,8 +807,123 @@ impl Treasury {
         item.receipt = receipt.clone();
         account.purchases.insert(purchase.into(), item);
         state.agents.insert(agent.into(), account);
-        self.save(&state)?;
         Ok(json!({"status":status,"receipt":receipt}))
+    }
+
+    /// Top-up recovery under authenticated account control: the agent or the
+    /// purchase's requester presents the exact account and its retained
+    /// control evidence. Recovery reconciles; it never pays again.
+    fn recover(&self, state: &mut State, signer: &str, body: &Value, now: u64) -> Result<Value> {
+        let agent = body["agent"].as_str().unwrap_or_default().to_string();
+        let account = state
+            .agents
+            .get(&agent)
+            .cloned()
+            .ok_or_else(|| refuse("not_admitted", "null treasury"))?;
+        let policy_ref = account
+            .policy
+            .clone()
+            .ok_or_else(|| refuse("not_admitted", "null treasury"))?;
+        if !same(&policy_ref, &body["policy"]) {
+            return Err(refuse("stale", "policy revision"));
+        }
+        let policy = self.json(&policy_ref)?;
+        if body["account"] != policy["account"]["id"]
+            || !same(&body["control"], &policy["account"]["control"])
+        {
+            return Err(refuse(
+                "not_admitted",
+                "account control does not match the policy",
+            ));
+        }
+        let purchase = body["purchase"].as_str().unwrap_or_default();
+        let item = account
+            .purchases
+            .get(purchase)
+            .ok_or_else(|| refuse("not_admitted", "unknown purchase"))?;
+        if signer != agent && signer != item.requester {
+            return Err(refuse(
+                "not_admitted",
+                "only the agent or the requester recovers a purchase",
+            ));
+        }
+        self.reconcile_in(state, &agent, purchase, now)
+    }
+
+    /// A private economic statement joining every step by its original
+    /// identity: LAB obligation, authenticated receive, payout attempt,
+    /// confirmed income, X402 purchase, account credit, and metered use.
+    /// Units stay distinct; unknown links are listed, not netted away.
+    pub fn economic_statement(&self, agent: &str, now: u64) -> Result<Value> {
+        let _lock = self.store.lock()?;
+        let mut state = self.state()?;
+        let account = state
+            .agents
+            .get(agent)
+            .cloned()
+            .ok_or_else(|| refuse("not_admitted", "null treasury"))?;
+        let policy_ref = account.policy.clone().ok_or("policy")?;
+        let policy = self.json(&policy_ref)?;
+        let beneficiary = policy["beneficiary"].as_str().unwrap_or_default();
+        let account_id = policy["account"]["id"].as_str().unwrap_or_default();
+        let ledger = self.owners.borrow_mut().earnings.statement(beneficiary)?;
+        let mut links = Vec::new();
+        let mut unknown = Vec::new();
+        let mut costs = json!({"platform_fee_msat":0,"payout_fee_msat":0,"purchase_fee_msat":0});
+        for earning in ledger["earnings"].as_array().into_iter().flatten() {
+            let amount: i64 = earning["obligations"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|o| o["amount_msat"].as_i64())
+                .sum();
+            links.push(json!({"kind":"obligation","id":earning["resource"],"amount":amount.max(0),"unit":"msat","state":"accepted"}));
+        }
+        for payout in ledger["payouts"].as_array().into_iter().flatten() {
+            let state = payout["state"].as_str().unwrap_or("unknown");
+            let link = json!({"kind":"payout","id":payout["id"],"amount":payout["amount_msat"].as_i64().unwrap_or(0).max(0),"unit":"msat","state":state});
+            if matches!(state, "planned" | "sending" | "unknown") {
+                unknown.push(link.clone());
+            }
+            costs["payout_fee_msat"] = json!(
+                costs["payout_fee_msat"].as_u64().unwrap_or(0)
+                    + payout["fee_msat"].as_u64().unwrap_or(0)
+            );
+            links.push(link);
+        }
+        for income in account.income.values() {
+            let body = self.json(income)?;
+            links.push(json!({"kind":"income","id":body["wallet_reference"],"amount":body["amount_msat"],"unit":"msat","state":"confirmed"}));
+        }
+        for (id, purchase) in &account.purchases {
+            let receipt = if purchase.receipt.is_null() {
+                Value::Null
+            } else {
+                self.json(&purchase.receipt)?
+            };
+            let fee = receipt["fee_msat"].as_u64().unwrap_or(0);
+            costs["purchase_fee_msat"] =
+                json!(costs["purchase_fee_msat"].as_u64().unwrap_or(0) + fee);
+            let link = json!({"kind":"purchase","id":format!("{id}:{}",purchase.payment_hash.clone().unwrap_or_default()),
+                "amount":purchase.hold_msat,"unit":"msat","state":purchase.status});
+            if matches!(purchase.status.as_str(), "unknown" | "held") {
+                unknown.push(link.clone());
+            }
+            links.push(link);
+            if !receipt["credit"].is_null() {
+                let credit = self.json(&receipt["credit"])?;
+                links.push(json!({"kind":"credit","id":credit["payment_hash"],"amount":credit["credited_usd_micros"],"unit":"usd_micros","state":"credited"}));
+            }
+        }
+        for usage in self.owners.borrow_mut().topup.usage(account_id) {
+            links.push(json!({"kind":"usage","id":usage["request"],"amount":usage["usd_micros"],"unit":"usd_micros","state":"metered"}));
+        }
+        let body = json!({"v":"openagents.sovereign-economic-statement.v1","requires":[],"policy":policy_ref,
+            "observed_at":now,"coverage":if unknown.is_empty() {"complete"} else {"partial"},"links":links,
+            "costs":costs,"unknown":unknown});
+        let reference = self.sign(&mut state, &body, agent, now)?;
+        self.save(&state)?;
+        Ok(json!({"statement":reference,"body":body}))
     }
 
     /// A private statement of the current period: source references, holds,

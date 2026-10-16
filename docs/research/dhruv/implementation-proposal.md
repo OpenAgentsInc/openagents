@@ -147,6 +147,10 @@ an ambiguous payment.
    real but the callback or credit acknowledgment is lost. Keep proof
    consumption, credit creation, usage, and payout separate. A new invoice,
    callback retry, or restored host must not create another credit or charge.
+   `sov-treasury` now joins these by original identity in a private economic
+   statement and recovers lost payment, callback, and credit replies under
+   account control. The account-credit adapter follows the gateway's paid-header
+   and once-per-payment-hash contract (#11742).
 3. **Use the proof-free Pylon receipt.**
    [#11721](https://github.com/OpenAgentsInc/openagents/issues/11721) resolves
    the PYLON/X402 conflict: receipt, aggregate, and policy v2 require a signed

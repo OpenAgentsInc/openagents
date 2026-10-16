@@ -19,6 +19,12 @@
     },
     {
       "$ref": "#/$defs/sovereign-treasury-statement"
+    },
+    {
+      "$ref": "#/$defs/sovereign-topup-recovery"
+    },
+    {
+      "$ref": "#/$defs/sovereign-economic-statement"
     }
   ],
   "$defs": {
@@ -823,6 +829,214 @@
                 }
               }
             ]
+          }
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "sovereign-topup-recovery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "agent",
+        "policy",
+        "purchase",
+        "account",
+        "control"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.sovereign-topup-recovery.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "agent": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "policy": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.sovereign-treasury-policy.v1"
+                }
+              }
+            }
+          ]
+        },
+        "purchase": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "account": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "control": {
+          "$ref": "#/$defs/artifact"
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "chain_link": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "id",
+        "amount",
+        "unit",
+        "state"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "obligation",
+            "receive",
+            "payout",
+            "income",
+            "purchase",
+            "credit",
+            "usage"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "amount": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "unit": {
+          "enum": [
+            "msat",
+            "usd_micros"
+          ]
+        },
+        "state": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        }
+      }
+    },
+    "sovereign-economic-statement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "policy",
+        "observed_at",
+        "coverage",
+        "links",
+        "costs",
+        "unknown"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.sovereign-economic-statement.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "policy": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.sovereign-treasury-policy.v1"
+                }
+              }
+            }
+          ]
+        },
+        "observed_at": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "coverage": {
+          "enum": [
+            "complete",
+            "partial"
+          ]
+        },
+        "links": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 1024,
+          "items": {
+            "$ref": "#/$defs/chain_link"
+          }
+        },
+        "costs": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "platform_fee_msat",
+            "payout_fee_msat",
+            "purchase_fee_msat"
+          ],
+          "properties": {
+            "platform_fee_msat": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "payout_fee_msat": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "purchase_fee_msat": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          }
+        },
+        "unknown": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/chain_link"
           }
         },
         "meta": {

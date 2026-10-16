@@ -1,5 +1,5 @@
 use crate::{
-    adapters::{Accounts, Earnings, Pay, RouterTopUp, Wallet},
+    adapters::{CreditService, Earnings, Pay, RouterTopUp, Wallet},
     treasury::{Bundle, Config, Owners, Treasury, envelope},
 };
 use nostr::contracts::{digest_bytes, jcs};
@@ -37,6 +37,10 @@ const CHILD_B: u8 = 6;
 const STRANGER: u8 = 7;
 const NODE: [u8; 32] = [9; 32];
 const URL: &str = "https://api.example.com/v1/credits";
+const GATEWAY: &str = "https://gateway.example.com/v1/agents/credit";
+const ACCOUNT: &str = "acct_agent";
+const CREDIT_MICROS: u64 = 10_000;
+const PAY_HOST: u8 = 12;
 
 /// A Lightning node that signs real BOLT11 test invoices; paying one means
 /// reading its preimage back, as a wallet would receive it.
@@ -131,6 +135,9 @@ impl Earnings for SharedLedger {
     fn sent_payout(&self, party: &str, id: &str) -> crate::Result<Option<(u64, String)>> {
         self.0.borrow().sent_payout(party, id)
     }
+    fn statement(&mut self, party: &str) -> crate::Result<Value> {
+        self.0.borrow_mut().statement(party)
+    }
 }
 
 fn pin(c: char) -> String {
@@ -142,7 +149,9 @@ struct Fx {
     t: Treasury,
     wallet: Rc<RefCell<WalletState>>,
     ledger: Rc<RefCell<pay_ledger::Ledger>>,
-    accounts: Arc<Mutex<Accounts>>,
+    credits: Arc<Mutex<CreditService>>,
+    root: std::path::PathBuf,
+    node: Arc<Node>,
     artifacts: BTreeMap<String, Vec<u8>>,
     policy: Value,
     now: u64,
@@ -162,14 +171,29 @@ impl Fx {
         let provider = node.pay_to();
         let wallet = Rc::new(RefCell::new(WalletState::default()));
         let ledger = Rc::new(RefCell::new(pay_ledger::Ledger::in_memory().unwrap()));
-        let accounts = Arc::new(Mutex::new(Accounts::default()));
+        let pay_host = nostr::domain::RelaySigner::from_secret_hex(
+            &secret(PAY_HOST).display_secret().to_string(),
+        )
+        .unwrap();
+        let mut service = CreditService::open(
+            temp.path().join("agent-credit.jsonl"),
+            pay_host.pubkey(),
+            "credits",
+            GATEWAY,
+            CREDIT_MICROS,
+        )
+        .unwrap();
+        service.register(ACCOUNT);
+        let credits = Arc::new(Mutex::new(service));
         let replay = temp.path().join("replay");
         std::fs::create_dir_all(&replay).unwrap();
         let topup = RouterTopUp::new(
             node.clone(),
             &replay,
             nostr::x402::TESTNET,
-            accounts.clone(),
+            pay_host,
+            "credits",
+            credits.clone(),
         )
         .unwrap();
         Treasury::initialize(
@@ -185,7 +209,7 @@ impl Fx {
             secret(TREASURY),
             Owners {
                 wallet: Box::new(FakeWallet {
-                    node,
+                    node: node.clone(),
                     state: wallet.clone(),
                     lookup,
                 }),
@@ -194,12 +218,15 @@ impl Fx {
             },
         )
         .unwrap();
+        let root = temp.path().to_path_buf();
         Self {
             _temp: temp,
             t,
             wallet,
             ledger,
-            accounts,
+            credits,
+            root,
+            node,
             artifacts: BTreeMap::new(),
             policy: Value::Null,
             now,
@@ -216,10 +243,10 @@ impl Fx {
         json!({"digest":digest_bytes(bytes),"size":bytes.len(),"media_type":"application/json"})
     }
     fn policy_body(&mut self, network: &str, lookup: bool) -> Value {
-        let control = self.put(b"verified API account control: acct-agent");
+        let control = self.put(b"verified API account control: acct_agent");
         let adapter = self.put(b"wallet adapter");
         json!({"v":"openagents.sovereign-treasury-policy.v1","requires":[],"agent":pk(AGENT),"authority":pk(AUTHORITY),
-            "revision":0,"previous":null,"account":{"id":"acct-agent","control":control},"beneficiary":pk(AGENT),
+            "revision":0,"previous":null,"account":{"id":ACCOUNT,"control":control},"beneficiary":pk(AGENT),
             "wallet":{"adapter":{"id":format!("{}:wallet/fake",pk(AUTHORITY)),"artifact":adapter},"account":"agent-wallet","fee_limit":true,"lookup":lookup},
             "authorizer":pk(AUTHORIZER),"destinations":[{"provider":self.provider,"resource":URL}],
             "profile":"x402-http-lightning","network":network,"unit":"msat","per_operation_msat":21_000,
@@ -373,15 +400,22 @@ fn an_agent_earns_receives_buys_credit_and_uses_it() {
     assert_eq!(bought["status"], "completed", "{bought}");
     let receipt = fx.t.store().json(&bought["receipt"]).unwrap();
     assert_eq!(receipt["fee_msat"], 10);
-    assert_eq!(fx.accounts.lock().unwrap().balance("acct-agent"), 21_000);
-    assert_eq!(
-        fx.accounts
-            .lock()
-            .unwrap()
-            .meter("acct-agent", 5_000)
-            .unwrap(),
-        16_000
-    );
+    assert_eq!(fx.credits.lock().unwrap().balance(ACCOUNT), CREDIT_MICROS);
+    // Credit is in USD micros, not msat; a repeated request ID meters once.
+    let left = fx
+        .credits
+        .lock()
+        .unwrap()
+        .meter(ACCOUNT, "req-1", 4_000, 3_000)
+        .unwrap();
+    assert_eq!(left, 7_000);
+    let again = fx
+        .credits
+        .lock()
+        .unwrap()
+        .meter(ACCOUNT, "req-1", 4_000, 3_000)
+        .unwrap();
+    assert_eq!(again, 7_000);
     let statement = fx.t.statement(&pk(AGENT), fx.now).unwrap();
     assert_eq!(statement["body"]["settled_msat"], 21_010);
     assert_eq!(statement["body"]["replenished_msat"], 10_000);
@@ -504,10 +538,10 @@ fn a_lost_wallet_reply_is_never_paid_again_and_survives_rollover() {
 fn a_lost_credit_acknowledgment_reconciles_to_one_credit() {
     let mut fx = Fx::new(true);
     fx.admit();
-    fx.accounts.lock().unwrap().lose_acknowledgment = true;
+    fx.credits.lock().unwrap().lose_reply = true;
     let (unknown, request) = fx.buy(AGENT, 21_000);
     assert_eq!(unknown["status"], "unknown");
-    fx.accounts.lock().unwrap().lose_acknowledgment = false;
+    fx.credits.lock().unwrap().lose_reply = false;
     let id = request["purchase"].as_str().unwrap();
     let reconciled = fx.t.reconcile(&pk(AGENT), id, fx.now).unwrap();
     assert_eq!(reconciled["status"], "completed", "{reconciled}");
@@ -516,11 +550,189 @@ fn a_lost_credit_acknowledgment_reconciles_to_one_credit() {
         fx.send(AGENT, &request, vec![approval])["status"],
         "completed"
     );
-    assert_eq!(fx.accounts.lock().unwrap().balance("acct-agent"), 21_000);
+    assert_eq!(fx.credits.lock().unwrap().balance(ACCOUNT), CREDIT_MICROS);
     assert_eq!(fx.wallet.borrow().pays, 1);
     // A failed wallet payment releases its hold.
     fx.wallet.borrow_mut().fail = true;
     assert_eq!(fx.buy(AGENT, 5_000).0["status"], "refused");
     fx.wallet.borrow_mut().fail = false;
     assert_eq!(fx.buy(AGENT, 5_000).0["status"], "completed");
+}
+
+impl Fx {
+    fn recovery(&mut self, signer: u8, purchase: &str, control: Value) -> Value {
+        let body = json!({"v":"openagents.sovereign-topup-recovery.v1","requires":[],"agent":pk(AGENT),
+            "policy":self.policy,"purchase":purchase,"account":ACCOUNT,"control":control});
+        self.send(signer, &body, vec![])
+    }
+    fn control(&mut self) -> Value {
+        self.put(b"verified API account control: acct_agent")
+    }
+    fn journal_lines(&self) -> usize {
+        std::fs::read_to_string(self.root.join("agent-credit.jsonl"))
+            .map(|t| t.lines().count())
+            .unwrap_or(0)
+    }
+}
+
+#[test]
+fn the_economic_statement_joins_every_step_by_its_original_identity() {
+    let mut fx = Fx::new(true);
+    fx.admit();
+    let amount = fx.earn("payout-9", &pk(AGENT), true, true);
+    fx.income("payout-9", amount);
+    let (bought, _) = fx.buy(AGENT, 21_000);
+    assert_eq!(bought["status"], "completed");
+    fx.credits
+        .lock()
+        .unwrap()
+        .meter(ACCOUNT, "req-7", 2_000, 1_500)
+        .unwrap();
+    let statement = fx.t.economic_statement(&pk(AGENT), fx.now).unwrap()["body"].clone();
+    let kinds: Vec<&str> = statement["links"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|l| l["kind"].as_str().unwrap())
+        .collect();
+    for kind in [
+        "obligation",
+        "payout",
+        "income",
+        "purchase",
+        "credit",
+        "usage",
+    ] {
+        assert!(kinds.contains(&kind), "missing {kind}: {statement}");
+    }
+    let unit = |kind: &str| {
+        statement["links"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|l| l["kind"] == kind)
+            .unwrap()["unit"]
+            .clone()
+    };
+    assert_eq!(unit("purchase"), "msat");
+    assert_eq!(unit("credit"), "usd_micros");
+    assert_eq!(unit("usage"), "usd_micros");
+    assert_eq!(statement["coverage"], "complete");
+    assert_eq!(statement["costs"]["purchase_fee_msat"], 10);
+}
+
+#[test]
+fn a_lost_callback_credits_once_across_retries_and_restored_hosts() {
+    let mut fx = Fx::new(true);
+    fx.admit();
+    fx.credits.lock().unwrap().lose_reply = true;
+    let (unknown, request) = fx.buy(AGENT, 21_000);
+    assert_eq!(unknown["status"], "unknown");
+    assert_eq!(fx.journal_lines(), 1);
+    fx.credits.lock().unwrap().lose_reply = false;
+    // A restored gateway rebuilds the same balance from its journal.
+    let pay_host =
+        nostr::domain::RelaySigner::from_secret_hex(&secret(PAY_HOST).display_secret().to_string())
+            .unwrap();
+    let restored = CreditService::open(
+        fx.root.join("agent-credit.jsonl"),
+        pay_host.pubkey(),
+        "credits",
+        GATEWAY,
+        CREDIT_MICROS,
+    )
+    .unwrap();
+    assert_eq!(restored.balance(ACCOUNT), CREDIT_MICROS);
+    // Recovery under account control reconciles to the one credit.
+    let id = request["purchase"].as_str().unwrap().to_string();
+    let control = fx.control();
+    let recovered = fx.recovery(AGENT, &id, control.clone());
+    assert_eq!(recovered["status"], "completed", "{recovered}");
+    assert_eq!(fx.recovery(AGENT, &id, control)["status"], "completed");
+    assert_eq!(fx.journal_lines(), 1);
+    assert_eq!(fx.credits.lock().unwrap().balance(ACCOUNT), CREDIT_MICROS);
+    // A restored treasury host returns the retained receipt, never a new charge.
+    let replay = fx.root.join("replay");
+    let topup = RouterTopUp::new(
+        fx.node.clone(),
+        &replay,
+        nostr::x402::TESTNET,
+        pay_host,
+        "credits",
+        fx.credits.clone(),
+    )
+    .unwrap();
+    let restored = Treasury::open(
+        fx.root.join("treasury"),
+        secret(TREASURY),
+        Owners {
+            wallet: Box::new(FakeWallet {
+                node: fx.node.clone(),
+                state: fx.wallet.clone(),
+                lookup: true,
+            }),
+            earnings: Box::new(SharedLedger(fx.ledger.clone())),
+            topup: Box::new(topup),
+        },
+    )
+    .unwrap();
+    let approval = fx.approval(&request, AUTHORIZER);
+    let again = restored
+        .submit(
+            &Bundle {
+                event: envelope(&secret(AGENT), &pk(TREASURY), &request, fx.now).unwrap(),
+                artifacts: fx.artifacts.clone(),
+                declarations: vec![approval],
+            },
+            fx.now,
+        )
+        .unwrap();
+    assert_eq!(again["status"], "completed");
+    assert_eq!(fx.wallet.borrow().pays, 1);
+}
+
+#[test]
+fn recovery_needs_account_control_and_revocation_stops_credit() {
+    let mut fx = Fx::new(true);
+    fx.admit();
+    fx.credits.lock().unwrap().lose_reply = true;
+    let (_, request) = fx.buy(AGENT, 21_000);
+    fx.credits.lock().unwrap().lose_reply = false;
+    let id = request["purchase"].as_str().unwrap().to_string();
+    let control = fx.control();
+    assert_eq!(
+        fx.recovery(STRANGER, &id, control.clone())["reason"],
+        "not_admitted"
+    );
+    let forged = fx.put(b"someone else's control evidence");
+    assert_eq!(fx.recovery(AGENT, &id, forged)["reason"], "not_admitted");
+    // A revoked account receives no new credit; the paid purchase stays a
+    // visible unknown liability.
+    fx.credits.lock().unwrap().revoke(ACCOUNT);
+    let (paid, _) = fx.buy(AGENT, 5_000);
+    assert_eq!(paid["status"], "unknown");
+    assert!(
+        fx.credits
+            .lock()
+            .unwrap()
+            .meter(ACCOUNT, "req-x", 1, 1)
+            .is_err()
+    );
+    let statement = fx.t.economic_statement(&pk(AGENT), fx.now).unwrap()["body"].clone();
+    assert_eq!(statement["coverage"], "partial");
+    assert!(
+        statement["unknown"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|l| l["kind"] == "purchase")
+    );
+}
+
+#[test]
+fn public_pylon_reports_are_not_income() {
+    let mut fx = Fx::new(true);
+    fx.admit();
+    let report = format!("pylon-receipt:{}", "ab".repeat(32));
+    assert_eq!(fx.income(&report, 10_000)["reason"], "not_admitted");
 }

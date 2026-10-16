@@ -8,9 +8,13 @@ it may buy from. The money stays in the existing owners:
 - `pay-ledger` records LAB earnings and the payouts that actually went out
   (`Earnings` is implemented for `pay_ledger::Ledger`).
 - The agent's wallet pays invoices and reports inbound payments (`Wallet`).
-- The X402 router (`openagents-x402`) sells the top-up, and the account
-  service credits the API account once per settled payment (`RouterTopUp`,
-  `Accounts`).
+- The X402 router (`openagents-x402`) sells the top-up. After settlement, the
+  pay host signs the hosted paid header (`openagents_x402::hosted`) and calls
+  the account-credit service. That service is `CreditService`, an in-process
+  form of the gateway's `POST /v1/agents/credit`: it verifies the header with
+  `verify_paid`, checks the resource, credits each payment hash once in a
+  durable journal (`agent-credit.jsonl`), refuses unknown or revoked accounts,
+  and meters use by request ID. Credit is in USD micros, never msat.
 - The X402 buyer ledger (`openagents_x402::policy::Ledger`) holds and settles
   each purchase under its ceilings and provider allowlist.
 
@@ -56,9 +60,21 @@ signed private `3188` requests (`Treasury::submit`). Wiring this into
   rollover, and is reconciled only by the exact payment hash: a credit receipt
   completes it, a proven wallet failure releases it, and anything else stays
   unknown. Each payment is credited once.
-- **Statement.** `statement` signs a private view of the period: allowance,
+- **Top-up recovery.** A signed `openagents.sovereign-topup-recovery.v1` from
+  the agent or the purchase's requester has to present the policy's exact
+  account and its retained control evidence. Recovery reconciles the purchase
+  by its payment hash. It never pays again. A lost callback is retried for the
+  same payment hash, and the credit journal credits that hash once, including
+  after the gateway or the treasury host is restored. A revoked account gets
+  no new credit, and its paid purchase stays an unknown liability.
+- **Statements.** `statement` signs a private view of the period: allowance,
   replenishment, settled, held, and unknown amounts, with their source
-  references. It is not another ledger.
+  references. `economic_statement` joins every step by its original identity:
+  LAB obligation, payout attempt, confirmed income, X402 purchase (purchase ID
+  and payment hash), account credit, and metered use. Units stay distinct
+  (`msat`, `usd_micros`), costs are itemized, and unknown links are listed
+  rather than netted away. Neither statement is another ledger. Public Pylon
+  reports never count as income.
 
 The fixture runs the full loop with fake money: real BOLT11 test invoices, the
 real X402 router and replay store, and an in-memory `pay-ledger`. Qualifying

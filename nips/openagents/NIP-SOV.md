@@ -586,6 +586,8 @@ records:
 | `openagents.sovereign-purchase-request.v1` | `agent`, `policy`, `purchase`, `requester`, `destination`, `quote`, `amount_msat`, `deadline`. |
 | `openagents.sovereign-purchase-approval.v1` | `request`, `authorizer`, `expires_at`: the authorizer's approval of exact request bytes. |
 | `openagents.sovereign-purchase-receipt.v1` | `request`, `status` (`completed`, `refused`, or `unknown`), `payment`, `credit`, `fee_msat`, `reason`. Completed needs both payment and credit evidence. |
+| `openagents.sovereign-topup-recovery.v1` | `agent`, `policy`, `purchase`, `account`, `control`: an account-controlled request to reconcile one purchase by its payment hash. It never pays again. |
+| `openagents.sovereign-economic-statement.v1` | `policy`, `observed_at`, `coverage` (`complete` or `partial`), `links` (`{kind, id, amount, unit, state}` for obligation, receive, payout, income, purchase, credit, and usage, by original identity, in `msat` or `usd_micros`), `costs`, and `unknown` links. A private view, not a ledger. |
 | `openagents.sovereign-treasury-statement.v1` | `policy`, `period_start`, `allowance_msat`, `replenished_msat`, `settled_msat`, `held_msat`, `unknown_msat`, `income`, `purchases`. A private view, not a ledger. |
 
 Income counts only from a `sent` payout to the beneficiary that the agent's
