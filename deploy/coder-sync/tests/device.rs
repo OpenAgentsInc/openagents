@@ -580,7 +580,9 @@ async fn pinned_headless_engine_folder_listing_and_queue_roundtrip() {
         .unwrap()
         .unwrap();
     assert!(initial["items"].as_array().unwrap().is_empty());
-    let queued=client.call(zeron_rpc::methods::QUEUE_MESSAGE,json!({"chatId":chat,"text":"Relay fixture message","attachments":[],"holdForTurnEnd":true})).await.unwrap();
+    // A pending attachment keeps this fixture queued while the idle mock engine runs.
+    let hold = format!("pending://{}/hold.png", uuid::Uuid::new_v4());
+    let queued=client.call(zeron_rpc::methods::QUEUE_MESSAGE,json!({"chatId":chat,"text":"Relay fixture message","attachments":[hold],"holdForTurnEnd":true})).await.unwrap();
     tokio::time::timeout(Duration::from_secs(10), async {
         loop {
             let state = queue.recv().await.unwrap();
@@ -660,7 +662,7 @@ async fn pinned_headless_engine_folder_listing_and_queue_roundtrip() {
     })
     .await
     .unwrap();
-    let queued_image=client.call(zeron_rpc::methods::QUEUE_MESSAGE,json!({"chatId":chat,"text":"Image fixture","attachments":[path],"holdForTurnEnd":true})).await.unwrap();
+    let queued_image=client.call(zeron_rpc::methods::QUEUE_MESSAGE,json!({"chatId":chat,"text":"Image fixture","attachments":[path,hold],"holdForTurnEnd":true})).await.unwrap();
     let attachment = tokio::time::timeout(Duration::from_secs(10), async {
         loop {
             let state = queue.recv().await.unwrap();
