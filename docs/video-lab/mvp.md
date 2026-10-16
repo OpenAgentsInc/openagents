@@ -202,6 +202,37 @@ player link, and the terminal doesn't play video.
 
 Both start the Lab service if it isn't running.
 
+## In Coder Desktop
+
+Coder Desktop ([OpenAgentsInc/coder-desktop](https://github.com/OpenAgentsInc/coder-desktop)
+`main`, from `deba6854`) offers the Lab's tools to every agent it runs: Claude
+Code, Codex, Cursor, and the other harnesses. It reads all 18 tools from the
+running Lab, so it has the newer ones (`lab_new`, `lab_lines`, `lab_voice`,
+`lab_keep_captions`) that the frozen Coder 1.0 terminal lacks. Ask in any chat,
+the same way as in the web chat.
+
+Each result shows a card above the answer: the document, version and summary;
+the frame, frame strip, side-by-side compare or poster; the render state; and
+whether the film stays on this Mac. Its links play the render (or each compared
+version) and open the Lab player and timeline in a Coder Browser tab. There you
+have the versions, compare, notes and timeline editing.
+
+Build and run it from the fork:
+
+```
+cd ~/work/coder-desktop && git pull && RUSTUP_TOOLCHAIN=1.98.1 scripts/run-macos-dev.sh
+```
+
+A Coder Dev that is already running keeps its old build until you quit and
+rerun it. Like the web chat, it needs a Lab on this Mac: `VIDEO_LAB_URL`, a
+Lab already answering on 8792, or `~/work/openagents/scripts/film/lab.py`,
+which it starts. Shortcuts for now, tracked in the
+[Labs plan](../labs/README.md):
+
+- The card doesn't refresh when a render finishes. The player tab does.
+- Video plays in a Browser tab, not inside the card.
+- It works on this Mac only, through the loopback Lab.
+
 ## Where things are
 
 - **Documents and versions:**
