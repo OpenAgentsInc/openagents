@@ -59,7 +59,7 @@ cd coder-desktop
 git remote add upstream https://github.com/zeronsh/zeron.git
 ```
 
-Build and open an isolated development bundle on macOS:
+Build and open the development bundle on macOS:
 
 ```sh
 RUSTUP_TOOLCHAIN=1.98.1 scripts/run-macos-dev.sh
@@ -70,14 +70,29 @@ which Rust 1.94 rejects as unstable, so build with a recent stable (1.98.1
 worked on 2026-10-15) or run `rustup update stable`. The first debug build
 compiles about 900 crates.
 
-The script comes from upstream. It builds `cargo build -p zeron` (debug) and
-wraps it in `target/macos-dev/Zeron Dev.app`, with its own bundle ID
-(`sh.zeron.app.dev`), data directory (`target/macos-dev/data`) and engine
-IPC port (49777). A real Zeron install can stay open beside it. Set
-`ZERON_DEV_BUILD_ONLY=1` to build without opening it.
+The app is called **Coder** everywhere users see it (bundle, menus, dock,
+window title, notifications); "Coder Desktop" is its formal name. Stage D0
+gave it its own identity, separate from Zeron and from the OpenAgents
+desktop:
 
-Until stage D0 renames the app (its own bundle ID, data root, URL scheme and
-update channel), the dev bundle is still named "Zeron Dev".
+| | Packaged app | Development bundle |
+| --- | --- | --- |
+| Bundle | `Coder.app` | `target/macos-dev/Coder Dev.app` |
+| Bundle ID | `com.openagents.coder.desktop` | `com.openagents.coder.desktop.dev` |
+| Data directory | `~/Library/Application Support/Coder Desktop` | `target/macos-dev/data` in the checkout |
+| Engine IPC port | 27854 | 49777 |
+| URL scheme | `coder-desktop://` | not registered |
+
+The bundle ID isn't `com.openagents.coder`, which is the iPhone app's App
+Store record and the Android package. Zeron's update feed, sign-in and hosted sync are off, so the app
+runs local and account-free and never contacts Zeron's services. An installed Coder,
+Zeron and the OpenAgents desktop can run side by side. Set
+`ZERON_DEV_BUILD_ONLY=1` to build without opening the bundle. The binary
+crate keeps its upstream name (`cargo build -p zeron`).
+
+The fork's [FORK.md](https://github.com/OpenAgentsInc/coder-desktop/blob/main/FORK.md)
+lists every identity seam, what's still named Zeron, and the platform matrix
+(only macOS checked so far). The values live in one crate, `crates/brand`.
 
 ## Appearance
 
