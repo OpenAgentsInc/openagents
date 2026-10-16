@@ -1,6 +1,6 @@
 # Merging the Coder Desktop fork into the monorepo
 
-Status: assessment, 2026-10-16. Time estimates were revised the same day from the measured commit pace of the previous 7 days ([how](#how-these-estimates-were-set)). Owner request: move all relevant code from
+Status: assessment, 2026-10-16. Time estimates were revised the same day from the measured commit pace of the previous 7 days ([how](#how-these-estimates-were-set)). Owner decisions the same day: the phone app is the **OpenAgents mobile app** on `com.openagents.app`, and Android gets a Kotlin host over the fork's core. A [fit review](#does-this-core-fit-the-rest-of-the-product) against `nips/` and `docs/` was added. Owner request: move all relevant code from
 the Zeron fork ([OpenAgentsInc/coder-desktop](https://github.com/OpenAgentsInc/coder-desktop))
 into this repository, accepting a mixed tech stack, and ship the result as
 **the OpenAgents desktop and mobile apps** instead of separate "Coder Desktop"
@@ -30,16 +30,22 @@ work after that:
    (GPUI, about 330,000 lines with its engine), so OpenAgents desktop
    features (hosted chat, Verse, Gym, pairing, wallet) move into it and the
    current `openagents-desktop` retires after parity. On the phone, the fork's
-   iOS app takes over from `bins/openagents-ios` and `bins/coder-ios`
-   after it gains Chat, Wallet and Account. Android needs a decision.
+   iOS app becomes the OpenAgents mobile app (`com.openagents.app`), taking
+   over from `bins/openagents-ios` and `bins/coder-ios` after it gains Chat,
+   Wallet and Account. A new Kotlin host over the same core replaces the
+   current Android app.
+   The OpenAgents domain crates (Nostr, chat jobs, pairing, wallet, push,
+   Verse, Labs) are linked into both apps as libraries, not rebuilt; see
+   [the fit review](#does-this-core-fit-the-rest-of-the-product).
 4. **Converge (one to two weeks, incremental).** Remove duplicate systems (agent
    harness drivers, sync, Markdown/syntax, terminal) and fold the separate
    workspace into the root one once its dependency conflicts are resolved.
 
 The two decisions that shape everything: **whether we keep pulling upstream
-Zeron** (it ships about 6 commits a day), and **which phone-to-desktop
-channel survives** (the fork's Loro sync through `coder-sync`, or this
-repository's pairing and NIP-HOST path).
+Zeron** (it ships about 6 commits a day), and **how the fork's Loro
+sessions on `coder-sync` and our NIP-HOST/SESS/CTRL protocols become one
+path** (recommended: Loro as the data, NIP-HOST as the authority and
+transport).
 
 ## What is in the fork
 
@@ -170,15 +176,15 @@ The fork keeps every product identity value in `crates/brand`
 | --- | --- | --- |
 | Desktop name, bundle ID | Coder, `com.openagents.coder.desktop` | OpenAgents, `com.openagents.desktop` (the current OpenAgents desktop's ID, so it updates in place) |
 | Desktop data | `~/Library/Application Support/Coder Desktop` | The OpenAgents desktop's directory, with a one-time import of Coder Desktop's local sessions and settings |
-| iPhone name, bundle ID | OpenAgents Coder, `com.openagents.coder` | OpenAgents, on `com.openagents.app` (the OpenAgents iOS record). The alternative is to keep `com.openagents.coder` and retire `com.openagents.app` |
+| Phone name, bundle ID (**decided**) | OpenAgents Coder, `com.openagents.coder` | The **OpenAgents mobile app**, shown as "OpenAgents", on `com.openagents.app` for iOS and Android (the existing OpenAgents records; Android's `applicationId` is already `com.openagents.app`). `com.openagents.coder` is retired after the move |
 | URL scheme, IPC port | `coder-desktop://`, 27854 | `openagents://` (check the current desktop's handler), one port |
 | Updater | Zeron's feed, turned off | Our release channel |
 | Binary, `ZERON_*` variables, crate names | `zeron` | Unchanged while pulling upstream; rename at the hard-fork decision |
 
-Moving the iPhone app onto `com.openagents.app` replaces the current
-OpenAgents iOS build for its TestFlight testers, and App Store Connect
-history stays with that record. That is an owner decision because it is
-hard to reverse. Data migration also needs the Keychain service names
+Moving the phone app onto `com.openagents.app` replaces the current
+OpenAgents iOS and Android builds for their testers. App Store Connect and
+Play history stay with that record. Coder iOS testers on `com.openagents.coder`
+get a final build that says the app moved, then the record goes quiet. Data migration also needs the Keychain service names
 (`AppModel.swift` keeps them isolated today) and the account session from
 `coder-account`.
 
@@ -203,7 +209,107 @@ hard to reverse. Data migration also needs the Keychain service names
 | Saved OpenAgents chats | Read and follow (#11851) | Chat with send | Add send |
 | Wallet, Account | Account sign-in only | Yes | Port into `crates/mobile` plus UIKit screens |
 | Verse | No | Coder iOS has it; OpenAgents iOS has it off for release | Defer; reuse `coder-mobile`'s render handle later |
-| Android | None (the core is designed for Kotlin) | Thin Kotlin over `openagents-mobile` | Either keep the current Android app until a Kotlin host over `crates/mobile` exists, or build that host |
+| Android (**decided**) | None, but `crates/mobile` is a UniFFI library meant for Swift and Kotlin, and `scripts/android/build-core.sh` already builds it | Thin Kotlin over `openagents-mobile` | Build a Kotlin host over `crates/mobile`, painting the same display lists the iOS app paints; replace the current Android app at parity |
+
+## Does this core fit the rest of the product?
+
+The goal is one OpenAgents desktop app and one OpenAgents mobile app that
+everything else plugs into. This section checks the fork's core against the
+ambitions written in [`nips/`](../../nips/README.md) (33 OpenAgents NIPs plus
+the Block NIPs) and the product docs.
+
+### Verdict
+
+**Yes, as the application shell, local agent engine and session sync. No,
+as the whole core on its own.** The fork has strengths the monorepo apps
+lack:
+- a mature GPUI desktop;
+- multi-harness agents;
+- a terminal, browser, diff pane, voice and visuals;
+- a phone core whose transcript layout is already in Rust, so iOS and
+  Android only paint;
+- Loro session sync on `coder-sync`.
+
+It has **no Nostr, no keys, no wallet, no Verse and no Gym**. Those are the
+center of the rest of the product. All of them already exist here as
+Rust crates that are not tied to a UI. So the merged apps are:
+
+```text
+OpenAgents desktop (GPUI)    OpenAgents mobile (UIKit iOS + Kotlin Android)
+          \                         /
+     fork shell: engine, harnesses, crates/mobile (UniFFI), Loro sync
+          \                         /
+   OpenAgents domain crates, shared with web, terminal, servers and hosts:
+   nostr, nostr-transport, openagents-chat(-app), openagents-connect,
+   coder-reach/coder-host clients, spark-wallet, push-gateway (client),
+   xp, vault, verse runtime, lab-kit, openagents-sdk
+```
+
+The domain crates are the part to base other products on. The fork
+provides the best shells for them. A product capability is added once, as
+a domain crate plus a card or screen. It is never rebuilt inside one app.
+
+### Ambitions against the core
+
+| Ambition (source) | What the apps need | Fork today | Fit and work |
+| --- | --- | --- | --- |
+| Chat with OpenAgents: encrypted NIP-CJ jobs, a Decisions router, Gym and Coder cards (README; `docs/product/2026-09-28-app-wireframe.md`; NIP-CJ, NIP-DEC) | Nostr key custody, relay connections, send/stream/stop, cards | Reads and follows saved chats through the SDK only | **Gap.** Link `openagents-chat-app` (already used by both current apps) into `crates/mobile` and the desktop; don't rebuild chat over HTTP |
+| Identity and keys (NIP-19, NIP-42, NIP-44, NIP-17; OA/AA admission) | One secp256k1 identity per person or device in Keychain/Keystore, next to the OpenAgents account session | Account session only (`coder-account`) | **Gap, contained.** Add a key-custody module beside `coder-account`, reusing `crates/nostr` |
+| Device control: NIP-HOST pairing, NIP-REACH, NIP-TERM, NIP-SESS, NIP-CTRL ("the core of both apps") | Pair by QR or iroh, find hosts, drive threads and terminals, steer | Loro rooms plus the device relay on `coder-sync` | **Overlap: the main architectural decision.** Keep Loro documents as the session data model and `coder-sync` as relay and storage. Make NIP-HOST grants the authority for which device joins which room, and carry the device channel over NIP-HOST/REACH (#11854). Revise NIP-SESS and NIP-CTRL to describe the Loro rooms, or keep them for hosts that don't run the fork engine. One of the two must give way; running both is not an option |
+| Wallet: Spark/Breez on every device, Bitcoin only (`docs/breez/`); x402 and NIP-POL spend approval on the phone (`docs/payments/`) | Seed in Keychain/Keystore, `crates/spark-wallet`, approval sheets | None | **Fits the build.** Breez needs `libsqlite3-sys` 0.30, the same as the fork. Only the server-side `ldk-node` needs 0.28. Port the wallet screens from `openagents-mobile` |
+| Verse, the Grid, Everglade; NIP-MV presence, NIP-XP (`docs/verse/`) | A native wgpu surface running `verse::runtime::WorldRuntime`, touch and motion input, relay presence | None | **Fits, with work.** The desktop already hosts native macOS views under GPUI (the browser pane, `crates/ui/src/browser/macos.rs`). Host Verse there, and in a `UIView`/`SurfaceView` on phones via `coder-mobile`'s render handle. GPUI uses wgpu 29 and Verse uses 30; both can link (two copies) until aligned. Linux and Windows desktop embedding needs its own check |
+| Gym, plugins, eval cards (`docs/gym/`, NIP-EVAL, NIP-REG/EXT) | Cards in chat, a hosted-runner client, signed records | None | **Gap, contained**, if cards come from one place (next row) |
+| Labs: Video, CAD, Game, later Film and Photo (`docs/labs/README.md`) | Standard views: video, image, compare, glTF, playable, report | None (Video Lab issue #11883 plans the desktop row) | **Fits**; the Labs plan already assumes GPUI and UIKit |
+| Push: NIP-PL leases through `push-gateway` | APNs/FCM token registration and lease | iOS push code that used Zeron's edge | **Gap, small.** Point it at `push-gateway`'s `client` feature (#11853) |
+| Voice, camera, screen: NIP-LIVE | Audio and video capture and playback | Voice crates (`voice`, `orb`, `veil`, `audio`) | **Strength.** Bind to NIP-LIVE later |
+| Vault (NIP-VAULT `user` tier), attested workloads (NIP-ATT) | Sealed personal data, verifying attestations | None | **Gap, later.** Domain crates exist |
+| Market, labor, Pylon views (NIP-MKT, NIP-LAB, NIP-PYLON) | Buyer and provider views | None | **Later**, as cards |
+| Computers, SDK (`docs/sdk/`, `docs/cloud/`) | Computers client, account sign-in | SDK sign-in and history | **Fits**: same SDK, now a path dependency |
+| Web (openagents.com) and terminal (Coder) | Not app shells | — | **Unchanged.** They share the domain crates and cards, not the apps' UI code |
+
+### One card layer for all four surfaces
+
+The current rule makes Rust Native the single UI layer, with thin Swift and
+Kotlin. The fork breaks that for app chrome: GPUI on the desktop, and on
+iOS 34,000 lines of UIKit painting display lists laid out by `crates/mobile`.
+Writing every Gym, Lab, wallet and approval card three times (GPUI, UIKit,
+Kotlin) plus once for the web would undo the main benefit of shared Rust.
+
+**Recommendation:**
+- Keep **Rust Native as the card and sheet layer**: semantic views
+  (`rust-native.view.v3`) for chat cards, Gym and Lab cards, wallet and
+  approval sheets, and settings forms.
+- Add a GPUI adapter for Rust Native views on the desktop. The existing
+  SwiftUI and Kotlin adapters mount in UIKit and Kotlin hosts, so phone
+  cards render through what is already built.
+- The app shells (windows, sidebars, transcript, composer, terminal,
+  browser) are GPUI and native UIKit/Kotlin, as in the fork.
+- Amend AGENTS.md to say exactly this, rather than blanket exceptions.
+
+### Two workspaces, by role
+
+The `links` conflicts sort cleanly by role:
+
+| Workspace | Members | SQLite | Notes |
+| --- | --- | --- | --- |
+| **Apps** (new, from the fork) | Desktop, `crates/mobile`, the fork crates, plus the domain crates they link: `nostr`, `openagents-chat-app`, `spark-wallet` with SQLite, `verse` runtime, `lab-kit`, `openagents-sdk` | 0.30 (fork and Breez) | Rust ≥ 1.98.1 for GPUI; its own profiles; replaces the separate `crates/openagents-mobile` workspace when that app retires |
+| **Root** (today's) | Servers, hosts, CLI and terminal, relay, `ldk-node` wallet, Psionic excluded as now | 0.28 (`ldk-node`) | Unchanged |
+
+Domain crates must build in both. They already avoid SQLite (as
+`crates/spark-wallet` does in the root) or put it behind a feature. Moving
+`ldk-node` forward would allow one workspace later; nothing depends on that.
+`tree-sitter` aligns at 0.27 when the fork's grammars move up.
+
+### Gaps to watch
+
+- **Linux and Windows.** The current OpenAgents desktop is built for all
+  three platforms. The fork's Linux and Windows packages are unbuilt under
+  our identity, and native Verse embedding there is unproven.
+- **Swift/Kotlin duplication.** Every new phone screen that isn't a Rust
+  Native card costs two implementations. Keep screens few and cards many.
+- **Upstream pull pressure.** Domain-crate wiring added inside upstream files
+  makes Zeron merges harder. Add one hook per upstream file and keep the
+  rest in our crates.
 
 ## Proposed plan
 
@@ -212,14 +318,15 @@ section), with two to four agents working at once where the steps allow it.
 
 | Step | Work | Estimate | Exit check |
 | --- | --- | --- | --- |
-| 0. Decisions | Upstream policy, sync channel, bundle IDs, Android, directory name | Owner; same day | Recorded here and in AGENTS.md |
+| 0. Decisions | Upstream policy, sync channel and NIP-SESS/CTRL role, card layer, directory name (bundle IDs and Android are decided) | Owner; same day | Recorded here and in AGENTS.md |
 | 1. Import | `git subtree add` the fork without `edge/`, the sites and workflows, into one directory (suggested `apps/openagents/`) as its own workspace, with a nested toolchain file; exclude it from the root workspace; switch `coder-account` to the path SDK; AGENTS.md exceptions (GPUI desktop, UIKit iOS) | 2–4 hours (a cold build of about 900 crates is a large part of it) | `cargo build -p zeron`, the fork's tests and `scripts/ios/build-core.sh` pass from the monorepo; the iOS simulator build runs; the monorepo's own checks are unchanged |
 | 2. Retire the fork repo | Move FORK.md, patch notes and the conformance checkpoint (`scripts/coder-sync/conformance.sh` now runs in one tree); archive `coder-desktop` read-only; repoint issue and doc links | About 1 hour | No live references to the fork repo outside history |
 | 3. Release scripts | macOS sign/notarize/package, iOS TestFlight (match `scripts/release/testflight.sh`), Windows and Linux packaging as local scripts; no GitHub workflows | 3–6 hours, plus owner-held signing steps | A signed macOS build and a TestFlight validate-only run from the monorepo |
 | 4. OpenAgents identity | `crates/brand` values, icons, data migration, Keychain migration, updater channel, About and licenses | 4–8 hours | Coder Desktop users and OpenAgents desktop users both land in the new app with their data; dedicated test accounts only |
+| 4b. Domain core | Link the domain crates into the apps workspace: key custody beside `coder-account`; `openagents-chat-app` (CJ chat send/stream/stop); NIP-HOST/REACH clients; `push-gateway` client; `spark-wallet`; a GPUI adapter for Rust Native cards | 1–2 days (can overlap steps 5–7) | Both apps send an encrypted chat, pair a computer and show a wallet balance on a test account, from the same crates the current apps use |
 | 5. Desktop parity | Hosted chat sending through the SDK; Gym cards; Verse surface; settings | 1–3 days | Every row of the OpenAgents desktop table works in the merged app; `openagents-desktop` marked retired |
 | 6. Phone parity | Chat sending, Wallet and Account in `crates/mobile` plus UIKit; release on the chosen bundle | 1–2 days (can overlap step 5) | TestFlight build with Chat, Wallet, Account, live sessions |
-| 7. Android | A Kotlin host over `crates/mobile`, or keep the current app | 2–4 days, or none | Owner choice |
+| 7. Android (decided) | A Kotlin host over `crates/mobile` painting its display lists, with the Rust Native card adapter; same `com.openagents.app` package | 2–4 days | Play internal-test build at parity with iOS; the current Android app retired |
 | 8. Converge | One harness layer (fork's `harness` vs `coder-sdk`), one sync path, shared Markdown, syntax and theme; resolve the `links` conflicts and join the root workspace; delete retired apps and crates | 1–2 weeks, in the background, crate by crate | No duplicate implementations of the same capability |
 
 **Steps 1–4 fit in one day.** They give one repository and apps named
@@ -229,8 +336,8 @@ side by side until parity.
 **Steps 5–6 are the real product cost: about 2–4 days.** The largest single
 item is sending hosted chats from the fork's apps through the SDK.
 
-**One app per platform takes about 4–7 working days in total**, without
-Android and convergence. Step 8 runs alongside later work, whenever upstream
+**One app per platform, Android included, takes about 7–12 working days in
+total** (with steps 4b and 7), not counting convergence. Step 8 runs alongside later work, whenever upstream
 tracking for a crate is dropped.
 
 ### How these estimates were set
@@ -288,15 +395,23 @@ The upper ends of the ranges allow for those.
 - **The Coder 1.0 freeze** doesn't apply. The frozen binaries are `coder`,
   `openagents`, `microcoder` and `coder-boundary`; nothing here changes them.
 
-## Owner decisions needed
+## Owner decisions
+
+Decided (2026-10-16):
+
+- **Phone app:** the OpenAgents mobile app, on `com.openagents.app` for iOS
+  and Android; `com.openagents.coder` retires after the move.
+- **Android:** a Kotlin host over the fork's `crates/mobile`.
+
+Still open:
 
 1. Keep pulling upstream Zeron for now, and decide per crate later
    (recommended), or hard fork at import.
-2. Phone-to-desktop channel: `coder-sync` for sessions, with NIP-HOST
-   underneath (recommended).
-3. iPhone bundle: move to `com.openagents.app`, or keep `com.openagents.coder`
-   and retire the old OpenAgents record.
-4. Android: build a Kotlin host over the fork's core now, or keep the current
-   Android app until later.
-5. Directory name for the import (`apps/openagents/` suggested).
-6. AGENTS.md exceptions: GPUI desktop and the UIKit iOS app.
+2. Sessions: Loro documents on `coder-sync`, with NIP-HOST grants as the
+   authority and NIP-HOST/REACH as transport. Revise NIP-SESS and NIP-CTRL
+   to match (recommended).
+3. UI rule: Rust Native as the card and sheet layer on all surfaces; GPUI,
+   UIKit and Kotlin for app shells (recommended), written into AGENTS.md.
+4. Directory name for the import (`apps/openagents/` suggested, holding
+   the desktop and mobile apps; the existing `crates/openagents-desktop`
+   and `crates/openagents-mobile` keep their names until retired).
