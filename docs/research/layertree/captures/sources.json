@@ -160,5 +160,68 @@
     "network": "lab",
     "txid": null,
     "caption": "Simulated VendorSignature display; not a hardware-verifier result."
+  },
+  {
+    "image": "signet-tree.jpg",
+    "log": "crates/layertree-tee-lab/fixtures/events/signet-normal.jsonl",
+    "sha256": "b65f9df2aee851d227f7f409a1043e6b367a193a4b1b55e147abba165705d070",
+    "seq": 20,
+    "network": "signet",
+    "txid": null,
+    "caption": "Confirmed signet tree: five members, 5,000 sats; Google-backed TDX verification."
+  },
+  {
+    "image": "signet-join.jpg",
+    "log": "crates/layertree-tee-lab/fixtures/events/signet-normal.jsonl",
+    "sha256": "b65f9df2aee851d227f7f409a1043e6b367a193a4b1b55e147abba165705d070",
+    "seq": 4,
+    "network": "signet",
+    "txid": "0d0742fb32a532e651c7d1703ef2fd7c8704af74631763c27c4ea9affa721358",
+    "caption": "Confirmed signet join; public transaction and exact amounts checked."
+  },
+  {
+    "image": "signet-update.jpg",
+    "log": "crates/layertree-tee-lab/fixtures/events/signet-normal.jsonl",
+    "sha256": "b65f9df2aee851d227f7f409a1043e6b367a193a4b1b55e147abba165705d070",
+    "seq": 8,
+    "network": "signet",
+    "txid": "0537056d4e066216b13528849755e292b20226d5e993baa7554f45633c4bed9c",
+    "caption": "Confirmed signet update; public transaction and exact amounts checked."
+  },
+  {
+    "image": "signet-exit.jpg",
+    "log": "crates/layertree-tee-lab/fixtures/events/signet-normal.jsonl",
+    "sha256": "b65f9df2aee851d227f7f409a1043e6b367a193a4b1b55e147abba165705d070",
+    "seq": 12,
+    "network": "signet",
+    "txid": "5cb3ae0ed3ae6d3bb28b30498bd87c1fc1b453edb31bd584c4254c5aa8ad2d22",
+    "caption": "Confirmed signet exit; public transaction and exact amounts checked."
+  },
+  {
+    "image": "signet-refresh.jpg",
+    "log": "crates/layertree-tee-lab/fixtures/events/signet-normal.jsonl",
+    "sha256": "b65f9df2aee851d227f7f409a1043e6b367a193a4b1b55e147abba165705d070",
+    "seq": 17,
+    "network": "signet",
+    "txid": "aa46acc116e881b1f1c0b80846a07d0d1469d85350fe9f712a21f254ca256aa5",
+    "caption": "Confirmed signet refresh; public transaction and exact amounts checked."
+  },
+  {
+    "image": "signet-attested.jpg",
+    "log": "crates/layertree-tee-lab/fixtures/events/signet-normal.jsonl",
+    "sha256": "b65f9df2aee851d227f7f409a1043e6b367a193a4b1b55e147abba165705d070",
+    "seq": 18,
+    "network": "signet",
+    "txid": null,
+    "caption": "Captured signet output verified with Google-backed TDX, release/Rekor proofs, and pinned TLS."
+  },
+  {
+    "image": "signet-negative-policy.jpg",
+    "log": "crates/layertree-tee-lab/fixtures/events/signet-negative-policy.jsonl",
+    "sha256": "8c0e0b5c0ce540967c2109b73678ef2821152b3c58b8cacb9f3aa59ab303968d",
+    "seq": 21,
+    "network": "signet",
+    "txid": null,
+    "caption": "Negative verifier check: expected tree ID changed for a captured signet token; not a live service failure."
   }
 ]

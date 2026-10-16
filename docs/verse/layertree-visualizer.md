@@ -181,5 +181,26 @@ edits in Video Lab keep their versions; importing does not overwrite them.
 The transitions clip uses confirmed regtest activity. The complete later
 operations demo remains in `layertree-simulated-transitions.json`. The alarm
 clip uses `regtest-light.jsonl`, written by the real three-follower test;
-the unroll clip uses `regtest-two-level.jsonl`. Public signet replacements
-wait for #11793 and #11794, with public transactions in their captions.
+the unroll clip uses `regtest-two-level.jsonl`.
+
+Confirmed signet creation, join, update, exit, and refresh now have their
+own checked log, seven labelled stills, and two 1080p CRF-12 clips:
+`~/work/film-out/verse/layertree-signet-tree.mp4` (6 seconds) and
+`layertree-signet-transitions.mp4` (20 seconds). The separate negative-policy
+view changes the expected tree ID for a real captured token; it does not
+report a live service failure. The exporter rechecks historical Google
+tokens, release/Rekor evidence, actual Core confirmations, output scripts
+and sums, on-chain record hashes, fees, and the exited member's payout.
+Its sources file keeps authorization and confirmation heights separate.
+
+```sh
+scripts/layertree-captures.py --signet \
+  --viewer "$CARGO_TARGET_DIR/debug/examples/layertree" \
+  --film-shot "$CARGO_TARGET_DIR/debug/examples/film_shot" \
+  --scratch "$(openagents scratch)/layertree-signet-captures"
+```
+
+The corresponding Video Lab documents are
+`docs/verse/film/layertree-signet-tree-scene.json` and
+`docs/verse/film/layertree-signet-transitions-scene.json`. Final signet alarm
+and unroll replacements still wait for actual #11793/#11794 results.

@@ -1,0 +1,67 @@
+{
+  "schema": "openagents.layertree.signet-view.v1",
+  "chain_reader_tip": 326600,
+  "historical_attestation": true,
+  "negative_view": "Expected tree ID changed; real captured token rejected with report_data_mismatch; service history remains separate.",
+  "output_sha256": "b65f9df2aee851d227f7f409a1043e6b367a193a4b1b55e147abba165705d070",
+  "events": 21,
+  "members": 5,
+  "paid_sat": 1000,
+  "sources": [
+    {
+      "txid": "4b4a748ca63476360a02e3355c687a626d76fd61a08e7aa7b97ea483eb3aa8b6",
+      "confirmation_height": 326595,
+      "authorization_height": 326593,
+      "capture": "capture-1792146981-join",
+      "capture_time": 1792146981,
+      "source_commit": "59b89bc1cda6434e33c17a99674ac70976473c9c",
+      "token_sha256": "70b7ac4134b1dc61d37cc77c71663e76f032ebb717f4722fdd223dc9bf194665",
+      "fee_sat": 500,
+      "vsize": 154
+    },
+    {
+      "txid": "0d0742fb32a532e651c7d1703ef2fd7c8704af74631763c27c4ea9affa721358",
+      "confirmation_height": 326596,
+      "authorization_height": 326595,
+      "capture": "capture-1792147104-update",
+      "capture_time": 1792147104,
+      "source_commit": "59b89bc1cda6434e33c17a99674ac70976473c9c",
+      "token_sha256": "5670c8cbc004d9ff862841541ae67e554d9c32e49f1fecc068406367b7897e9f",
+      "fee_sat": 500,
+      "vsize": 255
+    },
+    {
+      "txid": "0537056d4e066216b13528849755e292b20226d5e993baa7554f45633c4bed9c",
+      "confirmation_height": 326597,
+      "authorization_height": 326596,
+      "capture": "capture-1792147467-exit",
+      "capture_time": 1792147467,
+      "source_commit": "59b89bc1cda6434e33c17a99674ac70976473c9c",
+      "token_sha256": "45f63923e912e67fbc30294313e3dadec751cdd82fa2ebf2fbbf094a302c4cbc",
+      "fee_sat": 500,
+      "vsize": 255
+    },
+    {
+      "txid": "5cb3ae0ed3ae6d3bb28b30498bd87c1fc1b453edb31bd584c4254c5aa8ad2d22",
+      "confirmation_height": 326598,
+      "authorization_height": 326597,
+      "capture": "capture-1792148070-refresh",
+      "capture_time": 1792148070,
+      "source_commit": "59b89bc1cda6434e33c17a99674ac70976473c9c",
+      "token_sha256": "b6538275bd4c045413522db248623535c77f5b2f7549ef06ddcabfe3c67e4e27",
+      "fee_sat": 500,
+      "vsize": 298
+    },
+    {
+      "txid": "aa46acc116e881b1f1c0b80846a07d0d1469d85350fe9f712a21f254ca256aa5",
+      "confirmation_height": 326599,
+      "authorization_height": 326598,
+      "capture": "capture-1792148432-status",
+      "capture_time": 1792148432,
+      "source_commit": "59b89bc1cda6434e33c17a99674ac70976473c9c",
+      "token_sha256": "c072dbb6bf0b595f6c0edf9f71016a4c1a45c3b1cfe8c7869e2ff751769c89b7",
+      "fee_sat": 500,
+      "vsize": 255
+    }
+  ]
+}

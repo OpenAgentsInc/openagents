@@ -1,0 +1,58 @@
+{
+  "renderer": "verse-film-shot",
+  "shot": {
+    "name": "layertree-signet-transitions",
+    "notes": "Confirmed public signet transactions 326595\u2013326599; Google-backed TDX capture checks, test keys and coins.",
+    "scene": {
+      "kind": "layer_tree",
+      "events": "crates/layertree-tee-lab/fixtures/events/signet-normal.jsonl",
+      "play": true,
+      "from": 0,
+      "to": 20,
+      "rate": 1.05,
+      "caption": "Signet: confirmed transactions; test coins; Google-backed TDX"
+    },
+    "duration": 20,
+    "fps": 24.0,
+    "width": 1920,
+    "height": 1080,
+    "subframes": 1,
+    "prewarm": 0,
+    "rig": {
+      "keys": [
+        {
+          "t": 0.0,
+          "eye": [
+            6.0,
+            18,
+            38
+          ],
+          "target": [
+            0,
+            7,
+            1
+          ],
+          "focal_mm": 38.0,
+          "ease": "in_out"
+        },
+        {
+          "t": 20.0,
+          "eye": [
+            -6.0,
+            18,
+            38
+          ],
+          "target": [
+            0,
+            7,
+            1
+          ],
+          "focal_mm": 38.0
+        }
+      ]
+    },
+    "crf": 12
+  },
+  "notes": "Confirmed regtest joins, updates, claim, exit and heartbeat. Test keys and test-vendor attestation; no Confidential VM.",
+  "out": "~/work/film-out/verse/layertree-transitions.mp4"
+}

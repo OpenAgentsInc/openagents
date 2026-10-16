@@ -22,6 +22,8 @@ public mirror readbacks. Its linked archive contains the public captures
 and actual confirmation and fee measurements. The week-long run and
 kill/HALT recovery measurements remain in progress under #11793.
 
+![Confirmed five-member signet tree](captures/signet-tree.jpg)
+
 ## Regtest views
 
 ![LayerTree balances from the regtest run](captures/tree.jpg)

@@ -51,3 +51,15 @@ Clients verify both event signatures, expected author/tree/hash, and the
 file hash and bounds before passing bytes to the chain-anchored follower.
 Publication requires acknowledgement and retrieval on a new connection.
 It uses a separate research Nostr key and publishes no wallet credentials.
+
+
+`export-signet PUBLIC_CAPTURES RELEASE OUTPUT.jsonl [NEGATIVE_VIEW.jsonl]`
+rechecks the selected public captures at their recorded attestation times
+and reads each actual transaction and confirmation through the separate
+signet Core node (`LAYERTREE_CHAIN_COOKIE`). It exports only confirmed
+normal operations, measured fees and sizes, and exact exit payouts. The
+separate optional negative view changes the expected tree ID and checks
+that the real captured token is refused; it never adds that refusal to
+normal service history. Each output has a source list separating
+confirmation height from the server's authorization tip. The exporter
+reads no private test keys and sends no transaction.

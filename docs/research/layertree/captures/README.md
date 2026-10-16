@@ -2,7 +2,9 @@
 
 These 1920×1080 stills come from the named logs and events. Regtest uses test
 keys, coins, and a test-vendor attestation key. Simulations are labelled in the
-scene and caption. No capture here demonstrates hardware enforcement or signet.
+scene and caption. Signet views use confirmed public transactions and historical
+Google-backed TDX evidence; the separate negative-policy view changes the expected
+tree ID and does not claim a live service failure.
 
 See [the viewer commands](../../../verse/layertree-visualizer.md) and
 [exact source hashes](sources.json). Re-render with `scripts/layertree-captures.py`.
@@ -164,5 +166,65 @@ Simulated VendorSignature display; not a hardware-verifier result.
 
 Source: [docs/verse/fixtures/layertree-attestation-errors.jsonl](../../../../docs/verse/fixtures/layertree-attestation-errors.jsonl), event 4.
 
-Signet replacement captures wait for #11793 and #11794. Their captions must
-name the public transactions; the regtest images are not substitutes for that evidence.
+## signet tree
+
+![Confirmed signet tree: five members, 5,000 sats; Google-backed TDX verification.](signet-tree.jpg)
+
+Confirmed signet tree: five members, 5,000 sats; Google-backed TDX verification.
+
+Source: [crates/layertree-tee-lab/fixtures/events/signet-normal.jsonl](../../../../crates/layertree-tee-lab/fixtures/events/signet-normal.jsonl), event 20.
+
+## signet join
+
+![Confirmed signet join; public transaction and exact amounts checked.](signet-join.jpg)
+
+Confirmed signet join; public transaction and exact amounts checked.
+
+Source: [crates/layertree-tee-lab/fixtures/events/signet-normal.jsonl](../../../../crates/layertree-tee-lab/fixtures/events/signet-normal.jsonl), event 4.
+Signet transaction: `0d0742fb32a532e651c7d1703ef2fd7c8704af74631763c27c4ea9affa721358`.
+
+## signet update
+
+![Confirmed signet update; public transaction and exact amounts checked.](signet-update.jpg)
+
+Confirmed signet update; public transaction and exact amounts checked.
+
+Source: [crates/layertree-tee-lab/fixtures/events/signet-normal.jsonl](../../../../crates/layertree-tee-lab/fixtures/events/signet-normal.jsonl), event 8.
+Signet transaction: `0537056d4e066216b13528849755e292b20226d5e993baa7554f45633c4bed9c`.
+
+## signet exit
+
+![Confirmed signet exit; public transaction and exact amounts checked.](signet-exit.jpg)
+
+Confirmed signet exit; public transaction and exact amounts checked.
+
+Source: [crates/layertree-tee-lab/fixtures/events/signet-normal.jsonl](../../../../crates/layertree-tee-lab/fixtures/events/signet-normal.jsonl), event 12.
+Signet transaction: `5cb3ae0ed3ae6d3bb28b30498bd87c1fc1b453edb31bd584c4254c5aa8ad2d22`.
+
+## signet refresh
+
+![Confirmed signet refresh; public transaction and exact amounts checked.](signet-refresh.jpg)
+
+Confirmed signet refresh; public transaction and exact amounts checked.
+
+Source: [crates/layertree-tee-lab/fixtures/events/signet-normal.jsonl](../../../../crates/layertree-tee-lab/fixtures/events/signet-normal.jsonl), event 17.
+Signet transaction: `aa46acc116e881b1f1c0b80846a07d0d1469d85350fe9f712a21f254ca256aa5`.
+
+## signet attested
+
+![Captured signet output verified with Google-backed TDX, release/Rekor proofs, and pinned TLS.](signet-attested.jpg)
+
+Captured signet output verified with Google-backed TDX, release/Rekor proofs, and pinned TLS.
+
+Source: [crates/layertree-tee-lab/fixtures/events/signet-normal.jsonl](../../../../crates/layertree-tee-lab/fixtures/events/signet-normal.jsonl), event 18.
+
+## signet negative policy
+
+![Negative verifier check: expected tree ID changed for a captured signet token; not a live service failure.](signet-negative-policy.jpg)
+
+Negative verifier check: expected tree ID changed for a captured signet token; not a live service failure.
+
+Source: [crates/layertree-tee-lab/fixtures/events/signet-negative-policy.jsonl](../../../../crates/layertree-tee-lab/fixtures/events/signet-negative-policy.jsonl), event 21.
+
+Normal signet operations are captured above. Signet alarm and final recovery views
+remain #11793/#11794 measurements; the regtest images are not substitutes.

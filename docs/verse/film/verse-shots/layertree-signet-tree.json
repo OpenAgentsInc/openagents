@@ -1,0 +1,50 @@
+{
+  "name": "layertree-signet-tree",
+  "notes": "Confirmed public signet transactions 326595\u2013326599; Google-backed TDX capture checks, test keys and coins.",
+  "scene": {
+    "kind": "layer_tree",
+    "events": "crates/layertree-tee-lab/fixtures/events/signet-normal.jsonl",
+    "at": 20,
+    "caption": "Signet: confirmed transactions; test coins; Google-backed TDX"
+  },
+  "duration": 6,
+  "fps": 24.0,
+  "width": 1920,
+  "height": 1080,
+  "subframes": 1,
+  "prewarm": 1,
+  "rig": {
+    "keys": [
+      {
+        "t": 0.0,
+        "eye": [
+          6.0,
+          18.0,
+          30.0
+        ],
+        "target": [
+          1.0,
+          8.0,
+          0.0
+        ],
+        "focal_mm": 38.0,
+        "ease": "in_out"
+      },
+      {
+        "t": 6.0,
+        "eye": [
+          -6.0,
+          18.0,
+          30.0
+        ],
+        "target": [
+          1.0,
+          8.0,
+          0.0
+        ],
+        "focal_mm": 38.0
+      }
+    ]
+  },
+  "crf": 12
+}
