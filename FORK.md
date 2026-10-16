@@ -260,3 +260,21 @@ advancing the server conformance pin.
   and removes only its own registry entries. `OpenAgentsLiveSyncTests` exercises
   both deployed Rust services. The repeatable check and cleanup are in the
   monorepo's `docs/mobile/coder-desktop-phone-e2e.md`.
+
+## iOS release preparation (#11850)
+
+- The app and Live Activity extension share version 1.1, build 1000, recorded in
+  `apps/ios/release/version.json`. The candidate must be checked against the
+  existing App Store Connect record before upload.
+- Removed the upstream signing team. `scripts/ios/archive.py` prepares a local
+  Release archive, checks matching identities/versions and release contents,
+  and stops before export/upload. Signing uses only an explicitly supplied
+  owner's local team setup; it never downloads profiles or opens a login.
+- The privacy manifest declares account-linked sync content and optional voice
+  data for app functionality, without tracking. The inherited automatic export
+  exemption answer is removed; the owner reviews the Rust TLS inventory and
+  answers Apple's encryption questions.
+- Push permission requests and the push entitlement remain absent. Test notes
+  distinguish simulator-qualified sync from owner device checks and upcoming
+  public chats/cloud computers. Release fields and exact owner buttons are in
+  `apps/ios/release/README.md`.

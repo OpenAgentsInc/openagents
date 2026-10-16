@@ -116,18 +116,7 @@ xcodebuild … -only-testing:ZeronUITests/SessionFlowTests test
 xcodebuild … -only-testing:ZeronUITests/ScrollPerformanceTests test
 ```
 
-Live stack (real edge + headless engine; see `ZeronUITests/LiveStackTests.swift`):
-
-```sh
-(cd edge && npx wrangler dev --port 27650 --var AUTH_MODE:dev) &
-ZERON_DATA_DIR=/tmp/e2e ZERON_IPC_PORT=27811 ZERON_EDGE_URL=http://localhost:27650 \
-  ZERON_EDGE_TOKEN=alice@org1 ZERON_ORG_ID=org1 ZERON_HARNESS=mock target/debug/zeron headless &
-TEST_RUNNER_ZERON_LIVE_EDGE=http://localhost:27650 xcodebuild … -only-testing:ZeronUITests/LiveStackTests test
-```
-
-The test launches the app with `-harness mock`: a chat's configured harness
-wins over the engine's `ZERON_HARNESS` default, so without it a real agent
-would run.
+For deployed Rust sync checks, use the [live desktop sync check](#live-desktop-sync-check).
 
 ## Session notifications and distribution
 
@@ -135,9 +124,9 @@ The first OpenAgents Coder release has no push notifications or permission
 prompt. OpenAgentsInc/openagents#11853 tracks their return through our push
 gateway. Voice Live Activity remains a separate extension.
 
-Local archive and TestFlight preparation are tracked in
-OpenAgentsInc/openagents#11850. Do not use the upstream GitHub Actions release
-workflow or upload a build without the owner's release instruction.
+Use [the release guide](release/README.md) and `scripts/ios/archive.py` for
+local archives. The script stops before upload. OpenAgentsInc/openagents#11850
+tracks preparation; signing, upload, and device checks belong to the owner.
 
 ## Live desktop sync check
 
