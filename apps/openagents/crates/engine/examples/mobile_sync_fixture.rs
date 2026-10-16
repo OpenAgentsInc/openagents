@@ -62,6 +62,7 @@ impl Fixture {
             .arg("headless")
             .env_clear()
             .env("PATH", "/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin")
+            .envs(custom_agent_fixture::provider_environment(self, &home)?)
             .env("HOME", &home)
             .env("TMPDIR", &self.root)
             .env("XDG_CONFIG_HOME", home.join("config"))

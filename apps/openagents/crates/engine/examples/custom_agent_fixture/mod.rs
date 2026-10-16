@@ -89,6 +89,42 @@ pub(super) async fn run(f: &mut Fixture) -> Result<()> {
                 completed.state
             );
             f.checks.insert(format!("{runtime}_followup"), true);
+            if runtime == "sdk" {
+                let request = agents.command_request(AssignmentAction::FollowUp {
+                    text: "Wait for cancellation".into(),
+                })?;
+                agents.command(&assignment.id, &request, &cancel).await?;
+                let marker = folder.join("sdk-runner-cancellation-started");
+                tokio::time::timeout(Duration::from_secs(30), async {
+                    while !marker.exists() {
+                        tokio::time::sleep(Duration::from_millis(100)).await;
+                    }
+                })
+                .await
+                .context("The external runner did not start its long task")?;
+                let pid = std::fs::read_to_string(&marker)?;
+                agents
+                    .command(
+                        &assignment.id,
+                        &agents.command_request(AssignmentAction::Stop)?,
+                        &cancel,
+                    )
+                    .await?;
+                ensure!(
+                    wait(&agents, &assignment.id, &cancel).await?.state == AssignmentState::Stopped,
+                    "The SDK runner did not stop"
+                );
+                ensure!(
+                    !Command::new("/bin/kill")
+                        .args(["-0", pid.trim()])
+                        .stdout(Stdio::null())
+                        .stderr(Stdio::null())
+                        .status()?
+                        .success(),
+                    "The SDK runner child was left running"
+                );
+                f.checks.insert("sdk_cancel_reaped_child".into(), true);
+            }
             println!("PASS: {runtime} custom instructions, assignment retry, result, follow-up");
         }
         // A queued assignment survives the host being offline without duplicate execution.
@@ -315,4 +351,42 @@ pub(super) fn install_provider_credentials(f: &Fixture, home: &std::path::Path) 
         file.write_all(&std::fs::read(source)?)?;
     }
     Ok(())
+}
+
+pub(super) fn provider_environment(
+    f: &Fixture,
+    home: &std::path::Path,
+) -> Result<Vec<(String, std::ffi::OsString)>> {
+    let Some(seed) = std::env::var_os("OA_CUSTOM_AGENT_FIXTURE_PROVIDER_HOME") else {
+        return Ok(vec![]);
+    };
+    let seed = PathBuf::from(seed).canonicalize()?;
+    ensure!(
+        seed.starts_with(
+            f.root
+                .parent()
+                .context("Missing scratch parent")?
+                .canonicalize()?
+        ),
+        "Use a sibling scratch seed"
+    );
+    let mut env = vec![
+        (
+            "CLAUDE_CONFIG_DIR".into(),
+            home.join(".claude").into_os_string(),
+        ),
+        ("CODEX_HOME".into(), home.join(".codex").into_os_string()),
+    ];
+    for (name, file) in [
+        ("CLAUDE_CODE_EXECUTABLE", "claude-executable"),
+        ("CODEX_EXECUTABLE", "codex-executable"),
+        ("CLAUDE_CODE_OAUTH_TOKEN", "claude-token"),
+    ] {
+        let path = seed.join(file);
+        if path.is_file() {
+            let value = std::fs::read_to_string(path)?;
+            env.push((name.into(), value.trim().into()));
+        }
+    }
+    Ok(env)
 }
