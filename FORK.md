@@ -277,4 +277,5 @@ advancing the server conformance pin.
 - Push permission requests and the push entitlement remain absent. Test notes
   distinguish simulator-qualified sync from owner device checks and upcoming
   public chats/cloud computers. Release fields and exact owner buttons are in
-  `apps/ios/release/README.md`.
+  `apps/ios/release/README.md`. The app-specific privacy notice is published in
+  `apps/ios/release/privacy.md` and supplements the general OpenAgents policy.

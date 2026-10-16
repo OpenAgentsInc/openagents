@@ -39,7 +39,7 @@ Xcode Organizer performs the final distribution signing and validation.
 | Version/build candidate | 1.1 / 1000 |
 | Subtitle | Your coding sessions, anywhere |
 | Category | Developer Tools |
-| Privacy policy | https://openagents.com/privacy |
+| Privacy policy | https://github.com/OpenAgentsInc/coder-desktop/blob/main/apps/ios/release/privacy.md |
 | Support | https://github.com/OpenAgentsInc/openagents/issues |
 | What to test | Copy `test-notes.md` |
 | Review sign-in | OpenAgents device approval on openagents.com; use a dedicated test account |
