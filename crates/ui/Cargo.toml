@@ -6,6 +6,8 @@ license.workspace = true
 publish.workspace = true
 
 [features]
+# Legacy upstream auth comparisons only; never enable in OpenAgents builds.
+upstream-workos = ["zeron-engine/upstream-workos"]
 account-fixture = ["gpui_platform/test-support"]
 voice-experimental = [] # Compatibility flag; native subscription voice uses Codex's packaged helper.
 project-palette-fixture = []

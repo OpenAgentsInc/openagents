@@ -1458,11 +1458,16 @@ mod openagents_only_tests {
     #[tokio::test]
     async fn inherited_client_id_cannot_enable_workos() {
         let folder = tempfile::tempdir().unwrap();
+        let legacy = folder.path().join("session.json");
+        let saved = r#"{"refreshToken":"legacy-fixture","user":{"id":"upstream-user","email":"fixture@example.com"},"orgId":"upstream-org"}"#;
+        std::fs::write(&legacy, saved).unwrap();
         let mut config = AuthConfig::new("http://127.0.0.1:1", folder.path());
         config.workos_client_id = Some("inherited-fixture".into());
         let auth = Auth::new(config);
         assert!(!auth.workos_enabled());
         assert!(!auth.loaded_workos_session());
         assert!(auth.start_sign_in().await.unwrap().is_empty());
+        assert_eq!(auth.state(), AuthState::SignedOut);
+        assert_eq!(std::fs::read_to_string(legacy).unwrap(), saved);
     }
 }

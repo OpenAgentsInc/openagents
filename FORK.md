@@ -203,7 +203,9 @@ format only the Rust files changed here rather than rewriting the workspace.
   debug output. `zeron-client` and `zeron-engine` disable inherited WorkOS
   configuration and entry points by default. The explicit `upstream-workos`
   compatibility feature is reserved for upstream comparisons; OpenAgents
-  builds must never enable it.
+  builds must never enable it. The UI forwards it only for its two legacy
+  WorkOS integration tests. The default engine regression proves an inherited
+  WorkOS session is ignored and remains unchanged.
 - `OpenAgentsAccountTests` exercises sign-in, synced sessions, and sign-out
   against `scripts/coder-sync/test.sh --ios-auth-fixture CONFIG_PATH` in the
   monorepo. Pass its addresses as `TEST_RUNNER_CODER_ACCOUNT_API`,

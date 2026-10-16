@@ -14832,6 +14832,7 @@ mod tests {
         release.await.unwrap();
     }
 
+    #[cfg(feature = "upstream-workos")]
     #[tokio::test]
     async fn signed_out_synced_runtime_stops_and_reboots_local() {
         let dir = tempfile::tempdir().unwrap();

@@ -3933,6 +3933,7 @@ mod tests {
         handle.shutdown().await;
     }
 
+    #[cfg(feature = "upstream-workos")]
     #[tokio::test]
     async fn engine_info_is_available_while_cloud_onboarding_is_deferred() {
         let dir = tempfile::tempdir().unwrap();
