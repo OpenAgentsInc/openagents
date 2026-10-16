@@ -3,6 +3,81 @@
   "scope": "Literal web mounts and gateway audience declarations; not a public schema or permission to expose a route. Constants/dynamic mounts remain in owning route tests.",
   "web_literal_mounts": [
     {
+      "path": "/v1/labs/kinds",
+      "source": "crates/lab-api/src/handlers.rs",
+      "line": 53
+    },
+    {
+      "path": "/v1/labs/kinds/{kind}/tools",
+      "source": "crates/lab-api/src/handlers.rs",
+      "line": 54
+    },
+    {
+      "path": "/v1/labs/kinds/{kind}/tools/{name}",
+      "source": "crates/lab-api/src/handlers.rs",
+      "line": 55
+    },
+    {
+      "path": "/v1/labs/documents",
+      "source": "crates/lab-api/src/handlers.rs",
+      "line": 56
+    },
+    {
+      "path": "/v1/labs/documents/{id}",
+      "source": "crates/lab-api/src/handlers.rs",
+      "line": 57
+    },
+    {
+      "path": "/v1/labs/documents/{id}/versions",
+      "source": "crates/lab-api/src/handlers.rs",
+      "line": 58
+    },
+    {
+      "path": "/v1/labs/documents/{id}/versions/{n}",
+      "source": "crates/lab-api/src/handlers.rs",
+      "line": 59
+    },
+    {
+      "path": "/v1/labs/documents/{id}/versions/{n}/card",
+      "source": "crates/lab-api/src/handlers.rs",
+      "line": 60
+    },
+    {
+      "path": "/v1/labs/documents/{id}/notes",
+      "source": "crates/lab-api/src/handlers.rs",
+      "line": 61
+    },
+    {
+      "path": "/v1/labs/documents/{id}/events",
+      "source": "crates/lab-api/src/handlers.rs",
+      "line": 62
+    },
+    {
+      "path": "/v1/labs/jobs",
+      "source": "crates/lab-api/src/handlers.rs",
+      "line": 63
+    },
+    {
+      "path": "/v1/labs/jobs/{id}",
+      "source": "crates/lab-api/src/handlers.rs",
+      "line": 64
+    },
+    {
+      "path": "/v1/labs/artifacts/{id}",
+      "source": "crates/lab-api/src/handlers.rs",
+      "line": 65
+    },
+    {
+      "path": "/v1/labs/artifacts/{id}/content",
+      "source": "crates/lab-api/src/handlers.rs",
+      "line": 66
+    },
+    {
+      "path": "/v1/labs/uploads",
+      "source": "crates/lab-api/src/handlers.rs",
+      "line": 67
+    },
+    {
       "path": "/v1/agent-assignments",
       "source": "crates/openagents-web/src/agent_assignments.rs",
       "line": 272

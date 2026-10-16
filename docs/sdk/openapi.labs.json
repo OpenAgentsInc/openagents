@@ -1,0 +1,5741 @@
+{
+  "components": {
+    "schemas": {
+      "LabAddNote": {
+        "additionalProperties": false,
+        "properties": {
+          "locator": {
+            "description": "Where in a version a note points.",
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "at": {
+                    "const": "none",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "at"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "at": {
+                    "const": "time",
+                    "type": "string"
+                  },
+                  "seconds": {
+                    "format": "double",
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "at",
+                  "seconds"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "at": {
+                    "const": "frame",
+                    "type": "string"
+                  },
+                  "frame": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "at",
+                  "frame"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "at": {
+                    "const": "step",
+                    "type": "string"
+                  },
+                  "step": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "at",
+                  "step"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "A kind's own stable reference (a CAD face `body:top`).",
+                "properties": {
+                  "at": {
+                    "const": "ref",
+                    "type": "string"
+                  },
+                  "reference": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "at",
+                  "reference"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "at": {
+                    "const": "region",
+                    "type": "string"
+                  },
+                  "h": {
+                    "format": "double",
+                    "type": "number"
+                  },
+                  "w": {
+                    "format": "double",
+                    "type": "number"
+                  },
+                  "x": {
+                    "format": "double",
+                    "type": "number"
+                  },
+                  "y": {
+                    "format": "double",
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "at",
+                  "x",
+                  "y",
+                  "w",
+                  "h"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "space": {
+            "default": "me",
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "version": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "locator",
+          "text"
+        ],
+        "title": "AddNote",
+        "type": "object"
+      },
+      "LabArtifact": {
+        "additionalProperties": false,
+        "description": "A file made from (or attached to) a version.",
+        "properties": {
+          "class": {
+            "description": "How a file may travel.",
+            "oneOf": [
+              {
+                "const": "public",
+                "description": "May be stored and rendered anywhere the space allows.",
+                "type": "string"
+              },
+              {
+                "const": "private_local",
+                "description": "Never leaves the host that has it (licensed or personal media:\nMetaHuman, Fab packs, fonts). Only an enrolled host renders it.",
+                "type": "string"
+              },
+              {
+                "const": "no_training",
+                "description": "May be stored and shown, never used to train or evaluate a model.",
+                "type": "string"
+              }
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "media_type": {
+            "type": "string"
+          },
+          "no_training": {
+            "description": "Inherited by everything made from a marked input.",
+            "type": "boolean"
+          },
+          "role": {
+            "enum": [
+              "render",
+              "poster",
+              "frame",
+              "strip",
+              "export",
+              "build",
+              "replay",
+              "source"
+            ],
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "size": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "version": {
+            "additionalProperties": false,
+            "description": "An immutable version, possibly of another kind's document (a CAD part\nplaced in a Robot Lab scene). Reading through it checks access to both.",
+            "properties": {
+              "document": {
+                "type": "string"
+              },
+              "version": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "document",
+              "version"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "role",
+          "media_type",
+          "sha256",
+          "size",
+          "class",
+          "no_training"
+        ],
+        "title": "Artifact",
+        "type": "object"
+      },
+      "LabArtifactLink": {
+        "properties": {
+          "artifact": {
+            "additionalProperties": false,
+            "description": "A file made from (or attached to) a version.",
+            "properties": {
+              "class": {
+                "description": "How a file may travel.",
+                "oneOf": [
+                  {
+                    "const": "public",
+                    "description": "May be stored and rendered anywhere the space allows.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "private_local",
+                    "description": "Never leaves the host that has it (licensed or personal media:\nMetaHuman, Fab packs, fonts). Only an enrolled host renders it.",
+                    "type": "string"
+                  },
+                  {
+                    "const": "no_training",
+                    "description": "May be stored and shown, never used to train or evaluate a model.",
+                    "type": "string"
+                  }
+                ]
+              },
+              "id": {
+                "type": "string"
+              },
+              "media_type": {
+                "type": "string"
+              },
+              "no_training": {
+                "description": "Inherited by everything made from a marked input.",
+                "type": "boolean"
+              },
+              "role": {
+                "enum": [
+                  "render",
+                  "poster",
+                  "frame",
+                  "strip",
+                  "export",
+                  "build",
+                  "replay",
+                  "source"
+                ],
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string"
+              },
+              "size": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "version": {
+                "additionalProperties": false,
+                "description": "An immutable version, possibly of another kind's document (a CAD part\nplaced in a Robot Lab scene). Reading through it checks access to both.",
+                "properties": {
+                  "document": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "document",
+                  "version"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "id",
+              "version",
+              "role",
+              "media_type",
+              "sha256",
+              "size",
+              "class",
+              "no_training"
+            ],
+            "type": "object"
+          },
+          "expires_seconds": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "artifact",
+          "url"
+        ],
+        "title": "ArtifactLink",
+        "type": "object"
+      },
+      "LabBytes": {
+        "format": "binary",
+        "type": "string"
+      },
+      "LabCard": {
+        "properties": {
+          "compare": {
+            "additionalProperties": false,
+            "default": null,
+            "properties": {
+              "a": {
+                "additionalProperties": false,
+                "description": "An immutable version, possibly of another kind's document (a CAD part\nplaced in a Robot Lab scene). Reading through it checks access to both.",
+                "properties": {
+                  "document": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "document",
+                  "version"
+                ],
+                "type": "object"
+              },
+              "a_primary": {
+                "default": null,
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "at": {
+                "default": {
+                  "at": "none"
+                },
+                "description": "Where in a version a note points.",
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "at": {
+                        "const": "none",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "at"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "at": {
+                        "const": "time",
+                        "type": "string"
+                      },
+                      "seconds": {
+                        "format": "double",
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "at",
+                      "seconds"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "at": {
+                        "const": "frame",
+                        "type": "string"
+                      },
+                      "frame": {
+                        "format": "uint64",
+                        "minimum": 0,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "at",
+                      "frame"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "at": {
+                        "const": "step",
+                        "type": "string"
+                      },
+                      "step": {
+                        "format": "uint64",
+                        "minimum": 0,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "at",
+                      "step"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "description": "A kind's own stable reference (a CAD face `body:top`).",
+                    "properties": {
+                      "at": {
+                        "const": "ref",
+                        "type": "string"
+                      },
+                      "reference": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "at",
+                      "reference"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "at": {
+                        "const": "region",
+                        "type": "string"
+                      },
+                      "h": {
+                        "format": "double",
+                        "type": "number"
+                      },
+                      "w": {
+                        "format": "double",
+                        "type": "number"
+                      },
+                      "x": {
+                        "format": "double",
+                        "type": "number"
+                      },
+                      "y": {
+                        "format": "double",
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "at",
+                      "x",
+                      "y",
+                      "w",
+                      "h"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              },
+              "b": {
+                "additionalProperties": false,
+                "description": "An immutable version, possibly of another kind's document (a CAD part\nplaced in a Robot Lab scene). Reading through it checks access to both.",
+                "properties": {
+                  "document": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "document",
+                  "version"
+                ],
+                "type": "object"
+              },
+              "b_primary": {
+                "default": null,
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "a",
+              "b"
+            ],
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "detail": {
+            "default": null,
+            "description": "Kind-specific; clients that don't know it ignore it."
+          },
+          "document": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "notes": {
+            "default": [],
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "author": {
+                  "type": "string"
+                },
+                "locator": {
+                  "description": "Where in a version a note points.",
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "at": {
+                          "const": "none",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "at"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "at": {
+                          "const": "time",
+                          "type": "string"
+                        },
+                        "seconds": {
+                          "format": "double",
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "at",
+                        "seconds"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "at": {
+                          "const": "frame",
+                          "type": "string"
+                        },
+                        "frame": {
+                          "format": "uint64",
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "at",
+                        "frame"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "at": {
+                          "const": "step",
+                          "type": "string"
+                        },
+                        "step": {
+                          "format": "uint64",
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "at",
+                        "step"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "description": "A kind's own stable reference (a CAD face `body:top`).",
+                      "properties": {
+                        "at": {
+                          "const": "ref",
+                          "type": "string"
+                        },
+                        "reference": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "at",
+                        "reference"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "at": {
+                          "const": "region",
+                          "type": "string"
+                        },
+                        "h": {
+                          "format": "double",
+                          "type": "number"
+                        },
+                        "w": {
+                          "format": "double",
+                          "type": "number"
+                        },
+                        "x": {
+                          "format": "double",
+                          "type": "number"
+                        },
+                        "y": {
+                          "format": "double",
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "at",
+                        "x",
+                        "y",
+                        "w",
+                        "h"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                },
+                "text": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "locator",
+                "author",
+                "text"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "page": {
+            "default": null,
+            "description": "The kind's deeper page (player, viewport, game).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "poster": {
+            "default": null,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "primary": {
+            "default": null,
+            "description": "Artifact ids; clients fetch them through the API with their own access.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "private_local": {
+            "default": false,
+            "description": "Set when an input must stay on its host; shown on the card.",
+            "type": "boolean"
+          },
+          "refusal": {
+            "default": null,
+            "description": "A change a kind won't accept, with the sentence every surface shows.",
+            "properties": {
+              "code": {
+                "description": "A stable code clients can branch on (`beat_grid`, `stale_base`, ...).",
+                "type": "string"
+              },
+              "message": {
+                "description": "Plain words, shown as is.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ],
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "schema": {
+            "default": "lab.card.v1",
+            "type": "string"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "oneOf": [
+                  {
+                    "enum": [
+                      "queued",
+                      "running",
+                      "done",
+                      "failed",
+                      "cancelled"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "const": "uncertain",
+                    "description": "The worker was lost; the outcome is unknown until observed.",
+                    "type": "string"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "The job the card waits on, if any."
+          },
+          "state_text": {
+            "default": null,
+            "description": "Plain words about the state (\"Rendering the preview, about 3 min\").",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "strip": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "summary": {
+            "default": "",
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "version": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "view": {
+            "oneOf": [
+              {
+                "enum": [
+                  "video",
+                  "image",
+                  "compare",
+                  "model3d",
+                  "playable",
+                  "report",
+                  "none"
+                ],
+                "type": "string"
+              },
+              {
+                "const": "unknown",
+                "description": "A view this client doesn't know; drawn as [`View::Report`].",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "document",
+          "version",
+          "title",
+          "view"
+        ],
+        "title": "Card",
+        "type": "object"
+      },
+      "LabCreateDocument": {
+        "additionalProperties": false,
+        "properties": {
+          "content": true,
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "schema": {
+            "type": "string"
+          },
+          "space": {
+            "default": "me",
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "schema",
+          "title",
+          "content",
+          "summary"
+        ],
+        "title": "CreateDocument",
+        "type": "object"
+      },
+      "LabCreateJob": {
+        "additionalProperties": false,
+        "properties": {
+          "space": {
+            "default": "me",
+            "type": "string"
+          },
+          "version": {
+            "additionalProperties": false,
+            "description": "An immutable version, possibly of another kind's document (a CAD part\nplaced in a Robot Lab scene). Reading through it checks access to both.",
+            "properties": {
+              "document": {
+                "type": "string"
+              },
+              "version": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "document",
+              "version"
+            ],
+            "type": "object"
+          },
+          "want": {
+            "description": "What a caller wants made from a version.",
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "description": "What the card needs to show this version (a preview, a hero image).",
+                "properties": {
+                  "want": {
+                    "const": "card",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "want"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "A named job type with its parameters (`render` at `review`).",
+                "properties": {
+                  "params": {
+                    "default": null
+                  },
+                  "type": {
+                    "type": "string"
+                  },
+                  "want": {
+                    "const": "job",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "want",
+                  "type"
+                ],
+                "type": "object"
+              }
+            ]
+          }
+        },
+        "required": [
+          "version",
+          "want"
+        ],
+        "title": "CreateJob",
+        "type": "object"
+      },
+      "LabDeleted": {
+        "properties": {
+          "deleted": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "deleted"
+        ],
+        "title": "Deleted",
+        "type": "object"
+      },
+      "LabDocumentMeta": {
+        "additionalProperties": false,
+        "properties": {
+          "created_unix_ms": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "description": "A registered kind (`video`, `cad`, ...).",
+            "type": "string"
+          },
+          "latest": {
+            "description": "The latest version number (0 before the first).",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "schema": {
+            "description": "One of that kind's document schemas (`cut.v1`, `part.v1`, ...).",
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "schema",
+          "title",
+          "created_unix_ms",
+          "latest"
+        ],
+        "title": "DocumentMeta",
+        "type": "object"
+      },
+      "LabDocuments": {
+        "description": "The same envelopes are serialized by handlers and described by OpenAPI.",
+        "properties": {
+          "data": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "created_unix_ms": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "kind": {
+                  "description": "A registered kind (`video`, `cad`, ...).",
+                  "type": "string"
+                },
+                "latest": {
+                  "description": "The latest version number (0 before the first).",
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "schema": {
+                  "description": "One of that kind's document schemas (`cut.v1`, `part.v1`, ...).",
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "kind",
+                "schema",
+                "title",
+                "created_unix_ms",
+                "latest"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "next": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "List",
+        "type": "object"
+      },
+      "LabEditDocument": {
+        "additionalProperties": false,
+        "properties": {
+          "base": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "change": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "ops": {
+                    "items": {
+                      "oneOf": [
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "op": {
+                              "const": "add",
+                              "type": "string"
+                            },
+                            "path": {
+                              "type": "string"
+                            },
+                            "value": true
+                          },
+                          "required": [
+                            "op",
+                            "path",
+                            "value"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "op": {
+                              "const": "remove",
+                              "type": "string"
+                            },
+                            "path": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "op",
+                            "path"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "op": {
+                              "const": "replace",
+                              "type": "string"
+                            },
+                            "path": {
+                              "type": "string"
+                            },
+                            "value": true
+                          },
+                          "required": [
+                            "op",
+                            "path",
+                            "value"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "from": {
+                              "type": "string"
+                            },
+                            "op": {
+                              "const": "move",
+                              "type": "string"
+                            },
+                            "path": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "op",
+                            "from",
+                            "path"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "from": {
+                              "type": "string"
+                            },
+                            "op": {
+                              "const": "copy",
+                              "type": "string"
+                            },
+                            "path": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "op",
+                            "from",
+                            "path"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "op": {
+                              "const": "test",
+                              "type": "string"
+                            },
+                            "path": {
+                              "type": "string"
+                            },
+                            "value": true
+                          },
+                          "required": [
+                            "op",
+                            "path",
+                            "value"
+                          ],
+                          "type": "object"
+                        }
+                      ]
+                    },
+                    "type": "array"
+                  },
+                  "type": {
+                    "const": "patch",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type",
+                  "ops"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "A kind-defined intent, validated by that kind (`{\"intent\": \"move\", ...}`).",
+                "properties": {
+                  "intent": true,
+                  "type": {
+                    "const": "intent",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type",
+                  "intent"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "space": {
+            "default": "me",
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "base",
+          "change",
+          "summary"
+        ],
+        "title": "EditDocument",
+        "type": "object"
+      },
+      "LabError": {
+        "properties": {
+          "error": {
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "title": "ErrorBody",
+        "type": "object"
+      },
+      "LabEvents": {
+        "description": "The same envelopes are serialized by handlers and described by OpenAPI.",
+        "properties": {
+          "data": {
+            "items": {
+              "properties": {
+                "at_unix_ms": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "change": true,
+                "cursor": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "document": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "cursor",
+                "document",
+                "at_unix_ms",
+                "change"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "next": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "List",
+        "type": "object"
+      },
+      "LabJobState": {
+        "additionalProperties": false,
+        "properties": {
+          "artifacts": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "estimate_seconds": {
+            "default": null,
+            "description": "Seconds the job is expected to take, when known.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "message": {
+            "default": null,
+            "description": "Plain words for a failure or a wait (\"No computer that has these\nfiles is online\").",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "spec": {
+            "additionalProperties": false,
+            "description": "Work that makes artifacts. Its idempotency key is the version's digest,\nthe type and the parameters, so asking twice never runs it twice.",
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "params": {
+                "default": null
+              },
+              "requirements": {
+                "additionalProperties": false,
+                "default": {
+                  "gpu": false,
+                  "max_seconds": 0,
+                  "private_local": false,
+                  "tools": []
+                },
+                "description": "What a placement must offer to take a job.",
+                "properties": {
+                  "gpu": {
+                    "default": false,
+                    "type": "boolean"
+                  },
+                  "max_seconds": {
+                    "default": 0,
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "private_local": {
+                    "default": false,
+                    "description": "Set when an input is [`AssetClass::PrivateLocal`].",
+                    "type": "boolean"
+                  },
+                  "tools": {
+                    "default": [],
+                    "description": "Programs the job runs (`ffmpeg`, `blender`, ...).",
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                },
+                "type": "object"
+              },
+              "type": {
+                "description": "Kind-defined: `render`, `rebuild`, `playtest`, `simulate`, ...",
+                "type": "string"
+              },
+              "version": {
+                "additionalProperties": false,
+                "description": "An immutable version, possibly of another kind's document (a CAD part\nplaced in a Robot Lab scene). Reading through it checks access to both.",
+                "properties": {
+                  "document": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "document",
+                  "version"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "kind",
+              "type",
+              "version"
+            ],
+            "type": "object"
+          },
+          "status": {
+            "oneOf": [
+              {
+                "enum": [
+                  "queued",
+                  "running",
+                  "done",
+                  "failed",
+                  "cancelled"
+                ],
+                "type": "string"
+              },
+              {
+                "const": "uncertain",
+                "description": "The worker was lost; the outcome is unknown until observed.",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "spec",
+          "status"
+        ],
+        "title": "JobState",
+        "type": "object"
+      },
+      "LabJobs": {
+        "description": "The same envelopes are serialized by handlers and described by OpenAPI.",
+        "properties": {
+          "data": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "artifacts": {
+                  "default": [],
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "estimate_seconds": {
+                  "default": null,
+                  "description": "Seconds the job is expected to take, when known.",
+                  "format": "double",
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "id": {
+                  "type": "string"
+                },
+                "message": {
+                  "default": null,
+                  "description": "Plain words for a failure or a wait (\"No computer that has these\nfiles is online\").",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "spec": {
+                  "additionalProperties": false,
+                  "description": "Work that makes artifacts. Its idempotency key is the version's digest,\nthe type and the parameters, so asking twice never runs it twice.",
+                  "properties": {
+                    "kind": {
+                      "type": "string"
+                    },
+                    "params": {
+                      "default": null
+                    },
+                    "requirements": {
+                      "additionalProperties": false,
+                      "default": {
+                        "gpu": false,
+                        "max_seconds": 0,
+                        "private_local": false,
+                        "tools": []
+                      },
+                      "description": "What a placement must offer to take a job.",
+                      "properties": {
+                        "gpu": {
+                          "default": false,
+                          "type": "boolean"
+                        },
+                        "max_seconds": {
+                          "default": 0,
+                          "format": "uint64",
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "private_local": {
+                          "default": false,
+                          "description": "Set when an input is [`AssetClass::PrivateLocal`].",
+                          "type": "boolean"
+                        },
+                        "tools": {
+                          "default": [],
+                          "description": "Programs the job runs (`ffmpeg`, `blender`, ...).",
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "type": {
+                      "description": "Kind-defined: `render`, `rebuild`, `playtest`, `simulate`, ...",
+                      "type": "string"
+                    },
+                    "version": {
+                      "additionalProperties": false,
+                      "description": "An immutable version, possibly of another kind's document (a CAD part\nplaced in a Robot Lab scene). Reading through it checks access to both.",
+                      "properties": {
+                        "document": {
+                          "type": "string"
+                        },
+                        "version": {
+                          "format": "uint64",
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "document",
+                        "version"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "type",
+                    "version"
+                  ],
+                  "type": "object"
+                },
+                "status": {
+                  "oneOf": [
+                    {
+                      "enum": [
+                        "queued",
+                        "running",
+                        "done",
+                        "failed",
+                        "cancelled"
+                      ],
+                      "type": "string"
+                    },
+                    {
+                      "const": "uncertain",
+                      "description": "The worker was lost; the outcome is unknown until observed.",
+                      "type": "string"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "spec",
+                "status"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "next": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "List",
+        "type": "object"
+      },
+      "LabKinds": {
+        "properties": {
+          "data": {
+            "items": {
+              "additionalProperties": false,
+              "description": "What a kind declares about itself. Served by `GET /labs/kinds`, and\nenough for a chat to offer its tools and for a client to draw its cards.",
+              "properties": {
+                "doc_arg": {
+                  "description": "The argument a tool names its document by (`document`, `doc`, `game`).",
+                  "type": "string"
+                },
+                "job_types": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "kind": {
+                  "description": "Stable id (`video`, `cad`, ...). Display names may change; this doesn't.",
+                  "type": "string"
+                },
+                "limits": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "max_args_bytes": {
+                      "format": "uint64",
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "max_doc_bytes": {
+                      "format": "uint64",
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "max_docs_per_space": {
+                      "format": "uint64",
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "max_versions_per_doc": {
+                      "format": "uint64",
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "runs_per_hour": {
+                      "format": "uint64",
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "max_doc_bytes",
+                    "max_docs_per_space",
+                    "max_versions_per_doc",
+                    "max_args_bytes",
+                    "runs_per_hour"
+                  ],
+                  "type": "object"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "schemas": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "tool_prefix": {
+                  "description": "Every tool name starts with this (`lab_`, `cad_`, ...), so prompts and\nolder clients keep working.",
+                  "type": "string"
+                },
+                "tools": {
+                  "items": {
+                    "additionalProperties": false,
+                    "description": "A tool for a model loop, as OpenAI-style function declarations write it.",
+                    "properties": {
+                      "description": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "parameters": true
+                    },
+                    "required": [
+                      "name",
+                      "description",
+                      "parameters"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "views": {
+                  "items": {
+                    "oneOf": [
+                      {
+                        "enum": [
+                          "video",
+                          "image",
+                          "compare",
+                          "model3d",
+                          "playable",
+                          "report",
+                          "none"
+                        ],
+                        "type": "string"
+                      },
+                      {
+                        "const": "unknown",
+                        "description": "A view this client doesn't know; drawn as [`View::Report`].",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "kind",
+                "name",
+                "schemas",
+                "tool_prefix",
+                "doc_arg",
+                "tools",
+                "job_types",
+                "views",
+                "limits"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "Data",
+        "type": "object"
+      },
+      "LabNotes": {
+        "description": "The same envelopes are serialized by handlers and described by OpenAPI.",
+        "properties": {
+          "data": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "author": {
+                  "type": "string"
+                },
+                "created_unix_ms": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "locator": {
+                  "description": "Where in a version a note points.",
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "at": {
+                          "const": "none",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "at"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "at": {
+                          "const": "time",
+                          "type": "string"
+                        },
+                        "seconds": {
+                          "format": "double",
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "at",
+                        "seconds"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "at": {
+                          "const": "frame",
+                          "type": "string"
+                        },
+                        "frame": {
+                          "format": "uint64",
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "at",
+                        "frame"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "at": {
+                          "const": "step",
+                          "type": "string"
+                        },
+                        "step": {
+                          "format": "uint64",
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "at",
+                        "step"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "description": "A kind's own stable reference (a CAD face `body:top`).",
+                      "properties": {
+                        "at": {
+                          "const": "ref",
+                          "type": "string"
+                        },
+                        "reference": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "at",
+                        "reference"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "at": {
+                          "const": "region",
+                          "type": "string"
+                        },
+                        "h": {
+                          "format": "double",
+                          "type": "number"
+                        },
+                        "w": {
+                          "format": "double",
+                          "type": "number"
+                        },
+                        "x": {
+                          "format": "double",
+                          "type": "number"
+                        },
+                        "y": {
+                          "format": "double",
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "at",
+                        "x",
+                        "y",
+                        "w",
+                        "h"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                },
+                "subject": {
+                  "additionalProperties": false,
+                  "description": "An immutable version, possibly of another kind's document (a CAD part\nplaced in a Robot Lab scene). Reading through it checks access to both.",
+                  "properties": {
+                    "document": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "format": "uint64",
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "document",
+                    "version"
+                  ],
+                  "type": "object"
+                },
+                "text": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "subject",
+                "locator",
+                "author",
+                "text",
+                "created_unix_ms"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "next": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "List",
+        "type": "object"
+      },
+      "LabSaved": {
+        "properties": {
+          "saved": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "saved"
+        ],
+        "title": "Saved",
+        "type": "object"
+      },
+      "LabToolCall": {
+        "additionalProperties": false,
+        "properties": {
+          "arguments": true,
+          "base": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "chat": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "space": {
+            "default": "me",
+            "type": "string"
+          }
+        },
+        "required": [
+          "arguments"
+        ],
+        "title": "ToolCall",
+        "type": "object"
+      },
+      "LabToolResult": {
+        "properties": {
+          "result": true
+        },
+        "required": [
+          "result"
+        ],
+        "title": "ToolResult",
+        "type": "object"
+      },
+      "LabTools": {
+        "properties": {
+          "data": {
+            "items": {
+              "additionalProperties": false,
+              "description": "A tool for a model loop, as OpenAI-style function declarations write it.",
+              "properties": {
+                "description": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "parameters": true
+              },
+              "required": [
+                "name",
+                "description",
+                "parameters"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "Data",
+        "type": "object"
+      },
+      "LabUpload": {
+        "additionalProperties": false,
+        "properties": {
+          "class": {
+            "description": "How a file may travel.",
+            "oneOf": [
+              {
+                "const": "public",
+                "description": "May be stored and rendered anywhere the space allows.",
+                "type": "string"
+              },
+              {
+                "const": "private_local",
+                "description": "Never leaves the host that has it (licensed or personal media:\nMetaHuman, Fab packs, fonts). Only an enrolled host renders it.",
+                "type": "string"
+              },
+              {
+                "const": "no_training",
+                "description": "May be stored and shown, never used to train or evaluate a model.",
+                "type": "string"
+              }
+            ]
+          },
+          "content_base64": {
+            "type": "string"
+          },
+          "media_type": {
+            "type": "string"
+          },
+          "no_training": {
+            "default": false,
+            "type": "boolean"
+          },
+          "space": {
+            "default": "me",
+            "type": "string"
+          },
+          "version": {
+            "additionalProperties": false,
+            "description": "An immutable version, possibly of another kind's document (a CAD part\nplaced in a Robot Lab scene). Reading through it checks access to both.",
+            "properties": {
+              "document": {
+                "type": "string"
+              },
+              "version": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "document",
+              "version"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "version",
+          "media_type",
+          "class",
+          "content_base64"
+        ],
+        "title": "Upload",
+        "type": "object"
+      },
+      "LabVersion": {
+        "additionalProperties": false,
+        "description": "One immutable version. Made only by a kind's `apply` (through the store),\nnever written directly.",
+        "properties": {
+          "assets": {
+            "default": [],
+            "description": "Every file the content uses.",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "class": {
+                  "description": "How a file may travel.",
+                  "oneOf": [
+                    {
+                      "const": "public",
+                      "description": "May be stored and rendered anywhere the space allows.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "private_local",
+                      "description": "Never leaves the host that has it (licensed or personal media:\nMetaHuman, Fab packs, fonts). Only an enrolled host renders it.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "no_training",
+                      "description": "May be stored and shown, never used to train or evaluate a model.",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "location": {
+                  "description": "A path on the host or an object in the space's storage.",
+                  "type": "string"
+                },
+                "sha256": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "location",
+                "sha256",
+                "class"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "author": {
+            "description": "A person, or a chat turn (`chat:<id>`).",
+            "type": "string"
+          },
+          "content": true,
+          "content_sha256": {
+            "description": "[`crate::digest`] of `content`.",
+            "type": "string"
+          },
+          "created_unix_ms": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "document": {
+            "type": "string"
+          },
+          "number": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "parent": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "report": {
+            "additionalProperties": false,
+            "default": {
+              "facts": null,
+              "warnings": []
+            },
+            "description": "The kind's check report for this content.",
+            "properties": {
+              "facts": {
+                "default": null,
+                "description": "Kind-specific facts (mass, duration, sketch freedom, ...)."
+              },
+              "warnings": {
+                "default": [],
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "type": "object"
+          },
+          "schema": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "document",
+          "number",
+          "author",
+          "summary",
+          "created_unix_ms",
+          "schema",
+          "content",
+          "content_sha256"
+        ],
+        "title": "Version",
+        "type": "object"
+      },
+      "LabVersions": {
+        "description": "The same envelopes are serialized by handlers and described by OpenAPI.",
+        "properties": {
+          "data": {
+            "items": {
+              "additionalProperties": false,
+              "description": "One immutable version. Made only by a kind's `apply` (through the store),\nnever written directly.",
+              "properties": {
+                "assets": {
+                  "default": [],
+                  "description": "Every file the content uses.",
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "class": {
+                        "description": "How a file may travel.",
+                        "oneOf": [
+                          {
+                            "const": "public",
+                            "description": "May be stored and rendered anywhere the space allows.",
+                            "type": "string"
+                          },
+                          {
+                            "const": "private_local",
+                            "description": "Never leaves the host that has it (licensed or personal media:\nMetaHuman, Fab packs, fonts). Only an enrolled host renders it.",
+                            "type": "string"
+                          },
+                          {
+                            "const": "no_training",
+                            "description": "May be stored and shown, never used to train or evaluate a model.",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "location": {
+                        "description": "A path on the host or an object in the space's storage.",
+                        "type": "string"
+                      },
+                      "sha256": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "location",
+                      "sha256",
+                      "class"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "author": {
+                  "description": "A person, or a chat turn (`chat:<id>`).",
+                  "type": "string"
+                },
+                "content": true,
+                "content_sha256": {
+                  "description": "[`crate::digest`] of `content`.",
+                  "type": "string"
+                },
+                "created_unix_ms": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "document": {
+                  "type": "string"
+                },
+                "number": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "parent": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "report": {
+                  "additionalProperties": false,
+                  "default": {
+                    "facts": null,
+                    "warnings": []
+                  },
+                  "description": "The kind's check report for this content.",
+                  "properties": {
+                    "facts": {
+                      "default": null,
+                      "description": "Kind-specific facts (mass, duration, sketch freedom, ...)."
+                    },
+                    "warnings": {
+                      "default": [],
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                },
+                "schema": {
+                  "type": "string"
+                },
+                "summary": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "document",
+                "number",
+                "author",
+                "summary",
+                "created_unix_ms",
+                "schema",
+                "content",
+                "content_sha256"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "next": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "List",
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "appBearer": {
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "title": "OpenAgents Labs API",
+    "version": "1.0.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/v1/labs/artifacts/{id}": {
+      "get": {
+        "description": "Authorizes the caller and space on every request. Experimental kinds use the Computers account gate. Reads never start jobs. Pages and payloads are bounded. Source uploads are capped at 512 KiB until resumable uploads are integrated.",
+        "operationId": "getLabArtifact",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "space",
+            "schema": {
+              "default": "me",
+              "description": "me or project:PROJECT_ID. Ownership comes from authentication.",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabArtifactLink"
+                }
+              }
+            },
+            "description": "Private, no-store result."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "tags": [
+          "Labs"
+        ]
+      }
+    },
+    "/v1/labs/artifacts/{id}/content": {
+      "get": {
+        "description": "Authorizes the caller and space on every request. Experimental kinds use the Computers account gate. Reads never start jobs. Pages and payloads are bounded. Source uploads are capped at 512 KiB until resumable uploads are integrated.",
+        "operationId": "readLabArtifact",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "space",
+            "schema": {
+              "default": "me",
+              "description": "me or project:PROJECT_ID. Ownership comes from authentication.",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Range",
+            "schema": {
+              "example": "bytes=0-99",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabBytes"
+                }
+              }
+            },
+            "description": "Private, no-store result."
+          },
+          "206": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabBytes"
+                }
+              }
+            },
+            "description": "Private, no-store result."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "416": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "tags": [
+          "Labs"
+        ]
+      }
+    },
+    "/v1/labs/documents": {
+      "get": {
+        "description": "Authorizes the caller and space on every request. Experimental kinds use the Computers account gate. Reads never start jobs. Pages and payloads are bounded. Source uploads are capped at 512 KiB until resumable uploads are integrated.",
+        "operationId": "listLabDocuments",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "space",
+            "schema": {
+              "default": "me",
+              "description": "me or project:PROJECT_ID. Ownership comes from authentication.",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "schema": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabDocuments"
+                }
+              }
+            },
+            "description": "Private, no-store result."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "tags": [
+          "Labs"
+        ]
+      },
+      "post": {
+        "description": "Authorizes the caller and space on every request. Experimental kinds use the Computers account gate. Reads never start jobs. Pages and payloads are bounded. Source uploads are capped at 512 KiB until resumable uploads are integrated.",
+        "operationId": "createLabDocument",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LabCreateDocument"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabVersion"
+                }
+              }
+            },
+            "description": "Private, no-store result."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "tags": [
+          "Labs"
+        ]
+      }
+    },
+    "/v1/labs/documents/{id}": {
+      "delete": {
+        "description": "Authorizes the caller and space on every request. Experimental kinds use the Computers account gate. Reads never start jobs. Pages and payloads are bounded. Source uploads are capped at 512 KiB until resumable uploads are integrated.",
+        "operationId": "deleteLabDocument",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "space",
+            "schema": {
+              "default": "me",
+              "description": "me or project:PROJECT_ID. Ownership comes from authentication.",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabDeleted"
+                }
+              }
+            },
+            "description": "Private, no-store result."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "tags": [
+          "Labs"
+        ]
+      },
+      "get": {
+        "description": "Authorizes the caller and space on every request. Experimental kinds use the Computers account gate. Reads never start jobs. Pages and payloads are bounded. Source uploads are capped at 512 KiB until resumable uploads are integrated.",
+        "operationId": "getLabDocument",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "space",
+            "schema": {
+              "default": "me",
+              "description": "me or project:PROJECT_ID. Ownership comes from authentication.",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabDocumentMeta"
+                }
+              }
+            },
+            "description": "Private, no-store result."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "tags": [
+          "Labs"
+        ]
+      }
+    },
+    "/v1/labs/documents/{id}/events": {
+      "get": {
+        "description": "Authorizes the caller and space on every request. Experimental kinds use the Computers account gate. Reads never start jobs. Pages and payloads are bounded. Source uploads are capped at 512 KiB until resumable uploads are integrated.",
+        "operationId": "readLabEvents",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "space",
+            "schema": {
+              "default": "me",
+              "description": "me or project:PROJECT_ID. Ownership comes from authentication.",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "schema": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "since",
+            "schema": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Last-Event-ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabEvents"
+                }
+              },
+              "text/event-stream": {
+                "description": "changes events contain ordered batches; reconnect with Last-Event-ID. Authorization is rechecked before each batch; streams end after five minutes.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Private, no-store result."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "tags": [
+          "Labs"
+        ]
+      }
+    },
+    "/v1/labs/documents/{id}/notes": {
+      "get": {
+        "description": "Authorizes the caller and space on every request. Experimental kinds use the Computers account gate. Reads never start jobs. Pages and payloads are bounded. Source uploads are capped at 512 KiB until resumable uploads are integrated.",
+        "operationId": "listLabNotes",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "space",
+            "schema": {
+              "default": "me",
+              "description": "me or project:PROJECT_ID. Ownership comes from authentication.",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "schema": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabNotes"
+                }
+              }
+            },
+            "description": "Private, no-store result."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "tags": [
+          "Labs"
+        ]
+      },
+      "post": {
+        "description": "Authorizes the caller and space on every request. Experimental kinds use the Computers account gate. Reads never start jobs. Pages and payloads are bounded. Source uploads are capped at 512 KiB until resumable uploads are integrated.",
+        "operationId": "addLabNote",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LabAddNote"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabSaved"
+                }
+              }
+            },
+            "description": "Private, no-store result."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "tags": [
+          "Labs"
+        ]
+      }
+    },
+    "/v1/labs/documents/{id}/versions": {
+      "get": {
+        "description": "Authorizes the caller and space on every request. Experimental kinds use the Computers account gate. Reads never start jobs. Pages and payloads are bounded. Source uploads are capped at 512 KiB until resumable uploads are integrated.",
+        "operationId": "listLabVersions",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "space",
+            "schema": {
+              "default": "me",
+              "description": "me or project:PROJECT_ID. Ownership comes from authentication.",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "schema": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabVersions"
+                }
+              }
+            },
+            "description": "Private, no-store result."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "tags": [
+          "Labs"
+        ]
+      },
+      "post": {
+        "description": "Authorizes the caller and space on every request. Experimental kinds use the Computers account gate. Reads never start jobs. Pages and payloads are bounded. Source uploads are capped at 512 KiB until resumable uploads are integrated.",
+        "operationId": "createLabVersion",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LabEditDocument"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabVersion"
+                }
+              }
+            },
+            "description": "Private, no-store result."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "tags": [
+          "Labs"
+        ]
+      }
+    },
+    "/v1/labs/documents/{id}/versions/{n}": {
+      "get": {
+        "description": "Authorizes the caller and space on every request. Experimental kinds use the Computers account gate. Reads never start jobs. Pages and payloads are bounded. Source uploads are capped at 512 KiB until resumable uploads are integrated.",
+        "operationId": "getLabVersion",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "n",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "space",
+            "schema": {
+              "default": "me",
+              "description": "me or project:PROJECT_ID. Ownership comes from authentication.",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabVersion"
+                }
+              }
+            },
+            "description": "Private, no-store result."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "tags": [
+          "Labs"
+        ]
+      }
+    },
+    "/v1/labs/documents/{id}/versions/{n}/card": {
+      "get": {
+        "description": "Authorizes the caller and space on every request. Experimental kinds use the Computers account gate. Reads never start jobs. Pages and payloads are bounded. Source uploads are capped at 512 KiB until resumable uploads are integrated.",
+        "operationId": "getLabCard",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "n",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "space",
+            "schema": {
+              "default": "me",
+              "description": "me or project:PROJECT_ID. Ownership comes from authentication.",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabCard"
+                }
+              }
+            },
+            "description": "Private, no-store result."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "tags": [
+          "Labs"
+        ]
+      }
+    },
+    "/v1/labs/jobs": {
+      "get": {
+        "description": "Authorizes the caller and space on every request. Experimental kinds use the Computers account gate. Reads never start jobs. Pages and payloads are bounded. Source uploads are capped at 512 KiB until resumable uploads are integrated.",
+        "operationId": "listLabJobs",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "space",
+            "schema": {
+              "default": "me",
+              "description": "me or project:PROJECT_ID. Ownership comes from authentication.",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "schema": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "document",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabJobs"
+                }
+              }
+            },
+            "description": "Private, no-store result."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "tags": [
+          "Labs"
+        ]
+      },
+      "post": {
+        "description": "Authorizes the caller and space on every request. Experimental kinds use the Computers account gate. Reads never start jobs. Pages and payloads are bounded. Source uploads are capped at 512 KiB until resumable uploads are integrated.",
+        "operationId": "createLabJob",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LabCreateJob"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabJobState"
+                }
+              }
+            },
+            "description": "Private, no-store result."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "tags": [
+          "Labs"
+        ]
+      }
+    },
+    "/v1/labs/jobs/{id}": {
+      "delete": {
+        "description": "Authorizes the caller and space on every request. Experimental kinds use the Computers account gate. Reads never start jobs. Pages and payloads are bounded. Source uploads are capped at 512 KiB until resumable uploads are integrated.",
+        "operationId": "cancelLabJob",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "space",
+            "schema": {
+              "default": "me",
+              "description": "me or project:PROJECT_ID. Ownership comes from authentication.",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabJobState"
+                }
+              }
+            },
+            "description": "Private, no-store result."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "tags": [
+          "Labs"
+        ]
+      },
+      "get": {
+        "description": "Authorizes the caller and space on every request. Experimental kinds use the Computers account gate. Reads never start jobs. Pages and payloads are bounded. Source uploads are capped at 512 KiB until resumable uploads are integrated.",
+        "operationId": "getLabJob",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "space",
+            "schema": {
+              "default": "me",
+              "description": "me or project:PROJECT_ID. Ownership comes from authentication.",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabJobState"
+                }
+              }
+            },
+            "description": "Private, no-store result."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "tags": [
+          "Labs"
+        ]
+      }
+    },
+    "/v1/labs/kinds": {
+      "get": {
+        "description": "Authorizes the caller and space on every request. Experimental kinds use the Computers account gate. Reads never start jobs. Pages and payloads are bounded. Source uploads are capped at 512 KiB until resumable uploads are integrated.",
+        "operationId": "listLabKinds",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "space",
+            "schema": {
+              "default": "me",
+              "description": "me or project:PROJECT_ID. Ownership comes from authentication.",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabKinds"
+                }
+              }
+            },
+            "description": "Private, no-store result."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "tags": [
+          "Labs"
+        ]
+      }
+    },
+    "/v1/labs/kinds/{kind}/tools": {
+      "get": {
+        "description": "Authorizes the caller and space on every request. Experimental kinds use the Computers account gate. Reads never start jobs. Pages and payloads are bounded. Source uploads are capped at 512 KiB until resumable uploads are integrated.",
+        "operationId": "listLabTools",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "space",
+            "schema": {
+              "default": "me",
+              "description": "me or project:PROJECT_ID. Ownership comes from authentication.",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabTools"
+                }
+              }
+            },
+            "description": "Private, no-store result."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "tags": [
+          "Labs"
+        ]
+      }
+    },
+    "/v1/labs/kinds/{kind}/tools/{name}": {
+      "post": {
+        "description": "Authorizes the caller and space on every request. Experimental kinds use the Computers account gate. Reads never start jobs. Pages and payloads are bounded. Source uploads are capped at 512 KiB until resumable uploads are integrated.",
+        "operationId": "callLabTool",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LabToolCall"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabToolResult"
+                }
+              }
+            },
+            "description": "Private, no-store result."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "tags": [
+          "Labs"
+        ]
+      }
+    },
+    "/v1/labs/uploads": {
+      "post": {
+        "description": "Authorizes the caller and space on every request. Experimental kinds use the Computers account gate. Reads never start jobs. Pages and payloads are bounded. Source uploads are capped at 512 KiB until resumable uploads are integrated.",
+        "operationId": "uploadLabSource",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LabUpload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabArtifact"
+                }
+              }
+            },
+            "description": "Private, no-store result."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "tags": [
+          "Labs"
+        ]
+      }
+    }
+  },
+  "servers": [
+    {
+      "url": "https://api.openagents.com"
+    }
+  ]
+}

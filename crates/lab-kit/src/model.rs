@@ -6,6 +6,7 @@ use serde_json::Value;
 
 /// Where Labs live: a person's own space or a project. Access follows
 /// project membership; the store and API decide it, never this value alone.
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum SpaceRef {
@@ -13,6 +14,7 @@ pub enum SpaceRef {
     Project { project: String },
 }
 
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DocumentMeta {
@@ -29,6 +31,7 @@ pub struct DocumentMeta {
 
 /// One immutable version. Made only by a kind's `apply` (through the store),
 /// never written directly.
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Version {
@@ -69,6 +72,7 @@ impl Version {
 
 /// What a kind's checks found. Problems that don't block saving (a warning
 /// a person may accept) live here; blocking ones are refusals.
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Report {
@@ -80,6 +84,7 @@ pub struct Report {
 }
 
 /// How a file may travel.
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AssetClass {
@@ -92,6 +97,7 @@ pub enum AssetClass {
     NoTraining,
 }
 
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AssetEntry {
@@ -102,6 +108,7 @@ pub struct AssetEntry {
 }
 
 /// A file made from (or attached to) a version.
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Artifact {
@@ -116,6 +123,7 @@ pub struct Artifact {
     pub no_training: bool,
 }
 
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ArtifactRole {
@@ -131,6 +139,7 @@ pub enum ArtifactRole {
 
 /// Work that makes artifacts. Its idempotency key is the version's digest,
 /// the type and the parameters, so asking twice never runs it twice.
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct JobSpec {
@@ -158,6 +167,7 @@ impl JobSpec {
 }
 
 /// What a placement must offer to take a job.
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Requirements {
@@ -173,6 +183,7 @@ pub struct Requirements {
     pub private_local: bool,
 }
 
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum JobStatus {
@@ -191,6 +202,7 @@ impl JobStatus {
     }
 }
 
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct JobState {
@@ -209,6 +221,7 @@ pub struct JobState {
 }
 
 /// Where in a version a note points.
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "at", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Locator {
@@ -234,6 +247,7 @@ pub enum Locator {
     },
 }
 
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Note {
@@ -246,6 +260,7 @@ pub struct Note {
 
 /// An immutable version, possibly of another kind's document (a CAD part
 /// placed in a Robot Lab scene). Reading through it checks access to both.
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Reference {

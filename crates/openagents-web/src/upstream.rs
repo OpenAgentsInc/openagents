@@ -197,6 +197,8 @@ pub fn owned(path: &str) -> bool {
         || path == "/v1/agent-definitions"
         || path.starts_with("/v1/agent-definitions/")
         || path.starts_with("/v1/home/")
+        || path == "/v1/labs"
+        || path.starts_with("/v1/labs/")
         || crate::own_runs::owns(path)
         || crate::mac_jobs::owns(path)
         || crate::work_runs::owns(path)

@@ -518,3 +518,36 @@ impl Objects for GcsObjects {
         Ok(Some(url.into()))
     }
 }
+
+/// The runtime service account on Google Cloud. Hosts using another credential
+/// source can supply their own `Bearer` implementation instead.
+pub struct MetadataBearer {
+    client: reqwest::Client,
+}
+impl MetadataBearer {
+    pub fn new() -> Result<Self> {
+        Ok(Self {
+            client: reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(5))
+                .redirect(reqwest::redirect::Policy::none())
+                .build()
+                .map_err(Error::storage)?,
+        })
+    }
+}
+#[async_trait]
+impl Bearer for MetadataBearer {
+    async fn token(&self) -> Result<String> {
+        let response=self.client.get("http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token").header("Metadata-Flavor","Google").send().await.map_err(Error::storage)?.error_for_status().map_err(Error::storage)?;
+        let value: Value =
+            serde_json::from_slice(&GcsObjects::response_bytes(response, 16_384).await?)?;
+        let token = value["access_token"]
+            .as_str()
+            .filter(|s| !s.is_empty() && s.len() <= 8192)
+            .ok_or(Error::Corrupt)?;
+        if value["expires_in"].as_u64().unwrap_or(0) <= 60 {
+            return Err(Error::Corrupt);
+        }
+        Ok(token.into())
+    }
+}

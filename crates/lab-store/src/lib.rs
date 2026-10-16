@@ -24,6 +24,8 @@ pub enum Error {
     NotFound,
     #[error("This document changed. Reload it and try again.")]
     Conflict,
+    #[error("This lab has reached its hourly limit. Try again later.")]
+    RateLimited,
     #[error("This worker can no longer change the job.")]
     LeaseLost,
     #[error("{0}")]
@@ -80,6 +82,9 @@ pub struct CheckedDraft {
     draft: Draft,
 }
 impl CheckedDraft {
+    pub fn content(&self) -> &Value {
+        &self.draft.content
+    }
     pub fn initial<K: LabKind>(
         schema: &str,
         content: Value,
@@ -166,13 +171,7 @@ pub struct Page<T> {
     pub items: Vec<T>,
     pub next: Option<u64>,
 }
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-pub struct Event {
-    pub cursor: u64,
-    pub document: String,
-    pub at_unix_ms: u64,
-    pub change: Value,
-}
+pub use lab_kit::api::Event;
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Lease {
     pub job: JobState,
@@ -230,6 +229,12 @@ pub trait LabStore: Send + Sync {
     ) -> Result<JobState>;
     async fn jobs(&self, document: &str, after: u64, limit: u64) -> Result<Page<JobState>>;
     async fn job(&self, id: &str) -> Result<JobState>;
+    async fn version_jobs(
+        &self,
+        version: &Reference,
+        after: u64,
+        limit: u64,
+    ) -> Result<Page<JobState>>;
     async fn claim(&self, id: &str, worker: &str, now: u64, duration_ms: u64) -> Result<Lease>;
     async fn start(&self, lease: &Lease, now: u64) -> Result<Lease>;
     async fn heartbeat(&self, lease: &Lease, now: u64, duration_ms: u64) -> Result<Lease>;
@@ -254,6 +259,28 @@ pub struct Store {
     namespace: String,
 }
 impl Store {
+    /// Bind a retry identity before admitting work. Reuse requires identical input.
+    pub async fn reserve_request(&self, key: &str, input: &Value) -> Result<()> {
+        text(key, 128)?;
+        let key = sha(key.as_bytes());
+        let fingerprint = digest(input);
+        self.update(|s| {
+            if let Some(prior) = s.requests.get(&key) {
+                return if prior == &fingerprint {
+                    Ok(())
+                } else {
+                    Err(Error::Conflict)
+                };
+            }
+            require(
+                s.requests.len() < 100_000,
+                "This space has reached its request limit.",
+            )?;
+            s.requests.insert(key.clone(), fingerprint.clone());
+            Ok(())
+        })
+        .await
+    }
     /// Call only after authenticating and authorizing access to `space`.
     pub fn new(backend: Arc<dyn backend::Backend>, space: &SpaceRef) -> Result<Self> {
         match space {
@@ -620,16 +647,16 @@ impl LabStore for Store {
                 )?;
                 return Ok(job.state.clone());
             }
-            require(
-                (s.jobs
-                    .values()
-                    .filter(|j| {
-                        j.state.spec.kind == spec.kind && now.saturating_sub(j.created) < 3_600_000
-                    })
-                    .count() as u64)
-                    < manifest.limits.runs_per_hour,
-                "This lab has reached its hourly limit. Try again later.",
-            )?;
+            if s.jobs
+                .values()
+                .filter(|j| {
+                    j.state.spec.kind == spec.kind && now.saturating_sub(j.created) < 3_600_000
+                })
+                .count() as u64
+                >= manifest.limits.runs_per_hour
+            {
+                return Err(Error::RateLimited);
+            }
             let job = JobState {
                 id: id.clone(),
                 spec: spec.clone(),
@@ -664,6 +691,24 @@ impl LabStore for Store {
             s.jobs
                 .values()
                 .filter(|j| j.state.spec.version.document == document)
+                .map(|j| j.state.clone()),
+            after,
+            limit,
+        )
+    }
+    async fn version_jobs(
+        &self,
+        version: &Reference,
+        after: u64,
+        limit: u64,
+    ) -> Result<Page<JobState>> {
+        let (_, state) = self.state().await?;
+        state.reference(version)?;
+        page(
+            state
+                .jobs
+                .values()
+                .filter(|j| j.state.spec.version == *version)
                 .map(|j| j.state.clone()),
             after,
             limit,

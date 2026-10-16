@@ -8,6 +8,7 @@
 //! (`lab-store`), the API (`/v1/labs`), the SDK and every app use these
 //! types, and a client can check a change before sending it.
 
+pub mod api;
 pub mod card;
 pub mod change;
 pub mod digest;
@@ -22,6 +23,7 @@ pub use kind::{Draft, KindManifest, LabKind, Limits, Measurements, ToolDecl, Wan
 pub use model::*;
 
 /// A change a kind won't accept, with the sentence every surface shows.
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize, thiserror::Error)]
 #[error("{message}")]
 pub struct Refusal {

@@ -8,6 +8,7 @@ use crate::{Artifact, Card, Change, JobSpec, JobState, Refusal, Report, Version,
 
 /// What a kind declares about itself. Served by `GET /labs/kinds`, and
 /// enough for a chat to offer its tools and for a client to draw its cards.
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct KindManifest {
@@ -27,6 +28,7 @@ pub struct KindManifest {
 }
 
 /// A tool for a model loop, as OpenAI-style function declarations write it.
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ToolDecl {
@@ -35,6 +37,7 @@ pub struct ToolDecl {
     pub parameters: Value,
 }
 
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Limits {
@@ -63,6 +66,7 @@ impl Default for Limits {
 pub type Measurements = Value;
 
 /// A new version before the store numbers and saves it.
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, PartialEq)]
 pub struct Draft {
     pub content: Value,
@@ -72,6 +76,7 @@ pub struct Draft {
 }
 
 /// What a caller wants made from a version.
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "want", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Want {
