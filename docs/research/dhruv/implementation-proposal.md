@@ -138,6 +138,8 @@ an ambiguous payment.
    side. Specify whether confirmed income can replenish a finite allowance;
    default to no automatic increase. Publish fixtures and exact CAP interfaces
    for the supported profile without claiming full SOV conformance.
+   `sov-treasury` now pins that schema and enforces it over `pay-ledger`, the
+   wallet adapter, and the X402 router and buyer ledger (#11741).
 2. **Join settlement to credit fulfillment.** Link the accepted LAB obligation,
    authenticated receive, worker payout attempt, confirmed wallet income,
    X402 purchase, account-credit callback, and metered use through their

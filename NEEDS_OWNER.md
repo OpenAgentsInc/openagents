@@ -1,3 +1,14 @@
+## Qualify the agent treasury loop with real money (#11741)
+
+The treasury binding runs the full earn, receive, buy, and use loop with fake
+money: real BOLT11 test invoices, the real X402 router and replay store, and
+an in-memory worker ledger. Before an agent spends real funds, choose a
+small budget. Then mount the production wallet adapter (it needs a hard fee
+ceiling and payment lookup) and the live top-up resource on testnet or
+mainnet. Confirm that one real worker payout is credited exactly once and
+that one approved top-up credits the API account exactly once. See
+[the treasury guide](crates/sov-treasury/README.md). No real money has moved.
+
 ## Approve the LND receive canary and check MDK Pro compatibility (#11754)
 
 The optional LND credit receiver, original-invoice recovery after rollback,

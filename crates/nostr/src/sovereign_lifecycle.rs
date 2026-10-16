@@ -109,15 +109,7 @@ fn nested(value: &Value) -> Result<()> {
                 }
                 if matches!(
                     key.as_str(),
-                    "agent"
-                        | "authority"
-                        | "signer"
-                        | "transport"
-                        | "recovery"
-                        | "requester"
-                        | "approver"
-                        | "request"
-                        | "nonce"
+                    "agent" | "activation" | "controller" | "dispatcher" | "command"
                 ) && let Some(text) = value.as_str()
                 {
                     hex(text)?;

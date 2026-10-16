@@ -126,8 +126,8 @@ and a portable client in `workspace-host`, alongside activity summaries.
 ENV has SSH host management and the `env-host` allocator (leases, exact
 materialization, bound attachments, accounted cleanup), AUTO has local
 standing jobs, and SOV has a bounded local no-spend lifecycle plus NIP-46 remote custody and
-guardian quorums in `sov-custody` and fenced transfer/recovery in
-`sov-lifecycle`. WORK has a native authority, conditional
+guardian quorums in `sov-custody`, fenced transfer/recovery in
+`sov-lifecycle`, and the treasury binding in `sov-treasury`. WORK has a native authority, conditional
 commands, explicit pure CJ delegation and independent checks, scoped WS readers,
 GitHub import proposals, and an admitted LAB port in `work-host`.
 COORD has native scopes, fenced CJ worker intake, shared child call allowances,

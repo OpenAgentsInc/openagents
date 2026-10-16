@@ -7,8 +7,11 @@ custody and guardian quorum admission (see the
 [Rust custody profile](#rust-custody-profile)), and
 [`sov-lifecycle`](../../crates/sov-lifecycle/README.md) implements fenced
 two-host transfer and bounded recovery (see the
-[Rust lifecycle profile](#rust-lifecycle-profile)). Treasury and hardware and
-threshold custody remain unfinished
+[Rust lifecycle profile](#rust-lifecycle-profile)).
+[`sov-treasury`](../../crates/sov-treasury/README.md) implements the treasury
+binding over the existing ledger, wallet, and X402 owners (see the
+[Rust treasury profile](#rust-treasury-profile)). Hardware and threshold
+custody and real-money qualification remain unfinished
 ([backlog](https://github.com/OpenAgentsInc/openagents/issues/11729)).
 The [shared contracts](contracts.md) are normative. SOV composes durable agent
 identity, bounded initiative, private state, key custody, and economic activity
@@ -570,3 +573,23 @@ activation and checkpoint records above, plus these supported records:
 The coordinator is the trusted shared fencing authority bound at admission. A
 transfer completes only when the authority has signed, the target has
 accepted, and every listed dispatcher has acknowledged fencing.
+
+## Rust treasury profile
+
+The [treasury schemas](schemas/sovereign-treasury.v1.json) pin these supported
+records:
+
+| Record | Fields |
+| --- | --- |
+| `openagents.sovereign-treasury-policy.v1` | `agent`, `authority`, `revision`, `previous`, `account` (`{id, control}`: the API account and retained evidence of verified control), `beneficiary` (the earnings-ledger party), `wallet` (`{adapter, account, fee_limit, lookup}`), `authorizer`, `destinations` (`{provider, resource}` top-up resources), `profile` (`x402-http-lightning`), `network` (`mainnet` or `testnet`; `regtest` refuses), `unit` (`msat`), `per_operation_msat`, `fee_ceiling_msat`, `allowance_msat`, `period_seconds`, `income` (`{mode: none or replenish, max_msat}`), `spenders` (`{principal, cap_msat}`), `reconciliation`, `starts_at`, `expires_at`. |
+| `openagents.sovereign-income.v1` | `agent`, `policy`, `payout` (ledger payout ID), `amount_msat`, `wallet_reference`. |
+| `openagents.sovereign-purchase-request.v1` | `agent`, `policy`, `purchase`, `requester`, `destination`, `quote`, `amount_msat`, `deadline`. |
+| `openagents.sovereign-purchase-approval.v1` | `request`, `authorizer`, `expires_at`: the authorizer's approval of exact request bytes. |
+| `openagents.sovereign-purchase-receipt.v1` | `request`, `status` (`completed`, `refused`, or `unknown`), `payment`, `credit`, `fee_msat`, `reason`. Completed needs both payment and credit evidence. |
+| `openagents.sovereign-treasury-statement.v1` | `policy`, `period_start`, `allowance_msat`, `replenished_msat`, `settled_msat`, `held_msat`, `unknown_msat`, `income`, `purchases`. A private view, not a ledger. |
+
+Income counts only from a `sent` payout to the beneficiary that the agent's
+wallet has received, and only once. It raises the allowance only under
+`income.mode = "replenish"`. Every purchase holds its amount plus the fee
+ceiling before the wallet is used. Unknown outcomes keep their holds across
+period rollover until they are reconciled by exact payment hash.

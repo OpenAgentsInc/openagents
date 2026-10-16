@@ -51,6 +51,7 @@ pub mod run;
 pub mod session;
 pub mod sovereign;
 pub mod sovereign_lifecycle;
+pub mod sovereign_treasury;
 pub mod thread_window;
 pub mod work;
 pub mod workspace;

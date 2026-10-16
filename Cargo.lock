@@ -15639,6 +15639,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "sov-treasury"
+version = "1.0.0"
+dependencies = [
+ "hex",
+ "nostr",
+ "openagents-x402",
+ "pay-ledger",
+ "secp256k1 0.31.1",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tempfile",
+ "workspace-host",
+]
+
+[[package]]
 name = "spade"
 version = "2.15.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
