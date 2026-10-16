@@ -986,15 +986,19 @@ impl Store {
             .chat_ids_page(&owner_digest(owner), false, after, limit)
             .await?;
         let hidden = crate::test_runs::hidden(self, owner).await?;
-        let mut chats = Vec::new();
-        for id in ids {
-            if !hidden.contains(&id)
-                && let Some(loaded) = self.load(owner, &id).await?
-                && !loaded.conversation.deleted()
-            {
-                chats.push(map(&loaded.conversation));
-            }
-        }
+        // Load eight at a time, keeping ID order: one at a time made a page
+        // of 200 take over ten seconds, past the phone client's deadline.
+        let loaded: Vec<_> = stream::iter(ids.into_iter().filter(|id| !hidden.contains(id)))
+            .map(|id| async move { self.load(owner, &id).await })
+            .buffered(8)
+            .try_collect()
+            .await?;
+        let chats = loaded
+            .into_iter()
+            .flatten()
+            .filter(|loaded| !loaded.conversation.deleted())
+            .map(|loaded| map(&loaded.conversation))
+            .collect();
         Ok((chats, next))
     }
 
