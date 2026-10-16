@@ -400,8 +400,8 @@ pub struct ThemeSelection {
 impl Default for ThemeSelection {
     fn default() -> Self {
         Self {
-            light: "zeron-light".into(),
-            dark: "zeron-dark".into(),
+            light: "coder-light".into(),
+            dark: "coder-noir".into(),
         }
     }
 }
@@ -554,12 +554,12 @@ impl ThemeRegistry {
         self.variant(selection.variant_id(appearance))
             .or_else(|| {
                 self.variant(if appearance.is_dark() {
-                    "zeron-dark"
+                    "coder-noir"
                 } else {
-                    "zeron-light"
+                    "coder-light"
                 })
             })
-            .expect("the built-in registry always contains both Zeron variants")
+            .expect("the built-in registry always contains both Coder variants")
     }
 
     pub fn validate(&self) -> Vec<ValidationIssue> {
@@ -811,7 +811,7 @@ mod tests {
     #[test]
     fn builtins_have_complete_provenance_and_no_validation_errors() {
         let registry = ThemeRegistry::builtin();
-        assert_eq!(registry.families.len(), 19);
+        assert_eq!(registry.families.len(), 20);
         assert!(registry.variant("zeron-light").is_some());
         assert!(registry.variant("zeron-dark").is_some());
         let errors: Vec<_> = registry
@@ -823,6 +823,58 @@ mod tests {
     }
 
     #[test]
+    fn coder_defaults_preserve_saved_choices_and_recover_missing_themes() {
+        let registry = ThemeRegistry::builtin();
+        let defaults = ThemeSelection::default();
+        assert_eq!(
+            registry.resolve(&defaults, Appearance::Light).id,
+            "coder-light"
+        );
+        assert_eq!(
+            registry.resolve(&defaults, Appearance::Dark).id,
+            "coder-noir"
+        );
+        let saved = ThemeSelection {
+            light: "zeron-light".into(),
+            dark: "github-dark".into(),
+        };
+        assert_eq!(registry.resolve(&saved, Appearance::Dark).id, "github-dark");
+        let missing = ThemeSelection {
+            light: "removed".into(),
+            dark: "removed".into(),
+        };
+        assert_eq!(
+            registry.resolve(&missing, Appearance::Light).id,
+            "coder-light"
+        );
+        assert_eq!(
+            registry.resolve(&missing, Appearance::Dark).id,
+            "coder-noir"
+        );
+        for (id, bg, fg, solid) in [
+            ("coder-noir", "#0a0a0a", "#ededed", "#ededed"),
+            ("coder-light", "#ffffff", "#0d0d0d", "#181818"),
+        ] {
+            let theme = registry.variant(id).unwrap();
+            assert_eq!(theme.colors.background, bg.parse::<Color>().unwrap());
+            assert_eq!(theme.colors.text, fg.parse::<Color>().unwrap());
+            assert_eq!(theme.colors.solid, solid.parse::<Color>().unwrap());
+            assert_eq!(
+                theme.recommended_surface_treatment,
+                SurfaceTreatment::Opaque
+            );
+            assert_eq!(
+                theme.terminal.background,
+                "#0e0e0e".parse::<Color>().unwrap()
+            );
+            assert_eq!(
+                theme.accent_for(AccentSelection::ThemeDefault),
+                theme.accent
+            );
+        }
+    }
+
+    #[test]
     fn visual_fixture_matrix_covers_every_variant_and_scene() {
         let registry = ThemeRegistry::builtin();
         let variants = registry
@@ -830,7 +882,7 @@ mod tests {
             .iter()
             .map(|family| family.variants.len())
             .sum::<usize>();
-        assert_eq!(variants, 30);
-        assert_eq!(variants * VisualFixture::ALL.len(), 300);
+        assert_eq!(variants, 32);
+        assert_eq!(variants * VisualFixture::ALL.len(), 320);
     }
 }

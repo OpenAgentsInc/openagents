@@ -41,8 +41,9 @@ Windows using their in-app renderers. Windows uses the bounded Direct3D
 `BackdropBlur` implementation; native window Acrylic remains independent.
 The preference remains portable even where a particular surface cannot honor blur.
 
-The built-in registry contains 30 variants across 19 families:
+The built-in registry contains 32 variants across 20 families:
 
+- Coder Light and Coder Noir (the default light and dark choices)
 - Zeron Light and Dark
 - VS Code Light+ and Dark+
 - Catppuccin Latte and Mocha
@@ -62,6 +63,12 @@ The built-in registry contains 30 variants across 19 families:
 - Shades of Purple
 - Cobalt2
 - Andromeda
+
+Coder's palettes are mapped from the public OpenAgents `oa-tokens` table at
+[`87038ce756`](https://github.com/OpenAgentsInc/openagents/tree/87038ce75611c95d1bc6767e949aed4a2f49c89d/crates/oa-tokens/src).
+They recommend opaque surfaces, use neutral primary controls, and keep terminal
+panels in Coder Noir in both appearances. Existing saved theme choices remain
+selected. Accent and glass overrides still apply.
 
 Every bundled variant records source URL, exact upstream revision, license, and
 a SHA-256 hash of the resolved curated definition.

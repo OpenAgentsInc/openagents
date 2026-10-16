@@ -12,6 +12,7 @@ pub fn builtin_registry() -> &'static ThemeRegistry {
     static REGISTRY: OnceLock<ThemeRegistry> = OnceLock::new();
     REGISTRY.get_or_init(|| ThemeRegistry {
         families: vec![
+            family("coder", "Coder", vec![coder(false), coder(true)]),
             family("zeron", "Zeron", vec![zeron_light(), zeron_dark()]),
             family(
                 "vscode-default",
@@ -142,7 +143,7 @@ fn variant(seed: Seeds<'_>) -> ThemeVariant {
         diff_hunk: accent.primary.with_alpha(if dark { 0.08 } else { 0.07 }),
     };
     let terminal_background = c(seed.terminal_background);
-    let mut variant = ThemeVariant {
+    let variant = ThemeVariant {
         id: seed.id.into(),
         family_id: seed.family_id.into(),
         name: seed.name.into(),
@@ -159,6 +160,10 @@ fn variant(seed: Seeds<'_>) -> ThemeVariant {
         },
         source: seed.source,
     };
+    seal(variant)
+}
+
+fn seal(mut variant: ThemeVariant) -> ThemeVariant {
     // Hash the checked-in resolved definition itself (with the hash field
     // blanked), not merely its source URL. This makes provenance sensitive to
     // curation edits as well as upstream revision changes.
@@ -235,6 +240,116 @@ const ANSI_LIGHT: [&str; 16] = [
     "#1f1f1f", "#dc2626", "#16a34a", "#b45309", "#2563eb", "#9333ea", "#0e7490", "#3f3f46",
     "#71717a", "#b91c1c", "#15803d", "#92400e", "#1d4ed8", "#7e22ce", "#155e75", "#18181b",
 ];
+
+// Public oa-tokens palette snapshot. Keep the revision with the copied values;
+// the desktop must build without a sibling OpenAgents checkout.
+fn coder(dark: bool) -> ThemeVariant {
+    let mut theme = if dark { zeron_dark() } else { zeron_light() };
+    theme.id = if dark { "coder-noir" } else { "coder-light" }.into();
+    theme.family_id = "coder".into();
+    theme.name = if dark { "Coder Noir" } else { "Coder Light" }.into();
+    theme.recommended_surface_treatment = SurfaceTreatment::Opaque;
+    let [
+        background,
+        shell,
+        raised,
+        card,
+        input,
+        text,
+        muted,
+        faint,
+        border,
+        border_strong,
+        solid,
+        on_solid,
+        danger,
+        warning,
+        success,
+    ] = if dark {
+        [
+            "#0a0a0a", "#101010", "#191919", "#0e0e0e", "#1e1e1e", "#ededed", "#818181", "#656565",
+            "#2c2c2c", "#404040", "#ededed", "#0a0a0a", "#ff4d42", "#e6c15c", "#9fd08a",
+        ]
+    } else {
+        [
+            "#ffffff",
+            "#f9f9f9",
+            "#ffffff",
+            "#f3f3f3",
+            "#f9f9f9",
+            "#0d0d0d",
+            "#5d5d5d",
+            "#8f8f8f",
+            "#0d0d0d1a",
+            "#0d0d0d26",
+            "#181818",
+            "#ffffff",
+            "#911e1b",
+            "#923b0f",
+            "#00692a",
+        ]
+    }
+    .map(c);
+    let accent = AccentRoles::derive(solid, theme.appearance, background);
+    theme.colors = ThemeColors {
+        background,
+        shell,
+        raised,
+        card,
+        dialog: raised,
+        overlay: raised,
+        hover: text.with_alpha(if dark { 0.08 } else { 0.06 }),
+        active: accent.wash,
+        border,
+        border_strong,
+        text,
+        text_muted: muted,
+        text_faint: faint,
+        solid,
+        on_solid,
+        danger,
+        danger_muted: danger,
+        warning,
+        warning_muted: warning,
+        success,
+        success_muted: success,
+        input,
+        cursor: text,
+        diff_add: success,
+        diff_delete: danger,
+        diff_hunk: accent.wash,
+    };
+    theme.accent = accent;
+    if !dark {
+        // Coder Light uses a blue caret with neutral primary controls.
+        theme.accent.caret = c("#0169cc");
+    }
+    // Terminal panels use Coder Noir in both appearances.
+    theme.terminal = TerminalPalette {
+        background: c("#0e0e0e"),
+        foreground: c("#ededed"),
+        selection: c("#333333"),
+        ansi: [
+            "#1a1a1a", "#ff4d42", "#9fd08a", "#e6c15c", "#7fb2e8", "#d093d0", "#74cfd1", "#c9c9c9",
+            "#666666", "#ff6e64", "#b7e2a3", "#f2d47c", "#9dc7f2", "#e0aede", "#93e1e2", "#ffffff",
+        ]
+        .map(c),
+    };
+    if dark {
+        theme.syntax = syntax([
+            "#818181", "#d093d0", "#9fd08a", "#e6c15c", "#74cfd1", "#7fb2e8", "#d093d0", "#ededed",
+            "#c9c9c9", "#d093d0", "#74cfd1", "#ff4d42",
+        ]);
+    }
+    theme.source = source(
+        &theme.id,
+        "native",
+        "https://github.com/OpenAgentsInc/openagents/tree/87038ce75611c95d1bc6767e949aed4a2f49c89d/crates/oa-tokens/src",
+        "87038ce75611c95d1bc6767e949aed4a2f49c89d",
+        "Apache-2.0",
+    );
+    seal(theme)
+}
 
 fn zeron_dark() -> ThemeVariant {
     variant(Seeds {

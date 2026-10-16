@@ -1377,14 +1377,14 @@ impl Theme {
     ) -> Self {
         let registry = ThemeRegistry::active();
         let fallback_id = match appearance {
-            Appearance::Dark => "zeron-dark",
-            Appearance::Light => "zeron-light",
+            Appearance::Dark => "coder-noir",
+            Appearance::Light => "coder-light",
         };
         let variant = registry
             .variant(variant_id)
             .filter(|variant| model_appearance(variant.appearance) == appearance)
             .or_else(|| registry.variant(fallback_id))
-            .expect("the built-in registry contains both Zeron appearances");
+            .expect("the built-in registry contains both Coder appearances");
         if let Some(color) = wallpaper_color {
             let mut variant = variant.clone();
             crate::settings::wallpaper_colors::tint_variant(&mut variant, color);
