@@ -57,6 +57,51 @@ impl PlatformStore {
     fn key(&self, deployment: &Deployment) -> String {
         key_for(&self.profile, deployment)
     }
+
+    fn previous_app_login(
+        &self,
+        deployment: &Deployment,
+    ) -> Result<Option<CredentialRecord>, StorageError> {
+        if self.service != "com.openagents.app.account" || deployment != &Deployment::production() {
+            return Ok(None);
+        }
+        let Some(mut bytes) = self
+            .passwords
+            .get("com.openagents.app.account-session", "openagents.com")?
+        else {
+            return Ok(None);
+        };
+        // Builds through 62 used this app-owned Keychain entry and shape.
+        #[derive(serde::Deserialize)]
+        struct Previous {
+            origin: String,
+            account: String,
+            label: String,
+            expires_at: u64,
+            token: String,
+        }
+        let previous = if bytes.len() <= 32 * 1024 {
+            serde_json::from_slice::<Previous>(&bytes).ok()
+        } else {
+            None
+        };
+        bytes.fill(0);
+        let Some(previous) = previous else {
+            return Ok(None);
+        };
+        if previous.origin.trim_end_matches('/') != "https://openagents.com"
+            || !previous.token.starts_with("sess_")
+        {
+            return Ok(None);
+        }
+        serde_json::from_value(serde_json::json!({
+            "deployment": deployment,
+            "account": {"id": previous.account, "label": previous.label},
+            "expires_at": previous.expires_at, "credential": previous.token,
+        }))
+        .map(Some)
+        .map_err(|_| StorageError::Unavailable)
+    }
 }
 fn key_for(profile: &str, deployment: &Deployment) -> String {
     format!(
@@ -136,6 +181,11 @@ impl CredentialStore for PlatformStore {
                     }
                 }
                 found = Some(record);
+            }
+            if found.is_none() {
+                found = self
+                    .previous_app_login(deployment)?
+                    .filter(|record| !record.expired(now));
             }
             if let Some(record) = found {
                 self.save(&record)?;
@@ -410,6 +460,35 @@ mod tests {
                 .expires_at(),
             Some(u64::MAX)
         );
+    }
+
+    #[test]
+    fn the_previous_mobile_app_login_carries_over_without_reviving_sign_out() {
+        let memory = Arc::new(Memory::default());
+        let previous = serde_json::to_vec(&serde_json::json!({
+            "origin": "https://openagents.com", "account": "acct_previous",
+            "label": "Fixture", "expires_at": u64::MAX, "token": "sess_fixture",
+        }))
+        .unwrap();
+        memory
+            .set(
+                "com.openagents.app.account-session",
+                "openagents.com",
+                &previous,
+            )
+            .unwrap();
+        let mut app =
+            PlatformStore::mobile("com.openagents.app.account".into(), path("new", "core"));
+        app.passwords = memory.clone();
+        let deployment = Deployment::production();
+        assert_eq!(
+            app.load(&deployment).unwrap().unwrap().account().id,
+            "acct_previous"
+        );
+        app.clear(&deployment).unwrap();
+        assert!(app.load(&deployment).unwrap().is_none());
+        let other = Deployment::new("https://other.example/v1", "https://openagents.com").unwrap();
+        assert!(app.load(&other).unwrap().is_none());
     }
 
     #[test]
