@@ -1,0 +1,79 @@
+{
+  "issue": 11830,
+  "desktop_repository": "https://github.com/OpenAgentsInc/coder-desktop",
+  "desktop_commit": "4c1530fd08ab46294764d96d30eaff2ce3e4afd3",
+  "sdk_commit": "4b5b70d72b1f1d142170417c283937876dc5734d",
+  "platform": {
+    "os": "macOS 26.4",
+    "build": "25E246",
+    "architecture": "arm64",
+    "rust": "1.98.1"
+  },
+  "checks": [
+    {
+      "command": "cargo test -p coder-account",
+      "passed": 16
+    },
+    {
+      "command": "cargo test -p zeron-ui --lib navigation",
+      "passed": 36
+    },
+    {
+      "command": "cargo build -p zeron-ui --example account-fixture --features account-fixture",
+      "result": "passed"
+    },
+    {
+      "command": "cargo check -p zeron-ui --example account-fixture --features account-fixture",
+      "result": "passed"
+    },
+    {
+      "command": "openagents browser run -- python3 scripts/check-account-fixture.py --history BINARY SCRATCH",
+      "result": "passed"
+    },
+    {
+      "command": "rustfmt --check (new Rust files and fixture); git diff --check",
+      "result": "passed; unrelated existing shell formatting kept separate"
+    }
+  ],
+  "native_journey": {
+    "initial_page": 200,
+    "after_explicit_more": 205,
+    "captures": [
+      "sidebar-200.png",
+      "sidebar-205-pinned.png",
+      "selected-existing.png",
+      "archived.png",
+      "shared-project.png",
+      "offline-retry.png",
+      "signed-out.png"
+    ],
+    "checked": [
+      "duplicate titles and all three source badges",
+      "loaded pin and project ordering, activity dates",
+      "archived selection without restoring it",
+      "explicit shared-project index selection",
+      "503 retains an explicitly stale list and supports retry",
+      "saved selection uses its own route and account-bound chat reference",
+      "selection leaves local chat selection empty, local chat list empty, and engine absent",
+      "sign-out clears rows and selection and exits the saved route"
+    ],
+    "cleanup": "Native process exited and temporary browser profile was removed; credentials, chats, projects, and all API data were synthetic and local"
+  },
+  "model_coverage": [
+    "more than 200 chats and explicit end",
+    "account A and B use identical chat IDs with separate contexts",
+    "late completion after logout or account switch",
+    "deleted rows removed by a successful refresh",
+    "shared access loss removes rows and project name",
+    "failed reads are distinct from an empty account",
+    "no task/host/write routes needed for any source"
+  ],
+  "limits": [
+    "At most 200 summaries per explicit page; ordering applies to loaded rows",
+    "Owned and selected shared-project indexes are separate views; shared indexes load on selection",
+    "Project metadata also pages explicitly; summaries never require transcript scans",
+    "Cache is memory-only; no offline disk cache or upload/import of local workspace history",
+    "The saved route currently shows the existing-chat summary; full transcript rendering is #11831",
+    "Real account Keychain prompts remain the owner check already recorded for #11829"
+  ]
+}
