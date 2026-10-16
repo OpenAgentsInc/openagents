@@ -1,0 +1,99 @@
+{
+  "extends": "sync-base.json",
+  "name": "four-apps-web-pan",
+  "cut": "Glide across the web conversation on the display, with the terminal softly blurred behind it.",
+  "duration": 4,
+  "devices": [
+    {
+      "type": "display",
+      "finish": "silver",
+      "pose": {
+        "location": [
+          0,
+          0,
+          0
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "screen": {
+        "video": "$SYNC/web.mp4",
+        "in": 4,
+        "brightness": 1.6,
+        "fit": "contain"
+      }
+    },
+    {
+      "type": "macbook",
+      "size": "14",
+      "finish": "silver",
+      "open": 112,
+      "pose": {
+        "location": [
+          0.44,
+          0.42,
+          0
+        ],
+        "rotation": [
+          0,
+          0,
+          -15
+        ]
+      },
+      "screen": {
+        "video": "$SYNC/terminal.mp4",
+        "in": 4,
+        "brightness": 1.35,
+        "fit": "contain"
+      }
+    }
+  ],
+  "camera": {
+    "ease": "gentle",
+    "keys": [
+      {
+        "t": 0,
+        "pos": [
+          -0.07,
+          -0.73,
+          0.36
+        ],
+        "target": [
+          0.04,
+          0,
+          0.29
+        ],
+        "lens": 50,
+        "fstop": 3.5,
+        "focus_target": [
+          0.04,
+          -0.01503,
+          0.29
+        ]
+      },
+      {
+        "t": 4,
+        "pos": [
+          0.08,
+          -0.71,
+          0.34
+        ],
+        "target": [
+          0.19,
+          0,
+          0.27
+        ],
+        "lens": 50,
+        "fstop": 3.5,
+        "focus_target": [
+          0.19,
+          -0.01503,
+          0.27
+        ]
+      }
+    ]
+  }
+}

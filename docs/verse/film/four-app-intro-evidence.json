@@ -62,9 +62,9 @@
   ],
   "lab": {
     "workspace": "episode-290-workspace",
-    "version": 4,
+    "version": 5,
     "intro": "episode-290-four-apps-intro",
-    "intro_version": 3,
+    "intro_version": 4,
     "first_eight_seconds_replaced": true
   },
   "studio": {
@@ -90,5 +90,41 @@
       "Browser playback passed for standalone intro v3 (8 seconds, 1080p) and working cut v4 (274 seconds, preview); first two shots use the 3D source"
     ],
     "sha256": "1bd72230fa5eea3f388b400d193742850652367009a25c48670f6d281f8e6459"
+  },
+  "screen_tour": {
+    "issue": 11887,
+    "wide_seconds": 8,
+    "pan_seconds_each": 4,
+    "order": [
+      "terminal",
+      "desktop",
+      "web",
+      "phone"
+    ],
+    "duration": 24,
+    "source_range": [
+      4,
+      8
+    ],
+    "background": "A second screen uses the same source time in each shot, with foreground focus held throughout",
+    "resolution": [
+      1920,
+      1080
+    ],
+    "samples": 40,
+    "checks": [
+      "Midpoint and endpoint look-development stills inspected; phone focus adjusted to its glass plane",
+      "All four 120-frame Cycles renders completed at 40 samples",
+      "Combined 720-frame, 24-second 1080p edit decodes without errors",
+      "Working cut later shots unchanged; 60 later captions and all three voiceovers shifted by 16 seconds; generated score follows the new length",
+      "Browser playback passed for standalone v4 (24 seconds, 1080p) and working cut v5 (290 seconds, preview); all four pan clips remain separately editable"
+    ],
+    "sha256": "bfb8fb2182b3317e5c593ca7dc607f57045628a5d65953e305604b069fc778c7",
+    "shots": {
+      "terminal": "a63cd345fd191ad0f58efc09d806ec51c5efa3d4d7947c3957394ae45ad507e8",
+      "desktop": "cfee334fd99ea539773c14f7593c12dfa5576a06f056ce87b6e905022c297185",
+      "web": "c9c2814ea25c8700609f6417678de18c5a6766245433a1809061f73f9f5ebd35",
+      "phone": "f0fd24640d66ef6edd12a513b224109c3ef7f22802a9659a6153fc764167a26b"
+    }
   }
 }

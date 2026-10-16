@@ -51,6 +51,11 @@ October 12, 2026, when work paused. The scripts live in
 
 ## Shots
 
+The four `four-apps-*-pan` shots follow the establishing view with four-second
+close-ups of terminal, desktop, web, and phone. Each camera glides across its
+foreground screen while a second device plays the same recording time in soft
+focus. They use seconds 4–8 from the same `$SYNC` capture.
+
 ### Single-device
 
 | Spec | Output | Footage | Status |

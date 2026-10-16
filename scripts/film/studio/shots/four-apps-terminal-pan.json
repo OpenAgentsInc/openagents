@@ -1,0 +1,89 @@
+{
+  "extends": "sync-base.json",
+  "name": "four-apps-terminal-pan",
+  "cut": "A close camera glide across the terminal screen, with the synchronized web view blurred behind it.",
+  "duration": 4,
+  "devices": [
+    {
+      "type": "macbook",
+      "size": "14",
+      "finish": "silver",
+      "open": 112,
+      "pose": {
+        "location": [
+          0,
+          0,
+          0
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "screen": {
+        "video": "$SYNC/terminal.mp4",
+        "in": 4,
+        "brightness": 1.35,
+        "fit": "contain"
+      }
+    },
+    {
+      "type": "display",
+      "finish": "silver",
+      "pose": {
+        "location": [
+          0.36,
+          0.5,
+          0
+        ],
+        "rotation": [
+          0,
+          0,
+          -16
+        ]
+      },
+      "screen": {
+        "video": "$SYNC/web.mp4",
+        "in": 4,
+        "brightness": 1.6,
+        "fit": "contain"
+      }
+    }
+  ],
+  "camera": {
+    "ease": "gentle",
+    "keys": [
+      {
+        "t": 0,
+        "pos": [
+          -0.1,
+          -0.46,
+          0.25
+        ],
+        "target": [
+          0,
+          0.14,
+          0.13
+        ],
+        "lens": 50,
+        "fstop": 4
+      },
+      {
+        "t": 4,
+        "pos": [
+          0.01,
+          -0.45,
+          0.25
+        ],
+        "target": [
+          0.11,
+          0.14,
+          0.13
+        ],
+        "lens": 50,
+        "fstop": 4
+      }
+    ]
+  }
+}
