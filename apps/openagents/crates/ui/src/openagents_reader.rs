@@ -28,6 +28,8 @@ pub enum ReaderEvent {
 }
 pub struct SavedReader {
     pub model: Arc<Reader>,
+    cloud_turns: Arc<coder_account::turns::Turns>,
+    composer: gpui::Entity<crate::openagents_composer::AccountComposer>,
     pub snapshot: Snapshot,
     state: gpui::Entity<crate::state::AppState>,
     doc_id: String,
@@ -60,6 +62,10 @@ impl SavedReader {
         cx: &mut Context<Self>,
     ) -> Self {
         let model = Reader::new();
+        let cloud_turns = coder_account::turns::Turns::new(model.clone());
+        let composer = cx.new(|cx| {
+            crate::openagents_composer::AccountComposer::new(model.clone(), cloud_turns.clone(), cx)
+        });
         let doc_id = format!("openagents-saved-chat-{}", uuid::Uuid::new_v4());
         let transcript = cx.new(|cx| {
             crate::transcript::Transcript::for_account_history(
@@ -131,6 +137,8 @@ impl SavedReader {
             }
         });
         Self {
+            cloud_turns,
+            composer,
             model,
             snapshot: Snapshot::default(),
             account,
@@ -149,6 +157,15 @@ impl SavedReader {
             _auth: auth_watch,
             _follow: follow,
         }
+    }
+    #[cfg(feature = "account-fixture")]
+    pub fn fixture_reply(&mut self, text: String, cx: &mut Context<Self>) {
+        self.composer
+            .update(cx, |composer, cx| composer.fixture_submit(text, cx));
+    }
+    #[cfg(feature = "account-fixture")]
+    pub fn fixture_turn(&self) -> coder_account::turns::Snapshot {
+        self.cloud_turns.snapshot()
     }
     fn sync(&mut self, snapshot: Snapshot, cx: &mut Context<Self>) {
         let changed = self.snapshot.epoch != snapshot.epoch;
@@ -169,7 +186,16 @@ impl SavedReader {
             });
         }
         if new_content || changed {
-            let entries = coder_account::chat_entries::entries(&snapshot.messages, snapshot.epoch);
+            let entries = self.model.target().map_or_else(
+                || coder_account::chat_entries::entries(&snapshot.messages, snapshot.epoch),
+                |target| {
+                    coder_account::chat_entries::entries_for_chat(
+                        &snapshot.messages,
+                        snapshot.epoch,
+                        &target.chat,
+                    )
+                },
+            );
             self.state.update(cx, |state, cx| {
                 state.set_subagent_snapshot(self.doc_id.clone(), entries);
                 cx.notify();
@@ -192,6 +218,7 @@ impl SavedReader {
         {
             return true;
         }
+        self.composer.update(cx, |composer, cx| composer.clear(cx));
         let opened = self.model.open_latest(target).is_ok();
         if opened {
             self.model.set_following(true);
@@ -203,6 +230,7 @@ impl SavedReader {
         opened
     }
     pub fn clear(&mut self, cx: &mut Context<Self>) {
+        self.composer.update(cx, |composer, cx| composer.clear(cx));
         self.model.clear();
         self.sync(self.model.snapshot(), cx);
         cx.notify();
@@ -452,6 +480,7 @@ impl SavedReader {
 }
 impl Drop for SavedReader {
     fn drop(&mut self) {
+        self.cloud_turns.clear();
         self.model.clear();
     }
 }
@@ -634,17 +663,7 @@ impl Render for SavedReader {
             }
             footer = footer.child(files);
         }
-        body = body.child(footer).child(
-            div()
-                .mx(px(24.))
-                .mb(px(16.))
-                .p(px(14.))
-                .rounded(px(16.))
-                .border_1()
-                .border_color(theme.border)
-                .text_color(theme.text_muted)
-                .child("Replying here is coming next. Continue this chat where you started it."),
-        );
+        body = body.child(footer).child(self.composer.clone());
         if let Some(download) = self.snapshot.download.clone() {
             let mut preview = div()
                 .id("saved-file-preview")

@@ -661,6 +661,8 @@ pub(crate) struct Pending {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub(crate) struct Request {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turn_error: Option<crate::chat_api::TurnError>,
     pub id: String,
     pub digest: String,
     pub outcome: Outcome,
@@ -2561,6 +2563,17 @@ fn validate_conversation(conversation: &Conversation) -> Result<(), Error> {
         {
             return Err(Error::Invalid("The retained message identity is invalid."));
         }
+        if request.turn_error.as_ref().is_some_and(|e| {
+            e.code.is_empty()
+                || e.code.len() > 128
+                || !e
+                    .code
+                    .bytes()
+                    .all(|c| c.is_ascii_alphanumeric() || b"_.-".contains(&c))
+                || e.message.len() > 4096
+        }) {
+            return Err(Error::Invalid("This chat could not be opened or saved."));
+        }
         if let Some(selection) = &request.selection {
             selection.validate()?;
         }
@@ -3159,6 +3172,7 @@ mod tests {
             }],
             pending: None,
             requests: vec![Request {
+                turn_error: None,
                 id: ID.into(),
                 digest: digest(b"Prepare the repository"),
                 outcome: Outcome::Answered,

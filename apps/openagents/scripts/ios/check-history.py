@@ -25,6 +25,7 @@ def fixture_png():
 PNG = fixture_png()
 
 class Handler(BaseHTTPRequestHandler):
+    scratch = None
     credential = "oa_sk_" + "1" * 64
     live = False
     rich = False
@@ -43,6 +44,9 @@ class Handler(BaseHTTPRequestHandler):
         if path.path == "/join-project":
             Handler.joined = True
             result = {"ok": True}
+        elif path.path in ("/reply-ready", "/web-seen"):
+            assert Handler.scratch is not None
+            (Handler.scratch / ("reply-done" if path.path == "/reply-ready" else "web-seen")).write_text("ready")
         elif path.path == "/advance":
             Handler.revision += 1
             result = {"ok": True}
@@ -108,15 +112,17 @@ def main():
     parser.add_argument("--target-dir", type=Path, required=True)
     parser.add_argument("--scratch", type=Path, required=True)
     parser.add_argument("--simulator", default="8010197D-517D-43DA-9559-46742EFABC65")
+    parser.add_argument("--public-chat", action="store_true", help="Continue the selected disposable cloud chat")
     parser.add_argument("--public-history", action="store_true", help="Use only the dedicated-account fixtures from sdk-history.py")
     parser.add_argument("--live", action="store_true")
     parser.add_argument("--rich", action="store_true")
     parser.add_argument("--projects", action="store_true")
     args = parser.parse_args()
+    Handler.scratch = args.scratch
     Handler.live = args.live
     Handler.rich = args.rich
     Handler.projects = args.projects
-    if args.public_history:
+    if args.public_history or args.public_chat:
         Handler.credential = os.environ["OPENAGENTS_TOKEN"]
         assert Handler.credential.startswith("oa_sk_")
         chat_ids = json.loads(os.environ["SDK_FIXTURE_CHAT_IDS"])
@@ -127,7 +133,9 @@ def main():
                TEST_RUNNER_CODER_HISTORY_FIXTURE=f"http://127.0.0.1:{server.server_port}")
     if args.public_history:
         env["TEST_RUNNER_CODER_PUBLIC_HISTORY_CONFIG"] = json.dumps({"key_url": f"http://127.0.0.1:{server.server_port}/fixture-key", "chat": chat_ids[0]})
-    test = "testSharedProjectsWithoutComputer" if args.projects else "testPublicSavedAccountHistory" if args.public_history else "testRichAccountHistory" if args.rich else "testLiveAccountHistory" if args.live else "testSavedAccountHistory"
+    if args.public_chat:
+        env["TEST_RUNNER_CODER_PUBLIC_CHAT_CONFIG"] = json.dumps({"key_url": f"http://127.0.0.1:{server.server_port}/fixture-key", "chat": chat_ids[0], "prompt": os.environ["SDK_CHAT_PROMPT"], "messages": os.environ["SDK_CHAT_MESSAGES"]})
+    test = "testSharedProjectsWithoutComputer" if args.projects else "testPublicCloudChat" if args.public_chat else "testPublicSavedAccountHistory" if args.public_history else "testRichAccountHistory" if args.rich else "testLiveAccountHistory" if args.live else "testSavedAccountHistory"
     try:
         with (args.scratch / "history-uitest.log").open("w") as log:
             subprocess.run(["xcodebuild", "test", "-project", "apps/ios/Zeron.xcodeproj", "-scheme", "Zeron", "-configuration", "Debug",
@@ -135,7 +143,7 @@ def main():
                             "CODE_SIGNING_ALLOWED=YES", "CODE_SIGN_IDENTITY=-", "ARCHS=arm64", "SWIFT_ACTIVE_COMPILATION_CONDITIONS=DEBUG CODER_ACCOUNT_FIXTURE",
                             "-only-testing:ZeronUITests/OpenAgentsHistoryTests/" + test], cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT, check=True)
         print("Phone shared projects: Home rows, empty project, and shared chat without a computer passed." if args.projects else
-              "Public phone history: complete 205-message read and sign-out passed." if args.public_history else
+              "Public phone cloud reply and sign-out passed." if args.public_chat else "Public phone history: complete 205-message read and sign-out passed." if args.public_history else
               "Phone account history: paging, full text, file, archives, projects, and sign-out passed.")
     finally:
         server.shutdown()

@@ -179,6 +179,10 @@ final class SavedTranscriptController: UIViewController {
     private lazy var engine = TranscriptView(text: TextEngine.shared, listener: relay)
     private lazy var list = TranscriptListView(engine: engine)
     private let notice = UILabel()
+    private let composer = ComposerBar()
+    private let retrySend = UIButton(type: .system)
+    private var accepted: UInt64 = 0
+    private var submitted = ""
     private let status = UIButton(type: .system)
     private let images = NSCache<NSString, UIImage>()
     private var token: AnyObject?
@@ -223,7 +227,24 @@ final class SavedTranscriptController: UIViewController {
         setContentScrollView(list, for: .top)
         list.topEdgeEffect.style = .soft
         list.bottomEdgeEffect.isHidden = true
-        notice.text = "Replying here is coming next. Continue this chat where you started it."
+        composer.translatesAutoresizingMaskIntoConstraints = false
+        composer.useCloudControls()
+        composer.onSend = { [weak self] text, _, _ in
+            guard let self, let transcript = self.app.savedSnapshot?.transcript,
+                  transcript.canReply, !transcript.answering, !transcript.retrySend else { return .kept }
+            self.submitted = text
+            try? self.app.savedHistory?.action(action: .send(text: text))
+            return .kept
+        }
+        composer.onStop = { [weak self] in try? self?.app.savedHistory?.action(action: .stopAnswer) }
+        composer.onHeightChange = { [weak self] in self?.view.setNeedsLayout() }
+        view.addSubview(composer)
+        retrySend.translatesAutoresizingMaskIntoConstraints = false
+        retrySend.setTitle("Retry", for: .normal)
+        retrySend.accessibilityIdentifier = "cloud-retry"
+        retrySend.addAction(UIAction { [weak self] _ in try? self?.app.savedHistory?.action(action: .retrySend) }, for: .touchUpInside)
+        view.addSubview(retrySend)
+        notice.text = "Continue this chat on its computer."
         notice.font = .preferredFont(forTextStyle: .footnote)
         notice.textColor = Palette.secondary
         notice.numberOfLines = 0
@@ -242,7 +263,12 @@ final class SavedTranscriptController: UIViewController {
             status.bottomAnchor.constraint(equalTo: notice.topAnchor, constant: -8),
             notice.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 24),
             notice.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -24),
-            notice.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -16),
+            notice.bottomAnchor.constraint(equalTo: retrySend.topAnchor, constant: -4),
+            retrySend.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 24),
+            retrySend.bottomAnchor.constraint(equalTo: composer.topAnchor, constant: -4),
+            composer.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
+            composer.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
+            composer.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor, constant: -8),
         ])
         token = app.observe { [weak self] in self?.reload() }
         reload()
@@ -275,11 +301,20 @@ final class SavedTranscriptController: UIViewController {
             images.removeAllObjects()
             title = "Chat"
             notice.text = "Sign in to open this chat."
+            composer.isHidden = true
+            retrySend.isHidden = true
             status.isHidden = true
             return
         }
         let transcript = snapshot.transcript
         title = transcript.title ?? "Chat"
+        composer.isHidden = !transcript.canReply
+        composer.running = transcript.answering
+        composer.isUserInteractionEnabled = !transcript.stopping
+        retrySend.isHidden = !transcript.retrySend
+        notice.text = transcript.sendError ?? (transcript.canReply ? nil : "Continue this chat on its computer.")
+        if transcript.accepted > accepted, composer.text == submitted { composer.text = "" }
+        accepted = transcript.accepted
         list.accessibilityValue = "\(transcript.messages.count) messages loaded"
         let files = app.savedHistory?.attachments() ?? []
         navigationItem.rightBarButtonItem = files.isEmpty ? nil : UIBarButtonItem(

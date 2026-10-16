@@ -79,6 +79,7 @@ const LEFT_OUT: &str = "(Left out: this looked like it held a password or key.)"
 
 pub(crate) fn routes() -> Router<App> {
     Router::new()
+        .merge(crate::chat_api::routes())
         .route("/v1/threads", get(threads).post(start))
         .route(
             "/v1/threads/{id}",
@@ -188,6 +189,8 @@ fn row(chat: &Conversation, computers: &Computers) -> Value {
     };
     json!({
         "id": chat.id,
+        "request_id": chat.requests.last().map(|r| &r.id),
+        "outcome": chat.requests.last().map(|r| r.outcome),
         "title": chat.title,
         "line": line_two(chat, true),
         "surface": surface,

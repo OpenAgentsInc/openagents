@@ -85,9 +85,9 @@ bounded summary pages, complete revision-checked messages, saved files and
 captures, and shared-project discovery. The typed Rust SDK and native sidebar
 and reader are implemented. The older `/v1/threads/{id}` detail remains a preview
 of the newest 200 messages; it does not replace the complete history reader.
-The [thread API contract](threads.md) separately covers mutation, reply admission,
-sharing, and computer sync. These schemas do not add SDK sending methods or
-turn browser HTML events into a public JSON stream.
+The [thread API contract](threads.md) covers mutation, reply admission, sharing,
+and computer sync. The [cloud chat client](chats.md) sends, streams, and stops
+turns in that same cloud chat from the desktop and phone composers.
 The [standalone example](../../examples/sdk-history/README.md) and
 [delivery evidence](../coder-desktop/delivery-evidence.json) record the external
 Git build, deployed API checks, native reads, cleanup, and remaining owner checks.

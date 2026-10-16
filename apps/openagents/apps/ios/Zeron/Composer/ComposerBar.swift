@@ -66,6 +66,15 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
     /// `@` file search (nil disables mentions).
     var mentionSearch: ((String) async -> [FileMatch])?
 
+    /// A cloud turn can be stopped; it has no local queue or attachments.
+    func useCloudControls() {
+        cloudControls = true
+        attachButton.isHidden = true
+        for constraint in attachButton.constraints where constraint.firstAttribute == .width { constraint.constant = 0 }
+        refreshAction(animated: false)
+    }
+    private var cloudControls = false
+
     // State
     var running = false { didSet { if running != oldValue { refreshAction(animated: true) } } }
     var canSteer = false { didSet { refreshAction(animated: false) } }
@@ -580,7 +589,7 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
     }
 
     private func refreshAction(animated: Bool) {
-        let action: Action = running ? (hasContent ? .queue : .stop) : .send
+        let action: Action = running ? (hasContent && !cloudControls ? .queue : .stop) : .send
         let enabled = action == .stop || hasContent
         let steering = action == .queue && preferredDelivery == .steer && canSteer
         var config = UIButton.Configuration.filled()

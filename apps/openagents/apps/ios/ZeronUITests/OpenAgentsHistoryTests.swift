@@ -117,6 +117,44 @@ final class OpenAgentsHistoryTests: XCTestCase {
         let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "rich-account-transcript"; shot.lifetime = .keepAlways; add(shot)
     }
 
+    func testPublicCloudChat() throws {
+        let env = ProcessInfo.processInfo.environment
+        guard let raw = env["CODER_PUBLIC_CHAT_CONFIG"], let bytes = raw.data(using: .utf8),
+              let config = try JSONSerialization.jsonObject(with: bytes) as? [String: String],
+              let keyURL = config["key_url"], let chat = config["chat"], let prompt = config["prompt"],
+              let before = config["messages"].flatMap(Int.init) else { throw XCTSkip("Dedicated-account check only") }
+        let app = XCUIApplication()
+        app.launchArguments = ["-account-fixture", "-account-test-credential-url", keyURL, "-edge", "https://coder-sync-157437760789.us-central1.run.app"]
+        app.launch()
+        expandSavedChats(app)
+        let row = app.descendants(matching: .any).matching(identifier: "saved-chat-" + chat).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 30)); row.tap()
+        let input = app.textViews["composer-input"]
+        XCTAssertTrue(input.waitForExistence(timeout: 20)); input.tap(); input.typeText(prompt)
+        app.buttons["composer-send"].tap()
+        XCTAssertTrue(app.scrollViews["transcript"].waitForValue("\(before + 2) messages loaded", timeout: 90))
+        let finished = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "Send"), object: app.buttons["composer-send"])
+        XCTAssertEqual(XCTWaiter.wait(for: [finished], timeout: 90), .completed)
+        app.swipeDown()
+        let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "public-cloud-reply"; shot.lifetime = .keepAlways; add(shot)
+        func signal(_ path: String) {
+            let done = expectation(description: path)
+            let url = URL(string: keyURL)!.deletingLastPathComponent().appendingPathComponent(path)
+            URLSession.shared.dataTask(with: url) { _, _, _ in done.fulfill() }.resume()
+            wait(for: [done], timeout: 5)
+        }
+        signal("reply-ready")
+        XCTAssertTrue(app.scrollViews["transcript"].waitForValue("\(before + 4) messages loaded", timeout: 90))
+        let webShot = XCTAttachment(screenshot: app.screenshot()); webShot.name = "public-cloud-from-web"; webShot.lifetime = .keepAlways; add(webShot)
+        signal("web-seen")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        app.tabBars.buttons["Settings"].tap()
+        let signOut = app.cells["settings-signout"]
+        for _ in 0..<8 where !signOut.isHittable { app.swipeUp() }
+        signOut.tap(); app.buttons["Sign Out"].tap()
+        XCTAssertTrue(app.buttons["account-sign-in"].waitForExistence(timeout: 15))
+    }
+
     func testPublicSavedAccountHistory() throws {
         let env = ProcessInfo.processInfo.environment
         guard let raw = env["CODER_PUBLIC_HISTORY_CONFIG"], let bytes = raw.data(using: .utf8),

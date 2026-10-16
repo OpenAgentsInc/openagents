@@ -32,6 +32,7 @@ fn sample(id: &str, owner: &str, project: Option<&str>) -> Conversation {
         },
     ];
     chat.requests = vec![crate::chat_store::Request {
+        turn_error: None,
         id: id.into(),
         digest: "d".repeat(64),
         outcome: Outcome::Answered,

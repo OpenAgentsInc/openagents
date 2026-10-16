@@ -17,6 +17,7 @@ pub mod desktop;
 pub mod history;
 mod platform;
 pub mod reader;
+pub mod turns;
 pub use platform::PlatformStore;
 
 #[derive(Clone, Debug)]

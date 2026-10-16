@@ -79,6 +79,7 @@ impl Fixture {
                 ],
                 pending: None,
                 requests: vec![Request {
+                    turn_error: None,
                     id: CHAT.into(),
                     digest: request_digest(TEXT, selection.as_ref()),
                     outcome: Outcome::Answered,
@@ -529,6 +530,7 @@ fn sidebar_rows_show_the_repository_and_a_plain_status() {
     });
     assert_eq!(line_two(&chat, true).as_deref(), Some("acme/app · main"));
     chat.requests.push(Request {
+        turn_error: None,
         id: CHAT.into(),
         digest: String::new(),
         outcome: Outcome::Failed,
@@ -1551,6 +1553,7 @@ fn an_answered_reply_carries_its_served_tier_route_and_answer() {
         ],
         pending: None,
         requests: vec![Request {
+            turn_error: None,
             id: CHAT.into(),
             digest: String::new(),
             outcome: Outcome::Answered,
@@ -1619,6 +1622,7 @@ fn a_reply_another_provider_answered_says_so() {
         ],
         pending: None,
         requests: vec![Request {
+            turn_error: None,
             id: CHAT.into(),
             digest: String::new(),
             outcome: Outcome::Answered,
@@ -1695,6 +1699,7 @@ fn a_streaming_reply_never_shows_half_written_markdown() {
             payer: None,
         }),
         requests: vec![Request {
+            turn_error: None,
             id: CHAT.into(),
             digest: String::new(),
             outcome: Outcome::Pending,
@@ -1826,6 +1831,7 @@ impl Fixture {
             payer: None,
         });
         next.requests.push(Request {
+            turn_error: None,
             id: request.into(),
             digest: digest("Still going?"),
             outcome: Outcome::Pending,
@@ -1936,6 +1942,7 @@ async fn a_second_new_chat_send_waits_for_the_first_to_save_it() {
                 }],
                 pending: None,
                 requests: vec![Request {
+                    turn_error: None,
                     id: CHAT.into(),
                     digest: digest(TEXT),
                     outcome: Outcome::Answered,
@@ -2237,6 +2244,7 @@ async fn work_in_a_chat_stays_in_the_chat_with_coder_online() {
             payer: None,
         }),
         requests: vec![Request {
+            turn_error: None,
             id: id.into(),
             digest: request_digest(text, None),
             outcome: Outcome::Pending,

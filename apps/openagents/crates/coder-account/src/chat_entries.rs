@@ -5,6 +5,26 @@ use zeron_proto::ToolCall;
 
 /// Adapt content without importing executable harness state or following embedded URLs.
 pub fn entries(messages: &[SavedMessage], generation: u64) -> Vec<SessionMessageEntry> {
+    make_entries(messages, generation, None)
+}
+/// Card links use the authenticated chat's deployment, never a URL supplied by a card.
+pub fn entries_for_chat(
+    messages: &[SavedMessage],
+    generation: u64,
+    chat: &crate::openagents::ChatRef,
+) -> Vec<SessionMessageEntry> {
+    let url = chat
+        .deployment()
+        .website()
+        .join(&format!("chat/{}", chat.id()))
+        .ok();
+    make_entries(messages, generation, url.as_ref().map(|u| u.as_str()))
+}
+fn make_entries(
+    messages: &[SavedMessage],
+    generation: u64,
+    chat_url: Option<&str>,
+) -> Vec<SessionMessageEntry> {
     messages
         .iter()
         .map(|message| {
@@ -55,6 +75,54 @@ pub fn entries(messages: &[SavedMessage], generation: u64) -> Vec<SessionMessage
                     subagent_status: None,
                     subagent_tail: None,
                 });
+            }
+            if let Some(cards) = message
+                .extra
+                .get("reply")
+                .and_then(|r| r.get("cards"))
+                .and_then(|c| c.as_array())
+            {
+                for (index, card) in cards.iter().take(16).enumerate() {
+                    let label = match card.get("card").and_then(|v| v.as_str()).unwrap_or("") {
+                        "video_lab" => "Video",
+                        "game_lab" => "Game",
+                        "cad_lab" => "CAD model",
+                        "robot_lab" => "Robot",
+                        "ship_lab" => "Ship",
+                        "result" => "Result",
+                        "run" => "Run",
+                        "news" => "Gym",
+                        _ => "Result",
+                    };
+                    let plain = |text: &str| {
+                        text.chars()
+                            .take(512)
+                            .flat_map(|c| {
+                                if "\\`*_{}[]<>()#!".contains(c) {
+                                    vec!['\\', c]
+                                } else {
+                                    vec![c]
+                                }
+                            })
+                            .collect::<String>()
+                    };
+                    let title = card
+                        .get("title")
+                        .or_else(|| card.get("name"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or(label);
+                    let mut text = format!("### {}", plain(title));
+                    if let Some(summary) = card.get("summary").and_then(|v| v.as_str()) {
+                        text.push_str(&format!("\n\n{}", plain(summary)));
+                    }
+                    if let Some(url) = chat_url {
+                        text.push_str(&format!("\n\n[Open on OpenAgents]({url})"));
+                    }
+                    parts.push(MessagePart::Text {
+                        id: format!("{id}-card-{index}"),
+                        text,
+                    });
+                }
             }
             for file in &message.files {
                 let mime = match file.kind {

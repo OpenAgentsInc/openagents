@@ -3,6 +3,7 @@
 
 pub mod agents;
 mod auth;
+pub mod chats;
 pub mod computers;
 pub mod dashboard;
 pub mod generated;

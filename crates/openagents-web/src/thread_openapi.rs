@@ -156,7 +156,7 @@ pub(crate) fn extend(doc: &mut Value) {
         "/v1/threads",
         "post",
         "startThread",
-        "Starts an account-store cloud chat using the existing server runtime and caller allowance. request_id names the chat; retry the same UUID after a lost response. Existing chat returns 200, first start 201. Project is allowed here only. Files must be uploaded under request_id first. No public JSON event stream or stop operation is mounted by this contract; browser HTML events/forms are a separate execution boundary.",
+        "Starts an account-store cloud chat using the existing server runtime and caller allowance. request_id names the chat; retry the same UUID after a lost response. Existing chat returns 200, first start 201. Project is allowed here only. Files must be uploaded under request_id first. Follow the request through /v1/threads/{id}/events and cancel that request through /v1/threads/{id}/stop. Browser HTML forms/events remain compatible.",
         Some(r("Reply")),
         "201",
         Some(r("Started")),

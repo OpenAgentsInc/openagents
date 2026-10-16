@@ -1,5 +1,5 @@
-//! Exercise the native account control with a local browser approval page.
-//! Pass an empty scratch directory. No Keychain, engine, or provider is used.
+//! Exercise isolated account controls or an explicitly selected test-account chat.
+//! Pass an empty scratch directory. No Keychain or local engine is used.
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
@@ -110,12 +110,20 @@ async fn saved_messages(
     let n = usize::from_str_radix(&chat[..8], 16).unwrap();
     Json(json!({"thread":{"id":chat,"title":if n==204{"Pinned saved chat"}else if n==5{"Archived saved chat"}else{"Previous chat"},"revision":revision,"updated_unix":1792100000+n,"pinned_unix":if n==204{Some(1792100000)}else{None},"archived_unix":if n==5{Some(1792100000)}else{None},"project":"prj_0000000000000001","source":match n%3{0=>"web",1=>"terminal",_=>"phone"},"messages":405},"revision":revision,"data":data,"next":(end<405).then(||format!("msg_{}",end-1)),"captures":[{"id":chat_id(555),"name":"Saved capture","state":"saved","size":3,"media":"text/plain"},{"id":chat_id(556),"name":"Second capture","state":"not_saved","size":null,"media":null}]})).into_response()
 }
-async fn saved_file(State(s): State<Arc<Server>>, Path((_, file)): Path<(String, String)>) -> Response {
+async fn saved_file(
+    State(s): State<Arc<Server>>,
+    Path((_, file)): Path<(String, String)>,
+) -> Response {
     if !s.active.load(Ordering::SeqCst) {
         return StatusCode::UNAUTHORIZED.into_response();
     }
     s.downloads.fetch_add(1, Ordering::SeqCst);
-    if file == IMAGE { fixture_image() } else { b"fixture!".to_vec() }.into_response()
+    if file == IMAGE {
+        fixture_image()
+    } else {
+        b"fixture!".to_vec()
+    }
+    .into_response()
 }
 async fn saved_capture(State(s): State<Arc<Server>>) -> Response {
     if !s.active.load(Ordering::SeqCst) {
@@ -141,8 +149,10 @@ fn capture_window(
         .unwrap();
 }
 fn main() -> anyhow::Result<()> {
+    let chat_mode = std::env::args().any(|arg| arg == "--public-chat");
     let film_mode = std::env::args().any(|arg| arg == "--film");
-    let public_mode = film_mode || std::env::args().any(|arg| arg == "--public-history");
+    let public_mode =
+        chat_mode || film_mode || std::env::args().any(|arg| arg == "--public-history");
     let public_ids: Vec<String> = if public_mode {
         serde_json::from_str(&std::env::var("SDK_FIXTURE_CHAT_IDS")?)?
     } else {
@@ -198,7 +208,7 @@ fn main() -> anyhow::Result<()> {
         let session = runtime.block_on(client.authenticate(&token))?;
         store.save(&session.record())?;
         anyhow::ensure!(
-            public_ids.len() == if film_mode { 1 } else { 3 },
+            public_ids.len() == if film_mode || chat_mode { 1 } else { 3 },
             "pass the three disposable fixture IDs"
         );
     }
@@ -366,6 +376,41 @@ fn main() -> anyhow::Result<()> {
                                         cx.background_executor()
                                             .timer(Duration::from_millis(100))
                                             .await;
+                                    }
+                                    if chat_mode {
+                                        let prompt=std::env::var("SDK_CHAT_PROMPT").unwrap();
+                                        let expected=std::env::var("SDK_CHAT_EXPECTED").unwrap();
+                                        assert!(!expected.is_empty());
+                                        viewer.update(cx,|viewer,cx|viewer.fixture_reply(prompt.clone(),cx));
+                                        let deadline=Instant::now()+Duration::from_secs(100);
+                                        loop {
+                                            let turn=viewer.update(cx,|v,_|v.fixture_turn());
+                                            if !turn.busy && (turn.accepted>0 || turn.error.is_some()) {
+                                                assert!(turn.error.is_none(),"cloud send failed: {:?}",turn.error);
+                                                break;
+                                            }
+                                            assert!(Instant::now()<deadline,"cloud reply timed out");
+                                            cx.background_executor().timer(Duration::from_millis(100)).await;
+                                        }
+                                        let snapshot=reader.snapshot();
+                                        assert!(snapshot.messages.iter().any(|m|m.role==coder_account::openagents::MessageRole::User && m.text==prompt));
+                                        assert!(snapshot.messages.iter().rev().find(|m|m.role==coder_account::openagents::MessageRole::Assistant).unwrap().text.contains(&expected),"cloud reply lost earlier context");
+                                        cx.background_executor().timer(Duration::from_millis(300)).await;
+                                        capture_window(window,cx,&output,"public-cloud-reply");
+                                        let before=reader.snapshot().messages.len();
+                                        std::fs::write(output.join("reply-done"),b"ready").unwrap();
+                                        let web_prompt=std::env::var("SDK_WEB_PROMPT").unwrap();
+                                        let deadline=Instant::now()+Duration::from_secs(100);
+                                        loop {
+                                            let snapshot=reader.snapshot();
+                                            if snapshot.messages.len()>before && snapshot.messages.iter().any(|m|m.role==coder_account::openagents::MessageRole::User && m.text==web_prompt) && snapshot.messages.iter().rev().find(|m|m.role==coder_account::openagents::MessageRole::Assistant).is_some_and(|m|m.text.contains(&expected)){break;}
+                                            assert!(Instant::now()<deadline,"web reply did not appear on desktop");
+                                            cx.background_executor().timer(Duration::from_millis(100)).await;
+                                        }
+                                        cx.background_executor().timer(Duration::from_millis(300)).await;
+                                        capture_window(window,cx,&output,"public-cloud-from-web");
+                                        std::fs::write(output.join("web-seen"),b"ready").unwrap();
+                                        continue;
                                     }
                                     if film_mode {
                                         let frames = output.join("frames");

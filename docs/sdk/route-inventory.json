@@ -28,6 +28,16 @@
       "line": 108
     },
     {
+      "path": "/v1/threads/{id}/events",
+      "source": "crates/openagents-web/src/chat_api.rs",
+      "line": 76
+    },
+    {
+      "path": "/v1/threads/{id}/stop",
+      "source": "crates/openagents-web/src/chat_api.rs",
+      "line": 77
+    },
+    {
       "path": "/v1/connections/google/gmail/drafts/{id}",
       "source": "crates/openagents-web/src/connections/mail.rs",
       "line": 62
@@ -235,97 +245,97 @@
     {
       "path": "/v1/threads",
       "source": "crates/openagents-web/src/phone_api.rs",
-      "line": 82
+      "line": 83
     },
     {
       "path": "/v1/threads/{id}",
       "source": "crates/openagents-web/src/phone_api.rs",
-      "line": 83
+      "line": 84
     },
     {
       "path": "/v1/threads/{id}/messages",
       "source": "crates/openagents-web/src/phone_api.rs",
-      "line": 89
+      "line": 90
     },
     {
       "path": "/v1/threads/{id}/files",
       "source": "crates/openagents-web/src/phone_api.rs",
-      "line": 93
+      "line": 94
     },
     {
       "path": "/v1/threads/{id}/files/{file}",
       "source": "crates/openagents-web/src/phone_api.rs",
-      "line": 99
+      "line": 100
     },
     {
       "path": "/v1/computer-usage",
       "source": "crates/openagents-web/src/phone_api.rs",
-      "line": 103
+      "line": 104
     },
     {
       "path": "/v1/computers",
       "source": "crates/openagents-web/src/phone_api.rs",
-      "line": 104
+      "line": 105
     },
     {
       "path": "/v1/computers/{name}",
       "source": "crates/openagents-web/src/phone_api.rs",
-      "line": 110
+      "line": 111
     },
     {
       "path": "/v1/computers/{name}/stop",
       "source": "crates/openagents-web/src/phone_api.rs",
-      "line": 114
+      "line": 115
     },
     {
       "path": "/v1/computers/{name}/wake",
       "source": "crates/openagents-web/src/phone_api.rs",
-      "line": 118
+      "line": 119
     },
     {
       "path": "/v1/computers/{name}/files",
       "source": "crates/openagents-web/src/phone_api.rs",
-      "line": 122
+      "line": 123
     },
     {
       "path": "/v1/computers/{name}/commands",
       "source": "crates/openagents-web/src/phone_api.rs",
-      "line": 126
+      "line": 127
     },
     {
       "path": "/v1/computers/{name}/commands/{command}",
       "source": "crates/openagents-web/src/phone_api.rs",
-      "line": 130
+      "line": 131
     },
     {
       "path": "/v1/computers/{name}/commands/{command}/output",
       "source": "crates/openagents-web/src/phone_api.rs",
-      "line": 134
+      "line": 135
     },
     {
       "path": "/v1/computers/{name}/commands/{command}/cancel",
       "source": "crates/openagents-web/src/phone_api.rs",
-      "line": 138
+      "line": 139
     },
     {
       "path": "/v1/computers/{name}/sync",
       "source": "crates/openagents-web/src/phone_api.rs",
-      "line": 142
+      "line": 143
     },
     {
       "path": "/v1/computers/{name}/activity",
       "source": "crates/openagents-web/src/phone_api.rs",
-      "line": 143
+      "line": 144
     },
     {
       "path": "/v1/agents",
       "source": "crates/openagents-web/src/phone_api.rs",
-      "line": 144
+      "line": 145
     },
     {
       "path": "/v1/agents/actions",
       "source": "crates/openagents-web/src/phone_api.rs",
-      "line": 145
+      "line": 146
     },
     {
       "path": "/v1/projects/{id}",

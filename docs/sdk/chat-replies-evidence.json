@@ -1,0 +1,37 @@
+{
+  "schema": "openagents.sdk.chat-replies-evidence.v1",
+  "issue": 11893,
+  "date": "2026-10-16",
+  "scope": "Same account cloud chat through the existing server runtime; no local harness or copied editable conversation.",
+  "checks": {
+    "server_runtime_integration": "passed: real existing turn path with isolated accounts, JSON SSE, browser HTML SSE, duplicate send, reconnect replacements, request-specific stop, cross-account refusal, typed quota failure and unsupported pending-work refusal",
+    "sdk_tests": 39,
+    "shared_account_tests": 36,
+    "composer_retry_pause_and_selection_tests": 2,
+    "mobile_lib_tests": {
+      "passed": 49,
+      "ignored": 1
+    },
+    "app_schema_tests": 5,
+    "qualified_app_operations": 99,
+    "native_rust_build": "desktop UI and mobile checks passed",
+    "ios": "fixture test build and production core/Swift build passed",
+    "web_lib": {
+      "passed": 806,
+      "ignored": 15,
+      "unrelated_skipped": 3,
+      "unrelated_failure": "copy_guard::site_sources_have_no_machine_talk: custom_agents_openapi.rs:77 uses retained (separately landed code)."
+    }
+  },
+  "unrelated_skips": [
+    "cad_web::world_physics::tests::http_requires_a_checked_account_and_does_not_open_another_accounts_objects: existing private config fixture",
+    "work_runs::computers::tests::withdrawing_a_live_repository_grant_refuses_before_new_effects: existing private config fixture",
+    "tests::the_api_docs_list_every_guide_and_serve_markdown: existing Beta assertion"
+  ],
+  "live_check": "Pending immutable main deployment, then scripts/smoke/sdk-chat.py with the declared dedicated test account; it removes its disposable cloud chat.",
+  "boundaries": [
+    "Existing remote execution/background work keeps its website controls; unsupported pending work is never reported stopped.",
+    "Only display cards cross the new event/history boundary; native card links derive from the authorized chat deployment.",
+    "No frozen Coder binaries, owner chats, TestFlight release, local engine execution, or payment operations."
+  ]
+}

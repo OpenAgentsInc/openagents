@@ -33,6 +33,8 @@ pub mod ask;
 pub mod attribution;
 mod auth;
 pub mod backend;
+mod chat_api;
+mod chat_api_openapi;
 mod chat_export;
 mod chat_files;
 mod chat_html;

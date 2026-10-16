@@ -259,6 +259,7 @@ mod tests {
             ],
             pending: None,
             requests: vec![Request {
+                turn_error: None,
                 id: "r".into(),
                 digest: String::new(),
                 outcome: Outcome::Answered,

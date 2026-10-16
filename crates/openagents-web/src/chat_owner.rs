@@ -268,6 +268,7 @@ mod tests {
                 payer: None,
             }),
             requests: vec![Request {
+                turn_error: None,
                 id: id.into(),
                 digest: "a".repeat(64),
                 outcome: if pending {

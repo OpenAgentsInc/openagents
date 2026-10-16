@@ -29,9 +29,9 @@ are not idempotent: keep the returned file ID. The OpenAPI response descriptions
 and the shared error envelope preserve the existing refusal codes.
 
 Cloud replies use the website’s existing runtime and sender’s allowance.
-This qualification does not add public JSON streaming or cancellation: browser
-`/chat/{id}/events` serves HTML SSE, and browser forms own stopping. Public
-stream/stop and ergonomic SDK sending are follow-up #11893. No read-only
+The [cloud chat API](chats.md) now adds public JSON events and request-specific
+stop through the Rust SDK (#11893). Browser `/chat/{id}/events` still serves
+HTML SSE and browser forms keep working. No read-only
 history operation sends, executes, contacts a host, or changes seen state.
 
 Computer sync saves snapshots; the computer executes under its own authority.

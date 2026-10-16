@@ -72,3 +72,10 @@ feature keeps forms independent of the app's separate syntax-engine version.
   iPhone logins use a stable Keychain profile across app-container changes.
   `coder-account::PlatformStore::mobile` carries over existing credentials and
   keeps explicit sign-out effective; `CoreAccount` selects it on iOS.
+
+- Account cloud composer (#11893): `openagents_composer.rs` uses the normal
+  `ComposerInput` with the shared Rust `coder-account::turns` controller.
+  `openagents_reader.rs` mounts it. `SavedHistoryController.swift` mounts the
+  normal `ComposerBar`; its small cloud-controls hook hides attachments and
+  replaces local queue behavior with Stop. `client_ffi/saved.rs` exports Rust
+  send/retry/stop state and actions. Neither surface starts a local harness.

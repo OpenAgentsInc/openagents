@@ -11344,6 +11344,12 @@ public func FfiConverterTypeSavedProjectRow_lower(_ value: SavedProjectRow) -> R
 
 
 public struct SavedTranscript: Equatable, Hashable {
+    public var canReply: Bool
+    public var answering: Bool
+    public var stopping: Bool
+    public var retrySend: Bool
+    public var sendError: String?
+    public var accepted: UInt64
     public var title: String?
     public var messages: [SavedMessageRow]
     public var captures: [SavedAttachment]
@@ -11361,7 +11367,13 @@ public struct SavedTranscript: Equatable, Hashable {
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(title: String?, messages: [SavedMessageRow], captures: [SavedAttachment], first: UInt64, received: UInt64, hasMore: Bool, continueRequired: Bool, smallerPage: Bool, reloadRequired: Bool, loginRequired: Bool, accessLost: Bool, state: SavedLoadState, downloadName: String?, downloadState: SavedLoadState) {
+    public init(canReply: Bool, answering: Bool, stopping: Bool, retrySend: Bool, sendError: String?, accepted: UInt64, title: String?, messages: [SavedMessageRow], captures: [SavedAttachment], first: UInt64, received: UInt64, hasMore: Bool, continueRequired: Bool, smallerPage: Bool, reloadRequired: Bool, loginRequired: Bool, accessLost: Bool, state: SavedLoadState, downloadName: String?, downloadState: SavedLoadState) {
+        self.canReply = canReply
+        self.answering = answering
+        self.stopping = stopping
+        self.retrySend = retrySend
+        self.sendError = sendError
+        self.accepted = accepted
         self.title = title
         self.messages = messages
         self.captures = captures
@@ -11394,6 +11406,12 @@ public struct FfiConverterTypeSavedTranscript: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SavedTranscript {
         return
             try SavedTranscript(
+                canReply: FfiConverterBool.read(from: &buf), 
+                answering: FfiConverterBool.read(from: &buf), 
+                stopping: FfiConverterBool.read(from: &buf), 
+                retrySend: FfiConverterBool.read(from: &buf), 
+                sendError: FfiConverterOptionString.read(from: &buf), 
+                accepted: FfiConverterUInt64.read(from: &buf), 
                 title: FfiConverterOptionString.read(from: &buf), 
                 messages: FfiConverterSequenceTypeSavedMessageRow.read(from: &buf), 
                 captures: FfiConverterSequenceTypeSavedAttachment.read(from: &buf), 
@@ -11412,6 +11430,12 @@ public struct FfiConverterTypeSavedTranscript: FfiConverterRustBuffer {
     }
 
     public static func write(_ value: SavedTranscript, into buf: inout [UInt8]) {
+        FfiConverterBool.write(value.canReply, into: &buf)
+        FfiConverterBool.write(value.answering, into: &buf)
+        FfiConverterBool.write(value.stopping, into: &buf)
+        FfiConverterBool.write(value.retrySend, into: &buf)
+        FfiConverterOptionString.write(value.sendError, into: &buf)
+        FfiConverterUInt64.write(value.accepted, into: &buf)
         FfiConverterOptionString.write(value.title, into: &buf)
         FfiConverterSequenceTypeSavedMessageRow.write(value.messages, into: &buf)
         FfiConverterSequenceTypeSavedAttachment.write(value.captures, into: &buf)
@@ -16006,6 +16030,10 @@ public enum SavedHistoryAction: Equatable, Hashable {
     case download(key: String
     )
     case closeDownload
+    case send(text: String
+    )
+    case retrySend
+    case stopAnswer
 
 
 
@@ -16057,6 +16085,13 @@ public struct FfiConverterTypeSavedHistoryAction: FfiConverterRustBuffer {
         )
         
         case 14: return .closeDownload
+        
+        case 15: return .send(text: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 16: return .retrySend
+        
+        case 17: return .stopAnswer
         
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -16123,6 +16158,19 @@ public struct FfiConverterTypeSavedHistoryAction: FfiConverterRustBuffer {
         
         case .closeDownload:
             writeInt(&buf, Int32(14))
+        
+        
+        case let .send(text):
+            writeInt(&buf, Int32(15))
+            FfiConverterString.write(text, into: &buf)
+            
+        
+        case .retrySend:
+            writeInt(&buf, Int32(16))
+        
+        
+        case .stopAnswer:
+            writeInt(&buf, Int32(17))
         
         }
     }

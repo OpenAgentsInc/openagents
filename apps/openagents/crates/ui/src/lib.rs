@@ -52,6 +52,7 @@ mod new_thread_background_mask;
 mod notice;
 pub mod notify;
 pub mod openagents_account;
+mod openagents_composer;
 pub mod openagents_history;
 pub mod openagents_reader;
 pub mod orb;

@@ -570,6 +570,7 @@ mod tests {
                 payer: None,
             }),
             requests: vec![Request {
+                turn_error: None,
                 id: id.into(),
                 digest: "d".repeat(64),
                 outcome: Outcome::Pending,

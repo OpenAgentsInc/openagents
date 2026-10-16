@@ -26,6 +26,7 @@ sha2 = "0.10"
 base64 = "0.22"
 
 [dev-dependencies]
+futures-util = "0.3"
 oa-copy = { path = "../oa-copy" }
 axum = "0.8"
 tempfile = "3"

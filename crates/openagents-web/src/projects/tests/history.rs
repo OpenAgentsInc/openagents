@@ -200,6 +200,7 @@ async fn shared_history_and_saved_files_follow_current_membership() {
         request_id: Some(CHAT.into()),
     }];
     c.requests = vec![crate::chat_store::Request {
+        turn_error: None,
         id: CHAT.into(),
         digest: "d".repeat(64),
         outcome: crate::chat_store::Outcome::Answered,

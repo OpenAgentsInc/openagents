@@ -17,13 +17,14 @@ import websocket
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--public-chat", action="store_true")
     parser.add_argument("--public-history", action="store_true")
     parser.add_argument("--history", action="store_true")
     parser.add_argument("--reader", action="store_true")
     parser.add_argument("binary", type=Path)
     parser.add_argument("scratch", type=Path)
     args = parser.parse_args()
-    port = os.environ["OPENAGENTS_CHROME_PORT"] if not args.public_history else None
+    port = os.environ["OPENAGENTS_CHROME_PORT"] if not (args.public_history or args.public_chat) else None
     root = args.scratch.resolve()
     root.mkdir(parents=True, exist_ok=False)
     app = root / "Coder Account Fixture.app"
@@ -44,16 +45,17 @@ def main():
     subprocess.run(["codesign", "--force", "--sign", "-", str(app)], check=True)
     output = root / "captures"
     with (root / "native.log").open("w") as log:
-        native = subprocess.Popen([str(executable), str(output)] + (["--public-history"] if args.public_history else ["--reader"] if args.reader else ["--history"] if args.history else []), stdout=log, stderr=log)
+        native = subprocess.Popen([str(executable), str(output)] + (["--public-chat"] if args.public_chat else ["--public-history"] if args.public_history else ["--reader"] if args.reader else ["--history"] if args.history else []), stdout=log, stderr=log)
         try:
-            if args.public_history:
-                status = native.wait(timeout=110)
+            if args.public_history or args.public_chat:
+                status = native.wait(timeout=230 if args.public_chat else 110)
                 if status != 0:
                     raise RuntimeError(f"public native fixture exited {status}; see native.log")
-                for name in ["signed-in", "public-sidebar", "public-reader-0", "public-reader-1", "public-reader-2", "signed-out"]:
+                names = ["signed-in", "public-sidebar", "public-cloud-reply", "public-cloud-from-web", "signed-out"] if args.public_chat else ["signed-in", "public-sidebar", "public-reader-0", "public-reader-1", "public-reader-2", "signed-out"]
+                for name in names:
                     if not (output / f"{name}.png").is_file():
                         raise RuntimeError(f"missing capture: {name}")
-                print("Native deployed history: three chats, 615 messages, restore, and local sign-out passed.")
+                print("Native cloud send and web-to-desktop update passed." if args.public_chat else "Native deployed history: three chats, 615 messages, restore, and local sign-out passed.")
                 return
             deadline = time.monotonic() + 100
             while not (output / "waiting.png").exists():
@@ -108,6 +110,8 @@ def main():
             if native.poll() is None:
                 native.terminate()
                 native.wait(timeout=10)
+            if args.public_chat:
+                shutil.rmtree(app)
     print("Native sidebar authentication and isolated browser approval passed.")
 
 

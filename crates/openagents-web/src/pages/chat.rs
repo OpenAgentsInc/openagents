@@ -416,6 +416,7 @@ async fn start(State(app): State<App>, headers: HeaderMap, Form(prompt): Form<Pr
             payer: None,
         }),
         requests: vec![Request {
+            turn_error: None,
             id: id.clone(),
             digest,
             outcome: Outcome::Pending,
@@ -605,6 +606,7 @@ pub(crate) fn first_record(
             payer: None,
         }),
         requests: vec![Request {
+            turn_error: None,
             id: id.to_owned(),
             digest,
             outcome: Outcome::Pending,
@@ -727,6 +729,7 @@ async fn start_claude(
         }],
         pending: None,
         requests: vec![Request {
+            turn_error: None,
             id: id.to_owned(),
             digest,
             outcome: Outcome::Answered,
@@ -924,6 +927,7 @@ async fn start_solver(
         }],
         pending: None,
         requests: vec![Request {
+            turn_error: None,
             id: id.to_owned(),
             digest,
             outcome: Outcome::Answered,
@@ -998,6 +1002,7 @@ async fn follow_solver(
         request_id: Some(request_id.to_owned()),
     });
     next.requests.push(Request {
+        turn_error: None,
         id: request_id.to_owned(),
         digest,
         outcome: Outcome::Answered,
@@ -1849,6 +1854,7 @@ async fn follow(
         payer: member.then(|| owner.clone()),
     });
     next.requests.push(Request {
+        turn_error: None,
         id: prompt.request_id.clone(),
         digest: hash,
         outcome: Outcome::Pending,
@@ -2037,6 +2043,7 @@ pub(crate) async fn follow_from_app(
         payer: payer.filter(|payer| *payer != owner).map(str::to_owned),
     });
     next.requests.push(Request {
+        turn_error: None,
         id: request_id.to_owned(),
         digest: hash.clone(),
         outcome: Outcome::Pending,
@@ -2142,6 +2149,7 @@ async fn follow_claude(
             request_id: Some(request_id.into()),
         });
         next.requests.push(Request {
+            turn_error: None,
             id: request_id.into(),
             digest: digest.clone(),
             outcome: Outcome::Answered,
@@ -2215,6 +2223,7 @@ async fn follow_claude(
             request_id: Some(request_id.to_owned()),
         });
         next.requests.push(Request {
+            turn_error: None,
             id: request_id.to_owned(),
             digest,
             outcome: Outcome::Answered,
@@ -2711,7 +2720,7 @@ async fn answer(
         if let Some(job) = &mut job {
             tokio::select! { ()=job,if !asked=>asked=true, ()=tokio::time::sleep(Duration::from_millis(400))=>{} }
         }
-        let (text, done, failure, meta) = {
+        let (text, done, failure, meta, turn_error) = {
             let r = basic_coder::lock(&reply);
             (
                 r.text.clone(),
@@ -2739,6 +2748,9 @@ async fn answer(
                         meta
                     })
                     .filter(|meta| !meta.is_empty()),
+                r.failure
+                    .as_ref()
+                    .map(crate::chat_api::TurnError::from_failure),
             )
         };
         let expired = tokio::time::Instant::now() >= deadline;
@@ -2776,6 +2788,7 @@ async fn answer(
             if ended {
                 next.pending = None;
                 if let Some(r) = next.requests.iter_mut().find(|r| r.id == request_id) {
+                    r.turn_error = turn_error.clone();
                     if done {
                         r.reply = meta.clone();
                     }

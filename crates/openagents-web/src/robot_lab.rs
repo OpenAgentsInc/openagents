@@ -466,6 +466,7 @@ async fn saved(
         request_id: Some(request_id.clone()),
     });
     next.requests.push(crate::chat_store::Request {
+        turn_error: None,
         id: request_id,
         digest: reference.version.clone(),
         outcome: crate::chat_store::Outcome::Answered,

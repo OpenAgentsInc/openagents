@@ -3,7 +3,7 @@
 use crate::projects::{api, shared_chats};
 use crate::{
     App,
-    chat_store::{Conversation, Error, account_owner},
+    chat_store::{Conversation, Error},
     coder_sync::{answer, refused, stored},
 };
 use axum::{
@@ -225,7 +225,10 @@ async fn messages(
                 })
                 .collect();
             let tool = chat.terminal.as_ref().and_then(|t| t.steps.get(&at));
-            json!({"id":format!("msg_{at}"),"role":m.role,"text":m.text,"files":files,"tool":tool,
+            let reply = (m.role == crate::chat_store::Role::Assistant).then(|| {
+                m.request_id.as_ref().and_then(|id|chat.requests.iter().find(|r|&r.id==id)).and_then(|r|r.reply.as_ref())
+            }).flatten().filter(|m|!m.cards.is_empty()).map(crate::chat_api::display_cards);
+            json!({"id":format!("msg_{at}"),"role":m.role,"text":m.text,"files":files,"tool":tool,"reply":reply,
             "generated_files":[], "artifacts":[]})
         })
         .collect();

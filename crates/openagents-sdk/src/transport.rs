@@ -268,6 +268,36 @@ impl Client {
         body: Option<Value>,
         token: Option<&str>,
     ) -> Result<reqwest::Response, Error> {
+        self.send_with_timeout(method, segments, query, body, token, None)
+            .await
+    }
+
+    pub(crate) async fn send_events(
+        &self,
+        segments: &[&str],
+        query: &[(&str, String)],
+        token: &str,
+    ) -> Result<reqwest::Response, Error> {
+        self.send_with_timeout(
+            Method::GET,
+            segments,
+            query,
+            None,
+            Some(token),
+            Some(Duration::from_secs(310)),
+        )
+        .await
+    }
+
+    async fn send_with_timeout(
+        &self,
+        method: Method,
+        segments: &[&str],
+        query: &[(&str, String)],
+        body: Option<Value>,
+        token: Option<&str>,
+        timeout: Option<Duration>,
+    ) -> Result<reqwest::Response, Error> {
         let mut url = self.deployment.api.clone();
         {
             let mut path = url
@@ -283,6 +313,9 @@ impl Client {
                 .extend_pairs(query.iter().map(|(k, v)| (*k, v.as_str())));
         }
         let mut request = self.http.request(method, url);
+        if let Some(timeout) = timeout {
+            request = request.timeout(timeout);
+        }
         if let Some(token) = token {
             request = request.bearer_auth(token);
         }
@@ -347,7 +380,7 @@ impl Client {
         }
         Ok(bytes)
     }
-    async fn decode<T: DeserializeOwned>(
+    pub(crate) async fn decode<T: DeserializeOwned>(
         response: reqwest::Response,
         segments: &[&str],
         limit: usize,
@@ -385,6 +418,12 @@ impl Client {
                 Some("assignment_conflict") => Some("assignment_conflict"),
                 Some("invalid_assignment") => Some("invalid_assignment"),
                 Some("quota_exhausted") => Some("quota_exhausted"),
+                Some("busy") => Some("busy"),
+                Some("invalid") => Some("invalid"),
+                Some("secret") => Some("secret"),
+                Some("computer_chat") => Some("computer_chat"),
+                Some("project_role") => Some("project_role"),
+                Some("unsupported_turn") => Some("unsupported_turn"),
                 _ => None,
             };
             return Err(Error::Refused {
