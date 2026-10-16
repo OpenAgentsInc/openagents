@@ -12,10 +12,12 @@ output=$(cd "$output" && pwd)
 context=$output/context
 mkdir "$context"
 git -C "$root" archive "$commit" crates/layertree-tee-lab deploy/layertree/reproducible-probe.Dockerfile | tar -x -C "$context"
+# Buildx's Docker client also works with the builder's older Docker daemon.
+export DOCKER_API_VERSION=${DOCKER_API_VERSION:-$(docker version --format '{{.Server.APIVersion}}')}
 builder=${LAYERTREE_BUILDER:-oa-layertree-repro-agent2}
 buildkit=moby/buildkit@sha256:98cc6a3fc46220d00f8224ae483f3274fc874e9be8d7dd1e2e2c5481209228b5
 if docker buildx inspect "$builder" > "$output/builder-inspect.txt" 2>/dev/null; then
-    docker buildx inspect "$builder" --format '{{json .DriverOptions}}' | grep -F "$buildkit" >/dev/null || { echo 'The builder must use the pinned BuildKit image.' >&2; exit 2; }
+    grep -F "image=\"$buildkit\"" "$output/builder-inspect.txt" >/dev/null || { echo 'The builder must use the pinned BuildKit image.' >&2; exit 2; }
 else
     docker buildx create --name "$builder" --driver docker-container --driver-opt "image=$buildkit" > "$output/builder-name.txt"
 fi
