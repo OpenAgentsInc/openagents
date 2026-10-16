@@ -1,0 +1,2108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "openagents.live-contracts.v1",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/live-plan"
+    },
+    {
+      "$ref": "#/$defs/live-participant"
+    },
+    {
+      "$ref": "#/$defs/live-input-floor-request"
+    },
+    {
+      "$ref": "#/$defs/live-input-floor"
+    },
+    {
+      "$ref": "#/$defs/live-floor-request"
+    },
+    {
+      "$ref": "#/$defs/live-floor"
+    },
+    {
+      "$ref": "#/$defs/live-control"
+    },
+    {
+      "$ref": "#/$defs/live-capture"
+    },
+    {
+      "$ref": "#/$defs/live-observation"
+    },
+    {
+      "$ref": "#/$defs/live-transcript"
+    },
+    {
+      "$ref": "#/$defs/live-input"
+    },
+    {
+      "$ref": "#/$defs/live-input-admission"
+    },
+    {
+      "$ref": "#/$defs/live-result"
+    },
+    {
+      "$ref": "#/$defs/live-conversation"
+    },
+    {
+      "$ref": "#/$defs/live-consent-policy"
+    },
+    {
+      "$ref": "#/$defs/live-consent"
+    },
+    {
+      "$ref": "#/$defs/live-freshness"
+    },
+    {
+      "$ref": "#/$defs/live-playback-interruption"
+    },
+    {
+      "$ref": "#/$defs/live-input-outcome"
+    }
+  ],
+  "$defs": {
+    "event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "pubkey",
+        "kind"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "pubkey": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "kind": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65535
+        },
+        "coordinate": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 1024
+        }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "digest",
+        "size",
+        "media_type"
+      ],
+      "properties": {
+        "digest": {
+          "type": "string",
+          "minLength": 71,
+          "maxLength": 71
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "media_type": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "schema": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 1024
+        },
+        "event": {
+          "$ref": "#/$defs/event"
+        },
+        "sources": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 64,
+          "items": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "url"
+                ],
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "minLength": 0,
+                    "maxLength": 1024
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "event"
+                ],
+                "properties": {
+                  "event": {
+                    "$ref": "#/$defs/event"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    "definition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "artifact"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 1024
+        },
+        "artifact": {
+          "$ref": "#/$defs/artifact"
+        },
+        "event": {
+          "$ref": "#/$defs/event"
+        }
+      }
+    },
+    "bound": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "bound",
+        "ceiling",
+        "assurance",
+        "mechanism"
+      ],
+      "properties": {
+        "bound": {
+          "enum": [
+            "wall_ms",
+            "memory_bytes",
+            "input_bytes",
+            "output_bytes",
+            "read_bytes",
+            "storage_bytes",
+            "calls",
+            "attempts",
+            "concurrency",
+            "depth",
+            "fuel",
+            "spend_microunits"
+          ]
+        },
+        "ceiling": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "minimum": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "assurance": {
+          "enum": [
+            "host",
+            "trusted_executor"
+          ]
+        },
+        "mechanism": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "currency": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 16
+        }
+      }
+    },
+    "bounds": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 12,
+      "items": {
+        "$ref": "#/$defs/bound"
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scope",
+        "id"
+      ],
+      "properties": {
+        "scope": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        }
+      }
+    },
+    "retention": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "until"
+      ],
+      "properties": {
+        "mode": {
+          "enum": [
+            "none",
+            "bounded"
+          ]
+        },
+        "until": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "track": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "source",
+        "media",
+        "direction",
+        "recipients",
+        "retention",
+        "processing"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        },
+        "media": {
+          "enum": [
+            "audio",
+            "image",
+            "video",
+            "text"
+          ]
+        },
+        "direction": {
+          "enum": [
+            "capture",
+            "playback"
+          ]
+        },
+        "recipients": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/$defs/artifact"
+          }
+        },
+        "retention": {
+          "$ref": "#/$defs/retention"
+        },
+        "processing": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 16,
+          "items": {
+            "$ref": "#/$defs/definition"
+          }
+        }
+      }
+    },
+    "geometry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "width_px",
+        "height_px",
+        "coordinate_space",
+        "transform"
+      ],
+      "properties": {
+        "width_px": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "height_px": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "coordinate_space": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "transform": {
+          "$ref": "#/$defs/artifact"
+        }
+      }
+    },
+    "interval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "clock",
+        "start_ms",
+        "end_ms"
+      ],
+      "properties": {
+        "clock": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "start_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "end_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      }
+    },
+    "segment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "interval",
+        "text",
+        "speaker",
+        "final"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "interval": {
+          "$ref": "#/$defs/interval"
+        },
+        "text": {
+          "$ref": "#/$defs/artifact"
+        },
+        "speaker": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 256
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "final": {
+          "type": "boolean"
+        }
+      }
+    },
+    "live-plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "session",
+        "task",
+        "previous",
+        "expected_revision",
+        "frame",
+        "conversation",
+        "owner",
+        "controller",
+        "generation",
+        "media_epoch",
+        "transport",
+        "bindings",
+        "tracks",
+        "disclosure",
+        "consent_policy",
+        "reservation",
+        "bounds",
+        "expires_at"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.live-plan.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "session": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "task": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "previous": {
+          "anyOf": [
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/artifact"
+                },
+                {
+                  "required": [
+                    "schema"
+                  ],
+                  "properties": {
+                    "schema": {
+                      "const": "openagents.live-plan.v1"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "expected_revision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "frame": {
+          "$ref": "#/$defs/artifact"
+        },
+        "conversation": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.live-conversation.v1"
+                }
+              }
+            }
+          ]
+        },
+        "owner": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "controller": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "generation": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "media_epoch": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "transport": {
+          "$ref": "#/$defs/definition"
+        },
+        "bindings": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/artifact"
+          }
+        },
+        "tracks": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/$defs/track"
+          }
+        },
+        "disclosure": {
+          "$ref": "#/$defs/artifact"
+        },
+        "consent_policy": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.live-consent-policy.v1"
+                }
+              }
+            }
+          ]
+        },
+        "reservation": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.reservation.v1"
+                }
+              }
+            }
+          ]
+        },
+        "bounds": {
+          "$ref": "#/$defs/bounds"
+        },
+        "expires_at": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "live-participant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "request",
+        "plan",
+        "participant",
+        "action",
+        "expected_revision",
+        "tracks",
+        "rights",
+        "consent",
+        "expires_at"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.live-participant.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "request": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "plan": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.live-plan.v1"
+                }
+              }
+            }
+          ]
+        },
+        "participant": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "action": {
+          "enum": [
+            "admit",
+            "revoke"
+          ]
+        },
+        "expected_revision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "tracks": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 32,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          }
+        },
+        "rights": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 5,
+          "items": {
+            "enum": [
+              "publish",
+              "subscribe",
+              "transcribe",
+              "record",
+              "playback"
+            ]
+          }
+        },
+        "consent": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 32,
+          "items": {
+            "allOf": [
+              {
+                "$ref": "#/$defs/artifact"
+              },
+              {
+                "required": [
+                  "schema"
+                ],
+                "properties": {
+                  "schema": {
+                    "const": "openagents.live-consent.v1"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "expires_at": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "live-input-floor-request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "request",
+        "plan",
+        "participant",
+        "track",
+        "destination",
+        "processing",
+        "expected_revision",
+        "action",
+        "until",
+        "nonce"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.live-input-floor-request.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "request": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "plan": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.live-plan.v1"
+                }
+              }
+            }
+          ]
+        },
+        "participant": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "track": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "destination": {
+          "$ref": "#/$defs/artifact"
+        },
+        "processing": {
+          "$ref": "#/$defs/definition"
+        },
+        "expected_revision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "action": {
+          "enum": [
+            "acquire",
+            "release"
+          ]
+        },
+        "until": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "nonce": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "live-input-floor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "request",
+        "plan",
+        "participant",
+        "track",
+        "destination",
+        "processing",
+        "nonce",
+        "until",
+        "revision"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.live-input-floor.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "request": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.live-input-floor-request.v1"
+                }
+              }
+            }
+          ]
+        },
+        "plan": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.live-plan.v1"
+                }
+              }
+            }
+          ]
+        },
+        "participant": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "track": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "destination": {
+          "$ref": "#/$defs/artifact"
+        },
+        "processing": {
+          "$ref": "#/$defs/definition"
+        },
+        "nonce": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "until": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "live-floor-request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "request",
+        "plan",
+        "participant",
+        "track",
+        "expected_revision",
+        "action",
+        "until",
+        "nonce"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.live-floor-request.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "request": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "plan": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.live-plan.v1"
+                }
+              }
+            }
+          ]
+        },
+        "participant": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "track": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "expected_revision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "action": {
+          "enum": [
+            "acquire",
+            "release"
+          ]
+        },
+        "until": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "nonce": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "live-floor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "request",
+        "plan",
+        "participant",
+        "track",
+        "nonce",
+        "until",
+        "revision"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.live-floor.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "request": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.live-floor-request.v1"
+                }
+              }
+            }
+          ]
+        },
+        "plan": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.live-plan.v1"
+                }
+              }
+            }
+          ]
+        },
+        "participant": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "track": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "nonce": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "until": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "live-control": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "request",
+        "plan",
+        "action",
+        "expected_revision",
+        "reason"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.live-control.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "request": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "plan": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.live-plan.v1"
+                }
+              }
+            }
+          ]
+        },
+        "action": {
+          "enum": [
+            "start",
+            "pause",
+            "resume",
+            "stop",
+            "status"
+          ]
+        },
+        "expected_revision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 1024
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "live-capture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "request",
+        "plan",
+        "track",
+        "expected_revision",
+        "limits",
+        "purpose"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.live-capture.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "request": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "plan": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.live-plan.v1"
+                }
+              }
+            }
+          ]
+        },
+        "track": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "expected_revision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "limits": {
+          "$ref": "#/$defs/bounds"
+        },
+        "purpose": {
+          "enum": [
+            "task_input",
+            "observation",
+            "verification",
+            "recording"
+          ]
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "live-observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "plan",
+        "track",
+        "capture",
+        "source",
+        "captured_at",
+        "host_generation",
+        "content",
+        "evidence",
+        "format",
+        "geometry",
+        "interval",
+        "freshness"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.live-observation.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "plan": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.live-plan.v1"
+                }
+              }
+            }
+          ]
+        },
+        "track": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "capture": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        },
+        "captured_at": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "host_generation": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "content": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "evidence": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "format": {
+          "$ref": "#/$defs/artifact"
+        },
+        "geometry": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/geometry"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "interval": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/interval"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "freshness": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.live-freshness.v1"
+                }
+              }
+            }
+          ]
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "live-transcript": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "observation",
+        "transform",
+        "revision",
+        "previous",
+        "segments",
+        "coverage"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.live-transcript.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "observation": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.live-observation.v1"
+                }
+              }
+            }
+          ]
+        },
+        "transform": {
+          "$ref": "#/$defs/definition"
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "previous": {
+          "anyOf": [
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/artifact"
+                },
+                {
+                  "required": [
+                    "schema"
+                  ],
+                  "properties": {
+                    "schema": {
+                      "const": "openagents.live-transcript.v1"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "segments": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 4096,
+          "items": {
+            "$ref": "#/$defs/segment"
+          }
+        },
+        "coverage": {
+          "enum": [
+            "complete",
+            "partial",
+            "unknown"
+          ]
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "live-input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "request",
+        "plan",
+        "frame",
+        "observation",
+        "operation",
+        "binding",
+        "input",
+        "preconditions"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.live-input.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "request": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "plan": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.live-plan.v1"
+                }
+              }
+            }
+          ]
+        },
+        "frame": {
+          "$ref": "#/$defs/artifact"
+        },
+        "observation": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.live-observation.v1"
+                }
+              }
+            }
+          ]
+        },
+        "operation": {
+          "$ref": "#/$defs/definition"
+        },
+        "binding": {
+          "$ref": "#/$defs/artifact"
+        },
+        "input": {
+          "$ref": "#/$defs/artifact"
+        },
+        "preconditions": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/$defs/artifact"
+          }
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "live-input-admission": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "request",
+        "plan",
+        "expected_revision",
+        "proposal",
+        "action",
+        "approvals"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.live-input-admission.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "request": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "plan": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.live-plan.v1"
+                }
+              }
+            }
+          ]
+        },
+        "expected_revision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "proposal": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.live-input.v1"
+                }
+              }
+            }
+          ]
+        },
+        "action": {
+          "$ref": "#/$defs/artifact"
+        },
+        "approvals": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/$defs/artifact"
+          }
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "live-result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "request",
+        "plan",
+        "revision",
+        "state",
+        "status",
+        "reason",
+        "record",
+        "value",
+        "receipts"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.live-result.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "request": {
+          "$ref": "#/$defs/artifact"
+        },
+        "plan": {
+          "anyOf": [
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/artifact"
+                },
+                {
+                  "required": [
+                    "schema"
+                  ],
+                  "properties": {
+                    "schema": {
+                      "const": "openagents.live-plan.v1"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "state": {
+          "enum": [
+            "admitted",
+            "active",
+            "paused",
+            "closed",
+            "unknown"
+          ]
+        },
+        "status": {
+          "enum": [
+            "accepted",
+            "duplicate",
+            "refused",
+            "conflict",
+            "unknown"
+          ]
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "enum": [
+                "malformed",
+                "unsupported_version",
+                "unsupported_feature",
+                "not_admitted",
+                "unavailable",
+                "content_unavailable",
+                "identity_mismatch",
+                "incompatible",
+                "revoked",
+                "stale",
+                "cannot_enforce",
+                "limit_exceeded",
+                "idempotency_conflict",
+                "conflict"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "record": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "value": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "receipts": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/artifact"
+          }
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "live-conversation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "scope",
+        "participants",
+        "disclosure"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.live-conversation.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "scope": {
+          "enum": [
+            "owner_private",
+            "direct",
+            "group"
+          ]
+        },
+        "participants": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64
+          }
+        },
+        "disclosure": {
+          "$ref": "#/$defs/artifact"
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "live-consent-policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "requires_consent",
+        "on_disconnect",
+        "max_revocation_delay_ms"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.live-consent-policy.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "requires_consent": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 5,
+          "items": {
+            "enum": [
+              "publish",
+              "subscribe",
+              "transcribe",
+              "record",
+              "playback"
+            ]
+          }
+        },
+        "on_disconnect": {
+          "enum": [
+            "pause",
+            "stop"
+          ]
+        },
+        "max_revocation_delay_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "live-consent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "plan",
+        "participant",
+        "rights",
+        "tracks",
+        "expires_at"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.live-consent.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "plan": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.live-plan.v1"
+                }
+              }
+            }
+          ]
+        },
+        "participant": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "rights": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 5,
+          "items": {
+            "enum": [
+              "publish",
+              "subscribe",
+              "transcribe",
+              "record",
+              "playback"
+            ]
+          }
+        },
+        "tracks": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          }
+        },
+        "expires_at": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "live-freshness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "max_age_ms",
+        "host_generation",
+        "focus_version"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.live-freshness.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "max_age_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "host_generation": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "focus_version": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "live-playback-interruption": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "floor",
+        "confirmed_ms",
+        "uncertain_until_ms",
+        "reason"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.live-playback-interruption.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "floor": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.live-floor.v1"
+                }
+              }
+            }
+          ]
+        },
+        "confirmed_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "uncertain_until_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 1024
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "live-input-outcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "admission",
+        "dispatched",
+        "outcome",
+        "observed",
+        "reason"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.live-input-outcome.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "admission": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.live-input-admission.v1"
+                }
+              }
+            }
+          ]
+        },
+        "dispatched": {
+          "type": "boolean"
+        },
+        "outcome": {
+          "enum": [
+            "applied",
+            "refused",
+            "unknown"
+          ]
+        },
+        "observed": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "enum": [
+                "malformed",
+                "unsupported_version",
+                "unsupported_feature",
+                "not_admitted",
+                "unavailable",
+                "content_unavailable",
+                "identity_mismatch",
+                "incompatible",
+                "revoked",
+                "stale",
+                "cannot_enforce",
+                "limit_exceeded",
+                "idempotency_conflict",
+                "conflict"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    }
+  }
+}

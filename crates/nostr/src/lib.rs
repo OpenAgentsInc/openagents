@@ -33,6 +33,7 @@ pub mod gym_results;
 pub mod kb;
 pub mod kinds;
 pub mod lane;
+pub mod live;
 pub mod market_contracts;
 pub mod negentropy;
 pub mod nip04;

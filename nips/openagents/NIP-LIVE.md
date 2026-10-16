@@ -4,7 +4,9 @@
 are normative. This profile binds voice, camera, screen, browser, and device
 interaction to a task's admitted participants, recipients, observations, and
 effects. It defines no new event kinds and does not implement a media server,
-computer-use driver, or recording service.
+computer-use driver, or recording service. [`live-host`](../../crates/live-host/README.md)
+implements the session-controller role over explicit broker, capture, and device
+adapters; see the [Rust controller profile](#rust-controller-profile).
 
 Nostr carries authenticated negotiation, control, and retained evidence.
 An admitted media transport carries live audio/video; sending every frame
@@ -343,3 +345,25 @@ Required fixtures and host tests include:
 Advertise `nip-live-v1` only for the exact validated operation/transport roles
 implemented by the host. The relay advertises its supported envelope behavior,
 not capture, consent, media encryption, or device enforcement it does not perform.
+
+## Rust controller profile
+
+The [live schemas](schemas/live.v1.json) describe every record above. In this
+profile, the "common fields" of an input admission are `request`, `plan`, and
+`expected_revision`. The controller key equals the plan's `controller` and
+signs every result. The profile pins these supporting records:
+
+| Record | Fields |
+| --- | --- |
+| `openagents.live-conversation.v1` | `scope` (`owner_private`, `direct`, or `group`), `participants` (pubkeys), and `disclosure`. |
+| `openagents.live-consent-policy.v1` | `requires_consent` (rights that need the participant's own signed consent), `on_disconnect` (`pause` or `stop`), and `max_revocation_delay_ms`. |
+| `openagents.live-consent.v1` | `plan`, `participant`, `rights`, `tracks`, `expires_at`. Only a declaration signed by that participant counts. |
+| `openagents.live-freshness.v1` | `max_age_ms`, `host_generation`, and `focus_version` (null when not applicable). |
+| `openagents.live-playback-interruption.v1` | `floor`, `confirmed_ms`, `uncertain_until_ms`, and `reason`. |
+| `openagents.live-input-outcome.v1` | `admission`, `dispatched`, `outcome` (`applied`, `refused`, or `unknown`), `observed`, and `reason`. |
+
+A POL action for device input pins its proposal through a `proposal`
+ArtifactRef. Plans need finite `wall_ms`, `storage_bytes`, and `concurrency`
+bounds. A transport reconnection advances the session's media epoch past the
+plan's value and invalidates every floor. Production media transports, NIP-53
+discovery, and physical device bindings remain separate adapters.

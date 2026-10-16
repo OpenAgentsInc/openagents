@@ -131,7 +131,8 @@ GitHub import proposals, and an admitted LAB port in `work-host`.
 COORD has native scopes, fenced CJ worker intake, shared child call allowances,
 independent checks, conditional Git integration, and finite read-only observations
 in `coordination-host`. Other COORD/WORK effectful adapters, wider ENV/AUTO/SESS
-roles, LIVE, and POL/EXT lifecycle
+roles, production LIVE media transports (the `live-host` controller exists), and
+POL/EXT lifecycle
 additions remain unfinished. The index, glossary, and older
 introductions are not substitutes for current runtime evidence. The remaining
 Rust work is tracked in #11729.
