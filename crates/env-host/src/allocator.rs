@@ -158,6 +158,7 @@ pub struct Allocator {
     pub(crate) secret: SecretKey,
     provider: RefCell<Box<dyn Provider>>,
     binding: String,
+    claims: Option<Box<dyn crate::claims::ClaimAuthority>>,
 }
 
 fn refuse(code: &str, detail: &str) -> String {
@@ -227,6 +228,7 @@ impl Allocator {
             signer,
             secret,
             binding: String::new(),
+            claims: None,
             provider: RefCell::new(provider),
         };
         allocator.state()?;
@@ -239,6 +241,31 @@ impl Allocator {
             binding,
             ..allocator
         })
+    }
+    pub fn with_claims(mut self, claims: Box<dyn crate::claims::ClaimAuthority>) -> Self {
+        self.claims = Some(claims);
+        self
+    }
+    fn check_claim(
+        &self,
+        attach: &Value,
+        declaration: &Value,
+        plaintext: &Value,
+        now: u64,
+    ) -> Result<()> {
+        let reservation = self.body(&attach["reservation"], "openagents.reservation.v1")?;
+        self.claims
+            .as_ref()
+            .ok_or("not_admitted: a current coordinator authority is required")?
+            .check(
+                &attach["claim"],
+                attach["controller"].as_str().ok_or("controller")?,
+                attach["worker"].as_str().ok_or("worker")?,
+                declaration,
+                plaintext,
+                &reservation,
+                now,
+            )
     }
     pub(crate) fn provider_binding(&self) -> String {
         self.provider.borrow().binding()
@@ -1462,9 +1489,8 @@ impl Allocator {
         {
             return Err(refuse("identity_mismatch", "input digest"));
         }
-        // COORD claims are pinned by exact retained bytes until the shared
-        // reservation service lands; a bare digest is not accepted.
         self.bytes(&body["claim"])?;
+        self.check_claim(body, &declaration, plaintext, now)?;
         let reservation = contracts::parse_reservation(
             &self.body(&body["reservation"], "openagents.reservation.v1")?,
         )
@@ -1482,6 +1508,12 @@ impl Allocator {
             ));
         }
         let deadline = plaintext["deadline"].as_u64().unwrap_or_default();
+        if deadline > lease.effective_expiry() {
+            return Err(refuse(
+                "cannot_enforce",
+                "the execute deadline exceeds the current lease",
+            ));
+        }
         let expires_at = lease.effective_expiry().min(deadline);
         if expires_at <= now {
             return Err(refuse("stale", "execution deadline has passed"));
@@ -1833,9 +1865,50 @@ impl Allocator {
         if lease.effective_expiry() <= now || current.expires_at <= now {
             return Err(refuse("stale", "lease or grant has expired"));
         }
+        let declaration = self.body(
+            &current.request["execute"],
+            "openagents.environment-execute.v1",
+        )?;
+        let plaintext = self.body(&declaration["body"], nostr::execution::SCHEMA)?;
+        self.check_claim(&current.request, &declaration, &plaintext, now)?;
         Ok(())
     }
 
+    /// Hold the allocator's current attachment fence through actual worker intake.
+    pub fn with_worker_intake(
+        &self,
+        proof: &coordination_host::worker::VerifiedIntake,
+        now: u64,
+        dispatch: &mut dyn FnMut() -> Result<coordination_host::worker::Intake>,
+    ) -> Result<coordination_host::worker::Intake> {
+        let started = std::time::Instant::now();
+        let _guard = self.store.lock()?;
+        let now = now.saturating_add(started.elapsed().as_secs());
+        let state = self.state()?;
+        let lease = state
+            .leases
+            .values()
+            .find(|l| {
+                l.attachment
+                    .as_ref()
+                    .is_some_and(|a| a.fingerprint == proof.fingerprint())
+            })
+            .ok_or("not_admitted: exact active environment attachment required")?;
+        let attachment = lease.attachment.as_ref().ok_or("attachment")?;
+        let declaration = self.body(
+            &attachment.request["execute"],
+            "openagents.environment-execute.v1",
+        )?;
+        if attachment.request["claim"] != *proof.claim()
+            || attachment.request["worker"] != proof.actor()
+            || declaration["caller"] != proof.authority()
+            || declaration["event"]["id"] != proof.request()
+        {
+            return Err("identity_mismatch: environment worker intake differs".into());
+        }
+        self.check_dispatch(&attachment.id, proof.fingerprint(), now)?;
+        dispatch()
+    }
     /// Move every lease past its effective expiry to draining. Expiry never
     /// releases a resource or proves that old processes stopped.
     pub fn expire(&self, now: u64) -> Result<Vec<String>> {

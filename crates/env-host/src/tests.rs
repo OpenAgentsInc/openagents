@@ -98,6 +98,23 @@ impl Provider for Faulty {
     }
 }
 
+// Explicit test authority for isolated ENV state-machine fixtures. Actual
+// COORD integration fixtures use the real authority and reject opaque claims.
+struct FixtureClaims;
+impl crate::claims::ClaimAuthority for FixtureClaims {
+    fn check(
+        &self,
+        _: &Value,
+        _: &str,
+        _: &str,
+        _: &Value,
+        _: &Value,
+        _: &Value,
+        _: u64,
+    ) -> crate::Result<()> {
+        Ok(())
+    }
+}
 struct Fixture {
     _temp: tempfile::TempDir,
     state: PathBuf,
@@ -190,7 +207,9 @@ impl Fixture {
             inner: LocalDirectories::new(self.resources.clone()).unwrap(),
             faults: self.faults.clone(),
         };
-        Allocator::open(self.state.clone(), secret(ALLOCATOR), Box::new(provider)).unwrap()
+        Allocator::open(self.state.clone(), secret(ALLOCATOR), Box::new(provider))
+            .unwrap()
+            .with_claims(Box::new(FixtureClaims))
     }
     fn request_body(&mut self, id: u8, spend: u64, ttl: u64) -> Value {
         let mut artifacts = std::mem::take(&mut self.artifacts);
@@ -1199,4 +1218,227 @@ fn interrupted_cj_recovery_fences_a_late_handler_without_starting_the_provider()
     );
     assert!(allocator.leases().unwrap().is_empty());
     assert_eq!(fx.faults.borrow().creates, 0);
+}
+
+fn native_environment_job(
+    fx: &mut Fixture,
+) -> (
+    coordination_host::book::Coordinator,
+    Value,
+    Value,
+    Event,
+    Value,
+) {
+    let h = coordination_host::book::Coordinator::initialize(
+        fx._temp.path().join("coord"),
+        secret(OWNER),
+    )
+    .unwrap();
+    let target = h.data_operation().unwrap();
+    let effects = json!({"reads":["artifact"],"writes":[],"network":[],"process":false,"delegates":false,"spend":false});
+    let now = fx.now;
+    let scope = h
+        .create_scope(
+            coordination_host::book::Policy {
+                recipients: BTreeSet::from([pk(OWNER), pk(WORKER), pk(INFERENCE)]),
+                checkers: BTreeSet::from([pk(INFERENCE)]),
+                calls: 2,
+                concurrency: 1,
+                max_claim_seconds: 300,
+                max_container_seconds: None,
+                max_depth: 8,
+                until: now + 7200,
+                effects: effects.clone(),
+                parent: None,
+            },
+            vec![],
+            vec![target.clone()],
+            now,
+        )
+        .unwrap();
+    let send =
+        |body: Value| workspace_host::host::request(&secret(OWNER), &pk(OWNER), body, now).unwrap();
+    h.control_grants(&send(json!({"v":"openagents.coordination-native-control.v1","requires":[],"coordinator":scope,"command":workspace_host::artifact::token(),"expected_revision":h.scope(&scope).unwrap()["revision"],"actor":pk(WORKER),"roles":["read","claim"],"resources":[],"targets":[],"all":true,"until":now+7200,"revoke":false,"scope_revoke":false})),now).unwrap();
+    let acceptance=h.put_local_json(&json!({"v":"openagents.coordination-native-check-policy.v1","requires":[],"check":"exact-admitted-output"})).unwrap();
+    let task = workspace_host::artifact::token();
+    let text = h
+        .put_local_bytes(b"Bounded environment data", "text/plain", None)
+        .unwrap();
+    let snapshot=h.put_local_json(&json!({"v":"openagents.snapshot.v1","requires":[],"scope":"env-integration","captured_at":now,"sources":[],"coverage":"complete"})).unwrap();
+    let precedence = h
+        .put_local_json(
+            &json!({"v":"openagents.coordination-empty-instruction-policy.v1","requires":[]}),
+        )
+        .unwrap();
+    let instructions=h.put_local_json(&json!({"v":"openagents.instructions.v1","requires":[],"task":task,"revision":0,"resolver":{"id":format!("{}:coord/empty-instructions",pk(OWNER)),"artifact":precedence},"precedence":precedence,"snapshot":snapshot,"entries":[]})).unwrap();
+    let frame=h.put_local_json(&json!({"v":"openagents.task-frame.v1","requires":[],"task":task,"owner":pk(OWNER),"controller":pk(OWNER),"revision":0,"previous":null,"objective":text,"origin":"user","constraints":[],"acceptance":[acceptance],"snapshot":snapshot,"instructions":instructions,"variables":[],"attempts":[],"unresolved":[],"corrections":[]})).unwrap();
+    h.frame(&send(json!({"v":"openagents.coordination-native-frame.v1","requires":[],"coordinator":scope,"command":workspace_host::artifact::token(),"expected_revision":h.scope(&scope).unwrap()["revision"],"frame":frame})),&h.get_local_bytes(&frame).unwrap(),now).unwrap();
+    let input=h.put_local_json(&json!({"v":"openagents.fixture-input.v1","requires":[],"trial":workspace_host::artifact::token(),"text":"native environment data"})).unwrap();
+    let lock=h.put_local_json(&json!({"v":"openagents.lock.v1","requires":[],"root":target,"entries":[{"id":target["id"],"definition":target,"dependencies":[]}]})).unwrap();
+    let descriptor: Value = serde_json::from_slice(&h.get_local_bytes(&scope).unwrap()).unwrap();
+    let context=h.put_local_json(&json!({"v":"openagents.context.v1","requires":[],"task":task,"recipient":pk(WORKER),"policy":descriptor["policy"],"entries":[],"omissions":[],"coverage":"complete"})).unwrap();
+    let proposal=h.propose(&send(json!({"v":"openagents.task-proposal.v1","requires":[],"task":workspace_host::artifact::token(),"coordinator":scope,"frame":frame,"parent":null,"target":target,"lock":lock,"input":input,"context":context,"dependencies":[],"effects":effects,"bounds":[{"bound":"calls","ceiling":2,"assurance":"host","mechanism":"native-ledger"}],"acceptance":acceptance,"reuse":"never"})),&BTreeMap::new(),now).unwrap()["value"].clone();
+    let claim=h.claim(&send(json!({"v":"openagents.claim-request.v1","requires":[],"proposal":proposal,"worker":pk(WORKER),"resources":[],"expected_revision":h.scope(&scope).unwrap()["revision"],"requested_until":now+300,"reservation":h.scope(&scope).unwrap()["allowance"]})),now).unwrap()["value"].clone();
+    let dispatch = send(
+        json!({"v":"openagents.coordination-native-dispatch.v1","requires":[],"coordinator":scope,"claim":claim}),
+    );
+    let event = h.prepare_environment(&dispatch, now).unwrap();
+    assert!(h.prepare(&dispatch, now).unwrap_err().contains("profile"));
+    let opened = execution::open_environment_request(
+        &event,
+        &pk(WORKER),
+        &secret(WORKER),
+        now,
+        execution::Window::DEFAULT,
+    )
+    .unwrap();
+    let execution::Body::Execute(execute) = opened.body else {
+        panic!()
+    };
+    let claim_body: Value = serde_json::from_slice(&h.get_local_bytes(&claim).unwrap()).unwrap();
+    fx.reservation =
+        serde_json::from_slice(&h.get_local_bytes(&claim_body["reservation"]).unwrap()).unwrap();
+    put(
+        &mut fx.artifacts,
+        &h.get_local_bytes(&claim).unwrap(),
+        Some("openagents.claim.v1"),
+    );
+    (h, scope, claim, event, execute.payload)
+}
+#[test]
+fn actual_coordinator_claim_and_environment_attachment_gate_the_native_worker() {
+    for mode in ["run", "revoke", "drain", "expired-claim"] {
+        let mut fx = Fixture::new();
+        let (coordinator, scope, claim, event, payload) = native_environment_job(&mut fx);
+        let mounted = coordination_host::book::Coordinator::open(
+            fx._temp.path().join("coord"),
+            secret(OWNER),
+        )
+        .unwrap();
+        let allocator = fx.allocator().with_claims(Box::new(mounted));
+        let mut request = fx.request_body(91, 0, 1800);
+        request["bounds"][1]["currency"] = json!("USD");
+        let result = allocator
+            .submit(&fx.bundle(OWNER, &request), fx.now)
+            .unwrap();
+        assert_eq!(result["status"], "accepted", "{result}");
+        let lease_id = allocator.store().json(&result["lease"]).unwrap()["lease"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let spec = fx.spec();
+        allocator.materialize(&lease_id, &spec, fx.now).unwrap();
+        let mut job = job(&mut fx, &allocator, &lease_id, "unused", b"opaque claim");
+        job.event = event;
+        job.payload = payload;
+        let body = put_json(&mut fx.artifacts, &job.payload);
+        let declaration = json!({"v":"openagents.environment-execute.v1","requires":[],"caller":pk(OWNER),"event":{"id":job.event.id,"pubkey":job.event.pubkey,"kind":job.event.kind},"body":body});
+        job.attach["controller"] = json!(pk(OWNER));
+        job.attach["execute"] = put_json(&mut fx.artifacts, &declaration);
+        job.attach["input_digest"] = json!(digest_value(&job.payload["input"]).unwrap());
+        job.attach["claim"] = claim;
+        job.declaration_event =
+            envelope(&secret(OWNER), allocator.pubkey(), &declaration, fx.now).unwrap();
+        let mut bundle = fx.bundle(OWNER, &job.attach);
+        bundle.declarations.push(job.declaration_event.clone());
+        let result = allocator.submit(&bundle, fx.now).unwrap();
+        assert_eq!(result["status"], "accepted", "{result}");
+        let grant = result["value"].clone();
+        admit_all(&mut fx, &allocator, &job, &grant);
+        assert_eq!(
+            attachment_control(&fx, &allocator, &grant, "activate", 92, OWNER)["status"],
+            "accepted"
+        );
+        if mode == "revoke" {
+            let body = json!({"v":"openagents.coordination-native-control.v1","requires":[],"coordinator":scope,"command":workspace_host::artifact::token(),"expected_revision":coordinator.scope(&scope).unwrap()["revision"],"actor":pk(WORKER),"roles":[],"resources":[],"targets":[],"all":true,"until":fx.now+7200,"revoke":true,"scope_revoke":false});
+            coordinator
+                .control_grants(
+                    &workspace_host::host::request(&secret(OWNER), &pk(OWNER), body, fx.now)
+                        .unwrap(),
+                    fx.now,
+                )
+                .unwrap();
+        }
+        let worker = coordination_host::worker::Worker::open(
+            fx._temp.path().join("real-worker"),
+            secret(WORKER),
+            fx.now,
+        )
+        .unwrap();
+        assert!(worker.run(&coordinator, &job.event, fx.now).is_err());
+        if mode == "drain" {
+            assert_eq!(
+                attachment_control(&fx, &allocator, &grant, "drain", 94, OWNER)["status"],
+                "accepted"
+            );
+        }
+        let at = if mode == "expired-claim" {
+            fx.now + 301
+        } else {
+            fx.now
+        };
+        let result = worker.run_in_environment(&coordinator, &job.event, at, &allocator);
+        if mode != "run" {
+            assert!(result.is_err());
+            assert_eq!(coordinator.scope(&scope).unwrap()["calls"], 0);
+        } else {
+            let (event, files) = result.unwrap();
+            assert_eq!(
+                coordinator.record_result(&event, &files, fx.now).unwrap()["outcome"],
+                "completed"
+            );
+            assert_eq!(coordinator.scope(&scope).unwrap()["calls"], 1);
+            assert_eq!(
+                worker
+                    .retained_result(&job.event, fx.now + 1000)
+                    .unwrap()
+                    .unwrap()
+                    .0,
+                event
+            );
+        }
+    }
+}
+#[test]
+fn attachment_without_a_current_claim_authority_refuses_opaque_claim_bytes() {
+    let mut fx = Fixture::new();
+    let allocator = fx.allocator();
+    let (lease_id, _) = fx.ready(&allocator, 93);
+    let job = job(
+        &mut fx,
+        &allocator,
+        &lease_id,
+        "unverified",
+        b"claim bytes do not prove authority",
+    );
+    drop(allocator);
+    let allocator = Allocator::open(
+        fx.state.clone(),
+        secret(ALLOCATOR),
+        Box::new(LocalDirectories::new(fx.resources.clone()).unwrap()),
+    )
+    .unwrap();
+    let result = attach(&fx, &allocator, &job);
+    assert_eq!(result["status"], "refused");
+    assert_eq!(result["reason"], "not_admitted");
+    assert!(allocator.status(&lease_id).unwrap()["attachment"].is_null());
+}
+#[test]
+fn an_execute_deadline_cannot_outlive_the_attachment_lease() {
+    let mut fx = Fixture::new();
+    let allocator = fx.allocator();
+    let request = fx.request_body(95, 4000, 120);
+    let result = allocator
+        .submit(&fx.bundle(OWNER, &request), fx.now)
+        .unwrap();
+    let lease_id = allocator.store().json(&result["lease"]).unwrap()["lease"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let spec = fx.spec();
+    allocator.materialize(&lease_id, &spec, fx.now).unwrap();
+    let job = job(&mut fx, &allocator, &lease_id, "too-long", b"fixture claim");
+    let result = attach(&fx, &allocator, &job);
+    assert_eq!(result["status"], "refused");
+    assert_eq!(result["reason"], "cannot_enforce");
 }

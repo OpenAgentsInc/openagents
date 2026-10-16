@@ -18,6 +18,8 @@ pub const USAGE: &str = "usage: env-host ACTION --state DIR --key-file KEY [opti
   status       --provider-root DIR --lease ID
   leases       --provider-root DIR
   check        --provider-root DIR --attachment ID --fingerprint DIGEST
+  run          --provider-root DIR --coordinator-state DIR --coordinator-key-file KEY
+               --worker-state DIR --worker-key-file KEY --input BUNDLE
   transport    --provider-root DIR       show the exact controller endpoint
   invoke       --input REQUEST          sign with the caller key; no state needed
   serve|recover --provider-root DIR --input BUNDLE";
@@ -81,9 +83,31 @@ pub fn run(args: Vec<String>) -> Result<Value> {
         return Ok(json!({"created":true}));
     }
     let provider = LocalDirectories::new(PathBuf::from(option("--provider-root")?))?;
-    let allocator = Allocator::open(root, secret, Box::new(provider))?;
+    let mut allocator = Allocator::open(root, secret, Box::new(provider))?;
+    if args.iter().any(|a| a == "--coordinator-state") {
+        allocator = allocator.with_claims(Box::new(coordination_host::book::Coordinator::open(
+            PathBuf::from(option("--coordinator-state")?),
+            read_secret(Path::new(&option("--coordinator-key-file")?))?,
+        )?));
+    }
     let now = crate::now();
     match action {
+        "run" => {
+            let bundle: Bundle = serde_json::from_value(json_file(&option("--input")?)?)
+                .map_err(|_| "malformed: worker bundle")?;
+            let coordinator = coordination_host::book::Coordinator::open(
+                PathBuf::from(option("--coordinator-state")?),
+                read_secret(Path::new(&option("--coordinator-key-file")?))?,
+            )?;
+            let worker = coordination_host::worker::Worker::open(
+                PathBuf::from(option("--worker-state")?),
+                read_secret(Path::new(&option("--worker-key-file")?))?,
+                now,
+            )?;
+            let (event, artifacts) =
+                worker.run_in_environment(&coordinator, &bundle.event, now, &allocator)?;
+            Ok(json!({"event":event,"artifacts":artifacts}))
+        }
         "transport" => allocator.transport(),
         "serve" | "recover" => {
             let bundle: Bundle = serde_json::from_value(json_file(&option("--input")?)?)

@@ -5934,6 +5934,7 @@ name = "env-host"
 version = "1.0.0"
 dependencies = [
  "coder-ssh",
+ "coordination-host",
  "nostr",
  "secp256k1 0.31.1",
  "serde",

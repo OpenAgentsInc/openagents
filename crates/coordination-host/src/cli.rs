@@ -9,7 +9,7 @@ use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
 };
-pub const USAGE: &str = "usage: coordination-host ACTION --state DIR --key-file FILE [--input FILE] [--sources FILE]\nActions: init, scope, inspect, put, operation, capture, sign, invoke, serve, recover, grant, frame, propose, claim, control, prepare, run, check, finding, integrate, background, poll.\nSource mounts use an owner-selected JSON map of names to existing workspace store directories.";
+pub const USAGE: &str = "usage: coordination-host ACTION --state DIR --key-file FILE [--input FILE] [--sources FILE]\nActions: init, scope, inspect, put, operation, capture, sign, invoke, serve, recover, grant, frame, propose, claim, control, prepare, prepare-environment, run, check, finding, integrate, background, poll.\nSource mounts use an owner-selected JSON map of names to existing workspace store directories.";
 pub fn display(value: &Value) -> String {
     if let Some(help) = value["help"].as_str() {
         return help.into();
@@ -184,6 +184,7 @@ pub fn run(args: Vec<String>) -> Result<Value> {
                 "claim" => host.claim(&event, now),
                 "control" => host.control(&event, now),
                 "prepare" => Ok(json!({"event":host.prepare(&event,now)?})),
+                "prepare-environment" => Ok(json!({"event":host.prepare_environment(&event,now)?})),
                 "run" => {
                     let worker = crate::worker::Worker::open(
                         PathBuf::from(option("--worker-state")?),

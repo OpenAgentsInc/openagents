@@ -9,6 +9,14 @@ use serde_json::{Value, json};
 use std::collections::BTreeMap;
 impl Coordinator {
     pub fn prepare(&self, event: &Event, now: u64) -> Result<Event> {
+        self.prepare_bound(event, now, false)
+    }
+    /// Prepare one exact ENV-bound execute. Preparation does not admit intake;
+    /// the named worker must use its separately configured environment gate.
+    pub fn prepare_environment(&self, event: &Event, now: u64) -> Result<Event> {
+        self.prepare_bound(event, now, true)
+    }
+    fn prepare_bound(&self, event: &Event, now: u64, environment: bool) -> Result<Event> {
         let started = std::time::Instant::now();
         let (actor, body) = self.authenticate(
             event,
@@ -40,6 +48,16 @@ impl Coordinator {
         let mut lease = scope.claims[&lease_key].clone();
         self.check_claim_controller(&scope, &lease, &actor, now)?;
         if let Some(event) = lease.execution {
+            if lease.input.as_ref().is_none_or(|p| {
+                p["requires"]
+                    != if environment {
+                        json!([nostr::environment::BINDING_FEATURE])
+                    } else {
+                        json!([])
+                    }
+            }) {
+                return Err("idempotency_conflict: execution profile changed".into());
+            }
             if body
                 .get("request")
                 .is_some_and(|v| lease.input.as_ref().is_none_or(|p| &p["request"] != v))
@@ -61,6 +79,9 @@ impl Coordinator {
         let operation = self.operation(&proposal.body["target"])?;
         if operation["binding_contract"]["operation"] == "coord-automation-source" {
             return Err("not_admitted: source observations require their owning reader".into());
+        }
+        if environment && operation["binding_contract"]["operation"] == "coord-automation-data" {
+            return Err("unsupported_feature: combined AUTO/ENV adapter is not configured".into());
         }
         if operation["binding_contract"]["operation"] == "coord-container" {
             return Err("container claims reserve children; they do not dispatch code".into());
@@ -95,7 +116,12 @@ impl Coordinator {
         }
 
         let deadline = lease.body["expires_at"].as_u64().ok_or("claim expiry")?;
-        let payload = json!({"v":execution::SCHEMA,"requires":[],"type":"execute","request":request,"attempt":1,"run":run,"target":proposal.body["target"],"lock":proposal.body["lock"],"input":{"artifact":proposal.body["input"]},"context":proposal.body["context"],"requirements":requirements,"bounds":{"wall_ms":limits.wall_ms,"output_bytes":limits.output_bytes,"jobs":1,"spend_microunits":0},"deadline":deadline,"retain_until":deadline+3600});
+        let features = if environment {
+            json!([nostr::environment::BINDING_FEATURE])
+        } else {
+            json!([])
+        };
+        let payload = json!({"v":execution::SCHEMA,"requires":features,"type":"execute","request":request,"attempt":1,"run":run,"target":proposal.body["target"],"lock":proposal.body["lock"],"input":{"artifact":proposal.body["input"]},"context":proposal.body["context"],"requirements":requirements,"bounds":{"wall_ms":limits.wall_ms,"output_bytes":limits.output_bytes,"jobs":1,"spend_microunits":0},"deadline":deadline,"retain_until":deadline+3600});
         let event = self.seal(
             &lease.actor,
             execution::REQUEST_KIND,

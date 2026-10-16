@@ -43,7 +43,7 @@ The `openagents env` alias waits for the next Coder release; use this binary.
   and materialization, the primary executor as worker, a controller with a
   current generation, a caller-signed execute declaration whose plaintext
   requires `openagents.environment-binding.v1`, the exact input digest, retained
-  claim bytes, and a reservation that does not exceed the lease. Exact retries
+  current COORD claim, and a reservation that does not exceed the lease. Exact retries
   return the original grant; changed bytes under the same lease, caller, CJ
   request, and attempt conflict. A second execute cannot reserve the slot.
 - **Participants admit what they can see.** The primary worker decrypts the
@@ -96,8 +96,25 @@ it does not establish that allocation or cleanup succeeded. The endpoint
 supports a 1 MiB response bound; unsupported time bounds and CJ cancellation
 refuse. Lease release and participant fencing remain separate admitted controls.
 
-Cloud-VM placement, bootstrap operations, and COORD claim validation beyond
-exact retained bytes remain in #11736. All fixtures use throwaway keys, local directories, and fake allowance
+Attachments require an operator-mounted live `ClaimAuthority`; the default
+host refuses them. Mount the actual coordinator with `--coordinator-state` and
+`--coordinator-key-file`. `coordination-host prepare-environment` signs the
+exact ENV-bound execute for its named worker. The claim must be current, its
+controller authorized, and its frame, resources, worker, declaration, and full
+execute bytes unchanged. The execute deadline must fit within the current
+lease, so waiting for intake cannot extend its authority. The native
+reservation is a zero-spend child of the
+actual claim reservation in the same currency.
+
+`env-host run` uses that execute and the explicit worker state/key. The worker's
+ENV decoder runs only on this path; generic worker intake refuses the binding.
+The allocator keeps its active attachment fence through actual COORD input
+disclosure, and COORD checks current authority again at that boundary. Drain,
+revocation, expiry, or token replacement prevents new intake. Exact saved worker
+replies remain readable without another execution. Combined AUTO/ENV targets
+remain unsupported; they require a separately wired adapter.
+
+Cloud-VM placement and admitted bootstrap operations remain in #11736. All fixtures use throwaway keys, local directories, and fake allowance
 units; nothing here moves money.
 
 The store retains at most 64 leases, plus the shared artifact limits from

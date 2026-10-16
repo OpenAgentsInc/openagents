@@ -107,6 +107,15 @@ impl Worker {
             event.created_at,
             nostr::execution::Window::DEFAULT,
         )
+        .or_else(|_| {
+            nostr::execution::open_environment_request(
+                event,
+                self.signer.pubkey(),
+                &self.secret,
+                event.created_at,
+                nostr::execution::Window::DEFAULT,
+            )
+        })
         .map_err(|e| format!("{e:?}"))?;
         let nostr::execution::Body::Execute(execute) = &opened.body else {
             return Err("execute required".into());
@@ -150,7 +159,7 @@ impl Worker {
         event: &Event,
         now: u64,
     ) -> Result<(Event, BTreeMap<String, Vec<u8>>)> {
-        self.run_bound(authority, event, now, None)
+        self.run_bound(authority, event, now, None, false)
     }
     pub fn run_gated(
         &self,
@@ -159,7 +168,17 @@ impl Worker {
         now: u64,
         gate: &dyn DispatchGate,
     ) -> Result<(Event, BTreeMap<String, Vec<u8>>)> {
-        self.run_bound(authority, event, now, Some(gate))
+        self.run_bound(authority, event, now, Some(gate), false)
+    }
+    /// ENV executes are decoded only when an actual environment gate is wired.
+    pub fn run_in_environment(
+        &self,
+        authority: &Coordinator,
+        event: &Event,
+        now: u64,
+        gate: &dyn DispatchGate,
+    ) -> Result<(Event, BTreeMap<String, Vec<u8>>)> {
+        self.run_bound(authority, event, now, Some(gate), true)
     }
     fn run_bound(
         &self,
@@ -167,8 +186,14 @@ impl Worker {
         event: &Event,
         now: u64,
         gate: Option<&dyn DispatchGate>,
+        environment: bool,
     ) -> Result<(Event, BTreeMap<String, Vec<u8>>)> {
-        let opened = nostr::execution::open_request(
+        let decode = if environment {
+            nostr::execution::open_environment_request
+        } else {
+            nostr::execution::open_request
+        };
+        let opened = decode(
             event,
             self.signer.pubkey(),
             &self.secret,
@@ -179,6 +204,11 @@ impl Worker {
         let nostr::execution::Body::Execute(execute) = &opened.body else {
             return Err("pure work worker accepts explicit executes only".into());
         };
+        if environment
+            && execute.payload["requires"] != json!([nostr::environment::BINDING_FEATURE])
+        {
+            return Err("unsupported_feature: explicit environment binding required".into());
+        }
         let _lock = self.store.lock()?;
         let mut state: WorkerState = self.store.load(&self.signer)?;
         if state.v != "openagents.coordination-worker.v1"
@@ -216,7 +246,7 @@ impl Worker {
             }
             return Ok((result.clone(), closure));
         }
-        nostr::execution::open_request(
+        decode(
             event,
             self.signer.pubkey(),
             &self.secret,
@@ -240,7 +270,15 @@ impl Worker {
                 now.saturating_add(intake_started.elapsed().as_secs()),
             )
         };
-        let (payload, pins) = if execute.payload["target"] == authority.automation_operation()? {
+        let (payload, pins) = if environment {
+            if execute.payload["target"] == authority.automation_operation()? {
+                return Err(
+                    "unsupported_feature: combined AUTO/ENV adapter is not configured".into(),
+                );
+            }
+            gate.ok_or("not_admitted: environment gate required")?
+                .intake(&authority.verify_intake(&intake, now)?, now, &mut dispatch)?
+        } else if execute.payload["target"] == authority.automation_operation()? {
             gate.ok_or("not_admitted: this operation requires its current AUTO controller")?
                 .intake(&authority.verify_intake(&intake, now)?, now, &mut dispatch)?
         } else {

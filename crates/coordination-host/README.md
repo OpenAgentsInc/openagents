@@ -105,3 +105,11 @@ concurrent/aliasing claims, exact retries versus independent trial inputs,
 revoked grants, replaced tokens, stale frames and sources, restart, unknown
 holds, parent/child accounting, independent conditional integration, and
 bounded background coalescing. No production account or real funds are used.
+
+
+`prepare-environment` prepares a distinct ENV-bound execute for the same
+admitted claim. Once prepared, its profile and bytes cannot change. The generic
+worker refuses this binding. `env-host run` requires a current admitted ENV
+attachment and checks the actual claim again while holding the attachment fence
+through intake. It supports the native data worker; combined AUTO/ENV targets
+refuse. See [the environment runtime](../env-host/README.md).

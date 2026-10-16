@@ -572,9 +572,9 @@ The profile pins these supporting records:
 Allocator records are retained with private `3188` declarations addressed to
 the owner or the requesting controller. A participant signs its own admission
 and fencing records. State `record` fields reference RUN records of the
-allocation run; the allocator is that run's controller. Bootstrap operations,
-cloud-VM placement, and COORD claim enforcement beyond exact retained bytes are
-not part of this profile yet; a definition with a bootstrap step refuses.
+allocation run; the allocator is that run's controller. Bootstrap operations
+and cloud-VM placement are not part of this profile yet; a definition with a
+bootstrap step refuses.
 
 
 The allocator's native management CAP/CJ endpoint pins the exact operation
@@ -591,3 +591,16 @@ Cleanup persists intent and copied outputs before a provider delete. An
 uncertain delete is recovered only with a side-effect-free provider probe;
 it is never repeated. A resource lookup does not establish cost, so unknown
 charges and their holds remain until actual accounting evidence resolves them.
+
+
+The native worker integration requires an operator-mounted live COORD
+authority. Missing authority refuses attachment admission. The allocator
+checks the actual current claim, controller rights, frame, resources, ancestor
+authority, exact coordinator-signed ENV execute, worker, and no-spend child
+reservation at attachment admission and worker intake. The allocator holds
+its attachment fence through actual COORD input disclosure; COORD checks its
+own current claim again at that boundary. The generic worker decoder continues
+to refuse ENV-bound executes. Drain, expiry, revocation, or token replacement
+prevents a queued native worker from starting. These checks do not enable a
+combined AUTO/ENV adapter or turn an engine enqueue acknowledgment into a
+terminal execution result.
