@@ -167,6 +167,7 @@ async fn append(
     batch: &str,
     bytes: &[u8],
     sender: Uuid,
+    host_hint: Option<String>,
 ) -> Result<Value> {
     if batch.is_empty() || batch.len() > 128 {
         return Err(bad("bad_push"));
@@ -188,6 +189,27 @@ async fn append(
         return Err(Failure(StatusCode::TOO_MANY_REQUESTS, "quota"));
     }
 
+    let wake = if let Some(host) = host_hint.filter(|h| {
+        h != device
+            && !h.is_empty()
+            && h.len() <= 128
+            && h.bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b"_-".contains(&b))
+    }) {
+        let owner = tx
+            .query_opt("SELECT account FROM devices WHERE device_id=$1", &[&host])
+            .await?;
+        if id.len() <= 64 && owner.is_none_or(|row| row.get::<_, String>(0) == account) {
+            // The receipt and row share this commit. Unknown hosts can claim
+            // later, but another account can never consume this receipt.
+            super::device::enqueue_nudge(&tx, account, &host, id).await?;
+            Some(host)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
     if let Some(row) = tx
         .query_opt(
             "SELECT seq FROM chat_batches WHERE chat_id=$1 AND batch_id=$2",
@@ -197,6 +219,9 @@ async fn append(
     {
         let seq: i64 = row.get(0);
         tx.commit().await?;
+        if let Some(host) = wake {
+            state.devices.wake_host(&host).await;
+        }
         return Ok(json!({"batchId":batch,"seq":seq,"dup":true}));
     }
     let seq = head.checked_add(1).ok_or(Failure(
@@ -216,6 +241,9 @@ async fn append(
     tx.execute("UPDATE chats SET head=$2 WHERE chat_id=$1", &[&id, &seq])
         .await?;
     tx.commit().await?;
+    if let Some(host) = wake {
+        state.devices.wake_host(&host).await;
+    }
     let events = state.rooms.events(Room::Chat(id.into())).await;
     let _ = events.send((
         sender,
@@ -306,6 +334,7 @@ pub async fn push(
             q.get("batchId").map(String::as_str).unwrap_or(""),
             &body,
             Uuid::nil(),
+            q.get("hostDevice").cloned(),
         )
         .await
     })
@@ -456,6 +485,7 @@ pub async fn websocket(
                 id,
                 who.account,
                 q.get("device").cloned().unwrap_or_default(),
+                q.get("hostDevice").cloned(),
                 events,
             )
         }))
@@ -469,6 +499,7 @@ async fn session(
     id: String,
     account: String,
     mut device: String,
+    host_hint: Option<String>,
     mut events: tokio::sync::broadcast::Receiver<(Uuid, Vec<u8>)>,
 ) {
     let sender = Uuid::new_v4();
@@ -518,8 +549,8 @@ async fn session(
                         in_room(&state,&id,async move{Ok(vec![snapshot(&s,&chat,&owner,i64::MAX,"").await?.state()])}).await
                     },
                     kind::PUSH if ready=>{
-                        let batch=f.header["batchId"].as_str().unwrap_or("").to_owned();let d=device.clone();
-                        let result=in_room(&state,&id,async move{append(&s,&chat,&owner,&d,&batch,&f.payload,sender).await}).await;
+                        let batch=f.header["batchId"].as_str().unwrap_or("").to_owned();let d=device.clone();let host=host_hint.clone();
+                        let result=in_room(&state,&id,async move{append(&s,&chat,&owner,&d,&batch,&f.payload,sender,host).await}).await;
                         match result {Ok(ack)=>Ok(vec![frame(kind::ACK,ack,&[])]),Err(e)=>Ok(vec![error(e.1,f.header["batchId"].as_str().unwrap_or(""))])}
                     },
                     kind::PRESENCE if ready=>{

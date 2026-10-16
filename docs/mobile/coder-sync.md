@@ -188,3 +188,44 @@ and registration sends no notifications in this release. Reset closes sockets;
 the pinned client reconnects and re-seeds its rows with their original clocks.
 The tests cover that recovery, account isolation, sender ordering, failed-batch
 rollback, and migration startup while a registry writer holds a row lock.
+
+## Device relay
+
+`/device/{id}/ws?role=host|client` uses the pinned `zeron-rpc` binary codec.
+The relay stamps viewer connection IDs, forwards opaque payloads, and returns
+transport errors when a peer is unavailable. A new host replaces its previous
+connection. Host selection uses the newest activity within 75 seconds; text
+`ping` receives `pong`. Slow outbound queues disconnect instead of dropping
+RPC frames. Device rooms and connection queues have fixed limits.
+
+The first host claims a device for its account. Other accounts cannot connect,
+read status or sidecars, or send wakeups. Owners can grant viewer access with
+`PUT /device/{id}/grants/{account}` and remove it with `DELETE`; removal closes
+that account's existing viewers. A viewer grant never permits hosting or
+publishing sidecars. `/status`, `/nudge`, and `/sidecar/{name}` retain the
+reference protocol. Sidecars persist in Postgres.
+
+Chat pushes with `hostDevice` store a wakeup in the same transaction as the row,
+including retries. Receipts can precede the first host connection, but only
+that account's host can consume them. Hosts advertising `nudgeAck=1` receive
+receipts again after disconnects or missing acknowledgments. Receipt tokens
+prevent an old acknowledgment from deleting newer work. At 4,096 pending
+chats, explicit nudges return a retryable 503 and retain a full-scan request;
+accepted chat rows still commit with that request. Legacy hosts receive the
+reference delivery behavior without acknowledgments.
+
+The default suite ports both edge device codec cases and all nine host-liveness
+cases. It also covers opaque routing, host replacement, disconnects, grants,
+sidecars, account isolation, wakeup retries, overflow, and transaction rollback.
+Build `zeron` from fork commit
+`9c58d1af0eb2e8cc750b65b5bafc435392010f15` to run the engine integration:
+
+```sh
+ZERON_TEST_HEADLESS_BIN=/path/to/pinned/zeron \
+  scripts/coder-sync/test.sh --test device pinned_headless -- --ignored
+```
+
+This test launches only its own headless engine with a scratch home, data
+folder, mock harness, and free IPC port. The real pinned viewer lists a folder,
+creates a scratch chat, queues and observes a message, removes it, and stops
+that engine. It also verifies refusal of another account's viewer.

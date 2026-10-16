@@ -32,6 +32,7 @@ async fn run() -> Result<(), &'static str> {
         database,
         bucket,
         rooms: Rooms::default(),
+        devices: Default::default(),
         auth: config.auth,
         revision: config.revision,
     };

@@ -1,6 +1,7 @@
 pub mod chat;
 pub mod config;
 pub mod db;
+pub mod device;
 pub mod registry;
 pub mod rooms;
 pub mod storage;
@@ -21,6 +22,7 @@ pub struct StateData {
     pub database: db::Database,
     pub bucket: storage::Bucket,
     pub rooms: rooms::Rooms,
+    pub devices: device::Devices,
     pub auth: AuthMode,
     pub revision: String,
 }
@@ -53,6 +55,22 @@ pub fn authenticate(mode: AuthMode, token: &str) -> Option<Identity> {
 pub fn router(state: StateData) -> Router {
     Router::new()
         .route("/health", get(health))
+        .route("/device/{id}/ws", get(device::websocket))
+        .route("/device/{id}/status", get(device::status))
+        .route(
+            "/device/{id}/nudge",
+            axum::routing::post(device::nudge).layer(axum::extract::DefaultBodyLimit::max(4096)),
+        )
+        .route(
+            "/device/{id}/sidecar/{name}",
+            get(device::sidecar)
+                .post(device::publish_sidecar)
+                .layer(axum::extract::DefaultBodyLimit::max(4 * 1024 * 1024)),
+        )
+        .route(
+            "/device/{id}/grants/{account}",
+            axum::routing::put(device::grant).delete(device::revoke),
+        )
         .route("/registry/{org}/ws", get(registry::websocket))
         .route("/registry/{org}/rows", get(registry::rows))
         .route(

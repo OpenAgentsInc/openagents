@@ -3,6 +3,7 @@
 set -euo pipefail
 root=$(cd "$(dirname "$0")/../.." && pwd)
 scratch=${OPENAGENTS_SCRATCH:-$(openagents scratch)}
+export OPENAGENTS_SCRATCH="$scratch"
 pg_bin=${CODER_SYNC_POSTGRES_BIN:-$(pg_config --bindir)}
 init_args=()
 if [[ -n "${CODER_SYNC_POSTGRES_SHARE:-}" ]]; then init_args=(-L "$CODER_SYNC_POSTGRES_SHARE"); fi

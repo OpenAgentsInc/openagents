@@ -151,6 +151,7 @@ async fn database_migrations_health_and_auth_with_fake_bucket() {
         database: db.clone(),
         bucket,
         rooms: Rooms::default(),
+        devices: Default::default(),
         auth: AuthMode::Disabled,
         revision: "fixture".into(),
     });

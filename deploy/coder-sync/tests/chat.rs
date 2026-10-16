@@ -76,6 +76,7 @@ impl TestServer {
             database: db.clone(),
             bucket: Bucket::memory(),
             rooms: Rooms::default(),
+            devices: Default::default(),
             auth: AuthMode::Dev,
             revision: "chat-test".into(),
         });
