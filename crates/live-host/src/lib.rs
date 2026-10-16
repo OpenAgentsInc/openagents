@@ -5,6 +5,8 @@ pub mod cli;
 pub mod controller;
 pub mod document;
 pub mod media;
+#[cfg(unix)]
+pub mod resident;
 
 pub type Result<T> = std::result::Result<T, String>;
 

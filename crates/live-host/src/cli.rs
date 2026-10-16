@@ -13,7 +13,9 @@ pub const USAGE: &str = "usage: live-host ACTION --state DIR --key-file KEY [opt
   submit   --input BUNDLE
   status   --session ID
   device-operation   describe the installed input operation
-  input-policy --input GRANTS.json   replace exact input approval grants";
+  input-policy --input GRANTS.json   replace exact input approval grants
+  serve --socket PATH (--document REGISTRATION.json | --synthetic)
+  request --socket PATH --input REQUEST.json   send with the caller's signed event";
 
 fn read_secret(path: &Path) -> Result<secp256k1::SecretKey> {
     let metadata = std::fs::metadata(path).map_err(|e| e.to_string())?;
@@ -52,6 +54,16 @@ pub fn run(args: Vec<String>) -> Result<Value> {
             .cloned()
             .ok_or_else(|| format!("malformed: missing value for {name}"))
     };
+    #[cfg(unix)]
+    if args[0] == "request" {
+        let request = serde_json::from_value(json_file(&need("--input")?)?)
+            .map_err(|_| "malformed: resident request")?;
+        return serde_json::to_value(crate::resident::request(
+            Path::new(&need("--socket")?),
+            &request,
+        )?)
+        .map_err(|e| e.to_string());
+    }
     let root = PathBuf::from(need("--state")?);
     let secret = read_secret(Path::new(&need("--key-file")?))?;
     if args[0] == "init" {
@@ -60,16 +72,42 @@ pub fn run(args: Vec<String>) -> Result<Value> {
         Controller::initialize(root, secret, policy)?;
         return Ok(json!({"created":true}));
     }
-    let controller = Controller::open(
-        root,
-        secret,
-        Adapters {
-            broker: Box::new(LocalBroker::default()),
-            source: Box::new(SyntheticSource::default()),
-            device: Box::new(SyntheticDevice::default()),
-        },
-    )?;
+    if args[0] == "serve" && !args.iter().any(|a| a == "--document" || a == "--synthetic") {
+        return Err("not_admitted: select a document or synthetic profile".into());
+    }
+    let mut adapters = Adapters {
+        broker: Box::new(LocalBroker::default()),
+        source: Box::new(SyntheticSource::default()),
+        device: Box::new(SyntheticDevice::default()),
+    };
+    if args.iter().any(|a| a == "--document") {
+        #[derive(serde::Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Registration {
+            root: PathBuf,
+            branch: String,
+            path: String,
+            owner: String,
+        }
+        let config: Registration = serde_json::from_value(json_file(&need("--document")?)?)
+            .map_err(|_| "malformed: document registration")?;
+        let document = crate::document::Document::register(
+            &config.root,
+            &config.branch,
+            &config.path,
+            config.owner,
+        )?;
+        adapters.source = Box::new(document.clone());
+        adapters.device = Box::new(document);
+    }
+    let controller = Controller::open(root, secret, adapters)?;
     match args[0].as_str() {
+        #[cfg(unix)]
+        "serve" => {
+            crate::resident::Server::bind(&controller, PathBuf::from(need("--socket")?))?
+                .run(&std::sync::atomic::AtomicBool::new(false))?;
+            Ok(json!({"stopped":true}))
+        }
         "submit" => {
             let bundle: Bundle = serde_json::from_value(json_file(&need("--input")?)?)
                 .map_err(|_| "malformed: bundle")?;

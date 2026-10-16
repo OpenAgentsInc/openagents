@@ -1311,3 +1311,7 @@ fn interrupted_device_write_recovers_unknown_without_reentering_the_device() {
 
 #[path = "tests/document.rs"]
 mod document;
+
+#[cfg(unix)]
+#[path = "tests/resident.rs"]
+mod resident;

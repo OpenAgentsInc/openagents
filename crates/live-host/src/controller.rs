@@ -24,6 +24,8 @@ use workspace_host::artifact::{Artifacts, token};
 mod input;
 mod readers;
 mod retention;
+#[cfg(unix)]
+mod transport;
 pub use input::InputGrant;
 
 pub const MAX_PARTICIPANTS: usize = 64;

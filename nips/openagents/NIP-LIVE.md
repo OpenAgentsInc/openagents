@@ -404,3 +404,10 @@ the original deadline inside its conditional ref transaction. It grants no
 filesystem path selection, working-tree editing, or physical device control.
 Checked capture adapters receive the authenticated caller and bounds and return
 an anchor from the same native read; unchecked capture is not a fallback.
+
+The Unix resident retains one broker and capture-clock owner across signed
+requests. Its private client and inspection bodies are documented in the
+[runtime guide](../../crates/live-host/README.md#resident-host-and-private-client).
+They add no relay event kinds or media authority. The client verifies the exact
+request and attached bytes. Credential delivery is encrypted directly and
+single-use, and only the host key can replace input approval grants.

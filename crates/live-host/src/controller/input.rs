@@ -79,6 +79,16 @@ impl Controller {
     pub fn set_input_grants(&self, grants: Vec<InputGrant>, now: u64) -> Result<Vec<Value>> {
         let _guard = self.store.lock()?;
         let mut state = self.state()?;
+        let rules = self.replace_input_grants(&mut state, grants, now)?;
+        self.save(&state)?;
+        Ok(rules)
+    }
+    pub(super) fn replace_input_grants(
+        &self,
+        state: &mut State,
+        grants: Vec<InputGrant>,
+        now: u64,
+    ) -> Result<Vec<Value>> {
         if grants.len() > 256 {
             return Err("limit_exceeded: device input grants".into());
         }
@@ -118,13 +128,12 @@ impl Controller {
             let rule = json!({"v":"openagents.live-input-rule.v1","requires":[],"controller":self.pubkey(),
                 "generation":generation,"plan":grant.plan,"owner":grant.owner,"approver":grant.approver,
                 "operation":grant.operation,"starts_at":now,"expires_at":grant.expires_at});
-            rules.push(self.sign(&mut state, &rule, &grant.owner, now)?);
+            rules.push(self.sign(state, &rule, &grant.owner, now)?);
         }
         state.input_rules = Book {
             generation,
             rules: rules.clone(),
         };
-        self.save(&state)?;
         Ok(rules)
     }
     pub(super) fn input_rule(

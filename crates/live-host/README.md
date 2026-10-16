@@ -19,8 +19,8 @@ live-host input-policy --state DIR --key-file KEY --input GRANTS.json
 The controller key signs every result. POLICY names authorized owners and the
 tasks that exist. BUNDLE carries one signed private `3188` event, its exact
 artifacts, and further signed declarations, such as a participant's consent.
-The binary mounts the synthetic adapters. A production host mounts its own
-broker, capture source, and device behind the same roles.
+The one-shot commands mount synthetic adapters unless you select `--document`.
+The resident requires an explicit document or synthetic profile.
 
 ## Rules the controller enforces
 
@@ -128,3 +128,38 @@ legacy unchecked capture method is never a fallback.
 Tests use throwaway keys, isolated Git repositories, local state, and synthetic
 media; no money moves. Production audio/video transports, platform capture
 permission, and physical device bindings are separate supported-profile work.
+
+## Resident host and private client
+
+On Unix, run one resident to keep the broker and original capture clocks:
+
+```sh
+live-host serve --state DIR --key-file HOST_KEY --socket DIR/live.sock --document REGISTRATION.json
+live-host request --socket DIR/live.sock --input REQUEST.json
+```
+
+`REGISTRATION.json` has `root`, `branch`, `path`, and `owner`, matching the
+Git-document registration above. `--synthetic` selects fixtures explicitly.
+The socket directory must be private. One resident owns each state directory;
+partial clients have a five-second I/O limit and cannot block other clients.
+Frames are bounded to 40 MiB, and a request is sent once. A lost response is
+observed with the same signed operation identity; the client does not resend
+an effect automatically.
+
+`resident::Request::new` wraps `Submit { bundle }` or `Inspect { event }`.
+Callers supply their own signed private event and never load the host key.
+The Rust client checks the response ID; `resident::read_reply` verifies the
+host, recipient, exact request, result type, and every attached artifact before
+use. Inspection supports these signed bodies (all accept empty `requires`):
+
+| Version | Input | Result |
+| --- | --- | --- |
+| `openagents.livehost-read.v1` | `artifacts`: at most 128 exact references | Only previously supplied or explicitly shared bytes; at most 4 MiB. |
+| `openagents.livehost-operation.v1` | No additional fields | The installed operation and its pinned schemas and binding, for an authorized owner. |
+| `openagents.livehost-credential.v1` | `session` | The participant's credential, encrypted directly and delivered once. |
+| `openagents.livehost-input-policy.v1` | `request`, `grants` | Exact input approval grants; only the host key can replace them. |
+
+A repeated policy request returns its original rules without changing their
+generation. Changed bytes under the same identity refuse. Credential plaintext
+never enters artifacts, state, retry receipts, or logs. The one-shot operator
+APIs remain useful for inspection; ordinary client calls go to the resident.
