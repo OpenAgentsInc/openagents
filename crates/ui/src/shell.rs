@@ -1954,6 +1954,8 @@ enum PendingExit {
 }
 
 pub struct Shell {
+    saved_reader: Option<Entity<crate::openagents_reader::SavedReader>>,
+    _saved_reader_events: Option<Subscription>,
     saved_history: Option<Entity<crate::openagents_history::HistoryPanel>>,
     _saved_history_events: Option<Subscription>,
     _saved_history_observation: Option<Subscription>,
@@ -2511,8 +2513,13 @@ impl Shell {
         };
         let saved_account = crate::openagents_account::AppAccount::global(cx)
             .and_then(|account| account.read(cx).controller.clone());
-        let saved_history = saved_account
+        let saved_history = saved_account.clone()
             .map(|account| cx.new(|cx| crate::openagents_history::HistoryPanel::new(account, cx)));
+        let saved_reader = saved_account.map(|account| {
+            cx.new(|cx| crate::openagents_reader::SavedReader::new(account, cx))
+        });
+        let saved_reader_events = saved_reader.as_ref()
+            .map(|reader| cx.subscribe(reader, Self::on_saved_reader_event));
         let saved_history_events = saved_history
             .as_ref()
             .map(|panel| cx.subscribe(panel, Self::on_saved_history_event));
@@ -2535,6 +2542,8 @@ impl Shell {
             _observation: cx.observe(&shell, |_, _, cx| cx.notify()),
         });
         Self {
+            saved_reader,
+            _saved_reader_events: saved_reader_events,
             saved_history,
             _saved_history_events: saved_history_events,
             _saved_history_observation: saved_history_observation,
@@ -9003,6 +9012,61 @@ impl Shell {
         (self.saved_history.clone(), self.route)
     }
 
+    #[cfg(feature = "account-fixture")]
+    pub fn fixture_saved_reader(&self) -> Option<Entity<crate::openagents_reader::SavedReader>> {
+        self.saved_reader.clone()
+    }
+
+    /// Open saved account history without changing the local workspace selection.
+    pub fn open_saved_chat(
+        &mut self,
+        target: coder_account::history::ExistingChat,
+        cx: &mut Context<Self>,
+    ) {
+        if !target.is_current() {
+            return;
+        }
+        let Some(reader) = self.saved_reader.clone() else {
+            return;
+        };
+        if !reader.update(cx, |reader, cx| reader.open(target.clone(), cx)) {
+            return;
+        }
+        let entry = NavEntry::SavedHistory(target.summary);
+        self.set_route(Route::SavedHistory, cx);
+        self.close_chat_menu(cx);
+        self.close_user_menu(cx);
+        if self.nav.current() != &entry {
+            self.nav.push(entry);
+        }
+        cx.notify();
+    }
+
+    fn on_saved_reader_event(
+        &mut self,
+        _: Entity<crate::openagents_reader::SavedReader>,
+        event: &crate::openagents_reader::ReaderEvent,
+        cx: &mut Context<Self>,
+    ) {
+        use crate::openagents_reader::ReaderEvent;
+        match event {
+            ReaderEvent::Close => {
+                if let Some(panel) = self.saved_history.clone() {
+                    panel.update(cx, |panel, cx| panel.close(cx));
+                } else {
+                    self.set_route(Route::Chat, cx);
+                }
+            }
+            ReaderEvent::AccessLost => {
+                self.nav.clear_saved_history();
+                if let Some(panel) = self.saved_history.clone() {
+                    panel.update(cx, |panel, cx| panel.access_lost(cx));
+                }
+            }
+        }
+        cx.notify();
+    }
+
     fn on_saved_history_event(
         &mut self,
         _: Entity<crate::openagents_history::HistoryPanel>,
@@ -9011,16 +9075,11 @@ impl Shell {
     ) {
         use crate::openagents_history::HistoryEvent;
         match event {
-            HistoryEvent::Open(target) if target.is_current() => {
-                let entry = NavEntry::SavedHistory(target.summary.clone());
-                self.set_route(Route::SavedHistory, cx);
-                self.close_chat_menu(cx);
-                self.close_user_menu(cx);
-                if self.nav.current() != &entry {
-                    self.nav.push(entry);
-                }
-            }
+            HistoryEvent::Open(target) => self.open_saved_chat(target.clone(), cx),
             HistoryEvent::Reset => {
+                if let Some(reader) = self.saved_reader.clone() {
+                    reader.update(cx, |reader, cx| reader.clear(cx));
+                }
                 self.nav.clear_saved_history();
                 if matches!(self.settings_return_route, Route::SavedHistory) {
                     self.settings_return_route = Route::Chat;
@@ -9030,6 +9089,9 @@ impl Shell {
                 }
             }
             HistoryEvent::Close => {
+                if let Some(reader) = self.saved_reader.clone() {
+                    reader.update(cx, |reader, cx| reader.clear(cx));
+                }
                 self.set_route(Route::Chat, cx);
                 self.nav.push(NavEntry::Chat(
                     self.state
@@ -9039,7 +9101,6 @@ impl Shell {
                         .unwrap_or_default(),
                 ));
             }
-            _ => {}
         }
         cx.notify();
     }
@@ -10020,7 +10081,11 @@ impl Shell {
             (true, true) => "Close settings · ⌘,".into(),
             (true, false) => "Close settings · Ctrl+,".into(),
         };
-        let voice_trigger = self.render_voice_trigger(theme, cx);
+        let voice_trigger = if matches!(self.route, Route::SavedHistory) {
+            None
+        } else {
+            self.render_voice_trigger(theme, cx)
+        };
         let trigger = match crate::openagents_account::AppAccount::global(cx) {
             Some(account) => account.into_any_element(),
             None => trigger.into_any_element(),
@@ -11034,10 +11099,8 @@ impl Shell {
         let (border, text, faint) = (theme.border, theme.text, theme.text_faint);
 
         if matches!(self.route, Route::SavedHistory) {
-            return self
-                .saved_history
-                .clone()
-                .map(|panel| panel.update(cx, |panel, cx| panel.render_selected(cx)))
+            return self.saved_reader.clone()
+                .map(IntoElement::into_any_element)
                 .unwrap_or_else(|| Empty.into_any_element());
         }
         if matches!(self.route, Route::PullRequests) {

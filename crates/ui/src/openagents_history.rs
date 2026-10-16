@@ -204,6 +204,23 @@ impl HistoryPanel {
         self.archived = !self.archived;
         cx.notify();
     }
+    pub fn access_lost(&mut self, cx: &mut Context<Self>) {
+        self.selected = None;
+        self.selected_scope = None;
+        self.model.reset(self.account.lease());
+        self.snapshot = self.model.snapshot();
+        if self.snapshot.signed_in {
+            let a = self.model.more();
+            let b = self.model.more_projects();
+            launch(
+                async move {
+                    tokio::join!(a, b);
+                },
+                cx,
+            );
+        }
+        cx.notify();
+    }
     pub fn close(&mut self, cx: &mut Context<Self>) {
         self.selected = None;
         self.selected_scope = None;
@@ -230,31 +247,6 @@ impl HistoryPanel {
             .on_click(cx.listener(move |this, _, _, cx| action(this, cx)))
             .child(text.into())
     }
-    /// A real existing-chat target and its saved summary; the transcript renderer is separate.
-    pub fn render_selected(&mut self, cx: &mut Context<Self>) -> gpui::AnyElement {
-        let theme = Theme::of(cx).clone();
-        let mut body = div()
-            .size_full()
-            .flex()
-            .flex_col()
-            .gap(px(12.))
-            .p(px(24.))
-            .text_color(theme.text);
-        if let Some(target) = self.selected.as_ref().filter(|t| t.is_current()) {
-            body = body
-                .child(
-                    div()
-                        .text_size(px(22.))
-                        .child(SharedString::from(target.summary.title.clone())),
-                )
-                .child(SharedString::from(format!(
-                    "{} saved messages",
-                    target.summary.messages
-                )));
-        }
-        body.child(self.button("close-saved-chat", "Back to workspace", Self::close, cx))
-            .into_any_element()
-    }
 }
 impl Drop for HistoryPanel {
     fn drop(&mut self) {
@@ -263,6 +255,7 @@ impl Drop for HistoryPanel {
 }
 impl Render for HistoryPanel {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.snapshot = self.model.snapshot();
         let theme = Theme::of(cx).clone();
         let mut body = div()
             .id("openagents-history")

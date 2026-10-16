@@ -49,3 +49,15 @@ The sidebar's saved-chat route carries `ExistingChat`, including its account
 lease, independently of local engine navigation. The native fixture's
 `--history` option checks 205 rows, archive/shared views, retry, selection without
 an engine, and removal of private rows and navigation on sign-out.
+
+`reader::Reader` accepts an `ExistingChat` directly, validates each saved page
+through the SDK, and cancels earlier selections and downloads. It keeps a
+32 MiB message-content budget and at most 2,000 messages in one view window;
+continuing explicitly releases older messages. Oversized pages can be retried
+one message at a time. The UI virtualizes rows and presents very long text in
+64 KiB parts. It never converts messages into executable engine documents.
+
+The `--reader` native fixture opens a target outside the loaded sidebar page,
+reads 405 messages, fetches a file and capture on demand, reloads after a content
+change, and checks sign-out cleanup. Save file uses the native destination
+picker; the fixture verifies downloaded bytes without opening that picker.

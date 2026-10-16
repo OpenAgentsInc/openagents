@@ -13,6 +13,7 @@ use std::{
 use tokio::sync::watch;
 pub mod history;
 mod platform;
+pub mod reader;
 pub use platform::PlatformStore;
 
 #[derive(Clone, Debug)]

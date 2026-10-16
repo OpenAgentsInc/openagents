@@ -2,7 +2,7 @@
 //! Pass an empty scratch directory. No Keychain, engine, or provider is used.
 use axum::{
     Json, Router,
-    extract::{Query, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::{Html, IntoResponse, Response},
     routing::{get, post},
@@ -42,6 +42,8 @@ struct Server {
     approved: AtomicBool,
     active: AtomicBool,
     history_status: AtomicUsize,
+    revision: AtomicUsize,
+    downloads: AtomicUsize,
 }
 fn chat_id(n: usize) -> String {
     format!("{n:08x}-1234-4234-8234-123456789abc")
@@ -71,6 +73,50 @@ async fn history_list(
     let rows:Vec<_>=(start..end).map(|n|json!({"id":chat_id(n),"title":if n==204{"Pinned saved chat"}else if n==5{"Archived saved chat"}else{"Previous chat"},"revision":1,"updated_unix":1792100000+n,"pinned_unix":if n==204{Some(1792100000)}else{None},"archived_unix":if n==5{Some(1792100000)}else{None},"project":"prj_0000000000000001","source":match n%3{0=>"web",1=>"terminal",_=>"phone"},"messages":405})).collect();
     Json(json!({"data":rows,"next":(end<205).then(||chat_id(end-1))})).into_response()
 }
+const FILE: &str = "0123456789abcdef0123456789abcdef";
+async fn saved_messages(
+    State(s): State<Arc<Server>>,
+    Path(chat): Path<String>,
+    Query(q): Query<std::collections::HashMap<String, String>>,
+) -> Response {
+    if !s.active.load(Ordering::SeqCst) {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    let revision = s.revision.load(Ordering::SeqCst);
+    if q.get("revision")
+        .is_some_and(|r| r.parse::<usize>().unwrap() != revision)
+    {
+        return (
+            StatusCode::CONFLICT,
+            Json(json!({"error":{"code":"changed"}})),
+        )
+            .into_response();
+    }
+    let start = q
+        .get("after")
+        .map(|s| s.strip_prefix("msg_").unwrap().parse::<usize>().unwrap() + 1)
+        .unwrap_or(0);
+    let limit = q["limit"].parse::<usize>().unwrap();
+    assert!(limit <= 200);
+    let end = (start + limit).min(405);
+    let data:Vec<_>=(start..end).map(|n|json!({"id":format!("msg_{n}"),"role":match n{0=>"user",1=>"thinking",2=>"tool",3=>"future-role",_=>"assistant"},"text":match n{0=>"# A saved question\n\n**Markdown**, `inline code`, and a code block:\n\n```rust\nlet answer = 42;\n```".to_owned(),1=>"Considering the earlier question before answering.".into(),2=>"".into(),_=>format!("Saved message {n}")},"files":if n==0{vec![json!({"id":FILE,"name":"fixture.txt","kind":"text","size":8})]}else{vec![]},"tool":if n==2{Some(json!({"name":"read","summary":"Read a saved file","status":"done","input":"fixture.txt","output":"Full saved output\nNothing was executed by this reader."}))}else{None},"generated_files":if n==3{json!("unsupported saved block")}else{json!([])},"artifacts":[]})).collect();
+    let n = usize::from_str_radix(&chat[..8], 16).unwrap();
+    Json(json!({"thread":{"id":chat,"title":if n==204{"Pinned saved chat"}else if n==5{"Archived saved chat"}else{"Previous chat"},"revision":revision,"updated_unix":1792100000+n,"pinned_unix":if n==204{Some(1792100000)}else{None},"archived_unix":if n==5{Some(1792100000)}else{None},"project":"prj_0000000000000001","source":match n%3{0=>"web",1=>"terminal",_=>"phone"},"messages":405},"revision":revision,"data":data,"next":(end<405).then(||format!("msg_{}",end-1)),"captures":[{"id":chat_id(555),"name":"Saved capture","state":"saved","size":3,"media":"text/plain"},{"id":chat_id(556),"name":"Second capture","state":"not_saved","size":null,"media":null}]})).into_response()
+}
+async fn saved_file(State(s): State<Arc<Server>>) -> Response {
+    if !s.active.load(Ordering::SeqCst) {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    s.downloads.fetch_add(1, Ordering::SeqCst);
+    b"fixture!".to_vec().into_response()
+}
+async fn saved_capture(State(s): State<Arc<Server>>) -> Response {
+    if !s.active.load(Ordering::SeqCst) {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    s.downloads.fetch_add(1, Ordering::SeqCst);
+    b"cap".to_vec().into_response()
+}
 fn capture_window(
     window: gpui::AnyWindowHandle,
     cx: &mut gpui::AsyncApp,
@@ -88,7 +134,8 @@ fn capture_window(
         .unwrap();
 }
 fn main() -> anyhow::Result<()> {
-    let history_mode = std::env::args().any(|arg| arg == "--history");
+    let reader_mode = std::env::args().any(|arg| arg == "--reader");
+    let history_mode = reader_mode || std::env::args().any(|arg| arg == "--history");
     let output = PathBuf::from(
         std::env::args_os()
             .nth(1)
@@ -99,7 +146,7 @@ fn main() -> anyhow::Result<()> {
     let (origin, server)=runtime.block_on(async {
         let listener=tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let origin=format!("http://{}",listener.local_addr().unwrap());
-        let server=Arc::new(Server::default());
+        let server=Arc::new(Server::default());server.revision.store(1,Ordering::SeqCst);
         let code_origin=origin.clone();
         let router=Router::new()
             .route("/device",get(|| async {Html("<h1>Sign in to Coder Desktop</h1><p>Fixture Mac · BCDF-GHJK</p><form action='/approve' method='post'><button>Approve</button></form>")}))
@@ -108,6 +155,9 @@ fn main() -> anyhow::Result<()> {
             .route("/v1/device/token",post(|State(s):State<Arc<Server>>|async move {if !s.approved.load(Ordering::SeqCst) {return (StatusCode::BAD_REQUEST,Json(json!({"error":"authorization_pending"})));} s.active.store(true,Ordering::SeqCst);(StatusCode::OK,Json(json!({"access_token":format!("sess_{:064x}",1),"token_type":"Bearer","expires_in":120,"account":{"id":"acct_fixture","label":"Fixture account"}})))}))
             .route("/v1/account",get(|State(s):State<Arc<Server>>|async move {if s.active.load(Ordering::SeqCst) {(StatusCode::OK,Json(json!({"account":{"id":"acct_fixture","label":"Fixture account"},"workspaces":[]})))}else{(StatusCode::UNAUTHORIZED,Json(json!({"error":"unauthorized"})))}}))
             .route("/v1/history",get(history_list))
+            .route("/v1/history/{id}/messages",get(saved_messages))
+            .route("/v1/history/{id}/files/{file}",get(saved_file))
+            .route("/v1/history/{id}/captures/{capture}",get(saved_capture))
             .route("/v1/history/projects",get(||async{Json(json!({"data":[{"id":"prj_0000000000000001","name":"Shared project","shared":true}],"next":null}))}))
             .route("/v1/device/sign-out",post(|State(s):State<Arc<Server>>|async move {s.active.store(false,Ordering::SeqCst);Json(json!({"signed_out":true}))}))
             .with_state(server.clone());
@@ -259,6 +309,141 @@ fn main() -> anyhow::Result<()> {
                                         .await;
                                 }
                                 capture_window(window, cx, &output, "sidebar-200");
+                                if reader_mode {
+                                    assert!(model.existing(&chat_id(204)).is_none());
+                                    let lease = controller.lease().unwrap();
+                                    let chat = lease
+                                        .client()
+                                        .chat(lease.session(), &chat_id(204))
+                                        .unwrap();
+                                    let target = coder_account::history::ExistingChat {
+                                        chat: chat.clone(),
+                                        lease,
+                                        summary: coder_account::openagents::ChatSummary {
+                                            chat,
+                                            title: "Saved chat".into(),
+                                            revision: 0,
+                                            updated_unix: 0,
+                                            pinned_unix: None,
+                                            archived_unix: None,
+                                            project: None,
+                                            source: coder_account::openagents::ChatSource::Other(
+                                                "unknown".into(),
+                                            ),
+                                            messages: 0,
+                                        },
+                                    };
+                                    shell_window
+                                        .update(cx, |shell, _, cx| {
+                                            shell.open_saved_chat(target, cx)
+                                        })
+                                        .unwrap();
+                                    let viewer = shell_window
+                                        .update(cx, |shell, _, _| shell.fixture_saved_reader())
+                                        .unwrap()
+                                        .unwrap();
+                                    let reader =
+                                        viewer.update(cx, |viewer, _| viewer.model.clone());
+                                    let deadline = Instant::now() + Duration::from_secs(10);
+                                    while reader.snapshot().state
+                                        == coder_account::history::LoadState::Loading
+                                    {
+                                        assert!(Instant::now() < deadline);
+                                        cx.background_executor()
+                                            .timer(Duration::from_millis(50))
+                                            .await;
+                                    }
+                                    assert_eq!(reader.snapshot().messages.len(), 200);
+                                    assert_eq!(server.downloads.load(Ordering::SeqCst), 0);
+                                    cx.background_executor()
+                                        .timer(Duration::from_millis(100))
+                                        .await;
+                                    capture_window(window, cx, &output, "reader-200");
+                                    runtime.spawn(reader.more()).await.unwrap();
+                                    runtime.spawn(reader.more()).await.unwrap();
+                                    assert_eq!(reader.snapshot().messages.len(), 405);
+                                    assert_eq!(
+                                        reader.snapshot().messages.last().unwrap().id,
+                                        "msg_404"
+                                    );
+                                    assert!(!reader.snapshot().has_more);
+                                    cx.background_executor()
+                                        .timer(Duration::from_millis(100))
+                                        .await;
+                                    viewer.update(cx, |viewer, cx| viewer.reveal_message(404, cx));
+                                    cx.background_executor()
+                                        .timer(Duration::from_millis(100))
+                                        .await;
+                                    capture_window(window, cx, &output, "reader-405");
+                                    let reference = reader.snapshot().messages[0].files[0]
+                                        .download_ref()
+                                        .unwrap()
+                                        .clone();
+                                    viewer.update(cx, |viewer, cx| {
+                                        viewer.download(reference, "fixture.txt".into(), cx)
+                                    });
+                                    while matches!(
+                                        reader.snapshot().download.as_ref().map(|d| &d.state),
+                                        Some(coder_account::history::LoadState::Loading)
+                                    ) {
+                                        cx.background_executor()
+                                            .timer(Duration::from_millis(50))
+                                            .await;
+                                    }
+                                    assert_eq!(
+                                        &**reader.snapshot().download.unwrap().bytes.unwrap(),
+                                        b"fixture!"
+                                    );
+                                    assert_eq!(server.downloads.load(Ordering::SeqCst), 1);
+                                    cx.background_executor()
+                                        .timer(Duration::from_millis(100))
+                                        .await;
+                                    capture_window(window, cx, &output, "reader-file");
+                                    assert!(reader.snapshot().captures[1].download_ref().is_none());
+                                    let reference = reader.snapshot().captures[0]
+                                        .download_ref()
+                                        .unwrap()
+                                        .clone();
+                                    runtime
+                                        .spawn(reader.download(reference, "Saved capture".into()))
+                                        .await
+                                        .unwrap();
+                                    assert_eq!(
+                                        &**reader.snapshot().download.unwrap().bytes.unwrap(),
+                                        b"cap"
+                                    );
+                                    assert_eq!(server.downloads.load(Ordering::SeqCst), 2);
+                                    reader.refresh().unwrap();
+                                    runtime.spawn(reader.more()).await.unwrap();
+                                    server.revision.store(2, Ordering::SeqCst);
+                                    runtime.spawn(reader.more()).await.unwrap();
+                                    assert!(reader.snapshot().reload_required);
+                                    assert!(reader.snapshot().messages.is_empty());
+                                    cx.background_executor()
+                                        .timer(Duration::from_millis(100))
+                                        .await;
+                                    capture_window(window, cx, &output, "reader-changed");
+                                    viewer.update(cx, |viewer, cx| viewer.refresh(cx));
+                                    while reader.snapshot().state
+                                        == coder_account::history::LoadState::Loading
+                                    {
+                                        cx.background_executor()
+                                            .timer(Duration::from_millis(50))
+                                            .await;
+                                    }
+                                    assert_eq!(reader.snapshot().messages.len(), 200);
+                                    assert_eq!(reader.snapshot().summary.unwrap().revision, 2);
+                                    cx.background_executor()
+                                        .timer(Duration::from_millis(100))
+                                        .await;
+                                    capture_window(window, cx, &output, "reader-reloaded");
+                                    state.update(cx, |state, _| {
+                                        assert!(state.selected_chat.is_none());
+                                        assert!(state.chats.is_empty());
+                                        assert!(state.engine().is_none());
+                                    });
+                                }
+
                                 runtime.spawn(model.more()).await.unwrap();
                                 cx.background_executor()
                                     .timer(Duration::from_millis(100))
@@ -332,6 +517,16 @@ fn main() -> anyhow::Result<()> {
                         } else if name == "signed-out" {
                             assert!(store.0.lock().unwrap().is_none());
                             assert!(!server.active.load(Ordering::SeqCst));
+                            if reader_mode {
+                                let viewer = shell_window
+                                    .update(cx, |shell, _, _| shell.fixture_saved_reader())
+                                    .unwrap()
+                                    .unwrap();
+                                viewer.update(cx, |viewer, _| {
+                                    assert!(viewer.model.snapshot().messages.is_empty());
+                                    assert!(viewer.model.snapshot().download.is_none());
+                                });
+                            }
                             if history_mode {
                                 let (panel, route) = shell_window
                                     .update(cx, |shell, _, _| shell.fixture_saved_history())

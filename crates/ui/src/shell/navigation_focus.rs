@@ -93,7 +93,9 @@ impl Shell {
             Route::PullRequests => self.pull_request_pane_open(),
             Route::Settings(_) | Route::SavedHistory => false,
         };
-        if matches!(self.route, Route::Settings(_)) {
+        if matches!(self.route, Route::SavedHistory) {
+            (self.navigation_focus.main.clone(), self.unfocused.clone())
+        } else if matches!(self.route, Route::Settings(_)) {
             (self.settings_focus.clone(), self.unfocused.clone())
         } else if right_open && self.navigation_focus.right_was_focused {
             (

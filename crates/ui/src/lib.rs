@@ -52,6 +52,7 @@ mod notice;
 pub mod notify;
 pub mod openagents_account;
 pub mod openagents_history;
+pub mod openagents_reader;
 pub mod orb;
 pub mod overscroll;
 pub mod pickers;
