@@ -6,6 +6,16 @@ Use a Git dependency pinned to a commit containing this crate until package
 publication is authorized. There is no crates.io release yet. Async operations
 run on the application's Tokio runtime.
 
+```toml
+[dependencies]
+openagents-sdk = { git = "https://github.com/OpenAgentsInc/openagents.git", rev = "c2baf83c52356aee1f7d119d689e077ce07ae768" }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+```
+
+This pin passed an outside-checkout build and an account/workspace read against
+the public API with a dedicated test account; see the
+[verification record](../../docs/sdk/auth-client-evidence.json).
+
 ```rust
 use openagents_sdk::{CancellationToken, Client, Deployment};
 

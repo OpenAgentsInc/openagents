@@ -40,7 +40,8 @@ Rust auth facade is [`openagents-sdk`](../../crates/openagents-sdk/README.md)
 (#11826); it reuses portable device parsing from `openagents-login` with the
 CLI's `system` helpers disabled. History and application integration remain
 separate implementation issues. A clean outside checkout and the SDK's own
-checks qualify this boundary; publication is still deferred.
+checks qualify this boundary; [the auth client evidence](auth-client-evidence.json)
+records the immutable source pin and the outside consumer. Publication is still deferred.
 
 The built device flow is `POST /v1/device/code`, `POST /v1/device/token`,
 and `POST /v1/device/sign-out`; approval stays on the website. Reuse

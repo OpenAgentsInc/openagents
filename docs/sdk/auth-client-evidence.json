@@ -1,0 +1,24 @@
+{
+  "schema": "openagents.sdk.auth-client-evidence.v1",
+  "sdk_commit": "c2baf83c52356aee1f7d119d689e077ce07ae768",
+  "rust_toolchain": "1.97.1",
+  "server_commit": "162556babeb18a3385ae60d26ae292e3bb816b8b",
+  "checks": {
+    "sdk_auth_tests": 10,
+    "sdk_copy_tests": 1,
+    "legacy_login_tests": 9,
+    "portable_login_check": "passed",
+    "external_git_build": "passed",
+    "external_account_and_workspace_read": "passed"
+  },
+  "external_client": {
+    "package": "openagents-sdk",
+    "git": "https://github.com/OpenAgentsInc/openagents.git",
+    "rev": "c2baf83c52356aee1f7d119d689e077ce07ae768",
+    "normal_host_dependencies": [],
+    "login_features": []
+  },
+  "test_account": "dedicated production test account; no owner data",
+  "created_resources": [],
+  "publication": "not authorized or performed"
+}
