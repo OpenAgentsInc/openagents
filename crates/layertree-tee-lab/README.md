@@ -140,7 +140,11 @@ one on an HTTP mirror stub) through 20 honest transitions, checking their
 paths against the full tree after every block, then a withheld record
 (`RecordMissing` after 3 blocks), a forged one (`RecordNotAnchored`), a
 withheld unroll (`UnrollNotHeld`) and a mined theft by a broken enclave
-(`OutputMismatch` for every member in that block). The node runs with
+(`OutputMismatch` for every member in that block). Its checked-in
+`fixtures/events/regtest-light.jsonl` also records the mined theft block and
+`observed_output_amount` (output 0 as read from Core, separate from the
+signed record's claimed sum) for
+the [Verse captures](../../docs/research/layertree/captures/README.md). The node runs with
 `-blockfilterindex=1`. `tests/follow.rs` runs the same follower against an
 in-memory chain with real BIP-158 filters.
 

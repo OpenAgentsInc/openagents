@@ -21,6 +21,7 @@ struct Options {
     at: Option<u64>,
     play: bool,
     compare_progress: bool,
+    caption: Option<String>,
     from: u64,
     to: Option<u64>,
     rate: f32,
@@ -36,6 +37,7 @@ fn options() -> Result<Options, String> {
         at: None,
         play: false,
         compare_progress: false,
+        caption: None,
         from: 0,
         to: None,
         rate: 0.6,
@@ -49,6 +51,7 @@ fn options() -> Result<Options, String> {
         let mut value = || args.next().ok_or_else(|| format!("{arg} needs a value."));
         match arg.as_str() {
             "--events" => out.events = value()?.into(),
+            "--caption" => out.caption = Some(value()?),
             "--at" => out.at = Some(value()?.parse().map_err(|_| "Choose an event number.")?),
             "--capture" => out.capture = Some(value()?.into()),
             "--scale" => {
@@ -272,6 +275,7 @@ fn run() -> Result<(), String> {
     let options = options()?;
     let mut set = Set::load(&options.events, options.at)?;
     set.compare_progress = options.compare_progress;
+    set.caption = options.caption.clone();
     if options.play {
         set.play(options.from, options.to, options.rate)?;
     }

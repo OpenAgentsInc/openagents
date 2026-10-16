@@ -1,12 +1,14 @@
 {
   "name": "layertree-transitions",
-  "notes": "Simulated operations only. No transactions or hardware attestation. Real regtest logs can be selected in the viewer.",
+  "notes": "Confirmed regtest joins, updates, claim, exit and heartbeat. Test keys and test-vendor attestation; no Confidential VM.",
   "scene": {
     "kind": "layer_tree",
-    "events": "docs/verse/fixtures/layertree-transitions.jsonl",
+    "events": "crates/layertree-tee-lab/fixtures/events/regtest.jsonl",
     "play": true,
     "from": 0,
-    "rate": 0.5
+    "to": 17,
+    "rate": 0.8,
+    "caption": "Regtest: test keys and coins; test-vendor attestation"
   },
   "duration": 24,
   "fps": 24.0,
@@ -20,13 +22,13 @@
         "t": 0.0,
         "eye": [
           6.0,
-          13,
-          30
+          18,
+          38
         ],
         "target": [
-          1,
-          5,
-          0
+          0,
+          7,
+          1
         ],
         "focal_mm": 38.0,
         "ease": "in_out"
@@ -35,13 +37,13 @@
         "t": 24,
         "eye": [
           -6.0,
-          13,
-          30
+          18,
+          38
         ],
         "target": [
-          1,
-          5,
-          0
+          0,
+          7,
+          1
         ],
         "focal_mm": 38.0
       }

@@ -213,6 +213,8 @@ enum SceneSpec {
         rate: f32,
         #[serde(default)]
         compare_progress: bool,
+        #[serde(default)]
+        caption: Option<String>,
     },
     /// The Lagrange 1 station.
     Lagrange,
@@ -559,9 +561,11 @@ impl Stage {
                 to,
                 rate,
                 compare_progress,
+                caption,
             } => {
                 let mut set = Box::new(layertree::Set::load(events, *at)?);
                 set.compare_progress = *compare_progress;
+                set.caption = caption.clone();
                 if *play {
                     set.play(*from, *to, *rate)?;
                 }

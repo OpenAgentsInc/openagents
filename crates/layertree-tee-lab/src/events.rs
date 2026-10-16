@@ -189,6 +189,9 @@ pub enum Body {
         changes: Vec<ChangeJson>,
         old_root: NodeJson,
         new_root: NodeJson,
+        /// Output 0's amount observed on chain, separate from the signed claim.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        observed_output_amount: Option<u64>,
         txid: String,
         record_hash: String,
         next_unroll_key: Option<String>,
@@ -319,6 +322,7 @@ impl Body {
                 .collect(),
             old_root: old.tree.root().expect("consistent").into(),
             new_root: record.new_root.into(),
+            observed_output_amount: None,
             txid: txid.to_string(),
             record_hash: hex(&record.hash()),
             next_unroll_key: record.next_unroll_key.map(|k| hex(&k.serialize())),

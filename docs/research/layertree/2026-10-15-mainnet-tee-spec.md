@@ -695,6 +695,29 @@ and its child issues (#11780 to #11799).
    need the LICENSE file first. It is still missing (see
    [README.md](README.md)).
 
+### 10.1 Regtest captures
+
+![Merkle-sum tree after a confirmed regtest claim](captures/tree.jpg)
+
+Source: `fixtures/events/regtest.jsonl`, event 8. The displayed 219,000 sat
+root equals the tree output. Keys and coins are for tests; the attestation
+shown in this run uses the lab's test vendor key.
+
+![Three followers detect a mined regtest theft](captures/alarm.jpg)
+
+The [capture gallery](captures/README.md) names the mined theft transaction
+and its three `OutputMismatch` observations. The record claims 360,000 sat;
+Core observes 310,000 sat in output 0, exposing the 50,000 sat shortfall. This is a Bitcoin Core 30.2
+regtest run, not a Confidential VM or public signet result.
+
+![A two-level regtest unroll pays the recorded leaves](captures/unroll.jpg)
+
+The two-level regtest run pays the full 349,000 sat to its nine remaining
+leaves. Anchor fees come from outside the tree. The gallery includes exact
+source events, transactions, source hashes, and commands. P1's public
+signet captures remain dependent on the week-long run and alarms in
+#11793 and #11794.
+
 ## 11. What the sandbox proves, and what it does not
 
 The tests are in `crates/layertree-tee-lab`. Run them with

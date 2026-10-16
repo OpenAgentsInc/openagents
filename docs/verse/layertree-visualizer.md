@@ -58,8 +58,8 @@ sequence number. Heartbeats move the output along the rail. Refused
 operations flash red and leave the balances unchanged. Displayed balances
 always belong to the checked destination event; only geometry interpolates.
 
-`docs/verse/film/verse-shots/layertree-transitions.json` renders a 24-second
-demonstration of every move. Its source,
+`docs/verse/film/verse-shots/layertree-simulated-transitions.json` renders a
+24-second demonstration of every move. Its source,
 `docs/verse/fixtures/layertree-transitions.jsonl`, is simulated throughout.
 The viewer's `simulation` event extends the public log for illustration:
 it requires `synthetic: true`, uses the same old/new leaves and balances
@@ -89,13 +89,15 @@ alarm. The list at the top right gives each logged result and its block.
 A block ribbon marks spends of tracked outputs and the associated record
 check. An alarm connects the reporting member to the signer. Only logged
 member results change status; a single report does not invent results for
-other clients. The viewer reads results; it does not verify attestations,
+other clients. When a transition includes `observed_output_amount`, the coin shows that
+on-chain amount separately from the claimed root sum, turning red on a
+mismatch. The viewer reads results; it does not verify attestations,
 filters, or records itself.
 
-`layertree-alarm.json` renders a 20-second film of the lab's broken-enclave
-fixture with three simulated observer results. Its source is explicitly
-labelled simulated. The lab's `theft-caught.jsonl` can also be viewed
-directly; it contains one observer. Regtest attestation uses a test vendor
+`layertree-alarm.json` renders a 20-second film from the real
+`regtest-light.jsonl` run: three followers, withheld data, a forged record,
+and a mined broken-enclave theft. The lab's `theft-caught.jsonl` can also
+be viewed directly; it contains one observer. Regtest attestation uses a test vendor
 key. Neither fixture demonstrates hardware attestation or a mined theft
 on signet. P1 logs can replace the input when those runs finish.
 
@@ -104,7 +106,8 @@ For failed attestation views, select events 2, 3, or 4 of
 `UnknownMeasurement`, `ReportDataMismatch`, and `VendorSignature` with
 public test data. A `tree_open` event can include an `observers` array to
 name the clients in a multi-observer recording; otherwise the scene uses
-the tree's members and any clients that report a result.
+the clients recorded anywhere in the run, falling back to the tree's members
+when there are no observations. This selects participants, never future results.
 
 ## Timed unroll
 
@@ -142,3 +145,41 @@ cargo run -p verse --no-default-features --features imported-desktop \
 Every generated event is labelled `synthetic: true`, and the scene says
 **simulated**. These hashes and transactions are illustrative; the log is
 not evidence of Bitcoin execution or hardware attestation.
+
+
+## Research stills and Video Lab
+
+The [research gallery](../research/layertree/captures/README.md) records each
+source event, source-file hash, and transaction where applicable. `--caption TEXT` and
+the film scene's `caption` field keep the test-data note visible in exported
+images and clips. Reproduce
+all stills and the four CRF-12 1080p clips using the already built examples
+in your existing `CARGO_TARGET_DIR`:
+
+```sh
+layertree_scratch="$(openagents scratch)"
+scripts/layertree-captures.py \
+  --viewer "$CARGO_TARGET_DIR/debug/examples/layertree" \
+  --film-shot "$CARGO_TARGET_DIR/debug/examples/film_shot" \
+  --scratch "$layertree_scratch/layertree-captures"
+```
+
+The four `docs/verse/film/layertree-*-scene.json` documents contain the same
+shots as the direct renderer. Video Lab imports repository scene documents
+on first use and accepts their path as an alias:
+
+```sh
+VERSE_FILM_SHOT="$CARGO_TARGET_DIR/debug/examples/film_shot" \
+  scripts/film/lab.py render docs/verse/film/layertree-tree-scene.json --quality review
+```
+
+`VERSE_FILM_SHOT` selects an existing build; omitting it uses the normal
+release Cargo command. Video Lab includes the event log's content hash in
+the scene version and excludes the output video from its inputs. Later
+edits in Video Lab keep their versions; importing does not overwrite them.
+
+The transitions clip uses confirmed regtest activity. The complete later
+operations demo remains in `layertree-simulated-transitions.json`. The alarm
+clip uses `regtest-light.jsonl`, written by the real three-follower test;
+the unroll clip uses `regtest-two-level.jsonl`. Public signet replacements
+wait for #11793 and #11794, with public transactions in their captions.

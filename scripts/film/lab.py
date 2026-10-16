@@ -3,7 +3,7 @@
 chat edits them with (docs/video-lab/README.md, docs/video-lab/mvp.md).
 
     scripts/film/lab.py serve [--port 8792]          the service the chats call
-    scripts/film/lab.py import                       Episode 290 and the portal walk
+    scripts/film/lab.py import                       repository scenes and existing films
     scripts/film/lab.py list
     scripts/film/lab.py open DOC
     scripts/film/lab.py show DOC [--from T] [--to T]
@@ -214,11 +214,11 @@ def strings(value):
 def assets(kind: str, body: dict) -> list[str]:
     """Every file the document uses, as written (paths with ~)."""
     found = []
-    for s in strings(body):
+    for s in strings({k: v for k, v in body.items() if k != "out"}):
         if (s.startswith("~/") or s.startswith("/")) and not s.endswith("/"):
             if Path(s).suffix and expand(s).exists():
                 found.append(s)
-        elif kind == "shot.v1" and s.startswith("scripts/") and (REPO / s).exists():
+        elif s.startswith(("scripts/", "docs/", "crates/")) and (REPO / s).is_file():
             found.append(s)
     return sorted(set(found))
 
@@ -263,7 +263,7 @@ def file_digest(path: Path) -> str:
 def digest(kind: str, body: dict) -> tuple[str, dict]:
     files = {}
     for a in assets(kind, body):
-        p = expand(a) if not a.startswith("scripts/") else REPO / a
+        p = expand(a) if a.startswith(("~/", "/")) else REPO / a
         files[a] = file_digest(p)
     blob = json.dumps({"kind": kind, "body": body, "assets": files}, sort_keys=True, separators=(",", ":"))
     return "sha256:" + hashlib.sha256(blob.encode()).hexdigest(), files
@@ -660,6 +660,13 @@ def do_render(doc: str, n: int, quality: str, log) -> Path:
     v = version(doc, n)
     data = body(doc, n)
     kind = v["kind"]
+    if kind == "scene.v1":
+        for asset, expected in v.get("assets", {}).items():
+            if asset == data.get("out"):
+                continue
+            path = expand(asset) if asset.startswith(("~/", "/")) else REPO / asset
+            if not path.is_file() or file_digest(path) != expected:
+                raise Refused(f"The file {asset} changed. Save a new scene version before rendering.")
     out = render_path(doc, v, quality)
     out.parent.mkdir(parents=True, exist_ok=True)
     tmpdir = Path(tempfile.mkdtemp(prefix="video-lab-"))
@@ -708,8 +715,10 @@ def do_render(doc: str, n: int, quality: str, log) -> Path:
             env.setdefault("CARGO_TARGET_DIR", str(HOME / "work/openagents-target-videolab"))
             if quality == "master":
                 env["VERSE_QUALITY"] = "high"
-            cmd = ["cargo", "run", "--release", "-p", "verse", "--example", "film_shot", "--", str(spec),
-                   "--out", str(part)]
+            binary = env.get("VERSE_FILM_SHOT")
+            cmd = ([binary, str(spec), "--out", str(part)] if binary else
+                   ["cargo", "run", "--release", "-p", "verse", "--example", "film_shot", "--", str(spec),
+                    "--out", str(part)])
             if quality == "preview":
                 cmd += ["--subframes", "1"]
             run(cmd, env=env, cwd=str(REPO), log=log)
@@ -2365,6 +2374,18 @@ def do_import(author: str = "import") -> list[str]:
                aliases=["portal walk", "openagents portal walk", "the ending"],
                source=str(REPO / "scripts/film/portal-walk.py"))
         done.append("portal-walk")
+    for path in sorted((REPO / "docs/verse/film").glob("*-scene.json")):
+        doc = path.stem
+        if (doc_dir(doc) / "doc.json").exists():
+            continue
+        data = json.loads(path.read_text())
+        problems, _ = check("scene.v1", data)
+        if problems:
+            raise Refused(f"Could not import {path.name}: " + "; ".join(problems))
+        create(doc, "scene.v1", data["shot"]["name"], data,
+               "Scene from the repository", author,
+               aliases=[str(path.relative_to(REPO))], source=str(path))
+        done.append(doc)
     return done
 
 

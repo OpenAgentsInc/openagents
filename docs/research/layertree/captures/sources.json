@@ -1,0 +1,164 @@
+[
+  {
+    "image": "tree.jpg",
+    "log": "crates/layertree-tee-lab/fixtures/events/regtest.jsonl",
+    "sha256": "fe9c8c95bc296170ccc8009276f66157d25a598773333c484ac5518fcb7b6a83",
+    "seq": 8,
+    "network": "regtest",
+    "txid": "81484eb80b2d6e7462b0661d4df30cd14804afc080c20ab5e1b2c8ed25dbb821",
+    "caption": "Regtest tree with its checked sums."
+  },
+  {
+    "image": "join.jpg",
+    "log": "crates/layertree-tee-lab/fixtures/events/regtest.jsonl",
+    "sha256": "fe9c8c95bc296170ccc8009276f66157d25a598773333c484ac5518fcb7b6a83",
+    "seq": 2,
+    "network": "regtest",
+    "txid": "f65b1ef9fe3f4fd0ddc51ae717fad88b87103d27815ca4c580e898f87e53f031",
+    "caption": "Confirmed regtest join."
+  },
+  {
+    "image": "update.jpg",
+    "log": "crates/layertree-tee-lab/fixtures/events/regtest.jsonl",
+    "sha256": "fe9c8c95bc296170ccc8009276f66157d25a598773333c484ac5518fcb7b6a83",
+    "seq": 5,
+    "network": "regtest",
+    "txid": "62c5ede97e4576229ef17686aae8f73d97eb6ce2664a38048af2b874fdecd447",
+    "caption": "Confirmed regtest update."
+  },
+  {
+    "image": "claim.jpg",
+    "log": "crates/layertree-tee-lab/fixtures/events/regtest.jsonl",
+    "sha256": "fe9c8c95bc296170ccc8009276f66157d25a598773333c484ac5518fcb7b6a83",
+    "seq": 8,
+    "network": "regtest",
+    "txid": "81484eb80b2d6e7462b0661d4df30cd14804afc080c20ab5e1b2c8ed25dbb821",
+    "caption": "Confirmed regtest claim."
+  },
+  {
+    "image": "exit.jpg",
+    "log": "crates/layertree-tee-lab/fixtures/events/regtest.jsonl",
+    "sha256": "fe9c8c95bc296170ccc8009276f66157d25a598773333c484ac5518fcb7b6a83",
+    "seq": 11,
+    "network": "regtest",
+    "txid": "70dbb7958479879c76d4236c74e5fbdd70e5c7e2ac49731a48b2f4ffb4ea8603",
+    "caption": "Confirmed regtest exit."
+  },
+  {
+    "image": "refresh.jpg",
+    "log": "crates/layertree-tee-lab/fixtures/events/regtest.jsonl",
+    "sha256": "fe9c8c95bc296170ccc8009276f66157d25a598773333c484ac5518fcb7b6a83",
+    "seq": 15,
+    "network": "regtest",
+    "txid": "0807a9854c242793abfee4000bc9262ea3b6ac56d2d9bf62eb80326ef94e72fb",
+    "caption": "Confirmed regtest refresh."
+  },
+  {
+    "image": "evict.jpg",
+    "log": "docs/verse/fixtures/layertree-transitions.jsonl",
+    "sha256": "a896471dd62d8e219eaad1ec4f177f4f36d52fd09d745fe6c13e93d6bb06f685",
+    "seq": 5,
+    "network": "lab",
+    "txid": "a828f46c4efa2bbfd0a9e2ced413594a49675cc9314c88a320f740a8fd91ac92",
+    "caption": "Simulated evict; illustrative hashes and transactions."
+  },
+  {
+    "image": "split.jpg",
+    "log": "docs/verse/fixtures/layertree-transitions.jsonl",
+    "sha256": "a896471dd62d8e219eaad1ec4f177f4f36d52fd09d745fe6c13e93d6bb06f685",
+    "seq": 7,
+    "network": "lab",
+    "txid": "f380f5695a8118b79ff7c87b14399579d80e3d9053c3c244d046e1f852d853f0",
+    "caption": "Simulated split; illustrative hashes and transactions."
+  },
+  {
+    "image": "merge.jpg",
+    "log": "docs/verse/fixtures/layertree-transitions.jsonl",
+    "sha256": "a896471dd62d8e219eaad1ec4f177f4f36d52fd09d745fe6c13e93d6bb06f685",
+    "seq": 8,
+    "network": "lab",
+    "txid": "ed1efe81f32d08c238969ccec56047475eb0b4e84584fb15137d74f487b33068",
+    "caption": "Simulated merge; illustrative hashes and transactions."
+  },
+  {
+    "image": "rewrite.jpg",
+    "log": "docs/verse/fixtures/layertree-transitions.jsonl",
+    "sha256": "a896471dd62d8e219eaad1ec4f177f4f36d52fd09d745fe6c13e93d6bb06f685",
+    "seq": 9,
+    "network": "lab",
+    "txid": "9fb578930ee4fd0721c3bd89fec127c5f68d9b36dc4fb31dfbbae5f69dfd2259",
+    "caption": "Simulated rewrite; illustrative hashes and transactions."
+  },
+  {
+    "image": "detach.jpg",
+    "log": "docs/verse/fixtures/layertree-transitions.jsonl",
+    "sha256": "a896471dd62d8e219eaad1ec4f177f4f36d52fd09d745fe6c13e93d6bb06f685",
+    "seq": 10,
+    "network": "lab",
+    "txid": "af06d3ffef5bd936ef57e92490bd193e33253f928b90b061377c02a024412d93",
+    "caption": "Simulated detach; illustrative hashes and transactions."
+  },
+  {
+    "image": "rejected.jpg",
+    "log": "docs/verse/fixtures/layertree-transitions.jsonl",
+    "sha256": "a896471dd62d8e219eaad1ec4f177f4f36d52fd09d745fe6c13e93d6bb06f685",
+    "seq": 11,
+    "network": "lab",
+    "txid": null,
+    "caption": "Simulated refusal; balances do not change."
+  },
+  {
+    "image": "attested.jpg",
+    "log": "crates/layertree-tee-lab/fixtures/events/regtest-light.jsonl",
+    "sha256": "a73bcdb7ce187d607dab17394eb31be4d325fc77f617b7018c0e12dc332dc02d",
+    "seq": 1,
+    "network": "regtest",
+    "txid": null,
+    "caption": "Passed test-vendor attestation on regtest; no Confidential VM."
+  },
+  {
+    "image": "alarm.jpg",
+    "log": "crates/layertree-tee-lab/fixtures/events/regtest-light.jsonl",
+    "sha256": "a73bcdb7ce187d607dab17394eb31be4d325fc77f617b7018c0e12dc332dc02d",
+    "seq": 157,
+    "network": "regtest",
+    "txid": "7d31c05385b9222c5f7914216a2fac54f42013752ee23afdf4eb3e0cf5304ff2",
+    "caption": "Mined regtest theft: output 0 is 50,000 sat short; all three followers report OutputMismatch."
+  },
+  {
+    "image": "unroll.jpg",
+    "log": "crates/layertree-tee-lab/fixtures/events/regtest-two-level.jsonl",
+    "sha256": "a96b734e2da26dc790be88591e3ad2a7590dfbf6eb6928e4e9548c2830fc2bee",
+    "seq": 35,
+    "network": "regtest",
+    "txid": "3c1536eef176a9959f0d7acf7eb1c38d668251d01198311fb5160e5e6f5b5135",
+    "caption": "Confirmed two-level regtest unroll; full member amounts, external anchor fees."
+  },
+  {
+    "image": "attestation-UnknownMeasurement.jpg",
+    "log": "docs/verse/fixtures/layertree-attestation-errors.jsonl",
+    "sha256": "0b4e2e1e77854ff2c671f3dbc2427a1c602e89df8c9888723073f576f209a916",
+    "seq": 2,
+    "network": "lab",
+    "txid": null,
+    "caption": "Simulated UnknownMeasurement display; not a hardware-verifier result."
+  },
+  {
+    "image": "attestation-ReportDataMismatch.jpg",
+    "log": "docs/verse/fixtures/layertree-attestation-errors.jsonl",
+    "sha256": "0b4e2e1e77854ff2c671f3dbc2427a1c602e89df8c9888723073f576f209a916",
+    "seq": 3,
+    "network": "lab",
+    "txid": null,
+    "caption": "Simulated ReportDataMismatch display; not a hardware-verifier result."
+  },
+  {
+    "image": "attestation-VendorSignature.jpg",
+    "log": "docs/verse/fixtures/layertree-attestation-errors.jsonl",
+    "sha256": "0b4e2e1e77854ff2c671f3dbc2427a1c602e89df8c9888723073f576f209a916",
+    "seq": 4,
+    "network": "lab",
+    "txid": null,
+    "caption": "Simulated VendorSignature display; not a hardware-verifier result."
+  }
+]

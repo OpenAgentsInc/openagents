@@ -13,6 +13,18 @@ drive LND from Rust or keep to LDK.
 | [2026-10-15-mainnet-tee-spec.md](2026-10-15-mainnet-tee-spec.md) | **LayerTree on mainnet today, with a TEE enforcing the rules.** The exact missing opcodes; an enclave co-signer in a GCP Confidential VM; a pre-signed, timelocked unroll that needs no enclave; light clients; key lifecycle; threat model; verification mapped to upstream's Lean theorems; migration to real covenants as one rotation; OpenAgents uses; phases, costs and owner decisions |
 | [integration-plan.md](integration-plan.md) | Where our Lightning code lives, four fits (many small balances, batched author and affiliate payouts, agent wallets that exit without us, Lightning receive via vouchers), what to do now, triggers for deeper work, experiments E0 to E4 with acceptance checks, and LDK in Rust against a Rust `lnd-sdk` driving LND, with the crate's surface |
 
+## Regtest views
+
+![LayerTree balances from the regtest run](captures/tree.jpg)
+
+The [capture gallery](captures/README.md) shows confirmed regtest transitions,
+a mined theft detected by three followers, and the timed unroll. Every image
+names its log, event, and transaction where applicable. Attestation uses a
+test vendor key; the later split/merge operations and failed-attestation
+views are labelled simulations. These are not signet or hardware results.
+The [Verse viewer](../../verse/layertree-visualizer.md) and four Video Lab
+scene documents reproduce the stills and clips.
+
 ## The short version
 
 - **The design.** The tree's root tweaks the output's Taproot key, and the

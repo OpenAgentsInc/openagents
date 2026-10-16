@@ -1,0 +1,54 @@
+{
+  "renderer": "verse-film-shot",
+  "shot": {
+    "name": "layertree-tree",
+    "notes": "Tree balances from the checked-in regtest run. Gold value flows toward the root above the engine Grid.",
+    "scene": {
+      "kind": "layer_tree",
+      "events": "crates/layertree-tee-lab/fixtures/events/regtest.jsonl",
+      "at": 8,
+      "caption": "Regtest: test keys and coins; test-vendor attestation"
+    },
+    "duration": 5.0,
+    "fps": 24.0,
+    "width": 1920,
+    "height": 1080,
+    "subframes": 1,
+    "prewarm": 1,
+    "rig": {
+      "keys": [
+        {
+          "t": 0.0,
+          "eye": [
+            6.0,
+            18.0,
+            30.0
+          ],
+          "target": [
+            1.0,
+            8.0,
+            0.0
+          ],
+          "focal_mm": 38.0,
+          "ease": "in_out"
+        },
+        {
+          "t": 5.0,
+          "eye": [
+            -6.0,
+            18.0,
+            30.0
+          ],
+          "target": [
+            1.0,
+            8.0,
+            0.0
+          ],
+          "focal_mm": 38.0
+        }
+      ]
+    }
+  },
+  "notes": "Tree balances from the checked-in regtest run. Gold value flows toward the root above the engine Grid.",
+  "out": "~/work/film-out/verse/layertree-tree.mp4"
+}

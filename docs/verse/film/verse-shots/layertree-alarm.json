@@ -1,11 +1,13 @@
 {
   "name": "layertree-alarm",
-  "notes": "Lab broken-enclave predicate fixture with simulated three-client observations. No hardware attestation or mined theft is claimed.",
+  "notes": "Real Core 30.2 regtest run: three followers, withheld/forged data alarms and a mined broken-enclave theft. Test keys and test-vendor attestation, no hardware claim.",
   "scene": {
     "kind": "layer_tree",
-    "events": "docs/verse/fixtures/layertree-alarm.jsonl",
+    "events": "crates/layertree-tee-lab/fixtures/events/regtest-light.jsonl",
     "play": true,
-    "rate": 0.7
+    "from": 102,
+    "rate": 3.0,
+    "caption": "Regtest: test keys and coins; test-vendor attestation"
   },
   "duration": 20,
   "fps": 24.0,

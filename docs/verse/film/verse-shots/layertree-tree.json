@@ -4,7 +4,8 @@
   "scene": {
     "kind": "layer_tree",
     "events": "crates/layertree-tee-lab/fixtures/events/regtest.jsonl",
-    "at": 8
+    "at": 8,
+    "caption": "Regtest: test keys and coins; test-vendor attestation"
   },
   "duration": 5.0,
   "fps": 24.0,
@@ -14,8 +15,35 @@
   "prewarm": 1,
   "rig": {
     "keys": [
-      { "t": 0.0, "eye": [6.0, 18.0, 30.0], "target": [1.0, 8.0, 0.0], "focal_mm": 38.0, "ease": "in_out" },
-      { "t": 5.0, "eye": [-6.0, 18.0, 30.0], "target": [1.0, 8.0, 0.0], "focal_mm": 38.0 }
+      {
+        "t": 0.0,
+        "eye": [
+          6.0,
+          18.0,
+          30.0
+        ],
+        "target": [
+          1.0,
+          8.0,
+          0.0
+        ],
+        "focal_mm": 38.0,
+        "ease": "in_out"
+      },
+      {
+        "t": 5.0,
+        "eye": [
+          -6.0,
+          18.0,
+          30.0
+        ],
+        "target": [
+          1.0,
+          8.0,
+          0.0
+        ],
+        "focal_mm": 38.0
+      }
     ]
   }
 }

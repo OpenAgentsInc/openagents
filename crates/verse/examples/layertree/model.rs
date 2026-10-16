@@ -155,6 +155,7 @@ pub struct Snapshot {
     pub enclave_key: String,
     pub root: String,
     pub output_amount: u64,
+    pub observed_output_amount: Option<u64>,
     pub outpoint: String,
     pub leaves: BTreeMap<u64, Leaf>,
     pub last_op: String,
@@ -269,6 +270,11 @@ impl Snapshot {
                 let txid: String = event.field("txid")?;
                 self.outpoint = format!("{txid}:0");
                 self.last_op = op;
+                self.observed_output_amount = if event.data.contains_key("observed_output_amount") {
+                    event.field("observed_output_amount")?
+                } else {
+                    None
+                };
             }
             _ => {}
         }
@@ -414,6 +420,7 @@ mod tests {
             "happy.jsonl",
             "regtest.jsonl",
             "regtest-two-level.jsonl",
+            "regtest-light.jsonl",
             "theft-caught.jsonl",
             "unroll.jsonl",
         ] {
@@ -436,6 +443,15 @@ mod tests {
                 assert_eq!(layout.nodes[&(state.depth, 0)].sum, state.output_amount);
             }
         }
+    }
+
+    #[test]
+    fn theft_keeps_the_claimed_sum_separate_from_the_observed_output() {
+        let run = fixture("regtest-light.jsonl");
+        let state = run.snapshot(run.events.len() as u64 - 1).unwrap();
+        assert_eq!(state.output_amount, 360_000);
+        assert_eq!(state.observed_output_amount, Some(310_000));
+        assert_eq!(state.watch.alarm.as_deref(), Some("OutputMismatch"));
     }
 
     #[test]

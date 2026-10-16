@@ -6,7 +6,8 @@
     "events": "crates/layertree-tee-lab/fixtures/events/regtest-two-level.jsonl",
     "play": true,
     "from": 18,
-    "rate": 0.6
+    "rate": 0.6,
+    "caption": "Regtest: test keys and coins; test-vendor attestation"
   },
   "duration": 30,
   "fps": 24.0,

@@ -22,6 +22,7 @@ pub struct Set {
     pub phase: f32,
     pub time: f32,
     pub compare_progress: bool,
+    pub caption: Option<String>,
     playback: Option<Playback>,
 }
 
@@ -38,6 +39,7 @@ impl Set {
             phase: 1.0,
             time: 0.0,
             compare_progress: false,
+            caption: None,
             playback: None,
         })
     }

@@ -1,0 +1,56 @@
+{
+  "renderer": "verse-film-shot",
+  "shot": {
+    "name": "layertree-unroll",
+    "notes": "Two-level unroll from the checked-in regtest run. Time compressed; exact recorded payouts and external anchor fees.",
+    "scene": {
+      "kind": "layer_tree",
+      "events": "crates/layertree-tee-lab/fixtures/events/regtest-two-level.jsonl",
+      "play": true,
+      "from": 18,
+      "rate": 0.6,
+      "caption": "Regtest: test keys and coins; test-vendor attestation"
+    },
+    "duration": 30,
+    "fps": 24.0,
+    "width": 1920,
+    "height": 1080,
+    "subframes": 1,
+    "prewarm": 0,
+    "rig": {
+      "keys": [
+        {
+          "t": 0.0,
+          "eye": [
+            6.0,
+            18,
+            38
+          ],
+          "target": [
+            0,
+            7,
+            1
+          ],
+          "focal_mm": 38.0,
+          "ease": "in_out"
+        },
+        {
+          "t": 30,
+          "eye": [
+            -6.0,
+            18,
+            38
+          ],
+          "target": [
+            0,
+            7,
+            1
+          ],
+          "focal_mm": 38.0
+        }
+      ]
+    }
+  },
+  "notes": "Two-level unroll from the checked-in regtest run. Time compressed; exact recorded payouts and external anchor fees.",
+  "out": "~/work/film-out/verse/layertree-unroll.mp4"
+}

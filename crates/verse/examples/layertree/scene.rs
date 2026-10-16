@@ -242,7 +242,15 @@ pub fn frame(set: &Set) -> Vec<Instance> {
             } else {
                 0.0
             };
-    out.push(node("signature", coin_at, 0.65));
+    let mismatch = set
+        .state
+        .observed_output_amount
+        .is_some_and(|n| n != set.state.output_amount);
+    out.push(node(
+        if mismatch { "danger" } else { "signature" },
+        coin_at,
+        0.65,
+    ));
     out.push(link(
         "signature-link",
         coin + Vec3::new(-2.0, -0.6, 0.0),
@@ -401,8 +409,23 @@ pub fn overlay(
             atlas,
             x - 50.0,
             y + 39.0,
-            &format!("{} sat", amount(set.state.output_amount)),
-            gold,
+            &format!(
+                "{} sat",
+                amount(
+                    set.state
+                        .observed_output_amount
+                        .unwrap_or(set.state.output_amount)
+                )
+            ),
+            if set
+                .state
+                .observed_output_amount
+                .is_some_and(|n| n != set.state.output_amount)
+            {
+                [1.0, 77.0 / 255.0, 66.0 / 255.0, 1.0]
+            } else {
+                gold
+            },
         );
         let short = set.state.outpoint.chars().take(14).collect::<String>();
         ui.text(atlas, x - 50.0, y + 58.0, &format!("{short}.."), dim);
@@ -410,6 +433,9 @@ pub fn overlay(
     transition_labels(set, view, size, atlas, &mut ui);
     watch_labels(set, view, size, atlas, &mut ui);
     escape_labels(set, view, size, atlas, &mut ui);
+    if let Some(caption) = &set.caption {
+        ui.text(atlas, 26.0, size[1] - 94.0, caption, dim);
+    }
     let source = Path::new(&set.run.source)
         .file_name()
         .and_then(|name| name.to_str())
@@ -678,13 +704,26 @@ fn client_rows(set: &Set) -> Vec<(u64, Vec3)> {
         return Vec::new();
     }
     use std::collections::BTreeSet;
+    let recorded: BTreeSet<u64> = set
+        .run
+        .events
+        .iter()
+        .filter(|event| event.kind == "light_client")
+        .filter_map(|event| event.data.get("member").and_then(|v| v.as_u64()))
+        .collect();
     let mut ids: BTreeSet<u64> = set
         .state
         .watch
         .observers
         .as_ref()
         .map(|ids| ids.iter().copied().collect())
-        .unwrap_or_else(|| set.state.leaves.keys().copied().collect());
+        .unwrap_or_else(|| {
+            if recorded.is_empty() {
+                set.state.leaves.keys().copied().collect()
+            } else {
+                recorded
+            }
+        });
     ids.extend(set.state.watch.clients.keys().copied());
     ids.into_iter()
         .take(8)

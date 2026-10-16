@@ -1345,9 +1345,26 @@ fn light_clients_follow_twenty_transitions_and_raise_every_alarm() {
     let before = b.before.clone();
     let (tx, signed, h) = run.mine_signed(&op, b);
     let txid = tx.compute_txid();
+    let observed_amount = run
+        .chain
+        .utxo(&OutPoint { txid, vout: 0 })
+        .unwrap()
+        .value
+        .to_sat();
+    let mut event = Body::transition(&op, &before, &signed.record, &txid);
+    if let Body::Transition {
+        observed_output_amount,
+        ..
+    } = &mut event
+    {
+        *observed_output_amount = Some(observed_amount);
+    }
+    run.log.push(Some(h), event);
     run.log.push(
         Some(h),
-        Body::transition(&op, &before, &signed.record, &txid),
+        Body::Block {
+            spent: vec![before.outpoint.to_string()],
+        },
     );
     assert_eq!(
         run.chain

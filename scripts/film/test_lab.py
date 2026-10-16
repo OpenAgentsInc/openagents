@@ -126,6 +126,31 @@ class LabTest(unittest.TestCase):
         with self.assertRaises(lab.Refused):
             lab.version("film", 99)
 
+    def test_scene_digest_tracks_the_event_log_and_excludes_the_output(self):
+        log = TMP / "events.jsonl"
+        rendered = TMP / "scene-render.mp4"
+        log.write_text("first event\n")
+        rendered.write_text("first render")
+        scene = {"renderer": "verse-film-shot", "shot": {"scene": {"kind": "layer_tree", "events": str(log)}}, "out": str(rendered)}
+        before, files = lab.digest("scene.v1", scene)
+        self.assertIn(str(log), files)
+        self.assertNotIn(str(rendered), files)
+        rendered.write_text("another render")
+        self.assertEqual(before, lab.digest("scene.v1", scene)[0])
+        log.write_text("changed event, different length\n")
+        self.assertNotEqual(before, lab.digest("scene.v1", scene)[0])
+        relative = {"shot": {"scene": {"events": "crates/layertree-tee-lab/fixtures/events/regtest.jsonl"}}}
+        self.assertIn("crates/layertree-tee-lab/fixtures/events/regtest.jsonl", lab.digest("scene.v1", relative)[1])
+
+    def test_a_scene_refuses_to_render_changed_version_inputs(self):
+        log = TMP / "changed-version-events.jsonl"
+        log.write_text("original events\n")
+        scene = {"renderer": "verse-film-shot", "shot": {"scene": {"kind": "layer_tree", "events": str(log)}}}
+        lab.create("changed-scene", "scene.v1", "Scene", scene, "Original", "test")
+        log.write_text("changed events, different length\n")
+        with self.assertRaisesRegex(lab.Refused, "Save a new scene version"):
+            lab.do_render("changed-scene", 1, "review", sys.stderr)
+
     def test_private_assets_are_marked(self):
         self.assertEqual(lab.private("cut.v1", self.cut), [])
         meta = {"shots": [{"src": "~/work/film-out/draconia/metahuman/latest/face.mp4"}],
