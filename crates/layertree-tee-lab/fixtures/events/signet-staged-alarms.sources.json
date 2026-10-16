@@ -1,0 +1,61 @@
+{
+  "alarms": 9,
+  "chain_source": "saved_bitcoin_core_replies",
+  "consensus_validation": false,
+  "full_blocks_checked": true,
+  "hardware_attestation": false,
+  "network": "signet",
+  "primary_tree_id": "56344045427147f910bf00bf9f655bbc58fe8a6322c5b6cb8d13e6a78f396cd1",
+  "scenarios": 3,
+  "schema": "layertree.stage.export.v1",
+  "signer": "deliberately_broken_software_test",
+  "tree_id": "0c07ba8e488b765fa512e3e77c2198b8ffbefbbca1b51a6c7837205291dcb92a",
+  "capture": {
+    "schema": "layertree.stage.capture.v1",
+    "captured_at": "2026-10-16T19:30:43.341807+00:00",
+    "chain": "signet",
+    "tip": 326649,
+    "bestblockhash": "000000023dfa04556f3b810213f5ca6d6e6f86ee0a4322e95e781c5ca147f544",
+    "stage_binary_sha256": "69519a4cb74dd11e8cb492752d2ba007cb3bd5545b65aa124ef2b76e57d2dd88",
+    "follower_binary_sha256": "7342c35eea0eeee0386877f92367b28bf11a67331d806a185f5d7d1fb07beeba",
+    "build": {
+      "source_commit": "fe39cf18c1b904669609b04fe04024ad08b45ede",
+      "compiler_image": "rust@sha256:39f68a3e8e3ff425f8945ffa91128e60ff930d53e17fbb5214e95824bdd46f1b"
+    }
+  },
+  "archive": "signet-staged-alarms-2026-10-16.tar.gz",
+  "archive_sha256": "ba0c9590043af0ddd032d99551d16bf3af90e086ea3001e1381c9fd1385f553e",
+  "files": 37,
+  "event_log_sha256": "336c37458354d4688debc9cdc7088d7d330b4c31e5d4033c9114b826e5b3bfdd",
+  "exporter_source_sha256": "55974c68586b9b36830038c5bd160511f478c28fcc1cd21b010997a3ad4a56e2",
+  "mined_theft_height": 326640,
+  "theft_sat": 5000,
+  "three_followers_detected_at_height": 326640,
+  "notification_receipts": 9,
+  "render_receipt": "verified/render.json",
+  "render": {
+    "video": "/Users/christopherdavid/work/film-out/verse/layertree-signet-alarm.mp4",
+    "video_sha256": "337a273c4ae363daf63f90f9f5eb974a27d6bce8ca45a000f8098479e7fac939",
+    "native_film_shot_invoked": false,
+    "sampling": {
+      "fps": 24,
+      "seconds": 12,
+      "frames": 288,
+      "subframes": 1,
+      "prewarm": 0,
+      "atlas_px": 14,
+      "overlay_scale": 1,
+      "layout_atlas_px": 14
+    },
+    "differences_from_native_film_shot": [
+      "The native film_shot CLI was not run. The scratch driver uses the native LayerTree branch structure, the current 14px atlas setting, and the committed shot\u2019s CameraRig keys, playback, caption, one sample, and zero prewarm.",
+      "The scratch driver pipes renderer RGBA bytes directly to ffmpeg; the native film encoder linear-light grade and dither pass is omitted. The committed shot uses default grade."
+    ]
+  },
+  "image_sha256": "54a6281f1754ca21e760e1f830e8eb85491c44cc3f8abdadfdd15de694fcf7c7",
+  "archive_manifest": "docs/research/layertree/evidence/bench-artifacts.json",
+  "archive_access": "authenticated_artifact_bucket",
+  "public_records_archive": "signet-staged-alarm-records-2026-10-16.tar.gz",
+  "public_records_archive_sha256": "3d651b67eb0d953fbe5c351fc528810fdfcf3fc9fcf757ece97a0e9529068bce",
+  "public_records_files": 34
+}

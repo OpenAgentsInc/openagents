@@ -569,7 +569,7 @@ impl Stage {
                 if *play {
                     set.play(*from, *to, *rate)?;
                 }
-                let atlas = verse::ui::Atlas::new(18.0);
+                let atlas = verse::ui::Atlas::new(14.0);
                 let renderer = layertree::scene::renderer([w, h], &atlas)?;
                 Ok(Self::LayerTree {
                     renderer: Box::new(renderer),

@@ -1,0 +1,56 @@
+{
+  "renderer": "verse-film-shot",
+  "shot": {
+    "name": "layertree-signet-alarm",
+    "notes": "Real signet software attack on a separate test tree: three followers detect withheld and mismatched records, then a mined 5,000-sat theft. No hardware attestation or completed soak is claimed.",
+    "scene": {
+      "kind": "layer_tree",
+      "events": "crates/layertree-tee-lab/fixtures/events/signet-staged-alarms.jsonl",
+      "play": true,
+      "from": 0,
+      "rate": 1.5,
+      "caption": "Signet: staged software signer; test coins; theft mined at block 326640"
+    },
+    "duration": 12,
+    "fps": 24.0,
+    "width": 1920,
+    "height": 1080,
+    "subframes": 1,
+    "prewarm": 0,
+    "rig": {
+      "keys": [
+        {
+          "t": 0.0,
+          "eye": [
+            6.0,
+            18,
+            38
+          ],
+          "target": [
+            0,
+            7,
+            1
+          ],
+          "focal_mm": 28.0,
+          "ease": "in_out"
+        },
+        {
+          "t": 12,
+          "eye": [
+            -6.0,
+            18,
+            38
+          ],
+          "target": [
+            0,
+            7,
+            1
+          ],
+          "focal_mm": 28.0
+        }
+      ]
+    }
+  },
+  "notes": "Real signet software attack on a separate test tree: three followers detect withheld and mismatched records, then a mined 5,000-sat theft. No hardware attestation or completed soak is claimed.",
+  "out": "~/work/film-out/verse/layertree-signet-alarm.mp4"
+}

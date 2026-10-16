@@ -198,3 +198,33 @@ After all payout and archive checks passed, GCP deleted only
 `oa-layertree-halt-tdx` (instance ID `4848185565226450307`). A subsequent
 instance inventory returned no matching VM. The primary service, mirrors,
 and shared builder/Core remain running.
+
+## Staged signet alarms
+
+The separate software test tree mined its withheld-record spend at 326637,
+record-hash mismatch at 326639, and 5,000-sat theft at **326640**. All three
+follower processes reported `OutputMismatch` at tip 326640. Each scenario
+has three matching receiver receipts and follower acknowledgments. The
+withheld-record timeout fired at 326638; the mismatch fired at 326639.
+
+The offline `layertree-export-stage` tool checks all four saved transactions
+against their complete blocks, Merkle roots, coinbase heights, record hashes,
+and exact output amounts. It also checks the nine alarm IDs and delivery
+records before writing the [16-event log](../../../crates/layertree-tee-lab/fixtures/events/signet-staged-alarms.jsonl).
+Eight focused tests cover missing receipts, late alarms, duplicate members,
+changed chain data, and unsupported claims. The [public records](evidence/signet-staged-alarm-records-2026-10-16.tar.gz)
+contain 34 files plus a checked manifest. Their README explains how to fetch
+the four full blocks from a synced signet node. The complete capture is in
+the authenticated artifact bucket, with its [restore manifest](evidence/bench-artifacts.json)
+in git. The [metadata](evidence/signet-staged-alarms-2026-10-16.json) records
+source and archive hashes. This is a deliberately broken software
+signer on a different tree, with no hardware attestation. Saved block checks
+do not independently validate signet consensus or complete the follower soak.
+
+The [alarm still](captures/signet-alarm.jpg) and twelve-second, 1080p/24fps
+CRF-12 clip were visually checked. The clip is
+`~/work/film-out/verse/layertree-signet-alarm.mp4`; its frame count and format
+passed `ffprobe`. The archive includes the offscreen driver, source hashes,
+and render settings. It uses the committed shot’s camera and the existing
+Verse renderer; the full `film_shot` command was not run. The LayerTree film
+overlay now uses 14px text so the member checks fit within the frame.

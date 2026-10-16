@@ -4,7 +4,8 @@ These 1920×1080 stills come from the named logs and events. Regtest uses test
 keys, coins, and a test-vendor attestation key. Simulations are labelled in the
 scene and caption. Signet views use confirmed public transactions and historical
 Google-backed TDX evidence; the separate negative-policy view changes the expected
-tree ID and does not claim a live service failure.
+tree ID and does not claim a live service failure. The staged alarm uses a
+separate, deliberately broken software signer with no hardware attestation.
 
 See [the viewer commands](../../../verse/layertree-visualizer.md) and
 [exact source hashes](sources.json). Re-render with `scripts/layertree-captures.py`.
@@ -244,6 +245,15 @@ Guardian HALT recovery confirmed at signet block 326616: five exact 1,000-sat pa
 Source: [crates/layertree-tee-lab/fixtures/events/signet-halt-paid.jsonl](../../../../crates/layertree-tee-lab/fixtures/events/signet-halt-paid.jsonl), event 13.
 Signet transaction: `4cff145e6592bd1899f015b9187a6957541752a9c56eff1fc558a9d0c7fea747`.
 
-Normal signet operations and separate guardian HALT recovery are captured above.
-The primary tree’s physical-loss recovery and signet alarm remain #11793/#11794
-measurements; the regtest images are not substitutes.
+## signet alarm
+
+![Staged signet theft mined at block 326640: 5,000 sats missing; all three followers report OutputMismatch in that block. Software test signer, no hardware attestation.](signet-alarm.jpg)
+
+Staged signet theft mined at block 326640: 5,000 sats missing; all three followers report OutputMismatch in that block. Software test signer, no hardware attestation.
+
+Source: [crates/layertree-tee-lab/fixtures/events/signet-staged-alarms.jsonl](../../../../crates/layertree-tee-lab/fixtures/events/signet-staged-alarms.jsonl), event 15.
+Signet transaction: `58d597295e136ba6f7bffec2c90a60b214c8b4addad788878a8b4a5ee555f231`.
+
+Normal signet operations, separate guardian HALT recovery, and the staged signet
+alarms are captured above. The primary tree’s physical-loss recovery remains a
+#11793 measurement; its final capture still needs that result.

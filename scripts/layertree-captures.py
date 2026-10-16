@@ -16,6 +16,7 @@ parser.add_argument("--scratch", required=True, type=Path)
 parser.add_argument("--signet", action="store_true", help="Render the confirmed signet and separate negative-policy views.")
 parser.add_argument("--signet-halt", action="store_true", help="Render the measured guardian HALT while its escape waits for CSV.")
 parser.add_argument("--signet-halt-paid", action="store_true", help="Render confirmed member payouts after the guardian HALT.")
+parser.add_argument("--signet-alarm", action="store_true", help="Render the checked three-follower signet software attack.")
 parser.add_argument("--clips", type=Path, default=Path.home() / "work/film-out/verse")
 args = parser.parse_args()
 args.scratch.mkdir(parents=True, exist_ok=True)
@@ -73,6 +74,10 @@ if args.signet_halt_paid:
     halted = "crates/layertree-tee-lab/fixtures/events/signet-halt-paid.jsonl"
     plans = [("signet-halt-paid", halted, lambda e: e["seq"] == len(read(halted)) - 1,
               "Guardian HALT recovery confirmed at signet block 326616: five exact 1,000-sat payouts; external fee 934 sats.")]
+if args.signet_alarm:
+    staged = "crates/layertree-tee-lab/fixtures/events/signet-staged-alarms.jsonl"
+    plans = [("signet-alarm", staged, lambda e: e["seq"] == len(read(staged)) - 1,
+              "Staged signet theft mined at block 326640: 5,000 sats missing; all three followers report OutputMismatch in that block. Software test signer, no hardware attestation.")]
 existing = output / "sources.json"
 sources = json.loads(existing.read_text()) if existing.exists() else []
 replacing = {name + ".jpg" for name, *_ in plans}
@@ -85,6 +90,7 @@ for name, path, select, caption in plans:
     subprocess.run([str(args.viewer.resolve()), "--events", str(REPO / path), "--at", str(seq),
                     "--size", "1920x1080", "--scale", "1.5", "--caption",
                     ("Signet guardian HALT; escape first valid at block 326616; test coins" if name == "signet-halt-waiting" else
+                     "Signet: staged software signer; test coins; theft mined at block 326640" if name == "signet-alarm" else
                      "Negative check: captured signet token; expected tree ID changed" if name == "signet-negative-policy" else
                      f"Signet: confirmed block {event['height']}; test coins; Google-backed TDX" if event["network"] == "signet" else
                      "Regtest: test keys and coins; test-vendor attestation" if event["network"] == "regtest" else
@@ -96,7 +102,7 @@ for name, path, select, caption in plans:
         txid = next(e["txid"] for e in events if e["kind"] == "unroll_confirmed")
     if name == "signet-halt-waiting":
         txid = next(e["outpoint"].split(":")[0] for e in events if e["kind"] == "tree_open")
-    if name == "alarm":
+    if name in {"alarm", "signet-alarm"}:
         txid = next(e["txid"] for e in reversed(events[:seq + 1]) if e["kind"] == "transition")
     if name == "unroll":
         txid = next(e["txid"] for e in reversed(events[:seq + 1]) if e["kind"] == "unroll_confirmed")
@@ -107,7 +113,8 @@ lines = ["# LayerTree captures", "", "These 1920×1080 stills come from the name
          "keys, coins, and a test-vendor attestation key. Simulations are labelled in the",
          "scene and caption. Signet views use confirmed public transactions and historical",
          "Google-backed TDX evidence; the separate negative-policy view changes the expected",
-         "tree ID and does not claim a live service failure.", "",
+         "tree ID and does not claim a live service failure. The staged alarm uses a",
+         "separate, deliberately broken software signer with no hardware attestation.", "",
          "See [the viewer commands](../../../verse/layertree-visualizer.md) and",
          "[exact source hashes](sources.json). Re-render with `scripts/layertree-captures.py`.", ""]
 for source in sources:
@@ -116,11 +123,11 @@ for source in sources:
     if source["txid"]:
         lines += [f"{'Signet' if source['network']=='signet' else 'Regtest' if source['network']=='regtest' else 'Illustrative'} transaction: `{source['txid']}`."]
     lines += [""]
-lines += ["Normal signet operations and separate guardian HALT recovery are captured above.", "The primary tree’s physical-loss recovery and signet alarm remain #11793/#11794", "measurements; the regtest images are not substitutes.", ""]
+lines += ["Normal signet operations, separate guardian HALT recovery, and the staged signet", "alarms are captured above. The primary tree’s physical-loss recovery remains a", "#11793 measurement; its final capture still needs that result.", ""]
 (output / "README.md").write_text("\n".join(lines))
 if args.film_shot:
     args.clips.mkdir(parents=True, exist_ok=True)
-    names = ["signet-halt-paid"] if args.signet_halt_paid else ["signet-halt-waiting"] if args.signet_halt else ["signet-tree", "signet-transitions"] if args.signet else ["tree", "transitions", "alarm", "unroll"]
+    names = ["signet-alarm"] if args.signet_alarm else ["signet-halt-paid"] if args.signet_halt_paid else ["signet-halt-waiting"] if args.signet_halt else ["signet-tree", "signet-transitions"] if args.signet else ["tree", "transitions", "alarm", "unroll"]
     for name in names:
         shot = REPO / f"docs/verse/film/verse-shots/layertree-{name}.json"
         subprocess.run([str(args.film_shot.resolve()), str(shot), "--out", str(args.clips / f"layertree-{name}.mp4")],

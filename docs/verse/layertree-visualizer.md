@@ -202,8 +202,8 @@ scripts/layertree-captures.py --signet \
 
 The corresponding Video Lab documents are
 `docs/verse/film/layertree-signet-tree-scene.json` and
-`docs/verse/film/layertree-signet-transitions-scene.json`. Final signet alarm
-and unroll replacements still wait for actual #11793/#11794 results.
+`docs/verse/film/layertree-signet-transitions-scene.json`. The staged signet
+alarm is recorded below; the primary unroll still waits for #11793.
 
 
 The separate `signet-halt-waiting.jsonl` records the real guardian HALT at
@@ -233,3 +233,27 @@ Video Lab scene are `layertree-signet-halt-paid.json` and
 The [final recovery report](../research/layertree/2026-10-16-signet-verification.md)
 links the public archive and refusal checks. This is the separate guardian
 HALT experiment; the primary tree's scheduled physical-loss run is still active.
+
+The `signet-staged-alarms.jsonl` log records the separate software test tree's
+withheld record, hash mismatch, and mined theft, with nine delivered alarms.
+All three followers detect the theft at its mined block, 326640. The tree
+claims 60,000 sats while its actual output holds 55,000 sats. The
+[public records](../research/layertree/evidence/signet-staged-alarm-records-2026-10-16.tar.gz)
+contain transactions, follower logs, receiver records, and instructions for
+fetching the four full blocks from a synced signet node. The complete capture
+is also available through the authenticated artifact bucket's
+[restore manifest](../research/layertree/evidence/bench-artifacts.json).
+Re-export the extracted archive after filling those blocks with:
+
+```sh
+cargo run --locked --manifest-path crates/layertree-tee-lab/Cargo.toml \
+  --no-default-features --features events --bin layertree-export-stage -- \
+  --input "$layertree_scratch/stage-public" \
+  --primary-log "$layertree_scratch/stage-public/primary/events.jsonl" \
+  --output "$layertree_scratch/signet-staged-alarms.jsonl"
+```
+
+Use `scripts/layertree-captures.py --signet-alarm` for the still and matching
+`layertree-signet-alarm` film shot and Video Lab scene. The caption identifies
+the software test signer; this capture makes no hardware-attestation or
+completed-soak claim.

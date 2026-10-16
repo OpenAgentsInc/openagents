@@ -74,3 +74,8 @@ required-features = ["follow-live"]
 name = "layertree-stage"
 path = "src/bin/layertree-stage.rs"
 required-features = ["stage-attacks"]
+
+[[bin]]
+name = "layertree-export-stage"
+path = "src/bin/layertree-export-stage.rs"
+required-features = ["events"]

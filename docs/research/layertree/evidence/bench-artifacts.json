@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore docs/research/layertree/evidence",
+ "files": {
+  "signet-staged-alarms-2026-10-16.tar.gz": {
+   "bytes": 2389509,
+   "sha256": "ba0c9590043af0ddd032d99551d16bf3af90e086ea3001e1381c9fd1385f553e"
+  }
+ }
+}

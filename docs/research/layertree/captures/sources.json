@@ -241,5 +241,14 @@
     "network": "signet",
     "txid": "4cff145e6592bd1899f015b9187a6957541752a9c56eff1fc558a9d0c7fea747",
     "caption": "Guardian HALT recovery confirmed at signet block 326616: five exact 1,000-sat payouts; external fee 934 sats."
+  },
+  {
+    "image": "signet-alarm.jpg",
+    "log": "crates/layertree-tee-lab/fixtures/events/signet-staged-alarms.jsonl",
+    "sha256": "336c37458354d4688debc9cdc7088d7d330b4c31e5d4033c9114b826e5b3bfdd",
+    "seq": 15,
+    "network": "signet",
+    "txid": "58d597295e136ba6f7bffec2c90a60b214c8b4addad788878a8b4a5ee555f231",
+    "caption": "Staged signet theft mined at block 326640: 5,000 sats missing; all three followers report OutputMismatch in that block. Software test signer, no hardware attestation."
   }
 ]
