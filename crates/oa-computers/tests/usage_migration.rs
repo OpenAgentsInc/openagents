@@ -209,6 +209,109 @@ async fn migration_preserves_unknown_allocation_and_recovers_with_the_new_writer
         .unwrap();
     store.poke(&unknown.id).await.unwrap();
 
+    // The first usage-aware service also needs the newer recovery protocol.
+    old.batch_execute("SET openagents.usage_writer='v1'")
+        .await
+        .unwrap();
+    assert_eq!(
+        db.client()
+            .await
+            .unwrap()
+            .query_one("SELECT current_setting('openagents.usage_writer')", &[],)
+            .await
+            .unwrap()
+            .get::<_, &str>(0),
+        "v2"
+    );
+    assert!(
+        old.query_opt(
+            "UPDATE computers.computers SET lease_holder='v1-worker',
+         lease_until=now()+interval '30 seconds',binding_lease_until=now()+interval '30 seconds'
+         WHERE id=(SELECT id FROM computers.computers WHERE NOT done AND next_attempt_at<=now()
+             AND (lease_until IS NULL OR lease_until<now()) ORDER BY next_attempt_at
+             LIMIT 1 FOR UPDATE SKIP LOCKED) RETURNING id",
+            &[],
+        )
+        .await
+        .unwrap()
+        .is_none()
+    );
+    let held = store
+        .claim(old_holder, Duration::from_secs(30))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(held.id, unknown.id);
+    let before: serde_json::Value = old
+        .query_one(
+            "SELECT to_jsonb(c) FROM computers.computers c WHERE id=$1",
+            &[&unknown.id],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(
+        old.execute(
+            "UPDATE computers.computers SET lease_until=now()+interval '1 hour'
+         WHERE id=$1 AND lease_holder=$2",
+            &[&unknown.id, &old_holder],
+        )
+        .await
+        .unwrap(),
+        0
+    );
+    assert_eq!(
+        old.execute(
+            "UPDATE computers.computers SET next_attempt_at=now() WHERE id=$1 AND NOT done",
+            &[&unknown.id],
+        )
+        .await
+        .unwrap(),
+        0
+    );
+    assert_eq!(
+        old.execute(
+            "UPDATE computers.computers SET lease_holder=NULL,lease_until=NULL
+         WHERE id=$1 AND lease_holder=$2",
+            &[&unknown.id, &old_holder],
+        )
+        .await
+        .unwrap(),
+        0
+    );
+    assert!(
+        old.execute(
+            "INSERT INTO computers.turns(id,computer,owner,state,command,timeout_seconds)
+         VALUES('v1-turn',$1,'alice','queued','true',1)",
+            &[&unknown.id],
+        )
+        .await
+        .is_err()
+    );
+    let after: serde_json::Value = old
+        .query_one(
+            "SELECT to_jsonb(c) FROM computers.computers c WHERE id=$1",
+            &[&unknown.id],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(
+        after, before,
+        "v1 sessions must leave computer ownership unchanged"
+    );
+    assert!(
+        store
+            .renew(&unknown.id, old_holder, Duration::from_secs(30))
+            .await
+            .unwrap()
+    );
+    store
+        .release(&unknown.id, old_holder, Duration::ZERO, 0, None, false)
+        .await
+        .unwrap();
+    store.poke(&unknown.id).await.unwrap();
+
     assert_eq!(
         old.execute(
             "UPDATE computers.computers SET revision=revision+1,

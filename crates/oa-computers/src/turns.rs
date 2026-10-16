@@ -206,9 +206,33 @@ impl Store {
             &format!(
                 "SELECT {TURN_COLUMNS} FROM computers.turns
                      WHERE computer = $1 AND state IN ('queued', 'running', 'command_queued', 'command_running')
-                     ORDER BY created_at LIMIT 1"
+                     ORDER BY created_at,id LIMIT 1"
             ),
             &[&computer],
+        )
+        .await?
+        .map(|r| turn(&r)))
+    }
+
+    /// Recover the current generation before considering a later queued turn.
+    /// Result and output expiry retain these identities. A missing generation
+    /// covers a crash between StartTurn and recording the queue's generation.
+    pub(crate) async fn recovering_turn(
+        &self,
+        computer: &str,
+        generation: u64,
+    ) -> Result<Option<Turn>, crate::db::DbError> {
+        let generation = i64::try_from(generation)
+            .map_err(|_| crate::db::DbError("The turn number is invalid.".into()))?;
+        let c = self.db.client().await?;
+        Ok(c.query_opt(
+            &format!(
+                "SELECT {TURN_COLUMNS} FROM computers.turns
+                 WHERE computer=$1 AND (generation=$2 OR
+                     (generation IS NULL AND state IN ('queued','command_queued')))
+                 ORDER BY (generation=$2) DESC NULLS LAST,created_at,id LIMIT 1"
+            ),
+            &[&computer, &generation],
         )
         .await?
         .map(|r| turn(&r)))
