@@ -1110,7 +1110,7 @@ pub fn open_request(
     now: u64,
     window: Window,
 ) -> Result<Opened, Error> {
-    open_request_profile(event, worker, secret, now, window, false)
+    open_request_profile(event, worker, secret, now, window, None)
 }
 
 /// Decode an execute request requiring the NIP-LAB binding feature.
@@ -1125,9 +1125,42 @@ pub fn open_labor_request(
     now: u64,
     window: Window,
 ) -> Result<Opened, Error> {
-    let opened = open_request_profile(event, worker, secret, now, window, true)?;
+    let opened = open_request_profile(
+        event,
+        worker,
+        secret,
+        now,
+        window,
+        Some("openagents.labor-binding.v1"),
+    )?;
     if !matches!(opened.body, Body::Execute(_)) {
         return Err(malformed("labor intake requires an execute event"));
+    }
+    Ok(opened)
+}
+
+/// Decode an execute request requiring the NIP-ENV environment binding.
+///
+/// This decoder grants no execution authority. Its caller must authenticate
+/// a currently active exact attachment before dispatch. Generic workers keep
+/// using [`open_request`], which refuses this required feature.
+pub fn open_environment_request(
+    event: &Event,
+    worker: &str,
+    secret: &SecretKey,
+    now: u64,
+    window: Window,
+) -> Result<Opened, Error> {
+    let opened = open_request_profile(
+        event,
+        worker,
+        secret,
+        now,
+        window,
+        Some(crate::environment::BINDING_FEATURE),
+    )?;
+    if !matches!(opened.body, Body::Execute(_)) {
+        return Err(malformed("environment intake requires an execute event"));
     }
     Ok(opened)
 }
@@ -1138,7 +1171,7 @@ fn open_request_profile(
     secret: &SecretKey,
     now: u64,
     window: Window,
-    labor: bool,
+    feature: Option<&'static str>,
 ) -> Result<Opened, Error> {
     if event.kind != REQUEST_KIND {
         return Err(Error::UnexpectedKind { kind: event.kind });
@@ -1160,7 +1193,7 @@ fn open_request_profile(
     check_credentials(&payload)?;
     let kind = payload.get("type").and_then(Value::as_str).unwrap_or("");
     let body = match kind {
-        "execute" => Body::Execute(Box::new(parse_execute(event, &payload, labor)?)),
+        "execute" => Body::Execute(Box::new(parse_execute(event, &payload, feature)?)),
         "status" | "replay" | "cancel" => parse_control(event, &payload, kind)?,
         _ => {
             return Err(Error::Malformed {
@@ -1540,7 +1573,7 @@ fn root_envelope(execute: &Execute, controller: &str, now: u64) -> Result<Value,
     Ok(envelope)
 }
 
-fn parse_execute(event: &Event, payload: &Value, labor: bool) -> Result<Execute, Error> {
+fn parse_execute(event: &Event, payload: &Value, feature: Option<&str>) -> Result<Execute, Error> {
     let map = object(payload, "execute")?;
     require_keys(
         map,
@@ -1583,10 +1616,10 @@ fn parse_execute(event: &Event, payload: &Value, labor: bool) -> Result<Execute,
         ],
     )?;
     let requires = map.get("requires").ok_or_else(|| malformed("requires"))?;
-    if labor {
-        if requires != &json!(["openagents.labor-binding.v1"]) {
+    if let Some(feature) = feature {
+        if requires != &json!([feature]) {
             return Err(Error::UnsupportedFeature {
-                detail: "labor requires".into(),
+                detail: "binding requires".into(),
             });
         }
     } else {
@@ -1978,6 +2011,32 @@ mod tests {
                     .is_err()
             );
         }
+    }
+
+    #[test]
+    fn environment_binding_requires_its_own_decoder() {
+        let caller = keys(1);
+        let worker = keys(2);
+        let mut payload = body();
+        payload["requires"] = json!([crate::environment::BINDING_FEATURE]);
+        let event = request(&caller, &worker, &payload, 19);
+        assert!(
+            open_request(&event, &worker.pubkey, &worker.secret, NOW, Window::DEFAULT).is_err()
+        );
+        assert!(
+            open_labor_request(&event, &worker.pubkey, &worker.secret, NOW, Window::DEFAULT)
+                .is_err()
+        );
+        let opened =
+            open_environment_request(&event, &worker.pubkey, &worker.secret, NOW, Window::DEFAULT)
+                .unwrap();
+        assert!(matches!(opened.body, Body::Execute(_)));
+        payload["requires"] = json!([]);
+        let event = request(&caller, &worker, &payload, 20);
+        assert!(
+            open_environment_request(&event, &worker.pubkey, &worker.secret, NOW, Window::DEFAULT)
+                .is_err()
+        );
     }
 
     fn pins_of(payload: &Value) -> BTreeMap<String, Vec<u8>> {

@@ -9,8 +9,11 @@ perform admitted effects.
 
 A placement is not permission. A VM, container, worktree, remote host, or
 provider session does not acquire authority from its name or apparent
-availability. This draft is a target contract, not a claim that Coder already
-supports a portable fleet allocator or these operations.
+availability. [`env-host`](../../crates/env-host/README.md) implements the
+allocator, materializer, participant, and worker-gate roles for local
+directories and maps the `coder-ssh` launcher; see the
+[Rust allocator profile](#rust-allocator-profile). It is not a portable fleet
+allocator, and Coder does not yet use these operations.
 
 ## Scope and roles
 
@@ -406,8 +409,9 @@ process that runs under a user account the owner can reach with SSH. A
 account. The launcher is the allocator for the SSH session only. The host,
 not the launcher and not SSH, issues and enforces every later grant.
 [`coder-ssh`](../../crates/coder-ssh/README.md) implements the launcher side
-of this profile. It does not yet emit signed request, lease, or cleanup
-artifacts; it returns typed local results.
+of this profile and returns typed local results. `env-host`'s SSH provider maps
+those results into signed lease, resource, and cleanup records; it never
+relabels an external host as created.
 
 ### Create and adopt
 
@@ -542,3 +546,32 @@ roles separately. Supporting `3188`, an OpenAI-compatible endpoint, ACP, or SSH
 alone supplies none of these guarantees. Provider-specific allocation/reset
 algorithms remain host implementations; the typed identities, authority,
 receipts, and failure states are the interoperable contract.
+
+## Rust allocator profile
+
+The [environment schemas](schemas/environment.v1.json) describe every record
+above. Hosts also enforce the semantic and authority checks in this document.
+Common `bounds` fields are arrays of bound assignments
+(`{bound, ceiling, minimum?, assurance, mechanism, currency?}`), each bound
+named at most once. A request needs `wall_ms` and `spend_microunits`; the
+allocator reserves the spend ceiling against the parent reservation before any
+provider effect. A request with `effects.spend` true refuses: a lease is not a
+wallet authorization.
+
+The profile pins these supporting records:
+
+| Record | Fields |
+| --- | --- |
+| `openagents.environment-requirements.v1` | `recipients` (admitted participant keys), `assurance` (`host` or `trusted_executor`, the weakest accepted), `opaque_models` (boolean), `bounds` (bound names the enforcement plan must cover). |
+| `openagents.environment-enforcement.v1` | `plan`: bound assignments. No ceiling may exceed the request's. |
+| `openagents.environment-model.v1` | `name`, `identity` (`verified` or `opaque`), and `weights` (ArtifactRef, required exactly when verified). |
+| `openagents.environment-accounting.v1` | `reservation`, `currency`, `reserved`, and `entries` of `{phase, kind, amount, receipt}`; `kind` is `measured`, `declared`, `estimated`, or `unknown` (with null amount). |
+| `openagents.environment-ownership.v1` | Provider-issued ownership evidence: `provider`, `account`, `resource`, `generation`, `key` (the create idempotency key), `observed_at`. |
+| `openagents.environment-fencing.v1` | A participant's signed `fenced` or `unreachable` report for an exact `attachment`, with `observed_at`. |
+
+Allocator records are retained with private `3188` declarations addressed to
+the owner or the requesting controller. A participant signs its own admission
+and fencing records. State `record` fields reference RUN records of the
+allocation run; the allocator is that run's controller. Bootstrap operations,
+cloud-VM placement, and COORD claim enforcement beyond exact retained bytes are
+not part of this profile yet; a definition with a bootstrap step refuses.

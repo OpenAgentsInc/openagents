@@ -122,8 +122,9 @@ The OpenAgents lane contains 33 NIPs plus the shared contracts. Status is
 role-specific: SESS has a retained-history observer; WS has source-owned Git
 documents, conditional changes, checkpoints/restoration, scoped native views,
 and a portable client in `workspace-host`, alongside activity summaries.
-ENV has SSH host management, AUTO has local standing jobs, and SOV has a
-bounded local no-spend lifecycle. WORK has a native authority, conditional
+ENV has SSH host management and the `env-host` allocator (leases, exact
+materialization, bound attachments, accounted cleanup), AUTO has local
+standing jobs, and SOV has a bounded local no-spend lifecycle. WORK has a native authority, conditional
 commands, explicit pure CJ delegation and independent checks, scoped WS readers,
 GitHub import proposals, and an admitted LAB port in `work-host`. General
 WORK effectful adapters, wider ENV/AUTO/SESS roles, LIVE, and POL/EXT lifecycle

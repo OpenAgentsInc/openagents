@@ -22,6 +22,7 @@ pub mod control;
 pub mod decision;
 pub mod domain;
 pub mod engram;
+pub mod environment;
 pub mod eval_ext;
 pub mod execution;
 pub mod ext;

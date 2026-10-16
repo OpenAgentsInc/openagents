@@ -1,0 +1,2440 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "openagents.environment-contracts.v1",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/environment-definition"
+    },
+    {
+      "$ref": "#/$defs/environment-request"
+    },
+    {
+      "$ref": "#/$defs/environment-resource"
+    },
+    {
+      "$ref": "#/$defs/environment-lease"
+    },
+    {
+      "$ref": "#/$defs/environment-materialization"
+    },
+    {
+      "$ref": "#/$defs/environment-state"
+    },
+    {
+      "$ref": "#/$defs/environment-control"
+    },
+    {
+      "$ref": "#/$defs/environment-attach"
+    },
+    {
+      "$ref": "#/$defs/environment-execute"
+    },
+    {
+      "$ref": "#/$defs/environment-attachment"
+    },
+    {
+      "$ref": "#/$defs/environment-participant-input"
+    },
+    {
+      "$ref": "#/$defs/environment-participant-admission"
+    },
+    {
+      "$ref": "#/$defs/environment-attachment-control"
+    },
+    {
+      "$ref": "#/$defs/environment-cleanup"
+    },
+    {
+      "$ref": "#/$defs/environment-result"
+    },
+    {
+      "$ref": "#/$defs/environment-requirements"
+    },
+    {
+      "$ref": "#/$defs/environment-enforcement"
+    },
+    {
+      "$ref": "#/$defs/environment-model"
+    },
+    {
+      "$ref": "#/$defs/environment-accounting"
+    },
+    {
+      "$ref": "#/$defs/environment-ownership"
+    },
+    {
+      "$ref": "#/$defs/environment-fencing"
+    }
+  ],
+  "$defs": {
+    "event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "pubkey",
+        "kind"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "pubkey": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "kind": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65535
+        },
+        "coordinate": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 1024
+        }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "digest",
+        "size",
+        "media_type"
+      ],
+      "properties": {
+        "digest": {
+          "type": "string",
+          "minLength": 71,
+          "maxLength": 71
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "media_type": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "schema": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 1024
+        },
+        "event": {
+          "$ref": "#/$defs/event"
+        },
+        "sources": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 64,
+          "items": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "url"
+                ],
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "minLength": 0,
+                    "maxLength": 1024
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "event"
+                ],
+                "properties": {
+                  "event": {
+                    "$ref": "#/$defs/event"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    "definition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "artifact"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 1024
+        },
+        "artifact": {
+          "$ref": "#/$defs/artifact"
+        },
+        "event": {
+          "$ref": "#/$defs/event"
+        }
+      }
+    },
+    "effects": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reads",
+        "writes",
+        "network",
+        "process",
+        "delegates",
+        "spend"
+      ],
+      "properties": {
+        "reads": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 64,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "writes": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 64,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "network": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 64,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "process": {
+          "type": "boolean"
+        },
+        "delegates": {
+          "type": "boolean"
+        },
+        "spend": {
+          "type": "boolean"
+        }
+      }
+    },
+    "bound": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "bound",
+        "ceiling",
+        "assurance",
+        "mechanism"
+      ],
+      "properties": {
+        "bound": {
+          "enum": [
+            "wall_ms",
+            "memory_bytes",
+            "input_bytes",
+            "output_bytes",
+            "read_bytes",
+            "storage_bytes",
+            "calls",
+            "attempts",
+            "concurrency",
+            "depth",
+            "fuel",
+            "spend_microunits"
+          ]
+        },
+        "ceiling": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "minimum": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "assurance": {
+          "enum": [
+            "host",
+            "trusted_executor"
+          ]
+        },
+        "mechanism": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "currency": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 16
+        }
+      }
+    },
+    "bounds": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 12,
+      "items": {
+        "$ref": "#/$defs/bound"
+      }
+    },
+    "component": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "role",
+        "artifact"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "role": {
+          "enum": [
+            "base",
+            "runtime",
+            "model",
+            "toolchain",
+            "data"
+          ]
+        },
+        "artifact": {
+          "$ref": "#/$defs/artifact"
+        }
+      }
+    },
+    "participant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "principal",
+        "role",
+        "runtime",
+        "model",
+        "configuration",
+        "assurance"
+      ],
+      "properties": {
+        "principal": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "role": {
+          "enum": [
+            "executor",
+            "inference",
+            "tool"
+          ]
+        },
+        "runtime": {
+          "$ref": "#/$defs/definition"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "configuration": {
+          "$ref": "#/$defs/artifact"
+        },
+        "assurance": {
+          "$ref": "#/$defs/artifact"
+        }
+      }
+    },
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "phase",
+        "kind",
+        "amount",
+        "receipt"
+      ],
+      "properties": {
+        "phase": {
+          "enum": [
+            "allocate",
+            "bootstrap",
+            "active",
+            "idle",
+            "transfer",
+            "retention",
+            "cleanup"
+          ]
+        },
+        "kind": {
+          "enum": [
+            "measured",
+            "declared",
+            "estimated",
+            "unknown"
+          ]
+        },
+        "amount": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "receipt": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "environment-definition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "components",
+        "workspace",
+        "bootstrap",
+        "runtime",
+        "configuration",
+        "model",
+        "requirements"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.environment-definition.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "components": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/component"
+          }
+        },
+        "workspace": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "bootstrap": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "target",
+                "lock",
+                "input",
+                "context",
+                "requirements",
+                "effects",
+                "bounds"
+              ],
+              "properties": {
+                "target": {
+                  "$ref": "#/$defs/definition"
+                },
+                "lock": {
+                  "$ref": "#/$defs/artifact"
+                },
+                "input": {
+                  "$ref": "#/$defs/artifact"
+                },
+                "context": {
+                  "$ref": "#/$defs/artifact"
+                },
+                "requirements": {
+                  "$ref": "#/$defs/artifact"
+                },
+                "effects": {
+                  "$ref": "#/$defs/effects"
+                },
+                "bounds": {
+                  "$ref": "#/$defs/bounds"
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "runtime": {
+          "$ref": "#/$defs/definition"
+        },
+        "configuration": {
+          "$ref": "#/$defs/artifact"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "requirements": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.environment-requirements.v1"
+                }
+              }
+            }
+          ]
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "environment-request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "request",
+        "run",
+        "owner",
+        "allocator",
+        "definition",
+        "frame",
+        "policy",
+        "reservation",
+        "mode",
+        "resource",
+        "effects",
+        "bounds",
+        "ttl_seconds",
+        "idle_seconds",
+        "not_after",
+        "retain_until",
+        "cleanup"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.environment-request.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "request": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "run": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "owner": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "allocator": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "definition": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.environment-definition.v1"
+                }
+              }
+            }
+          ]
+        },
+        "frame": {
+          "$ref": "#/$defs/artifact"
+        },
+        "policy": {
+          "$ref": "#/$defs/artifact"
+        },
+        "reservation": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.reservation.v1"
+                }
+              }
+            }
+          ]
+        },
+        "mode": {
+          "enum": [
+            "create",
+            "adopt"
+          ]
+        },
+        "resource": {
+          "anyOf": [
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/artifact"
+                },
+                {
+                  "required": [
+                    "schema"
+                  ],
+                  "properties": {
+                    "schema": {
+                      "const": "openagents.environment-resource.v1"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "effects": {
+          "$ref": "#/$defs/effects"
+        },
+        "bounds": {
+          "$ref": "#/$defs/bounds"
+        },
+        "ttl_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "idle_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "not_after": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "retain_until": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "cleanup": {
+          "enum": [
+            "destroy",
+            "detach"
+          ]
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "environment-resource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "owner",
+        "allocator",
+        "provider",
+        "account",
+        "resource",
+        "generation",
+        "ownership"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.environment-resource.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "owner": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "allocator": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "provider": {
+          "$ref": "#/$defs/definition"
+        },
+        "account": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "resource": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "generation": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "ownership": {
+          "$ref": "#/$defs/artifact"
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "environment-lease": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "lease",
+        "request",
+        "allocator",
+        "created_at",
+        "not_after",
+        "retain_until",
+        "reservation"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.environment-lease.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "lease": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "request": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.environment-request.v1"
+                }
+              }
+            }
+          ]
+        },
+        "allocator": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "created_at": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "not_after": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "retain_until": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "reservation": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.reservation.v1"
+                }
+              }
+            }
+          ]
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "environment-materialization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "lease",
+        "definition",
+        "resource",
+        "generation",
+        "components",
+        "runtime",
+        "configuration",
+        "model",
+        "workspace",
+        "participants",
+        "bootstrap",
+        "enforcement",
+        "evidence",
+        "observed_at"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.environment-materialization.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "lease": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.environment-lease.v1"
+                }
+              }
+            }
+          ]
+        },
+        "definition": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.environment-definition.v1"
+                }
+              }
+            }
+          ]
+        },
+        "resource": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.environment-resource.v1"
+                }
+              }
+            }
+          ]
+        },
+        "generation": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "components": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/component"
+          }
+        },
+        "runtime": {
+          "$ref": "#/$defs/definition"
+        },
+        "configuration": {
+          "$ref": "#/$defs/artifact"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "workspace": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "participants": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/$defs/participant"
+          }
+        },
+        "bootstrap": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "enforcement": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.environment-enforcement.v1"
+                }
+              }
+            }
+          ]
+        },
+        "evidence": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/artifact"
+          }
+        },
+        "observed_at": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "environment-state": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "lease",
+        "revision",
+        "previous",
+        "status",
+        "expires_at",
+        "last_activity_at",
+        "materialization",
+        "attachment",
+        "accounting",
+        "cleanup",
+        "record"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.environment-state.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "lease": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.environment-lease.v1"
+                }
+              }
+            }
+          ]
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "previous": {
+          "anyOf": [
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/artifact"
+                },
+                {
+                  "required": [
+                    "schema"
+                  ],
+                  "properties": {
+                    "schema": {
+                      "const": "openagents.environment-state.v1"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "enum": [
+            "provisioning",
+            "ready",
+            "reserved",
+            "attached",
+            "draining",
+            "released",
+            "failed",
+            "unknown"
+          ]
+        },
+        "expires_at": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "last_activity_at": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "materialization": {
+          "anyOf": [
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/artifact"
+                },
+                {
+                  "required": [
+                    "schema"
+                  ],
+                  "properties": {
+                    "schema": {
+                      "const": "openagents.environment-materialization.v1"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "attachment": {
+          "anyOf": [
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/artifact"
+                },
+                {
+                  "required": [
+                    "schema"
+                  ],
+                  "properties": {
+                    "schema": {
+                      "const": "openagents.environment-attachment.v1"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "accounting": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.environment-accounting.v1"
+                }
+              }
+            }
+          ]
+        },
+        "cleanup": {
+          "anyOf": [
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/artifact"
+                },
+                {
+                  "required": [
+                    "schema"
+                  ],
+                  "properties": {
+                    "schema": {
+                      "const": "openagents.environment-cleanup.v1"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "record": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.run-record.v1"
+                }
+              }
+            }
+          ]
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "environment-control": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "lease",
+        "command",
+        "expected_revision",
+        "action",
+        "requested_until",
+        "evidence"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.environment-control.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "lease": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.environment-lease.v1"
+                }
+              }
+            }
+          ]
+        },
+        "command": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "expected_revision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "action": {
+          "enum": [
+            "renew",
+            "release",
+            "status"
+          ]
+        },
+        "requested_until": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "evidence": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/artifact"
+          }
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "environment-attach": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "lease",
+        "expected_revision",
+        "materialization",
+        "worker",
+        "controller",
+        "generation",
+        "execute",
+        "input_digest",
+        "claim",
+        "reservation"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.environment-attach.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "lease": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.environment-lease.v1"
+                }
+              }
+            }
+          ]
+        },
+        "expected_revision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "materialization": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.environment-materialization.v1"
+                }
+              }
+            }
+          ]
+        },
+        "worker": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "controller": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "generation": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "execute": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.environment-execute.v1"
+                }
+              }
+            }
+          ]
+        },
+        "input_digest": {
+          "type": "string",
+          "minLength": 71,
+          "maxLength": 71
+        },
+        "claim": {
+          "$ref": "#/$defs/artifact"
+        },
+        "reservation": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.reservation.v1"
+                }
+              }
+            }
+          ]
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "environment-execute": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "caller",
+        "event",
+        "body"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.environment-execute.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "caller": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "event": {
+          "$ref": "#/$defs/event"
+        },
+        "body": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.execution.v1"
+                }
+              }
+            }
+          ]
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "environment-attachment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "attachment",
+        "request",
+        "lease",
+        "materialization",
+        "execute",
+        "claim",
+        "reservation",
+        "expires_at"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.environment-attachment.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "attachment": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "request": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.environment-attach.v1"
+                }
+              }
+            }
+          ]
+        },
+        "lease": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.environment-lease.v1"
+                }
+              }
+            }
+          ]
+        },
+        "materialization": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.environment-materialization.v1"
+                }
+              }
+            }
+          ]
+        },
+        "execute": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.environment-execute.v1"
+                }
+              }
+            }
+          ]
+        },
+        "claim": {
+          "$ref": "#/$defs/artifact"
+        },
+        "reservation": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.reservation.v1"
+                }
+              }
+            }
+          ]
+        },
+        "expires_at": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "environment-participant-input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "attachment",
+        "participant",
+        "projection"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.environment-participant-input.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "attachment": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.environment-attachment.v1"
+                }
+              }
+            }
+          ]
+        },
+        "participant": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "projection": {
+          "$ref": "#/$defs/artifact"
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "environment-participant-admission": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "input",
+        "materialization",
+        "participant",
+        "status",
+        "root_input_digest",
+        "projection_digest",
+        "enforcement",
+        "reason"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.environment-participant-admission.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "input": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.environment-participant-input.v1"
+                }
+              }
+            }
+          ]
+        },
+        "materialization": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.environment-materialization.v1"
+                }
+              }
+            }
+          ]
+        },
+        "participant": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "status": {
+          "enum": [
+            "admitted",
+            "refused"
+          ]
+        },
+        "root_input_digest": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 71,
+              "maxLength": 71
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "projection_digest": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 71,
+              "maxLength": 71
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "enforcement": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "enum": [
+                "malformed",
+                "unsupported_version",
+                "unsupported_feature",
+                "not_admitted",
+                "unavailable",
+                "content_unavailable",
+                "identity_mismatch",
+                "incompatible",
+                "revoked",
+                "stale",
+                "cannot_enforce",
+                "limit_exceeded",
+                "idempotency_conflict",
+                "conflict"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "environment-attachment-control": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "attachment",
+        "command",
+        "expected_revision",
+        "action",
+        "evidence"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.environment-attachment-control.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "attachment": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.environment-attachment.v1"
+                }
+              }
+            }
+          ]
+        },
+        "command": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "expected_revision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "action": {
+          "enum": [
+            "activate",
+            "drain"
+          ]
+        },
+        "evidence": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/artifact"
+          }
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "environment-cleanup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "lease",
+        "resource",
+        "attachment",
+        "action",
+        "status",
+        "fencing",
+        "retained",
+        "provider",
+        "accounting",
+        "reason"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.environment-cleanup.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "lease": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.environment-lease.v1"
+                }
+              }
+            }
+          ]
+        },
+        "resource": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.environment-resource.v1"
+                }
+              }
+            }
+          ]
+        },
+        "attachment": {
+          "anyOf": [
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/artifact"
+                },
+                {
+                  "required": [
+                    "schema"
+                  ],
+                  "properties": {
+                    "schema": {
+                      "const": "openagents.environment-attachment.v1"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "action": {
+          "enum": [
+            "destroy",
+            "detach"
+          ]
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "confirmed",
+            "failed",
+            "unknown"
+          ]
+        },
+        "fencing": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/artifact"
+          }
+        },
+        "retained": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/artifact"
+          }
+        },
+        "provider": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "accounting": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.environment-accounting.v1"
+                }
+              }
+            }
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 1024
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "environment-result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "input",
+        "status",
+        "lease",
+        "state",
+        "value",
+        "reason"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.environment-result.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "input": {
+          "$ref": "#/$defs/artifact"
+        },
+        "status": {
+          "enum": [
+            "accepted",
+            "duplicate",
+            "conflict",
+            "refused",
+            "unknown"
+          ]
+        },
+        "lease": {
+          "anyOf": [
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/artifact"
+                },
+                {
+                  "required": [
+                    "schema"
+                  ],
+                  "properties": {
+                    "schema": {
+                      "const": "openagents.environment-lease.v1"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "state": {
+          "anyOf": [
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/artifact"
+                },
+                {
+                  "required": [
+                    "schema"
+                  ],
+                  "properties": {
+                    "schema": {
+                      "const": "openagents.environment-state.v1"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "value": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "enum": [
+                "malformed",
+                "unsupported_version",
+                "unsupported_feature",
+                "not_admitted",
+                "unavailable",
+                "content_unavailable",
+                "identity_mismatch",
+                "incompatible",
+                "revoked",
+                "stale",
+                "cannot_enforce",
+                "limit_exceeded",
+                "idempotency_conflict",
+                "conflict"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "environment-requirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "recipients",
+        "assurance",
+        "opaque_models",
+        "bounds"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.environment-requirements.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "recipients": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "items": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64
+          }
+        },
+        "assurance": {
+          "enum": [
+            "host",
+            "trusted_executor"
+          ]
+        },
+        "opaque_models": {
+          "type": "boolean"
+        },
+        "bounds": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 12,
+          "items": {
+            "enum": [
+              "wall_ms",
+              "memory_bytes",
+              "input_bytes",
+              "output_bytes",
+              "read_bytes",
+              "storage_bytes",
+              "calls",
+              "attempts",
+              "concurrency",
+              "depth",
+              "fuel",
+              "spend_microunits"
+            ]
+          }
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "environment-enforcement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "plan"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.environment-enforcement.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "plan": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 12,
+          "items": {
+            "$ref": "#/$defs/bound"
+          }
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "environment-model": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "name",
+        "identity",
+        "weights"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.environment-model.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "identity": {
+          "enum": [
+            "verified",
+            "opaque"
+          ]
+        },
+        "weights": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "environment-accounting": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "reservation",
+        "currency",
+        "reserved",
+        "entries"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.environment-accounting.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "reservation": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.reservation.v1"
+                }
+              }
+            }
+          ]
+        },
+        "currency": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 16
+        },
+        "reserved": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "entries": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/entry"
+          }
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "environment-ownership": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "provider",
+        "account",
+        "resource",
+        "generation",
+        "key",
+        "observed_at"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.environment-ownership.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "provider": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "account": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "resource": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "generation": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "key": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "observed_at": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "environment-fencing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "attachment",
+        "participant",
+        "status",
+        "observed_at"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.environment-fencing.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "attachment": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.environment-attachment.v1"
+                }
+              }
+            }
+          ]
+        },
+        "participant": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "status": {
+          "enum": [
+            "fenced",
+            "unreachable"
+          ]
+        },
+        "observed_at": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    }
+  }
+}
