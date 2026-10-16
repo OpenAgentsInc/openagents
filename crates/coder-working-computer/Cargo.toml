@@ -17,6 +17,8 @@ serde_json = "1"
 tokio = { version = "1", features = ["io-util", "process", "time"] }
 
 [dev-dependencies]
+# The lifecycle model (tests/lifecycle_model.rs, verification target 2).
+stateright = "0.31"
 tempfile = "3"
 tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread"] }
 

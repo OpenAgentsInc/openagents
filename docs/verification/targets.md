@@ -111,6 +111,36 @@ receiver switches to LND.
 **Waits on:** nothing. K1–K5 can model today's internal API now. K6 and K7
 start with #11802 and #11815.
 
+**Status (2026-10-15, #11839):** the Stateright model is
+`crates/coder-working-computer/tests/lifecycle_model.rs`. It runs the real
+`decide`/`apply` with `driver::execute`'s request, effect and observation
+order; two reconcilers; crashes that lose a pending observation; a
+provider that answers done, failed or unknown (an unknown effect may or
+may not have happened); and the owner's prompt, stop and delete.
+- **K1–K4 hold** for leased reconcilers: 184,585 states with one fault and
+  one crash in the default `cargo test`, and 2,433,765 states with two of
+  each (`--release -- --ignored`). Wake, stop and wake again, and delete
+  are all reached.
+- **Two driver-contract assumptions** the model had to make, each found
+  as a counterexample first: a retried create whose first attempt took
+  effect never answers `Failed` (otherwise a second live resource), and a
+  retried resume of a running computer never answers `Failed` (otherwise a
+  record that says stopped over a running computer). The conformance
+  suite already checks the first ("create is idempotent") and now checks
+  the second ("resume keeps files": a repeat resume is done); the fake
+  and oa-boat drivers pass.
+- **The lease is load-bearing.** Without mutual exclusion the checker
+  breaks K1 in eight steps: two reconcilers repeat one create, one
+  answers `Failed` before the other's `Done` lands, the record believes
+  the failure, and a fresh create follows. `oa-computers` fences writes on
+  the revision and on still holding the lease, which refuses the stale
+  holder's observation but not its effect, so a provider call that
+  outlives its lease can still leave an orphan. Before a new create
+  identity after a failed one, the owner should look up (or delete) any
+  resource under the old identity (#11801, #11809).
+- K5 (backend binding) lives in `oa-computers`, not in this record; K6
+  and K7 wait on #11802 and #11815.
+
 ## 3. The credit and affiliate ledger
 
 **The system:**

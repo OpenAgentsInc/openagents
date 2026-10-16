@@ -15,7 +15,8 @@
 //!   file in the computer; files round-trip; the meter answers; delete is
 //!   final and idempotent, and a deleted computer runs nothing.
 //! - **Suspend**: suspend reaches Stopped and refuses commands; resume
-//!   reaches Running with the files kept.
+//!   reaches Running with the files kept, and resuming a running computer
+//!   again is done, not failed.
 //! - **Snapshot**: a saved snapshot becomes ready and a computer created
 //!   from it holds the saved files; deleting the snapshot is idempotent.
 //! - **Fork**: a fork holds the source's files, is idempotent under one
@@ -303,6 +304,10 @@ impl<D: Driver> Run<'_, D> {
         )?;
         done("resume", self.d.resume(&id).await)?;
         self.wait(&id, State::Running).await?;
+        // A repeated resume (a lost reply, a retry) of a computer that is
+        // already running is done, never failed: `Failed` means the effect
+        // did not happen, and the lifecycle trusts it (#11839).
+        done("repeat resume", self.d.resume(&id).await)?;
         let out = self.sh(&id, "cat oa-conf-suspend.txt").await?;
         check(out.stdout == "kept\n", "resume lost a file")
     }
