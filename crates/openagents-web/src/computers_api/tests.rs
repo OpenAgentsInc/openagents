@@ -126,10 +126,19 @@ async fn provider(State(state): State<Arc<Native>>, request: Request) -> Respons
                 .into_response();
         }
         if method == "PUT" {
+            let explicit_zero = request
+                .headers()
+                .get(header::CONTENT_LENGTH)
+                .and_then(|h| h.to_str().ok())
+                == Some("0");
             let data = axum::body::to_bytes(request.into_body(), computer_files::MAX_BYTES)
                 .await
                 .unwrap()
                 .to_vec();
+            if data.is_empty() && !explicit_zero {
+                return (StatusCode::LENGTH_REQUIRED, Json(json!({"message":CANARY})))
+                    .into_response();
+            }
             let info = json!({"size":data.len(),"sha256":computer_files::digest(&data)});
             *state.file.lock().unwrap() = data;
             return Json(info).into_response();
@@ -512,6 +521,27 @@ async fn public_lifecycle_uses_current_account_authority_and_keeps_service_crede
         assert_eq!(r.status(), status);
         assert!(!r.text().await.unwrap().contains(CANARY));
     }
+    let r = http
+        .put(&file_url)
+        .bearer_auth(token("alice"))
+        .header("content-type", "application/octet-stream")
+        .header("x-content-sha256", computer_files::digest(b""))
+        .header(header::CONTENT_LENGTH, "0")
+        .body(Vec::<u8>::new())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 200);
+    assert_eq!(r.json::<Value>().await.unwrap()["size"], 0);
+    let r = http
+        .get(&file_url)
+        .bearer_auth(token("alice"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 200);
+    assert_eq!(r.headers()["x-content-sha256"], computer_files::digest(b""));
+    assert!(r.bytes().await.unwrap().is_empty());
     let caps: Value = http
         .get(format!("{base}/v1/computers/capabilities"))
         .bearer_auth(token("alice"))

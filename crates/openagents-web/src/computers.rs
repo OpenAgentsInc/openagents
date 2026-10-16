@@ -443,6 +443,10 @@ impl Client {
             .bearer_auth(self.token().map_err(|_| ())?)
             .header("x-openagents-account", owner);
         if let Some(bytes) = upload {
+            // Google's front end requires a length for an empty PUT as well.
+            if bytes.is_empty() {
+                req = req.header(reqwest::header::CONTENT_LENGTH, "0");
+            }
             req = req
                 .header(reqwest::header::CONTENT_TYPE, "application/octet-stream")
                 .header("x-content-sha256", checksum.ok_or(())?)
