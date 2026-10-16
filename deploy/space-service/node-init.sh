@@ -42,6 +42,26 @@ if ! printf '%s  /usr/local/bin/k3s\n' "$space_k3s_sha" | sha256sum --check --st
   rm /space/config/k3s.new
 fi
 if [[ $space_role == worker ]]; then
+  # Replacement keeps the node password and client state with the durable
+  # disk. A running agent must be drained before changing its storage layout.
+  install -d -m 0700 /space/k3s-node
+  install -d -m 0755 /etc/rancher
+  if [[ ! -L /etc/rancher/node ]]; then
+    if [[ -d /etc/rancher/node ]]; then
+      if systemctl is-active --quiet oa-space-k3s; then
+        echo 'Drain the node before moving its cluster identity.' >&2
+        exit 1
+      fi
+      if [[ -e /space/k3s-node/password && -e /etc/rancher/node/password ]]; then
+        cmp -s /space/k3s-node/password /etc/rancher/node/password || { echo 'The saved node identity differs.' >&2; exit 1; }
+      fi
+      [[ ! -e /etc/rancher/node.before-space-persistent-identity ]]
+      cp -a /etc/rancher/node/. /space/k3s-node/
+      mv /etc/rancher/node /etc/rancher/node.before-space-persistent-identity
+    fi
+    ln -s /space/k3s-node /etc/rancher/node
+  fi
+  [[ $(readlink -f /etc/rancher/node) == /space/k3s-node ]]
   if [[ -s /run/oa-space/k3s-join ]]; then
     install -m 0600 /run/oa-space/k3s-join /space/config/k3s-join
     rm /run/oa-space/k3s-join
@@ -55,7 +75,7 @@ with open('/dev/kvm', 'r+b', buffering=0) as kvm:
     os.close(vm)
 print('KVM API and VM creation passed.')
 PY
-  space_start='agent --server=https://10.219.14.10:6443 --token-file=/space/config/k3s-join --node-ip=10.219.14.11 --node-name=oa-space-service-worker --node-label=space.pplx.net/node-pool=sandbox'
+  space_start='agent --data-dir=/space/k3s --server=https://10.219.14.10:6443 --token-file=/space/config/k3s-join --node-ip=10.219.14.11 --node-name=oa-space-service-worker --node-label=space.pplx.net/node-pool=sandbox'
 else
   space_start='server --data-dir=/space/k3s --advertise-address=10.219.14.10 --node-ip=10.219.14.10 --node-name=oa-space-service-control --tls-san=10.219.14.10 --cluster-cidr=10.220.0.0/16 --service-cidr=10.221.0.0/16 --flannel-backend=wireguard-native --disable=traefik,servicelb,local-storage --secrets-encryption --node-label=space.pplx.net/infra=true --write-kubeconfig-mode=600'
 fi
