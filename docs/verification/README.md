@@ -91,5 +91,8 @@ counterexamples into regression tests"; see `INVARIANTS.md`). Concretely:
 - No Stateright, TLA+, Kani, Lean, fuzzing targets or Miri runs.
 - `INVARIANTS.md` states rules in prose, backed by named tests.
 
-The first target is x402 settlement ([targets.md](targets.md#1-x402-settlement-exactly-once)),
-before x402 moves to our own LND node.
+The first targets are x402 settlement
+([targets.md](targets.md#1-x402-settlement-exactly-once)), before x402 moves
+to our own LND node, and the Computers lifecycle
+([targets.md](targets.md#2-computers-the-lifecycle-commands-files-and-usage)),
+before the Computers API goes public.

@@ -185,6 +185,17 @@ previews, scheduled wake, and arbitrary customer/provider placement are separate
 capabilities. An enrolled host adapter must prove non-destructive detach and
 current workspace/command/file grants; it is not a simulated cloud computer.
 
+## Verification
+
+The Computers service guards money (usage, quotas) and authority (one
+account's computers, files and checkpoints), under concurrency, retries and
+uncertain driver outcomes. Its properties K1–K7 are
+[verification target 2](../verification/targets.md#2-computers-the-lifecycle-commands-files-and-usage):
+Stateright on the pure lifecycle core, Turmoil on the real API, and fuzzing
+and Kani on the file-path check. Each touched issue's acceptance includes
+its properties, and every counterexample becomes a `computer-conformance`
+case.
+
 ## Issue handling, evidence, and completion
 
 Claim an issue before implementation and release it when stopping. Keep native

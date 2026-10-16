@@ -49,7 +49,69 @@ retries the request with the preimage. The server checks settlement
 **Waits on:** nothing; it can start now. It matters most before the
 receiver switches to LND.
 
-## 2. The credit and affiliate ledger
+## 2. Computers: the lifecycle, commands, files and usage
+
+**Why second:**
+- The [SDK delivery plan](../sdk/delivery-plan.md) (#11800) makes
+  `oa-computers` a public, account-scoped API. People, our apps, Coder
+  Desktop and agents will all create computers.
+- It's the most concurrent thing we run: leased reconcilers, retried
+  creates, drivers that answer "unknown", and wake, stop and delete racing
+  each other.
+- It already has the ideal shape for model checking. The lifecycle core in
+  `coder-working-computer` is pure: `decide::decide` picks the next step from
+  the record, and `transition::apply` changes it. A Stateright model can run
+  those exact functions.
+- Server-side only, so it's safe under the 1.0 freeze.
+
+**Properties (always):**
+- **K1: one computer per intent.** A create retried with the same
+  idempotency key, by any number of clients or reconcilers, makes at most one
+  computer and one meter (#11801, #11805).
+- **K2: delete is final.** A deleted computer never comes back. No later
+  wake, retry or stale reconciler revives it, and its meter stops.
+- **K3: no done without observing.** An operation the driver answered
+  "unknown" is reported done or failed only after an observation says so.
+- **K4: one owner, always.** A computer, its files, its command sessions and
+  its checkpoints are reachable only by the account that owns them, after
+  any sequence of transfers, forks, restores and deletes
+  (`admit_checkpoint_use`; #11801, #11803).
+- **K5: the stored backend binding never changes** for a computer's life
+  (#11809). Placement never chooses a driver lacking a profile the request
+  needs, and refuses before any effect.
+- **K6: command sessions lose nothing.** Output produced before an attach
+  is still delivered. A cancel is confirmed or reported uncertain, never
+  assumed (#11802).
+- **K7: usage is conserved.** Reserved plus used never exceeds the quota.
+  An uncertain reservation is settled exactly once, and nothing is charged
+  twice (#11815).
+
+**Properties (sometimes):**
+- a computer can reach running, be stopped, woken, and deleted;
+- a command can complete after a reconciler crash.
+
+**Tools:**
+- **Stateright** on the real `decide`/`apply` core plus the
+  operations store, with 2 accounts, 2 computers, 2 reconcilers, up to 2
+  crashes, and drivers that may answer done, failed or unknown.
+- **Turmoil** to drive the real `oa-computers` HTTP API and a fake driver
+  through the schedules the model finds.
+- **cargo-fuzz** and **Kani** on the file-path check (#11803): no input path
+  escapes the computer's root, traversal and symlink cases included.
+- **proptest** on the egress allow-list matcher and credential-reference
+  resolution (#11813): a reference resolves only for its owner, and the
+  matcher never allows a host outside the profile.
+- Counterexamples become cases in `computer-conformance`, so every driver
+  (Boat, SPACE, own machine) is tested against them.
+
+**Not verified here:** the Rust client's ergonomics, the OpenAPI document
+(schema compatibility checks cover it), Coder Desktop's UI, and placement
+*quality* (a measured decision, not a rule).
+
+**Waits on:** nothing. K1–K5 can model today's internal API now. K6 and K7
+start with #11802 and #11815.
+
+## 3. The credit and affiliate ledger
 
 **The system:**
 - **Credits:** bought by x402 or Lightning top-up, spent on usage.
@@ -75,7 +137,7 @@ receiver switches to LND.
 **Waits on:** billing going live for the Pro side. The credit side can start
 with target 1.
 
-## 3. LND payouts: never pay twice
+## 4. LND payouts: never pay twice
 
 **The system:** an outbound payout through `SendPaymentV2`, tracked with
 `TrackPaymentV2`. Our sender already refuses to resend when the outcome is
@@ -100,7 +162,7 @@ unknown ([x402 over LND](../payments/2026-10-15-x402-over-lnd.md)).
 **Waits on:** LND phase 2 (#11757) and the owner's custody decisions
 (#11761). Do it before payouts move to our node.
 
-## 4. The LayerTree TEE signer's rule check
+## 5. The LayerTree TEE signer's rule check
 
 **The system:** the spec
 [LayerTree on mainnet with a TEE](../research/layertree/2026-10-15-mainnet-tee-spec.md).
@@ -129,7 +191,7 @@ The predicate approves nothing these forbid.
 **Waits on:** the owner's go on the TEE path. The property tests can live in
 the lab crate now.
 
-## 5. Coder's hold rules and route admission (next release)
+## 6. Coder's hold rules and route admission (next release)
 
 **The system:**
 - Hard-to-undo steps wait for Y or N: deploys, merges, secrets, payments and
