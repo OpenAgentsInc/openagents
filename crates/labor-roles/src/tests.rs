@@ -1110,3 +1110,118 @@ fn terms_admit_only_independent_roles_and_rights_need_grants() {
     };
     assert!(r.permits(&base, Use::Train, &key(BUYER), &[both]));
 }
+
+#[test]
+fn repair_context_keeps_original_entries_and_only_adds_exact_authorized_evidence() {
+    use crate::context::{self, Bytes};
+    use serde_json::{Value, json};
+    let t = terms(1);
+    let mut book = crate::book::Book::new(t.clone(), NOW).unwrap();
+    let first = submission(0, None, None, 10);
+    let first_digest = crate::digest_of(&first).unwrap();
+    book.apply(first, &key(WORKER), NOW).unwrap();
+    let verify = verification(&first_digest, true);
+    let verification_digest = crate::digest_of(&verify).unwrap();
+    book.apply(verify, &key(REVIEWER), NOW + 1).unwrap();
+    let review = review(
+        &first_digest,
+        &verification_digest,
+        ReviewDecision::RequestRework,
+        &["returns-42"],
+    );
+    let digest = crate::digest_of(&review).unwrap();
+    book.apply(review.clone(), &key(BUYER), NOW + 2).unwrap();
+    let raw = nostr::contracts::jcs(&serde_json::to_value(review).unwrap()).unwrap();
+    let reference =
+        json!({"digest":digest,"size":raw.len(),"media_type":"application/json","schema":REVIEW_V});
+    let task = "73".repeat(32);
+    let mut descriptor = json!({"v":"openagents.evidence.v1","requires":[],"content":reference,
+        "source":{"kind":"document","identity":t.order,"version":digest,"observation":reference},
+        "capture":{"complete":true,"omitted_bytes":0},"derived_from":[],
+        "scope":{"task":task,"recipients":[t.worker],"classification":"private"}});
+    let evidence_id = crate::digest_of(&descriptor).unwrap();
+    descriptor["id"] = json!(evidence_id);
+    let initial = json!({"v":"openagents.context.v1","requires":[],"task":task,"recipient":t.worker,
+        "policy":{"digest":format!("sha256:{}","88".repeat(32)),"size":2,"media_type":"application/json"},
+        "entries":[{"evidence":format!("sha256:{}","99".repeat(32)),"representation":{"digest":format!("sha256:{}","aa".repeat(32)),"size":3,"media_type":"application/json"},"mandatory":false}],
+        "omissions":[],"coverage":"complete"});
+    let mut proposed = initial.clone();
+    proposed["entries"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({"evidence":evidence_id,"representation":reference,"mandatory":true}));
+    let evidence = BTreeMap::from([(evidence_id.clone(), descriptor.clone())]);
+    let bytes = Bytes::from([(digest.clone(), raw)]);
+    let check = |value: &Value| {
+        context::admit_rework(
+            &book,
+            1,
+            &digest,
+            &initial,
+            value,
+            &evidence,
+            &bytes,
+            NOW + 3,
+        )
+    };
+    check(&proposed).unwrap();
+    let mut changed = proposed.clone();
+    changed["entries"][0]["mandatory"] = json!(true);
+    assert!(check(&changed).is_err());
+    changed = proposed.clone();
+    changed["entries"].as_array_mut().unwrap().remove(0);
+    assert!(check(&changed).is_err());
+    changed = proposed.clone();
+    changed["recipient"] = json!(key(RESOLVER));
+    assert!(check(&changed).is_err());
+    changed = proposed.clone();
+    changed["entries"][1]["representation"]["digest"] =
+        json!(format!("sha256:{}", "ab".repeat(32)));
+    assert!(check(&changed).is_err());
+    changed = proposed.clone();
+    changed["entries"][1]["mandatory"] = json!(false);
+    assert!(check(&changed).is_err());
+    assert!(
+        context::admit_rework(
+            &book,
+            1,
+            &digest,
+            &initial,
+            &proposed,
+            &evidence,
+            &bytes,
+            t.due(1) + 1
+        )
+        .is_err()
+    );
+    let mut corrupt = bytes.clone();
+    corrupt.get_mut(&digest).unwrap().push(0);
+    assert!(
+        context::admit_rework(
+            &book,
+            1,
+            &digest,
+            &initial,
+            &proposed,
+            &evidence,
+            &corrupt,
+            NOW + 3
+        )
+        .is_err()
+    );
+    book.apply(cancellation(BUYER), &key(BUYER), NOW + 4)
+        .unwrap();
+    assert!(
+        context::admit_rework(
+            &book,
+            1,
+            &digest,
+            &initial,
+            &proposed,
+            &evidence,
+            &bytes,
+            NOW + 5
+        )
+        .is_err()
+    );
+}

@@ -12,3 +12,11 @@ See [the runtime guide](../../docs/coder/runtime/free-labor.md#delivery-roles-af
 ```sh
 cargo test -p labor-roles
 ```
+
+`context::admit_rework` checks a repair manifest against the current buyer
+review and preceding submission. It preserves the original context entries,
+flags, recipient, policy, omissions, and coverage. Appended evidence must be
+exact retained review, deliverable, execution, or RUN bytes under the original
+rights, with the authorizing review present. Changed source bytes, another
+recipient, cancellation, late repairs, and substituted context refuse. This
+validates context only; it neither grants execution nor restarts an attempt.

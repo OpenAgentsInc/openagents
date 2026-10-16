@@ -16,6 +16,7 @@
 //! owner. A passing check never pays; acceptance records an obligation;
 //! only a central receive adapter's funding receipt reaches the ledger.
 pub mod book;
+pub mod context;
 pub mod host;
 pub mod records;
 pub mod terms;
