@@ -2498,3 +2498,16 @@ counsel review, then explicitly approve a small mainnet receive and one asset
 payout. Reconcile actual asset units and both frozen rates to the isolated trial
 ledger. No mainnet assets were moved. See
 [the trial runbook](docs/payments/lnd-host.md#taproot-assets-trial-11759).
+
+## Obtain and record the custody review (#11761)
+
+Give counsel the [engineering brief](docs/payments/lnd-custody-review.md) and
+private read-only ledger attachment. Confirm the contracting entity, operating
+and customer/payee jurisdictions, all purchased-credit books and currencies,
+consolidated assets and liabilities, refunds, and asset redemption terms. The
+central pay ledger snapshot is scoped and does not establish API credit or
+treasury balances. Record the review date, covered flows and jurisdictions,
+approved limits, required controls, and review triggers in #11761; keep legal
+advice and customer details private. Complete this before enabling LND
+third-party payouts or any mainnet asset trial. No legal outcome or spending
+approval was recorded during implementation.
