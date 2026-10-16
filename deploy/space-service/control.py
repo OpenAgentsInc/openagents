@@ -23,6 +23,15 @@ def images():
     )
     cloud("artifacts", "repositories", "add-iam-policy-binding", PREFIX, f"--location={REGION}",
           f"--member=serviceAccount:{identity}", "--role=roles/artifactregistry.reader")
+    pull_identity = f"{PREFIX}-pull@{PROJECT}.iam.gserviceaccount.com"
+    named_resource(
+        ["iam", "service-accounts", "describe", pull_identity],
+        ["iam", "service-accounts", "create", f"{PREFIX}-pull", f"--display-name={MARKER}", f"--description={MARKER}"],
+    )
+    cloud("artifacts", "repositories", "add-iam-policy-binding", PREFIX, f"--location={REGION}",
+          f"--member=serviceAccount:{pull_identity}", "--role=roles/artifactregistry.reader")
+    cloud("iam", "service-accounts", "add-iam-policy-binding", pull_identity,
+          f"--member=serviceAccount:{identity}", "--role=roles/iam.serviceAccountTokenCreator")
 
 
 def database():

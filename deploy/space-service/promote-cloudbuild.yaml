@@ -1,0 +1,29 @@
+substitutions:
+  _COMPONENT: worker
+  _DIGEST: ''
+  _SPACE_COMMIT: de87b436c35dac056564bdd5b2a113c9046e189b
+steps:
+  - name: gcr.io/cloud-builders/docker
+    entrypoint: bash
+    env:
+      - 'COMPONENT=${_COMPONENT}'
+      - 'DIGEST=${_DIGEST}'
+      - 'SOURCE_COMMIT=${_SPACE_COMMIT}'
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        case "$$COMPONENT" in worker|api|data-plane|cluster-controller) ;; *) exit 2 ;; esac
+        [[ "$$DIGEST" =~ ^sha256:[0-9a-f]{64}$$ ]]
+        [[ "$$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$$ ]]
+        source="us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/oa-space-native/$$COMPONENT@$$DIGEST"
+        destination="us-central1-docker.pkg.dev/openagentsgemini/oa-space-service/native/$$COMPONENT:$$SOURCE_COMMIT"
+        docker pull "$$source"
+        test "$$(docker image inspect "$$source" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')" = "$$SOURCE_COMMIT"
+        docker tag "$$source" "$$destination"
+        docker push "$$destination"
+        docker image inspect "$$destination" --format '{{json .RepoDigests}}'
+options:
+  machineType: E2_HIGHCPU_8
+  diskSizeGb: 50
+timeout: 600s
