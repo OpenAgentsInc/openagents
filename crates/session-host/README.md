@@ -267,7 +267,11 @@ probe cannot implement this admission. Missing live authority refuses.
 - **History.** Exports carry every native capture, a portable view derived
   from turn results (a recorded `derived` loss), opaque resume state when the
   adapter supports resume, and a signed WS projection cut. A foreign import is
-  archival: a new lineage, no native resume, recorded losses.
+  archival: a new lineage, no native resume, recorded losses. Capture coverage
+  is separate from payload presence: a redacted record can omit its payload,
+  and an incomplete record can retain its exact bytes. Such records make the
+  history partial, with a loss naming each affected native envelope. Incomplete
+  bytes use an octet-stream artifact; they do not claim to be complete JSON.
 - **Children.** A managed child needs the child's admission and a separately
   admitted current link grant or a mounted delegated-authority check; production
   refuses an opaque authorization reference alone. Local loop fixtures select explicit test

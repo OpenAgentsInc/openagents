@@ -205,6 +205,7 @@ impl SessionHost {
     ) -> Result<()> {
         let (_, _, profile) = self.approval_rule(state, session, &request.method, now)?;
         if request.input.len() > 32_768
+            || request.capture.coverage != crate::engine::CaptureCoverage::Complete
             || request.capture.payload.is_none()
             || request.capture.direction != "from_engine"
         {
@@ -343,6 +344,7 @@ impl SessionHost {
             method: pending.method.clone(),
             input: self.store.get(&action["input"])?,
             capture: Capture {
+                coverage: crate::engine::CaptureCoverage::Complete,
                 direction: "from_engine",
                 method: native["method"].as_str().ok_or("native method")?.into(),
                 native_id: native["native_id"].as_str().map(str::to_string),

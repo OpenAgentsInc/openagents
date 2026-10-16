@@ -1304,8 +1304,21 @@ impl SessionHost {
         let description = self.store.json(&adapter.reference)?;
         let mut refs = Vec::new();
         for capture in captures {
+            if capture.payload.is_none()
+                && capture.coverage == crate::engine::CaptureCoverage::Complete
+            {
+                return Err("malformed: complete native capture requires its payload".into());
+            }
             let payload = match &capture.payload {
-                Some(bytes) => Some(self.store.put(bytes, "application/json", None)?),
+                Some(bytes) => Some(self.store.put(
+                    bytes,
+                    if capture.coverage == crate::engine::CaptureCoverage::Complete {
+                        "application/json"
+                    } else {
+                        "application/octet-stream"
+                    },
+                    None,
+                )?),
                 None => None,
             };
             let body = json!({"v":"openagents.session-native.v1","requires":[],
@@ -1313,7 +1326,7 @@ impl SessionHost {
                 "engine":description["engine"],"protocol":description["protocol"],
                 "connection":session.connection,"direction":capture.direction,"ordinal":session.ordinal,
                 "method":capture.method,"native_id":capture.native_id,"captured_at":now,
-                "payload":payload,"capture":if capture.payload.is_some(){"complete"}else{"unavailable"}});
+                "payload":payload,"capture":capture.coverage.as_str()});
             session.ordinal += 1;
             let reference = self.sign(state, &body, &session.owner.clone(), now)?;
             session.natives.push(reference.clone());
@@ -1364,11 +1377,28 @@ impl SessionHost {
         if resume.is_none() {
             losses.push(json!({"source":null,"category":"unavailable","reason":"no resume state"}));
         }
+        let mut coverage = "complete";
+        for reference in &session.natives {
+            let native = self.store.json(reference)?;
+            let category = native["capture"]
+                .as_str()
+                .ok_or("native capture coverage")?;
+            if category != "complete" {
+                coverage = "partial";
+                let reason = match category {
+                    "redacted" => "Native message content is redacted.",
+                    "unsupported" => "Native message capture is unsupported.",
+                    _ => "Native message content is incomplete or unavailable.",
+                };
+                losses.push(json!({"source":reference,"category":category,
+                    "reason":reason}));
+            }
+        }
         let cut = self.cut(state, session, now)?;
         let body = json!({"v":"openagents.session-history.v1","requires":[],"lineage":session.lineage,
             "source":{"kind":"managed","admission":session.admission},"adapter":adapter.definition,
             "engine":description["engine"],"cut":cut,"native":session.natives,"portable":portable,
-            "losses":losses,"resume":resume,"coverage":"complete"});
+            "losses":losses,"resume":resume,"coverage":coverage});
         let reference = self.sign(state, &body, &session.owner.clone(), now)?;
         session.history = Some(reference.clone());
         Ok(reference)

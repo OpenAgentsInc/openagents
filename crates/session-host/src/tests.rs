@@ -1959,6 +1959,7 @@ struct OpeningEngine {
     crash: bool,
     configuration_delay: std::time::Duration,
     identity: Option<Vec<u8>>,
+    capture_coverage: Option<crate::engine::CaptureCoverage>,
 }
 impl OpeningEngine {
     fn check_pending(&self) {
@@ -2045,10 +2046,85 @@ impl Engine for OpeningEngine {
         self.engine.resume_state(native)
     }
     fn captures(&mut self) -> Vec<crate::engine::Capture> {
-        self.engine.captures()
+        let mut captures = self.engine.captures();
+        if let Some(coverage) = self.capture_coverage {
+            for capture in &mut captures {
+                capture.coverage = coverage;
+                capture.payload = match coverage {
+                    crate::engine::CaptureCoverage::Complete => capture.payload.take(),
+                    crate::engine::CaptureCoverage::Unavailable => Some(b"{".to_vec()),
+                    _ => None,
+                };
+            }
+        }
+        captures
     }
     fn started(&self) -> usize {
         self.engine.started()
+    }
+}
+
+#[test]
+fn native_history_records_redaction_and_incomplete_bytes_without_claiming_complete_capture() {
+    use crate::engine::CaptureCoverage;
+    for coverage in [
+        CaptureCoverage::Complete,
+        CaptureCoverage::Redacted,
+        CaptureCoverage::Unavailable,
+        CaptureCoverage::Unsupported,
+    ] {
+        let mut fx = Fx::new();
+        let host = SessionHost::open(
+            fx.root.clone(),
+            secret(HOST),
+            vec![Box::new(OpeningEngine {
+                engine: LoopEngine::mid_turn(),
+                root: fx.root.clone(),
+                calls: Rc::new(std::cell::Cell::new(0)),
+                crash: false,
+                configuration_delay: std::time::Duration::ZERO,
+                identity: None,
+                capture_coverage: Some(coverage),
+            })],
+            Box::new(fx.bindings.clone()),
+        )
+        .unwrap();
+        let (session, _) = fx.open(&host, "loop-mid-turn");
+        let history = host
+            .store()
+            .json(&host.export(&session, fx.now).unwrap())
+            .unwrap();
+        assert_eq!(
+            history["coverage"],
+            if coverage == CaptureCoverage::Complete {
+                "complete"
+            } else {
+                "partial"
+            }
+        );
+        nostr::session::validate(&history).unwrap();
+        let natives = history["native"].as_array().unwrap();
+        assert!(!natives.is_empty());
+        for reference in natives {
+            let native = host.store().json(reference).unwrap();
+            assert_eq!(native["capture"], coverage.as_str());
+            if coverage != CaptureCoverage::Complete {
+                assert!(
+                    history["losses"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .any(|l| l["source"] == *reference && l["category"] == coverage.as_str())
+                );
+            }
+            match coverage {
+                CaptureCoverage::Complete => assert!(native["payload"].is_object()),
+                CaptureCoverage::Unavailable => {
+                    assert_eq!(host.store().get(&native["payload"]).unwrap(), b"{")
+                }
+                _ => assert!(native["payload"].is_null()),
+            }
+        }
     }
 }
 
@@ -2069,6 +2145,7 @@ fn opening_intent_survives_lost_acknowledgment_and_process_death() {
                 crash,
                 configuration_delay: std::time::Duration::ZERO,
                 identity: None,
+                capture_coverage: None,
             })],
             Box::new(fx.bindings.clone()),
         )

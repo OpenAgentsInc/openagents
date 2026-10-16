@@ -52,6 +52,25 @@ pub struct Profile {
     pub settings_schema: Value,
 }
 
+/// How much of a native protocol message was retained.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CaptureCoverage {
+    Complete,
+    Redacted,
+    Unavailable,
+    Unsupported,
+}
+impl CaptureCoverage {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Complete => "complete",
+            Self::Redacted => "redacted",
+            Self::Unavailable => "unavailable",
+            Self::Unsupported => "unsupported",
+        }
+    }
+}
+
 /// One captured native protocol message.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Capture {
@@ -59,6 +78,7 @@ pub struct Capture {
     pub method: String,
     pub native_id: Option<String>,
     pub payload: Option<Vec<u8>>,
+    pub coverage: CaptureCoverage,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -295,6 +315,7 @@ fn loop_approval(run: &Run) -> Result<ApprovalRequest> {
         method: "hash".into(),
         input,
         capture: Capture {
+            coverage: CaptureCoverage::Complete,
             direction: "from_engine",
             method: "approval/request".into(),
             native_id: Some(native_id.clone()),
@@ -401,6 +422,7 @@ impl LoopEngine {
         payload: &Value,
     ) {
         self.log.push(Capture {
+            coverage: CaptureCoverage::Complete,
             direction,
             method: method.into(),
             native_id: id,
@@ -707,6 +729,7 @@ impl Engine for LoopEngine {
             self.protocol_fault = false;
             return Observation::ProtocolFault {
                 request: Capture {
+                    coverage: CaptureCoverage::Complete,
                     direction: "from_engine",
                     method: "unsupported/required".into(),
                     native_id: Some(format!("{}-unknown", run.turn)),

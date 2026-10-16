@@ -1764,6 +1764,7 @@ fn an_older_adapter_pin_cannot_open_a_different_installed_engine() {
             crash: false,
             configuration_delay: std::time::Duration::ZERO,
             identity: Some(b"a different native implementation".to_vec()),
+            capture_coverage: None,
         })],
         Box::new(r.allocator()),
     )
@@ -2071,6 +2072,7 @@ fn one_wall_time_allowance_covers_intake_and_native_configuration() {
             crash: false,
             configuration_delay: std::time::Duration::from_millis(650),
             identity: None,
+            capture_coverage: None,
         })],
         Box::new(Delayed(r.allocator())),
     )
