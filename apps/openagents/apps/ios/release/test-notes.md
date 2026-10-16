@@ -1,24 +1,16 @@
-OpenAgents Coder 1.0.0 (1002)
+OpenAgents 1.0.0 (60)
 
-Follow coding sessions from your computer on your iPhone.
+The first OpenAgents mobile app build on this record: the app that was
+OpenAgents Coder, now named OpenAgents. Follow and drive coding sessions
+from your computer, and read your OpenAgents chats.
 
-Check opening the app after updating an existing Coder installation. It
-should show the sign-in screen or your sessions and remain usable after
-going to the home screen and returning.
+Please check:
+- Sign in with OpenAgents, then see your computer's sessions.
+- Open an older session: its transcript should load within a few seconds
+  (the phone now asks your computer to upload it).
+- OpenAgents chats lists your saved chats (allow a few seconds).
+- Start a new session and send a message; the computer runs it.
+- Leave the app and come back; it stays usable.
 
-Verified in the iPhone simulator against staging and production:
-- OpenAgents sign-in with a dedicated test credential and sign-out.
-- Sessions created by an isolated desktop engine.
-- Live transcripts, sending messages, answering questions, queueing and
-  removing messages, and stopping a response.
-- Returning from the home screen and reconnecting after the computer restarts.
-
-Please test on a dedicated account and computer folder. Sign in, approve the
-matching code on openagents.com, then return to Sessions. Start a session on
-your computer and try the actions above. In Settings, sign out and reopen the
-app; your chats should stay hidden until you sign in again.
-
-Not yet qualified on a physical iPhone: GitHub approval, network/background
-behavior, attachments, mid-turn steering, and voice/Live Activities.
-Push notifications are unavailable in this build. Cloud computers are
-separate follow-up work.
+Not in this build: push notifications, the wallet, sending in saved
+OpenAgents web chats.
