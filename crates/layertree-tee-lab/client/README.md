@@ -29,10 +29,15 @@ cd crates/layertree-tee-lab
 cargo +nightly-2026-08-21 fuzz run gcp_token_verify -- -runs=1000 -max_len=32768
 ```
 
-Current integration tests use real Google and Rekor evidence with a
-synthetic output. Public-signet output qualification and a live,
-challenge-bound TLS capture remain part of #11792/#11789. These tests do
-not claim that either live qualification has already happened.
+Integration tests include the real five-member signet creation output,
+confirmed at height 326595, and its three-nonce Google token, TLS peer
+certificate, signed release, Rekor proof, and two rebuild statements.
+The live client verified the output through its separate, fully synced
+Bitcoin Core node. Offline tests replay that capture at its recorded time;
+they do not establish a current chain view. Negative cases substitute the
+image, enclave key, tree ID, delay, challenge, certificate, output amount
+and script, TCB floor, time, and token signature. See the
+[signet verification report](../../../docs/research/layertree/2026-10-16-signet-verification.md).
 
 Public record files use the closed, unmerged [inline-file proposal
 #345](https://github.com/nostr-protocol/nips/pull/345) at commit

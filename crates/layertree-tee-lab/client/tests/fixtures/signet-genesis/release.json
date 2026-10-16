@@ -1,0 +1,22 @@
+{
+  "id": "2e2a90492ee82ad88208b1746dac986b23ca67d7217b67edd7a56ca04bcfdb8d",
+  "pubkey": "fc4d6cd08891e19627bca90ae667097d261b8290e54ada0bb7e959f06a390f8d",
+  "created_at": 1792142684,
+  "kind": 3202,
+  "tags": [
+    [
+      "t",
+      "oa:att-release:v1"
+    ],
+    [
+      "x",
+      "0534df06d5771a4ebbc5000d12bd816c7778c5b25518cd9c7e662a57c748a8e3"
+    ],
+    [
+      "w",
+      "layertree-signet"
+    ]
+  ],
+  "content": "{\"changes\":\"We run one fresh-key signet tree inside TDX with an in-guest Bitcoin validator, two-phase signing, and mirror receipts. Restarts require the old tree to unroll.\",\"components\":[],\"gpu\":null,\"image\":{\"digest\":\"sha256:9377f95b0562ac6b147c00b4465370c428ab681a4a776a6994c9110c53740a11\",\"reference\":\"us-central1-docker.pkg.dev/openagentsgemini/layertree-research/attestation-probe\"},\"measurements\":[],\"models\":[],\"platforms\":[{\"hwmodel\":\"GCP_INTEL_TDX\",\"kind\":\"gcp-confidential-space\",\"support\":\"STABLE\"}],\"published_at\":1792142680,\"publisher\":\"fc4d6cd08891e19627bca90ae667097d261b8290e54ada0bb7e959f06a390f8d\",\"rebuilds\":[{\"builder\":\"ad8c8c7c0acdea0dc0c3635aa9860f16d3bd32c08e7fe89326e0284637812793\",\"digest\":\"sha256:9377f95b0562ac6b147c00b4465370c428ab681a4a776a6994c9110c53740a11\"},{\"builder\":\"4436af1610434a52d7daad6fc61a4ea1be117d9c02f36c75ae88571073069e82\",\"digest\":\"sha256:9377f95b0562ac6b147c00b4465370c428ab681a4a776a6994c9110c53740a11\"}],\"requires\":[],\"source\":{\"commit\":\"59b89bc1cda6434e33c17a99674ac70976473c9c\",\"recipe\":\"deploy/layertree/signet-service.Dockerfile\",\"recipe_digest\":\"sha256:1bc47eba7cc1dac653f8703241276eeafd9d4eb763e62d5211ae63ef3e7094cd\",\"repo\":\"https://github.com/OpenAgentsInc/openagents\"},\"transparency\":[{\"index\":3276968029,\"log\":\"rekor\",\"url\":\"https://rekor.sigstore.dev\"}],\"v\":\"openagents.att-release.v1\",\"workload\":\"layertree-signet\"}",
+  "sig": "f095a38287534fdfeef5d44ab1992823aa9332cbbb87197e07293cb1362f66d0c345dd6c3cea69476b7c0717887ded9ea163a60a2dbbe528a388f0e3d13930bc"
+}

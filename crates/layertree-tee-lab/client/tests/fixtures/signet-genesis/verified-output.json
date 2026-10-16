@@ -1,0 +1,15 @@
+{
+  "event": {
+    "kind": "attestation",
+    "platform": "gcp-intel-tdx",
+    "measurement": "sha256:9377f95b0562ac6b147c00b4465370c428ab681a4a776a6994c9110c53740a11",
+    "log_entry": {
+      "measurement": "sha256:9377f95b0562ac6b147c00b4465370c428ab681a4a776a6994c9110c53740a11",
+      "source_commit": "59b89bc1cda6434e33c17a99674ac70976473c9c"
+    },
+    "result": "attested"
+  },
+  "output": "8813000000000000225120589d38bcc6d3df6b08dfdd21ef35f1898decae2080a4375aa60e284c9eb228c0",
+  "outpoint": "4b4a748ca63476360a02e3355c687a626d76fd61a08e7aa7b97ea483eb3aa8b6:0",
+  "height": 326595
+}

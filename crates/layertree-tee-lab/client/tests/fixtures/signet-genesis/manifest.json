@@ -1,0 +1,19 @@
+{
+  "schema": "openagents.layertree.public-capture.v1",
+  "network": "signet",
+  "source_commit": "59b89bc1cda6434e33c17a99674ac70976473c9c",
+  "chain_reader": "Separate Bitcoin Core 30.2, fully synced, txindex enabled; getrawtransaction and getblockheader",
+  "files": {
+    "attestation.json": "173b890e56c55ed8cd8d7688ac3e7321fc1dbe0d32b5e56e0ca70e0d753a0539",
+    "chain-header.json": "d2508ee21e7b82427c696a3927571d3d569952d2dac32f2eda2c780c08e016d3",
+    "chain-transaction.json": "4ce65842cb1cbf0b0683b311cfa8d868899a809fbf99fb1db41bb9eb05662b55",
+    "channel.json": "085066665b80a7281144dbfce89e3b6e59defa6c60797095a02c6669aa01dd15",
+    "gcp-rebuild.json": "c15fbb970c2ea420f10860eae5ff3514f8fdab600619cf0e5f2ec9f2aad27760",
+    "head.json": "3b8c5ae07012864cba663720f239480d98c9ff557bdef4675190394ee43703fa",
+    "local-rebuild.json": "52427f83c3b9aebf0aa64e737bfd63de177f8743ae64daf5bd8d008708b264d6",
+    "rekor-entry.json": "6932a7c8e20b3b967cc1e18f3f7f65d15f6fd6546196c2e8cfd63e954344e1d9",
+    "release.json": "5fe193b1e09c4bb0f6ce44f5a5fa2aec4817c145bcf72ec023d4db718ff5820d",
+    "state-before.json": "64ee5d2d72e97d1338e828509403ab9d79cdeb582cbd0f17a5921d367b72b419",
+    "verified-output.json": "c85869218fc4eb7f6cba70baf397cd30419bdbe4c0dcdcd066db9ac27d1150de"
+  }
+}
