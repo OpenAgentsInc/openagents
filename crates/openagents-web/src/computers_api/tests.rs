@@ -234,6 +234,23 @@ async fn public_lifecycle_uses_current_account_authority_and_keeps_service_crede
             .iter()
             .any(|v| v["id"] == ID)
     );
+    crate::coder_sync::check_in(
+        &store,
+        &crate::chat_store::account_owner("alice"),
+        "capabilities",
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert_eq!(
+        http.delete(format!("{base}/v1/computers/capabilities"))
+            .bearer_auth(token("alice"))
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        204
+    );
     for suffix in ["/stop", "/wake"] {
         assert_eq!(
             http.post(format!("{base}/v1/computers/{ID}{suffix}"))

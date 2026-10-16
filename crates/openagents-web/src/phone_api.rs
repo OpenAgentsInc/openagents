@@ -107,10 +107,6 @@ pub(crate) fn routes() -> Router<App> {
                 .layer(axum::extract::DefaultBodyLimit::max(16 * 1024)),
         )
         .route(
-            "/v1/computers/capabilities",
-            get(crate::computers_api::capabilities),
-        )
-        .route(
             "/v1/computers/{name}",
             get(crate::computers_api::get).delete(remove_computer),
         )

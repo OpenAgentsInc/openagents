@@ -305,6 +305,9 @@ pub(crate) async fn get(
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Response {
+    if id == "capabilities" {
+        return capabilities(State(app), headers).await;
+    }
     lifecycle(&app, &headers, &id, reqwest::Method::GET, "").await
 }
 pub(crate) async fn delete(
@@ -493,6 +496,17 @@ pub(crate) fn extend_openapi(document: &mut Value) {
         op["responses"]["202"] = response("Computer");
         document["paths"][format!("/v1/computers/{{id}}/{suffix}")] = json!({"post":op});
     }
-    document["paths"]["/v1/computers/capabilities"] =
-        json!({"get":operation("getComputerCapabilities","ComputerCapabilities")});
+    let mut remove_named = operation("removeComputerNamedCapabilities", "AccountError");
+    remove_named["description"] = json!(
+        "Remove a computer named capabilities from your list. Its files and synced chats stay. Cloud access is not required."
+    );
+    remove_named["responses"]
+        .as_object_mut()
+        .unwrap()
+        .remove("200");
+    remove_named["responses"]["204"] =
+        json!({"description":"The computer name was removed from your list."});
+    document["paths"]["/v1/computers/capabilities"] = json!({
+        "get":operation("getComputerCapabilities","ComputerCapabilities"), "delete":remove_named
+    });
 }
