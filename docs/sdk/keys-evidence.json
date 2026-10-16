@@ -1,0 +1,163 @@
+{
+  "format": "openagents.sdk.keys.qualification.v1",
+  "issue": 11864,
+  "parent": 11857,
+  "implementation_commit": "d02e6128c8ef5d1235390ca289c51a2b740a7ca6",
+  "response_validation_commit": "ec70592d6f",
+  "deployed_source_commit": "de8379d51a",
+  "build": "e7122906-4842-4bb5-bb16-ab365c6c6699",
+  "image": "us-central1-docker.pkg.dev/openagentsgemini/openagents/openagents-web@sha256:940646d26b7f3bbb94ba3be704acb10aeedff1d58efb53a3c6bfbd1ceaabda43",
+  "staging_revision": "openagents-web-1-staging-keys-de8379d51a",
+  "production_revision": "coder-web-940646d26b-20261016134227",
+  "previous_production_revision": "coder-web-32ef9473ce-20261016122510",
+  "contract": {
+    "fixture": "docs/sdk/openapi.app.json",
+    "operations": [
+      "GET /v1/keys",
+      "POST /v1/keys",
+      "DELETE /v1/keys/{id}"
+    ],
+    "auth": "Account-service live sess_ or oa_sk_ bearer; cookies and oak_ keys cannot manage keys.",
+    "api_key_workspace": "First workspace where the verified account is an owner; no caller-selected workspace or scopes.",
+    "creation_retry": "No idempotency deduplication; an uncertain creation must not be automatically replayed."
+  },
+  "checks": {
+    "rust": [
+      "cargo +1.97.1 test -p openagents-web key_ --lib: 10 passed, with real handler responses validated against the published JSON Schemas",
+      "cargo +1.97.1 test -p openagents-web app_openapi --lib: 4 passed after rebase",
+      "cargo +1.97.1 test -p openagents-web public_and_demo_pages_have_no_machine_talk --lib: passed after correcting the existing quickstart wording"
+    ],
+    "python": "5 public-reference drift tests passed; source inventory, standalone app slice (26 operations), System One generation and Computers code generation checks passed.",
+    "json_schema": "jsonschema 4.23.0: 7 schema definitions, 11 synthetic examples and 3 rejected invalid requests passed.",
+    "formatting": "Changed Rust files passed rustfmt; git diff --check passed."
+  },
+  "deployed_checks": {
+    "staging": {
+      "operations": 84,
+      "key_operations": 3,
+      "routing_probes": [
+        {
+          "method": "GET",
+          "url": "https://staging.openagents.com/v1/keys",
+          "status": 401,
+          "code": "signed_out"
+        },
+        {
+          "method": "POST",
+          "url": "https://staging.openagents.com/v1/keys",
+          "status": 401,
+          "code": "signed_out"
+        },
+        {
+          "method": "DELETE",
+          "url": "https://staging.openagents.com/v1/keys/schema-probe",
+          "status": 401,
+          "code": "signed_out"
+        }
+      ],
+      "credentials_used": false,
+      "keys_created": 0,
+      "keys_revoked": 0
+    },
+    "production": {
+      "operations": 84,
+      "key_operations": 3,
+      "routing_probes": [
+        {
+          "method": "GET",
+          "url": "https://api.openagents.com/v1/keys",
+          "status": 401,
+          "code": "signed_out"
+        },
+        {
+          "method": "POST",
+          "url": "https://api.openagents.com/v1/keys",
+          "status": 401,
+          "code": "signed_out"
+        },
+        {
+          "method": "DELETE",
+          "url": "https://api.openagents.com/v1/keys/schema-probe",
+          "status": 401,
+          "code": "signed_out"
+        },
+        {
+          "method": "GET",
+          "url": "https://openagents.com/v1/keys",
+          "status": 401,
+          "code": "signed_out"
+        },
+        {
+          "method": "POST",
+          "url": "https://openagents.com/v1/keys",
+          "status": 401,
+          "code": "signed_out"
+        },
+        {
+          "method": "DELETE",
+          "url": "https://openagents.com/v1/keys/schema-probe",
+          "status": 401,
+          "code": "signed_out"
+        },
+        {
+          "method": "GET",
+          "url": "https://openagents.com/api/v1/keys",
+          "status": 404
+        },
+        {
+          "method": "POST",
+          "url": "https://openagents.com/api/v1/keys",
+          "status": 404
+        },
+        {
+          "method": "DELETE",
+          "url": "https://openagents.com/api/v1/keys/schema-probe",
+          "status": 404
+        }
+      ],
+      "credentials_used": false,
+      "keys_created": 0,
+      "keys_revoked": 0
+    }
+  },
+  "discovery": {
+    "staging": {
+      "at_utc": "2026-10-16T13:42:02.640831+00:00",
+      "api": "https://staging.openagents.com",
+      "website": "https://staging.openagents.com",
+      "schema_sha256": "5fc0096e75ec84f6aed5b9142049655648b412cfc40f4b24184aacf074b4e395",
+      "operations": 84,
+      "systemone_slice": "matches owning generated operations and components",
+      "discovery": "agent card, API catalog, MCP card, llms.txt and guide passed",
+      "unpublished_operations": "classification and jobs absent",
+      "malformed_calls": [],
+      "browser_assets": "unchanged"
+    },
+    "production": {
+      "at_utc": "2026-10-16T13:43:26.427726+00:00",
+      "api": "https://api.openagents.com",
+      "website": "https://openagents.com",
+      "schema_sha256": "1be3ba57fe2156606840bf26691bdaef29d1c40cab512dd749710fd8a35ef972",
+      "operations": 84,
+      "systemone_slice": "matches owning generated operations and components",
+      "discovery": "agent card, API catalog, MCP card, llms.txt and guide passed",
+      "unpublished_operations": "classification and jobs absent",
+      "malformed_calls": [],
+      "browser_assets": "unchanged"
+    }
+  },
+  "cleanup": {
+    "live_keys_created": 0,
+    "live_keys_revoked": 0,
+    "live_credentials_used": false,
+    "live_inference_calls": 0,
+    "owner_data_accessed": false,
+    "synthetic_accounts": "Temporary isolated fake-GitHub/account-service fixtures; no real home or account.",
+    "cancelled_build": "bf095e52-ed53-4fcd-b79f-a527bc66717e was cancelled in favor of the newer main build; its local source export was removed.",
+    "infrastructure": "No new persistent test service or machine. Existing web services now serve the verified image."
+  },
+  "limits": [
+    "Authenticated key creation and revocation were tested with isolated handlers, not live account credentials.",
+    "This qualifies the existing HTTP routes; SDK facade methods and package publication are separate work."
+  ]
+}

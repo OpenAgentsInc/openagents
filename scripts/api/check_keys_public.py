@@ -49,7 +49,7 @@ def check(api, website):
                 assert headers['Deprecation'] == 'true'
             probes.append({'method': method, 'url': base + path, 'status': status,
                            'code': body['error']['code']})
-    return {'operations': operations, 'key_operations': 3, 'signed_out_probes': probes,
+    return {'operations': operations, 'key_operations': 3, 'routing_probes': probes,
             'credentials_used': False, 'keys_created': 0, 'keys_revoked': 0}
 
 
@@ -63,7 +63,7 @@ def main():
     if args.output:
         args.output.write_text(json.dumps(result, indent=2) + '\n')
     print(f"PASS key reference: {result['operations']} operations; "
-          f"{len(result['signed_out_probes'])} signed-out probes; no credentials or key changes")
+          f"{len(result['routing_probes'])} routing/auth probes; no credentials or key changes")
 
 
 if __name__ == '__main__':

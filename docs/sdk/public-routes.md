@@ -149,6 +149,12 @@ cannot be recovered from a list. Inspect the list before deciding what to
 revoke or create. Revoking an already revoked sign-in key returns
 `404 unknown_key`. These operations neither run a model nor make a payment.
 
+The [key contract evidence](keys-evidence.json) records the implementation,
+response-schema tests, deployed image, staging and production probes, and
+cleanup. Recheck a deployment without credentials or key changes with
+`python3 scripts/api/check_keys_public.py`; set both `--api` and `--website`
+to `https://staging.openagents.com` for staging.
+
 ## Composition and manual checks
 
 The gateway keeps its existing schema generator. The web front normalizes its
