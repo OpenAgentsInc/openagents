@@ -1,0 +1,71 @@
+{
+  "issue": 11829,
+  "desktop_repository": "https://github.com/OpenAgentsInc/coder-desktop",
+  "desktop_commit": "420bbd8e7ae5dfd28e761d39f5ece446ee075d29",
+  "sdk_repository": "https://github.com/OpenAgentsInc/openagents",
+  "sdk_commit": "4b5b70d72b1f1d142170417c283937876dc5734d",
+  "platform": {
+    "os": "macOS 26.4",
+    "build": "25E246",
+    "architecture": "arm64",
+    "rust": "1.98.1"
+  },
+  "checks": [
+    {
+      "command": "cargo +1.97.1 test -p openagents-sdk",
+      "passed": 16
+    },
+    {
+      "command": "cargo test -p coder-account -p coder-brand",
+      "passed": 14
+    },
+    {
+      "command": "cargo build -p zeron-ui --example account-fixture --features account-fixture",
+      "result": "passed"
+    },
+    {
+      "command": "openagents browser run -- python3 scripts/check-account-fixture.py BINARY SCRATCH",
+      "result": "passed"
+    },
+    {
+      "command": "rustfmt --check --edition 2024 --config skip_children=true (new Rust files); git diff --check",
+      "result": "passed"
+    }
+  ],
+  "native_journey": {
+    "bundle_id": "com.openagents.coder.desktop.dev.account-fixture",
+    "surface": "Real GPUI Shell sidebar; synthetic local workspace; no engine or provider process",
+    "approval": "Local HTML approval form opened and approved in a fresh Chrome profile",
+    "captures": [
+      "waiting.png",
+      "signed-in.png",
+      "signed-out.png",
+      "browser-approval.png"
+    ],
+    "checked": [
+      "approval code and Coder Desktop app/computer labels",
+      "actual account label",
+      "local credential removal",
+      "remote app-session revocation"
+    ],
+    "cleanup": "Native process exited; temporary browser profile removed; all credentials and API resources were synthetic and local"
+  },
+  "failure_coverage": [
+    "denial and cancellation",
+    "restart validation",
+    "expired and revoked sessions",
+    "account discovery outage",
+    "save failure with revocation",
+    "offline sign-out",
+    "refused deletion blocks restore",
+    "late restore and blocked save after sign-out",
+    "quitting before cleanup",
+    "profile/API/website credential isolation",
+    "live lease expiry"
+  ],
+  "limitations": [
+    "Real macOS Keychain prompts remain an owner check in NEEDS_OWNER.md; no automated writes to owner Keychain",
+    "Credential storage UI is macOS-only",
+    "History UI is delivered separately in #11830 and #11831"
+  ]
+}

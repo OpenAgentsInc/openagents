@@ -1,3 +1,12 @@
+## Check the Coder Desktop Keychain prompt (#11829)
+
+On your Mac, sign in to Coder Desktop, allow its own Keychain entry, restart,
+and sign out. Confirm that it displays your OpenAgents account and leaves your
+provider logins and local workspace intact. The native shell/browser fixture and
+injected failure tests pass; automated checks deliberately do not write to the
+owner's Keychain or use the owner's GitHub session. macOS is the first supported
+credential-store platform.
+
 ## Qualify the native ENV providers on disposable accounts (#11736)
 
 Install the standalone `env-host` SSH helper and a pinned host executable on a

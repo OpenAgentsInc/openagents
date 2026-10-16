@@ -84,8 +84,8 @@ desktop:
 | URL scheme | `coder-desktop://` | not registered |
 
 The bundle ID isn't `com.openagents.coder`, which is the iPhone app's App
-Store record and the Android package. Zeron's update feed, sign-in and hosted sync are off, so the app
-runs local and account-free and never contacts Zeron's services. An installed Coder,
+Store record and the Android package. Zeron's update feed, sign-in, and hosted
+sync are off. Local workspaces remain independent of OpenAgents account login. An installed Coder,
 Zeron and the OpenAgents desktop can run side by side. Set
 `ZERON_DEV_BUILD_ONLY=1` to build without opening the bundle. The binary
 crate keeps its upstream name (`cargo build -p zeron`).
@@ -93,6 +93,21 @@ crate keeps its upstream name (`cargo build -p zeron`).
 The fork's [FORK.md](https://github.com/OpenAgentsInc/coder-desktop/blob/main/FORK.md)
 lists every identity seam, what's still named Zeron, and the platform matrix
 (only macOS checked so far). The values live in one crate, `crates/brand`.
+
+## Account sign-in
+
+The macOS sidebar now signs in through the public OpenAgents Rust SDK (#11829).
+Approve the code in your browser. Coder saves this app's session in its own
+Keychain entry, validates the account after restart, and revokes the session on
+sign-out. Profile and deployment changes invalidate old callbacks; expired
+sessions ask for login again. Local workspaces and provider logins stay separate.
+Other platforms do not show this control yet.
+
+The [auth qualification record](auth-client-evidence.json) identifies the tested
+SDK and desktop commits. The native shell fixture uses a local approval page and
+injected credentials; it never starts an engine or accesses the owner's Keychain.
+The real Keychain prompt is an owner check in `NEEDS_OWNER.md`. History sidebar
+and transcript work follows in #11830 and #11831.
 
 ## Appearance
 
