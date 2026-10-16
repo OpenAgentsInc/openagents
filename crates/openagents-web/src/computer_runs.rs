@@ -324,7 +324,7 @@ pub(crate) async fn start(
                 .create_request(CreateOptions {
                     chat: Some(chat.into()),
                     environment: Some(turn.environment.clone()),
-                    version: Some(turn.version_id.clone()),
+                    version: Some(turn.version.to_string()),
                     size: Some(turn.size.clone()),
                     idempotency_key: Some(format!("chat-{chat}")),
                     ..Default::default()

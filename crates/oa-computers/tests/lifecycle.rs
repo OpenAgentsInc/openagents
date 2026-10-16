@@ -1390,3 +1390,141 @@ async fn public_command_credentials_are_scoped_ephemeral_and_never_replayed() {
         wait_for(&base,"acct-a",id,|v|v["state"]=="deleted").await;
     }).await;
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_wake_during_command_cleanup_keeps_its_new_intent_after_restart() {
+    let Some(admin) = admin() else {
+        return;
+    };
+    let (db, _) = Db::scratch(&admin).await.unwrap();
+    let store = Store::new(db.clone());
+    let dir = tempfile::tempdir().unwrap();
+    let base = api(store.clone(), FakeDriver::new(dir.path()).capabilities()).await;
+    let (_, made) = call(
+        reqwest::Method::POST,
+        format!("{base}/v1/computers"),
+        "acct-race",
+        Some(json!({"idempotency_key":"wake-race"})),
+    )
+    .await;
+    let id = made["id"].as_str().unwrap();
+    let (_, command) = call(
+        reqwest::Method::POST,
+        format!("{base}/v1/computers/{id}/commands"),
+        "acct-race",
+        Some(json!({"command":"true","idempotency_key":"one-command"})),
+    )
+    .await;
+    assert!(command["id"].as_str().unwrap().starts_with("trn_"));
+    let finishing = store.get("acct-race", id).await.unwrap().unwrap();
+    assert_eq!(
+        call(
+            reqwest::Method::POST,
+            format!("{base}/v1/computers/{id}/stop"),
+            "acct-race",
+            None
+        )
+        .await
+        .0,
+        202
+    );
+    assert_eq!(
+        call(
+            reqwest::Method::POST,
+            format!("{base}/v1/computers/{id}/wake"),
+            "acct-race",
+            None
+        )
+        .await
+        .0,
+        202
+    );
+    let restarted = Store::new(db);
+    use oa_computers::store::Desired;
+    assert!(
+        !restarted
+            .settle_desired(
+                id,
+                finishing.intent_generation,
+                Desired::Running,
+                Desired::Stopped
+            )
+            .await
+            .unwrap()
+    );
+    let woken = restarted.get("acct-race", id).await.unwrap().unwrap();
+    assert_eq!(woken.desired, Desired::Running);
+    assert!(woken.intent_generation > finishing.intent_generation);
+    let (_, next) = call(
+        reqwest::Method::POST,
+        format!("{base}/v1/computers/{id}/commands"),
+        "acct-race",
+        Some(json!({"command":"echo next","idempotency_key":"next-command"})),
+    )
+    .await;
+    assert!(next["id"].is_string());
+    assert!(
+        !restarted
+            .settle_desired(
+                id,
+                woken.intent_generation,
+                Desired::Running,
+                Desired::Stopped
+            )
+            .await
+            .unwrap()
+    );
+    let latest = restarted.get("acct-race", id).await.unwrap().unwrap();
+    assert!(
+        restarted
+            .settle_desired(
+                id,
+                latest.intent_generation,
+                Desired::Running,
+                Desired::Stopped
+            )
+            .await
+            .unwrap()
+    );
+    assert_eq!(
+        restarted
+            .get("acct-race", id)
+            .await
+            .unwrap()
+            .unwrap()
+            .desired,
+        Desired::Stopped
+    );
+    // Repeating the automatic completion cannot affect a later wake.
+    assert_eq!(
+        call(
+            reqwest::Method::POST,
+            format!("{base}/v1/computers/{id}/wake"),
+            "acct-race",
+            None
+        )
+        .await
+        .0,
+        202
+    );
+    assert!(
+        !restarted
+            .settle_desired(
+                id,
+                latest.intent_generation,
+                Desired::Running,
+                Desired::Stopped
+            )
+            .await
+            .unwrap()
+    );
+    assert_eq!(
+        restarted
+            .get("acct-race", id)
+            .await
+            .unwrap()
+            .unwrap()
+            .desired,
+        Desired::Running
+    );
+}

@@ -64,7 +64,8 @@ lengthless `POST` before it reaches the API. The server's internal transport
 sets this header for stop and wake; public SDK transports must do the same.
 
 Create accepts optional `chat`, `size`, `environment`, and `version`. A chat
-must belong to the account. Environment and version must be supplied together;
+must belong to the account. `version` is the saved version number as a string,
+such as `"1"`, rather than its internal record ID. Supply environment and version together;
 the server resolves the saved version's image only after checking ownership.
 A public caller cannot supply a raw provider image or owner. Without an
 environment, the service uses its configured default runtime. Organization
@@ -76,7 +77,8 @@ Use a key of 1–128 ASCII letters, digits, `_`, `-`, or `.`, not starting with
 immutable create request returns `409 idempotency_conflict`. Keys remain bound
 after deletion, including when the chat gets a replacement computer. A keyed
 create retry does not undo a later stop; use wake explicitly. The internal
-legacy chat ensure without a key keeps its previous wake behavior.
+legacy chat ensure without a key keeps its previous wake behavior. Delayed
+command cleanup cannot replace a newer wake, stop, delete, or queued command.
 
 Admission serializes per account in PostgreSQL and counts computers still
 awaiting deletion. The initial limit is 20 unsettled computers per account;

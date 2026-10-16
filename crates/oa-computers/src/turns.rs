@@ -169,7 +169,7 @@ impl Store {
         )
         .await?;
         c.execute(
-            "UPDATE computers.computers SET desired = 'running', next_attempt_at = now(), attempts = 0
+            "UPDATE computers.computers SET desired = 'running', intent_generation = intent_generation + 1, next_attempt_at = now(), attempts = 0
              WHERE id = $1 AND desired <> 'deleted'",
             &[&computer],
         )
@@ -680,7 +680,12 @@ pub async fn run_next<D: Driver + Clone + 'static>(
     // next turn or wake.
     if store.next_turn(&e.id).await.map_err(io)?.is_none() {
         let _ = store
-            .settle_desired(&e.id, Desired::Running, Desired::Stopped)
+            .settle_desired(
+                &e.id,
+                e.intent_generation,
+                Desired::Running,
+                Desired::Stopped,
+            )
             .await;
     } else {
         let _ = store.poke(&e.id).await;

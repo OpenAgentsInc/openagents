@@ -201,9 +201,14 @@ impl<D: Drivers + 'static> Reconciler<D> {
                 >= self.settings.keep_stopped.as_millis() as u64
             && self
                 .store
-                .settle_desired(&e.id, Desired::Stopped, Desired::Deleted)
+                .settle_desired(
+                    &e.id,
+                    e.intent_generation,
+                    Desired::Stopped,
+                    Desired::Deleted,
+                )
                 .await
-                .is_ok()
+                .is_ok_and(|changed| changed)
         {
             e.desired = Desired::Deleted;
         }
@@ -276,7 +281,12 @@ impl<D: Drivers + 'static> Reconciler<D> {
                     // turn): the intent follows, so it is not woken again.
                     let _ = self
                         .store
-                        .settle_desired(&e.id, Desired::Running, Desired::Stopped)
+                        .settle_desired(
+                            &e.id,
+                            e.intent_generation,
+                            Desired::Running,
+                            Desired::Stopped,
+                        )
                         .await;
                 }
                 match s {

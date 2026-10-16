@@ -53,6 +53,7 @@ pub struct Entry {
     pub image: Option<String>,
     pub size: String,
     pub desired: Desired,
+    pub intent_generation: i64,
     pub phase: String,
     pub record: Computer,
     pub attempts: i32,
@@ -63,7 +64,7 @@ pub struct Entry {
 }
 
 const COLUMNS: &str = "id, owner, chat, driver, image, size, desired, phase, record, attempts, \
-     last_error, extract(epoch from created_at)::bigint, extract(epoch from updated_at)::bigint, binding";
+     last_error, extract(epoch from created_at)::bigint, extract(epoch from updated_at)::bigint, binding, intent_generation";
 
 fn entry(row: &Row) -> Result<Entry, DbError> {
     let record: serde_json::Value = row.get(8);
@@ -77,6 +78,7 @@ fn entry(row: &Row) -> Result<Entry, DbError> {
         image: row.get(4),
         size: row.get(5),
         desired: Desired::parse(row.get(6)).unwrap_or(Desired::Stopped),
+        intent_generation: row.get(14),
         phase: row.get(7),
         record,
         attempts: row.get(9),
@@ -495,7 +497,7 @@ impl Store {
         let c = self.db.client().await?;
         let row = c.query_one(
             "WITH changed AS (
-                UPDATE computers.computers SET desired=$3,next_attempt_at=now(),attempts=0,updated_at=now()
+                UPDATE computers.computers SET desired=$3,intent_generation=intent_generation+1,next_attempt_at=now(),attempts=0,updated_at=now()
                 WHERE id=$1 AND owner=$2 AND (desired<>'deleted' OR $3='deleted') RETURNING id
              ), cancelled AS (
                 UPDATE computers.commands SET cancel_requested=true,
@@ -511,21 +513,24 @@ impl Store {
         Ok(row.get::<_, i64>(0) == 1)
     }
 
-    /// The reconciler's own intent change (a lifecycle policy stopped it).
+    /// Change an automatic intent only if no newer request has arrived.
     pub async fn settle_desired(
         &self,
         id: &str,
+        intent_generation: i64,
         from: Desired,
         to: Desired,
-    ) -> Result<(), DbError> {
+    ) -> Result<bool, DbError> {
         let c = self.db.client().await?;
-        c.execute(
-            "UPDATE computers.computers SET desired = $3, updated_at = now()
-             WHERE id = $1 AND desired = $2",
-            &[&id, &from.as_str(), &to.as_str()],
-        )
-        .await?;
-        Ok(())
+        let changed = c
+            .execute(
+                "UPDATE computers.computers SET desired = $3,
+                 intent_generation = intent_generation + 1, updated_at = now()
+             WHERE id = $1 AND desired = $2 AND intent_generation = $4",
+                &[&id, &from.as_str(), &to.as_str(), &intent_generation],
+            )
+            .await?;
+        Ok(changed == 1)
     }
 
     /// Claim the next due computer for `holder` for `lease`.
