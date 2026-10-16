@@ -87,6 +87,11 @@ pub trait Provider {
     fn collect(&mut self, resource: &Realized) -> Result<Vec<(String, Vec<u8>)>>;
     /// Destroy a created resource by its exact identity and generation.
     fn destroy(&mut self, resource: &Realized) -> Teardown;
+    /// Observe the original teardown without repeating it. Missing receipts do
+    /// not authorize a second delete, and presence alone cannot prove success.
+    fn reconcile_teardown(&mut self, _resource: &Realized, _action: &str) -> Teardown {
+        Teardown::Unknown("this provider cannot verify the original teardown".into())
+    }
     /// Detach from an adopted resource. It must keep running.
     fn detach(&mut self, resource: &Realized) -> Teardown;
 }

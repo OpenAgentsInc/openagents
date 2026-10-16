@@ -64,7 +64,10 @@ The `openagents env` alias waits for the next Coder release; use this binary.
   are destroyed by exact identity and generation; adopted resources are only
   detached. Unknown or failed teardown stays `unknown` or `failed`; only a
   confirmed teardown releases the lease. An unknown charge keeps the
-  reservation hold even after release.
+  reservation hold even after release. Cleanup intent and copied outputs persist
+  before deletion; recovery probes the original teardown without deleting again.
+  Resource lookup supplies no cost receipt and cannot turn an unknown charge
+  into zero.
 
 Accounting keeps measured, declared, estimated, and unknown cost entries
 separate and does not count an identical receipt twice.
@@ -81,9 +84,20 @@ separate and does not count an identical receipt twice.
   has no side-effect-free probe, so SSH adoption and lost-create lookup refuse
   or stay unknown. Client exit and tunnel loss remain observational.
 
-Cloud-VM placement, bootstrap operations, CAP publication of these operations,
-and COORD claim validation beyond exact retained bytes are not implemented
-here. All fixtures use throwaway keys, local directories, and fake allowance
+`transport` publishes the allocator's exact native CAP, lock, context, and
+requirements. `invoke` signs a management CJ request using the caller's key;
+`serve` handles it through the existing owner/participant checks. The endpoint
+uses one durable CJ identity book for all leases and retains the complete RUN
+chain. Exact retries return the original signed response, including after
+restart. `recover` uses the saved domain result or returns an explicit unknown
+and fences a late original handler. Recovery never starts another provider
+operation. A completed management call can report unknown resource effects;
+it does not establish that allocation or cleanup succeeded. The endpoint
+supports a 1 MiB response bound; unsupported time bounds and CJ cancellation
+refuse. Lease release and participant fencing remain separate admitted controls.
+
+Cloud-VM placement, bootstrap operations, and COORD claim validation beyond
+exact retained bytes remain in #11736. All fixtures use throwaway keys, local directories, and fake allowance
 units; nothing here moves money.
 
 The store retains at most 64 leases, plus the shared artifact limits from

@@ -92,6 +92,8 @@ struct Lease {
     entries: Vec<Value>,
     cleanup: Option<Value>,
     cleanup_status: Option<String>,
+    #[serde(default)]
+    cleanup_intent: Option<Vec<Value>>,
     run_records: Vec<Value>,
     generation: u64,
     hold_released: bool,
@@ -117,8 +119,10 @@ impl Lease {
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct State {
-    policy: Policy,
+pub(crate) struct State {
+    pub(crate) policy: Policy,
+    #[serde(default)]
+    pub(crate) transport: Option<crate::transport::Transport>,
     holds: BTreeMap<String, u64>,
     priors: BTreeMap<String, Prior>,
     signers: BTreeMap<String, BTreeSet<String>>,
@@ -149,9 +153,9 @@ pub struct MaterializeSpec {
 }
 
 pub struct Allocator {
-    store: Artifacts,
-    signer: RelaySigner,
-    secret: SecretKey,
+    pub(crate) store: Artifacts,
+    pub(crate) signer: RelaySigner,
+    pub(crate) secret: SecretKey,
     provider: RefCell<Box<dyn Provider>>,
     binding: String,
 }
@@ -236,16 +240,19 @@ impl Allocator {
             ..allocator
         })
     }
+    pub(crate) fn provider_binding(&self) -> String {
+        self.provider.borrow().binding()
+    }
     pub fn pubkey(&self) -> &str {
         self.signer.pubkey()
     }
     pub fn store(&self) -> &Artifacts {
         &self.store
     }
-    fn state(&self) -> Result<State> {
+    pub(crate) fn state(&self) -> Result<State> {
         self.store.load(&self.signer)
     }
-    fn save(&self, state: &State) -> Result<()> {
+    pub(crate) fn save(&self, state: &State) -> Result<()> {
         self.store.save(state, &self.signer)
     }
 
@@ -272,10 +279,89 @@ impl Allocator {
         Ok(reference)
     }
 
+    pub(crate) fn cj_principal(&self, state: &State, principal: &str, input: &Value) -> bool {
+        state.policy.owners.contains(principal)
+            || state.policy.controllers.contains(principal)
+            || state.policy.readers.contains(principal)
+            || input["participant"] == principal
+                && state.leases.values().any(|l| {
+                    l.attachment.as_ref().is_some_and(|a| {
+                        a.grant == input["attachment"] && a.participants.contains(principal)
+                    })
+                })
+    }
+    pub(crate) fn note_cj_input(
+        &self,
+        state: &mut State,
+        event: &Event,
+        body: &Value,
+        principal: &str,
+    ) -> Result<Value> {
+        let reference = self.store.put_json(body)?;
+        let digest = digest_of(&reference).to_string();
+        state
+            .signers
+            .entry(digest.clone())
+            .or_default()
+            .insert(principal.to_string());
+        let event_ref = self.store.put(
+            &serde_json::to_vec(event).map_err(|e| e.to_string())?,
+            "application/json",
+            None,
+        )?;
+        state
+            .declarations
+            .entry(format!("{digest}:{principal}"))
+            .or_insert(event_ref);
+        Ok(reference)
+    }
+    pub(crate) fn interrupted_cj(
+        &self,
+        state: &mut State,
+        principal: &str,
+        input: &Value,
+        now: u64,
+    ) -> Result<Value> {
+        let reference = self.store.put_json(input)?;
+        let lease = state
+            .leases
+            .values()
+            .find(|l| l.request_ref == reference && l.owner == principal)
+            .cloned();
+        // A missing transport reply says nothing about provider effects. The
+        // original lease and reservation, if present, keep their obligations.
+        self.result(
+            state,
+            principal,
+            &reference,
+            "unknown",
+            lease.as_ref(),
+            None,
+            Some("unavailable"),
+            now,
+        )
+    }
     /// Authenticate a private declaration and retain its exact bytes.
-    fn authenticate(&self, state: &mut State, event: &Event) -> Result<(String, Value, Value)> {
+    fn authenticate(
+        &self,
+        state: &mut State,
+        event: &Event,
+        now: u64,
+    ) -> Result<(String, Value, Value)> {
+        if event.kind == nostr::execution::REQUEST_KIND {
+            return self.authenticate_cj(state, event, now);
+        }
         let opened =
             nostr::private_artifact::open(event, &self.secret).map_err(|e| e.to_string())?;
+        if opened.recipient() != self.pubkey()
+            || opened.body().issued_at > now.saturating_add(300)
+            || now > opened.body().retain_until
+        {
+            return Err(refuse(
+                "not_admitted",
+                "private declaration time or recipient",
+            ));
+        }
         let bytes = opened
             .inline_bytes()
             .ok_or("malformed: declarations carry their artifact inline")?
@@ -482,6 +568,12 @@ impl Allocator {
     pub fn submit(&self, bundle: &Bundle, now: u64) -> Result<Value> {
         let _lock = self.store.lock()?;
         let mut state = self.state()?;
+        if bundle.artifacts.len() > 256
+            || bundle.declarations.len() > 64
+            || bundle.artifacts.values().map(Vec::len).sum::<usize>() > 8 * 1048576
+        {
+            return Err(refuse("limit_exceeded", "operation input closure"));
+        }
         for (digest, bytes) in &bundle.artifacts {
             if digest_bytes(bytes) != *digest {
                 return Err(refuse("identity_mismatch", "attached artifact digest"));
@@ -489,9 +581,9 @@ impl Allocator {
             self.store.put(bytes, "application/octet-stream", None)?;
         }
         for declaration in &bundle.declarations {
-            self.authenticate(&mut state, declaration)?;
+            self.authenticate(&mut state, declaration, now)?;
         }
-        let (signer, body, input) = self.authenticate(&mut state, &bundle.event)?;
+        let (signer, body, input) = self.authenticate(&mut state, &bundle.event, now)?;
         if let Err(e) = env::validate(&body) {
             let reason = e.code.as_str();
             let result = self.result(
@@ -504,6 +596,7 @@ impl Allocator {
                 Some(reason),
                 now,
             )?;
+            self.remember_cj(&mut state, &bundle.event, &result);
             self.save(&state)?;
             return Ok(result);
         }
@@ -556,6 +649,7 @@ impl Allocator {
                 )?
             }
         };
+        self.remember_cj(&mut state, &bundle.event, &result);
         self.save(&state)?;
         Ok(result)
     }
@@ -740,6 +834,7 @@ impl Allocator {
             entries: Vec::new(),
             cleanup: None,
             cleanup_status: None,
+            cleanup_intent: None,
             run_records: Vec::new(),
             generation: 0,
             hold_released: false,
@@ -899,10 +994,8 @@ impl Allocator {
             match found {
                 Lookup::Found(realized) => {
                     lease.allocation = "created".into();
-                    lease
-                        .entries
-                        .retain(|e| !(e["phase"] == "allocate" && e["kind"] == "unknown"));
-                    Self::charge(&mut lease, "allocate", Cost::Measured(0), None);
+                    // Lookup supplies no cost receipt. Keep any unknown charge.
+                    Self::charge(&mut lease, "allocate", Cost::Unknown, None);
                     self.bind_resource(&mut state, &mut lease, realized, now)?;
                     self.transition(
                         &mut state,
@@ -915,10 +1008,8 @@ impl Allocator {
                 }
                 Lookup::Absent => {
                     lease.allocation = "failed".into();
-                    lease
-                        .entries
-                        .retain(|e| !(e["phase"] == "allocate" && e["kind"] == "unknown"));
-                    Self::charge(&mut lease, "allocate", Cost::Measured(0), None);
+                    // Lookup supplies no cost receipt. Keep any unknown charge.
+                    Self::charge(&mut lease, "allocate", Cost::Unknown, None);
                     Self::release_hold(&mut state, &mut lease);
                     self.transition(
                         &mut state,
@@ -1828,7 +1919,15 @@ impl Allocator {
             fencing.extend(attachment.fencing.values().map(|(_, r)| r.clone()));
             reason = "participating dispatchers are not all fenced".into();
         } else {
-            let collected = self.provider.borrow_mut().collect(&realized);
+            let reconciling = lease.cleanup_intent.is_some();
+            if let Some(saved) = &lease.cleanup_intent {
+                retained = saved.clone();
+            }
+            let collected = if reconciling {
+                Ok(Vec::new())
+            } else {
+                self.provider.borrow_mut().collect(&realized)
+            };
             match collected {
                 Err(e) => {
                     status = "failed";
@@ -1852,15 +1951,40 @@ impl Allocator {
                         status = "failed";
                         reason = "retention failed; nothing was deleted".into();
                     } else {
-                        let teardown = if action == "destroy" {
-                            self.provider.borrow_mut().destroy(&realized)
+                        let teardown = if reconciling {
+                            self.provider
+                                .borrow_mut()
+                                .reconcile_teardown(&realized, action)
                         } else {
-                            self.provider.borrow_mut().detach(&realized)
+                            lease.cleanup_intent = Some(retained.clone());
+                            lease.cleanup_status = Some("pending".into());
+                            Self::charge(lease, "cleanup", Cost::Unknown, None);
+                            self.transition(
+                                state,
+                                lease,
+                                "draining",
+                                "dispatched",
+                                json!({"phase":"cleanup","action":action,"resource":resource}),
+                                now,
+                            )?;
+                            state.leases.insert(lease.id.clone(), lease.clone());
+                            self.save(state)?;
+                            state.leases.remove(&lease.id);
+                            if action == "destroy" {
+                                self.provider.borrow_mut().destroy(&realized)
+                            } else {
+                                self.provider.borrow_mut().detach(&realized)
+                            }
                         };
                         match teardown {
                             Teardown::Confirmed(receipt, cost) => {
                                 let reference =
                                     self.store.put(&receipt, "application/json", None)?;
+                                if !reconciling && !matches!(cost, Cost::Unknown) {
+                                    lease.entries.retain(|e| {
+                                        !(e["phase"] == "cleanup" && e["kind"] == "unknown")
+                                    });
+                                }
                                 Self::charge(lease, "cleanup", cost, Some(reference.clone()));
                                 provider_ref = reference;
                                 status = "confirmed";

@@ -136,7 +136,11 @@ impl Provider for LocalDirectories {
             }
             match builder.create(&path) {
                 Ok(()) => {}
-                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                    return Err(
+                        "unknown: an unmarked resource already occupies this identity".into(),
+                    );
+                }
                 Err(e) => return Err(e.to_string()),
             }
             let bytes = jcs(&marker).map_err(|e| e.to_string())?;
@@ -219,6 +223,21 @@ impl Provider for LocalDirectories {
             return Teardown::Unknown("resource still present".into());
         }
         Teardown::Confirmed(receipt("destroy", resource, "absent"), Cost::Measured(0))
+    }
+    fn reconcile_teardown(&mut self, resource: &Realized, action: &str) -> Teardown {
+        if action == "detach" {
+            return self.detach(resource);
+        }
+        match self.path(&resource.resource) {
+            Ok(path) if !path.exists() => Teardown::Confirmed(
+                receipt("destroy", resource, "observed-absent"),
+                Cost::Measured(0),
+            ),
+            Ok(_) => {
+                Teardown::Unknown("the original resource has not been confirmed absent".into())
+            }
+            Err(e) => Teardown::Unknown(e),
+        }
     }
     fn detach(&mut self, resource: &Realized) -> Teardown {
         match self.exact(resource) {

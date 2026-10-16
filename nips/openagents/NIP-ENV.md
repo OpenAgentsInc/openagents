@@ -575,3 +575,19 @@ and fencing records. State `record` fields reference RUN records of the
 allocation run; the allocator is that run's controller. Bootstrap operations,
 cloud-VM placement, and COORD claim enforcement beyond exact retained bytes are
 not part of this profile yet; a definition with a bootstrap step refuses.
+
+
+The allocator's native management CAP/CJ endpoint pins the exact operation
+schema, policy, lock, context, and requirements and uses one durable identity
+book across leases. Domain mutations check the same invocation fence under the
+allocator lock. Exact replies and full RUN terminal proofs survive restart.
+Recovery returns a saved domain result or an explicit unknown and fences late
+handlers; it does not repeat provisioning or teardown. A terminal management
+receipt does not settle an unresolved resource. The endpoint advertises CJ
+cancellation as unsupported; lease release and participant fencing use their
+own admitted controls.
+
+Cleanup persists intent and copied outputs before a provider delete. An
+uncertain delete is recovered only with a side-effect-free provider probe;
+it is never repeated. A resource lookup does not establish cost, so unknown
+charges and their holds remain until actual accounting evidence resolves them.

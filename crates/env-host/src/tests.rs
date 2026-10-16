@@ -38,6 +38,7 @@ struct Faults {
     fail_collect: bool,
     drop_component: Option<String>,
     creates: usize,
+    destroys: usize,
 }
 
 struct Faulty {
@@ -83,10 +84,14 @@ impl Provider for Faulty {
         self.inner.collect(resource)
     }
     fn destroy(&mut self, resource: &Realized) -> Teardown {
+        self.faults.borrow_mut().destroys += 1;
         if self.faults.borrow().destroy_unknown {
             return Teardown::Unknown("provider timeout".into());
         }
         self.inner.destroy(resource)
+    }
+    fn reconcile_teardown(&mut self, resource: &Realized, action: &str) -> Teardown {
+        self.inner.reconcile_teardown(resource, action)
     }
     fn detach(&mut self, resource: &Realized) -> Teardown {
         self.inner.detach(resource)
@@ -586,6 +591,22 @@ fn a_lost_create_is_reconciled_never_repeated() {
     let allocator = fx.allocator();
     let reconciled = allocator.reconcile(&lease_id, fx.now).unwrap();
     assert_eq!(reconciled["status"], "provisioning");
+    let state = allocator.store().json(&reconciled["state"]).unwrap();
+    let accounting = allocator.store().json(&state["accounting"]).unwrap();
+    assert!(
+        accounting["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|e| e["phase"] == "allocate" && e["kind"] == "unknown")
+    );
+    assert!(
+        !accounting["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|e| e["phase"] == "allocate" && e["kind"] == "measured")
+    );
     assert_eq!(fx.faults.borrow().creates, 1);
     assert_eq!(std::fs::read_dir(&fx.resources).unwrap().count(), 1);
     // A changed request under the same identity conflicts.
@@ -803,8 +824,30 @@ fn unknown_cleanup_is_not_released_and_keeps_its_hold() {
     assert_eq!(status["status"], "unknown");
     assert_eq!(status["held"], 4000);
     fx.faults.borrow_mut().destroy_unknown = false;
+    drop(allocator);
+    let allocator = fx.allocator();
     let retried = allocator.reconcile(&lease_id, fx.now).unwrap();
-    assert_eq!(retried["status"], "released");
+    assert_eq!(retried["status"], "unknown");
+    assert_eq!(fx.faults.borrow().destroys, 1);
+    // Complete the original provider operation, then observe its absence.
+    let cleanup = allocator.store().json(&status["cleanup"]).unwrap();
+    let resource = allocator.store().json(&cleanup["resource"]).unwrap();
+    let realized = Realized {
+        resource: resource["resource"].as_str().unwrap().into(),
+        generation: resource["generation"].as_str().unwrap().into(),
+        account: resource["account"].as_str().unwrap().into(),
+        ownership: allocator.store().get(&resource["ownership"]).unwrap(),
+    };
+    let mut provider = LocalDirectories::new(fx.resources.clone()).unwrap();
+    assert!(matches!(
+        provider.destroy(&realized),
+        Teardown::Confirmed(_, _)
+    ));
+    assert_eq!(
+        allocator.reconcile(&lease_id, fx.now).unwrap()["status"],
+        "released"
+    );
+    assert_eq!(fx.faults.borrow().destroys, 1);
     let status = allocator.status(&lease_id).unwrap();
     assert_eq!(
         allocator.store().json(&status["cleanup"]).unwrap()["status"],
@@ -988,4 +1031,172 @@ fn a_replayed_body_from_another_signer_cannot_block_the_owner() {
     assert_eq!(replay["reason"], "not_admitted");
     let owner = allocator.submit(&fx.bundle(OWNER, &body), fx.now).unwrap();
     assert_eq!(owner["status"], "accepted", "{owner}");
+}
+
+#[test]
+fn management_cj_pins_real_allocation_terminal_proof_and_restart_exact_reply() {
+    let mut fx = Fixture::new();
+    let allocator = fx.allocator();
+    let binding = allocator.transport().unwrap();
+    let card: Value = serde_json::from_slice(
+        &allocator
+            .store()
+            .get(&binding["target"]["artifact"])
+            .unwrap(),
+    )
+    .unwrap();
+    nostr::cap::parse_definition(&card).unwrap();
+    let body = fx.request_body(81, 4000, 1800);
+    let mut bad = binding.clone();
+    bad["context"] = binding["requirements"].clone();
+    let wrong = crate::transport::invoke(
+        &secret(OWNER),
+        allocator.pubkey(),
+        &bad,
+        body.clone(),
+        workspace_host::artifact::token(),
+        fx.now,
+    )
+    .unwrap();
+    assert!(allocator.serve(&wrong, &fx.artifacts, &[], fx.now).is_err());
+    assert_eq!(fx.faults.borrow().creates, 0);
+    let request = crate::transport::invoke(
+        &secret(OWNER),
+        allocator.pubkey(),
+        &binding,
+        body,
+        workspace_host::artifact::token(),
+        fx.now,
+    )
+    .unwrap();
+    let (response, files) = allocator
+        .serve(&request, &fx.artifacts, &[], fx.now)
+        .unwrap();
+    let opened = execution::open_request(
+        &request,
+        &pk(ALLOCATOR),
+        &secret(ALLOCATOR),
+        fx.now,
+        execution::Window::DEFAULT,
+    )
+    .unwrap();
+    let execution::Body::Execute(execute) = opened.body else {
+        panic!()
+    };
+    let result = execution::bind_worker_event(
+        &response,
+        &execution::Pending {
+            worker: &pk(ALLOCATOR),
+            customer: &pk(OWNER),
+            request: &execute.request,
+            attempt: 1,
+            execute_event: &request.id,
+        },
+        &secret(OWNER),
+    )
+    .unwrap();
+    nostr::run::terminal_from_result(&result, &files, &pk(ALLOCATOR)).unwrap();
+    let output: Value =
+        serde_json::from_slice(&files[result["output"]["digest"].as_str().unwrap()]).unwrap();
+    assert_eq!(output["status"], "accepted");
+    assert_eq!(fx.faults.borrow().creates, 1);
+    drop(allocator);
+    let allocator = fx.allocator();
+    assert_eq!(
+        allocator
+            .serve(&request, &fx.artifacts, &[], fx.now + 1)
+            .unwrap(),
+        (response.clone(), files.clone())
+    );
+    assert_eq!(
+        allocator.recover(&request, fx.now + 1000).unwrap(),
+        (response, files)
+    );
+    assert_eq!(fx.faults.borrow().creates, 1);
+}
+#[test]
+fn a_local_unmarked_partial_create_is_never_adopted_by_retrying_create() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut provider = LocalDirectories::new(temp.path().to_path_buf()).unwrap();
+    let Create::Created(resource, _) = provider.create("local", "key") else {
+        panic!()
+    };
+    let directory = provider.directory(&resource).unwrap();
+    std::fs::remove_file(directory.join(".openagents-env.json")).unwrap();
+    assert!(matches!(
+        provider.create("local", "key"),
+        Create::Unknown(_)
+    ));
+    assert!(matches!(
+        provider.lookup("local", "key"),
+        Lookup::Unknown(_)
+    ));
+    assert!(!directory.join(".openagents-env.json").exists());
+}
+
+#[test]
+fn interrupted_cj_recovery_fences_a_late_handler_without_starting_the_provider() {
+    let mut fx = Fixture::new();
+    let allocator = fx.allocator();
+    let body = fx.request_body(82, 4000, 1800);
+    let request = crate::transport::invoke(
+        &secret(OWNER),
+        allocator.pubkey(),
+        &allocator.transport().unwrap(),
+        body,
+        workspace_host::artifact::token(),
+        fx.now,
+    )
+    .unwrap();
+    let wrong = BTreeMap::from([("sha256:invalid".to_string(), vec![1])]);
+    assert!(allocator.serve(&request, &wrong, &[], fx.now).is_err());
+    assert_eq!(fx.faults.borrow().creates, 0);
+    let (response, files) = allocator.recover(&request, fx.now + 1).unwrap();
+    let opened = execution::open_request(
+        &request,
+        &pk(ALLOCATOR),
+        &secret(ALLOCATOR),
+        fx.now,
+        execution::Window::DEFAULT,
+    )
+    .unwrap();
+    let execution::Body::Execute(execute) = opened.body else {
+        panic!()
+    };
+    let result = execution::bind_worker_event(
+        &response,
+        &execution::Pending {
+            worker: &pk(ALLOCATOR),
+            customer: &pk(OWNER),
+            request: &execute.request,
+            attempt: 1,
+            execute_event: &request.id,
+        },
+        &secret(OWNER),
+    )
+    .unwrap();
+    let output: Value =
+        serde_json::from_slice(&files[result["output"]["digest"].as_str().unwrap()]).unwrap();
+    assert_eq!(output["status"], "unknown");
+    assert!(
+        allocator
+            .submit(
+                &Bundle {
+                    event: request.clone(),
+                    artifacts: fx.artifacts.clone(),
+                    declarations: vec![]
+                },
+                fx.now + 2
+            )
+            .unwrap_err()
+            .contains("fenced")
+    );
+    assert_eq!(
+        allocator
+            .serve(&request, &fx.artifacts, &[], fx.now + 2)
+            .unwrap(),
+        (response, files)
+    );
+    assert!(allocator.leases().unwrap().is_empty());
+    assert_eq!(fx.faults.borrow().creates, 0);
 }

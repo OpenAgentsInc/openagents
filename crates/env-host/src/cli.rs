@@ -17,7 +17,10 @@ pub const USAGE: &str = "usage: env-host ACTION --state DIR --key-file KEY [opti
   expire       --provider-root DIR
   status       --provider-root DIR --lease ID
   leases       --provider-root DIR
-  check        --provider-root DIR --attachment ID --fingerprint DIGEST";
+  check        --provider-root DIR --attachment ID --fingerprint DIGEST
+  transport    --provider-root DIR       show the exact controller endpoint
+  invoke       --input REQUEST          sign with the caller key; no state needed
+  serve|recover --provider-root DIR --input BUNDLE";
 
 fn read_secret(path: &Path) -> Result<secp256k1::SecretKey> {
     let metadata = std::fs::metadata(path).map_err(|e| e.to_string())?;
@@ -57,8 +60,20 @@ pub fn run(args: Vec<String>) -> Result<Value> {
             .ok_or_else(|| format!("malformed: missing value for {name}"))
     };
     let action = args[0].as_str();
-    let root = PathBuf::from(option("--state")?);
     let secret = read_secret(Path::new(&option("--key-file")?))?;
+    if action == "invoke" {
+        let input = json_file(&option("--input")?)?;
+        return serde_json::to_value(crate::transport::invoke(
+            &secret,
+            input["allocator"].as_str().ok_or("allocator")?,
+            &input["binding"],
+            input["body"].clone(),
+            input["request"].as_str().ok_or("request")?.into(),
+            crate::now(),
+        )?)
+        .map_err(|e| e.to_string());
+    }
+    let root = PathBuf::from(option("--state")?);
     if action == "init" {
         let policy: Policy = serde_json::from_value(json_file(&option("--policy")?)?)
             .map_err(|_| "malformed: policy")?;
@@ -69,6 +84,17 @@ pub fn run(args: Vec<String>) -> Result<Value> {
     let allocator = Allocator::open(root, secret, Box::new(provider))?;
     let now = crate::now();
     match action {
+        "transport" => allocator.transport(),
+        "serve" | "recover" => {
+            let bundle: Bundle = serde_json::from_value(json_file(&option("--input")?)?)
+                .map_err(|_| "malformed: bundle")?;
+            let (event, artifacts) = if action == "recover" {
+                allocator.recover(&bundle.event, now)?
+            } else {
+                allocator.serve(&bundle.event, &bundle.artifacts, &bundle.declarations, now)?
+            };
+            Ok(json!({"event":event,"artifacts":artifacts}))
+        }
         "submit" => {
             let bundle: Bundle = serde_json::from_value(json_file(&option("--input")?)?)
                 .map_err(|_| "malformed: bundle")?;
