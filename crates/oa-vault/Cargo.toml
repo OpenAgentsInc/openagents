@@ -12,6 +12,8 @@ base64 = "0.22"
 bip39 = { version = "2.2.2", default-features = false, features = ["std"] }
 getrandom = "0.3"
 hkdf = "0.12.4"
+# The sealed tier's HPKE (RFC 9180) wraps, requests, and replies.
+hpke = { version = "0.12", default-features = false, features = ["alloc", "x25519"] }
 scrypt = { version = "0.11.0", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

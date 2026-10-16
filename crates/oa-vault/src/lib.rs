@@ -10,6 +10,7 @@
 //!   data key lives only here, so rewriting the index without it, and
 //!   deleting the old epoch, shreds the file.
 //! - [`recovery`]: the 24-word recovery code.
+//! - [`sealed`]: the `sealed` tier's HPKE wrap, session request, and reply.
 //!
 //! Formats are normative in `nips/openagents/NIP-VAULT.md`; vectors are in
 //! `fixtures/nips/vault/`. Nothing here talks to a network, and no type
@@ -22,6 +23,7 @@ pub mod jcs;
 pub mod keys;
 pub mod object;
 pub mod recovery;
+pub mod sealed;
 pub mod slot;
 
 use std::fmt;

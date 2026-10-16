@@ -2,7 +2,9 @@
 
 `draft` `optional` — v1, 2026-10-10. **Tier `user` is implemented** (#11240):
 `crates/oa-vault`, the browser vault at openagents.com, and `openagents vault`.
-Tiers `sealed` and `operator` are designed, not built.
+**Tier `sealed` is implemented in Rust** (#11743): the HPKE wrap, session
+request and reply in `oa-vault`, and the client and attested-workload roles in
+`crates/vault-sealed`. Tier `operator` is designed, not built.
 The [shared contracts](contracts.md) are normative. The design, the threat
 model and the honest limits are in the
 [sensitive data vault](../../docs/security/sensitive-data-vault.md).
@@ -486,8 +488,25 @@ Tier `user` is implemented (#11240):
   `user` wrap, each slot method, the recovery code, a sealed index, and the
   refusal cases below). `cargo test -p oa-vault` checks them.
 
-The `sealed` and `operator` wraps, sessions and leases are designed here
-and not built; their vectors come with them.
+Tier `sealed` is implemented in Rust (#11743):
+
+- `crates/oa-vault` `sealed`: the HPKE `mode_psk` wrap (via the `hpke` crate,
+  RFC 9180), the `mode_base` session request bound to the endpoint event, and
+  replies bound to the lease. Vectors are in `fixtures/nips/vault/vectors.json`
+  under `sealed`: a tier-`sealed` object with its wrap and the refusal inputs
+  (wrong share, wrong system key, moved wrap).
+- `crates/vault-sealed`: the client role (endpoint verification through
+  `oa-att` at `tee-cloud`, system key certificates from the attested endpoint
+  only with an epoch rollback check, sealed objects with an optional device
+  copy, signed leases and revocations) and the workload role (system keys as
+  KMS ciphertext released only to the attested release, exact lease
+  admission, single use, revocation, and a log without content or keys).
+  Unsupported in this profile: lease `write_derived` and the `fast` route.
+  Both refuse.
+
+A deployed `vault` workload on attested hardware is not running yet. The
+browser and `openagents vault` sealed-tier controls wait for that deployment
+and a client release. Tier `operator` is designed here and not built.
 
 ## Conformance
 

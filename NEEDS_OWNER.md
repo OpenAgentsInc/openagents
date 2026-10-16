@@ -1,3 +1,14 @@
+## Deploy the sealed vault workload on attested hardware (#11743)
+
+The sealed vault tier works in Rust, against a fixture endpoint and a local
+key service. To use it with real files, run the `vault` workload as a
+Confidential Space release on Intel TDX. Bind its Cloud KMS key so that only
+that attested release can decrypt it, and publish its NIP-ATT release, head,
+and endpoint, including the HPKE session key. Then confirm that a client
+verifies the endpoint at `tee-cloud`, accepts its system key certificate, and
+opens one sealed file through a one-use lease. See
+[the sealed vault guide](crates/vault-sealed/README.md).
+
 ## Qualify the agent treasury loop with real money (#11741)
 
 The treasury binding runs the full earn, receive, buy, and use loop with fake

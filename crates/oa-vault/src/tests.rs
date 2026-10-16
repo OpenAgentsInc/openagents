@@ -8,6 +8,7 @@ use crate::index::{Add, Index, Kind, Route};
 use crate::keys::{Dek, Vmk};
 use crate::object::{self, New, Tier, Wrap};
 use crate::recovery::{self, Code};
+use crate::sealed;
 use crate::slot::{self, Draft, Method, Slot};
 use crate::{Error, b64, hex, unb64, unhex};
 
@@ -472,6 +473,38 @@ fn vectors() -> Value {
     destroyed.entries.clear();
     let destroyed_blob = destroyed.seal_with(&vmk, [0x0f; 12]).unwrap();
     let _ = Route::Device;
+    let system = sealed::KeyPair::derive(&[0x5c; 32]);
+    let sealed_new = New {
+        tier: Tier::Sealed,
+        ..new_object(OBJECT)
+    };
+    let sealed_core = object::seal_with(
+        &sealed_new,
+        &text,
+        Vec::new(),
+        Dek::from_bytes([0x24; 32]),
+        [1, 2, 3, 4, 5, 6, 7],
+        1024,
+    )
+    .unwrap();
+    let sealed_digest = sealed_core.header.core_digest().unwrap();
+    let sealed_wrap = sealed::wrap_sealed_with(
+        &vmk,
+        &sealed_digest,
+        &sealed_core.dek,
+        &system.public(),
+        &mut sealed::SeededRandom::new([0x5d; 32]),
+    )
+    .unwrap();
+    let sealed_object = object::seal_with(
+        &sealed_new,
+        &text,
+        vec![sealed_wrap.clone()],
+        Dek::from_bytes([0x24; 32]),
+        [1, 2, 3, 4, 5, 6, 7],
+        1024,
+    )
+    .unwrap();
 
     json!({
         "v": "openagents.vault-vectors.v1",
@@ -513,6 +546,19 @@ fn vectors() -> Value {
             "plaintext": index,
             "sealed": b64(&index_blob),
             "after_delete": b64(&destroyed_blob),
+        },
+        "sealed": {
+            "system_key_ikm": hex(&[0x5c; 32]),
+            "system_key_public": b64(&system.public()),
+            "system_key_id": sealed::system_key_id(&system.public()),
+            "suite": sealed::SUITE,
+            "core_digest": hex(&sealed_digest),
+            "bytes": b64(&sealed_object.bytes),
+            "wrap": sealed_wrap,
+            "refuse": {
+                "wrong_share": hex(&[0x01; 32]),
+                "wrong_system_key_ikm": hex(&[0x5e; 32]),
+            },
         },
     })
 }
@@ -574,4 +620,81 @@ fn the_nip_vault_vectors_hold() {
     )
     .unwrap();
     assert!(after.open_object(&vmk, OBJECT, &bytes).is_err());
+}
+
+#[test]
+fn a_sealed_wrap_needs_both_the_system_key_and_the_share() {
+    let kept: Value =
+        serde_json::from_str(include_str!("../../../fixtures/nips/vault/vectors.json")).unwrap();
+    let v = &kept["sealed"];
+    let vmk = Vmk::from_bytes(unhex::<32>(kept["keys"]["vmk"].as_str().unwrap()).unwrap());
+    let system =
+        sealed::KeyPair::derive(&unhex::<32>(v["system_key_ikm"].as_str().unwrap()).unwrap());
+    let digest = unhex::<32>(v["core_digest"].as_str().unwrap()).unwrap();
+    let wrap: Wrap = serde_json::from_value(v["wrap"].clone()).unwrap();
+    let bytes = unb64(v["bytes"].as_str().unwrap()).unwrap();
+    let (header, _) = object::parse(&bytes).unwrap();
+    assert_eq!(header.core_digest().unwrap(), digest);
+    assert_eq!(header.wraps, vec![wrap.clone()]);
+    let dek = sealed::open_sealed(&wrap, &digest, &system, &vmk.user_share()).unwrap();
+    let opened = object::open_object(&bytes, &dek).unwrap();
+    assert_eq!(opened.as_slice(), plain(2500).as_slice());
+    // The share alone, or the system key alone, opens nothing.
+    let wrong_share = unhex::<32>(v["refuse"]["wrong_share"].as_str().unwrap()).unwrap();
+    assert!(matches!(
+        sealed::open_sealed(&wrap, &digest, &system, &wrong_share),
+        Err(Error::Decrypt(_))
+    ));
+    let other = sealed::KeyPair::derive(
+        &unhex::<32>(v["refuse"]["wrong_system_key_ikm"].as_str().unwrap()).unwrap(),
+    );
+    assert!(matches!(
+        sealed::open_sealed(&wrap, &digest, &other, &vmk.user_share()),
+        Err(Error::Decrypt(_))
+    ));
+    // A wrap moved to another object does not open there.
+    let mut moved = digest;
+    moved[0] ^= 1;
+    assert!(sealed::open_sealed(&wrap, &moved, &system, &vmk.user_share()).is_err());
+    // A user-tier object refuses to carry a sealed wrap.
+    let user = object::seal_with(
+        &new_object(OTHER),
+        b"x",
+        vec![wrap],
+        Dek::from_bytes([1; 32]),
+        [1; 7],
+        1024,
+    );
+    assert!(user.is_err());
+}
+
+#[test]
+fn session_requests_and_replies_open_only_for_their_binding() {
+    let endpoint = sealed::KeyPair::derive(&[0x61; 32]);
+    let event = [0x62; 32];
+    let (enc, ct) = sealed::seal_request(
+        &endpoint.public(),
+        &event,
+        b"request",
+        &mut sealed::OsRandom,
+    )
+    .unwrap();
+    assert_eq!(
+        sealed::open_request(&endpoint, &event, &enc, &ct)
+            .unwrap()
+            .as_slice(),
+        b"request"
+    );
+    assert!(sealed::open_request(&endpoint, &[0x63; 32], &enc, &ct).is_err());
+    let reply = sealed::KeyPair::generate().unwrap();
+    let lease = [0x64; 32];
+    let (enc, ct) =
+        sealed::seal_reply(&reply.public(), &lease, b"answer", &mut sealed::OsRandom).unwrap();
+    assert_eq!(
+        sealed::open_reply(&reply, &lease, &enc, &ct)
+            .unwrap()
+            .as_slice(),
+        b"answer"
+    );
+    assert!(sealed::open_reply(&reply, &[0x65; 32], &enc, &ct).is_err());
 }

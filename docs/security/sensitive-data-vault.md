@@ -1,7 +1,10 @@
 # Sensitive data vault
 
 Status: **Tier A ("only you") is implemented** (#11240, 2026-10-10): see
-[Tier A as built](#tier-a-as-built). Tiers B and C are design only.
+[Tier A as built](#tier-a-as-built). Tier B's protocol is implemented in Rust
+(#11743, `crates/vault-sealed` over `oa-vault` and `oa-att`), but the attested
+`vault` workload is not deployed yet, so no file is sealed on our servers
+today. Tier C is design only.
 Wire formats are in the draft [NIP-VAULT](../../nips/openagents/NIP-VAULT.md);
 attested workloads and their public release log are in the draft
 [NIP-ATT](../../nips/openagents/NIP-ATT.md). The model step, where most of
