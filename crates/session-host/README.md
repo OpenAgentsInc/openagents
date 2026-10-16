@@ -28,13 +28,42 @@ An adapter is admitted from its engine's exact profile. That profile states
 each of the 14 features as `native`, `emulated`, or `unsupported`, along with
 the steer feature's native mode, emulation, and acknowledgment. Supported
 entries pin an operation, semantics, and evidence; unsupported entries pin
-nothing. The host never upgrades a claim. Two in-process Rust engines exercise
+nothing. The host never upgrades a claim. Three in-process Rust engines exercise
 the paths:
 
 | Adapter | Steering | Queue/reorder | Questions | Fork |
 | --- | --- | --- | --- | --- |
 | `loop-mid-turn` | native `mid_turn`, acknowledged by `engine_replay` | emulated (host FIFO) | native | unsupported |
 | `loop-boundary` | `turn_boundary`; emulated `cancel_and_continue`, acknowledged by `next_turn_start` | queue emulated, reorder unsupported | unsupported | unsupported |
+| `loop-approval` | native `mid_turn`, acknowledged by `engine_replay` | emulated (host FIFO) | native | unsupported |
+
+`loop-approval` additionally implements a bounded native POL approval path for
+one pure `hash` action over immutable JSON, up to 32 KiB. It has its own engine
+identity and exact action CAP. The other loop profiles do not advertise
+approvals. This profile does not execute shell commands or approve SDK tools.
+
+The operator must explicitly appoint the session owner for that exact action
+with a finite expiry through `session-host approval-policy --input GRANTS.json`.
+Each grant contains `owner`, the exact action `operation` DefinitionRef, and
+`expires_at`. Host ownership and controller membership alone grant no approval.
+The action definitions appear in the adapter's `meta.native_actions` for
+discovery; execution recomputes and verifies the actual implementation pins.
+
+The native request produces a frozen POL action and approval request, including
+the original frame, native input and capture, engine/binding identities, and
+current session conditions. Its task-scoped CTX snapshot is empty because this
+pure action reads no mutable sources. The owner signs the POL decision itself
+and submits its private bundle through `continue_turn` for the original CJ.
+Question replies and quoted unsigned decisions cannot approve it. Exact retries
+return the saved result without a second native reply or call charge.
+
+Approval rules, the decision expiry, and the original ENV/COORD authorities stay
+current through engine advancement. Replacing rules cancels affected work; a
+new rule cannot revive an old request. Steering waits until the approved turn
+ends. Revocation before execution prevents the hash; cancellation after execution
+retains the observed digest. Lost acknowledgments stay unknown across restart.
+Additional approvers, third-party approval delivery, SDK tool approvals, and
+external-effect actions remain unsupported by this profile.
 
 Mapping Claude Code, Codex, and the ACP delegates to this host is still to
 come. Their steering rows stay in their own adapter crates.
@@ -61,7 +90,8 @@ an adapter without that boundary refuses instead of dropping context. Each
 field is bounded to 1 MiB, including input derived from carried steering.
 Loop engines consume opaque frame/context bytes by computing their digests;
 native captures and output retain those digests without sharing the original
-private context. Their engine identities now name version 3. Opening and
+private context. The original profiles identify version 3, and the optional
+approval profile identifies version 4. Opening and
 configuration compare the admitted engine and protocol bytes with the actual
 installed implementation, so old pins cannot silently select updated behavior.
 
@@ -135,7 +165,7 @@ readers receive no private reply while local cleanup continues. Restart leaves
 lost engine work unknown. Admission, configuration, and disclosure share the
 original monotonic wall-time allowance; starting another phase does not reset it.
 
-This receiver currently drives the two synchronous loop adapters through the
+This receiver currently drives the synchronous loop adapters through the
 library. It requires one job, zero spend, 1–300 seconds of wall time, and
 64 KiB–1 MiB of output allowance. Polling after expiry requests a stop of the
 original turn before advancing it; only native terminal evidence proves the

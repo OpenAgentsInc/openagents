@@ -737,6 +737,9 @@ profile pins these supporting records:
 | `openagents.session-steer-correction.v1` | `correction` (CTX correction ArtifactRef) and `mode` (`native` or `emulated`). A `steer` command's `correction` names this record, so the caller signs its choice of emulation explicitly. |
 | `openagents.session-steer-receipt.v1` | `scope`, `turn`, `correction`, `mode`, `acknowledgment`, `consumed`, and native `evidence`. `consumed` is true only with `engine_replay`, `turn_answer`, or `next_turn_start` evidence. |
 | `openagents.session-quiescence.v1` | `scope`, `turn`, the turn's ENV `attachment`, terminal native `evidence` (at least one), optional `children` (signed child-state ArtifactRefs), and `observed_at`. |
+| `openagents.session-approval-rule.v1` | Host-signed `generation`, `owner`, `approver`, exact action `operation`, `starts_at`, and `expires_at`. This bounded profile requires owner and approver to match, with separate explicit appointment. |
+| `openagents.session-action-binding.v1` | Exact `scope`, `turn`, `native_request`, `adapter`, `engine`, `method`, and native request `native_id`. |
+| `openagents.session-action-preconditions.v1` | Exact `scope`, `turn`, `turn_revision`, `effective` configuration, approval `rule`, and `native_request`. |
 
 A control receipt's `transition` may also be `respond`, for an interaction
 response. Session-history cuts are WS `projection-cut` records over a
@@ -985,3 +988,29 @@ host-side check and is not passed to an engine as permission-bearing text.
 Opening and configuration compare the retained adapter's engine and protocol
 bytes with the actual installed implementation. Reusing an old admission after
 an engine update refuses; it cannot silently select newer native behavior.
+
+The optional `loop-approval` native profile gates one bounded, in-process
+`hash` action. Its action CAP pins the input/output schemas, engine, method,
+and pure artifact-read effects. The host's operator separately grants approval
+for an exact action DefinitionRef and owner until an expiry; session ownership
+or control alone does not appoint an approver. This profile supports the
+session owner as approver. Policy replacement changes the grant generation;
+old pending requests cannot revive after revocation and regrant.
+
+The host freezes the native request, input, scope, turn revision, adapter,
+effective configuration, and current approval rule into a complete POL action
+and approval request. A direct signed private POL decision travels through the
+original charged execution's continuation endpoint. The host maps its exact
+request to the retained interaction without fabricating an approver signature.
+Ordinary question answers cannot authorize an action. Before the method-correct
+native reply, the host rechecks the decision, current rule, expiry, generation,
+native request, and original ENV/COORD execution. It saves single-use delivery
+intent before the reply; a lost acknowledgment remains unknown and never
+repeats. Changed actions, decisions, requests, or conditions refuse. A required
+approval with no supported method or current rule records a protocol fault and
+permits no effect. The loop's hash executes once after approval; denial computes
+no hash. The signed decision's expiry and the original ENV/COORD authority also
+gate subsequent engine advancement; a cached acknowledgment cannot extend them.
+Steering waits until this approved turn ends. Cancellation after the hash ran
+retains its observed digest. Effectful SDK permissions remain unsupported by
+this profile.

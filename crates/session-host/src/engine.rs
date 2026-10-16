@@ -61,6 +61,22 @@ pub struct Capture {
     pub payload: Option<Vec<u8>>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ApprovalRequest {
+    pub native_id: String,
+    pub method: String,
+    pub input: Vec<u8>,
+    pub capture: Capture,
+}
+
+#[derive(Clone, Debug)]
+pub struct ActionProfile {
+    pub method: &'static str,
+    pub input_schema: Value,
+    pub output_schema: Value,
+    pub effects: Value,
+}
+
 /// What stepping the active turn observed.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Observation {
@@ -70,6 +86,7 @@ pub enum Observation {
         native_id: String,
         prompt: Vec<u8>,
     },
+    Approval(ApprovalRequest),
     /// Authoritative terminal engine evidence.
     Finished {
         outcome: &'static str,
@@ -122,6 +139,15 @@ impl TurnInput {
 
 pub trait Engine {
     fn profile(&self) -> Profile;
+    fn approval_actions(&self) -> Vec<ActionProfile> {
+        Vec::new()
+    }
+    fn check_approval(&self, _native: &str, _request: &ApprovalRequest) -> Result<()> {
+        Err("unsupported_feature: native approval checking is not implemented".into())
+    }
+    fn approve(&mut self, _native: &str, _request: &ApprovalRequest, _allow: bool) -> Result<()> {
+        Err("unsupported_feature: native approval delivery is not implemented".into())
+    }
     /// Validate without starting a process, sending input, or changing state.
     fn check_configuration(&self, _configuration: &Configuration) -> Result<()> {
         Err("unsupported_feature: native configuration validation is not implemented".into())
@@ -181,6 +207,10 @@ struct Run {
     interrupted: bool,
     effort: String,
     admitted: Option<Value>,
+    approval: Option<Value>,
+    approval_asked: bool,
+    approval_answer: Option<bool>,
+    action_digest: Option<String>,
 }
 
 #[derive(Default)]
@@ -212,6 +242,7 @@ pub struct LoopEngine {
     pub fail_steer: bool,
     /// Fault: lose the acknowledgment after applying native settings.
     pub fail_configure: bool,
+    pub fail_approval: bool,
 }
 
 fn features(pairs: &[(&'static str, Support)]) -> BTreeMap<&'static str, Support> {
@@ -255,7 +286,37 @@ fn check_loop_configuration(configuration: &Configuration) -> Result<()> {
     Ok(())
 }
 
+fn loop_approval(run: &Run) -> Result<ApprovalRequest> {
+    let approval = run.approval.as_ref().ok_or("stale: no native approval")?;
+    let native_id = format!("{}-approval", run.turn);
+    let input = nostr::contracts::jcs(&approval["value"]).map_err(|e| e.to_string())?;
+    Ok(ApprovalRequest {
+        native_id: native_id.clone(),
+        method: "hash".into(),
+        input,
+        capture: Capture {
+            direction: "from_engine",
+            method: "approval/request".into(),
+            native_id: Some(native_id.clone()),
+            payload: Some(
+                serde_json::to_vec(
+                    &json!({"request":native_id,"method":"hash","input":approval["value"]}),
+                )
+                .map_err(|e| e.to_string())?,
+            ),
+        },
+    })
+}
+
 impl LoopEngine {
+    /// An explicit pure-action approval profile; no external tool execution.
+    pub fn approval() -> Self {
+        let mut engine = Self::mid_turn();
+        engine.profile.name = "loop-approval";
+        engine.profile.engine = b"loop-engine 4 single-use hash approval".to_vec();
+        engine.profile.features.insert("approvals", Support::Native);
+        engine
+    }
     /// Mid-turn steering with engine replay; the host emulates the queue.
     pub fn mid_turn() -> Self {
         use Support::*;
@@ -329,6 +390,7 @@ impl LoopEngine {
             fail_close: false,
             fail_steer: false,
             fail_configure: false,
+            fail_approval: false,
         }
     }
     fn capture(
@@ -348,6 +410,54 @@ impl LoopEngine {
 }
 
 impl Engine for LoopEngine {
+    fn approval_actions(&self) -> Vec<ActionProfile> {
+        if self.profile.features.get("approvals") != Some(&Support::Native) {
+            return Vec::new();
+        }
+        vec![ActionProfile {
+            method: "hash",
+            input_schema: json!({}),
+            output_schema: json!({"type":"object","additionalProperties":false,"required":["digest"],
+                "properties":{"digest":{"type":"string","minLength":71,"maxLength":71}}}),
+            effects: self.profile.effects.clone(),
+        }]
+    }
+    fn check_approval(&self, native: &str, request: &ApprovalRequest) -> Result<()> {
+        if self.approval_actions().is_empty() {
+            return Err("unsupported_feature: this engine has no native approval".into());
+        }
+        let run = self
+            .sessions
+            .get(native)
+            .and_then(|s| s.run.as_ref())
+            .ok_or("stale: native turn ended")?;
+        if !run.approval_asked
+            || run.approval_answer.is_some()
+            || run.interrupted
+            || loop_approval(run)? != *request
+        {
+            return Err("identity_mismatch: native approval request changed or ended".into());
+        }
+        Ok(())
+    }
+    fn approve(&mut self, native: &str, request: &ApprovalRequest, allow: bool) -> Result<()> {
+        self.check_approval(native, request)?;
+        self.sessions
+            .get_mut(native)
+            .and_then(|s| s.run.as_mut())
+            .ok_or("native turn")?
+            .approval_answer = Some(allow);
+        self.capture(
+            "to_engine",
+            "approval/response",
+            Some(request.native_id.clone()),
+            &json!({"allow_once":allow}),
+        );
+        if self.fail_approval {
+            return Err("unknown: native approval acknowledgment lost".into());
+        }
+        Ok(())
+    }
     fn check_configuration(&self, configuration: &Configuration) -> Result<()> {
         check_loop_configuration(configuration)
     }
@@ -485,6 +595,7 @@ impl Engine for LoopEngine {
             ask: input["ask"].as_str().map(str::to_string),
             effort,
             corrections: input["corrections"].as_array().cloned().unwrap_or_default(),
+            approval: input.get("approval").cloned(),
             ..Run::default()
         });
         self.started += 1;
@@ -500,6 +611,22 @@ impl Engine for LoopEngine {
             .map_err(|e| e.to_string())?;
         if !body.is_object() || !body["prompt"].is_string() {
             return Err("malformed: loop input requires a prompt".into());
+        }
+        if let Some(approval) = body.get("approval") {
+            if self.approval_actions().is_empty() {
+                return Err("unsupported_feature: native approvals are unavailable".into());
+            }
+            if approval
+                .as_object()
+                .is_none_or(|o| o.len() != 2 || !o.contains_key("value"))
+                || approval["method"] != "hash"
+                || nostr::contracts::jcs(&approval["value"])
+                    .map_err(|e| e.to_string())?
+                    .len()
+                    > 32_768
+            {
+                return Err("malformed: native hash approval input".into());
+            }
         }
         Ok(())
     }
@@ -526,7 +653,7 @@ impl Engine for LoopEngine {
             return Observation::Lost;
         };
         if run.interrupted {
-            let output = json!({"prompt":run.prompt,"interrupted":true,"corrections":run.corrections,"effort":run.effort,"admitted":run.admitted});
+            let output = json!({"prompt":run.prompt,"interrupted":true,"corrections":run.corrections,"effort":run.effort,"admitted":run.admitted,"action_digest":run.action_digest});
             let turn = run.turn.clone();
             session.run = None;
             self.capture("from_engine", "turn/completed", Some(turn), &output);
@@ -535,6 +662,46 @@ impl Engine for LoopEngine {
                 cause: "user_interrupt",
                 output: serde_json::to_vec(&output).unwrap_or_default(),
             };
+        }
+        if run.approval.is_some() {
+            if !run.approval_asked {
+                run.approval_asked = true;
+                return match loop_approval(run) {
+                    Ok(request) => Observation::Approval(request),
+                    Err(_) => Observation::Lost,
+                };
+            }
+            match run.approval_answer {
+                None => return Observation::Running,
+                Some(false) => {
+                    let output =
+                        json!({"approved":false,"prompt":run.prompt,"admitted":run.admitted});
+                    let turn = run.turn.clone();
+                    session.run = None;
+                    self.capture("from_engine", "turn/completed", Some(turn), &output);
+                    return Observation::Finished {
+                        outcome: "cancelled",
+                        cause: "policy",
+                        output: serde_json::to_vec(&output).unwrap_or_default(),
+                    };
+                }
+                Some(true) if run.action_digest.is_none() => {
+                    let request = match loop_approval(run) {
+                        Ok(r) => r,
+                        Err(_) => return Observation::Lost,
+                    };
+                    let digest = nostr::contracts::digest_bytes(&request.input);
+                    run.action_digest = Some(digest.clone());
+                    self.capture(
+                        "from_engine",
+                        "action/completed",
+                        Some(request.native_id),
+                        &json!({"digest":digest}),
+                    );
+                    return Observation::Running;
+                }
+                Some(true) => {}
+            }
         }
         if self.protocol_fault {
             self.protocol_fault = false;
@@ -567,7 +734,7 @@ impl Engine for LoopEngine {
             return Observation::Running;
         }
         let output = json!({"prompt":run.prompt,"corrections":run.corrections,"answer":run.answer,"effort":run.effort,
-            "turn_number":session.turns,"admitted":run.admitted});
+            "turn_number":session.turns,"admitted":run.admitted,"action_digest":run.action_digest});
         let turn = run.turn.clone();
         session.run = None;
         self.capture("from_engine", "turn/completed", Some(turn), &output);

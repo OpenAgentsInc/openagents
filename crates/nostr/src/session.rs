@@ -220,6 +220,15 @@ fn semantic(name: &str, body: &Value) -> Result<()> {
             }
         }
         "session-question" => schema_ref(&body["answer_schema"])?,
+        "session-approval-rule"
+            if number(body, "generation")? == 0
+                || number(body, "starts_at")? >= number(body, "expires_at")? =>
+        {
+            return Err(error(
+                RefusalCode::Malformed,
+                "approval rule generation or expiry",
+            ));
+        }
         "session-read-result" => {
             if body["query"]["schema"] != "openagents.session-read.v1"
                 || body["state"]["schema"] != "openagents.session-state.v1"
@@ -279,6 +288,7 @@ fn nested(value: &Value) -> Result<()> {
                         | "recipient"
                         | "responder"
                         | "requester"
+                        | "approver"
                         | "query"
                         | "connection"
                 ) && let Some(text) = value.as_str()

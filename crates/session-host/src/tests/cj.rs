@@ -81,6 +81,10 @@ impl Real {
         }
     }
     fn new() -> Self {
+        Self::for_engine(LoopEngine::mid_turn())
+    }
+    fn for_engine(engine: LoopEngine) -> Self {
+        let engine_name = engine.profile().name;
         let fx = Fx::new();
         let coordinator =
             Coordinator::initialize(fx._temp.path().join("coord"), secret(OWNER)).unwrap();
@@ -112,8 +116,8 @@ impl Real {
             materialization: Value::Null,
             lease_id: String::new(),
         };
-        let host = r.host(LoopEngine::mid_turn());
-        r.adapter = host.admit_adapter("loop-mid-turn", r.fx.now).unwrap();
+        let host = r.host(engine);
+        r.adapter = host.admit_adapter(engine_name, r.fx.now).unwrap();
         let description = host.store().json(&r.adapter).unwrap();
         r.target = description["adapter"].clone();
         r.copy_from(host.store(), vec![r.adapter.clone()]);
@@ -529,6 +533,374 @@ impl Real {
             "scope":{"authority":pk(HOST),"session":session,"generation":status["generation"]},
             "responder":pk(OWNER),"response":response,"expires_at":self.fx.now+300})
     }
+    fn grant_approval(&self, host: &SessionHost) -> Value {
+        let operation =
+            host.store().json(&self.adapter).unwrap()["meta"]["native_actions"]["hash"].clone();
+        host.set_approval_grants(
+            vec![crate::host::ApprovalGrant {
+                owner: pk(OWNER),
+                operation: operation.clone(),
+                expires_at: self.fx.now + 1000,
+            }],
+            self.fx.now,
+        )
+        .unwrap();
+        operation
+    }
+    fn approval_decision(&self, host: &SessionHost, session: &str, allow: bool) -> Value {
+        let interaction = host
+            .store()
+            .json(&host.status(session).unwrap()["interactions"][0]["interaction"])
+            .unwrap();
+        assert_eq!(interaction["kind"], "approval");
+        let request = host.store().json(&interaction["body"]).unwrap();
+        json!({"v":nostr::policy::DECISION_SCHEMA,"requires":[],"request":interaction["body"],
+            "action":request["action"],"approver":pk(OWNER),"decision":if allow {"approve"}else{"deny"},
+            "expires_at":request["expires_at"],"reason":"fixture decision"})
+    }
+    fn pending_approval(&mut self, host: &SessionHost) -> (Value, nostr::domain::Event) {
+        let opening = self.opened(host);
+        let mut command = self.submit_command(host, &opening, 1);
+        self.input(
+            &mut command,
+            json!({"prompt":"gate the hash","steps":1,
+            "approval":{"method":"hash","value":{"frozen":"input"}}}),
+        );
+        let (event, binding) = self.job(&command);
+        host.serve(&event, &self.fx.artifacts, &binding, self.fx.now)
+            .unwrap();
+        host.poll(&event, self.fx.now).unwrap();
+        (opening, event)
+    }
+    fn native_count(&self, host: &SessionHost, session: &str, method: &str) -> usize {
+        let history = host
+            .store()
+            .json(&host.status(session).unwrap()["history"])
+            .unwrap();
+        history["native"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|r| host.store().json(r).unwrap()["method"] == method)
+            .count()
+    }
+}
+
+#[test]
+fn session_ownership_does_not_appoint_a_native_approver() {
+    let mut r = Real::for_engine(LoopEngine::approval());
+    let host = r.host(LoopEngine::approval());
+    let (opening, event) = r.pending_approval(&host);
+    let session = opening["session"].as_str().unwrap();
+    assert_eq!(host.status(session).unwrap()["phase"], "faulted");
+    assert!(
+        host.status(session).unwrap()["interactions"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(r.native_count(&host, session, "approval/response"), 0);
+    assert_eq!(r.native_count(&host, session, "action/completed"), 0);
+    let result = host.poll(&event, r.fx.now).unwrap();
+    assert_eq!(result.0.kind, execution::RESULT_KIND);
+    assert!(
+        result
+            .1
+            .values()
+            .filter_map(|b| serde_json::from_slice::<Value>(b).ok())
+            .any(
+                |b| b["v"] == "openagents.session-turn-result.v1" && b["cause"] == "protocol_fault"
+            )
+    );
+    assert_eq!(r.coordinator.scope(&r.scope).unwrap()["calls"], 2);
+}
+
+#[test]
+fn native_approval_refuses_other_actors_changed_decisions_and_question_envelopes() {
+    let mut r = Real::for_engine(LoopEngine::approval());
+    let host = r.host(LoopEngine::approval());
+    r.grant_approval(&host);
+    let (opening, event) = r.pending_approval(&host);
+    let session = opening["session"].as_str().unwrap();
+    let decision = r.approval_decision(&host, session, true);
+    for mode in [
+        "controller",
+        "stranger",
+        "approver",
+        "action",
+        "request",
+        "expired",
+        "long-expiry",
+        "quoted",
+        "text",
+    ] {
+        let mut changed = decision.clone();
+        let mut signer = OWNER;
+        match mode {
+            "controller" => signer = CONTROLLER,
+            "stranger" => signer = STRANGER,
+            "approver" => changed["approver"] = json!(pk(CONTROLLER)),
+            "action" => changed["action"]["digest"] = json!(format!("sha256:{}", "0".repeat(64))),
+            "request" => changed["request"]["digest"] = json!(format!("sha256:{}", "0".repeat(64))),
+            "expired" => changed["expires_at"] = json!(r.fx.now),
+            "long-expiry" => changed["expires_at"] = json!(r.fx.now + 2000),
+            "quoted" | "text" => {
+                let response = if mode == "quoted" {
+                    changed
+                } else {
+                    json!({"text":"approve"})
+                };
+                let reference = put_json(&mut r.fx.artifacts, &response);
+                changed = r.question(&host, session);
+                changed["response"] = reference;
+            }
+            _ => unreachable!(),
+        }
+        let result = host.continue_turn(&event, &r.fx.bundle(signer, &changed), r.fx.now);
+        assert!(
+            match &result {
+                Err(_) => true,
+                Ok(v) => matches!(v["status"].as_str(), Some("refused" | "conflict")),
+            },
+            "{mode}: {result:?}"
+        );
+        assert_eq!(
+            host.status(session).unwrap()["interactions"][0]["state"],
+            "pending",
+            "{mode}"
+        );
+        assert_eq!(
+            r.native_count(&host, session, "approval/response"),
+            0,
+            "{mode}"
+        );
+    }
+    assert!(
+        host.observe(session, r.fx.now)
+            .unwrap_err()
+            .contains("original runtime poll")
+    );
+    assert_eq!(
+        host.continue_turn(&event, &r.fx.bundle(OWNER, &decision), r.fx.now)
+            .unwrap()["status"],
+        "accepted"
+    );
+    let mut conflict = decision.clone();
+    conflict["decision"] = json!("deny");
+    assert_eq!(
+        host.continue_turn(&event, &r.fx.bundle(OWNER, &conflict), r.fx.now)
+            .unwrap()["status"],
+        "conflict"
+    );
+    assert_eq!(r.native_count(&host, session, "approval/response"), 1);
+    assert_eq!(r.native_count(&host, session, "action/completed"), 0);
+    assert_eq!(r.coordinator.scope(&r.scope).unwrap()["calls"], 2);
+}
+
+#[test]
+fn native_approval_revoke_expire_and_regrant_never_revive_the_old_request() {
+    for mode in [
+        "revoke",
+        "regrant",
+        "expire",
+        "approved",
+        "executed",
+        "decision-expiry",
+    ] {
+        let mut r = Real::for_engine(LoopEngine::approval());
+        let host = r.host(LoopEngine::approval());
+        let operation =
+            host.store().json(&r.adapter).unwrap()["meta"]["native_actions"]["hash"].clone();
+        host.set_approval_grants(
+            vec![crate::host::ApprovalGrant {
+                owner: pk(OWNER),
+                operation,
+                expires_at: r.fx.now + 10,
+            }],
+            r.fx.now,
+        )
+        .unwrap();
+        let (opening, event) = r.pending_approval(&host);
+        let session = opening["session"].as_str().unwrap();
+        let mut decision = r.approval_decision(&host, session, true);
+        if mode == "decision-expiry" {
+            decision["expires_at"] = json!(r.fx.now + 1);
+        }
+        if matches!(mode, "approved" | "executed" | "decision-expiry") {
+            host.continue_turn(&event, &r.fx.bundle(OWNER, &decision), r.fx.now)
+                .unwrap();
+        }
+        if mode == "executed" {
+            host.poll(&event, r.fx.now).unwrap();
+        }
+        if mode == "decision-expiry" {
+            r.fx.now += 2;
+        } else if mode == "expire" {
+            r.fx.now += 11;
+        } else {
+            host.set_approval_grants(vec![], r.fx.now).unwrap();
+        }
+        if mode == "regrant" {
+            r.grant_approval(&host);
+        }
+        let result = host.continue_turn(&event, &r.fx.bundle(OWNER, &decision), r.fx.now);
+        assert!(
+            match &result {
+                Err(_) => true,
+                Ok(v) =>
+                    v["status"] == "refused"
+                        || mode == "decision-expiry" && v["status"] == "duplicate",
+            },
+            "{mode}: {result:?}"
+        );
+        let result = host.poll(&event, r.fx.now).unwrap();
+        assert_eq!(result.0.kind, execution::RESULT_KIND, "{mode}");
+        let turn = result
+            .1
+            .values()
+            .filter_map(|b| serde_json::from_slice::<Value>(b).ok())
+            .find(|b| b["v"] == "openagents.session-turn-result.v1")
+            .unwrap();
+        assert_eq!(turn["outcome"], "cancelled", "{mode}");
+        assert_eq!(turn["cause"], "policy", "{mode}");
+        assert_eq!(
+            r.native_count(&host, session, "action/completed"),
+            usize::from(mode == "executed")
+        );
+        if mode == "executed" {
+            assert!(
+                result
+                    .1
+                    .values()
+                    .filter_map(|b| serde_json::from_slice::<Value>(b).ok())
+                    .any(|b| b["interrupted"] == true && b["action_digest"].is_string())
+            );
+        }
+        assert_eq!(r.coordinator.scope(&r.scope).unwrap()["calls"], 2);
+    }
+}
+
+#[test]
+fn lost_native_approval_acknowledgment_stays_unknown_across_restart() {
+    let mut r = Real::for_engine(LoopEngine::approval());
+    let mut engine = LoopEngine::approval();
+    engine.fail_approval = true;
+    let host = r.host(engine);
+    r.grant_approval(&host);
+    let (opening, event) = r.pending_approval(&host);
+    let session = opening["session"].as_str().unwrap();
+    let decision = r.approval_decision(&host, session, true);
+    let bundle = r.fx.bundle(OWNER, &decision);
+    let unknown = host.continue_turn(&event, &bundle, r.fx.now).unwrap();
+    assert_eq!(unknown["status"], "unknown");
+    assert_eq!(
+        host.continue_turn(&event, &bundle, r.fx.now).unwrap(),
+        unknown
+    );
+    assert_eq!(r.native_count(&host, session, "action/completed"), 0);
+    drop(host);
+    let host = r.host(LoopEngine::approval());
+    assert_eq!(
+        host.continue_turn(&event, &bundle, r.fx.now).unwrap(),
+        unknown
+    );
+    let result = host.poll(&event, r.fx.now).unwrap();
+    assert_eq!(result.0.kind, execution::RESULT_KIND);
+    assert!(
+        r.coordinator
+            .record_result(&result.0, &result.1, r.fx.now)
+            .is_err()
+    );
+    assert_eq!(host.started("loop-approval"), 0);
+    assert_eq!(r.native_count(&host, session, "action/completed"), 0);
+    assert_eq!(r.coordinator.scope(&r.scope).unwrap()["calls"], 2);
+}
+
+#[test]
+fn native_pol_decisions_gate_one_exact_action_without_another_call_charge() {
+    for allow in [false, true] {
+        let mut r = Real::for_engine(LoopEngine::approval());
+        let host = r.host(LoopEngine::approval());
+        let operation = r.grant_approval(&host);
+        let opening = r.opened(&host);
+        let session = opening["session"].as_str().unwrap();
+        let value = json!({"frozen":"input"});
+        let mut command = r.submit_command(&host, &opening, 1);
+        r.input(
+            &mut command,
+            json!({"prompt":"gate the hash","steps":1,"approval":{"method":"hash","value":value}}),
+        );
+        let (event, binding) = r.job(&command);
+        host.serve(&event, &r.fx.artifacts, &binding, r.fx.now)
+            .unwrap();
+        assert_eq!(
+            host.poll(&event, r.fx.now).unwrap().0.kind,
+            execution::FEEDBACK_KIND
+        );
+        assert_eq!(host.status(session).unwrap()["phase"], "blocked");
+        let decision = r.approval_decision(&host, session, allow);
+        let action = host.store().json(&decision["action"]).unwrap();
+        assert_eq!(action["operation"], operation);
+        nostr::policy::validate(&action).unwrap();
+        let reply = host
+            .continue_turn(&event, &r.fx.bundle(OWNER, &decision), r.fx.now)
+            .unwrap();
+        assert_eq!(reply["status"], "accepted", "{reply}");
+        assert_eq!(
+            host.continue_turn(&event, &r.fx.bundle(OWNER, &decision), r.fx.now)
+                .unwrap()["status"],
+            "duplicate"
+        );
+        let mut terminal = None;
+        for _ in 0..5 {
+            let reply = host.poll(&event, r.fx.now).unwrap();
+            if reply.0.kind == execution::RESULT_KIND {
+                terminal = Some(reply);
+                break;
+            }
+        }
+        let result = terminal.unwrap();
+        assert_eq!(
+            r.coordinator
+                .record_result(&result.0, &result.1, r.fx.now)
+                .unwrap()["outcome"],
+            if allow { "completed" } else { "cancelled" }
+        );
+        let history = host
+            .store()
+            .json(&host.status(session).unwrap()["history"])
+            .unwrap();
+        let methods = history["native"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| {
+                host.store().json(r).unwrap()["method"]
+                    .as_str()
+                    .unwrap()
+                    .to_string()
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            methods.iter().filter(|m| *m == "approval/response").count(),
+            1
+        );
+        assert_eq!(
+            methods.iter().filter(|m| *m == "action/completed").count(),
+            usize::from(allow)
+        );
+        if allow {
+            let output = result
+                .1
+                .values()
+                .filter_map(|b| serde_json::from_slice::<Value>(b).ok())
+                .find(|b| b["action_digest"].is_string())
+                .unwrap();
+            assert_eq!(output["action_digest"], digest_bytes(&jcs(&value).unwrap()));
+        }
+        assert_eq!(host.started("loop-approval"), 1);
+        assert_eq!(r.coordinator.scope(&r.scope).unwrap()["calls"], 2);
+    }
 }
 
 #[test]
@@ -816,21 +1188,39 @@ fn cj_continuations_answer_and_steer_only_the_original_charged_turn() {
 
 #[test]
 fn current_coord_revocation_and_environment_drain_block_native_continuations() {
-    for drain in [false, true] {
-        let mut r = Real::new();
-        let host = r.host(LoopEngine::mid_turn());
+    for (approval, drain) in [(false, false), (false, true), (true, false), (true, true)] {
+        let engine = || {
+            if approval {
+                LoopEngine::approval()
+            } else {
+                LoopEngine::mid_turn()
+            }
+        };
+        let mut r = Real::for_engine(engine());
+        let host = r.host(engine());
+        if approval {
+            r.grant_approval(&host);
+        }
         let opening = r.opened(&host);
         let session = opening["session"].as_str().unwrap();
         let mut command = r.submit_command(&host, &opening, 2);
         r.input(
             &mut command,
-            json!({"prompt":"work","steps":2,"ask":"which branch?"}),
+            if approval {
+                json!({"prompt":"work","steps":2,"approval":{"method":"hash","value":"data"}})
+            } else {
+                json!({"prompt":"work","steps":2,"ask":"which branch?"})
+            },
         );
         let (event, binding) = r.job(&command);
         host.serve(&event, &r.fx.artifacts, &binding, r.fx.now)
             .unwrap();
         host.poll(&event, r.fx.now).unwrap();
-        let response = r.question(&host, session);
+        let response = if approval {
+            r.approval_decision(&host, session, true)
+        } else {
+            r.question(&host, session)
+        };
         if drain {
             r.attachment_control(&r.allocator(), &binding.grant, "drain");
         } else {
@@ -859,7 +1249,18 @@ fn current_coord_revocation_and_environment_drain_block_native_continuations() {
             .unwrap();
         assert_eq!(turn["outcome"], "cancelled");
         assert_eq!(turn["cause"], "policy");
-        assert_eq!(host.started("loop-mid-turn"), 1);
+        assert_eq!(
+            host.started(if approval {
+                "loop-approval"
+            } else {
+                "loop-mid-turn"
+            }),
+            1
+        );
+        if approval {
+            assert_eq!(r.native_count(&host, session, "approval/response"), 0);
+            assert_eq!(r.native_count(&host, session, "action/completed"), 0);
+        }
         assert_eq!(r.coordinator.scope(&r.scope).unwrap()["calls"], 2);
     }
 }

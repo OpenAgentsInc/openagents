@@ -20,6 +20,8 @@ use std::{
     path::PathBuf,
 };
 use workspace_host::artifact::{Artifacts, token};
+mod approvals;
+pub use approvals::ApprovalGrant;
 
 pub const MAX_SESSIONS: usize = 64;
 pub const MAX_QUEUE: usize = 256;
@@ -142,6 +144,8 @@ struct Adapter {
     reference: Value,
     engine: String,
     definition: Value,
+    #[serde(default)]
+    actions: BTreeMap<String, Value>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -195,6 +199,8 @@ struct Interaction {
     expires_at: u64,
     state: String,
     claim: Option<Prior>,
+    #[serde(default)]
+    approval: Option<approvals::Pending>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -266,6 +272,8 @@ impl Session {
 #[serde(deny_unknown_fields)]
 pub(crate) struct State {
     pub(crate) policy: Policy,
+    #[serde(default)]
+    approvals: approvals::Book,
     #[serde(default)]
     pub(crate) transport: Option<crate::transport::Transport>,
     #[serde(default)]
@@ -434,6 +442,7 @@ impl SessionHost {
             .as_ref()
             .filter(|a| a.id == turn["turn"])
             .ok_or("stale: original native turn is no longer active")?;
+        self.approval_authority_current(state, session, &active.id, now)?;
         if session.generation != turn["generation"]
             || session.protocol_fault.is_some()
             || session.opening
@@ -505,8 +514,22 @@ impl SessionHost {
             .get(digest_of(original))
             .ok_or("original turn")?["session"]
             .clone();
-        let (actor, body, input) = self.authenticate(&mut state, &bundle.event, now)?;
+        let original_turn = state
+            .turn_commands
+            .get(digest_of(original))
+            .ok_or("original turn")?["turn"]
+            .clone();
+        let (actor, mut body, input) = self.authenticate(&mut state, &bundle.event, now)?;
         self.remember(&mut state, &actor, &input)?;
+        if body["v"] == nostr::policy::DECISION_SCHEMA {
+            body = self.normalize_approval(
+                &state,
+                &actor,
+                &body,
+                &input,
+                session_id.as_str().ok_or("session")?,
+            )?;
+        }
         if actor != opened.principal || body["scope"]["session"] != session_id {
             return Err("not_admitted: continuation requires the original session owner".into());
         }
@@ -528,6 +551,22 @@ impl SessionHost {
             self.remember(&mut state, &actor, &reference)?;
         }
         sess::validate(&body).map_err(contract)?;
+        let matches_original = if body["v"] == "openagents.session-interaction-response.v1" {
+            state
+                .sessions
+                .get(session_id.as_str().ok_or("session")?)
+                .is_some_and(|s| {
+                    s.interactions
+                        .iter()
+                        .any(|i| i.reference == body["interaction"] && i.turn == original_turn)
+                })
+        } else {
+            body["payload"]["turn"] == original_turn
+        };
+        if !matches_original {
+            return Err("not_admitted: control belongs to another original execution".into());
+        }
+
         let cached = if body["v"] == "openagents.session-command.v1" {
             state.priors.contains_key(&format!(
                 "{}:{}:{}",
@@ -685,6 +724,9 @@ impl SessionHost {
         let _g = self.store.lock()?;
         let mut state = self.state()?;
         state.policy = policy;
+        state.approvals.invalidate()?;
+        self.save(&state)?;
+        self.cancel_approval_turns(&mut state, crate::now())?;
         self.save(&state)
     }
     fn command_authority(&self, state: &State, signer: &str, body: &Value) -> Result<()> {
@@ -792,6 +834,10 @@ impl SessionHost {
         // references would let a refusal or queue receipt disclose other owners'
         // cached artifacts merely because the caller named their hashes.
         let fields: &[&str] = match body["v"].as_str() {
+            Some(nostr::policy::ACTION_SCHEMA) => {
+                &["snapshot", "binding", "input", "context", "preconditions"]
+            }
+            Some(nostr::policy::REQUEST_SCHEMA) => &["action"],
             Some("openagents.session-native.v1") => &["payload"],
             Some("openagents.session-history.v1") => &["portable", "resume"],
             Some("openagents.session-configuration.v1") => &["enforcement"],
@@ -854,6 +900,15 @@ impl SessionHost {
                 || v.starts_with("openagents.queued-")
         }) {
             sess::validate(body).map_err(contract)?;
+        } else if matches!(
+            body["v"].as_str(),
+            Some(
+                nostr::policy::ACTION_SCHEMA
+                    | nostr::policy::REQUEST_SCHEMA
+                    | nostr::policy::DECISION_SCHEMA
+            )
+        ) {
+            nostr::policy::validate(body).map_err(contract)?;
         }
         let reference = self.store.put_json(body)?;
         let digest = digest_of(&reference).to_string();
@@ -1003,9 +1058,27 @@ impl SessionHost {
             .store
             .put_json(&json!({"engine":digest_bytes(&profile.engine),
             "protocol":digest_bytes(&profile.protocol),"verified":"in-process fixture"}))?;
+        let mut actions = BTreeMap::new();
+        for action in self
+            .engines
+            .borrow()
+            .get(engine)
+            .ok_or("engine")?
+            .approval_actions()
+        {
+            let definition =
+                crate::interface::native_action(&self.store, &host, &profile, &action)?;
+            if actions
+                .insert(action.method.to_string(), definition)
+                .is_some()
+            {
+                return Err("malformed: duplicate native action method".into());
+            }
+        }
         let body = json!({"v":"openagents.session-adapter.v1","requires":[],"adapter":definition,
             "engine":self.store.put(&profile.engine,"application/octet-stream",None)?,
-            "protocol":protocol,"features":features,"compatibility":compatibility});
+            "protocol":protocol,"features":features,"compatibility":compatibility,
+            "meta":{"native_actions":actions}});
         let reference = self.sign(&mut state, &body, &host, now)?;
         self.store.put(
             &serde_json::to_vec(&profile.settings_schema).map_err(|e| e.to_string())?,
@@ -1018,6 +1091,7 @@ impl SessionHost {
                 reference: reference.clone(),
                 engine: engine.into(),
                 definition,
+                actions,
             },
         );
         self.share_adapter(&mut state, &reference)?;
@@ -2190,6 +2264,11 @@ impl SessionHost {
                 session.queue = rest;
             }
             "steer" => {
+                if session.interactions.iter().any(|i| {
+                    i.approval.is_some() && session.active.as_ref().is_some_and(|t| t.id == i.turn)
+                }) {
+                    return Err("conflict: steering requires the approved turn to finish".into());
+                }
                 let support = self.require(state, session, "steer")?;
                 let turn = self.active_turn(session, payload)?;
                 let correction = self.body(
@@ -3214,6 +3293,16 @@ impl SessionHost {
             .sessions
             .remove(session_id)
             .ok_or_else(|| refuse("not_admitted", "unknown session"))?;
+        if !self.bindings.local_fixture()
+            && session.active.is_some()
+            && self
+                .native_session(&session, &state.adapters[&session.adapter].engine)
+                .is_ok()
+        {
+            return Err(
+                "not_admitted: active production work requires its original runtime poll".into(),
+            );
+        }
         let outcome = self.observe_session(&mut state, &mut session, now);
         state.sessions.insert(session_id.into(), session.clone());
         let value = outcome?;
@@ -3260,6 +3349,16 @@ impl SessionHost {
             self.capture(state, session, now)?
         } else {
             Vec::new()
+        };
+        let observation = match observation {
+            Observation::Approval(request)
+                if self.approval_probe(state, session, &request, now).is_err() =>
+            {
+                Observation::ProtocolFault {
+                    request: request.capture,
+                }
+            }
+            observation => observation,
         };
         let mut result = Value::Null;
         let fault = match &observation {
@@ -3314,6 +3413,7 @@ impl SessionHost {
                     return Ok(json!({"phase":session.phase,"state":session.state}));
                 }
             }
+            Observation::Approval(request) => self.open_approval(state, session, request, now)?,
             Observation::Question { native_id, prompt } => {
                 if session
                     .interactions
@@ -3344,6 +3444,7 @@ impl SessionHost {
                     expires_at,
                     state: "pending".into(),
                     claim: None,
+                    approval: None,
                 });
                 session.phase = "blocked".into();
             }
@@ -3657,6 +3758,9 @@ impl SessionHost {
                 "the native protocol needs operator attention",
             ));
         }
+        if interaction.approval.is_some() {
+            self.check_approval_actor(state, session, &interaction, signer, input, body, now)?;
+        }
         if let Some(claim) = &interaction.claim {
             if claim.fingerprint == digest_of(input) {
                 // An unknown delivery stays unknown; it is never sent again.
@@ -3691,9 +3795,14 @@ impl SessionHost {
         }
         let response = contracts::parse_strict_bounded(&self.bytes(&body["response"])?, 65_536)
             .map_err(contract)?;
-        let schema = serde_json::to_vec(&answer_schema()).map_err(|e| e.to_string())?;
-        validate_against(&schema, &response)
-            .map_err(|_| refuse("malformed", "answer does not match its schema"))?;
+        let approval = if interaction.approval.is_some() {
+            Some(self.validate_approval(state, session, &interaction, signer, input, body, now)?)
+        } else {
+            let schema = serde_json::to_vec(&answer_schema()).map_err(|e| e.to_string())?;
+            validate_against(&schema, &response)
+                .map_err(|_| refuse("malformed", "answer does not match its schema"))?;
+            None
+        };
         let adapter = state
             .adapters
             .get(&session.adapter)
@@ -3703,6 +3812,9 @@ impl SessionHost {
         // Claim first and persist delivery intent before the engine reply.
         let mut claimed = session.clone();
         claimed.interactions[index].state = "unknown".into();
+        if let Some(pending) = claimed.interactions[index].approval.as_mut() {
+            pending.decision = Some(input.clone());
+        }
         let pending = self.control_result(
             state,
             signer,
@@ -3730,20 +3842,30 @@ impl SessionHost {
         self.save(&snapshot)?;
         self.check_continuation(state, session, continuation, now)?;
         let native = self.native_session(session, &adapter.engine)?.to_string();
-        let delivered = self
-            .engines
-            .borrow_mut()
-            .get_mut(&adapter.engine)
-            .ok_or("engine")?
-            .answer(
-                &native,
-                &interaction.native_id,
-                &serde_json::to_vec(&response).map_err(|e| e.to_string())?,
-            );
-        let next = if delivered.is_ok() {
-            "answered"
+        let delivered = if let Some((request, allow)) = &approval {
+            self.validate_approval(state, session, &interaction, signer, input, body, now)?;
+            self.engines
+                .borrow_mut()
+                .get_mut(&adapter.engine)
+                .ok_or("engine")?
+                .approve(&native, request, *allow)
         } else {
+            self.engines
+                .borrow_mut()
+                .get_mut(&adapter.engine)
+                .ok_or("engine")?
+                .answer(
+                    &native,
+                    &interaction.native_id,
+                    &serde_json::to_vec(&response).map_err(|e| e.to_string())?,
+                )
+        };
+        let next = if delivered.is_err() {
             "unknown"
+        } else if approval.as_ref().is_some_and(|(_, allow)| !*allow) {
+            "denied"
+        } else {
+            "answered"
         };
         let mut updated = self.store.json(&interaction.current)?;
         updated["state"] = json!(next);
@@ -3751,6 +3873,9 @@ impl SessionHost {
         self.capture(state, session, now)?;
         session.interactions[index].state = next.into();
         session.interactions[index].current = reference;
+        if let Some(pending) = session.interactions[index].approval.as_mut() {
+            pending.decision = Some(input.clone());
+        }
         if delivered.is_ok() {
             session.phase = "running".into();
         }
@@ -4038,9 +4163,25 @@ impl SessionHost {
         let Some(turn) = state.turn_commands.get(digest_of(input)).cloned() else {
             return Ok(());
         };
-        let id = turn["session"].as_str().ok_or("session")?.to_string();
-        let session = state.sessions.get_mut(&id).ok_or("session")?;
-        let Some(active) = session.active.as_mut().filter(|t| t.id == turn["turn"]) else {
+        self.stop_turn(
+            state,
+            turn["session"].as_str().ok_or("session")?,
+            turn["turn"].as_str().ok_or("turn")?,
+            now,
+            cause,
+        )
+    }
+
+    fn stop_turn(
+        &self,
+        state: &mut State,
+        id: &str,
+        turn: &str,
+        now: u64,
+        cause: &str,
+    ) -> Result<()> {
+        let session = state.sessions.get_mut(id).ok_or("session")?;
+        let Some(active) = session.active.as_mut().filter(|t| t.id == turn) else {
             return Ok(());
         };
         let signal = !active.interrupted;
@@ -4070,9 +4211,9 @@ impl SessionHost {
                 .ok_or("engine")?
                 .interrupt(&native, &turn_id);
         }
-        let mut session = state.sessions.remove(&id).ok_or("session")?;
+        let mut session = state.sessions.remove(id).ok_or("session")?;
         let observed = self.observe_session(state, &mut session, now);
-        state.sessions.insert(id, session);
+        state.sessions.insert(id.to_string(), session);
         observed?;
         Ok(())
     }
@@ -4494,7 +4635,7 @@ impl SessionHost {
             if reference.is_null() || !seen.insert(digest.to_string()) {
                 continue;
             }
-            if !known.is_some_and(|k| k.contains(digest)) {
+            if !known.is_some_and(|k| k.contains(digest)) && !state.public.contains(digest) {
                 return Err("not_admitted: runtime result contains an unshared artifact".into());
             }
             self.store.get(&reference)?;
@@ -4506,6 +4647,10 @@ impl SessionHost {
 
 /// Build a signed private request envelope for a session host.
 pub fn envelope(secret: &SecretKey, host: &str, body: &Value, now: u64) -> Result<Event> {
-    sess::validate(body).map_err(contract)?;
+    if body["v"] == nostr::policy::DECISION_SCHEMA {
+        nostr::policy::validate(body).map_err(contract)?;
+    } else {
+        sess::validate(body).map_err(contract)?;
+    }
     workspace_host::host::request(secret, host, body.clone(), now)
 }

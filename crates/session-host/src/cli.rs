@@ -13,7 +13,8 @@ use std::path::{Path, PathBuf};
 pub const USAGE: &str = "usage: session-host ACTION --state DIR --key-file KEY [options]
   init       --policy POLICY.json
   policy     --policy POLICY.json   replace owner/controller sets with the host key
-  admit      --engine loop-mid-turn|loop-boundary
+  admit      --engine loop-mid-turn|loop-boundary|loop-approval
+  approval-policy --input GRANTS.json   set exact owner/action approval grants
   submit     --input BUNDLE [--env-state DIR --env-key KEY --env-root DIR
              --attachment ID --fingerprint DIGEST --grant GRANT.json
              --coordinator-state DIR --coordinator-key-file KEY]
@@ -116,6 +117,7 @@ pub fn run(args: Vec<String>) -> Result<Value> {
         vec![
             Box::new(LoopEngine::mid_turn()),
             Box::new(LoopEngine::boundary()),
+            Box::new(LoopEngine::approval()),
         ],
         bindings,
     )?;
@@ -134,6 +136,11 @@ pub fn run(args: Vec<String>) -> Result<Value> {
             Ok(json!({"updated":true}))
         }
         "admit" => host.admit_adapter(&need("--engine")?, now),
+        "approval-policy" => {
+            let grants = serde_json::from_value(json_file(&need("--input")?)?)
+                .map_err(|_| "malformed: approval grants")?;
+            host.set_approval_grants(grants, now)
+        }
         "submit" => {
             let bundle: Bundle = serde_json::from_value(json_file(&need("--input")?)?)
                 .map_err(|_| "malformed: bundle")?;

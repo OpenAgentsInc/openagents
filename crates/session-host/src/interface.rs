@@ -4,14 +4,49 @@ use nostr::contracts::{self, SCHEMA_MEDIA_TYPE};
 use serde_json::{Value, json};
 use workspace_host::artifact::Artifacts;
 
+pub(crate) fn native_action(
+    store: &Artifacts,
+    host: &str,
+    profile: &Profile,
+    action: &crate::engine::ActionProfile,
+) -> Result<Value> {
+    let input = store.put(
+        &contracts::jcs(&action.input_schema).map_err(|e| e.to_string())?,
+        SCHEMA_MEDIA_TYPE,
+        None,
+    )?;
+    let output = store.put(
+        &contracts::jcs(&action.output_schema).map_err(|e| e.to_string())?,
+        SCHEMA_MEDIA_TYPE,
+        None,
+    )?;
+    let engine = store.put(&profile.engine, "application/octet-stream", None)?;
+    let protocol = store.put(&profile.protocol, SCHEMA_MEDIA_TYPE, None)?;
+    let id = format!("{host}:session/{}-action-{}", profile.name, action.method);
+    let definition = json!({"v":1,"requires":[],"id":id,"profile":"native",
+        "summary":format!("Run the admitted {} native action.",action.method),
+        "input":input,"output":output,"effects":action.effects,"minimum":{},
+        "support":{"bounds":{},"cancellation":"before_dispatch","idempotency":"none","evidence":["openagents.session-native.v1"]},
+        "binding_contract":{"operation":"session-native-action","interface":"openagents.session-native-action.v1"},
+        "meta":{"engine":engine,"protocol":protocol,"method":action.method,"input_max_bytes":32768}});
+    nostr::cap::parse_definition(&definition).map_err(|e| e.to_string())?;
+    Ok(
+        json!({"id":id,"artifact":store.put(&contracts::jcs(&definition).map_err(|e|e.to_string())?,"application/json",Some("openagents.cap.v1"))?}),
+    )
+}
+
 fn schema(
     store: &Artifacts,
     feature: Option<&str>,
     output: bool,
     profile: &Profile,
 ) -> Result<Value> {
-    let session: Value =
+    let mut session: Value =
         serde_json::from_slice(nostr::session::SCHEMA_BYTES).map_err(|e| e.to_string())?;
+    if feature == Some("approvals") && !output {
+        session =
+            serde_json::from_slice(nostr::sovereign::SCHEMA_BYTES).map_err(|e| e.to_string())?;
+    }
     let reference = |name: &str| json!({"$ref":format!("#/$defs/{name}")});
     let shape = if output && matches!(feature, None | Some("submit" | "queue")) {
         json!({"oneOf":[reference("session-control-result"),reference("session-turn-result")]})
@@ -30,7 +65,8 @@ fn schema(
                 json!({"allOf":[reference("session-open"),
                     {"properties":{"source":{"properties":{"kind":{"const":source}}}}}]})
             }
-            Some("questions" | "approvals") => reference("session-interaction-response"),
+            Some("questions") => reference("session-interaction-response"),
+            Some("approvals") => reference("approval-decision"),
             Some("history") => json!({"type":"object","additionalProperties":false,
                 "required":["session"],"properties":{"session":{"type":"string","minLength":64,"maxLength":64}}}),
             Some(name) => {

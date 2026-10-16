@@ -76,6 +76,15 @@
     },
     {
       "$ref": "#/$defs/session-read-result"
+    },
+    {
+      "$ref": "#/$defs/session-approval-rule"
+    },
+    {
+      "$ref": "#/$defs/session-action-binding"
+    },
+    {
+      "$ref": "#/$defs/session-action-preconditions"
     }
   ],
   "$defs": {
@@ -3001,6 +3010,153 @@
           "items": {
             "$ref": "#/$defs/artifact"
           }
+        }
+      }
+    },
+    "session-approval-rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "generation",
+        "owner",
+        "approver",
+        "operation",
+        "starts_at",
+        "expires_at"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.session-approval-rule.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "generation": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "owner": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "approver": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "operation": {
+          "$ref": "#/$defs/definition"
+        },
+        "starts_at": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "expires_at": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      }
+    },
+    "session-action-binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "scope",
+        "turn",
+        "native_request",
+        "adapter",
+        "engine",
+        "method",
+        "native_id"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.session-action-binding.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "scope": {
+          "$ref": "#/$defs/scope"
+        },
+        "turn": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "native_request": {
+          "$ref": "#/$defs/artifact"
+        },
+        "adapter": {
+          "$ref": "#/$defs/artifact"
+        },
+        "engine": {
+          "$ref": "#/$defs/artifact"
+        },
+        "method": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "native_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      }
+    },
+    "session-action-preconditions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "scope",
+        "turn",
+        "turn_revision",
+        "effective",
+        "rule",
+        "native_request"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.session-action-preconditions.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "scope": {
+          "$ref": "#/$defs/scope"
+        },
+        "turn": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "turn_revision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "effective": {
+          "$ref": "#/$defs/artifact"
+        },
+        "rule": {
+          "$ref": "#/$defs/artifact"
+        },
+        "native_request": {
+          "$ref": "#/$defs/artifact"
         }
       }
     }
