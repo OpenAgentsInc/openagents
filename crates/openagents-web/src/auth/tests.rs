@@ -1310,10 +1310,39 @@ async fn agent_call(
         );
     }
     let bytes = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
-    (
-        status,
-        serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null),
-    )
+    let body = serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null);
+    if path.starts_with("/v1/keys") {
+        assert_key_response_schema(method, path, status, &body);
+    }
+    (status, body)
+}
+
+fn assert_key_response_schema(
+    method: &str,
+    path: &str,
+    status: StatusCode,
+    body: &serde_json::Value,
+) {
+    let document = crate::app_openapi::document();
+    let path = if path.split('?').next() == Some("/v1/keys") {
+        "/v1/keys"
+    } else {
+        "/v1/keys/{id}"
+    };
+    let mut schema = document["paths"][path][method.to_ascii_lowercase()]["responses"]
+        [status.as_u16().to_string()]["content"]["application/json"]["schema"]
+        .clone();
+    assert!(
+        schema.is_object(),
+        "Undocumented key response: {method} {path} {status}"
+    );
+    schema["$schema"] = json!("https://json-schema.org/draft/2020-12/schema");
+    schema["components"] = document["components"].clone();
+    let validator = jsonschema::validator_for(&schema).expect("valid key response schema");
+    assert!(
+        validator.is_valid(body),
+        "Key response schema drift: {method} {path} {status}"
+    );
 }
 
 #[tokio::test]
@@ -1387,6 +1416,7 @@ async fn public_key_contract_preserves_account_authority_and_uncertain_creation(
                 .as_str()
                 .is_some_and(crate::cloud::session::session_token)
         );
+        assert_key_response_schema("POST", "/v1/keys", StatusCode::OK, &body);
         made.push(body);
     }
     assert_ne!(made[0]["key"]["id"], made[1]["key"]["id"]);
