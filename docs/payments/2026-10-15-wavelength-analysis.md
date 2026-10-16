@@ -299,10 +299,16 @@ are excluded.
 | Setup and Rust gRPC | CLI creation and restart unlock work. Rust reads status, balance, activity, and boarding addresses, and creates Lightning invoices with a separate scoped macaroon. |
 | MCP | Live `tools/list` returns 17 wallet and Ark tools. Create, unlock, and seed tools are absent; calling `create` returns unknown tool. The scoped credential also fails a direct unlock attempt. This tests the API boundary, not OS isolation. |
 | Credits and the VTXO floor | The operator advertises a 1,000-sat floor. A 20,000-sat invoice uses the VTXO path; a 10-sat invoice uses server credits. A 500-sat credit receive settles. |
+| Faucet VTXO receive | The faucet acknowledges a 1,500-sat payment as sent, but the wallet never observes settlement and ultimately marks the receive failed after invoice expiry. A faucet acknowledgement alone does not establish receipt. |
 | Released credit send | A 500-sat Lightning payment is observed complete after 44.55 seconds of polling (43 seconds in the server record). Its quote allows 2 sats of fees; the server debits 501 sats. Wallet activity reports zero fee and no preimage. Rust verifies the preimage and 1-sat fee through `swapclientrpc.GetSwap`. That lookup reports zero principal, so an adapter must retain the original invoice amount. |
 | Restart during credit receive | A wallet-issued 500-sat invoice is paid while `waved` is stopped. After CLI unlock, Rust finds one completed activity entry; the server book has one operation and one 500-sat credit. This does not establish VTXO receive recovery. |
 | Newer source snapshot | `85cfb97905a27c420338c2a5bd688a4a7d2147b1` builds with both required tags and Go 1.26.9. Its wallet services fail against the public operator with `ARK_VERSION_MISMATCH`: selected version 0, runtime version 1. A fresh credit send remains uncertain with 502 sats reserved; it is not retried. |
 | Upgrade and rollback | The snapshot advances the database from version 19 to 26. v0.1.2 refuses the newer database. The pre-upgrade copy restores the released daemon; the upgraded copy and uncertain payment record are kept separately. |
+| Boarding | The 200,000-sat deposit confirms at height 326546; its automatically created round confirms at 326549. The resulting VTXO holds 199,745 sats, and the wallet records a 255-sat boarding charge. |
+| Routed VTXO receive and restart | LDK pays a 100,000-sat wallet invoice while `waved` is stopped for ten seconds. After CLI unlock, Rust observes one completed entry, and the payer returns a valid preimage. Total elapsed time is 22.52 seconds; the post-unlock poll takes 5.17 seconds. The LDK payer pays 11,100 msat in routing fees. |
+| Online VTXO receive | A separate 20,000-sat receive completes in 12.05 seconds, including a 9.80-second Rust poll. The LDK payer pays 3,020 msat in routing fees and returns a valid preimage. |
+| Description-hash payment | Wavelength pays an LDK invoice for exactly 21,001 msat with `h = 08` repeated 32 bytes. LDK records that exact amount, and Rust verifies the lower-level swap preimage. Settlement takes 4.92 seconds. The credit principal rounds up to 22 sats; the total debit is 23 sats, including the reported 1-sat fee. This tests the invoice shape, not a full HTTP x402 exchange. |
+| Larger swap send | A separate 21,000-sat description-hash payment enters refunding and does not complete within 120 seconds. The server reports `in_swap_claim_expiry_refresh_margin` because the funded vHTLC expires too soon; its 974-sat credit reservation is released. No preimage or successful payment is claimed, and the attempt is not retried. |
 | LDK comparison setup | Lightning Labs' Esplora rejects the LDK broadcast requests with HTTP 404. The test then uses a scratch Rust loopback proxy to the public default signet API; a 200,000-sat boarding transfer is verified in the mempool. The installed client uses `/tx`, so the error's trailing slash does not establish a client path bug. Two hub peers reject a 500,000-sat channel. A third accepts it and requires three confirmations. |
 
 Invoice creation takes 306 ms for the 20,000-sat receive and 186 ms for the
@@ -312,16 +318,26 @@ connection setup and the client's preceding network check.
 
 ### Remaining measurements
 
-The 200,000-sat deposit is confirmed at block 326546. Wavelength automatically
-adopts it into round `01a141c6-ad5b-7849-b4e5-1d2ce0c7971b`; that batch is
-broadcast and awaiting confirmation. The LDK channel has one of its three
-required confirmations at this checkpoint.
+Both directed Lightning paths and the description-hash invoice shape have
+measured results above. The larger swap remains under observation for refund
+completion. The remaining 79,970-sat change and 20,000-sat receive VTXOs enter an
+automatic refresh round from a batch with expiry height 326840; that refresh is not yet a
+stopped-daemon expiry test.
 
-Routed LDK-to-Wavelength payment, payment of the LDK
-request-hash invoice, VTXO receive recovery, and both exit paths are still
-pending. No completed exit cost or expiry-window soak result is claimed.
-The operator advertises a 144-block VTXO exit delay and a 504-block free
-refresh window; these are terms, not measured waiting times.
+The Rust client queues a cooperative leave of the 199,745-sat boarded VTXO.
+A unilateral-exit preview requires one confirmed 10,000-sat backing-wallet fee
+input; the LDK test wallet broadcasts that funding transfer. Both exit paths
+still need measured completion, cost, and wait. No completed exit or
+expiry-window soak result is claimed. The operator advertises a 144-block VTXO
+exit delay and a 504-block free refresh window; these are terms, not measured
+waiting times.
+
+The verified boarding transfer, LDK channel funding, and exit-fee funding each
+pay 156 sats in miner fees. The confirmed Ark boarding batch pays 277 sats in
+total; the wallet separately records its 255-sat boarding charge. The test does
+not count the two earlier unbroadcast transfer IDs as payments. The public
+funding faucet grants 1,000,000 signet sats; a subsequent request receives HTTP
+429 and is not retried.
 
 ### Verdict
 
