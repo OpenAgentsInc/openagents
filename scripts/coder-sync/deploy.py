@@ -88,7 +88,8 @@ def revision():
     if subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT, text=True).strip():
         raise RuntimeError("Commit changes before building or deploying.")
     subprocess.run(["git", "fetch", "origin", "main"], cwd=ROOT, check=True)
-    subprocess.run(["git", "merge-base", "--is-ancestor", "origin/main", "HEAD"], cwd=ROOT, check=True)
+    if subprocess.run(["git", "merge-base", "--is-ancestor", "origin/main", "HEAD"], cwd=ROOT).returncode:
+        raise RuntimeError("Rebase on origin/main before building or deploying.")
     return subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
 
 
@@ -136,6 +137,9 @@ def main():
 
 if __name__ == "__main__":
     try: main()
+    except RuntimeError as error:
+        print(f"Deployment stopped: {error}", file=sys.stderr)
+        sys.exit(1)
     except Exception as error:
         # SQL and HTTP exceptions can contain response bodies; keep credentials out.
         print(f"Deployment stopped ({type(error).__name__}). Check the preceding command result.", file=sys.stderr)
