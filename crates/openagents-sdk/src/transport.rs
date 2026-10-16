@@ -128,7 +128,7 @@ impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             Self::InvalidDeployment => "Check the website address and try again.",
-            Self::InvalidTimeout => "Use a positive request timeout of at most two minutes.",
+            Self::InvalidTimeout => "Use positive timeouts up to two minutes, with the connection timeout no longer than the request timeout.",
             Self::InvalidCredential => "Log in again to continue.",
             Self::WrongDeployment => "This login belongs to another site.",
             Self::WrongAccount => "This login belongs to another account.",
@@ -155,11 +155,12 @@ impl fmt::Display for Error {
 }
 impl std::error::Error for Error {}
 
-/// A bounded, redirect-free client for one deployment. Requests are never retried implicitly.
+/// A bounded client for one deployment that refuses redirects. Auth and history
+/// send once; the Computers facade applies its own operation-specific retry policy.
 #[derive(Clone)]
 pub struct Client {
     pub(crate) deployment: Deployment,
-    http: reqwest::Client,
+    pub(crate) http: reqwest::Client,
 }
 
 impl fmt::Debug for Client {
@@ -176,14 +177,26 @@ impl Client {
     }
 
     pub fn with_timeout(deployment: Deployment, timeout: Duration) -> Result<Self, Error> {
+        Self::with_timeouts(deployment, timeout.min(Duration::from_secs(10)), timeout)
+    }
+
+    pub fn with_timeouts(
+        deployment: Deployment,
+        connect_timeout: Duration,
+        timeout: Duration,
+    ) -> Result<Self, Error> {
         deployment.validate()?;
-        if timeout.is_zero() || timeout > Duration::from_secs(120) {
+        if timeout.is_zero()
+            || timeout > Duration::from_secs(120)
+            || connect_timeout.is_zero()
+            || connect_timeout > timeout
+        {
             return Err(Error::InvalidTimeout);
         }
         let http = reqwest::Client::builder()
             .pool_max_idle_per_host(8)
             .redirect(reqwest::redirect::Policy::none())
-            .connect_timeout(timeout.min(Duration::from_secs(10)))
+            .connect_timeout(connect_timeout)
             .timeout(timeout)
             .build()
             .map_err(|_| Error::Network { timeout: false })?;
@@ -305,7 +318,10 @@ impl Client {
         }
         Ok(response)
     }
-    async fn read_limited(mut response: reqwest::Response, limit: usize) -> Result<Vec<u8>, Error> {
+    pub(crate) async fn read_limited(
+        mut response: reqwest::Response,
+        limit: usize,
+    ) -> Result<Vec<u8>, Error> {
         if response
             .content_length()
             .is_some_and(|size| size > limit as u64)

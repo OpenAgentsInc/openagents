@@ -112,9 +112,13 @@ The Rust [wire bindings](../../crates/openagents-sdk/src/generated/computers.rs)
 provide typed values and request builders under
 `openagents_sdk::generated::computers`. Request plans keep unencoded path
 components, query values, headers, and binary bytes separate. The shared client
-owns deployment validation, credentials, HTTP, cancellation, and bounded retries;
-its Computers facade and execution helpers are tracked in
-[#11805](https://github.com/OpenAgentsInc/openagents/issues/11805).
+owns deployment validation, credentials, HTTP, cancellation, and bounded retries.
+Its experimental `Client::computers` facade executes these plans and provides
+account-bound lifecycle, command output, waits, and binary file helpers; see the
+[Rust client guide](../../crates/openagents-sdk/README.md). The runnable
+`computers` example qualifies the public Boat workflow with dedicated test
+credentials and saves original request identities for recovery and cleanup.
+Publication and host/provider SDKs remain separate work.
 Generated bindings have no implicit network effects. Their debug output omits
 values, and response objects preserve unknown fields. Enum values remain strings
 so future values decode; an unknown state never means ready, successful, or safe

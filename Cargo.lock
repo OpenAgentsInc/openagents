@@ -11874,6 +11874,8 @@ name = "openagents-sdk"
 version = "1.0.0"
 dependencies = [
  "axum 0.8.9",
+ "base64 0.22.1",
+ "getrandom 0.4.3",
  "httpdate",
  "oa-auth",
  "oa-copy",

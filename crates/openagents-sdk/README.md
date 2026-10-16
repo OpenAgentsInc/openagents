@@ -59,7 +59,8 @@ the website can remove it. No credential is adopted from CLI files or
 `OPENAGENTS_TOKEN`, and no browser is launched by this library.
 
 Requests have bounded timeouts (20 seconds by default, configurable up to two
-minutes), and no redirects or implicit retries. Auth and list JSON are bounded
+minutes), and no redirects. Auth and history have no implicit retries;
+Computers has its own bounded, operation-specific retry policy. Auth and list JSON are bounded
 to 1 MiB; saved transcript pages are bounded to 17 MiB. Input files and computer
 captures are bounded to their saved sizes (at most 10 MiB and 15 MiB).
 Typed rate-limit/unavailable errors retain `Retry-After` as seconds or an HTTP
@@ -112,3 +113,72 @@ async fn read_selected(
     Ok(count)
 }
 ```
+
+The experimental `computers` module executes the generated public Computers
+contract through this same client and account session. It allocates cloud
+computers through the public API; it does not link or run a host, provider,
+process harness, or database. Missing file capability means unsupported, and
+unknown server states remain readable without counting as ready or successful.
+
+```rust
+use openagents_sdk::{Client, Session, CancellationToken, computers::CreateOptions};
+
+async fn allocate(client: &Client, session: &Session) -> Result<(), openagents_sdk::computers::Error> {
+    let computers = client.computers(session)?;
+    let request = computers.create_request(CreateOptions::default())?;
+    // Save this request privately before sending; reuse it after response loss.
+    let computer = computers.create(&request, &CancellationToken::new()).await?;
+    let reference = computer.reference().clone();
+    // Wait for Awake before commands, or explicitly stop, wake, and delete.
+    Ok(())
+}
+```
+
+`create_request` and `command_request` generate a key once; their serializable
+records bind settings to an account and deployment. Save them privately before
+sending and retain them across restarts. Commands and create retry only with
+the same key and exact body. `Error::Uncertain` means inspect the original
+resource or reuse the original keyed request. Never resolve it with a new
+command or key. `Error::code`, `status`, `refusal`, and `retry_after` expose
+bounded server information without including private error messages in logs.
+No payment or automatic x402 spending occurs.
+
+Configure `Client::with_timeouts` for connect and per-request deadlines,
+then `Computers::with_operation_timeout` and `with_retries` for a bounded
+operation. Reads and keyed creates/commands retry eligible failures with
+jitter and `Retry-After`; a retry delay outside the caller's bounds returns
+an error rather than retrying early. Auth/history keep their previous behavior.
+Stop, wake, delete, command cancellation, and file uploads send explicit
+intents once. A lost upload response requires `reconcile_write` to compare
+current bytes with the retained size/hash; it never triggers another upload.
+Matching bytes establish what is present, not which writer produced them.
+
+`wait` and `wait_command` poll with a caller deadline. A local timeout or
+cancellation sends no remote stop or cancellation. `OutputReader` fetches
+bounded binary stdout/stderr pages and can be serialized with its exact byte
+cursors for reconnect. Dropping it does not stop the command. Check gaps,
+terminal state, and the command outcome; an unknown state never means success.
+File bodies are binary, bounded to the advertised limit and 4 MiB, and verified
+against SHA-256, ETag, and `Cache-Control: no-store`. Paths are relative to the
+workspace. Writes default to refusing replacement; choose `allow_overwrite`
+on the intent before sending if replacement is intended.
+
+The [runnable Computers example](examples/computers.rs) only accepts the
+dedicated production or staging test account. Set `OPENAGENTS_TEST_TOKEN`
+explicitly, then run with a private checkpoint directory:
+
+```sh
+sdk_scratch="$(openagents scratch)"
+cargo run -p openagents-sdk --example computers -- "$sdk_scratch/computers-sdk-check"
+```
+
+It creates a computer, uploads binary bytes, checks them through a command,
+stops/wakes the computer, verifies the same file, removes the file, and deletes
+the computer. It attempts cleanup on failure and retains original request
+identities for inspection or restart. Its evidence contains IDs, booleans,
+and timing, without credentials or command/file output. Keep checkpoints
+private. If deletion is uncertain, inspect that computer before another
+explicit delete intent; the example does not replay a saved delete.
+Generated bindings remain owned by the
+[public contract workflow](../../docs/sdk/computers.md#published-contract-and-generated-rust-bindings).
+Package publication remains an owner decision.
